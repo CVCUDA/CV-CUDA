@@ -1,0 +1,383 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#define _GNU_SOURCE
+
+#include <util/Compat.h>
+#include <assert.h>
+#include <stddef.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <sys/syscall.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <link.h>
+#include <dlfcn.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdatomic.h>
+
+// It only makes sense to implement getrandom compatibility
+// layer if it is available in c library.
+#if __has_include(<sys/random.h>)
+#	include <sys/random.h>
+#	define HAS_SYS_RANDOM_H 1
+#endif
+
+// Nice article about the breaking changes in glibc-2.34
+// https://developers.redhat.com/articles/2021/12/17/why-glibc-234-removed-libpthread#
+
+#define NVCV_ASSERT(x) \
+    do { \
+        assert(x); \
+        if(!(x)) \
+        {\
+            fprintf(stderr, "%s\n", #x); \
+            abort(); \
+        } \
+    } while(0);
+
+// ==============================================================
+// Symbols from compat_symbols.txt
+
+// We must replace new symbols that we depend on for old ones.
+//
+// To do that, we instruct the linker to replace these new symbols (functions) with
+// wrapper functions that we define here.
+//
+// These wrapper functions are defined to be "naked" and only contains a jump call.
+// This makes it immediately transfer the control to the old function, selected
+// via the symver directive below. This way we don't have to specify their parameters
+// nor return any values. The stack will be already set up for the old function to use.
+//
+// __asm__(".symver FUNC,FUNC@VERSION\");
+// __attribute__((used,naked)) void __wrap_FUNC() { asm("jmp FUNC" ::); }
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-declarations"
+#pragma GCC diagnostic ignored "-Wimplicit-function-declaration"
+
+@TEMPLATE@
+
+// ==============================================================
+// __libc_start_main
+
+typedef int (*init_t)(int, char**, char**);
+
+#if __GLIBC__ == 2 && __GLIBC_MINOR__ >= 34
+static int CallInit(int argc, char **argv, char **env)
+{
+    static int fnCalled = 0;
+
+    if (fnCalled)
+    {
+        // Init already called
+        return 0;
+    }
+
+    // Avoids initializing it again.
+    fnCalled = 1;
+
+    // Let's retrieve the link map with the help of dlinfo.
+    // We need to know where in memory the dynamic section was loaded.
+    static struct link_map *l = NULL;
+
+    void *hexec = dlopen(NULL, RTLD_NOLOAD|RTLD_NOW);
+    NVCV_ASSERT(hexec != NULL && "Executable must already be loaded");
+
+    int er = dlinfo(hexec, RTLD_DI_LINKMAP, &l);
+    (void)er;
+    NVCV_ASSERT(er == 0 && "Can't get executable's linkmap");
+
+    // Retrieve the data we need from elf's .dynamic section
+    // obs: _DYNAMIC is filled by the linker, the pointer addressed in it are
+    // relative to l->l_addr. This offset is being taken into account below.
+    ElfW(Addr) dtInit = 0;
+    ElfW(Addr) *dtInitArray = NULL;
+    unsigned int dtInitArraySize = 0;
+
+    for(ElfW(Dyn) *dyn = _DYNAMIC; dyn->d_tag != DT_NULL; ++dyn)
+    {
+        switch(dyn->d_tag)
+        {
+        // Address of the initialization function.
+        case DT_INIT:
+            dtInit = l->l_addr + dyn->d_un.d_ptr;
+            break;
+
+        // The address of an array of pointers to initialization functions.
+        // This element requires that a DT_INIT_ARRAYSZ element also be present.
+        case DT_INIT_ARRAY:
+            dtInitArray = (void *)(l->l_addr + dyn->d_un.d_ptr);
+            break;
+
+        // The total size, in bytes, of the DT_INIT_ARRAY array.
+        case DT_INIT_ARRAYSZ:
+            dtInitArraySize = dyn->d_un.d_val / sizeof(ElfW(Addr));
+            break;
+        }
+    }
+
+    // Call the local initialization functions
+
+    // First DL_INIT
+    if(dtInit)
+    {
+        ((init_t)dtInit)(argc, argv, env);
+    }
+
+    // Now all others from DL_INIT_ARRAY
+    for(unsigned int i=0; i<dtInitArraySize; ++i)
+    {
+        ((init_t)dtInitArray[i])(argc, argv, env);
+    }
+
+    dlclose(hexec);
+    return 0;
+}
+#endif
+
+__attribute__((noinline,used))
+int __wrap___libc_start_main(init_t main, int argc, char **argv, init_t init,
+                             void (*fini) (void),
+                             void (*rtld_fini) (void), void *stack_end)
+{
+    // This is was fun.
+    //
+    // Glibc-2.34 introduced a incompatible change in how local initialization
+    // functions (global objects, etc) are called.
+    //
+    // Before glibc-2.34, __libc_start_main assumed that these initialization
+    // functions were already called by the dynamic linker.
+    //
+    // Starting from glibc-2.34, it's __libc_start_main responsability to call
+    // them.  Since we're forcibly linking against the old __libc_start_main,
+    // we have to call them ourselves.
+    //
+    // Ref: https://sourceware.org/bugzilla/show_bug.cgi?id=23323
+
+#if __GLIBC__ == 2 && __GLIBC_MINOR__ >= 34
+    // We're positive that the compiler/linker didn't call these initialization
+    // functions.
+    // It's guaranteed that init is NULL with glibc>=2.34.
+    // We're gonna use it for __libc_start_main to call our init function with
+    // the correct envvars.
+    NVCV_ASSERT(init == NULL);
+    init = &CallInit;
+#else
+    // Init functions will be called by orig libc_start_main, we can proceed as usual.
+#endif
+
+    asm(".symver __my___libc_start_main,__libc_start_main@GLIBC_2.2.5");
+    return __my___libc_start_main(main, argc, argv, init, fini, rtld_fini);
+}
+
+#pragma GCC diagnostic pop
+
+// ==============================================================
+// __libc_single_threaded
+// Symbol not defined in glibc-2.17.
+// We know we're multi-threaded, so let's set it to 0 (false).
+
+__attribute__((weak))
+char __libc_single_threaded = 0;
+
+// ==============================================================
+// stat functions
+// They're not present in glibc-2.17. In later
+// versions they are implemented in terms of the functions we're
+// calling below.
+
+#ifndef __x86_64
+#    define MY_STAT_VER_LINUX 3
+#else
+#    define MY_STAT_VER_LINUX 1
+#endif
+
+#if defined(_STAT_VER_LINUX) && _STAT_VER_LINUX != MY_STAT_VER_LINUX
+#   error "MY_STAT_VER_LINUX definition is wrong"
+#endif
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wredundant-decls"
+
+// These are sometimes not defined in sys/stat.h
+int __fxstat64(int __ver, int __filedesc, struct stat64 *__stat_buf);
+int __fxstat(int __ver, int __filedesc, struct stat *__stat_buf);
+int __xstat(int __ver, const char *__filename, struct stat *__stat_buf);
+
+#pragma GCC diagnostic pop
+
+__attribute__((weak))
+int fstat64(int fd, struct stat64 *statbuf)
+{
+   return  __fxstat64(MY_STAT_VER_LINUX, fd, statbuf);
+}
+
+__attribute__((weak))
+int fstat(int fd, struct stat *statbuf)
+{
+   return  __fxstat(MY_STAT_VER_LINUX, fd, statbuf);
+}
+
+__attribute__((weak))
+int stat(const char *restrict pathname, struct stat *restrict statbuf)
+{
+   return  __xstat(MY_STAT_VER_LINUX, pathname, statbuf);
+}
+
+#if HAS_SYS_RANDOM_H
+
+// ==============================================================
+// getrandom
+// Only available from glibc >= 2.25, we need our own.
+
+static _Atomic int afdrandom_block = 0;
+static _Atomic int afdrandom_nonblock = 0;
+
+ssize_t Compat_getrandom(void *buffer, size_t length, unsigned int flags)
+{
+    const unsigned int validFlags = GRND_RANDOM|GRND_NONBLOCK;
+    if((flags | validFlags) != validFlags)
+    {
+        errno = EINVAL;
+        return -1;
+    }
+
+    _Atomic int *afdrandom = flags & GRND_NONBLOCK ? &afdrandom_nonblock : &afdrandom_block;
+
+    int fdrandom = atomic_load(afdrandom);
+    if(fdrandom == 0)
+    {
+        const char *src = NULL;
+        if(flags & GRND_RANDOM)
+        {
+            src = "/dev/random";
+        }
+        else
+        {
+            src = "/dev/urandom";
+        }
+
+        int openFlags = O_RDONLY;
+        if(flags & GRND_NONBLOCK)
+        {
+            openFlags |= O_NONBLOCK;
+        }
+
+        // we can keep it open, it'll be closed by exit(2)
+        int fd = open(src, openFlags);
+        if(fd < 0)
+        {
+            return -1;
+        }
+
+        if(atomic_compare_exchange_weak(afdrandom, &fdrandom, fd))
+        {
+            fdrandom = fd;
+        }
+        else
+        {
+            // Some other thread opened it already, we can close ours.
+            close(fd);
+        }
+    }
+
+    assert(fdrandom != 0);
+
+    return read(fdrandom, buffer, length);
+}
+
+__attribute__((weak))
+ssize_t getrandom(void *buffer, size_t length, unsigned int flags)
+{
+    // Try to call the kernel's getrandom
+    ssize_t nbytes = (int)syscall(SYS_getrandom, buffer, length, 0);
+
+    // If failed because the kernel doesn't implement it (linux kernel < 3.17),
+    // Obs: CentOS 7 ships with linux kernel 3.10
+    if(nbytes < 0 && errno == ENOSYS)
+    {
+        // Use our implementation.
+        return Compat_getrandom(buffer, length, flags);
+    }
+    else
+    {
+        return nbytes;
+    }
+}
+
+// ==============================================================
+// getentropy
+// Only available from glibc >= 2.25, we need our own.
+
+int Compat_getentropy(void *buffer, size_t length)
+{
+#ifdef __linux__
+    if(length > 256)
+    {
+        errno = EIO;
+        return -1;
+    }
+    else
+    {
+        // getrandom returns *up to* the given amount of bytes, we have to
+        // call it multiple times to fill up the entire input buffer.
+
+        void *endBuffer = (uint8_t *)buffer+length;
+        while(buffer < endBuffer)
+        {
+            ssize_t nbytes = getrandom(buffer, (uint8_t *)endBuffer - (uint8_t *)buffer, 0);
+            if(nbytes < 0)
+            {
+                // Got interrupted by a signal?
+                if(errno == EINTR)
+                {
+                    // getentropy must not be interrupted by signals.
+                    // Let's try it again.
+                    continue;
+                }
+                else
+                {
+                    return -1;
+                }
+            }
+            // Couldn't get any random data?
+            else if(nbytes == 0)
+            {
+                // This shouldn't happen, let's bail, or else we might get into
+                // an infinite loop
+                errno = EIO;
+                return -1;
+            }
+            buffer = (uint8_t *)buffer + nbytes;
+        }
+        return 0;
+    }
+#else
+#   error "Must implement getentropy for this platform or do something smarter"
+    return -1;
+#endif
+}
+
+__attribute__((weak))
+int getentropy(void *buffer, size_t length)
+{
+    return Compat_getentropy(buffer, length);
+}
+
+#endif

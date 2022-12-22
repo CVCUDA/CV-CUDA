@@ -1,0 +1,98 @@
+' Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+'
+' SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
+' SPDX-License-Identifier: Apache-2.0
+'
+' NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+' property and proprietary rights in and to this material, related
+' documentation and any modifications thereto. Any use, reproduction,
+' disclosure or distribution of this material and related documentation
+' without an express license agreement from NVIDIA CORPORATION or
+' its affiliates is strictly prohibited.
+
+@startuml
+
+struct ImagePlaneStridedMem
+{
+    + size: Size2D
+    + pitchBytes: int32_t
+    + data: void *
+}
+
+struct NVCVImageData
+
+interface IVisitorImageData
+{
+    + {abstract} visit(IImageDataHostMem &data): bool
+    + {abstract} visit(IImageDataHostPinnedMem &data): bool
+    + {abstract} visit(IImageDataCudaMem &data): bool
+    + {abstract} visit(IImageDataCudaArray &data): bool
+}
+
+interface IImageData
+{
+    + {abstract} cdata() const: const NVCVImageData &
+
+    + {abstract} accept(IVisitorImageData &visitor): void
+}
+
+IImageData *-right- NVCVImageData
+IImageData -[hidden]left- IVisitorImageData
+
+interface IImageDataCudaArray extends IImageData
+{
+    + {abstract} plane(int p) const: cudaArray_t
+}
+
+interface IImageDataStridedMem extends IImageData
+{
+    + {abstract} size() const: Size2D
+    + {abstract} format() const: ImageFormat
+
+    + {abstract} plane(int p) const: ImagePlaneStridedMem &
+}
+
+IImageDataStridedMem -[hidden]left- ImagePlaneStridedMem
+
+interface IImageDataHostMem
+{
+}
+IImageDataStridedMem <|--# IImageDataHostMem: virtual
+
+interface IImageDataHostPinnedMem
+{
+}
+IImageDataStridedMem <|--# IImageDataHostPinnedMem: virtual
+
+interface IImageDataCudaMem
+{
+}
+IImageDataStridedMem <|--# IImageDataCudaMem: virtual
+
+class ImageDataCudaArray implements IImageDataCudaArray
+{
+}
+
+class ImageDataStridedMem
+{
+}
+IImageDataStridedMem <|..# ImageDataStridedMem: virtual
+
+class ImageDataHostMem implements IImageDataHostMem
+{
+}
+ImageDataStridedMem <|--* ImageDataHostMem: private
+
+class ImageDataHostPinnedMem implements IImageDataHostPinnedMem
+{
+}
+ImageDataStridedMem <|--* ImageDataHostPinnedMem: private
+
+class ImageDataCudaMem implements IImageDataCudaMem
+{
+}
+ImageDataStridedMem <|--* ImageDataCudaMem: private
+
+ImageDataCudaArray -[hidden]left- ImageDataCudaMem
+
+@enduml

@@ -1,0 +1,50 @@
+#!/bin/bash -e
+
+# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+shopt -s extglob
+
+curdir=$(dirname "$(readlink -f "$0")")
+
+function on_exit()
+{
+    set +e
+}
+
+function on_error()
+{
+    set +e
+    echo Tests FAILED
+    exit 1
+}
+
+function on_interrupt()
+{
+    echo Tests INTERRUPTED
+}
+
+trap 'on_error' ERR
+trap 'on_interrupt' SIGINT
+trap 'on_exit' EXIT
+
+function run()
+{
+    local testexec=$1
+
+    echo "Running $testexec test suite..."
+
+    NVCV_LEAK_DETECTION=warn "$curdir/$testexec"
+}

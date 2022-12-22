@@ -1,0 +1,98 @@
+' Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+'
+' SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
+' SPDX-License-Identifier: Apache-2.0
+'
+' NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+' property and proprietary rights in and to this material, related
+' documentation and any modifications thereto. Any use, reproduction,
+' disclosure or distribution of this material and related documentation
+' without an express license agreement from NVIDIA CORPORATION or
+' its affiliates is strictly prohibited.
+
+@startuml
+
+interface IAllocator
+
+interface IImageData
+
+enum LockMode
+{
+    + READ
+    + WRITE
+    + READ_WRITE
+}
+
+class LockedImageData
+{
+    + LockedImageData(LockedImageData &&that)
+    + LockedImageData()
+    + ~LockedImageData()
+
+    + data(): const IImageData *
+    + mode(): LockMode
+}
+
+LockMode -[hidden]- LockedImageData
+
+interface IImage
+{
+    + {abstract} handle() const: NVCVImage
+
+    + {abstract} size() const: Size2D
+    + {abstract} format() const: ImageFormat
+
+    + {abstract} alloc() const: IAllocator &
+
+    + {abstract} lock(LockMode mode) const: LockedImageData
+}
+
+IImageData --o LockedImageData: refers to <
+
+IAllocator -right-o IImage: refers to <
+
+interface IImageWrapData extends IImage
+{
+    + {abstract} setData(const IImageData &data): void
+    + {abstract} resetData(): void
+}
+
+IImageData -down-o IImageWrapData: refers to <
+
+interface IImageView
+{
+    + {abstract} target() const: const IImage &
+    + {abstract} rectTarget() const: Rect2D
+
+    + {abstract} setTarget(const IImage &newTarget, Rect2D rc): void
+    + {abstract} setRect(Rect2D rc): void
+}
+IImage <|-down- IImageView
+IImage --o IImageView: refers to <
+
+IImageView -[hidden]right- ImageWrapData
+
+together {
+
+class Image implements IImage
+{
+    + Image(Size2D size, ImageFormat fmt,
+            IAllocator *alloc=nullptr)
+}
+
+class ImageView implements IImageView
+{
+    + ImageView(IImage &target, Rect2D rc,
+                IAllocator *alloc=nullptr)
+}
+
+class ImageWrapData implements IImageWrapData
+{
+    + ImageWrapData()
+    + ImageWrapData(const IImageData &data,
+                    IAllocator *alloc=nullptr)
+}
+
+}
+
+@enduml

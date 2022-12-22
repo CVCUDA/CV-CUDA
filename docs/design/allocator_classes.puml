@@ -1,0 +1,49 @@
+' Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+'
+' SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
+' SPDX-License-Identifier: Apache-2.0
+'
+' NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+' property and proprietary rights in and to this material, related
+' documentation and any modifications thereto. Any use, reproduction,
+' disclosure or distribution of this material and related documentation
+' without an express license agreement from NVIDIA CORPORATION or
+' its affiliates is strictly prohibited.
+
+@startuml
+
+interface IAllocator
+{
+     + {abstract} handle() const: NVCVAllocator
+
+     + {abstract} hostMem(): IHostMemAllocator &
+     + {abstract} cudaMem(): ICudaMemAllocator &
+     + {abstract} hostPinnedMem(): IHostPinnedMemAllocator &
+}
+
+class HandleWrapperAllocator implements IAllocator
+{
+     + HandleWrapperAllocator(NVCVAllocator handle)
+}
+
+class CustomAllocator<ALLOCATORS...> implements IAllocator
+{
+     + CustomAllocator(ALLOCATORS &&... allocators)
+
+     - m_allocHostMem: IHostMemAllocator &
+     - m_allocHostPinnedMem: IHostPinnedMemAllocator &
+     - m_allocCudaMem: ICudaMemAllocator &
+     - m_allocCudaArray: ICudaArrayAllocator &
+}
+
+interface IHostMemAllocator
+interface IHostPinnedMemAllocator
+interface ICudaMemAllocator
+interface ICudaArrayAllocator
+
+CustomAllocator::m_allocHostMem *-- IHostMemAllocator
+CustomAllocator::m_allocHostPinnedMem *-- IHostPinnedMemAllocator
+CustomAllocator::m_allocCudaMem *-- ICudaMemAllocator
+CustomAllocator::m_allocCudaArray *-- ICudaArrayAllocator
+
+@enduml

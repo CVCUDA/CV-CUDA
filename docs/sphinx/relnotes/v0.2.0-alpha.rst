@@ -1,0 +1,87 @@
+..
+  # SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  # SPDX-License-Identifier: Apache-2.0
+  #
+  # Licensed under the Apache License, Version 2.0 (the "License");
+  # you may not use this file except in compliance with the License.
+  # You may obtain a copy of the License at
+  #
+  # http://www.apache.org/licenses/LICENSE-2.0
+  #
+  # Unless required by applicable law or agreed to in writing, software
+  # distributed under the License is distributed on an "AS IS" BASIS,
+  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  # See the License for the specific language governing permissions and
+  # limitations under the License.
+
+.. _v0.2.0-alpha:
+
+Alpha
+========
+
+CV-CUDA 0.2.0 is the first open-source release of the project.
+
+Release Highlights
+------------------
+
+CV-CUDA 0.2.0 includes the following key features:
+
+* Core components including Image and Tensor with batch support
+* 25 operators with variable shape batch support
+
+  -  Average Blur, Bilateral, Filter, Center Crop, ChannelReorder, Composite, 2D Convolution, ConvertTo, Copy Make Border, Custom Crop, CvtColor, Erase, Flip, Gaussian, Laplacian, MedianBlur, Morphology, Normalize, Pad and Stack, Pillow Resize, Reformat, Resize, Rotate, WarpAffine, WarpPerspective.
+* C/C++ and Python APIs
+* Tensor interoperability with PyTorch-GPU and image interoperability with PyTorch-GPU, Pillow-CPU, OpenCV-CPU
+* Sample applications
+
+  - Object Classification (ResNet50) pipeline - C++ & Python
+
+    + For C++ sample - TensorRT for inference
+    + For Python sample - PyTorch for inference
+  - Semantic Segmentation pipeline - Python. This sample supports two inference backends
+
+    + TensorRT Python API
+    + PyTorch
+    + For semantic segmentation sample (Python) working with videos, accelerated decoding using `NVIDIA VPF <https://github.com/NVIDIA/VideoProcessingFramework>`_ is expected in the next the release.
+  - Resize and Custom Crop - C++
+* Documentation for C/C++ API
+* Packages available in .deb, .tar, and .whl formats
+
+
+Compatibility
+-------------
+CV-CUDA has been tested on the following compute stack
+
+*  Ubuntu x86_64: 18.04, 20.04, 22.04
+*  CUDA driver: 11.x (Not tested on 12.0)
+*  GCC: 11.0 and later
+*  Python: 3.7, 3.8, 3.9, 3.10
+
+Refer to documentation of the sample applications for dependencies.
+
+
+Known Issues/Limitations
+------------
+*  Performance optimization of variable shape versions of the operators will be addressed in the next release.
+*  Improvements to APIs of some operators are expected in the next release.
+*  Morphology operator - performance will be optimized in the next release
+*  Documentation on Python APIs will be available in release 0.2.1-alpha (01/29/2023)
+*  Documentation improvements to C++ API will be addressed in the next release
+
+
+License
+-------
+CV-CUDA operates under the `Apache 2.0 <https://gitlab-master.nvidia.com/cv/cvcuda/-/blob/fix/milesp/prepare-for-github/LICENSE.md>`_ license.
+
+
+Resources
+---------
+
+1.  `CV-CUDA GitHub <https://github.com/CVCUDA>`_
+2.  `CV-CUDA Corporate Blog Announcement <https://blogs.nvidia.com/blog/2022/09/20/computer-vision-cloud/>`_
+3.  `CV-CUDA High Performance Image Process Acceleration Library TechBlog <https://developer.nvidia.com/zh-cn/blog/cv-cuda-high-performance-image-processing/>`_
+
+
+Acknowledgements
+-----------------
+CV-CUDA is developed jointly by NVIDIA and the ByteDance Machine Learning team.

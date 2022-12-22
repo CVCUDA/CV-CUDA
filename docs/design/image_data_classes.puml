@@ -1,0 +1,94 @@
+' Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+'
+' SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
+' SPDX-License-Identifier: Apache-2.0
+'
+' NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+' property and proprietary rights in and to this material, related
+' documentation and any modifications thereto. Any use, reproduction,
+' disclosure or distribution of this material and related documentation
+' without an express license agreement from NVIDIA CORPORATION or
+' its affiliates is strictly prohibited.
+
+@startuml
+
+interface IImageData
+{
+    + {abstract} format() const: ImageFormat
+
+    + {abstract} cdata() const: const NVCVImageData &
+}
+
+interface IImageDataCudaArray extends IImageData
+{
+    + {abstract} numPlanes() const: int32_t
+    + {abstract} plane(int p) const: cudaArray_t
+}
+
+struct Size2D
+{
+    + w: int32_t
+    + h: int32_t
+}
+
+struct ImagePlaneStrided
+{
+    + width: int32_t
+    + height: int32_t
+    + rowStride: int32_t
+    + mem: void *
+}
+
+interface IImageDataStrided extends IImageData
+{
+    + {abstract} size() const: Size2D
+
+    + {abstract} numPlanes() const: int32_t
+    + {abstract} plane(int p) const: const ImagePlaneStrided &
+}
+
+interface IImageDataStridedCuda implements IImageDataStrided
+{
+}
+
+interface IImageDataStridedHost implements IImageDataStrided
+{
+}
+
+struct ImageBufferCudaArray
+{
+    + numPlanes: int32_t
+    + planes: cudaArray_t[MAX_PLANES]
+}
+
+class ImageDataCudaArray implements IImageDataCudaArray
+{
+    + ImageDataCudaArray(ImageFormat fmt,
+                         const ImageBufferCudaArray &buffer)
+}
+
+struct ImageBufferStrided
+{
+    + numPlanes: int32_t
+    + planes: ImagePlaneStrided[MAX_PLANES]
+}
+
+class ImageDataStridedCuda implements IImageDataStridedCuda
+{
+    + ImageDataStridedCuda(ImageFormat fmt,
+                           const ImageBufferStrided &buffer)
+}
+
+class ImageDataStridedHost implements IImageDataStridedHost
+{
+    + ImageDataStridedHost(ImageFormat fmt,
+                         const ImageBufferStrided &buffer)
+}
+
+ImageBufferStrided -up-o ImageDataStridedHost: contains <
+ImageBufferStrided -up-o ImageDataStridedCuda: contains <
+ImagePlaneStrided -right-o ImageBufferStrided: contains <
+
+ImageBufferCudaArray -up-o ImageDataCudaArray: contains <
+
+@enduml
