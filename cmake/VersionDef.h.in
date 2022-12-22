@@ -1,0 +1,200 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/**
+ * @file VersionDef.h
+ *
+ * Functions and structures for handling @LIBPREFIX@ library version.
+ */
+
+#ifndef @LIBPREFIX@_VERSIONDEF_H
+#define @LIBPREFIX@_VERSIONDEF_H
+
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * Declarations of entities to handle @LIBPREFIX@ versioning.
+ *
+ * These utilities allow querying the @LIBPREFIX@ header and library versions and
+ * properly handle @LIBPREFIX@ forward- or backward-compatibility .
+ *
+ * @defgroup @LIBPREFIX@_CPP_UTIL_VERSION Versioning
+ * @{
+ */
+
+/** Make a @LIBPREFIX@ version identifier with four components.
+ * @param[in] major,minor,patch,tweak Version components to be converted to a number.
+ * @returns The numeric version representation.
+ */
+#define @LIBPREFIX@_MAKE_VERSION4(major, minor, patch, tweak) \
+    ((uint32_t)((major)*1000000 + (minor)*10000 + (patch)*100 + (tweak)))
+
+/** Make a @LIBPREFIX@ version identifier with three components.
+ *
+ * The tweak version component is considered to be 0.
+ *
+ * @param[in] major,minor,patch Version components to be converted to a number.
+ * @returns The numeric version representation.
+ */
+#define @LIBPREFIX@_MAKE_VERSION3(major, minor, patch) \
+    @LIBPREFIX@_MAKE_VERSION4(major, minor, patch, 0)
+
+/** Make a @LIBPREFIX@ version identifier with two components.
+ *
+ * The patch and tweak version components are considered to be 0.
+ *
+ * @param[in] major,minor Version components to be converted to a number.
+ * @returns The numeric version representation.
+ */
+#define @LIBPREFIX@_MAKE_VERSION2(major, minor) \
+    @LIBPREFIX@_MAKE_VERSION4(major, minor, 0, 0)
+
+/** Make a @LIBPREFIX@ version identifier with one component.
+ *
+ * The minor, patch and tweak version components are considered to be 0.
+ *
+ * @param[in] major Major version component to be converted to a number.
+ * @returns The numeric version representation.
+ */
+#define @LIBPREFIX@_MAKE_VERSION1(major) \
+    @LIBPREFIX@_MAKE_VERSION4(major, 0, 0, 0)
+
+/** Assemble an integer version from its components.
+ * This makes it easy to conditionally compile code for different @LIBPREFIX@ versions, e.g:
+ * \code
+ * #if @LIBPREFIX@_VERSION < @LIBPREFIX@_MAKE_VERSION(1,0,0)
+ *    // code that runs on versions prior 1.0.0
+ * #else
+ *    // code that runs on versions after that, including 1.0.0
+ * #endif
+ * \endcode
+ *
+ * @param[in] major Major version component, mandatory.
+ * @param[in] minor Minor version component. If ommitted, it's considered to be 0.
+ * @param[in] patch Patch version component. If ommitted, it's considered to be 0.
+ * @param[in] tweak Tweak version component. If ommitted, it's considered to be 0.
+ * @returns The numeric version representation.
+ */
+#if NVCV_DOXYGEN
+#   define @LIBPREFIX@_MAKE_VERSION(major,minor,patch,tweak)
+#else
+#define @LIBPREFIX@_DETAIL_GET_MACRO(_1,_2,_3,_4,NAME,...) NAME
+#define @LIBPREFIX@_MAKE_VERSION(...) \
+    @LIBPREFIX@_DETAIL_GET_MACRO(__VA_ARGS__, @LIBPREFIX@_MAKE_VERSION4, @LIBPREFIX@_MAKE_VERSION3, @LIBPREFIX@_MAKE_VERSION2, @LIBPREFIX@_MAKE_VERSION1)(__VA_ARGS__)
+#endif
+
+/** Major version number component.
+ * This is incremented every time there's a incompatible ABI change.
+ * In the special case of major version 0, compatibility between minor versions
+ * is not guaranteed.
+ */
+#define @LIBPREFIX@_VERSION_MAJOR @VERSION_MAJOR@
+
+/** Minor version number component.
+ * This is incremented every time there's a new feature added to @LIBPREFIX@ that
+ * doesn't break backward compatibility. This number is reset to zero when
+ * major version changes.
+ */
+#define @LIBPREFIX@_VERSION_MINOR @VERSION_MINOR@
+
+/** Patch version number component.
+ * This is incremented every time a bug is fixed, but no new functionality is added
+ * to the library. This number is reset to zero when minor version changes.
+ */
+#define @LIBPREFIX@_VERSION_PATCH @VERSION_PATCH@
+
+/** Tweak version number component.
+ * Incremented for packaging or documentation updates, etc. The library itself isn't updated.
+ * Gets reset to zero when patch version changes.
+ */
+#define @LIBPREFIX@_VERSION_TWEAK @VERSION_TWEAK@
+
+/** Version suffix.
+ * String appended to version number to designate special builds.
+ */
+#define @LIBPREFIX@_VERSION_SUFFIX "@VERSION_SUFFIX@"
+
+/** @LIBPREFIX@ library version.
+  * It's an integer value computed from `MAJOR*1000000 + MINOR*10000 + PATCH*100 + TWEAK`.
+  * Integer versions can be compared, recent versions are greater than older ones.
+  */
+#define @LIBPREFIX@_VERSION @LIBPREFIX@_MAKE_VERSION(@LIBPREFIX@_VERSION_MAJOR, @LIBPREFIX@_VERSION_MINOR, @LIBPREFIX@_VERSION_PATCH, @LIBPREFIX@_VERSION_TWEAK)
+
+/** @LIBPREFIX@ library version number represented as a string. */
+#define @LIBPREFIX@_VERSION_STRING "@VERSION_FULL@"
+
+/** Selected API version to use.
+ * This macro selects which of the supported APIs the code will use.
+ *
+ * By default this equals to the highest supported API, corresponding to the current major and
+ * minor versions of the library.
+ *
+ * User can override the version by defining this macro before including @LIBPREFIX@ headers.
+ */
+#if NVCV_DOXYGEN
+#   define @LIBPREFIX@_VERSION_API
+#else
+#ifdef @LIBPREFIX@_VERSION_API
+#   if @LIBPREFIX@_VERSION_API < @LIBPREFIX@_MAKE_VERSION(@LIBPREFIX@_VERSION_MAJOR) || \
+        @LIBPREFIX@_VERSION_API > @LIBPREFIX@_MAKE_VERSION(@LIBPREFIX@_VERSION_MAJOR, @LIBPREFIX@_VERSION_MINOR)
+#       error Selected @LIBPREFIX@ API version not supported.
+#   endif
+#else
+#   define @LIBPREFIX@_VERSION_API @LIBPREFIX@_MAKE_VERSION(@LIBPREFIX@_VERSION_MAJOR, @LIBPREFIX@_VERSION_MINOR)
+#endif
+#endif
+
+/** Conditionally enable code when selected API version is exactly given version.
+ *
+ * @param[in] major,minor API version that will be considered.
+ */
+#define @LIBPREFIX@_VERSION_API_IS(major,minor) \
+    (@LIBPREFIX@_MAKE_VERSION(major,minor) == @LIBPREFIX@_VERSION_API)
+
+/** Conditionally enable code when selected API version is at least given version.
+ *
+ * @param[in] major,minor Minimum API version that will be considered.
+ */
+#define @LIBPREFIX@_VERSION_API_AT_LEAST(major,minor) \
+    (@LIBPREFIX@_MAKE_VERSION(major,minor) <= @LIBPREFIX@_VERSION_API)
+
+/** Conditionally enable code when selected API version is at most given version.
+ *
+ * @param[in] major,minor Maximum API version that will be considered.
+ */
+#define @LIBPREFIX@_VERSION_API_AT_MOST(major,minor) \
+    (@LIBPREFIX@_MAKE_VERSION(major,minor) >= @LIBPREFIX@_VERSION_API)
+
+/** Conditionally enable code when selected API version is between two versions.
+ *
+ * @param[in] min_major,min_minor Minimum API version that will be considered.
+ * @param[in] max_major,max_minor Maximum API version that will be considered.
+ */
+#define @LIBPREFIX@_VERSION_API_IN_RANGE(min_major,min_minor,max_major,max_minor) \
+    (@LIBPREFIX@_VERSION_API_AT_LEAST(min_major, min_minor) && @LIBPREFIX@_VERSION_API_AT_MOST(max_major, max_minor))
+
+/** @} */
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif // @LIBPREFIX@_VERSION_H

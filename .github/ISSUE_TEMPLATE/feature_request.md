@@ -2,7 +2,7 @@
 name: Feature request
 about: Suggest an idea for CV-CUDA
 title: "[FEATURE]"
-labels: feature request
+labels: "? - Needs Triage, feature request"
 assignees: ''
 
 ---

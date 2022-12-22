@@ -1,0 +1,94 @@
+' Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+'
+' SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
+' SPDX-License-Identifier: Apache-2.0
+'
+' NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+' property and proprietary rights in and to this material, related
+' documentation and any modifications thereto. Any use, reproduction,
+' disclosure or distribution of this material and related documentation
+' without an express license agreement from NVIDIA CORPORATION or
+' its affiliates is strictly prohibited.
+
+@startuml
+
+interface IResourceAllocator
+
+interface IMemAllocator extends IResourceAllocator
+{
+    + {field} AllocFunc: void*(int64_t size, int32_t align)
+    + {field} FreeFunc: void(void *ptr, int64_t size, int32_t align)
+
+    + alloc(int64_t size, int32_t align): void *
+    + free(void *ptr, int64_t size, int32_t align) noexcept: void *
+}
+
+interface IHostMemAllocator
+interface IHostPinnedMemAllocator
+interface ICudaMemAllocator
+
+IMemAllocator <|..# IHostMemAllocator: virtual
+IMemAllocator <|..# IHostPinnedMemAllocator: virtual
+IMemAllocator <|..# ICudaMemAllocator: virtual
+
+interface ICudaArrayAllocator extends IResourceAllocator
+{
+    + {field} AllocFunc: void*(Size2D size, ImageFormat fmt, int32_t flags)
+    + {field} FreeFunc: void(cudaArray_t arr)
+
+    + alloc(Size2D size, ImageFormat fmt, int32_t flags)
+    + free(cudaArray_t arr)
+}
+
+class CustomCudaArrayAllocator implements ICudaArrayAllocator
+{
+    + {field} Interface: ICudaArrayAllocator
+
+    + {field} AllocFunc: std::function<Interface::AllocFunc>
+    + {field} FreeFunc: std::function<Interface::FreeFunc>
+
+    + CustomCudaArrayAllocator(AllocFunc alloc,
+                               FreeFunc free)
+}
+
+class CustomMemAllocatorImpl
+{
+    + {field} Interface: IMemAllocator
+
+    + {field} AllocFunc: std::function<Interface::AllocFunc>
+    + {field} FreeFunc: std::function<Interface::FreeFunc>
+
+    + CustomMemAllocatorImpl(AllocFunc alloc,
+                             FreeFunc free)
+}
+IMemAllocator <|..# CustomMemAllocatorImpl: virtual
+
+class CustomHostMemAllocator implements IHostMemAllocator
+{
+    + {field} Interface: IHostMemAllocator;
+
+    + CustomHostMemAllocator(AllocFunc alloc,
+                             FreeFunc free)
+}
+
+class CustomHostPinnedMemAllocator implements IHostPinnedMemAllocator
+{
+    + {field} Interface: IHostPinnedMemAllocator;
+
+    + CustomHostPinnedMemAllocator(AllocFunc alloc,
+                                   FreeFunc free)
+}
+
+class CustomCudaMemAllocator implements ICudaMemAllocator
+{
+    + {field} Interface: ICudaMemAllocator;
+
+    + CustomCudaMemAllocator(AllocFunc alloc,
+                               FreeFunc free)
+}
+
+CustomMemAllocatorImpl <|..* CustomHostMemAllocator: private
+CustomMemAllocatorImpl <|..* CustomHostPinnedMemAllocator: private
+CustomMemAllocatorImpl <|..* CustomCudaMemAllocator: private
+
+@enduml

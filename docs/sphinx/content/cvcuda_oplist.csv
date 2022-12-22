@@ -1,0 +1,26 @@
+Pre/Post-Processing Operators,Definition
+AverageBlur,Reduces image noise using an average filter
+BilateralFilter,Reduces image noise while preserving strong edges
+CenterCrop,Crops an image at its center
+ChannelReorder,Shuffles the order of image channels
+Composite,Composites two images together
+Conv2D,Convolves an image with a provided kernel
+CopyMakeBorder,Creates a border around an image
+CustomCrop,Crops an image with a given region-of-interest
+CvtColor,Converts an image from one color space to another
+DataTypeConvert,"Converts an image’s data type, with optional scaling"
+Erase,Erases image regions
+Flip,Flips a 2D image around its axis
+GammaContrast,Adjusts image contrast
+Gaussian,Applies a gaussian blur filter to the image
+Laplacian,Applies a Laplace transform to an image
+MedianBlur,Reduces an image’s salt-and-pepper noise
+Morphology,Performs morphological erode and dilate transformations
+Normalize,Normalizes an image pixel’s range
+PadStack,"Stacks several images into a tensor, with border extension"
+PillowResize,Changes the size and scale of an image using python-pillow algorithm
+Reformat,Converts a planar image into non-planar and vice versa
+Resize,Changes the size and scale of an image
+Rotate,Rotates a 2D array in multiples of 90 degrees
+WarpAffine,Applies an affine transformation to an image
+WarpPerspective,Applies a perspective transformation to an image

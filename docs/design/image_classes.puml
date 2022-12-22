@@ -1,0 +1,51 @@
+' Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+'
+' SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
+' SPDX-License-Identifier: Apache-2.0
+'
+' NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+' property and proprietary rights in and to this material, related
+' documentation and any modifications thereto. Any use, reproduction,
+' disclosure or distribution of this material and related documentation
+' without an express license agreement from NVIDIA CORPORATION or
+' its affiliates is strictly prohibited.
+
+@startuml
+
+interface IAllocator
+
+interface IImageData
+
+interface IImage
+{
+    + {abstract} handle() const: NVCVImage
+
+    + {abstract} size() const: Size2D
+    + {abstract} format() const: ImageFormat
+
+    + {abstract} alloc() const: IAllocator &
+
+    + {abstract} exportData() const: const IImageData *
+}
+
+IAllocator -right-o IImage: refers to <
+IImageData -left-o IImage: refers to <
+
+class Image implements IImage
+{
+    + Image(Size2D size, ImageFormat fmt,
+            IAllocator *alloc=nullptr)
+}
+
+class ImageWrapHandle implements IImage
+{
+    + ImageWrapData(NVCVImage handle)
+}
+
+class ImageWrapData implements IImage
+{
+    + ImageWrapData(const IImageData &data,
+                    std::function<void(const IImageData &)> cleanup)
+}
+
+@enduml
