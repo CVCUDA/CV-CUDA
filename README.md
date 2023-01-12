@@ -13,9 +13,9 @@
 
 CV-CUDA is an open-source project that enables building efficient cloud-scale
 Artificial Intelligence (AI) imaging and computer vision (CV) applications. It
-uses graphics processing unit (GPU) acceleration to help developers build highly
-efficient pre- and post-processing pipelines. CV-CUDA originated as a
-collaborative effort between [NVIDIA][NVIDIA Develop] and [ByteDance][ByteDance].
+uses GPU acceleration to help developers build highly efficient pre- and post-
+processing pipelines. CV-CUDA originated as a collaborative effort between
+[NVIDIA][NVIDIA Develop] and [ByteDance][ByteDance].
 
 Refer to our [Developer Guide](DEVELOPER_GUIDE.md) for more information on the
 operators avaliable as of release v0.2.0-alpha.
