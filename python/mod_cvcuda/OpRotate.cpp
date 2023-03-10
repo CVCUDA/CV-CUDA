@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -44,7 +44,7 @@ Tensor RotateInto(Tensor &output, Tensor &input, double angleDeg, const std::tup
     ResourceGuard guard(*pstream);
     guard.add(LockMode::LOCK_READ, {input});
     guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*rotate});
+    guard.add(LockMode::LOCK_WRITE, {*rotate});
 
     double2 shiftArg{std::get<0>(shift), std::get<1>(shift)};
 
@@ -74,7 +74,7 @@ ImageBatchVarShape VarShapeRotateInto(ImageBatchVarShape &output, ImageBatchVarS
     ResourceGuard guard(*pstream);
     guard.add(LockMode::LOCK_READ, {input, angleDeg, shift});
     guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*rotate});
+    guard.add(LockMode::LOCK_WRITE, {*rotate});
 
     rotate->submit(pstream->cudaHandle(), input, output, angleDeg, shift, interpolation);
 

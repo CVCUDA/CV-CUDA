@@ -1,5 +1,5 @@
 ..
-   # SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+   # SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
    # SPDX-License-Identifier: Apache-2.0
    #
    # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,23 +19,22 @@
 Semantic Segmentation
 ====================
 
-In this example, we use CVCUDA to accelerate the pre and post processing pipelines in the deep learning inference use case involving a semantic segmentation model. The deep learning model can utilize either PyTorch or TensorRT as a backend. The pre-processing pipeline converts the input image into the format required by the input layer of the model whereas the post processing pipeline converts the output produced by the model into a visualization-friendly image. We use the DeepLabV3 model (from torchvision) pre-trained on ImageNet and PASCAL VOC 2012 datasets to generate the predictions in the case of PyTorch and use the FCN_ResNet101 model in the case of TensorRT. Both of these models are available as segmentation models in the torchvision package.
+In this example, we use CVCUDA to accelerate the pre and post processing pipelines in the deep learning inference use case involving a semantic segmentation model. The deep learning model can utilize either PyTorch or TensorRT as a backend. The pre-processing pipeline converts the input into the format required by the input layer of the model whereas the post processing pipeline converts the output produced by the model into a visualization-friendly frame. We use the DeepLabV3 model (from torchvision) pre-trained on ImageNet and PASCAL VOC 2012 datasets to generate the predictions in the case of PyTorch and use the FCN_ResNet101 model in the case of TensorRT. Both of these models are available as segmentation models in the torchvision package. This sample can work on a single image or a folder full of images or on a single video. All images have to be in the JPEG format and with the same dimensions unless run under the batch size of one. Video has to be in mp4 format with a fixed frame rate. We use the torchnvjpeg library to read the images and NVIDIA's Video Processing Framework (VPF) to read/write videos.
 
 **The exact pre-processing operations are:**
 
-Read Image File -> Decode -> Resize -> Convert Datatype(Float) -> Normalize (to 0-1 range, mean and stddev) -> convert to NCHW
+Read Image or Video File -> Decode -> Resize -> Convert Datatype(Float) -> Normalize (to 0-1 range, mean and stddev) -> convert to NCHW
 
 **The exact post-processing operations are:**
 
-Normalize the output using softmax -> Create Binary mask -> Upscale the mask -> Blur the input images -> Overlay the masks onto the input image
+Normalize the output using softmax -> Create Binary mask -> Upscale the mask -> Blur the input frames -> Overlay the masks onto the original frame
 
-This sample can work on a single image or a folder full of images. Images have to be in the JPEG format and preferably all having roughly the same dimensions.
 
 Writing the Sample App
 ----------------------
 
-The first stage in our pipeline is importing necessary python modules. This includes the modules such as torch and torchvision,
-torchnvjpeg and the main package of CVCUDA (i.e. nvcv) among others. torchnvjpeg is used to batch decode JPEG images on the GPU.
+The first stage in our pipeline is importing all necessary python modules. This includes the modules such as torch and torchvision,
+torchnvjpeg, vpf and the main package of CVCUDA (i.e. nvcv) among others. torchnvjpeg is used to batch decode JPEG images on the GPU. NVIDIA's Video Processing Framework (VPF) is used to decode videos.
 
 .. literalinclude:: ../../../../samples/segmentation/python/inference.py
    :language: python
@@ -47,7 +46,7 @@ torchnvjpeg and the main package of CVCUDA (i.e. nvcv) among others. torchnvjpeg
 Then we define the main function which helps us parse various configuration parameters used throughout this sample as command line
 arguments. This sample allows configuring following parameters. All of them have their default values already set so that one can execute the sample without supplying any.
 
-1. ``-i``, ``--input_path`` : Either a path to a JPEG image or a directory containing JPEG images to use as input.
+1. ``-i``, ``--input_path`` : Either a path to a JPEG image/MP4 video or a directory containing JPG images to use as input. When pointing to a directory, only JPG images will be read.
 2. ``-o``, ``--output_dir`` : The directory where the output segmentation overlay should be stored.
 3. ``-c``, ``--class_name`` : The segmentation class to visualize the results for.
 4. ``-th``, ``--target_img_height`` : The height to which you want to resize the input_image before running inference.
@@ -90,7 +89,7 @@ This ``__init__`` method stores all the configuration parameters as class member
    :dedent:
 
 
-Depending on the ``input_path``'s value, we either read one image and create a dummy list with the data from the same image to simulate a batch or read a bunch of images from a directory.
+Depending on the ``input_path``'s value, we either read one image and create a dummy list with the data from the same image to simulate a batch or read a bunch of images from a directory or read a video. Video reading classes are defined as a high level wrapper in the helper script file ``vpf_utils.py``.
 
 .. literalinclude:: ../../../../samples/segmentation/python/inference.py
    :language: python
@@ -184,7 +183,7 @@ Finally, we would check if we need to discard results corresponding to the padde
 
 Once we have the model setup logic and the run inference logic figured out, the only remaining part is to put these things to use in a complete deep learning semantic segmentation pipeline that uses CVCUDA to accelerate the pre and post processing operations. We do so by defining the run method.
 
-Then first couple of things the run method has to do is to actually call the ``setup_model`` method followed by splitting the data into batches with the batch size. Depending on the total items present in the data and the batch size, the last batch may be of size less than the batch size.
+Then first couple of things the run method has to do is to actually call the ``setup_model`` method followed by splitting the data into batches with the batch size. Depending on the total items present in the data and the batch size, the last batch may be of size less than the batch size. Please note that in the case of input being a video, the file name batches and data batches are mostly there to help us iterate easily and consistently over all the possible data frames. It does not actually contain the file names or data frames. Unlike images, these variables are also not used during the visualization of the video.
 
 .. literalinclude:: ../../../../samples/segmentation/python/inference.py
    :language: python
@@ -202,7 +201,7 @@ Then we repeat the pre-processing, inference and post-processing steps for all t
    :end-before: begin_decode
    :dedent:
 
-We start off the processing by using the torchnvjpeg library to decode the images in a batch into the desired color format and create a tensor list on the device.
+We start off the processing by using either the torchnvjpeg library to decode the images in a batch or using VPF to decode video frames into the desired color format and create a tensor list on the device. Please note that ``contiguous()`` must be called on any tensors returned by VPF to make it compatible with the rest of the pipeline.
 
 Since the steps after this works on torch.Tensor instead of a list of torch.Tensor, we would also convert the list of torch.Tensor
 to a higher dimensional torch.Tensor by stacking all the tensors up.
@@ -223,7 +222,7 @@ Once the torch.Tensor is created, we can convert it to a CVCUDA Tensor before st
    :end-before: end_torch_to_cvcuda
    :dedent:
 
-Now we are ready for the pre-processing stages. Here we resize the images, convert to float, normalize them and reformat them in NCHW layout.
+Now we are ready for the pre-processing stages. Here we resize the frames, convert to float, normalize them and reformat them in NCHW layout.
 
 .. literalinclude:: ../../../../samples/segmentation/python/inference.py
    :language: python
@@ -259,7 +258,7 @@ Then we filter out the class of our interest by using the argmax function and co
    :end-before: end_argmax
    :dedent:
 
-After that we upscale the mask using CVCUDA to the size of the original input images so that we can later overlay the mask onto the image.
+After that we upscale the mask using CVCUDA to the size of the original inputs so that we can later overlay the mask onto them.
 
 .. literalinclude:: ../../../../samples/segmentation/python/inference.py
    :language: python
@@ -268,7 +267,7 @@ After that we upscale the mask using CVCUDA to the size of the original input im
    :end-before: end_mask_upscale
    :dedent:
 
-Then we generate the blurred version of the input images for later usage in generating the overlays.
+Then we generate the blurred version of the inputs for later usage in generating the overlays.
 
 .. literalinclude:: ../../../../samples/segmentation/python/inference.py
    :language: python
@@ -277,8 +276,8 @@ Then we generate the blurred version of the input images for later usage in gene
    :end-before: end_input_blur
    :dedent:
 
-Now its time to create the overlays. We do this by selectively blurring out pixels in the input image where the class mask prediction was absent (i.e. False)
-We already have all the things required for this: The input images, the blurred version of the input images and the upscale version of the mask
+Now its time to create the overlays. We do this by selectively blurring out pixels in the inputs where the class mask prediction was absent (i.e. False)
+We already have all the things required for this: The input frames, the blurred version of it and the upscale version of the mask
 
 .. literalinclude:: ../../../../samples/segmentation/python/inference.py
    :language: python
@@ -287,7 +286,7 @@ We already have all the things required for this: The input images, the blurred 
    :end-before: end_overlay
    :dedent:
 
-The final stage in the pipeline simply loops over all the images in the batch, generates the overlays, converts it to a PIL image and saves it on the disk.
+The final stage in the pipeline simply loops over all the frames in the batch, generates the overlays, converts it to a PIL image and saves it on the disk. In case where the input was a video, this would save the output as a video with help of a video encoder from VPF.
 
 .. literalinclude:: ../../../../samples/segmentation/python/inference.py
    :language: python
@@ -310,44 +309,50 @@ To run it on a single image with batch size 5 for the background class writing t
 
 .. code-block:: bash
 
-   python3 segmentation/python/inference.py -i assets/tabby_tiger_cat.jpg -o /tmp -b 5 -c __background__
+   python3 segmentation/python/inference.py -i assets/images/tabby_tiger_cat.jpg -o /tmp -b 5 -c __background__
 
 
 To run it on a folder worth of images with batch size 5 for the background class writing the output to a specific directory:
 
 .. code-block:: bash
 
-   python3 segmentation/python/inference.py -i assets/ -o /tmp -b 5 -c __background__
+   python3 segmentation/python/inference.py -i assets/images/ -o /tmp -b 5 -c __background__
 
 
 To run on a single image with custom resized input given to the model for the dog class with batch size of 1:
 
 .. code-block:: bash
 
-   python3 segmentation/python/inference.py -i assets/Weimaraner.jpg -o /tmp -b 1 -c dog -th 224 -tw 224
+   python3 segmentation/python/inference.py -i assets/images/Weimaraner.jpg -o /tmp -b 1 -c dog -th 224 -tw 224
 
 
 To run on a single image with custom resized input given to the model for the dog class with batch size of 1 using the TensorRT backend instead of PyTorch:
 
 .. code-block:: bash
 
-   python3 segmentation/python/inference.py -i assets/Weimaraner.jpg -o /tmp -b 1 -c dog -th 224 -tw 224 -bk tensorrt
+   python3 segmentation/python/inference.py -i assets/images/Weimaraner.jpg -o /tmp -b 1 -c dog -th 224 -tw 224 -bk tensorrt
 
+
+To run on a single video with for the background class with batch size of 5:
+
+.. code-block:: bash
+
+   python segmentation/python/inference.py -i assets/videos/pexels-ilimdar-avgezer-7081456.mp4 -b 5 -c __background__
 
 
 Understanding the Output
 ------------------------
 
-This sample takes as input the one or more images and generates the semantic segmentation mask overlay on the input image corresponding to a class of your choice and saves it in a directory. Since this sample works on batches, sometimes the batch size and the number of images read may not be a perfect multiple. In such cases, the last batch may have a smaller batch size. If the batch size to anything above 1 for one image input case, the same image is fed in the entire batch and identical image masks are generated and saved for all of them.
+This sample takes as input the one or more images or one video and generates the semantic segmentation mask overlay on the inputs corresponding to a class of your choice and saves it in a directory. Since this sample works on batches, sometimes the batch size and the number of images read may not be a perfect multiple. In such cases, the last batch may have a smaller batch size. If the batch size to anything above 1 for one image input case, the same image is fed in the entire batch and identical image masks are generated and saved for all of them.
 
 .. code-block:: bash
 
-   user@machine:~/cvcuda/samples$ python3 segmentation/python/inference.py -b 5 -c __background__ -o /tmp -i assets/
+   user@machine:~/cvcuda/samples$ python3 segmentation/python/inference.py -b 5 -c __background__ -o /tmp -i assets/images/
    Read a total of 2 JPEG images.
    Processing batch 1 of 1
       Saving the overlay result for __background__ class for to: /tmp/out_tabby_tiger_cat.jpg
       Saving the overlay result for __background__ class for to: /tmp/out_Weimaraner.jpg
-   user@machine:~/cvcuda/samples$ python3 segmentation/python/inference.py -i assets/Weimaraner.jpg -o /tmp -b 5 -c dog -th 224 -tw 224
+   user@machine:~/cvcuda/samples$ python3 segmentation/python/inference.py -i assets/images/Weimaraner.jpg -o /tmp -b 5 -c dog -th 224 -tw 224
    Processing batch 1 of 1
       Saving the overlay result for dog class for to: /tmp/out_Weimaraner.jpg
       Saving the overlay result for dog class for to: /tmp/out_Weimaraner.jpg

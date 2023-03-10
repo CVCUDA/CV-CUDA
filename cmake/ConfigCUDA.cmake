@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,19 +35,26 @@ set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xfatbin=--compress-all")
 if(NOT USE_CMAKE_CUDA_ARCHITECTURES)
     set(CMAKE_CUDA_ARCHITECTURES "$ENV{CUDAARCHS}")
 
-    # All architectures we build sass for
-    list(APPEND CMAKE_CUDA_ARCHITECTURES
-         70-real # Volta  - gv100/Tesla
-         75-real # Turing - tu10x/GeForce
-         80-real # Ampere - ga100/Tesla
-         86-real # Ampere - ga10x/GeForce
-    )
-
-    if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "11.8")
+    if(ENABLE_TEGRA)
         list(APPEND CMAKE_CUDA_ARCHITECTURES
-            89-real # Ada    - ad102/GeForce
-            90-real # Hopper - gh100/Tesla
+            72-real # Volta  - gv11b/Tegra (Jetson AGX Xavier)
+            87-real # Ampere - ga10b,ga10c/Tegra (Jetson AGX Orin)
         )
+    else()
+        # All architectures we build sass for
+        list(APPEND CMAKE_CUDA_ARCHITECTURES
+             70-real # Volta  - gv100/Tesla
+             75-real # Turing - tu10x/GeForce
+             80-real # Ampere - ga100/Tesla
+             86-real # Ampere - ga10x/GeForce
+        )
+
+        if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "11.8")
+            list(APPEND CMAKE_CUDA_ARCHITECTURES
+                89-real # Ada    - ad102/GeForce
+                90-real # Hopper - gh100/Tesla
+            )
+        endif()
     endif()
 
     # Required compute capability:

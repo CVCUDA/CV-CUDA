@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -67,14 +67,12 @@ Tensor CopyMakeBorderInto(Tensor &output, Tensor &input, NVCVBorderType borderMo
 Tensor CopyMakeBorder(Tensor &input, NVCVBorderType borderMode, const std::vector<float> &borderValue, int top,
                       int bottom, int left, int right, std::optional<Stream> pstream)
 {
-    nvcv::TensorShape in_shape = input.shape();
-    Shape             out_shape(&in_shape[0], &in_shape[0] + in_shape.size());
-    int               cdim = out_shape.size() - 1;
-    out_shape[cdim - 2] += top + bottom;
-    out_shape[cdim - 1] += left + right;
+    Shape out_shape     = CreateShape(input.shape());
+    int   cdim          = out_shape.size() - 1;
+    out_shape[cdim - 2] = out_shape[cdim - 2].cast<int64_t>() + top + bottom;
+    out_shape[cdim - 1] = out_shape[cdim - 1].cast<int64_t>() + left + right;
 
-    Tensor output
-        = Tensor::Create(nvcv::TensorShape(out_shape.data(), out_shape.size(), input.layout()), input.dtype());
+    Tensor output = Tensor::Create(out_shape, input.dtype(), input.layout());
 
     return CopyMakeBorderInto(output, input, borderMode, borderValue, top, left, pstream);
 }

@@ -125,3 +125,4 @@ Copyright
 
     Pre-Alpha <relnotes/v0.1.0-prealpha>
     Alpha <relnotes/v0.2.0-alpha>
+    Alpha.1 <relnotes/v0.2.1-alpha>

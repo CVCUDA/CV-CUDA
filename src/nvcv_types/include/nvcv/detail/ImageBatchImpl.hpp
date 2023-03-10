@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,7 +46,7 @@ inline ImageBatchVarShape::ImageBatchVarShape(int32_t capacity, IAllocator *allo
 
 inline ImageBatchVarShape::~ImageBatchVarShape()
 {
-    nvcvImageBatchDestroy(m_handle);
+    nvcvImageBatchDecRef(m_handle, nullptr);
 }
 
 inline NVCVImageBatchHandle ImageBatchVarShape::doGetHandle() const

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -53,13 +53,10 @@ Tensor CompositeInto(Tensor &output, Tensor &foreground, Tensor &background, Ten
 
 Tensor Composite(Tensor &foreground, Tensor &background, Tensor &fgMask, int outChannels, std::optional<Stream> pstream)
 {
-    nvcv::TensorShape fg_shape = foreground.shape();
-    Shape             out_shape(&fg_shape[0], &fg_shape[0] + fg_shape.rank());
-    int               cdim = out_shape.size();
-    out_shape[cdim - 1]    = outChannels;
+    Shape out_shape                 = CreateShape(foreground.shape());
+    out_shape[out_shape.size() - 1] = outChannels;
 
-    Tensor output = Tensor::Create(nvcv::TensorShape(out_shape.data(), out_shape.size(), foreground.layout()),
-                                   foreground.dtype());
+    Tensor output = Tensor::Create(out_shape, foreground.dtype(), foreground.layout());
 
     return CompositeInto(output, foreground, background, fgMask, pstream);
 }

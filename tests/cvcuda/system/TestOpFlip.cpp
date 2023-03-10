@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +18,7 @@
 #include "Definitions.hpp"
 #include "FlipUtils.hpp"
 
+#include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpFlip.hpp>
 #include <nvcv/Image.hpp>
@@ -61,8 +62,8 @@ TEST_P(OpFlip, correct_output)
 
     int3 shape{width, height, batches};
 
-    nvcv::Tensor inTensor(batches, {width, height}, format);
-    nvcv::Tensor outTensor(batches, {width, height}, format);
+    nvcv::Tensor inTensor  = test::CreateTensor(batches, width, height, format);
+    nvcv::Tensor outTensor = test::CreateTensor(batches, width, height, format);
 
     const auto *input  = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(inTensor.exportData());
     const auto *output = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(outTensor.exportData());
@@ -70,11 +71,20 @@ TEST_P(OpFlip, correct_output)
     ASSERT_NE(input, nullptr);
     ASSERT_NE(output, nullptr);
 
-    long3 inStrides{input->stride(0), input->stride(1), input->stride(2)};
-    long3 outStrides{output->stride(0), output->stride(1), output->stride(2)};
+    auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*input);
+    ASSERT_TRUE(inAccess);
 
-    long inBufSize  = inStrides.x * input->shape(0);
-    long outBufSize = outStrides.x * output->shape(0);
+    auto outAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*output);
+    ASSERT_TRUE(outAccess);
+
+    long inSampleStride  = inAccess->numRows() * inAccess->rowStride();
+    long outSampleStride = outAccess->numRows() * outAccess->rowStride();
+
+    int inBufSize  = inSampleStride * inAccess->numSamples();
+    int outBufSize = outSampleStride * outAccess->numSamples();
+
+    long3 inStrides{inSampleStride, inAccess->rowStride(), inAccess->colStride()};
+    long3 outStrides{outSampleStride, outAccess->rowStride(), outAccess->colStride()};
 
     std::vector<uint8_t> inVec(inBufSize);
 

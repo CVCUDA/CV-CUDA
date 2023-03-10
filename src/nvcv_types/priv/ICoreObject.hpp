@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -200,11 +200,27 @@ typename T::HandleType CreateCoreObject(ARGS &&...args)
 }
 
 template<class HandleType>
-void DestroyCoreObject(HandleType handle)
+int CoreObjectDecRef(HandleType handle)
 {
     auto &mgr = GlobalContext().manager<HandleType>();
 
-    mgr.destroy(handle);
+    return mgr.decRef(handle);
+}
+
+template<class HandleType>
+int CoreObjectIncRef(HandleType handle)
+{
+    auto &mgr = GlobalContext().manager<HandleType>();
+
+    return mgr.incRef(handle);
+}
+
+template<class HandleType>
+int CoreObjectRefCount(HandleType handle)
+{
+    auto &mgr = GlobalContext().manager<HandleType>();
+
+    return mgr.refCount(handle);
 }
 
 template<class, class = void>

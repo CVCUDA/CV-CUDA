@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,7 +19,6 @@
 #define NVCV_TEST_COMMON_VALUELIST_HPP
 
 #include <gtest/gtest.h>
-#include <util/HashMD5.hpp>
 
 #include <algorithm>
 #include <iomanip>
@@ -169,7 +168,7 @@ void ReplaceDefaultsImpl(U &out, const T &in, std::index_sequence<IDX...>)
 }
 
 template<class... UU, class... TT>
-requires(std::is_default_constructible_v<std::tuple<UU...>>) std::tuple<UU...> ReplaceDefaults(
+std::enable_if_t<std::is_default_constructible_v<std::tuple<UU...>>, std::tuple<UU...>> ReplaceDefaults(
     const std::tuple<TT...> &in)
 {
     static_assert(sizeof...(TT) == sizeof...(UU));
@@ -180,7 +179,7 @@ requires(std::is_default_constructible_v<std::tuple<UU...>>) std::tuple<UU...> R
 }
 
 template<class U, class... UU, class T, class... TT>
-requires(!std::is_default_constructible_v<std::tuple<U, UU...>>) std::tuple<U, UU...> ReplaceDefaults(
+std::enable_if_t<!std::is_default_constructible_v<std::tuple<U, UU...>>, std::tuple<U, UU...>> ReplaceDefaults(
     const std::tuple<T, TT...> &in)
 {
     static_assert(sizeof...(TT) == sizeof...(UU));
@@ -221,8 +220,8 @@ public:
     {
     }
 
-    template<class... UU>
-    requires(!std::is_same_v<tuple_value_type, std::tuple<UU...>>) explicit ValueList(const ValueList<UU...> &that)
+    template<class... UU, std::enable_if_t<!std::is_same_v<tuple_value_type, std::tuple<UU...>>, int> = 0>
+    explicit ValueList(const ValueList<UU...> &that)
     {
         for (auto &v : that)
         {
@@ -293,8 +292,8 @@ public:
         return m_list.emplace_back(std::move(v));
     }
 
-    template<class = void>
-    requires(!std::is_same_v<tuple_value_type, value_type>) auto push_back(tuple_value_type v)
+    template<class X = void, std::enable_if_t<sizeof(X) != 0 && !std::is_same_v<tuple_value_type, value_type>, int> = 0>
+    auto push_back(tuple_value_type v)
     {
         return std::apply([this](auto &...args) { m_list.emplace_back(args...); }, v);
     }

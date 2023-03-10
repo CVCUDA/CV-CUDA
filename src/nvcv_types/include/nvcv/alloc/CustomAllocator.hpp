@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -51,7 +51,7 @@ public:
 
     ~CustomAllocator()
     {
-        nvcvAllocatorDestroy(m_wrap.handle());
+        nvcvAllocatorDecRef(m_wrap.handle(), nullptr);
     }
 
 private:
@@ -96,7 +96,7 @@ private:
         // out.resType is already filled by caller
     }
 
-    void doFillAllocatorList(NVCVCustomAllocator *outResAlloc, detail::IndexSequence<>)
+    void doFillAllocatorList(NVCVCustomAllocator *, detail::IndexSequence<>)
     {
         // meta-loop termination
     }
@@ -106,17 +106,17 @@ private:
     {
         struct GetResType
         {
-            NVCVResourceType operator()(const IHostMemAllocator &alloc) const
+            NVCVResourceType operator()(const IHostMemAllocator &) const
             {
                 return NVCV_RESOURCE_MEM_HOST;
             }
 
-            NVCVResourceType operator()(const IHostPinnedMemAllocator &alloc) const
+            NVCVResourceType operator()(const IHostPinnedMemAllocator &) const
             {
                 return NVCV_RESOURCE_MEM_HOST_PINNED;
             }
 
-            NVCVResourceType operator()(const ICudaMemAllocator &alloc) const
+            NVCVResourceType operator()(const ICudaMemAllocator &) const
             {
                 return NVCV_RESOURCE_MEM_CUDA;
             }
@@ -138,7 +138,7 @@ private:
     struct FindResAlloc
     {
         template<size_t... II>
-        static T *Find(std::tuple<AA...> &allocs, detail::IndexSequence<II...>, T &head)
+        static T *Find(std::tuple<AA...> &, detail::IndexSequence<II...>, T &head)
         {
             static_assert(std::is_base_of<IResourceAllocator, T>::value, "Type must represent a resource allocator");
 
@@ -147,7 +147,7 @@ private:
         }
 
         template<size_t I>
-        static T *Find(std::tuple<AA...> &allocs, detail::IndexSequence<I>, IResourceAllocator &)
+        static T *Find(std::tuple<AA...> &, detail::IndexSequence<I>, IResourceAllocator &)
         {
             // Not found.
             return nullptr;
@@ -221,7 +221,7 @@ private:
 template<class... AA>
 CustomAllocator<AA...> CreateCustomAllocator(AA &&...allocators)
 {
-    return CustomAllocator(std::forward<AA>(allocators)...);
+    return CustomAllocator<AA...>(std::forward<AA>(allocators)...);
 }
 
 } // namespace nvcv

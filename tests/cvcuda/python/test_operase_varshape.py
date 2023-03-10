@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,7 +29,7 @@ def test_op_erase(
     num_images, format, min_size, max_size, erasing_area_num, random, seed
 ):
 
-    parameter_shape = [erasing_area_num]
+    parameter_shape = (erasing_area_num,)
     anchor = cvcuda.Tensor(parameter_shape, cvcuda.Type._2S32, "N")
     erasing = cvcuda.Tensor(parameter_shape, cvcuda.Type._3S32, "N")
     imgIdx = cvcuda.Tensor(parameter_shape, cvcuda.Type.S32, "N")

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,9 +29,9 @@
 namespace nvcv::cuda {
 
 /**
- * @brief Metafunction to drop components of a compound value
+ * Metafunction to drop components of a compound value.
  *
- * @details The template parameter \p N defines the number of components to cast the CUDA compound type \p T passed
+ * The template parameter \p N defines the number of components to cast the CUDA compound type \p T passed
  * as function argument \p v.  This is done by dropping the last components after \p N from \p v.  For instance, an
  * uint3 can have its z component dropped by passing it as function argument to DropCast and the number 2 as
  * template argument (see example below).  The type \p T is not needed as it is inferred from the argument \p v.
@@ -44,11 +44,11 @@ namespace nvcv::cuda {
  * uint2 dstIdx = DropCast<2>(blockIdx * blockDim + threadIdx);
  * @endcode
  *
- * @tparam N Number of components to return
+ * @tparam N Number of components to return.
  *
- * @param[in] v Value to drop components from
+ * @param[in] v Value to drop components from.
  *
- * @return The compound value with N components dropping the last, extra components
+ * @return The compound value with N components dropping the last, extra components.
  */
 template<int N, typename T, class = Require<HasEnoughComponents<T, N>>>
 __host__ __device__ auto DropCast(T v)

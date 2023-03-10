@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,6 +30,9 @@ Type DeviceRunMin(Type, Type);
 template<typename Type>
 Type DeviceRunMax(Type, Type);
 
+template<typename Type1, typename Type2>
+Type1 DeviceRunPow(Type1, Type2);
+
 template<typename Type>
 Type DeviceRunExp(Type);
 
@@ -38,5 +41,8 @@ Type DeviceRunSqrt(Type);
 
 template<typename Type>
 Type DeviceRunAbs(Type);
+
+template<typename Type1, typename Type2>
+Type1 DeviceRunClamp(Type1, Type2, Type2);
 
 #endif // NVCV_TESTS_DEVICE_MATH_WRAPPERS_HPP

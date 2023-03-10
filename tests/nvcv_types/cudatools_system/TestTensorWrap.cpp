@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,13 +17,18 @@
 
 #include "DeviceTensorWrap.hpp" // to test in device
 
-#include <common/TypedTests.hpp> // for NVCV_TYPED_TEST_SUITE, etc.
-#include <nvcv/Image.hpp>
-#include <nvcv/Tensor.hpp>       // for Tensor, etc.
-#include <nvcv/cuda/MathOps.hpp> // for operator == to allow EXPECT_EQ
+#include <common/HashUtils.hpp>      // for NVCV_INSTANTIATE_TEST_SUITE_P, etc.
+#include <common/TypedTests.hpp>     // for NVCV_TYPED_TEST_SUITE, etc.
+#include <common/ValueTests.hpp>     // for StringLiteral
+#include <nvcv/Image.hpp>            // for Image, etc.
+#include <nvcv/Tensor.hpp>           // for Tensor, etc.
+#include <nvcv/TensorDataAccess.hpp> // for TensorDataAccessStridedImagePlanar, etc.
+#include <nvcv/cuda/MathOps.hpp>     // for operator == to allow EXPECT_EQ
 
 #include <limits>
 
+namespace t     = ::testing;
+namespace test  = nvcv::test;
 namespace cuda  = nvcv::cuda;
 namespace ttype = nvcv::test::type;
 
@@ -32,12 +37,12 @@ namespace ttype = nvcv::test::type;
 // clang-format off
 NVCV_TYPED_TEST_SUITE(
     Tensor1DWrapTest, ttype::Types<
-    ttype::Types<ttype::Value<std::array<int, 2>{-5, 1}>>,
-    ttype::Types<ttype::Value<std::array<short3, 2>{
+    ttype::Types<ttype::Value<Array<int, 2>{-5, 1}>>,
+    ttype::Types<ttype::Value<Array<short3, 2>{
         short3{-12, 2, -34}, short3{5678, -2345, 0}}>>,
-    ttype::Types<ttype::Value<std::array<float1, 4>{
+    ttype::Types<ttype::Value<Array<float1, 4>{
         float1{1.23f}, float1{-2.3f}, float1{-3.45f}, float1{4.5f}}>>,
-    ttype::Types<ttype::Value<std::array<uchar4, 3>{
+    ttype::Types<ttype::Value<Array<uchar4, 3>{
         uchar4{0, 128, 233, 33}, uchar4{55, 253, 9, 1}, uchar4{40, 1, 3, 5}}>>
 >);
 
@@ -57,7 +62,7 @@ TYPED_TEST(Tensor1DWrapTest, correct_content_and_is_const)
 
     EXPECT_EQ(wrap.ptr(), input.data());
 
-    for (int i = 0; i < static_cast<int>(input.size()); ++i)
+    for (int i = 0; i < InputType::kShapes[0]; ++i)
     {
         EXPECT_TRUE(std::is_pointer_v<decltype(wrap.ptr(i))>);
         EXPECT_TRUE(std::is_const_v<std::remove_pointer_t<decltype(wrap.ptr(i))>>);
@@ -77,19 +82,19 @@ TYPED_TEST(Tensor1DWrapTest, it_works_in_device)
 {
     auto gold = ttype::GetValue<TypeParam, 0>;
 
-    DeviceUseTensor1DWrap(gold);
+    DeviceUseTensorWrap(gold);
 }
 
 // clang-format off
 NVCV_TYPED_TEST_SUITE(
     Tensor1DWrapCopyTest, ttype::Types<
-    ttype::Types<ttype::Value<std::array<int, 2>{}>, ttype::Value<std::array<int, 2>{
+    ttype::Types<ttype::Value<Array<int, 2>{}>, ttype::Value<Array<int, 2>{
        -5, 1}>>,
-    ttype::Types<ttype::Value<std::array<short3, 2>{}>, ttype::Value<std::array<short3, 2>{
+    ttype::Types<ttype::Value<Array<short3, 2>{}>, ttype::Value<Array<short3, 2>{
         short3{-12, 2, -34}, short3{5678, -2345, 0}}>>,
-    ttype::Types<ttype::Value<std::array<float1, 4>{}>, ttype::Value<std::array<float1, 4>{
+    ttype::Types<ttype::Value<Array<float1, 4>{}>, ttype::Value<Array<float1, 4>{
         float1{1.23f}, float1{-2.3f}, float1{-3.45f}, float1{4.5f}}>>,
-    ttype::Types<ttype::Value<std::array<uchar4, 3>{}>, ttype::Value<std::array<uchar4, 3>{
+    ttype::Types<ttype::Value<Array<uchar4, 3>{}>, ttype::Value<Array<uchar4, 3>{
         uchar4{0, 128, 233, 33}, uchar4{55, 253, 9, 1}, uchar4{40, 1, 3, 5}}>>
 >);
 
@@ -105,7 +110,9 @@ TYPED_TEST(Tensor1DWrapCopyTest, can_change_content)
 
     cuda::Tensor1DWrap<ValueType> wrap(test.data());
 
-    for (int i = 0; i < static_cast<int>(gold.size()); ++i)
+    ASSERT_EQ(InputType::kShapes[0], decltype(gold)::kShapes[0]);
+
+    for (int i = 0; i < InputType::kShapes[0]; ++i)
     {
         int1 c{i};
 
@@ -114,6 +121,31 @@ TYPED_TEST(Tensor1DWrapCopyTest, can_change_content)
 
     EXPECT_EQ(test, gold);
 }
+
+// The death tests below are to be run in debug mode only
+
+#ifndef NDEBUG
+
+TEST(Tensor1DWrapWrongCompileStrideDeathTest, it_dies)
+{
+    using DataType = uint8_t;
+    nvcv::DataType dt{NVCV_DATA_TYPE_U8};
+
+    nvcv::TensorDataStridedCuda::Buffer buf;
+    buf.strides[0] = 2;
+    buf.basePtr    = reinterpret_cast<NVCVByte *>(123);
+
+    nvcv::TensorWrapData tensor{
+        nvcv::TensorDataStridedCuda{nvcv::TensorShape{{1}, "J"}, dt, buf}
+    };
+
+    const auto *dev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(tensor.exportData());
+    ASSERT_NE(dev, nullptr);
+
+    EXPECT_DEATH({ cuda::Tensor1DWrap<DataType> wrap(*dev); }, "");
+}
+
+#endif
 
 // clang-format off
 NVCV_TYPED_TEST_SUITE(
@@ -159,24 +191,23 @@ TYPED_TEST(Tensor1DWrapTensorTest, it_works_in_device)
 
     nvcv::Tensor tensor({{123}, "N"}, nvcv::DataType{dataType});
 
-    int1 size{static_cast<int>(tensor.shape()[0])};
-
     const auto *dev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(tensor.exportData());
     ASSERT_NE(dev, nullptr);
 
     cuda::Tensor1DWrap<ValueType> wrap(*dev);
 
+    int1 size{static_cast<int>(dev->shape(0))};
+
     DeviceSetOnes(wrap, size, stream);
 
-    long        stride{dev->stride(0)};
-    std::size_t sizeBytes = size.x * stride;
+    std::size_t sizeBytes = dev->shape(0) * dev->stride(0);
 
     std::vector<uint8_t> test(sizeBytes);
     std::vector<uint8_t> gold(sizeBytes);
 
     for (int i = 0; i < size.x; i++)
     {
-        *reinterpret_cast<ValueType *>(&gold[i * stride]) = cuda::SetAll<ValueType>(1);
+        *reinterpret_cast<ValueType *>(&gold[i * dev->stride(0)]) = cuda::SetAll<ValueType>(1);
     }
 
     // Get test data back
@@ -215,36 +246,36 @@ TYPED_TEST(Tensor2DWrapTest, correct_content_and_is_const)
     using InputType = decltype(input);
     using ValueType = typename InputType::value_type;
 
-    cuda::Tensor2DWrap<const ValueType> wrap(input.data(), input.rowStride);
+    cuda::Tensor2DWrap<const ValueType> wrap(input.data(), InputType::kStrides[0]);
 
     auto strides = wrap.strides();
-    EXPECT_EQ(strides[0], input.rowStride);
+    EXPECT_EQ(strides[0], InputType::kStrides[0]);
 
     EXPECT_TRUE(std::is_pointer_v<decltype(wrap.ptr())>);
     EXPECT_TRUE(std::is_const_v<std::remove_pointer_t<decltype(wrap.ptr())>>);
 
     EXPECT_EQ(wrap.ptr(), input.data());
 
-    for (int y = 0; y < input.height; ++y)
+    for (int y = 0; y < InputType::kShapes[0]; ++y)
     {
         EXPECT_TRUE(std::is_pointer_v<decltype(wrap.ptr(y))>);
         EXPECT_TRUE(std::is_const_v<std::remove_pointer_t<decltype(wrap.ptr(y))>>);
 
-        EXPECT_EQ(wrap.ptr(y), &input[y * input.width]);
+        EXPECT_EQ(wrap.ptr(y), &input[y * InputType::kShapes[1]]);
 
-        for (int x = 0; x < input.width; ++x)
+        for (int x = 0; x < InputType::kShapes[1]; ++x)
         {
             EXPECT_TRUE(std::is_pointer_v<decltype(wrap.ptr(y, x))>);
             EXPECT_TRUE(std::is_const_v<std::remove_pointer_t<decltype(wrap.ptr(y, x))>>);
 
-            EXPECT_EQ(wrap.ptr(y, x), &input[y * input.width + x]);
+            EXPECT_EQ(wrap.ptr(y, x), &input[y * InputType::kShapes[1] + x]);
 
             int2 c2{x, y};
 
             EXPECT_TRUE(std::is_reference_v<decltype(wrap[c2])>);
             EXPECT_TRUE(std::is_const_v<std::remove_reference_t<decltype(wrap[c2])>>);
 
-            EXPECT_EQ(wrap[c2], input[y * input.width + x]);
+            EXPECT_EQ(wrap[c2], input[y * InputType::kShapes[1] + x]);
         }
     }
 }
@@ -253,7 +284,7 @@ TYPED_TEST(Tensor2DWrapTest, it_works_in_device)
 {
     auto gold = ttype::GetValue<TypeParam, 0>;
 
-    DeviceUseTensor2DWrap(gold);
+    DeviceUseTensorWrap(gold);
 }
 
 // clang-format off
@@ -283,15 +314,20 @@ TYPED_TEST(Tensor2DWrapCopyTest, can_change_content)
     using InputType = decltype(test);
     using ValueType = typename InputType::value_type;
 
-    cuda::Tensor2DWrap<ValueType> wrap(test.data(), test.rowStride);
+    cuda::Tensor2DWrap<ValueType> wrap(test.data(), InputType::kStrides[0]);
 
-    for (int y = 0; y < gold.height; ++y)
+    for (int i = 0; i < 2; ++i)
     {
-        for (int x = 0; x < gold.width; ++x)
+        ASSERT_EQ(InputType::kShapes[i], decltype(gold)::kShapes[i]);
+    }
+
+    for (int y = 0; y < InputType::kShapes[0]; ++y)
+    {
+        for (int x = 0; x < InputType::kShapes[1]; ++x)
         {
             int2 c{x, y};
 
-            wrap[c] = gold[y * gold.width + x];
+            wrap[c] = gold[y * InputType::kShapes[1] + x];
         }
     }
 
@@ -327,9 +363,9 @@ TYPED_TEST(Tensor2DWrapImageWrapTest, correct_with_image_wrap)
 
     nvcv::ImageDataStridedCuda::Buffer buf;
     buf.numPlanes           = 1;
-    buf.planes[0].width     = input.width;
-    buf.planes[0].height    = input.height;
-    buf.planes[0].rowStride = input.rowStride;
+    buf.planes[0].width     = InputType::kShapes[1];
+    buf.planes[0].height    = InputType::kShapes[0];
+    buf.planes[0].rowStride = InputType::kStrides[0];
     buf.planes[0].basePtr   = reinterpret_cast<NVCVByte *>(input.data());
 
     nvcv::ImageWrapData img{
@@ -342,11 +378,11 @@ TYPED_TEST(Tensor2DWrapImageWrapTest, correct_with_image_wrap)
     cuda::Tensor2DWrap<ValueType> wrap(*dev);
 
     auto strides = wrap.strides();
-    EXPECT_EQ(strides[0], input.rowStride);
+    EXPECT_EQ(strides[0], InputType::kStrides[0]);
 
-    for (int y = 0; y < input.height; ++y)
+    for (int y = 0; y < InputType::kShapes[0]; ++y)
     {
-        for (int x = 0; x < input.width; ++x)
+        for (int x = 0; x < InputType::kShapes[1]; ++x)
         {
             int2 c2{x, y};
 
@@ -410,10 +446,9 @@ TYPED_TEST(Tensor2DWrapImageTest, it_works_in_device)
 
     cuda::Tensor2DWrap<ValueType> wrap(*dev);
 
-    DeviceSetOnes(wrap, {width, height}, stream);
+    DeviceSetOnes(wrap, int2{width, height}, stream);
 
-    long2       pitches{dev->plane(0).rowStride, sizeof(ValueType)};
-    std::size_t sizeBytes = height * pitches.x;
+    std::size_t sizeBytes = height * dev->plane(0).rowStride;
 
     std::vector<uint8_t> test(sizeBytes);
     std::vector<uint8_t> gold(sizeBytes);
@@ -422,7 +457,8 @@ TYPED_TEST(Tensor2DWrapImageTest, it_works_in_device)
     {
         for (int j = 0; j < width; j++)
         {
-            *reinterpret_cast<ValueType *>(&gold[i * pitches.x + j * pitches.y]) = cuda::SetAll<ValueType>(1);
+            *reinterpret_cast<ValueType *>(&gold[i * dev->plane(0).rowStride + j * sizeof(ValueType)])
+                = cuda::SetAll<ValueType>(1);
         }
     }
 
@@ -463,44 +499,49 @@ TYPED_TEST(Tensor3DWrapTest, correct_content_and_is_const)
     using InputType = decltype(input);
     using ValueType = typename InputType::value_type;
 
-    cuda::Tensor3DWrap<const ValueType> wrap(input.data(), input.stride1, input.stride2);
+    cuda::Tensor3DWrap<const ValueType> wrap(input.data(), InputType::kStrides[0], InputType::kStrides[1]);
 
     auto strides = wrap.strides();
-    EXPECT_EQ(strides[0], input.stride1);
-    EXPECT_EQ(strides[1], input.stride2);
+    for (int i = 0; i < 2; ++i)
+    {
+        EXPECT_EQ(strides[i], InputType::kStrides[i]);
+    }
 
     EXPECT_TRUE(std::is_pointer_v<decltype(wrap.ptr())>);
     EXPECT_TRUE(std::is_const_v<std::remove_pointer_t<decltype(wrap.ptr())>>);
 
     EXPECT_EQ(wrap.ptr(), input.data());
 
-    for (int b = 0; b < input.batches; ++b)
+    for (int b = 0; b < InputType::kShapes[0]; ++b)
     {
         EXPECT_TRUE(std::is_pointer_v<decltype(wrap.ptr(b))>);
         EXPECT_TRUE(std::is_const_v<std::remove_pointer_t<decltype(wrap.ptr(b))>>);
 
-        EXPECT_EQ(wrap.ptr(b), &input[b * input.width * input.height]);
+        EXPECT_EQ(wrap.ptr(b), &input[b * InputType::kShapes[2] * InputType::kShapes[1]]);
 
-        for (int y = 0; y < input.height; ++y)
+        for (int y = 0; y < InputType::kShapes[1]; ++y)
         {
             EXPECT_TRUE(std::is_pointer_v<decltype(wrap.ptr(b, y))>);
             EXPECT_TRUE(std::is_const_v<std::remove_pointer_t<decltype(wrap.ptr(b, y))>>);
 
-            EXPECT_EQ(wrap.ptr(b, y), &input[b * input.width * input.height + y * input.width]);
+            EXPECT_EQ(wrap.ptr(b, y),
+                      &input[b * InputType::kShapes[2] * InputType::kShapes[1] + y * InputType::kShapes[2]]);
 
-            for (int x = 0; x < input.width; ++x)
+            for (int x = 0; x < InputType::kShapes[2]; ++x)
             {
                 EXPECT_TRUE(std::is_pointer_v<decltype(wrap.ptr(b, y, x))>);
                 EXPECT_TRUE(std::is_const_v<std::remove_pointer_t<decltype(wrap.ptr(b, y, x))>>);
 
-                EXPECT_EQ(wrap.ptr(b, y, x), &input[b * input.width * input.height + y * input.width + x]);
+                EXPECT_EQ(wrap.ptr(b, y, x),
+                          &input[b * InputType::kShapes[2] * InputType::kShapes[1] + y * InputType::kShapes[2] + x]);
 
                 int3 c3{x, y, b};
 
                 EXPECT_TRUE(std::is_reference_v<decltype(wrap[c3])>);
                 EXPECT_TRUE(std::is_const_v<std::remove_reference_t<decltype(wrap[c3])>>);
 
-                EXPECT_EQ(wrap[c3], input[b * input.width * input.height + y * input.width + x]);
+                EXPECT_EQ(wrap[c3],
+                          input[b * InputType::kShapes[2] * InputType::kShapes[1] + y * InputType::kShapes[2] + x]);
             }
         }
     }
@@ -510,7 +551,7 @@ TYPED_TEST(Tensor3DWrapTest, it_works_in_device)
 {
     auto gold = ttype::GetValue<TypeParam, 0>;
 
-    DeviceUseTensor3DWrap(gold);
+    DeviceUseTensorWrap(gold);
 }
 
 // clang-format off
@@ -541,17 +582,22 @@ TYPED_TEST(Tensor3DWrapCopyTest, can_change_content)
     using InputType = decltype(test);
     using ValueType = typename InputType::value_type;
 
-    cuda::Tensor3DWrap<ValueType> wrap(test.data(), test.stride1, test.stride2);
+    cuda::Tensor3DWrap<ValueType> wrap(test.data(), InputType::kStrides[0], InputType::kStrides[1]);
 
-    for (int b = 0; b < test.batches; ++b)
+    for (int i = 0; i < 3; ++i)
     {
-        for (int y = 0; y < test.height; ++y)
+        ASSERT_EQ(InputType::kShapes[i], decltype(gold)::kShapes[i]);
+    }
+
+    for (int b = 0; b < InputType::kShapes[0]; ++b)
+    {
+        for (int y = 0; y < InputType::kShapes[1]; ++y)
         {
-            for (int x = 0; x < test.width; ++x)
+            for (int x = 0; x < InputType::kShapes[2]; ++x)
             {
                 int3 c{x, y, b};
 
-                wrap[c] = gold[b * test.height * test.width + y * test.width + x];
+                wrap[c] = gold[b * InputType::kShapes[1] * InputType::kShapes[2] + y * InputType::kShapes[2] + x];
             }
         }
     }
@@ -616,18 +662,18 @@ TYPED_TEST(Tensor3DWrapTensorWrapTest, correct_with_tensor_wrap)
     using InputType = decltype(input);
     using ValueType = typename InputType::value_type;
 
-    int n = input.batches;
-    int h = input.height;
-    int w = input.width;
+    int N = InputType::kShapes[0];
+    int H = InputType::kShapes[1];
+    int W = InputType::kShapes[2];
 
     nvcv::TensorDataStridedCuda::Buffer buf;
-    buf.strides[0] = input.stride1;
-    buf.strides[1] = input.stride2;
-    buf.strides[2] = sizeof(ValueType);
+    buf.strides[0] = InputType::kStrides[0];
+    buf.strides[1] = InputType::kStrides[1];
+    buf.strides[2] = InputType::kStrides[2];
     buf.basePtr    = reinterpret_cast<NVCVByte *>(input.data());
 
     nvcv::TensorWrapData tensor{
-        nvcv::TensorDataStridedCuda{nvcv::TensorShape{{n, h, w}, "NHW"}, nvcv::DataType{dataType}, buf}
+        nvcv::TensorDataStridedCuda{nvcv::TensorShape{{N, H, W}, "NHW"}, nvcv::DataType{dataType}, buf}
     };
 
     const auto *dev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(tensor.exportData());
@@ -636,14 +682,16 @@ TYPED_TEST(Tensor3DWrapTensorWrapTest, correct_with_tensor_wrap)
     cuda::Tensor3DWrap<ValueType> wrap(*dev);
 
     auto strides = wrap.strides();
-    EXPECT_EQ(strides[0], input.stride1);
-    EXPECT_EQ(strides[1], input.stride2);
-
-    for (int b = 0; b < input.batches; ++b)
+    for (int i = 0; i < 2; ++i)
     {
-        for (int y = 0; y < input.height; ++y)
+        EXPECT_EQ(strides[i], InputType::kStrides[i]);
+    }
+
+    for (int b = 0; b < N; ++b)
+    {
+        for (int y = 0; y < H; ++y)
         {
-            for (int x = 0; x < input.width; ++x)
+            for (int x = 0; x < W; ++x)
             {
                 int3 c3{x, y, b};
 
@@ -681,8 +729,10 @@ TYPED_TEST(Tensor3DWrapTensorTest, correct_with_tensor)
     cuda::Tensor3DWrap<ValueType> wrap(*dev);
 
     auto strides = wrap.strides();
-    EXPECT_EQ(strides[0], dev->stride(0));
-    EXPECT_EQ(strides[1], dev->stride(1));
+    for (int i = 0; i < 2; ++i)
+    {
+        EXPECT_EQ(strides[i], dev->stride(i));
+    }
 
     const ValueType *ptr0  = reinterpret_cast<const ValueType *>(dev->basePtr());
     const ValueType *ptr1  = reinterpret_cast<const ValueType *>(dev->basePtr() + dev->stride(0));
@@ -703,30 +753,33 @@ TYPED_TEST(Tensor3DWrapTensorTest, it_works_in_device)
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
-    int batches = tensor.shape()[0];
-    int height  = tensor.shape()[1];
-    int width   = tensor.shape()[2];
-
     const auto *dev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(tensor.exportData());
     ASSERT_NE(dev, nullptr);
 
     cuda::Tensor3DWrap<ValueType> wrap(*dev);
 
-    DeviceSetOnes(wrap, {width, height, batches}, stream);
+    int3 size{static_cast<int>(dev->shape(2)), static_cast<int>(dev->shape(1)), static_cast<int>(dev->shape(0))};
 
-    long3       pitches{dev->stride(0), dev->stride(1), dev->stride(2)};
-    std::size_t sizeBytes = batches * pitches.x;
+    DeviceSetOnes(wrap, size, stream);
+
+    auto strides = wrap.strides();
+    for (int i = 0; i < 2; ++i)
+    {
+        EXPECT_EQ(strides[i], dev->stride(i));
+    }
+
+    std::size_t sizeBytes = dev->shape(0) * dev->stride(0);
 
     std::vector<uint8_t> test(sizeBytes);
     std::vector<uint8_t> gold(sizeBytes);
 
-    for (int b = 0; b < batches; b++)
+    for (int b = 0; b < dev->shape(0); b++)
     {
-        for (int i = 0; i < height; i++)
+        for (int i = 0; i < dev->shape(1); i++)
         {
-            for (int j = 0; j < width; j++)
+            for (int j = 0; j < dev->shape(2); j++)
             {
-                *reinterpret_cast<ValueType *>(&gold[b * pitches.x + i * pitches.y + j * pitches.z])
+                *reinterpret_cast<ValueType *>(&gold[b * dev->stride(0) + i * dev->stride(1) + j * dev->stride(2)])
                     = cuda::SetAll<ValueType>(1);
             }
         }
@@ -769,57 +822,63 @@ TYPED_TEST(Tensor4DWrapTest, correct_content_and_is_const)
     using InputType = decltype(input);
     using ValueType = typename InputType::value_type;
 
-    cuda::Tensor4DWrap<const ValueType> wrap(input.data(), input.stride1, input.stride2, input.stride3);
+    cuda::Tensor4DWrap<const ValueType> wrap(input.data(), InputType::kStrides[0], InputType::kStrides[1],
+                                             InputType::kStrides[2]);
 
     auto strides = wrap.strides();
-    EXPECT_EQ(strides[0], input.stride1);
-    EXPECT_EQ(strides[1], input.stride2);
-    EXPECT_EQ(strides[2], input.stride3);
+    for (int i = 0; i < 3; ++i)
+    {
+        EXPECT_EQ(strides[i], InputType::kStrides[i]);
+    }
 
     EXPECT_TRUE(std::is_pointer_v<decltype(wrap.ptr())>);
     EXPECT_TRUE(std::is_const_v<std::remove_pointer_t<decltype(wrap.ptr())>>);
 
     EXPECT_EQ(wrap.ptr(), input.data());
 
-    for (int b = 0; b < input.batches; ++b)
+    for (int b = 0; b < InputType::kShapes[0]; ++b)
     {
         EXPECT_TRUE(std::is_pointer_v<decltype(wrap.ptr(b))>);
         EXPECT_TRUE(std::is_const_v<std::remove_pointer_t<decltype(wrap.ptr(b))>>);
 
-        EXPECT_EQ(wrap.ptr(b), &input[b * input.height * input.width * input.channels]);
+        EXPECT_EQ(wrap.ptr(b), &input[b * InputType::kShapes[1] * InputType::kShapes[2] * InputType::kShapes[3]]);
 
-        for (int y = 0; y < input.height; ++y)
+        for (int y = 0; y < InputType::kShapes[1]; ++y)
         {
             EXPECT_TRUE(std::is_pointer_v<decltype(wrap.ptr(b, y))>);
             EXPECT_TRUE(std::is_const_v<std::remove_pointer_t<decltype(wrap.ptr(b, y))>>);
 
-            EXPECT_EQ(wrap.ptr(b, y),
-                      &input[b * input.height * input.width * input.channels + y * input.width * input.channels]);
+            EXPECT_EQ(wrap.ptr(b, y), &input[b * InputType::kShapes[1] * InputType::kShapes[2] * InputType::kShapes[3]
+                                             + y * InputType::kShapes[2] * InputType::kShapes[3]]);
 
-            for (int x = 0; x < input.width; ++x)
+            for (int x = 0; x < InputType::kShapes[2]; ++x)
             {
                 EXPECT_TRUE(std::is_pointer_v<decltype(wrap.ptr(b, y, x))>);
                 EXPECT_TRUE(std::is_const_v<std::remove_pointer_t<decltype(wrap.ptr(b, y, x))>>);
 
-                EXPECT_EQ(wrap.ptr(b, y, x), &input[b * input.height * input.width * input.channels
-                                                    + y * input.width * input.channels + x * input.channels]);
+                EXPECT_EQ(wrap.ptr(b, y, x),
+                          &input[b * InputType::kShapes[1] * InputType::kShapes[2] * InputType::kShapes[3]
+                                 + y * InputType::kShapes[2] * InputType::kShapes[3] + x * InputType::kShapes[3]]);
 
-                for (int k = 0; k < input.channels; ++k)
+                for (int k = 0; k < InputType::kShapes[3]; ++k)
                 {
                     EXPECT_TRUE(std::is_pointer_v<decltype(wrap.ptr(b, y, x, k))>);
                     EXPECT_TRUE(std::is_const_v<std::remove_pointer_t<decltype(wrap.ptr(b, y, x, k))>>);
 
-                    EXPECT_EQ(wrap.ptr(b, y, x, k),
-                              &input[b * input.height * input.width * input.channels + y * input.width * input.channels
-                                     + x * input.channels + k]);
+                    EXPECT_EQ(
+                        wrap.ptr(b, y, x, k),
+                        &input[b * InputType::kShapes[1] * InputType::kShapes[2] * InputType::kShapes[3]
+                               + y * InputType::kShapes[2] * InputType::kShapes[3] + x * InputType::kShapes[3] + k]);
 
                     int4 c4{k, x, y, b};
 
                     EXPECT_TRUE(std::is_reference_v<decltype(wrap[c4])>);
                     EXPECT_TRUE(std::is_const_v<std::remove_reference_t<decltype(wrap[c4])>>);
 
-                    EXPECT_EQ(wrap[c4], input[b * input.height * input.width * input.channels
-                                              + y * input.width * input.channels + x * input.channels + k]);
+                    EXPECT_EQ(
+                        wrap[c4],
+                        input[b * InputType::kShapes[1] * InputType::kShapes[2] * InputType::kShapes[3]
+                              + y * InputType::kShapes[2] * InputType::kShapes[3] + x * InputType::kShapes[3] + k]);
                 }
             }
         }
@@ -830,7 +889,7 @@ TYPED_TEST(Tensor4DWrapTest, it_works_in_device)
 {
     auto gold = ttype::GetValue<TypeParam, 0>;
 
-    DeviceUseTensor4DWrap(gold);
+    DeviceUseTensorWrap(gold);
 }
 
 // clang-format off
@@ -861,20 +920,26 @@ TYPED_TEST(Tensor4DWrapCopyTest, can_change_content)
     using InputType = decltype(test);
     using ValueType = typename InputType::value_type;
 
-    cuda::Tensor4DWrap<ValueType> wrap(test.data(), test.stride1, test.stride2, test.stride3);
+    cuda::Tensor4DWrap<ValueType> wrap(test.data(), InputType::kStrides[0], InputType::kStrides[1],
+                                       InputType::kStrides[2]);
 
-    for (int b = 0; b < test.batches; ++b)
+    for (int i = 0; i < 4; ++i)
     {
-        for (int y = 0; y < test.height; ++y)
+        ASSERT_EQ(InputType::kShapes[i], decltype(gold)::kShapes[i]);
+    }
+
+    for (int b = 0; b < InputType::kShapes[0]; ++b)
+    {
+        for (int y = 0; y < InputType::kShapes[1]; ++y)
         {
-            for (int x = 0; x < test.width; ++x)
+            for (int x = 0; x < InputType::kShapes[2]; ++x)
             {
-                for (int k = 0; k < test.channels; ++k)
+                for (int k = 0; k < InputType::kShapes[3]; ++k)
                 {
                     int4 c{k, x, y, b};
 
-                    wrap[c] = gold[b * test.height * test.width * test.channels + y * test.width * test.channels
-                                   + x * test.channels + k];
+                    wrap[c] = gold[b * InputType::kShapes[1] * InputType::kShapes[2] * InputType::kShapes[3]
+                                   + y * InputType::kShapes[2] * InputType::kShapes[3] + x * InputType::kShapes[3] + k];
                 }
             }
         }
@@ -911,20 +976,20 @@ TYPED_TEST(Tensor4DWrapTensorWrapTest, correct_with_tensor_wrap)
     using InputType = decltype(input);
     using ValueType = typename InputType::value_type;
 
-    int n = input.batches;
-    int h = input.height;
-    int w = input.width;
-    int c = input.channels;
+    int N = InputType::kShapes[0];
+    int H = InputType::kShapes[1];
+    int W = InputType::kShapes[2];
+    int C = InputType::kShapes[3];
 
     nvcv::TensorDataStridedCuda::Buffer buf;
-    buf.strides[0] = input.stride1;
-    buf.strides[1] = input.stride2;
-    buf.strides[2] = input.stride3;
-    buf.strides[3] = sizeof(ValueType);
+    buf.strides[0] = InputType::kStrides[0];
+    buf.strides[1] = InputType::kStrides[1];
+    buf.strides[2] = InputType::kStrides[2];
+    buf.strides[3] = InputType::kStrides[3];
     buf.basePtr    = reinterpret_cast<NVCVByte *>(input.data());
 
     nvcv::TensorWrapData tensor{
-        nvcv::TensorDataStridedCuda{nvcv::TensorShape{{n, h, w, c}, "NHWC"}, nvcv::DataType{dataType}, buf}
+        nvcv::TensorDataStridedCuda{nvcv::TensorShape{{N, H, W, C}, "NHWC"}, nvcv::DataType{dataType}, buf}
     };
 
     const auto *dev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(tensor.exportData());
@@ -933,17 +998,18 @@ TYPED_TEST(Tensor4DWrapTensorWrapTest, correct_with_tensor_wrap)
     cuda::Tensor4DWrap<ValueType> wrap(*dev);
 
     auto strides = wrap.strides();
-    EXPECT_EQ(strides[0], input.stride1);
-    EXPECT_EQ(strides[1], input.stride2);
-    EXPECT_EQ(strides[2], input.stride3);
-
-    for (int b = 0; b < input.batches; ++b)
+    for (int i = 0; i < 3; ++i)
     {
-        for (int y = 0; y < input.height; ++y)
+        EXPECT_EQ(strides[i], InputType::kStrides[i]);
+    }
+
+    for (int b = 0; b < N; ++b)
+    {
+        for (int y = 0; y < H; ++y)
         {
-            for (int x = 0; x < input.width; ++x)
+            for (int x = 0; x < W; ++x)
             {
-                for (int k = 0; k < input.channels; ++k)
+                for (int k = 0; k < C; ++k)
                 {
                     int4 c4{k, x, y, b};
 
@@ -988,9 +1054,10 @@ TYPED_TEST(Tensor4DWrapTensorTest, correct_with_tensor)
     cuda::Tensor4DWrap<ValueType> wrap(*dev);
 
     auto strides = wrap.strides();
-    EXPECT_EQ(strides[0], dev->stride(0));
-    EXPECT_EQ(strides[1], dev->stride(1));
-    EXPECT_EQ(strides[2], dev->stride(2));
+    for (int i = 0; i < 3; ++i)
+    {
+        EXPECT_EQ(strides[i], dev->stride(i));
+    }
 
     const ValueType *ptr0   = reinterpret_cast<const ValueType *>(dev->basePtr());
     const ValueType *ptr1   = reinterpret_cast<const ValueType *>(dev->basePtr() + dev->stride(0));
@@ -1019,33 +1086,37 @@ TYPED_TEST(Tensor4DWrapTensorTest, it_works_in_device)
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
-    int batches  = tensor.shape()[0];
-    int height   = tensor.shape()[1];
-    int width    = tensor.shape()[2];
-    int channels = tensor.shape()[3];
-
     const auto *dev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(tensor.exportData());
     ASSERT_NE(dev, nullptr);
 
     cuda::Tensor4DWrap<ValueType> wrap(*dev);
 
-    DeviceSetOnes(wrap, {width, height, batches, channels}, stream);
+    int4 size{static_cast<int>(dev->shape(2)), static_cast<int>(dev->shape(1)), static_cast<int>(dev->shape(0)),
+              static_cast<int>(dev->shape(3))};
 
-    long4  pitches{dev->stride(0), dev->stride(1), dev->stride(2), dev->stride(3)};
-    size_t sizeBytes = batches * pitches.x;
+    DeviceSetOnes(wrap, size, stream);
+
+    auto strides = wrap.strides();
+    for (int i = 0; i < 3; ++i)
+    {
+        EXPECT_EQ(strides[i], dev->stride(i));
+    }
+
+    size_t sizeBytes = dev->shape(0) * dev->stride(0);
 
     std::vector<uint8_t> test(sizeBytes);
     std::vector<uint8_t> gold(sizeBytes);
 
-    for (int b = 0; b < batches; b++)
+    for (int b = 0; b < dev->shape(0); b++)
     {
-        for (int i = 0; i < height; i++)
+        for (int i = 0; i < dev->shape(1); i++)
         {
-            for (int j = 0; j < width; j++)
+            for (int j = 0; j < dev->shape(2); j++)
             {
-                for (int k = 0; k < channels; k++)
+                for (int k = 0; k < dev->shape(3); k++)
                 {
-                    *reinterpret_cast<ValueType *>(&gold[b * pitches.x + i * pitches.y + j * pitches.z + k * pitches.w])
+                    *reinterpret_cast<ValueType *>(
+                        &gold[b * dev->stride(0) + i * dev->stride(1) + j * dev->stride(2) + k * dev->stride(3)])
                         = cuda::SetAll<ValueType>(1);
                 }
             }
@@ -1058,4 +1129,101 @@ TYPED_TEST(Tensor4DWrapTensorTest, it_works_in_device)
     ASSERT_EQ(cudaSuccess, cudaMemcpy(test.data(), dev->basePtr(), sizeBytes, cudaMemcpyDeviceToHost));
 
     EXPECT_EQ(test, gold);
+}
+
+// --------------------------- Testing TensorNDWrap ----------------------------
+
+// clang-format off
+NVCV_TYPED_TEST_SUITE(
+    TensorNDWrapTest, ttype::Types<
+    ttype::Types<ttype::Value<Array<int, 11>{}>>,
+    ttype::Types<ttype::Value<PackedImage<int, 2, 13>{}>>,
+    ttype::Types<ttype::Value<PackedTensor3D<int, 2, 3, 7>{}>>,
+    ttype::Types<ttype::Value<PackedTensor4D<int, 3, 2, 4, 5>{}>>
+>);
+
+// clang-format on
+
+TYPED_TEST(TensorNDWrapTest, correct_dimensionality)
+{
+    auto input = ttype::GetValue<TypeParam, 0>;
+
+    using InputType = decltype(input);
+
+    using TW = cuda::TensorNDWrap<const typename InputType::value_type, InputType::kNumDim>;
+
+    EXPECT_EQ(TW::kNumDimensions, InputType::kNumDim);
+}
+
+// ----------------------- Testing CreateTensorWrapNHWx ------------------------
+
+class CreateTensorWrapNHWxTests
+    : public t::TestWithParam<std::tuple<test::Param<"shape", nvcv::TensorShape>, test::Param<"dtype", nvcv::DataType>>>
+{
+};
+
+// clang-format off
+NVCV_INSTANTIATE_TEST_SUITE_P(_, CreateTensorWrapNHWxTests,
+    test::ValueList<nvcv::TensorShape, nvcv::DataType>
+    {
+        {nvcv::TensorShape{{7, 3, 3}, nvcv::TENSOR_HWC}, nvcv::TYPE_U8},
+        {nvcv::TensorShape{{5, 3, 2, 4}, nvcv::TENSOR_NHWC}, nvcv::TYPE_U8}
+    }
+);
+
+// clang-format on
+
+TEST_P(CreateTensorWrapNHWxTests, correct_properties_in_nhw)
+{
+    auto tensorShape    = std::get<0>(GetParam());
+    auto tensorDataType = std::get<1>(GetParam());
+
+    nvcv::Tensor tensor(tensorShape, tensorDataType);
+
+    const auto *dev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(tensor.exportData());
+    ASSERT_NE(dev, nullptr);
+
+    auto wrap = cuda::CreateTensorWrapNHW<const unsigned char>(*dev);
+
+    using TW = decltype(wrap);
+
+    EXPECT_EQ(TW::kNumDimensions, 3);
+    EXPECT_EQ(TW::kVariableStrides, 2);
+    EXPECT_EQ(TW::kConstantStrides, 1);
+
+    EXPECT_EQ(wrap.ptr(), reinterpret_cast<unsigned char *>(dev->basePtr()));
+
+    auto tensorAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dev);
+    NVCV_ASSERT(tensorAccess);
+
+    EXPECT_EQ(wrap.strides()[0], tensorAccess->sampleStride());
+    EXPECT_EQ(wrap.strides()[1], tensorAccess->rowStride());
+}
+
+TEST_P(CreateTensorWrapNHWxTests, correct_properties_in_nhwc)
+{
+    auto tensorShape    = std::get<0>(GetParam());
+    auto tensorDataType = std::get<1>(GetParam());
+
+    nvcv::Tensor tensor(tensorShape, tensorDataType);
+
+    const auto *dev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(tensor.exportData());
+    ASSERT_NE(dev, nullptr);
+
+    auto wrap = cuda::CreateTensorWrapNHWC<const unsigned char>(*dev);
+
+    using TW = decltype(wrap);
+
+    EXPECT_EQ(TW::kNumDimensions, 4);
+    EXPECT_EQ(TW::kVariableStrides, 3);
+    EXPECT_EQ(TW::kConstantStrides, 1);
+
+    EXPECT_EQ(wrap.ptr(), reinterpret_cast<unsigned char *>(dev->basePtr()));
+
+    auto tensorAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dev);
+    NVCV_ASSERT(tensorAccess);
+
+    EXPECT_EQ(wrap.strides()[0], tensorAccess->sampleStride());
+    EXPECT_EQ(wrap.strides()[1], tensorAccess->rowStride());
+    EXPECT_EQ(wrap.strides()[2], tensorAccess->colStride());
 }

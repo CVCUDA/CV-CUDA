@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -31,19 +31,19 @@
 namespace nvcv::legacy::cuda_op {
 
 template<typename T>
-__global__ void channel_reorder_kernel(const cuda_op::Ptr2dVarShapeNHWC<T> src, cuda_op::Ptr2dVarShapeNHWC<T> dst,
-                                       const cuda::Tensor2DWrap<int> orders)
+__global__ void channel_reorder_kernel(const cuda::ImageBatchVarShapeWrapNHWC<const T> src,
+                                       cuda::ImageBatchVarShapeWrapNHWC<T> dst, const cuda::Tensor2DWrap<int> orders)
 {
     const int dst_x      = blockIdx.x * blockDim.x + threadIdx.x;
     const int dst_y      = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx  = get_batch_idx();
-    int       out_height = dst.at_rows(batch_idx), out_width = dst.at_cols(batch_idx);
+    int       out_height = dst.height(batch_idx), out_width = dst.width(batch_idx);
     if (dst_x >= out_width || dst_y >= out_height)
         return;
 
     const int *chOrder = orders.ptr(batch_idx);
 
-    for (int ch = 0; ch < dst.nch; ch++)
+    for (int ch = 0; ch < dst.numChannels(); ch++)
     {
         int src_ch = chOrder[ch];
         if (src_ch < 0)
@@ -52,8 +52,8 @@ __global__ void channel_reorder_kernel(const cuda_op::Ptr2dVarShapeNHWC<T> src, 
         }
         else
         {
-            NVCV_CUDA_ASSERT(0 <= src_ch && src_ch < src.nch, "Index to source channel %d is out of bounds (%d)",
-                             src_ch, src.nch);
+            NVCV_CUDA_ASSERT(0 <= src_ch && src_ch < src.numChannels(),
+                             "Index to source channel %d is out of bounds (%d)", src_ch, src.numChannels());
             *dst.ptr(batch_idx, dst_y, dst_x, ch) = *src.ptr(batch_idx, dst_y, dst_x, src_ch);
         }
     }
@@ -68,9 +68,9 @@ void reorder(const IImageBatchVarShapeDataStridedCuda &inData, const IImageBatch
     dim3 blockSize(BLOCK, BLOCK / 4, 1);
     dim3 gridSize(divUp(inData.maxSize().w, blockSize.x), divUp(inData.maxSize().h, blockSize.y), batch_size);
 
-    cuda_op::Ptr2dVarShapeNHWC<T> src_ptr(inData, numChannels);
-    cuda_op::Ptr2dVarShapeNHWC<T> dst_ptr(outData, numChannels);
-    cuda::Tensor2DWrap<int>       order_ptr(orderData);
+    cuda::ImageBatchVarShapeWrapNHWC<const T> src_ptr(inData, numChannels);
+    cuda::ImageBatchVarShapeWrapNHWC<T>       dst_ptr(outData, numChannels);
+    cuda::Tensor2DWrap<int>                   order_ptr(orderData);
 
     channel_reorder_kernel<T><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, order_ptr);
 

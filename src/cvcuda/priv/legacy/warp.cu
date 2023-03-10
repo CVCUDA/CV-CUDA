@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,7 +41,7 @@ __global__ void warp(const Filter src, Ptr2dNHWC<T> dst, Transform transform)
     if (x < dst.cols && y < dst.rows)
     {
         const float2 coord        = Transform::calcCoord(coeff, x, y);
-        *dst.ptr(batch_idx, y, x) = nvcv::cuda::SaturateCast<nvcv::cuda::BaseType<T>>(src(batch_idx, coord.y, coord.x));
+        *dst.ptr(batch_idx, y, x) = nvcv::cuda::SaturateCast<T>(src(batch_idx, coord.y, coord.x));
     }
 }
 
@@ -296,27 +296,11 @@ ErrorCode WarpPerspective::infer(const ITensorDataStridedCuda &inData, const ITe
     {
         cuda::math::Matrix<float, 3, 3> tempMatrixForInverse;
 
-        tempMatrixForInverse[0][0] = (float)(transMatrix[0]);
-        tempMatrixForInverse[0][1] = (float)(transMatrix[1]);
-        tempMatrixForInverse[0][2] = (float)(transMatrix[2]);
-        tempMatrixForInverse[1][0] = (float)(transMatrix[3]);
-        tempMatrixForInverse[1][1] = (float)(transMatrix[4]);
-        tempMatrixForInverse[1][2] = (float)(transMatrix[5]);
-        tempMatrixForInverse[2][0] = (float)(transMatrix[6]);
-        tempMatrixForInverse[2][1] = (float)(transMatrix[7]);
-        tempMatrixForInverse[2][2] = (float)(transMatrix[8]);
+        tempMatrixForInverse.load(transMatrix);
 
         math::inv_inplace(tempMatrixForInverse);
 
-        transform.xform[0] = tempMatrixForInverse[0][0];
-        transform.xform[1] = tempMatrixForInverse[0][1];
-        transform.xform[2] = tempMatrixForInverse[0][2];
-        transform.xform[3] = tempMatrixForInverse[1][0];
-        transform.xform[4] = tempMatrixForInverse[1][1];
-        transform.xform[5] = tempMatrixForInverse[1][2];
-        transform.xform[6] = tempMatrixForInverse[2][0];
-        transform.xform[7] = tempMatrixForInverse[2][1];
-        transform.xform[8] = tempMatrixForInverse[2][2];
+        tempMatrixForInverse.store(transform.xform);
     }
 
     func(*inAccess, *outAccess, transform, interpolation, borderMode, borderValue, stream);

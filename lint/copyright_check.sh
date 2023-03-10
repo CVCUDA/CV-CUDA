@@ -1,6 +1,6 @@
 #!/bin/bash -eE
 
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -132,15 +132,26 @@ function check_copyright_year()
         # it was modified now
         cur_year=$(date +'%Y') # YYYY
     else
-        # get last modification time
-        cur_year=$(git log -1 --pretty="format:%cs" "$file") # YYYY-MM-DD
-        cur_year=${cur_year%%-*} # YYYY
+        local is_grafted
+        is_grafted=$(git log --oneline -1 --decorate "$file" | grep grafted || true)
+        # if most recent commit is "grafted", it means that the repository is shallow,
+        # and the last commit this file was touched is not present. In this situation,
+        # we can't tell when it was last changed. Since this commit is old, we can assume
+        # that the copyright year is correct, i.e., the file wasn't touched recently.
+        # Shallow repos are common in gitlab CI.
+        if [ "$is_grafted" ]; then
+            return 0
+        else
+            # get last modification time
+            cur_year=$(git log -1 --pretty="format:%cs" "$file") # YYYY-MM-DD
+            cur_year=${cur_year%%-*} # YYYY
+        fi
     fi
 
     # Only start year?
     if [ -z "$end_year" ]; then
         if [[ $beg_year != "$cur_year" ]]; then
-            error "$file" "Invalid year '$beg_year' in copyright message. Must be '$cur_year'." && false
+            error "$file" "Invalid year '$beg_year' in copyright message. Must be '$beg_year-$cur_year'." && false
         fi
     # Range doesn't include current year?
     elif [[ $beg_year -ge $cur_year || $end_year -lt $cur_year ]]; then

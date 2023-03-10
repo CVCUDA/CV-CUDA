@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -123,7 +123,7 @@ ImageBatchVarShape WarpAffineVarShapeInto(ImageBatchVarShape &output, ImageBatch
     ResourceGuard guard(*pstream);
     guard.add(LockMode::LOCK_READ, {input, xform});
     guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*warpAffine});
+    guard.add(LockMode::LOCK_WRITE, {*warpAffine});
 
     warpAffine->submit(pstream->cudaHandle(), input, output, xform, flags, borderMode, bValue);
 

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,7 +41,7 @@ namespace nvcv::cuda::math {
  */
 
 /**
- * @brief Vector class to represent small vectors.
+ * Vector class to represent small vectors.
  *
  * @tparam T Vector value type.
  * @tparam N Number of elements.
@@ -50,13 +50,41 @@ template<class T, int N>
 class Vector
 {
 public:
-    // @brief Type of values in this vector.
+    // Type of values in this vector.
     using Type = T;
 
     /**
-     * @brief Get size (number of elements) of this vector
+     * Load values from a C-array into this vector.
      *
-     * @return Vector size
+     * @param[in] inVector Input C-array vector to load values from.
+     */
+    constexpr __host__ __device__ void load(const T *inVector)
+    {
+#pragma unroll
+        for (int i = 0; i < N; ++i)
+        {
+            m_data[i] = inVector[i];
+        }
+    }
+
+    /**
+     * Store values to a C-array from this vector.
+     *
+     * @param[out] outVector Output C-array vector to store values to.
+     */
+    constexpr __host__ __device__ void store(T *outVector) const
+    {
+#pragma unroll
+        for (int i = 0; i < N; ++i)
+        {
+            outVector[i] = m_data[i];
+        }
+    }
+
+    /**
+     * @brief Get size (number of elements) of this vector.
+     *
+     * @return Vector size.
      */
     constexpr __host__ __device__ int size() const
     {
@@ -64,11 +92,11 @@ public:
     }
 
     /**
-     * @brief Subscript operator for read-only access.
+     * Subscript operator for read-only access.
      *
-     * @param[in] i Position to access
+     * @param[in] i Position to access.
      *
-     * @return Value (constant reference) at given position
+     * @return Value (constant reference) at given position.
      */
     constexpr const __host__ __device__ T &operator[](int i) const
     {
@@ -77,11 +105,11 @@ public:
     }
 
     /**
-     * @brief Subscript operator for read-and-write access.
+     * Subscript operator for read-and-write access.
      *
-     * @param[in] i Position to access
+     * @param[in] i Position to access.
      *
-     * @return Value (reference) at given position
+     * @return Value (reference) at given position.
      */
     constexpr __host__ __device__ T &operator[](int i)
     {
@@ -90,9 +118,9 @@ public:
     }
 
     /**
-     * @brief Pointer-access operator (constant)
+     * Pointer-access operator (constant).
      *
-     * @return Pointer to the first element of this vector
+     * @return Pointer to the first element of this vector.
      */
     constexpr __host__ __device__ operator const T *() const
     {
@@ -100,9 +128,9 @@ public:
     }
 
     /**
-     * @brief Pointer-access operator
+     * Pointer-access operator.
      *
-     * @return Pointer to the first element of this vector
+     * @return Pointer to the first element of this vector.
      */
     constexpr __host__ __device__ operator T *()
     {
@@ -110,9 +138,9 @@ public:
     }
 
     /**
-     * @brief Begin (constant) pointer access
+     * Begin (constant) pointer access.
      *
-     * @return Pointer to the first element of this vector
+     * @return Pointer to the first element of this vector.
      */
     constexpr const __host__ __device__ T *cbegin() const
     {
@@ -120,9 +148,9 @@ public:
     }
 
     /**
-     * @brief Begin pointer access
+     * Begin pointer access.
      *
-     * @return Pointer to the first element of this vector
+     * @return Pointer to the first element of this vector.
      */
     constexpr __host__ __device__ T *begin()
     {
@@ -130,9 +158,9 @@ public:
     }
 
     /**
-     * @brief End (constant) pointer access
+     * End (constant) pointer access.
      *
-     * @return Pointer to the one-past-last element of this vector
+     * @return Pointer to the one-past-last element of this vector.
      */
     constexpr const __host__ __device__ T *cend() const
     {
@@ -140,9 +168,9 @@ public:
     }
 
     /**
-     * @brief End pointer access
+     * End pointer access.
      *
-     * @return Pointer to the one-past-last element of this vector
+     * @return Pointer to the one-past-last element of this vector.
      */
     constexpr __host__ __device__ T *end()
     {
@@ -150,9 +178,9 @@ public:
     }
 
     /**
-     * @brief Convert a vector of this class to an stl vector
+     * Convert a vector of this class to an stl vector.
      *
-     * @return STL std::vector
+     * @return STL std::vector.
      */
     std::vector<T> to_vector() const
     {
@@ -160,13 +188,13 @@ public:
     }
 
     /**
-     * @brief Get a sub-vector of this vector
+     * Get a sub-vector of this vector.
      *
-     * @param[in] beg Position to start getting values from this vector
+     * @param[in] beg Position to start getting values from this vector.
      *
-     * @return Vector of value from given index to the end
+     * @return Vector of value from given index to the end.
      *
-     * @tparam R Size of the sub-vector to be returned
+     * @tparam R Size of the sub-vector to be returned.
      */
     template<int R>
     constexpr __host__ __device__ Vector<T, R> subv(int beg) const
@@ -179,12 +207,12 @@ public:
         return v;
     }
 
-    // @brief On-purpose public data to allow POD-class direct initialization
+    // On-purpose public data to allow POD-class direct initialization.
     T m_data[N] = {};
 };
 
 /**
- * @brief Matrix class to represent small matrices.
+ * Matrix class to represent small matrices.
  *
  * @tparam T Matrix value type.
  * @tparam M Number of rows.
@@ -194,13 +222,51 @@ template<class T, int M, int N = M>
 class Matrix
 {
 public:
-    // @brief Type of values in this matrix.
+    // Type of values in this matrix.
     using Type = T;
 
     /**
-     * @brief Get number of rows of this matrix
+     * Load values from a flatten array into this matrix.
      *
-     * @return Number of rows
+     * @param[in] inFlattenMatrix Input flatten matrix to load values from.
+     */
+    constexpr __host__ __device__ void load(const T *inFlattenMatrix)
+    {
+        int idx = 0;
+#pragma unroll
+        for (int i = 0; i < M; ++i)
+        {
+#pragma unroll
+            for (int j = 0; j < N; ++j)
+            {
+                m_data[i][j] = inFlattenMatrix[idx++];
+            }
+        }
+    }
+
+    /**
+     * Store values to a flatten array from this matrix.
+     *
+     * @param[out] outFlattenMatrix Output flatten matrix to store values to.
+     */
+    constexpr __host__ __device__ void store(T *outFlattenMatrix) const
+    {
+        int idx = 0;
+#pragma unroll
+        for (int i = 0; i < M; ++i)
+        {
+#pragma unroll
+            for (int j = 0; j < N; ++j)
+            {
+                outFlattenMatrix[idx++] = m_data[i][j];
+            }
+        }
+    }
+
+    /**
+     * @brief Get number of rows of this matrix.
+     *
+     * @return Number of rows.
      */
     constexpr __host__ __device__ int rows() const
     {
@@ -208,9 +274,9 @@ public:
     }
 
     /**
-     * @brief Get number of columns of this matrix
+     * Get number of columns of this matrix.
      *
-     * @return Number of columns
+     * @return Number of columns.
      */
     constexpr __host__ __device__ int cols() const
     {
@@ -218,11 +284,11 @@ public:
     }
 
     /**
-     * @brief Subscript operator for read-only access.
+     * Subscript operator for read-only access.
      *
-     * @param[in] i Row of the matrix to access
+     * @param[in] i Row of the matrix to access.
      *
-     * @return Vector (constant reference) of the corresponding row
+     * @return Vector (constant reference) of the corresponding row.
      */
     constexpr const __host__ __device__ Vector<T, N> &operator[](int i) const
     {
@@ -231,11 +297,11 @@ public:
     }
 
     /**
-     * @brief Subscript operator for read-and-write access.
+     * Subscript operator for read-and-write access.
      *
-     * @param[in] i Row of the matrix to access
+     * @param[in] i Row of the matrix to access.
      *
-     * @return Vector (reference) of the corresponding row
+     * @return Vector (reference) of the corresponding row.
      */
     constexpr __host__ __device__ Vector<T, N> &operator[](int i)
     {
@@ -244,11 +310,11 @@ public:
     }
 
     /**
-     * @brief Subscript operator for read-only access of matrix elements.
+     * Subscript operator for read-only access of matrix elements.
      *
-     * @param[in] c Coordinates (y row and x column) of the matrix element to access
+     * @param[in] c Coordinates (y row and x column) of the matrix element to access.
      *
-     * @return Element (constant reference) of the corresponding row and column
+     * @return Element (constant reference) of the corresponding row and column.
      */
     constexpr const __host__ __device__ T &operator[](int2 c) const
     {
@@ -258,11 +324,11 @@ public:
     }
 
     /**
-     * @brief Subscript operator for read-and-write access of matrix elements.
+     * Subscript operator for read-and-write access of matrix elements.
      *
-     * @param[in] c Coordinates (y row and x column) of the matrix element to access
+     * @param[in] c Coordinates (y row and x column) of the matrix element to access.
      *
-     * @return Element (reference) of the corresponding row and column
+     * @return Element (reference) of the corresponding row and column.
      */
     constexpr __host__ __device__ T &operator[](int2 c)
     {
@@ -272,11 +338,11 @@ public:
     }
 
     /**
-     * @brief Get column j of this matrix
+     * Get column j of this matrix.
      *
-     * @param[in] j Index of column to get
+     * @param[in] j Index of column to get.
      *
-     * @return Column j (copied) as a vector
+     * @return Column j (copied) as a vector.
      */
     constexpr __host__ __device__ Vector<T, M> col(int j) const
     {
@@ -290,10 +356,10 @@ public:
     }
 
     /**
-     * @brief Set column j of this matrix
+     * Set column j of this matrix.
      *
-     * @param[in] j Index of column to set
-     * @param[in] c Vector to place in matrix column
+     * @param[in] j Index of column to set.
+     * @param[in] c Vector to place in matrix column.
      */
     constexpr __host__ __device__ void set_col(int j, const Vector<T, M> &c)
     {
@@ -315,12 +381,12 @@ public:
     }
 
     /**
-     * @brief Get a sub-matrix of this matrix
+     * Get a sub-matrix of this matrix.
      *
-     * @param[in] skip_i Row to skip when getting values from this matrix
-     * @param[in] skip_j Column to skip when getting values from this matrix
+     * @param[in] skip_i Row to skip when getting values from this matrix.
+     * @param[in] skip_j Column to skip when getting values from this matrix.
      *
-     * @return Matrix with one less row and one less column
+     * @return Matrix with one less row and one less column.
      */
     constexpr __host__ __device__ Matrix<T, M - 1, N - 1> subm(int skip_i, int skip_j) const
     {
@@ -347,7 +413,7 @@ public:
         return ret;
     }
 
-    // @brief On-purpose public data to allow POD-class direct initialization
+    // On-purpose public data to allow POD-class direct initialization.
     Vector<T, N> m_data[M];
 };
 

@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -224,9 +224,9 @@ __global__ void horizontal_pass_var_shape(const Ptr2dVarShapeNHWC<T1> src, Ptr2d
                            * h_k[x];
             }
             if (round_up)
-                *dst.ptr(batch_idx, dst_y, dst_x, c) = cuda::SaturateCast<cuda::BaseType<T2>>(std::round(h_ss));
+                *dst.ptr(batch_idx, dst_y, dst_x, c) = cuda::SaturateCast<T2>(std::round(h_ss));
             else
-                *dst.ptr(batch_idx, dst_y, dst_x, c) = cuda::SaturateCast<cuda::BaseType<T2>>(h_ss);
+                *dst.ptr(batch_idx, dst_y, dst_x, c) = cuda::SaturateCast<T2>(h_ss);
         }
     }
 }
@@ -286,9 +286,9 @@ __global__ void vertical_pass_var_shape(const Ptr2dNHWC<T1> src, Ptr2dVarShapeNH
             }
 
             if (round_up)
-                *dst.ptr(batch_idx, dst_y, dst_x, c) = cuda::SaturateCast<cuda::BaseType<T2>>(std::round(ss));
+                *dst.ptr(batch_idx, dst_y, dst_x, c) = cuda::SaturateCast<T2>(std::round(ss));
             else
-                *dst.ptr(batch_idx, dst_y, dst_x, c) = cuda::SaturateCast<cuda::BaseType<T2>>(ss);
+                *dst.ptr(batch_idx, dst_y, dst_x, c) = cuda::SaturateCast<T2>(ss);
         }
     }
 }

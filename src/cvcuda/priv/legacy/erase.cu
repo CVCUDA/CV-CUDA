@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -36,50 +36,47 @@ static __device__ int erase_hash(unsigned int x)
     return x;
 }
 
-template<typename D>
-__global__ void erase(nvcv::cuda::Tensor4DWrap<D> img, int imgH, int imgW, nvcv::cuda::Tensor1DWrap<int2> anchorVec,
+template<class Wrapper, typename T = typename Wrapper::ValueType>
+__global__ void erase(Wrapper img, int imgH, int imgW, nvcv::cuda::Tensor1DWrap<int2> anchorVec,
                       nvcv::cuda::Tensor1DWrap<int3> erasingVec, nvcv::cuda::Tensor1DWrap<float> valuesVec,
                       nvcv::cuda::Tensor1DWrap<int> imgIdxVec, int channels, int random, unsigned int seed)
 {
-    unsigned int id        = threadIdx.x + blockIdx.x * blockDim.x;
-    int          c         = blockIdx.y;
-    int          eraseId   = blockIdx.z;
-    int          anchor_x  = (*anchorVec.ptr(eraseId)).x;
-    int          anchor_y  = (*anchorVec.ptr(eraseId)).y;
-    int          erasing_w = (*erasingVec.ptr(eraseId)).x;
-    int          erasing_h = (*erasingVec.ptr(eraseId)).y;
-    int          erasing_c = (*erasingVec.ptr(eraseId)).z;
-    float        value     = *valuesVec.ptr(eraseId * channels + c);
-    int          batchId   = *imgIdxVec.ptr(eraseId);
-    if (id < erasing_h * erasing_w && (0x1 & (erasing_c >> c)) == 1)
+    unsigned int id      = threadIdx.x + blockIdx.x * blockDim.x;
+    int          c       = blockIdx.y;
+    int          eraseId = blockIdx.z;
+    int2         anchor  = anchorVec[eraseId];
+    int3         erasing = erasingVec[eraseId];
+    float        value   = valuesVec[eraseId * channels + c];
+    int          batchId = imgIdxVec[eraseId];
+    if (id < erasing.y * erasing.x && (0x1 & (erasing.z >> c)) == 1)
     {
-        int x = id % erasing_w;
-        int y = id / erasing_w;
-        if (anchor_x + x < imgW && anchor_y + y < imgH)
+        int x = id % erasing.x;
+        int y = id / erasing.x;
+        if (anchor.x + x < imgW && anchor.y + y < imgH)
         {
             if (random)
             {
                 unsigned int hashValue = seed + threadIdx.x
                                        + 0x26AD0C9 * blockDim.x * blockDim.y * blockDim.z * (blockIdx.x + 1)
                                              * (blockIdx.y + 1) * (blockIdx.z + 1);
-                *img.ptr(batchId, anchor_y + y, anchor_x + x, c)
-                    = nvcv::cuda::SaturateCast<D>(erase_hash(hashValue) % 256);
+                *img.ptr(batchId, anchor.y + y, anchor.x + x, c)
+                    = nvcv::cuda::SaturateCast<T>(erase_hash(hashValue) % 256);
             }
             else
             {
-                *img.ptr(batchId, anchor_y + y, anchor_x + x, c) = nvcv::cuda::SaturateCast<D>(value);
+                *img.ptr(batchId, anchor.y + y, anchor.x + x, c) = nvcv::cuda::SaturateCast<T>(value);
             }
         }
     }
 }
 
-template<typename D>
+template<typename T>
 void eraseCaller(const nvcv::ITensorDataStridedCuda &imgs, const nvcv::ITensorDataStridedCuda &anchor,
                  const nvcv::ITensorDataStridedCuda &erasing, const nvcv::ITensorDataStridedCuda &imgIdx,
                  const nvcv::ITensorDataStridedCuda &values, int max_eh, int max_ew, int num_erasing_area, bool random,
                  unsigned int seed, int rows, int cols, int channels, cudaStream_t stream)
 {
-    nvcv::cuda::Tensor4DWrap<D> src(imgs);
+    auto wrap = nvcv::cuda::CreateTensorWrapNHWC<T>(imgs);
 
     nvcv::cuda::Tensor1DWrap<int2>  anchorVec(anchor);
     nvcv::cuda::Tensor1DWrap<int3>  erasingVec(erasing);
@@ -90,8 +87,8 @@ void eraseCaller(const nvcv::ITensorDataStridedCuda &imgs, const nvcv::ITensorDa
     int  gridSize  = divUp(max_eh * max_ew, 1024);
     dim3 block(blockSize);
     dim3 grid(gridSize, channels, num_erasing_area);
-    erase<D><<<grid, block, 0, stream>>>(src, rows, cols, anchorVec, erasingVec, valuesVec, imgIdxVec, channels, random,
-                                         seed);
+    erase<<<grid, block, 0, stream>>>(wrap, rows, cols, anchorVec, erasingVec, valuesVec, imgIdxVec, channels, random,
+                                      seed);
 }
 
 struct MaxWH

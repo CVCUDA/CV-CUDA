@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -67,9 +67,31 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageBatchVarShapeConstruct,
         });
 }
 
-NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageBatchDestroy, (NVCVImageBatchHandle handle))
+NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvImageBatchDecRef, (NVCVImageBatchHandle handle, int *newRefCount))
 {
-    return priv::ProtectCall([&] { priv::DestroyCoreObject(handle); });
+    return priv::ProtectCall(
+        [&]
+        {
+            int newRef = priv::CoreObjectDecRef(handle);
+            if (newRefCount)
+                *newRefCount = newRef;
+        });
+}
+
+NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvImageBatchIncRef, (NVCVImageBatchHandle handle, int *newRefCount))
+{
+    return priv::ProtectCall(
+        [&]
+        {
+            int newRef = priv::CoreObjectIncRef(handle);
+            if (newRefCount)
+                *newRefCount = newRef;
+        });
+}
+
+NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvImageBatchRefCount, (NVCVImageBatchHandle handle, int *refCount))
+{
+    return priv::ProtectCall([&] { *refCount = priv::CoreObjectRefCount(handle); });
 }
 
 NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageBatchSetUserPointer, (NVCVImageBatchHandle handle, void *userPtr))

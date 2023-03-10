@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,9 +17,9 @@
 
 #include "Definitions.hpp"
 
-#include <util/HashMD5.hpp>
+#include <common/HashMD5.hpp>
 
-namespace util = nvcv::util;
+namespace test = nvcv::test;
 namespace t    = ::testing;
 
 namespace {
@@ -72,14 +72,14 @@ auto g_matchFPzero = t::ElementsAre
 
 TEST(HashMD5Tests, empty)
 {
-    util::HashMD5 hash;
+    test::HashMD5 hash;
 
     EXPECT_THAT(hash.getHashAndReset(), g_matchMd5Empty);
 }
 
 TEST(HashMD5Tests, fp32)
 {
-    util::HashMD5 hash;
+    test::HashMD5 hash;
 
     Update(hash, 3.141f);
     EXPECT_THAT(hash.getHashAndReset(), t::ElementsAre(0x37, 0x43, 0x6F, 0x40, 0x85, 0x70, 0xD3, 0xD1, 0xFC, 0xC7, 0x24,
@@ -88,7 +88,7 @@ TEST(HashMD5Tests, fp32)
 
 TEST(HashMD5Tests, fp32_different_mem_repr)
 {
-    util::HashMD5 hash;
+    test::HashMD5 hash;
 
     float posZero = +0.f;
     float negZero = -0.f;
@@ -104,7 +104,7 @@ TEST(HashMD5Tests, fp32_different_mem_repr)
 
 TEST(HashMD5Tests, fp64_different_mem_repr)
 {
-    util::HashMD5 hash;
+    test::HashMD5 hash;
 
     double posZero = +0.0;
     double negZero = -0.0;
@@ -120,7 +120,7 @@ TEST(HashMD5Tests, fp64_different_mem_repr)
 
 TEST(HashMD5Tests, fp64)
 {
-    util::HashMD5 hash;
+    test::HashMD5 hash;
 
     Update(hash, 3.141);
     EXPECT_THAT(hash.getHashAndReset(), t::ElementsAre(0x18, 0x3B, 0x85, 0x61, 0xD3, 0xEB, 0x14, 0x40, 0x0C, 0xE7, 0x9E,
@@ -129,7 +129,7 @@ TEST(HashMD5Tests, fp64)
 
 TEST(HashMD5Tests, vector)
 {
-    util::HashMD5 hash;
+    test::HashMD5 hash;
 
     // clang-format off
     const std::vector<float> vec1 = {0.5, -0.2, 3.141};
@@ -160,7 +160,7 @@ TEST(HashMD5Tests, vector)
 
 TEST(HashMD5Tests, reset_works)
 {
-    util::HashMD5 hash;
+    test::HashMD5 hash;
 
     Update(hash, g_str1);
     EXPECT_THAT(hash.getHashAndReset(), t::Not(g_matchMd5Empty));
@@ -170,7 +170,7 @@ TEST(HashMD5Tests, reset_works)
 
 TEST(HashMD5Tests, optional_empty)
 {
-    util::HashMD5 hash;
+    test::HashMD5 hash;
 
     std::optional<float> ofloat;
     Update(hash, ofloat);
@@ -180,7 +180,7 @@ TEST(HashMD5Tests, optional_empty)
 
 TEST(HashMD5Tests, optional_empty_same_hash_no_matter_what_type)
 {
-    util::HashMD5 hash;
+    test::HashMD5 hash;
 
     struct Foo
     {
@@ -198,7 +198,7 @@ TEST(HashMD5Tests, optional_empty_same_hash_no_matter_what_type)
 
 TEST(HashMD5Tests, char_ptr)
 {
-    util::HashMD5 hash;
+    test::HashMD5 hash;
 
     Update(hash, g_str1);
     EXPECT_THAT(hash.getHashAndReset(), g_matchMd5String1);
@@ -208,7 +208,7 @@ TEST(HashMD5Tests, char_ptr)
 
 TEST(HashMD5Tests, std_string)
 {
-    util::HashMD5 hash;
+    test::HashMD5 hash;
 
     Update(hash, std::string{g_str1});
     EXPECT_THAT(hash.getHashAndReset(), g_matchMd5String1);
@@ -216,7 +216,7 @@ TEST(HashMD5Tests, std_string)
 
 TEST(HashMD5Tests, std_string_view_char_ptr)
 {
-    util::HashMD5 hash;
+    test::HashMD5 hash;
 
     Update(hash, std::string_view{g_str1});
     EXPECT_THAT(hash.getHashAndReset(), g_matchMd5String1);
@@ -224,7 +224,7 @@ TEST(HashMD5Tests, std_string_view_char_ptr)
 
 TEST(HashMD5Tests, std_string_view_string)
 {
-    util::HashMD5 hash;
+    test::HashMD5 hash;
 
     Update(hash, std::string_view{std::string{g_str1}});
     EXPECT_THAT(hash.getHashAndReset(), g_matchMd5String1);
@@ -232,7 +232,7 @@ TEST(HashMD5Tests, std_string_view_string)
 
 TEST(HashMD5Tests, null_char_ptr)
 {
-    util::HashMD5 hash;
+    test::HashMD5 hash;
 
     Update(hash, (const char *)nullptr);
     EXPECT_THAT(hash.getHashAndReset(), t::ElementsAre(0xB0, 0x4D, 0x55, 0x50, 0x34, 0x11, 0x5F, 0x3D, 0xD7, 0xD8, 0xF3,
@@ -241,7 +241,7 @@ TEST(HashMD5Tests, null_char_ptr)
 
 TEST(HashMD5Tests, multiple)
 {
-    util::HashMD5 hash;
+    test::HashMD5 hash;
 
     Update(hash, (const char *)nullptr, 5.0, std::string("rod"), -78, std::vector{4, -5, 3});
     EXPECT_THAT(hash.getHashAndReset(), t::ElementsAre(0x82, 0xBC, 0xC1, 0x63, 0xF9, 0x39, 0x85, 0x96, 0x5B, 0x7F, 0x45,
@@ -267,7 +267,7 @@ struct Foo
 
 TEST(HashMD5Tests, typeids)
 {
-    util::HashMD5 hash;
+    test::HashMD5 hash;
 
     Update(hash, typeid(Foo<signed int>));
     EXPECT_THAT(hash.getHashAndReset(), t::ElementsAre(0xF3, 0xCA, 0xA5, 0xA5, 0x81, 0x1E, 0x00, 0xD6, 0x05, 0x6E, 0x8F,
@@ -280,7 +280,7 @@ TEST(HashMD5Tests, typeids)
 
 TEST(HashMD5Tests, unique_mem_repr)
 {
-    util::HashMD5 hash;
+    test::HashMD5 hash;
 
     struct Foo
     {

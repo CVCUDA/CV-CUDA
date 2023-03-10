@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,7 +38,7 @@ public:
         : m_shape(std::move(shape))
         , m_layout(std::move(layout))
     {
-        if (m_layout != TensorLayout::NONE && m_shape.rank() != m_layout.rank())
+        if (m_layout != TENSOR_NONE && m_shape.rank() != m_layout.rank())
         {
             throw Exception(Status::ERROR_INVALID_ARGUMENT, "Layout dimensions must match shape dimensions");
         }
@@ -116,7 +116,7 @@ public:
 
     friend std::ostream &operator<<(std::ostream &out, const TensorShape &ts)
     {
-        if (ts.m_layout == TensorLayout::NONE)
+        if (ts.m_layout == TENSOR_NONE)
         {
             return out << ts.m_shape;
         }

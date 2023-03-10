@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -56,8 +56,9 @@ __global__ void UpdateMasksAnchors(cuda::Tensor1DWrap<int2> masks, cuda::Tensor1
     anchors[coord] = anchor;
 }
 
-template<typename BT, typename D, typename BrdRd>
-__global__ void dilate(const BrdRd src, Ptr2dVarShapeNHWC<D> dst, cuda::Tensor1DWrap<int2> kernelSizeArr,
+template<class SrcWrapper, class DstWrapper, typename D = typename DstWrapper::ValueType,
+         typename BT = typename cuda::BaseType<D>>
+__global__ void dilate(const SrcWrapper src, DstWrapper dst, cuda::Tensor1DWrap<int2> kernelSizeArr,
                        cuda::Tensor1DWrap<int2> kernelAnchorArr, BT maxmin)
 {
     D         res       = cuda::SetAll<D>(maxmin);
@@ -65,24 +66,32 @@ __global__ void dilate(const BrdRd src, Ptr2dVarShapeNHWC<D> dst, cuda::Tensor1D
     const int y         = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
 
-    if (x >= dst.at_cols(batch_idx) || y >= dst.at_rows(batch_idx))
+    if (x >= dst.width(batch_idx) || y >= dst.height(batch_idx))
         return;
 
-    int2 kernelSize = *kernelSizeArr.ptr(batch_idx);
-    int2 anchor     = *kernelAnchorArr.ptr(batch_idx);
+    int2 kernelSize = kernelSizeArr[batch_idx];
+    int2 anchor     = kernelAnchorArr[batch_idx];
+
+    int3 srcCoord = {0, 0, batch_idx};
 
     for (int i = 0; i < kernelSize.y; ++i)
     {
+        srcCoord.y = y - anchor.y + i;
+
         for (int j = 0; j < kernelSize.x; ++j)
         {
-            res = cuda::max(res, src(batch_idx, y - anchor.y + i, x - anchor.x + j));
+            srcCoord.x = x - anchor.x + j;
+
+            res = cuda::max(res, src[srcCoord]);
         }
     }
-    *dst.ptr(batch_idx, y, x) = cuda::SaturateCast<cuda::BaseType<D>>(res);
+
+    *dst.ptr(batch_idx, y, x) = cuda::SaturateCast<D>(res);
 }
 
-template<typename BT, typename D, typename BrdRd>
-__global__ void erode(const BrdRd src, Ptr2dVarShapeNHWC<D> dst, cuda::Tensor1DWrap<int2> kernelSizeArr,
+template<class SrcWrapper, class DstWrapper, typename D = typename DstWrapper::ValueType,
+         typename BT = typename cuda::BaseType<D>>
+__global__ void erode(const SrcWrapper src, DstWrapper dst, cuda::Tensor1DWrap<int2> kernelSizeArr,
                       cuda::Tensor1DWrap<int2> kernelAnchorArr, BT maxmin)
 {
     D         res       = cuda::SetAll<D>(maxmin);
@@ -90,32 +99,36 @@ __global__ void erode(const BrdRd src, Ptr2dVarShapeNHWC<D> dst, cuda::Tensor1DW
     const int y         = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
 
-    if (x >= dst.at_cols(batch_idx) || y >= dst.at_rows(batch_idx))
+    if (x >= dst.width(batch_idx) || y >= dst.height(batch_idx))
         return;
 
-    int2 kernelSize = *kernelSizeArr.ptr(batch_idx);
-    int2 anchor     = *kernelAnchorArr.ptr(batch_idx);
+    int2 kernelSize = kernelSizeArr[batch_idx];
+    int2 anchor     = kernelAnchorArr[batch_idx];
+
+    int3 srcCoord = {0, 0, batch_idx};
 
     for (int i = 0; i < kernelSize.y; ++i)
     {
+        srcCoord.y = y - anchor.y + i;
+
         for (int j = 0; j < kernelSize.x; ++j)
         {
-            res = cuda::min(res, src(batch_idx, y - anchor.y + i, x - anchor.x + j));
+            srcCoord.x = x - anchor.x + j;
+
+            res = cuda::min(res, src[srcCoord]);
         }
     }
-    *dst.ptr(batch_idx, y, x) = cuda::SaturateCast<cuda::BaseType<D>>(res);
+
+    *dst.ptr(batch_idx, y, x) = cuda::SaturateCast<D>(res);
 }
 
-template<typename D, template<typename> class Brd>
+template<typename D, NVCVBorderType B>
 void MorphFilter2DCaller(const IImageBatchVarShapeDataStridedCuda &inData,
                          const IImageBatchVarShapeDataStridedCuda &outData, const ITensorDataStridedCuda &kMasks,
                          const ITensorDataStridedCuda &kAnchors, NVCVMorphologyType morph_type, cudaStream_t stream)
 {
     cuda::Tensor1DWrap<int2> kernelSizeTensor(kMasks);
     cuda::Tensor1DWrap<int2> kernelAnchorTensor(kAnchors);
-
-    Ptr2dVarShapeNHWC<D> src(inData);
-    Ptr2dVarShapeNHWC<D> dst(outData);
 
     Size2D outMaxSize = outData.maxSize();
     int    maxWidth   = outMaxSize.w;
@@ -124,11 +137,12 @@ void MorphFilter2DCaller(const IImageBatchVarShapeDataStridedCuda &inData,
     dim3 block(16, 16);
     dim3 grid(divUp(maxWidth, block.x), divUp(maxHeight, block.y), outData.numImages());
 
-    using BT   = nvcv::cuda::BaseType<D>;
-    BT     val = (morph_type == NVCVMorphologyType::NVCV_DILATE) ? std::numeric_limits<BT>::min()
-                                                                 : std::numeric_limits<BT>::max();
-    Brd<D> brd(0, 0, cuda::SetAll<D>(val));
-    BorderReader<Ptr2dVarShapeNHWC<D>, Brd<D>> brdSrc(src, brd);
+    using BT = nvcv::cuda::BaseType<D>;
+    BT val   = (morph_type == NVCVMorphologyType::NVCV_DILATE) ? std::numeric_limits<BT>::min()
+                                                               : std::numeric_limits<BT>::max();
+
+    cuda::BorderVarShapeWrap<const D, B> src(inData, cuda::SetAll<D>(val));
+    cuda::ImageBatchVarShapeWrap<D>      dst(outData);
 
 #ifdef CUDA_DEBUG_LOG
     checkCudaErrors(cudaStreamSynchronize(stream));
@@ -137,14 +151,12 @@ void MorphFilter2DCaller(const IImageBatchVarShapeDataStridedCuda &inData,
 
     if (morph_type == NVCVMorphologyType::NVCV_ERODE)
     {
-        erode<BT, D, BorderReader<Ptr2dVarShapeNHWC<D>, Brd<D>>>
-            <<<grid, block, 0, stream>>>(brdSrc, dst, kernelSizeTensor, kernelAnchorTensor, val);
+        erode<<<grid, block, 0, stream>>>(src, dst, kernelSizeTensor, kernelAnchorTensor, val);
         checkKernelErrors();
     }
     else if (morph_type == NVCVMorphologyType::NVCV_DILATE)
     {
-        dilate<BT, D, BorderReader<Ptr2dVarShapeNHWC<D>, Brd<D>>>
-            <<<grid, block, 0, stream>>>(brdSrc, dst, kernelSizeTensor, kernelAnchorTensor, val);
+        dilate<<<grid, block, 0, stream>>>(src, dst, kernelSizeTensor, kernelAnchorTensor, val);
         checkKernelErrors();
     }
 
@@ -164,8 +176,9 @@ void MorphFilter2D(const IImageBatchVarShapeDataStridedCuda &inData, const IImag
                            const ITensorDataStridedCuda &kAnchors, NVCVMorphologyType morph_type, cudaStream_t stream);
 
     static const func_t funcs[]
-        = {MorphFilter2DCaller<D, BrdConstant>, MorphFilter2DCaller<D, BrdReplicate>,
-           MorphFilter2DCaller<D, BrdReflect>, MorphFilter2DCaller<D, BrdWrap>, MorphFilter2DCaller<D, BrdReflect101>};
+        = {MorphFilter2DCaller<D, NVCV_BORDER_CONSTANT>, MorphFilter2DCaller<D, NVCV_BORDER_REPLICATE>,
+           MorphFilter2DCaller<D, NVCV_BORDER_REFLECT>, MorphFilter2DCaller<D, NVCV_BORDER_WRAP>,
+           MorphFilter2DCaller<D, NVCV_BORDER_REFLECT101>};
 
     funcs[borderMode](inData, outData, kMasks, kAnchors, morph_type, stream);
 }

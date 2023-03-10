@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -44,27 +44,12 @@ __global__ void inverseMatWarpPerspective(const int numImages, const cuda::Tenso
     }
 
     cuda::math::Matrix<float, 3, 3> transMatrix;
-    transMatrix[0][0] = (float)(*in.ptr(index, 0));
-    transMatrix[0][1] = (float)(*in.ptr(index, 1));
-    transMatrix[0][2] = (float)(*in.ptr(index, 2));
-    transMatrix[1][0] = (float)(*in.ptr(index, 3));
-    transMatrix[1][1] = (float)(*in.ptr(index, 4));
-    transMatrix[1][2] = (float)(*in.ptr(index, 5));
-    transMatrix[2][0] = (float)(*in.ptr(index, 6));
-    transMatrix[2][1] = (float)(*in.ptr(index, 7));
-    transMatrix[2][2] = (float)(*in.ptr(index, 8));
+
+    transMatrix.load(in.ptr(index));
 
     cuda::math::inv_inplace(transMatrix);
 
-    *out.ptr(index, 0) = transMatrix[0][0];
-    *out.ptr(index, 1) = transMatrix[0][1];
-    *out.ptr(index, 2) = transMatrix[0][2];
-    *out.ptr(index, 3) = transMatrix[1][0];
-    *out.ptr(index, 4) = transMatrix[1][1];
-    *out.ptr(index, 5) = transMatrix[1][2];
-    *out.ptr(index, 6) = transMatrix[2][0];
-    *out.ptr(index, 7) = transMatrix[2][1];
-    *out.ptr(index, 8) = transMatrix[2][2];
+    transMatrix.store(out.ptr(index));
 }
 
 __global__ void inverseMatWarpAffine(const int numImages, const cuda::Tensor2DWrap<float> in,
@@ -96,7 +81,7 @@ __global__ void inverseMatWarpAffine(const int numImages, const cuda::Tensor2DWr
 }
 
 template<class Transform, class Filter, typename T>
-__global__ void warp(const Filter src, Ptr2dVarShapeNHWC<T> dst, const cuda::Tensor2DWrap<float> d_coeffs_)
+__global__ void warp(const Filter src, cuda::ImageBatchVarShapeWrap<T> dst, const cuda::Tensor2DWrap<float> d_coeffs_)
 {
     const int x         = blockDim.x * blockIdx.x + threadIdx.x;
     const int y         = blockDim.y * blockIdx.y + threadIdx.y;
@@ -110,23 +95,24 @@ __global__ void warp(const Filter src, Ptr2dVarShapeNHWC<T> dst, const cuda::Ten
     }
     __syncthreads();
 
-    if (x < dst.at_cols(batch_idx) && y < dst.at_rows(batch_idx))
+    if (x < dst.width(batch_idx) && y < dst.height(batch_idx))
     {
         const float2 coord        = Transform::calcCoord(coeff, x, y);
-        *dst.ptr(batch_idx, y, x) = nvcv::cuda::SaturateCast<nvcv::cuda::BaseType<T>>(src(batch_idx, coord.y, coord.x));
+        *dst.ptr(batch_idx, y, x) = nvcv::cuda::SaturateCast<T>(src(batch_idx, coord.y, coord.x));
     }
 }
 
 template<class Transform, template<typename> class Filter, template<typename> class B, typename T>
 struct WarpDispatcher
 {
-    static void call(const Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> dst, const cuda::Tensor2DWrap<float> d_coeffs,
-                     const int max_height, const int max_width, const float4 borderValue, cudaStream_t stream)
+    static void call(const Ptr2dVarShapeNHWC<T> src, cuda::ImageBatchVarShapeWrap<T> dst,
+                     const cuda::Tensor2DWrap<float> d_coeffs, const int max_height, const int max_width,
+                     const float4 borderValue, cudaStream_t stream)
     {
         using work_type = nvcv::cuda::ConvertBaseTypeTo<float, T>;
 
         dim3 block(BLOCK, BLOCK / 4);
-        dim3 grid(divUp(max_width, block.x), divUp(max_height, block.y), dst.batches);
+        dim3 grid(divUp(max_width, block.x), divUp(max_height, block.y), src.batches);
 
         work_type    borderVal = nvcv::cuda::DropCast<NumComponents<T>>(borderValue);
         B<work_type> brd(0, 0, borderVal);
@@ -140,11 +126,11 @@ struct WarpDispatcher
 };
 
 template<class Transform, typename T>
-void warp_caller(const Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> dst, const cuda::Tensor2DWrap<float> transform,
-                 const int max_height, const int max_width, const int interpolation, const int borderMode,
-                 const float4 borderValue, cudaStream_t stream)
+void warp_caller(const Ptr2dVarShapeNHWC<T> src, cuda::ImageBatchVarShapeWrap<T> dst,
+                 const cuda::Tensor2DWrap<float> transform, const int max_height, const int max_width,
+                 const int interpolation, const int borderMode, const float4 borderValue, cudaStream_t stream)
 {
-    typedef void (*func_t)(const Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> dst,
+    typedef void (*func_t)(const Ptr2dVarShapeNHWC<T> src, cuda::ImageBatchVarShapeWrap<T> dst,
                            const cuda::Tensor2DWrap<float> transform, const int max_height, const int max_width,
                            const float4 borderValue, cudaStream_t stream);
 
@@ -174,8 +160,8 @@ void warpAffine(const nvcv::IImageBatchVarShapeDataStridedCuda &inData,
                 const nvcv::IImageBatchVarShapeDataStridedCuda &outData, const cuda::Tensor2DWrap<float> transform,
                 const int interpolation, const int borderMode, const float4 borderValue, cudaStream_t stream)
 {
-    cuda_op::Ptr2dVarShapeNHWC<T> src_ptr(inData);
-    cuda_op::Ptr2dVarShapeNHWC<T> dst_ptr(outData);
+    cuda_op::Ptr2dVarShapeNHWC<T>   src_ptr(inData);
+    cuda::ImageBatchVarShapeWrap<T> dst_ptr(outData);
 
     Size2D outMaxSize = outData.maxSize();
 
@@ -188,8 +174,8 @@ void warpPerspective(const nvcv::IImageBatchVarShapeDataStridedCuda &inData,
                      const nvcv::IImageBatchVarShapeDataStridedCuda &outData, const cuda::Tensor2DWrap<float> transform,
                      const int interpolation, const int borderMode, const float4 borderValue, cudaStream_t stream)
 {
-    Ptr2dVarShapeNHWC<T> src_ptr(inData);
-    Ptr2dVarShapeNHWC<T> dst_ptr(outData);
+    Ptr2dVarShapeNHWC<T>            src_ptr(inData);
+    cuda::ImageBatchVarShapeWrap<T> dst_ptr(outData);
 
     Size2D outMaxSize = outData.maxSize();
 

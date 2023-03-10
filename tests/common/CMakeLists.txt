@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,9 +17,18 @@
 # Utilities used in unit and system tests. They don't
 # call the public API functions.
 
+set(OPENSSL_USE_STATIC_LIBS TRUE)
+find_package(OpenSSL COMPONENTS Crypto REQUIRED)
+
+# on some distros (e.g CentOS 7) we need to add libz when
+# linking against static libcrypto
+set(ZLIB_USE_STATIC_LIBS TRUE)
+find_package(ZLIB REQUIRED)
+
 add_library(nvcv_test_common STATIC
     Printers.cpp
     TensorDataUtils.cpp
+    HashMD5.cpp
 )
 
 target_include_directories(nvcv_test_common
@@ -39,6 +48,9 @@ target_link_libraries(nvcv_test_common
         nvcv_types_headers
         nvcv_util
         nvcv_util_compat
+    PRIVATE
+        OpenSSL::Crypto
+	ZLIB::ZLIB
 )
 
 # nvcv_test_common_system ==============================

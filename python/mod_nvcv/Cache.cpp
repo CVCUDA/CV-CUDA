@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +21,7 @@
 #include <common/PyUtil.hpp>
 
 #include <mutex>
+#include <thread>
 #include <unordered_map>
 
 namespace nvcvpy::priv {
@@ -94,30 +95,49 @@ void Cache::add(CacheItem &item)
 
 void Cache::removeAllNotInUseMatching(const IKey &key)
 {
-    std::unique_lock<std::mutex> lk(pimpl->mtx);
+    // When we're removing items, we don't want their
+    // refcount getting to 0 while the mutex is locked, as
+    // deleting the object might recursively call removeAllNotInUseMatching,
+    // leading to a dead lock.
+    //
+    // Instead, we gather the removed objects in the vector below, which will
+    // be destroyed after the mutex is unlocked. When this happens, the items'
+    // refcount will be decremented, and any object destruction will happen
+    // after the mutex is unlocked. Recursion can happen in this case, but won't
+    // lead to deadlocks
+    std::vector<std::shared_ptr<CacheItem>> holdItemsUntilMtxUnlocked;
 
-    auto itrange = pimpl->items.equal_range(&key);
-
-    for (auto it = itrange.first; it != itrange.second;)
     {
-        if (!it->second->isInUse())
+        std::unique_lock<std::mutex> lk(pimpl->mtx);
+
+        auto itrange = pimpl->items.equal_range(&key);
+
+        int numItems = std::distance(itrange.first, itrange.second);
+
+        auto it = itrange.first;
+        for (int i = 0; i < numItems; ++i)
         {
-            pimpl->items.erase(it++);
-        }
-        else
-        {
-            ++it;
+            if (!it->second->isInUse())
+            {
+                holdItemsUntilMtxUnlocked.push_back(it->second);
+                pimpl->items.erase(it++);
+            }
+            else
+            {
+                ++it;
+            }
         }
     }
 }
 
 std::vector<std::shared_ptr<CacheItem>> Cache::fetch(const IKey &key) const
 {
+    std::vector<std::shared_ptr<CacheItem>> v;
+
     std::unique_lock<std::mutex> lk(pimpl->mtx);
 
     auto itrange = pimpl->items.equal_range(&key);
 
-    std::vector<std::shared_ptr<CacheItem>> v;
     v.reserve(distance(itrange.first, itrange.second));
 
     for (auto it = itrange.first; it != itrange.second; ++it)
@@ -139,10 +159,23 @@ void Cache::clear()
 
 void Cache::doIterateThroughItems(const std::function<void(CacheItem &item)> &fn) const
 {
-    std::unique_lock<std::mutex> lk(pimpl->mtx);
-    for (auto it = pimpl->items.begin(); it != pimpl->items.end(); ++it)
+    // To avoid keeping mutex locked for too long, let's first gather all items
+    // into a vector, unlock the mutex, and then iterate through them.
+    std::vector<std::shared_ptr<CacheItem>> v;
+
     {
-        fn(*it->second);
+        std::unique_lock<std::mutex> lk(pimpl->mtx);
+        v.reserve(pimpl->items.size());
+
+        for (auto it = pimpl->items.begin(); it != pimpl->items.end(); ++it)
+        {
+            v.push_back(it->second);
+        }
+    }
+
+    for (const std::shared_ptr<CacheItem> &item : v)
+    {
+        fn(*item);
     }
 }
 

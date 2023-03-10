@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,7 +16,7 @@
 import cvcuda
 import pytest as t
 import numpy as np
-import util
+import cvcuda_util as util
 
 RNG = np.random.default_rng(0)
 
@@ -25,38 +25,38 @@ RNG = np.random.default_rng(0)
     "input,out_shape,interp,fmt",
     [
         (
-            cvcuda.Tensor([5, 16, 23, 4], np.uint8, "NHWC"),
-            [5, 132, 15, 4],
+            cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"),
+            (5, 132, 15, 4),
             cvcuda.Interp.LINEAR,
             cvcuda.Format.RGB8,
         ),
         (
-            cvcuda.Tensor([5, 31, 31, 4], np.uint8, "NHWC"),
-            [5, 55, 55, 4],
+            cvcuda.Tensor((5, 31, 31, 4), np.uint8, "NHWC"),
+            (5, 55, 55, 4),
             cvcuda.Interp.LINEAR,
             cvcuda.Format.RGB8,
         ),
         (
-            cvcuda.Tensor([5, 55, 55, 4], np.uint8, "NHWC"),
-            [5, 31, 31, 4],
+            cvcuda.Tensor((5, 55, 55, 4), np.uint8, "NHWC"),
+            (5, 31, 31, 4),
             cvcuda.Interp.LINEAR,
             cvcuda.Format.RGB8,
         ),
         (
-            cvcuda.Tensor([5, 16, 23, 4], np.float32, "NHWC"),
-            [5, 132, 15, 4],
+            cvcuda.Tensor((5, 16, 23, 4), np.float32, "NHWC"),
+            (5, 132, 15, 4),
             cvcuda.Interp.LINEAR,
             cvcuda.Format.RGBf32,
         ),
         (
-            cvcuda.Tensor([5, 31, 31, 4], np.float32, "NHWC"),
-            [5, 55, 55, 4],
+            cvcuda.Tensor((5, 31, 31, 4), np.float32, "NHWC"),
+            (5, 55, 55, 4),
             cvcuda.Interp.LINEAR,
             cvcuda.Format.RGBf32,
         ),
         (
-            cvcuda.Tensor([5, 55, 55, 4], np.float32, "NHWC"),
-            [5, 31, 31, 4],
+            cvcuda.Tensor((5, 55, 55, 4), np.float32, "NHWC"),
+            (5, 31, 31, 4),
             cvcuda.Interp.LINEAR,
             cvcuda.Format.RGBf32,
         ),

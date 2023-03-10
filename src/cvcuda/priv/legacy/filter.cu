@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -35,7 +35,6 @@ __global__ void filter2D(SrcWrapper src, DstWrapper dst, Size2D dstSize, KernelW
                          int2 kernelAnchor)
 {
     using T         = typename DstWrapper::ValueType;
-    using BT        = cuda::BaseType<T>;
     using work_type = cuda::ConvertBaseTypeTo<float, T>;
     work_type res   = cuda::SetAll<work_type>(0);
 
@@ -61,7 +60,7 @@ __global__ void filter2D(SrcWrapper src, DstWrapper dst, Size2D dstSize, KernelW
         }
     }
 
-    *dst.ptr(batch_idx, y, x) = cuda::SaturateCast<BT>(res);
+    *dst.ptr(batch_idx, y, x) = cuda::SaturateCast<T>(res);
 }
 
 template<typename T, NVCVBorderType B, class KernelWrapper>
@@ -73,8 +72,8 @@ void Filter2DCaller(const ITensorDataStridedCuda &inData, const ITensorDataStrid
 
     Size2D dstSize{outAccess->numCols(), outAccess->numRows()};
 
-    cuda::BorderWrapNHW<const T, B> src(inData, cuda::SetAll<T>(borderValue));
-    cuda::Tensor3DWrap<T>           dst(outData);
+    auto src = cuda::CreateBorderWrapNHW<const T, B>(inData, cuda::SetAll<T>(borderValue));
+    auto dst = cuda::CreateTensorWrapNHW<T>(outData);
 
     dim3 block(16, 16);
     dim3 grid(divUp(dstSize.w, block.x), divUp(dstSize.h, block.y), outAccess->numSamples());

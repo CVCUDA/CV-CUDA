@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -83,6 +83,9 @@ TEST(Image, wip_cast)
     NVCVImageRequirements reqs;
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageCalcRequirements(163, 117, NVCV_IMAGE_FORMAT_RGBA8, 0, 0, &reqs));
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageConstruct(&reqs, nullptr, &handle));
+    int ref;
+    ASSERT_EQ(NVCV_SUCCESS, nvcvImageRefCount(handle, &ref));
+    EXPECT_EQ(ref, 1);
 
     // Size of the internal buffer used to store the WrapHandle object
     // we might have to create for containers allocated via C API.
@@ -111,7 +114,8 @@ TEST(Image, wip_cast)
     EXPECT_EQ(pimg, nvcv::DynamicCast<nvcv::IImage *>(handle));
     EXPECT_EQ(nullptr, nvcv::DynamicCast<nvcv::Image *>(handle));
 
-    nvcvImageDestroy(handle);
+    EXPECT_EQ(NVCV_SUCCESS, nvcvImageDecRef(handle, &ref));
+    EXPECT_EQ(ref, 0);
 }
 
 TEST(Image, wip_user_pointer)

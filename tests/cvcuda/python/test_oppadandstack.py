@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,7 +28,7 @@ import numpy as np
             (10, 5),
             cvcuda.Border.REPLICATE,
             0,
-            [1, 5, 10, 4],
+            (1, 5, 10, 4),
             "NHWC",
             np.uint8,
         ),
@@ -61,8 +61,8 @@ def test_op_padandstack(
         ]
     )
 
-    left = cvcuda.Tensor([1, 1, num_images, 1], np.int32, "NHWC")
-    top = cvcuda.Tensor([1, 1, num_images, 1], np.int32, "NHWC")
+    left = cvcuda.Tensor((1, 1, num_images, 1), np.int32, "NHWC")
+    top = cvcuda.Tensor((1, 1, num_images, 1), np.int32, "NHWC")
 
     out = cvcuda.padandstack(input, top, left)
     assert out.layout == out_layout

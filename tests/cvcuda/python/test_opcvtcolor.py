@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,7 +16,7 @@
 import cvcuda
 import pytest as t
 import numpy as np
-import util
+import cvcuda_util as util
 
 
 RNG = np.random.default_rng(0)
@@ -46,9 +46,9 @@ RNG = np.random.default_rng(0)
             cvcuda.Tensor(9, [66, 99], cvcuda.Format.RGB8),
         ),
         (
-            cvcuda.Tensor([1, 61, 62, 3], np.uint8, "NHWC"),
+            cvcuda.Tensor((1, 61, 62, 3), np.uint8, "NHWC"),
             cvcuda.ColorConversion.YUV2RGB,
-            cvcuda.Tensor([1, 61, 62, 3], np.uint8, "NHWC"),
+            cvcuda.Tensor((1, 61, 62, 3), np.uint8, "NHWC"),
         ),
     ],
 )

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -154,6 +154,47 @@ TYPED_TEST(LinAlgVectorTest, subv_works)
     EXPECT_EQ(test.size(), 1);
 
     EXPECT_EQ(test[0], 3);
+}
+
+TYPED_TEST(LinAlgVectorTest, load_works)
+{
+    using VectorType = ttype::GetType<TypeParam, 0>;
+    constexpr int N  = ttype::GetValue<TypeParam, 1>;
+
+    math::Vector<VectorType, N> vec;
+
+    std::array<VectorType, N> arr;
+
+    std::iota(arr.begin(), arr.end(), 0);
+
+    vec.load(arr.data());
+
+    for (int i = 0; i < N; ++i)
+    {
+        EXPECT_EQ(vec[i], i);
+    }
+}
+
+TYPED_TEST(LinAlgVectorTest, store_works)
+{
+    using VectorType = ttype::GetType<TypeParam, 0>;
+    constexpr int N  = ttype::GetValue<TypeParam, 1>;
+
+    math::Vector<VectorType, N> vec;
+
+    for (int i = 0; i < N; ++i)
+    {
+        vec[i] = i;
+    }
+
+    std::array<VectorType, N> test;
+
+    vec.store(test.data());
+
+    std::array<VectorType, N> gold;
+    std::iota(gold.begin(), gold.end(), 0);
+
+    EXPECT_EQ(test, gold);
 }
 
 // --------------------------- Testing LinAlgMatrix ----------------------------
@@ -321,6 +362,57 @@ TYPED_TEST(LinAlgMatrixTest, set_col_with_pointer_works)
     {
         EXPECT_EQ(mat[i][0], i);
     }
+}
+
+TYPED_TEST(LinAlgMatrixTest, load_works)
+{
+    using MatrixType = ttype::GetType<TypeParam, 0>;
+    constexpr int M  = ttype::GetValue<TypeParam, 1>;
+    constexpr int N  = ttype::GetValue<TypeParam, 2>;
+
+    math::Matrix<MatrixType, M, N> mat;
+
+    std::array<MatrixType, M * N> arr;
+
+    std::iota(arr.begin(), arr.end(), 0);
+
+    mat.load(arr.data());
+
+    int val = 0;
+    for (int i = 0; i < M; ++i)
+    {
+        for (int j = 0; j < N; ++j)
+        {
+            EXPECT_EQ(mat[i][j], val++);
+        }
+    }
+}
+
+TYPED_TEST(LinAlgMatrixTest, store_works)
+{
+    using MatrixType = ttype::GetType<TypeParam, 0>;
+    constexpr int M  = ttype::GetValue<TypeParam, 1>;
+    constexpr int N  = ttype::GetValue<TypeParam, 2>;
+
+    math::Matrix<MatrixType, M, N> mat;
+
+    int val = 0;
+    for (int i = 0; i < M; ++i)
+    {
+        for (int j = 0; j < N; ++j)
+        {
+            mat[i][j] = val++;
+        }
+    }
+
+    std::array<MatrixType, M * N> test;
+
+    mat.store(test.data());
+
+    std::array<MatrixType, M * N> gold;
+    std::iota(gold.begin(), gold.end(), 0);
+
+    EXPECT_EQ(test, gold);
 }
 
 // ------------------------ Testing LinAlg sub-matrix --------------------------

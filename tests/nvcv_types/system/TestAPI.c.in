@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,27 +15,7 @@
  * limitations under the License.
  */
 
-// Include everything to check if C compiler groks them.
-#include <nvcv/ColorSpec.h>
-#include <nvcv/Config.h>
-#include <nvcv/DataLayout.h>
-#include <nvcv/DataType.h>
-#include <nvcv/Fwd.h>
-#include <nvcv/Image.h>
-#include <nvcv/ImageBatch.h>
-#include <nvcv/ImageBatchData.h>
-#include <nvcv/ImageData.h>
-#include <nvcv/ImageFormat.h>
-#include <nvcv/Rect.h>
-#include <nvcv/Status.h>
-#include <nvcv/Tensor.h>
-#include <nvcv/TensorData.h>
-#include <nvcv/TensorLayout.h>
-#include <nvcv/TensorShape.h>
-#include <nvcv/Version.h>
-#include <nvcv/alloc/Allocator.h>
-#include <nvcv/alloc/Fwd.h>
-#include <nvcv/alloc/Requirements.h>
+@ALL_HEADERS@
 
 #pragma GCC diagnostic ignored "-Wunused-function"
 #pragma GCC diagnostic ignored "-Wunused-variable"

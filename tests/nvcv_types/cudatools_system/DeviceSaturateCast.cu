@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,12 +22,14 @@
 
 namespace cuda = nvcv::cuda;
 
+using schar = signed char;
+
 // ----------------- To allow testing device-side SaturateCast -----------------
 
 template<typename TargetDataType, typename SourceDataType>
 __global__ void RunSaturateCast(TargetDataType *out, SourceDataType u)
 {
-    out[0] = cuda::SaturateCast<cuda::BaseType<TargetDataType>>(u);
+    out[0] = cuda::SaturateCast<TargetDataType>(u);
 }
 
 template<typename TargetDataType, typename SourceDataType>
@@ -53,7 +55,7 @@ TargetDataType DeviceRunSaturateCast(SourceDataType pix)
 #define NVCV_TEST_INST(TARGET_DATA_TYPE, SOURCE_DATA_TYPE) \
     template TARGET_DATA_TYPE DeviceRunSaturateCast(SOURCE_DATA_TYPE pix)
 
-NVCV_TEST_INST(char, char);
+NVCV_TEST_INST(schar, schar);
 NVCV_TEST_INST(short, short);
 NVCV_TEST_INST(int, int);
 NVCV_TEST_INST(float, float);

@@ -19,7 +19,8 @@ case "$1" in
     configure)
         update-alternatives --install /usr/include/nvcv nvcv-dev @CMAKE_INSTALL_PREFIX@/@CMAKE_INSTALL_INCLUDEDIR@/nvcv @NVCV_VERSION_API_CODE@ \
                             --slave @CVCUDA_USR_LIB_DIR@/@NVCV_LIB_LINKER_FILE_NAME@ @NVCV_LIB_LINKER_FILE_NAME@ @CMAKE_INSTALL_PREFIX@/@CMAKE_INSTALL_LIBDIR@/@NVCV_LIB_LINKER_FILE_NAME@ \
-                            --slave /usr/include/cvcuda cvcuda-dev @CMAKE_INSTALL_PREFIX@/@CMAKE_INSTALL_INCLUDEDIR@/cvcuda
+                            --slave /usr/include/cvcuda cvcuda-dev @CMAKE_INSTALL_PREFIX@/@CMAKE_INSTALL_INCLUDEDIR@/cvcuda \
+                            --slave @CVCUDA_USR_LIB_DIR@/@CVCUDA_LIB_LINKER_FILE_NAME@ @CVCUDA_LIB_LINKER_FILE_NAME@ @CMAKE_INSTALL_PREFIX@/@CMAKE_INSTALL_LIBDIR@/@CVCUDA_LIB_LINKER_FILE_NAME@
 
         cmakepath=/usr/lib/@CMAKE_LIBRARY_ARCHITECTURE@/cmake/
         nvcv_types_pkg="@NVCV_TYPES_PACKAGE_NAME@"

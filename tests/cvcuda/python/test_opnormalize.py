@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,7 +16,7 @@
 import cvcuda
 import pytest as t
 import numpy as np
-import util
+import cvcuda_util as util
 
 
 RNG = np.random.default_rng(0)
@@ -26,36 +26,36 @@ RNG = np.random.default_rng(0)
     "input,base,scale,globalscale,globalshift,epsilon,flags",
     [
         (
-            cvcuda.Tensor([5, 16, 23, 4], np.uint8, "NHWC"),
-            cvcuda.Tensor([1, 1], np.float32, "HW"),
-            cvcuda.Tensor([1, 1], np.float32, "HW"),
+            cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"),
+            cvcuda.Tensor((1, 1), np.float32, "HW"),
+            cvcuda.Tensor((1, 1), np.float32, "HW"),
             1,
             2,
             3,
             None,
         ),
         (
-            cvcuda.Tensor([5, 16, 23, 4], np.uint8, "NHWC"),
-            cvcuda.Tensor([16, 1], np.float32, "HW"),
-            cvcuda.Tensor([16, 1], np.float32, "HW"),
+            cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"),
+            cvcuda.Tensor((16, 1), np.float32, "HW"),
+            cvcuda.Tensor((16, 1), np.float32, "HW"),
             1,
             2,
             3,
             cvcuda.NormalizeFlags.SCALE_IS_STDDEV,
         ),
         (
-            cvcuda.Tensor([5, 16, 23, 4], np.uint8, "NHWC"),
-            cvcuda.Tensor([1, 23], np.float32, "HW"),
-            cvcuda.Tensor([1, 23], np.float32, "HW"),
+            cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"),
+            cvcuda.Tensor((1, 23), np.float32, "HW"),
+            cvcuda.Tensor((1, 23), np.float32, "HW"),
             1,
             2,
             3,
             None,
         ),
         (
-            cvcuda.Tensor([5, 16, 23, 4], np.uint8, "NHWC"),
-            cvcuda.Tensor([16, 23], np.float32, "HW"),
-            cvcuda.Tensor([16, 23], np.float32, "HW"),
+            cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"),
+            cvcuda.Tensor((16, 23), np.float32, "HW"),
+            cvcuda.Tensor((16, 23), np.float32, "HW"),
             1,
             2,
             3,
@@ -116,8 +116,8 @@ def test_op_normalize(input, base, scale, globalscale, globalshift, epsilon, fla
             cvcuda.Format.RGB8,
             (16, 23),
             128.0,
-            cvcuda.Tensor([1, 1, 1, 5], np.float32, "NHWC"),
-            cvcuda.Tensor([1, 1, 1, 5], np.float32, "NHWC"),
+            cvcuda.Tensor((1, 1, 1, 5), np.float32, "NHWC"),
+            cvcuda.Tensor((1, 1, 1, 5), np.float32, "NHWC"),
             1,
             2,
             3,
@@ -128,8 +128,8 @@ def test_op_normalize(input, base, scale, globalscale, globalshift, epsilon, fla
             cvcuda.Format.RGB8,
             (16, 23),
             256.0,
-            cvcuda.Tensor([1, 1, 1, 5], np.float32, "NHWC"),
-            cvcuda.Tensor([1, 1, 1, 5], np.float32, "NHWC"),
+            cvcuda.Tensor((1, 1, 1, 5), np.float32, "NHWC"),
+            cvcuda.Tensor((1, 1, 1, 5), np.float32, "NHWC"),
             1,
             2,
             3,

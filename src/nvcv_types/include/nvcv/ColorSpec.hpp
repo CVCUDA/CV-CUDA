@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -127,8 +127,8 @@ public:
     {
     }
 
-    constexpr ColorSpec ConstCreate(ColorSpace cspace, YCbCrEncoding encoding, ColorTransferFunction xferFunc,
-                                    ColorRange range, ChromaLocation locHoriz, ChromaLocation locVert);
+    constexpr static ColorSpec ConstCreate(ColorSpace cspace, YCbCrEncoding encoding, ColorTransferFunction xferFunc,
+                                           ColorRange range, ChromaLocation locHoriz, ChromaLocation locVert);
 
     ColorSpec(ColorSpace cspace, YCbCrEncoding encoding, ColorTransferFunction xferFunc, ColorRange range,
               ChromaLocation locHoriz, ChromaLocation locVert);
@@ -227,7 +227,7 @@ inline ColorSpace ColorSpec::colorSpace() const
 {
     NVCVColorSpace out;
     detail::CheckThrow(nvcvColorSpecGetColorSpace(m_cspec, &out));
-    return ColorSpace{out};
+    return static_cast<ColorSpace>(out);
 }
 
 inline ColorSpec ColorSpec::colorSpace(ColorSpace cspace) const

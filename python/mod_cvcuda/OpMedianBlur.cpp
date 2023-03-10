@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -73,7 +73,7 @@ ImageBatchVarShape VarShapeMedianBlurInto(ImageBatchVarShape &output, ImageBatch
     ResourceGuard guard(*pstream);
     guard.add(LockMode::LOCK_READ, {input, ksize});
     guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*median_blur});
+    guard.add(LockMode::LOCK_WRITE, {*median_blur});
 
     median_blur->submit(pstream->cudaHandle(), input, output, ksize);
 

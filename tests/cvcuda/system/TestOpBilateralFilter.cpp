@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "Definitions.hpp"
 
+#include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpBilateralFilter.hpp>
 #include <nvcv/Image.hpp>
@@ -179,8 +180,8 @@ TEST_P(OpBilateralFilter, BilateralFilter_packed)
     float sigmaSpace     = GetParamValue<4>();
     int   numberOfImages = GetParamValue<5>();
 
-    nvcv::Tensor imgOut(numberOfImages, {width, height}, nvcv::FMT_U8);
-    nvcv::Tensor imgIn(numberOfImages, {width, height}, nvcv::FMT_U8);
+    nvcv::Tensor imgOut = test::CreateTensor(numberOfImages, width, height, nvcv::FMT_U8);
+    nvcv::Tensor imgIn  = test::CreateTensor(numberOfImages, width, height, nvcv::FMT_U8);
 
     const auto *inData  = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(imgIn.exportData());
     const auto *outData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(imgOut.exportData());
@@ -194,9 +195,11 @@ TEST_P(OpBilateralFilter, BilateralFilter_packed)
     auto outAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*outData);
     ASSERT_TRUE(outAccess);
 
-    int inBufSize
-        = inAccess->sampleStride() * inAccess->numSamples(); //img stride can be more than the image 64, 128, etc
-    int outBufSize = outAccess->sampleStride() * outAccess->numSamples();
+    int inSampleStride  = inAccess->numRows() * inAccess->rowStride();
+    int outSampleStride = outAccess->numRows() * outAccess->rowStride();
+
+    int inBufSize  = inSampleStride * inAccess->numSamples();
+    int outBufSize = outSampleStride * outAccess->numSamples();
 
     std::vector<uint8_t> vIn(inBufSize);
     std::vector<uint8_t> vOut(outBufSize);
@@ -207,7 +210,7 @@ TEST_P(OpBilateralFilter, BilateralFilter_packed)
 
     EXPECT_EQ(cudaSuccess, cudaMemcpy(inData->basePtr(), inGold.data(), inBufSize, cudaMemcpyHostToDevice));
     CPUBilateralFilterTensor(inGold, outGold, inAccess->numCols(), inAccess->numRows(), inAccess->numSamples(),
-                             inAccess->rowStride(), inAccess->sampleStride(), d, sigmaColor, sigmaSpace);
+                             inAccess->rowStride(), inSampleStride, d, sigmaColor, sigmaSpace);
 
     // run operator
     cvcuda::BilateralFilter bilateralFilterOp;
@@ -221,7 +224,7 @@ TEST_P(OpBilateralFilter, BilateralFilter_packed)
     EXPECT_EQ(cudaSuccess, cudaMemcpy(outTest.data(), outData->basePtr(), outBufSize, cudaMemcpyDeviceToHost));
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
     ASSERT_TRUE(CompareTensors(outTest, outGold, inAccess->numCols(), inAccess->numRows(), inAccess->numSamples(),
-                               inAccess->rowStride(), inAccess->sampleStride(), 0.9f));
+                               inAccess->rowStride(), inSampleStride, 0.9f));
 }
 
 TEST_P(OpBilateralFilter, BilateralFilter_VarShape)

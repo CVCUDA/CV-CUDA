@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -181,6 +181,46 @@ NVCV_TEST_INST_MAX(uchar4);
 
 #undef NVCV_TEST_INST_MAX
 
+// --------------------- To allow testing device-side pow ----------------------
+
+template<typename Type1, typename Type2>
+__global__ void RunPow(Type1 *out, Type1 x, Type2 y)
+{
+    out[0] = cuda::pow(x, y);
+}
+
+template<typename Type1, typename Type2>
+Type1 DeviceRunPow(Type1 x, Type2 y)
+{
+    Type1 *dTest;
+    Type1  hTest[1];
+
+    EXPECT_EQ(cudaSuccess, cudaMalloc(&dTest, sizeof(Type1)));
+
+    RunPow<<<1, 1>>>(dTest, x, y);
+
+    EXPECT_EQ(cudaSuccess, cudaDeviceSynchronize());
+    EXPECT_EQ(cudaSuccess, cudaMemcpy(hTest, dTest, sizeof(Type1), cudaMemcpyDeviceToHost));
+
+    EXPECT_EQ(cudaSuccess, cudaFree(dTest));
+
+    return hTest[0];
+}
+
+#define NVCV_TEST_INST_POW(TYPE1, TYPE2) template TYPE1 DeviceRunPow(TYPE1 x, TYPE2 y)
+
+NVCV_TEST_INST_POW(unsigned char, unsigned char);
+NVCV_TEST_INST_POW(unsigned char, int);
+NVCV_TEST_INST_POW(float, float);
+NVCV_TEST_INST_POW(double, unsigned char);
+
+NVCV_TEST_INST_POW(char1, char1);
+NVCV_TEST_INST_POW(uint2, uint2);
+NVCV_TEST_INST_POW(float3, int);
+NVCV_TEST_INST_POW(double4, float4);
+
+#undef NVCV_TEST_INST_POW
+
 // --------------------- To allow testing device-side exp ----------------------
 
 template<typename Type>
@@ -303,3 +343,43 @@ NVCV_TEST_INST_ABS(short2);
 NVCV_TEST_INST_ABS(char4);
 
 #undef NVCV_TEST_INST_ABS
+
+// -------------------- To allow testing device-side clamp ---------------------
+
+template<typename Type1, typename Type2>
+__global__ void RunClamp(Type1 *out, Type1 u, Type2 lo, Type2 hi)
+{
+    out[0] = cuda::clamp(u, lo, hi);
+}
+
+template<typename Type1, typename Type2>
+Type1 DeviceRunClamp(Type1 u, Type2 lo, Type2 hi)
+{
+    Type1 *dTest;
+    Type1  hTest[1];
+
+    EXPECT_EQ(cudaSuccess, cudaMalloc(&dTest, sizeof(Type1)));
+
+    RunClamp<<<1, 1>>>(dTest, u, lo, hi);
+
+    EXPECT_EQ(cudaSuccess, cudaDeviceSynchronize());
+    EXPECT_EQ(cudaSuccess, cudaMemcpy(hTest, dTest, sizeof(Type1), cudaMemcpyDeviceToHost));
+
+    EXPECT_EQ(cudaSuccess, cudaFree(dTest));
+
+    return hTest[0];
+}
+
+#define NVCV_TEST_INST_CLAMP(TYPE1, TYPE2) template TYPE1 DeviceRunClamp(TYPE1 u, TYPE2 lo, TYPE2 hi)
+
+NVCV_TEST_INST_CLAMP(unsigned char, unsigned char);
+NVCV_TEST_INST_CLAMP(int, unsigned char);
+NVCV_TEST_INST_CLAMP(float, unsigned short);
+NVCV_TEST_INST_CLAMP(double, double);
+
+NVCV_TEST_INST_CLAMP(char1, char1);
+NVCV_TEST_INST_CLAMP(uint2, uint2);
+NVCV_TEST_INST_CLAMP(float3, short);
+NVCV_TEST_INST_CLAMP(double4, int4);
+
+#undef NVCV_TEST_INST_CLAMP

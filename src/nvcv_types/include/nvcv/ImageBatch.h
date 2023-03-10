@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -101,20 +101,51 @@ NVCV_PUBLIC NVCVStatus nvcvImageBatchVarShapeCalcRequirements(int32_t           
 NVCV_PUBLIC NVCVStatus nvcvImageBatchVarShapeConstruct(const NVCVImageBatchVarShapeRequirements *reqs,
                                                        NVCVAllocatorHandle alloc, NVCVImageBatchHandle *handle);
 
-/** Destroys an existing image batch instance.
+/** Decrements the reference count of an existing image batch instance.
  *
+ * The image batch is destroyed when its reference count reaches zero.
+
  * If the image has type @ref NVCV_TYPE_IMAGEBATCH_TENSOR_WRAPDATA and has a cleanup function defined,
  * cleanup will be called.
  *
  * @note The image batch object must not be in use in current and future operations.
  *
- * @param [in] handle Image batch to be destroyed.
- *                    If NULL, no operation is performed, successfully.
- *                    + The handle must have been created with any of the nvcvImageBatchXXXConstruct functions.
+ * @param [in] handle       Image batch to be destroyed.
+ *                          If NULL, no operation is performed, successfully.
+ *                          + The handle must have been created with any of the nvcvImageBatchXXXConstruct functions.
+ *
+ * @param [out] newRefCount The decremented reference count. If the return value is 0, the object was destroyed.
+ *                          Can be NULL, if the caller isn't interested in the new reference count.
+ *
+ * @retval #NVCV_ERROR_INVALID_ARGUMENT The handle is invalid
+ * @retval #NVCV_SUCCESS                Operation executed successfully.
  */
-NVCV_PUBLIC void nvcvImageBatchDestroy(NVCVImageBatchHandle handle);
+NVCV_PUBLIC NVCVStatus nvcvImageBatchDecRef(NVCVImageBatchHandle handle, int *newRefCount);
 
-/** Associates a user pointer to the image batch handle.
+/** Increments the reference count of an imagebatch.
+ *
+ * @param [in] handle       Image batch to be retained.
+ *
+ * @param [out] newRefCount The incremented reference count.
+ *                          Can be NULL, if the caller isn't interested in the new reference count.
+ *
+ * @retval #NVCV_ERROR_INVALID_ARGUMENT The handle is invalid
+ * @retval #NVCV_SUCCESS                Operation executed successfully.
+ */
+NVCV_PUBLIC NVCVStatus nvcvImageBatchIncRef(NVCVImageBatchHandle handle, int *newRefCount);
+
+/** Returns the current reference count of an image batch
+ *
+ * @param [in] handle       The handle whose reference count is to be obtained.
+ *
+ * @param [out] newRefCount The reference count.
+ *
+ * @retval #NVCV_ERROR_INVALID_ARGUMENT The handle is invalid
+ * @retval #NVCV_SUCCESS                Operation executed successfully.
+ */
+NVCV_PUBLIC NVCVStatus nvcvImageBatchRefCount(NVCVImageBatchHandle handle, int *newRefCount);
+
+/** Associates a user pointer to the image batch batch handle.
  *
  * This pointer can be used to associate any kind of data with the image batch object.
  *

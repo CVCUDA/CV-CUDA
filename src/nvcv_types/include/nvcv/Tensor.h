@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -170,7 +170,7 @@ NVCV_PUBLIC NVCVStatus nvcvTensorConstruct(const NVCVTensorRequirements *reqs, N
  *                    - \ref NVCV_TENSOR_BUFFER_STRIDED_CUDA
  *
  * @param [in] cleanup Cleanup function to be called when the tensor is destroyed
- *                     via @ref nvcvTensorDestroy.
+ *                     via @ref nvcvTensorDecRef.
  *                     If NULL, no cleanup function is defined.
  *
  * @param [in] ctxCleanup Pointer to be passed unchanged to the cleanup function, if defined.
@@ -216,18 +216,49 @@ NVCV_PUBLIC NVCVStatus nvcvTensorWrapDataConstruct(const NVCVTensorData *data, N
  */
 NVCV_PUBLIC NVCVStatus nvcvTensorWrapImageConstruct(NVCVImageHandle img, NVCVTensorHandle *handle);
 
-/** Destroys an existing tensor instance.
+/** Decrements the reference count of an existing tensor instance.
+ *
+ * The tensor is destroyed when its reference count reaches zero.
  *
  * If the tensor is wrapping external data and a cleanup function has been defined, defined,
  * it will be called.
  *
  * @note The tensor object must not be in use in current and future operations.
  *
- * @param [in] handle Tensor to be destroyed.
- *                    If NULL, no operation is performed, successfully.
- *                    + The handle must have been created with any of the nvcvTensorConstruct functions.
+ * @param [in] handle       Tensor to be destroyed.
+ *                          If NULL, no operation is performed, successfully.
+ *                          + The handle must have been created with any of the nvcvTensorConstruct functions.
+ *
+ * @param [out] newRefCount The decremented reference count. If the return value is 0, the object was destroyed.
+ *                          Can be NULL, if the caller isn't interested in the new reference count.
+ *
+ * @retval #NVCV_ERROR_INVALID_ARGUMENT The handle is invalid
+ * @retval #NVCV_SUCCESS                Operation executed successfully.
  */
-NVCV_PUBLIC void nvcvTensorDestroy(NVCVTensorHandle handle);
+NVCV_PUBLIC NVCVStatus nvcvTensorDecRef(NVCVTensorHandle handle, int *newRefCount);
+
+/** Increments the reference count of an tensor.
+ *
+ * @param [in] handle       Tensor to be retained.
+ *
+ * @param [out] newRefCount The incremented reference count.
+ *                          Can be NULL, if the caller isn't interested in the new reference count.
+ *
+ * @retval #NVCV_ERROR_INVALID_ARGUMENT The handle is invalid
+ * @retval #NVCV_SUCCESS                Operation executed successfully.
+ */
+NVCV_PUBLIC NVCVStatus nvcvTensorIncRef(NVCVTensorHandle handle, int *newRefCount);
+
+/** Returns the current reference count of an tensor
+ *
+ * @param [in] handle       The handle whose reference count is to be obtained.
+ *
+ * @param [out] newRefCount The reference count.
+ *
+ * @retval #NVCV_ERROR_INVALID_ARGUMENT The handle is invalid
+ * @retval #NVCV_SUCCESS                Operation executed successfully.
+ */
+NVCV_PUBLIC NVCVStatus nvcvTensorRefCount(NVCVTensorHandle handle, int *newRefCount);
 
 /** Associates a user pointer to the tensor handle.
  *

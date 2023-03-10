@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,6 +34,7 @@ add_library(cvcuda SHARED
     OpConv2D.cpp
     OpMedianBlur.cpp
     OpBilateralFilter.cpp
+    OpJointBilateralFilter.cpp
     OpMorphology.cpp
     OpCvtColor.cpp
     OpWarpAffine.cpp
@@ -46,8 +47,10 @@ add_library(cvcuda SHARED
 )
 
 target_link_libraries(cvcuda
-    PRIVATE
+    PUBLIC
+        CUDA::cudart_static
         nvcv_types
+    PRIVATE
         nvcv_util
         cvcuda_priv
 )

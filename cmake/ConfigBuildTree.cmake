@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,9 +37,18 @@ else()
     set(DEFAULT_EXPOSE_CODE ON)
 endif()
 
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
+    set(PLATFORM_IS_ARM64 ON)
+else()
+    set(PLATFORM_IS_ARM64 OFF)
+endif()
+
+include(CMakeDependentOption)
+
 option(EXPOSE_CODE "Expose in resulting binaries parts of our code" ${DEFAULT_EXPOSE_CODE})
 option(WARNINGS_AS_ERRORS "Treat compilation warnings as errors" OFF)
-option(ENABLE_COMPAT_OLD_GLIBC "Generates binaries that work with old distros, with old glibc" ON)
+cmake_dependent_option(ENABLE_TEGRA "Enable tegra support" ON "PLATFORM_IS_ARM64" OFF)
+cmake_dependent_option(ENABLE_COMPAT_OLD_GLIBC "Generates binaries that work with old distros, with old glibc" ON "NOT ENABLE_TEGRA" OFF)
 
 # Needed to get cuda version
 find_package(CUDAToolkit REQUIRED)
@@ -52,7 +61,7 @@ if(EXISTS ${CMAKE_SOURCE_DIR}/.git AND EXISTS ${CMAKE_SOURCE_DIR}/.gitmodules)
 endif()
 
 if(UNIX)
-    set(CVCUDA_SYSTEM_NAME "x86_64-linux")
+    set(CVCUDA_SYSTEM_NAME "${CMAKE_SYSTEM_PROCESSOR}-linux")
 else()
     message(FATAL_ERROR "Architecture not supported")
 endif()

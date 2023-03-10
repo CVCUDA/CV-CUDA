@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,8 @@
 
 #include "Definitions.hpp"
 
+#include <common/TensorDataUtils.hpp>
+#include <common/ValueTests.hpp>
 #include <cvcuda/OpErase.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/ImageBatch.hpp>
@@ -27,18 +29,22 @@
 
 #include <iostream>
 
-TEST(OpErase, OpErase_Tensor)
+NVCV_TEST_SUITE_P(OpErase, nvcv::test::ValueList<int>{{1}, {2}});
+
+TEST_P(OpErase, correct_output)
 {
+    int N = GetParam();
+
     cudaStream_t stream;
     EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
-    nvcv::Tensor imgIn(1, {640, 480}, nvcv::FMT_U8);
-    nvcv::Tensor imgOut(1, {640, 480}, nvcv::FMT_U8);
+    nvcv::Tensor imgIn  = nvcv::test::CreateTensor(N, 640, 480, nvcv::FMT_U8);
+    nvcv::Tensor imgOut = nvcv::test::CreateTensor(N, 640, 480, nvcv::FMT_U8);
 
     auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*imgIn.exportData());
     ASSERT_TRUE(inAccess);
 
-    ASSERT_EQ(1, inAccess->numSamples());
+    ASSERT_EQ(N, inAccess->numSamples());
 
     // setup the buffer
     EXPECT_EQ(cudaSuccess, cudaMemset2D(inAccess->planeData(0), inAccess->rowStride(), 0,
@@ -50,7 +56,14 @@ TEST(OpErase, OpErase_Tensor)
     auto outAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*outData);
     ASSERT_TRUE(outAccess);
 
-    int64_t outBufferSize = outAccess->sampleStride() * outAccess->numSamples();
+    int64_t outSampleStride = outAccess->sampleStride();
+
+    if (outData->rank() == 3)
+    {
+        outSampleStride = outAccess->numRows() * outAccess->rowStride();
+    }
+
+    int64_t outBufferSize = outSampleStride * outAccess->numSamples();
 
     // Set output buffer to dummy value
     EXPECT_EQ(cudaSuccess, cudaMemset(outAccess->sampleData(0), 0xFA, outBufferSize));

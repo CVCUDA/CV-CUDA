@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -48,7 +48,7 @@ Tensor GaussianInto(Tensor &output, Tensor &input, const std::tuple<int, int> &k
     ResourceGuard guard(*pstream);
     guard.add(LockMode::LOCK_READ, {input});
     guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*gaussian});
+    guard.add(LockMode::LOCK_WRITE, {*gaussian});
 
     gaussian->submit(pstream->cudaHandle(), input, output, kernelSizeArg, sigmaArg, border);
 
@@ -79,7 +79,7 @@ ImageBatchVarShape VarShapeGaussianInto(ImageBatchVarShape &output, ImageBatchVa
     ResourceGuard guard(*pstream);
     guard.add(LockMode::LOCK_READ, {input, ksize, sigma});
     guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*gaussian});
+    guard.add(LockMode::LOCK_WRITE, {*gaussian});
 
     gaussian->submit(pstream->cudaHandle(), input, output, ksize, sigma, border);
 

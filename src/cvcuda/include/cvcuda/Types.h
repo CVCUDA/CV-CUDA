@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -43,16 +43,6 @@ typedef enum
     NVCV_INTERP_MAX       = 7,
     NVCV_WARP_INVERSE_MAP = 16
 } NVCVInterpolationType;
-
-// @brief Flag to choose the border mode to be used
-typedef enum
-{
-    NVCV_BORDER_CONSTANT   = 0,
-    NVCV_BORDER_REPLICATE  = 1,
-    NVCV_BORDER_REFLECT    = 2,
-    NVCV_BORDER_WRAP       = 3,
-    NVCV_BORDER_REFLECT101 = 4,
-} NVCVBorderType;
 
 typedef enum
 {

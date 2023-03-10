@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -34,39 +34,37 @@ namespace {
 
 // (float3 - float3) * float3 / (float3 - float) * float3 / (float3 - float3) * float / (float3 - float) * float
 template<typename T, typename out_T, typename base_type, typename scale_type>
-__global__ void normKernel(const cuda_op::Ptr2dVarShapeNHWC<T> src, cuda_op::Ptr2dVarShapeNHWC<out_T> dst,
+__global__ void normKernel(const cuda::ImageBatchVarShapeWrap<const T> src, cuda::ImageBatchVarShapeWrap<out_T> dst,
                            const scale_type *scale, const base_type *base, float global_scale, float global_shift)
 {
     const int dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
     const int dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
-    if (dst_x >= dst.at_cols(batch_idx) || dst_y >= dst.at_rows(batch_idx))
+    if (dst_x >= dst.width(batch_idx) || dst_y >= dst.height(batch_idx))
         return;
 
-    T out = *src.ptr(batch_idx, dst_y, dst_x);
-    *dst.ptr(batch_idx, dst_y, dst_x)
-        = cuda::SaturateCast<cuda::BaseType<out_T>>((out - *base) * *scale * global_scale + global_shift);
+    T out                             = *src.ptr(batch_idx, dst_y, dst_x);
+    *dst.ptr(batch_idx, dst_y, dst_x) = cuda::SaturateCast<out_T>((out - *base) * *scale * global_scale + global_shift);
 }
 
 // (float3 - float3) * float3 / (float3 - float) * float3 / (float3 - float3) * float / (float3 - float) * float
 template<typename T, typename out_T, typename base_type, typename scale_type>
-__global__ void normInvStdDevKernel(const cuda_op::Ptr2dVarShapeNHWC<T> src, cuda_op::Ptr2dVarShapeNHWC<out_T> dst,
-                                    const scale_type *scale, const base_type *base, float global_scale,
-                                    float global_shift, float epsilon)
+__global__ void normInvStdDevKernel(const cuda::ImageBatchVarShapeWrap<const T> src,
+                                    cuda::ImageBatchVarShapeWrap<out_T> dst, const scale_type *scale,
+                                    const base_type *base, float global_scale, float global_shift, float epsilon)
 {
     const int dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
     const int dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
-    if (dst_x >= dst.at_cols(batch_idx) || dst_y >= dst.at_rows(batch_idx))
+    if (dst_x >= dst.width(batch_idx) || dst_y >= dst.height(batch_idx))
         return;
 
     scale_type s   = *scale;
     scale_type x   = s * s + epsilon;
     scale_type mul = 1.0f / cuda::sqrt(x);
 
-    T out = *src.ptr(batch_idx, dst_y, dst_x);
-    *dst.ptr(batch_idx, dst_y, dst_x)
-        = cuda::SaturateCast<cuda::BaseType<out_T>>((out - *base) * mul * global_scale + global_shift);
+    T out                             = *src.ptr(batch_idx, dst_y, dst_x);
+    *dst.ptr(batch_idx, dst_y, dst_x) = cuda::SaturateCast<out_T>((out - *base) * mul * global_scale + global_shift);
 }
 
 template<typename T, typename out_T, typename base_type, typename scale_type>
@@ -77,10 +75,10 @@ void normWrap(const IImageBatchVarShapeDataStridedCuda &in, const base_type *bas
     int max_height = in.maxSize().h;
     int batch      = in.numImages();
 
-    dim3                              block(BLOCK, BLOCK / 4, 1);
-    dim3                              grid(divUp(max_width, block.x), divUp(max_height, block.y), batch);
-    cuda_op::Ptr2dVarShapeNHWC<T>     src_ptr(in);
-    cuda_op::Ptr2dVarShapeNHWC<out_T> dst_ptr(out);
+    dim3                                  block(BLOCK, BLOCK / 4, 1);
+    dim3                                  grid(divUp(max_width, block.x), divUp(max_height, block.y), batch);
+    cuda::ImageBatchVarShapeWrap<const T> src_ptr(in);
+    cuda::ImageBatchVarShapeWrap<out_T>   dst_ptr(out);
 
     normKernel<T, out_T><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, scale, base, global_scale, shift);
     checkKernelErrors();
@@ -98,8 +96,8 @@ void normInvStdDevWrap(const IImageBatchVarShapeDataStridedCuda &in, const base_
     dim3 block(BLOCK, BLOCK / 4, 1);
     dim3 grid(divUp(max_width, block.x), divUp(max_height, block.y), batch);
 
-    cuda_op::Ptr2dVarShapeNHWC<T>     src_ptr(in);
-    cuda_op::Ptr2dVarShapeNHWC<out_T> dst_ptr(out);
+    cuda::ImageBatchVarShapeWrap<const T> src_ptr(in);
+    cuda::ImageBatchVarShapeWrap<out_T>   dst_ptr(out);
     normInvStdDevKernel<T, out_T>
         <<<grid, block, 0, stream>>>(src_ptr, dst_ptr, scale, base, global_scale, shift, epsilon);
     checkKernelErrors();

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -44,7 +44,7 @@ ImageBatchVarShape VarShapeGammaContrastInto(ImageBatchVarShape &output, ImageBa
     ResourceGuard guard(*pstream);
     guard.add(LockMode::LOCK_READ, {input, gamma});
     guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*gamma_contrast});
+    guard.add(LockMode::LOCK_WRITE, {*gamma_contrast});
 
     gamma_contrast->submit(pstream->cudaHandle(), input, output, gamma);
 

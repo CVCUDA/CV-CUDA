@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,16 +20,46 @@
 
 #include <cuda_runtime.h>           // for int2, etc.
 #include <nvcv/cuda/TensorWrap.hpp> // the object of this test
-#include <nvcv/cuda/TypeTraits.hpp> // for NumElements, etc.
+#include <nvcv/cuda/TypeTraits.hpp> // for MakeType, etc.
 
 #include <array> // for std::array, etc.
 
 // clang-format off
 
+template<typename T, int NumDim>
+constexpr int TotalBytes(const int (&shapes)[NumDim])
+{
+    int total = sizeof(T);
+    for (int i = 0; i < NumDim; ++i)
+    {
+        total *= shapes[i];
+    }
+    return total;
+}
+
+template<typename T, int N>
+struct Array { // Array extends std::array to add extra properties
+    using value_type = T;
+    static constexpr int kNumDim           = 1;
+    static constexpr int kStrides[kNumDim] = {sizeof(T)};
+    static constexpr int kShapes[kNumDim]  = {N};
+    static constexpr dim3 kBlocks          = {N};
+
+    std::array<T, N> m_data;
+    T *data() { return m_data.data(); }
+    const T *data() const { return m_data.data(); }
+    const T& operator[](int i) const { return m_data[i]; }
+    bool operator==(const Array<T, N> &that) const { return m_data == that.m_data; }
+};
+
 template<typename T, int H, int W>
 struct PackedImage { // PackedImage extends std::array in two dimensions
     using value_type = T;
-    static constexpr int rowStride = W * sizeof(T), height = H, width = W;
+    static constexpr int kNumDim           = 2;
+    static constexpr int kStrides[kNumDim] = {W * sizeof(T), sizeof(T)};
+    static constexpr int kShapes[kNumDim]  = {H, W};
+    static constexpr dim3 kBlocks          = {W, H};
+
     std::array<T, H*W> m_data;
     T *data() { return m_data.data(); }
     const T *data() const { return m_data.data(); }
@@ -40,9 +70,10 @@ struct PackedImage { // PackedImage extends std::array in two dimensions
 template<typename T, int N, int H, int W>
 struct PackedTensor3D { // PackedTensor3D extends std::array in three dimensions
     using value_type = T;
-    static constexpr int batches = N, height = H, width = W;
-    static constexpr int stride2 = W * sizeof(T);
-    static constexpr int stride1 = H * stride2;
+    static constexpr int kNumDim           = 3;
+    static constexpr int kStrides[kNumDim] = {H * W * sizeof(T), W * sizeof(T), sizeof(T)};
+    static constexpr int kShapes[kNumDim]  = {N, H, W};
+    static constexpr dim3 kBlocks          = {W, H, N};
 
     std::array<T, N*H*W> m_data;
     T *data() { return m_data.data(); }
@@ -54,10 +85,10 @@ struct PackedTensor3D { // PackedTensor3D extends std::array in three dimensions
 template<typename T, int N, int H, int W, int C>
 struct PackedTensor4D { // PackedTensor4D extends std::array in four dimensions
     using value_type = T;
-    static constexpr int batches = N, height = H, width = W, channels = C;
-    static constexpr int stride3 = C * sizeof(T);
-    static constexpr int stride2 = W * stride3;
-    static constexpr int stride1 = H * stride2;
+    static constexpr int kNumDim           = 4;
+    static constexpr int kStrides[kNumDim] = {H * W * C * sizeof(T), W * C * sizeof(T), C * sizeof(T), sizeof(T)};
+    static constexpr int kShapes[kNumDim]  = {N, H, W, C};
+    static constexpr dim3 kBlocks          = {W, H, N};
 
     std::array<T, N*H*W*C> m_data;
     T *data() { return m_data.data(); }
@@ -68,28 +99,10 @@ struct PackedTensor4D { // PackedTensor4D extends std::array in four dimensions
 
 // clang-format on
 
-template<typename ValueType, std::size_t N>
-void DeviceUseTensor1DWrap(std::array<ValueType, N> &);
+template<class InputType>
+void DeviceUseTensorWrap(const InputType &);
 
-template<typename ValueType, int H, int W>
-void DeviceUseTensor2DWrap(PackedImage<ValueType, H, W> &);
-
-template<typename ValueType, int N, int H, int W>
-void DeviceUseTensor3DWrap(PackedTensor3D<ValueType, N, H, W> &);
-
-template<typename ValueType, int N, int H, int W, int C>
-void DeviceUseTensor4DWrap(PackedTensor4D<ValueType, N, H, W, C> &);
-
-template<typename ValueType>
-void DeviceSetOnes(nvcv::cuda::Tensor1DWrap<ValueType> &, int1, cudaStream_t &);
-
-template<typename ValueType>
-void DeviceSetOnes(nvcv::cuda::Tensor2DWrap<ValueType> &, int2, cudaStream_t &);
-
-template<typename ValueType>
-void DeviceSetOnes(nvcv::cuda::Tensor3DWrap<ValueType> &, int3, cudaStream_t &);
-
-template<typename ValueType>
-void DeviceSetOnes(nvcv::cuda::Tensor4DWrap<ValueType> &, int4, cudaStream_t &);
+template<class DstWrapper, typename DimType>
+void DeviceSetOnes(DstWrapper &, DimType, cudaStream_t &);
 
 #endif // NVCV_TESTS_DEVICE_TENSOR_WRAP_HPP

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -68,7 +68,7 @@ inline NVCVTensorHandle Tensor::doGetHandle() const
 
 inline Tensor::~Tensor()
 {
-    nvcvTensorDestroy(m_handle);
+    nvcvTensorDecRef(m_handle, nullptr);
 }
 
 // TensorWrapData implementation -------------------------------------
@@ -82,7 +82,7 @@ inline TensorWrapData::TensorWrapData(const ITensorData &data, std::function<Ten
 
 inline TensorWrapData::~TensorWrapData()
 {
-    nvcvTensorDestroy(m_handle);
+    nvcvTensorDecRef(m_handle, nullptr);
 }
 
 inline NVCVTensorHandle TensorWrapData::doGetHandle() const
@@ -115,7 +115,7 @@ inline TensorWrapImage::TensorWrapImage(const IImage &img)
 
 inline TensorWrapImage::~TensorWrapImage()
 {
-    nvcvTensorDestroy(m_handle);
+    nvcvTensorDecRef(m_handle, nullptr);
 }
 
 inline NVCVTensorHandle TensorWrapImage::doGetHandle() const

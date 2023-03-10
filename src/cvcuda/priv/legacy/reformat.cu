@@ -1,9 +1,9 @@
-/* Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
  *
- * Copyright (C) 2021-2022, Bytedance Inc. All rights reserved.
+ * Copyright (C) 2021-2023, Bytedance Inc. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,32 +31,47 @@
 namespace cuda    = nvcv::cuda;
 namespace cuda_op = nvcv::legacy::cuda_op;
 
-template<bool srcIsNCHW, typename Ptr2DSrc, typename Ptr2DDst>
-__global__ void transformFormat(const Ptr2DSrc src, Ptr2DDst dst, int3 inout_size)
+template<cuda_op::DataFormat SrcFormat, class SrcWrapper, class DstWrapper>
+__global__ void transformFormat(const SrcWrapper src, DstWrapper dst, int3 inout_size)
 {
-    const int src_x     = blockIdx.x * blockDim.x + threadIdx.x;
-    const int src_y     = blockIdx.y * blockDim.y + threadIdx.y;
-    const int batch_idx = get_batch_idx();
+    int3 thrCoord = cuda::StaticCast<int>(blockIdx * blockDim + threadIdx);
 
-    if (src_x >= inout_size.x || src_y >= inout_size.y)
+    if (thrCoord.x >= inout_size.x || thrCoord.y >= inout_size.y)
         return;
+
+    using DimType = cuda::MakeType<int, SrcWrapper::kNumDimensions>;
+    DimType srcCoord, dstCoord;
 
     for (int c = 0; c < inout_size.z; c++)
     {
-        if constexpr (srcIsNCHW)
+        if constexpr (SrcFormat == cuda_op::kNCHW)
         {
-            *dst.ptr(batch_idx, src_y, src_x, c) = *src.ptr(batch_idx, c, src_y, src_x);
+            srcCoord = {thrCoord.x, thrCoord.y, c, thrCoord.z};
+            dstCoord = {c, thrCoord.x, thrCoord.y, thrCoord.z};
         }
-        else
+        else if constexpr (SrcFormat == cuda_op::kNHWC)
         {
-            *dst.ptr(batch_idx, c, src_y, src_x) = *src.ptr(batch_idx, src_y, src_x, c);
+            srcCoord = {c, thrCoord.x, thrCoord.y, thrCoord.z};
+            dstCoord = {thrCoord.x, thrCoord.y, c, thrCoord.z};
         }
+        else if constexpr (SrcFormat == cuda_op::kCHW)
+        {
+            srcCoord = {thrCoord.x, thrCoord.y, c};
+            dstCoord = {c, thrCoord.x, thrCoord.y};
+        }
+        else if constexpr (SrcFormat == cuda_op::kHWC)
+        {
+            srcCoord = {c, thrCoord.x, thrCoord.y};
+            dstCoord = {thrCoord.x, thrCoord.y, c};
+        }
+
+        dst[dstCoord] = src[srcCoord];
     }
 }
 
-template<typename data_type> // uchar float
+template<cuda_op::DataFormat input_format, typename data_type> // k(N)CHW k(N)HWC, uchar float
 void transform(const nvcv::ITensorDataStridedCuda &inData, const nvcv::ITensorDataStridedCuda &outData,
-               cuda_op::DataFormat input_format, cuda_op::DataFormat output_format, cudaStream_t stream)
+               cudaStream_t stream)
 {
     auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(inData);
     NVCV_ASSERT(inAccess);
@@ -69,19 +84,10 @@ void transform(const nvcv::ITensorDataStridedCuda &inData, const nvcv::ITensorDa
     dim3 block(32, 8);
     dim3 grid(cuda_op::divUp(inout_size.x, block.x), cuda_op::divUp(inout_size.y, block.y), inAccess->numSamples());
 
-    cuda::Tensor4DWrap<data_type> src_ptr(inData);
-    cuda::Tensor4DWrap<data_type> dst_ptr(outData);
+    cuda::TensorNDWrap<const data_type, cuda_op::FormatDimensions<input_format>> src(inData);
+    cuda::TensorNDWrap<data_type, cuda_op::FormatDimensions<input_format>>       dst(outData);
 
-    if ((input_format == cuda_op::kNHWC || input_format == cuda_op::kHWC)
-        && (output_format == cuda_op::kNCHW || output_format == cuda_op::kCHW))
-    {
-        transformFormat<false><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, inout_size);
-    }
-    else if ((input_format == cuda_op::kNCHW || input_format == cuda_op::kCHW)
-             && (output_format == cuda_op::kNHWC || output_format == cuda_op::kHWC))
-    {
-        transformFormat<true><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, inout_size);
-    }
+    transformFormat<input_format><<<grid, block, 0, stream>>>(src, dst, inout_size);
 
     checkKernelErrors();
 
@@ -140,10 +146,11 @@ ErrorCode Reformat::infer(const nvcv::ITensorDataStridedCuda &inData, const nvcv
         return SUCCESS;
     }
 
-    if (((input_format == cuda_op::kNHWC || input_format == cuda_op::kHWC)
-         && !(output_format == cuda_op::kNCHW || output_format == cuda_op::kCHW))
-        || ((input_format == cuda_op::kNCHW || input_format == cuda_op::kCHW)
-            && !(output_format == cuda_op::kNHWC || output_format == cuda_op::kHWC)))
+    // Only allow CHW <-> HWC or NCHW <-> NHWC reformats
+    if ((input_format == cuda_op::kNHWC) && !(output_format == cuda_op::kNCHW)
+        || (input_format == cuda_op::kNCHW) && !(output_format == cuda_op::kNHWC)
+        || (input_format == cuda_op::kHWC) && !(output_format == cuda_op::kCHW)
+        || (input_format == cuda_op::kCHW) && !(output_format == cuda_op::kHWC))
     {
         LOG_ERROR("Invalid combination of input format " << input_format << " and output format " << output_format);
         return ErrorCode::INVALID_DATA_FORMAT;
@@ -159,13 +166,21 @@ ErrorCode Reformat::infer(const nvcv::ITensorDataStridedCuda &inData, const nvcv
     }
 
     typedef void (*transform_t)(const ITensorDataStridedCuda &input, const ITensorDataStridedCuda &output,
-                                DataFormat in_format, DataFormat out_format, cudaStream_t stream);
+                                cudaStream_t stream);
 
-    static const transform_t funcs[7] = {transform<uchar>, transform<schar>, transform<ushort>, transform<short>,
-                                         transform<int>,   transform<float>, transform<double>};
+    static const transform_t funcs[4][7] = {
+        {transform<kNCHW, uchar>, transform<kNCHW, schar>, transform<kNCHW, ushort>, transform<kNCHW, short>,
+         transform<kNCHW, int>, transform<kNCHW, float>, transform<kNCHW, double>},
+        {transform<kNHWC, uchar>, transform<kNHWC, schar>, transform<kNHWC, ushort>, transform<kNHWC, short>,
+         transform<kNHWC, int>, transform<kNHWC, float>, transform<kNHWC, double>},
+        { transform<kCHW, uchar>,  transform<kCHW, schar>,  transform<kCHW, ushort>,  transform<kCHW, short>,
+         transform<kCHW, int>,  transform<kCHW, float>,  transform<kCHW, double> },
+        { transform<kHWC, uchar>,  transform<kHWC, schar>,  transform<kHWC, ushort>,  transform<kHWC, short>,
+         transform<kHWC, int>,  transform<kHWC, float>,  transform<kHWC, double> }
+    };
 
-    transform_t func = funcs[data_type];
-    func(inData, outData, input_format, output_format, stream);
+    transform_t func = funcs[input_format][data_type];
+    func(inData, outData, stream);
 
     return SUCCESS;
 }

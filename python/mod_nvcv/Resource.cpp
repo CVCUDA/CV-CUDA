@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -80,14 +80,14 @@ void Resource::submitSync(Stream &stream, LockMode mode) const
 
 void Resource::doSubmitSync(Stream &stream, LockMode mode) const
 {
-    if (mode & LOCK_READ)
-    {
-        util::CheckThrow(cudaStreamWaitEvent(stream.handle(), m_writeEvent));
-    }
     if (mode & LOCK_WRITE)
     {
         util::CheckThrow(cudaStreamWaitEvent(stream.handle(), m_writeEvent));
         util::CheckThrow(cudaStreamWaitEvent(stream.handle(), m_readEvent));
+    }
+    else if (mode & LOCK_READ)
+    {
+        util::CheckThrow(cudaStreamWaitEvent(stream.handle(), m_writeEvent));
     }
 }
 
@@ -104,14 +104,14 @@ void Resource::doSync(LockMode mode) const
 {
     NVCV_ASSERT(PyGILState_Check() == 0);
 
-    if (mode & LOCK_READ)
-    {
-        util::CheckThrow(cudaEventSynchronize(m_writeEvent));
-    }
     if (mode & LOCK_WRITE)
     {
         util::CheckThrow(cudaEventSynchronize(m_writeEvent));
         util::CheckThrow(cudaEventSynchronize(m_readEvent));
+    }
+    else if (mode & LOCK_READ)
+    {
+        util::CheckThrow(cudaEventSynchronize(m_writeEvent));
     }
 }
 

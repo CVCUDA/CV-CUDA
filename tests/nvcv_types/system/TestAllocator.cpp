@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -301,17 +301,21 @@ TEST(Allocator, wip_test_dali_stream_async)
     cudaStreamDestroy(stream2);
 }
 
-TEST(Allocator, wip_double_destroy_noop)
+TEST(Allocator, wip_double_destroy_invalid_arg)
 {
     NVCVAllocatorHandle handle;
     ASSERT_EQ(NVCV_SUCCESS, nvcvAllocatorConstructCustom(nullptr, 0, &handle));
+    int ref;
+    ASSERT_EQ(NVCV_SUCCESS, nvcvAllocatorRefCount(handle, &ref));
+    EXPECT_EQ(ref, 1);
 
-    nvcvAllocatorDestroy(handle);
+    ASSERT_EQ(NVCV_SUCCESS, nvcvAllocatorDecRef(handle, &ref));
+    ASSERT_EQ(ref, 0);
 
     void *ptr;
     NVCV_ASSERT_STATUS(NVCV_ERROR_INVALID_ARGUMENT, nvcvAllocatorFreeHostMemory(handle, &ptr, 16, 16));
 
-    nvcvAllocatorDestroy(handle); // no-op, already destroyed
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvAllocatorDecRef(handle, nullptr));
 }
 
 TEST(Allocator, wip_user_pointer)
@@ -374,7 +378,9 @@ TEST(Allocator, wip_cast)
     EXPECT_EQ(palloc, nvcv::DynamicCast<nvcv::IAllocator *>(handle));
     EXPECT_EQ(nullptr, nvcv::DynamicCast<nvcv::CustomAllocator<> *>(handle));
 
-    nvcvAllocatorDestroy(handle);
+    int ref;
+    EXPECT_EQ(NVCV_SUCCESS, nvcvAllocatorDecRef(handle, &ref));
+    EXPECT_EQ(0, ref);
 }
 
 // disabled temporary while the API isn't stable
@@ -407,7 +413,7 @@ public:
 
     ~MemAllocatorCreateParamTest()
     {
-        nvcvMemAllocatorDestroy(m_paramHandle);
+        nvcvMemAllocatorDecRef(m_paramHandle);
     }
 
 protected:
@@ -429,11 +435,11 @@ TEST_P(MemAllocatorCreateParamTest, stream)
     NVCVMemAllocator handle = nullptr;
     EXPECT_EQ(m_goldStatus, nvcvMemAllocatorCreate(m_paramHandle ? &handle : nullptr));
 
-    nvcvMemAllocatorDestroy(handle); // to avoid memleaks
+    nvcvMemAllocatorDecRef(handle); // to avoid memleaks
 }
 
 /********************************************
- *         nvcvMemAllocatorDestroy
+ *         nvcvMemAllocatorDecRef
  *******************************************/
 
 using MemAllocatorDestroyParamTest = MemAllocatorCreateParamTest;
@@ -448,7 +454,7 @@ TEST_P(MemAllocatorDestroyParamTest, stream)
 {
     // Must not crash or assert, but we can't test that without using
     // googletest's Death Tests, as it involves forking the process.
-    nvcvMemAllocatorDestroy(m_paramHandle);
+    nvcvMemAllocatorDecRef(m_paramHandle);
     m_paramHandle = nullptr;
 }
 
@@ -499,7 +505,7 @@ public:
 
     ~MemAllocatorSetAllocatorParamTest()
     {
-        nvcvMemAllocatorDestroy(m_paramHandle);
+        nvcvMemAllocatorDecRef(m_paramHandle);
     }
 
 protected:

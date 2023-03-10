@@ -1,6 +1,6 @@
 #!/bin/bash -e
 #
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,21 +19,15 @@ tests_dir="@PYTHON_TEST_DIR@"
 python_versions="@PYTHON_TEST_VERSIONS@"
 
 # Verify if correct package dependencies are installed --------
-pip_depends="numba torch"
+pip_depends="pytest torch"
 
 declare -a install_commands
 
 for ver in $python_versions; do
-    if ! python$ver -c "import numba, torch" > /dev/null 2>&1; then
+    if ! python$ver -c "import pytest, torch" > /dev/null 2>&1; then
         install_commands+=("sudo python$ver -m pip install $pip_depends")
     fi
 done
-
-# numba needs nvcc
-if ! python3 -c "import numba; from numba import cuda; assert cuda.is_available()" > /dev/null 2>&1; then
-    cuda_ver=$(ls -1d /usr/local/cuda-* | sort -rV | head -1 | sed -n "s@[^-]\+-\(.*\)@\1@p")
-    install_commands+=("sudo apt-get install cuda-nvcc-$cuda_ver")
-fi
 
 if [[ "${install_commands[*]}" ]]; then
     echo "Please run the following commands before running $(basename $0): "

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +21,7 @@
 #include <util/Algorithm.hpp>
 #include <util/Assert.h>
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -91,6 +92,21 @@ class HandleManager
 
         void destroyObject();
 
+        int decRef()
+        {
+            return --m_refCount;
+        }
+
+        int incRef()
+        {
+            return ++m_refCount;
+        }
+
+        int refCount()
+        {
+            return m_refCount;
+        }
+
         Interface *obj() const
         {
             return m_ptrObj;
@@ -102,7 +118,8 @@ class HandleManager
         }
 
     private:
-        Interface *m_ptrObj = nullptr;
+        Interface      *m_ptrObj = nullptr;
+        std::atomic_int m_refCount{0};
         alignas(Storage) std::byte m_storage[sizeof(Storage)];
     };
 
@@ -116,12 +133,37 @@ public:
     std::pair<HandleType, T *> create(Args &&...args)
     {
         Resource *res = doFetchFreeResource();
-        T        *obj = res->template constructObject<T>(std::forward<Args>(args)...);
-        return std::make_pair(doGetHandleFromResource(res), obj);
+        try
+        {
+            T *obj = res->template constructObject<T>(std::forward<Args>(args)...);
+            return std::make_pair(doGetHandleFromResource(res), obj); // noexcept
+        }
+        catch (...)
+        {
+            // If object ctor threw an exception, we must return
+            // the resource we would have used for it.
+            res->decRef();
+            doReturnResource(res);
+            throw;
+        }
     }
 
-    // true if handle is destroyed, false if handle is invalid (or already removed)
-    bool destroy(HandleType handle);
+    /** Decrements the reference count of the object pointed to by the handle and destroys
+     *  it if no longer referenced
+     *
+     * @return The remaining reference count if the handle is valid, 0 if the object is destroyed.
+     */
+    int decRef(HandleType handle);
+
+    /** Increments the reference count of the object pointed to by the handle.
+     *
+     * @return The new reference count.
+     */
+    int incRef(HandleType handle);
+
+    /** Returns the current reference count of the object pointed to by the handle;
+     */
+    int refCount(HandleType handle);
 
     Interface *validate(HandleType handle) const;
 
@@ -134,13 +176,16 @@ private:
     struct Impl;
     std::unique_ptr<Impl> pimpl;
 
-    void       doAllocate(size_t count);
-    void       doGrow();
+    void doAllocate(size_t count);
+    void doGrow();
+
+    Resource *getValidResource(HandleType handle) const;
+
     Resource  *doFetchFreeResource();
     void       doReturnResource(Resource *r);
-    uint8_t    doGetHandleGeneration(HandleType handle) const;
-    HandleType doGetHandleFromResource(Resource *r) const;
-    Resource  *doGetResourceFromHandle(HandleType handle) const;
+    uint8_t    doGetHandleGeneration(HandleType handle) const noexcept;
+    HandleType doGetHandleFromResource(Resource *r) const noexcept;
+    Resource  *doGetResourceFromHandle(HandleType handle) const noexcept;
     bool       isManagedResource(Resource *r) const;
 };
 

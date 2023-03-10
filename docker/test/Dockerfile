@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,20 +41,9 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get update \
         python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-# It needs numba
-RUN DEBIAN_FRONTEND="noninteractive" apt-get update \
-    && apt-get install -y --no-install-recommends \
-        cuda-nvcc-$(echo $VER_CUDA | sed "s@\([0-9]\+\)\.\([0-9]\+\).*@\1-\2@") \
-    && rm -rf /var/lib/apt/lists/*
+# It needs torch
 RUN set -e \
     && for ver in 3.7 3.8 3.9 3.10; do \
-           python$ver -m pip install numba; \
-       done \
-    && rm -rf /root/.cache/pip
-
-# and torch
-RUN set -e \
-    && for ver in 3.7 3.8 3.9 3.10; do \
-           python$ver -m pip install torch; \
+           python$ver -m pip install torch numpy; \
        done \
     && rm -rf /root/.cache/pip

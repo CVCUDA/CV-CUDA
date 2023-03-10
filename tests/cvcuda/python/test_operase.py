@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,13 +20,13 @@ import pytest as t
 @t.mark.parametrize(
     "input, erasing_area_num, random, seed",
     [
-        (cvcuda.Tensor([1, 460, 640, 3], cvcuda.Type.U8, "NHWC"), 1, False, 0),
-        (cvcuda.Tensor([5, 460, 640, 3], cvcuda.Type.U8, "NHWC"), 1, True, 1),
+        (cvcuda.Tensor((1, 460, 640, 3), cvcuda.Type.U8, "NHWC"), 1, False, 0),
+        (cvcuda.Tensor((5, 460, 640, 3), cvcuda.Type.U8, "NHWC"), 1, True, 1),
     ],
 )
 def test_op_erase(input, erasing_area_num, random, seed):
 
-    parameter_shape = [erasing_area_num]
+    parameter_shape = (erasing_area_num,)
     anchor = cvcuda.Tensor(parameter_shape, cvcuda.Type._2S32, "N")
     erasing = cvcuda.Tensor(parameter_shape, cvcuda.Type._3S32, "N")
     imgIdx = cvcuda.Tensor(parameter_shape, cvcuda.Type.S32, "N")

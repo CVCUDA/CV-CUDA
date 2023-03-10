@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -93,8 +93,8 @@ def test_op_copymakeborder(
         out_heights.append(h_out)
         out_widths.append(w_out)
 
-    top_tensor = cvcuda.Tensor([1, 1, num_images, 1], cvcuda.Type.S32, "NHWC")
-    left_tensor = cvcuda.Tensor([1, 1, num_images, 1], cvcuda.Type.S32, "NHWC")
+    top_tensor = cvcuda.Tensor((1, 1, num_images, 1), cvcuda.Type.S32, "NHWC")
+    left_tensor = cvcuda.Tensor((1, 1, num_images, 1), cvcuda.Type.S32, "NHWC")
 
     tensor_out = cvcuda.Tensor(num_images, [max_out_w, max_out_h], format)
 

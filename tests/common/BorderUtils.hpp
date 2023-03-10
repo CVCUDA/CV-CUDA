@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,7 +19,7 @@
 #define NVCV_TEST_COMMON_BORDER_UTILS_HPP
 
 #include <cuda_runtime.h> // for int2, etc.
-#include <cvcuda/Types.h>
+#include <nvcv/BorderType.h>
 
 namespace nvcv::test {
 

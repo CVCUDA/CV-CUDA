@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -55,7 +55,7 @@ public:
         {
             m_cacheNumSamples = m_shape[idx];
         }
-        else if (m_shape.layout() != TensorLayout::NONE)
+        else if (m_shape.layout() != TENSOR_NONE)
         {
             m_cacheNumSamples = 1;
         }
@@ -192,7 +192,7 @@ class TensorShapeInfo
     , public detail::TensorShapeInfoImpl
 {
 public:
-    static bool IsCompatible(const TensorShape &tshape)
+    static bool IsCompatible(const TensorShape &)
     {
         return true;
     }

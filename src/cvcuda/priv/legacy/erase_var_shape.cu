@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -37,37 +37,34 @@ static __device__ int erase_var_shape_hash(unsigned int x)
 }
 
 template<typename D>
-__global__ void erase(Ptr2dVarShapeNHWC<D> img, nvcv::cuda::Tensor1DWrap<int2> anchorVec,
+__global__ void erase(nvcv::cuda::ImageBatchVarShapeWrapNHWC<D> img, nvcv::cuda::Tensor1DWrap<int2> anchorVec,
                       nvcv::cuda::Tensor1DWrap<int3> erasingVec, nvcv::cuda::Tensor1DWrap<float> valuesVec,
                       nvcv::cuda::Tensor1DWrap<int> imgIdxVec, int channels, int random, unsigned int seed)
 {
-    unsigned int id        = threadIdx.x + blockIdx.x * blockDim.x;
-    int          c         = blockIdx.y;
-    int          eraseId   = blockIdx.z;
-    int          anchor_x  = (*anchorVec.ptr(eraseId)).x;
-    int          anchor_y  = (*anchorVec.ptr(eraseId)).y;
-    int          erasing_w = (*erasingVec.ptr(eraseId)).x;
-    int          erasing_h = (*erasingVec.ptr(eraseId)).y;
-    int          erasing_c = (*erasingVec.ptr(eraseId)).z;
-    float        value     = *valuesVec.ptr(eraseId * channels + c);
-    int          batchId   = *imgIdxVec.ptr(eraseId);
-    if (id < erasing_h * erasing_w && (0x1 & (erasing_c >> c)) == 1)
+    unsigned int id      = threadIdx.x + blockIdx.x * blockDim.x;
+    int          c       = blockIdx.y;
+    int          eraseId = blockIdx.z;
+    int2         anchor  = anchorVec[eraseId];
+    int3         erasing = erasingVec[eraseId];
+    float        value   = valuesVec[eraseId * channels + c];
+    int          batchId = imgIdxVec[eraseId];
+    if (id < erasing.y * erasing.x && (0x1 & (erasing.z >> c)) == 1)
     {
-        int x = id % erasing_w;
-        int y = id / erasing_w;
-        if ((anchor_x + x) < img.at_cols(batchId) && (anchor_y + y) < img.at_rows(batchId))
+        int x = id % erasing.x;
+        int y = id / erasing.x;
+        if ((anchor.x + x) < img.width(batchId) && (anchor.y + y) < img.height(batchId))
         {
             if (random)
             {
                 unsigned int hashValue = seed + threadIdx.x
                                        + 0x26AD0C9 * blockDim.x * blockDim.y * blockDim.z * (blockIdx.x + 1)
                                              * (blockIdx.y + 1) * (blockIdx.z + 1);
-                *img.ptr(batchId, anchor_y + y, anchor_x + x, c)
+                *img.ptr(batchId, anchor.y + y, anchor.x + x, c)
                     = nvcv::cuda::SaturateCast<D>(erase_var_shape_hash(hashValue) % 256);
             }
             else
             {
-                *img.ptr(batchId, anchor_y + y, anchor_x + x, c) = nvcv::cuda::SaturateCast<D>(value);
+                *img.ptr(batchId, anchor.y + y, anchor.x + x, c) = nvcv::cuda::SaturateCast<D>(value);
             }
         }
     }
@@ -79,7 +76,7 @@ void eraseCaller(const nvcv::IImageBatchVarShapeDataStridedCuda &imgs, const nvc
                  const nvcv::ITensorDataStridedCuda &values, int max_eh, int max_ew, int num_erasing_area, bool random,
                  unsigned int seed, cudaStream_t stream)
 {
-    Ptr2dVarShapeNHWC<D> src(imgs);
+    nvcv::cuda::ImageBatchVarShapeWrapNHWC<D> src(imgs, imgs.uniqueFormat().numChannels());
 
     nvcv::cuda::Tensor1DWrap<int2>  anchorVec(anchor);
     nvcv::cuda::Tensor1DWrap<int3>  erasingVec(erasing);

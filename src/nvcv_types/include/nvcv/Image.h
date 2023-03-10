@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -133,7 +133,7 @@ NVCV_PUBLIC NVCVStatus nvcvImageConstruct(const NVCVImageRequirements *reqs, NVC
  *                  + Image dimensions must be >= 1x1
  *
  * @param [in] cleanup Cleanup function to be called when the image is destroyed
- *                     via @ref nvcvImageDestroy
+ *                     via @ref nvcvImageDecRef
  *                     If NULL, no cleanup function is defined.
  *
  * @param [in] ctxCleanup Pointer to be passed unchanged to the cleanup function, if defined.
@@ -148,18 +148,49 @@ NVCV_PUBLIC NVCVStatus nvcvImageConstruct(const NVCVImageRequirements *reqs, NVC
 NVCV_PUBLIC NVCVStatus nvcvImageWrapDataConstruct(const NVCVImageData *data, NVCVImageDataCleanupFunc cleanup,
                                                   void *ctxCleanup, NVCVImageHandle *handle);
 
-/** Destroys an existing image instance.
+/** Decrements the reference count of an existing image instance.
+ *
+ * The image is destroyed when its reference count reaches zero.
  *
  * If the image has type @ref NVCV_TYPE_IMAGE_WRAPDATA and has a cleanup function defined,
  * cleanup will be called.
  *
  * @note The image must not be in use in current and future operations.
  *
- * @param [in] handle Image to be destroyed.
- *                    If NULL, no operation is performed, successfully.
- *                    + The handle must have been created with any of the nvcvImageConstruct functions.
+ * @param [in] handle       Image to be destroyed.
+ *                          If NULL, no operation is performed, successfully.
+ *                          + The handle must have been created with any of the nvcvImageConstruct functions.
+ *
+ * @param [out] newRefCount The decremented reference count. If the return value is 0, the object was destroyed.
+ *                          Can be NULL, if the caller isn't interested in the new reference count.
+ *
+ * @retval #NVCV_ERROR_INVALID_ARGUMENT The handle is invalid
+ * @retval #NVCV_SUCCESS                Operation executed successfully.
  */
-NVCV_PUBLIC void nvcvImageDestroy(NVCVImageHandle handle);
+NVCV_PUBLIC NVCVStatus nvcvImageDecRef(NVCVImageHandle handle, int *newRefCount);
+
+/** Increments the reference count of an image.
+ *
+ * @param [in] handle       Image to be retained.
+ *
+ * @param [out] newRefCount The incremented reference count.
+ *                          Can be NULL, if the caller isn't interested in the new reference count.
+ *
+ * @retval #NVCV_ERROR_INVALID_ARGUMENT The handle is invalid
+ * @retval #NVCV_SUCCESS                Operation executed successfully.
+ */
+NVCV_PUBLIC NVCVStatus nvcvImageIncRef(NVCVImageHandle handle, int *newRefCount);
+
+/** Returns the current reference count of an image
+ *
+ * @param [in] handle       The handle whose reference count is to be obtained.
+ *
+ * @param [out] newRefCount The reference count.
+ *
+ * @retval #NVCV_ERROR_INVALID_ARGUMENT The handle is invalid
+ * @retval #NVCV_SUCCESS                Operation executed successfully.
+ */
+NVCV_PUBLIC NVCVStatus nvcvImageRefCount(NVCVImageHandle handle, int *newRefCount);
 
 /** Associates a user pointer to the image handle.
  *

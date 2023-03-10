@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,7 +31,8 @@ static std::string_view GetFunctionName(const std::string_view &stmt)
     std::match_results<std::string_view::const_iterator> match;
     if (regex_match(stmt.begin(), stmt.end(), match, rgx))
     {
-        return std::string_view(match[1].first, match[1].second);
+        // With C++20 we can construct the string_view with the range directly
+        return std::string_view(match[1].first, std::distance(match[1].first, match[1].second));
     }
     else
     {

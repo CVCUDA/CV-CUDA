@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -419,6 +419,7 @@ const std::vector<PackingTestParams> g_packingParams = {
 
     DEF_PACK1(256),
     DEF_FIX_PACK1(256),
+    DEF_FIX_PACK2(128, 128),
     DEF_FIX_PACK4(64, 64, 64, 64)
 };
 

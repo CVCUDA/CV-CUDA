@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,13 +38,19 @@ enum ExternalStreamType
     VOIDP,
     INT,
     TORCH,
-    NUMBA,
 };
 
 template<ExternalStreamType E>
 class ExternalStream : public IExternalStream
 {
 public:
+    ExternalStream() = default;
+
+    explicit ExternalStream(cudaStream_t cudaStream)
+        : m_cudaStream(cudaStream)
+    {
+    }
+
     void setCudaStream(cudaStream_t cudaStream, py::object obj)
     {
         m_cudaStream = cudaStream;
@@ -140,34 +146,6 @@ struct type_caster<priv::ExternalStream<priv::TORCH>>
             // TODO: don't know how to test if a python object
             // is convertible to a type without exceptions.
             intptr_t data = src.attr("cuda_stream").cast<intptr_t>();
-            value.setCudaStream(reinterpret_cast<cudaStream_t>(data), ::pybind11::cast<object>(std::move(src)));
-            return true;
-        }
-        catch (...)
-        {
-            return false;
-        }
-    }
-};
-
-template<>
-struct type_caster<priv::ExternalStream<priv::NUMBA>>
-{
-    PYBIND11_TYPE_CASTER(priv::ExternalStream<priv::NUMBA>, const_name("numba.cuda.Stream"));
-
-    bool load(handle src, bool)
-    {
-        std::string strType = util::GetFullyQualifiedName(src);
-
-        if (strType != "numba.cuda.cudadrv.driver.Stream")
-        {
-            return false;
-        }
-
-        try
-        {
-            // NUMBA cuda stream can be converted to ints, which is the cudaStream handle.
-            intptr_t data = src.cast<intptr_t>();
             value.setCudaStream(reinterpret_cast<cudaStream_t>(data), ::pybind11::cast<object>(std::move(src)));
             return true;
         }
@@ -329,15 +307,15 @@ void Stream::Export(py::module &m)
     stream.def_property_readonly_static("current", [](py::object) { return Current().shared_from_this(); })
         .def(py::init(&Stream::Create));
 
-    // Create the global stream object. It'll be destroyed when
-    // python module is deinitialized.
-    auto globalStream = Stream::Create();
+    // Create the global stream object by wrapping cuda stream 0.
+    // It'll be destroyed when python module is deinitialized.
+    static priv::ExternalStream<priv::VOIDP> cudaDefaultStream((cudaStream_t)0);
+    auto                                     globalStream = std::make_shared<Stream>(cudaDefaultStream);
     StreamStack::Instance().push(*globalStream);
     stream.attr("default") = globalStream;
 
     // Order from most specific to less specific
     ExportExternalStream<TORCH>(m);
-    ExportExternalStream<NUMBA>(m);
     ExportExternalStream<VOIDP>(m);
     ExportExternalStream<INT>(m);
 

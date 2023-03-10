@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "Definitions.hpp"
 
+#include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpConvertTo.hpp>
 #include <nvcv/Image.hpp>
@@ -57,8 +58,8 @@ const void testConvertTo(nvcv::ImageFormat fmtIn, nvcv::ImageFormat fmtOut, int 
     cudaStream_t stream;
     EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
-    nvcv::Tensor imgOut(batch, {width, height}, fmtOut);
-    nvcv::Tensor imgIn(batch, {width, height}, fmtIn);
+    nvcv::Tensor imgOut = test::CreateTensor(batch, width, height, fmtOut);
+    nvcv::Tensor imgIn  = test::CreateTensor(batch, width, height, fmtIn);
 
     const auto *inData  = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(imgIn.exportData());
     const auto *outData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(imgOut.exportData());
@@ -72,18 +73,20 @@ const void testConvertTo(nvcv::ImageFormat fmtIn, nvcv::ImageFormat fmtOut, int 
     auto outAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*outData);
     ASSERT_TRUE(outAccess);
 
-    int inBufSizeElements  = (inAccess->sampleStride() / sizeof(DT_SOURCE)) * inAccess->numSamples();
-    int outBufSizeElements = (outAccess->sampleStride() / sizeof(DT_DEST)) * outAccess->numSamples();
-    int inBufSizeBytes     = inAccess->sampleStride() * inAccess->numSamples();
-    int outBufSizeBytes    = outAccess->sampleStride() * outAccess->numSamples();
+    int inSampleStride  = inAccess->numRows() * inAccess->rowStride();
+    int outSampleStride = outAccess->numRows() * outAccess->rowStride();
+
+    int inBufSizeElements  = (inSampleStride / sizeof(DT_SOURCE)) * inAccess->numSamples();
+    int outBufSizeElements = (outSampleStride / sizeof(DT_DEST)) * outAccess->numSamples();
+    int inBufSizeBytes     = inSampleStride * inAccess->numSamples();
+    int outBufSizeBytes    = outSampleStride * outAccess->numSamples();
 
     std::vector<DT_SOURCE> srcVec(inBufSizeElements, setVal);
     std::vector<DT_DEST>   goldVec(outBufSizeElements);
     std::vector<DT_DEST>   testVec(outBufSizeElements);
 
     setGoldBuffer<DT_DEST>(goldVec, expVal, width * outAccess->numChannels(), height,
-                           (outAccess->rowStride() / sizeof(DT_DEST)), (outAccess->sampleStride() / sizeof(DT_DEST)),
-                           batch);
+                           (outAccess->rowStride() / sizeof(DT_DEST)), (outSampleStride / sizeof(DT_DEST)), batch);
 
     // Copy input data to the GPU
     EXPECT_EQ(cudaSuccess,

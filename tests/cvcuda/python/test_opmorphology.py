@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,7 +16,7 @@
 import cvcuda
 import pytest as t
 import numpy as np
-import util
+import cvcuda_util as util
 
 
 RNG = np.random.default_rng(0)
@@ -26,7 +26,7 @@ RNG = np.random.default_rng(0)
     "input, morphologyType, maskSize, anchor, iteration, border ",
     [
         (
-            cvcuda.Tensor([5, 16, 23, 4], np.uint8, "NHWC"),
+            cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"),
             cvcuda.MorphologyType.ERODE,
             [-1, -1],
             [-1, -1],
@@ -34,7 +34,7 @@ RNG = np.random.default_rng(0)
             cvcuda.Border.CONSTANT,
         ),
         (
-            cvcuda.Tensor([4, 4, 3], np.float32, "HWC"),
+            cvcuda.Tensor((4, 4, 3), np.float32, "HWC"),
             cvcuda.MorphologyType.DILATE,
             [2, 1],
             [-1, -1],
@@ -42,7 +42,7 @@ RNG = np.random.default_rng(0)
             cvcuda.Border.REPLICATE,
         ),
         (
-            cvcuda.Tensor([3, 88, 13, 3], np.uint16, "NHWC"),
+            cvcuda.Tensor((3, 88, 13, 3), np.uint16, "NHWC"),
             cvcuda.MorphologyType.ERODE,
             [2, 2],
             [-1, -1],
@@ -50,7 +50,7 @@ RNG = np.random.default_rng(0)
             cvcuda.Border.REFLECT,
         ),
         (
-            cvcuda.Tensor([3, 4, 4], np.uint16, "HWC"),
+            cvcuda.Tensor((3, 4, 4), np.uint16, "HWC"),
             cvcuda.MorphologyType.DILATE,
             [3, 3],
             [-1, -1],
@@ -58,7 +58,7 @@ RNG = np.random.default_rng(0)
             cvcuda.Border.WRAP,
         ),
         (
-            cvcuda.Tensor([1, 2, 3, 4], np.uint8, "NHWC"),
+            cvcuda.Tensor((1, 2, 3, 4), np.uint8, "NHWC"),
             cvcuda.MorphologyType.ERODE,
             [-1, -1],
             [1, 1],

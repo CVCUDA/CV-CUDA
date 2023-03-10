@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -42,7 +42,7 @@ __global__ void compute_warpAffine(const int numImages, const cuda::Tensor1DWrap
 
     double *aCoeffs = (double *)((char *)d_aCoeffs + (sizeof(double) * 6) * index);
 
-    double angle  = *angleDeg.ptr(index);
+    double angle  = angleDeg[index];
     double xShift = *shift.ptr(index, 0);
     double yShift = *shift.ptr(index, 1);
 
@@ -94,7 +94,7 @@ __global__ void rotate_linear(const Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<
         src_reg = *src.ptr(batch_idx, y2_read, x2_read);
         out     = out + src_reg * ((src_x - x1) * (src_y - y1));
 
-        *dst.ptr(batch_idx, dst_y, dst_x) = nvcv::cuda::SaturateCast<nvcv::cuda::BaseType<T>>(out);
+        *dst.ptr(batch_idx, dst_y, dst_x) = nvcv::cuda::SaturateCast<T>(out);
     }
 }
 

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -76,13 +76,16 @@ NVCV_CONSTEXPR static const NVCVTensorLayout NVCV_TENSOR_NONE = NVCV_TENSOR_LAYO
 // clang-format off
 NVCV_CONSTEXPR static const NVCVTensorLayout NVCV_TENSOR_IMPLICIT[7] =
 {
-    NVCV_TENSOR_NONE,
-    NVCV_TENSOR_W,
-    NVCV_TENSOR_HW,
-    NVCV_TENSOR_NHW,
-    NVCV_TENSOR_NCHW,
-    NVCV_TENSOR_NCDHW,
-    NVCV_TENSOR_NCFDHW
+    // Can't use the NVCV_TENSOR_* identifiers directly,
+    // clang complains they are not compile-time constants.
+    // We must resort to the make macros instead.
+    NVCV_TENSOR_LAYOUT_MAKE(""), // none
+    NVCV_TENSOR_LAYOUT_MAKE("W"),
+    NVCV_TENSOR_LAYOUT_MAKE("HW"),
+    NVCV_TENSOR_LAYOUT_MAKE("NHW"),
+    NVCV_TENSOR_LAYOUT_MAKE("NCHW"),
+    NVCV_TENSOR_LAYOUT_MAKE("NCDHW"),
+    NVCV_TENSOR_LAYOUT_MAKE("NCFDHW"),
 };
 // clang-format on
 
@@ -200,19 +203,9 @@ inline static int32_t nvcvTensorLayoutFindDimIndex(NVCVTensorLayout layout, char
  */
 NVCV_CONSTEXPR inline static char nvcvTensorLayoutGetLabel(NVCVTensorLayout layout, int idx)
 {
-    if (idx < 0)
-    {
-        idx = layout.rank + idx;
-    }
-
-    if (0 <= idx && idx < layout.rank)
-    {
-        return layout.data[idx];
-    }
-    else
-    {
-        return '\0';
-    }
+    // Must be all a single statement for C++11 compatibility
+    return idx < 0 ? (0 <= layout.rank + idx && layout.rank + idx < layout.rank ? layout.data[layout.rank + idx] : '\0')
+                   : (0 <= idx && idx < layout.rank ? layout.data[idx] : '\0');
 }
 
 /** Returns the number of dimensions of the tensor layout
@@ -294,14 +287,7 @@ inline static int32_t nvcvTensorLayoutEndsWith(NVCVTensorLayout layout, NVCVTens
  */
 NVCV_CONSTEXPR inline static const char *nvcvTensorLayoutGetName(const NVCVTensorLayout *layout)
 {
-    if (layout == NULL)
-    {
-        return "";
-    }
-    else
-    {
-        return layout->data;
-    }
+    return layout == NULL ? "" : layout->data;
 }
 
 #ifdef __cplusplus

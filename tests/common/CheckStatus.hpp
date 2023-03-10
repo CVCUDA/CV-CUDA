@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -61,19 +61,19 @@ using nvcv::Exception;
 #define NVCV_DETAIL_CHECK_STATUS(FAIL_KIND, STATUS, ...)                                                     \
     try                                                                                                      \
     {                                                                                                        \
-        auto fn = [&]<class T>(T) -> NVCVStatus                                                              \
+        auto fn = [&]<class T>(T ret) -> T                                                                   \
         {                                                                                                    \
-            if constexpr (sizeof(T) != 0 && std::is_same_v<decltype(__VA_ARGS__), NVCVStatus>)               \
+            if constexpr (std::is_same_v<decltype(__VA_ARGS__), T>)                                          \
             {                                                                                                \
                 return __VA_ARGS__;                                                                          \
             }                                                                                                \
             else                                                                                             \
             {                                                                                                \
                 __VA_ARGS__;                                                                                 \
-                return NVCV_SUCCESS;                                                                         \
+                return ret;                                                                                  \
             }                                                                                                \
         };                                                                                                   \
-        NVCVStatus status = fn(0);                                                                           \
+        NVCVStatus status = fn(NVCV_SUCCESS);                                                                \
         if (status != (STATUS))                                                                              \
         {                                                                                                    \
             if ((STATUS) == NVCV_SUCCESS)                                                                    \

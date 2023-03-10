@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -77,49 +77,33 @@ TensorImageData::TensorImageData(const ITensorData *tensorData, int sampleIndex)
 
     auto tDataAc = nvcv::TensorDataAccessStridedImage::Create(*tensorData);
 
-    int sizeSampleBytes = tDataAc->sampleStride();
-    m_rowStride         = tDataAc->rowStride();
-
-    m_data.resize(sizeSampleBytes);
-
-    if (cudaSuccess
-        != cudaMemcpy(m_data.data(), tDataAc->sampleData(sampleIndex), tDataAc->sampleStride(), cudaMemcpyDeviceToHost))
-    {
-        throw Exception(Status::ERROR_INTERNAL, "cudaMemcpy filed");
-    }
-
+    m_rowStride = tDataAc->rowStride();
     m_layout    = tDataAc->infoLayout().layout().m_layout;
     m_bytesPerC = tDataAc->dtype().bitsPerPixel() / 8;
-    m_planar    = false;
-    if (m_layout == NVCV_TENSOR_HWC)
-    {
-        m_size.h = tDataAc->infoShape().shape()[0];
-        m_size.w = tDataAc->infoShape().shape()[1];
-        m_numC   = tDataAc->infoShape().shape()[2];
-    }
-    else if (m_layout == NVCV_TENSOR_NHWC)
-    {
-        m_size.h = tDataAc->infoShape().shape()[1];
-        m_size.w = tDataAc->infoShape().shape()[2];
-        m_numC   = tDataAc->infoShape().shape()[3];
-    }
-    else if (m_layout == NVCV_TENSOR_CHW)
-    {
-        m_numC   = tDataAc->infoShape().shape()[0];
-        m_size.h = tDataAc->infoShape().shape()[1];
-        m_size.w = tDataAc->infoShape().shape()[2];
-        m_planar = true;
-    }
-    else if (m_layout == NVCV_TENSOR_NCHW)
-    {
-        m_numC   = tDataAc->infoShape().shape()[1];
-        m_size.h = tDataAc->infoShape().shape()[2];
-        m_size.w = tDataAc->infoShape().shape()[3];
-        m_planar = true;
-    }
-    else
+    m_planar    = m_layout == NVCV_TENSOR_CHW || m_layout == NVCV_TENSOR_NCHW;
+    m_size.h    = tDataAc->numRows();
+    m_size.w    = tDataAc->numCols();
+    m_numC      = tDataAc->numChannels();
+
+    if (m_layout != NVCV_TENSOR_CHW && m_layout != NVCV_TENSOR_NCHW && m_layout != NVCV_TENSOR_HWC
+        && m_layout != NVCV_TENSOR_NHWC)
     {
         throw std::runtime_error("Tensor layout unknown");
+    }
+
+    long sampleStride = tDataAc->sampleStride();
+
+    if (tensorData->rank() == 3)
+    {
+        sampleStride = m_planar ? m_numC * m_size.h * m_rowStride : m_size.h * m_rowStride;
+    }
+
+    m_data.resize(sampleStride);
+
+    if (cudaSuccess
+        != cudaMemcpy(m_data.data(), tDataAc->sampleData(sampleIndex), sampleStride, cudaMemcpyDeviceToHost))
+    {
+        throw Exception(Status::ERROR_INTERNAL, "cudaMemcpy filed");
     }
 
     if (m_planar)
@@ -169,6 +153,36 @@ bool TensorImageData::operator==(const TensorImageData &that) const
 bool TensorImageData::operator!=(const TensorImageData &that) const
 {
     return !operator==(that);
+}
+
+nvcv::Tensor CreateTensor(int numImages, int imgWidth, int imgHeight, const nvcv::ImageFormat &imgFormat)
+{
+    if (numImages == 1)
+    {
+        int numChannels = imgFormat.numPlanes() == 1 ? imgFormat.planeNumChannels(0) : imgFormat.numPlanes();
+
+        if (imgFormat.numPlanes() > 1)
+        {
+            return nvcv::Tensor(
+                {
+                    {numChannels, imgHeight, imgWidth},
+                    "CHW"
+            },
+                imgFormat.planeDataType(0).channelType(0));
+        }
+        else
+        {
+            return nvcv::Tensor(
+                {
+                    {imgHeight, imgWidth, numChannels},
+                    "HWC"
+            },
+                imgFormat.planeDataType(0).channelType(0));
+        }
+    }
+
+    assert(numImages > 1);
+    return nvcv::Tensor(numImages, {imgWidth, imgHeight}, imgFormat);
 }
 
 } // namespace nvcv::test

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -115,9 +115,11 @@ TEST(OpMorphology, morph_check_dilate_kernel)
     constexpr int height  = 5;
     int           batches = 3;
 
-    nvcv::ImageFormat  format{NVCV_IMAGE_FORMAT_U8};
-    nvcv::Tensor       inTensor(batches, {width, height}, format);
-    nvcv::Tensor       outTensor(batches, {width, height}, format);
+    nvcv::ImageFormat format{NVCV_IMAGE_FORMAT_U8};
+
+    nvcv::Tensor inTensor  = test::CreateTensor(batches, width, height, format);
+    nvcv::Tensor outTensor = test::CreateTensor(batches, width, height, format);
+
     int2               anchor(-1, -1);
     nvcv::Size2D       maskSize(3, 3);
     int                iteration  = 1;
@@ -266,9 +268,11 @@ TEST(OpMorphology, morph_check_erode_kernel)
     constexpr int height  = 5;
     int           batches = 3;
 
-    nvcv::ImageFormat  format{NVCV_IMAGE_FORMAT_U8};
-    nvcv::Tensor       inTensor(batches, {width, height}, format);
-    nvcv::Tensor       outTensor(batches, {width, height}, format);
+    nvcv::ImageFormat format{NVCV_IMAGE_FORMAT_U8};
+
+    nvcv::Tensor inTensor  = test::CreateTensor(batches, width, height, format);
+    nvcv::Tensor outTensor = test::CreateTensor(batches, width, height, format);
+
     int2               anchor(-1, -1);
     nvcv::Size2D       maskSize(3, 3);
     int                iteration  = 1;
@@ -310,9 +314,11 @@ TEST(OpMorphology, morph_check_dilate_kernel_even)
     constexpr int height  = 6;
     int           batches = 3;
 
-    nvcv::ImageFormat  format{NVCV_IMAGE_FORMAT_U8};
-    nvcv::Tensor       inTensor(batches, {width, height}, format);
-    nvcv::Tensor       outTensor(batches, {width, height}, format);
+    nvcv::ImageFormat format{NVCV_IMAGE_FORMAT_U8};
+
+    nvcv::Tensor inTensor  = test::CreateTensor(batches, width, height, format);
+    nvcv::Tensor outTensor = test::CreateTensor(batches, width, height, format);
+
     int2               anchor(-1, -1);
     nvcv::Size2D       maskSize(3, 3);
     int                iteration  = 1;
@@ -374,8 +380,8 @@ TEST_P(OpMorphology, morph_noop)
 
     nvcv::ImageFormat format{NVCV_IMAGE_FORMAT_U8};
 
-    nvcv::Tensor inTensor(batches, {width, height}, format);
-    nvcv::Tensor outTensor(batches, {width, height}, format);
+    nvcv::Tensor inTensor  = test::CreateTensor(batches, width, height, format);
+    nvcv::Tensor outTensor = test::CreateTensor(batches, width, height, format);
 
     EXPECT_NO_THROW(test::SetTensorToRandomValue<uint8_t>(inTensor.exportData(), 0, 0xFF));
     EXPECT_NO_THROW(test::SetTensorTo<uint8_t>(outTensor.exportData(), 0));
@@ -385,6 +391,7 @@ TEST_P(OpMorphology, morph_noop)
 
     nvcv::Size2D maskSize(1, 1);
     int          iteration = 0;
+
     EXPECT_NO_THROW(morphOp(stream, inTensor, outTensor, morphType, maskSize, anchor, iteration, borderMode));
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
 
@@ -419,8 +426,8 @@ TEST_P(OpMorphology, morph_random)
     int  iteration = 1;
     int3 shape{width, height, batches};
 
-    nvcv::Tensor inTensor(batches, {width, height}, format);
-    nvcv::Tensor outTensor(batches, {width, height}, format);
+    nvcv::Tensor inTensor  = test::CreateTensor(batches, width, height, format);
+    nvcv::Tensor outTensor = test::CreateTensor(batches, width, height, format);
 
     const auto *inData  = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(inTensor.exportData());
     const auto *outData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(outTensor.exportData());
@@ -428,11 +435,23 @@ TEST_P(OpMorphology, morph_random)
     ASSERT_NE(inData, nullptr);
     ASSERT_NE(outData, nullptr);
 
-    long3 inStrides{inData->stride(0), inData->stride(1), inData->stride(2)};
-    long3 outStrides{outData->stride(0), outData->stride(1), outData->stride(2)};
+    auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*inData);
+    ASSERT_TRUE(inAccess);
 
-    long inBufSize  = inStrides.x * inData->shape(0);
-    long outBufSize = outStrides.x * outData->shape(0);
+    auto outAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*outData);
+    ASSERT_TRUE(outAccess);
+
+    long3 inStrides{inAccess->sampleStride(), inAccess->rowStride(), inAccess->colStride()};
+    long3 outStrides{outAccess->sampleStride(), outAccess->rowStride(), outAccess->colStride()};
+
+    if (inData->rank() == 3)
+    {
+        inStrides.x  = inAccess->numRows() * inAccess->rowStride();
+        outStrides.x = outAccess->numRows() * outAccess->rowStride();
+    }
+
+    long inBufSize  = inStrides.x * inAccess->numSamples();
+    long outBufSize = outStrides.x * outAccess->numSamples();
 
     std::vector<uint8_t> inVec(inBufSize);
 

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -49,7 +49,7 @@ Tensor EraseInto(Tensor &output, Tensor &input, Tensor &anchor, Tensor &erasing,
     ResourceGuard guard(*pstream);
     guard.add(LockMode::LOCK_READ, {input, anchor, erasing, values, imgIdx});
     guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*erase});
+    guard.add(LockMode::LOCK_WRITE, {*erase});
 
     erase->submit(pstream->cudaHandle(), input, output, anchor, erasing, values, imgIdx, random, seed);
 
@@ -85,7 +85,7 @@ ImageBatchVarShape EraseVarShapeInto(ImageBatchVarShape &output, ImageBatchVarSh
     ResourceGuard guard(*pstream);
     guard.add(LockMode::LOCK_READ, {input, anchor, erasing, values, imgIdx});
     guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*erase});
+    guard.add(LockMode::LOCK_WRITE, {*erase});
 
     erase->submit(pstream->cudaHandle(), input, output, anchor, erasing, values, imgIdx, random, seed);
 

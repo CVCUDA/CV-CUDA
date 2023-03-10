@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -79,9 +79,8 @@ static constexpr int ITUR_BT_601_CBV = -74448;
 
 namespace nvcv::legacy::cuda_op {
 
-template<class T>
-__global__ void rgb_to_bgr_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4DWrap<T> dst, int2 dstSize, int sch, int dch,
-                                int bidx)
+template<class SrcWrapper, class DstWrapper, typename T = typename DstWrapper::ValueType>
+__global__ void rgb_to_bgr_nhwc(SrcWrapper src, DstWrapper dst, int2 dstSize, int sch, int dch, int bidx)
 {
     int dst_x = blockIdx.x * blockDim.x + threadIdx.x;
     int dst_y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -104,8 +103,8 @@ __global__ void rgb_to_bgr_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4DWrap<T>
     }
 }
 
-template<class T>
-__global__ void gray_to_bgr_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4DWrap<T> dst, int2 dstSize, int dch)
+template<class SrcWrapper, class DstWrapper, typename T = typename DstWrapper::ValueType>
+__global__ void gray_to_bgr_nhwc(SrcWrapper src, DstWrapper dst, int2 dstSize, int dch)
 {
     int dst_x = blockIdx.x * blockDim.x + threadIdx.x;
     int dst_y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -124,8 +123,8 @@ __global__ void gray_to_bgr_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4DWrap<T
     }
 }
 
-template<class T>
-__global__ void bgr_to_gray_char_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4DWrap<T> dst, int2 dstSize, int bidx)
+template<class SrcWrapper, class DstWrapper, typename T = typename DstWrapper::ValueType>
+__global__ void bgr_to_gray_char_nhwc(SrcWrapper src, DstWrapper dst, int2 dstSize, int bidx)
 {
     int dst_x = blockIdx.x * blockDim.x + threadIdx.x;
     int dst_y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -140,8 +139,8 @@ __global__ void bgr_to_gray_char_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4DW
     *dst.ptr(batch_idx, dst_y, dst_x, 0) = gray;
 }
 
-template<class T>
-__global__ void bgr_to_gray_float_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4DWrap<T> dst, int2 dstSize, int bidx)
+template<class SrcWrapper, class DstWrapper, typename T = typename DstWrapper::ValueType>
+__global__ void bgr_to_gray_float_nhwc(SrcWrapper src, DstWrapper dst, int2 dstSize, int bidx)
 {
     int dst_x = blockIdx.x * blockDim.x + threadIdx.x;
     int dst_y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -156,8 +155,8 @@ __global__ void bgr_to_gray_float_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4D
     *dst.ptr(batch_idx, dst_y, dst_x, 0) = gray;
 }
 
-template<class T>
-__global__ void bgr_to_yuv_char_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4DWrap<T> dst, int2 dstSize, int bidx)
+template<class SrcWrapper, class DstWrapper, typename T = typename DstWrapper::ValueType>
+__global__ void bgr_to_yuv_char_nhwc(SrcWrapper src, DstWrapper dst, int2 dstSize, int bidx)
 {
     int dst_x = blockIdx.x * blockDim.x + threadIdx.x;
     int dst_y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -179,8 +178,8 @@ __global__ void bgr_to_yuv_char_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4DWr
     *dst.ptr(batch_idx, dst_y, dst_x, 2) = cuda::SaturateCast<T>(Cr);
 }
 
-template<class T>
-__global__ void bgr_to_yuv_float_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4DWrap<T> dst, int2 dstSize, int bidx)
+template<class SrcWrapper, class DstWrapper, typename T = typename DstWrapper::ValueType>
+__global__ void bgr_to_yuv_float_nhwc(SrcWrapper src, DstWrapper dst, int2 dstSize, int bidx)
 {
     int dst_x = blockIdx.x * blockDim.x + threadIdx.x;
     int dst_y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -201,8 +200,8 @@ __global__ void bgr_to_yuv_float_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4DW
     *dst.ptr(batch_idx, dst_y, dst_x, 2) = Cr;
 }
 
-template<class T>
-__global__ void yuv_to_bgr_char_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4DWrap<T> dst, int2 dstSize, int bidx)
+template<class SrcWrapper, class DstWrapper, typename T = typename DstWrapper::ValueType>
+__global__ void yuv_to_bgr_char_nhwc(SrcWrapper src, DstWrapper dst, int2 dstSize, int bidx)
 {
     int dst_x = blockIdx.x * blockDim.x + threadIdx.x;
     int dst_y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -224,8 +223,8 @@ __global__ void yuv_to_bgr_char_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4DWr
     *dst.ptr(batch_idx, dst_y, dst_x, bidx ^ 2) = cuda::SaturateCast<T>(r);
 }
 
-template<class T>
-__global__ void yuv_to_bgr_float_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4DWrap<T> dst, int2 dstSize, int bidx)
+template<class SrcWrapper, class DstWrapper, typename T = typename DstWrapper::ValueType>
+__global__ void yuv_to_bgr_float_nhwc(SrcWrapper src, DstWrapper dst, int2 dstSize, int bidx)
 {
     int dst_x = blockIdx.x * blockDim.x + threadIdx.x;
     int dst_y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -247,9 +246,8 @@ __global__ void yuv_to_bgr_float_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4DW
     *dst.ptr(batch_idx, dst_y, dst_x, bidx ^ 2) = r;
 }
 
-template<class T>
-__global__ void bgr_to_hsv_char_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4DWrap<T> dst, int2 dstSize, int bidx,
-                                     bool isFullRange)
+template<class SrcWrapper, class DstWrapper>
+__global__ void bgr_to_hsv_char_nhwc(SrcWrapper src, DstWrapper dst, int2 dstSize, int bidx, bool isFullRange)
 {
     int dst_x = blockIdx.x * blockDim.x + threadIdx.x;
     int dst_y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -288,8 +286,8 @@ __global__ void bgr_to_hsv_char_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4DWr
     *dst.ptr(batch_idx, dst_y, dst_x, 2) = (unsigned char)v;
 }
 
-template<class T>
-__global__ void bgr_to_hsv_float_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4DWrap<T> dst, int2 dstSize, int bidx)
+template<class SrcWrapper, class DstWrapper>
+__global__ void bgr_to_hsv_float_nhwc(SrcWrapper src, DstWrapper dst, int2 dstSize, int bidx)
 {
     int dst_x = blockIdx.x * blockDim.x + threadIdx.x;
     int dst_y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -371,9 +369,8 @@ __device__ inline void HSV2RGB_native(float h, float s, float v, float &b, float
     }
 }
 
-template<class T>
-__global__ void hsv_to_bgr_char_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4DWrap<T> dst, int2 dstSize, int bidx,
-                                     int dcn, bool isFullRange)
+template<class SrcWrapper, class DstWrapper, typename T = typename DstWrapper::ValueType>
+__global__ void hsv_to_bgr_char_nhwc(SrcWrapper src, DstWrapper dst, int2 dstSize, int bidx, int dcn, bool isFullRange)
 {
     int dst_x = blockIdx.x * blockDim.x + threadIdx.x;
     int dst_y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -399,9 +396,8 @@ __global__ void hsv_to_bgr_char_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4DWr
         *dst.ptr(batch_idx, dst_y, dst_x, 3) = alpha;
 }
 
-template<class T>
-__global__ void hsv_to_bgr_float_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4DWrap<T> dst, int2 dstSize, int bidx,
-                                      int dcn)
+template<class SrcWrapper, class DstWrapper>
+__global__ void hsv_to_bgr_float_nhwc(SrcWrapper src, DstWrapper dst, int2 dstSize, int bidx, int dcn)
 {
     int dst_x = blockIdx.x * blockDim.x + threadIdx.x;
     int dst_y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -467,9 +463,8 @@ __device__ __forceinline__ void bgr_to_yuv42xxp_kernel(const uchar &r, const uch
     V = cuda::SaturateCast<uchar>(vv >> ITUR_BT_601_SHIFT);
 }
 
-template<class T>
-__global__ void bgr_to_yuv420p_char_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4DWrap<T> dst, int2 srcSize, int scn,
-                                         int bidx, int uidx)
+template<class SrcWrapper, class DstWrapper>
+__global__ void bgr_to_yuv420p_char_nhwc(SrcWrapper src, DstWrapper dst, int2 srcSize, int scn, int bidx, int uidx)
 {
     int src_x = blockIdx.x * blockDim.x + threadIdx.x;
     int src_y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -496,9 +491,8 @@ __global__ void bgr_to_yuv420p_char_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor
     }
 }
 
-template<class T>
-__global__ void bgr_to_yuv420sp_char_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4DWrap<T> dst, int2 srcSize, int scn,
-                                          int bidx, int uidx)
+template<class SrcWrapper, class DstWrapper>
+__global__ void bgr_to_yuv420sp_char_nhwc(SrcWrapper src, DstWrapper dst, int2 srcSize, int scn, int bidx, int uidx)
 {
     int src_x = blockIdx.x * blockDim.x + threadIdx.x;
     int src_y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -523,9 +517,8 @@ __global__ void bgr_to_yuv420sp_char_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tenso
     }
 }
 
-template<class T>
-__global__ void yuv420sp_to_bgr_char_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4DWrap<T> dst, int2 dstSize, int dcn,
-                                          int bidx, int uidx)
+template<class SrcWrapper, class DstWrapper, typename T = typename DstWrapper::ValueType>
+__global__ void yuv420sp_to_bgr_char_nhwc(SrcWrapper src, DstWrapper dst, int2 dstSize, int dcn, int bidx, int uidx)
 {
     int dst_x = blockIdx.x * blockDim.x + threadIdx.x;
     int dst_y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -550,9 +543,8 @@ __global__ void yuv420sp_to_bgr_char_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tenso
     }
 }
 
-template<class T>
-__global__ void yuv420p_to_bgr_char_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4DWrap<T> dst, int2 dstSize, int dcn,
-                                         int bidx, int uidx)
+template<class SrcWrapper, class DstWrapper, typename T = typename DstWrapper::ValueType>
+__global__ void yuv420p_to_bgr_char_nhwc(SrcWrapper src, DstWrapper dst, int2 dstSize, int dcn, int bidx, int uidx)
 {
     int dst_x = blockIdx.x * blockDim.x + threadIdx.x;
     int dst_y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -580,9 +572,9 @@ __global__ void yuv420p_to_bgr_char_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor
     }
 }
 
-template<class T>
-__global__ void yuv422_to_bgr_char_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4DWrap<T> dst, int2 dstSize, int dcn,
-                                        int bidx, int yidx, int uidx)
+template<class SrcWrapper, class DstWrapper, typename T = typename DstWrapper::ValueType>
+__global__ void yuv422_to_bgr_char_nhwc(SrcWrapper src, DstWrapper dst, int2 dstSize, int dcn, int bidx, int yidx,
+                                        int uidx)
 {
     int dst_x = blockIdx.x * blockDim.x + threadIdx.x;
     int dst_y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -607,8 +599,8 @@ __global__ void yuv422_to_bgr_char_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4
     }
 }
 
-template<class T>
-__global__ void yuv420_to_gray_char_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4DWrap<T> dst, int2 dstSize)
+template<class SrcWrapper, class DstWrapper, typename T = typename DstWrapper::ValueType>
+__global__ void yuv420_to_gray_char_nhwc(SrcWrapper src, DstWrapper dst, int2 dstSize)
 {
     int dst_x = blockIdx.x * blockDim.x + threadIdx.x;
     int dst_y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -619,8 +611,8 @@ __global__ void yuv420_to_gray_char_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor
     *dst.ptr(batch_idx, dst_y, dst_x, 0) = Y;
 }
 
-template<class T>
-__global__ void yuv422_to_gray_char_nhwc(cuda::Tensor4DWrap<T> src, cuda::Tensor4DWrap<T> dst, int2 dstSize, int yidx)
+template<class SrcWrapper, class DstWrapper, typename T = typename DstWrapper::ValueType>
+__global__ void yuv422_to_gray_char_nhwc(SrcWrapper src, DstWrapper dst, int2 dstSize, int yidx)
 {
     int dst_x = blockIdx.x * blockDim.x + threadIdx.x;
     int dst_y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -680,9 +672,9 @@ inline ErrorCode BGR_to_RGB(const ITensorDataStridedCuda &inData, const ITensorD
     case kCV_8U:
     case kCV_8S:
     {
-        cuda::Tensor4DWrap<unsigned char> src_ptr(inData);
-        cuda::Tensor4DWrap<unsigned char> dst_ptr(outData);
-        rgb_to_bgr_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dstSize, sch, dch, bidx);
+        auto srcWrap = cuda::CreateTensorWrapNHWC<uint8_t>(inData);
+        auto dstWrap = cuda::CreateTensorWrapNHWC<uint8_t>(outData);
+        rgb_to_bgr_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, sch, dch, bidx);
         checkKernelErrors();
     }
     break;
@@ -690,33 +682,33 @@ inline ErrorCode BGR_to_RGB(const ITensorDataStridedCuda &inData, const ITensorD
     case kCV_16F:
     case kCV_16S:
     {
-        cuda::Tensor4DWrap<uint16_t> src_ptr(inData);
-        cuda::Tensor4DWrap<uint16_t> dst_ptr(outData);
-        rgb_to_bgr_nhwc<uint16_t><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dstSize, sch, dch, bidx);
+        auto srcWrap = cuda::CreateTensorWrapNHWC<uint16_t>(inData);
+        auto dstWrap = cuda::CreateTensorWrapNHWC<uint16_t>(outData);
+        rgb_to_bgr_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, sch, dch, bidx);
         checkKernelErrors();
     }
     break;
     case kCV_32S:
     {
-        cuda::Tensor4DWrap<int32_t> src_ptr(inData);
-        cuda::Tensor4DWrap<int32_t> dst_ptr(outData);
-        rgb_to_bgr_nhwc<int32_t><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dstSize, sch, dch, bidx);
+        auto srcWrap = cuda::CreateTensorWrapNHWC<int32_t>(inData);
+        auto dstWrap = cuda::CreateTensorWrapNHWC<int32_t>(outData);
+        rgb_to_bgr_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, sch, dch, bidx);
         checkKernelErrors();
     }
     break;
     case kCV_32F:
     {
-        cuda::Tensor4DWrap<float> src_ptr(inData);
-        cuda::Tensor4DWrap<float> dst_ptr(outData);
-        rgb_to_bgr_nhwc<float><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dstSize, sch, dch, bidx);
+        auto srcWrap = cuda::CreateTensorWrapNHWC<float>(inData);
+        auto dstWrap = cuda::CreateTensorWrapNHWC<float>(outData);
+        rgb_to_bgr_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, sch, dch, bidx);
         checkKernelErrors();
     }
     break;
     case kCV_64F:
     {
-        cuda::Tensor4DWrap<double> src_ptr(inData);
-        cuda::Tensor4DWrap<double> dst_ptr(outData);
-        rgb_to_bgr_nhwc<double><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dstSize, sch, dch, bidx);
+        auto srcWrap = cuda::CreateTensorWrapNHWC<double>(inData);
+        auto dstWrap = cuda::CreateTensorWrapNHWC<double>(outData);
+        rgb_to_bgr_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, sch, dch, bidx);
         checkKernelErrors();
     }
     break;
@@ -768,9 +760,9 @@ inline ErrorCode GRAY_to_BGR(const ITensorDataStridedCuda &inData, const ITensor
     case kCV_8U:
     case kCV_8S:
     {
-        cuda::Tensor4DWrap<unsigned char> src_ptr(inData);
-        cuda::Tensor4DWrap<unsigned char> dst_ptr(outData);
-        gray_to_bgr_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dstSize, dch);
+        auto srcWrap = cuda::CreateTensorWrapNHWC<uint8_t>(inData);
+        auto dstWrap = cuda::CreateTensorWrapNHWC<uint8_t>(outData);
+        gray_to_bgr_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, dch);
         checkKernelErrors();
     }
     break;
@@ -778,33 +770,33 @@ inline ErrorCode GRAY_to_BGR(const ITensorDataStridedCuda &inData, const ITensor
     case kCV_16F:
     case kCV_16S:
     {
-        cuda::Tensor4DWrap<uint16_t> src_ptr(inData);
-        cuda::Tensor4DWrap<uint16_t> dst_ptr(outData);
-        gray_to_bgr_nhwc<uint16_t><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dstSize, dch);
+        auto srcWrap = cuda::CreateTensorWrapNHWC<uint16_t>(inData);
+        auto dstWrap = cuda::CreateTensorWrapNHWC<uint16_t>(outData);
+        gray_to_bgr_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, dch);
         checkKernelErrors();
     }
     break;
     case kCV_32S:
     {
-        cuda::Tensor4DWrap<int32_t> src_ptr(inData);
-        cuda::Tensor4DWrap<int32_t> dst_ptr(outData);
-        gray_to_bgr_nhwc<int32_t><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dstSize, dch);
+        auto srcWrap = cuda::CreateTensorWrapNHWC<int32_t>(inData);
+        auto dstWrap = cuda::CreateTensorWrapNHWC<int32_t>(outData);
+        gray_to_bgr_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, dch);
         checkKernelErrors();
     }
     break;
     case kCV_32F:
     {
-        cuda::Tensor4DWrap<float> src_ptr(inData);
-        cuda::Tensor4DWrap<float> dst_ptr(outData);
-        gray_to_bgr_nhwc<float><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dstSize, dch);
+        auto srcWrap = cuda::CreateTensorWrapNHWC<float>(inData);
+        auto dstWrap = cuda::CreateTensorWrapNHWC<float>(outData);
+        gray_to_bgr_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, dch);
         checkKernelErrors();
     }
     break;
     case kCV_64F:
     {
-        cuda::Tensor4DWrap<double> src_ptr(inData);
-        cuda::Tensor4DWrap<double> dst_ptr(outData);
-        gray_to_bgr_nhwc<double><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dstSize, dch);
+        auto srcWrap = cuda::CreateTensorWrapNHWC<double>(inData);
+        auto dstWrap = cuda::CreateTensorWrapNHWC<double>(outData);
+        gray_to_bgr_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, dch);
         checkKernelErrors();
     }
     break;
@@ -856,25 +848,25 @@ inline ErrorCode BGR_to_GRAY(const ITensorDataStridedCuda &inData, const ITensor
     {
     case kCV_8U:
     {
-        cuda::Tensor4DWrap<unsigned char> src_ptr(inData);
-        cuda::Tensor4DWrap<unsigned char> dst_ptr(outData);
-        bgr_to_gray_char_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dstSize, bidx);
+        auto srcWrap = cuda::CreateTensorWrapNHWC<uint8_t>(inData);
+        auto dstWrap = cuda::CreateTensorWrapNHWC<uint8_t>(outData);
+        bgr_to_gray_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx);
         checkKernelErrors();
     }
     break;
     case kCV_16U:
     {
-        cuda::Tensor4DWrap<unsigned short> src_ptr(inData);
-        cuda::Tensor4DWrap<unsigned short> dst_ptr(outData);
-        bgr_to_gray_char_nhwc<unsigned short><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dstSize, bidx);
+        auto srcWrap = cuda::CreateTensorWrapNHWC<uint16_t>(inData);
+        auto dstWrap = cuda::CreateTensorWrapNHWC<uint16_t>(outData);
+        bgr_to_gray_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx);
         checkKernelErrors();
     }
     break;
     case kCV_32F:
     {
-        cuda::Tensor4DWrap<float> src_ptr(inData);
-        cuda::Tensor4DWrap<float> dst_ptr(outData);
-        bgr_to_gray_float_nhwc<float><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dstSize, bidx);
+        auto srcWrap = cuda::CreateTensorWrapNHWC<float>(inData);
+        auto dstWrap = cuda::CreateTensorWrapNHWC<float>(outData);
+        bgr_to_gray_float_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx);
         checkKernelErrors();
     }
     break;
@@ -927,25 +919,25 @@ inline ErrorCode BGR_to_YUV(const ITensorDataStridedCuda &inData, const ITensorD
     {
     case kCV_8U:
     {
-        cuda::Tensor4DWrap<unsigned char> src_ptr(inData);
-        cuda::Tensor4DWrap<unsigned char> dst_ptr(outData);
-        bgr_to_yuv_char_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dstSize, bidx);
+        auto srcWrap = cuda::CreateTensorWrapNHWC<uint8_t>(inData);
+        auto dstWrap = cuda::CreateTensorWrapNHWC<uint8_t>(outData);
+        bgr_to_yuv_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx);
         checkKernelErrors();
     }
     break;
     case kCV_16U:
     {
-        cuda::Tensor4DWrap<unsigned short> src_ptr(inData);
-        cuda::Tensor4DWrap<unsigned short> dst_ptr(outData);
-        bgr_to_yuv_char_nhwc<unsigned short><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dstSize, bidx);
+        auto srcWrap = cuda::CreateTensorWrapNHWC<uint16_t>(inData);
+        auto dstWrap = cuda::CreateTensorWrapNHWC<uint16_t>(outData);
+        bgr_to_yuv_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx);
         checkKernelErrors();
     }
     break;
     case kCV_32F:
     {
-        cuda::Tensor4DWrap<float> src_ptr(inData);
-        cuda::Tensor4DWrap<float> dst_ptr(outData);
-        bgr_to_yuv_float_nhwc<float><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dstSize, bidx);
+        auto srcWrap = cuda::CreateTensorWrapNHWC<float>(inData);
+        auto dstWrap = cuda::CreateTensorWrapNHWC<float>(outData);
+        bgr_to_yuv_float_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx);
         checkKernelErrors();
     }
     break;
@@ -998,25 +990,25 @@ inline ErrorCode YUV_to_BGR(const ITensorDataStridedCuda &inData, const ITensorD
     {
     case kCV_8U:
     {
-        cuda::Tensor4DWrap<unsigned char> src_ptr(inData);
-        cuda::Tensor4DWrap<unsigned char> dst_ptr(outData);
-        yuv_to_bgr_char_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dstSize, bidx);
+        auto srcWrap = cuda::CreateTensorWrapNHWC<uint8_t>(inData);
+        auto dstWrap = cuda::CreateTensorWrapNHWC<uint8_t>(outData);
+        yuv_to_bgr_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx);
         checkKernelErrors();
     }
     break;
     case kCV_16U:
     {
-        cuda::Tensor4DWrap<unsigned short> src_ptr(inData);
-        cuda::Tensor4DWrap<unsigned short> dst_ptr(outData);
-        yuv_to_bgr_char_nhwc<unsigned short><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dstSize, bidx);
+        auto srcWrap = cuda::CreateTensorWrapNHWC<uint16_t>(inData);
+        auto dstWrap = cuda::CreateTensorWrapNHWC<uint16_t>(outData);
+        yuv_to_bgr_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx);
         checkKernelErrors();
     }
     break;
     case kCV_32F:
     {
-        cuda::Tensor4DWrap<float> src_ptr(inData);
-        cuda::Tensor4DWrap<float> dst_ptr(outData);
-        yuv_to_bgr_float_nhwc<float><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dstSize, bidx);
+        auto srcWrap = cuda::CreateTensorWrapNHWC<float>(inData);
+        auto dstWrap = cuda::CreateTensorWrapNHWC<float>(outData);
+        yuv_to_bgr_float_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx);
         checkKernelErrors();
     }
     break;
@@ -1070,18 +1062,17 @@ inline ErrorCode BGR_to_HSV(const ITensorDataStridedCuda &inData, const ITensorD
     {
     case kCV_8U:
     {
-        cuda::Tensor4DWrap<unsigned char> src_ptr(inData);
-        cuda::Tensor4DWrap<unsigned char> dst_ptr(outData);
-        bgr_to_hsv_char_nhwc<unsigned char>
-            <<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dstSize, bidx, isFullRange);
+        auto srcWrap = cuda::CreateTensorWrapNHWC<uint8_t>(inData);
+        auto dstWrap = cuda::CreateTensorWrapNHWC<uint8_t>(outData);
+        bgr_to_hsv_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx, isFullRange);
         checkKernelErrors();
     }
     break;
     case kCV_32F:
     {
-        cuda::Tensor4DWrap<float> src_ptr(inData);
-        cuda::Tensor4DWrap<float> dst_ptr(outData);
-        bgr_to_hsv_float_nhwc<float><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dstSize, bidx);
+        auto srcWrap = cuda::CreateTensorWrapNHWC<float>(inData);
+        auto dstWrap = cuda::CreateTensorWrapNHWC<float>(outData);
+        bgr_to_hsv_float_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx);
         checkKernelErrors();
     }
     break;
@@ -1141,18 +1132,17 @@ inline ErrorCode HSV_to_BGR(const ITensorDataStridedCuda &inData, const ITensorD
     {
     case kCV_8U:
     {
-        cuda::Tensor4DWrap<unsigned char> src_ptr(inData);
-        cuda::Tensor4DWrap<unsigned char> dst_ptr(outData);
-        hsv_to_bgr_char_nhwc<unsigned char>
-            <<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dstSize, bidx, dcn, isFullRange);
+        auto srcWrap = cuda::CreateTensorWrapNHWC<uint8_t>(inData);
+        auto dstWrap = cuda::CreateTensorWrapNHWC<uint8_t>(outData);
+        hsv_to_bgr_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx, dcn, isFullRange);
         checkKernelErrors();
     }
     break;
     case kCV_32F:
     {
-        cuda::Tensor4DWrap<float> src_ptr(inData);
-        cuda::Tensor4DWrap<float> dst_ptr(outData);
-        hsv_to_bgr_float_nhwc<float><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dstSize, bidx, dcn);
+        auto srcWrap = cuda::CreateTensorWrapNHWC<float>(inData);
+        auto dstWrap = cuda::CreateTensorWrapNHWC<float>(outData);
+        hsv_to_bgr_float_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx, dcn);
         checkKernelErrors();
     }
     break;
@@ -1228,15 +1218,15 @@ inline ErrorCode YUV420xp_to_BGR(const ITensorDataStridedCuda &inData, const ITe
     int2 dstSize{outputShape.W, outputShape.H};
     int  dcn = outputShape.C;
 
-    cuda::Tensor4DWrap<unsigned char> src_ptr(inData);
-    cuda::Tensor4DWrap<unsigned char> dst_ptr(outData);
+    auto srcWrap = cuda::CreateTensorWrapNHWC<uint8_t>(inData);
+    auto dstWrap = cuda::CreateTensorWrapNHWC<uint8_t>(outData);
 
     switch (code)
     {
     case NVCV_COLOR_YUV2GRAY_420:
     {
         /* Method 1 */
-        // yuv420_to_gray_char_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dstSize);
+        // yuv420_to_gray_char_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize);
         // checkKernelErrors();
 
         /* Method 2 (Better performance, but only works with fixed input shapes) */
@@ -1258,8 +1248,7 @@ inline ErrorCode YUV420xp_to_BGR(const ITensorDataStridedCuda &inData, const ITe
     case NVCV_COLOR_YUV2RGBA_NV12:
     case NVCV_COLOR_YUV2RGBA_NV21:
     {
-        yuv420sp_to_bgr_char_nhwc<unsigned char>
-            <<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dstSize, dcn, bidx, uidx);
+        yuv420sp_to_bgr_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, dcn, bidx, uidx);
         checkKernelErrors();
     }
     break;
@@ -1272,8 +1261,7 @@ inline ErrorCode YUV420xp_to_BGR(const ITensorDataStridedCuda &inData, const ITe
     case NVCV_COLOR_YUV2RGBA_YV12:
     case NVCV_COLOR_YUV2RGBA_IYUV:
     {
-        yuv420p_to_bgr_char_nhwc<unsigned char>
-            <<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dstSize, dcn, bidx, uidx);
+        yuv420p_to_bgr_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, dcn, bidx, uidx);
         checkKernelErrors();
     }
     break;
@@ -1346,15 +1334,15 @@ inline ErrorCode YUV422_to_BGR(const ITensorDataStridedCuda &inData, const ITens
     int2 dstSize{outputShape.W, outputShape.H};
     int  dcn = outputShape.C;
 
-    cuda::Tensor4DWrap<unsigned char> src_ptr(inData);
-    cuda::Tensor4DWrap<unsigned char> dst_ptr(outData);
+    auto srcWrap = cuda::CreateTensorWrapNHWC<uint8_t>(inData);
+    auto dstWrap = cuda::CreateTensorWrapNHWC<uint8_t>(outData);
 
     switch (code)
     {
     case NVCV_COLOR_YUV2GRAY_YUY2:
     case NVCV_COLOR_YUV2GRAY_UYVY:
     {
-        yuv422_to_gray_char_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dstSize, yidx);
+        yuv422_to_gray_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, yidx);
         checkKernelErrors();
     }
     break;
@@ -1371,8 +1359,7 @@ inline ErrorCode YUV422_to_BGR(const ITensorDataStridedCuda &inData, const ITens
     case NVCV_COLOR_YUV2RGBA_UYVY:
     case NVCV_COLOR_YUV2BGRA_UYVY:
     {
-        yuv422_to_bgr_char_nhwc<unsigned char>
-            <<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dstSize, dcn, bidx, yidx, uidx);
+        yuv422_to_bgr_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, dcn, bidx, yidx, uidx);
         checkKernelErrors();
     }
     break;
@@ -1383,32 +1370,30 @@ inline ErrorCode YUV422_to_BGR(const ITensorDataStridedCuda &inData, const ITens
     return ErrorCode::SUCCESS;
 }
 
-template<typename T>
-inline static void bgr_to_yuv420p_launcher(cuda::Tensor4DWrap<T> src_ptr, cuda::Tensor4DWrap<T> dst_ptr,
-                                           DataShape inputShape, int bidx, int uidx, cudaStream_t stream)
+template<class SrcWrapper, class DstWrapper>
+inline static void bgr_to_yuv420p_launcher(SrcWrapper srcWrap, DstWrapper dstWrap, DataShape inputShape, int bidx,
+                                           int uidx, cudaStream_t stream)
 {
     int2 srcSize{inputShape.W, inputShape.H};
     // method 1
     dim3 blockSize(BLOCK, BLOCK / 1, 1);
     dim3 gridSize(divUp(inputShape.W, blockSize.x), divUp(inputShape.H, blockSize.y), inputShape.N);
-    bgr_to_yuv420p_char_nhwc<unsigned char>
-        <<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, srcSize, inputShape.C, bidx, uidx);
+    bgr_to_yuv420p_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, srcSize, inputShape.C, bidx, uidx);
     checkKernelErrors();
 
     // method 2 (TODO)
     // NPP
 }
 
-template<typename T>
-inline static void bgr_to_yuv420sp_launcher(cuda::Tensor4DWrap<T> src_ptr, cuda::Tensor4DWrap<T> dst_ptr,
-                                            DataShape inputShape, int bidx, int uidx, cudaStream_t stream)
+template<class SrcWrapper, class DstWrapper>
+inline static void bgr_to_yuv420sp_launcher(SrcWrapper srcWrap, DstWrapper dstWrap, DataShape inputShape, int bidx,
+                                            int uidx, cudaStream_t stream)
 {
     int2 srcSize{inputShape.W, inputShape.H};
     // method 1
     dim3 blockSize(BLOCK, BLOCK / 1, 1);
     dim3 gridSize(divUp(inputShape.W, blockSize.x), divUp(inputShape.H, blockSize.y), inputShape.N);
-    bgr_to_yuv420sp_char_nhwc<unsigned char>
-        <<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, srcSize, inputShape.C, bidx, uidx);
+    bgr_to_yuv420sp_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, srcSize, inputShape.C, bidx, uidx);
     checkKernelErrors();
 
     // method 2 (TODO)
@@ -1470,9 +1455,9 @@ inline ErrorCode BGR_to_YUV420xp(const ITensorDataStridedCuda &inData, const ITe
     }
 
     // BGR input
-    cuda::Tensor4DWrap<unsigned char> src_ptr(inData);
+    auto srcWrap = cuda::CreateTensorWrapNHWC<uint8_t>(inData);
     // YUV420 output
-    cuda::Tensor4DWrap<unsigned char> dst_ptr(outData);
+    auto dstWrap = cuda::CreateTensorWrapNHWC<uint8_t>(outData);
 
     switch (code)
     {
@@ -1485,7 +1470,7 @@ inline ErrorCode BGR_to_YUV420xp(const ITensorDataStridedCuda &inData, const ITe
     case NVCV_COLOR_RGBA2YUV_NV12:
     case NVCV_COLOR_RGBA2YUV_NV21:
     {
-        bgr_to_yuv420sp_launcher(src_ptr, dst_ptr, inputShape, bidx, uidx, stream);
+        bgr_to_yuv420sp_launcher(srcWrap, dstWrap, inputShape, bidx, uidx, stream);
         checkKernelErrors();
     }
     break;
@@ -1498,7 +1483,7 @@ inline ErrorCode BGR_to_YUV420xp(const ITensorDataStridedCuda &inData, const ITe
     case NVCV_COLOR_RGBA2YUV_YV12:
     case NVCV_COLOR_RGBA2YUV_IYUV:
     {
-        bgr_to_yuv420p_launcher(src_ptr, dst_ptr, inputShape, bidx, uidx, stream);
+        bgr_to_yuv420p_launcher(srcWrap, dstWrap, inputShape, bidx, uidx, stream);
         checkKernelErrors();
     }
     break;

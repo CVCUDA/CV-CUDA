@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -93,8 +93,8 @@ void MorphFilter2DCaller(const ITensorDataStridedCuda &inData, const ITensorData
     BT val   = (morph_type == NVCVMorphologyType::NVCV_DILATE) ? std::numeric_limits<BT>::min()
                                                                : std::numeric_limits<BT>::max();
 
-    cuda::BorderWrapNHW<const D, B> src(inData, cuda::SetAll<D>(val));
-    cuda::Tensor3DWrap<D>           dst(outData);
+    auto src = cuda::CreateBorderWrapNHW<const D, B>(inData, cuda::SetAll<D>(val));
+    auto dst = cuda::CreateTensorWrapNHW<D>(outData);
 
     auto outAccess = TensorDataAccessStridedImagePlanar::Create(outData);
     NVCV_ASSERT(outAccess);

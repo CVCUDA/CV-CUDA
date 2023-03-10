@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,17 +23,19 @@
 #include <nvcv/IImageData.hpp>  // for IImageDataStridedCuda, etc.
 #include <nvcv/ITensorData.hpp> // for ITensorDataStridedCuda, etc.
 #include <nvcv/TensorDataAccess.hpp>
-#include <nvcv/cuda/BorderWrap.hpp>   // for BorderWrap, etc.
-#include <nvcv/cuda/DropCast.hpp>     // for DropCast, etc.
-#include <nvcv/cuda/MathOps.hpp>      // for math operators
-#include <nvcv/cuda/MathWrappers.hpp> // for sqrt, etc.
-#include <nvcv/cuda/SaturateCast.hpp> // for SaturateCast, etc.
-#include <nvcv/cuda/StaticCast.hpp>   // for StaticCast, etc.
-#include <nvcv/cuda/TensorWrap.hpp>   // for TensorWrap, etc.
-#include <nvcv/cuda/TypeTraits.hpp>   // for BaseType, etc.
-#include <nvcv/cuda/math/LinAlg.hpp>  // for Vector, etc.
-#include <util/Assert.h>              // for NVCV_ASSERT, etc.
-#include <util/CheckError.hpp>        // for NVCV_CHECK_LOG, etc.
+#include <nvcv/cuda/BorderVarShapeWrap.hpp>     // for BorderVarShapeWrap, etc.
+#include <nvcv/cuda/BorderWrap.hpp>             // for BorderWrap, etc.
+#include <nvcv/cuda/DropCast.hpp>               // for DropCast, etc.
+#include <nvcv/cuda/ImageBatchVarShapeWrap.hpp> // for ImageBatchVarShapeWrap, etc.
+#include <nvcv/cuda/MathOps.hpp>                // for math operators
+#include <nvcv/cuda/MathWrappers.hpp>           // for sqrt, etc.
+#include <nvcv/cuda/SaturateCast.hpp>           // for SaturateCast, etc.
+#include <nvcv/cuda/StaticCast.hpp>             // for StaticCast, etc.
+#include <nvcv/cuda/TensorWrap.hpp>             // for TensorWrap, etc.
+#include <nvcv/cuda/TypeTraits.hpp>             // for BaseType, etc.
+#include <nvcv/cuda/math/LinAlg.hpp>            // for Vector, etc.
+#include <util/Assert.h>                        // for NVCV_ASSERT, etc.
+#include <util/CheckError.hpp>                  // for NVCV_CHECK_LOG, etc.
 
 #include <cassert>
 #include <cerrno>
@@ -491,7 +493,7 @@ struct BrdConstant
     __device__ __forceinline__ D at(int b, int y, int x, const Ptr2D &src) const
     {
         return ((float)x >= 0 && x < src.at_cols(b) && (float)y >= 0 && y < src.at_rows(b))
-                 ? nvcv::cuda::SaturateCast<nvcv::cuda::BaseType<D>>(*src.ptr(b, y, x))
+                 ? nvcv::cuda::SaturateCast<D>(*src.ptr(b, y, x))
                  : val;
     }
 
@@ -551,8 +553,7 @@ struct BrdReplicate
     template<typename Ptr2D>
     __device__ __forceinline__ D at(int b, int y, int x, const Ptr2D &src) const
     {
-        return nvcv::cuda::SaturateCast<nvcv::cuda::BaseType<D>>(
-            *src.ptr(b, idx_row(y, src.at_rows(b) - 1), idx_col(x, src.at_cols(b) - 1)));
+        return nvcv::cuda::SaturateCast<D>(*src.ptr(b, idx_row(y, src.at_rows(b) - 1), idx_col(x, src.at_cols(b) - 1)));
     }
 
     int last_row;
@@ -610,8 +611,7 @@ struct BrdReflect101
     template<typename Ptr2D>
     __device__ __forceinline__ D at(int b, int y, int x, const Ptr2D &src) const
     {
-        return nvcv::cuda::SaturateCast<nvcv::cuda::BaseType<D>>(
-            *src.ptr(b, idx_row(y, src.at_rows(b) - 1), idx_col(x, src.at_cols(b) - 1)));
+        return nvcv::cuda::SaturateCast<D>(*src.ptr(b, idx_row(y, src.at_rows(b) - 1), idx_col(x, src.at_cols(b) - 1)));
     }
 
     int last_row;
@@ -669,8 +669,7 @@ struct BrdReflect
     template<typename Ptr2D>
     __device__ __forceinline__ D at(int b, int y, int x, const Ptr2D &src) const
     {
-        return nvcv::cuda::SaturateCast<nvcv::cuda::BaseType<D>>(
-            *src.ptr(b, idx_row(y, src.at_rows(b) - 1), idx_col(x, src.at_cols(b) - 1)));
+        return nvcv::cuda::SaturateCast<D>(*src.ptr(b, idx_row(y, src.at_rows(b) - 1), idx_col(x, src.at_cols(b) - 1)));
     }
 
     int last_row;
@@ -728,8 +727,7 @@ struct BrdWrap
     template<typename Ptr2D>
     __device__ __forceinline__ D at(int b, int y, int x, const Ptr2D &src) const
     {
-        return nvcv::cuda::SaturateCast<nvcv::cuda::BaseType<D>>(
-            *src.ptr(b, idx_row(y, src.at_rows(b)), idx_col(x, src.at_cols(b))));
+        return nvcv::cuda::SaturateCast<D>(*src.ptr(b, idx_row(y, src.at_rows(b)), idx_col(x, src.at_cols(b))));
     }
 
     int height;
@@ -792,7 +790,7 @@ struct BorderReader<Ptr2D, BrdConstant<D>>
     __device__ __forceinline__ D operator()(int bidx, int y, int x) const
     {
         return ((float)x >= 0 && x < ptr.at_cols(bidx) && (float)y >= 0 && y < ptr.at_rows(bidx))
-                 ? nvcv::cuda::SaturateCast<nvcv::cuda::BaseType<D>>(*ptr.ptr(bidx, y, x))
+                 ? nvcv::cuda::SaturateCast<D>(*ptr.ptr(bidx, y, x))
                  : val;
     }
 
@@ -878,7 +876,7 @@ struct LinearFilter
         src_reg = src(bidx, y2, x2);
         out     = out + src_reg * ((x - x1) * (y - y1));
 
-        return nvcv::cuda::SaturateCast<nvcv::cuda::BaseType<elem_type>>(out);
+        return nvcv::cuda::SaturateCast<elem_type>(out);
     }
 
     BrdReader src;
@@ -935,7 +933,7 @@ struct CubicFilter
 
         work_type res = (!wsum) ? nvcv::cuda::SetAll<work_type>(0) : sum / wsum;
 
-        return nvcv::cuda::SaturateCast<nvcv::cuda::BaseType<elem_type>>(res);
+        return nvcv::cuda::SaturateCast<elem_type>(res);
     }
 
     BrdReader src;
@@ -979,7 +977,7 @@ struct IntegerAreaFilter
                 out = out + src(bidx, dy, dx) * scale;
             }
 
-        return nvcv::cuda::SaturateCast<nvcv::cuda::BaseType<elem_type>>(out);
+        return nvcv::cuda::SaturateCast<elem_type>(out);
     }
 
     BrdReader src;
@@ -1046,7 +1044,7 @@ struct AreaFilter
         if ((sy2 < fsy2) && (sx1 > fsx1))
             out = out + src(bidx, sy2, (sx1 - 1)) * ((fsy2 - sy2) * (sx1 - fsx1) * scale);
 
-        return nvcv::cuda::SaturateCast<nvcv::cuda::BaseType<elem_type>>(out);
+        return nvcv::cuda::SaturateCast<elem_type>(out);
     }
 
     BrdReader src;

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,23 +16,23 @@
 import cvcuda
 import pytest as t
 import numpy as np
-import util
+import cvcuda_util as util
 
 
 @t.mark.parametrize(
     "input,out_shape,interp",
     [
         (
-            cvcuda.Tensor([5, 16, 23, 4], np.uint8, "NHWC"),
-            [5, 132, 15, 4],
+            cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"),
+            (5, 132, 15, 4),
             cvcuda.Interp.LINEAR,
         ),
         (
-            cvcuda.Tensor([16, 23, 4], np.uint8, "HWC"),
-            [132, 15, 4],
+            cvcuda.Tensor((16, 23, 4), np.uint8, "HWC"),
+            (132, 15, 4),
             cvcuda.Interp.CUBIC,
         ),
-        (cvcuda.Tensor([16, 23, 1], np.uint8, "HWC"), [132, 15, 1], None),
+        (cvcuda.Tensor((16, 23, 1), np.uint8, "HWC"), (132, 15, 1), None),
     ],
 )
 def test_op_resize(input, out_shape, interp):

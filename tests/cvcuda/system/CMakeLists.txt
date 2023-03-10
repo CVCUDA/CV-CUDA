@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,7 +17,6 @@
 add_executable(cvcuda_test_system
     FlipUtils.cpp
     ConvUtils.cpp
-    TestCAPI.c
     TestOpReformat.cpp
     TestOpResize.cpp
     TestOpCustomCrop.cpp
@@ -37,6 +36,7 @@ add_executable(cvcuda_test_system
     TestOpCvtColor.cpp
     TestOpWarpAffine.cpp
     TestOpBilateralFilter.cpp
+    TestOpJointBilateralFilter.cpp
     TestOpWarpPerspective.cpp
     TestOpComposite.cpp
     TestOpChannelReorder.cpp
@@ -52,3 +52,24 @@ target_link_libraries(cvcuda_test_system
 )
 
 nvcv_add_test(cvcuda_test_system)
+
+# header compatibility tests ---------------------------------------------
+
+get_target_property(CVCUDA_SOURCE_DIR cvcuda SOURCE_DIR)
+
+# Gather C headers
+file(GLOB_RECURSE CAPI_HEADERS RELATIVE "${CVCUDA_SOURCE_DIR}/include" CONFIGURE_DEPENDS "${CVCUDA_SOURCE_DIR}/include/*.h")
+add_header_compat_test(TARGET cvcuda_test_capi_header_compat
+                       SOURCE TestAPI.c
+                       STANDARD c11
+                       DEPENDS cvcuda
+                       HEADERS ${CAPI_HEADERS})
+
+# Gather C++ headers
+file(GLOB_RECURSE CXXAPI_HEADERS RELATIVE "${CVCUDA_SOURCE_DIR}/include" CONFIGURE_DEPENDS "${CVCUDA_SOURCE_DIR}/include/*.hpp")
+
+add_header_compat_test(TARGET cvcuda_test_cxxapi_header_compat
+                       SOURCE TestAPI.cpp
+                       STANDARD c++11
+                       DEPENDS cvcuda
+                       HEADERS ${CXXAPI_HEADERS})

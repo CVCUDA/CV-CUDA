@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -168,7 +168,7 @@ NVCVTensorRequirements Tensor::CalcRequirements(int32_t rank, const int64_t *sha
         }
     }
 
-    int firstPacked = reqs.layout == NVCV_TENSOR_NHWC ? std::max(0, rank - 2) : rank - 1;
+    int firstPacked = CreateLast(reqs.layout, 2) == NVCV_TENSOR_WC ? std::max(0, rank - 2) : rank - 1;
 
     reqs.strides[rank - 1] = dtype.strideBytes();
     for (int d = rank - 2; d >= 0; --d)

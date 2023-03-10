@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -70,13 +70,11 @@ Tensor CenterCrop(Tensor &input, const std::tuple<int, int> &cropSize, std::opti
     NVCV_ASSERT(iheight >= 0 && "All images have height");
 
     // Use cropSize (width, height) for output
-    nvcv::TensorShape tshape = input.shape();
-    Shape             out_shape{&tshape[0], &tshape[0] + tshape.rank()};
+    Shape out_shape    = CreateShape(input.shape());
     out_shape[iwidth]  = std::get<0>(cropSize);
     out_shape[iheight] = std::get<1>(cropSize);
 
-    Tensor output
-        = Tensor::Create(nvcv::TensorShape(out_shape.data(), out_shape.size(), input.layout()), input.dtype());
+    Tensor output = Tensor::Create(out_shape, input.dtype(), input.layout());
 
     return CenterCropInto(output, input, cropSize, pstream);
 }

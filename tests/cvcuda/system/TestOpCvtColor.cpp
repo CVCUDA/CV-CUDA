@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +18,7 @@
 #include "ConvUtils.hpp"
 #include "Definitions.hpp"
 
+#include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpCvtColor.hpp>
 #include <nvcv/Image.hpp>
@@ -117,8 +118,8 @@ TEST_P(OpCvtColor, correct_output)
 
     double maxDiff{GetParamValue<7>()};
 
-    nvcv::Tensor srcTensor(batches, {width, height}, srcFormat);
-    nvcv::Tensor dstTensor(batches, {width, height}, dstFormat);
+    nvcv::Tensor srcTensor = test::CreateTensor(batches, width, height, srcFormat);
+    nvcv::Tensor dstTensor = test::CreateTensor(batches, width, height, dstFormat);
 
     const auto *srcData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(srcTensor.exportData());
     const auto *dstData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(dstTensor.exportData());
@@ -126,7 +127,20 @@ TEST_P(OpCvtColor, correct_output)
     ASSERT_NE(srcData, nullptr);
     ASSERT_NE(dstData, nullptr);
 
-    long srcBufSize = srcData->stride(0) * srcData->shape(0);
+    auto srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcData);
+    ASSERT_TRUE(srcAccess);
+
+    auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstData);
+    ASSERT_TRUE(dstAccess);
+
+    long srcSampleStride = srcAccess->sampleStride();
+
+    if (srcData->rank() == 3)
+    {
+        srcSampleStride = srcAccess->numRows() * srcAccess->rowStride();
+    }
+
+    long srcBufSize = srcSampleStride * srcAccess->numSamples();
 
     std::vector<uint8_t> srcVec(srcBufSize);
 

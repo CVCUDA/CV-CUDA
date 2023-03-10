@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+.test_compat_common:
+    extends: .launch_rule
+    stage: compat
+    variables:
+        CUDA_CACHE_DISABLE: 1
+        GIT_STRATEGY: none
+    needs: [ 'b:x64:rel' ]
+    tags: [ linux-x64, test, cuda11 ]
+    script:
+      - 'version=$(cat cvcuda-installer/VERSION)'
+      - 'vermaj=${version%%.*}'
+      - 'rm -rf opt'
+      - 'ar xv cvcuda-installer/nvcv-lib-${version}.deb && tar xvf data.tar.*'
+      - 'ar xv cvcuda-installer/cvcuda-tests-${version}.deb && tar xvf data.tar.*'
+      - 'prefix=$(pwd)/opt/nvidia/cvcuda${vermaj}'
+      - 'tests=$(find $prefix/bin -executable -type f -name "nvcv_test_*" -not -name "*python*")'
+      - 'LD_LIBRARY_PATH=$prefix/lib/x86_64-linux-gnu'
+      - 'for exec in $tests; do'
+      - '   echo $exec && $exec'
+      - 'done'
+      - 'if [ "$PYTHONVER" ]; then'
+      - '   ar xv cvcuda-installer/nvcv-python${PYTHONVER}-${version}.deb && tar xvf data.tar.*'
+      - '   PYTHONPATH=$prefix/lib/x86_64-linux-gnu/python python$PYTHONVER -c "import nvcv; print(nvcv.Image((256,64),nvcv.Format.RGBA8))"'
+      - 'fi'
+
+.install_ubuntu_deps:
+    before_script:
+      - 'apt-get update'
+      - 'if [ "$PYTHONVER" ]; then'
+      - '   pythonpkg=python$PYTHONVER'
+      - 'fi'
+      - 'DEBIAN_FRONTEND="noninteractive" apt-get install -y --no-install-recommends binutils xz-utils tar $pythonpkg'
+
+# Disabling till we sort out the linker issue when compiling
+# on Ubuntu 18.04.
+t:compat:centos7:
+    extends: .test_compat_common
+    image: nvidia/cuda:11.8.0-runtime-centos7
+    tags: [ linux-x64, test, cuda11, centos7 ]
+
+t:compat:ub1804:
+    variables:
+      PYTHONVER: '3.7'
+    extends:
+      - .test_compat_common
+      - .install_ubuntu_deps
+    image: nvidia/cuda:11.8.0-runtime-ubuntu18.04
+
+t:compat:ub2004:
+    variables:
+      PYTHONVER: '3.8'
+    extends:
+      - .test_compat_common
+      - .install_ubuntu_deps
+    image: nvidia/cuda:11.8.0-runtime-ubuntu20.04

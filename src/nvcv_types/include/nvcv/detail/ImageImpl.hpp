@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,7 +46,7 @@ inline Image::Image(const Size2D &size, ImageFormat fmt, IAllocator *alloc, cons
 
 inline Image::~Image()
 {
-    nvcvImageDestroy(m_handle);
+    nvcvImageDecRef(m_handle, nullptr);
 }
 
 inline NVCVImageHandle Image::doGetHandle() const
@@ -65,7 +65,7 @@ inline ImageWrapData::ImageWrapData(const IImageData &data, std::function<ImageD
 
 inline ImageWrapData::~ImageWrapData()
 {
-    nvcvImageDestroy(m_handle);
+    nvcvImageDecRef(m_handle, nullptr);
 }
 
 inline NVCVImageHandle ImageWrapData::doGetHandle() const

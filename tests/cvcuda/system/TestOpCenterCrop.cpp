@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "Definitions.hpp"
 
+#include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpCenterCrop.hpp>
 #include <nvcv/Image.hpp>
@@ -50,7 +51,7 @@ static void dbgImage(std::vector<uint8_t> &in, int rowStride)
 static void WriteData(const nvcv::TensorDataAccessStridedImagePlanar &data, uint8_t val, int crop_rows,
                       int crop_columns)
 {
-    EXPECT_EQ(NVCV_TENSOR_NHWC, data.layout());
+    EXPECT_TRUE(NVCV_TENSOR_NHWC == data.layout() || NVCV_TENSOR_HWC == data.layout());
     EXPECT_LE(crop_columns, data.numCols());
     EXPECT_LE(crop_rows, data.numRows());
 
@@ -145,8 +146,8 @@ TEST_P(OpCenterCrop, CenterCrop_packed)
     int     numberOfImages = GetParamValue<4>();
     uint8_t cropVal        = 0x56;
 
-    nvcv::Tensor imgOut(numberOfImages, {inWidth, inHeight}, nvcv::FMT_RGBA8);
-    nvcv::Tensor imgIn(numberOfImages, {inWidth, inHeight}, nvcv::FMT_RGBA8);
+    nvcv::Tensor imgOut = test::CreateTensor(numberOfImages, inWidth, inHeight, nvcv::FMT_RGBA8);
+    nvcv::Tensor imgIn  = test::CreateTensor(numberOfImages, inWidth, inHeight, nvcv::FMT_RGBA8);
 
     const auto *inData  = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(imgIn.exportData());
     const auto *outData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(imgOut.exportData());
@@ -160,12 +161,14 @@ TEST_P(OpCenterCrop, CenterCrop_packed)
     auto outAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*outData);
     ASSERT_TRUE(outAccess);
 
-    int inBufSize
-        = inAccess->sampleStride() * inAccess->numSamples(); //img pitch bytes can be more than the image 64, 128, etc
-    int outBufSize = outAccess->sampleStride() * outAccess->numSamples();
+    int inSampleStride  = inAccess->numRows() * inAccess->rowStride();
+    int outSampleStride = outAccess->numRows() * outAccess->rowStride();
 
-    EXPECT_EQ(cudaSuccess, cudaMemset(inData->basePtr(), 0x00, inAccess->sampleStride() * inAccess->numSamples()));
-    EXPECT_EQ(cudaSuccess, cudaMemset(outData->basePtr(), 0x00, outAccess->sampleStride() * outAccess->numSamples()));
+    int inBufSize  = inSampleStride * inAccess->numSamples();
+    int outBufSize = outSampleStride * outAccess->numSamples();
+
+    EXPECT_EQ(cudaSuccess, cudaMemset(inData->basePtr(), 0x00, inSampleStride * inAccess->numSamples()));
+    EXPECT_EQ(cudaSuccess, cudaMemset(outData->basePtr(), 0x00, outSampleStride * outAccess->numSamples()));
     WriteData(*inAccess, cropVal, crop_rows, crop_columns); // write data to be cropped
 
     std::vector<uint8_t> gold(outBufSize);

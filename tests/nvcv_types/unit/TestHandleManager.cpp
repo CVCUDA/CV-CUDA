@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,12 +17,15 @@
 
 #include "Definitions.hpp"
 
+#include <nvcv_types/priv/Exception.hpp>
 #include <nvcv_types/priv/HandleManager.hpp>
 #include <nvcv_types/priv/HandleManagerImpl.hpp>
 
 #include <unordered_set>
 
 namespace priv = nvcv::priv;
+
+constexpr int FORCE_FAILURE = 0xDEADBEEF;
 
 namespace {
 class alignas(priv::kResourceAlignment) IObject
@@ -37,6 +40,10 @@ public:
     explicit Object(int val)
         : m_value(val)
     {
+        if (val == FORCE_FAILURE)
+        {
+            throw std::runtime_error("Forced failure");
+        }
     }
 
     virtual int value() const override
@@ -72,7 +79,7 @@ TEST(HandleManager, wip_handle_generation_wraps_around)
         IObject *obj = mgr.validate(h);
         ASSERT_EQ(i - 1, obj->value());
 
-        mgr.destroy(h);
+        mgr.decRef(h);
         void *newh = mgr.create<Object>(i).first;
         ASSERT_FALSE(usedHandles.contains(newh)) << "Handle generation must be different";
         usedHandles.insert(newh);
@@ -84,7 +91,7 @@ TEST(HandleManager, wip_handle_generation_wraps_around)
         h = newh;
     }
 
-    mgr.destroy(h);
+    mgr.decRef(h);
     std::tie(h, obj) = mgr.create<Object>(16);
     ASSERT_EQ(origh, h) << "Handle generation must wrapped around";
     ASSERT_TRUE(usedHandles.contains(h)) << "Handle must have been reused";
@@ -92,7 +99,7 @@ TEST(HandleManager, wip_handle_generation_wraps_around)
     ASSERT_EQ(obj, iobj);
     ASSERT_EQ(16, iobj->value());
 
-    mgr.destroy(h);
+    mgr.decRef(h);
 }
 
 TEST(HandleManager, wip_destroy_already_destroyed)
@@ -100,18 +107,32 @@ TEST(HandleManager, wip_destroy_already_destroyed)
     priv::HandleManager<IObject, Object> mgr("Object");
 
     void *h = mgr.create<Object>(0).first;
-    ASSERT_TRUE(mgr.destroy(h));
-    ASSERT_FALSE(mgr.destroy(h));
+    ASSERT_EQ(0, mgr.decRef(h));
+    ASSERT_THROW(mgr.decRef(h), nvcv::priv::Exception);
 }
 
-TEST(HandleManager, wip_destroy_invalid)
+TEST(HandleManager, wip_ref_unref)
 {
     priv::HandleManager<IObject, Object> mgr("Object");
 
     void *h = mgr.create<Object>(0).first;
-    ASSERT_FALSE(mgr.destroy((void *)0x666));
+    ASSERT_EQ(2, mgr.incRef(h));
+    ASSERT_EQ(1, mgr.decRef(h));
+    ASSERT_EQ(2, mgr.incRef(h));
+    ASSERT_EQ(1, mgr.decRef(h));
+    ASSERT_EQ(0, mgr.decRef(h));
 
-    ASSERT_TRUE(mgr.destroy(h));
+    EXPECT_THROW(mgr.incRef(h), nvcv::priv::Exception); // invalid handle
+    EXPECT_THROW(mgr.decRef(h), nvcv::priv::Exception); // invalid handle
+}
+
+TEST(HandleManager, wip_dec_ref_invalid)
+{
+    priv::HandleManager<IObject, Object> mgr("Object");
+
+    void *h = mgr.create<Object>(0).first;
+    EXPECT_THROW(mgr.decRef((void *)0x666), nvcv::priv::Exception);
+    EXPECT_EQ(0, mgr.decRef(h));
 }
 
 TEST(HandleManager, wip_validate_already_destroyed)
@@ -121,7 +142,7 @@ TEST(HandleManager, wip_validate_already_destroyed)
     void *h = mgr.create<Object>(0).first;
     ASSERT_NE(nullptr, mgr.validate(h));
 
-    ASSERT_TRUE(mgr.destroy(h));
+    ASSERT_EQ(0, mgr.decRef(h));
     ASSERT_EQ(nullptr, mgr.validate(h));
 }
 
@@ -134,5 +155,29 @@ TEST(HandleManager, wip_validate_invalid)
 
     ASSERT_EQ(nullptr, mgr.validate((void *)0x666));
 
-    ASSERT_TRUE(mgr.destroy(h));
+    ASSERT_EQ(0, mgr.decRef(h));
+}
+
+TEST(HandleManager, wip_handle_count_overflow)
+{
+    priv::HandleManager<IObject, Object> mgr("Object");
+    mgr.setFixedSize(1);
+
+    void *h = nullptr;
+    ASSERT_NO_THROW(h = mgr.create<Object>(0).first);
+    NVCV_ASSERT_STATUS(NVCV_ERROR_OUT_OF_MEMORY, mgr.create<Object>(1));
+
+    mgr.decRef(h);
+}
+
+TEST(HandleManager, wip_no_handle_leak_if_object_creation_throws)
+{
+    priv::HandleManager<IObject, Object> mgr("Object");
+    mgr.setFixedSize(1);
+
+    ASSERT_THROW(mgr.create<Object>(FORCE_FAILURE), std::runtime_error);
+
+    void *h = nullptr;
+    ASSERT_NO_THROW(h = mgr.create<Object>(1).first);
+    mgr.decRef(h);
 }

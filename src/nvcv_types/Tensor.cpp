@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -148,9 +148,31 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorWrapImageConstruct, (NVCVImageHandle
         });
 }
 
-NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorDestroy, (NVCVTensorHandle handle))
+NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvTensorDecRef, (NVCVTensorHandle handle, int *newRefCount))
 {
-    return priv::ProtectCall([&] { priv::DestroyCoreObject(handle); });
+    return priv::ProtectCall(
+        [&]
+        {
+            int newRef = priv::CoreObjectDecRef(handle);
+            if (newRefCount)
+                *newRefCount = newRef;
+        });
+}
+
+NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvTensorIncRef, (NVCVTensorHandle handle, int *newRefCount))
+{
+    return priv::ProtectCall(
+        [&]
+        {
+            int newRef = priv::CoreObjectIncRef(handle);
+            if (newRefCount)
+                *newRefCount = newRef;
+        });
+}
+
+NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvTensorRefCount, (NVCVTensorHandle handle, int *refCount))
+{
+    return priv::ProtectCall([&] { *refCount = priv::CoreObjectRefCount(handle); });
 }
 
 NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorGetLayout, (NVCVTensorHandle handle, NVCVTensorLayout *layout))

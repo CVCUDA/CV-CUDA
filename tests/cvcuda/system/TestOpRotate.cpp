@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -344,7 +344,7 @@ TEST_P(OpRotate, varshape_correct_output)
     const auto  *angleDegTensorData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(angleDegTensor.exportData());
     ASSERT_NE(nullptr, angleDegTensorData);
 
-    nvcv::Tensor shiftTensor(nvcv::TensorShape({numberOfImages, 2}, nvcv::TensorLayout::NW), nvcv::TYPE_F64);
+    nvcv::Tensor shiftTensor(nvcv::TensorShape({numberOfImages, 2}, nvcv::TENSOR_NW), nvcv::TYPE_F64);
     const auto  *shiftTensorData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(shiftTensor.exportData());
     ASSERT_NE(nullptr, shiftTensorData);
 
