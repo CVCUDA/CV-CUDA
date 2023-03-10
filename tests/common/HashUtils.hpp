@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,12 +18,13 @@
 #ifndef NVCV_TESTS_COMMON_HASHUTILS_HPP
 #define NVCV_TESTS_COMMON_HASHUTILS_HPP
 
+#include "HashMD5.hpp"
+
 #include <nvcv/TensorShape.hpp>
-#include <util/HashMD5.hpp>
 
 namespace nvcv {
 
-inline void Update(util::HashMD5 &hash, const TensorShape &ts)
+inline void Update(test::HashMD5 &hash, const TensorShape &ts)
 {
     Update(hash, ts.shape(), ts.layout());
 }

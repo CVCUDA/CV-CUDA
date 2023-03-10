@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -44,7 +44,7 @@ typedef struct NVCVImageBatchVarShapeBufferStridedRec
     /** Pointer to all image planes in pitch-linear layout in the image batch.
      * It's an array of `numPlanesPerImage*numImages` planes. The number of planes
      * in the image can be fetched from the image batch's format. With that,
-     * plane P of image N can be indexed as imgPlanes[N*numPlanesPerImage + P].
+     * plane P of image N can be indexed as imageList[N].planes[P].
      */
     NVCVImageBufferStrided *imageList;
 } NVCVImageBatchVarShapeBufferStrided;

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -134,15 +134,9 @@ public:
     // Public so that class is trivial but still the
     // implicit ctors do the right thing
     NVCVTensorLayout m_layout;
-
-#define NVCV_DETAIL_DEF_TLAYOUT(LAYOUT) static const TensorLayout LAYOUT;
-
-    NVCV_DETAIL_DEF_TLAYOUT(NONE)
-#include "TensorLayoutDef.inc"
-#undef NVCV_DETAIL_DEF_TLAYOUT
 };
 
-#define NVCV_DETAIL_DEF_TLAYOUT(LAYOUT) constexpr const TensorLayout TensorLayout::LAYOUT{NVCV_TENSOR_##LAYOUT};
+#define NVCV_DETAIL_DEF_TLAYOUT(LAYOUT) constexpr const TensorLayout TENSOR_##LAYOUT{NVCV_TENSOR_##LAYOUT};
 NVCV_DETAIL_DEF_TLAYOUT(NONE)
 #include "TensorLayoutDef.inc"
 #undef NVCV_DETAIL_DEF_TLAYOUT
@@ -151,18 +145,18 @@ constexpr const TensorLayout &GetImplicitTensorLayout(int rank)
 {
     // clang-format off
     return rank == 1
-            ? TensorLayout::W
+            ? TENSOR_W
             : (rank == 2
-                ? TensorLayout::HW
+                ? TENSOR_HW
                 : (rank == 3
-                    ? TensorLayout::NHW
+                    ? TENSOR_NHW
                     : (rank == 4
-                        ? TensorLayout::NCHW
+                        ? TENSOR_NCHW
                         : (rank == 5
-                            ? TensorLayout::NCDHW
+                            ? TENSOR_NCDHW
                             : (rank == 6
-                                ? TensorLayout::NCFDHW
-                                : TensorLayout::NONE
+                                ? TENSOR_NCFDHW
+                                : TENSOR_NONE
                               )
                           )
                       )

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,7 +19,9 @@
 #include <nvcv/python/Cache.hpp>
 #include <nvcv/python/Container.hpp>
 #include <nvcv/python/ImageFormat.hpp>
+#include <nvcv/python/Shape.hpp>
 #include <nvcv/python/Size.hpp>
+#include <nvcv/python/Tensor.hpp>
 #include <pybind11/pybind11.h>
 
 #include <nvcv/python/Fwd.hpp>
@@ -29,6 +31,8 @@ namespace nvcvpy::util {
 
 namespace cvcudapy {
 
+using nvcvpy::CreateNVCVTensorShape;
+using nvcvpy::CreateShape;
 using nvcvpy::Image;
 using nvcvpy::ImageBatchVarShape;
 using nvcvpy::LockMode;
@@ -55,6 +59,7 @@ void ExportOpLaplacian(py::module &m);
 void ExportOpAverageBlur(py::module &m);
 void ExportOpConv2D(py::module &m);
 void ExportOpBilateralFilter(py::module &m);
+void ExportOpJointBilateralFilter(py::module &m);
 void ExportOpCenterCrop(py::module &m);
 void ExportOpWarpAffine(py::module &m);
 void ExportOpWarpPerspective(py::module &m);

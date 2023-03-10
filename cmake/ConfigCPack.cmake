@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,7 +16,7 @@
 # Global configuration =========================================
 
 if(UNIX)
-    set(CPACK_SYSTEM_NAME "x86_64-linux")
+    set(CPACK_SYSTEM_NAME "${CMAKE_SYSTEM_PROCESSOR}-linux")
 else()
     message(FATAL_ERROR "Architecture not supported")
 endif()

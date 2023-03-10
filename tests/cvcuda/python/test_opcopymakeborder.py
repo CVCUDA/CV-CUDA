@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,7 +22,7 @@ import numpy as np
     "input, top, bottom, left, right, border_mode, border_value",
     [
         (
-            cvcuda.Tensor([5, 16, 23, 4], np.uint8, "NHWC"),
+            cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"),
             1,
             2,
             3,
@@ -31,7 +31,7 @@ import numpy as np
             [0],
         ),
         (
-            cvcuda.Tensor([5, 16, 23, 4], np.uint8, "NHWC"),
+            cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"),
             1,
             2,
             3,
@@ -40,7 +40,7 @@ import numpy as np
             [12, 3, 4, 55],
         ),
         (
-            cvcuda.Tensor([16, 23, 4], np.uint8, "HWC"),
+            cvcuda.Tensor((16, 23, 4), np.uint8, "HWC"),
             2,
             2,
             2,
@@ -49,7 +49,7 @@ import numpy as np
             [0],
         ),
         (
-            cvcuda.Tensor([16, 23, 4], np.uint8, "HWC"),
+            cvcuda.Tensor((16, 23, 4), np.uint8, "HWC"),
             2,
             2,
             2,
@@ -58,7 +58,7 @@ import numpy as np
             [0],
         ),
         (
-            cvcuda.Tensor([16, 23, 3], np.uint8, "HWC"),
+            cvcuda.Tensor((16, 23, 3), np.uint8, "HWC"),
             10,
             12,
             35,
@@ -67,7 +67,7 @@ import numpy as np
             [0],
         ),
         (
-            cvcuda.Tensor([16, 23, 1], np.float32, "HWC"),
+            cvcuda.Tensor((16, 23, 1), np.float32, "HWC"),
             11,
             1,
             20,
@@ -76,7 +76,7 @@ import numpy as np
             [0],
         ),
         (
-            cvcuda.Tensor([16, 23, 3], np.float32, "HWC"),
+            cvcuda.Tensor((16, 23, 3), np.float32, "HWC"),
             11,
             1,
             20,
@@ -91,6 +91,7 @@ def test_op_copymakeborder(input, top, bottom, left, right, border_mode, border_
     cdim = len(out_shape) - 1
     out_shape[cdim - 2] += top + bottom
     out_shape[cdim - 1] += left + right
+    out_shape = tuple(out_shape)
     out = cvcuda.copymakeborder(input, top=top, bottom=bottom, left=left, right=right)
     assert out.layout == input.layout
     assert out.shape == out_shape

@@ -25,7 +25,7 @@ mkdir -p models
 # Export onnx model from torch
 if [ ! -f ./models/resnet50.onnx ]
 then
-        python ./samples/scripts/export_resnet.py
+        python3 ./samples/scripts/export_resnet.py
 fi
 # Serialize model . ONNX->TRT
 ./samples/scripts/serialize_models.sh

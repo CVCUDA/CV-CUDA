@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -309,7 +309,7 @@ TEST_P(OpMedianBlur, varshape_correct_output)
     const int               bytesPerPixel = 3;
 
     // Create tensor to store kernel size
-    nvcv::Tensor ksizeTensor(nvcv::TensorShape({numberOfImages, 2}, nvcv::TensorLayout::NW), nvcv::TYPE_S32);
+    nvcv::Tensor ksizeTensor(nvcv::TensorShape({numberOfImages, 2}, nvcv::TENSOR_NW), nvcv::TYPE_S32);
     const auto  *ksizeTensorData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(ksizeTensor.exportData());
     ASSERT_NE(nullptr, ksizeTensorData);
 

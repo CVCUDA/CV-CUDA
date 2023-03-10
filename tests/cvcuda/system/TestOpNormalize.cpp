@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "Definitions.hpp"
 
+#include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpNormalize.hpp>
 #include <nvcv/Image.hpp>
@@ -130,7 +131,7 @@ TEST_P(OpNormalize, tensor_correct_output)
     std::default_random_engine rng;
 
     // Create input tensor
-    nvcv::Tensor imgSrc(numImages, {width, height}, fmt);
+    nvcv::Tensor imgSrc  = test::CreateTensor(numImages, width, height, fmt);
     const auto  *srcData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(imgSrc.exportData());
     ASSERT_NE(nullptr, srcData);
     auto srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcData);
@@ -305,7 +306,7 @@ TEST_P(OpNormalize, varshape_correct_output)
     nvcv::Tensor imgBase(
         {
             {1, 1, 1, baseFormat.numChannels()},
-            nvcv::TensorLayout::NHWC
+            nvcv::TENSOR_NHWC
     },
         baseFormat.planeDataType(0));
     std::vector<float> baseVec(baseFormat.numChannels());
@@ -328,7 +329,7 @@ TEST_P(OpNormalize, varshape_correct_output)
     nvcv::Tensor imgScale(
         {
             {1, 1, 1, scaleFormat.numChannels()},
-            nvcv::TensorLayout::NHWC
+            nvcv::TENSOR_NHWC
     },
         scaleFormat.planeDataType(0));
     std::vector<float> scaleVec(scaleFormat.numChannels());

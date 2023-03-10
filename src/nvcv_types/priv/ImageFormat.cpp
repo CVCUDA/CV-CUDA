@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -1037,6 +1037,10 @@ std::ostream &operator<<(std::ostream &out, ImageFormat fmt)
         NVCV_ENUM(NVCV_IMAGE_FORMAT_2S16);
         NVCV_ENUM(NVCV_IMAGE_FORMAT_2S16_BL);
         NVCV_ENUM(NVCV_IMAGE_FORMAT_2F32);
+        NVCV_ENUM(NVCV_IMAGE_FORMAT_C64);
+        NVCV_ENUM(NVCV_IMAGE_FORMAT_2C64);
+        NVCV_ENUM(NVCV_IMAGE_FORMAT_C128);
+        NVCV_ENUM(NVCV_IMAGE_FORMAT_2C128);
         NVCV_ENUM(NVCV_IMAGE_FORMAT_UYVY);
         NVCV_ENUM(NVCV_IMAGE_FORMAT_UYVY_BL);
         NVCV_ENUM(NVCV_IMAGE_FORMAT_UYVY_ER);

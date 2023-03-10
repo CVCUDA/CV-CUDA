@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,14 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-set(OPENSSL_USE_STATIC_LIBS TRUE)
-find_package(OpenSSL COMPONENTS Crypto REQUIRED)
-
-# on some distros (e.g CentOS 7) we need to add libz when
-# linking against static libcrypto
-set(ZLIB_USE_STATIC_LIBS TRUE)
-find_package(ZLIB REQUIRED)
 
 find_package(CUDAToolkit REQUIRED)
 
@@ -163,7 +155,6 @@ endif()
 # nvcv_util ---------------------------------
 add_library(nvcv_util
     Assert.cpp
-    HashMD5.cpp
     CheckError.cpp
     String.cpp
     Version.cpp
@@ -181,9 +172,6 @@ target_link_libraries(nvcv_util
         nvcv_util_sanitizer
         nvcv_types_headers
         CUDA::cudart_static
-    PRIVATE
-        OpenSSL::Crypto
-	ZLIB::ZLIB
         nvcv_util_compat
 )
 

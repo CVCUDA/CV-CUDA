@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +18,8 @@
 #ifndef NVCV_CASTS_HPP
 #define NVCV_CASTS_HPP
 
+#include "detail/CastsImpl.hpp"
+
 #include <type_traits>
 
 namespace nvcv {
@@ -26,13 +28,17 @@ template<class T>
 using HandleTypeOf = typename std::remove_pointer<T>::type::HandleType;
 
 template<class T>
-decltype(auto) StaticCast(HandleTypeOf<T> h);
+auto StaticCast(HandleTypeOf<T> h) -> decltype(detail::StaticCast<T>::cast(h))
+{
+    return detail::StaticCast<T>::cast(h);
+}
 
 template<class T>
-decltype(auto) DynamicCast(HandleTypeOf<T> h);
+auto DynamicCast(HandleTypeOf<T> h) -> decltype(detail::StaticCast<T>::cast(h))
+{
+    return detail::DynamicCast<T>::cast(h);
+}
 
 } // namespace nvcv
-
-#include "detail/CastsImpl.hpp"
 
 #endif // NVCV_CASTS_HPP

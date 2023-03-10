@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -145,6 +145,20 @@ typedef uint64_t NVCVDataType;
 #define NVCV_DATA_TYPE_3F64 NVCV_DETAIL_MAKE_PIX_TYPE(FLOAT, X64_Y64_Z64)
 /** Four interleaved channels of 64-bit IEEE 754 floating-point values. */
 #define NVCV_DATA_TYPE_4F64 NVCV_DETAIL_MAKE_PIX_TYPE(FLOAT, X64_Y64_Z64_W64)
+
+/** One channel of 64-bit IEEE 754 complex floating-point value (2 32-bit floats). */
+#define NVCV_DATA_TYPE_C64  NVCV_DETAIL_MAKE_PIX_TYPE(COMPLEX, X64)
+/** Two interleaved channels of 64-bit IEEE 754 complex floating-point values (4 32-bit floats). */
+#define NVCV_DATA_TYPE_2C64 NVCV_DETAIL_MAKE_PIX_TYPE(COMPLEX, X64_Y64)
+/** Three interleaved channels of 64-bit IEEE 754 complex floating-point values (6 32-bit floats). */
+#define NVCV_DATA_TYPE_3C64 NVCV_DETAIL_MAKE_PIX_TYPE(COMPLEX, X64_Y64_Z64)
+/** Four interleaved channels of 64-bit IEEE 754 complex floating-point values (8 32-bit floats). */
+#define NVCV_DATA_TYPE_4C64 NVCV_DETAIL_MAKE_PIX_TYPE(COMPLEX, X64_Y64_Z64_W64)
+
+/** One channel of 128-bit IEEE 754 complex floating-point value (2 64-bit floats). */
+#define NVCV_DATA_TYPE_C128  NVCV_DETAIL_MAKE_PIX_TYPE(COMPLEX, X128)
+/** Two interleaved channels of 128-bit IEEE 754 complex floating-point values (4 64-bit floats). */
+#define NVCV_DATA_TYPE_2C128 NVCV_DETAIL_MAKE_PIX_TYPE(COMPLEX, X128_Y128)
 
 /* clang-format on */
 

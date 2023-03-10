@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -61,7 +61,7 @@ public:
         return std::tie(m_tshape, m_basePtr, m_strides) < std::tie(that.m_tshape, that.m_basePtr, that.m_strides);
     }
 
-    friend void Update(nvcv::util::HashMD5 &hash, const MyTensorDataStrided &d)
+    friend void Update(nvcv::test::HashMD5 &hash, const MyTensorDataStrided &d)
     {
         Update(hash, d.m_tshape, d.m_basePtr, d.m_strides);
     }

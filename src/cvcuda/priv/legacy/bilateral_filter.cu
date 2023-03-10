@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -59,7 +59,6 @@ __global__ void BilateralFilterKernel(SrcWrapper src, DstWrapper dst, const int 
     const int batch_idx = blockIdx.z;
 
     using T         = typename DstWrapper::ValueType;
-    using BT        = cuda::BaseType<T>;
     using work_type = cuda::ConvertBaseTypeTo<float, T>;
     int3      coord0{colIdx, rowIdx, batch_idx};
     int3      coord1{colIdx + 1, rowIdx, batch_idx};
@@ -145,19 +144,19 @@ __global__ void BilateralFilterKernel(SrcWrapper src, DstWrapper dst, const int 
     }
     if (colIdx < columns && rowIdx < rows)
     {
-        dst[coord0] = nvcv::cuda::SaturateCast<BT>(numerator0 / denominator0);
+        dst[coord0] = nvcv::cuda::SaturateCast<T>(numerator0 / denominator0);
     }
     if (colIdx + 1 < columns && rowIdx < rows)
     {
-        dst[coord1] = nvcv::cuda::SaturateCast<BT>(numerator1 / denominator1);
+        dst[coord1] = nvcv::cuda::SaturateCast<T>(numerator1 / denominator1);
     }
     if (colIdx < columns && rowIdx + 1 < rows)
     {
-        dst[coord2] = nvcv::cuda::SaturateCast<BT>(numerator2 / denominator2);
+        dst[coord2] = nvcv::cuda::SaturateCast<T>(numerator2 / denominator2);
     }
     if (colIdx + 1 < columns && rowIdx + 1 < rows)
     {
-        dst[coord3] = nvcv::cuda::SaturateCast<BT>(numerator3 / denominator3);
+        dst[coord3] = nvcv::cuda::SaturateCast<T>(numerator3 / denominator3);
     }
 }
 
@@ -169,8 +168,8 @@ void BilateralFilterCaller(const ITensorDataStridedCuda &inData, const ITensorDa
     dim3 block(8, 8);
     dim3 grid(divUp(columns, block.x * 2), divUp(rows, block.y * 2), batch);
 
-    cuda::BorderWrapNHW<const T, B> src(inData, cuda::SetAll<T>(borderValue));
-    cuda::Tensor3DWrap<T>           dst(outData);
+    auto src = cuda::CreateBorderWrapNHW<const T, B>(inData, cuda::SetAll<T>(borderValue));
+    auto dst = cuda::CreateTensorWrapNHW<T>(outData);
 
 #ifdef CUDA_DEBUG_LOG
     checkCudaErrors(cudaStreamSynchronize(stream));

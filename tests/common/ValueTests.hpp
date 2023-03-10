@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,9 +18,8 @@
 #ifndef NVCV_TEST_COMMON_VALUETESTS_HPP
 #define NVCV_TEST_COMMON_VALUETESTS_HPP
 
+#include "HashMD5.hpp"
 #include "ValueList.hpp"
-
-#include <util/HashMD5.hpp>
 
 namespace nvcv::test {
 
@@ -50,14 +49,15 @@ class Param
     static_assert(sizeof...(DEFAULT) <= 1);
 
 public:
-    template<class U = void *>
-    requires(sizeof(U) * 0 + sizeof...(DEFAULT) == 1) constexpr Param()
+    template<class U = void *, std::enable_if_t<sizeof(U) * 0 + sizeof...(DEFAULT) == 1, int> = 0>
+    constexpr Param()
         : m_value(DEFAULT...)
     {
     }
 
-    template<class U = void *>
-    requires(std::is_default_constructible_v<T> && sizeof(U) * 0 + sizeof...(DEFAULT) == 0) constexpr Param()
+    template<class U = void *,
+             std::enable_if_t<std::is_default_constructible_v<T> && sizeof(U) * 0 + sizeof...(DEFAULT) == 0, int> = 0>
+    constexpr Param()
         : m_value(T{})
     {
     }
@@ -100,7 +100,7 @@ private:
 };
 
 template<StringLiteral NAME, class T, T... DEFAULT>
-void Update(util::HashMD5 &hash, const Param<NAME, T, DEFAULT...> &p)
+void Update(test::HashMD5 &hash, const Param<NAME, T, DEFAULT...> &p)
 {
     Update(hash, static_cast<T>(p));
 }
@@ -111,7 +111,7 @@ template<class P>
 std::string GetTestParamHashHelper(const P &info)
 {
     // Let's use a hash of the parameter set as index.
-    util::HashMD5 hash;
+    test::HashMD5 hash;
     Update(hash, info);
 
     // We don't need 64 bit worth of variation, 32-bit is enough and leads

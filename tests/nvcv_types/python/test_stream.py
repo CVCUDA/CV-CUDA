@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,12 +15,8 @@
 
 import nvcv
 import torch
-import numba
-from numba import cuda
+import ctypes
 import pytest as t
-
-
-assert cuda.is_available()
 
 
 def test_current_stream():
@@ -52,37 +48,29 @@ def test_nested_streams():
 
 
 def test_wrap_stream_voidp():
-    numbaStream = numba.cuda.stream()
-    nvcvStream = nvcv.cuda.as_stream(numbaStream.handle)
+    stream = torch.cuda.Stream()
 
-    assert numbaStream.handle.value == nvcvStream.handle
+    extStream = ctypes.c_void_p(stream.cuda_stream)
+
+    nvcvStream = nvcv.cuda.as_stream(extStream)
+
+    assert extStream.value == nvcvStream.handle
 
 
 def test_wrap_stream_int():
-    numbaStream = numba.cuda.stream()
-    nvcvStream = nvcv.cuda.as_stream(numbaStream.handle.value)
+    stream = torch.cuda.Stream()
 
-    assert numbaStream.handle.value == nvcvStream.handle
+    extStream = int(stream.cuda_stream)
+
+    nvcvStream = nvcv.cuda.as_stream(extStream)
+
+    assert extStream == nvcvStream.handle
 
 
 def test_stream_conv_to_int():
     stream = nvcv.cuda.Stream()
 
     assert stream.handle == int(stream)
-
-
-class NumbaStream:
-    def __init__(self, cuda_stream=None):
-        if cuda_stream:
-            self.m_stream = numba.cuda.external_stream(cuda_stream)
-        else:
-            self.m_stream = numba.cuda.stream()
-
-    def cuda_stream(self):
-        return self.m_stream.handle.value
-
-    def stream(self):
-        return self.m_stream
 
 
 class TorchStream:
@@ -102,7 +90,6 @@ class TorchStream:
 @t.mark.parametrize(
     "stream_type",
     [
-        NumbaStream,
         TorchStream,
     ],
 )
@@ -121,3 +108,7 @@ def test_wrap_stream_external(stream_type):
     stream = nvcv.cuda.as_stream(extstream.stream())
 
     assert extstream.cuda_stream() == stream.handle
+
+
+def test_stream_default_is_zero():
+    assert nvcv.cuda.Stream.default.handle == 0

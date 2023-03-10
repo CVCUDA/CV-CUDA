@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -41,12 +41,12 @@ struct Convertor
 
     __device__ __forceinline__ DST_TYPE operator()(SRC_TYPE src) const
     {
-        return nvcv::cuda::SaturateCast<nvcv::cuda::BaseType<DST_TYPE>>(alpha * src + beta);
+        return nvcv::cuda::SaturateCast<DST_TYPE>(alpha * src + beta);
     }
 };
 
-template<typename Ptr2DSrc, typename Ptr2DDst, class UnOp>
-__global__ void convertFormat(Ptr2DSrc src, Ptr2DDst dst, UnOp op, int2 size)
+template<class SrcWrapper, class DstWrapper, class UnOp>
+__global__ void convertFormat(SrcWrapper src, DstWrapper dst, UnOp op, int2 size)
 {
     const int src_x     = blockIdx.x * blockDim.x + threadIdx.x;
     const int src_y     = blockIdx.y * blockDim.y + threadIdx.y;
@@ -76,8 +76,9 @@ void convertToScaleCN(const nvcv::ITensorDataStridedCuda &inData, const nvcv::IT
     using DST_DATA_TYPE = nvcv::cuda::MakeType<DT_DEST, NC>;
 
     Convertor<SRC_DATA_TYPE, DST_DATA_TYPE, DT_AB> op;
-    nvcv::cuda::Tensor3DWrap<SRC_DATA_TYPE>        src(inData);
-    nvcv::cuda::Tensor3DWrap<DST_DATA_TYPE>        dst(outData);
+
+    auto src = nvcv::cuda::CreateTensorWrapNHW<SRC_DATA_TYPE>(inData);
+    auto dst = nvcv::cuda::CreateTensorWrapNHW<DST_DATA_TYPE>(outData);
 
     op.alpha = nvcv::cuda::SaturateCast<DT_AB>(alpha);
     op.beta  = nvcv::cuda::SaturateCast<DT_AB>(beta);

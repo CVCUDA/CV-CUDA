@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -169,6 +169,20 @@ constexpr DataType TYPE_2F64{NVCV_DATA_TYPE_2F64};
 constexpr DataType TYPE_3F64{NVCV_DATA_TYPE_3F64};
 /** Four interleaved channels of 64-bit IEEE 754 floating-point values. */
 constexpr DataType TYPE_4F64{NVCV_DATA_TYPE_4F64};
+
+/** One channel of 64-bit IEEE 754 complex floating-point value (2 32-bit floats). */
+constexpr DataType TYPE_C64{NVCV_DATA_TYPE_C64};
+/** Two interleaved channels of 64-bit IEEE 754 complex floating-point values (4 32-bit floats). */
+constexpr DataType TYPE_2C64{NVCV_DATA_TYPE_2C64};
+/** Three interleaved channels of 64-bit IEEE 754 complex floating-point values (6 32-bit floats). */
+constexpr DataType TYPE_3C64{NVCV_DATA_TYPE_3C64};
+/** Four interleaved channels of 64-bit IEEE 754 complex floating-point values (8 32-bit floats). */
+constexpr DataType TYPE_4C64{NVCV_DATA_TYPE_4C64};
+
+/** One channel of 128-bit IEEE 754 complex floating-point value (2 64-bit floats). */
+constexpr DataType TYPE_C128{NVCV_DATA_TYPE_C128};
+/** Two interleaved channels of 128-bit IEEE 754 complex floating-point values (4 64-bit floats). */
+constexpr DataType TYPE_2C128{NVCV_DATA_TYPE_2C128};
 #endif
 
 inline DataType::DataType(DataKind dataKind, Packing packing)

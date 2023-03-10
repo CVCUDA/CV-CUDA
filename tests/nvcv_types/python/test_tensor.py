@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,12 +15,8 @@
 
 import nvcv
 import pytest as t
-import numba
 import numpy as np
-from numba import cuda
 import torch
-
-assert numba.cuda.is_available()
 
 
 @t.mark.parametrize(
@@ -31,7 +27,7 @@ assert numba.cuda.is_available()
             (32, 16),
             nvcv.Format.RGBA8,
             nvcv.TensorLayout.NHWC,
-            [5, 16, 32, 4],
+            (5, 16, 32, 4),
             np.uint8,
         ),
         (
@@ -39,7 +35,7 @@ assert numba.cuda.is_available()
             (38, 7),
             nvcv.Format.RGB8p,
             nvcv.TensorLayout.NCHW,
-            [2, 3, 7, 38],
+            (2, 3, 7, 38),
             np.uint8,
         ),
     ],
@@ -63,13 +59,13 @@ def test_tensor_creation_imagebatch_works(
 @t.mark.parametrize(
     "shape, dtype,layout",
     [
-        ([5, 16, 32, 4], np.float32, nvcv.TensorLayout.NHWC),
-        ([7, 3, 33, 11], np.complex64, nvcv.TensorLayout.NCHW),
-        ([3, 11], np.int16, None),
-        ([16, 32, 4], np.float32, nvcv.TensorLayout.HWC),
-        ([32, 4], np.float32, nvcv.TensorLayout.WC),
-        ([4, 32], np.float32, nvcv.TensorLayout.CW),
-        ([32], np.float32, nvcv.TensorLayout.W),
+        ((5, 16, 32, 4), np.float32, nvcv.TensorLayout.NHWC),
+        ((7, 3, 33, 11), np.complex64, nvcv.TensorLayout.NCHW),
+        ((3, 11), np.int16, None),
+        ((16, 32, 4), np.float32, nvcv.TensorLayout.HWC),
+        ((32, 4), np.float32, nvcv.TensorLayout.WC),
+        ((4, 32), np.float32, nvcv.TensorLayout.CW),
+        ((32,), np.float32, nvcv.TensorLayout.W),
     ],
 )
 def test_tensor_creation_shape_works(shape, dtype, layout):
@@ -86,24 +82,67 @@ def test_tensor_creation_shape_works(shape, dtype, layout):
     assert tensor.ndim == len(shape)
 
 
-@t.mark.parametrize(
-    "shape,dtype",
-    [
-        ([3, 5, 7, 1], np.uint8),
-        ([3, 5, 7, 1], np.int8),
-        ([3, 5, 7, 1], np.uint16),
-        ([3, 5, 7, 1], np.int16),
-        ([3, 5, 7, 1], np.float32),
-        ([3, 5, 7, 1], np.float64),
-        ([3, 5, 7, 2], np.float32),
-        ([3, 5, 7, 3], np.uint8),
-        ([3, 5, 7, 4], np.uint8),
-        ([3, 5, 7], np.csingle),
-        ([3], np.int8),
-    ],
-)
-def test_wrap_numba_buffer(shape, dtype):
-    tensor = nvcv.as_tensor(cuda.device_array(shape, dtype))
+params_wrap_torch = [
+    ((3, 5, 7, 1), np.uint8),
+    ((3, 5, 7, 1), np.int8),
+    ((3, 5, 7, 1), np.int16),
+    ((3, 5, 7, 1), np.float32),
+    ((3, 5, 7, 1), np.float64),
+    ((3, 5, 7, 2), np.float32),
+    ((3, 5, 7, 3), np.uint8),
+    ((3, 5, 7, 4), np.uint8),
+    ((3, 5, 7), np.csingle),
+    ((3, 5, 7), np.cdouble),
+    ((3,), np.int8),
+]
+
+
+@t.mark.parametrize("shape,dtype", params_wrap_torch)
+def test_wrap_torch_buffer(shape, dtype):
+    tensor = nvcv.as_tensor(
+        torch.as_tensor(np.ndarray(shape, dtype=dtype), device="cuda")
+    )
+    assert tensor.shape == shape
+    assert tensor.dtype == dtype
+    assert tensor.layout is None
+    assert tensor.ndim == len(shape)
+
+
+@t.mark.parametrize("shape,dtype", params_wrap_torch)
+def test_wrap_torch_buffer_dlpack(shape, dtype):
+    ttensor = torch.as_tensor(np.ndarray(shape, dtype=dtype), device="cuda")
+
+    # Since nvcv.as_tensor can understand both dlpack and cuda_array_interface,
+    # and we don't know a priori which interfaces it'll use (torch provides both),
+    # let's create one object with only the dlpack interface.
+    class DLPackObject:
+        pass
+
+    o = DLPackObject()
+    o.__dlpack__ = ttensor.__dlpack__
+    o.__dlpack_device__ = ttensor.__dlpack_device__
+
+    tensor = nvcv.as_tensor(o)
+    assert tensor.shape == shape
+    assert tensor.dtype == dtype
+    assert tensor.layout is None
+    assert tensor.ndim == len(shape)
+
+
+@t.mark.parametrize("shape,dtype", params_wrap_torch)
+def test_wrap_torch_buffer_cuda_array_interface(shape, dtype):
+    ttensor = torch.as_tensor(np.ndarray(shape, dtype=dtype), device="cuda")
+
+    # Since nvcv.as_tensor can understand both dlpack and cuda_array_interface,
+    # and we don't know a priori which interfaces it'll use (torch provides both),
+    # let's create one object with only the cuda_array_interface.
+    class CudaArrayInterfaceObject:
+        pass
+
+    o = CudaArrayInterfaceObject()
+    o.__cuda_array_interface__ = ttensor.__cuda_array_interface__
+
+    tensor = nvcv.as_tensor(o)
     assert tensor.shape == shape
     assert tensor.dtype == dtype
     assert tensor.layout is None
@@ -113,16 +152,19 @@ def test_wrap_numba_buffer(shape, dtype):
 @t.mark.parametrize(
     "shape,dtype,layout",
     [
-        ([3, 5, 7, 1], np.uint8, "NHWC"),
-        ([3, 5, 7], np.uint8, "HWC"),
-        ([3, 5, 7, 2], np.int16, "NHWC"),
-        ([3, 5, 7, 2, 4, 2, 5], np.int16, "abcdefg"),
-        ([3, 5], np.uint8, "HW"),
-        ([5], np.uint8, "W"),
+        ((3, 5, 7, 1), np.uint8, "NHWC"),
+        ((3, 5, 7), np.uint8, "HWC"),
+        ((3, 5, 7, 2), np.int16, "NHWC"),
+        ((3, 5, 7, 2, 4, 2, 5), np.int16, "abcdefg"),
+        ((3, 5), np.uint8, "HW"),
+        ((5,), np.uint8, "W"),
     ],
 )
-def test_wrap_numba_buffer_with_layout(shape, dtype, layout):
-    tensor = nvcv.as_tensor(cuda.device_array(shape, dtype), layout)
+def test_wrap_torch_buffer_with_layout(shape, dtype, layout):
+    tensor = nvcv.as_tensor(
+        torch.as_tensor(np.ndarray(shape, dtype=dtype), device="cuda"), layout
+    )
+    assert tensor.shape == shape
     assert tensor.shape == shape
     assert tensor.dtype == dtype
     assert tensor.layout == layout
@@ -136,14 +178,14 @@ def test_wrap_numba_buffer_with_layout(shape, dtype, layout):
             (32, 16),
             nvcv.Format.RGBA8,
             nvcv.TensorLayout.NHWC,
-            [1, 16, 32, 4],
+            (1, 16, 32, 4),
             np.uint8,
         ),
         (
             (38, 7),
             nvcv.Format.RGB8p,
             nvcv.TensorLayout.NCHW,
-            [1, 3, 7, 38],
+            (1, 3, 7, 38),
             np.uint8,
         ),
     ],
@@ -157,22 +199,25 @@ def test_tensor_wrap_image_works(size, fmt, gold_layout, gold_shape, gold_dtype)
     assert tensor.dtype == gold_dtype
 
 
+export_cuda_buffer_params = [
+    ((1, 23, 65, 3), np.uint8),
+    ((5, 23, 65, 3), np.int8),
+    ((65, 3), np.int16),
+    ((243, 65, 3), np.int16),
+    ((1, 1), np.int16),
+    ((10,), np.uint8),
+]
+
+
 @t.mark.parametrize(
     "shape,dtype",
-    [
-        ([1, 23, 65, 3], np.uint8),
-        ([5, 23, 65, 3], np.int8),
-        ([65, 3], np.int16),
-        ([243, 65, 3], np.uint16),
-        ([1, 1], np.uint16),
-        ([10], np.uint8),
-    ],
+    export_cuda_buffer_params,
 )
 def test_tensor_export_cuda_buffer(shape, dtype):
+    rng = np.random.default_rng()
+    hostGold = rng.integers(0, 128, shape, dtype)
 
-    hostGold = np.random.randint(0, 127, shape, dtype)
-
-    devGold = cuda.to_device(hostGold)
+    devGold = torch.as_tensor(hostGold, device="cuda")
 
     tensor = nvcv.as_tensor(devGold)
 
@@ -180,7 +225,26 @@ def test_tensor_export_cuda_buffer(shape, dtype):
     assert devMem.dtype == dtype
     assert devMem.shape == shape
 
-    assert (hostGold == cuda.as_cuda_array(devMem).copy_to_host()).all()
+    assert (hostGold == torch.as_tensor(devMem).cpu().numpy()).all()
+
+
+@t.mark.parametrize(
+    "shape,dtype",
+    export_cuda_buffer_params,
+)
+def test_tensor_export_cuda_buffer_dlpack(shape, dtype):
+    rng = np.random.default_rng()
+    hostGold = rng.integers(0, 128, shape, dtype)
+
+    devGold = torch.as_tensor(hostGold, device="cuda")
+
+    tensor = nvcv.as_tensor(devGold)
+
+    devMem = tensor.cuda()
+    assert devMem.dtype == dtype
+    assert devMem.shape == shape
+
+    assert (hostGold == torch.from_dlpack(devMem).cpu().numpy()).all()
 
 
 def test_tensor_hold_reference_of_wrapped_buffer():
@@ -196,3 +260,29 @@ def test_tensor_hold_reference_of_wrapped_buffer():
     # since "cvtensor" must have held the reference to the first "ttensor",
     # the second "ttensor" must be a different buffer
     assert ptr0 != ttensor.data_ptr()
+
+
+def test_tensor_is_kept_alive_by_cuda_array_interface():
+    nvcv.clear_cache()
+
+    tensor1 = nvcv.Tensor((480, 640, 3), np.uint8)
+
+    iface1 = tensor1.cuda()
+
+    data_buffer1 = iface1.__cuda_array_interface__["data"][0]
+
+    del tensor1
+
+    tensor2 = nvcv.Tensor((480, 640, 3), np.uint8)
+    assert tensor2.cuda().__cuda_array_interface__["data"][0] != data_buffer1
+
+    del tensor2
+    # remove tensor2 from cache, but not tensor1, as it's being
+    # held by iface
+    nvcv.clear_cache()
+
+    # now tensor1 is free for reuse
+    del iface1
+
+    tensor3 = nvcv.Tensor((480, 640, 3), np.uint8)
+    assert tensor3.cuda().__cuda_array_interface__["data"][0] == data_buffer1

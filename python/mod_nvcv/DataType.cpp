@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -88,9 +88,7 @@ bool FindDataType(const py::dtype &dt, nvcv::DataType *dtype)
         nvcv::DataKind dataKind;
         if (IsComplex<T>::value)
         {
-            nchannels = 2;
-            itemsize /= 2;
-            dataKind = nvcv::DataKind::FLOAT;
+            dataKind = nvcv::DataKind::COMPLEX;
         }
         else if (std::is_floating_point<T>::value)
         {
@@ -150,8 +148,8 @@ bool FindDataType(const py::dtype &dt, nvcv::DataType *dtype)
 
 // clang-format off
 using SupportedBaseTypes = std::tuple<
-      std::complex<float>, // must come before float
-      std::complex<double>, // must come before double
+      std::complex<float>,
+      std::complex<double>,
       float, double,
       uint8_t, int8_t,
       uint16_t, int16_t,
@@ -176,11 +174,6 @@ std::optional<nvcv::DataType> SelectDataType(std::tuple<TT...>, const py::dtype 
     }
 }
 
-std::optional<nvcv::DataType> ToDataType(const py::dtype &dt)
-{
-    return SelectDataType(SupportedBaseTypes(), dt);
-}
-
 template<class T>
 bool FindDType(T *, const nvcv::DataType &dtype, py::dtype *dt)
 {
@@ -195,6 +188,7 @@ bool FindDType(T *, const nvcv::DataType &dtype, py::dtype *dt)
     nvcv::DataKind dataKind = dtype.dataKind();
 
     if ((std::is_floating_point_v<T> && dataKind == nvcv::DataKind::FLOAT)
+        || (IsComplex<T>::value && dataKind == nvcv::DataKind::COMPLEX)
         || (std::is_integral_v<T> && std::is_signed_v<T> && dataKind == nvcv::DataKind::SIGNED)
         || (std::is_integral_v<T> && std::is_unsigned_v<T> && dataKind == nvcv::DataKind::UNSIGNED))
     {
@@ -203,30 +197,11 @@ bool FindDType(T *, const nvcv::DataType &dtype, py::dtype *dt)
         *dt = py::dtype::of<T>();
 
         // data type has multiple components?
-        if (nvcv::cuda::NumElements<T> != nchannels)
+        if (nchannels > 1)
         {
             // Create a dtype with multiple components too, with shape argument
             *dt = py::dtype(util::FormatString("%d%c", nchannels, dt->char_()));
         }
-        return true;
-    }
-    else
-    {
-        return false;
-    }
-}
-
-template<class T>
-bool FindDType(std::complex<T> *, const nvcv::DataType &dtype, py::dtype *dt)
-{
-    nvcv::DataKind dataKind  = dtype.dataKind();
-    int            nchannels = dtype.numChannels();
-    int            itemsize  = dtype.bitsPerPixel() / 8;
-
-    if (dataKind == nvcv::DataKind::FLOAT && sizeof(std::complex<T>) == itemsize && nchannels == 2)
-    {
-        NVCV_ASSERT(dt != nullptr);
-        *dt = py::dtype::of<std::complex<T>>();
         return true;
     }
     else
@@ -245,12 +220,18 @@ py::dtype SelectDType(std::tuple<TT...>, const nvcv::DataType &dtype)
     return dt;
 }
 
+} // namespace
+  //
+
+std::optional<nvcv::DataType> ToNVCVDataType(const py::dtype &dt)
+{
+    return SelectDataType(SupportedBaseTypes(), dt);
+}
+
 py::dtype ToDType(nvcv::DataType dtype)
 {
     return SelectDType(SupportedBaseTypes(), dtype);
 }
-
-} // namespace
 
 static std::string DataTypeToString(nvcv::DataType type)
 {
@@ -333,7 +314,7 @@ bool type_caster<nvcv::DataType>::load(handle src, bool)
         }
         dtype dt = dtype::from_args(reinterpret_steal<object>(ptr));
 
-        if (std::optional<nvcv::DataType> _dt = priv::ToDataType(dt))
+        if (std::optional<nvcv::DataType> _dt = priv::ToNVCVDataType(dt))
         {
             value = *_dt;
             return true;

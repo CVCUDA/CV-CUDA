@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -107,15 +107,15 @@ inline const IImageBatchVarShapeData *IImageBatchVarShape::exportData(CUstream s
 template<class IT>
 void IImageBatchVarShape::pushBack(IT itBeg, IT itEnd)
 {
-    auto cb = [it = itBeg, &itEnd]() mutable -> auto *
+    auto cb = [itBeg, &itEnd]() mutable
     {
-        if (it != itEnd)
+        if (itBeg != itEnd)
         {
-            return &*it++;
+            return &*itBeg++;
         }
         else
         {
-            return static_cast<decltype(&*it)>(nullptr);
+            return static_cast<decltype(&*itBeg)>(nullptr);
         }
     };
 

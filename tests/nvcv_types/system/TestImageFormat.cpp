@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -203,6 +203,24 @@ INSTANTIATE_TEST_SUITE_P(ExplicitTypes, ImageFormatTests,
                                     {32, 32, 0, 0},
                                     1,
                                     {{64, 2, NVCV_DATA_TYPE_2F32, NVCV_SWIZZLE_XY00}}},
+                             Params{NVCV_IMAGE_FORMAT_C64,
+                                    FMT_IMAGE_PARAMS(UNDEFINED, UNDEFINED, NONE, PL, COMPLEX, X000, X64, 0, 0, 0),
+                                    4,
+                                    4,
+                                    NVCV_CHROMA_LOC_EVEN,
+                                    NVCV_CHROMA_LOC_EVEN,
+                                    {64, 0, 0, 0},
+                                    1,
+                                    {{64, 1, NVCV_DATA_TYPE_C64, NVCV_SWIZZLE_X000}}},
+                             Params{NVCV_IMAGE_FORMAT_2C64,
+                                    FMT_IMAGE_PARAMS(UNDEFINED, UNDEFINED, NONE, PL, COMPLEX, XY00, X64_Y64, 0, 0, 0),
+                                    4,
+                                    4,
+                                    NVCV_CHROMA_LOC_EVEN,
+                                    NVCV_CHROMA_LOC_EVEN,
+                                    {64, 64, 0, 0},
+                                    1,
+                                    {{128, 2, NVCV_DATA_TYPE_2C64, NVCV_SWIZZLE_XY00}}},
                              Params{NVCV_IMAGE_FORMAT_BGR8,
                                     FMT_IMAGE_PARAMS(RGB, UNDEFINED, NONE, PL, UNSIGNED, ZYX1, X8_Y8_Z8, 0, 0, 0),
                                     4,

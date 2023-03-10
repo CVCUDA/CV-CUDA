@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,6 +26,8 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get update \
     && apt-get install -y --no-install-recommends \
         git git-lfs \
         g++-11 \
+        # Compilers to which public headers must be compatible
+        g++-9 clang-14 clang-11 \
         cmake ninja-build \
         ccache \
         libgtest-dev libgmock-dev \
@@ -65,4 +67,28 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get update \
         python3.8-dev python3.8-distutils \
         python3.9-dev python3.9-distutils \
         python3.10-dev python3.10-distutils \
+    && rm -rf /var/lib/apt/lists/*
+
+# gcc-8 ======================================
+# Ubuntu 22.04 doesn't come with gcc-8, must use the ones from 20.04.
+
+RUN curl --fail-early -L \
+    -O http://mirrors.kernel.org/ubuntu/pool/universe/g/gcc-8/gcc-8_8.4.0-3ubuntu2_amd64.deb \
+    -O http://mirrors.kernel.org/ubuntu/pool/universe/g/gcc-8/gcc-8-base_8.4.0-3ubuntu2_amd64.deb \
+    -O http://mirrors.kernel.org/ubuntu/pool/universe/g/gcc-8/libgcc-8-dev_8.4.0-3ubuntu2_amd64.deb \
+    -O http://mirrors.kernel.org/ubuntu/pool/universe/g/gcc-8/cpp-8_8.4.0-3ubuntu2_amd64.deb \
+    -O http://mirrors.kernel.org/ubuntu/pool/universe/g/gcc-8/libmpx2_8.4.0-3ubuntu2_amd64.deb \
+    -O http://mirrors.kernel.org/ubuntu/pool/universe/g/gcc-8/g++-8_8.4.0-3ubuntu2_amd64.deb \
+    -O http://mirrors.kernel.org/ubuntu/pool/universe/g/gcc-8/libstdc++-8-dev_8.4.0-3ubuntu2_amd64.deb \
+    -O http://mirrors.kernel.org/ubuntu/pool/main/i/isl/libisl22_0.22.1-1_amd64.deb
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+     ./libmpx2_8.4.0-3ubuntu2_amd64.deb \
+     ./cpp-8_8.4.0-3ubuntu2_amd64.deb \
+     ./gcc-8-base_8.4.0-3ubuntu2_amd64.deb \
+     ./libgcc-8-dev_8.4.0-3ubuntu2_amd64.deb \
+     ./gcc-8_8.4.0-3ubuntu2_amd64.deb \
+     ./g++-8_8.4.0-3ubuntu2_amd64.deb \
+     ./libstdc++-8-dev_8.4.0-3ubuntu2_amd64.deb \
+     ./libisl22_0.22.1-1_amd64.deb \
     && rm -rf /var/lib/apt/lists/*

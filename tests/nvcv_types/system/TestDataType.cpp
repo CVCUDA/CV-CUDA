@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +23,6 @@
 #include <nvcv/ImageFormat.hpp>
 
 namespace t    = ::testing;
-namespace util = nvcv::util;
 namespace test = nvcv::test;
 
 namespace {
@@ -65,6 +64,10 @@ INSTANTIATE_TEST_SUITE_P(ExplicitTypes, DataTypeTests,
                                    Params{NVCV_DATA_TYPE_4U8, FMT_DATA_PARAMS(UNSIGNED, X8_Y8_Z8_W8), 4, 32},
                                    Params{NVCV_DATA_TYPE_F32, FMT_DATA_PARAMS(FLOAT, X32), 1, 32},
                                    Params{NVCV_DATA_TYPE_F64, FMT_DATA_PARAMS(FLOAT, X64), 1, 64},
+                                   Params{NVCV_DATA_TYPE_C64, FMT_DATA_PARAMS(COMPLEX, X64), 1, 64},
+                                   Params{NVCV_DATA_TYPE_4C64, FMT_DATA_PARAMS(COMPLEX, X64_Y64_Z64_W64), 4, 256},
+                                   Params{NVCV_DATA_TYPE_C128, FMT_DATA_PARAMS(COMPLEX, X128), 1, 128},
+                                   Params{NVCV_DATA_TYPE_2C128, FMT_DATA_PARAMS(COMPLEX, X128_Y128), 2, 256},
                                    Params{MAKE_DATA_TYPE(UNSIGNED, X10Y11Z11), 3, 32},
                                    Params{MAKE_DATA_TYPE(UNSIGNED, X5Y6Z5), 3, 16},
                                    Params{MAKE_DATA_TYPE(UNSIGNED, X10b6_Y10b6), 2, 32},
@@ -145,7 +148,11 @@ INSTANTIATE_TEST_SUITE_P(ExplicitTypes, ImageDataTypeTests,
                                    std::make_tuple(NVCV_IMAGE_FORMAT_U16, NVCV_DATA_TYPE_U16),
                                    std::make_tuple(NVCV_IMAGE_FORMAT_S16, NVCV_DATA_TYPE_S16),
                                    std::make_tuple(NVCV_IMAGE_FORMAT_F32, NVCV_DATA_TYPE_F32),
-                                   std::make_tuple(NVCV_IMAGE_FORMAT_2F32, NVCV_DATA_TYPE_2F32)));
+                                   std::make_tuple(NVCV_IMAGE_FORMAT_2F32, NVCV_DATA_TYPE_2F32),
+                                   std::make_tuple(NVCV_IMAGE_FORMAT_C64, NVCV_DATA_TYPE_C64),
+                                   std::make_tuple(NVCV_IMAGE_FORMAT_2C64, NVCV_DATA_TYPE_2C64),
+                                   std::make_tuple(NVCV_IMAGE_FORMAT_C128, NVCV_DATA_TYPE_C128),
+                                   std::make_tuple(NVCV_IMAGE_FORMAT_2C128, NVCV_DATA_TYPE_2C128)));
 
 TEST_P(ImageDataTypeTests, pixel_type_matches_corresponding_image_type)
 {
@@ -196,6 +203,10 @@ NVCV_INSTANTIATE_TEST_SUITE_P(
         {MAKE_DATA_TYPE_ABBREV(FLOAT, X8_Y8_Z8), 2, MAKE_DATA_TYPE_ABBREV(FLOAT, X8)},
         {NVCV_DATA_TYPE_2F32,                        0, NVCV_DATA_TYPE_F32},
         {NVCV_DATA_TYPE_2F32,                        1, NVCV_DATA_TYPE_F32},
+        {NVCV_DATA_TYPE_2C64,                        0, NVCV_DATA_TYPE_C64},
+        {NVCV_DATA_TYPE_2C64,                        1, NVCV_DATA_TYPE_C64},
+        {NVCV_DATA_TYPE_2C128,                        0, NVCV_DATA_TYPE_C128},
+        {NVCV_DATA_TYPE_2C128,                        1, NVCV_DATA_TYPE_C128},
         {MAKE_DATA_TYPE_ABBREV(SIGNED, X64_Y64_Z64_W64), 3, NVCV_DATA_TYPE_S64},
         {MAKE_DATA_TYPE_ABBREV(UNSIGNED, X4Y4),  0, MAKE_DATA_TYPE_ABBREV(UNSIGNED, X4)},
         {MAKE_DATA_TYPE_ABBREV(UNSIGNED, b4X4Y4Z4), 2, MAKE_DATA_TYPE_ABBREV(UNSIGNED, X4)},
@@ -258,6 +269,10 @@ NVCV_INSTANTIATE_TEST_SUITE_P(_,DataTypeStrideTests,
                                 {NVCV_DATA_TYPE_2U16, 4},
                                 {MAKE_DATA_TYPE_ABBREV(SIGNED, X256), 32},
                                 {NVCV_DATA_TYPE_2F32, 8},
+                                {NVCV_DATA_TYPE_C64, 8},
+                                {NVCV_DATA_TYPE_4C64, 4*8},
+                                {NVCV_DATA_TYPE_C128, 16},
+                                {NVCV_DATA_TYPE_2C128, 2*16},
                                 {MAKE_DATA_TYPE_ABBREV(FLOAT, X8_Y8_Z8), 3},
                               });
 
@@ -283,6 +298,10 @@ NVCV_TEST_SUITE_P(DataTypeAlignmentTests,
                                 {NVCV_DATA_TYPE_2U16, 2},
                                 {MAKE_DATA_TYPE_ABBREV(SIGNED, X256), 32},
                                 {NVCV_DATA_TYPE_2F32, 4},
+                                {NVCV_DATA_TYPE_C64, 8},
+                                {NVCV_DATA_TYPE_2C64, 8},
+                                {NVCV_DATA_TYPE_C128, 16},
+                                {NVCV_DATA_TYPE_2C128, 16},
                                 {MAKE_DATA_TYPE_ABBREV(SIGNED, X5Y1Z5W5), 2},
                                 {MAKE_DATA_TYPE_ABBREV(SIGNED, X3Y3Z2), 1},
                                 {MAKE_DATA_TYPE_ABBREV(SIGNED, X4b4), 1},

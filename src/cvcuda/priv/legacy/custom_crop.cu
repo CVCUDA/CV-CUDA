@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -32,8 +32,9 @@
 using namespace nvcv::legacy::cuda_op;
 using namespace nvcv::legacy::helpers;
 
-template<typename Ptr2D>
-__global__ void custom_crop_kernel(const Ptr2D src, Ptr2D dst, int start_x, int start_y, int width, int height)
+template<class SrcWrapper, class DstWrapper>
+__global__ void custom_crop_kernel(const SrcWrapper src, DstWrapper dst, int start_x, int start_y, int width,
+                                   int height)
 {
     const int x         = blockIdx.x * blockDim.x + threadIdx.x;
     const int y         = blockIdx.y * blockDim.y + threadIdx.y;
@@ -51,8 +52,8 @@ void customCrop(const nvcv::ITensorDataStridedCuda &inData, const nvcv::ITensorD
     auto outAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(outData);
     NVCV_ASSERT(outAccess);
 
-    nvcv::cuda::Tensor3DWrap<T> src(inData);
-    nvcv::cuda::Tensor3DWrap<T> dst(outData);
+    auto src = nvcv::cuda::CreateTensorWrapNHW<const T>(inData);
+    auto dst = nvcv::cuda::CreateTensorWrapNHW<T>(outData);
 
     dim3 block(16, 16);
     dim3 grid(divUp(roi.width, block.x), divUp(roi.height, block.y), outAccess->numSamples());

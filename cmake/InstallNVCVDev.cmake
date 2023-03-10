@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,7 +38,9 @@ if(UNIX)
 
     set(args -DCVCUDA_SOURCE_DIR=${PROJECT_SOURCE_DIR}
              -DCVCUDA_BINARY_DIR=${PROJECT_BINARY_DIR}
-             -DNVCV_LIB_LINKER_FILE_NAME=$<TARGET_LINKER_FILE_NAME:nvcv_types>)
+             -DNVCV_LIB_LINKER_FILE_NAME=$<TARGET_LINKER_FILE_NAME:nvcv_types>
+             -DCVCUDA_LIB_LINKER_FILE_NAME=$<TARGET_LINKER_FILE_NAME:cvcuda>
+    )
 
     foreach(var CMAKE_INSTALL_PREFIX
                 CMAKE_INSTALL_INCLUDEDIR
@@ -53,8 +55,8 @@ if(UNIX)
     endforeach()
 
     add_custom_target(nvcv_dev_control_extra ALL
-        COMMAND cmake ${args} -DSOURCE=${PROJECT_SOURCE_DIR}/cpack/debian_dev_prerm.in -DDEST=cpack/dev/prerm -P ${PROJECT_SOURCE_DIR}/cpack/ConfigureFile.cmake
-        COMMAND cmake ${args} -DSOURCE=${PROJECT_SOURCE_DIR}/cpack/debian_dev_postinst.in -DDEST=cpack/dev/postinst -P ${PROJECT_SOURCE_DIR}/cpack/ConfigureFile.cmake
+        COMMAND ${CMAKE_COMMAND} ${args} -DSOURCE=${PROJECT_SOURCE_DIR}/cpack/debian_dev_prerm.in -DDEST=cpack/dev/prerm -P ${PROJECT_SOURCE_DIR}/cpack/ConfigureFile.cmake
+        COMMAND ${CMAKE_COMMAND} ${args} -DSOURCE=${PROJECT_SOURCE_DIR}/cpack/debian_dev_postinst.in -DDEST=cpack/dev/postinst -P ${PROJECT_SOURCE_DIR}/cpack/ConfigureFile.cmake
         BYPRODUCTS cpack/dev/prerm cpack/dev/postinst
         DEPENDS cpack/debian_dev_prerm.in cpack/debian_dev_postinst.in
         VERBATIM)

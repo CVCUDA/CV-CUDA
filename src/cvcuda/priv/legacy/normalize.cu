@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -51,7 +51,7 @@ __global__ void normalizeKernel(const input_type src, const base_type base, cons
 
     using input_value_type = typename input_type::ValueType;
 
-    *dst.ptr(batch_idx, src_y, src_x) = nvcv::cuda::SaturateCast<nvcv::cuda::BaseType<input_value_type>>(
+    *dst.ptr(batch_idx, src_y, src_x) = nvcv::cuda::SaturateCast<input_value_type>(
         (*src.ptr(batch_idx, src_y, src_x) - *base.ptr(base_batch_idx, base_y, base_x))
             * (*scale.ptr(scale_batch_idx, scale_y, scale_x)) * global_scale
         + global_shift);
@@ -85,21 +85,21 @@ __global__ void normalizeInvStdDevKernel(const input_type src, const base_type b
     scale_value_type x   = s * s + epsilon;
     scale_value_type mul = 1.0f / nvcv::cuda::sqrt(x);
 
-    *dst.ptr(batch_idx, src_y, src_x) = nvcv::cuda::SaturateCast<nvcv::cuda::BaseType<input_value_type>>(
+    *dst.ptr(batch_idx, src_y, src_x) = nvcv::cuda::SaturateCast<input_value_type>(
         (*src.ptr(batch_idx, src_y, src_x) - *base.ptr(base_batch_idx, base_y, base_x)) * mul * global_scale
         + global_shift);
 }
 
-template<typename base_type, typename scale_type, typename PtrInput, typename PtrOutput>
-void normalizeWrap(PtrInput src_ptr, PtrOutput dst_ptr, DataShape input_shape,
+template<typename base_type, typename scale_type, typename WrapInput, typename WrapOutput>
+void normalizeWrap(WrapInput srcWrap, WrapOutput dstWrap, DataShape input_shape,
                    const nvcv::ITensorDataStridedCuda &baseData, const nvcv::ITensorDataStridedCuda &scaleData,
                    float global_scale, float shift, cudaStream_t stream)
 {
     dim3 block(32, 8);
     dim3 grid(divUp(input_shape.W, block.x), divUp(input_shape.H, block.y), input_shape.N);
 
-    nvcv::cuda::Tensor3DWrap<base_type>  base_ptr(baseData);
-    nvcv::cuda::Tensor3DWrap<scale_type> scale_ptr(scaleData);
+    auto baseWrap  = nvcv::cuda::CreateTensorWrapNHW<base_type>(baseData);
+    auto scaleWrap = nvcv::cuda::CreateTensorWrapNHW<scale_type>(scaleData);
 
     auto baseAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(baseData);
     NVCV_ASSERT(baseAccess);
@@ -113,21 +113,21 @@ void normalizeWrap(PtrInput src_ptr, PtrOutput dst_ptr, DataShape input_shape,
     int3 scale_size = {static_cast<int>(scaleAccess->numCols()), static_cast<int>(scaleAccess->numRows()),
                        static_cast<int>(scaleAccess->numSamples())};
 
-    normalizeKernel<<<grid, block, 0, stream>>>(src_ptr, base_ptr, scale_ptr, dst_ptr, inout_size, base_size,
+    normalizeKernel<<<grid, block, 0, stream>>>(srcWrap, baseWrap, scaleWrap, dstWrap, inout_size, base_size,
                                                 scale_size, global_scale, shift);
     checkKernelErrors();
 }
 
-template<typename base_type, typename scale_type, typename PtrInput, typename PtrOutput>
-void normalizeInvStdDevWrap(PtrInput src_ptr, PtrOutput dst_ptr, DataShape input_shape,
+template<typename base_type, typename scale_type, typename WrapInput, typename WrapOutput>
+void normalizeInvStdDevWrap(WrapInput srcWrap, WrapOutput dstWrap, DataShape input_shape,
                             const nvcv::ITensorDataStridedCuda &baseData, const nvcv::ITensorDataStridedCuda &scaleData,
                             float global_scale, float shift, float epsilon, cudaStream_t stream)
 {
     dim3 block(32, 8);
     dim3 grid(divUp(input_shape.W, block.x), divUp(input_shape.H, block.y), input_shape.N);
 
-    nvcv::cuda::Tensor3DWrap<base_type>  base_ptr(baseData);
-    nvcv::cuda::Tensor3DWrap<scale_type> scale_ptr(scaleData);
+    auto baseWrap  = nvcv::cuda::CreateTensorWrapNHW<base_type>(baseData);
+    auto scaleWrap = nvcv::cuda::CreateTensorWrapNHW<scale_type>(scaleData);
 
     auto baseAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(baseData);
     NVCV_ASSERT(baseAccess);
@@ -141,7 +141,7 @@ void normalizeInvStdDevWrap(PtrInput src_ptr, PtrOutput dst_ptr, DataShape input
     int3 scale_size = {static_cast<int>(scaleAccess->numCols()), static_cast<int>(scaleAccess->numRows()),
                        static_cast<int>(scaleAccess->numSamples())};
 
-    normalizeInvStdDevKernel<<<grid, block, 0, stream>>>(src_ptr, base_ptr, scale_ptr, dst_ptr, inout_size, base_size,
+    normalizeInvStdDevKernel<<<grid, block, 0, stream>>>(srcWrap, baseWrap, scaleWrap, dstWrap, inout_size, base_size,
                                                          scale_size, global_scale, shift, epsilon);
     checkKernelErrors();
 }
@@ -151,8 +151,8 @@ void normalize(const nvcv::ITensorDataStridedCuda &inData, const nvcv::ITensorDa
                const nvcv::ITensorDataStridedCuda &scaleData, const nvcv::ITensorDataStridedCuda &outData,
                float global_scale, float shift, cudaStream_t stream)
 {
-    nvcv::cuda::Tensor3DWrap<input_type> src_ptr(inData);
-    nvcv::cuda::Tensor3DWrap<input_type> dst_ptr(outData);
+    auto srcWrap = nvcv::cuda::CreateTensorWrapNHW<input_type>(inData);
+    auto dstWrap = nvcv::cuda::CreateTensorWrapNHW<input_type>(outData);
 
     auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(inData);
     NVCV_ASSERT(inAccess);
@@ -171,28 +171,28 @@ void normalize(const nvcv::ITensorDataStridedCuda &inData, const nvcv::ITensorDa
     {
         using base_type  = work_type;
         using scale_type = work_type;
-        normalizeWrap<base_type, scale_type>(src_ptr, dst_ptr, input_shape, baseData, scaleData, global_scale, shift,
+        normalizeWrap<base_type, scale_type>(srcWrap, dstWrap, input_shape, baseData, scaleData, global_scale, shift,
                                              stream);
     }
     else if (baseAccess->numChannels() != 1)
     {
         using base_type  = work_type;
         using scale_type = float;
-        normalizeWrap<base_type, scale_type>(src_ptr, dst_ptr, input_shape, baseData, scaleData, global_scale, shift,
+        normalizeWrap<base_type, scale_type>(srcWrap, dstWrap, input_shape, baseData, scaleData, global_scale, shift,
                                              stream);
     }
     else if (scaleAccess->numChannels() != 1)
     {
         using base_type  = float;
         using scale_type = work_type;
-        normalizeWrap<base_type, scale_type>(src_ptr, dst_ptr, input_shape, baseData, scaleData, global_scale, shift,
+        normalizeWrap<base_type, scale_type>(srcWrap, dstWrap, input_shape, baseData, scaleData, global_scale, shift,
                                              stream);
     }
     else
     {
         using base_type  = float;
         using scale_type = float;
-        normalizeWrap<base_type, scale_type>(src_ptr, dst_ptr, input_shape, baseData, scaleData, global_scale, shift,
+        normalizeWrap<base_type, scale_type>(srcWrap, dstWrap, input_shape, baseData, scaleData, global_scale, shift,
                                              stream);
     }
 }
@@ -202,8 +202,8 @@ void normalizeInvStdDev(const nvcv::ITensorDataStridedCuda &inData, const nvcv::
                         const nvcv::ITensorDataStridedCuda &scaleData, const nvcv::ITensorDataStridedCuda &outData,
                         float global_scale, float shift, float epsilon, cudaStream_t stream)
 {
-    nvcv::cuda::Tensor3DWrap<input_type> src_ptr(inData);
-    nvcv::cuda::Tensor3DWrap<input_type> dst_ptr(outData);
+    auto srcWrap = nvcv::cuda::CreateTensorWrapNHW<input_type>(inData);
+    auto dstWrap = nvcv::cuda::CreateTensorWrapNHW<input_type>(outData);
 
     auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(inData);
     NVCV_ASSERT(inAccess);
@@ -222,28 +222,28 @@ void normalizeInvStdDev(const nvcv::ITensorDataStridedCuda &inData, const nvcv::
     {
         using base_type  = work_type;
         using scale_type = work_type;
-        normalizeInvStdDevWrap<base_type, scale_type>(src_ptr, dst_ptr, input_shape, baseData, scaleData, global_scale,
+        normalizeInvStdDevWrap<base_type, scale_type>(srcWrap, dstWrap, input_shape, baseData, scaleData, global_scale,
                                                       shift, epsilon, stream);
     }
     else if (baseAccess->numChannels() != 1)
     {
         using base_type  = work_type;
         using scale_type = float;
-        normalizeInvStdDevWrap<base_type, scale_type>(src_ptr, dst_ptr, input_shape, baseData, scaleData, global_scale,
+        normalizeInvStdDevWrap<base_type, scale_type>(srcWrap, dstWrap, input_shape, baseData, scaleData, global_scale,
                                                       shift, epsilon, stream);
     }
     else if (scaleAccess->numChannels() != 1)
     {
         using base_type  = float;
         using scale_type = work_type;
-        normalizeInvStdDevWrap<base_type, scale_type>(src_ptr, dst_ptr, input_shape, baseData, scaleData, global_scale,
+        normalizeInvStdDevWrap<base_type, scale_type>(srcWrap, dstWrap, input_shape, baseData, scaleData, global_scale,
                                                       shift, epsilon, stream);
     }
     else
     {
         using base_type  = float;
         using scale_type = float;
-        normalizeInvStdDevWrap<base_type, scale_type>(src_ptr, dst_ptr, input_shape, baseData, scaleData, global_scale,
+        normalizeInvStdDevWrap<base_type, scale_type>(srcWrap, dstWrap, input_shape, baseData, scaleData, global_scale,
                                                       shift, epsilon, stream);
     }
 }

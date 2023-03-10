@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -44,7 +44,7 @@ std::unique_ptr<T> CreateObj()
     }
     else if constexpr (std::is_same_v<nvcv::ITensor, T>)
     {
-        return std::make_unique<nvcv::Tensor>(nvcv::TensorShape({32, 12, 4}, nvcv::TensorLayout::NONE), nvcv::TYPE_U8);
+        return std::make_unique<nvcv::Tensor>(nvcv::TensorShape({32, 12, 4}, nvcv::TENSOR_NONE), nvcv::TYPE_U8);
     }
     else
     {
@@ -78,7 +78,19 @@ void SetMaxCount(int32_t maxCount)
 }
 
 using AllCoreTypes = ttest::Types<nvcv::IImage, nvcv::IImageBatch, nvcv::ITensor, nvcv::IAllocator>;
-NVCV_TYPED_TEST_SUITE(ConfigTests, AllCoreTypes);
+
+template<class T>
+class ConfigTests : public ::testing::Test
+{
+public:
+    ~ConfigTests()
+    {
+        // Make sure we set the handle manager back to dynamic allocation.
+        EXPECT_NO_THROW(SetMaxCount<T>(-1));
+    }
+};
+
+NVCV_TYPED_TEST_SUITE_F(ConfigTests, AllCoreTypes);
 
 TYPED_TEST(ConfigTests, set_max_obj_count_works)
 {

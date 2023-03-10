@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -32,8 +32,8 @@
 using namespace nvcv::legacy::cuda_op;
 using namespace nvcv::legacy::helpers;
 
-template<typename Ptr2D>
-__global__ void center_crop_kernel_nhwc(Ptr2D src_ptr, Ptr2D dst_ptr, const int left_indices, const int top_indices,
+template<class SrcWrapper, class DstWrapper>
+__global__ void center_crop_kernel_nhwc(SrcWrapper src, DstWrapper dst, const int left_indices, const int top_indices,
                                         const int crop_rows, const int crop_columns)
 {
     const int dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
@@ -42,7 +42,7 @@ __global__ void center_crop_kernel_nhwc(Ptr2D src_ptr, Ptr2D dst_ptr, const int 
 
     if ((dst_x < crop_columns) && (dst_y < crop_rows))
     {
-        *dst_ptr.ptr(batch_idx, dst_y, dst_x) = *src_ptr.ptr(batch_idx, dst_y + top_indices, dst_x + left_indices);
+        *dst.ptr(batch_idx, dst_y, dst_x) = *src.ptr(batch_idx, dst_y + top_indices, dst_x + left_indices);
     }
 }
 
@@ -56,10 +56,10 @@ void center_crop(const nvcv::ITensorDataStridedCuda &inData, const nvcv::ITensor
     dim3 blockSize(BLOCK, BLOCK / 4, 1);
     dim3 gridSize(divUp(crop_columns, (int)blockSize.x), divUp(crop_rows, (int)blockSize.y), batch_size);
 
-    nvcv::cuda::Tensor3DWrap<T> src_ptr(inData);
-    nvcv::cuda::Tensor3DWrap<T> dst_ptr(outData);
+    auto src = nvcv::cuda::CreateTensorWrapNHW<const T>(inData);
+    auto dst = nvcv::cuda::CreateTensorWrapNHW<T>(outData);
 
-    center_crop_kernel_nhwc<<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, left_indices, top_indices, crop_rows,
+    center_crop_kernel_nhwc<<<gridSize, blockSize, 0, stream>>>(src, dst, left_indices, top_indices, crop_rows,
                                                                 crop_columns);
     checkKernelErrors();
 #ifdef CUDA_DEBUG_LOG

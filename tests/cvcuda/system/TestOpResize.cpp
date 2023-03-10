@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "Definitions.hpp"
 
+#include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpResize.hpp>
 #include <nvcv/Image.hpp>
@@ -87,12 +88,12 @@ static void Resize(std::vector<uint8_t> &hDst, int dstRowStride, nvcv::Size2D ds
 
                 for (int k = 0; k < elementsPerPixel; k++)
                 {
-                    double res = std::rint(
+                    double res = std::rint(std::abs(
                         srcPtr[(si + 0) * srcRowStride + (sj + 0) * elementsPerPixel + k] * iWeights[0] * jWeights[0]
                         + srcPtr[(si + 1) * srcRowStride + (sj + 0) * elementsPerPixel + k] * iWeights[1] * jWeights[0]
                         + srcPtr[(si + 0) * srcRowStride + (sj + 1) * elementsPerPixel + k] * iWeights[0] * jWeights[1]
                         + srcPtr[(si + 1) * srcRowStride + (sj + 1) * elementsPerPixel + k] * iWeights[1]
-                              * jWeights[1]);
+                              * jWeights[1]));
 
                     dstPtr[di * dstRowStride + dj * elementsPerPixel + k] = res < 0 ? 0 : (res > 255 ? 255 : res);
                 }
@@ -128,7 +129,7 @@ static void Resize(std::vector<uint8_t> &hDst, int dstRowStride, nvcv::Size2D ds
 
                 for (int k = 0; k < elementsPerPixel; k++)
                 {
-                    double res = std::abs(std::rint(
+                    double res = std::rint(std::abs(
                         srcPtr[(si - 1) * srcRowStride + (sj - 1) * elementsPerPixel + k] * jWeights[0] * iWeights[0]
                         + srcPtr[(si + 0) * srcRowStride + (sj - 1) * elementsPerPixel + k] * jWeights[0] * iWeights[1]
                         + srcPtr[(si + 1) * srcRowStride + (sj - 1) * elementsPerPixel + k] * jWeights[0] * iWeights[2]
@@ -160,7 +161,7 @@ NVCV_TEST_SUITE_P(OpResize, test::ValueList<int, int, int, int, NVCVInterpolatio
 {
     // srcWidth, srcHeight, dstWidth, dstHeight,       interpolation, numberImages
     {        42,        48,       23,        24, NVCV_INTERP_NEAREST,           1},
-    {       113,        12,      212,        36, NVCV_INTERP_NEAREST,           1},
+    {       113,        12,       12,        36, NVCV_INTERP_NEAREST,           1},
     {       421,       148,      223,       124, NVCV_INTERP_NEAREST,           2},
     {       313,       212,      412,       336, NVCV_INTERP_NEAREST,           3},
     {        42,        40,       21,        20,  NVCV_INTERP_LINEAR,           1},
@@ -169,6 +170,9 @@ NVCV_TEST_SUITE_P(OpResize, test::ValueList<int, int, int, int, NVCVInterpolatio
     {       210,       210,      420,       420,  NVCV_INTERP_LINEAR,           5},
     {        42,        40,       21,        20,   NVCV_INTERP_CUBIC,           1},
     {        21,        21,       42,        42,   NVCV_INTERP_CUBIC,           6},
+    {        420,      420,      420,       420,   NVCV_INTERP_CUBIC,           2},
+    {        420,      420,      420,       420,   NVCV_INTERP_CUBIC,           1},
+    {        420,      420,       40,        42,   NVCV_INTERP_CUBIC,           1},
 });
 
 // clang-format on
@@ -190,7 +194,7 @@ TEST_P(OpResize, tensor_correct_output)
     const nvcv::ImageFormat fmt = nvcv::FMT_RGBA8;
 
     // Generate input
-    nvcv::Tensor imgSrc(numberOfImages, {srcWidth, srcHeight}, fmt);
+    nvcv::Tensor imgSrc = test::CreateTensor(numberOfImages, srcWidth, srcHeight, fmt);
 
     const auto *srcData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(imgSrc.exportData());
 
@@ -219,7 +223,7 @@ TEST_P(OpResize, tensor_correct_output)
     }
 
     // Generate test result
-    nvcv::Tensor imgDst(numberOfImages, {dstWidth, dstHeight}, nvcv::FMT_RGBA8);
+    nvcv::Tensor imgDst = test::CreateTensor(numberOfImages, dstWidth, dstHeight, fmt);
 
     cvcuda::Resize resizeOp;
     EXPECT_NO_THROW(resizeOp(stream, imgSrc, imgDst, interpolation));

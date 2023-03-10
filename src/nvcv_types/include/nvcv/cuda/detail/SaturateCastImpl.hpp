@@ -44,9 +44,7 @@ inline __host__ __device__ T BaseSaturateCastImpl(U u)
         constexpr U minT = static_cast<U>(TypeTraits<T>::min);
         constexpr U maxT = static_cast<U>(TypeTraits<T>::max);
 
-        U out = RoundImpl<U, U>(u);
-
-        out = out < minT ? minT : (out > maxT ? maxT : out);
+        U out = ClampImpl(RoundImpl<U, U>(u), minT, maxT);
 
         return static_cast<T>(out);
     }

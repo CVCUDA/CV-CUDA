@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -101,6 +101,18 @@ typedef uint64_t NVCVImageFormat;
 
 /** Single plane with two interleaved 32-bit floating point channels. */
 #define NVCV_IMAGE_FORMAT_2F32 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, FLOAT, XY00, X32_Y32)
+
+/** Single plane with one 64-bit complex floating point channel. */
+#define NVCV_IMAGE_FORMAT_C64 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, COMPLEX, X000, X64)
+
+/** Single plane with two interleaved 64-bit complex floating point channels. */
+#define NVCV_IMAGE_FORMAT_2C64 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, COMPLEX, XY00, X64_Y64)
+
+/** Single plane with one 128-bit complex floating point channel. */
+#define NVCV_IMAGE_FORMAT_C128 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, COMPLEX, X000, X128)
+
+/** Single plane with two interleaved 128-bit complex floating point channels. */
+#define NVCV_IMAGE_FORMAT_2C128 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, COMPLEX, XY00, X128_Y128)
 
 /** Single plane with one pitch-linear 8-bit unsigned integer channel with limited-range luma (grayscale) information.
  * Values range from 16 to 235. Below this range is considered black, above is considered white.

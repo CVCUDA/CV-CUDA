@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -47,7 +47,7 @@ Tensor AverageBlurInto(Tensor &output, Tensor &input, const std::tuple<int, int>
     ResourceGuard guard(*pstream);
     guard.add(LockMode::LOCK_READ, {input});
     guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*averageBlur});
+    guard.add(LockMode::LOCK_WRITE, {*averageBlur});
 
     averageBlur->submit(pstream->cudaHandle(), input, output, kernelSizeArg, kernelAnchorArg, border);
 
@@ -78,7 +78,7 @@ ImageBatchVarShape AverageBlurVarShapeInto(ImageBatchVarShape &output, ImageBatc
     ResourceGuard guard(*pstream);
     guard.add(LockMode::LOCK_READ, {input, kernel_size, kernel_anchor});
     guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*averageBlur});
+    guard.add(LockMode::LOCK_WRITE, {*averageBlur});
 
     averageBlur->submit(pstream->cudaHandle(), input, output, kernel_size, kernel_anchor, border);
 

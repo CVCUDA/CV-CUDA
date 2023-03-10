@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,11 +33,11 @@ namespace nvcv::cuda::detail {
 
 // clang-format off
 
-// @brief Metavariable to check if two types are compound and have the same number of components.
+// Metavariable to check if two types are compound and have the same number of components.
 template<class T, class U, class = Require<HasTypeTraits<T, U>>>
 constexpr bool IsSameCompound = IsCompound<T> && TypeTraits<T>::components == TypeTraits<U>::components;
 
-// @brief Metavariable to check that at least one type is of compound type out of two types.
+// Metavariable to check that at least one type is of compound type out of two types.
 // If both are compound type, then it is checked that both have the same number of components.
 template<typename T, typename U, class = Require<HasTypeTraits<T, U>>>
 constexpr bool OneIsCompound =
@@ -45,16 +45,16 @@ constexpr bool OneIsCompound =
     (TypeTraits<T>::components >= 1 && TypeTraits<U>::components == 0) ||
     IsSameCompound<T, U>;
 
-// @brief Metavariable to check if a type is of integral type.
+// Metavariable to check if a type is of integral type.
 template<typename T, class = Require<HasTypeTraits<T>>>
 constexpr bool IsIntegral = std::is_integral_v<typename TypeTraits<T>::base_type>;
 
-// @brief Metavariable to require that at least one type is of compound type out of two integral types.
+// Metavariable to require that at least one type is of compound type out of two integral types.
 // If both are compound type, then it is required that both have the same number of components.
 template<typename T, typename U, class = Require<HasTypeTraits<T, U>>>
 constexpr bool OneIsCompoundAndBothAreIntegral = OneIsCompound<T, U> && IsIntegral<T> && IsIntegral<U>;
 
-// @brief Metavariable to require that a type is a CUDA compound of integral type.
+// Metavariable to require that a type is a CUDA compound of integral type.
 template<typename T, class = Require<HasTypeTraits<T>>>
 constexpr bool IsIntegralCompound = IsIntegral<T> && IsCompound<T>;
 
@@ -63,9 +63,9 @@ constexpr bool IsIntegralCompound = IsIntegral<T> && IsCompound<T>;
 } // namespace nvcv::cuda::detail
 
 /**
- * @brief Operators on CUDA compound types resembling the same operator on corresponding regular C type
+ * Operators on CUDA compound types resembling the same operator on corresponding regular C type.
  *
- * @details This whole group defines a set of arithmetic and bitwise operators defined on CUDA compound types.
+ * This whole group defines a set of arithmetic and bitwise operators defined on CUDA compound types.
  * They work the same way as the corresponding regular C type.  For instance, three int3 a, b and c, will accept
  * the operation a += b * c (see example below).  Furthermore, the operators accept mixed operands as CUDA compound
  * and regular C types, e.g. two int3 a and b and one int c will accept the operation a += b * c, where the scalar
@@ -82,13 +82,13 @@ constexpr bool IsIntegralCompound = IsIntegral<T> && IsCompound<T>;
  * res += kernel * pix;
  * @endcode
  *
- * @tparam T Type of the first CUDA compound or regular C type operand
- * @tparam U Type of the second CUDA compound or regular C type operand
+ * @tparam T Type of the first CUDA compound or regular C type operand.
+ * @tparam U Type of the second CUDA compound or regular C type operand.
  *
- * @param[in] a First operand
- * @param[in] b Second operand
+ * @param[in] a First operand.
+ * @param[in] b Second operand.
  *
- * @return Return value of applying the operator on \p a and \p b
+ * @return Return value of applying the operator on \p a and \p b.
  */
 
 #define NVCV_CUDA_UNARY_OPERATOR(OPERATOR, REQUIREMENT)                                                          \

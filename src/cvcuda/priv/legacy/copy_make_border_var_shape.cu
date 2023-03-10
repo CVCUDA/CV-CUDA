@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -32,8 +32,8 @@ using namespace nvcv::legacy::helpers;
 namespace nvcv::legacy::cuda_op {
 namespace {
 
-template<typename BrdRd, typename T>
-__global__ void copyMakeBorderKernel(const BrdRd src, cuda::Tensor3DWrap<T> dst, const cuda::Tensor3DWrap<int> left_,
+template<class SrcWrapper, class DstWrapper>
+__global__ void copyMakeBorderKernel(const SrcWrapper src, DstWrapper dst, const cuda::Tensor3DWrap<int> left_,
                                      const cuda::Tensor3DWrap<int> top_, int out_height, int out_width)
 {
     const int x         = blockIdx.x * blockDim.x + threadIdx.x;
@@ -47,12 +47,13 @@ __global__ void copyMakeBorderKernel(const BrdRd src, cuda::Tensor3DWrap<T> dst,
 
     if (x < out_width && y < out_height)
     {
-        *dst.ptr(batch_idx, y, x) = src(batch_idx, y_shift, x_shift);
+        int3 srcCoord             = {x_shift, y_shift, batch_idx};
+        *dst.ptr(batch_idx, y, x) = src[srcCoord];
     }
 }
 
-template<typename BrdRd, typename T>
-__global__ void copyMakeBorderKernel(const BrdRd src, Ptr2dVarShapeNHWC<T> dst, const cuda::Tensor3DWrap<int> left_,
+template<class SrcWrapper, class DstWrapper>
+__global__ void copyMakeBorderKernel(const SrcWrapper src, DstWrapper dst, const cuda::Tensor3DWrap<int> left_,
                                      const cuda::Tensor3DWrap<int> top_)
 {
     const int x         = blockIdx.x * blockDim.x + threadIdx.x;
@@ -64,26 +65,26 @@ __global__ void copyMakeBorderKernel(const BrdRd src, Ptr2dVarShapeNHWC<T> dst, 
     const int x_shift = x - left;
     const int y_shift = y - top;
 
-    int out_height = dst.at_rows(batch_idx), out_width = dst.at_cols(batch_idx);
+    int out_height = dst.height(batch_idx), out_width = dst.width(batch_idx);
 
     if (x < out_width && y < out_height)
     {
-        *dst.ptr(batch_idx, y, x) = src(batch_idx, y_shift, x_shift);
+        int3 srcCoord             = {x_shift, y_shift, batch_idx};
+        *dst.ptr(batch_idx, y, x) = src[srcCoord];
     }
 }
 
-template<template<typename> class B, typename T>
+template<NVCVBorderType B, typename T>
 struct copyMakeBorderDispatcher
 {
-    static void call(const Ptr2dVarShapeNHWC<T> &src, cuda::Tensor3DWrap<T> dst, const T &borderValue,
+    static void call(const IImageBatchVarShapeDataStridedCuda &src, cuda::Tensor3DWrap<T> dst, const T &borderValue,
                      const cuda::Tensor3DWrap<int> &left, const cuda::Tensor3DWrap<int> &top, int max_height,
                      int max_width, cudaStream_t stream)
     {
         dim3 blockSize(BLOCK, BLOCK / 4, 1);
-        dim3 gridSize(divUp(max_width, blockSize.x), divUp(max_height, blockSize.y), src.batches);
+        dim3 gridSize(divUp(max_width, blockSize.x), divUp(max_height, blockSize.y), src.numImages());
 
-        B<T>                                     brd(0, 0, borderValue);
-        BorderReader<Ptr2dVarShapeNHWC<T>, B<T>> brdSrc(src, brd);
+        cuda::BorderVarShapeWrap<const T, B> brdSrc(src, borderValue);
 
         copyMakeBorderKernel<<<gridSize, blockSize, 0, stream>>>(brdSrc, dst, left, top, max_height, max_width);
         checkKernelErrors();
@@ -94,15 +95,14 @@ struct copyMakeBorderDispatcher
 #endif
     }
 
-    static void call(const Ptr2dVarShapeNHWC<T> &src, Ptr2dVarShapeNHWC<T> dst, const T &borderValue,
-                     const cuda::Tensor3DWrap<int> &left, const cuda::Tensor3DWrap<int> &top, int max_height,
-                     int max_width, cudaStream_t stream)
+    static void call(const IImageBatchVarShapeDataStridedCuda &src, cuda::ImageBatchVarShapeWrap<T> dst,
+                     const T &borderValue, const cuda::Tensor3DWrap<int> &left, const cuda::Tensor3DWrap<int> &top,
+                     int max_height, int max_width, cudaStream_t stream)
     {
         dim3 blockSize(BLOCK, BLOCK / 4, 1);
-        dim3 gridSize(divUp(max_width, blockSize.x), divUp(max_height, blockSize.y), src.batches);
+        dim3 gridSize(divUp(max_width, blockSize.x), divUp(max_height, blockSize.y), src.numImages());
 
-        B<T>                                     brd(0, 0, borderValue);
-        BorderReader<Ptr2dVarShapeNHWC<T>, B<T>> brdSrc(src, brd);
+        cuda::BorderVarShapeWrap<const T, B> brdSrc(src, borderValue);
 
         copyMakeBorderKernel<<<gridSize, blockSize, 0, stream>>>(brdSrc, dst, left, top);
         checkKernelErrors();
@@ -124,27 +124,28 @@ void copyMakeBorder(const IImageBatchVarShapeDataStridedCuda &inData, const OutT
 #pragma unroll
     for (int i = 0; i < cn; i++) cuda::GetElement(brdVal, i) = cuda::GetElement(value, i);
 
-    Ptr2dVarShapeNHWC<src_type> srcWrap(inData);
-    cuda::Tensor3DWrap<int>     topVec(top);
-    cuda::Tensor3DWrap<int>     leftVec(left);
+    cuda::Tensor3DWrap<int> topVec(top);
+    cuda::Tensor3DWrap<int> leftVec(left);
 
     auto outSize = GetMaxImageSize(outData);
 
-    using out_type = typename std::conditional<std::is_same<OutType, ITensorDataStridedCuda>::value,
-                                               cuda::Tensor3DWrap<src_type>, Ptr2dVarShapeNHWC<src_type>>::type;
+    using out_type =
+        typename std::conditional<std::is_same<OutType, ITensorDataStridedCuda>::value, cuda::Tensor3DWrap<src_type>,
+                                  cuda::ImageBatchVarShapeWrap<src_type>>::type;
 
     out_type dstWrap(outData);
 
-    typedef void (*func_t)(const Ptr2dVarShapeNHWC<src_type> &src, out_type dst, const src_type &borderValue,
+    typedef void (*func_t)(const IImageBatchVarShapeDataStridedCuda &src, out_type dst, const src_type &borderValue,
                            const cuda::Tensor3DWrap<int> &left, const cuda::Tensor3DWrap<int> &top, int max_height,
                            int max_width, cudaStream_t stream);
 
-    static const func_t funcs[]
-        = {copyMakeBorderDispatcher<BrdConstant, src_type>::call,
-           copyMakeBorderDispatcher<BrdReplicate, src_type>::call, copyMakeBorderDispatcher<BrdReflect, src_type>::call,
-           copyMakeBorderDispatcher<BrdWrap, src_type>::call, copyMakeBorderDispatcher<BrdReflect101, src_type>::call};
+    static const func_t funcs[] = {copyMakeBorderDispatcher<NVCV_BORDER_CONSTANT, src_type>::call,
+                                   copyMakeBorderDispatcher<NVCV_BORDER_REPLICATE, src_type>::call,
+                                   copyMakeBorderDispatcher<NVCV_BORDER_REFLECT, src_type>::call,
+                                   copyMakeBorderDispatcher<NVCV_BORDER_WRAP, src_type>::call,
+                                   copyMakeBorderDispatcher<NVCV_BORDER_REFLECT101, src_type>::call};
 
-    funcs[borderType](srcWrap, dstWrap, brdVal, leftVec, topVec, outSize.h, outSize.w, stream);
+    funcs[borderType](inData, dstWrap, brdVal, leftVec, topVec, outSize.h, outSize.w, stream);
 }
 } // namespace
 

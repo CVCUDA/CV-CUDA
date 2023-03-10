@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,8 +26,10 @@
 
 #include "TypeTraits.hpp" // for HasTypeTraits, etc.
 
-#include <nvcv/IImageData.hpp>  // for IImageDataStridedCuda, etc.
-#include <nvcv/ITensorData.hpp> // for ITensorDataStridedCuda, etc.
+#include <nvcv/IImageData.hpp>       // for IImageDataStridedCuda, etc.
+#include <nvcv/ITensorData.hpp>      // for ITensorDataStridedCuda, etc.
+#include <nvcv/TensorDataAccess.hpp> // for TensorDataAccessStridedImagePlanar, etc.
+#include <util/Assert.h>             // for NVCV_ASSERT, etc.
 
 #include <utility>
 
@@ -63,7 +65,7 @@ namespace nvcv::cuda {
  * using DataType = ...;
  * using ChannelType = BaseType<DataType>;
  * using TensorWrap = TensorWrap<ChannelType, -1, -1, sizeof(DataType), sizeof(ChannelType)>;
- * void *imageData = ...;
+ * std::byte *imageData = ...;
  * int imgStride = ...;
  * int rowStride = ...;
  * TensorWrap tensorWrap(imageData, imgStride, rowStride);
@@ -96,12 +98,12 @@ public:
     /**
      * Constructs a constant TensorWrap by wrapping a const \p data pointer argument.
      *
-     * @param[in] data Pointer to the data that will be wrapped
-     * @param[in] strides0..D Each run-time pitch in bytes from first to last dimension
+     * @param[in] data Pointer to the data that will be wrapped.
+     * @param[in] strides0..D Each run-time pitch in bytes from first to last dimension.
      */
-    template<typename... Args>
-    explicit __host__ __device__ TensorWrap(const void *data, Args... strides)
-        : m_data(data)
+    template<typename DataType, typename... Args>
+    explicit __host__ __device__ TensorWrap(const DataType *data, Args... strides)
+        : m_data(reinterpret_cast<const std::byte *>(data))
         , m_strides{std::forward<int>(strides)...}
     {
         static_assert(std::conjunction_v<std::is_same<int, Args>...>);
@@ -111,13 +113,13 @@ public:
     /**
      * Constructs a constant TensorWrap by wrapping an \p image argument.
      *
-     * @param[in] image Image reference to the image that will be wrapped
+     * @param[in] image Image reference to the image that will be wrapped.
      */
     __host__ TensorWrap(const IImageDataStridedCuda &image)
     {
         static_assert(kVariableStrides == 1 && kNumDimensions == 2);
 
-        m_data = reinterpret_cast<const void *>(image.plane(0).basePtr);
+        m_data = reinterpret_cast<const std::byte *>(image.plane(0).basePtr);
 
         m_strides[0] = image.plane(0).rowStride;
     }
@@ -125,18 +127,29 @@ public:
     /**
      * Constructs a constant TensorWrap by wrapping a \p tensor argument.
      *
-     * @param[in] tensor Tensor reference to the tensor that will be wrapped
+     * @param[in] tensor Tensor reference to the tensor that will be wrapped.
      */
     __host__ TensorWrap(const ITensorDataStridedCuda &tensor)
     {
-        m_data = reinterpret_cast<const void *>(tensor.basePtr());
+        constexpr int kStride[] = {std::forward<int>(Strides)...};
+
+        NVCV_ASSERT(tensor.rank() >= kNumDimensions);
+
+        m_data = reinterpret_cast<const std::byte *>(tensor.basePtr());
 
 #pragma unroll
-        for (int i = 0; i < kVariableStrides; ++i)
+        for (int i = 0; i < kNumDimensions; ++i)
         {
-            assert(tensor.stride(i) <= TypeTraits<int>::max);
+            if (kStride[i] != -1)
+            {
+                NVCV_ASSERT(tensor.stride(i) == kStride[i]);
+            }
+            else if (i < kVariableStrides)
+            {
+                NVCV_ASSERT(tensor.stride(i) <= TypeTraits<int>::max);
 
-            m_strides[i] = tensor.stride(i);
+                m_strides[i] = tensor.stride(i);
+            }
         }
     }
 
@@ -153,57 +166,44 @@ public:
     /**
      * Subscript operator for read-only access.
      *
-     * @param[in] c 1D coordinate (x first dimension) to be accessed
+     * @param[in] c N-D coordinate (from last to first dimension) to be accessed.
      *
-     * @return Accessed const reference
+     * @return Accessed const reference.
      */
-    inline const __host__ __device__ T &operator[](int1 c) const
+    template<typename DimType, class = Require<std::is_same_v<int, BaseType<DimType>>>>
+    inline const __host__ __device__ T &operator[](DimType c) const
     {
-        return *doGetPtr(c.x);
-    }
-
-    /**
-     * Subscript operator for read-only access.
-     *
-     * @param[in] c 2D coordinates (y first and x second dimension) to be accessed
-     *
-     * @return Accessed const reference
-     */
-    inline const __host__ __device__ T &operator[](int2 c) const
-    {
-        return *doGetPtr(c.y, c.x);
-    }
-
-    /**
-     * Subscript operator for read-only access.
-     *
-     * @param[in] c 3D coordinates (z first, y second and x third dimension) to be accessed
-     *
-     * @return Accessed const reference
-     */
-    inline const __host__ __device__ T &operator[](int3 c) const
-    {
-        return *doGetPtr(c.z, c.y, c.x);
-    }
-
-    /**
-     * Subscript operator for read-only access.
-     *
-     * @param[in] c 4D coordinates (w first, z second, y third, and x fourth dimension) to be accessed
-     *
-     * @return Accessed const reference
-     */
-    inline const __host__ __device__ T &operator[](int4 c) const
-    {
-        return *doGetPtr(c.w, c.z, c.y, c.x);
+        if constexpr (NumElements<DimType> == 1)
+        {
+            if constexpr (NumComponents<DimType> == 0)
+            {
+                return *doGetPtr(c);
+            }
+            else
+            {
+                return *doGetPtr(c.x);
+            }
+        }
+        else if constexpr (NumElements<DimType> == 2)
+        {
+            return *doGetPtr(c.y, c.x);
+        }
+        else if constexpr (NumElements<DimType> == 3)
+        {
+            return *doGetPtr(c.z, c.y, c.x);
+        }
+        else if constexpr (NumElements<DimType> == 4)
+        {
+            return *doGetPtr(c.w, c.z, c.y, c.x);
+        }
     }
 
     /**
      * Get a read-only proxy (as pointer) at the Dth dimension.
      *
-     * @param[in] c0..D Each coordinate from first to last dimension
+     * @param[in] c0..D Each coordinate from first to last dimension.
      *
-     * @return The const pointer to the beginning of the Dth dimension
+     * @return The const pointer to the beginning of the Dth dimension.
      */
     template<typename... Args>
     inline const __host__ __device__ T *ptr(Args... c) const
@@ -238,12 +238,12 @@ protected:
             offset += coords[i] * kStride[i];
         }
 
-        return reinterpret_cast<const T *>(reinterpret_cast<const uint8_t *>(m_data) + offset);
+        return reinterpret_cast<const T *>(m_data + offset);
     }
 
 private:
-    const void *m_data                      = nullptr;
-    int         m_strides[kVariableStrides] = {};
+    const std::byte *m_data                      = nullptr;
+    int              m_strides[kVariableStrides] = {};
 };
 
 /**
@@ -269,11 +269,11 @@ public:
     /**
      * Constructs a TensorWrap by wrapping a \p data pointer argument.
      *
-     * @param[in] data Pointer to the data that will be wrapped
-     * @param[in] strides0..N Each run-time pitch in bytes from first to last dimension
+     * @param[in] data Pointer to the data that will be wrapped.
+     * @param[in] strides0..N Each run-time pitch in bytes from first to last dimension.
      */
-    template<typename... Args>
-    explicit __host__ __device__ TensorWrap(void *data, Args... strides)
+    template<typename DataType, typename... Args>
+    explicit __host__ __device__ TensorWrap(DataType *data, Args... strides)
         : Base(data, strides...)
     {
     }
@@ -281,7 +281,7 @@ public:
     /**
      * Constructs a TensorWrap by wrapping an \p image argument.
      *
-     * @param[in] image Image reference to the image that will be wrapped
+     * @param[in] image Image reference to the image that will be wrapped.
      */
     __host__ TensorWrap(const IImageDataStridedCuda &image)
         : Base(image)
@@ -291,7 +291,7 @@ public:
     /**
      * Constructs a TensorWrap by wrapping a \p tensor argument.
      *
-     * @param[in] tensor Tensor reference to the tensor that will be wrapped
+     * @param[in] tensor Tensor reference to the tensor that will be wrapped.
      */
     __host__ TensorWrap(const ITensorDataStridedCuda &tensor)
         : Base(tensor)
@@ -301,57 +301,44 @@ public:
     /**
      * Subscript operator for read-and-write access.
      *
-     * @param[in] c 1D coordinate (x first dimension) to be accessed
+     * @param[in] c N-D coordinate (from last to first dimension) to be accessed.
      *
-     * @return Accessed reference
+     * @return Accessed reference.
      */
-    inline __host__ __device__ T &operator[](int1 c) const
+    template<typename DimType, class = Require<std::is_same_v<int, BaseType<DimType>>>>
+    inline __host__ __device__ T &operator[](DimType c) const
     {
-        return *doGetPtr(c.x);
-    }
-
-    /**
-     * Subscript operator for read-and-write access.
-     *
-     * @param[in] c 2D coordinates (y first and x second dimension) to be accessed
-     *
-     * @return Accessed reference
-     */
-    inline __host__ __device__ T &operator[](int2 c) const
-    {
-        return *doGetPtr(c.y, c.x);
-    }
-
-    /**
-     * Subscript operator for read-and-write access.
-     *
-     * @param[in] c 3D coordinates (z first, y second and x third dimension) to be accessed
-     *
-     * @return Accessed reference
-     */
-    inline __host__ __device__ T &operator[](int3 c) const
-    {
-        return *doGetPtr(c.z, c.y, c.x);
-    }
-
-    /**
-     * Subscript operator for read-and-write access.
-     *
-     * @param[in] c 4D coordinates (w first, z second, y third, and x fourth dimension) to be accessed
-     *
-     * @return Accessed reference
-     */
-    inline __host__ __device__ T &operator[](int4 c) const
-    {
-        return *doGetPtr(c.w, c.z, c.y, c.x);
+        if constexpr (NumElements<DimType> == 1)
+        {
+            if constexpr (NumComponents<DimType> == 0)
+            {
+                return *doGetPtr(c);
+            }
+            else
+            {
+                return *doGetPtr(c.x);
+            }
+        }
+        else if constexpr (NumElements<DimType> == 2)
+        {
+            return *doGetPtr(c.y, c.x);
+        }
+        else if constexpr (NumElements<DimType> == 3)
+        {
+            return *doGetPtr(c.z, c.y, c.x);
+        }
+        else if constexpr (NumElements<DimType> == 4)
+        {
+            return *doGetPtr(c.w, c.z, c.y, c.x);
+        }
     }
 
     /**
      * Get a read-and-write proxy (as pointer) at the Dth dimension.
      *
-     * @param[in] c0..D Each coordinate from first to last dimension
+     * @param[in] c0..D Each coordinate from first to last dimension.
      *
-     * @return The pointer to the beginning of the Dth dimension
+     * @return The pointer to the beginning of the Dth dimension.
      */
     template<typename... Args>
     inline __host__ __device__ T *ptr(Args... c) const
@@ -378,6 +365,7 @@ protected:
  *
  *  Template arguments:
  *  - T data type of each element in \ref TensorWrap
+ *  - N (optional) number of dimensions
  *
  *  @sa NVCV_CPP_CUDATOOLS_TENSORWRAP
  *
@@ -397,7 +385,68 @@ using Tensor3DWrap = TensorWrap<T, -1, -1, sizeof(T)>;
 template<typename T>
 using Tensor4DWrap = TensorWrap<T, -1, -1, -1, sizeof(T)>;
 
+template<typename T, int N>
+using TensorNDWrap = std::conditional_t<
+    N == 1, Tensor1DWrap<T>,
+    std::conditional_t<N == 2, Tensor2DWrap<T>,
+                       std::conditional_t<N == 3, Tensor3DWrap<T>, std::conditional_t<N == 4, Tensor4DWrap<T>, void>>>>;
+
 /**@}*/
+
+/**
+ * Factory function to create a NHW tensor wrap given a tensor data.
+ *
+ * The output \ref TensorWrap is an NHW 3D tensor allowing to access data per batch (N), per row (H) and per column
+ * (W) of the input tensor.  The input tensor data must have either NHWC or HWC layout, where the channel C is
+ * inside \p T, e.g. T=uchar3 for RGB8.
+ *
+ * @sa NVCV_CPP_CUDATOOLS_TENSORWRAP
+ *
+ * @tparam T Type of the values to be accessed in the tensor wrap.
+ *
+ * @param[in] tensor Reference to the tensor that will be wrapped.
+ *
+ * @return Tensor wrap useful to access tensor data in CUDA kernels.
+ */
+template<typename T, class = Require<HasTypeTraits<T>>>
+__host__ auto CreateTensorWrapNHW(const ITensorDataStridedCuda &tensor)
+{
+    auto tensorAccess = TensorDataAccessStridedImagePlanar::Create(tensor);
+    NVCV_ASSERT(tensorAccess);
+    NVCV_ASSERT(tensorAccess->sampleStride() <= TypeTraits<int>::max);
+    NVCV_ASSERT(tensorAccess->rowStride() <= TypeTraits<int>::max);
+
+    return Tensor3DWrap<T>(tensor.basePtr(), static_cast<int>(tensorAccess->sampleStride()),
+                           static_cast<int>(tensorAccess->rowStride()));
+}
+
+/**
+ * Factory function to create a NHWC tensor wrap given a tensor data.
+ *
+ * The output \ref TensorWrap is an NHWC 4D tensor allowing to access data per batch (N), per row (H), per column
+ * (W) and per channel (C) of the input tensor.  The input tensor data must have either NHWC or HWC layout, where
+ * the channel C is inside \p T, e.g. T=uchar3 for RGB8.
+ *
+ * @sa NVCV_CPP_CUDATOOLS_TENSORWRAP
+ *
+ * @tparam T Type of the values to be accessed in the tensor wrap.
+ *
+ * @param[in] tensor Reference to the tensor that will be wrapped.
+ *
+ * @return Tensor wrap useful to access tensor data in CUDA kernels.
+ */
+template<typename T, class = Require<HasTypeTraits<T>>>
+__host__ auto CreateTensorWrapNHWC(const ITensorDataStridedCuda &tensor)
+{
+    auto tensorAccess = TensorDataAccessStridedImagePlanar::Create(tensor);
+    NVCV_ASSERT(tensorAccess);
+    NVCV_ASSERT(tensorAccess->sampleStride() <= TypeTraits<int>::max);
+    NVCV_ASSERT(tensorAccess->rowStride() <= TypeTraits<int>::max);
+    NVCV_ASSERT(tensorAccess->colStride() <= TypeTraits<int>::max);
+
+    return Tensor4DWrap<T>(tensor.basePtr(), static_cast<int>(tensorAccess->sampleStride()),
+                           static_cast<int>(tensorAccess->rowStride()), static_cast<int>(tensorAccess->colStride()));
+}
 
 } // namespace nvcv::cuda
 

@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -50,8 +50,8 @@ namespace nvcv::legacy::cuda_op {
  * @return the pixel at given index
  */
 template<typename T>
-__device__ T fetch(T *shared, const Ptr2dVarShapeNHWC<T> src, int batchIdx, int h, int w, int c, int sxOffset,
-                   int syOffset, int gx, int gy, int block_size)
+__device__ T fetch(T *shared, const cuda::ImageBatchVarShapeWrapNHWC<T> src, int batchIdx, int h, int w, int c,
+                   int sxOffset, int syOffset, int gx, int gy, int block_size)
 {
     // check for nvcv::BORDER_REPLICATE.
     if (gx < 0)
@@ -90,7 +90,8 @@ __device__ T fetch(T *shared, const Ptr2dVarShapeNHWC<T> src, int batchIdx, int 
  * @param kHeight height of the kernel.
  */
 template<typename T>
-__global__ void median(const Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> dst, const cuda::Tensor2DWrap<int> ksize)
+__global__ void median(const cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
+                       const cuda::Tensor2DWrap<int> ksize)
 {
 #define fetch_(gx, gy, block_size) \
     fetch<T>(tails, src, batchIdx, h, w, channel, blockX, blockY, (gx), (gy), (block_size))
@@ -101,9 +102,9 @@ __global__ void median(const Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> dst,
     int blockY   = blockIdx.y * blockDim.y;
     int x        = blockX + threadIdx.x;
     int y        = blockY + threadIdx.y;
-    int channel  = blockIdx.z % dst.nch;
-    int batchIdx = blockIdx.z / dst.nch;
-    int h = src.at_rows(batchIdx), w = src.at_cols(batchIdx);
+    int channel  = blockIdx.z % dst.numChannels();
+    int batchIdx = blockIdx.z / dst.numChannels();
+    int h = src.height(batchIdx), w = src.width(batchIdx);
     int kWidth  = *ksize.ptr(batchIdx, 0); //kWidths[batchIdx];
     int kHeight = *ksize.ptr(batchIdx, 1); //kHeights[batchIdx];
 
@@ -275,17 +276,17 @@ __inline__ __device__ T placePivot(T *arr, int length)
 }
 
 template<typename T>
-__global__ void medianForSmallKernel(const Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> dst,
-                                     const cuda::Tensor2DWrap<int> ksize)
+__global__ void medianForSmallKernel(const cuda::ImageBatchVarShapeWrapNHWC<T> src,
+                                     cuda::ImageBatchVarShapeWrapNHWC<T> dst, const cuda::Tensor2DWrap<int> ksize)
 {
     int tx = threadIdx.x, ty = threadIdx.y;
     int blockX   = blockIdx.x * blockDim.x;
     int blockY   = blockIdx.y * blockDim.y;
     int x        = blockX + threadIdx.x;
     int y        = blockY + threadIdx.y;
-    int channel  = blockIdx.z % dst.nch;
-    int batchIdx = blockIdx.z / dst.nch;
-    int h = src.at_rows(batchIdx), w = src.at_cols(batchIdx);
+    int channel  = blockIdx.z % dst.numChannels();
+    int batchIdx = blockIdx.z / dst.numChannels();
+    int h = src.height(batchIdx), w = src.width(batchIdx);
     int kWidth  = *ksize.ptr(batchIdx, 0); //kWidths[batchIdx];
     int kHeight = *ksize.ptr(batchIdx, 1); //kHeights[batchIdx];
 
@@ -344,8 +345,10 @@ void median(const IImageBatchVarShapeDataStridedCuda &in, const IImageBatchVarSh
     int maxWidth  = outMaxSize.w;
     int maxHeight = outMaxSize.h;
 
-    Ptr2dVarShapeNHWC<T> src(in);  //(batch, height, width, channels, (T **) input);
-    Ptr2dVarShapeNHWC<T> dst(out); //(batch, height, width, channels, (T **) output);
+    int channels = in.uniqueFormat().numChannels();
+
+    cuda::ImageBatchVarShapeWrapNHWC<T> src(in, channels);
+    cuda::ImageBatchVarShapeWrapNHWC<T> dst(out, channels);
 
     cuda::Tensor2DWrap<int> ksizePtr(ksize);
 
@@ -358,14 +361,14 @@ void median(const IImageBatchVarShapeDataStridedCuda &in, const IImageBatchVarSh
     if (sharedMemSize < 48 * 1024)
     {
         dim3 block(SMALL_KERNEL_BLOCK, SMALL_KERNEL_BLOCK);
-        dim3 grid(divUp(maxWidth, block.x), divUp(maxHeight, block.y), dst.nch * dst.batches);
+        dim3 grid(divUp(maxWidth, block.x), divUp(maxHeight, block.y), channels * out.numImages());
         medianForSmallKernel<T><<<grid, block, sharedMemSize, stream>>>(src, dst, ksize);
         checkKernelErrors();
     }
     else
     {
         dim3 block(GENERAL_KERNEL_BLOCK, GENERAL_KERNEL_BLOCK);
-        dim3 grid(divUp(maxWidth, block.x), divUp(maxHeight, block.y), dst.nch * dst.batches);
+        dim3 grid(divUp(maxWidth, block.x), divUp(maxHeight, block.y), channels * out.numImages());
         median<T><<<grid, block, 0, stream>>>(src, dst, ksize);
         checkKernelErrors();
     }

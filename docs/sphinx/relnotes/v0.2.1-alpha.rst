@@ -1,0 +1,54 @@
+..
+  # SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  # SPDX-License-Identifier: Apache-2.0
+  #
+  # Licensed under the Apache License, Version 2.0 (the "License");
+  # you may not use this file except in compliance with the License.
+  # You may obtain a copy of the License at
+  #
+  # http://www.apache.org/licenses/LICENSE-2.0
+  #
+  # Unless required by applicable law or agreed to in writing, software
+  # distributed under the License is distributed on an "AS IS" BASIS,
+  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  # See the License for the specific language governing permissions and
+  # limitations under the License.
+
+.. _v0.2.1-alpha:
+
+Alpha.1
+=======
+
+General
+-------
+- Added [DLPack](https://dmlc.github.io/dlpack/latest/) interop support to Python
+- Added CV-CUDA build package for various Python versions
+- Updated documentation to include [NVIDIA VPF](https://github.com/NVIDIA/VideoProcessingFramework) update
+- Downgraded C++ version required from [20](https://en.cppreference.com/w/cpp/compiler_support/20) to [17](https://en.cppreference.com/w/cpp/compiler_support/17)
+- Made public headers compatible with [C++11](https://en.cppreference.com/w/cpp/compiler_support/11)
+- Changed default CUDA stream in Python to be 0
+- Removed library build dependency on [OpenSSL](https://www.openssl.org/)
+- Relaxed `nvcv::Tensor` bit restrictions on strides
+- Updated Segmentation sample app with [NVIDIA VPF](https://github.com/NVIDIA/VideoProcessingFramework) and Joint Bilateral Filter
+
+New Operators
+-------------
+- Joint Bilateral Filter
+
+Improved Testing
+----------------
+- Full operator test coverage for interleaved (HWC) and planar (CHW) tensors
+- Removed Numba dependency on tests
+
+Bug Fixes
+---------
+- [BUG #25 Addressed](https://github.com/CVCUDA/CV-CUDA/issues/25) `TypeError: as_tensor(): incompatible function arguments. The following argument types are supported`
+- [BUG #26 Addressed](https://github.com/CVCUDA/CV-CUDA/issues/26) `libdl-2.17_stub.so: file format not recognized; treating as linker script`
+- [BUG #28 Addressed](https://github.com/CVCUDA/CV-CUDA/issues/28) `cannot find -lcvcuda`
+- Fixed memory leak from exception thrown by constructor
+- Fixed CMake code generation for header compatibility tests
+- Fixed reformated from CHW to NHWC error
+- Fixed `NVCV_ASSERT_STATUS` macro failing to compile prompt added when testing for exception
+- Tensor shapes must be exported as tuples, not lists, in Python
+- `cudaIllegalMemoryAddress` prompt added in Python tests when GPU is under load
+- `cudaMallocs` prompt added in pipelines driven by Python incur performance penalty

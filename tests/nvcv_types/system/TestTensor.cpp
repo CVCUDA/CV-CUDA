@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,13 +27,31 @@
 
 #include <list>
 #include <random>
+#include <vector>
 
 #include <nvcv/Fwd.hpp>
 
 namespace t    = ::testing;
 namespace test = nvcv::test;
 
-class TensorTests
+namespace std {
+template<class T>
+std::ostream &operator<<(std::ostream &out, const std::vector<T> &v)
+{
+    out << '{';
+    for (size_t i = 0; i < v.size(); ++i)
+    {
+        if (i > 0)
+        {
+            out << ',';
+        }
+        out << v[i];
+    }
+    return out << '}';
+}
+} // namespace std
+
+class TensorImageTests
     : public t::TestWithParam<std::tuple<test::Param<"numImages", int>, test::Param<"width", int>,
                                          test::Param<"height", int>, test::Param<"format", nvcv::ImageFormat>,
                                          test::Param<"shape", nvcv::TensorShape>, test::Param<"dtype", nvcv::DataType>>>
@@ -41,17 +59,17 @@ class TensorTests
 };
 
 // clang-format off
-NVCV_INSTANTIATE_TEST_SUITE_P(_, TensorTests,
+NVCV_INSTANTIATE_TEST_SUITE_P(_, TensorImageTests,
     test::ValueList<int, int, int, nvcv::ImageFormat, nvcv::TensorShape, nvcv::DataType>
     {
-        {53, 32, 16, nvcv::FMT_RGBA8p, nvcv::TensorShape{{53, 4, 16, 32},nvcv::TensorLayout::NCHW} , nvcv::TYPE_U8},
-        {14, 64, 18, nvcv::FMT_RGB8, nvcv::TensorShape{{14, 18, 64, 3},nvcv::TensorLayout::NHWC}, nvcv::TYPE_U8}
+        {53, 32, 16, nvcv::FMT_RGBA8p, nvcv::TensorShape{{53, 4, 16, 32},nvcv::TENSOR_NCHW} , nvcv::TYPE_U8},
+        {14, 64, 18, nvcv::FMT_RGB8, nvcv::TensorShape{{14, 18, 64, 3},nvcv::TENSOR_NHWC}, nvcv::TYPE_U8}
     }
 );
 
 // clang-format on
 
-TEST_P(TensorTests, wip_create)
+TEST_P(TensorImageTests, wip_create)
 {
     const int               PARAM_NUM_IMAGES = std::get<0>(GetParam());
     const int               PARAM_WIDTH      = std::get<1>(GetParam());
@@ -128,6 +146,49 @@ TEST_P(TensorTests, wip_create)
     }
 }
 
+class TensorTests
+    : public t::TestWithParam<std::tuple<test::Param<"shape", nvcv::TensorShape>, test::Param<"dtype", nvcv::DataType>,
+                                         test::Param<"strides", std::vector<int64_t>>>>
+{
+};
+
+// clang-format off
+NVCV_INSTANTIATE_TEST_SUITE_P(_, TensorTests,
+    test::ValueList<nvcv::TensorShape, nvcv::DataType, std::vector<int64_t>>
+    {
+        {nvcv::TensorShape{{53, 4, 16, 17},nvcv::TENSOR_NCHW}, nvcv::TYPE_U8, {4*16*32,16*32,32,1}},
+        {nvcv::TensorShape{{53, 17, 16, 3},nvcv::TENSOR_NHWC}, nvcv::TYPE_U8, {17*64,64,3,1}},
+        {nvcv::TensorShape{{4, 16, 17},nvcv::TENSOR_CHW}, nvcv::TYPE_U8, {16*32,32,1}},
+        {nvcv::TensorShape{{17, 16, 3},nvcv::TENSOR_HWC}, nvcv::TYPE_U8, {64,3,1}},
+    }
+);
+
+// clang-format on
+
+TEST_P(TensorTests, wip_create)
+{
+    const nvcv::TensorShape    PARAM_SHAPE = std::get<0>(GetParam());
+    const nvcv::DataType       PARAM_DTYPE = std::get<1>(GetParam());
+    const std::vector<int64_t> GOLD_SHAPE  = std::get<2>(GetParam());
+
+    nvcv::Tensor tensor(PARAM_SHAPE, PARAM_DTYPE);
+
+    EXPECT_EQ(PARAM_DTYPE, tensor.dtype());
+    EXPECT_EQ(PARAM_SHAPE, tensor.shape());
+    ASSERT_NE(nullptr, tensor.handle());
+
+    {
+        const nvcv::ITensorData *data = tensor.exportData();
+        ASSERT_NE(nullptr, data);
+
+        auto *devdata = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(data);
+        ASSERT_NE(nullptr, devdata);
+
+        const int64_t *strides = devdata->cdata().buffer.strided.strides;
+        EXPECT_THAT(std::vector<int64_t>(strides, strides + data->rank()), t::ElementsAreArray(GOLD_SHAPE));
+    }
+}
+
 TEST(TensorTests, wip_create_allocator)
 {
     ;
@@ -201,6 +262,9 @@ TEST(Tensor, wip_cast)
     NVCVTensorRequirements reqs;
     ASSERT_EQ(NVCV_SUCCESS, nvcvTensorCalcRequirementsForImages(5, 163, 117, NVCV_IMAGE_FORMAT_RGBA8, 0, 0, &reqs));
     ASSERT_EQ(NVCV_SUCCESS, nvcvTensorConstruct(&reqs, nullptr, &handle));
+    int ref;
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorRefCount(handle, &ref));
+    EXPECT_EQ(ref, 1);
 
     uintptr_t max = 512;
 
@@ -229,7 +293,8 @@ TEST(Tensor, wip_cast)
     EXPECT_EQ(ptensor, nvcv::DynamicCast<nvcv::ITensor *>(handle));
     EXPECT_EQ(nullptr, nvcv::DynamicCast<nvcv::Tensor *>(handle));
 
-    nvcvTensorDestroy(handle);
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorDecRef(handle, &ref));
+    EXPECT_EQ(ref, 0);
 }
 
 TEST(Tensor, wip_user_pointer)
@@ -268,7 +333,7 @@ TEST(TensorWrapData, wip_create)
     auto access = nvcv::TensorDataAccessStridedImagePlanar::Create(*tdata);
     ASSERT_TRUE(access);
 
-    EXPECT_EQ(nvcv::TensorLayout::NCHW, tdata->layout());
+    EXPECT_EQ(nvcv::TENSOR_NCHW, tdata->layout());
     EXPECT_EQ(5, access->numSamples());
     EXPECT_EQ(173, access->numCols());
     EXPECT_EQ(79, access->numRows());
@@ -332,12 +397,12 @@ class TensorWrapImageTests
 NVCV_INSTANTIATE_TEST_SUITE_P(_, TensorWrapImageTests,
     test::ValueList<nvcv::Size2D, nvcv::ImageFormat, nvcv::TensorShape, nvcv::DataType>
     {
-        {{61,23}, nvcv::FMT_RGBA8p, nvcv::TensorShape{{1,4,23,61},nvcv::TensorLayout::NCHW}, nvcv::TYPE_U8},
-        {{61,23}, nvcv::FMT_RGBA8, nvcv::TensorShape{{1,23,61,4},nvcv::TensorLayout::NHWC}, nvcv::TYPE_U8},
-        {{61,23}, nvcv::FMT_RGB8, nvcv::TensorShape{{1,23,61,3},nvcv::TensorLayout::NHWC}, nvcv::TYPE_U8},
-        {{61,23}, nvcv::FMT_RGB8p, nvcv::TensorShape{{1,3,23,61},nvcv::TensorLayout::NCHW}, nvcv::TYPE_U8},
-        {{61,23}, nvcv::FMT_F32, nvcv::TensorShape{{1,1,23,61},nvcv::TensorLayout::NCHW}, nvcv::TYPE_F32},
-        {{61,23}, nvcv::FMT_2F32, nvcv::TensorShape{{1,23,61,2},nvcv::TensorLayout::NHWC}, nvcv::TYPE_F32},
+        {{61,23}, nvcv::FMT_RGBA8p, nvcv::TensorShape{{1,4,23,61},nvcv::TENSOR_NCHW}, nvcv::TYPE_U8},
+        {{61,23}, nvcv::FMT_RGBA8, nvcv::TensorShape{{1,23,61,4},nvcv::TENSOR_NHWC}, nvcv::TYPE_U8},
+        {{61,23}, nvcv::FMT_RGB8, nvcv::TensorShape{{1,23,61,3},nvcv::TENSOR_NHWC}, nvcv::TYPE_U8},
+        {{61,23}, nvcv::FMT_RGB8p, nvcv::TensorShape{{1,3,23,61},nvcv::TENSOR_NCHW}, nvcv::TYPE_U8},
+        {{61,23}, nvcv::FMT_F32, nvcv::TensorShape{{1,1,23,61},nvcv::TENSOR_NCHW}, nvcv::TYPE_F32},
+        {{61,23}, nvcv::FMT_2F32, nvcv::TensorShape{{1,23,61,2},nvcv::TENSOR_NHWC}, nvcv::TYPE_F32},
     }
 );
 
@@ -370,5 +435,72 @@ TEST_P(TensorWrapImageTests, wip_create)
         EXPECT_EQ(imgData->plane(p).basePtr, reinterpret_cast<NVCVByte *>(tensorAccess->planeData(p)));
         EXPECT_EQ(imgData->plane(p).rowStride, tensorAccess->rowStride());
         EXPECT_EQ(img.format().planePixelStrideBytes(p), tensorAccess->colStride());
+    }
+}
+
+class TensorWrapParamTests
+    : public t::TestWithParam<
+          std::tuple<test::Param<"shape", nvcv::TensorShape>, test::Param<"strides", std::vector<int>>,
+                     test::Param<"dtype", nvcv::DataType>, test::Param<"goldStatus", NVCVStatus>>>
+{
+};
+
+// clang-format off
+NVCV_INSTANTIATE_TEST_SUITE_P(Positive, TensorWrapParamTests,
+                              test::ValueList<nvcv::TensorShape, std::vector<int>, nvcv::DataType>
+{
+  {{       {2},  "C"},     {4}, nvcv::TYPE_F32},
+  {{       {1},  "W"},     {1}, nvcv::TYPE_U8},
+  {{   {10, 5}, "HW"},  {5, 1}, nvcv::TYPE_U8},
+  {{ {1,10, 5}, "NHW"}, {1,5, 1}, nvcv::TYPE_U8},
+  {{ {3,1, 5}, "NHW"}, {5*4,1,4}, nvcv::TYPE_F32},
+  {{ {3,1, 1}, "NHW"}, {5*4,1,1}, nvcv::TYPE_F32},
+  { {{10, 5,3}, "HWC"}, {5*3*4, 3*4,4}, nvcv::TYPE_F32},
+} * NVCV_SUCCESS);
+
+NVCV_INSTANTIATE_TEST_SUITE_P(Negative, TensorWrapParamTests,
+                              test::ValueList<nvcv::TensorShape, std::vector<int>, nvcv::DataType>
+{
+  {{       {2},  "C"},     {3}, nvcv::TYPE_F32},
+  {{       {2},  "C"},     {5}, nvcv::TYPE_F32},
+  {{   {10, 5}, "HW"},  {1, 10}, nvcv::TYPE_U8}, // WH order
+  {{ {10, 5,3}, "HWC"}, {4,10*4,10*4*5}, nvcv::TYPE_F32}, // CWH order
+  {{ {1,10, 5}, "NHW"}, {1,5*4-1,4}, nvcv::TYPE_F32},
+  {{ {3,1, 5}, "NHW"}, {5*4-1,1,4}, nvcv::TYPE_F32},
+} * NVCV_ERROR_INVALID_ARGUMENT);
+
+// clang-format on
+
+TEST_P(TensorWrapParamTests, wip_create)
+{
+    const nvcv::TensorShape PARAM_TSHAPE  = std::get<0>(GetParam());
+    const std::vector<int>  PARAM_STRIDES = std::get<1>(GetParam());
+    const nvcv::DataType    PARAM_DTYPE   = std::get<2>(GetParam());
+    const NVCVStatus        GOLD_STATUS   = std::get<3>(GetParam());
+
+    NVCVTensorBufferStrided buf = {};
+    for (size_t i = 0; i < PARAM_STRIDES.size(); ++i)
+    {
+        buf.strides[i] = PARAM_STRIDES[i];
+    }
+    // we're not accessing the memory in any way, let's set it to something not null
+    buf.basePtr = (NVCVByte *)0xDEADBEEF;
+
+    std::unique_ptr<nvcv::TensorWrapData> tensor;
+    NVCV_ASSERT_STATUS(GOLD_STATUS, tensor = std::make_unique<nvcv::TensorWrapData>(
+                                        nvcv::TensorDataStridedCuda(PARAM_TSHAPE, PARAM_DTYPE, buf)));
+
+    if (GOLD_STATUS == NVCV_SUCCESS)
+    {
+        auto *data = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(tensor->exportData());
+        ASSERT_NE(nullptr, data);
+
+        EXPECT_EQ(buf.basePtr, (NVCVByte *)data->basePtr());
+        EXPECT_EQ(PARAM_TSHAPE.size(), data->rank());
+        EXPECT_EQ(PARAM_TSHAPE, data->shape());
+        for (int i = 0; i < data->rank(); ++i)
+        {
+            EXPECT_EQ(PARAM_STRIDES[i], data->stride(i)) << "stride #" << i;
+        }
     }
 }

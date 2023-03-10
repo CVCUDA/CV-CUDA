@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,9 +29,9 @@
 namespace nvcv::cuda {
 
 /**
- * @brief Metafunction to static cast all values of a compound to a target type
+ * Metafunction to static cast all values of a compound to a target type.
  *
- * @details The template parameter \p T defines the base type (regular C type) to cast all components of the CUDA
+ * The template parameter \p T defines the base type (regular C type) to cast all components of the CUDA
  * compound type \p U passed as function argument \p u to the type \p T.  The static cast return type has the base
  * type \p T and the number of components as the compound type \p U.  For instance, an uint3 can be casted to int3
  * by passing it as function argument of StaticCast and the type int as template argument (see example below).  The
@@ -45,11 +45,11 @@ namespace nvcv::cuda {
  * int3 idx = StaticCast<int>(blockIdx * blockDim + threadIdx);
  * @endcode
  *
- * @tparam T Type to do static cast on each component of \p u
+ * @tparam T Type to do static cast on each component of \p u.
  *
- * @param[in] u Compound value to static cast each of its components to target type \p T
+ * @param[in] u Compound value to static cast each of its components to target type \p T.
  *
- * @return The compound value with all components static casted to type \p T
+ * @return The compound value with all components static casted to type \p T.
  */
 template<typename T, typename U, class = Require<HasTypeTraits<T, U> && !IsCompound<T>>>
 __host__ __device__ auto StaticCast(U u)

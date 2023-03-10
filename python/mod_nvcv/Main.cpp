@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,8 +18,8 @@
 #include "CAPI.hpp"
 #include "Cache.hpp"
 #include "Container.hpp"
-#include "CudaBuffer.hpp"
 #include "DataType.hpp"
+#include "ExternalBuffer.hpp"
 #include "Image.hpp"
 #include "ImageBatch.hpp"
 #include "ImageFormat.hpp"
@@ -52,9 +52,9 @@ PYBIND11_MODULE(nvcv, m)
     {
         py::module_ cuda = m.def_submodule("cuda");
         Stream::Export(cuda);
-        CudaBuffer::Export(cuda);
     }
 
+    ExternalBuffer::Export(m);
     ExportImageFormat(m);
     ExportDataType(m);
     ExportRect(m);

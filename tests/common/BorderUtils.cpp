@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -61,12 +61,19 @@ inline void ReflectBorderIndex(int &coord, int size)
 
 inline void Reflect101BorderIndex(int &coord, int size)
 {
-    coord = coord % (2 * size - 2);
-    if (coord < 0)
+    if (size == 1)
     {
-        coord += 2 * size - 2;
+        coord = 0;
     }
-    coord = size - 1 - abs(size - 1 - coord);
+    else
+    {
+        coord = coord % (2 * size - 2);
+        if (coord < 0)
+        {
+            coord += 2 * size - 2;
+        }
+        coord = size - 1 - abs(size - 1 - coord);
+    }
 }
 
 void ReplicateBorderIndex(int2 &coord, int2 size)

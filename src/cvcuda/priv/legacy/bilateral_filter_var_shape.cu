@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -50,30 +50,31 @@ static __device__ __forceinline__ float norm1(const float4 &a)
     return cuda::abs(a.x) + cuda::abs(a.y) + cuda::abs(a.z) + cuda::abs(a.w);
 }
 
-template<typename T, typename BrdRd>
-__global__ void BilateralFilterVarShapeKernel(const BrdRd src, Ptr2dVarShapeNHWC<T> dst,
+template<class SrcWrapper, class DstWrapper>
+__global__ void BilateralFilterVarShapeKernel(const SrcWrapper src, DstWrapper dst,
                                               const cuda::Tensor1DWrap<int>   inDiameter,
                                               const cuda::Tensor1DWrap<float> inSigmaColor,
                                               const cuda::Tensor1DWrap<float> inSigmaSpace)
 {
+    using T             = typename DstWrapper::ValueType;
     const int batch_idx = get_batch_idx();
-    const int rows      = dst.at_rows(batch_idx);
-    const int columns   = dst.at_cols(batch_idx);
+    const int rows      = dst.height(batch_idx);
+    const int columns   = dst.width(batch_idx);
 
     // Preprocessing moved here because tensors are GPU resident
-    float sigmaColor = *inSigmaColor.ptr(batch_idx);
+    float sigmaColor = inSigmaColor[batch_idx];
     if (sigmaColor <= 0)
     {
         sigmaColor = 1;
     }
-    float sigmaSpace = *inSigmaSpace.ptr(batch_idx);
+    float sigmaSpace = inSigmaSpace[batch_idx];
     if (sigmaSpace <= 0)
     {
         sigmaSpace = 1;
     }
 
     int radius;
-    int diameter = *inDiameter.ptr(batch_idx);
+    int diameter = inDiameter[batch_idx];
     if (diameter <= 0)
     {
         radius = std::roundf(sigmaSpace * 1.5f);
@@ -95,10 +96,10 @@ __global__ void BilateralFilterVarShapeKernel(const BrdRd src, Ptr2dVarShapeNHWC
     int3      coord1{colIdx + 1, rowIdx, batch_idx};
     int3      coord2{colIdx, rowIdx + 1, batch_idx};
     int3      coord3{colIdx + 1, rowIdx + 1, batch_idx};
-    work_type center0 = cuda::StaticCast<float>(src(coord0.z, coord0.y, coord0.x));
-    work_type center1 = cuda::StaticCast<float>(src(coord1.z, coord1.y, coord1.x));
-    work_type center2 = cuda::StaticCast<float>(src(coord2.z, coord2.y, coord2.x));
-    work_type center3 = cuda::StaticCast<float>(src(coord3.z, coord3.y, coord3.x));
+    work_type center0 = cuda::StaticCast<float>(src[coord0]);
+    work_type center1 = cuda::StaticCast<float>(src[coord1]);
+    work_type center2 = cuda::StaticCast<float>(src[coord2]);
+    work_type center3 = cuda::StaticCast<float>(src[coord3]);
 
     int       squared_radius    = radius * radius;
     float     space_coefficient = -1 / (2 * sigmaSpace * sigmaSpace);
@@ -129,7 +130,8 @@ __global__ void BilateralFilterVarShapeKernel(const BrdRd src, Ptr2dVarShapeNHWC
                 continue;
             }
 
-            work_type curr = cuda::StaticCast<float>(src(batch_idx, r, c));
+            int3      srcCoord{c, r, batch_idx};
+            work_type curr = cuda::StaticCast<float>(src[srcCoord]);
 
             if (squared_dis0 <= squared_radius)
             {
@@ -174,44 +176,42 @@ __global__ void BilateralFilterVarShapeKernel(const BrdRd src, Ptr2dVarShapeNHWC
     }
     if (colIdx < columns && rowIdx < rows)
     {
-        *dst.ptr(coord0.z, coord0.y, coord0.x) = nvcv::cuda::SaturateCast<cuda::BaseType<T>>(numerator0 / denominator0);
+        *dst.ptr(coord0.z, coord0.y, coord0.x) = nvcv::cuda::SaturateCast<T>(numerator0 / denominator0);
     }
     if (colIdx + 1 < columns && rowIdx < rows)
     {
-        *dst.ptr(coord1.z, coord1.y, coord1.x) = nvcv::cuda::SaturateCast<cuda::BaseType<T>>(numerator1 / denominator1);
+        *dst.ptr(coord1.z, coord1.y, coord1.x) = nvcv::cuda::SaturateCast<T>(numerator1 / denominator1);
     }
     if (colIdx < columns && rowIdx + 1 < rows)
     {
-        *dst.ptr(coord2.z, coord2.y, coord2.x) = nvcv::cuda::SaturateCast<cuda::BaseType<T>>(numerator2 / denominator2);
+        *dst.ptr(coord2.z, coord2.y, coord2.x) = nvcv::cuda::SaturateCast<T>(numerator2 / denominator2);
     }
     if (colIdx + 1 < columns && rowIdx + 1 < rows)
     {
-        *dst.ptr(coord3.z, coord3.y, coord3.x) = nvcv::cuda::SaturateCast<cuda::BaseType<T>>(numerator3 / denominator3);
+        *dst.ptr(coord3.z, coord3.y, coord3.x) = nvcv::cuda::SaturateCast<T>(numerator3 / denominator3);
     }
 }
 
-template<typename T, template<typename> class Brd>
+template<typename T, NVCVBorderType B>
 void BilateralFilterVarShapeCaller(const IImageBatchVarShapeDataStridedCuda &inData,
                                    const IImageBatchVarShapeDataStridedCuda &outData, int batch,
                                    const cuda::Tensor1DWrap<int>   &inDiameter,
                                    const cuda::Tensor1DWrap<float> &inSigmaColor,
                                    const cuda::Tensor1DWrap<float> &inSigmaSpace, cudaStream_t stream)
 {
-    Ptr2dVarShapeNHWC<T> src(inData);
-    Ptr2dVarShapeNHWC<T> dst(outData);
-    using work_type = cuda::ConvertBaseTypeTo<float, T>;
-    Brd<work_type>                                     brd(0, 0, cuda::SetAll<work_type>(0.0f));
-    BorderReader<Ptr2dVarShapeNHWC<T>, Brd<work_type>> brdSrc(src, brd);
-    Size2D                                             outMaxSize = outData.maxSize();
-    dim3                                               block(8, 8);
-    dim3 grid(divUp(outMaxSize.w, block.x * 2), divUp(outMaxSize.h, block.y * 2), batch);
+    cuda::BorderVarShapeWrap<const T, B> src(inData);
+    cuda::ImageBatchVarShapeWrap<T>      dst(outData);
+
+    Size2D outMaxSize = outData.maxSize();
+    dim3   block(8, 8);
+    dim3   grid(divUp(outMaxSize.w, block.x * 2), divUp(outMaxSize.h, block.y * 2), batch);
 
 #ifdef CUDA_DEBUG_LOG
     checkCudaErrors(cudaStreamSynchronize(stream));
     checkCudaErrors(cudaGetLastError());
 #endif
 
-    BilateralFilterVarShapeKernel<<<grid, block, 0, stream>>>(brdSrc, dst, inDiameter, inSigmaColor, inSigmaSpace);
+    BilateralFilterVarShapeKernel<<<grid, block, 0, stream>>>(src, dst, inDiameter, inSigmaColor, inSigmaSpace);
 
 #ifdef CUDA_DEBUG_LOG
     checkCudaErrors(cudaStreamSynchronize(stream));
@@ -321,80 +321,134 @@ ErrorCode BilateralFilterVarShape::infer(const IImageBatchVarShapeDataStridedCud
     // table in 5 parts
     static const bilateral_filter_var_shape_t funcs[5][6][4] = {
         {
-         {BilateralFilterVarShapeCaller<uchar, BrdConstant>, BilateralFilterVarShapeCaller<uchar2, BrdConstant>,
-         BilateralFilterVarShapeCaller<uchar3, BrdConstant>, BilateralFilterVarShapeCaller<uchar4, BrdConstant>},
-         {BilateralFilterVarShapeCaller<char, BrdConstant>, BilateralFilterVarShapeCaller<char2, BrdConstant>,
-         BilateralFilterVarShapeCaller<char3, BrdConstant>, BilateralFilterVarShapeCaller<char4, BrdConstant>},
-         {BilateralFilterVarShapeCaller<ushort, BrdConstant>, BilateralFilterVarShapeCaller<ushort2, BrdConstant>,
-         BilateralFilterVarShapeCaller<ushort3, BrdConstant>, BilateralFilterVarShapeCaller<ushort4, BrdConstant>},
-         {BilateralFilterVarShapeCaller<short, BrdConstant>, BilateralFilterVarShapeCaller<short2, BrdConstant>,
-         BilateralFilterVarShapeCaller<short3, BrdConstant>, BilateralFilterVarShapeCaller<short4, BrdConstant>},
-         {BilateralFilterVarShapeCaller<int, BrdConstant>, BilateralFilterVarShapeCaller<int2, BrdConstant>,
-         BilateralFilterVarShapeCaller<int3, BrdConstant>, BilateralFilterVarShapeCaller<int4, BrdConstant>},
-         {BilateralFilterVarShapeCaller<float, BrdConstant>, BilateralFilterVarShapeCaller<float2, BrdConstant>,
-         BilateralFilterVarShapeCaller<float3, BrdConstant>, BilateralFilterVarShapeCaller<float4, BrdConstant>},
+         {BilateralFilterVarShapeCaller<uchar, NVCV_BORDER_CONSTANT>,
+         BilateralFilterVarShapeCaller<uchar2, NVCV_BORDER_CONSTANT>,
+         BilateralFilterVarShapeCaller<uchar3, NVCV_BORDER_CONSTANT>,
+         BilateralFilterVarShapeCaller<uchar4, NVCV_BORDER_CONSTANT>},
+         {BilateralFilterVarShapeCaller<char, NVCV_BORDER_CONSTANT>,
+         BilateralFilterVarShapeCaller<char2, NVCV_BORDER_CONSTANT>,
+         BilateralFilterVarShapeCaller<char3, NVCV_BORDER_CONSTANT>,
+         BilateralFilterVarShapeCaller<char4, NVCV_BORDER_CONSTANT>},
+         {BilateralFilterVarShapeCaller<ushort, NVCV_BORDER_CONSTANT>,
+         BilateralFilterVarShapeCaller<ushort2, NVCV_BORDER_CONSTANT>,
+         BilateralFilterVarShapeCaller<ushort3, NVCV_BORDER_CONSTANT>,
+         BilateralFilterVarShapeCaller<ushort4, NVCV_BORDER_CONSTANT>},
+         {BilateralFilterVarShapeCaller<short, NVCV_BORDER_CONSTANT>,
+         BilateralFilterVarShapeCaller<short2, NVCV_BORDER_CONSTANT>,
+         BilateralFilterVarShapeCaller<short3, NVCV_BORDER_CONSTANT>,
+         BilateralFilterVarShapeCaller<short4, NVCV_BORDER_CONSTANT>},
+         {BilateralFilterVarShapeCaller<int, NVCV_BORDER_CONSTANT>,
+         BilateralFilterVarShapeCaller<int2, NVCV_BORDER_CONSTANT>,
+         BilateralFilterVarShapeCaller<int3, NVCV_BORDER_CONSTANT>,
+         BilateralFilterVarShapeCaller<int4, NVCV_BORDER_CONSTANT>},
+         {BilateralFilterVarShapeCaller<float, NVCV_BORDER_CONSTANT>,
+         BilateralFilterVarShapeCaller<float2, NVCV_BORDER_CONSTANT>,
+         BilateralFilterVarShapeCaller<float3, NVCV_BORDER_CONSTANT>,
+         BilateralFilterVarShapeCaller<float4, NVCV_BORDER_CONSTANT>},
          },
         {
-         {BilateralFilterVarShapeCaller<uchar, BrdReplicate>, BilateralFilterVarShapeCaller<uchar2, BrdReplicate>,
-         BilateralFilterVarShapeCaller<uchar3, BrdReplicate>, BilateralFilterVarShapeCaller<uchar4, BrdReplicate>},
-         {BilateralFilterVarShapeCaller<char, BrdReplicate>, BilateralFilterVarShapeCaller<char2, BrdReplicate>,
-         BilateralFilterVarShapeCaller<char3, BrdReplicate>, BilateralFilterVarShapeCaller<char4, BrdReplicate>},
-         {BilateralFilterVarShapeCaller<ushort, BrdReplicate>, BilateralFilterVarShapeCaller<ushort2, BrdReplicate>,
-         BilateralFilterVarShapeCaller<ushort3, BrdReplicate>,
-         BilateralFilterVarShapeCaller<ushort4, BrdReplicate>},
-         {BilateralFilterVarShapeCaller<short, BrdReplicate>, BilateralFilterVarShapeCaller<short2, BrdReplicate>,
-         BilateralFilterVarShapeCaller<short3, BrdReplicate>, BilateralFilterVarShapeCaller<short4, BrdReplicate>},
-         {BilateralFilterVarShapeCaller<int, BrdReplicate>, BilateralFilterVarShapeCaller<int2, BrdReplicate>,
-         BilateralFilterVarShapeCaller<int3, BrdReplicate>, BilateralFilterVarShapeCaller<int4, BrdReplicate>},
-         {BilateralFilterVarShapeCaller<float, BrdReplicate>, BilateralFilterVarShapeCaller<float2, BrdReplicate>,
-         BilateralFilterVarShapeCaller<float3, BrdReplicate>, BilateralFilterVarShapeCaller<float4, BrdReplicate>},
+         {BilateralFilterVarShapeCaller<uchar, NVCV_BORDER_REPLICATE>,
+         BilateralFilterVarShapeCaller<uchar2, NVCV_BORDER_REPLICATE>,
+         BilateralFilterVarShapeCaller<uchar3, NVCV_BORDER_REPLICATE>,
+         BilateralFilterVarShapeCaller<uchar4, NVCV_BORDER_REPLICATE>},
+         {BilateralFilterVarShapeCaller<char, NVCV_BORDER_REPLICATE>,
+         BilateralFilterVarShapeCaller<char2, NVCV_BORDER_REPLICATE>,
+         BilateralFilterVarShapeCaller<char3, NVCV_BORDER_REPLICATE>,
+         BilateralFilterVarShapeCaller<char4, NVCV_BORDER_REPLICATE>},
+         {BilateralFilterVarShapeCaller<ushort, NVCV_BORDER_REPLICATE>,
+         BilateralFilterVarShapeCaller<ushort2, NVCV_BORDER_REPLICATE>,
+         BilateralFilterVarShapeCaller<ushort3, NVCV_BORDER_REPLICATE>,
+         BilateralFilterVarShapeCaller<ushort4, NVCV_BORDER_REPLICATE>},
+         {BilateralFilterVarShapeCaller<short, NVCV_BORDER_REPLICATE>,
+         BilateralFilterVarShapeCaller<short2, NVCV_BORDER_REPLICATE>,
+         BilateralFilterVarShapeCaller<short3, NVCV_BORDER_REPLICATE>,
+         BilateralFilterVarShapeCaller<short4, NVCV_BORDER_REPLICATE>},
+         {BilateralFilterVarShapeCaller<int, NVCV_BORDER_REPLICATE>,
+         BilateralFilterVarShapeCaller<int2, NVCV_BORDER_REPLICATE>,
+         BilateralFilterVarShapeCaller<int3, NVCV_BORDER_REPLICATE>,
+         BilateralFilterVarShapeCaller<int4, NVCV_BORDER_REPLICATE>},
+         {BilateralFilterVarShapeCaller<float, NVCV_BORDER_REPLICATE>,
+         BilateralFilterVarShapeCaller<float2, NVCV_BORDER_REPLICATE>,
+         BilateralFilterVarShapeCaller<float3, NVCV_BORDER_REPLICATE>,
+         BilateralFilterVarShapeCaller<float4, NVCV_BORDER_REPLICATE>},
          },
         {
-         {BilateralFilterVarShapeCaller<uchar, BrdReflect>, BilateralFilterVarShapeCaller<uchar2, BrdReflect>,
-         BilateralFilterVarShapeCaller<uchar3, BrdReflect>, BilateralFilterVarShapeCaller<uchar4, BrdReflect>},
-         {BilateralFilterVarShapeCaller<char, BrdReflect>, BilateralFilterVarShapeCaller<char2, BrdReflect>,
-         BilateralFilterVarShapeCaller<char3, BrdReflect>, BilateralFilterVarShapeCaller<char4, BrdReflect>},
-         {BilateralFilterVarShapeCaller<ushort, BrdReflect>, BilateralFilterVarShapeCaller<ushort2, BrdReflect>,
-         BilateralFilterVarShapeCaller<ushort3, BrdReflect>, BilateralFilterVarShapeCaller<ushort4, BrdReflect>},
-         {BilateralFilterVarShapeCaller<short, BrdReflect>, BilateralFilterVarShapeCaller<short2, BrdReflect>,
-         BilateralFilterVarShapeCaller<short3, BrdReflect>, BilateralFilterVarShapeCaller<short4, BrdReflect>},
-         {BilateralFilterVarShapeCaller<int, BrdReflect>, BilateralFilterVarShapeCaller<int2, BrdReflect>,
-         BilateralFilterVarShapeCaller<int3, BrdReflect>, BilateralFilterVarShapeCaller<int4, BrdReflect>},
-         {BilateralFilterVarShapeCaller<float, BrdReflect>, BilateralFilterVarShapeCaller<float2, BrdReflect>,
-         BilateralFilterVarShapeCaller<float3, BrdReflect>, BilateralFilterVarShapeCaller<float4, BrdReflect>},
+         {BilateralFilterVarShapeCaller<uchar, NVCV_BORDER_REFLECT>,
+         BilateralFilterVarShapeCaller<uchar2, NVCV_BORDER_REFLECT>,
+         BilateralFilterVarShapeCaller<uchar3, NVCV_BORDER_REFLECT>,
+         BilateralFilterVarShapeCaller<uchar4, NVCV_BORDER_REFLECT>},
+         {BilateralFilterVarShapeCaller<char, NVCV_BORDER_REFLECT>,
+         BilateralFilterVarShapeCaller<char2, NVCV_BORDER_REFLECT>,
+         BilateralFilterVarShapeCaller<char3, NVCV_BORDER_REFLECT>,
+         BilateralFilterVarShapeCaller<char4, NVCV_BORDER_REFLECT>},
+         {BilateralFilterVarShapeCaller<ushort, NVCV_BORDER_REFLECT>,
+         BilateralFilterVarShapeCaller<ushort2, NVCV_BORDER_REFLECT>,
+         BilateralFilterVarShapeCaller<ushort3, NVCV_BORDER_REFLECT>,
+         BilateralFilterVarShapeCaller<ushort4, NVCV_BORDER_REFLECT>},
+         {BilateralFilterVarShapeCaller<short, NVCV_BORDER_REFLECT>,
+         BilateralFilterVarShapeCaller<short2, NVCV_BORDER_REFLECT>,
+         BilateralFilterVarShapeCaller<short3, NVCV_BORDER_REFLECT>,
+         BilateralFilterVarShapeCaller<short4, NVCV_BORDER_REFLECT>},
+         {BilateralFilterVarShapeCaller<int, NVCV_BORDER_REFLECT>,
+         BilateralFilterVarShapeCaller<int2, NVCV_BORDER_REFLECT>,
+         BilateralFilterVarShapeCaller<int3, NVCV_BORDER_REFLECT>,
+         BilateralFilterVarShapeCaller<int4, NVCV_BORDER_REFLECT>},
+         {BilateralFilterVarShapeCaller<float, NVCV_BORDER_REFLECT>,
+         BilateralFilterVarShapeCaller<float2, NVCV_BORDER_REFLECT>,
+         BilateralFilterVarShapeCaller<float3, NVCV_BORDER_REFLECT>,
+         BilateralFilterVarShapeCaller<float4, NVCV_BORDER_REFLECT>},
          },
         {
-         {BilateralFilterVarShapeCaller<uchar, BrdWrap>, BilateralFilterVarShapeCaller<uchar2, BrdWrap>,
-         BilateralFilterVarShapeCaller<uchar3, BrdWrap>, BilateralFilterVarShapeCaller<uchar4, BrdWrap>},
-         {BilateralFilterVarShapeCaller<char, BrdWrap>, BilateralFilterVarShapeCaller<char2, BrdWrap>,
-         BilateralFilterVarShapeCaller<char3, BrdWrap>, BilateralFilterVarShapeCaller<char4, BrdWrap>},
-         {BilateralFilterVarShapeCaller<ushort, BrdWrap>, BilateralFilterVarShapeCaller<ushort2, BrdWrap>,
-         BilateralFilterVarShapeCaller<ushort3, BrdWrap>, BilateralFilterVarShapeCaller<ushort4, BrdWrap>},
-         {BilateralFilterVarShapeCaller<short, BrdWrap>, BilateralFilterVarShapeCaller<short2, BrdWrap>,
-         BilateralFilterVarShapeCaller<short3, BrdWrap>, BilateralFilterVarShapeCaller<short4, BrdWrap>},
-         {BilateralFilterVarShapeCaller<int, BrdWrap>, BilateralFilterVarShapeCaller<int2, BrdWrap>,
-         BilateralFilterVarShapeCaller<int3, BrdWrap>, BilateralFilterVarShapeCaller<int4, BrdWrap>},
-         {BilateralFilterVarShapeCaller<float, BrdWrap>, BilateralFilterVarShapeCaller<float2, BrdWrap>,
-         BilateralFilterVarShapeCaller<float3, BrdWrap>, BilateralFilterVarShapeCaller<float4, BrdWrap>},
+         {BilateralFilterVarShapeCaller<uchar, NVCV_BORDER_WRAP>,
+         BilateralFilterVarShapeCaller<uchar2, NVCV_BORDER_WRAP>,
+         BilateralFilterVarShapeCaller<uchar3, NVCV_BORDER_WRAP>,
+         BilateralFilterVarShapeCaller<uchar4, NVCV_BORDER_WRAP>},
+         {BilateralFilterVarShapeCaller<char, NVCV_BORDER_WRAP>,
+         BilateralFilterVarShapeCaller<char2, NVCV_BORDER_WRAP>,
+         BilateralFilterVarShapeCaller<char3, NVCV_BORDER_WRAP>,
+         BilateralFilterVarShapeCaller<char4, NVCV_BORDER_WRAP>},
+         {BilateralFilterVarShapeCaller<ushort, NVCV_BORDER_WRAP>,
+         BilateralFilterVarShapeCaller<ushort2, NVCV_BORDER_WRAP>,
+         BilateralFilterVarShapeCaller<ushort3, NVCV_BORDER_WRAP>,
+         BilateralFilterVarShapeCaller<ushort4, NVCV_BORDER_WRAP>},
+         {BilateralFilterVarShapeCaller<short, NVCV_BORDER_WRAP>,
+         BilateralFilterVarShapeCaller<short2, NVCV_BORDER_WRAP>,
+         BilateralFilterVarShapeCaller<short3, NVCV_BORDER_WRAP>,
+         BilateralFilterVarShapeCaller<short4, NVCV_BORDER_WRAP>},
+         {BilateralFilterVarShapeCaller<int, NVCV_BORDER_WRAP>,
+         BilateralFilterVarShapeCaller<int2, NVCV_BORDER_WRAP>,
+         BilateralFilterVarShapeCaller<int3, NVCV_BORDER_WRAP>,
+         BilateralFilterVarShapeCaller<int4, NVCV_BORDER_WRAP>},
+         {BilateralFilterVarShapeCaller<float, NVCV_BORDER_WRAP>,
+         BilateralFilterVarShapeCaller<float2, NVCV_BORDER_WRAP>,
+         BilateralFilterVarShapeCaller<float3, NVCV_BORDER_WRAP>,
+         BilateralFilterVarShapeCaller<float4, NVCV_BORDER_WRAP>},
          },
         {
-         {BilateralFilterVarShapeCaller<uchar, BrdReflect101>, BilateralFilterVarShapeCaller<uchar2, BrdReflect101>,
-         BilateralFilterVarShapeCaller<uchar3, BrdReflect101>,
-         BilateralFilterVarShapeCaller<uchar4, BrdReflect101>},
-         {BilateralFilterVarShapeCaller<char, BrdReflect101>, BilateralFilterVarShapeCaller<char2, BrdReflect101>,
-         BilateralFilterVarShapeCaller<char3, BrdReflect101>, BilateralFilterVarShapeCaller<char4, BrdReflect101>},
-         {BilateralFilterVarShapeCaller<ushort, BrdReflect101>,
-         BilateralFilterVarShapeCaller<ushort2, BrdReflect101>,
-         BilateralFilterVarShapeCaller<ushort3, BrdReflect101>,
-         BilateralFilterVarShapeCaller<ushort4, BrdReflect101>},
-         {BilateralFilterVarShapeCaller<short, BrdReflect101>, BilateralFilterVarShapeCaller<short2, BrdReflect101>,
-         BilateralFilterVarShapeCaller<short3, BrdReflect101>,
-         BilateralFilterVarShapeCaller<short4, BrdReflect101>},
-         {BilateralFilterVarShapeCaller<int, BrdReflect101>, BilateralFilterVarShapeCaller<int2, BrdReflect101>,
-         BilateralFilterVarShapeCaller<int3, BrdReflect101>, BilateralFilterVarShapeCaller<int4, BrdReflect101>},
-         {BilateralFilterVarShapeCaller<float, BrdReflect101>, BilateralFilterVarShapeCaller<float2, BrdReflect101>,
-         BilateralFilterVarShapeCaller<float3, BrdReflect101>,
-         BilateralFilterVarShapeCaller<float4, BrdReflect101>},
+         {BilateralFilterVarShapeCaller<uchar, NVCV_BORDER_REFLECT101>,
+         BilateralFilterVarShapeCaller<uchar2, NVCV_BORDER_REFLECT101>,
+         BilateralFilterVarShapeCaller<uchar3, NVCV_BORDER_REFLECT101>,
+         BilateralFilterVarShapeCaller<uchar4, NVCV_BORDER_REFLECT101>},
+         {BilateralFilterVarShapeCaller<char, NVCV_BORDER_REFLECT101>,
+         BilateralFilterVarShapeCaller<char2, NVCV_BORDER_REFLECT101>,
+         BilateralFilterVarShapeCaller<char3, NVCV_BORDER_REFLECT101>,
+         BilateralFilterVarShapeCaller<char4, NVCV_BORDER_REFLECT101>},
+         {BilateralFilterVarShapeCaller<ushort, NVCV_BORDER_REFLECT101>,
+         BilateralFilterVarShapeCaller<ushort2, NVCV_BORDER_REFLECT101>,
+         BilateralFilterVarShapeCaller<ushort3, NVCV_BORDER_REFLECT101>,
+         BilateralFilterVarShapeCaller<ushort4, NVCV_BORDER_REFLECT101>},
+         {BilateralFilterVarShapeCaller<short, NVCV_BORDER_REFLECT101>,
+         BilateralFilterVarShapeCaller<short2, NVCV_BORDER_REFLECT101>,
+         BilateralFilterVarShapeCaller<short3, NVCV_BORDER_REFLECT101>,
+         BilateralFilterVarShapeCaller<short4, NVCV_BORDER_REFLECT101>},
+         {BilateralFilterVarShapeCaller<int, NVCV_BORDER_REFLECT101>,
+         BilateralFilterVarShapeCaller<int2, NVCV_BORDER_REFLECT101>,
+         BilateralFilterVarShapeCaller<int3, NVCV_BORDER_REFLECT101>,
+         BilateralFilterVarShapeCaller<int4, NVCV_BORDER_REFLECT101>},
+         {BilateralFilterVarShapeCaller<float, NVCV_BORDER_REFLECT101>,
+         BilateralFilterVarShapeCaller<float2, NVCV_BORDER_REFLECT101>,
+         BilateralFilterVarShapeCaller<float3, NVCV_BORDER_REFLECT101>,
+         BilateralFilterVarShapeCaller<float4, NVCV_BORDER_REFLECT101>},
          },
     };
 

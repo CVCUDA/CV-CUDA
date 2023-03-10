@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,7 +16,7 @@
 import cvcuda
 import pytest as t
 import numpy as np
-import util
+import cvcuda_util as util
 
 
 RNG = np.random.default_rng(0)
@@ -26,7 +26,7 @@ RNG = np.random.default_rng(0)
     "input, xform, flags, border_mode, border_value",
     [
         (
-            cvcuda.Tensor([5, 16, 23, 4], np.uint8, "NHWC"),
+            cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"),
             np.array(
                 [
                     [1, 0, 0],
@@ -39,7 +39,7 @@ RNG = np.random.default_rng(0)
             [],
         ),
         (
-            cvcuda.Tensor([5, 16, 23, 4], np.uint8, "NHWC"),
+            cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"),
             np.array(
                 [
                     [1, 0, 0],
@@ -52,7 +52,7 @@ RNG = np.random.default_rng(0)
             [0],
         ),
         (
-            cvcuda.Tensor([5, 16, 23, 4], np.uint8, "NHWC"),
+            cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"),
             np.array(
                 [
                     [1, 2, 0],
@@ -65,7 +65,7 @@ RNG = np.random.default_rng(0)
             [1, 2, 3, 4],
         ),
         (
-            cvcuda.Tensor([5, 16, 23, 4], np.uint8, "NHWC"),
+            cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"),
             np.array(
                 [
                     [1, 2, 0],
@@ -78,7 +78,7 @@ RNG = np.random.default_rng(0)
             [1, 2, 3, 4],
         ),
         (
-            cvcuda.Tensor([11, 21, 4], np.uint8, "HWC"),
+            cvcuda.Tensor((11, 21, 4), np.uint8, "HWC"),
             np.array(
                 [
                     [2, 2, 0],
@@ -91,7 +91,7 @@ RNG = np.random.default_rng(0)
             [0],
         ),
         (
-            cvcuda.Tensor([11, 21, 4], np.uint8, "HWC"),
+            cvcuda.Tensor((11, 21, 4), np.uint8, "HWC"),
             np.array(
                 [
                     [2, 2, 1],
@@ -104,7 +104,7 @@ RNG = np.random.default_rng(0)
             [1, 2, 3, 4],
         ),
         (
-            cvcuda.Tensor([11, 21, 4], np.uint8, "HWC"),
+            cvcuda.Tensor((11, 21, 4), np.uint8, "HWC"),
             np.array(
                 [
                     [1, 2, 0],

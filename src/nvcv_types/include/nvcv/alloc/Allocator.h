@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 /**
  * @file Allocator.h
  *
@@ -138,7 +137,7 @@ typedef struct NVCVAllocator *NVCVAllocatorHandle;
  * allocator functions specified @ref default_mem_allocators "here".
  *
  * When not needed anymore, the allocator instance must be destroyed by
- * @ref nvcvAllocatorDestroy function.
+ * @ref nvcvAllocatorDecRef function.
  *
  * @param [in] customAllocators    Array of custom resource allocators.
  *                                 + There must be at most one custom allocator for each memory type.
@@ -157,16 +156,47 @@ typedef struct NVCVAllocator *NVCVAllocatorHandle;
 NVCV_PUBLIC NVCVStatus nvcvAllocatorConstructCustom(const NVCVCustomAllocator *customAllocators,
                                                     int32_t numCustomAllocators, NVCVAllocatorHandle *handle);
 
-/** Destroys an existing allocator instance.
+/** Decrements the reference count of an existing allocator instance.
+ *
+ * The allocator is destroyed when its reference count reaches zero.
  *
  * @note All objects that depend on the allocator instance must already be destroyed,
  *       if not undefined behavior will ensue, possibly segfaults.
  *
- * @param [in] halloc Memory allocator to be destroyed.
- *                    If NULL, no operation is performed, successfully.
- *                    + The handle must have been created with @ref nvcvAllocatorCreate.
+ * @param [in] handle       Allocator to be destroyed.
+ *                          If NULL, no operation is performed, successfully.
+ *                          + The handle must have been created with any of the nvcvAllocatorConstruct functions.
+ *
+ * @param [out] newRefCount The decremented reference count. If the return value is 0, the object was destroyed.
+ *                          Can be NULL, if the caller isn't interested in the new reference count.
+ *
+ * @retval #NVCV_ERROR_INVALID_ARGUMENT The handle is invalid
+ * @retval #NVCV_SUCCESS                Operation executed successfully.
  */
-NVCV_PUBLIC void nvcvAllocatorDestroy(NVCVAllocatorHandle halloc);
+NVCV_PUBLIC NVCVStatus nvcvAllocatorDecRef(NVCVAllocatorHandle handle, int *newRefCount);
+
+/** Increments the reference count of an allocator.
+ *
+ * @param [in] handle       Allocator to be retained.
+ *
+ * @param [out] newRefCount The incremented reference count.
+ *                          Can be NULL, if the caller isn't interested in the new reference count.
+ *
+ * @retval #NVCV_ERROR_INVALID_ARGUMENT The handle is invalid
+ * @retval #NVCV_SUCCESS                Operation executed successfully.
+ */
+NVCV_PUBLIC NVCVStatus nvcvAllocatorIncRef(NVCVAllocatorHandle handle, int *newRefCount);
+
+/** Returns the current reference count of an allocator
+ *
+ * @param [in] handle       The handle whose reference count is to be obtained.
+ *
+ * @param [out] newRefCount The reference count.
+ *
+ * @retval #NVCV_ERROR_INVALID_ARGUMENT The handle is invalid
+ * @retval #NVCV_SUCCESS                Operation executed successfully.
+ */
+NVCV_PUBLIC NVCVStatus nvcvAllocatorRefCount(NVCVAllocatorHandle handle, int *newRefCount);
 
 /** Associates a user pointer to the allocator handle.
  *

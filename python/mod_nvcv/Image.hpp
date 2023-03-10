@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,7 +19,7 @@
 #define NVCV_PYTHON_PRIV_IMAGE_HPP
 
 #include "Container.hpp"
-#include "CudaBuffer.hpp"
+#include "ExternalBuffer.hpp"
 #include "ImageFormat.hpp"
 #include "Size.hpp"
 
@@ -46,9 +46,9 @@ public:
     static std::shared_ptr<Image> CreateHost(py::buffer buffer, nvcv::ImageFormat fmt);
     static std::shared_ptr<Image> CreateHostVector(std::vector<py::buffer> buffer, nvcv::ImageFormat fmt);
 
-    static std::shared_ptr<Image> WrapCuda(CudaBuffer &buffer, nvcv::ImageFormat fmt);
-    static std::shared_ptr<Image> WrapCudaVector(std::vector<std::shared_ptr<CudaBuffer>> buffer,
-                                                 nvcv::ImageFormat                        fmt);
+    static std::shared_ptr<Image> WrapExternalBuffer(ExternalBuffer &buffer, nvcv::ImageFormat fmt);
+    static std::shared_ptr<Image> WrapExternalBufferVector(std::vector<std::shared_ptr<ExternalBuffer>> buffer,
+                                                           nvcv::ImageFormat                            fmt);
 
     std::shared_ptr<Image>       shared_from_this();
     std::shared_ptr<const Image> shared_from_this() const;
@@ -74,21 +74,21 @@ public:
     {
     public:
         explicit Key()
-            : m_wrapper(true)
+            : m_isWrapper(true)
         {
         }
 
         explicit Key(Size2D size, nvcv::ImageFormat fmt)
             : m_size(size)
             , m_format(fmt)
-            , m_wrapper(false)
+            , m_isWrapper(false)
         {
         }
 
     private:
         Size2D            m_size;
         nvcv::ImageFormat m_format;
-        bool              m_wrapper;
+        bool              m_isWrapper;
 
         virtual size_t doGetHash() const override;
         virtual bool   doIsEqual(const IKey &that) const override;
@@ -104,16 +104,20 @@ public:
 
 private:
     explicit Image(const Size2D &size, nvcv::ImageFormat fmt);
-    explicit Image(std::vector<std::shared_ptr<CudaBuffer>> buf, const nvcv::IImageDataStridedCuda &imgData);
+    explicit Image(std::vector<std::shared_ptr<ExternalBuffer>> buf, const nvcv::IImageDataStridedCuda &imgData);
     explicit Image(std::vector<py::buffer> buf, const nvcv::IImageDataStridedHost &imgData);
 
     std::unique_ptr<nvcv::IImage> m_impl; // must come before m_key
     Key                           m_key;
 
-    mutable py::object                        m_cacheCudaObject;
-    mutable std::optional<nvcv::TensorLayout> m_cacheCudaObjectLayout;
+    struct WrapData
+    {
+        DLDeviceType devType;
+        py::object   obj;
+    };
 
-    py::object m_wrapped;
+    // If wrapping external data, it's not nullopt.
+    std::optional<WrapData> m_wrapData;
 };
 
 std::ostream &operator<<(std::ostream &out, const Image &img);

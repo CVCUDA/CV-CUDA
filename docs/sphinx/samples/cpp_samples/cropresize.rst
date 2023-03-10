@@ -1,5 +1,5 @@
 ..
-  # SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  # SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
   # SPDX-License-Identifier: Apache-2.0
   #
   # Licensed under the Apache License, Version 2.0 (the "License");
@@ -134,7 +134,7 @@ Sample Output
 
 Input Image of size 700x700
 
-.. image:: ../../../../samples/assets/tabby_tiger_cat.jpg
+.. image:: ../../../../samples/assets/images/tabby_tiger_cat.jpg
    :width: 350
 
 Output Image cropped with ROI [150, 50, 400, 300] and resized to 320x240

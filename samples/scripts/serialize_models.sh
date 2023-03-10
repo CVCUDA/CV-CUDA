@@ -27,5 +27,5 @@ fi
 
 if [ ! -f ./models/resnet50.engine ]
 then
-        /opt/tensorrt/bin/trtexec --onnx=models/resnet50.onnx --saveEngine=models/resnet50.engine --minShapes=input:1x3x224x224 --maxShapes=input:32x3x224x224 --optShapes=input:32x3x224x224
+        trtexec --onnx=models/resnet50.onnx --saveEngine=models/resnet50.engine --minShapes=input:1x3x224x224 --maxShapes=input:32x3x224x224 --optShapes=input:32x3x224x224
 fi

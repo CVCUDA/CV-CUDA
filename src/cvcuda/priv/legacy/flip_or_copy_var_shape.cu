@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -30,17 +30,17 @@ using namespace nvcv::legacy::helpers;
 namespace nvcv::legacy::cuda_op {
 
 template<typename T>
-__global__ void flip_kernel(const Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> dst,
+__global__ void flip_kernel(const cuda::ImageBatchVarShapeWrap<T> src, cuda::ImageBatchVarShapeWrap<T> dst,
                             const cuda::Tensor1DWrap<int> flipCode)
 {
     const int x         = blockIdx.x * blockDim.x + threadIdx.x;
     const int y         = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
 
-    int out_height = dst.at_rows(batch_idx), out_width = dst.at_cols(batch_idx);
+    int out_height = dst.height(batch_idx), out_width = dst.width(batch_idx);
     if (x >= out_width || y >= out_height)
         return;
-    int flip_code = *flipCode.ptr(batch_idx);
+    int flip_code = flipCode[batch_idx];
 
     if (flip_code == 1) // flip_code = 1, horizontal flip
     {
@@ -69,9 +69,9 @@ void flip(const IImageBatchVarShapeDataStridedCuda &input, const IImageBatchVarS
     dim3 blockSize(BLOCK, BLOCK / 4, 1);
     dim3 gridSize(divUp(input.maxSize().w, blockSize.x), divUp(input.maxSize().h, blockSize.y), output.numImages());
 
-    Ptr2dVarShapeNHWC<T>    src(input);
-    Ptr2dVarShapeNHWC<T>    dst(output);
-    cuda::Tensor1DWrap<int> flip_code(flipCode);
+    cuda::ImageBatchVarShapeWrap<T> src(input);
+    cuda::ImageBatchVarShapeWrap<T> dst(output);
+    cuda::Tensor1DWrap<int>         flip_code(flipCode);
 
 #ifdef CUDA_DEBUG_LOG
     checkCudaErrors(cudaStreamSynchronize(stream));

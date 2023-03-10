@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,7 +24,7 @@ add_executable(nvcv_test_types_system
     TestColorSpec.cpp
     TestDataLayout.cpp
     TestImageFormat.cpp
-    TestPixelType.cpp
+    TestDataType.cpp
     TestAllocator.cpp
     TestRequirements.cpp
     TestImage.cpp
@@ -36,7 +36,6 @@ add_executable(nvcv_test_types_system
     TestTensorDataAccess.cpp
     TestExceptions.cpp
     TestConfig.cpp
-    TestCAPI.c
 )
 
 target_link_libraries(nvcv_test_types_system
@@ -47,6 +46,29 @@ target_link_libraries(nvcv_test_types_system
 )
 
 nvcv_add_test(nvcv_test_types_system)
+
+# header compatibility tests ---------------------------------------------
+
+get_target_property(NVCV_SOURCE_DIR nvcv_types SOURCE_DIR)
+
+# Gather C headers
+file(GLOB_RECURSE CAPI_HEADERS RELATIVE "${NVCV_SOURCE_DIR}/include" CONFIGURE_DEPENDS "${NVCV_SOURCE_DIR}/include/*.h")
+add_header_compat_test(TARGET nvcv_test_capi_header_compat
+                       SOURCE TestAPI.c
+                       STANDARD c11
+                       DEPENDS nvcv_types
+                       HEADERS ${CAPI_HEADERS})
+
+# Gather C++ headers
+file(GLOB_RECURSE CXXAPI_HEADERS RELATIVE "${NVCV_SOURCE_DIR}/include" CONFIGURE_DEPENDS "${NVCV_SOURCE_DIR}/include/*.hpp")
+# remove optools files, they are c++17
+list(FILTER CXXAPI_HEADERS EXCLUDE REGEX "nvcv/cuda/")
+
+add_header_compat_test(TARGET nvcv_test_cxxapi_header_compat
+                       SOURCE TestAPI.cpp
+                       STANDARD c++11
+                       DEPENDS nvcv_types
+                       HEADERS ${CXXAPI_HEADERS})
 
 # system core version commit ----------------------------------
 

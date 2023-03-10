@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -49,10 +49,7 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # needed by tests
-RUN python3 -m pip install numba \
-    && rm -rf /root/.cache/pip
-
-RUN python3 -m pip install torch \
+RUN python3 -m pip install torch==1.13.0 numpy==1.24.1 \
     && rm -rf /root/.cache/pip
 
 WORKDIR /cvcuda

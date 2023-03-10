@@ -1,6 +1,6 @@
 #!/bin/bash -e
 
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,7 +37,7 @@ cd devel
 
 image=$IMAGE_URL_BASE/devel-linux:$TAG_IMAGE
 
-docker build \
+docker build --network=host \
     --build-arg BASE_IMAGE=$IMAGE_URL_BASE/build-linux \
     --build-arg TAG_IMAGE=$TAG_IMAGE \
     . -t $image

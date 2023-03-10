@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -62,28 +62,45 @@ static void ValidateTensorBufferStrided(const NVCVTensorData &tdata)
 
     int firstPacked = IsChannelLast(tdata.layout) ? std::max(0, rank - 2) : rank - 1;
 
+    int prevStrideConsidered = buffer.strides[rank - 1];
+    int prevSizeConsidered   = tdata.shape[rank - 1];
+
     // Test packed dimensions
     int dim;
     for (dim = rank - 1; dim >= firstPacked; --dim)
     {
-        int correctPitch = dim == rank - 1 ? dtype.strideBytes() : buffer.strides[dim + 1] * tdata.shape[dim + 1];
+        if (tdata.shape[dim] <= 1)
+        {
+            continue;
+        }
+
+        int correctPitch = dim == rank - 1 ? dtype.strideBytes() : prevStrideConsidered * prevSizeConsidered;
         if (buffer.strides[dim] != correctPitch)
         {
             throw Exception(NVCV_ERROR_INVALID_ARGUMENT)
                 << "Pitch of dimension " << dim << " must be == " << correctPitch << " (packed)"
                 << ", but it is " << buffer.strides[dim];
         }
+        prevStrideConsidered = buffer.strides[dim];
+        prevSizeConsidered   = tdata.shape[dim];
     }
 
     // Test non-packed dimensions
     for (; dim >= 0; --dim)
     {
-        int minPitch = buffer.strides[dim + 1] * tdata.shape[dim + 1];
+        if (tdata.shape[dim] <= 1)
+        {
+            continue;
+        }
+
+        int minPitch = prevStrideConsidered * prevSizeConsidered;
         if (buffer.strides[dim] < minPitch)
         {
             throw Exception(NVCV_ERROR_INVALID_ARGUMENT)
                 << "Pitch of dimension " << dim << " must be >= " << minPitch << ", but it is " << buffer.strides[dim];
         }
+        prevStrideConsidered = buffer.strides[dim];
+        prevSizeConsidered   = tdata.shape[dim];
     }
 }
 

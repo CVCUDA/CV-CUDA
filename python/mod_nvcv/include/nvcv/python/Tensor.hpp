@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,19 +21,18 @@
 #include "CAPI.hpp"
 #include "DataType.hpp"
 #include "Resource.hpp"
+#include "Shape.hpp"
 
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorLayout.hpp>
+#include <pybind11/pytypes.h>
 #include <pybind11/stl.h>
 
 #include <cassert>
-#include <vector>
 
 namespace nvcvpy {
 
 namespace py = pybind11;
-
-using Shape = std::vector<int64_t>;
 
 class Tensor
     : public Resource
@@ -48,6 +47,11 @@ public:
         py::object pytensor = py::reinterpret_steal<py::object>(otensor);
 
         return Tensor(pytensor);
+    }
+
+    static Tensor Create(const Shape &shape, nvcv::DataType dtype, nvcv::TensorLayout layout = nvcv::TENSOR_NONE)
+    {
+        return Create(CreateNVCVTensorShape(shape, layout), dtype);
     }
 
     static Tensor CreateForImageBatch(int numImages, nvcv::Size2D size, nvcv::ImageFormat fmt)

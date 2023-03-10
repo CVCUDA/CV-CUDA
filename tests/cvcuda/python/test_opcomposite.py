@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,7 +16,7 @@
 import cvcuda
 import pytest as t
 import numpy as np
-import util
+import cvcuda_util as util
 
 RNG = np.random.default_rng(0)
 
@@ -25,21 +25,21 @@ RNG = np.random.default_rng(0)
     "foreground, background, fgMask, outChannels",
     [
         (
-            cvcuda.Tensor([5, 9, 9, 3], np.uint8, "NHWC"),
-            cvcuda.Tensor([5, 9, 9, 3], np.uint8, "NHWC"),
-            cvcuda.Tensor([5, 9, 9, 1], np.uint8, "NHWC"),
+            cvcuda.Tensor((5, 9, 9, 3), np.uint8, "NHWC"),
+            cvcuda.Tensor((5, 9, 9, 3), np.uint8, "NHWC"),
+            cvcuda.Tensor((5, 9, 9, 1), np.uint8, "NHWC"),
             3,
         ),
         (
-            cvcuda.Tensor([9, 9, 3], np.uint8, "HWC"),
-            cvcuda.Tensor([9, 9, 3], np.uint8, "HWC"),
-            cvcuda.Tensor([9, 9, 1], np.uint8, "HWC"),
+            cvcuda.Tensor((9, 9, 3), np.uint8, "HWC"),
+            cvcuda.Tensor((9, 9, 3), np.uint8, "HWC"),
+            cvcuda.Tensor((9, 9, 1), np.uint8, "HWC"),
             4,
         ),
         (
-            cvcuda.Tensor([5, 21, 10, 3], np.uint8, "NHWC"),
-            cvcuda.Tensor([5, 21, 10, 3], np.uint8, "NHWC"),
-            cvcuda.Tensor([5, 21, 10, 1], np.uint8, "NHWC"),
+            cvcuda.Tensor((5, 21, 10, 3), np.uint8, "NHWC"),
+            cvcuda.Tensor((5, 21, 10, 3), np.uint8, "NHWC"),
+            cvcuda.Tensor((5, 21, 10, 1), np.uint8, "NHWC"),
             4,
         ),
     ],
@@ -56,8 +56,9 @@ def test_op_composite(foreground, background, fgMask, outChannels):
 
     stream = cvcuda.Stream()
 
-    out_shape = foreground.shape
+    out_shape = list(foreground.shape)
     out_shape[-1] = outChannels
+    out_shape = tuple(out_shape)
     out = cvcuda.Tensor(out_shape, foreground.dtype, foreground.layout)
     tmp = cvcuda.composite_into(
         foreground=foreground,

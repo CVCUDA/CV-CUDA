@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,12 @@ project(nvcv_test_cudatools_system)
 set(CMAKE_FOLDER tests)
 
 add_executable(nvcv_test_cudatools_system
+    TestFullTensorWrap.cpp
+    DeviceFullTensorWrap.cu
+    TestBorderVarShapeWrap.cpp
+    DeviceBorderVarShapeWrap.cu
+    TestImageBatchVarShapeWrap.cpp
+    DeviceImageBatchVarShapeWrap.cu
     TestBorderWrap.cpp
     DeviceBorderWrap.cu
     TestLinAlg.cpp

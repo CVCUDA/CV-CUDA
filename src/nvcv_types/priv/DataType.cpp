@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -140,6 +140,14 @@ std::ostream &operator<<(std::ostream &out, DataType type)
         NVCV_ENUM(NVCV_DATA_TYPE_2F64);
         NVCV_ENUM(NVCV_DATA_TYPE_3F64);
         NVCV_ENUM(NVCV_DATA_TYPE_4F64);
+
+        NVCV_ENUM(NVCV_DATA_TYPE_C64);
+        NVCV_ENUM(NVCV_DATA_TYPE_2C64);
+        NVCV_ENUM(NVCV_DATA_TYPE_3C64);
+        NVCV_ENUM(NVCV_DATA_TYPE_4C64);
+
+        NVCV_ENUM(NVCV_DATA_TYPE_C128);
+        NVCV_ENUM(NVCV_DATA_TYPE_2C128);
 #undef NVCV_ENUM
     }
 

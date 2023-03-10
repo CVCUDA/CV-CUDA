@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -150,7 +150,7 @@ extern "C" PyObject *ImplTensor_Create(int32_t ndim, const int64_t *shape, NVCVD
     }
 
     std::shared_ptr<Tensor> tensor
-        = Tensor::Create(Shape(shape, shape + ndim), nvcv::DataType{dtype}, std::move(layout));
+        = Tensor::Create(CreateShape(nvcv::TensorShape(shape, ndim, layout)), nvcv::DataType{dtype}, std::move(layout));
 
     return py::cast(std::move(tensor)).release().ptr();
 }

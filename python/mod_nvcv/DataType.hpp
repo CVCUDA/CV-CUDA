@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,6 +19,7 @@
 #define NVCV_PYTHON_DATATYPE_HPP
 
 #include <nvcv/DataType.hpp>
+#include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 
 namespace nvcv {
@@ -29,6 +30,9 @@ namespace nvcvpy::priv {
 namespace py = pybind11;
 
 void ExportDataType(py::module &m);
+
+std::optional<nvcv::DataType> ToNVCVDataType(const py::dtype &dt);
+py::dtype                     ToDType(nvcv::DataType dtype);
 
 } // namespace nvcvpy::priv
 

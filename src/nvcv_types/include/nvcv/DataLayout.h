@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -242,8 +242,10 @@ typedef enum
     /** Three 64-bit channels in three 64-bit words. */
     NVCV_PACKING_X64_Y64_Z64 = NVCV_DETAIL_BPP_NCH(192, 3),
 
-    /** One 128-bit channel. */
+    /** One 256-bit channel. */
     NVCV_PACKING_X256 = NVCV_DETAIL_BPP_NCH(256, 1),
+    /** Two 128-bit channels in two 128-bit words. */
+    NVCV_PACKING_X128_Y128 = NVCV_DETAIL_BPP_NCH(256, 2),
     /** Four 64-bit channels in four 64-bit words. */
     NVCV_PACKING_X64_Y64_Z64_W64 = NVCV_DETAIL_BPP_NCH(256, 4),
 
@@ -257,7 +259,8 @@ typedef enum
 {
     NVCV_DATA_KIND_UNSIGNED, /**< Channels are unsigned integer values. */
     NVCV_DATA_KIND_SIGNED,   /**< Channels are signed integer values. */
-    NVCV_DATA_KIND_FLOAT     /**< Channels are floating point values. */
+    NVCV_DATA_KIND_FLOAT,    /**< Channels are floating point values. */
+    NVCV_DATA_KIND_COMPLEX   /**< Channels are complex values. */
 } NVCVDataKind;
 
 /** Defines how the 2D plane pixels are laid out in memory.

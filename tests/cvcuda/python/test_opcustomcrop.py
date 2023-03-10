@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,19 +22,19 @@ import numpy as np
     "input,rc,out_shape",
     [
         (
-            cvcuda.Tensor([5, 16, 23, 4], np.uint8, "NHWC"),
+            cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"),
             cvcuda.RectI(x=0, y=0, width=20, height=2),
-            [5, 2, 20, 4],
+            (5, 2, 20, 4),
         ),
         (
-            cvcuda.Tensor([5, 16, 23, 4], np.uint8, "NHWC"),
+            cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"),
             cvcuda.RectI(2, 13, 16, 2),
-            [5, 2, 16, 4],
+            (5, 2, 16, 4),
         ),
         (
-            cvcuda.Tensor([16, 23, 2], np.uint8, "HWC"),
+            cvcuda.Tensor((16, 23, 2), np.uint8, "HWC"),
             cvcuda.RectI(2, 13, 16, 2),
-            [2, 16, 2],
+            (2, 16, 2),
         ),
     ],
 )

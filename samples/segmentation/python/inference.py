@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,6 +46,7 @@ common_dir = os.path.join(
 )
 sys.path.insert(0, common_dir)
 from trt_utils import convert_onnx_to_tensorrt, setup_tensort_bindings  # noqa: E402
+from vpf_utils import nvencoder, nvdecoder  # noqa: E402
 
 # docs_tag: end_python_imports
 
@@ -73,6 +74,7 @@ class SemanticSegmentationSample:
         self.device_id = device_id
         self.backend = backend
         self.class_to_idx_dict = None
+        self.data_modality = None
 
         if self.backend not in ["pytorch", "tensorrt"]:
             print(
@@ -85,22 +87,48 @@ class SemanticSegmentationSample:
         # docs_tag: begin_data_read
         # Start by parsing the input_path expression first.
         if os.path.isfile(self.input_path):
-            # Read the input image file.
-            self.file_names = [self.input_path] * self.batch_size
-            # Then create a dummy list with the data from the same file to simulate a
-            # batch.
-            self.data = [open(path, "rb").read() for path in self.file_names]
+            if os.path.splitext(self.input_path)[1] == ".jpg":
+                # Read the input image file.
+                self.file_names = [self.input_path] * self.batch_size
+                # Then create a dummy list with the data from the same file to simulate a
+                # batch.
+                self.data = [open(path, "rb").read() for path in self.file_names]
+                # We will use the torchnvjpeg based decoder on the GPU in case of images.
+                # This will be allocated once during the first run or whenever a batch
+                # size change happens.
+                self.decoder = None
+                self.data_modality = "images"
+            else:
+                # Assume it is video. Read using VPF's nvdecorer. Also the output
+                # will be saved as video so we need encoder. The encoder will be
+                # allocated once during the first run.
+                self.decoder = nvdecoder(self.input_path, self.device_id)
+                self.encoder = None
+                # In case of videos, the individual batches' data does not have its
+                # own filenames, unlike the case of images. We still need basic info
+                # on the total number of frames to be able to correctly split them
+                # into batches later on. Hence, we would simply initialize the list
+                # with None values.
+                self.file_names = [
+                    "frame_%d.jpg" % frame_idx
+                    for frame_idx in range(self.decoder.total_frames)
+                ]
+                self.data = [None] * self.decoder.total_frames
+                self.data_modality = "video"
 
         elif os.path.isdir(self.input_path):
-            # It is a directory. Grab all the images from it.
+            # It is a directory. Grab file names of all JPG images.
+            self.decoder = None
             self.file_names = glob.glob(os.path.join(self.input_path, "*.jpg"))
             self.data = [open(path, "rb").read() for path in self.file_names]
+            self.data_modality = "images"
             print("Read a total of %d JPEG images." % len(self.data))
 
         else:
             print(
                 "Input path not found. "
-                "It is neither a valid JPEG file nor a directory: %s" % self.input_path
+                "It is neither a valid JPEG/MP4 file nor a directory: %s"
+                % self.input_path
             )
             exit(1)
         # docs_tag: end_data_read
@@ -120,6 +148,13 @@ class SemanticSegmentationSample:
 
         if self.target_img_width < 10:
             print("target_img_width must be a value >=10.")
+            exit(1)
+
+        if self.data_modality not in ["images", "video"]:
+            print(
+                "Unknown data modality found: %s. Only images or video is supported."
+                % self.data_modality
+            )
             exit(1)
         # docs_tag: end_input_validation
 
@@ -389,35 +424,45 @@ class SemanticSegmentationSample:
         # docs_tag: end_run_basics
 
         # docs_tag: begin_batch_loop
-        # We will use the torchnvjpeg based decoder on the GPU. This will be
-        # allocated once during the first run or whenever a batch size change
-        # happens.
-        decoder = None
-
         for file_name_batch, data_batch in zip(file_name_batches, data_batches):
             print("Processing batch %d of %d" % (batch_idx + 1, len(file_name_batches)))
             effective_batch_size = len(file_name_batch)
 
             # docs_tag: begin_decode
-            # Decode in batch using torchnvjpeg decoder on the GPU.
-            if not decoder or effective_batch_size != self.batch_size:
-                decoder = torchnvjpeg.Decoder(
-                    0,
-                    0,
-                    True,
-                    self.device_id,
-                    effective_batch_size,
-                    8,  # this is max_cpu_threads parameter. Not used internally.
-                    max_image_size,
-                    torch.cuda.current_stream(self.device_id),
+            # Decode in batch using torchnvjpeg decoder on the GPU if the input is
+            # images or use VPF if it is a video.
+            if self.data_modality == "images":
+                if not self.decoder or effective_batch_size != self.batch_size:
+                    decoder = torchnvjpeg.Decoder(
+                        0,
+                        0,
+                        True,
+                        self.device_id,
+                        effective_batch_size,
+                        8,  # this is max_cpu_threads parameter. Not used internally.
+                        max_image_size,
+                        torch.cuda.current_stream(self.device_id),
+                    )
+                image_tensor_list = decoder.batch_decode(data_batch)
+
+                # Convert the list of tensors to a tensor itself.
+                image_tensors = torch.stack(image_tensor_list)
+
+                # Also save an NCHW version of the image tensors.
+                image_tensors_nchw = image_tensors.permute(
+                    0, 3, 1, 2
+                )  # from NHWC to NCHW
+            else:
+                # Read the frames using VPF's decoder.
+                image_tensors_nchw = torch.stack(
+                    [
+                        self.decoder.decode_to_tensor()
+                        for i in range(len(file_name_batch))
+                    ]
                 )
-            image_tensor_list = decoder.batch_decode(data_batch)
-
-            # Convert the list of tensors to a tensor itself.
-            image_tensors = torch.stack(image_tensor_list)
-
-            # Also save an NCHW version of the image tensors.
-            image_tensors_nchw = image_tensors.permute(0, 3, 1, 2)  # from NHWC to NCHW
+                image_tensors = image_tensors_nchw.permute(
+                    0, 2, 3, 1
+                ).contiguous()  # from NCHW to NHWC
 
             input_image_height, input_image_width = (
                 image_tensors.shape[1],
@@ -528,10 +573,10 @@ class SemanticSegmentationSample:
             )  # from NHWC to NCHW
             # docs_tag: end_mask_upscale
 
-            # Blur the input images using the median blur op and convert to PyTorch.
+            # Blur the input images using the Gaussian blur op and convert to PyTorch.
             # docs_tag: begin_input_blur
-            cvcuda_blurred_input_imgs = cvcuda.median_blur(
-                cvcuda_input_tensor, ksize=(27, 27)
+            cvcuda_blurred_input_imgs = cvcuda.gaussian(
+                cvcuda_input_tensor, kernel_size=(27, 27), sigma=(25, 25)
             )
             cvcuda_blurred_input_imgs = cvcuda.reformat(
                 cvcuda_blurred_input_imgs, "NCHW"
@@ -555,27 +600,63 @@ class SemanticSegmentationSample:
             # docs_tag: end_overlay
 
             # Loop over all the images in the current batch and save the
-            # inference results.
+            # inference results. Depending on the type of input we had used, we
+            # save the inferences in different ways. For image inputs, we generate
+            # an overlay image and save it. For video inputs, we encode the results
+            # in a video and save it.
             # docs_tag: begin_visualization_loop
             for img_idx in range(effective_batch_size):
-                img_name = os.path.splitext(os.path.basename(file_name_batch[img_idx]))[
-                    0
-                ]
-                results_path = os.path.join(self.results_dir, "out_%s.jpg" % img_name)
-                print(
-                    "\tSaving the overlay result for %s class for to: %s"
-                    % (self.visualization_class_name, results_path)
-                )
-
-                # Convert the overlay which was in-place saved in
-                # image_tensors_nchw to a PIL image on the CPU and save it.
-                overlay_cpu = image_tensors_nchw[img_idx].detach().cpu()
-                overlay_pil = F.to_pil_image(overlay_cpu)
-                overlay_pil.save(results_path)
+                if self.data_modality == "video":
+                    # Convert the overlay which was in-place saved in
+                    # image_tensors_nchw to a PIL image on the CPU and write it in
+                    # the video using the encoder.
+                    results_path = os.path.join(
+                        self.results_dir, "out_%s" % os.path.basename(self.input_path)
+                    )
+                    print(
+                        "\tEncoding the overlay result for %s class for frame %d of batch %d in %s"
+                        % (
+                            self.visualization_class_name,
+                            img_idx,
+                            batch_idx,
+                            results_path,
+                        )
+                    )
+                    # Check if the encoder was setup yet. If not, do it.
+                    if not self.encoder:
+                        self.encoder = nvencoder(
+                            self.device_id,
+                            input_image_width,
+                            input_image_height,
+                            self.decoder.fps,
+                            results_path,
+                        )
+                    self.encoder.encode_from_tensor(
+                        image_tensors_nchw[img_idx].detach()
+                    )
+                else:
+                    # Bring the image_tensors_nchw to CPU and convert it to a PIL
+                    # image and save those.
+                    img_name = os.path.splitext(
+                        os.path.basename(file_name_batch[img_idx])
+                    )[0]
+                    results_path = os.path.join(
+                        self.results_dir, "out_%s.jpg" % img_name
+                    )
+                    print(
+                        "\tSaving the overlay result for %s class for to: %s"
+                        % (self.visualization_class_name, results_path)
+                    )
+                    overlay_cpu = image_tensors_nchw[img_idx].detach().cpu()
+                    overlay_pil = F.to_pil_image(overlay_cpu)
+                    overlay_pil.save(results_path)
 
             # Increment the batch counter.
             batch_idx += 1
             # docs_tag: end_visualization_loop
+
+        if self.data_modality == "video":
+            self.encoder.flush()
 
 
 # docs_tag: main_func
@@ -587,10 +668,10 @@ def main():
     parser.add_argument(
         "-i",
         "--input_path",
-        default="./assets/Weimaraner.jpg",
+        default="./assets/images/Weimaraner.jpg",
         type=str,
-        help="Either a path to a JPEG image or a directory containing JPEG "
-        "images to use as input.",
+        help="Either a path to a JPEG image/MP4 video or a directory containing JPG images "
+        "to use as input. When pointing to a directory, only JPG images will be read.",
     )
 
     parser.add_argument(

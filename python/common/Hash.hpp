@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,45 +19,45 @@
 #define NVCV_PYTHON_HASH_HPP
 
 #include <nvcv/Size.hpp>
+#include <util/Ranges.hpp>
 
 #include <functional>
-#include <ranges>
 #include <tuple>
 #include <type_traits>
 #include <vector>
 
 namespace nvcvpy::util {
 
-template<class T>
-requires(!std::is_enum_v<T> && std::is_default_constructible_v<std::hash<T>>) size_t ComputeHash(const T &a)
+template<class T, std::enable_if_t<!std::is_enum_v<T> && std::is_default_constructible_v<std::hash<T>>, int> = 0>
+size_t ComputeHash(const T &a)
 {
     return std::hash<T>{}(a);
 }
 
-template<class T>
-requires(std::is_enum_v<T>) size_t ComputeHash(const T &a)
+template<class T, std::enable_if_t<std::is_enum_v<T>, int> = 0>
+size_t ComputeHash(const T &a)
 {
     using Base = typename std::underlying_type<T>::type;
 
     return std::hash<Base>{}(static_cast<Base>(a));
 }
 
-template<std::ranges::range R>
+template<class R, std::enable_if_t<nvcv::util::ranges::IsRange<R>, int> = 0>
 size_t ComputeHash(const R &a);
 
 template<class... TT>
 size_t ComputeHash(const std::tuple<TT...> &a);
 
-template<class HEAD, class... TAIL>
-requires(sizeof...(TAIL) >= 1) size_t ComputeHash(const HEAD &a, const TAIL &...aa)
+template<class HEAD, class... TAIL, std::enable_if_t<sizeof...(TAIL) >= 1, int> = 0>
+size_t ComputeHash(const HEAD &a, const TAIL &...aa)
 {
     return ComputeHash(a) ^ (ComputeHash(aa...) << 1);
 }
 
-template<std::ranges::range R>
+template<class R, std::enable_if_t<nvcv::util::ranges::IsRange<R>, int> = 0>
 size_t ComputeHash(const R &a)
 {
-    size_t hash = ComputeHash(std::ranges::size(a));
+    size_t hash = ComputeHash(nvcv::util::ranges::Size(a));
     for (const auto &v : a)
     {
         hash = ComputeHash(hash, v);

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,20 +20,14 @@
 
 #include <atomic>
 #include <cassert>
-#include <concepts>
 #include <stack>
 
 namespace nvcv::priv {
 
 template<class T>
-concept ForwardListNode = requires(T n)
-{
-    // clang-format off
-    { n.next } -> std::convertible_to<T *>;
-    // clang-format on
-};
+constexpr bool IsForwardListNode = std::is_convertible_v<decltype(std::declval<T>().next), T *>;
 
-template<ForwardListNode Node>
+template<class Node, std::enable_if_t<IsForwardListNode<Node>, int> = 0>
 class LockFreeStack
 {
 public:

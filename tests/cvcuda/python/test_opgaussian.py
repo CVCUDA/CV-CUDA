@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,7 +16,7 @@
 import cvcuda
 import pytest as t
 import numpy as np
-import util
+import cvcuda_util as util
 
 
 RNG = np.random.default_rng(0)
@@ -26,31 +26,31 @@ RNG = np.random.default_rng(0)
     "input, kernel_size, sigma, border",
     [
         (
-            cvcuda.Tensor([5, 16, 23, 4], np.uint8, "NHWC"),
+            cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"),
             [3, 3],
             [0.5, 0.5],
             cvcuda.Border.CONSTANT,
         ),
         (
-            cvcuda.Tensor([4, 4, 3], np.float32, "HWC"),
+            cvcuda.Tensor((4, 4, 3), np.float32, "HWC"),
             [5, 5],
             [0.8, 0.8],
             cvcuda.Border.REPLICATE,
         ),
         (
-            cvcuda.Tensor([3, 88, 13, 3], np.uint16, "NHWC"),
+            cvcuda.Tensor((3, 88, 13, 3), np.uint16, "NHWC"),
             [7, 7],
             [0.7, 0.7],
             cvcuda.Border.REFLECT,
         ),
         (
-            cvcuda.Tensor([3, 4, 4], np.int32, "HWC"),
+            cvcuda.Tensor((3, 4, 4), np.int32, "HWC"),
             [9, 9],
             [0.8, 0.8],
             cvcuda.Border.WRAP,
         ),
         (
-            cvcuda.Tensor([1, 2, 3, 4], np.int16, "NHWC"),
+            cvcuda.Tensor((1, 2, 3, 4), np.int16, "NHWC"),
             [7, 7],
             [0.6, 0.6],
             cvcuda.Border.REFLECT101,

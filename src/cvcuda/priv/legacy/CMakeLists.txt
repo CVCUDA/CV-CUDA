@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,6 +34,8 @@ add_library(cvcuda_legacy STATIC
     median_blur.cu
     bilateral_filter.cu
     bilateral_filter_var_shape.cu
+    joint_bilateral_filter.cu
+    joint_bilateral_filter_var_shape.cu
     median_blur_var_shape.cu
     morphology.cu
     cvt_color.cu

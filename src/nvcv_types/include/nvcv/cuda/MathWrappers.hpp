@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -53,9 +53,9 @@ inline __host__ __device__ RT RoundImpl(U u)
  */
 
 /**
- * @brief Metafunction to round all elements of the input
+ * Metafunction to round all elements of the input.
  *
- * @details This function rounds all elements of the input and returns the result with the same type as the input.
+ * This function rounds all elements of the input and returns the result with the same type as the input.
  * Optionally, the base type of the result may be specified by the template argument type \p T.  For instance, a
  * float4 can have its 4 elements rounded into a float4 result, or to a different result type, such as T=int, where
  * the result will be int4 with the rounded results (see example below).  It is a requirement of round that the
@@ -68,12 +68,12 @@ inline __host__ __device__ RT RoundImpl(U u)
  * ConvertBaseTypeTo<int, FloatType> int_rounded = round<int>(res);
  * @endcode
  *
- * @tparam U Type of the source value (with 1 to 4 elements) passed as argument
- * @tparam T Optional type that defines the result of the round
+ * @tparam U Type of the source value (with 1 to 4 elements) passed as argument.
+ * @tparam T Optional type that defines the result of the round.
  *
- * @param[in] u Source value to round all elements with its same type or \p T
+ * @param[in] u Source value to round all elements with its same type or \p T.
  *
- * @return The value with all elements rounded
+ * @return The value with all elements rounded.
  */
 template<typename T, typename U, typename RT = ConvertBaseTypeTo<T, U>,
          class = Require<HasTypeTraits<T, U> && !IsCompound<T>>>
@@ -98,9 +98,9 @@ inline __host__ __device__ U round(U u)
     }
 
 /**
- * @brief Metafunction to compute the minimum of two inputs per element
+ * Metafunction to compute the minimum of two inputs per element.
  *
- * @details This function finds the minimum of two inputs per element and returns the result with the same type as
+ * This function finds the minimum of two inputs per element and returns the result with the same type as
  * the input.  For instance, two int4 inputs {1, 2, 3, 4} and {4, 3, 2, 1} yield the minimum {1, 2, 2, 1} as int4
  * as well (see example below).  It is a requirement of min that the input source type has type traits.
  *
@@ -110,12 +110,12 @@ inline __host__ __device__ U round(U u)
  * IntType ab_min = min(a, b); // = {1, 2, 2, 1}
  * @endcode
  *
- * @tparam U Type of the two source arguments and the return type
+ * @tparam U Type of the two source arguments and the return type.
  *
  * @param[in] u Input value to compute \f$ min(x_a, x_b) \f$ where \f$ x_a \f$ (\f$ x_b \f$) is each element of
- *              \f$ a \f$ (\f$ b \f$)
+ *              \f$ a \f$ (\f$ b \f$).
  *
- * @return The return value with one minimum per element
+ * @return The return value with one minimum per element.
  */
 template<typename U, class = Require<HasTypeTraits<U>>>
 inline __host__ __device__ U min(U a, U b)
@@ -141,9 +141,9 @@ inline __host__ __device__ U min(U a, U b)
 }
 
 /**
- * @brief Metafunction to compute the maximum of two inputs per element
+ * Metafunction to compute the maximum of two inputs per element.
  *
- * @details This function finds the maximum of two inputs per element and returns the result with the same type as
+ * This function finds the maximum of two inputs per element and returns the result with the same type as
  * the input.  For instance, two int4 inputs {1, 2, 3, 4} and {4, 3, 2, 1} yield the maximum {4, 3, 3, 4} as int4
  * as well (see example below).  It is a requirement of max that the input source type has type traits.
  *
@@ -153,12 +153,12 @@ inline __host__ __device__ U min(U a, U b)
  * IntType ab_max = max(a, b); // = {4, 3, 3, 4}
  * @endcode
  *
- * @tparam U Type of the two source arguments and the return type
+ * @tparam U Type of the two source arguments and the return type.
  *
  * @param[in] u Input value to compute \f$ max(x_a, x_b) \f$ where \f$ x_a \f$ (\f$ x_b \f$) is each element of
- *              \f$ a \f$ (\f$ b \f$)
+ *              \f$ a \f$ (\f$ b \f$).
  *
- * @return The return value with maximums per element
+ * @return The return value with maximums per element.
  */
 template<typename U, class = Require<HasTypeTraits<U>>>
 inline __host__ __device__ U max(U a, U b)
@@ -186,16 +186,46 @@ inline __host__ __device__ U max(U a, U b)
 #undef NVCV_CUDA_BINARY_SIMD
 
 /**
- * @brief Metafunction to compute the natural (base e) exponential of all elements of the input
+ * Metafunction to compute the power of all elements of the input.
  *
- * @details This function computes the natural (base e) exponential of all elements of the input and returns the
+ * This function computes the power of all elements of the input \p x and returns the result with the same
+ * type as the input.  It is a requirement of pow that the input \p x has the same number of components of the
+ * power \p y or \p y is a scalar (and the type of \p x has type traits).
+ *
+ * @tparam U Type of the source argument \p x and the return type.
+ * @tparam S Type of the source argument \p y power (use a regular C type for scalar).
+ *
+ * @param[in] x Input value to compute \f$ x^y \f$.
+ * @param[in] y Input power to compute \f$ x^y \f$.
+ *
+ * @return The return value with all elements as the result of the power.
+ */
+template<typename U, typename S,
+         class = Require<(NumComponents<U> == NumComponents<S>) || (HasTypeTraits<U> && NumComponents<S> == 0)>>
+inline __host__ __device__ U pow(U x, S y)
+{
+    U out{};
+
+#pragma unroll
+    for (int e = 0; e < nvcv::cuda::NumElements<U>; ++e)
+    {
+        GetElement(out, e) = detail::PowImpl(GetElement(x, e), GetElement(y, e));
+    }
+
+    return out;
+}
+
+/**
+ * Metafunction to compute the natural (base e) exponential of all elements of the input.
+ *
+ * This function computes the natural (base e) exponential of all elements of the input and returns the
  * result with the same type as the input.  It is a requirement of exp that the input source type has type traits.
  *
- * @tparam U Type of the source argument and the return type
+ * @tparam U Type of the source argument and the return type.
  *
- * @param[in] u Input value to compute \f$ e^x \f$ where \f$ x \f$ is each element of \f$ u \f$
+ * @param[in] u Input value to compute \f$ e^x \f$ where \f$ x \f$ is each element of \f$ u \f$.
  *
- * @return The return value with all elements as the result of the natural (base e) exponential
+ * @return The return value with all elements as the result of the natural (base e) exponential.
  */
 template<typename U, class = Require<HasTypeTraits<U>>>
 inline __host__ __device__ U exp(U u)
@@ -212,16 +242,16 @@ inline __host__ __device__ U exp(U u)
 }
 
 /**
- * @brief Metafunction to compute the square root of all elements of the input
+ * Metafunction to compute the square root of all elements of the input.
  *
- * @details This function computes the square root of all elements of the input and returns the result with the
+ * This function computes the square root of all elements of the input and returns the result with the
  * same type as the input.  It is a requirement of sqrt that the input source type has type traits.
  *
- * @tparam U Type of the source argument and the return type
+ * @tparam U Type of the source argument and the return type.
  *
- * @param[in] u Input value to compute \f$ \sqrt{x} \f$ where \f$ x \f$ is each element of \f$ u \f$
+ * @param[in] u Input value to compute \f$ \sqrt{x} \f$ where \f$ x \f$ is each element of \f$ u \f$.
  *
- * @return The return value with all elements as the result of the square root
+ * @return The return value with all elements as the result of the square root.
  */
 template<typename U, class = Require<HasTypeTraits<U>>>
 inline __host__ __device__ U sqrt(U u)
@@ -246,9 +276,9 @@ inline __host__ __device__ U sqrt(U u)
     }
 
 /**
- * @brief Metafunction to compute the absolute value of all elements of the input
+ * Metafunction to compute the absolute value of all elements of the input.
  *
- * @details This function computes the absolute value of all elements of the input and returns the result with the
+ * This function computes the absolute value of all elements of the input and returns the result with the
  * same type as the input.  For instance, an int4 input {-1, 2, -3, 4} yields the absolute {1, 2, 3, 4} as int4 as
  * well (see example below).  It is a requirement of abs that the input source type has type traits.
  *
@@ -258,11 +288,11 @@ inline __host__ __device__ U sqrt(U u)
  * IntType a_abs = abs(a); // = {1, 2, 3, 4}
  * @endcode
  *
- * @tparam U Type of the source argument and the return type
+ * @tparam U Type of the source argument and the return type.
  *
- * @param[in] u Input value to compute \f$ |x| \f$ where \f$ x \f$ is each element of \f$ u \f$
+ * @param[in] u Input value to compute \f$ |x| \f$ where \f$ x \f$ is each element of \f$ u \f$.
  *
- * @return The return value with the absolute of all elements
+ * @return The return value with the absolute of all elements.
  */
 template<typename U, class = Require<HasTypeTraits<U>>>
 inline __host__ __device__ U abs(U u)
@@ -286,6 +316,37 @@ inline __host__ __device__ U abs(U u)
 }
 
 #undef NVCV_CUDA_UNARY_SIMD
+
+/**
+ * Metafunction to clamp all elements of the input.
+ *
+ * This function clamps all elements of the input \p u between \p lo and \p hi and returns the result with
+ * the same type as the input.  It is a requirement of clamp that the input \p u has the same number of components
+ * of the range values \p lo and \p hi or both are scalars (and the type of \p u has type traits).
+ *
+ * @tparam U Type of the source argument \p u and the return type.
+ * @tparam S Type of the source argument \p lo and \p hi (use a regular C type for scalar).
+ *
+ * @param[in] u Input value to clamp.
+ * @param[in] lo Input clamp range low value.
+ * @param[in] hi Input clamp range high value.
+ *
+ * @return The return value with all elements clamped.
+ */
+template<typename U, typename S,
+         class = Require<(NumComponents<U> == NumComponents<S>) || (HasTypeTraits<U> && NumComponents<S> == 0)>>
+inline __host__ __device__ U clamp(U u, S lo, S hi)
+{
+    U out{};
+
+#pragma unroll
+    for (int e = 0; e < nvcv::cuda::NumElements<U>; ++e)
+    {
+        GetElement(out, e) = detail::ClampImpl(GetElement(u, e), GetElement(lo, e), GetElement(hi, e));
+    }
+
+    return out;
+}
 
 /**@}*/
 

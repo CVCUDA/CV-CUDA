@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -31,18 +31,18 @@ using namespace nvcv::legacy::cuda_op;
 #define AlphaLerp(c0, c1, a) int(((int)c1 - (int)c0) * (int)a * Inv_255 + c0 + 0.5f)
 
 template<typename T, typename U, typename D>
-__global__ void composite_kernel(const Ptr2dVarShapeNHWC<T> fg, const Ptr2dVarShapeNHWC<T> bg,
-                                 const Ptr2dVarShapeNHWC<U> fgMask, Ptr2dVarShapeNHWC<D> dst)
+__global__ void composite_kernel(const cuda::ImageBatchVarShapeWrap<T> fg, const cuda::ImageBatchVarShapeWrap<T> bg,
+                                 const cuda::ImageBatchVarShapeWrap<U> fgMask, cuda::ImageBatchVarShapeWrap<D> dst)
 {
     int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
     int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
 
-    if (dst_x >= dst.at_cols(batch_idx) || dst_y >= dst.at_rows(batch_idx))
+    if (dst_x >= dst.width(batch_idx) || dst_y >= dst.height(batch_idx))
         return;
 
-    int dst_ch = dst.nch;
-    int src_ch = fg.nch;
+    constexpr int dst_ch = cuda::NumElements<D>;
+    constexpr int src_ch = cuda::NumElements<T>;
 
     U mask_val = *fgMask.ptr(batch_idx, dst_y, dst_x);
     T bg_val   = *bg.ptr(batch_idx, dst_y, dst_x);
@@ -69,12 +69,12 @@ void composite(const nvcv::IImageBatchVarShapeDataStridedCuda &foregroundData,
     typedef typename cuda::MakeType<T, scn> src_type;
     typedef typename cuda::MakeType<T, dcn> dst_type;
 
-    Ptr2dVarShapeNHWC<src_type> fg_ptr(foregroundData);
-    Ptr2dVarShapeNHWC<src_type> bg_ptr(backgroundData);
-    Ptr2dVarShapeNHWC<T>        fgMask_ptr(fgMaskData);
-    Ptr2dVarShapeNHWC<dst_type> dst_ptr(outData);
+    cuda::ImageBatchVarShapeWrap<src_type> fg_ptr(foregroundData);
+    cuda::ImageBatchVarShapeWrap<src_type> bg_ptr(backgroundData);
+    cuda::ImageBatchVarShapeWrap<T>        fgMask_ptr(fgMaskData);
+    cuda::ImageBatchVarShapeWrap<dst_type> dst_ptr(outData);
 
-    const int batch_size = dst_ptr.batches;
+    const int batch_size = outData.numImages();
     Size2D    outMaxSize = outData.maxSize();
 
     dim3 blockSize(16, 16, 1);

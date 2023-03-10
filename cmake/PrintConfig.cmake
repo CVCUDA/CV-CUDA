@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -47,6 +47,23 @@ if(ENABLE_SANITIZER)
     message(STATUS "    ENABLE_SANITIZER         : ON")
 else()
     message(STATUS "    ENABLE_SANITIZER         : off")
+endif()
+
+if(ENABLE_TEGRA)
+    message(STATUS "    ENABLE_TEGRA             : ON")
+else()
+    message(STATUS "    ENABLE_TEGRA             : off")
+endif()
+
+message(STATUS "    Compilers used in public API header compatibility tests:")
+if(PUBLIC_API_COMPILERS)
+    foreach(comp ${PUBLIC_API_COMPILERS})
+        string(MAKE_C_IDENTIFIER "${comp}" comp_str)
+        string(TOUPPER "${comp_str}" COMP_STR)
+        message(STATUS "        ${COMPILER_EXEC_${COMP_STR}}")
+    endforeach()
+else()
+    message(STATUS "        (none)")
 endif()
 
 # Compilation

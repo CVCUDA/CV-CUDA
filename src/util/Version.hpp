@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
@@ -13,7 +13,6 @@
 #ifndef NVCV_UTIL_VERSION_HPP
 #define NVCV_UTIL_VERSION_HPP
 
-#include <compare>
 #include <cstdint>
 #include <iosfwd>
 #include <stdexcept>
@@ -33,14 +32,13 @@ class Version
 {
 public:
     constexpr explicit Version(int major, int minor, int patch, int tweak = 0)
+        : m_code(major * 1000000 + minor * 10000 + patch * 100 + tweak)
     {
         // Major can be > 99, the rest are limited to 99
         if (major < 0 || minor < 0 || minor > 99 || patch < 0 || patch > 99 || tweak < 0 || tweak > 99)
         {
             throw std::invalid_argument("Invalid version code");
         }
-
-        m_code = major * 1000000 + minor * 10000 + patch * 100 + tweak;
     }
 
     constexpr explicit Version(uint32_t versionCode)
@@ -73,7 +71,38 @@ public:
         return m_code;
     }
 
-    constexpr auto operator<=>(const Version &that) const = default;
+    // C++20's spaceship operator would help here
+    // constexpr bool operator<=>(const Version &that) const = default;
+
+    constexpr bool operator<(const Version &that) const
+    {
+        return m_code < that.m_code;
+    }
+
+    constexpr bool operator<=(const Version &that) const
+    {
+        return m_code <= that.m_code;
+    }
+
+    constexpr bool operator>(const Version &that) const
+    {
+        return m_code > that.m_code;
+    }
+
+    constexpr bool operator>=(const Version &that) const
+    {
+        return m_code >= that.m_code;
+    }
+
+    constexpr bool operator==(const Version &that) const
+    {
+        return m_code == that.m_code;
+    }
+
+    constexpr bool operator!=(const Version &that) const
+    {
+        return m_code != that.m_code;
+    }
 
     // needs to be public so that type can be passed as non-type template parameter
     int m_code;

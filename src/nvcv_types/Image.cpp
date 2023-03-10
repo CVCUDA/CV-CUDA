@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -87,9 +87,31 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageWrapDataConstruct,
         });
 }
 
-NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageDestroy, (NVCVImageHandle handle))
+NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvImageDecRef, (NVCVImageHandle handle, int *newRefCount))
 {
-    return priv::ProtectCall([&] { priv::DestroyCoreObject(handle); });
+    return priv::ProtectCall(
+        [&]
+        {
+            int newRef = priv::CoreObjectDecRef(handle);
+            if (newRefCount)
+                *newRefCount = newRef;
+        });
+}
+
+NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvImageIncRef, (NVCVImageHandle handle, int *newRefCount))
+{
+    return priv::ProtectCall(
+        [&]
+        {
+            int newRef = priv::CoreObjectIncRef(handle);
+            if (newRefCount)
+                *newRefCount = newRef;
+        });
+}
+
+NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvImageRefCount, (NVCVImageHandle handle, int *refCount))
+{
+    return priv::ProtectCall([&] { *refCount = priv::CoreObjectRefCount(handle); });
 }
 
 NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageGetSize, (NVCVImageHandle handle, int32_t *width, int32_t *height))

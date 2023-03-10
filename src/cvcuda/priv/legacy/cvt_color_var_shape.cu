@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -134,12 +134,13 @@ __device__ inline bool checkShapeFromYUV420(int rows, int cols, NVCVColorConvers
 }
 
 template<class T>
-__global__ void rgb_to_bgr_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> dst, int sch, int dch, int bidx)
+__global__ void rgb_to_bgr_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
+                                int bidx)
 {
     int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
     int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
-    if (dst_x >= dst.at_cols(batch_idx) || dst_y >= dst.at_rows(batch_idx))
+    if (dst_x >= dst.width(batch_idx) || dst_y >= dst.height(batch_idx))
         return;
 
     T b = *src.ptr(batch_idx, dst_y, dst_x, bidx);
@@ -150,20 +151,20 @@ __global__ void rgb_to_bgr_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> d
     *dst.ptr(batch_idx, dst_y, dst_x, 1) = g;
     *dst.ptr(batch_idx, dst_y, dst_x, 2) = r;
 
-    if (dch == 4)
+    if (dst.numChannels() == 4)
     {
-        T al = sch == 4 ? *src.ptr(batch_idx, dst_y, dst_x, 3) : cuda::TypeTraits<T>::max;
+        T al = src.numChannels() == 4 ? *src.ptr(batch_idx, dst_y, dst_x, 3) : cuda::TypeTraits<T>::max;
         *dst.ptr(batch_idx, dst_y, dst_x, 3) = al;
     }
 }
 
 template<class T>
-__global__ void gray_to_bgr_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> dst, int dch)
+__global__ void gray_to_bgr_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst)
 {
     int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
     int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
-    if (dst_x >= dst.at_cols(batch_idx) || dst_y >= dst.at_rows(batch_idx))
+    if (dst_x >= dst.width(batch_idx) || dst_y >= dst.height(batch_idx))
         return;
 
     T g = *src.ptr(batch_idx, dst_y, dst_x, 0);
@@ -171,19 +172,20 @@ __global__ void gray_to_bgr_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> 
     *dst.ptr(batch_idx, dst_y, dst_x, 0) = g;
     *dst.ptr(batch_idx, dst_y, dst_x, 1) = g;
     *dst.ptr(batch_idx, dst_y, dst_x, 2) = g;
-    if (dch == 4)
+    if (dst.numChannels() == 4)
     {
         *dst.ptr(batch_idx, dst_y, dst_x, 3) = g;
     }
 }
 
 template<class T>
-__global__ void bgr_to_gray_char_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> dst, int bidx)
+__global__ void bgr_to_gray_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
+                                      int bidx)
 {
     int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
     int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
-    if (dst_x >= dst.at_cols(batch_idx) || dst_y >= dst.at_rows(batch_idx))
+    if (dst_x >= dst.width(batch_idx) || dst_y >= dst.height(batch_idx))
         return;
 
     int b = *src.ptr(batch_idx, dst_y, dst_x, bidx);
@@ -195,12 +197,13 @@ __global__ void bgr_to_gray_char_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHW
 }
 
 template<class T>
-__global__ void bgr_to_gray_float_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> dst, int bidx)
+__global__ void bgr_to_gray_float_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
+                                       int bidx)
 {
     int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
     int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
-    if (dst_x >= dst.at_cols(batch_idx) || dst_y >= dst.at_rows(batch_idx))
+    if (dst_x >= dst.width(batch_idx) || dst_y >= dst.height(batch_idx))
         return;
 
     T b = *src.ptr(batch_idx, dst_y, dst_x, bidx);
@@ -211,12 +214,13 @@ __global__ void bgr_to_gray_float_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNH
 }
 
 template<class T>
-__global__ void bgr_to_yuv_char_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> dst, int bidx)
+__global__ void bgr_to_yuv_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
+                                     int bidx)
 {
     int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
     int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
-    if (dst_x >= dst.at_cols(batch_idx) || dst_y >= dst.at_rows(batch_idx))
+    if (dst_x >= dst.width(batch_idx) || dst_y >= dst.height(batch_idx))
         return;
 
     int B = *src.ptr(batch_idx, dst_y, dst_x, bidx);
@@ -235,12 +239,13 @@ __global__ void bgr_to_yuv_char_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC
 }
 
 template<class T>
-__global__ void bgr_to_yuv_float_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> dst, int bidx)
+__global__ void bgr_to_yuv_float_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
+                                      int bidx)
 {
     int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
     int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
-    if (dst_x >= dst.at_cols(batch_idx) || dst_y >= dst.at_rows(batch_idx))
+    if (dst_x >= dst.width(batch_idx) || dst_y >= dst.height(batch_idx))
         return;
 
     T B = *src.ptr(batch_idx, dst_y, dst_x, bidx);
@@ -258,12 +263,13 @@ __global__ void bgr_to_yuv_float_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHW
 }
 
 template<class T>
-__global__ void yuv_to_bgr_char_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> dst, int bidx)
+__global__ void yuv_to_bgr_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
+                                     int bidx)
 {
     int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
     int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
-    if (dst_x >= dst.at_cols(batch_idx) || dst_y >= dst.at_rows(batch_idx))
+    if (dst_x >= dst.width(batch_idx) || dst_y >= dst.height(batch_idx))
         return;
 
     T Y  = *src.ptr(batch_idx, dst_y, dst_x, 0);
@@ -282,12 +288,13 @@ __global__ void yuv_to_bgr_char_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC
 }
 
 template<class T>
-__global__ void yuv_to_bgr_float_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> dst, int bidx)
+__global__ void yuv_to_bgr_float_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
+                                      int bidx)
 {
     int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
     int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
-    if (dst_x >= dst.at_cols(batch_idx) || dst_y >= dst.at_rows(batch_idx))
+    if (dst_x >= dst.width(batch_idx) || dst_y >= dst.height(batch_idx))
         return;
 
     T Y  = *src.ptr(batch_idx, dst_y, dst_x, 0);
@@ -306,12 +313,13 @@ __global__ void yuv_to_bgr_float_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHW
 }
 
 template<class T>
-__global__ void bgr_to_hsv_char_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> dst, int bidx, bool isFullRange)
+__global__ void bgr_to_hsv_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
+                                     int bidx, bool isFullRange)
 {
     int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
     int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
-    if (dst_x >= dst.at_cols(batch_idx) || dst_y >= dst.at_rows(batch_idx))
+    if (dst_x >= dst.width(batch_idx) || dst_y >= dst.height(batch_idx))
         return;
 
     int       b         = *src.ptr(batch_idx, dst_y, dst_x, bidx);
@@ -346,12 +354,13 @@ __global__ void bgr_to_hsv_char_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC
 }
 
 template<class T>
-__global__ void bgr_to_hsv_float_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> dst, int bidx)
+__global__ void bgr_to_hsv_float_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
+                                      int bidx)
 {
     int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
     int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
-    if (dst_x >= dst.at_cols(batch_idx) || dst_y >= dst.at_rows(batch_idx))
+    if (dst_x >= dst.width(batch_idx) || dst_y >= dst.height(batch_idx))
         return;
 
     float b = *src.ptr(batch_idx, dst_y, dst_x, bidx);
@@ -430,13 +439,13 @@ __device__ inline void HSV2RGB_native_var_shape(float h, float s, float v, float
 }
 
 template<class T>
-__global__ void hsv_to_bgr_char_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> dst, int bidx, int dcn,
-                                     bool isFullRange)
+__global__ void hsv_to_bgr_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
+                                     int bidx, bool isFullRange)
 {
     int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
     int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
-    if (dst_x >= dst.at_cols(batch_idx) || dst_y >= dst.at_rows(batch_idx))
+    if (dst_x >= dst.width(batch_idx) || dst_y >= dst.height(batch_idx))
         return;
 
     float h = *src.ptr(batch_idx, dst_y, dst_x, 0);
@@ -453,17 +462,18 @@ __global__ void hsv_to_bgr_char_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC
     *dst.ptr(batch_idx, dst_y, dst_x, bidx)     = cuda::SaturateCast<uchar>(b * 255.0f);
     *dst.ptr(batch_idx, dst_y, dst_x, 1)        = cuda::SaturateCast<uchar>(g * 255.0f);
     *dst.ptr(batch_idx, dst_y, dst_x, bidx ^ 2) = cuda::SaturateCast<uchar>(r * 255.0f);
-    if (dcn == 4)
+    if (dst.numChannels() == 4)
         *dst.ptr(batch_idx, dst_y, dst_x, 3) = alpha;
 }
 
 template<class T>
-__global__ void hsv_to_bgr_float_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> dst, int bidx, int dcn)
+__global__ void hsv_to_bgr_float_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
+                                      int bidx)
 {
     int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
     int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
-    if (dst_x >= dst.at_cols(batch_idx) || dst_y >= dst.at_rows(batch_idx))
+    if (dst_x >= dst.width(batch_idx) || dst_y >= dst.height(batch_idx))
         return;
 
     float h = *src.ptr(batch_idx, dst_y, dst_x, 0);
@@ -480,7 +490,7 @@ __global__ void hsv_to_bgr_float_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHW
     *dst.ptr(batch_idx, dst_y, dst_x, bidx)     = b;
     *dst.ptr(batch_idx, dst_y, dst_x, 1)        = g;
     *dst.ptr(batch_idx, dst_y, dst_x, bidx ^ 2) = r;
-    if (dcn == 4)
+    if (dst.numChannels() == 4)
         *dst.ptr(batch_idx, dst_y, dst_x, 3) = alpha;
 }
 
@@ -525,18 +535,19 @@ __device__ __forceinline__ void bgr_to_yuv42xxp_kernel(const uchar &r, const uch
 }
 
 template<class T>
-__global__ void bgr_to_yuv420sp_char_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> dst, int dcn, int bidx,
-                                          int uidx, NVCVColorConversionCode code)
+__global__ void bgr_to_yuv420sp_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src,
+                                          cuda::ImageBatchVarShapeWrapNHWC<T> dst, int bidx, int uidx,
+                                          NVCVColorConversionCode code)
 {
     int       src_x     = blockIdx.x * blockDim.x + threadIdx.x;
     int       src_y     = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
-    int       src_cols  = src.at_cols(batch_idx);
-    int       src_rows  = src.at_rows(batch_idx);
+    int       src_cols  = src.width(batch_idx);
+    int       src_rows  = src.height(batch_idx);
     if (src_x >= src_cols || src_y >= src_rows)
         return;
 
-    assert(checkShapeFromYUV420(dst.at_rows(batch_idx), dst.at_cols(batch_idx), code));
+    assert(checkShapeFromYUV420(dst.height(batch_idx), dst.width(batch_idx), code));
 
     int uv_x = (src_x % 2 == 0) ? src_x : (src_x - 1);
 
@@ -557,18 +568,19 @@ __global__ void bgr_to_yuv420sp_char_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShap
 }
 
 template<class T>
-__global__ void bgr_to_yuv420p_char_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> dst, int dcn, int bidx,
-                                         int uidx, NVCVColorConversionCode code)
+__global__ void bgr_to_yuv420p_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src,
+                                         cuda::ImageBatchVarShapeWrapNHWC<T> dst, int bidx, int uidx,
+                                         NVCVColorConversionCode code)
 {
     int       src_x     = blockIdx.x * blockDim.x + threadIdx.x;
     int       src_y     = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
-    int       src_cols  = src.at_cols(batch_idx);
-    int       src_rows  = src.at_rows(batch_idx);
+    int       src_cols  = src.width(batch_idx);
+    int       src_rows  = src.height(batch_idx);
     if (src_x >= src_cols || src_y >= src_rows)
         return;
 
-    assert(checkShapeFromYUV420(dst.at_rows(batch_idx), dst.at_cols(batch_idx), code));
+    assert(checkShapeFromYUV420(dst.height(batch_idx), dst.width(batch_idx), code));
 
     int plane_y_step  = src_rows * src_cols;
     int plane_uv_step = plane_y_step / 4;
@@ -591,18 +603,19 @@ __global__ void bgr_to_yuv420p_char_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShape
 }
 
 template<class T>
-__global__ void yuv420sp_to_bgr_char_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> dst, int dcn, int bidx,
-                                          int uidx, NVCVColorConversionCode code)
+__global__ void yuv420sp_to_bgr_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src,
+                                          cuda::ImageBatchVarShapeWrapNHWC<T> dst, int bidx, int uidx,
+                                          NVCVColorConversionCode code)
 {
     int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
     int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
-    int       dst_cols  = dst.at_cols(batch_idx);
-    int       dst_rows  = dst.at_rows(batch_idx);
+    int       dst_cols  = dst.width(batch_idx);
+    int       dst_rows  = dst.height(batch_idx);
     if (dst_x >= dst_cols || dst_y >= dst_rows)
         return;
 
-    assert(checkShapeFromYUV420(src.at_rows(batch_idx), src.at_cols(batch_idx), code));
+    assert(checkShapeFromYUV420(src.height(batch_idx), src.width(batch_idx), code));
 
     int uv_x = (dst_x % 2 == 0) ? dst_x : (dst_x - 1);
 
@@ -616,25 +629,26 @@ __global__ void yuv420sp_to_bgr_char_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShap
     *dst.ptr(batch_idx, dst_y, dst_x, bidx)     = b;
     *dst.ptr(batch_idx, dst_y, dst_x, 1)        = g;
     *dst.ptr(batch_idx, dst_y, dst_x, bidx ^ 2) = r;
-    if (dcn == 4)
+    if (dst.numChannels() == 4)
     {
         *dst.ptr(batch_idx, dst_y, dst_x, 3) = a;
     }
 }
 
 template<class T>
-__global__ void yuv420p_to_bgr_char_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> dst, int dcn, int bidx,
-                                         int uidx, NVCVColorConversionCode code)
+__global__ void yuv420p_to_bgr_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src,
+                                         cuda::ImageBatchVarShapeWrapNHWC<T> dst, int bidx, int uidx,
+                                         NVCVColorConversionCode code)
 {
     int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
     int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
-    int       dst_cols  = dst.at_cols(batch_idx);
-    int       dst_rows  = dst.at_rows(batch_idx);
+    int       dst_cols  = dst.width(batch_idx);
+    int       dst_rows  = dst.height(batch_idx);
     if (dst_x >= dst_cols || dst_y >= dst_rows)
         return;
 
-    assert(checkShapeFromYUV420(src.at_rows(batch_idx), src.at_cols(batch_idx), code));
+    assert(checkShapeFromYUV420(src.height(batch_idx), src.width(batch_idx), code));
 
     int plane_y_step  = dst_rows * dst_cols;
     int plane_uv_step = plane_y_step / 4;
@@ -650,21 +664,21 @@ __global__ void yuv420p_to_bgr_char_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShape
     *dst.ptr(batch_idx, dst_y, dst_x, bidx)     = b;
     *dst.ptr(batch_idx, dst_y, dst_x, 1)        = g;
     *dst.ptr(batch_idx, dst_y, dst_x, bidx ^ 2) = r;
-    if (dcn == 4)
+    if (dst.numChannels() == 4)
     {
         *dst.ptr(batch_idx, dst_y, dst_x, 3) = a;
     }
 }
 
 template<class T>
-__global__ void yuv422_to_bgr_char_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> dst, int dcn, int bidx, int yidx,
-                                        int uidx)
+__global__ void yuv422_to_bgr_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src,
+                                        cuda::ImageBatchVarShapeWrapNHWC<T> dst, int bidx, int yidx, int uidx)
 {
     int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
     int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
-    int       dst_cols  = dst.at_cols(batch_idx);
-    int       dst_rows  = dst.at_rows(batch_idx);
+    int       dst_cols  = dst.width(batch_idx);
+    int       dst_rows  = dst.height(batch_idx);
     if (dst_x >= dst_cols || dst_y >= dst_rows)
         return;
     int uv_x = (dst_x % 2 == 0) ? dst_x : dst_x - 1;
@@ -679,35 +693,36 @@ __global__ void yuv422_to_bgr_char_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeN
     *dst.ptr(batch_idx, dst_y, dst_x, bidx)     = b;
     *dst.ptr(batch_idx, dst_y, dst_x, 1)        = g;
     *dst.ptr(batch_idx, dst_y, dst_x, bidx ^ 2) = r;
-    if (dcn == 4)
+    if (dst.numChannels() == 4)
     {
         *dst.ptr(batch_idx, dst_y, dst_x, 3) = a;
     }
 }
 
 template<class T>
-__global__ void yuv420_to_gray_char_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> dst,
-                                         NVCVColorConversionCode code)
+__global__ void yuv420_to_gray_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src,
+                                         cuda::ImageBatchVarShapeWrapNHWC<T> dst, NVCVColorConversionCode code)
 {
     int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
     int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
-    if (dst_x >= dst.at_cols(batch_idx) || dst_y >= dst.at_rows(batch_idx))
+    if (dst_x >= dst.width(batch_idx) || dst_y >= dst.height(batch_idx))
         return;
 
-    assert(checkShapeFromYUV420(src.at_rows(batch_idx), src.at_cols(batch_idx), code));
+    assert(checkShapeFromYUV420(src.height(batch_idx), src.width(batch_idx), code));
 
     T Y                                  = *src.ptr(batch_idx, dst_y, dst_x, 0);
     *dst.ptr(batch_idx, dst_y, dst_x, 0) = Y;
 }
 
 template<class T>
-__global__ void yuv422_to_gray_char_nhwc(Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> dst, int yidx)
+__global__ void yuv422_to_gray_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src,
+                                         cuda::ImageBatchVarShapeWrapNHWC<T> dst, int yidx)
 {
     int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
     int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
-    if (dst_x >= dst.at_cols(batch_idx) || dst_y >= dst.at_rows(batch_idx))
+    if (dst_x >= dst.width(batch_idx) || dst_y >= dst.height(batch_idx))
         return;
     T Y                                  = *src.ptr(batch_idx, dst_y, dst_x, yidx);
     *dst.ptr(batch_idx, dst_y, dst_x, 0) = Y;
@@ -765,9 +780,9 @@ inline ErrorCode BGR_to_RGB(const IImageBatchVarShapeDataStridedCuda &inData,
     case kCV_8U:
     case kCV_8S:
     {
-        cuda_op::Ptr2dVarShapeNHWC<unsigned char> src_ptr(inData);
-        cuda_op::Ptr2dVarShapeNHWC<unsigned char> dst_ptr(outData);
-        rgb_to_bgr_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, sch, dch, bidx);
+        cuda::ImageBatchVarShapeWrapNHWC<unsigned char> src_ptr(inData, sch);
+        cuda::ImageBatchVarShapeWrapNHWC<unsigned char> dst_ptr(outData, dch);
+        rgb_to_bgr_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
         checkKernelErrors();
     }
     break;
@@ -775,33 +790,33 @@ inline ErrorCode BGR_to_RGB(const IImageBatchVarShapeDataStridedCuda &inData,
     case kCV_16F:
     case kCV_16S:
     {
-        cuda_op::Ptr2dVarShapeNHWC<uint16_t> src_ptr(inData);
-        cuda_op::Ptr2dVarShapeNHWC<uint16_t> dst_ptr(outData);
-        rgb_to_bgr_nhwc<uint16_t><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, sch, dch, bidx);
+        cuda::ImageBatchVarShapeWrapNHWC<uint16_t> src_ptr(inData, sch);
+        cuda::ImageBatchVarShapeWrapNHWC<uint16_t> dst_ptr(outData, dch);
+        rgb_to_bgr_nhwc<uint16_t><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
         checkKernelErrors();
     }
     break;
     case kCV_32S:
     {
-        cuda_op::Ptr2dVarShapeNHWC<int32_t> src_ptr(inData);
-        cuda_op::Ptr2dVarShapeNHWC<int32_t> dst_ptr(outData);
-        rgb_to_bgr_nhwc<int32_t><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, sch, dch, bidx);
+        cuda::ImageBatchVarShapeWrapNHWC<int32_t> src_ptr(inData, sch);
+        cuda::ImageBatchVarShapeWrapNHWC<int32_t> dst_ptr(outData, dch);
+        rgb_to_bgr_nhwc<int32_t><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
         checkKernelErrors();
     }
     break;
     case kCV_32F:
     {
-        cuda_op::Ptr2dVarShapeNHWC<float> src_ptr(inData);
-        cuda_op::Ptr2dVarShapeNHWC<float> dst_ptr(outData);
-        rgb_to_bgr_nhwc<float><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, sch, dch, bidx);
+        cuda::ImageBatchVarShapeWrapNHWC<float> src_ptr(inData, sch);
+        cuda::ImageBatchVarShapeWrapNHWC<float> dst_ptr(outData, dch);
+        rgb_to_bgr_nhwc<float><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
         checkKernelErrors();
     }
     break;
     case kCV_64F:
     {
-        cuda_op::Ptr2dVarShapeNHWC<double> src_ptr(inData);
-        cuda_op::Ptr2dVarShapeNHWC<double> dst_ptr(outData);
-        rgb_to_bgr_nhwc<double><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, sch, dch, bidx);
+        cuda::ImageBatchVarShapeWrapNHWC<double> src_ptr(inData, sch);
+        cuda::ImageBatchVarShapeWrapNHWC<double> dst_ptr(outData, dch);
+        rgb_to_bgr_nhwc<double><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
         checkKernelErrors();
     }
     break;
@@ -856,9 +871,9 @@ inline ErrorCode GRAY_to_BGR(const IImageBatchVarShapeDataStridedCuda &inData,
     case kCV_8U:
     case kCV_8S:
     {
-        cuda_op::Ptr2dVarShapeNHWC<unsigned char> src_ptr(inData);
-        cuda_op::Ptr2dVarShapeNHWC<unsigned char> dst_ptr(outData);
-        gray_to_bgr_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dch);
+        cuda::ImageBatchVarShapeWrapNHWC<unsigned char> src_ptr(inData, channels);
+        cuda::ImageBatchVarShapeWrapNHWC<unsigned char> dst_ptr(outData, dch);
+        gray_to_bgr_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr);
         checkKernelErrors();
     }
     break;
@@ -866,33 +881,33 @@ inline ErrorCode GRAY_to_BGR(const IImageBatchVarShapeDataStridedCuda &inData,
     case kCV_16F:
     case kCV_16S:
     {
-        cuda_op::Ptr2dVarShapeNHWC<uint16_t> src_ptr(inData);
-        cuda_op::Ptr2dVarShapeNHWC<uint16_t> dst_ptr(outData);
-        gray_to_bgr_nhwc<uint16_t><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dch);
+        cuda::ImageBatchVarShapeWrapNHWC<uint16_t> src_ptr(inData, channels);
+        cuda::ImageBatchVarShapeWrapNHWC<uint16_t> dst_ptr(outData, dch);
+        gray_to_bgr_nhwc<uint16_t><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr);
         checkKernelErrors();
     }
     break;
     case kCV_32S:
     {
-        cuda_op::Ptr2dVarShapeNHWC<int32_t> src_ptr(inData);
-        cuda_op::Ptr2dVarShapeNHWC<int32_t> dst_ptr(outData);
-        gray_to_bgr_nhwc<int32_t><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dch);
+        cuda::ImageBatchVarShapeWrapNHWC<int32_t> src_ptr(inData, channels);
+        cuda::ImageBatchVarShapeWrapNHWC<int32_t> dst_ptr(outData, dch);
+        gray_to_bgr_nhwc<int32_t><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr);
         checkKernelErrors();
     }
     break;
     case kCV_32F:
     {
-        cuda_op::Ptr2dVarShapeNHWC<float> src_ptr(inData);
-        cuda_op::Ptr2dVarShapeNHWC<float> dst_ptr(outData);
-        gray_to_bgr_nhwc<float><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dch);
+        cuda::ImageBatchVarShapeWrapNHWC<float> src_ptr(inData, channels);
+        cuda::ImageBatchVarShapeWrapNHWC<float> dst_ptr(outData, dch);
+        gray_to_bgr_nhwc<float><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr);
         checkKernelErrors();
     }
     break;
     case kCV_64F:
     {
-        cuda_op::Ptr2dVarShapeNHWC<double> src_ptr(inData);
-        cuda_op::Ptr2dVarShapeNHWC<double> dst_ptr(outData);
-        gray_to_bgr_nhwc<double><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dch);
+        cuda::ImageBatchVarShapeWrapNHWC<double> src_ptr(inData, channels);
+        cuda::ImageBatchVarShapeWrapNHWC<double> dst_ptr(outData, dch);
+        gray_to_bgr_nhwc<double><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr);
         checkKernelErrors();
     }
     break;
@@ -947,24 +962,24 @@ inline ErrorCode BGR_to_GRAY(const IImageBatchVarShapeDataStridedCuda &inData,
     {
     case kCV_8U:
     {
-        cuda_op::Ptr2dVarShapeNHWC<unsigned char> src_ptr(inData);
-        cuda_op::Ptr2dVarShapeNHWC<unsigned char> dst_ptr(outData);
+        cuda::ImageBatchVarShapeWrapNHWC<unsigned char> src_ptr(inData, channels);
+        cuda::ImageBatchVarShapeWrapNHWC<unsigned char> dst_ptr(outData, dcn);
         bgr_to_gray_char_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
         checkKernelErrors();
     }
     break;
     case kCV_16U:
     {
-        cuda_op::Ptr2dVarShapeNHWC<unsigned short> src_ptr(inData);
-        cuda_op::Ptr2dVarShapeNHWC<unsigned short> dst_ptr(outData);
+        cuda::ImageBatchVarShapeWrapNHWC<unsigned short> src_ptr(inData, channels);
+        cuda::ImageBatchVarShapeWrapNHWC<unsigned short> dst_ptr(outData, dcn);
         bgr_to_gray_char_nhwc<unsigned short><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
         checkKernelErrors();
     }
     break;
     case kCV_32F:
     {
-        cuda_op::Ptr2dVarShapeNHWC<float> src_ptr(inData);
-        cuda_op::Ptr2dVarShapeNHWC<float> dst_ptr(outData);
+        cuda::ImageBatchVarShapeWrapNHWC<float> src_ptr(inData, channels);
+        cuda::ImageBatchVarShapeWrapNHWC<float> dst_ptr(outData, dcn);
         bgr_to_gray_char_nhwc<float><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
         checkKernelErrors();
     }
@@ -1022,24 +1037,24 @@ inline ErrorCode BGR_to_YUV(const IImageBatchVarShapeDataStridedCuda &inData,
     {
     case kCV_8U:
     {
-        cuda_op::Ptr2dVarShapeNHWC<unsigned char> src_ptr(inData);
-        cuda_op::Ptr2dVarShapeNHWC<unsigned char> dst_ptr(outData);
+        cuda::ImageBatchVarShapeWrapNHWC<unsigned char> src_ptr(inData, channels);
+        cuda::ImageBatchVarShapeWrapNHWC<unsigned char> dst_ptr(outData, dcn);
         bgr_to_yuv_char_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
         checkKernelErrors();
     }
     break;
     case kCV_16U:
     {
-        cuda_op::Ptr2dVarShapeNHWC<unsigned short> src_ptr(inData);
-        cuda_op::Ptr2dVarShapeNHWC<unsigned short> dst_ptr(outData);
+        cuda::ImageBatchVarShapeWrapNHWC<unsigned short> src_ptr(inData, channels);
+        cuda::ImageBatchVarShapeWrapNHWC<unsigned short> dst_ptr(outData, dcn);
         bgr_to_yuv_char_nhwc<unsigned short><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
         checkKernelErrors();
     }
     break;
     case kCV_32F:
     {
-        cuda_op::Ptr2dVarShapeNHWC<float> src_ptr(inData);
-        cuda_op::Ptr2dVarShapeNHWC<float> dst_ptr(outData);
+        cuda::ImageBatchVarShapeWrapNHWC<float> src_ptr(inData, channels);
+        cuda::ImageBatchVarShapeWrapNHWC<float> dst_ptr(outData, dcn);
         bgr_to_yuv_float_nhwc<float><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
         checkKernelErrors();
     }
@@ -1097,24 +1112,24 @@ inline ErrorCode YUV_to_BGR(const IImageBatchVarShapeDataStridedCuda &inData,
     {
     case kCV_8U:
     {
-        cuda_op::Ptr2dVarShapeNHWC<unsigned char> src_ptr(inData);
-        cuda_op::Ptr2dVarShapeNHWC<unsigned char> dst_ptr(outData);
+        cuda::ImageBatchVarShapeWrapNHWC<unsigned char> src_ptr(inData, channels);
+        cuda::ImageBatchVarShapeWrapNHWC<unsigned char> dst_ptr(outData, dcn);
         yuv_to_bgr_char_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
         checkKernelErrors();
     }
     break;
     case kCV_16U:
     {
-        cuda_op::Ptr2dVarShapeNHWC<unsigned short> src_ptr(inData);
-        cuda_op::Ptr2dVarShapeNHWC<unsigned short> dst_ptr(outData);
+        cuda::ImageBatchVarShapeWrapNHWC<unsigned short> src_ptr(inData, channels);
+        cuda::ImageBatchVarShapeWrapNHWC<unsigned short> dst_ptr(outData, dcn);
         yuv_to_bgr_char_nhwc<unsigned short><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
         checkKernelErrors();
     }
     break;
     case kCV_32F:
     {
-        cuda_op::Ptr2dVarShapeNHWC<float> src_ptr(inData);
-        cuda_op::Ptr2dVarShapeNHWC<float> dst_ptr(outData);
+        cuda::ImageBatchVarShapeWrapNHWC<float> src_ptr(inData, channels);
+        cuda::ImageBatchVarShapeWrapNHWC<float> dst_ptr(outData, dcn);
         yuv_to_bgr_float_nhwc<float><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
         checkKernelErrors();
     }
@@ -1173,16 +1188,16 @@ inline ErrorCode BGR_to_HSV(const IImageBatchVarShapeDataStridedCuda &inData,
     {
     case kCV_8U:
     {
-        cuda_op::Ptr2dVarShapeNHWC<unsigned char> src_ptr(inData);
-        cuda_op::Ptr2dVarShapeNHWC<unsigned char> dst_ptr(outData);
+        cuda::ImageBatchVarShapeWrapNHWC<unsigned char> src_ptr(inData, channels);
+        cuda::ImageBatchVarShapeWrapNHWC<unsigned char> dst_ptr(outData, dcn);
         bgr_to_hsv_char_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx, isFullRange);
         checkKernelErrors();
     }
     break;
     case kCV_32F:
     {
-        cuda_op::Ptr2dVarShapeNHWC<float> src_ptr(inData);
-        cuda_op::Ptr2dVarShapeNHWC<float> dst_ptr(outData);
+        cuda::ImageBatchVarShapeWrapNHWC<float> src_ptr(inData, channels);
+        cuda::ImageBatchVarShapeWrapNHWC<float> dst_ptr(outData, dcn);
         bgr_to_hsv_float_nhwc<float><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
         checkKernelErrors();
     }
@@ -1241,18 +1256,17 @@ inline ErrorCode HSV_to_BGR(const IImageBatchVarShapeDataStridedCuda &inData,
     {
     case kCV_8U:
     {
-        cuda_op::Ptr2dVarShapeNHWC<unsigned char> src_ptr(inData);
-        cuda_op::Ptr2dVarShapeNHWC<unsigned char> dst_ptr(outData);
-        hsv_to_bgr_char_nhwc<unsigned char>
-            <<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx, dcn, isFullRange);
+        cuda::ImageBatchVarShapeWrapNHWC<unsigned char> src_ptr(inData, channels);
+        cuda::ImageBatchVarShapeWrapNHWC<unsigned char> dst_ptr(outData, dcn);
+        hsv_to_bgr_char_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx, isFullRange);
         checkKernelErrors();
     }
     break;
     case kCV_32F:
     {
-        cuda_op::Ptr2dVarShapeNHWC<float> src_ptr(inData);
-        cuda_op::Ptr2dVarShapeNHWC<float> dst_ptr(outData);
-        hsv_to_bgr_float_nhwc<float><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx, dcn);
+        cuda::ImageBatchVarShapeWrapNHWC<float> src_ptr(inData, channels);
+        cuda::ImageBatchVarShapeWrapNHWC<float> dst_ptr(outData, dcn);
+        hsv_to_bgr_float_nhwc<float><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
         checkKernelErrors();
     }
     break;
@@ -1322,8 +1336,8 @@ inline ErrorCode YUV420xp_to_BGR(const IImageBatchVarShapeDataStridedCuda &inDat
     dim3 blockSize(BLOCK, BLOCK / 4, 1);
     dim3 gridSize(divUp(max_width, blockSize.x), divUp(max_height * 2 / 3, blockSize.y), batch_size);
 
-    cuda_op::Ptr2dVarShapeNHWC<unsigned char> src_ptr(inData);
-    cuda_op::Ptr2dVarShapeNHWC<unsigned char> dst_ptr(outData);
+    cuda::ImageBatchVarShapeWrapNHWC<unsigned char> src_ptr(inData, channels);
+    cuda::ImageBatchVarShapeWrapNHWC<unsigned char> dst_ptr(outData, dcn);
 
     switch (code)
     {
@@ -1343,7 +1357,7 @@ inline ErrorCode YUV420xp_to_BGR(const IImageBatchVarShapeDataStridedCuda &inDat
     case NVCV_COLOR_YUV2RGBA_NV21:
     {
         yuv420sp_to_bgr_char_nhwc<unsigned char>
-            <<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dcn, bidx, uidx, code);
+            <<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx, uidx, code);
         checkKernelErrors();
     }
     break;
@@ -1356,8 +1370,7 @@ inline ErrorCode YUV420xp_to_BGR(const IImageBatchVarShapeDataStridedCuda &inDat
     case NVCV_COLOR_YUV2RGBA_YV12:
     case NVCV_COLOR_YUV2RGBA_IYUV:
     {
-        yuv420p_to_bgr_char_nhwc<unsigned char>
-            <<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dcn, bidx, uidx, code);
+        yuv420p_to_bgr_char_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx, uidx, code);
         checkKernelErrors();
     }
     break;
@@ -1433,8 +1446,8 @@ inline ErrorCode YUV422_to_BGR(const IImageBatchVarShapeDataStridedCuda &inData,
     dim3 blockSize(BLOCK, BLOCK / 4, 1);
     dim3 gridSize(divUp(max_width, blockSize.x), divUp(max_height, blockSize.y), batch_size);
 
-    cuda_op::Ptr2dVarShapeNHWC<unsigned char> src_ptr(inData);
-    cuda_op::Ptr2dVarShapeNHWC<unsigned char> dst_ptr(outData);
+    cuda::ImageBatchVarShapeWrapNHWC<unsigned char> src_ptr(inData, channels);
+    cuda::ImageBatchVarShapeWrapNHWC<unsigned char> dst_ptr(outData, dcn);
 
     switch (code)
     {
@@ -1458,8 +1471,7 @@ inline ErrorCode YUV422_to_BGR(const IImageBatchVarShapeDataStridedCuda &inData,
     case NVCV_COLOR_YUV2RGBA_UYVY:
     case NVCV_COLOR_YUV2BGRA_UYVY:
     {
-        yuv422_to_bgr_char_nhwc<unsigned char>
-            <<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dcn, bidx, yidx, uidx);
+        yuv422_to_bgr_char_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx, yidx, uidx);
         checkKernelErrors();
     }
     break;
@@ -1471,15 +1483,14 @@ inline ErrorCode YUV422_to_BGR(const IImageBatchVarShapeDataStridedCuda &inData,
 }
 
 template<typename T>
-inline static void bgr_to_yuv420p_launcher(Ptr2dVarShapeNHWC<T> src_ptr, Ptr2dVarShapeNHWC<T> dst_ptr,
-                                           DataShape inputShape, int bidx, int uidx, NVCVColorConversionCode code,
-                                           cudaStream_t stream)
+inline static void bgr_to_yuv420p_launcher(cuda::ImageBatchVarShapeWrapNHWC<T> src_ptr,
+                                           cuda::ImageBatchVarShapeWrapNHWC<T> dst_ptr, DataShape inputShape, int bidx,
+                                           int uidx, NVCVColorConversionCode code, cudaStream_t stream)
 {
     // method 1
     dim3 blockSize(BLOCK, BLOCK / 4, 1);
     dim3 gridSize(divUp(inputShape.W, blockSize.x), divUp(inputShape.H, blockSize.y), inputShape.N);
-    bgr_to_yuv420p_char_nhwc<unsigned char>
-        <<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, inputShape.C, bidx, uidx, code);
+    bgr_to_yuv420p_char_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx, uidx, code);
     checkKernelErrors();
 
     // method 2 (TODO)
@@ -1487,15 +1498,14 @@ inline static void bgr_to_yuv420p_launcher(Ptr2dVarShapeNHWC<T> src_ptr, Ptr2dVa
 }
 
 template<typename T>
-inline static void bgr_to_yuv420sp_launcher(Ptr2dVarShapeNHWC<T> src_ptr, Ptr2dVarShapeNHWC<T> dst_ptr,
-                                            DataShape inputShape, int bidx, int uidx, NVCVColorConversionCode code,
-                                            cudaStream_t stream)
+inline static void bgr_to_yuv420sp_launcher(cuda::ImageBatchVarShapeWrapNHWC<T> src_ptr,
+                                            cuda::ImageBatchVarShapeWrapNHWC<T> dst_ptr, DataShape inputShape, int bidx,
+                                            int uidx, NVCVColorConversionCode code, cudaStream_t stream)
 {
     // method 1
     dim3 blockSize(BLOCK, BLOCK / 4, 1);
     dim3 gridSize(divUp(inputShape.W, blockSize.x), divUp(inputShape.H, blockSize.y), inputShape.N);
-    bgr_to_yuv420sp_char_nhwc<unsigned char>
-        <<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, inputShape.C, bidx, uidx, code);
+    bgr_to_yuv420sp_char_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx, uidx, code);
     checkKernelErrors();
 
     // method 2 (TODO)
@@ -1540,10 +1550,14 @@ inline ErrorCode BGR_to_YUV420xp(const IImageBatchVarShapeDataStridedCuda &inDat
         return ErrorCode::INVALID_DATA_TYPE;
     }
 
+    // Legacy code has dcn (destination channels) as an infer parameter that if <= 0 it is set to 1 in case of the
+    // codes below.  It seems address computation assumes numChannels = 1 in kernels in bgr_to_yuv420(s)p_launcher.
+    int dcn = 1;
+
     // BGR input
-    cuda_op::Ptr2dVarShapeNHWC<unsigned char> src_ptr(inData);
+    cuda::ImageBatchVarShapeWrapNHWC<unsigned char> src_ptr(inData, channels);
     // YUV420xp output
-    cuda_op::Ptr2dVarShapeNHWC<unsigned char> dst_ptr(outData);
+    cuda::ImageBatchVarShapeWrapNHWC<unsigned char> dst_ptr(outData, dcn);
 
     cuda_op::DataShape maxInputShape(inData.numImages(), channels, inData.maxSize().h, inData.maxSize().w);
 

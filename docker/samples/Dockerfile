@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,8 +34,34 @@ RUN apt-get update && apt-get install -y --no-install-recommends libgtest-dev li
     mlocate && updatedb \
     && rm -rf /var/lib/apt/lists/*
 RUN pip3 install --upgrade pip
-RUN pip3 install torch torchvision
+RUN pip3 install torch==1.13.0 torchvision==0.14.0 av==10.0.0
 RUN git clone https://github.com/itsliupeng/torchnvjpeg.git
 RUN cd torchnvjpeg && python setup.py bdist_wheel && cd dist && pip3 install torchnvjpeg-0.1.0-cp38-cp38-linux_x86_64.whl
 RUN echo "export PATH=$PATH:/opt/tensorrt/bin" >> ~/.bashrc
-RUN echo $PATH
+
+# Build VPF
+ADD ffmpeg-master-latest-linux64-gpl-shared /workspace/ffmpeg-master-latest-linux64-gpl-shared
+ADD Video_Codec_SDK /workspace/Video_Codec_SDK
+ADD VideoProcessingFramework /workspace/VideoProcessingFramework
+ENV PATH_TO_SDK="/workspace/Video_Codec_SDK"
+ENV PATH_TO_FFMPEG="/workspace/ffmpeg-master-latest-linux64-gpl-shared"
+ENV CUDACXX=/usr/local/cuda/bin/nvcc
+ENV INSTALL_PREFIX="/workspace/VideoProcessingFramework/install"
+ENV LD_LIBRARY_PATH="${PATH_TO_FFMPEG}/lib:$LD_LIBRARY_PATH"
+ENV LD_LIBRARY_PATH="/workspace/VideoProcessingFramework/install/bin:${LD_LIBRARY_PATH}"
+ENV PYTHONPATH="${PYTHONPATH}:/workspace/VideoProcessingFramework/install/bin/"
+WORKDIR "/workspace/VideoProcessingFramework"
+RUN rm -rf install
+RUN rm -rf build
+RUN mkdir -p install
+RUN mkdir -p build
+WORKDIR "/workspace/VideoProcessingFramework/build"
+
+RUN cmake .. \
+  -DFFMPEG_DIR:PATH="$PATH_TO_FFMPEG" \
+  -DVIDEO_CODEC_SDK_DIR:PATH="$PATH_TO_SDK" \
+  -DGENERATE_PYTHON_BINDINGS:BOOL="1" \
+  -DGENERATE_PYTORCH_EXTENSION:BOOL="1" \
+  -DCMAKE_INSTALL_PREFIX:PATH="$INSTALL_PREFIX"
+RUN make && make install
+WORKDIR /workspace

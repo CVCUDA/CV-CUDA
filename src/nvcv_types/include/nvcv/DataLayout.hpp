@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -159,8 +159,10 @@ enum class Packing : int32_t
     /** Three 64-bit channels in three 64-bit words. */
     X64_Y64_Z64 = NVCV_PACKING_X64_Y64_Z64,
 
-    /** One 128-bit channel. */
+    /** One 256-bit channel. */
     X256 = NVCV_PACKING_X256,
+    /** Two 128-bit channels in two 128-bit words. */
+    X128_Y128 = NVCV_PACKING_X128_Y128,
     /** Four 64-bit channels in four 64-bit words. */
     X64_Y64_Z64_W64 = NVCV_PACKING_X64_Y64_Z64_W64,
 };
@@ -169,7 +171,8 @@ enum class DataKind : int8_t
 {
     UNSIGNED = NVCV_DATA_KIND_UNSIGNED,
     SIGNED   = NVCV_DATA_KIND_SIGNED,
-    FLOAT    = NVCV_DATA_KIND_FLOAT
+    FLOAT    = NVCV_DATA_KIND_FLOAT,
+    COMPLEX  = NVCV_DATA_KIND_COMPLEX
 };
 
 enum class MemLayout : int8_t

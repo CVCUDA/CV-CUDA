@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,7 +32,7 @@ string(REPLACE ";" " " PYTHON_TEST_VERSIONS "${PYTHON_VERSIONS}")
 set(PYTHON_MODULE_DIR ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/python)
 configure_file(cvcuda_test_python.in ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/cvcuda_test_python @ONLY)
 
-set(PYTHON_TEST_INSTDIR "${CMAKE_INSTALL_DATADIR}/python")
+set(PYTHON_TEST_INSTDIR "${CMAKE_INSTALL_DATADIR}/python/cvcuda")
 
 install(FILES ${SOURCES}
         DESTINATION "${PYTHON_TEST_INSTDIR}"

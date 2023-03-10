@@ -1,5 +1,5 @@
 ..
-  # SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  # SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
   # SPDX-License-Identifier: Apache-2.0
   #
   # Licensed under the Apache License, Version 2.0 (the "License");
@@ -97,19 +97,19 @@ Run classification sample for single image with batch size 1
 
 .. code-block:: bash
 
-   python3 ./classification/python/inference.py -i ./assets/tabby_tiger_cat.jpg -l ./models/imagenet-classes.txt -b 1
+   python3 ./classification/python/inference.py -i ./assets/images/tabby_tiger_cat.jpg -l ./models/imagenet-classes.txt -b 1
 
 Run classification sample for single image with batch size 4, This would copy the same image across the batch
 
 .. code-block:: bash
 
-   python3 ./classification/python/inference.py -i ./assets/tabby_tiger_cat.jpg -l ./models/imagenet-classes.txt -b 4
+   python3 ./classification/python/inference.py -i ./assets/images/tabby_tiger_cat.jpg -l ./models/imagenet-classes.txt -b 4
 
 Run classification sample for image directory as input with batch size 2
 
 .. code-block:: bash
 
-   python3 ./classification/python/inference.py -i ./assets -l ./models/imagenet-classes.txt -b 2
+   python3 ./classification/python/inference.py -i ./assets/images/ -l ./models/imagenet-classes.txt -b 2
 
 Sample Output
 -------------

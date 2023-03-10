@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -484,7 +484,7 @@ TEST_P(OpWarpAffine, varshape_correct_output)
 
     const int flags = interpolation | (inverseMap ? NVCV_WARP_INVERSE_MAP : 0);
 
-    nvcv::Tensor transMatrixTensor(nvcv::TensorShape({numberOfImages, 6}, nvcv::TensorLayout::NW), nvcv::TYPE_F32);
+    nvcv::Tensor transMatrixTensor(nvcv::TensorShape({numberOfImages, 6}, nvcv::TENSOR_NW), nvcv::TYPE_F32);
     const auto  *transMatrixTensorData
         = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(transMatrixTensor.exportData());
     ASSERT_NE(nullptr, transMatrixTensorData);

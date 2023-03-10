@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,7 +26,7 @@ namespace nvcv {
 class TensorLayoutInfo
 {
 public:
-    static bool IsCompatible(const TensorLayout &layout)
+    static bool IsCompatible(const TensorLayout &)
     {
         return true;
     }
@@ -65,7 +65,7 @@ protected:
         m_cacheIsBatch = m_layout.rank() > 0 && m_layout[0] == LABEL_BATCH;
 
         // isImage ----------------
-        if (m_layout != TensorLayout::NONE)
+        if (m_layout != TENSOR_NONE)
         {
             m_cacheIsImage = m_layout.find(LABEL_WIDTH) >= 0;
         }
@@ -179,7 +179,7 @@ protected:
                                                   }
                                               });
 
-        m_cacheIsRowMajor = layout.endsWith(TensorLayout::W) || layout.endsWith(TensorLayout::WC);
+        m_cacheIsRowMajor = layout.endsWith(TENSOR_W) || layout.endsWith(TENSOR_WC);
         m_cacheIdxChannel = layout.find(LABEL_CHANNEL);
         m_cacheIdxWidth   = layout.find(LABEL_WIDTH);
         m_cacheIdxHeight  = layout.find(LABEL_HEIGHT);
@@ -187,7 +187,7 @@ protected:
         m_cacheHasChannel = m_cacheIdxChannel >= 0;
 
         // isChannelFirst --------------
-        if (layout != TensorLayout::NONE)
+        if (layout != TENSOR_NONE)
         {
             if (this->isBatch())
             {
@@ -204,7 +204,7 @@ protected:
         }
 
         // isChannelLast --------------
-        if (layout != TensorLayout::NONE)
+        if (layout != TENSOR_NONE)
         {
             m_cacheIsChannelLast = layout[layout.rank() - 1] == LABEL_CHANNEL || !this->hasChannel();
         }

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -O3 -ggdb")
 set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} -O3 -ggdb")
 
@@ -66,3 +66,120 @@ if(ENABLE_SANITIZER)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${COMPILER_SANITIZER_FLAGS}")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${COMPILER_SANITIZER_FLAGS}")
 endif()
+
+if(BUILD_TESTS)
+    # Set up the compilers we'll use to check public API compatibility
+
+    # Are they already specified?
+    if(PUBLIC_API_COMPILERS)
+        # Use them
+        set(candidate_compilers ${PUBLIC_API_COMPILERS})
+    else()
+        # If not, by default, we'll try these.
+        set(candidate_compilers gcc-11 gcc-9 gcc-8 clang-11 clang-14)
+    endif()
+
+    unset(valid_compilers)
+
+    foreach(comp ${candidate_compilers})
+        string(MAKE_C_IDENTIFIER "${comp}" comp_str)
+        string(TOUPPER "${comp_str}" COMP_STR)
+
+        find_program(COMPILER_EXEC_${COMP_STR} ${comp})
+        if(COMPILER_EXEC_${COMP_STR})
+            list(APPEND valid_compilers ${comp})
+        else()
+            if(PUBLIC_API_COMPILERS)
+                message(FATAL_ERROR "Compiler '${comp}' not found")
+            else()
+                message(WARNING "Compiler '${comp}' not found, skipping public API checks for it")
+            endif()
+        endif()
+    endforeach()
+    set(PUBLIC_API_COMPILERS "${valid_compilers}")
+endif()
+
+function(add_header_compat_test)
+    cmake_parse_arguments(ARG "" "TARGET;SOURCE;DEPENDS;STANDARD" "HEADERS" ${ARGN})
+
+    if(NOT ARG_TARGET)
+        message(FATAL_ERROR "TARGET must be specified")
+    endif()
+
+    if(NOT ARG_SOURCE)
+        message(FATAL_ERROR "SOURCE must be specified")
+    endif()
+
+    if(NOT ARG_DEPENDS)
+        message(FATAL_ERROR "DEPENDS must be specified")
+    endif()
+
+    if(NOT ARG_STANDARD)
+        message(FATAL_ERROR "STANDARD must be specified")
+    endif()
+
+    unset(ALL_HEADERS)
+    foreach(hdr ${ARG_HEADERS})
+        set(ALL_HEADERS "${ALL_HEADERS}#include <${hdr}>\n")
+    endforeach()
+
+    # We compile and link the source twice in order to
+    # test if headers included from multiple sources causes
+    # link errors (multiple definitions). It must not.
+    configure_file(${ARG_SOURCE}.in a_${ARG_SOURCE})
+    configure_file(${ARG_SOURCE}.in b_${ARG_SOURCE})
+
+    if(${ARG_SOURCE} MATCHES "\.c$")
+        set(lang_flag -x c)
+    elseif(${ARG_SOURCE} MATCHES "\.cpp$" OR ${ARG_SOURCE} MATCHES "\.cxx$")
+        set(lang_flag -x c++)
+    else()
+        message(FATAL_ERROR "Can't deduce language of '${ARG_SOURCE}'")
+    endif()
+
+    unset(${ARG_TARGET}_files)
+
+    foreach(comp ${PUBLIC_API_COMPILERS})
+        string(MAKE_C_IDENTIFIER "${comp}" comp_str)
+        string(TOUPPER "${comp_str}" COMP_STR)
+        if(COMPILER_EXEC_${COMP_STR})
+            if(WARNINGS_AS_ERRORS)
+                set(extra_flags "-Werror")
+            else()
+                unset(extra_flags)
+            endif()
+            set(inc_paths
+                "$<FILTER:$<TARGET_GENEX_EVAL:${ARG_DEPENDS},$<TARGET_PROPERTY:${ARG_DEPENDS},INTERFACE_INCLUDE_DIRECTORIES>>,EXCLUDE,'^ *$'>")
+
+            set(bindir ${CMAKE_CURRENT_BINARY_DIR}/${ARG_TARGET}/${comp_str})
+            file(MAKE_DIRECTORY ${bindir})
+
+            add_custom_command(OUTPUT ${bindir}/${ARG_SOURCE}.d
+                COMMAND ${COMPILER_EXEC_${COMP_STR}} ${CMAKE_CURRENT_BINARY_DIR}/a_${ARG_SOURCE} -M -MT ${bindir}/${ARG_SOURCE}.so -MF ${bindir}/${ARG_SOURCE}.d
+                        "-I$<JOIN:${inc_paths},;-I>"
+                DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/a_${ARG_SOURCE}
+                COMMAND_EXPAND_LISTS
+            )
+            add_custom_command(OUTPUT ${bindir}/${ARG_SOURCE}.so
+                COMMAND ${COMPILER_EXEC_${COMP_STR}}
+                        ${lang_flag}
+                        -o ${bindir}/${ARG_SOURCE}.so
+                        ${extra_flags}
+                        -std=${ARG_STANDARD}
+                        -Wall -Wextra
+                        -fPIC -shared
+                        "-I$<JOIN:${inc_paths},;-I>"
+                        ${CMAKE_CURRENT_BINARY_DIR}/a_${ARG_SOURCE}
+                        ${CMAKE_CURRENT_BINARY_DIR}/b_${ARG_SOURCE}
+                DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/a_${ARG_SOURCE} ${CMAKE_CURRENT_BINARY_DIR}/b_${ARG_SOURCE} ${bindir}/${ARG_SOURCE}.d
+                DEPFILE ${bindir}/${ARG_SOURCE}.d
+                COMMAND_EXPAND_LISTS
+            )
+            list(APPEND ${ARG_TARGET}_files ${bindir}/${ARG_SOURCE}.so)
+        endif()
+    endforeach()
+
+    if(${ARG_TARGET}_files)
+        add_custom_target(${ARG_TARGET} ALL DEPENDS ${${ARG_TARGET}_files})
+    endif()
+endfunction()

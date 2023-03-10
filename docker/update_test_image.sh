@@ -1,6 +1,6 @@
 #!/bin/bash -e
 
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,7 +37,7 @@ cd test
 
 image=$IMAGE_URL_BASE/test-linux-x64:$TAG_IMAGE
 
-docker build \
+docker build --network=host \
     --build-arg "VER_CUDA=$VER_CUDA" \
     --build-arg "VER_UBUNTU=$VER_UBUNTU" \
     . -t "$image"

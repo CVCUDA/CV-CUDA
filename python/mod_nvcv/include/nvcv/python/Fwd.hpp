@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +18,10 @@
 #ifndef NVCV_PYTHON_FWD_HPP
 #define NVCV_PYTHON_FWD_HPP
 
+namespace pybind11 {
+class tuple;
+}
+
 namespace nvcvpy {
 class ICacheItem;
 class IKey;
@@ -29,7 +33,7 @@ class Tensor;
 class Stream;
 class ResourceGuard;
 enum LockMode : uint8_t;
-using Shape = std::vector<int64_t>;
+using Shape = pybind11::tuple;
 } // namespace nvcvpy
 
 #endif // NVCV_PYTHON_FWD_HPP
