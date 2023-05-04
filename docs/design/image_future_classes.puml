@@ -1,4 +1,4 @@
-' Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+' Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 '
 ' SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
 ' SPDX-License-Identifier: Apache-2.0
@@ -14,7 +14,7 @@
 
 interface IAllocator
 
-interface IImageData
+interface ImageData
 
 enum LockMode
 {
@@ -29,7 +29,7 @@ class LockedImageData
     + LockedImageData()
     + ~LockedImageData()
 
-    + data(): const IImageData *
+    + data(): const ImageData *
     + mode(): LockMode
 }
 
@@ -47,17 +47,17 @@ interface IImage
     + {abstract} lock(LockMode mode) const: LockedImageData
 }
 
-IImageData --o LockedImageData: refers to <
+ImageData --o LockedImageData: refers to <
 
 IAllocator -right-o IImage: refers to <
 
 interface IImageWrapData extends IImage
 {
-    + {abstract} setData(const IImageData &data): void
+    + {abstract} setData(const ImageData &data): void
     + {abstract} resetData(): void
 }
 
-IImageData -down-o IImageWrapData: refers to <
+ImageData -down-o IImageWrapData: refers to <
 
 interface IImageView
 {
@@ -77,20 +77,20 @@ together {
 class Image implements IImage
 {
     + Image(Size2D size, ImageFormat fmt,
-            IAllocator *alloc=nullptr)
+            const Allocator &alloc=nullptr)
 }
 
 class ImageView implements IImageView
 {
     + ImageView(IImage &target, Rect2D rc,
-                IAllocator *alloc=nullptr)
+                const Allocator &alloc=nullptr)
 }
 
 class ImageWrapData implements IImageWrapData
 {
     + ImageWrapData()
-    + ImageWrapData(const IImageData &data,
-                    IAllocator *alloc=nullptr)
+    + ImageWrapData(const ImageData &data,
+                    const Allocator &alloc=nullptr)
 }
 
 }

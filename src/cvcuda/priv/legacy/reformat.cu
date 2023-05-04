@@ -24,7 +24,7 @@
 #include "CvCudaUtils.cuh"
 
 #include <nvcv/IImage.hpp>
-#include <nvcv/IImageData.hpp>
+#include <nvcv/ImageData.hpp>
 
 #include <cassert>
 
@@ -70,7 +70,7 @@ __global__ void transformFormat(const SrcWrapper src, DstWrapper dst, int3 inout
 }
 
 template<cuda_op::DataFormat input_format, typename data_type> // k(N)CHW k(N)HWC, uchar float
-void transform(const nvcv::ITensorDataStridedCuda &inData, const nvcv::ITensorDataStridedCuda &outData,
+void transform(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,
                cudaStream_t stream)
 {
     auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(inData);
@@ -109,7 +109,7 @@ size_t Reformat::calBufferSize(DataShape max_input_shape, DataShape max_output_s
     return 0;
 }
 
-ErrorCode Reformat::infer(const nvcv::ITensorDataStridedCuda &inData, const nvcv::ITensorDataStridedCuda &outData,
+ErrorCode Reformat::infer(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,
                           cudaStream_t stream)
 {
     DataFormat input_format  = helpers::GetLegacyDataFormat(inData.layout());
@@ -165,7 +165,7 @@ ErrorCode Reformat::infer(const nvcv::ITensorDataStridedCuda &inData, const nvcv
         return ErrorCode::INVALID_DATA_TYPE;
     }
 
-    typedef void (*transform_t)(const ITensorDataStridedCuda &input, const ITensorDataStridedCuda &output,
+    typedef void (*transform_t)(const TensorDataStridedCuda &input, const TensorDataStridedCuda &output,
                                 cudaStream_t stream);
 
     static const transform_t funcs[4][7] = {

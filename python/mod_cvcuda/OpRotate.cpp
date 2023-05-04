@@ -103,13 +103,104 @@ void ExportOpRotate(py::module &m)
 {
     using namespace pybind11::literals;
 
-    m.def("rotate", &Rotate, "src"_a, "angle_deg"_a, "shift"_a, "interpolation"_a, py::kw_only(), "stream"_a = nullptr);
+    m.def("rotate", &Rotate, "src"_a, "angle_deg"_a, "shift"_a, "interpolation"_a, py::kw_only(), "stream"_a = nullptr,
+          R"pbdoc(
+
+        Executes the Rotate operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Rotate operator
+            for more details and usage examples.
+
+        Args:
+            src (): Input tensor containing one or more images.
+            angle_deg (double): Angle used for rotation in degrees.
+            shift (Tuple [double, double]): Value of shift in {x, y} directions to move the center at the same coord after rotation.
+            interpolation (Interp): Interpolation type used for transform.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.Tensor: The output tensor.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
+
     m.def("rotate_into", &RotateInto, "dst"_a, "src"_a, "angle_deg"_a, "shift"_a, "interpolation"_a, py::kw_only(),
-          "stream"_a = nullptr);
+          "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Rotate operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Rotate operator
+            for more details and usage examples.
+
+        Args:
+            dst (): Output tensor to store the result of the operation.
+            src (): Input tensor containing one or more images.
+            angle_deg (double): Angle used for rotation in degrees.
+            shift (Tuple [double, double]): Value of shift in {x, y} directions to move the center at the same coord after rotation.
+            interpolation (Interp): Interpolation type used for transform.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
+
     m.def("rotate", &VarShapeRotate, "src"_a, "angle_deg"_a, "shift"_a, "interpolation"_a, py::kw_only(),
-          "stream"_a = nullptr);
+          "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Rotate operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Rotate operator
+            for more details and usage examples.
+
+        Args:
+            src (ImageBatchVarShape): Input image batch containing one or more images.
+            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
+            angle_deg (Tensor): Angle used for rotation in degrees for each image.
+            shift (Tensor): Value of shift in {x, y} directions to move the center at the same coord after rotation for each image.
+            interpolation (Interp): Interpolation type used for transform.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.ImageBatchVarShape: The output image batch.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
+
     m.def("rotate_into", &VarShapeRotateInto, "dst"_a, "src"_a, "angle_deg"_a, "shift"_a, "interpolation"_a,
-          py::kw_only(), "stream"_a = nullptr);
+          py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Rotate operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Rotate operator
+            for more details and usage examples.
+
+        Args:
+            src (ImageBatchVarShape): Input image batch containing one or more images.
+            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
+            angle_deg (Tensor): Angle used for rotation in degrees for each image.
+            shift (Tensor): Value of shift in {x, y} directions to move the center at the same coord after rotation for each image.
+            interpolation (Interp): Interpolation type used for transform.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 }
 
 } // namespace cvcudapy

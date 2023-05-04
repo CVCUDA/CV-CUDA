@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -51,15 +51,15 @@ TEST(TestOpChannelReorder, smoke_test_works)
 
     // Populate input images
     std::vector<uchar4> inImageValues0;
-    auto               &inImageData0 = dynamic_cast<const nvcv::IImageDataStrided &>(*inImages[0].exportData());
-    inImageValues0.resize(inImageData0.plane(0).rowStride / sizeof(uchar4) * inImageData0.size().h);
+    auto                inImageData0 = inImages[0].exportData<nvcv::ImageDataStrided>();
+    inImageValues0.resize(inImageData0->plane(0).rowStride / sizeof(uchar4) * inImageData0->size().h);
     inImageValues0[0] = {1, 2, 3, 7};
     inImageValues0[1] = {7, 3, 2, 9};
     test::SetTensorFromVector<uchar4>(nvcv::TensorWrapImage(inImages[0]).exportData(), inImageValues0, -1);
 
     std::vector<uchar4> inImageValues1;
-    auto               &inImageData1 = dynamic_cast<const nvcv::IImageDataStrided &>(*inImages[1].exportData());
-    inImageValues1.resize(inImageData1.plane(0).rowStride / sizeof(uchar4) * inImageData1.size().h);
+    auto                inImageData1 = inImages[1].exportData<nvcv::ImageDataStrided>();
+    inImageValues1.resize(inImageData1->plane(0).rowStride / sizeof(uchar4) * inImageData1->size().h);
     inImageValues1[0] = {3, 2, 1, 4};
     inImageValues1[1] = {1, 3, 10, 28};
     test::SetTensorFromVector<uchar4>(nvcv::TensorWrapImage(inImages[1]).exportData(), inImageValues1, -1);
@@ -74,8 +74,8 @@ TEST(TestOpChannelReorder, smoke_test_works)
         nvcv::TYPE_S32);
     // clang-format on
 
-    auto             &inOrderData = dynamic_cast<const nvcv::ITensorDataStrided &>(*inOrders.exportData());
-    std::vector<int4> inOrderValues(inOrderData.stride(0) / sizeof(int4));
+    auto              inOrderData = inOrders.exportData<nvcv::TensorDataStrided>();
+    std::vector<int4> inOrderValues(inOrderData->stride(0) / sizeof(int4));
 
     // N==0
     inOrderValues[0] = {2, -1, 1, 3};

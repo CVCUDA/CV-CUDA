@@ -26,8 +26,7 @@
 #define BLOCK 32
 #define PI    3.1415926535897932384626433832795
 
-using namespace nvcv::legacy::cuda_op;
-using namespace nvcv::legacy::helpers;
+namespace nvcv::legacy::cuda_op {
 
 __global__ void compute_warpAffine(const double angle, const double xShift, const double yShift, double *aCoeffs)
 {
@@ -39,135 +38,52 @@ __global__ void compute_warpAffine(const double angle, const double xShift, cons
     aCoeffs[5] = yShift;
 }
 
-template<typename T>
-__global__ void rotate_linear(const Ptr2dNHWC<T> src, Ptr2dNHWC<T> dst, const double *d_aCoeffs)
+template<class SrcWrapper, class DstWrapper>
+__global__ void rotate(SrcWrapper src, DstWrapper dst, int2 dstSize, const double *d_aCoeffs)
 {
-    int dst_x = blockIdx.x * blockDim.x + threadIdx.x;
-    int dst_y = blockIdx.y * blockDim.y + threadIdx.y;
-    if (dst_x >= dst.cols || dst_y >= dst.rows)
-        return;
-    const int batch_idx = get_batch_idx();
-    int       height = src.rows, width = src.cols;
+    int3 dstCoord = cuda::StaticCast<int>(blockIdx * blockDim + threadIdx);
 
-    const double dst_x_shift = dst_x - d_aCoeffs[2];
-    const double dst_y_shift = dst_y - d_aCoeffs[5];
-    float        src_x       = (float)(dst_x_shift * d_aCoeffs[0] + dst_y_shift * (-d_aCoeffs[1]));
-    float        src_y       = (float)(dst_x_shift * (-d_aCoeffs[3]) + dst_y_shift * d_aCoeffs[4]);
-
-    if (src_x > -0.5 && src_x < width && src_y > -0.5 && src_y < height)
+    if (dstCoord.x >= dstSize.x || dstCoord.y >= dstSize.y)
     {
-        using work_type = nvcv::cuda::ConvertBaseTypeTo<float, T>;
-        work_type out   = nvcv::cuda::SetAll<work_type>(0);
+        return;
+    }
 
-        const int x1      = __float2int_rz(src_x);
-        const int y1      = __float2int_rz(src_y);
-        const int x2      = x1 + 1;
-        const int y2      = y1 + 1;
-        const int x2_read = min(x2, width - 1);
-        const int y2_read = min(y2, height - 1);
+    const double dst_x_shift = dstCoord.x - d_aCoeffs[2];
+    const double dst_y_shift = dstCoord.y - d_aCoeffs[5];
+    const float3 srcCoord{static_cast<float>(dst_x_shift * d_aCoeffs[0] + dst_y_shift * (-d_aCoeffs[1])),
+                          static_cast<float>(dst_x_shift * (-d_aCoeffs[3]) + dst_y_shift * d_aCoeffs[4]),
+                          static_cast<float>(dstCoord.z)};
 
-        T src_reg = *src.ptr(batch_idx, y1, x1);
-        out       = out + src_reg * ((x2 - src_x) * (y2 - src_y));
+    const int2 srcSize{src.borderWrap().tensorShape()[1], src.borderWrap().tensorShape()[0]};
 
-        src_reg = *src.ptr(batch_idx, y1, x2_read);
-        out     = out + src_reg * ((src_x - x1) * (y2 - src_y));
-
-        src_reg = *src.ptr(batch_idx, y2_read, x1);
-        out     = out + src_reg * ((x2 - src_x) * (src_y - y1));
-
-        src_reg = *src.ptr(batch_idx, y2_read, x2_read);
-        out     = out + src_reg * ((src_x - x1) * (src_y - y1));
-
-        *dst.ptr(batch_idx, dst_y, dst_x) = nvcv::cuda::SaturateCast<T>(out);
+    if (srcCoord.x > -0.5 && srcCoord.x < srcSize.x && srcCoord.y > -0.5 && srcCoord.y < srcSize.y)
+    {
+        dst[dstCoord] = src[srcCoord];
     }
 }
 
-template<typename T>
-__global__ void rotate_nearest(const Ptr2dNHWC<T> src, Ptr2dNHWC<T> dst, const double *d_aCoeffs)
+template<typename T, NVCVInterpolationType I>
+void rotate(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, double *d_aCoeffs,
+            const double angleDeg, const double2 shift, cudaStream_t stream)
 {
-    int dst_x = blockIdx.x * blockDim.x + threadIdx.x;
-    int dst_y = blockIdx.y * blockDim.y + threadIdx.y;
-    if (dst_x >= dst.cols || dst_y >= dst.rows)
-        return;
-    const int batch_idx = get_batch_idx();
-    int       height = src.rows, width = src.cols;
+    auto outAccess = TensorDataAccessStridedImagePlanar::Create(outData);
+    NVCV_ASSERT(outAccess);
 
-    const double dst_x_shift = dst_x - d_aCoeffs[2];
-    const double dst_y_shift = dst_y - d_aCoeffs[5];
-
-    float src_x = (float)(dst_x_shift * d_aCoeffs[0] + dst_y_shift * (-d_aCoeffs[1]));
-    float src_y = (float)(dst_x_shift * (-d_aCoeffs[3]) + dst_y_shift * d_aCoeffs[4]);
-
-    if (src_x > -0.5 && src_x < width && src_y > -0.5 && src_y < height)
-    {
-        const int x1 = min(__float2int_rz(src_x + 0.5), width - 1);
-        const int y1 = min(__float2int_rz(src_y + 0.5), height - 1);
-
-        *dst.ptr(batch_idx, dst_y, dst_x) = *src.ptr(batch_idx, y1, x1);
-    }
-}
-
-template<typename T>
-__global__ void rotate_cubic(CubicFilter<BorderReader<Ptr2dNHWC<T>, BrdReplicate<T>>> filteredSrc, Ptr2dNHWC<T> dst,
-                             const double *d_aCoeffs)
-{
-    int dst_x = blockIdx.x * blockDim.x + threadIdx.x;
-    int dst_y = blockIdx.y * blockDim.y + threadIdx.y;
-    if (dst_x >= dst.cols || dst_y >= dst.rows)
-        return;
-    const int batch_idx = get_batch_idx();
-    int       height = filteredSrc.src.ptr.rows, width = filteredSrc.src.ptr.cols;
-
-    const double dst_x_shift = dst_x - d_aCoeffs[2];
-    const double dst_y_shift = dst_y - d_aCoeffs[5];
-
-    float src_x = (float)(dst_x_shift * d_aCoeffs[0] + dst_y_shift * (-d_aCoeffs[1]));
-    float src_y = (float)(dst_x_shift * (-d_aCoeffs[3]) + dst_y_shift * d_aCoeffs[4]);
-
-    if (src_x > -0.5 && src_x < width && src_y > -0.5 && src_y < height)
-    {
-        *dst.ptr(batch_idx, dst_y, dst_x) = filteredSrc(batch_idx, src_y, src_x);
-    }
-}
-
-template<typename T> // uchar3 float3 uchar1 float3
-void rotate(const nvcv::TensorDataAccessStridedImagePlanar &inData,
-            const nvcv::TensorDataAccessStridedImagePlanar &outData, double *d_aCoeffs, const double angleDeg,
-            const double2 shift, const NVCVInterpolationType interpolation, cudaStream_t stream)
-{
-    const int batch_size = inData.numSamples();
-    const int in_width   = inData.numCols();
-    const int in_height  = inData.numRows();
-    const int out_width  = outData.numCols();
-    const int out_height = outData.numRows();
+    const int2 dstSize{outAccess->numCols(), outAccess->numRows()};
+    const int  batchSize{static_cast<int>(outAccess->numSamples())};
 
     compute_warpAffine<<<1, 1, 0, stream>>>(angleDeg, shift.x, shift.y, d_aCoeffs);
     checkKernelErrors();
 
-    dim3         blockSize(BLOCK, BLOCK / 4, 1);
-    dim3         gridSize(divUp(out_width, blockSize.x), divUp(out_height, blockSize.y), batch_size);
-    Ptr2dNHWC<T> src_ptr(inData);  //batch_size, height, width, channels, (T *) d_in);
-    Ptr2dNHWC<T> dst_ptr(outData); //batch_size, out_height, out_width, channels, (T *) d_out);
+    dim3 blockSize(BLOCK, BLOCK / 4, 1);
+    dim3 gridSize(divUp(dstSize.x, blockSize.x), divUp(dstSize.y, blockSize.y), batchSize);
 
-    if (interpolation == NVCV_INTERP_LINEAR)
-    {
-        rotate_linear<T><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, d_aCoeffs);
-        checkKernelErrors();
-    }
-    else if (interpolation == NVCV_INTERP_NEAREST)
-    {
-        rotate_nearest<T><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, d_aCoeffs);
-        checkKernelErrors();
-    }
-    else if (interpolation == NVCV_INTERP_CUBIC)
-    {
-        BrdReplicate<T>                                          brd(src_ptr.rows, src_ptr.cols);
-        BorderReader<Ptr2dNHWC<T>, BrdReplicate<T>>              brdSrc(src_ptr, brd);
-        CubicFilter<BorderReader<Ptr2dNHWC<T>, BrdReplicate<T>>> filteredSrc(brdSrc);
+    auto src = cuda::CreateInterpolationWrapNHW<const T, NVCV_BORDER_REPLICATE, I>(inData);
+    auto dst = cuda::CreateTensorWrapNHW<T>(outData);
 
-        rotate_cubic<T><<<gridSize, blockSize, 0, stream>>>(filteredSrc, dst_ptr, d_aCoeffs);
-        checkKernelErrors();
-    }
+    rotate<<<gridSize, blockSize, 0, stream>>>(src, dst, dstSize, d_aCoeffs);
+
+    checkKernelErrors();
 
 #ifdef CUDA_DEBUG_LOG
     checkCudaErrors(cudaStreamSynchronize(stream));
@@ -175,7 +91,29 @@ void rotate(const nvcv::TensorDataAccessStridedImagePlanar &inData,
 #endif
 }
 
-namespace nvcv::legacy::cuda_op {
+template<typename T> // uchar3 float3 uchar1 float3
+void rotate(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, double *d_aCoeffs,
+            const double angleDeg, const double2 shift, const NVCVInterpolationType interpolation, cudaStream_t stream)
+{
+    switch (interpolation)
+    {
+    case NVCV_INTERP_NEAREST:
+        rotate<T, NVCV_INTERP_NEAREST>(inData, outData, d_aCoeffs, angleDeg, shift, stream);
+        break;
+
+    case NVCV_INTERP_LINEAR:
+        rotate<T, NVCV_INTERP_LINEAR>(inData, outData, d_aCoeffs, angleDeg, shift, stream);
+        break;
+
+    case NVCV_INTERP_CUBIC:
+        rotate<T, NVCV_INTERP_CUBIC>(inData, outData, d_aCoeffs, angleDeg, shift, stream);
+        break;
+
+    default:
+        LOG_ERROR("Invalid rotate interpolation " << interpolation);
+        break;
+    }
+}
 
 Rotate::Rotate(DataShape max_input_shape, DataShape max_output_shape)
     : CudaBaseOp(max_input_shape, max_output_shape)
@@ -208,12 +146,12 @@ size_t Rotate::calBufferSize(DataShape max_input_shape, DataShape max_output_sha
     return 6 * sizeof(double);
 }
 
-ErrorCode Rotate::infer(const ITensorDataStridedCuda &inData, const ITensorDataStridedCuda &outData,
+ErrorCode Rotate::infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                         const double angleDeg, const double2 shift, const NVCVInterpolationType interpolation,
                         cudaStream_t stream)
 {
-    DataFormat input_format  = GetLegacyDataFormat(inData.layout());
-    DataFormat output_format = GetLegacyDataFormat(outData.layout());
+    DataFormat input_format  = helpers::GetLegacyDataFormat(inData.layout());
+    DataFormat output_format = helpers::GetLegacyDataFormat(outData.layout());
 
     if (input_format != output_format)
     {
@@ -232,11 +170,8 @@ ErrorCode Rotate::infer(const ITensorDataStridedCuda &inData, const ITensorDataS
     auto inAccess = TensorDataAccessStridedImagePlanar::Create(inData);
     NVCV_ASSERT(inAccess);
 
-    auto outAccess = TensorDataAccessStridedImagePlanar::Create(outData);
-    NVCV_ASSERT(outAccess);
-
-    DataType  data_type   = GetLegacyDataType(inData.dtype());
-    DataShape input_shape = GetLegacyDataShape(inAccess->infoShape());
+    DataType  data_type   = helpers::GetLegacyDataType(inData.dtype());
+    DataShape input_shape = helpers::GetLegacyDataShape(inAccess->infoShape());
 
     int channels = input_shape.C;
 
@@ -259,8 +194,7 @@ ErrorCode Rotate::infer(const ITensorDataStridedCuda &inData, const ITensorDataS
         return ErrorCode::INVALID_PARAMETER;
     }
 
-    typedef void (*func_t)(const nvcv::TensorDataAccessStridedImagePlanar &inData,
-                           const nvcv::TensorDataAccessStridedImagePlanar &outData, double *d_aCoeffs,
+    typedef void (*func_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, double *d_aCoeffs,
                            const double angleDeg, const double2 shift, const NVCVInterpolationType interpolation,
                            cudaStream_t stream);
 
@@ -276,7 +210,7 @@ ErrorCode Rotate::infer(const ITensorDataStridedCuda &inData, const ITensorDataS
     const func_t func = funcs[data_type][channels - 1];
     NVCV_ASSERT(func != 0);
 
-    func(*inAccess, *outAccess, d_aCoeffs, angleDeg, shift, interpolation, stream);
+    func(inData, outData, d_aCoeffs, angleDeg, shift, interpolation, stream);
 
     return SUCCESS;
 }

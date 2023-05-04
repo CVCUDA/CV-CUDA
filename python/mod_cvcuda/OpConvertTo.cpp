@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -59,9 +59,51 @@ void ExportOpConvertTo(py::module &m)
     using namespace pybind11::literals;
 
     m.def("convertto", &ConvertTo, "src"_a, "dtype"_a, "scale"_a = 1, "offset"_a = 0, py::kw_only(),
-          "stream"_a = nullptr);
+          "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Convert To operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Convert To operator
+            for more details and usage examples.
+
+        Args:
+            src (Tensor): Input tensor containing one or more images.
+            scale (float): Scalar for output data.
+            offset (float): Offset for the data.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.Tensor: The output tensor.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
+
     m.def("convertto_into", &ConvertToInto, "dst"_a, "src"_a, "scale"_a = 1, "offset"_a = 0, py::kw_only(),
-          "stream"_a = nullptr);
+          "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Convert To operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Convert To operator
+            for more details and usage examples.
+
+        Args:
+            dst (Tensor): Output tensor to store the result of the operation.
+            src (Tensor): Input tensor containing one or more images.
+            scale (float): Scalar for output data.
+            offset (float): Offset for the data.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 }
 
 } // namespace cvcudapy

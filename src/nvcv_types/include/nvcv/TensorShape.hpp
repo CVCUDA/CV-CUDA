@@ -23,6 +23,8 @@
 #include "TensorShape.h"
 #include "detail/Concepts.hpp"
 
+#include <tuple>
+
 namespace nvcv {
 
 class TensorShape

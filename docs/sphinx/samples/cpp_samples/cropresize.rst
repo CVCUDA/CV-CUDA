@@ -19,8 +19,7 @@
 Crop And Resize
 ===============
 
-In this example we will cover some basic concepts to show how to use the CVCUDA C++ API which includes usage of Tensor
-,wrapping externally allocated data in CVCUDA Tensor and using Tensors with operators.
+In this example we will cover some basic concepts to show how to use the CVCUDA C++ API which includes usage of Tensor, wrapping externally allocated data in CVCUDA Tensor and using Tensors with operators.
 
 Creating a CMake Project
 ------------------------

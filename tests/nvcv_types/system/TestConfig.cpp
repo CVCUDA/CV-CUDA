@@ -22,7 +22,7 @@
 #include <nvcv/Image.hpp>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
-#include <nvcv/alloc/CustomAllocator.hpp>
+#include <nvcv/alloc/Allocator.hpp>
 
 namespace t     = ::testing;
 namespace ttest = nvcv::test::type;
@@ -38,7 +38,7 @@ std::unique_ptr<T> CreateObj()
     {
         return std::make_unique<nvcv::ImageBatchVarShape>(32);
     }
-    else if constexpr (std::is_same_v<nvcv::IAllocator, T>)
+    else if constexpr (std::is_same_v<nvcv::Allocator, T>)
     {
         return std::make_unique<nvcv::CustomAllocator<>>();
     }
@@ -63,7 +63,7 @@ void SetMaxCount(int32_t maxCount)
     {
         nvcv::cfg::SetMaxImageBatchCount(maxCount);
     }
-    else if constexpr (std::is_same_v<nvcv::IAllocator, T>)
+    else if constexpr (std::is_same_v<nvcv::Allocator, T>)
     {
         nvcv::cfg::SetMaxAllocatorCount(maxCount);
     }
@@ -77,7 +77,7 @@ void SetMaxCount(int32_t maxCount)
     }
 }
 
-using AllCoreTypes = ttest::Types<nvcv::IImage, nvcv::IImageBatch, nvcv::ITensor, nvcv::IAllocator>;
+using AllCoreTypes = ttest::Types<nvcv::IImage, nvcv::IImageBatch, nvcv::ITensor, nvcv::Allocator>;
 
 template<class T>
 class ConfigTests : public ::testing::Test

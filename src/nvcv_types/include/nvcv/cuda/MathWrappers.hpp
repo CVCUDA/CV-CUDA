@@ -24,42 +24,64 @@
 #ifndef NVCV_CUDA_MATH_WRAPPERS_HPP
 #define NVCV_CUDA_MATH_WRAPPERS_HPP
 
+#include "StaticCast.hpp"              // for StaticCast, etc.
 #include "TypeTraits.hpp"              // for Require, etc.
 #include "detail/MathWrappersImpl.hpp" // for MathWrappersImpl, etc.
 
+#include <cfenv> // for FE_TONEAREST, etc.
+
 namespace nvcv::cuda {
-
-namespace detail {
-
-template<typename T, typename U, typename RT>
-inline __host__ __device__ RT RoundImpl(U u)
-{
-    RT out{};
-
-#pragma unroll
-    for (int e = 0; e < nvcv::cuda::NumElements<RT>; ++e)
-    {
-        GetElement(out, e) = RoundImpl<T, BaseType<U>>(GetElement(u, e));
-    }
-
-    return out;
-}
-
-} // namespace detail
 
 /**
  * @defgroup NVCV_CPP_CUDATOOLS_MATHWRAPPERS Math wrappers
  * @{
  */
 
+// Represents the round mode to be used by \ref round function.
+enum class RoundMode : int
+{
+    NEAREST = FE_TONEAREST,  //< Round to nearest even mode, as in "*_rn" CUDA device functions
+    DOWN    = FE_DOWNWARD,   //< Round down mode, as in "*_rd" CUDA device functions
+    UP      = FE_UPWARD,     //< Round up mode, as in "*_ru" CUDA device functions
+    ZERO    = FE_TOWARDZERO, //< Round towards zero mode, as in "*_rz" CUDA device functions
+    DEFAULT = NEAREST        //< Default round mode is round to nearest even mode
+};
+
+namespace detail {
+
+template<typename T, typename U, typename RT, RoundMode RM>
+inline __host__ __device__ RT RoundImpl(U u)
+{
+    if constexpr (std::is_integral_v<BaseType<U>>)
+    {
+        return StaticCast<T>(u);
+    }
+    else
+    {
+        RT out{};
+
+#pragma unroll
+        for (int e = 0; e < nvcv::cuda::NumElements<RT>; ++e)
+        {
+            GetElement(out, e) = RoundImpl<T, BaseType<U>, static_cast<int>(RM)>(GetElement(u, e));
+        }
+
+        return out;
+    }
+}
+
+} // namespace detail
+
 /**
  * Metafunction to round all elements of the input.
  *
  * This function rounds all elements of the input and returns the result with the same type as the input.
  * Optionally, the base type of the result may be specified by the template argument type \p T.  For instance, a
- * float4 can have its 4 elements rounded into a float4 result, or to a different result type, such as T=int, where
- * the result will be int4 with the rounded results (see example below).  It is a requirement of round that the
- * input source type has type traits and the optional result type \p T is a regular C type.
+ * float4 can have its 4 elements rounded into a float4 result, or to a different result type, such as T=int or
+ * T=int4, where the result will be int4 with the rounded results (see example below).  Also optionally, the round
+ * mode \p RM can be specified, as one of \ref RoundMode, e.g. RoundMode::DOWN.  It is a requirement of round that
+ * the input source type has type traits and the optional result type \p T is either a regular C type or has the
+ * same number of components as the input type.
  *
  * @code
  * using FloatType = MakeType<float, 4>;
@@ -68,24 +90,56 @@ inline __host__ __device__ RT RoundImpl(U u)
  * ConvertBaseTypeTo<int, FloatType> int_rounded = round<int>(res);
  * @endcode
  *
- * @tparam U Type of the source value (with 1 to 4 elements) passed as argument.
+ * @tparam RM Optional round mode to be used, cf. \ref RoundMode.
+ * @tparam U Type of the source value (with 1 to 4 elements) passed as (and inferred from) argument \p u.
  * @tparam T Optional type that defines the result of the round.
  *
  * @param[in] u Source value to round all elements with its same type or \p T.
  *
  * @return The value with all elements rounded.
  */
-template<typename T, typename U, typename RT = ConvertBaseTypeTo<T, U>,
-         class = Require<HasTypeTraits<T, U> && !IsCompound<T>>>
-inline __host__ __device__ std::enable_if_t<!std::is_same_v<T, U>, RT> round(U u)
+template<RoundMode RM, typename T, typename U,
+         class = Require<(!std::is_same_v<T, U>)&&((NumComponents<T> == NumComponents<U>)
+                                                   || (NumComponents<T> == 0 && HasTypeTraits<U>))>>
+inline __host__ __device__ auto round(U u)
 {
-    return detail::RoundImpl<T, U, RT>(u);
+    return detail::RoundImpl<BaseType<T>, U, ConvertBaseTypeTo<BaseType<T>, U>, RM>(u);
 }
 
-template<typename U>
-inline __host__ __device__ U round(U u)
+/**
+ * Overload of \ref round function.
+ *
+ * It does specifies target round type \p T and uses default round mode \ref RoundMode::DEFAULT.
+ */
+template<typename T, typename U,
+         class = Require<(!std::is_same_v<T, U>)&&((NumComponents<T> == NumComponents<U>)
+                                                   || (NumComponents<T> == 0 && HasTypeTraits<U>))>>
+inline __host__ __device__ auto round(U u)
 {
-    return detail::RoundImpl<BaseType<U>, U, U>(u);
+    return detail::RoundImpl<BaseType<T>, U, ConvertBaseTypeTo<BaseType<T>, U>, RoundMode::DEFAULT>(u);
+}
+
+/**
+ * Overload of \ref round function.
+ *
+ * It does not specify target round type \p T, using input source type \p U instead.
+ */
+template<RoundMode RM, typename U>
+inline __host__ __device__ auto round(U u)
+{
+    return detail::RoundImpl<BaseType<U>, U, U, RM>(u);
+}
+
+/**
+ * Overload of \ref round function.
+ *
+ * It does not specify target round type \p T, using input source type \p U instead, and uses default round mode
+ * \ref RoundMode::DEFAULT.
+ */
+template<typename U>
+inline __host__ __device__ auto round(U u)
+{
+    return detail::RoundImpl<BaseType<U>, U, U, RoundMode::DEFAULT>(u);
 }
 
 #define NVCV_CUDA_BINARY_SIMD(TYPE_U, INTRINSIC)                  \

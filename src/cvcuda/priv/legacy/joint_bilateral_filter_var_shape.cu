@@ -198,9 +198,9 @@ __global__ void JointBilateralFilterVarShapeKernel(const SrcWrapper src, const S
 }
 
 template<typename T, NVCVBorderType B>
-void JointBilateralFilterVarShapeCaller(const IImageBatchVarShapeDataStridedCuda &inData,
-                                        const IImageBatchVarShapeDataStridedCuda &inColorData,
-                                        const IImageBatchVarShapeDataStridedCuda &outData, int batch,
+void JointBilateralFilterVarShapeCaller(const ImageBatchVarShapeDataStridedCuda &inData,
+                                        const ImageBatchVarShapeDataStridedCuda &inColorData,
+                                        const ImageBatchVarShapeDataStridedCuda &outData, int batch,
                                         const cuda::Tensor1DWrap<int>   &inDiameter,
                                         const cuda::Tensor1DWrap<float> &inSigmaColor,
                                         const cuda::Tensor1DWrap<float> &inSigmaSpace, cudaStream_t stream)
@@ -227,12 +227,12 @@ void JointBilateralFilterVarShapeCaller(const IImageBatchVarShapeDataStridedCuda
 #endif
 }
 
-ErrorCode JointBilateralFilterVarShape::infer(const IImageBatchVarShapeDataStridedCuda &inData,
-                                              const IImageBatchVarShapeDataStridedCuda &inColorData,
-                                              const IImageBatchVarShapeDataStridedCuda &outData,
-                                              const ITensorDataStridedCuda             &diameterData,
-                                              const ITensorDataStridedCuda             &sigmaColorData,
-                                              const ITensorDataStridedCuda &sigmaSpaceData, NVCVBorderType borderMode,
+ErrorCode JointBilateralFilterVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inData,
+                                              const ImageBatchVarShapeDataStridedCuda &inColorData,
+                                              const ImageBatchVarShapeDataStridedCuda &outData,
+                                              const TensorDataStridedCuda             &diameterData,
+                                              const TensorDataStridedCuda             &sigmaColorData,
+                                              const TensorDataStridedCuda &sigmaSpaceData, NVCVBorderType borderMode,
                                               cudaStream_t stream)
 {
     cuda_op::DataFormat input_format      = GetLegacyDataFormat(inData);
@@ -350,8 +350,8 @@ ErrorCode JointBilateralFilterVarShape::infer(const IImageBatchVarShapeDataStrid
     cuda::Tensor1DWrap<float> inSigmaSpace(sigmaSpaceData);
 
     typedef void (*joint_bilateral_filter_var_shape_t)(
-        const IImageBatchVarShapeDataStridedCuda &inData, const IImageBatchVarShapeDataStridedCuda &inColorData,
-        const IImageBatchVarShapeDataStridedCuda &outData, int batch, const cuda::Tensor1DWrap<int> &inDiameter,
+        const ImageBatchVarShapeDataStridedCuda &inData, const ImageBatchVarShapeDataStridedCuda &inColorData,
+        const ImageBatchVarShapeDataStridedCuda &outData, int batch, const cuda::Tensor1DWrap<int> &inDiameter,
         const cuda::Tensor1DWrap<float> &inSigmaColor, const cuda::Tensor1DWrap<float> &inSigmaSpace,
         cudaStream_t stream);
 

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -105,7 +105,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaCompositeCreate(NVCVOperatorHandle *handle);
  *
  * @param [in] background input background tensor. Each image is BGR (3-channel) 8-bit.
  *
- * @param [in] fgMask input foreground mask tensor. Each mask image is grayscale 8-bit
+ * @param [in] fgMask input foreground mask tensor. Each mask image is grayscale 8-bit.
  *
  * @param [out] output output tensor. Each output image is BGR(A) (3-channel for BGR, 4-channel for BGRA) 8-bit.
  *

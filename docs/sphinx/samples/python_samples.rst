@@ -1,5 +1,5 @@
 ..
-   # SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+   # SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
    # SPDX-License-Identifier: Apache-2.0
    #
    # Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,3 +28,5 @@ The following samples demonstrates the use of CVCUDA Python API:
 
     Classification <python_samples/classification>
     Semantic Segmentation <python_samples/segmentation>
+    Semantic Segmentation using Triton <python_samples/segmentation_triton>
+    Object Detection <python_samples/object_detection>

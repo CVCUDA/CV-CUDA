@@ -19,7 +19,7 @@
  * @file OpWarpAffine.h
  *
  * @brief Defines types and functions to handle the WarpAffine operation.
- * @defgroup NVCV_C_ALGORITHM_WARP_AFFINE WarpAffine
+ * @defgroup NVCV_C_ALGORITHM_WARP_AFFINE Warp Affine
  * @{
  */
 

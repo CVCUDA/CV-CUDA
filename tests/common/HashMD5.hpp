@@ -20,6 +20,7 @@
 
 #include <util/Ranges.hpp>
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <optional>

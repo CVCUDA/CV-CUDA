@@ -26,7 +26,7 @@ namespace t    = ::testing;
 
 namespace {
 
-class MyTensorDataStrided : public nvcv::ITensorDataStrided
+class MyTensorDataStrided : public nvcv::TensorDataStrided
 {
 public:
     MyTensorDataStrided(nvcv::TensorShape tshape, nvcv::TensorShape::ShapeType strides, void *basePtr = nullptr)
@@ -36,7 +36,7 @@ public:
     {
         assert((int)strides.size() == tshape.rank());
 
-        NVCVTensorData &data = this->cdata();
+        NVCVTensorData &data = this->data();
         data.bufferType      = NVCV_TENSOR_BUFFER_STRIDED_CUDA;
         data.rank            = tshape.size();
         data.dtype           = NVCV_DATA_TYPE_U8;

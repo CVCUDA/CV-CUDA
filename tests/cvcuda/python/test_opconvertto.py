@@ -19,13 +19,14 @@ import numpy as np
 
 
 @t.mark.parametrize(
-    "input,dtype,scale,offset",
+    "input_args,dtype,scale,offset",
     [
-        (cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"), np.float32, 1.2, 10.2),
-        (cvcuda.Tensor((16, 23, 2), np.uint8, "HWC"), np.int32, -1.2, -5.5),
+        (((5, 16, 23, 4), np.uint8, "NHWC"), np.float32, 1.2, 10.2),
+        (((16, 23, 2), np.uint8, "HWC"), np.int32, -1.2, -5.5),
     ],
 )
-def test_op_convertto(input, dtype, scale, offset):
+def test_op_convertto(input_args, dtype, scale, offset):
+    input = cvcuda.Tensor(*input_args)
     out = cvcuda.convertto(input, dtype)
     assert out.layout == input.layout
     assert out.shape == input.shape

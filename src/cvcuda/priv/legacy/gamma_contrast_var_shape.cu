@@ -80,7 +80,7 @@ __global__ void gamma_contrast_float_kernel(const cuda::ImageBatchVarShapeWrap<D
 }
 
 template<typename T>
-void gamma_contrast(const IImageBatchVarShapeDataStridedCuda &in, const IImageBatchVarShapeDataStridedCuda &out,
+void gamma_contrast(const ImageBatchVarShapeDataStridedCuda &in, const ImageBatchVarShapeDataStridedCuda &out,
                     float *gammaValues, cudaStream_t stream)
 {
     int max_width  = in.maxSize().w;
@@ -104,7 +104,7 @@ void gamma_contrast(const IImageBatchVarShapeDataStridedCuda &in, const IImageBa
 }
 
 template<typename T>
-void gamma_contrast_float(const IImageBatchVarShapeDataStridedCuda &in, const IImageBatchVarShapeDataStridedCuda &out,
+void gamma_contrast_float(const ImageBatchVarShapeDataStridedCuda &in, const ImageBatchVarShapeDataStridedCuda &out,
                           float *gammaValues, cudaStream_t stream)
 {
     int max_width  = in.maxSize().w;
@@ -138,9 +138,9 @@ GammaContrastVarShape::~GammaContrastVarShape()
     NVCV_CHECK_LOG(cudaFree(m_gammaArray));
 }
 
-ErrorCode GammaContrastVarShape::infer(const IImageBatchVarShapeDataStridedCuda &inData,
-                                       const IImageBatchVarShapeDataStridedCuda &outData,
-                                       const ITensorDataStridedCuda &gammas, cudaStream_t stream)
+ErrorCode GammaContrastVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inData,
+                                       const ImageBatchVarShapeDataStridedCuda &outData,
+                                       const TensorDataStridedCuda &gammas, cudaStream_t stream)
 {
     if (m_maxBatchSize <= 0 || inData.numImages() > m_maxBatchSize)
     {
@@ -230,8 +230,8 @@ ErrorCode GammaContrastVarShape::infer(const IImageBatchVarShapeDataStridedCuda 
         checkKernelErrors();
     }
 
-    typedef void (*func_t)(const nvcv::IImageBatchVarShapeDataStridedCuda &in,
-                           const nvcv::IImageBatchVarShapeDataStridedCuda &out, float *gammas, cudaStream_t stream);
+    typedef void (*func_t)(const nvcv::ImageBatchVarShapeDataStridedCuda &in,
+                           const nvcv::ImageBatchVarShapeDataStridedCuda &out, float *gammas, cudaStream_t stream);
 
     static const func_t funcs[5][4] = {
         {      gamma_contrast<uchar>,      gamma_contrast<uchar2>,      gamma_contrast<uchar3>,gamma_contrast<uchar4>                                                                                               },

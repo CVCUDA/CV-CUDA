@@ -1,4 +1,4 @@
-' Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+' Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 '
 ' SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
 ' SPDX-License-Identifier: Apache-2.0
@@ -12,9 +12,9 @@
 
 @startuml
 
-interface IAllocator
+class Allocator
 
-interface IImageData
+class ImageData
 
 interface IImage
 {
@@ -23,18 +23,20 @@ interface IImage
     + {abstract} size() const: Size2D
     + {abstract} format() const: ImageFormat
 
-    + {abstract} alloc() const: IAllocator &
+    + {abstract} alloc() const: Allocator
 
-    + {abstract} exportData() const: const IImageData *
+    + {abstract} exportData() const: ImageData
+
+    + exportData<DerivedData>() const: Optional<DerivedData>
 }
 
-IAllocator -right-o IImage: refers to <
-IImageData -left-o IImage: refers to <
+Allocator -right-o IImage: refers to <
+ImageData -left-o IImage: refers to <
 
 class Image implements IImage
 {
     + Image(Size2D size, ImageFormat fmt,
-            IAllocator *alloc=nullptr)
+            const Allocator &alloc=nullptr)
 }
 
 class ImageWrapHandle implements IImage
@@ -44,8 +46,8 @@ class ImageWrapHandle implements IImage
 
 class ImageWrapData implements IImage
 {
-    + ImageWrapData(const IImageData &data,
-                    std::function<void(const IImageData &)> cleanup)
+    + ImageWrapData(const ImageData &data,
+                    ImageDataCleanupCallback &&cleanup = {})
 }
 
 @enduml

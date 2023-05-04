@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,6 +27,8 @@ extern "C"
 
 ssize_t Compat_getrandom(void *buffer, size_t length, unsigned int flags);
 int     Compat_getentropy(void *buffer, size_t length);
+double  Compat_roundeven(double x);
+float   Compat_roundevenf(float x);
 
 #ifdef __cplusplus
 }

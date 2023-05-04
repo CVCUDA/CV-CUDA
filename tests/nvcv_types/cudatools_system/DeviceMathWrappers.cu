@@ -17,29 +17,26 @@
 
 #include "DeviceMathWrappers.hpp" // to test in the device
 
-#include <gtest/gtest.h>              // for EXPECT_EQ, etc.
-#include <nvcv/cuda/MathWrappers.hpp> // the object of this test
-
-namespace cuda = nvcv::cuda;
+#include <gtest/gtest.h> // for EXPECT_EQ, etc.
 
 // Need to instantiate each test on TestMathWrappers, making sure not to use const types
 
 // -------------------- To allow testing device-side round ---------------------
 
-template<typename SourceType, typename TargetType>
+template<cuda::RoundMode RM, typename SourceType, typename TargetType>
 __global__ void RunRound(TargetType *out, SourceType u)
 {
     if constexpr (std::is_same_v<SourceType, TargetType>)
     {
-        out[0] = cuda::round(u);
+        out[0] = (RM == cuda::RoundMode::DEFAULT) ? cuda::round(u) : cuda::round<RM>(u);
     }
     else
     {
-        out[0] = cuda::round<cuda::BaseType<TargetType>>(u);
+        out[0] = (RM == cuda::RoundMode::DEFAULT) ? cuda::round<TargetType>(u) : cuda::round<RM, TargetType>(u);
     }
 }
 
-template<typename TargetType, typename SourceType>
+template<cuda::RoundMode RM, typename TargetType, typename SourceType>
 TargetType DeviceRunRoundDiffType(SourceType pix)
 {
     TargetType *dTest;
@@ -47,7 +44,7 @@ TargetType DeviceRunRoundDiffType(SourceType pix)
 
     EXPECT_EQ(cudaSuccess, cudaMalloc(&dTest, sizeof(TargetType)));
 
-    RunRound<<<1, 1>>>(dTest, pix);
+    RunRound<RM><<<1, 1>>>(dTest, pix);
 
     EXPECT_EQ(cudaSuccess, cudaDeviceSynchronize());
     EXPECT_EQ(cudaSuccess, cudaMemcpy(hTest, dTest, sizeof(TargetType), cudaMemcpyDeviceToHost));
@@ -57,37 +54,47 @@ TargetType DeviceRunRoundDiffType(SourceType pix)
     return hTest[0];
 }
 
-template<typename Type>
+template<cuda::RoundMode RM, typename Type>
 Type DeviceRunRoundSameType(Type pix)
 {
-    return DeviceRunRoundDiffType<Type, Type>(pix);
+    return DeviceRunRoundDiffType<RM, Type, Type>(pix);
 }
 
-#define NVCV_TEST_INST_ROUND_SAME(TYPE) template TYPE DeviceRunRoundSameType(TYPE pix)
+#define NVCV_TEST_INST_ROUND_SAME(RM, TYPE) template TYPE DeviceRunRoundSameType<RM>(TYPE pix)
 
-NVCV_TEST_INST_ROUND_SAME(unsigned char);
-NVCV_TEST_INST_ROUND_SAME(int);
-NVCV_TEST_INST_ROUND_SAME(float);
-NVCV_TEST_INST_ROUND_SAME(double);
+NVCV_TEST_INST_ROUND_SAME(cuda::RoundMode::UP, unsigned char);
+NVCV_TEST_INST_ROUND_SAME(cuda::RoundMode::DOWN, int);
+NVCV_TEST_INST_ROUND_SAME(cuda::RoundMode::DEFAULT, float);
+NVCV_TEST_INST_ROUND_SAME(cuda::RoundMode::NEAREST, double);
 
-NVCV_TEST_INST_ROUND_SAME(char1);
-NVCV_TEST_INST_ROUND_SAME(uint2);
-NVCV_TEST_INST_ROUND_SAME(float3);
-NVCV_TEST_INST_ROUND_SAME(double4);
+NVCV_TEST_INST_ROUND_SAME(cuda::RoundMode::UP, char1);
+NVCV_TEST_INST_ROUND_SAME(cuda::RoundMode::DOWN, uint2);
+NVCV_TEST_INST_ROUND_SAME(cuda::RoundMode::DEFAULT, float3);
+NVCV_TEST_INST_ROUND_SAME(cuda::RoundMode::NEAREST, double4);
+
+NVCV_TEST_INST_ROUND_SAME(cuda::RoundMode::UP, float2);
+NVCV_TEST_INST_ROUND_SAME(cuda::RoundMode::DOWN, double2);
+NVCV_TEST_INST_ROUND_SAME(cuda::RoundMode::ZERO, float3);
+NVCV_TEST_INST_ROUND_SAME(cuda::RoundMode::NEAREST, float4);
 
 #undef NVCV_TEST_INST_ROUND_SAME
 
-#define NVCV_TEST_INST_ROUND_DIFF(SOURCE_TYPE, TARGET_TYPE) template TARGET_TYPE DeviceRunRoundDiffType(SOURCE_TYPE pix)
+#define NVCV_TEST_INST_ROUND_DIFF(RM, SOURCE_TYPE, TARGET_TYPE) \
+    template TARGET_TYPE DeviceRunRoundDiffType<RM>(SOURCE_TYPE pix)
 
-NVCV_TEST_INST_ROUND_DIFF(float, int);
-NVCV_TEST_INST_ROUND_DIFF(double, unsigned int);
-NVCV_TEST_INST_ROUND_DIFF(float3, int3);
-NVCV_TEST_INST_ROUND_DIFF(double4, long4);
+NVCV_TEST_INST_ROUND_DIFF(cuda::RoundMode::UP, float, int);
+NVCV_TEST_INST_ROUND_DIFF(cuda::RoundMode::DOWN, double, unsigned int);
+NVCV_TEST_INST_ROUND_DIFF(cuda::RoundMode::NEAREST, float3, int3);
+NVCV_TEST_INST_ROUND_DIFF(cuda::RoundMode::DEFAULT, double4, long4);
 
-NVCV_TEST_INST_ROUND_DIFF(signed char, signed char);
-NVCV_TEST_INST_ROUND_DIFF(float2, float2);
-NVCV_TEST_INST_ROUND_DIFF(uint1, uint1);
-NVCV_TEST_INST_ROUND_DIFF(double2, double2);
+NVCV_TEST_INST_ROUND_DIFF(cuda::RoundMode::UP, signed char, signed char);
+NVCV_TEST_INST_ROUND_DIFF(cuda::RoundMode::DEFAULT, float2, float2);
+NVCV_TEST_INST_ROUND_DIFF(cuda::RoundMode::DOWN, uint1, uint1);
+NVCV_TEST_INST_ROUND_DIFF(cuda::RoundMode::NEAREST, double2, double2);
+
+NVCV_TEST_INST_ROUND_DIFF(cuda::RoundMode::UP, float2, int2);
+NVCV_TEST_INST_ROUND_DIFF(cuda::RoundMode::DOWN, double2, longlong2);
+NVCV_TEST_INST_ROUND_DIFF(cuda::RoundMode::ZERO, float3, short3);
 
 #undef NVCV_TEST_INST_ROUND_DIFF
 

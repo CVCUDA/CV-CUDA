@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,7 +32,7 @@ void ExportRect(py::module &m)
     using namespace py::literals;
 
     py::class_<NVCVRectI>(m, "RectI")
-        .def(py::init([]() { return NVCVRectI{}; }))
+        .def(py::init([]() { return NVCVRectI{}; }), "Default constructor")
         .def(py::init(
                  [](int x, int y, int w, int h)
                  {
@@ -43,12 +43,12 @@ void ExportRect(py::module &m)
                      r.height = h;
                      return r;
                  }),
-             "x"_a, "y"_a, "width"_a, "height"_a)
-        .def_readwrite("x", &NVCVRectI::x)
-        .def_readwrite("y", &NVCVRectI::y)
-        .def_readwrite("width", &NVCVRectI::width)
-        .def_readwrite("height", &NVCVRectI::height)
-        .def("__repr__", &util::ToString<NVCVRectI>);
+             "x"_a, "y"_a, "width"_a, "height"_a, "Constructor with x, y, width, height parameters")
+        .def_readwrite("x", &NVCVRectI::x, "X coordinate of the rectangle's top-left corner")
+        .def_readwrite("y", &NVCVRectI::y, "Y coordinate of the rectangle's top-left corner")
+        .def_readwrite("width", &NVCVRectI::width, "Width of the rectangle")
+        .def_readwrite("height", &NVCVRectI::height, "Height of the rectangle")
+        .def("__repr__", &util::ToString<NVCVRectI>, "Returns a string representation of the rectangle");
 }
 
 } // namespace nvcvpy::priv

@@ -106,14 +106,102 @@ void ExportOpGaussian(py::module &m)
     using namespace pybind11::literals;
 
     m.def("gaussian", &Gaussian, "src"_a, "kernel_size"_a, "sigma"_a, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT,
-          py::kw_only(), "stream"_a = nullptr);
+          py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Gaussian operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Gaussian operator
+            for more details and usage examples.
+
+        Args:
+            src (Tensor): Input tensor containing one or more images.
+            kernel_size (Tuple [int,int]): Kernel width, height.
+            sigma (Tuple [double,double]): Gaussian kernel standard deviation in X,Y directions.
+            border (NVCVBorderType, optional): Border mode to be used when accessing elements outside input image.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.Tensor: The output tensor.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
+
     m.def("gaussian_into", &GaussianInto, "dst"_a, "src"_a, "kernel_size"_a, "sigma"_a,
-          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr);
+          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Gaussian operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Gaussian operator
+            for more details and usage examples.
+
+        Args:
+            dst (Tensor): Output tensor to store the result of the operation.
+            src (Tensor): Input tensor containing one or more images.
+            kernel_size (Tuple [int,int]): Kernel width, height.
+            sigma (Tuple [double,double]): Gaussian kernel standard deviation in X,Y directions.
+            border (NVCVBorderType, optional): Border mode to be used when accessing elements outside input image.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 
     m.def("gaussian", &VarShapeGaussian, "src"_a, "max_kernel_size"_a, "kernel_size"_a, "sigma"_a,
-          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr);
+          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Gaussian operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Gaussian operator
+            for more details and usage examples.
+
+        Args:
+            src (ImageBatchVarShape): Input image batch containing one or more images.
+            kernel_size (Tensor): Kernel width, height.
+            sigma (Tensor): Gaussian kernel standard deviation in X,Y directions.
+            border (NVCVBorderType, optional): Border mode to be used when accessing elements outside input image.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.ImageBatchVarShape: The output image batch.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
+
     m.def("gaussian_into", &VarShapeGaussianInto, "dst"_a, "src"_a, "max_kernel_size"_a, "kernel_size"_a, "sigma"_a,
-          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr);
+          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Gaussian operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Gaussian operator
+            for more details and usage examples.
+
+        Args:
+            src (ImageBatchVarShape): Input image batch containing one or more images.
+            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
+            kernel_size (Tensor): Kernel width, height.
+            sigma (Tensor): Gaussian kernel standard deviation in X,Y directions.
+            border (NVCVBorderType, optional): Border mode to be used when accessing elements outside input image.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 }
 
 } // namespace cvcudapy

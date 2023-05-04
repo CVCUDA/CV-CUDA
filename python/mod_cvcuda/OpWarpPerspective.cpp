@@ -32,8 +32,6 @@ namespace cvcudapy {
 
 namespace {
 
-using pyarray = py::array_t<float, py::array::c_style | py::array::forcecast>;
-
 Tensor WarpPerspectiveInto(Tensor &output, Tensor &input, const pyarray &xform, const int32_t flags,
                            const NVCVBorderType borderMode, const pyarray &borderValue, std::optional<Stream> pstream)
 {
@@ -42,19 +40,7 @@ Tensor WarpPerspectiveInto(Tensor &output, Tensor &input, const pyarray &xform, 
         pstream = Stream::Current();
     }
 
-    size_t bValueSize = borderValue.size();
-    size_t bValueDims = borderValue.ndim();
-    if (bValueSize > 4 || bValueDims != 1)
-    {
-        throw std::runtime_error(util::FormatString(
-            "Channels of borderValue should <= 4 and dimension should be 2, current is '%lu', '%lu' respectively",
-            bValueSize, bValueDims));
-    }
-    float4 bValue;
-    for (size_t i = 0; i < 4; i++)
-    {
-        nvcv::cuda::GetElement(bValue, i) = bValueSize > i ? *borderValue.data(i) : 0.f;
-    }
+    float4 bValue = GetFloat4FromPyArray(borderValue);
 
     size_t xformDims = xform.ndim();
     if (!(xformDims == 2 && xform.shape(0) == 3 && xform.shape(1) == 3))
@@ -153,16 +139,114 @@ void ExportOpWarpPerspective(py::module &m)
     using namespace pybind11::literals;
 
     m.def("warp_perspective", &WarpPerspective, "src"_a, "xform"_a, "flags"_a, py::kw_only(), "border_mode"_a,
-          "border_value"_a, "stream"_a = nullptr);
+          "border_value"_a, "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Warp Perspective operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Warp Perspective operator
+            for more details and usage examples.
+
+        Args:
+            src (Tensor): Input tensor containing one or more images.
+            xform (pyarray: 3x3 perspective transformation matrix.
+            flags (int): Combination of interpolation methods(NVCV_INTERP_NEAREST, NVCV_INTERP_LINEAR or NVCV_INTERP_CUBIC)
+                         and the optional flag NVCV_WARP_INVERSE_MAP, that sets trans_matrix as the inverse transformation.
+            border_mode (NVCVBorderType): pixel extrapolation method (NVCV_BORDER_CONSTANT or NVCV_BORDER_REPLICATE).
+            border_value (pyarray): Used to specify values for a constant border, should be a size <= 4 and dim of 1,
+                                    where the values specify the border color for each color channel.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.Tensor: The output tensor.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 
     m.def("warp_perspective_into", &WarpPerspectiveInto, "dst"_a, "src"_a, "xform"_a, "flags"_a, py::kw_only(),
-          "border_mode"_a, "border_value"_a, "stream"_a = nullptr);
+          "border_mode"_a, "border_value"_a, "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Warp Perspective operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Warp Perspective operator
+            for more details and usage examples.
+
+        Args:
+            dst (Tensor): Output tensor to store the result of the operation.
+            src (Tensor): Input tensor containing one or more images.
+            xform (pyarray: 3x3 perspective transformation matrix.
+            flags (int): Combination of interpolation methods(NVCV_INTERP_NEAREST, NVCV_INTERP_LINEAR or NVCV_INTERP_CUBIC)
+                         and the optional flag NVCV_WARP_INVERSE_MAP, that sets trans_matrix as the inverse transformation.
+            border_mode (NVCVBorderType): pixel extrapolation method (NVCV_BORDER_CONSTANT or NVCV_BORDER_REPLICATE).
+            border_value (pyarray): Used to specify values for a constant border, should be a size <= 4 and dim of 1,
+                                    where the values specify the border color for each color channel.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 
     m.def("warp_perspective", &WarpPerspectiveVarShape, "src"_a, "xform"_a, "flags"_a, py::kw_only(), "border_mode"_a,
-          "border_value"_a, "stream"_a = nullptr);
+          "border_value"_a, "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Warp Perspective operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Warp Perspective operator
+            for more details and usage examples.
+
+        Args:
+            src (ImageBatchVarShape): Input image batch containing one or more images.
+            xform (Tensor): 3x3 perspective transformation matrix for each image in the batch.
+            flags (int): Combination of interpolation methods(NVCV_INTERP_NEAREST, NVCV_INTERP_LINEAR or NVCV_INTERP_CUBIC)
+                         and the optional flag NVCV_WARP_INVERSE_MAP, that sets trans_matrix as the inverse transformation.
+            border_mode (NVCVBorderType): pixel extrapolation method (NVCV_BORDER_CONSTANT or NVCV_BORDER_REPLICATE).
+            border_value (pyarray): Used to specify values for a constant border, must be a size <= 4 and dim of 1,
+                                    where the values specify the border color for each color channel.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.ImageBatchVarShape: The output image batch.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 
     m.def("warp_perspective_into", &WarpPerspectiveVarShapeInto, "dst"_a, "src"_a, "xform"_a, "flags"_a, py::kw_only(),
-          "border_mode"_a, "border_value"_a, "stream"_a = nullptr);
+          "border_mode"_a, "border_value"_a, "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Warp Perspective operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Warp Perspective operator
+            for more details and usage examples.
+
+        Args:
+            src (ImageBatchVarShape): Input image batch containing one or more images.
+            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
+            xform (Tensor): 3x3 perspective transformation matrix for each image in the batch.
+            flags (int): Combination of interpolation methods(NVCV_INTERP_NEAREST, NVCV_INTERP_LINEAR or NVCV_INTERP_CUBIC)
+                         and the optional flag NVCV_WARP_INVERSE_MAP, that sets trans_matrix as the inverse transformation.
+            border_mode (NVCVBorderType): pixel extrapolation method (NVCV_BORDER_CONSTANT or NVCV_BORDER_REPLICATE).
+            border_value (pyarray): Used to specify values for a constant border, must be a size <= 4 and dim of 1,
+                                    where the values specify the border color for each color channel.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 }
 
 } // namespace cvcudapy

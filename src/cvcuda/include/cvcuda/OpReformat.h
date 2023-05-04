@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -101,7 +101,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaReformatCreate(NVCVOperatorHandle *handle);
  *                    + Must not be NULL.
  * @param [in] stream Handle to a valid CUDA stream.
  *
- * @param [in] in intput tensor.
+ * @param [in] in input tensor.
  *
  * @param [out] out output tensor.
  *

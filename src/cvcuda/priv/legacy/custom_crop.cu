@@ -24,8 +24,8 @@
 #include "CvCudaUtils.cuh"
 
 #include <nvcv/IImage.hpp>
-#include <nvcv/IImageData.hpp>
-#include <nvcv/ITensorData.hpp>
+#include <nvcv/ImageData.hpp>
+#include <nvcv/TensorData.hpp>
 
 #include <cstdio>
 
@@ -46,7 +46,7 @@ __global__ void custom_crop_kernel(const SrcWrapper src, DstWrapper dst, int sta
 }
 
 template<typename T>
-void customCrop(const nvcv::ITensorDataStridedCuda &inData, const nvcv::ITensorDataStridedCuda &outData, NVCVRectI roi,
+void customCrop(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData, NVCVRectI roi,
                 cudaStream_t stream)
 {
     auto outAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(outData);
@@ -69,7 +69,7 @@ size_t CustomCrop::calBufferSize(DataShape max_input_shape, DataShape max_output
     return 0;
 }
 
-ErrorCode CustomCrop::infer(const ITensorDataStridedCuda &inData, const ITensorDataStridedCuda &outData, NVCVRectI roi,
+ErrorCode CustomCrop::infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, NVCVRectI roi,
                             cudaStream_t stream)
 {
     cuda_op::DataFormat input_format  = GetLegacyDataFormat(inData.layout());
@@ -133,7 +133,7 @@ ErrorCode CustomCrop::infer(const ITensorDataStridedCuda &inData, const ITensorD
         return ErrorCode::INVALID_PARAMETER;
     }
 
-    typedef void (*func_t)(const nvcv::ITensorDataStridedCuda &inData, const nvcv::ITensorDataStridedCuda &outData,
+    typedef void (*func_t)(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,
                            NVCVRectI roi, cudaStream_t stream);
 
     static const func_t funcs[6][4] = {

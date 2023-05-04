@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -39,42 +39,42 @@ void Erase::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv:
                        nvcv::ITensor &erasing, nvcv::ITensor &values, nvcv::ITensor &imgIdx, bool random,
                        unsigned int seed) const
 {
-    auto *inData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(in.exportData());
+    auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
     if (inData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "Input must be cuda-accessible, pitch-linear tensor");
     }
 
-    auto *outData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(out.exportData());
+    auto outData = out.exportData<nvcv::TensorDataStridedCuda>();
     if (outData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "Output must be cuda-accessible, pitch-linear tensor");
     }
 
-    auto *anchorData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(anchor.exportData());
+    auto anchorData = anchor.exportData<nvcv::TensorDataStridedCuda>();
     if (anchorData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "anchor must be cuda-accessible, pitch-linear tensor");
     }
 
-    auto *erasingData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(erasing.exportData());
+    auto erasingData = erasing.exportData<nvcv::TensorDataStridedCuda>();
     if (erasingData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "erasing must be cuda-accessible, pitch-linear tensor");
     }
 
-    auto *valuesData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(values.exportData());
+    auto valuesData = values.exportData<nvcv::TensorDataStridedCuda>();
     if (valuesData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "values must be cuda-accessible, pitch-linear tensor");
     }
 
-    auto *imgIdxData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(imgIdx.exportData());
+    auto imgIdxData = imgIdx.exportData<nvcv::TensorDataStridedCuda>();
     if (imgIdxData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
@@ -90,28 +90,28 @@ void Erase::operator()(cudaStream_t stream, const nvcv::IImageBatchVarShape &in,
                        nvcv::ITensor &anchor, nvcv::ITensor &erasing, nvcv::ITensor &values, nvcv::ITensor &imgIdx,
                        bool random, unsigned int seed) const
 {
-    auto *anchorData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(anchor.exportData());
+    auto anchorData = anchor.exportData<nvcv::TensorDataStridedCuda>();
     if (anchorData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "anchor must be cuda-accessible, pitch-linear tensor");
     }
 
-    auto *erasingData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(erasing.exportData());
+    auto erasingData = erasing.exportData<nvcv::TensorDataStridedCuda>();
     if (erasingData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "erasing must be cuda-accessible, pitch-linear tensor");
     }
 
-    auto *valuesData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(values.exportData());
+    auto valuesData = values.exportData<nvcv::TensorDataStridedCuda>();
     if (valuesData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "values must be cuda-accessible, pitch-linear tensor");
     }
 
-    auto *imgIdxData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(imgIdx.exportData());
+    auto imgIdxData = imgIdx.exportData<nvcv::TensorDataStridedCuda>();
     if (imgIdxData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,

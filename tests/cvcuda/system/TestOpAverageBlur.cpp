@@ -76,8 +76,8 @@ TEST_P(OpAverageBlur, correct_output)
     nvcv::Tensor inTensor  = test::CreateTensor(batches, width, height, format);
     nvcv::Tensor outTensor = test::CreateTensor(batches, width, height, format);
 
-    const auto *inData  = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(inTensor.exportData());
-    const auto *outData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(outTensor.exportData());
+    auto inData  = inTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto outData = outTensor.exportData<nvcv::TensorDataStridedCuda>();
 
     ASSERT_NE(inData, nullptr);
     ASSERT_NE(outData, nullptr);
@@ -125,10 +125,7 @@ TEST_P(OpAverageBlur, correct_output)
     ASSERT_EQ(cudaSuccess, cudaMemcpy(testVec.data(), outData->basePtr(), outBufSize, cudaMemcpyDeviceToHost));
 
     // generate gold result
-    std::size_t ks = kernelSize.w * kernelSize.h;
-    float       kv = 1.f / ks;
-
-    std::vector<float> kernel(ks, kv);
+    std::vector<float> kernel = test::ComputeMeanKernel(kernelSize);
 
     test::Convolve(goldVec, outStrides, inVec, inStrides, shape, format, kernel, kernelSize, kernelAnchor, borderMode,
                    borderValue);
@@ -182,8 +179,8 @@ TEST_P(OpAverageBlur, varshape_correct_output)
         srcVec[i].resize(imgSrc[i]->size().h * srcRowStride);
         std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return udist(rng); });
 
-        auto *imgData = dynamic_cast<const nvcv::IImageDataStridedCuda *>(imgSrc[i]->exportData());
-        ASSERT_NE(imgData, nullptr);
+        auto imgData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_NE(imgData, nvcv::NullOpt);
 
         // Copy input data to the GPU
         ASSERT_EQ(cudaSuccess,
@@ -206,7 +203,7 @@ TEST_P(OpAverageBlur, varshape_correct_output)
     // Create kernel size tensor
     nvcv::Tensor kernelSizeTensor({{batches}, "N"}, nvcv::TYPE_2S32);
     {
-        auto *dev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(kernelSizeTensor.exportData());
+        auto dev = kernelSizeTensor.exportData<nvcv::TensorDataStridedCuda>();
         ASSERT_NE(dev, nullptr);
 
         std::vector<int2> vec(batches, int2{ksizeX, ksizeY});
@@ -218,7 +215,7 @@ TEST_P(OpAverageBlur, varshape_correct_output)
     // Create kernel anchor tensor
     nvcv::Tensor kernelAnchorTensor({{batches}, "N"}, nvcv::TYPE_2S32);
     {
-        auto *dev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(kernelAnchorTensor.exportData());
+        auto dev = kernelAnchorTensor.exportData<nvcv::TensorDataStridedCuda>();
         ASSERT_NE(dev, nullptr);
 
         std::vector<int2> vec(batches, kernelAnchor);
@@ -240,10 +237,10 @@ TEST_P(OpAverageBlur, varshape_correct_output)
     {
         SCOPED_TRACE(i);
 
-        const auto *srcData = dynamic_cast<const nvcv::IImageDataStridedCuda *>(imgSrc[i]->exportData());
+        const auto srcData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_EQ(srcData->numPlanes(), 1);
 
-        const auto *dstData = dynamic_cast<const nvcv::IImageDataStridedCuda *>(imgDst[i]->exportData());
+        const auto dstData = imgDst[i]->exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_EQ(dstData->numPlanes(), 1);
 
         int dstRowStride = srcVecRowStride[i];
@@ -259,10 +256,7 @@ TEST_P(OpAverageBlur, varshape_correct_output)
                                dstRowStride, shape.y, cudaMemcpyDeviceToHost));
 
         // Generate gold result
-        std::size_t ks = kernelSize.w * kernelSize.h;
-        float       kv = 1.f / ks;
-
-        std::vector<float> kernel(ks, kv);
+        std::vector<float> kernel = test::ComputeMeanKernel(kernelSize);
 
         std::vector<uint8_t> goldVec(shape.y * pitches.y);
 

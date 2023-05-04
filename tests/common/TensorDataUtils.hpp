@@ -40,7 +40,7 @@ class TensorImageData
 {
 public:
     TensorImageData() = delete;
-    explicit TensorImageData(const ITensorData *tensorData, int sampleIndex = 0);
+    explicit TensorImageData(const TensorData &tensorData, int sampleIndex = 0);
 
     // H/W in logical pixels where byte offset == m_size.x * bytesPerPixel.
     const Size2D &size() const
@@ -201,7 +201,7 @@ nvcv::Tensor CreateTensor(int numImages, int imgWidth, int imgHeight, const nvcv
  * @param[in] sample optional the sample to write to if -1 all samples are written
  */
 template<typename DT>
-static void SetTensorTo(const ITensorData *tensorData, DT data, int sample = -1);
+static void SetTensorTo(const TensorData &tensorData, DT data, int sample = -1);
 
 /**
  * Writes over the Tensor data with type DT and random data values.
@@ -219,7 +219,7 @@ static void SetTensorTo(const ITensorData *tensorData, DT data, int sample = -1)
  * @param[in] sample optional the sample to write to if -1 all samples are written
  */
 template<typename DT>
-static void SetTensorToRandomValue(const ITensorData *tensorData, DT minVal, DT maxVal, int sample = -1);
+static void SetTensorToRandomValue(const TensorData &tensorData, DT minVal, DT maxVal, int sample = -1);
 
 /**
  * Writes over the Tensor data with an array of type DT array must be
@@ -233,7 +233,7 @@ static void SetTensorToRandomValue(const ITensorData *tensorData, DT minVal, DT 
  * @param[in] sample optional the sample to write to if -1 all samples are written
  */
 template<typename DT>
-static void SetTensorFromVector(const ITensorData *tensorData, std::vector<DT> &data, int sample = -1);
+static void SetTensorFromVector(const TensorData &tensorData, std::vector<DT> &data, int sample = -1);
 
 /**
  * Returns a vector contains the values of the provided sample.
@@ -246,7 +246,7 @@ static void SetTensorFromVector(const ITensorData *tensorData, std::vector<DT> &
  *
  */
 template<typename DT>
-static void GetVectorFromTensor(const ITensorData *tensorData, int sample, std::vector<DT> &outData);
+static void GetVectorFromTensor(const TensorData &tensorData, int sample, std::vector<DT> &outData);
 
 /**
  * Sets the TensorImageData to the value set by the data parameter
@@ -265,13 +265,12 @@ template<typename DT>
 static void SetCvDataTo(TensorImageData &cvImg, DT data, Size2D region, uint8_t chFlags);
 
 template<typename DT>
-void SetTensorTo(const ITensorData *tensorData, DT data, int sample)
+void SetTensorTo(const TensorData &tensorData, DT data, int sample)
 {
-    assert(tensorData);
-    if (!nvcv::TensorDataAccessStrided::IsCompatible(*tensorData))
+    if (!nvcv::TensorDataAccessStrided::IsCompatible(tensorData))
         throw std::runtime_error("Tensor Data is not pitch access capable.");
 
-    auto tDataAc = nvcv::TensorDataAccessStrided::Create(*tensorData);
+    auto tDataAc = nvcv::TensorDataAccessStrided::Create(tensorData);
 
     if (tDataAc->numSamples() <= sample)
         throw std::runtime_error("Number of samples smaller than requested sample.");
@@ -292,10 +291,14 @@ void SetTensorTo(const ITensorData *tensorData, DT data, int sample)
 
     for (int i = sample; i < totalSamples; ++i)
     {
-        if (cudaSuccess
-            != cudaMemcpy(tDataAc->sampleData(i), srcVec.data(), tDataAc->sampleStride(), cudaMemcpyHostToDevice))
+        auto  *outSamplePtr = tDataAc->sampleData(i);
+        size_t size         = tDataAc->sampleStride();
+        if (auto err = cudaMemcpy(outSamplePtr, srcVec.data(), size, cudaMemcpyHostToDevice))
         {
-            throw std::runtime_error("CudaMemcpy failed");
+            char msg[1024] = {};
+            snprintf(msg, sizeof(msg), "CudaMemcpy failed with %s (%i): %s", cudaGetErrorName(err), err,
+                     cudaGetErrorString(err));
+            throw std::runtime_error(msg);
         }
     }
 
@@ -303,13 +306,12 @@ void SetTensorTo(const ITensorData *tensorData, DT data, int sample)
 }
 
 template<typename DT>
-static void SetTensorToRandomValueFloat(const ITensorData *tensorData, DT minVal, DT maxVal, int sample)
+static void SetTensorToRandomValueFloat(const TensorData &tensorData, DT minVal, DT maxVal, int sample)
 {
-    assert(tensorData);
-    if (!nvcv::TensorDataAccessStrided::IsCompatible(*tensorData))
+    if (!nvcv::TensorDataAccessStrided::IsCompatible(tensorData))
         throw std::runtime_error("Tensor Data is not pitch access capable.");
 
-    auto tDataAc = nvcv::TensorDataAccessStrided::Create(*tensorData);
+    auto tDataAc = nvcv::TensorDataAccessStrided::Create(tensorData);
 
     if (tDataAc->numSamples() <= sample)
         throw std::runtime_error("Number of samples smaller than requested sample.");
@@ -343,25 +345,24 @@ static void SetTensorToRandomValueFloat(const ITensorData *tensorData, DT minVal
 }
 
 template<>
-inline void SetTensorToRandomValue<float>(const ITensorData *tensorData, float minVal, float maxVal, int sample)
+inline void SetTensorToRandomValue<float>(const TensorData &tensorData, float minVal, float maxVal, int sample)
 {
     SetTensorToRandomValueFloat<float>(tensorData, minVal, maxVal, sample);
 }
 
 template<>
-inline void SetTensorToRandomValue<double>(const ITensorData *tensorData, double minVal, double maxVal, int sample)
+inline void SetTensorToRandomValue<double>(const TensorData &tensorData, double minVal, double maxVal, int sample)
 {
     SetTensorToRandomValueFloat<double>(tensorData, minVal, maxVal, sample);
 }
 
 template<typename DT>
-static void SetTensorToRandomValue(const ITensorData *tensorData, DT minVal, DT maxVal, int sample)
+static void SetTensorToRandomValue(const TensorData &tensorData, DT minVal, DT maxVal, int sample)
 {
-    assert(tensorData);
-    if (!nvcv::TensorDataAccessStrided::IsCompatible(*tensorData))
+    if (!nvcv::TensorDataAccessStrided::IsCompatible(tensorData))
         throw std::runtime_error("Tensor Data is not pitch access capable.");
 
-    auto tDataAc = nvcv::TensorDataAccessStrided::Create(*tensorData);
+    auto tDataAc = nvcv::TensorDataAccessStrided::Create(tensorData);
 
     if (tDataAc->numSamples() <= sample)
         throw std::runtime_error("Number of samples smaller than requested sample.");
@@ -395,13 +396,12 @@ static void SetTensorToRandomValue(const ITensorData *tensorData, DT minVal, DT 
 }
 
 template<typename DT>
-void SetTensorFromVector(const ITensorData *tensorData, std::vector<DT> &data, int sample)
+void SetTensorFromVector(const TensorData &tensorData, std::vector<DT> &data, int sample)
 {
-    assert(tensorData);
-    if (!nvcv::TensorDataAccessStrided::IsCompatible(*tensorData))
+    if (!nvcv::TensorDataAccessStrided::IsCompatible(tensorData))
         throw std::runtime_error("Tensor Data is not pitch access capable.");
 
-    auto tDataAc = nvcv::TensorDataAccessStrided::Create(*tensorData);
+    auto tDataAc = nvcv::TensorDataAccessStrided::Create(tensorData);
 
     if ((int64_t)(data.size() * sizeof(DT)) != tDataAc->sampleStride())
         throw std::runtime_error("Data vector is incorrect size.");
@@ -433,13 +433,12 @@ void SetTensorFromVector(const ITensorData *tensorData, std::vector<DT> &data, i
 }
 
 template<typename DT>
-void GetVectorFromTensor(const ITensorData *tensorData, int sample, std::vector<DT> &outData)
+void GetVectorFromTensor(const TensorData &tensorData, int sample, std::vector<DT> &outData)
 {
-    assert(tensorData);
-    if (!nvcv::TensorDataAccessStrided::IsCompatible(*tensorData))
+    if (!nvcv::TensorDataAccessStrided::IsCompatible(tensorData))
         throw std::runtime_error("Tensor Data is not pitch access capable.");
 
-    auto tDataAc = nvcv::TensorDataAccessStrided::Create(*tensorData);
+    auto tDataAc = nvcv::TensorDataAccessStrided::Create(tensorData);
 
     if (tDataAc->numSamples() <= sample)
         throw std::runtime_error("Number of samples smaller than requested sample.");

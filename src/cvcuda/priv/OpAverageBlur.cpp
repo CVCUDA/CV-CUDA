@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,14 +37,14 @@ AverageBlur::AverageBlur(nvcv::Size2D maxKernelSize, int maxBatchSize)
 void AverageBlur::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &out,
                              nvcv::Size2D kernelSize, int2 kernelAnchor, NVCVBorderType borderMode) const
 {
-    auto *inData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(in.exportData());
+    auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
     if (inData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "Input must be cuda-accessible, pitch-linear tensor");
     }
 
-    auto *outData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(out.exportData());
+    auto outData = out.exportData<nvcv::TensorDataStridedCuda>();
     if (outData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
@@ -58,28 +58,28 @@ void AverageBlur::operator()(cudaStream_t stream, const nvcv::IImageBatchVarShap
                              const nvcv::ITensor &kernelSize, const nvcv::ITensor &kernelAnchor,
                              NVCVBorderType borderMode) const
 {
-    auto *inData = dynamic_cast<const nvcv::IImageBatchVarShapeDataStridedCuda *>(in.exportData(stream));
+    auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (inData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "Input must be cuda-accessible, varshape pitch-linear image batch");
     }
 
-    auto *outData = dynamic_cast<const nvcv::IImageBatchVarShapeDataStridedCuda *>(out.exportData(stream));
+    auto outData = out.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (outData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "Output must be cuda-accessible, varshape pitch-linear image batch");
     }
 
-    auto *kernelSizeData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(kernelSize.exportData());
+    auto kernelSizeData = kernelSize.exportData<nvcv::TensorDataStridedCuda>();
     if (kernelSizeData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "Kernel size must be cuda-accessible, pitch-linear tensor");
     }
 
-    auto *kernelAnchorData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(kernelAnchor.exportData());
+    auto kernelAnchorData = kernelAnchor.exportData<nvcv::TensorDataStridedCuda>();
     if (kernelAnchorData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,

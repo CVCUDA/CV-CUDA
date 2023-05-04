@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -153,8 +153,8 @@ NVCV_DEFINE_API(0, 0, const char *, nvcvDataTypeGetName, (NVCVDataType type))
 
         using namespace std::literals;
 
-        util::ReplaceAllInline(buffer, bufSize, "NVCV_DATA_KIND_"sv, ""sv);
-        util::ReplaceAllInline(buffer, bufSize, "NVCV_PACKING_"sv, ""sv);
+        util::ReplaceAllInline(buffer, bufSize, "NVCV_DATA_KIND_", "");
+        util::ReplaceAllInline(buffer, bufSize, "NVCV_PACKING_", "");
     }
     catch (std::exception &e)
     {

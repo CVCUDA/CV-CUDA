@@ -25,7 +25,8 @@ add_executable(nvcv_test_types_system
     TestDataLayout.cpp
     TestImageFormat.cpp
     TestDataType.cpp
-    TestAllocator.cpp
+    TestAllocatorC.cpp
+    TestAllocatorCpp.cpp
     TestRequirements.cpp
     TestImage.cpp
     TestImageBatch.cpp

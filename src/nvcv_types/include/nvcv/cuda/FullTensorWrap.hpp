@@ -26,7 +26,7 @@
 
 #include "TypeTraits.hpp" // for HasTypeTraits, etc.
 
-#include <nvcv/ITensorData.hpp> // for ITensorDataStridedCuda, etc.
+#include <nvcv/TensorData.hpp> // for TensorDataStridedCuda, etc.
 
 #include <type_traits>
 
@@ -98,7 +98,7 @@ public:
      *
      * @param[in] tensor Tensor reference to the tensor that will be wrapped.
      */
-    __host__ FullTensorWrap(const ITensorDataStridedCuda &tensor)
+    __host__ FullTensorWrap(const TensorDataStridedCuda &tensor)
     {
         m_data = reinterpret_cast<const std::byte *>(tensor.basePtr());
 
@@ -247,7 +247,7 @@ public:
      *
      * @param[in] tensor Tensor reference to the tensor that will be wrapped.
      */
-    __host__ FullTensorWrap(const ITensorDataStridedCuda &tensor)
+    __host__ FullTensorWrap(const TensorDataStridedCuda &tensor)
         : Base(tensor)
     {
     }

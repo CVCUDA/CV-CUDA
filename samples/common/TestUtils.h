@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -43,7 +43,7 @@ inline void CheckCudaError(cudaError_t code, const char *file, const int line)
 
 void WriteRGBITensor(nvcv::Tensor &inTensor, cudaStream_t &stream)
 {
-    const auto *srcData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(inTensor.exportData());
+    auto srcData = inTensor.exportData<nvcv::TensorDataStridedCuda>();
     CHECK_CUDA_ERROR(cudaStreamSynchronize(stream));
 
     int bufferSize = srcData->stride(0);

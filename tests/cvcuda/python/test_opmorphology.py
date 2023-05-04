@@ -23,10 +23,10 @@ RNG = np.random.default_rng(0)
 
 
 @t.mark.parametrize(
-    "input, morphologyType, maskSize, anchor, iteration, border ",
+    "input_args, morphologyType, maskSize, anchor, iteration, border ",
     [
         (
-            cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"),
+            ((5, 16, 23, 4), np.uint8, "NHWC"),
             cvcuda.MorphologyType.ERODE,
             [-1, -1],
             [-1, -1],
@@ -34,7 +34,7 @@ RNG = np.random.default_rng(0)
             cvcuda.Border.CONSTANT,
         ),
         (
-            cvcuda.Tensor((4, 4, 3), np.float32, "HWC"),
+            ((4, 4, 3), np.float32, "HWC"),
             cvcuda.MorphologyType.DILATE,
             [2, 1],
             [-1, -1],
@@ -42,7 +42,7 @@ RNG = np.random.default_rng(0)
             cvcuda.Border.REPLICATE,
         ),
         (
-            cvcuda.Tensor((3, 88, 13, 3), np.uint16, "NHWC"),
+            ((3, 88, 13, 3), np.uint16, "NHWC"),
             cvcuda.MorphologyType.ERODE,
             [2, 2],
             [-1, -1],
@@ -50,7 +50,7 @@ RNG = np.random.default_rng(0)
             cvcuda.Border.REFLECT,
         ),
         (
-            cvcuda.Tensor((3, 4, 4), np.uint16, "HWC"),
+            ((3, 4, 4), np.uint16, "HWC"),
             cvcuda.MorphologyType.DILATE,
             [3, 3],
             [-1, -1],
@@ -58,7 +58,7 @@ RNG = np.random.default_rng(0)
             cvcuda.Border.WRAP,
         ),
         (
-            cvcuda.Tensor((1, 2, 3, 4), np.uint8, "NHWC"),
+            ((1, 2, 3, 4), np.uint8, "NHWC"),
             cvcuda.MorphologyType.ERODE,
             [-1, -1],
             [1, 1],
@@ -67,7 +67,8 @@ RNG = np.random.default_rng(0)
         ),
     ],
 )
-def test_op_morphology(input, morphologyType, maskSize, anchor, iteration, border):
+def test_op_morphology(input_args, morphologyType, maskSize, anchor, iteration, border):
+    input = cvcuda.Tensor(*input_args)
     out = cvcuda.morphology(
         input, morphologyType, maskSize, anchor, iteration=iteration, border=border
     )

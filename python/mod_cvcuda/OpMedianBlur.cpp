@@ -101,11 +101,93 @@ void ExportOpMedianBlur(py::module &m)
 {
     using namespace pybind11::literals;
 
-    m.def("median_blur", &MedianBlur, "src"_a, "ksize"_a, py::kw_only(), "stream"_a = nullptr);
-    m.def("median_blur_into", &MedianBlurInto, "dst"_a, "src"_a, "ksize"_a, py::kw_only(), "stream"_a = nullptr);
-    m.def("median_blur", &VarShapeMedianBlur, "src"_a, "ksize"_a, py::kw_only(), "stream"_a = nullptr);
-    m.def("median_blur_into", &VarShapeMedianBlurInto, "dst"_a, "src"_a, "ksize"_a, py::kw_only(),
-          "stream"_a = nullptr);
+    m.def("median_blur", &MedianBlur, "src"_a, "ksize"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Median Blur operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Median Blur operator
+            for more details and usage examples.
+
+        Args:
+            src (Tensor): Input tensor containing one or more images.
+            ksize (Tuple [int,int]): Width and Height of the kernel.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.Tensor: The output tensor.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
+
+    m.def("median_blur_into", &MedianBlurInto, "dst"_a, "src"_a, "ksize"_a, py::kw_only(), "stream"_a = nullptr,
+          R"pbdoc(
+
+        Executes the Median Blur operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Median Blur operator
+            for more details and usage examples.
+
+        Args:
+            dst (Tensor): Output tensor to store the result of the operation.
+            src (Tensor): Input tensor containing one or more images.
+            ksize (Tuple [int,int]): Width and Height of the kernel.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
+
+    m.def("median_blur", &VarShapeMedianBlur, "src"_a, "ksize"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Median Blur operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Median Blur operator
+            for more details and usage examples.
+
+        Args:
+            src (ImageBatchVarShape): Input image batch containing one or more images.
+            ksize (Tensor): Width and Height of the kernel for each image.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.ImageBatchVarShape: The output image batch.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
+
+    m.def("median_blur_into", &VarShapeMedianBlurInto, "dst"_a, "src"_a, "ksize"_a, py::kw_only(), "stream"_a = nullptr,
+          R"pbdoc(
+
+        Executes the Median Blur operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Median Blur operator
+            for more details and usage examples.
+
+        Args:
+            src (ImageBatchVarShape): Input image batch containing one or more images.
+            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
+            ksize (Tensor): Width and Height of the kernel for each image.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 }
 
 } // namespace cvcudapy

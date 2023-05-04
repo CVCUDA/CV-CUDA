@@ -23,39 +23,39 @@ RNG = np.random.default_rng(0)
 
 
 @t.mark.parametrize(
-    "input,base,scale,globalscale,globalshift,epsilon,flags",
+    "input_args,base_args,scale_args,globalscale,globalshift,epsilon,flags",
     [
         (
-            cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"),
-            cvcuda.Tensor((1, 1), np.float32, "HW"),
-            cvcuda.Tensor((1, 1), np.float32, "HW"),
+            ((5, 16, 23, 4), np.uint8, "NHWC"),
+            ((1, 1), np.float32, "HW"),
+            ((1, 1), np.float32, "HW"),
             1,
             2,
             3,
             None,
         ),
         (
-            cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"),
-            cvcuda.Tensor((16, 1), np.float32, "HW"),
-            cvcuda.Tensor((16, 1), np.float32, "HW"),
+            ((5, 16, 23, 4), np.uint8, "NHWC"),
+            ((16, 1), np.float32, "HW"),
+            ((16, 1), np.float32, "HW"),
             1,
             2,
             3,
             cvcuda.NormalizeFlags.SCALE_IS_STDDEV,
         ),
         (
-            cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"),
-            cvcuda.Tensor((1, 23), np.float32, "HW"),
-            cvcuda.Tensor((1, 23), np.float32, "HW"),
+            ((5, 16, 23, 4), np.uint8, "NHWC"),
+            ((1, 23), np.float32, "HW"),
+            ((1, 23), np.float32, "HW"),
             1,
             2,
             3,
             None,
         ),
         (
-            cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"),
-            cvcuda.Tensor((16, 23), np.float32, "HW"),
-            cvcuda.Tensor((16, 23), np.float32, "HW"),
+            ((5, 16, 23, 4), np.uint8, "NHWC"),
+            ((16, 23), np.float32, "HW"),
+            ((16, 23), np.float32, "HW"),
             1,
             2,
             3,
@@ -63,7 +63,12 @@ RNG = np.random.default_rng(0)
         ),
     ],
 )
-def test_op_normalize(input, base, scale, globalscale, globalshift, epsilon, flags):
+def test_op_normalize(
+    input_args, base_args, scale_args, globalscale, globalshift, epsilon, flags
+):
+    input = cvcuda.Tensor(*input_args)
+    base = cvcuda.Tensor(*base_args)
+    scale = cvcuda.Tensor(*scale_args)
     out = cvcuda.normalize(input, base, scale)
     assert out.layout == input.layout
     assert out.shape == input.shape
@@ -109,15 +114,15 @@ def test_op_normalize(input, base, scale, globalscale, globalshift, epsilon, fla
 
 
 @t.mark.parametrize(
-    "nimages,format,max_size,max_pixel,base,scale,globalscale,globalshift,epsilon,flags",
+    "nimages,format,max_size,max_pixel,base_args,scale_args,globalscale,globalshift,epsilon,flags",
     [
         (
             5,
             cvcuda.Format.RGB8,
             (16, 23),
             128.0,
-            cvcuda.Tensor((1, 1, 1, 5), np.float32, "NHWC"),
-            cvcuda.Tensor((1, 1, 1, 5), np.float32, "NHWC"),
+            ((1, 1, 1, 5), np.float32, "NHWC"),
+            ((1, 1, 1, 5), np.float32, "NHWC"),
             1,
             2,
             3,
@@ -128,8 +133,8 @@ def test_op_normalize(input, base, scale, globalscale, globalshift, epsilon, fla
             cvcuda.Format.RGB8,
             (16, 23),
             256.0,
-            cvcuda.Tensor((1, 1, 1, 5), np.float32, "NHWC"),
-            cvcuda.Tensor((1, 1, 1, 5), np.float32, "NHWC"),
+            ((1, 1, 1, 5), np.float32, "NHWC"),
+            ((1, 1, 1, 5), np.float32, "NHWC"),
             1,
             2,
             3,
@@ -142,13 +147,16 @@ def test_op_rotatevarshape(
     format,
     max_size,
     max_pixel,
-    base,
-    scale,
+    base_args,
+    scale_args,
     globalscale,
     globalshift,
     epsilon,
     flags,
 ):
+    base = cvcuda.Tensor(*base_args)
+    scale = cvcuda.Tensor(*scale_args)
+
     input = util.create_image_batch(
         nimages, format, max_size=max_size, max_random=max_pixel, rng=RNG
     )

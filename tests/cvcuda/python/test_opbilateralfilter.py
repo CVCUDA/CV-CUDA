@@ -22,31 +22,31 @@ RNG = np.random.default_rng(0)
 
 
 @t.mark.parametrize(
-    "input, diameter, sigma_color, sigma_space, border",
+    "tensor_args, diameter, sigma_color, sigma_space, border",
     [
         (
-            cvcuda.Tensor((5, 9, 9, 4), np.uint8, "NHWC"),
+            ((5, 9, 9, 4), np.uint8, "NHWC"),
             9,
             1,
             1,
             cvcuda.Border.CONSTANT,
         ),
         (
-            cvcuda.Tensor((9, 9, 3), np.uint8, "HWC"),
+            ((9, 9, 3), np.uint8, "HWC"),
             7,
             3,
             10,
             cvcuda.Border.WRAP,
         ),
         (
-            cvcuda.Tensor((5, 21, 21, 4), np.uint8, "NHWC"),
+            ((5, 21, 21, 4), np.uint8, "NHWC"),
             6,
             15,
             9,
             cvcuda.Border.REPLICATE,
         ),
         (
-            cvcuda.Tensor((21, 21, 3), np.uint8, "HWC"),
+            ((21, 21, 3), np.uint8, "HWC"),
             12,
             2,
             5,
@@ -54,7 +54,8 @@ RNG = np.random.default_rng(0)
         ),
     ],
 )
-def test_op_bilateral_filter(input, diameter, sigma_color, sigma_space, border):
+def test_op_bilateral_filter(tensor_args, diameter, sigma_color, sigma_space, border):
+    input = cvcuda.Tensor(*tensor_args)
     out = cvcuda.bilateral_filter(
         input, diameter, sigma_color, sigma_space, border=border
     )

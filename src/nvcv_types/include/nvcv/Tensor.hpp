@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,11 +20,11 @@
 
 #include "IImage.hpp"
 #include "ITensor.hpp"
+#include "ImageFormat.hpp"
 #include "Size.hpp"
 #include "TensorData.hpp"
-#include "alloc/IAllocator.hpp"
-
-#include <nvcv/ImageFormat.hpp>
+#include "alloc/Allocator.hpp"
+#include "detail/Callback.hpp"
 
 namespace nvcv {
 
@@ -37,11 +37,11 @@ public:
     static Requirements CalcRequirements(int numImages, Size2D imgSize, ImageFormat fmt,
                                          const MemAlignment &bufAlign = {});
 
-    explicit Tensor(const Requirements &reqs, IAllocator *alloc = nullptr);
+    explicit Tensor(const Requirements &reqs, const Allocator &alloc = nullptr);
     explicit Tensor(const TensorShape &shape, DataType dtype, const MemAlignment &bufAlign = {},
-                    IAllocator *alloc = nullptr);
+                    const Allocator &alloc = nullptr);
     explicit Tensor(int numImages, Size2D imgSize, ImageFormat fmt, const MemAlignment &bufAlign = {},
-                    IAllocator *alloc = nullptr);
+                    const Allocator &alloc = nullptr);
     ~Tensor();
 
     Tensor(const Tensor &) = delete;
@@ -53,12 +53,25 @@ private:
 };
 
 // TensorWrapData definition -------------------------------------
-using TensorDataCleanupFunc = void(const ITensorData &);
+using TensorDataCleanupFunc = void(const TensorData &);
+
+struct TranslateTensorDataCleanup
+{
+    template<typename CppCleanup>
+    void operator()(CppCleanup &&c, const NVCVTensorData *data) const noexcept
+    {
+        c(TensorData(*data));
+    }
+};
+
+using TensorDataCleanupCallback
+    = CleanupCallback<TensorDataCleanupFunc, detail::RemovePointer_t<NVCVTensorDataCleanupFunc>,
+                      TranslateTensorDataCleanup>;
 
 class TensorWrapData : public ITensor
 {
 public:
-    explicit TensorWrapData(const ITensorData &data, std::function<TensorDataCleanupFunc> cleanup = nullptr);
+    explicit TensorWrapData(const TensorData &data, TensorDataCleanupCallback &&cleanup = {});
     ~TensorWrapData();
 
     TensorWrapData(const TensorWrapData &) = delete;
@@ -66,11 +79,7 @@ public:
 private:
     NVCVTensorHandle doGetHandle() const final override;
 
-    static void doCleanup(void *ctx, const NVCVTensorData *data);
-
     NVCVTensorHandle m_handle;
-
-    std::function<TensorDataCleanupFunc> m_cleanup;
 };
 
 // TensorWrapImage definition -------------------------------------

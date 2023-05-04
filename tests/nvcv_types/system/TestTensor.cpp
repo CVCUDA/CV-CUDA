@@ -22,8 +22,7 @@
 #include <nvcv/Image.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
-#include <nvcv/alloc/CustomAllocator.hpp>
-#include <nvcv/alloc/CustomResourceAllocator.hpp>
+#include <nvcv/alloc/Allocator.hpp>
 
 #include <list>
 #include <random>
@@ -88,13 +87,11 @@ TEST_P(TensorImageTests, wip_create)
     ASSERT_NE(nullptr, tensor.handle());
 
     {
-        const nvcv::ITensorData *data = tensor.exportData();
-        ASSERT_NE(nullptr, data);
+        auto data = tensor.exportData();
+        ASSERT_EQ(tensor.dtype(), data.dtype());
 
-        ASSERT_EQ(tensor.dtype(), data->dtype());
-
-        auto *devdata = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(data);
-        ASSERT_NE(nullptr, devdata);
+        auto devdata = data.cast<nvcv::TensorDataStridedCuda>();
+        ASSERT_NE(nvcv::NullOpt, devdata);
 
         EXPECT_EQ(GOLD_RANK, devdata->rank());
         ASSERT_EQ(GOLD_SHAPE, devdata->shape());
@@ -178,14 +175,13 @@ TEST_P(TensorTests, wip_create)
     ASSERT_NE(nullptr, tensor.handle());
 
     {
-        const nvcv::ITensorData *data = tensor.exportData();
-        ASSERT_NE(nullptr, data);
+        auto data = tensor.exportData();
 
-        auto *devdata = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(data);
-        ASSERT_NE(nullptr, devdata);
+        auto devdata = data.cast<nvcv::TensorDataStridedCuda>();
+        ASSERT_NE(nvcv::NullOpt, devdata);
 
         const int64_t *strides = devdata->cdata().buffer.strided.strides;
-        EXPECT_THAT(std::vector<int64_t>(strides, strides + data->rank()), t::ElementsAreArray(GOLD_SHAPE));
+        EXPECT_THAT(std::vector<int64_t>(strides, strides + data.rank()), t::ElementsAreArray(GOLD_SHAPE));
     }
 }
 
@@ -219,14 +215,11 @@ TEST(TensorTests, wip_create_allocator)
     // clang-format on
 
     nvcv::Tensor tensor(5, {163, 117}, nvcv::FMT_RGBA8, nvcv::MemAlignment{}.rowAddr(1).baseAddr(32),
-                        &myAlloc); // packed rows
+                        myAlloc); // packed rows
     EXPECT_EQ(32, setBufAlign);
 
-    const nvcv::ITensorData *data = tensor.exportData();
-    ASSERT_NE(nullptr, data);
-
-    auto *devdata = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(data);
-    ASSERT_NE(nullptr, devdata);
+    auto devdata = tensor.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_NE(nvcv::NullOpt, devdata);
 
     EXPECT_EQ(1, devdata->stride(3));
     EXPECT_EQ(4 * 1, devdata->stride(2));
@@ -328,7 +321,7 @@ TEST(TensorWrapData, wip_create)
 
     nvcv::Tensor origTensor(5, {173, 79}, fmt, nvcv::MemAlignment{}.rowAddr(1).baseAddr(32)); // packed rows
 
-    auto *tdata = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(origTensor.exportData());
+    auto tdata = origTensor.exportData<nvcv::TensorDataStridedCuda>();
 
     auto access = nvcv::TensorDataAccessStridedImagePlanar::Create(*tdata);
     ASSERT_TRUE(access);
@@ -357,11 +350,8 @@ TEST(TensorWrapData, wip_create)
     EXPECT_EQ(tdata->rank(), tensor.rank());
     EXPECT_EQ(GOLD_DTYPE, tensor.dtype());
 
-    const nvcv::ITensorData *data = tensor.exportData();
-    ASSERT_NE(nullptr, data);
-
-    auto *devdata = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(data);
-    ASSERT_NE(nullptr, devdata);
+    auto devdata = tensor.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_NE(nvcv::NullOpt, devdata);
 
     auto accessRef = nvcv::TensorDataAccessStridedImagePlanar::Create(*devdata);
     ASSERT_TRUE(access);
@@ -422,8 +412,10 @@ TEST_P(TensorWrapImageTests, wip_create)
     EXPECT_EQ(GOLD_SHAPE, tensor.shape());
     EXPECT_EQ(GOLD_DTYPE, tensor.dtype());
 
-    auto *imgData    = dynamic_cast<const nvcv::IImageDataStridedCuda *>(img.exportData());
-    auto *tensorData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(tensor.exportData());
+    auto imgData    = img.exportData<nvcv::ImageDataStridedCuda>();
+    auto tensorData = tensor.exportData<nvcv::TensorDataStridedCuda>();
+
+    EXPECT_TRUE(imgData);
 
     auto tensorAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*tensorData);
     EXPECT_TRUE(tensorAccess);
@@ -492,7 +484,7 @@ TEST_P(TensorWrapParamTests, wip_create)
 
     if (GOLD_STATUS == NVCV_SUCCESS)
     {
-        auto *data = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(tensor->exportData());
+        auto data = tensor->exportData<nvcv::TensorDataStridedCuda>();
         ASSERT_NE(nullptr, data);
 
         EXPECT_EQ(buf.basePtr, (NVCVByte *)data->basePtr());

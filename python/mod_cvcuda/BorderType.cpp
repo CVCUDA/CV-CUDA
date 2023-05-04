@@ -24,11 +24,11 @@ namespace cvcudapy {
 void ExportBorderType(py::module &m)
 {
     py::enum_<NVCVBorderType>(m, "Border")
-        .value("CONSTANT", NVCV_BORDER_CONSTANT)
-        .value("REPLICATE", NVCV_BORDER_REPLICATE)
-        .value("REFLECT", NVCV_BORDER_REFLECT)
-        .value("WRAP", NVCV_BORDER_WRAP)
-        .value("REFLECT101", NVCV_BORDER_REFLECT101);
+        .value("CONSTANT", NVCV_BORDER_CONSTANT, "Constant border")
+        .value("REPLICATE", NVCV_BORDER_REPLICATE, "Replicate border")
+        .value("REFLECT", NVCV_BORDER_REFLECT, "Reflect border")
+        .value("WRAP", NVCV_BORDER_WRAP, "Wrap border")
+        .value("REFLECT101", NVCV_BORDER_REFLECT101, "Reflect 101 border");
 }
 
 } // namespace cvcudapy

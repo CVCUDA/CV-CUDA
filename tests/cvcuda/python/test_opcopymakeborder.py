@@ -19,10 +19,10 @@ import numpy as np
 
 
 @t.mark.parametrize(
-    "input, top, bottom, left, right, border_mode, border_value",
+    "input_args, top, bottom, left, right, border_mode, border_value",
     [
         (
-            cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"),
+            ((5, 16, 23, 4), np.uint8, "NHWC"),
             1,
             2,
             3,
@@ -31,7 +31,7 @@ import numpy as np
             [0],
         ),
         (
-            cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"),
+            ((5, 16, 23, 4), np.uint8, "NHWC"),
             1,
             2,
             3,
@@ -40,7 +40,7 @@ import numpy as np
             [12, 3, 4, 55],
         ),
         (
-            cvcuda.Tensor((16, 23, 4), np.uint8, "HWC"),
+            ((16, 23, 4), np.uint8, "HWC"),
             2,
             2,
             2,
@@ -49,7 +49,7 @@ import numpy as np
             [0],
         ),
         (
-            cvcuda.Tensor((16, 23, 4), np.uint8, "HWC"),
+            ((16, 23, 4), np.uint8, "HWC"),
             2,
             2,
             2,
@@ -58,7 +58,7 @@ import numpy as np
             [0],
         ),
         (
-            cvcuda.Tensor((16, 23, 3), np.uint8, "HWC"),
+            ((16, 23, 3), np.uint8, "HWC"),
             10,
             12,
             35,
@@ -67,7 +67,7 @@ import numpy as np
             [0],
         ),
         (
-            cvcuda.Tensor((16, 23, 1), np.float32, "HWC"),
+            ((16, 23, 1), np.float32, "HWC"),
             11,
             1,
             20,
@@ -76,7 +76,7 @@ import numpy as np
             [0],
         ),
         (
-            cvcuda.Tensor((16, 23, 3), np.float32, "HWC"),
+            ((16, 23, 3), np.float32, "HWC"),
             11,
             1,
             20,
@@ -86,7 +86,10 @@ import numpy as np
         ),
     ],
 )
-def test_op_copymakeborder(input, top, bottom, left, right, border_mode, border_value):
+def test_op_copymakeborder(
+    input_args, top, bottom, left, right, border_mode, border_value
+):
+    input = cvcuda.Tensor(*input_args)
     out_shape = [i for i in input.shape]
     cdim = len(out_shape) - 1
     out_shape[cdim - 2] += top + bottom

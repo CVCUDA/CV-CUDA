@@ -21,107 +21,251 @@
 // Internal implementation of math wrapppers functionalities.
 // Not to be used directly.
 
+#include <cfenv> // for FE_TONEAREST, etc.
 #include <cmath> // for std::round, etc.
 
 namespace nvcv::cuda::detail {
 
 #ifdef __CUDA_ARCH__
 
-template<typename T, typename U>
+template<typename T, typename U, int RM = FE_TONEAREST>
 __device__ __forceinline__ T DeviceRoundImpl(U u)
 {
     if constexpr (std::is_same_v<U, float>)
     {
-        if constexpr (std::is_same_v<T, float> || sizeof(T) < 4)
+        if constexpr (std::is_same_v<T, float>)
         {
-            return static_cast<T>(rintf(u));
+            if constexpr (RM == FE_TONEAREST)
+                return rintf(u);
+            else if constexpr (RM == FE_DOWNWARD)
+                return floorf(u);
+            else if constexpr (RM == FE_UPWARD)
+                return ceilf(u);
+            else if constexpr (RM == FE_TOWARDZERO)
+                return truncf(u);
         }
-        else if constexpr (std::is_same_v<T, int>)
+        else if constexpr (std::is_same_v<T, int> || (sizeof(T) < 4 && std::is_integral_v<T> && std::is_signed_v<T>))
         {
-            return __float2int_rn(u);
+            if constexpr (RM == FE_TONEAREST)
+                return static_cast<T>(__float2int_rn(u));
+            else if constexpr (RM == FE_DOWNWARD)
+                return static_cast<T>(__float2int_rd(u));
+            else if constexpr (RM == FE_UPWARD)
+                return static_cast<T>(__float2int_ru(u));
+            else if constexpr (RM == FE_TOWARDZERO)
+                return static_cast<T>(__float2int_rz(u));
         }
-        else if constexpr (std::is_same_v<T, unsigned int>)
+        else if constexpr (std::is_same_v<
+                               T, unsigned int> || (sizeof(T) < 4 && std::is_integral_v<T> && std::is_unsigned_v<T>))
         {
-            return __float2uint_rn(u);
+            if constexpr (RM == FE_TONEAREST)
+                return static_cast<T>(__float2uint_rn(u));
+            else if constexpr (RM == FE_DOWNWARD)
+                return static_cast<T>(__float2uint_rd(u));
+            else if constexpr (RM == FE_UPWARD)
+                return static_cast<T>(__float2uint_ru(u));
+            else if constexpr (RM == FE_TOWARDZERO)
+                return static_cast<T>(__float2uint_rz(u));
         }
         else if constexpr (std::is_same_v<T, long int>)
         {
             if constexpr (sizeof(long int) == sizeof(int))
             {
-                return __float2int_rn(u);
+                if constexpr (RM == FE_TONEAREST)
+                    return __float2int_rn(u);
+                else if constexpr (RM == FE_DOWNWARD)
+                    return __float2int_rd(u);
+                else if constexpr (RM == FE_UPWARD)
+                    return __float2int_ru(u);
+                else if constexpr (RM == FE_TOWARDZERO)
+                    return __float2int_rz(u);
             }
             else
             {
-                return __float2ll_rd(u + 0.5f);
+                if constexpr (RM == FE_TONEAREST)
+                    return __float2ll_rn(u);
+                else if constexpr (RM == FE_DOWNWARD)
+                    return __float2ll_rd(u);
+                else if constexpr (RM == FE_UPWARD)
+                    return __float2ll_ru(u);
+                else if constexpr (RM == FE_TOWARDZERO)
+                    return __float2ll_rz(u);
             }
         }
         else if constexpr (std::is_same_v<T, unsigned long int>)
         {
             if constexpr (sizeof(unsigned long int) == sizeof(unsigned int))
             {
-                return __float2uint_rn(u);
+                if constexpr (RM == FE_TONEAREST)
+                    return __float2uint_rn(u);
+                else if constexpr (RM == FE_DOWNWARD)
+                    return __float2uint_rd(u);
+                else if constexpr (RM == FE_UPWARD)
+                    return __float2uint_ru(u);
+                else if constexpr (RM == FE_TOWARDZERO)
+                    return __float2uint_rz(u);
             }
             else
             {
-                return __float2ull_rd(u + 0.5f);
+                if constexpr (RM == FE_TONEAREST)
+                    return __float2ull_rn(u);
+                else if constexpr (RM == FE_DOWNWARD)
+                    return __float2ull_rd(u);
+                else if constexpr (RM == FE_UPWARD)
+                    return __float2ull_ru(u);
+                else if constexpr (RM == FE_TOWARDZERO)
+                    return __float2ull_rz(u);
             }
         }
         else if constexpr (std::is_same_v<T, long long int>)
         {
-            return __float2ll_rd(u + 0.5f);
+            if constexpr (RM == FE_TONEAREST)
+                return __float2ll_rn(u);
+            else if constexpr (RM == FE_DOWNWARD)
+                return __float2ll_rd(u);
+            else if constexpr (RM == FE_UPWARD)
+                return __float2ll_ru(u);
+            else if constexpr (RM == FE_TOWARDZERO)
+                return __float2ll_rz(u);
         }
         else if constexpr (std::is_same_v<T, unsigned long long int>)
         {
-            return __float2ull_rd(u + 0.5f);
+            if constexpr (RM == FE_TONEAREST)
+                return __float2ull_rn(u);
+            else if constexpr (RM == FE_DOWNWARD)
+                return __float2ull_rd(u);
+            else if constexpr (RM == FE_UPWARD)
+                return __float2ull_ru(u);
+            else if constexpr (RM == FE_TOWARDZERO)
+                return __float2ull_rz(u);
+        }
+        else
+        {
+            assert(false && "Undefined round types");
         }
     }
     else if constexpr (std::is_same_v<U, double>)
     {
-        if constexpr (std::is_same_v<T, double> || sizeof(T) < 4)
+        if constexpr (std::is_same_v<T, double>)
         {
-            return static_cast<T>(rint(u));
+            if constexpr (RM == FE_TONEAREST)
+                return rint(u);
+            else if constexpr (RM == FE_DOWNWARD)
+                return floor(u);
+            else if constexpr (RM == FE_UPWARD)
+                return ceil(u);
+            else if constexpr (RM == FE_TOWARDZERO)
+                return trunc(u);
         }
         else if constexpr (std::is_same_v<T, float>)
         {
-            return __double2float_rn(u);
+            if constexpr (RM == FE_TONEAREST)
+                return __double2float_rn(u);
+            else if constexpr (RM == FE_DOWNWARD)
+                return __double2float_rd(u);
+            else if constexpr (RM == FE_UPWARD)
+                return __double2float_ru(u);
+            else if constexpr (RM == FE_TOWARDZERO)
+                return __double2float_rz(u);
         }
-        else if constexpr (std::is_same_v<T, int>)
+        else if constexpr (std::is_same_v<T, int> || (sizeof(T) < 4 && std::is_integral_v<T> && std::is_signed_v<T>))
         {
-            return __double2int_rn(u);
+            if constexpr (RM == FE_TONEAREST)
+                return static_cast<T>(__double2int_rn(u));
+            else if constexpr (RM == FE_DOWNWARD)
+                return static_cast<T>(__double2int_rd(u));
+            else if constexpr (RM == FE_UPWARD)
+                return static_cast<T>(__double2int_ru(u));
+            else if constexpr (RM == FE_TOWARDZERO)
+                return static_cast<T>(__double2int_rz(u));
         }
-        else if constexpr (std::is_same_v<T, unsigned int>)
+        else if constexpr (std::is_same_v<
+                               T, unsigned int> || (sizeof(T) < 4 && std::is_integral_v<T> && std::is_unsigned_v<T>))
         {
-            return __double2uint_rn(u);
+            if constexpr (RM == FE_TONEAREST)
+                return static_cast<T>(__double2uint_rn(u));
+            else if constexpr (RM == FE_DOWNWARD)
+                return static_cast<T>(__double2uint_rd(u));
+            else if constexpr (RM == FE_UPWARD)
+                return static_cast<T>(__double2uint_ru(u));
+            else if constexpr (RM == FE_TOWARDZERO)
+                return static_cast<T>(__double2uint_rz(u));
         }
         else if constexpr (std::is_same_v<T, long int>)
         {
             if constexpr (sizeof(long int) == sizeof(int))
             {
-                return __double2int_rn(u);
+                if constexpr (RM == FE_TONEAREST)
+                    return __double2int_rn(u);
+                else if constexpr (RM == FE_DOWNWARD)
+                    return __double2int_rd(u);
+                else if constexpr (RM == FE_UPWARD)
+                    return __double2int_ru(u);
+                else if constexpr (RM == FE_TOWARDZERO)
+                    return __double2int_rz(u);
             }
             else
             {
-                return __double2ll_rd(u + 0.5f);
+                if constexpr (RM == FE_TONEAREST)
+                    return __double2ll_rn(u);
+                else if constexpr (RM == FE_DOWNWARD)
+                    return __double2ll_rd(u);
+                else if constexpr (RM == FE_UPWARD)
+                    return __double2ll_ru(u);
+                else if constexpr (RM == FE_TOWARDZERO)
+                    return __double2ll_rz(u);
             }
         }
         else if constexpr (std::is_same_v<T, unsigned long int>)
         {
             if constexpr (sizeof(unsigned long int) == sizeof(unsigned int))
             {
-                return __double2uint_rn(u);
+                if constexpr (RM == FE_TONEAREST)
+                    return __double2uint_rn(u);
+                else if constexpr (RM == FE_DOWNWARD)
+                    return __double2uint_rd(u);
+                else if constexpr (RM == FE_UPWARD)
+                    return __double2uint_ru(u);
+                else if constexpr (RM == FE_TOWARDZERO)
+                    return __double2uint_rz(u);
             }
             else
             {
-                return __double2ull_rd(u + 0.5f);
+                if constexpr (RM == FE_TONEAREST)
+                    return __double2ull_rn(u);
+                else if constexpr (RM == FE_DOWNWARD)
+                    return __double2ull_rd(u);
+                else if constexpr (RM == FE_UPWARD)
+                    return __double2ull_ru(u);
+                else if constexpr (RM == FE_TOWARDZERO)
+                    return __double2ull_rz(u);
             }
         }
         else if constexpr (std::is_same_v<T, long long int>)
         {
-            return __double2ll_rd(u + 0.5f);
+            if constexpr (RM == FE_TONEAREST)
+                return __double2ll_rn(u);
+            else if constexpr (RM == FE_DOWNWARD)
+                return __double2ll_rd(u);
+            else if constexpr (RM == FE_UPWARD)
+                return __double2ll_ru(u);
+            else if constexpr (RM == FE_TOWARDZERO)
+                return __double2ll_rz(u);
         }
         else if constexpr (std::is_same_v<T, unsigned long long int>)
         {
-            return __double2ull_rd(u + 0.5f);
+            if constexpr (RM == FE_TONEAREST)
+                return __double2ull_rn(u);
+            else if constexpr (RM == FE_DOWNWARD)
+                return __double2ull_rd(u);
+            else if constexpr (RM == FE_UPWARD)
+                return __double2ull_ru(u);
+            else if constexpr (RM == FE_TOWARDZERO)
+                return __double2ull_rz(u);
+        }
+        else
+        {
+            assert(false && "Undefined round types");
         }
     }
     else
@@ -254,13 +398,36 @@ __device__ __forceinline__ U DeviceAbsImpl(U u)
 
 #endif
 
-template<typename T, typename U>
+template<typename T, typename U, int RM = FE_TONEAREST>
 inline __host__ __device__ T RoundImpl(U u)
 {
 #ifdef __CUDA_ARCH__
-    return DeviceRoundImpl<T, U>(u);
+    return DeviceRoundImpl<T, U, RM>(u);
 #else
-    return std::round(u);
+    // In host we use C++ to do round depending on round mode by selecting at compile time the correct function:
+    // round is to nearest; floor is downward; ceil is upward; and trunc is towards zero.
+    if constexpr (RM == FE_TONEAREST)
+    {
+        // CUDA does round-to-nearest-even, C/C++ functions that do the same are roundeven*
+        if constexpr (std::is_same_v<U, float>)
+            return roundevenf(u);
+        else if constexpr (std::is_same_v<U, double>)
+            return roundeven(u);
+        else
+            return roundevenl(u);
+    }
+    else if constexpr (RM == FE_DOWNWARD)
+    {
+        return std::floor(u);
+    }
+    else if constexpr (RM == FE_UPWARD)
+    {
+        return std::ceil(u);
+    }
+    else if constexpr (RM == FE_TOWARDZERO)
+    {
+        return std::trunc(u);
+    }
 #endif
 }
 

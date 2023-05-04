@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -14,6 +14,8 @@
 
 #ifndef NVCV_UTIL_SYMBOLVERSIONING_HPP
 #define NVCV_UTIL_SYMBOLVERSIONING_HPP
+
+#include "Compiler.hpp"
 
 /* Tools to help defining versioned APIs.
  *
@@ -64,16 +66,29 @@ assert(foo11 == foo11_tmp);
 
 #define NVCV_PROJ_FUNCTION_API(FUNC, VER_MAJOR, VER_MINOR) FUNC##_v##VER_MAJOR##_##VER_MINOR
 
-#define NVCV_PROJ_DEFINE_API_HELPER(PROJ, VER_MAJOR, VER_MINOR, VERTYPE, RETTYPE, FUNC, ARGS)                          \
-    extern "C" __attribute__((visibility("default"))) RETTYPE NVCV_PROJ_FUNCTION_API(FUNC, VER_MAJOR, VER_MINOR) ARGS; \
-    extern "C" __attribute__((visibility("default")))                                                                  \
-    __attribute__((__symver__(#FUNC VERTYPE #PROJ "_" #VER_MAJOR "." #VER_MINOR))) RETTYPE                             \
-        NVCV_PROJ_FUNCTION_API(FUNC, VER_MAJOR, VER_MINOR) ARGS
+// gcc>=10.0 supports the symver function attribute, let's use it.
+#if NVCV_GCC_VERSION >= 100000
+#    define NVCV_PROJ_SYMVER(PROJ, FUNC, VER_MAJOR, VER_MINOR, VERTYPE) \
+        extern "C" __attribute__((visibility("default")))               \
+        __attribute__((__symver__(#FUNC VERTYPE #PROJ "_" #VER_MAJOR "." #VER_MINOR)))
+#else
+#    define NVCV_PROJ_SYMVER(PROJ, FUNC, VER_MAJOR, VER_MINOR, VERTYPE)                                \
+        __asm__(".symver " #FUNC "_v" #VER_MAJOR "_" #VER_MINOR "," #FUNC VERTYPE #PROJ "_" #VER_MAJOR \
+                "." #VER_MINOR);                                                                       \
+        extern "C" __attribute__((visibility("default")))
+#endif
+
+#define NVCV_PROJ_DEFINE_API_HELPER(PROJ, VER_MAJOR, VER_MINOR, VERTYPE, RETTYPE, FUNC, FUNC_VER, ARGS) \
+    extern "C" __attribute__((visibility("default"))) RETTYPE FUNC_VER ARGS;                            \
+    NVCV_PROJ_SYMVER(PROJ, FUNC, VER_MAJOR, VER_MINOR, VERTYPE)                                         \
+    RETTYPE FUNC_VER ARGS
 
 #define NVCV_PROJ_DEFINE_API_OLD(PROJ, VER_MAJOR, VER_MINOR, RETTYPE, FUNC, ARGS) \
-    NVCV_PROJ_DEFINE_API_HELPER(PROJ, VER_MAJOR, VER_MINOR, "@", RETTYPE, FUNC, ARGS)
+    NVCV_PROJ_DEFINE_API_HELPER(PROJ, VER_MAJOR, VER_MINOR, "@", RETTYPE, FUNC,   \
+                                NVCV_PROJ_FUNCTION_API(FUNC, VER_MAJOR, VER_MINOR), ARGS)
 
-#define NVCV_PROJ_DEFINE_API(PROJ, VER_MAJOR, VER_MINOR, RETTYPE, FUNC, ARGS) \
-    NVCV_PROJ_DEFINE_API_HELPER(PROJ, VER_MAJOR, VER_MINOR, "@@", RETTYPE, FUNC, ARGS)
+#define NVCV_PROJ_DEFINE_API(PROJ, VER_MAJOR, VER_MINOR, RETTYPE, FUNC, ARGS)    \
+    NVCV_PROJ_DEFINE_API_HELPER(PROJ, VER_MAJOR, VER_MINOR, "@@", RETTYPE, FUNC, \
+                                NVCV_PROJ_FUNCTION_API(FUNC, VER_MAJOR, VER_MINOR), ARGS)
 
 #endif // NVCV_UTIL_SYMBOLVERSIONING_HPP

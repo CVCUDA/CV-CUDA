@@ -23,53 +23,45 @@ RNG = np.random.default_rng(0)
 
 
 @t.mark.parametrize(
-    "input, kernel, kernel_anchor, border",
+    "input_args, kernel_args, kernel_anchor_args, border",
     [
         (
-            util.create_image_batch(
-                10, cvcuda.Format.RGB8, size=(123, 321), max_random=256, rng=RNG
-            ),
-            util.create_image_batch(
-                10, cvcuda.Format.F32, size=(3, 3), max_random=1, rng=RNG
-            ),
-            util.create_tensor((10, 2), np.int32, "NC", max_random=(3, 3), rng=RNG),
+            (10, cvcuda.Format.RGB8, (123, 321), (128, 128), 256, RNG),
+            (10, cvcuda.Format.F32, (3, 3), (128, 128), 1, RNG),
+            ((10, 2), np.int32, "NC", (3, 3), RNG, None),
             cvcuda.Border.CONSTANT,
         ),
         (
-            util.create_image_batch(7, cvcuda.Format.RGBf32, max_random=1, rng=RNG),
-            util.create_image_batch(
-                7, cvcuda.Format.F32, size=(5, 5), max_random=3, rng=RNG
-            ),
-            util.create_tensor((7, 2), np.int32, "NC", max_random=(5, 5), rng=RNG),
+            (7, cvcuda.Format.RGBf32, (0, 0), (128, 128), 1, RNG),
+            (7, cvcuda.Format.F32, (5, 5), (128, 128), 3, RNG),
+            ((7, 2), np.int32, "NC", (5, 5), RNG, None),
             cvcuda.Border.REPLICATE,
         ),
         (
-            util.create_image_batch(1, cvcuda.Format.U8, max_random=123, rng=RNG),
-            util.create_image_batch(
-                1, cvcuda.Format.F32, size=(7, 7), max_random=2, rng=RNG
-            ),
-            util.create_tensor((1, 2), np.int32, "NC", max_random=(7, 7), rng=RNG),
+            (1, cvcuda.Format.U8, (0, 0), (128, 128), 123, RNG),
+            (1, cvcuda.Format.F32, (7, 7), (128, 128), 2, RNG),
+            ((1, 2), np.int32, "NC", (7, 7), RNG, None),
             cvcuda.Border.REFLECT,
         ),
         (
-            util.create_image_batch(6, cvcuda.Format.S16, max_random=1234, rng=RNG),
-            util.create_image_batch(
-                6, cvcuda.Format.F32, max_size=(9, 9), max_random=4, rng=RNG
-            ),
-            util.create_tensor((6, 2), np.int32, "NC", max_random=(1, 1), rng=RNG),
+            (6, cvcuda.Format.S16, (0, 0), (128, 128), 1234, RNG),
+            (6, cvcuda.Format.F32, (0, 0), (9, 9), 4, RNG),
+            ((6, 2), np.int32, "NC", (1, 1), RNG, None),
             cvcuda.Border.WRAP,
         ),
         (
-            util.create_image_batch(9, cvcuda.Format.S32, max_random=12345, rng=RNG),
-            util.create_image_batch(
-                9, cvcuda.Format.F32, max_size=(4, 4), max_random=2, rng=RNG
-            ),
-            util.create_tensor((9, 2), np.int32, "NC", max_random=(4, 4), rng=RNG),
+            (9, cvcuda.Format.S32, (0, 0), (128, 128), 12345, RNG),
+            (9, cvcuda.Format.F32, (0, 0), (4, 4), 2, RNG),
+            ((9, 2), np.int32, "NC", (4, 4), RNG, None),
             cvcuda.Border.REFLECT101,
         ),
     ],
 )
-def test_op_conv2dvarshape(input, kernel, kernel_anchor, border):
+def test_op_conv2dvarshape(input_args, kernel_args, kernel_anchor_args, border):
+    input = util.create_image_batch(*input_args)
+    kernel = util.create_image_batch(*kernel_args)
+    kernel_anchor = util.create_tensor(*kernel_anchor_args)
+
     out = cvcuda.conv2d(
         input,
         kernel,

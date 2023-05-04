@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,8 +31,8 @@ public:
     using Requirements = NVCVImageBatchVarShapeRequirements;
     static Requirements CalcRequirements(int32_t capacity);
 
-    explicit ImageBatchVarShape(const Requirements &reqs, IAllocator *alloc = nullptr);
-    explicit ImageBatchVarShape(int32_t capacity, IAllocator *alloc = nullptr);
+    explicit ImageBatchVarShape(const Requirements &reqs, const Allocator &alloc = nullptr);
+    explicit ImageBatchVarShape(int32_t capacity, const Allocator &alloc = nullptr);
     ~ImageBatchVarShape();
 
     ImageBatchVarShape(const ImageBatchVarShape &) = delete;

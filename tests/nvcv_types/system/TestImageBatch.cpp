@@ -85,11 +85,10 @@ TEST(ImageBatchVarShape, wip_create)
 
     // empty data
     {
-        const nvcv::IImageBatchData *data = batch.exportData(0);
-        ASSERT_NE(nullptr, data);
+        nvcv::ImageBatchData data = batch.exportData(0);
 
-        auto *devdata = dynamic_cast<const nvcv::IImageBatchVarShapeDataStridedCuda *>(data);
-        ASSERT_NE(nullptr, devdata);
+        auto devdata = data.cast<nvcv::ImageBatchVarShapeDataStridedCuda>();
+        ASSERT_NE(nvcv::NullOpt, devdata);
 
         ASSERT_EQ(0, devdata->numImages());
         EXPECT_NE(nullptr, devdata->imageList());
@@ -107,8 +106,8 @@ TEST(ImageBatchVarShape, wip_create)
 
     auto addToGold = [&goldImages, &goldFormats, &goldHandles](const nvcv::IImage &img)
     {
-        auto *imgdata = dynamic_cast<const nvcv::IImageDataStridedCuda *>(img.exportData());
-        EXPECT_NE(nullptr, imgdata);
+        auto imgdata = img.exportData<nvcv::ImageDataStridedCuda>();
+        EXPECT_NE(nvcv::NullOpt, imgdata);
         if (imgdata)
         {
             goldImages.push_back(imgdata->cdata().buffer.strided);
@@ -164,9 +163,9 @@ TEST(ImageBatchVarShape, wip_create)
     batch.pushBack(vec1.begin(), vec1.end());
 
     // To synchronize buffers
-    const nvcv::IImageBatchVarShapeData *vsdata = batch.exportData(stream); // test output type
-    const auto *devdata = dynamic_cast<const nvcv::IImageBatchVarShapeDataStridedCuda *>(vsdata);
-    ASSERT_NE(nullptr, devdata);
+    nvcv::ImageBatchVarShapeData vsdata  = batch.exportData(stream); // test output type
+    auto                         devdata = vsdata.cast<nvcv::ImageBatchVarShapeDataStridedCuda>();
+    ASSERT_NE(nvcv::NullOpt, devdata);
     EXPECT_EQ(calcMaxSize(), devdata->maxSize());
     EXPECT_EQ(devdata->maxSize(), batch.maxSize());
 
@@ -193,7 +192,7 @@ TEST(ImageBatchVarShape, wip_create)
     goldHandles.erase(goldHandles.end() - 5, goldHandles.end());
 
     // To synchronize buffers
-    devdata = dynamic_cast<const nvcv::IImageBatchVarShapeDataStridedCuda *>(batch.exportData(stream));
+    devdata = batch.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     ASSERT_NE(nullptr, devdata);
     EXPECT_EQ(calcMaxSize(), devdata->maxSize());
     EXPECT_EQ(devdata->maxSize(), batch.maxSize());
@@ -231,11 +230,10 @@ TEST(ImageBatchVarShape, wip_create)
 
     // not-empty data
     {
-        const nvcv::IImageBatchData *data = batch.exportData(stream);
-        ASSERT_NE(nullptr, data);
+        auto data = batch.exportData(stream);
 
-        auto *devdata = dynamic_cast<const nvcv::IImageBatchVarShapeDataStridedCuda *>(data);
-        ASSERT_NE(nullptr, devdata);
+        auto devdata = data.cast<nvcv::ImageBatchVarShapeDataStridedCuda>();
+        ASSERT_NE(nvcv::NullOpt, devdata);
 
         ASSERT_EQ(devdata->uniqueFormat(), batch.uniqueFormat());
 
@@ -298,8 +296,8 @@ TEST(ImageBatchVarShape, wip_sync)
 
     auto addToGold = [&goldImages, &goldFormats, &goldHandles](const nvcv::IImage &img)
     {
-        auto *imgdata = dynamic_cast<const nvcv::IImageDataStridedCuda *>(img.exportData());
-        EXPECT_NE(nullptr, imgdata);
+        auto imgdata = img.exportData<nvcv::ImageDataStridedCuda>();
+        EXPECT_NE(nvcv::NullOpt, imgdata);
         if (imgdata)
         {
             goldImages.push_back(imgdata->cdata().buffer.strided);
@@ -334,7 +332,7 @@ TEST(ImageBatchVarShape, wip_sync)
     batch.pushBack(vec0.begin(), vec0.end());
 
     // trigger host->dev async copy
-    auto *devdata = dynamic_cast<const nvcv::IImageBatchVarShapeDataStridedCuda *>(batch.exportData(stream));
+    auto devdata = batch.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
 
     // Re-write batch contents in host-side, must have waited
     // until async copy finishes

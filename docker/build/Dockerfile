@@ -26,8 +26,10 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get update \
     && apt-get install -y --no-install-recommends \
         git git-lfs \
         g++-11 \
+        # need to also build with gcc-9.4.0, our minimum supported compiler for the library
+        gcc-9=9.4.0-5ubuntu1 cpp-9=9.4.0-5ubuntu1 gcc-9-base=9.4.0-5ubuntu1 libgcc-9-dev=9.4.0-5ubuntu1 libasan5=9.4.0-5ubuntu1 g++-9=9.4.0-5ubuntu1 libstdc++-9-dev=9.4.0-5ubuntu1 \
         # Compilers to which public headers must be compatible
-        g++-9 clang-14 clang-11 \
+        clang-14 clang-11 \
         cmake ninja-build \
         ccache \
         libgtest-dev libgmock-dev \

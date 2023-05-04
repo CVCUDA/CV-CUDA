@@ -33,6 +33,8 @@ add_executable(nvcv_test_types_unit
     TestAlgorithm.cpp
     TestRange.cpp
     TestCallback.cpp
+    TestHandleWrapper.cpp
+    TestTypeTraits.cpp
 )
 
 if(ENABLE_COMPAT_OLD_GLIBC)

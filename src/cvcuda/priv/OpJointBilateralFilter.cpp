@@ -39,21 +39,21 @@ void JointBilateralFilter::operator()(cudaStream_t stream, const nvcv::ITensor &
                                       const nvcv::ITensor &out, int diameter, float sigmaColor, float sigmaSpace,
                                       NVCVBorderType borderMode) const
 {
-    auto *inData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(in.exportData());
+    auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
     if (inData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "Input must be cuda-accessible, pitch-linear tensor");
     }
 
-    auto *inColorData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(inColor.exportData());
+    auto inColorData = inColor.exportData<nvcv::TensorDataStridedCuda>();
     if (inColorData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "InputColor must be cuda-accessible, pitch-linear tensor");
     }
 
-    auto *outData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(out.exportData());
+    auto outData = out.exportData<nvcv::TensorDataStridedCuda>();
     if (outData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
@@ -69,42 +69,42 @@ void JointBilateralFilter::operator()(cudaStream_t stream, const nvcv::IImageBat
                                       const nvcv::ITensor &diameter, const nvcv::ITensor &sigmaColor,
                                       const nvcv::ITensor &sigmaSpace, NVCVBorderType borderMode) const
 {
-    auto *inData = dynamic_cast<const nvcv::IImageBatchVarShapeDataStridedCuda *>(in.exportData(stream));
+    auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (inData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "in must be a device-accessible, varshape image batch");
     }
 
-    auto *inColorData = dynamic_cast<const nvcv::IImageBatchVarShapeDataStridedCuda *>(inColor.exportData(stream));
+    auto inColorData = inColor.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (inColorData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "inColor must be device-accessible, varshape image batch");
     }
 
-    auto *outData = dynamic_cast<const nvcv::IImageBatchVarShapeDataStridedCuda *>(out.exportData(stream));
+    auto outData = out.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (outData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "Output must be device-accessible,  varshape image batch");
     }
 
-    auto *diameterData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(diameter.exportData());
+    auto diameterData = diameter.exportData<nvcv::TensorDataStridedCuda>();
     if (diameterData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "Diameter must be device-accessible, pitch-linear tensor");
     }
 
-    auto *sigmaColorData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(sigmaColor.exportData());
+    auto sigmaColorData = sigmaColor.exportData<nvcv::TensorDataStridedCuda>();
     if (sigmaColorData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "sigmaColor must be device-accessible, pitch-linear tensor");
     }
 
-    auto *sigmaSpaceData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(sigmaSpace.exportData());
+    auto sigmaSpaceData = sigmaSpace.exportData<nvcv::TensorDataStridedCuda>();
     if (sigmaSpaceData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,

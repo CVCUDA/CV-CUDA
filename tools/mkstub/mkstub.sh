@@ -1,5 +1,5 @@
 #!/bin/bash -e
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -242,8 +242,14 @@ fi
 
 # Some old versions of ld don't support these options.
 # Let's use only what's supported.
+if [ ${CC%-*} = $CC ]; then
+    LD=$(dirname $CC)/ld
+else
+    LD="$(dirname $CC)/$target-ld"
+fi
+
 for p in '--no-ld-generated-unwind-info' '--no-eh-frame-hdr'; do
-    if ld $p 2>&1 | head -n1 | grep -v unrecognized > /dev/null; then
+    if $LD $p 2>&1 | head -n1 | grep -v unrecognized > /dev/null; then
         args+=" -Wl,$p"
     else
         echo "ld: warning: $p ignored"

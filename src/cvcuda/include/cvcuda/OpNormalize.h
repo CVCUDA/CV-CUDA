@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -133,7 +133,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaNormalizeCreate(NVCVOperatorHandle *handle);
  *                    + Must not be NULL.
  * @param [in] stream Handle to a valid CUDA stream.
  *
- * @param [in] in Intput tensor.
+ * @param [in] in input tensor.
  *
  * @param [in] base Base tensor.
  *
@@ -143,7 +143,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaNormalizeCreate(NVCVOperatorHandle *handle);
  *
  * @param [in] global_scale Additional scale value to be used in addition to scale.
  *
- * @param [in] shift Additional bias value to be used in additon to base.
+ * @param [in] shift Additional bias value to be used in addition to base.
  *
  * @param [in] epsilon Epsilon to use when \p CVCUDA_NORMALIZE_SCALE_IS_STDDEV flag is set as a regularizing term to be
  *                     added to variance.

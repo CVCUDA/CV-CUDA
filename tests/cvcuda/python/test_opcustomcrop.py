@@ -19,26 +19,27 @@ import numpy as np
 
 
 @t.mark.parametrize(
-    "input,rc,out_shape",
+    "input_args,rc,out_shape",
     [
         (
-            cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"),
+            ((5, 16, 23, 4), np.uint8, "NHWC"),
             cvcuda.RectI(x=0, y=0, width=20, height=2),
             (5, 2, 20, 4),
         ),
         (
-            cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"),
+            ((5, 16, 23, 4), np.uint8, "NHWC"),
             cvcuda.RectI(2, 13, 16, 2),
             (5, 2, 16, 4),
         ),
         (
-            cvcuda.Tensor((16, 23, 2), np.uint8, "HWC"),
+            ((16, 23, 2), np.uint8, "HWC"),
             cvcuda.RectI(2, 13, 16, 2),
             (2, 16, 2),
         ),
     ],
 )
-def test_op_customcrop(input, rc, out_shape):
+def test_op_customcrop(input_args, rc, out_shape):
+    input = cvcuda.Tensor(*input_args)
     out = cvcuda.customcrop(input, rc)
     assert out.layout == input.layout
     assert out.shape == out_shape

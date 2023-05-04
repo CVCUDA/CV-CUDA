@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -51,8 +51,10 @@ struct CAPI
     cudaStream_t (*Stream_GetCudaHandle)(PyObject *stream);
 
     NVCVTensorHandle (*Tensor_GetHandle)(PyObject *tensor);
-    PyObject *(*Tensor_Create)(int32_t ndim, const int64_t *shape, NVCVDataType dtype, NVCVTensorLayout layout);
-    PyObject *(*Tensor_CreateForImageBatch)(int32_t numImages, int32_t width, int32_t height, NVCVImageFormat fmt);
+    PyObject *(*Tensor_Create)(int32_t ndim, const int64_t *shape, NVCVDataType dtype, NVCVTensorLayout layout,
+                               int32_t rowAlign);
+    PyObject *(*Tensor_CreateForImageBatch)(int32_t numImages, int32_t width, int32_t height, NVCVImageFormat fmt,
+                                            int32_t rowAlign);
 
     PyObject *(*ImageBatchVarShape_Create)(int32_t capacity);
     NVCVImageBatchHandle (*ImageBatchVarShape_GetHandle)(PyObject *varshape);
@@ -63,7 +65,7 @@ struct CAPI
     void (*Cache_Add)(ICacheItem *item);
     ICacheItem **(*Cache_Fetch)(const IKey *key);
 
-    PyObject *(*Image_Create)(int32_t width, int32_t height, NVCVImageFormat fmt);
+    PyObject *(*Image_Create)(int32_t width, int32_t height, NVCVImageFormat fmt, int32_t rowAlign);
     NVCVImageHandle (*Image_GetHandle)(PyObject *img);
 
     PyObject *(*Container_Create)(Container *cont);

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -125,19 +125,125 @@ void ExportOpNormalize(py::module &m)
 
     m.def("normalize", &Normalize, "src"_a, "base"_a, "scale"_a, "flags"_a = std::nullopt, py::kw_only(),
           "globalscale"_a = defGlobalScale, "globalshift"_a = defGlobalShift, "epsilon"_a = defEpsilon,
-          "stream"_a = nullptr);
+          "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Normalize operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Normalize operator
+            for more details and usage examples.
+
+        Args:
+            src (Tensor): Input tensor containing one or more images.
+            base (Tensor): Tensor providing base values for normalization.
+            scale (Tensor): Tensor providing scale values for normalization.
+            flags (int ,optional): Algorithm flags, use CVCUDA_NORMALIZE_SCALE_IS_STDDEV if scale passed as argument
+                                   is standard deviation instead or 0 if it is scaling.
+            globalscale (float ,optional): Additional scale value to be used in addition to scale.
+            globalshift (float ,optional): Additional bias value to be used in addition to base.
+            epsilon (float ,optional): Epsilon to use when CVCUDA_NORMALIZE_SCALE_IS_STDDEV flag is set as a regularizing term to be
+                                       added to variance.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.Tensor: The output tensor.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 
     m.def("normalize_into", &NormalizeInto, "dst"_a, "src"_a, "base"_a, "scale"_a, "flags"_a = std::nullopt,
           py::kw_only(), "globalscale"_a = defGlobalScale, "globalshift"_a = defGlobalShift, "epsilon"_a = defEpsilon,
-          "stream"_a = nullptr);
+          "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Normalize operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Normalize operator
+            for more details and usage examples.
+
+        Args:
+            dst (Tensor): Output tensor to store the result of the operation.
+            src (Tensor): Input tensor containing one or more images.
+            base (Tensor): Tensor providing base values for normalization.
+            scale (Tensor): Tensor providing scale values for normalization.
+            flags (int ,optional): Algorithm flags, use CVCUDA_NORMALIZE_SCALE_IS_STDDEV if scale passed as argument
+                                   is standard deviation instead or 0 if it is scaling.
+            globalscale (float ,optional): Additional scale value to be used in addition to scale.
+            globalshift (float ,optional): Additional bias value to be used in addition to base.
+            epsilon (float ,optional): Epsilon to use when CVCUDA_NORMALIZE_SCALE_IS_STDDEV flag is set as a regularizing term to be
+                                       added to variance.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 
     m.def("normalize", &VarShapeNormalize, "src"_a, "base"_a, "scale"_a, "flags"_a = std::nullopt, py::kw_only(),
           "globalscale"_a = defGlobalScale, "globalshift"_a = defGlobalShift, "epsilon"_a = defEpsilon,
-          "stream"_a = nullptr);
+          "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Normalize operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Normalize operator
+            for more details and usage examples.
+
+        Args:
+            src (ImageBatchVarShape): Input image batch containing one or more images.
+            base (Tensor): Tensor providing base values for normalization.
+            scale (Tensor): Tensor providing scale values for normalization.
+            flags (int ,optional): Algorithm flags, use CVCUDA_NORMALIZE_SCALE_IS_STDDEV if scale passed as argument
+                                   is standard deviation instead or 0 if it is scaling.
+            globalscale (float ,optional): Additional scale value to be used in addition to scale.
+            globalshift (float ,optional): Additional bias value to be used in addition to base.
+            epsilon (float ,optional): Epsilon to use when CVCUDA_NORMALIZE_SCALE_IS_STDDEV flag is set as a regularizing term to be
+                                       added to variance.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.ImageBatchVarShape: The output image batch.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 
     m.def("normalize_into", &VarShapeNormalizeInto, "dst"_a, "src"_a, "base"_a, "scale"_a, "flags"_a = std::nullopt,
           py::kw_only(), "globalscale"_a = defGlobalScale, "globalshift"_a = defGlobalShift, "epsilon"_a = defEpsilon,
-          "stream"_a = nullptr);
+          "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Normalize operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Normalize operator
+            for more details and usage examples.
+
+        Args:
+            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
+            src (ImageBatchVarShape): Input image batch containing one or more images.
+            base (Tensor): Tensor providing base values for normalization.
+            scale (Tensor): Tensor providing scale values for normalization.
+            flags (int ,optional): Algorithm flags, use CVCUDA_NORMALIZE_SCALE_IS_STDDEV if scale passed as argument
+                                   is standard deviation instead or 0 if it is scaling.
+            globalscale (float ,optional): Additional scale value to be used in addition to scale.
+            globalshift (float ,optional): Additional bias value to be used in addition to base.
+            epsilon (float ,optional): Epsilon to use when CVCUDA_NORMALIZE_SCALE_IS_STDDEV flag is set as a regularizing term to be
+                                       added to variance.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 }
 
 } // namespace cvcudapy

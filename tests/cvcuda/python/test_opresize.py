@@ -20,22 +20,24 @@ import cvcuda_util as util
 
 
 @t.mark.parametrize(
-    "input,out_shape,interp",
+    "input_args,out_shape,interp",
     [
         (
-            cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"),
+            ((5, 16, 23, 4), np.uint8, "NHWC"),
             (5, 132, 15, 4),
             cvcuda.Interp.LINEAR,
         ),
         (
-            cvcuda.Tensor((16, 23, 4), np.uint8, "HWC"),
+            ((16, 23, 4), np.uint8, "HWC"),
             (132, 15, 4),
             cvcuda.Interp.CUBIC,
         ),
-        (cvcuda.Tensor((16, 23, 1), np.uint8, "HWC"), (132, 15, 1), None),
+        (((16, 23, 1), np.uint8, "HWC"), (132, 15, 1), None),
     ],
 )
-def test_op_resize(input, out_shape, interp):
+def test_op_resize(input_args, out_shape, interp):
+    input = cvcuda.Tensor(*input_args)
+
     if interp is None:
         out = cvcuda.resize(input, out_shape)
     else:

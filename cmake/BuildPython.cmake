@@ -45,6 +45,16 @@ list(APPEND PYPROJ_COMMON_ARGS
     -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
 )
 
+# It need to overwrite the PYTHON_MODULE_EXTENSION to generate
+# python module name with correct name when cross compiling
+# example: set(PYTHON_MODULE_EXTENSION .cpython-py38-aarch64-linux-gnu.so)
+if (CMAKE_CROSSCOMPILING)
+list(APPEND PYPROJ_COMMON_ARGS
+    -DCUDAToolkit_ROOT=${CUDAToolkit_ROOT}
+    -DPYTHON_MODULE_EXTENSION=${PYTHON_MODULE_EXTENSION}
+)
+endif()
+
 foreach(VER ${PYTHON_VERSIONS})
     set(BASEDIR ${CMAKE_CURRENT_BINARY_DIR}/python${VER})
 

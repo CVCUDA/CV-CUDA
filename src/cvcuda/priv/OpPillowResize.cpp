@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -47,14 +47,14 @@ PillowResize::PillowResize(nvcv::Size2D maxSize, int maxBatchSize, NVCVImageForm
 void PillowResize::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &out,
                               const NVCVInterpolationType interpolation) const
 {
-    auto *inData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(in.exportData());
+    auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
     if (inData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "Input must be device-acessible, pitch-linear tensor");
     }
 
-    auto *outData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(out.exportData());
+    auto outData = out.exportData<nvcv::TensorDataStridedCuda>();
     if (outData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,

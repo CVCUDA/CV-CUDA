@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,7 +19,7 @@
  * @file OpMedianBlur.h
  *
  * @brief Defines types and functions to handle the median blur operation.
- * @defgroup NVCV_C_ALGORITHM_MEDIAN_BLUR MedianBlur
+ * @defgroup NVCV_C_ALGORITHM_MEDIAN_BLUR Median Blur
  * @{
  */
 

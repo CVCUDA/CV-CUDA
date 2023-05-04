@@ -19,7 +19,7 @@
  * @file OpJointBilateralFilter.h
  *
  * @brief Defines types and functions to handle the joint bilateral filter operation.
- * @defgroup NVCV_C_ALGORITM_JOINT_BILATERAL_FILTER joint bilateral filter
+ * @defgroup NVCV_C_ALGORITHM_JOINT_BILATERAL_FILTER Joint Bilateral Filter
  * @{
  */
 

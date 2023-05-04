@@ -23,6 +23,7 @@
 #include "priv/IAllocator.hpp"
 #include "priv/IImage.hpp"
 #include "priv/ImageFormat.hpp"
+#include "priv/ImageManager.hpp"
 #include "priv/Status.hpp"
 #include "priv/SymbolVersioning.hpp"
 #include "priv/TensorData.hpp"

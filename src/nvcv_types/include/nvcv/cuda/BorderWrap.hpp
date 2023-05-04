@@ -29,7 +29,7 @@
 #include "TypeTraits.hpp"     // for NumElements, etc.
 
 #include <nvcv/BorderType.h>         // for NVCVBorderType, etc.
-#include <nvcv/ITensorData.hpp>      // for ITensorDataStridedCuda, etc.
+#include <nvcv/TensorData.hpp>       // for TensorDataStridedCuda, etc.
 #include <nvcv/TensorDataAccess.hpp> // for TensorDataAccessStridedImagePlanar, etc.
 #include <util/Assert.h>             // for NVCV_ASSERT, etc.
 
@@ -156,7 +156,10 @@ public:
             int j = 0;
             for (int i = 0; i < kNumDimensions; ++i)
             {
-                from[i] = kActiveDimensions[i] ? j++ : -1;
+                if (kActiveDimensions[i])
+                {
+                    from[i] = j++;
+                }
             }
         }
     };
@@ -190,7 +193,7 @@ public:
         }
     }
 
-    explicit __host__ BorderWrapImpl(const ITensorDataStridedCuda &tensor)
+    explicit __host__ BorderWrapImpl(const TensorDataStridedCuda &tensor)
         : m_tensorWrap(tensor)
     {
         NVCV_ASSERT(tensor.rank() >= kNumDimensions);
@@ -296,10 +299,10 @@ public:
     /**
      * Constructs a BorderWrap by wrapping a \p tensor.
      *
-     * @param[in] tensor A \ref ITensorDataStridedCuda object to be wrapped.
+     * @param[in] tensor A \ref TensorDataStridedCuda object to be wrapped.
      * @param[in] borderValue The border value is ignored in non-constant border types.
      */
-    explicit __host__ BorderWrap(const ITensorDataStridedCuda &tensor, ValueType borderValue = {})
+    explicit __host__ BorderWrap(const TensorDataStridedCuda &tensor, ValueType borderValue = {})
         : Base(tensor)
     {
     }
@@ -417,10 +420,10 @@ public:
     /**
      * Constructs a BorderWrap by wrapping a \p tensor.
      *
-     * @param[in] tensor A \ref ITensorDataStridedCuda object to be wrapped.
+     * @param[in] tensor A \ref TensorDataStridedCuda object to be wrapped.
      * @param[in] borderValue The border value to be used when accessing outside the tensor.
      */
-    explicit __host__ BorderWrap(const ITensorDataStridedCuda &tensor, ValueType borderValue = {})
+    explicit __host__ BorderWrap(const TensorDataStridedCuda &tensor, ValueType borderValue = {})
         : Base(tensor)
         , m_borderValue(borderValue)
     {
@@ -447,7 +450,7 @@ public:
      *
      * @param[in] c N-D coordinate (from last to first dimension) to be accessed.
      *
-     * @return Accessed (const) reference.
+     * @return Accessed const reference.
      */
     template<typename DimType, class = Require<std::is_same_v<int, BaseType<DimType>>>>
     inline const __host__ __device__ ValueType &operator[](DimType c) const
@@ -457,7 +460,7 @@ public:
 
         constexpr auto Is = std::make_index_sequence<N>{};
 
-        ValueType *p = nullptr;
+        const ValueType *p = nullptr;
 
         if constexpr (N == 1)
         {
@@ -524,7 +527,7 @@ private:
 /**@}*/
 
 /**
- * Factory function to create a border wrap given a tensor data.
+ * Factory function to create an NHW border wrap given a tensor data.
  *
  * The output \ref BorderWrap wraps an NHW 3D tensor allowing to access data per batch (N), per row (H) and per
  * column (W) of the input tensor border aware in rows (or height H) and columns (or width W).  The input tensor
@@ -537,11 +540,12 @@ private:
  * @tparam B Border extension to be used when accessing H and W, one of \ref NVCVBorderType
  *
  * @param[in] tensor Reference to the tensor that will be wrapped.
+ * @param[in] borderValue Border value to be used when accessing outside elements in constant border type
  *
  * @return Border wrap useful to access tensor data border aware in H and W in CUDA kernels.
  */
 template<typename T, NVCVBorderType B, class = Require<HasTypeTraits<T>>>
-__host__ auto CreateBorderWrapNHW(const ITensorDataStridedCuda &tensor, const T &borderValue)
+__host__ auto CreateBorderWrapNHW(const TensorDataStridedCuda &tensor, T borderValue = {})
 {
     auto tensorAccess = TensorDataAccessStridedImagePlanar::Create(tensor);
     NVCV_ASSERT(tensorAccess);
@@ -550,7 +554,39 @@ __host__ auto CreateBorderWrapNHW(const ITensorDataStridedCuda &tensor, const T 
 
     auto tensorWrap = CreateTensorWrapNHW<T>(tensor);
 
-    return BorderWrap<Tensor3DWrap<T>, B, false, true, true>(
+    return BorderWrap<decltype(tensorWrap), B, false, true, true>(
+        tensorWrap, borderValue, static_cast<int>(tensorAccess->numRows()), static_cast<int>(tensorAccess->numCols()));
+}
+
+/**
+ * Factory function to create an NHWC border wrap given a tensor data.
+ *
+ * The output \ref BorderWrap wraps an NHWC 4D tensor allowing to access data per batch (N), per row (H), per
+ * column (W) and per channel (C) of the input tensor border aware in rows (or height H) and columns (or width W).
+ * The input tensor data must have either NHWC or HWC layout, where the channel C is of type \p T, e.g. T=uchar for
+ * each channel of either RGB8 or RGBA8.  The active dimensions are H (second) and W (third).
+ *
+ * @sa NVCV_CPP_CUDATOOLS_BORDERWRAP
+ *
+ * @tparam T Type of the values to be accessed in the border wrap.
+ * @tparam B Border extension to be used when accessing H and W, one of \ref NVCVBorderType
+ *
+ * @param[in] tensor Reference to the tensor that will be wrapped.
+ * @param[in] borderValue Border value to be used when accessing outside elements in constant border type
+ *
+ * @return Border wrap useful to access tensor data border aware in H and W in CUDA kernels.
+ */
+template<typename T, NVCVBorderType B, class = Require<HasTypeTraits<T>>>
+__host__ auto CreateBorderWrapNHWC(const TensorDataStridedCuda &tensor, T borderValue = {})
+{
+    auto tensorAccess = TensorDataAccessStridedImagePlanar::Create(tensor);
+    NVCV_ASSERT(tensorAccess);
+    NVCV_ASSERT(tensorAccess->numRows() <= TypeTraits<int>::max);
+    NVCV_ASSERT(tensorAccess->numCols() <= TypeTraits<int>::max);
+
+    auto tensorWrap = CreateTensorWrapNHWC<T>(tensor);
+
+    return BorderWrap<decltype(tensorWrap), B, false, true, true, false>(
         tensorWrap, borderValue, static_cast<int>(tensorAccess->numRows()), static_cast<int>(tensorAccess->numCols()));
 }
 

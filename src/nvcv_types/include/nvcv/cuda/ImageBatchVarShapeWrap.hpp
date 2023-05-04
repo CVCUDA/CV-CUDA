@@ -26,7 +26,7 @@
 
 #include "TypeTraits.hpp" // for HasTypeTraits, etc.
 
-#include <nvcv/IImageBatchData.hpp> // for IImageBatchVarShapeDataStridedCuda, etc.
+#include <nvcv/ImageBatchData.hpp> // for ImageBatchVarShapeDataStridedCuda, etc.
 
 namespace nvcv::cuda {
 
@@ -36,7 +36,7 @@ namespace nvcv::cuda {
  */
 
 /**
- * Image batch var-shape wrapper class to wrap IImageBatchVarShapeDataStridedCuda.
+ * Image batch var-shape wrapper class to wrap ImageBatchVarShapeDataStridedCuda.
  *
  * ImageBatchVarShapeWrap is a wrapper of an image batch (or a list of images) of variable shapes.  The template
  * parameter \p T is the type of each element inside the wrapper, and it can be compound type to represent a pixel
@@ -46,7 +46,7 @@ namespace nvcv::cuda {
  * cudaStream_t stream;
  * cudaStreamCreate(&stream);
  * nvcv::ImageBatchVarShape imageBatch(samples);
- * auto *imageBatchData = dynamic_cast<const nvcv::IImageBatchVarShapeDataStridedCuda *>(imageBatch.exportData(stream));
+  auto *imageBatchData  = imageBatch.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream)
  * nvcv::cuda::ImageBatchVarShapeWrap<uchar4> wrap(*imageBatchData);
  * // Now wrap can be used in device code to access elements of the image batch via operator[] or ptr method.
  * @endcode
@@ -80,7 +80,7 @@ public:
      *
      * @param[in] images Reference to the list of images that will be wrapped.
      */
-    __host__ ImageBatchVarShapeWrap(const IImageBatchVarShapeDataStridedCuda &images)
+    __host__ ImageBatchVarShapeWrap(const ImageBatchVarShapeDataStridedCuda &images)
         : m_imageList(images.imageList())
     {
     }
@@ -203,7 +203,7 @@ private:
 };
 
 /**
- * Image batch var-shape wrapper class to wrap IImageBatchVarShapeDataStridedCuda.
+ * Image batch var-shape wrapper class to wrap ImageBatchVarShapeDataStridedCuda.
  *
  * This class is specialized for non-constant value type.
  *
@@ -228,7 +228,7 @@ public:
      *
      * @param[in] images Reference to the list of images that will be wrapped.
      */
-    __host__ ImageBatchVarShapeWrap(const IImageBatchVarShapeDataStridedCuda &images)
+    __host__ ImageBatchVarShapeWrap(const ImageBatchVarShapeDataStridedCuda &images)
         : Base(images)
     {
     }
@@ -299,7 +299,7 @@ protected:
 };
 
 /**
- * Image batch var-shape wrapper NHWC class to wrap IImageBatchVarShapeDataStridedCuda and number of channels.
+ * Image batch var-shape wrapper NHWC class to wrap ImageBatchVarShapeDataStridedCuda and number of channels.
  *
  * This class handles number of channels as a separate run-time parameter instead of built-in \p T.  It considers
  * interleaved channels, where they appear in a packed sequence at the last dimension (thus NHWC).  It also
@@ -330,7 +330,7 @@ public:
      * @param[in] images Reference to the list of images that will be wrapped.
      * @param[in] numChannels The number of (interleaved) channels inside the wrapper.
      */
-    __host__ ImageBatchVarShapeWrapNHWC(const IImageBatchVarShapeDataStridedCuda &images, int numChannels)
+    __host__ ImageBatchVarShapeWrapNHWC(const ImageBatchVarShapeDataStridedCuda &images, int numChannels)
         : Base(images)
         , m_numChannels(numChannels)
     {

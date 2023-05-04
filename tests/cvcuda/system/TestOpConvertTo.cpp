@@ -23,8 +23,6 @@
 #include <nvcv/Image.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
-#include <nvcv/alloc/CustomAllocator.hpp>
-#include <nvcv/alloc/CustomResourceAllocator.hpp>
 #include <nvcv/cuda/SaturateCast.hpp>
 
 #include <iostream>
@@ -61,8 +59,8 @@ const void testConvertTo(nvcv::ImageFormat fmtIn, nvcv::ImageFormat fmtOut, int 
     nvcv::Tensor imgOut = test::CreateTensor(batch, width, height, fmtOut);
     nvcv::Tensor imgIn  = test::CreateTensor(batch, width, height, fmtIn);
 
-    const auto *inData  = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(imgIn.exportData());
-    const auto *outData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(imgOut.exportData());
+    auto inData  = imgIn.exportData<nvcv::TensorDataStridedCuda>();
+    auto outData = imgOut.exportData<nvcv::TensorDataStridedCuda>();
 
     ASSERT_NE(nullptr, inData);
     ASSERT_NE(nullptr, outData);

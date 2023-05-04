@@ -41,14 +41,13 @@ class Image final : public Container
 public:
     static void Export(py::module &m);
 
-    static std::shared_ptr<Image> Zeros(const Size2D &size, nvcv::ImageFormat fmt);
-    static std::shared_ptr<Image> Create(const Size2D &size, nvcv::ImageFormat fmt);
-    static std::shared_ptr<Image> CreateHost(py::buffer buffer, nvcv::ImageFormat fmt);
-    static std::shared_ptr<Image> CreateHostVector(std::vector<py::buffer> buffer, nvcv::ImageFormat fmt);
+    static std::shared_ptr<Image> Zeros(const Size2D &size, nvcv::ImageFormat fmt, int rowAlign);
+    static std::shared_ptr<Image> Create(const Size2D &size, nvcv::ImageFormat fmt, int rowAlign);
+    static std::shared_ptr<Image> CreateHost(py::buffer buffer, nvcv::ImageFormat fmt, int rowAlign);
+    static std::shared_ptr<Image> CreateHostVector(std::vector<py::buffer> buffer, nvcv::ImageFormat fmt, int rowAlign);
 
     static std::shared_ptr<Image> WrapExternalBuffer(ExternalBuffer &buffer, nvcv::ImageFormat fmt);
-    static std::shared_ptr<Image> WrapExternalBufferVector(std::vector<std::shared_ptr<ExternalBuffer>> buffer,
-                                                           nvcv::ImageFormat                            fmt);
+    static std::shared_ptr<Image> WrapExternalBufferVector(std::vector<py::object> buffer, nvcv::ImageFormat fmt);
 
     std::shared_ptr<Image>       shared_from_this();
     std::shared_ptr<const Image> shared_from_this() const;
@@ -103,9 +102,9 @@ public:
     py::object cuda(std::optional<nvcv::TensorLayout> layout) const;
 
 private:
-    explicit Image(const Size2D &size, nvcv::ImageFormat fmt);
-    explicit Image(std::vector<std::shared_ptr<ExternalBuffer>> buf, const nvcv::IImageDataStridedCuda &imgData);
-    explicit Image(std::vector<py::buffer> buf, const nvcv::IImageDataStridedHost &imgData);
+    explicit Image(const Size2D &size, nvcv::ImageFormat fmt, int rowAlign);
+    explicit Image(std::vector<std::shared_ptr<ExternalBuffer>> buf, const nvcv::ImageDataStridedCuda &imgData);
+    explicit Image(std::vector<py::buffer> buf, const nvcv::ImageDataStridedHost &imgData, int rowalign);
 
     std::unique_ptr<nvcv::IImage> m_impl; // must come before m_key
     Key                           m_key;

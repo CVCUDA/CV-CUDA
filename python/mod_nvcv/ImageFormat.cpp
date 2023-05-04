@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -85,8 +85,10 @@ void ExportImageFormat(py::module &m)
 #undef DEF_NUM
 
     fmt.export_values()
-        .def_property_readonly("planes", &nvcv::ImageFormat::numPlanes)
-        .def_property_readonly("channels", &nvcv::ImageFormat::numChannels);
+        .def_property_readonly("planes", &nvcv::ImageFormat::numPlanes,
+                               "Read-only property that returns the number of planes in the image")
+        .def_property_readonly("channels", &nvcv::ImageFormat::numChannels,
+                               "Read-only property that returns the number of color channels in the image");
 
     // Need to do this way because pybind11 doesn't allow enums to have methods.
     fmt.attr("__repr__") = py::cpp_function(&ImageFormatToString, py::name("__repr__"), py::is_method(fmt),

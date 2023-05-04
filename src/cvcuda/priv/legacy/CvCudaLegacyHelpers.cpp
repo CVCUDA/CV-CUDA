@@ -179,7 +179,7 @@ cuda_op::DataFormat GetLegacyDataFormat(const IImageBatchVarShape &imgBatch)
     }
 }
 
-cuda_op::DataFormat GetLegacyDataFormat(const IImageBatchVarShapeDataStridedCuda &imgBatch)
+cuda_op::DataFormat GetLegacyDataFormat(const ImageBatchVarShapeDataStridedCuda &imgBatch)
 {
     ImageFormat fmt = imgBatch.uniqueFormat();
     if (!fmt)
@@ -248,12 +248,12 @@ cuda_op::DataFormat GetLegacyDataFormat(const TensorLayout &layout)
     }
 }
 
-cuda_op::DataFormat GetLegacyDataFormat(const ITensorDataStridedCuda &container)
+cuda_op::DataFormat GetLegacyDataFormat(const TensorDataStridedCuda &container)
 {
     return GetLegacyDataFormat(container.layout());
 }
 
-Size2D GetMaxImageSize(const ITensorDataStridedCuda &tensor)
+Size2D GetMaxImageSize(const TensorDataStridedCuda &tensor)
 {
     //tensor must be NHWC or HWC
     if (auto access = TensorDataAccessStridedImagePlanar::Create(tensor))
@@ -266,7 +266,7 @@ Size2D GetMaxImageSize(const ITensorDataStridedCuda &tensor)
     }
 }
 
-Size2D GetMaxImageSize(const IImageBatchVarShapeDataStridedCuda &imageBatch)
+Size2D GetMaxImageSize(const ImageBatchVarShapeDataStridedCuda &imageBatch)
 {
     return imageBatch.maxSize();
 }

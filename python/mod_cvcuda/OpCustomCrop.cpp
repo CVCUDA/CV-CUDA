@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -88,8 +88,48 @@ void ExportOpCustomCrop(py::module &m)
 {
     using namespace pybind11::literals;
 
-    m.def("customcrop", &CustomCrop, "src"_a, "rect"_a, py::kw_only(), "stream"_a = nullptr);
-    m.def("customcrop_into", &CustomCropInto, "dst"_a, "src"_a, "rect"_a, py::kw_only(), "stream"_a = nullptr);
+    m.def("customcrop", &CustomCrop, "src"_a, "rect"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Custom Crop operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Custom Crop operator
+            for more details and usage examples.
+
+        Args:
+            src (Tensor): Input tensor containing one or more images.
+            rect (RectI): Crop rectangle in reference to the input tensor.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.Tensor: The output tensor.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
+
+    m.def("customcrop_into", &CustomCropInto, "dst"_a, "src"_a, "rect"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Custom Crop operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Custom Crop operator
+            for more details and usage examples.
+
+        Args:
+            dst (Tensor): Output tensor to store the result of the operation.
+            src (Tensor): Input tensor containing one or more images.
+            rect (RectI): Crop rectangle in reference to the input tensor.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 }
 
 } // namespace cvcudapy

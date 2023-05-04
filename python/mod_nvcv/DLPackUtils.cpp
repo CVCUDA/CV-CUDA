@@ -20,7 +20,7 @@
 #include "DataType.hpp"
 
 #include <common/PyUtil.hpp>
-#include <nvcv/ITensorData.hpp>
+#include <nvcv/TensorData.hpp>
 
 namespace nvcvpy::priv {
 
@@ -90,7 +90,7 @@ DLPackTensor::DLPackTensor(const py::buffer_info &info, const DLDevice &dev)
     }
 }
 
-DLPackTensor::DLPackTensor(const nvcv::ITensorDataStrided &tensorData)
+DLPackTensor::DLPackTensor(const nvcv::TensorDataStrided &tensorData)
 {
     m_tensor         = {};
     m_tensor.deleter = [](DLManagedTensor *self)
@@ -104,7 +104,7 @@ DLPackTensor::DLPackTensor(const nvcv::ITensorDataStrided &tensorData)
         DLTensor &tensor = m_tensor.dl_tensor;
 
         // Set up device
-        if (dynamic_cast<const nvcv::ITensorDataStridedCuda *>(&tensorData))
+        if (tensorData.IsCompatible<nvcv::TensorDataStridedCuda>())
         {
             // TODO: detect correct device_type from memory buffer
             tensor.device.device_type = kDLCUDA;

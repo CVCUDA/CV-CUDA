@@ -39,6 +39,26 @@ void Morph(std::vector<uint8_t> &hDst, const long3 &dstStrides, const std::vecto
            const long3 &srcStrides, const int3 &shape, const ImageFormat &format, const Size2D &kernelSize,
            int2 &kernelAnchor, const NVCVBorderType &borderMode, NVCVMorphologyType type);
 
+std::vector<float> ComputeMeanKernel(nvcv::Size2D kernelSize);
+
+std::vector<float> ComputeGaussianKernel(nvcv::Size2D kernelSize, double2 sigma);
+
+namespace detail {
+
+template<typename T>
+inline const T &ValueAt(const std::vector<uint8_t> &vec, long3 pitches, int b, int y, int x)
+{
+    return *reinterpret_cast<const T *>(&vec[b * pitches.x + y * pitches.y + x * pitches.z]);
+}
+
+template<typename T>
+inline T &ValueAt(std::vector<uint8_t> &vec, long3 pitches, int b, int y, int x)
+{
+    return *reinterpret_cast<T *>(&vec[b * pitches.x + y * pitches.y + x * pitches.z]);
+}
+
+} // namespace detail
+
 } // namespace nvcv::test
 
 #endif // NVCV_TEST_COMMON_CONV_UTILS_HPP

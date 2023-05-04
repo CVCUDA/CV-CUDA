@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -103,14 +103,98 @@ void ExportOpLaplacian(py::module &m)
     using namespace pybind11::literals;
 
     m.def("laplacian", &Laplacian, "src"_a, "ksize"_a, "scale"_a = 1.f,
-          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr);
+          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Laplacian operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Laplacian operator
+            for more details and usage examples.
+
+        Args:
+            src (Tensor): Input tensor containing one or more images.
+            ksize (int): Aperture size used to compute the second-derivative filters, it can be 1 or 3.
+            scale (float): Scale factor for the Laplacian values (use 1 for no scale).
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.Tensor: The output tensor.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
+
     m.def("laplacian_into", &LaplacianInto, "dst"_a, "src"_a, "ksize"_a, "scale"_a = 1.f,
-          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr);
+          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Laplacian operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Laplacian operator
+            for more details and usage examples.
+
+        Args:
+            dst (Tensor): Output tensor to store the result of the operation.
+            src (Tensor): Input tensor containing one or more images.
+            ksize (int): Aperture size used to compute the second-derivative filters, it can be 1 or 3.
+            scale (float): Scale factor for the Laplacian values (use 1 for no scale).
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 
     m.def("laplacian", &LaplacianVarShape, "src"_a, "ksize"_a, "scale"_a,
-          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr);
+          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Laplacian operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Laplacian operator
+            for more details and usage examples.
+
+        Args:
+            src (ImageBatchVarShape): Input image batch containing one or more images.
+            ksize (Tensor): Aperture size used to compute the second-derivative filters, it can be 1 or 3 for each image.
+            scale (Tensor): Scale factor for the Laplacian values (use 1 for no scale) for each image.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.ImageBatchVarShape: The output image batch.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
+
     m.def("laplacian_into", &LaplacianVarShapeInto, "dst"_a, "src"_a, "ksize"_a, "scale"_a,
-          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr);
+          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Laplacian operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Laplacian operator
+            for more details and usage examples.
+
+        Args:
+            src (ImageBatchVarShape): Input image batch containing one or more images.
+            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
+            ksize (Tensor): Aperture size used to compute the second-derivative filters, it can be 1 or 3 for each image.
+            scale (Tensor): Scale factor for the Laplacian values (use 1 for no scale) for each image.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 }
 
 } // namespace cvcudapy

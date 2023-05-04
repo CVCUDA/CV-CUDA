@@ -72,9 +72,49 @@ void ExportOpGammaContrast(py::module &m)
 {
     using namespace pybind11::literals;
 
-    m.def("gamma_contrast", &VarShapeGammaContrast, "src"_a, "gamma"_a, py::kw_only(), "stream"_a = nullptr);
+    m.def("gamma_contrast", &VarShapeGammaContrast, "src"_a, "gamma"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Gamma Contrast operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Gamma Contrast operator
+            for more details and usage examples.
+
+        Args:
+            src (ImageBatchVarShape): Input tensor containing one or more images.
+            gamma (Tensor): 1D Tensor with the the gamma value for each image / image channel.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.ImageBatchVarShape: The output image batch.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
+
     m.def("gamma_contrast_into", &VarShapeGammaContrastInto, "dst"_a, "src"_a, "gamma"_a, py::kw_only(),
-          "stream"_a = nullptr);
+          "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Gamma Contrast operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Gamma Contrast operator
+            for more details and usage examples.
+
+        Args:
+            dst (ImageBatchVarShape): Output tensor to store the result of the operation.
+            src (ImageBatchVarShape): Input tensor containing one or more images.
+            gamma (Tensor): 1D Tensor with the the gamma value for each image / image channel.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 }
 
 } // namespace cvcudapy

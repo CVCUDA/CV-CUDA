@@ -68,14 +68,13 @@ static void printPlane(const uint8_t *data, int width, int height, int rowStride
     std::cout << "\n";
 }
 
-TensorImageData::TensorImageData(const ITensorData *tensorData, int sampleIndex)
+TensorImageData::TensorImageData(const TensorData &tensorData, int sampleIndex)
     : m_planeStride(0)
 {
-    assert(tensorData);
-    if (!nvcv::TensorDataAccessStridedImage::IsCompatible(*tensorData))
+    if (!nvcv::TensorDataAccessStridedImage::IsCompatible(tensorData))
         throw Exception(Status::ERROR_INVALID_ARGUMENT, "Tensor Data not compatible with Pitch Access");
 
-    auto tDataAc = nvcv::TensorDataAccessStridedImage::Create(*tensorData);
+    auto tDataAc = nvcv::TensorDataAccessStridedImage::Create(tensorData);
 
     m_rowStride = tDataAc->rowStride();
     m_layout    = tDataAc->infoLayout().layout().m_layout;
@@ -93,7 +92,7 @@ TensorImageData::TensorImageData(const ITensorData *tensorData, int sampleIndex)
 
     long sampleStride = tDataAc->sampleStride();
 
-    if (tensorData->rank() == 3)
+    if (tensorData.rank() == 3)
     {
         sampleStride = m_planar ? m_numC * m_size.h * m_rowStride : m_size.h * m_rowStride;
     }
@@ -108,10 +107,10 @@ TensorImageData::TensorImageData(const ITensorData *tensorData, int sampleIndex)
 
     if (m_planar)
     {
-        if (!nvcv::TensorDataAccessStridedImagePlanar::IsCompatible(*tensorData))
+        if (!nvcv::TensorDataAccessStridedImagePlanar::IsCompatible(tensorData))
             throw std::runtime_error("Tensor Data not compatible with Pitch Planar Access");
 
-        auto tDataACp = nvcv::TensorDataAccessStridedImagePlanar::Create(*tensorData);
+        auto tDataACp = nvcv::TensorDataAccessStridedImagePlanar::Create(tensorData);
         m_planeStride = tDataACp->planeStride();
     }
 

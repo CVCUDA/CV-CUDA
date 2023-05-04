@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,7 +19,7 @@
  * @file OpChannelReorder.h
  *
  * @brief Defines types and functions to handle the channel reorder operation.
- * @defgroup NVCV_C_ALGORITHM_CHANNEL_REORDER ChannelReorder
+ * @defgroup NVCV_C_ALGORITHM_CHANNEL_REORDER Channel Reorder
  * @{
  */
 
@@ -75,7 +75,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaChannelReorderCreate(NVCVOperatorHandle *handle);
  *
  * @param [in] orders_in 2D tensor with layout "NC" which specifies, for each output image sample in the batch,
  *                       the index of the input channel to copy to the output channel.
- *                       Negative indices will map to '0' value written to the correspondign output channel..
+ *                       Negative indices will map to '0' value written to the corresponding output channel.
  *
  *                       @note The output images' format isn't updated to reflect the new channel ordering.
  *

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,10 +24,10 @@ namespace cvcudapy {
 void ExportInterpolationType(py::module &m)
 {
     py::enum_<NVCVInterpolationType>(m, "Interp")
-        .value("NEAREST", NVCV_INTERP_NEAREST)
-        .value("LINEAR", NVCV_INTERP_LINEAR)
-        .value("CUBIC", NVCV_INTERP_CUBIC)
-        .value("AREA", NVCV_INTERP_AREA);
+        .value("NEAREST", NVCV_INTERP_NEAREST, "Nearest-neighbor interpolation")
+        .value("LINEAR", NVCV_INTERP_LINEAR, "Linear interpolation")
+        .value("CUBIC", NVCV_INTERP_CUBIC, "Cubic interpolation")
+        .value("AREA", NVCV_INTERP_AREA, "Area-based (resampling using pixels in area) interpolation");
 }
 
 } // namespace cvcudapy

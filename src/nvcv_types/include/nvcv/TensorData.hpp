@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023   NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,22 +18,97 @@
 #ifndef NVCV_TENSORDATA_HPP
 #define NVCV_TENSORDATA_HPP
 
-#include "ITensorData.hpp"
+#include "Optional.hpp"
+#include "TensorData.h"
 #include "TensorShape.hpp"
 
 #include <nvcv/DataType.hpp>
 
 namespace nvcv {
 
-// TensorDataStridedCuda definition -----------------------
+// Interface hierarchy of tensor contents
+class TensorData
+{
+public:
+    TensorData(const NVCVTensorData &data);
 
-class TensorDataStridedCuda : public ITensorDataStridedCuda
+    int                         rank() const;
+    const TensorShape          &shape() const &;
+    const TensorShape::DimType &shape(int d) const &;
+    const TensorLayout         &layout() const &;
+
+    TensorShape shape() &&
+    {
+        return this->shape();
+    }
+
+    TensorShape::DimType shape(int d) &&
+    {
+        return this->shape(d);
+    }
+
+    TensorLayout layout() &&
+    {
+        return this->layout();
+    }
+
+    DataType dtype() const;
+
+    const NVCVTensorData &cdata() const &;
+
+    NVCVTensorData cdata() &&
+    {
+        return this->cdata();
+    }
+
+    static bool IsCompatibleKind(NVCVTensorBufferType kind)
+    {
+        return kind != NVCV_TENSOR_BUFFER_NONE;
+    }
+
+    template<typename DerivedTensorData>
+    Optional<DerivedTensorData> cast() const;
+
+    template<typename Derived>
+    bool IsCompatible() const;
+
+protected:
+    TensorData() = default;
+
+    NVCVTensorData &data() &;
+
+private:
+    NVCVTensorData                m_data{};
+    mutable Optional<TensorShape> m_cacheShape;
+};
+
+class TensorDataStrided : public TensorData
+{
+public:
+    Byte          *basePtr() const;
+    const int64_t &stride(int d) const;
+
+    static bool IsCompatibleKind(NVCVTensorBufferType kind)
+    {
+        return kind == NVCV_TENSOR_BUFFER_STRIDED_CUDA;
+    }
+
+protected:
+    using TensorData::TensorData;
+};
+
+class TensorDataStridedCuda : public TensorDataStrided
 {
 public:
     using Buffer = NVCVTensorBufferStrided;
 
-    explicit TensorDataStridedCuda(const TensorShape &shape, const DataType &dtype, const Buffer &data);
-    explicit TensorDataStridedCuda(const NVCVTensorData &data);
+    TensorDataStridedCuda(const NVCVTensorData &data);
+    TensorDataStridedCuda(const TensorShape &tshape, const DataType &dtype, const Buffer &buffer);
+
+    static bool IsCompatibleKind(NVCVTensorBufferType kind)
+    {
+        return kind == NVCV_TENSOR_BUFFER_STRIDED_CUDA;
+    }
 };
 
 } // namespace nvcv

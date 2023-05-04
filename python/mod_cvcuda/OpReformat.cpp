@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -60,8 +60,47 @@ void ExportOpReformat(py::module &m)
 {
     using namespace pybind11::literals;
 
-    m.def("reformat", &Reformat, "src"_a, "layout"_a, py::kw_only(), "stream"_a = nullptr);
-    m.def("reformat_into", &ReformatInto, "dst"_a, "src"_a, py::kw_only(), "stream"_a = nullptr);
+    m.def("reformat", &Reformat, "src"_a, "layout"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Reformat operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Reformat operator
+            for more details and usage examples.
+
+        Args:
+            src (Tensor): Input tensor containing one or more images.
+            layout (TensorLayout): The tensor layout of the output Tensor ((N)CHW/(N)HWC).
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.Tensor: The output tensor.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
+
+    m.def("reformat_into", &ReformatInto, "dst"_a, "src"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Reformat operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Reformat operator
+            for more details and usage examples.
+
+        Args:
+            dst (Tensor): Output tensor to store the result of the operation.
+            src (Tensor): Input tensor containing one or more images.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 }
 
 } // namespace cvcudapy

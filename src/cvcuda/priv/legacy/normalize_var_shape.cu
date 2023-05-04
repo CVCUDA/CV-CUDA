@@ -68,8 +68,8 @@ __global__ void normInvStdDevKernel(const cuda::ImageBatchVarShapeWrap<const T> 
 }
 
 template<typename T, typename out_T, typename base_type, typename scale_type>
-void normWrap(const IImageBatchVarShapeDataStridedCuda &in, const base_type *base, const scale_type *scale,
-              const IImageBatchVarShapeDataStridedCuda &out, float global_scale, float shift, cudaStream_t stream)
+void normWrap(const ImageBatchVarShapeDataStridedCuda &in, const base_type *base, const scale_type *scale,
+              const ImageBatchVarShapeDataStridedCuda &out, float global_scale, float shift, cudaStream_t stream)
 {
     int max_width  = in.maxSize().w;
     int max_height = in.maxSize().h;
@@ -85,8 +85,8 @@ void normWrap(const IImageBatchVarShapeDataStridedCuda &in, const base_type *bas
 }
 
 template<typename T, typename out_T, typename base_type, typename scale_type>
-void normInvStdDevWrap(const IImageBatchVarShapeDataStridedCuda &in, const base_type *base, const scale_type *scale,
-                       const IImageBatchVarShapeDataStridedCuda &out, float global_scale, float shift, float epsilon,
+void normInvStdDevWrap(const ImageBatchVarShapeDataStridedCuda &in, const base_type *base, const scale_type *scale,
+                       const ImageBatchVarShapeDataStridedCuda &out, float global_scale, float shift, float epsilon,
                        cudaStream_t stream)
 {
     int max_width  = in.maxSize().w;
@@ -104,8 +104,8 @@ void normInvStdDevWrap(const IImageBatchVarShapeDataStridedCuda &in, const base_
 }
 
 template<typename T, typename out_T>
-void norm(const IImageBatchVarShapeDataStridedCuda &in, const TensorDataAccessStridedImagePlanar &base,
-          const TensorDataAccessStridedImagePlanar &scale, const IImageBatchVarShapeDataStridedCuda &out,
+void norm(const ImageBatchVarShapeDataStridedCuda &in, const TensorDataAccessStridedImagePlanar &base,
+          const TensorDataAccessStridedImagePlanar &scale, const ImageBatchVarShapeDataStridedCuda &out,
           float global_scale, float shift, cudaStream_t stream)
 {
     using work_type = cuda::ConvertBaseTypeTo<float, T>;
@@ -140,8 +140,8 @@ void norm(const IImageBatchVarShapeDataStridedCuda &in, const TensorDataAccessSt
 }
 
 template<typename T, typename out_T>
-void normInvStdDev(const IImageBatchVarShapeDataStridedCuda &in, const TensorDataAccessStridedImagePlanar &base,
-                   const TensorDataAccessStridedImagePlanar &scale, const IImageBatchVarShapeDataStridedCuda &out,
+void normInvStdDev(const ImageBatchVarShapeDataStridedCuda &in, const TensorDataAccessStridedImagePlanar &base,
+                   const TensorDataAccessStridedImagePlanar &scale, const ImageBatchVarShapeDataStridedCuda &out,
                    float global_scale, float shift, float epsilon, cudaStream_t stream)
 {
     using work_type = cuda::ConvertBaseTypeTo<float, T>;
@@ -181,10 +181,10 @@ void normInvStdDev(const IImageBatchVarShapeDataStridedCuda &in, const TensorDat
 
 } // namespace
 
-ErrorCode NormalizeVarShape::infer(const nvcv::IImageBatchVarShapeDataStridedCuda &inData,
-                                   const nvcv::ITensorDataStridedCuda             &baseData,
-                                   const nvcv::ITensorDataStridedCuda             &scaleData,
-                                   const nvcv::IImageBatchVarShapeDataStridedCuda &outData, const float global_scale,
+ErrorCode NormalizeVarShape::infer(const nvcv::ImageBatchVarShapeDataStridedCuda &inData,
+                                   const nvcv::TensorDataStridedCuda             &baseData,
+                                   const nvcv::TensorDataStridedCuda             &scaleData,
+                                   const nvcv::ImageBatchVarShapeDataStridedCuda &outData, const float global_scale,
                                    const float shift, const float epsilon, const uint32_t flags, cudaStream_t stream)
 {
     DataFormat input_format  = helpers::GetLegacyDataFormat(inData);
@@ -254,13 +254,13 @@ ErrorCode NormalizeVarShape::infer(const nvcv::IImageBatchVarShapeDataStridedCud
     }
 
     typedef void (*normalize_t)(
-        const IImageBatchVarShapeDataStridedCuda &in, const TensorDataAccessStridedImagePlanar &base,
-        const TensorDataAccessStridedImagePlanar &scale, const IImageBatchVarShapeDataStridedCuda &out,
+        const ImageBatchVarShapeDataStridedCuda &in, const TensorDataAccessStridedImagePlanar &base,
+        const TensorDataAccessStridedImagePlanar &scale, const ImageBatchVarShapeDataStridedCuda &out,
         float global_scale, float shift, cudaStream_t stream);
 
     typedef void (*normalizeInvStdDev_t)(
-        const IImageBatchVarShapeDataStridedCuda &in, const TensorDataAccessStridedImagePlanar &base,
-        const TensorDataAccessStridedImagePlanar &scale, const IImageBatchVarShapeDataStridedCuda &out,
+        const ImageBatchVarShapeDataStridedCuda &in, const TensorDataAccessStridedImagePlanar &base,
+        const TensorDataAccessStridedImagePlanar &scale, const ImageBatchVarShapeDataStridedCuda &out,
         float global_scale, float shift, float epsilon, cudaStream_t stream);
 
     int out_type_code = out_data_type == kCV_8U ? 0 : 1;

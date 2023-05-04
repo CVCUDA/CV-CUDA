@@ -286,3 +286,13 @@ def test_tensor_is_kept_alive_by_cuda_array_interface():
 
     tensor3 = nvcv.Tensor((480, 640, 3), np.uint8)
     assert tensor3.cuda().__cuda_array_interface__["data"][0] == data_buffer1
+
+
+def test_tensor_create_packed():
+    tensor = nvcv.Tensor((37, 11, 3), np.uint8, rowalign=1)
+    assert tensor.cuda().strides == (11 * 3, 3, 1)
+
+
+def test_tensor_create_for_imgbatch_packed():
+    tensor = nvcv.Tensor(2, (37, 7), nvcv.Format.RGB8, rowalign=1)
+    assert tensor.cuda().strides == (37 * 7 * 3, 37 * 3, 3, 1)

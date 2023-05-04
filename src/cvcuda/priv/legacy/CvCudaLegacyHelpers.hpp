@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,8 +26,8 @@
 
 #include "CvCudaLegacy.h"
 
-#include <nvcv/IImageBatchData.hpp>
-#include <nvcv/ITensorData.hpp>
+#include <nvcv/ImageBatchData.hpp>
+#include <nvcv/TensorData.hpp>
 #include <nvcv/TensorShapeInfo.hpp>
 
 namespace nvcv::legacy::helpers {
@@ -39,14 +39,14 @@ cuda_op::DataType GetLegacyDataType(DataType dtype);
 cuda_op::DataType GetLegacyDataType(ImageFormat fmt);
 
 cuda_op::DataFormat GetLegacyDataFormat(const TensorLayout &layout);
-cuda_op::DataFormat GetLegacyDataFormat(const IImageBatchVarShapeDataStridedCuda &imgBatch);
+cuda_op::DataFormat GetLegacyDataFormat(const ImageBatchVarShapeDataStridedCuda &imgBatch);
 cuda_op::DataFormat GetLegacyDataFormat(const IImageBatchVarShape &imgBatch);
-cuda_op::DataFormat GetLegacyDataFormat(const ITensorDataStridedCuda &tensor);
+cuda_op::DataFormat GetLegacyDataFormat(const TensorDataStridedCuda &tensor);
 
 cuda_op::DataShape GetLegacyDataShape(const TensorShapeInfoImage &shapeInfo);
 
-Size2D GetMaxImageSize(const ITensorDataStridedCuda &tensor);
-Size2D GetMaxImageSize(const IImageBatchVarShapeDataStridedCuda &imageBatch);
+Size2D GetMaxImageSize(const TensorDataStridedCuda &tensor);
+Size2D GetMaxImageSize(const ImageBatchVarShapeDataStridedCuda &imageBatch);
 
 } // namespace nvcv::legacy::helpers
 

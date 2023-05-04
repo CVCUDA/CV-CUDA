@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,11 +17,17 @@
 
 #include "IAllocator.hpp"
 
+#include "AllocatorManager.hpp"
 #include "IContext.hpp"
 
 #include <util/Math.hpp>
 
 namespace nvcv::priv {
+
+NVCVResourceAllocator IAllocator::get(NVCVResourceType resType)
+{
+    return doGet(resType);
+}
 
 void *IAllocator::allocHostMem(int64_t size, int32_t align)
 {

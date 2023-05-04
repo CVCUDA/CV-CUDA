@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,28 +38,28 @@ Composite::Composite()
 void Composite::operator()(cudaStream_t stream, const nvcv::ITensor &foreground, const nvcv::ITensor &background,
                            const nvcv::ITensor &fgMask, const nvcv::ITensor &output) const
 {
-    auto *foregroundData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(foreground.exportData());
+    auto foregroundData = foreground.exportData<nvcv::TensorDataStridedCuda>();
     if (foregroundData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "Input foreground must be cuda-accessible, pitch-linear tensor");
     }
 
-    auto *backgroundData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(background.exportData());
+    auto backgroundData = background.exportData<nvcv::TensorDataStridedCuda>();
     if (backgroundData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "Input background must be cuda-accessible, pitch-linear tensor");
     }
 
-    auto *fgMaskData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(fgMask.exportData());
+    auto fgMaskData = fgMask.exportData<nvcv::TensorDataStridedCuda>();
     if (fgMaskData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "Input fgMask must be cuda-accessible, pitch-linear tensor");
     }
 
-    auto *outData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(output.exportData());
+    auto outData = output.exportData<nvcv::TensorDataStridedCuda>();
     if (outData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
@@ -73,30 +73,28 @@ void Composite::operator()(cudaStream_t stream, const nvcv::IImageBatchVarShape 
                            const nvcv::IImageBatchVarShape &background, const nvcv::IImageBatchVarShape &fgMask,
                            const nvcv::IImageBatchVarShape &output) const
 {
-    auto *foregroundData
-        = dynamic_cast<const nvcv::IImageBatchVarShapeDataStridedCuda *>(foreground.exportData(stream));
+    auto foregroundData = foreground.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (foregroundData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "Input foreground must be cuda-accessible, varshape image batch");
     }
 
-    auto *backgroundData
-        = dynamic_cast<const nvcv::IImageBatchVarShapeDataStridedCuda *>(background.exportData(stream));
+    auto backgroundData = background.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (backgroundData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "Input background must be cuda-accessible, varshape image batch");
     }
 
-    auto *fgMaskData = dynamic_cast<const nvcv::IImageBatchVarShapeDataStridedCuda *>(fgMask.exportData(stream));
+    auto fgMaskData = fgMask.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (fgMaskData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "Input fgMask must be cuda-accessible, varshape image batch");
     }
 
-    auto *outData = dynamic_cast<const nvcv::IImageBatchVarShapeDataStridedCuda *>(output.exportData(stream));
+    auto outData = output.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (outData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,

@@ -22,29 +22,33 @@ RNG = np.random.default_rng(0)
 
 
 @t.mark.parametrize(
-    "foreground, background, fgMask, outChannels",
+    "fg_args, bg_args, fgMask_args, outChannels",
     [
         (
-            cvcuda.Tensor((5, 9, 9, 3), np.uint8, "NHWC"),
-            cvcuda.Tensor((5, 9, 9, 3), np.uint8, "NHWC"),
-            cvcuda.Tensor((5, 9, 9, 1), np.uint8, "NHWC"),
+            ((5, 9, 9, 3), np.uint8, "NHWC"),
+            ((5, 9, 9, 3), np.uint8, "NHWC"),
+            ((5, 9, 9, 1), np.uint8, "NHWC"),
             3,
         ),
         (
-            cvcuda.Tensor((9, 9, 3), np.uint8, "HWC"),
-            cvcuda.Tensor((9, 9, 3), np.uint8, "HWC"),
-            cvcuda.Tensor((9, 9, 1), np.uint8, "HWC"),
+            ((9, 9, 3), np.uint8, "HWC"),
+            ((9, 9, 3), np.uint8, "HWC"),
+            ((9, 9, 1), np.uint8, "HWC"),
             4,
         ),
         (
-            cvcuda.Tensor((5, 21, 10, 3), np.uint8, "NHWC"),
-            cvcuda.Tensor((5, 21, 10, 3), np.uint8, "NHWC"),
-            cvcuda.Tensor((5, 21, 10, 1), np.uint8, "NHWC"),
+            ((5, 21, 10, 3), np.uint8, "NHWC"),
+            ((5, 21, 10, 3), np.uint8, "NHWC"),
+            ((5, 21, 10, 1), np.uint8, "NHWC"),
             4,
         ),
     ],
 )
-def test_op_composite(foreground, background, fgMask, outChannels):
+def test_op_composite(fg_args, bg_args, fgMask_args, outChannels):
+    foreground = cvcuda.Tensor(*fg_args)
+    background = cvcuda.Tensor(*bg_args)
+    fgMask = cvcuda.Tensor(*fgMask_args)
+
     out = cvcuda.composite(foreground, background, fgMask, outChannels)
     assert out.layout == foreground.layout
     assert out.shape[-1] == outChannels

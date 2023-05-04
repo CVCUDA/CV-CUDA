@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,6 +28,7 @@ namespace t    = ::testing;
 NVCV_TEST_SUITE_P(ReplaceAllInlineTests,
                   // input, bufSize, what, replace, gold
                   test::ValueList<const char *, int, const char *, const char *, const char *>{
+
                       {      "test", 16, "ROD",    "lima",         "test"}, // pattern not found
 
                       {   "RODtest", 16, "ROD",        "",         "test"}, // remove pattern once begin
@@ -35,6 +36,7 @@ NVCV_TEST_SUITE_P(ReplaceAllInlineTests,
                       {   "testROD", 16, "ROD",        "",         "test"}, // remove pattern once end
                       {"tRODeRODst", 16, "ROD",        "",         "test"}, // remove pattern twice
 
+                      {   "RODtest", 16, "ROD",     "ROD",      "RODtest"}, // replace pattern with smaller once begin
                       {   "RODtest", 16, "ROD",      "AB",       "ABtest"}, // replace pattern with smaller once begin
                       {   "teRODst", 16, "ROD",      "AB",       "teABst"}, // replace pattern with smaller once middle
                       {   "testROD", 16, "ROD",      "AB",       "testAB"}, // replace pattern with smaller once end
@@ -45,8 +47,15 @@ NVCV_TEST_SUITE_P(ReplaceAllInlineTests,
                       {   "testROD", 16, "ROD",    "ABCD",     "testABCD"}, // replace pattern with larger once end
                       {"tRODeRODst", 16, "ROD",    "ABCD", "tABCDeABCDst"}, // replace pattern with larger twice
 
-                      {   "tRODest",  7, "ROD",    "ABCD",      "tABCDes"}, // buffer size too small for replacement
-
+                      {   "testROD",  8, "ROD",    "ABCD",      "testABC"}, // buffer size too small for replacement
+                      {   "tRODest",  8, "ROD",    "ABCD",      "tABCDes"}, // buffer size too small for replacement
+                      {   "RODtest",  8, "ROD",    "ABCD",      "ABCDtes"}, // buffer size too small for replacement
+                      {   "RODtesT",  8,   "T",    "ABCD",      "RODtesA"}, // buffer size too small for replacement
+                      {   "RODTest",  8,   "T",    "ABCD",      "RODABCD"}, // buffer size too small for replacement
+                      {   "ROTests",  8,   "T",    "ABCD",      "ROABCDe"}, // buffer size too small for replacement
+                      {   "RODTest",  8,  "es",    "ABCD",      "RODTABC"}, // buffer size too small for replacement
+                      {"RODtestROD", 11, "ROD",    "ABCD",   "ABCDtestRO"}, // buffer bounds
+                      {"RODtestROV", 11,   "V",    "ABCD",   "RODtestROA"}, // buffer bounds
                       {   "tRODest", 32, "ROD", "RODOLFO",  "tRODOLFOest"}, // 'replacement' contains 'what'
 });
 
@@ -68,7 +77,6 @@ TEST_P(ReplaceAllInlineTests, test)
     *sentinel      = '\xFF';
 
     ASSERT_NO_THROW(util::ReplaceAllInline(buffer, bufSize, what, replace));
-
     EXPECT_STREQ(gold, buffer);
     EXPECT_EQ('\xFF', *sentinel) << "buffer overrun";
 }

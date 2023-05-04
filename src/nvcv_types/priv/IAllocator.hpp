@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,7 +20,7 @@
 
 #include "ICoreObject.hpp"
 
-#include <nvcv/alloc/Fwd.h>
+#include <nvcv/alloc/Allocator.h>
 
 #include <memory>
 
@@ -38,6 +38,8 @@ public:
     void *allocCudaMem(int64_t size, int32_t align);
     void  freeCudaMem(void *ptr, int64_t size, int32_t align) noexcept;
 
+    NVCVResourceAllocator get(NVCVResourceType resType);
+
 private:
     // NVI idiom
     virtual void *doAllocHostMem(int64_t size, int32_t align)                    = 0;
@@ -48,6 +50,8 @@ private:
 
     virtual void *doAllocCudaMem(int64_t size, int32_t align)                    = 0;
     virtual void  doFreeCudaMem(void *ptr, int64_t size, int32_t align) noexcept = 0;
+
+    virtual NVCVResourceAllocator doGet(NVCVResourceType resType) = 0;
 };
 
 template<class T, class... ARGS>

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,7 +28,7 @@
 
 namespace nvcv::priv {
 
-CustomAllocator::CustomAllocator(const NVCVCustomAllocator *customAllocators, int32_t numCustomAllocators)
+CustomAllocator::CustomAllocator(const NVCVResourceAllocator *customAllocators, int32_t numCustomAllocators)
 {
     if (customAllocators == nullptr && numCustomAllocators != 0)
     {
@@ -45,7 +45,7 @@ CustomAllocator::CustomAllocator(const NVCVCustomAllocator *customAllocators, in
     {
         NVCV_ASSERT(customAllocators != nullptr);
 
-        const NVCVCustomAllocator &custAlloc = customAllocators[i];
+        const NVCVResourceAllocator &custAlloc = customAllocators[i];
 
         bool valid = false;
         switch (custAlloc.resType)
@@ -83,14 +83,14 @@ CustomAllocator::CustomAllocator(const NVCVCustomAllocator *customAllocators, in
         filledMap |= 1 << custAlloc.resType;
     }
 
-    // Now go through all allocators, find the ones that aren't customized
-    // and set them to corresponding default allocator.
+    m_customAllocatorMask = filledMap;
 
-    static IAllocator &defAllocator = GetDefaultAllocator();
+    // Now go through all allocators, find the ones that aren't customized
+    // and set them to the corresponding default allocator.
 
     for (int i = 0; i < NVCV_NUM_RESOURCE_TYPES; ++i)
     {
-        NVCVCustomAllocator &custAllocator = m_allocators[i];
+        NVCVResourceAllocator &custAllocator = m_allocators[i];
 
         // Resource allocator already defined?
         if (filledMap & (1 << i))
@@ -98,77 +98,43 @@ CustomAllocator::CustomAllocator(const NVCVCustomAllocator *customAllocators, in
             continue; // skip it
         }
 
-        // Context not needed
-        custAllocator.ctx = nullptr;
-
-        custAllocator.resType = static_cast<NVCVResourceType>(i);
         filledMap |= (1 << i);
-
-        switch (static_cast<NVCVResourceType>(i))
-        {
-        case NVCV_RESOURCE_MEM_HOST:
-            static auto defAllocHostMem = [](void *ctx, int64_t size, int32_t align)
-            {
-                return defAllocator.allocHostMem(size, align);
-            };
-            static auto defFreeHostMem = [](void *ctx, void *ptr, int64_t size, int32_t align)
-            {
-                (void)size;
-                (void)align;
-                return defAllocator.freeHostMem(ptr, size, align);
-            };
-            custAllocator.res.mem.fnAlloc = defAllocHostMem;
-            custAllocator.res.mem.fnFree  = defFreeHostMem;
-            break;
-
-        case NVCV_RESOURCE_MEM_CUDA:
-            static auto defAllocCudaMem = [](void *ctx, int64_t size, int32_t align)
-            {
-                return defAllocator.allocCudaMem(size, align);
-            };
-            static auto defFreeCudaMem = [](void *ctx, void *ptr, int64_t size, int32_t align)
-            {
-                (void)size;
-                (void)align;
-                return defAllocator.freeCudaMem(ptr, size, align);
-            };
-            custAllocator.res.mem.fnAlloc = defAllocCudaMem;
-            custAllocator.res.mem.fnFree  = defFreeCudaMem;
-            break;
-
-        case NVCV_RESOURCE_MEM_HOST_PINNED:
-            static auto defAllocHostPinnedMem = [](void *ctx, int64_t size, int32_t align)
-            {
-                return defAllocator.allocHostPinnedMem(size, align);
-            };
-            static auto defFreeHostPinnedMem = [](void *ctx, void *ptr, int64_t size, int32_t align)
-            {
-                (void)size;
-                (void)align;
-                return defAllocator.freeHostPinnedMem(ptr, size, align);
-            };
-            custAllocator.res.mem.fnAlloc = defAllocHostPinnedMem;
-            custAllocator.res.mem.fnFree  = defFreeHostPinnedMem;
-            break;
-        }
+        custAllocator = GetDefaultAllocator().get((NVCVResourceType)i);
     }
 
     NVCV_ASSERT((filledMap & ((1 << NVCV_NUM_RESOURCE_TYPES) - 1)) == ((1 << NVCV_NUM_RESOURCE_TYPES) - 1)
                 && "Some allocators weren't filled in");
 }
 
+CustomAllocator::~CustomAllocator()
+{
+    for (NVCVResourceAllocator &alloc : m_allocators)
+    {
+        if (alloc.cleanup)
+        {
+            alloc.cleanup(alloc.ctx, &alloc);
+        }
+    }
+}
+
+NVCVResourceAllocator CustomAllocator::doGet(NVCVResourceType resType)
+{
+    NVCV_ASSERT(static_cast<unsigned>(resType) < NVCV_NUM_RESOURCE_TYPES);
+    return m_allocators[resType];
+}
+
 // Host Memory ------------------
 
 void *CustomAllocator::doAllocHostMem(int64_t size, int32_t align)
 {
-    NVCVCustomAllocator &custom = m_allocators[NVCV_RESOURCE_MEM_HOST];
+    NVCVResourceAllocator &custom = m_allocators[NVCV_RESOURCE_MEM_HOST];
     NVCV_ASSERT(custom.res.mem.fnAlloc != nullptr);
     return custom.res.mem.fnAlloc(custom.ctx, size, align);
 }
 
 void CustomAllocator::doFreeHostMem(void *ptr, int64_t size, int32_t align) noexcept
 {
-    NVCVCustomAllocator &custom = m_allocators[NVCV_RESOURCE_MEM_HOST];
+    NVCVResourceAllocator &custom = m_allocators[NVCV_RESOURCE_MEM_HOST];
     NVCV_ASSERT(custom.res.mem.fnFree != nullptr);
     return custom.res.mem.fnFree(custom.ctx, ptr, size, align);
 }
@@ -177,14 +143,14 @@ void CustomAllocator::doFreeHostMem(void *ptr, int64_t size, int32_t align) noex
 
 void *CustomAllocator::doAllocHostPinnedMem(int64_t size, int32_t align)
 {
-    NVCVCustomAllocator &custom = m_allocators[NVCV_RESOURCE_MEM_HOST_PINNED];
+    NVCVResourceAllocator &custom = m_allocators[NVCV_RESOURCE_MEM_HOST_PINNED];
     NVCV_ASSERT(custom.res.mem.fnAlloc != nullptr);
     return custom.res.mem.fnAlloc(custom.ctx, size, align);
 }
 
 void CustomAllocator::doFreeHostPinnedMem(void *ptr, int64_t size, int32_t align) noexcept
 {
-    NVCVCustomAllocator &custom = m_allocators[NVCV_RESOURCE_MEM_HOST_PINNED];
+    NVCVResourceAllocator &custom = m_allocators[NVCV_RESOURCE_MEM_HOST_PINNED];
     NVCV_ASSERT(custom.res.mem.fnFree != nullptr);
     return custom.res.mem.fnFree(custom.ctx, ptr, size, align);
 }
@@ -193,14 +159,14 @@ void CustomAllocator::doFreeHostPinnedMem(void *ptr, int64_t size, int32_t align
 
 void *CustomAllocator::doAllocCudaMem(int64_t size, int32_t align)
 {
-    NVCVCustomAllocator &custom = m_allocators[NVCV_RESOURCE_MEM_CUDA];
+    NVCVResourceAllocator &custom = m_allocators[NVCV_RESOURCE_MEM_CUDA];
     NVCV_ASSERT(custom.res.mem.fnAlloc != nullptr);
     return custom.res.mem.fnAlloc(custom.ctx, size, align);
 }
 
 void CustomAllocator::doFreeCudaMem(void *ptr, int64_t size, int32_t align) noexcept
 {
-    NVCVCustomAllocator &custom = m_allocators[NVCV_RESOURCE_MEM_CUDA];
+    NVCVResourceAllocator &custom = m_allocators[NVCV_RESOURCE_MEM_CUDA];
     NVCV_ASSERT(custom.res.mem.fnFree != nullptr);
     return custom.res.mem.fnFree(custom.ctx, ptr, size, align);
 }

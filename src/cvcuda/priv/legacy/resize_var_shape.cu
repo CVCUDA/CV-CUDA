@@ -40,7 +40,8 @@ namespace {
 
 #define LEGACY_BICUBIC_MATH_VS //apparently the legacy code has an abs() that needs to be matched
 
-#define CACHE_MEMORY_ALIGNMENT_VS 15 //this is 'M' for _cacheAlignedBufferedReadVS
+// Replaced below 15 to 0 due to a reported regression
+#define CACHE_MEMORY_ALIGNMENT_VS 0 //this is 'M' for _cacheAlignedBufferedReadVS
 
 //legal values for CACHE_MEMORY_ALIGNMENT_VS are:
 // 31: 256-bit alignment
@@ -113,10 +114,11 @@ __global__ void resize_NN(cuda::ImageBatchVarShapeWrap<const T> src, cuda::Image
         const int width  = src.width(batch_idx);
         const int height = src.height(batch_idx);
 
-        const float scale_x               = static_cast<float>(width) / dstWidth;
-        const float scale_y               = static_cast<float>(height) / dstHeight;
-        const int   sx                    = cuda::min(__float2int_rd(dst_x * scale_x), width - 1);
-        const int   sy                    = cuda::min(__float2int_rd(dst_y * scale_y), height - 1);
+        const float scale_x = static_cast<float>(width) / dstWidth;
+        const float scale_y = static_cast<float>(height) / dstHeight;
+        const int   sx      = cuda::min(cuda::round<cuda::RoundMode::DOWN, int>(dst_x * scale_x), width - 1);
+        const int   sy      = cuda::min(cuda::round<cuda::RoundMode::DOWN, int>(dst_y * scale_y), height - 1);
+
         *dst.ptr(batch_idx, dst_y, dst_x) = *src.ptr(batch_idx, sy, sx);
     }
 } //resize_NN
@@ -141,23 +143,24 @@ __global__ void resize_NN_quad_combo(cuda::ImageBatchVarShapeWrap<const T> src, 
     const int   height  = src.height(batch_idx);
     const float scale_x = static_cast<float>(width) / dstWidth;
     const float scale_y = static_cast<float>(height) / dstHeight;
-    const int   sy      = cuda::min(__float2int_rd(dst_y * scale_y), height - 1);
+    const int   sy      = cuda::min(cuda::round<cuda::RoundMode::DOWN, int>(dst_y * scale_y), height - 1);
 
     if (dstWidth != dstWidth4) //non-aligned case, up to 4 pixels
     {                          //do up to 4 pixels, unoptimized
         const int pixels = cuda::min(dstWidth - dst_x, 4);
         for (int i = 0; i < pixels; ++i)
         {
-            const int sxi                         = cuda::min(__float2int_rd((dst_x + i) * scale_x), width - 1);
+            const int sxi = cuda::min(cuda::round<cuda::RoundMode::DOWN, int>((dst_x + i) * scale_x), width - 1);
+
             *dst.ptr(batch_idx, dst_y, dst_x + i) = *src.ptr(batch_idx, sy, sxi);
         }
     }
     else //quad-case: memory is aligned, do 4 pixels
     {
-        const int sx0 = cuda::min(__float2int_rd(dst_x * scale_x), width - 1);
-        const int sx1 = cuda::min(__float2int_rd(dst_x * scale_x + scale_x), width - 1);
-        const int sx2 = cuda::min(__float2int_rd((dst_x + 2) * scale_x), width - 1);
-        const int sx3 = cuda::min(__float2int_rd((dst_x + 3) * scale_x), width - 1);
+        const int sx0 = cuda::min(cuda::round<cuda::RoundMode::DOWN, int>(dst_x * scale_x), width - 1);
+        const int sx1 = cuda::min(cuda::round<cuda::RoundMode::DOWN, int>(dst_x * scale_x + scale_x), width - 1);
+        const int sx2 = cuda::min(cuda::round<cuda::RoundMode::DOWN, int>((dst_x + 2) * scale_x), width - 1);
+        const int sx3 = cuda::min(cuda::round<cuda::RoundMode::DOWN, int>((dst_x + 3) * scale_x), width - 1);
 
         //1 - optimized case if scale_x < some finite limit
         if ((scale_x <= MAX_BUFFERED_X_SCALE)) //local buffering is more efficient
@@ -211,7 +214,7 @@ __global__ void resize_bilinear(cuda::ImageBatchVarShapeWrap<const T> src, cuda:
 
         //y coordinate
         float fy = (float)((dst_y + 0.5f) * scale_y - 0.5f);
-        int   sy = __float2int_rd(fy);
+        int   sy = cuda::round<cuda::RoundMode::DOWN, int>(fy);
         fy -= sy;
         sy = cuda::max(0, cuda::min(sy, height - 2));
 
@@ -221,7 +224,7 @@ __global__ void resize_bilinear(cuda::ImageBatchVarShapeWrap<const T> src, cuda:
 
         { //compute source data position and weight for [x0] components
             float fx = (float)((dst_x + 0.5f) * scale_x - 0.5f);
-            int   sx = __float2int_rd(fx);
+            int   sx = cuda::round<cuda::RoundMode::DOWN, int>(fx);
             fx -= sx;
             fx *= ((sx >= 0) && (sx < width - 1));
             sx = cuda::max(0, cuda::min(sx, width - 2));
@@ -258,7 +261,7 @@ __global__ void resize_bilinear_quad_combo(cuda::ImageBatchVarShapeWrap<const T>
 
     //y coordinate math is the same for all points
     float fy = (float)((dst_y + 0.5f) * scale_y - 0.5f);
-    int   sy = __float2int_rd(fy);
+    int   sy = cuda::round<cuda::RoundMode::DOWN, int>(fy);
     fy -= sy;
     sy = cuda::max(0, cuda::min(sy, height - 2));
 
@@ -272,7 +275,7 @@ __global__ void resize_bilinear_quad_combo(cuda::ImageBatchVarShapeWrap<const T>
         for (int i = 0; i < pixels; ++i)
         { //compute source data position and weight for [xi] components
             float fxi = (float)((dst_x + 0.5f + i) * scale_x - 0.5f);
-            int   sxi = __float2int_rd(fxi);
+            int   sxi = cuda::round<cuda::RoundMode::DOWN, int>(fxi);
             fxi -= sxi;
             fxi *= ((sxi >= 0) && (sxi < width - 1));
             sxi = cuda::max(0, cuda::min(sxi, width - 2));
@@ -289,28 +292,28 @@ __global__ void resize_bilinear_quad_combo(cuda::ImageBatchVarShapeWrap<const T>
 
         //sx0
         float fx0 = (float)((dst_x + 0.5f) * scale_x - 0.5f);
-        int   sx0 = __float2int_rd(fx0);
+        int   sx0 = cuda::round<cuda::RoundMode::DOWN, int>(fx0);
         fx0 -= sx0;
         fx0 *= ((sx0 >= 0) && (sx0 < width - 1));
         sx0 = cuda::max(0, cuda::min(sx0, width - 2));
 
         //sx1
         float fx1 = (float)((dst_x + 1.5) * scale_x - 0.5f);
-        int   sx1 = __float2int_rd(fx1);
+        int   sx1 = cuda::round<cuda::RoundMode::DOWN, int>(fx1);
         fx1 -= sx1;
         fx1 *= ((sx1 >= 0) && (sx1 < width - 1));
         sx1 = cuda::max(0, cuda::min(sx1, width - 2));
 
         //sx2
         float fx2 = (float)((dst_x + 2.5f) * scale_x - 0.5f);
-        int   sx2 = __float2int_rd(fx2);
+        int   sx2 = cuda::round<cuda::RoundMode::DOWN, int>(fx2);
         fx2 -= sx2;
         fx2 *= ((sx2 >= 0) && (sx2 < width - 1));
         sx2 = cuda::max(0, cuda::min(sx2, width - 2));
 
         //sx3
         float fx3 = (float)((dst_x + 3.5f) * scale_x - 0.5f);
-        int   sx3 = __float2int_rd(fx3);
+        int   sx3 = cuda::round<cuda::RoundMode::DOWN, int>(fx3);
         fx3 -= sx3;
         fx3 *= ((sx3 >= 0) && (sx3 < width - 1));
         sx3 = cuda::max(0, cuda::min(sx3, width - 2));
@@ -400,7 +403,7 @@ __global__ void resize_bicubic(cuda::ImageBatchVarShapeWrap<const T> src, cuda::
 
         //y coordinate
         float fy = (float)((dst_y + 0.5f) * scale_y - 0.5f);
-        int   sy = __float2int_rd(fy);
+        int   sy = cuda::round<cuda::RoundMode::DOWN, int>(fy);
         fy -= sy;
         sy = cuda::max(1, cuda::min(sy, height - 3));
 
@@ -415,7 +418,7 @@ __global__ void resize_bicubic(cuda::ImageBatchVarShapeWrap<const T> src, cuda::
         work_type accum = cuda::SetAll<work_type>(0);
 
         float fx = (float)((dst_x + 0.5f) * scale_x - 0.5f);
-        int   sx = __float2int_rd(fx);
+        int   sx = cuda::round<cuda::RoundMode::DOWN, int>(fx);
         fx -= sx;
         fx *= ((sx >= 1) && (sx < width - 3));
         sx = cuda::max(1, cuda::min(sx, width - 3));
@@ -477,7 +480,7 @@ __global__ void resize_bicubic_quad_combo(cuda::ImageBatchVarShapeWrap<const T> 
 
     //y coordinate
     float fy = (float)((dst_y + 0.5f) * scale_y - 0.5f);
-    int   sy = __float2int_rd(fy);
+    int   sy = cuda::round<cuda::RoundMode::DOWN, int>(fy);
     fy -= sy;
     sy = cuda::max(1, cuda::min(sy, height - 3));
 
@@ -497,7 +500,7 @@ __global__ void resize_bicubic_quad_combo(cuda::ImageBatchVarShapeWrap<const T> 
         for (int i = 0; i < pixels; ++i)
         {
             float fxi = (float)((dst_x + 0.5f + i) * scale_x - 0.5f);
-            int   sxi = __float2int_rd(fxi);
+            int   sxi = cuda::round<cuda::RoundMode::DOWN, int>(fxi);
             fxi -= sxi;
             fxi *= ((sxi >= 1) && (sxi < width - 3));
             sxi = cuda::max(1, cuda::min(sxi, width - 3));
@@ -548,7 +551,7 @@ __global__ void resize_bicubic_quad_combo(cuda::ImageBatchVarShapeWrap<const T> 
 
                 //1 - precalc sx's ahead of time to get range from sx0-1..sx3+2
                 fx[pix] = (float)((dst_x + pix + 0.5f) * scale_x - 0.5f);
-                sx[pix] = __float2int_rd(fx[pix]);
+                sx[pix] = cuda::round<cuda::RoundMode::DOWN, int>(fx[pix]);
                 fx[pix] -= sx[pix];
                 fx[pix] *= ((sx[pix] >= 1) && (sx[pix] < width - 3));
                 sx[pix] = cuda::max(1, cuda::min(sx[pix], width - 3));
@@ -597,7 +600,7 @@ __global__ void resize_bicubic_quad_combo(cuda::ImageBatchVarShapeWrap<const T> 
                 work_type accum = cuda::SetAll<work_type>(0);
 
                 float fx = (float)((dst_x + pix + 0.5f) * scale_x - 0.5f);
-                int   sx = __float2int_rd(fx);
+                int   sx = cuda::round<cuda::RoundMode::DOWN, int>(fx);
                 fx -= sx;
                 fx *= ((sx >= 1) && (sx < width - 3));
                 sx = cuda::max(1, cuda::min(sx, width - 3));
@@ -667,14 +670,14 @@ __global__ void resize_area_ocv_align(const cuda::ImageBatchVarShapeWrap<const T
             float fsx1  = x * scale_x;
             float fsx2  = fsx1 + scale_x;
 
-            int sx1 = __float2int_ru(fsx1);
-            int sx2 = __float2int_rd(fsx2);
+            int sx1 = cuda::round<cuda::RoundMode::UP, int>(fsx1);
+            int sx2 = cuda::round<cuda::RoundMode::DOWN, int>(fsx2);
 
             float fsy1 = y * scale_y;
             float fsy2 = fsy1 + scale_y;
 
-            int sy1 = __float2int_ru(fsy1);
-            int sy2 = __float2int_rd(fsy2);
+            int sy1 = cuda::round<cuda::RoundMode::UP, int>(fsy1);
+            int sy2 = cuda::round<cuda::RoundMode::DOWN, int>(fsy2);
 
             using work_type = cuda::ConvertBaseTypeTo<float, T>;
             work_type out   = {0};
@@ -699,14 +702,14 @@ __global__ void resize_area_ocv_align(const cuda::ImageBatchVarShapeWrap<const T
         float fsx1 = x * scale_x;
         float fsx2 = fsx1 + scale_x;
 
-        int sx1 = __float2int_ru(fsx1);
-        int sx2 = __float2int_rd(fsx2);
+        int sx1 = cuda::round<cuda::RoundMode::UP, int>(fsx1);
+        int sx2 = cuda::round<cuda::RoundMode::DOWN, int>(fsx2);
 
         float fsy1 = y * scale_y;
         float fsy2 = fsy1 + scale_y;
 
-        int sy1 = __float2int_ru(fsy1);
-        int sy2 = __float2int_rd(fsy2);
+        int sy1 = cuda::round<cuda::RoundMode::UP, int>(fsy1);
+        int sy2 = cuda::round<cuda::RoundMode::DOWN, int>(fsy2);
 
         float scale
             = 1.f / (fminf(scale_x, src.width(batch_idx) - fsx1) * fminf(scale_y, src.height(batch_idx) - fsy1));
@@ -793,17 +796,17 @@ __global__ void resize_area_ocv_align(const cuda::ImageBatchVarShapeWrap<const T
     }
 
     // zoom in, it is emulated using some variant of bilinear interpolation
-    int   sy = __float2int_rd(y * scale_y);
+    int   sy = cuda::round<cuda::RoundMode::DOWN, int>(y * scale_y);
     float fy = (float)((y + 1) - (sy + 1) * inv_scale_y);
-    fy       = fy <= 0 ? 0.f : fy - __float2int_rd(fy);
+    fy       = fy <= 0 ? 0.f : fy - cuda::round<cuda::RoundMode::DOWN, int>(fy);
 
     float cbufy[2];
     cbufy[0] = 1.f - fy;
     cbufy[1] = fy;
 
-    int   sx = __float2int_rd(x * scale_x);
+    int   sx = cuda::round<cuda::RoundMode::DOWN, int>(x * scale_x);
     float fx = (float)((x + 1) - (sx + 1) * inv_scale_x);
-    fx       = fx < 0 ? 0.f : fx - __float2int_rd(fx);
+    fx       = fx < 0 ? 0.f : fx - cuda::round<cuda::RoundMode::DOWN, int>(fx);
 
     if (sx < 0)
     {
@@ -842,7 +845,7 @@ __global__ void resize_area_v2(const Filter src, cuda_op::Ptr2dVarShapeNHWC<T> d
 }
 
 template<typename T>
-void resize(const IImageBatchVarShapeDataStridedCuda &in, const IImageBatchVarShapeDataStridedCuda &out,
+void resize(const ImageBatchVarShapeDataStridedCuda &in, const ImageBatchVarShapeDataStridedCuda &out,
             const int interpolation, cudaStream_t stream)
 {
     NVCV_ASSERT(in.numImages() == out.numImages());
@@ -852,7 +855,7 @@ void resize(const IImageBatchVarShapeDataStridedCuda &in, const IImageBatchVarSh
 
     Size2D outMaxSize = out.maxSize();
 
-    bool can_quad = true;
+    bool can_quad = false; // turning it off due to a reported regression
     //bool can_quad = false;  //<-- force single pixel per kernel mode, smaller register file
 
     const int THREADS_PER_BLOCK = 256; //Performance degrades above 256 and below 16 (GMEM speed limited)
@@ -914,8 +917,8 @@ void resize(const IImageBatchVarShapeDataStridedCuda &in, const IImageBatchVarSh
 
 } // namespace
 
-ErrorCode ResizeVarShape::infer(const IImageBatchVarShapeDataStridedCuda &inData,
-                                const IImageBatchVarShapeDataStridedCuda &outData,
+ErrorCode ResizeVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inData,
+                                const ImageBatchVarShapeDataStridedCuda &outData,
                                 const NVCVInterpolationType interpolation, cudaStream_t stream)
 {
     DataFormat input_format  = helpers::GetLegacyDataFormat(inData);
@@ -964,7 +967,7 @@ ErrorCode ResizeVarShape::infer(const IImageBatchVarShapeDataStridedCuda &inData
         return ErrorCode::INVALID_PARAMETER;
     }
 
-    typedef void (*func_t)(const IImageBatchVarShapeDataStridedCuda &in, const IImageBatchVarShapeDataStridedCuda &out,
+    typedef void (*func_t)(const ImageBatchVarShapeDataStridedCuda &in, const ImageBatchVarShapeDataStridedCuda &out,
                            const int interpolation, cudaStream_t stream);
 
     static const func_t funcs[6][4] = {

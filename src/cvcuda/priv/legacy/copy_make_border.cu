@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -23,83 +23,68 @@
 
 #include "CvCudaUtils.cuh"
 
-using namespace nvcv;
-using namespace nvcv::legacy::cuda_op;
-using namespace nvcv::legacy::helpers;
-
 #define BLOCK 32
-
-template<typename BrdRd, typename Ptr2D>
-__global__ void copyMakeBorderKernel(const BrdRd src, Ptr2D dst, const int left, const int top)
-{
-    const int x          = blockIdx.x * blockDim.x + threadIdx.x;
-    const int y          = blockIdx.y * blockDim.y + threadIdx.y;
-    const int x_shift    = x - left;
-    const int y_shift    = y - top;
-    const int batch_idx  = get_batch_idx();
-    int       out_height = dst.rows, out_width = dst.cols;
-
-    if (x < out_width && y < out_height)
-    {
-        *dst.ptr(batch_idx, y, x) = src(batch_idx, y_shift, x_shift);
-    }
-}
-
-template<template<typename> class B, typename T>
-struct copyMakeBorderDispatcher
-{
-    static void call(const Ptr2dNHWC<T> src, Ptr2dNHWC<T> dst, const T &borderValue, const int left, const int top,
-                     cudaStream_t stream)
-    {
-        dim3 blockSize(BLOCK, BLOCK / 4, 1);
-        dim3 gridSize(divUp(dst.cols, blockSize.x), divUp(dst.rows, blockSize.y), dst.batches);
-
-        B<T>                             brd(src.rows, src.cols, borderValue);
-        BorderReader<Ptr2dNHWC<T>, B<T>> brdSrc(src, brd);
-
-        copyMakeBorderKernel<<<gridSize, blockSize, 0, stream>>>(brdSrc, dst, left, top);
-        checkKernelErrors();
-
-#ifdef CUDA_DEBUG_LOG
-        checkCudaErrors(cudaStreamSynchronize(stream));
-        checkCudaErrors(cudaGetLastError());
-#endif
-    }
-};
-
-template<typename T, int cn> // uchar3 float3 uchar float
-void copyMakeBorder(const TensorDataAccessStridedImagePlanar &d_in, const TensorDataAccessStridedImagePlanar &d_out,
-                    const int batch_size, const int height, const int width, const int top, const int left,
-                    const NVCVBorderType border_type, const float4 value, cudaStream_t stream)
-{
-    typedef typename cuda::MakeType<T, cn> src_type;
-
-    src_type brdVal;
-#pragma unroll
-    for (int i = 0; i < cn; i++) cuda::GetElement(brdVal, i) = cuda::GetElement(value, i);
-
-    Ptr2dNHWC<src_type> src_ptr(d_in);
-    Ptr2dNHWC<src_type> dst_ptr(d_out);
-
-    typedef void (*func_t)(const Ptr2dNHWC<src_type> src, Ptr2dNHWC<src_type> dst, const src_type &borderValue,
-                           const int left, const int top, cudaStream_t stream);
-
-    static const func_t funcs[]
-        = {copyMakeBorderDispatcher<BrdConstant, src_type>::call,
-           copyMakeBorderDispatcher<BrdReplicate, src_type>::call, copyMakeBorderDispatcher<BrdReflect, src_type>::call,
-           copyMakeBorderDispatcher<BrdWrap, src_type>::call, copyMakeBorderDispatcher<BrdReflect101, src_type>::call};
-
-    funcs[border_type](src_ptr, dst_ptr, brdVal, left, top, stream);
-}
 
 namespace nvcv::legacy::cuda_op {
 
-ErrorCode CopyMakeBorder::infer(const ITensorDataStridedCuda &inData, const ITensorDataStridedCuda &outData,
-                                const int top, const int left, const NVCVBorderType border_type, const float4 value,
-                                cudaStream_t stream)
+template<class SrcWrapper, class DstWrapper>
+__global__ void copyMakeBorderKernel(SrcWrapper src, DstWrapper dst, int2 dstSize, int left, int top)
 {
-    DataFormat input_format  = GetLegacyDataFormat(inData.layout());
-    DataFormat output_format = GetLegacyDataFormat(outData.layout());
+    int3 dstCoord = cuda::StaticCast<int>(blockDim * blockIdx + threadIdx);
+    int3 srcCoord = {dstCoord.x - left, dstCoord.y - top, dstCoord.z};
+
+    if (dstCoord.x < dstSize.x && dstCoord.y < dstSize.y)
+    {
+        dst[dstCoord] = src[srcCoord];
+    }
+}
+
+template<typename T, NVCVBorderType B>
+struct copyMakeBorderDispatcher
+{
+    static void call(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, const T &borderValue,
+                     const int left, const int top, cudaStream_t stream)
+    {
+        auto src = cuda::CreateBorderWrapNHW<const T, B>(inData, borderValue);
+        auto dst = cuda::CreateTensorWrapNHW<T>(outData);
+
+        auto outAccess = TensorDataAccessStridedImagePlanar::Create(outData);
+        NVCV_ASSERT(outAccess);
+
+        int2 dstSize{outAccess->numCols(), outAccess->numRows()};
+
+        dim3 blockSize(BLOCK, BLOCK / 4, 1);
+        dim3 gridSize(divUp(dstSize.x, blockSize.x), divUp(dstSize.y, blockSize.y), outAccess->numSamples());
+
+        copyMakeBorderKernel<<<gridSize, blockSize, 0, stream>>>(src, dst, dstSize, left, top);
+        checkKernelErrors();
+    }
+};
+
+template<typename T> // uchar3 float3 uchar float
+void copyMakeBorder(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, const int top,
+                    const int left, const NVCVBorderType border_type, const float4 &borderValue, cudaStream_t stream)
+{
+    const T bvalue = cuda::DropCast<cuda::NumElements<T>>(cuda::StaticCast<cuda::BaseType<T>>(borderValue));
+
+    typedef void (*func_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                           const T &borderValue, const int left, const int top, cudaStream_t stream);
+
+    static const func_t funcs[]
+        = {copyMakeBorderDispatcher<T, NVCV_BORDER_CONSTANT>::call,
+           copyMakeBorderDispatcher<T, NVCV_BORDER_REPLICATE>::call,
+           copyMakeBorderDispatcher<T, NVCV_BORDER_REFLECT>::call, copyMakeBorderDispatcher<T, NVCV_BORDER_WRAP>::call,
+           copyMakeBorderDispatcher<T, NVCV_BORDER_REFLECT101>::call};
+
+    funcs[border_type](inData, outData, bvalue, left, top, stream);
+}
+
+ErrorCode CopyMakeBorder::infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                                const int top, const int left, const NVCVBorderType border_type,
+                                const float4 &borderValue, cudaStream_t stream)
+{
+    DataFormat input_format  = helpers::GetLegacyDataFormat(inData.layout());
+    DataFormat output_format = helpers::GetLegacyDataFormat(outData.layout());
 
     if (input_format != output_format)
     {
@@ -107,11 +92,16 @@ ErrorCode CopyMakeBorder::infer(const ITensorDataStridedCuda &inData, const ITen
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
-    DataFormat format = input_format;
-    if (!(format == kNHWC || format == kHWC))
+    if (!(input_format == kNHWC || input_format == kHWC))
     {
-        LOG_ERROR("Invalid DataFormat " << format);
+        LOG_ERROR("Invalid DataFormat " << input_format);
         return ErrorCode::INVALID_DATA_FORMAT;
+    }
+
+    if (inData.dtype() != outData.dtype())
+    {
+        LOG_ERROR("Invalid DataType between input (" << inData.dtype() << ") and output (" << outData.dtype() << ")");
+        return ErrorCode::INVALID_DATA_TYPE;
     }
 
     auto inAccess = TensorDataAccessStridedImagePlanar::Create(inData);
@@ -120,18 +110,9 @@ ErrorCode CopyMakeBorder::infer(const ITensorDataStridedCuda &inData, const ITen
     auto outAccess = TensorDataAccessStridedImagePlanar::Create(outData);
     NVCV_ASSERT(outAccess);
 
-    cuda_op::DataType  data_type   = GetLegacyDataType(inData.dtype());
-    cuda_op::DataShape input_shape = GetLegacyDataShape(inAccess->infoShape());
+    cuda_op::DataType data_type = helpers::GetLegacyDataType(inData.dtype());
 
-    int    batch     = input_shape.N;
-    int    channels  = input_shape.C;
-    int    rows      = input_shape.H;
-    int    cols      = input_shape.W;
-    size_t data_size = DataSize(data_type);
-
-    cuda_op::DataShape output_shape = GetLegacyDataShape(outAccess->infoShape());
-    int                out_rows     = output_shape.H;
-    int                out_cols     = output_shape.W;
+    const int channels = inAccess->numChannels();
 
     if (channels > 4)
     {
@@ -153,6 +134,11 @@ ErrorCode CopyMakeBorder::infer(const ITensorDataStridedCuda &inData, const ITen
         return ErrorCode::INVALID_PARAMETER;
     }
 
+    const int rows     = inAccess->numRows();
+    const int cols     = inAccess->numCols();
+    const int out_rows = outAccess->numRows();
+    const int out_cols = outAccess->numCols();
+
     if (!(top >= 0 && out_rows >= top + rows && left >= 0 && out_cols >= left + cols))
     {
         LOG_ERROR("Invalid border " << top << " " << out_rows - top - rows << " " << left << " "
@@ -162,26 +148,26 @@ ErrorCode CopyMakeBorder::infer(const ITensorDataStridedCuda &inData, const ITen
         return ErrorCode::INVALID_PARAMETER;
     }
 
-    typedef void (*func_t)(const TensorDataAccessStridedImagePlanar &d_in,
-                           const TensorDataAccessStridedImagePlanar &d_out, const int batch_size, const int rows,
-                           const int cols, const int top, const int left, const NVCVBorderType border_type,
-                           const float4 value, cudaStream_t stream);
+    typedef void (*func_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, const int top,
+                           const int left, const NVCVBorderType border_type, const float4 &borderValue,
+                           cudaStream_t stream);
 
     // clang-format off
     static const func_t funcs[6][4] = {
-        {copyMakeBorder<uchar, 1>      , copyMakeBorder<uchar, 2>       , copyMakeBorder<uchar, 3>      , copyMakeBorder<uchar, 4>      },
-        {0 /*copyMakeBorder<schar, 1>*/, 0 /*copyMakeBorder<schar, 2>*/ , 0 /*copyMakeBorder<schar, 3>*/, 0 /*copyMakeBorder<schar, 4>*/},
-        {copyMakeBorder<ushort, 1>     , 0 /*copyMakeBorder<ushort, 2>*/, copyMakeBorder<ushort, 3>     , copyMakeBorder<ushort, 4>     },
-        {copyMakeBorder<short, 1>      , 0 /*copyMakeBorder<short , 2>*/, copyMakeBorder<short, 3>      , copyMakeBorder<short, 4>      },
+        {copyMakeBorder<uchar1>      , copyMakeBorder<uchar2>       , copyMakeBorder<uchar3>      , copyMakeBorder<uchar4>      },
+        {0 /*copyMakeBorder<char1>*/, 0 /*copyMakeBorder<char2>*/ , 0 /*copyMakeBorder<char3>*/, 0 /*copyMakeBorder<char4>*/},
+        {copyMakeBorder<ushort1>     , 0 /*copyMakeBorder<ushort2>*/, copyMakeBorder<ushort3>     , copyMakeBorder<ushort4>     },
+        {copyMakeBorder<short1>      , 0 /*copyMakeBorder<short2>*/, copyMakeBorder<short3>      , copyMakeBorder<short4>      },
         {0 /*copyMakeBorder<int, 1>*/  , 0 /*copyMakeBorder<int, 2>*/   , 0 /*copyMakeBorder<int, 3>*/  , 0 /*copyMakeBorder<int, 4>*/  },
-        {copyMakeBorder<float, 1>      , 0 /*copyMakeBorder<float , 2>*/, copyMakeBorder<float, 3>      , copyMakeBorder<float, 4>      }
+        {copyMakeBorder<float1>      , 0 /*copyMakeBorder<float2>*/, copyMakeBorder<float3>      , copyMakeBorder<float4>      }
     };
     // clang-format on
 
     const func_t func = funcs[data_type][channels - 1];
     NVCV_ASSERT(func != 0);
 
-    func(*inAccess, *outAccess, batch, rows, cols, top, left, border_type, value, stream);
+    func(inData, outData, top, left, border_type, borderValue, stream);
+
     return SUCCESS;
 }
 

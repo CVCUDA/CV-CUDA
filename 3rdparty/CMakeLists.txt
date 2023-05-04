@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,3 +32,9 @@ endif()
 
 # pybind11 -----------------------------
 set(PYBIND11_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/pybind11" PARENT_SCOPE)
+
+# dlpack -----------------------------
+set(DLPACK_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/dlpack" PARENT_SCOPE)
+
+# cuOSD -----------------------------
+set(CUOSD_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/cuOSD" PARENT_SCOPE)

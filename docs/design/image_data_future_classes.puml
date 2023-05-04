@@ -1,4 +1,4 @@
-' Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+' Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 '
 ' SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
 ' SPDX-License-Identifier: Apache-2.0
@@ -23,28 +23,28 @@ struct NVCVImageData
 
 interface IVisitorImageData
 {
-    + {abstract} visit(IImageDataHostMem &data): bool
-    + {abstract} visit(IImageDataHostPinnedMem &data): bool
-    + {abstract} visit(IImageDataCudaMem &data): bool
-    + {abstract} visit(IImageDataCudaArray &data): bool
+    + {abstract} visit(ImageDataHostMem &data): bool
+    + {abstract} visit(ImageDataHostPinnedMem &data): bool
+    + {abstract} visit(ImageDataCudaMem &data): bool
+    + {abstract} visit(ImageDataCudaArray &data): bool
 }
 
-interface IImageData
+interface ImageData
 {
     + {abstract} cdata() const: const NVCVImageData &
 
     + {abstract} accept(IVisitorImageData &visitor): void
 }
 
-IImageData *-right- NVCVImageData
-IImageData -[hidden]left- IVisitorImageData
+ImageData *-right- NVCVImageData
+ImageData -[hidden]left- IVisitorImageData
 
-interface IImageDataCudaArray extends IImageData
+interface ImageDataCudaArray extends ImageData
 {
     + {abstract} plane(int p) const: cudaArray_t
 }
 
-interface IImageDataStridedMem extends IImageData
+interface ImageDataStridedMem extends ImageData
 {
     + {abstract} size() const: Size2D
     + {abstract} format() const: ImageFormat
@@ -52,43 +52,43 @@ interface IImageDataStridedMem extends IImageData
     + {abstract} plane(int p) const: ImagePlaneStridedMem &
 }
 
-IImageDataStridedMem -[hidden]left- ImagePlaneStridedMem
+ImageDataStridedMem -[hidden]left- ImagePlaneStridedMem
 
-interface IImageDataHostMem
+interface ImageDataHostMem
 {
 }
-IImageDataStridedMem <|--# IImageDataHostMem: virtual
+ImageDataStridedMem <|--# ImageDataHostMem: virtual
 
-interface IImageDataHostPinnedMem
+interface ImageDataHostPinnedMem
 {
 }
-IImageDataStridedMem <|--# IImageDataHostPinnedMem: virtual
+ImageDataStridedMem <|--# ImageDataHostPinnedMem: virtual
 
-interface IImageDataCudaMem
+interface ImageDataCudaMem
 {
 }
-IImageDataStridedMem <|--# IImageDataCudaMem: virtual
+ImageDataStridedMem <|--# ImageDataCudaMem: virtual
 
-class ImageDataCudaArray implements IImageDataCudaArray
+class ImageDataCudaArray implements ImageDataCudaArray
 {
 }
 
 class ImageDataStridedMem
 {
 }
-IImageDataStridedMem <|..# ImageDataStridedMem: virtual
+ImageDataStridedMem <|..# ImageDataStridedMem: virtual
 
-class ImageDataHostMem implements IImageDataHostMem
+class ImageDataHostMem implements ImageDataHostMem
 {
 }
 ImageDataStridedMem <|--* ImageDataHostMem: private
 
-class ImageDataHostPinnedMem implements IImageDataHostPinnedMem
+class ImageDataHostPinnedMem implements ImageDataHostPinnedMem
 {
 }
 ImageDataStridedMem <|--* ImageDataHostPinnedMem: private
 
-class ImageDataCudaMem implements IImageDataCudaMem
+class ImageDataCudaMem implements ImageDataCudaMem
 {
 }
 ImageDataStridedMem <|--* ImageDataCudaMem: private

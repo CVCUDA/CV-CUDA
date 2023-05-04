@@ -19,7 +19,7 @@
  * @file OpPadAndStack.h
  *
  * @brief Defines types and functions to handle the pad and stack operation.
- * @defgroup NVCV_C_ALGORITHM_PADANDSTACK Pad and stack
+ * @defgroup NVCV_C_ALGORITHM_PADANDSTACK Pad and Stack
  * @{
  */
 

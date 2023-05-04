@@ -19,7 +19,7 @@
  * @file OpCopyMakeBorder.h
  *
  * @brief Defines types and functions to handle the copy make border operation.
- * @defgroup NVCV_C_ALGORITHM_COPYMAKEBORDER Copy make border
+ * @defgroup NVCV_C_ALGORITHM_COPYMAKEBORDER Copy Make Border
  * @{
  */
 
@@ -53,6 +53,7 @@ extern "C"
 CVCUDA_PUBLIC NVCVStatus cvcudaCopyMakeBorderCreate(NVCVOperatorHandle *handle);
 
 /** Executes the copy make border operation on the given cuda stream. This operation does not wait for completion.
+ *  Copy make border stack will execute the copy make border operation but will output to a fixed size tensor.
  *
  *  Limitations:
  *

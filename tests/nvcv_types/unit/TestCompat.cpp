@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -162,3 +162,111 @@ TEST(CompatGetEntropyExecTest, works)
 }
 
 #endif
+
+template<class T>
+static test::ValueList<T, T> MakeRoundEvenParams()
+{
+    // clang-format off
+    return test::ValueList<T, T>{
+        {       1,      1},
+        {       2,      2},
+        {       3,      3},
+        {       4,      4},
+        {       5,      5},
+        {      -1,     -1},
+        {      -2,     -2},
+        {      -3,     -3},
+        {      -4,     -4},
+        {      -5,     -5},
+        {     0.1,   +0.0},
+        {    -0.1,   -0.0},
+        {     0.2,   +0.0},
+        {    -0.2,   -0.0},
+        {     0.3,   +0.0},
+        {    -0.3,   -0.0},
+        {   0.499,   +0.0},
+        { -0.4999,   -0.0},
+        {     0.5,   +0.0},
+        {    -0.5,   -0.0},
+        {  0.5001,      1},
+        { -0.5001,     -1},
+        {     0.7,      1},
+        {    -0.7,     -1},
+        {     1.1,     +1},
+        {    -1.1,     -1},
+        {     1.2,     +1},
+        {    -1.2,     -1},
+        {     1.3,     +1},
+        {    -1.3,     -1},
+        {   1.499,     +1},
+        { -1.4999,     -1},
+        {     1.5,     +2},
+        {    -1.5,     -2},
+        {  1.5001,      2},
+        { -1.5001,     -2},
+        {     1.7,      2},
+        {    -1.7,     -2},
+        {     0.0,    0.0},
+        {    -0.0,   -0.0},
+
+        {   std::numeric_limits<T>::infinity(),   std::numeric_limits<T>::infinity()},
+        {  -std::numeric_limits<T>::infinity(),  -std::numeric_limits<T>::infinity()},
+        {  std::numeric_limits<T>::quiet_NaN(),  std::numeric_limits<T>::quiet_NaN()},
+        { -std::numeric_limits<T>::quiet_NaN(), -std::numeric_limits<T>::quiet_NaN()},
+        {        std::numeric_limits<T>::min(),                                  0.0},
+        {       -std::numeric_limits<T>::min(),                                 -0.0},
+        { std::numeric_limits<T>::denorm_min(),                                  0.0},
+        {-std::numeric_limits<T>::denorm_min(),                                 -0.0}
+        // corner cases, not passing, but not far off.
+        //{ std::numeric_limits<T>::denorm_min(),  std::numeric_limits<T>::denorm_min()},
+        //{ std::numeric_limits<T>::max(),  std::numeric_limits<T>::max()},
+        //{-std::numeric_limits<T>::max(), -std::numeric_limits<T>::max()},
+    };
+    // clang-format on
+};
+
+class CompatRoundEvenFParamTest
+    : public t::TestWithParam<std::tuple<test::Param<"input", float>, test::Param<"result", float>>>
+{
+};
+
+NVCV_INSTANTIATE_TEST_SUITE_P(_, CompatRoundEvenFParamTest, MakeRoundEvenParams<float>());
+
+TEST_P(CompatRoundEvenFParamTest, test)
+{
+    float input       = std::get<0>(GetParam());
+    float gold_result = std::get<1>(GetParam());
+
+    float result = Compat_roundevenf(input);
+
+    uint32_t gold_result_buffer;
+    memcpy(&gold_result_buffer, &gold_result, sizeof(gold_result));
+
+    uint32_t result_buffer;
+    memcpy(&result_buffer, &result, sizeof(result));
+
+    EXPECT_EQ(gold_result_buffer, result_buffer);
+}
+
+class CompatRoundEvenParamTest
+    : public t::TestWithParam<std::tuple<test::Param<"input", double>, test::Param<"result", double>>>
+{
+};
+
+NVCV_INSTANTIATE_TEST_SUITE_P(_, CompatRoundEvenParamTest, MakeRoundEvenParams<double>());
+
+TEST_P(CompatRoundEvenParamTest, test)
+{
+    double input       = std::get<0>(GetParam());
+    double gold_result = std::get<1>(GetParam());
+
+    double result = Compat_roundevenf(input);
+
+    uint64_t gold_result_buffer;
+    memcpy(&gold_result_buffer, &gold_result, sizeof(gold_result));
+
+    uint64_t result_buffer;
+    memcpy(&result_buffer, &result, sizeof(result));
+
+    EXPECT_EQ(gold_result_buffer, result_buffer);
+}

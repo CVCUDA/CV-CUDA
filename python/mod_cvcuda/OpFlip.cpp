@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -98,11 +98,103 @@ void ExportOpFlip(py::module &m)
 {
     using namespace pybind11::literals;
 
-    m.def("flip", &Flip, "src"_a, "flipCode"_a, py::kw_only(), "stream"_a = nullptr);
-    m.def("flip_into", &FlipInto, "dst"_a, "src"_a, "flipCode"_a, py::kw_only(), "stream"_a = nullptr);
+    m.def("flip", &Flip, "src"_a, "flipCode"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
-    m.def("flip", &FlipVarShape, "src"_a, "flipCode"_a, py::kw_only(), "stream"_a = nullptr);
-    m.def("flip_into", &FlipVarShapeInto, "dst"_a, "src"_a, "flipCode"_a, py::kw_only(), "stream"_a = nullptr);
+        Executes the Flip operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Flip operator
+            for more details and usage examples.
+
+        Args:
+            src (Tensor): Input tensor containing one or more images.
+            flipCode (int): Flag to specify how to flip the array; 0 means flipping
+                            around the x-axis and positive value (for example, 1) means flipping
+                            around y-axis. Negative value (for example, -1) means flipping around
+                            both axes.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.Tensor: The output tensor.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
+
+    m.def("flip_into", &FlipInto, "dst"_a, "src"_a, "flipCode"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Flip operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Flip operator
+            for more details and usage examples.
+
+        Args:
+            dst (Tensor): Output tensor to store the result of the operation.
+            src (Tensor): Input tensor containing one or more images.
+            flipCode (int): Flag to specify how to flip the array; 0 means flipping
+                            around the x-axis and positive value (for example, 1) means flipping
+                            around y-axis. Negative value (for example, -1) means flipping around
+                            both axes.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
+
+    m.def("flip", &FlipVarShape, "src"_a, "flipCode"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Flip operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Flip operator
+            for more details and usage examples.
+
+        Args:
+            src (ImageBatchVarShape): Input image batch containing one or more images.
+            flipCode (Tensor): Flag to specify how to flip the array; 0 means flipping
+                            around the x-axis and positive value (for example, 1) means flipping
+                            around y-axis. Negative value (for example, -1) means flipping around
+                            both axes. Specified for all images in batch.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.ImageBatchVarShape: The output image batch.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
+
+    m.def("flip_into", &FlipVarShapeInto, "dst"_a, "src"_a, "flipCode"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Flip operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Flip operator
+            for more details and usage examples.
+
+        Args:
+            src (ImageBatchVarShape): Input image batch containing one or more images.
+            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
+            flipCode (Tensor): Flag to specify how to flip the array; 0 means flipping
+                            around the x-axis and positive value (for example, 1) means flipping
+                            around y-axis. Negative value (for example, -1) means flipping around
+                            both axes. Specified for all images in batch.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 }
 
 } // namespace cvcudapy

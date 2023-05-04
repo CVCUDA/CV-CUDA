@@ -44,8 +44,8 @@ def test_datatype_dtype(type, dt):
     assert type == dt
 
     t = nvcv.Type(dt)
-    assert type == t
-    assert dt == t
+    assert t == type
+    assert t == dt
 
 
 @t.mark.parametrize("dt", [np.dtype([("f1", np.uint64), ("f2", np.int32)]), "invalid"])

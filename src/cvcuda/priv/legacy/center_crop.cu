@@ -24,8 +24,8 @@
 #include "CvCudaUtils.cuh"
 
 #include <nvcv/IImage.hpp>
-#include <nvcv/IImageData.hpp>
-#include <nvcv/ITensorData.hpp>
+#include <nvcv/ImageData.hpp>
+#include <nvcv/TensorData.hpp>
 
 #define BLOCK 32
 
@@ -47,7 +47,7 @@ __global__ void center_crop_kernel_nhwc(SrcWrapper src, DstWrapper dst, const in
 }
 
 template<typename T>
-void center_crop(const nvcv::ITensorDataStridedCuda &inData, const nvcv::ITensorDataStridedCuda &outData, int crop_rows,
+void center_crop(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData, int crop_rows,
                  int crop_columns, const int batch_size, const int rows, const int columns, cudaStream_t stream)
 {
     int top_indices  = (rows - crop_rows) / 2;
@@ -75,7 +75,7 @@ size_t CenterCrop::calBufferSize(DataShape max_input_shape, DataShape max_output
     return 0;
 }
 
-ErrorCode CenterCrop::infer(const ITensorDataStridedCuda &inData, const ITensorDataStridedCuda &outData, int crop_rows,
+ErrorCode CenterCrop::infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, int crop_rows,
                             int crop_columns, cudaStream_t stream)
 {
     cuda_op::DataFormat input_format  = GetLegacyDataFormat(inData.layout());
@@ -120,7 +120,7 @@ ErrorCode CenterCrop::infer(const ITensorDataStridedCuda &inData, const ITensorD
         return ErrorCode::INVALID_DATA_SHAPE;
     }
 
-    typedef void (*func_t)(const nvcv::ITensorDataStridedCuda &inData, const nvcv::ITensorDataStridedCuda &outData,
+    typedef void (*func_t)(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,
                            int crop_rows, int crop_columns, const int batch_size, const int rows, const int columns,
                            cudaStream_t stream);
     static const func_t funcs[5][4] = {

@@ -96,14 +96,13 @@ def test_wrap_host_buffer_explicit_format(shape, dt, format):
 buffmt2_common = [
     # packed formats
     (
-        [([6, 8], np.uint8), ([3, 4, 2], np.uint8)],
+        [((6, 8), np.uint8, torch.uint8), ((3, 4, 2), np.uint8, torch.uint8)],
         nvcv.Format.NV12_ER,
     )
 ]
 
 
 @t.mark.parametrize("buffers,format", buffmt2_common)
-@t.mark.xfail  # wrapping of multiple cuda buffers is failing
 def test_wrap_host_buffer_infer_imgformat_multiple_planes(buffers, format):
     img = nvcv.Image([np.ndarray(buf[0], buf[1]) for buf in buffers])
     assert img.width == 8
@@ -111,7 +110,10 @@ def test_wrap_host_buffer_infer_imgformat_multiple_planes(buffers, format):
     assert img.format == format
 
     img = nvcv.as_image(
-        [torch.as_tensor(buf[0], buf[1], device="cuda").cuda() for buf in buffers]
+        [
+            torch.zeros(size=buf[0], dtype=buf[2], device="cuda").cuda()
+            for buf in buffers
+        ]
     )
     assert img.width == 8
     assert img.height == 6
@@ -119,7 +121,6 @@ def test_wrap_host_buffer_infer_imgformat_multiple_planes(buffers, format):
 
 
 @t.mark.parametrize("buffers,format", buffmt2_common)
-@t.mark.xfail  # wrapping of multiple cuda buffers is failing
 def test_wrap_host_buffer_explicit_format2(buffers, format):
     img = nvcv.Image([np.ndarray(buf[0], buf[1]) for buf in buffers], format)
     assert img.width == 8
@@ -127,7 +128,10 @@ def test_wrap_host_buffer_explicit_format2(buffers, format):
     assert img.format == format
 
     img = nvcv.as_image(
-        [torch.as_tensor(buf[0], buf[1], device="cuda").cuda() for buf in buffers],
+        [
+            torch.zeros(size=buf[0], dtype=buf[2], device="cuda").cuda()
+            for buf in buffers
+        ],
         format,
     )
     assert img.width == 8
@@ -309,6 +313,21 @@ def test_image_wrap_invalid_cuda_buffer():
         nvcv.as_image(obj)
 
 
+def test_image_create_packed():
+    img = nvcv.Image((37, 11), nvcv.Format.U8, rowalign=1)
+    assert img.cuda().strides == (37, 1)
+
+
+def test_image_create_zeros_packed():
+    img = nvcv.Image.zeros((37, 11), nvcv.Format.U8, rowalign=1)
+    assert img.cuda().strides == (37, 1)
+
+
+def test_image_create_from_host_packed():
+    img = nvcv.Image(np.ndarray((11, 37), np.uint8), rowalign=1)
+    assert img.cuda().strides == (37, 1)
+
+
 @t.mark.parametrize(
     "size,format,layout,out_dtype, out_shape, simple_layout",
     [
@@ -395,6 +414,16 @@ def test_image_export_cuda_buffer(
         np.testing.assert_array_equal(
             host_buffer[b], gold_buffer[b], "buffer #" + str(b) + " mismatch"
         )
+
+
+def test_image_export_cuda_buffer_strides():
+    # torch returns packed buffers
+    timg = torch.zeros((11, 37), dtype=torch.uint8, device="cuda")
+    img = nvcv.as_image(timg)
+
+    data = img.cuda()
+
+    assert data.strides == (37, 1)
 
 
 def test_image_zeros():

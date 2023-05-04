@@ -41,8 +41,8 @@ Tensor PillowResizeInto(Tensor &output, Tensor &input, nvcv::ImageFormat format,
     {
         pstream = Stream::Current();
     }
-    auto in_access  = nvcv::TensorDataAccessStridedImagePlanar::Create(*input.exportData());
-    auto out_access = nvcv::TensorDataAccessStridedImagePlanar::Create(*output.exportData());
+    auto in_access  = nvcv::TensorDataAccessStridedImagePlanar::Create(input.exportData());
+    auto out_access = nvcv::TensorDataAccessStridedImagePlanar::Create(output.exportData());
     if (!in_access || !out_access)
     {
         throw std::runtime_error("Incompatible input/output tensor layout");
@@ -126,15 +126,100 @@ void ExportOpPillowResize(py::module &m)
     using namespace pybind11::literals;
 
     m.def("pillowresize", &PillowResize, "src"_a, "shape"_a, "format"_a, "interp"_a = NVCV_INTERP_LINEAR, py::kw_only(),
-          "stream"_a = nullptr);
+          "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Pillow Resize operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Pillow Resize operator
+            for more details and usage examples.
+
+        Args:
+            src (Tensor): Input tensor containing one or more images.
+            shape (Shape): Shape of the output image.
+            format (ImageFormat): Format of the input and output images.
+            interp(Interp): Interpolation type used for transform.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.Tensor: The output tensor.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
+
     m.def("pillowresize_into", &PillowResizeInto, "dst"_a, "src"_a, "format"_a, "interp"_a = NVCV_INTERP_LINEAR,
-          py::kw_only(), "stream"_a = nullptr);
+          py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Pillow Resize operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Pillow Resize operator
+            for more details and usage examples.
+
+        Args:
+            dst (Tensor): Output tensor to store the result of the operation.
+            src (Tensor): Input tensor containing one or more images.
+            shape (Shape): Shape of the output image.
+            format (ImageFormat): Format of the input and output images.
+            interp(Interp): Interpolation type used for transform.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 
     m.def("pillowresize", &VarShapePillowResize, "src"_a, "sizes"_a, "interp"_a = NVCV_INTERP_LINEAR, py::kw_only(),
-          "stream"_a = nullptr);
+          "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Pillow Resize operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Pillow Resize operator
+            for more details and usage examples.
+
+        Args:
+            src (ImageBatchVarShape): Input image batch containing one or more images.
+            sizes (Tuple vector): Shapes of output images.
+            interp(Interp): Interpolation type used for transform.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.ImageBatchVarShape: The output image batch.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 
     m.def("pillowresize_into", &VarShapePillowResizeInto, "dst"_a, "src"_a, "interp"_a = NVCV_INTERP_LINEAR,
-          py::kw_only(), "stream"_a = nullptr);
+          py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Pillow Resize operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Pillow Resize operator
+            for more details and usage examples.
+
+        Args:
+            src (ImageBatchVarShape): Input image batch containing one or more images.
+            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
+            sizes (Tuple vector): Shapes of output images.
+            interp(Interp): Interpolation type used for transform.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 }
 
 } // namespace cvcudapy

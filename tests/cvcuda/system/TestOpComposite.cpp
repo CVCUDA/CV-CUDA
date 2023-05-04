@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,8 +23,6 @@
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
-#include <nvcv/alloc/CustomAllocator.hpp>
-#include <nvcv/alloc/CustomResourceAllocator.hpp>
 
 #include <iostream>
 #include <random>
@@ -127,9 +125,9 @@ TEST_P(OpComposite, tensor_correct_output)
     nvcv::Tensor fgMaskImg(numberOfImages, {inWidth, inHeight}, nvcv::FMT_U8);
     nvcv::Tensor outImg(numberOfImages, {outWidth, outHeight}, outFormat);
 
-    const auto *foregroundData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(foregroundImg.exportData());
-    const auto *backgroundData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(backgroundImg.exportData());
-    const auto *fgMaskData     = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(fgMaskImg.exportData());
+    auto foregroundData = foregroundImg.exportData<nvcv::TensorDataStridedCuda>();
+    auto backgroundData = backgroundImg.exportData<nvcv::TensorDataStridedCuda>();
+    auto fgMaskData     = fgMaskImg.exportData<nvcv::TensorDataStridedCuda>();
 
     ASSERT_NE(nullptr, foregroundData);
     ASSERT_NE(nullptr, backgroundData);
@@ -194,7 +192,7 @@ TEST_P(OpComposite, tensor_correct_output)
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 
     // check cdata
-    const auto *outData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(outImg.exportData());
+    auto outData = outImg.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_NE(nullptr, outData);
 
     auto outAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*outData);
@@ -304,14 +302,14 @@ TEST_P(OpComposite, varshape_correct_output)
         generate(backgroundVec[i].begin(), backgroundVec[i].end(), [&]() { return udist(rng); });
         generate(fgMaskVec[i].begin(), fgMaskVec[i].end(), [&]() { return udist(rng); });
 
-        auto *imgDataForeground = dynamic_cast<const nvcv::IImageDataStridedCuda *>(imgForeground[i]->exportData());
-        assert(imgDataForeground != nullptr);
+        auto imgDataForeground = imgForeground[i]->exportData<nvcv::ImageDataStridedCuda>();
+        assert(imgDataForeground);
 
-        auto *imgDataBackground = dynamic_cast<const nvcv::IImageDataStridedCuda *>(imgBackground[i]->exportData());
-        assert(imgDataBackground != nullptr);
+        auto imgDataBackground = imgBackground[i]->exportData<nvcv::ImageDataStridedCuda>();
+        assert(imgDataBackground);
 
-        auto *imgDataFgMask = dynamic_cast<const nvcv::IImageDataStridedCuda *>(imgFgMask[i]->exportData());
-        assert(imgDataFgMask != nullptr);
+        auto imgDataFgMask = imgFgMask[i]->exportData<nvcv::ImageDataStridedCuda>();
+        assert(imgDataFgMask);
 
         // Copy foreground image data to the GPU
         ASSERT_EQ(cudaSuccess, cudaMemcpy2D(imgDataForeground->plane(0).basePtr, imgDataForeground->plane(0).rowStride,
@@ -355,7 +353,7 @@ TEST_P(OpComposite, varshape_correct_output)
         int width  = sizeVec[i].w;
         int height = sizeVec[i].h;
 
-        const auto *outData = dynamic_cast<const nvcv::IImageDataStridedCuda *>(imgOut[i]->exportData());
+        const auto outData = imgOut[i]->exportData<nvcv::ImageDataStridedCuda>();
         assert(outData->numPlanes() == 1);
 
         int outRowStride        = width * outFormat.numChannels();

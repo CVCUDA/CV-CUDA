@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -58,7 +58,7 @@ NVCV_TEST_SUITE_P(TensorDataUtils, test::ValueList<int, int, int, uint8_t, nvcv:
 template<typename DT>
 static void compareTensor(nvcv::Tensor &tensor, DT fillVal)
 {
-    auto            ac       = nvcv::TensorDataAccessStrided::Create(*tensor.exportData());
+    auto            ac       = nvcv::TensorDataAccessStrided::Create(tensor.exportData());
     int             elements = ac->sampleStride() / sizeof(DT);
     std::vector<DT> goldVec(elements, static_cast<DT>(fillVal));
     for (int i = 0; i < ac->numSamples(); ++i)
@@ -76,7 +76,7 @@ static void compareTensor(nvcv::Tensor &tensor, DT fillVal)
 template<typename DT>
 static void GetSetTensor(nvcv::Tensor &tensor)
 {
-    auto                          ac          = nvcv::TensorDataAccessStrided::Create(*tensor.exportData());
+    auto                          ac          = nvcv::TensorDataAccessStrided::Create(tensor.exportData());
     int                           numElements = ac->sampleStride() / sizeof(DT);
     std::vector<DT>               vec(numElements);
     std::default_random_engine    rng;
@@ -95,7 +95,7 @@ static void GetSetTensor(nvcv::Tensor &tensor)
 template<typename DT>
 static void checkRndRange(nvcv::Tensor &tensor, DT lowBound, DT highBound)
 {
-    auto tDataAc = nvcv::TensorDataAccessStrided::Create(*tensor.exportData());
+    auto tDataAc = nvcv::TensorDataAccessStrided::Create(tensor.exportData());
 
     for (int sample = 0; sample < tDataAc->numSamples(); sample++)
     {
@@ -194,7 +194,7 @@ TEST(TensorDataUtils, SanityCvImageData)
     EXPECT_NE(cvImage2, cvImage3);
     EXPECT_NE(cvImage3, cvImage4);
 
-    auto tDataAc1 = nvcv::TensorDataAccessStridedImagePlanar::Create(*tensor1.exportData());
+    auto tDataAc1 = nvcv::TensorDataAccessStridedImagePlanar::Create(tensor1.exportData());
     EXPECT_EQ(tDataAc1->rowStride(), cvImage1.rowStride());
     EXPECT_EQ(tDataAc1->planeStride(), cvImage1.planeStride());
     EXPECT_EQ(cvImage1.size().w, width);

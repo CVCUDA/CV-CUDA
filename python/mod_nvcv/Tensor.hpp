@@ -38,8 +38,10 @@ class Tensor : public Container
 public:
     static void Export(py::module &m);
 
-    static std::shared_ptr<Tensor> CreateForImageBatch(int numImages, const Size2D &size, nvcv::ImageFormat fmt);
-    static std::shared_ptr<Tensor> Create(Shape shape, nvcv::DataType dtype, std::optional<nvcv::TensorLayout> layout);
+    static std::shared_ptr<Tensor> CreateForImageBatch(int numImages, const Size2D &size, nvcv::ImageFormat fmt,
+                                                       int rowalign);
+    static std::shared_ptr<Tensor> Create(Shape shape, nvcv::DataType dtype, std::optional<nvcv::TensorLayout> layout,
+                                          int rowalign);
 
     static std::shared_ptr<Tensor> CreateFromReqs(const nvcv::Tensor::Requirements &reqs);
 
@@ -83,7 +85,7 @@ public:
 
 private:
     Tensor(const nvcv::Tensor::Requirements &reqs);
-    Tensor(const nvcv::ITensorData &data, py::object wrappedObject);
+    Tensor(const nvcv::TensorData &data, py::object wrappedObject);
     Tensor(Image &img);
 
     // m_impl must come before m_key

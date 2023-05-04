@@ -43,21 +43,26 @@ static size_t ComputeHash(const nvcv::TensorShape &shape)
 
 namespace nvcvpy::priv {
 
-std::shared_ptr<Tensor> Tensor::CreateForImageBatch(int numImages, const Size2D &size, nvcv::ImageFormat fmt)
+std::shared_ptr<Tensor> Tensor::CreateForImageBatch(int numImages, const Size2D &size, nvcv::ImageFormat fmt,
+                                                    int rowalign)
 {
     nvcv::Tensor::Requirements reqs
-        = nvcv::Tensor::CalcRequirements(numImages, nvcv::Size2D{std::get<0>(size), std::get<1>(size)}, fmt);
+        = nvcv::Tensor::CalcRequirements(numImages, nvcv::Size2D{std::get<0>(size), std::get<1>(size)}, fmt,
+                                         rowalign == 0 ? nvcv::MemAlignment{} : nvcv::MemAlignment{}.rowAddr(rowalign));
     return CreateFromReqs(reqs);
 }
 
-std::shared_ptr<Tensor> Tensor::Create(Shape shape, nvcv::DataType dtype, std::optional<nvcv::TensorLayout> layout)
+std::shared_ptr<Tensor> Tensor::Create(Shape shape, nvcv::DataType dtype, std::optional<nvcv::TensorLayout> layout,
+                                       int rowalign)
 {
     if (!layout)
     {
         layout = nvcv::TENSOR_NONE;
     }
 
-    nvcv::Tensor::Requirements reqs = nvcv::Tensor::CalcRequirements(CreateNVCVTensorShape(shape, *layout), dtype);
+    nvcv::Tensor::Requirements reqs
+        = nvcv::Tensor::CalcRequirements(CreateNVCVTensorShape(shape, *layout), dtype,
+                                         rowalign == 0 ? nvcv::MemAlignment{} : nvcv::MemAlignment{}.rowAddr(rowalign));
     return CreateFromReqs(reqs);
 }
 
@@ -182,7 +187,7 @@ Tensor::Tensor(const nvcv::Tensor::Requirements &reqs)
 {
 }
 
-Tensor::Tensor(const nvcv::ITensorData &data, py::object wrappedObject)
+Tensor::Tensor(const nvcv::TensorData &data, py::object wrappedObject)
     : m_impl{std::make_unique<nvcv::TensorWrapData>(data)}
     , m_key{}
     , m_wrappedObject(wrappedObject)
@@ -295,11 +300,11 @@ auto Tensor::key() const -> const Key &
     return m_key;
 }
 
-static py::object ToPython(const nvcv::ITensorData &imgData, py::object owner)
+static py::object ToPython(const nvcv::TensorData &tensorData, py::object owner)
 {
     py::object out;
 
-    auto *stridedData = dynamic_cast<const nvcv::ITensorDataStrided *>(&imgData);
+    auto stridedData = tensorData.cast<nvcv::TensorDataStrided>();
     if (!stridedData)
     {
         throw std::runtime_error("Only tensors with pitch-linear data can be exported");
@@ -311,20 +316,16 @@ static py::object ToPython(const nvcv::ITensorData &imgData, py::object owner)
 
 py::object Tensor::cuda() const
 {
-    const nvcv::ITensorData *tensorData = m_impl->exportData();
-    if (!tensorData)
-    {
-        throw std::runtime_error("Tensor data can't be exported");
-    }
+    nvcv::TensorData tensorData = m_impl->exportData();
 
     // Note: we can't cache the returned ExternalBuffer because it is holding
     // a reference to us. Doing so would lead to mem leaks.
-    return ToPython(*tensorData, py::cast(this->shared_from_this()));
+    return ToPython(tensorData, py::cast(this->shared_from_this()));
 }
 
 std::ostream &operator<<(std::ostream &out, const Tensor &tensor)
 {
-    return out << "<nvcv.Tensor shape=" << tensor.impl().shape()
+    return out << "<nvcv.Tensor shape=" << tensor.shape()
                << " dtype=" << py::str(py::cast(tensor.dtype())).cast<std::string>() << '>';
 }
 
@@ -354,27 +355,30 @@ void Tensor::Export(py::module &m)
 #define NVCV_DETAIL_DEF_TLAYOUT(LAYOUT) .def_readonly_static(#LAYOUT, &nvcv::TENSOR_##LAYOUT)
 #include <nvcv/TensorLayoutDef.inc>
 #undef NVCV_DETAIL_DEF_TLAYOUT
-        .def(py::self == py::self)
-        .def(py::self != py::self)
-        .def("__repr__", &TensorLayoutToString);
+        .def(py::self == py::self, "Check if two TensorLayout objects are equal.")
+        .def(py::self != py::self, "Check if two TensorLayout objects are not equal.")
+        .def("__repr__", &TensorLayoutToString, "Return the string representation of the TensorLayout object.");
 
     py::implicitly_convertible<py::str, nvcv::TensorLayout>();
 
     py::class_<Tensor, std::shared_ptr<Tensor>, Container>(m, "Tensor")
-        .def(py::init(&Tensor::CreateForImageBatch), "nimages"_a, "imgsize"_a, "format"_a)
-        .def(py::init(&Tensor::Create), "shape"_a, "dtype"_a, "layout"_a = std::nullopt)
-        .def_property_readonly("layout", &Tensor::layout)
-        .def_property_readonly("shape", &Tensor::shape)
-        .def_property_readonly("dtype", &Tensor::dtype)
+        .def(py::init(&Tensor::CreateForImageBatch), "nimages"_a, "imgsize"_a, "format"_a, "rowalign"_a = 0,
+             "Create a Tensor object for an ImageBatch.")
+        .def(py::init(&Tensor::Create), "shape"_a, "dtype"_a, "layout"_a = std::nullopt, "rowalign"_a = 0,
+             "Create a Tensor object with the given shape, data type and layout.")
+        .def_property_readonly("layout", &Tensor::layout, "The TensorLayout of the Tensor.")
+        .def_property_readonly("shape", &Tensor::shape, "The shape of the Tensor.")
+        .def_property_readonly("dtype", &Tensor::dtype, "The data type of the Tensor.")
         // numpy and others use ndim, let's be consistent with them in python.
         // It's not a requirement to be consistent between NVCV Python and C/C++.
         // Each language use whatever is appropriate (and expected) in their environment.
-        .def_property_readonly("ndim", &Tensor::rank)
-        .def("cuda", &Tensor::cuda)
-        .def("__repr__", &util::ToString<Tensor>);
+        .def_property_readonly("ndim", &Tensor::rank, "The number of dimensions of the Tensor.")
+        .def("cuda", &Tensor::cuda, "Referance to the Tensor on the CUDA device.")
+        .def("__repr__", &util::ToString<Tensor>, "Return the string representation of the Tensor object.");
 
-    m.def("as_tensor", &Tensor::Wrap, "buffer"_a, "layout"_a = std::nullopt);
-    m.def("as_tensor", &Tensor::WrapImage, "image"_a);
+    m.def("as_tensor", &Tensor::Wrap, "buffer"_a, "layout"_a = std::nullopt,
+          "Wrap an existing buffer into a Tensor object with the given layout.");
+    m.def("as_tensor", &Tensor::WrapImage, "image"_a, "Wrap an existing image into a Tensor object.");
 }
 
 } // namespace nvcvpy::priv

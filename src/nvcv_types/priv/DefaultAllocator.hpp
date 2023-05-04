@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,6 +33,8 @@ private:
 
     void *doAllocCudaMem(int64_t size, int32_t align) override;
     void  doFreeCudaMem(void *ptr, int64_t size, int32_t align) noexcept override;
+
+    NVCVResourceAllocator doGet(NVCVResourceType resType) override;
 };
 
 } // namespace nvcv::priv

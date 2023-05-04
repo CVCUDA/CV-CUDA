@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,18 +27,6 @@
 namespace nvcv::test {
 
 namespace detail {
-
-template<typename T>
-inline const T &ValueAt(const std::vector<uint8_t> &vec, long3 pitches, int b, int y, int x)
-{
-    return *reinterpret_cast<const T *>(&vec[b * pitches.x + y * pitches.y + x * pitches.z]);
-}
-
-template<typename T>
-inline T &ValueAt(std::vector<uint8_t> &vec, long3 pitches, int b, int y, int x)
-{
-    return *reinterpret_cast<T *>(&vec[b * pitches.x + y * pitches.y + x * pitches.z]);
-}
 
 template<typename T>
 inline void Convolve(std::vector<uint8_t> &hDst, const long3 &dstStrides, const std::vector<uint8_t> &hSrc,
@@ -229,6 +217,44 @@ void Morph(std::vector<uint8_t> &hDst, const long3 &dstStrides, const std::vecto
     default:
         break;
     }
+}
+
+std::vector<float> ComputeMeanKernel(nvcv::Size2D kernelSize)
+{
+    std::size_t ks = kernelSize.w * kernelSize.h;
+    float       kv = 1.f / ks;
+
+    std::vector<float> kernel(ks, kv);
+    return kernel;
+}
+
+std::vector<float> ComputeGaussianKernel(nvcv::Size2D kernelSize, double2 sigma)
+{
+    std::vector<float> kernel(kernelSize.w * kernelSize.h);
+
+    int2 half{kernelSize.w / 2, kernelSize.h / 2};
+
+    float sx  = 2.f * sigma.x * sigma.x;
+    float sy  = 2.f * sigma.y * sigma.y;
+    float s   = 2.f * sigma.x * sigma.y * M_PI;
+    float sum = 0.f;
+    for (int y = -half.y; y <= half.y; ++y)
+    {
+        for (int x = -half.x; x <= half.x; ++x)
+        {
+            float kv = std::exp(-((x * x) / sx + (y * y) / sy)) / s;
+
+            kernel[(y + half.y) * kernelSize.w + (x + half.x)] = kv;
+
+            sum += kv;
+        }
+    }
+    for (int i = 0; i < kernelSize.w * kernelSize.h; ++i)
+    {
+        kernel[i] /= sum;
+    }
+
+    return kernel;
 }
 
 } // namespace nvcv::test

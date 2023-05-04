@@ -86,7 +86,7 @@ __global__ void erode(SrcWrapper src, DstWrapper dst, Size2D dstSize, Size2D ker
 }
 
 template<typename D, NVCVBorderType B>
-void MorphFilter2DCaller(const ITensorDataStridedCuda &inData, const ITensorDataStridedCuda &outData,
+void MorphFilter2DCaller(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                          NVCVMorphologyType morph_type, Size2D kernelSize, int2 kernelAnchor, cudaStream_t stream)
 {
     using BT = cuda::BaseType<D>;
@@ -125,7 +125,7 @@ void MorphFilter2DCaller(const ITensorDataStridedCuda &inData, const ITensorData
 }
 
 template<typename D>
-void MorphFilter2D(const ITensorDataStridedCuda &inData, const ITensorDataStridedCuda &outData,
+void MorphFilter2D(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                    NVCVMorphologyType morph_type, Size2D kernelSize, int2 kernelAnchor, NVCVBorderType borderMode,
                    cudaStream_t stream)
 {
@@ -149,7 +149,7 @@ void MorphFilter2D(const ITensorDataStridedCuda &inData, const ITensorDataStride
     }
 }
 
-ErrorCode Morphology::infer(const ITensorDataStridedCuda &inData, const ITensorDataStridedCuda &outData,
+ErrorCode Morphology::infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                             NVCVMorphologyType morph_type, Size2D mask_size, int2 anchor, int iteration,
                             const NVCVBorderType borderMode, cudaStream_t stream)
 {
@@ -230,7 +230,7 @@ ErrorCode Morphology::infer(const ITensorDataStridedCuda &inData, const ITensorD
     mask_size_.h = mask_size_.h + (iteration - 1) * (mask_size_.h - 1);
     anchor_      = anchor_ * iteration;
 
-    typedef void (*filter2D_t)(const ITensorDataStridedCuda &inData, const ITensorDataStridedCuda &outData,
+    typedef void (*filter2D_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                                NVCVMorphologyType morph_type, Size2D kernelSize, int2 kernelAnchor,
                                NVCVBorderType borderMode, cudaStream_t stream);
 

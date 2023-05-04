@@ -121,8 +121,8 @@ TEST_P(OpCvtColor, correct_output)
     nvcv::Tensor srcTensor = test::CreateTensor(batches, width, height, srcFormat);
     nvcv::Tensor dstTensor = test::CreateTensor(batches, width, height, dstFormat);
 
-    const auto *srcData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(srcTensor.exportData());
-    const auto *dstData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(dstTensor.exportData());
+    auto srcData = srcTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto dstData = dstTensor.exportData<nvcv::TensorDataStridedCuda>();
 
     ASSERT_NE(srcData, nullptr);
     ASSERT_NE(dstData, nullptr);
@@ -212,8 +212,8 @@ TEST_P(OpCvtColor, varshape_correct_output)
         srcVec[i].resize(imgSrc[i]->size().h * srcRowStride);
         std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return udist(rng); });
 
-        auto *imgData = dynamic_cast<const nvcv::IImageDataStridedCuda *>(imgSrc[i]->exportData());
-        ASSERT_NE(imgData, nullptr);
+        auto imgData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_NE(imgData, nvcv::NullOpt);
 
         // Copy input data to the GPU
         ASSERT_EQ(cudaSuccess,
@@ -250,8 +250,8 @@ TEST_P(OpCvtColor, varshape_correct_output)
     {
         SCOPED_TRACE(i);
 
-        const auto *imgData = dynamic_cast<const nvcv::IImageDataStridedCuda *>(imgSrc[i]->exportData());
-        ASSERT_NE(imgData, nullptr);
+        const auto imgData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_NE(imgData, nvcv::NullOpt);
         ASSERT_EQ(imgData->numPlanes(), 1);
 
         std::vector<uint8_t> testVec(imgSrc[i]->size().h * srcVecRowStride[i]);

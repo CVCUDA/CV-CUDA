@@ -16,19 +16,25 @@
 import cvcuda
 import pytest as t
 import numpy as np
+import threading
+import torch
+
+
+RNG = np.random.default_rng(0)
 
 
 @t.mark.parametrize(
-    "input,out_shape,out_layout",
+    "input_args,out_shape,out_layout",
     [
-        (cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"), (5, 4, 16, 23), "NCHW"),
-        (cvcuda.Tensor((5, 16, 23, 3), np.uint8, "NHWC"), (5, 3, 16, 23), "NCHW"),
-        (cvcuda.Tensor((5, 3, 16, 23), np.uint8, "NCHW"), (5, 16, 23, 3), "NHWC"),
-        (cvcuda.Tensor((3, 6, 4), np.uint8, "CHW"), (6, 4, 3), "HWC"),
-        (cvcuda.Tensor((7, 5, 4), np.uint8, "HWC"), (4, 7, 5), "CHW"),
+        (((5, 16, 23, 4), np.uint8, "NHWC"), (5, 4, 16, 23), "NCHW"),
+        (((5, 16, 23, 3), np.uint8, "NHWC"), (5, 3, 16, 23), "NCHW"),
+        (((5, 3, 16, 23), np.uint8, "NCHW"), (5, 16, 23, 3), "NHWC"),
+        (((3, 6, 4), np.uint8, "CHW"), (6, 4, 3), "HWC"),
+        (((7, 5, 4), np.uint8, "HWC"), (4, 7, 5), "CHW"),
     ],
 )
-def test_op_reformat(input, out_shape, out_layout):
+def test_op_reformat(input_args, out_shape, out_layout):
+    input = cvcuda.Tensor(*input_args)
     out = cvcuda.reformat(input, out_layout)
     assert out.layout == out_layout
     assert out.shape == out_shape
@@ -52,3 +58,30 @@ def test_op_reformat(input, out_shape, out_layout):
     assert out.layout == out_layout
     assert out.shape == out_shape
     assert out.dtype == input.dtype
+
+
+def test_op_reformat_gpuload():
+    stream = cvcuda.Stream()
+    src_layout = "NHWC"
+    dst_layout = "NCHW"
+    src_shape = (2, 720, 1280, 3)
+    dst_shape = (src_shape[0], src_shape[3], src_shape[1], src_shape[2])
+    src = cvcuda.Tensor(src_shape, np.uint8, src_layout)
+    host_data = np.ones(src_shape, np.float32)
+    torch_dst = torch.tensor(0.0, device="cuda")
+
+    thread = threading.Thread(
+        target=lambda: torch.square(
+            torch.as_tensor(host_data, device="cuda").abs().max(), out=torch_dst
+        )
+    )
+    thread.start()
+
+    with stream:
+        dst = cvcuda.reformat(src, dst_layout)
+        assert dst.layout == dst_layout
+        assert dst.dtype == src.dtype
+        assert dst.shape == dst_shape
+
+    thread.join()
+    assert torch_dst.cpu() == 1

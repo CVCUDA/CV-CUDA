@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -67,8 +67,12 @@ inline DataType ITensor::dtype() const
     return DataType{out};
 }
 
-inline const ITensorData *ITensor::exportData() const
+inline TensorData ITensor::exportData() const
 {
+    auto h = this->handle();
+    if (h == nullptr)
+        throw Exception(Status::ERROR_INVALID_OPERATION, "The tensor handle is null.");
+
     NVCVTensorData data;
     detail::CheckThrow(nvcvTensorExportData(this->handle(), &data));
 
@@ -77,9 +81,7 @@ inline const ITensorData *ITensor::exportData() const
         throw Exception(Status::ERROR_INVALID_OPERATION, "Tensor data cannot be exported, buffer type not supported");
     }
 
-    m_cacheData.emplace(TensorShape(data.shape, data.rank, data.layout), DataType{data.dtype}, data.buffer.strided);
-
-    return &*m_cacheData;
+    return TensorData(data);
 }
 
 inline ITensor *ITensor::cast(HandleType h)

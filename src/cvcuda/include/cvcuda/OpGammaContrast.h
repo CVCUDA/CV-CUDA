@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,7 +19,7 @@
  * @file OpGammaContrast.h
  *
  * @brief Defines types and functions to handle the GammaContrast operation.
- * @defgroup NVCV_C_ALGORITHM_GAMMA_CONTRAST
+ * @defgroup NVCV_C_ALGORITHM_GAMMA_CONTRAST Gamma Contrast
  * @{
  */
 
@@ -110,7 +110,6 @@ CVCUDA_PUBLIC NVCVStatus cvcudaGammaContrastCreate(NVCVOperatorHandle *handle, c
  *
  * @param [in] gamma 1D Tensor with the the gamma value for each image / image channel.
  *
- * @param [in] perChannels gamma change per channel
  *
  *
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.

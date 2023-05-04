@@ -623,7 +623,7 @@ __global__ void yuv422_to_gray_char_nhwc(SrcWrapper src, DstWrapper dst, int2 ds
     *dst.ptr(batch_idx, dst_y, dst_x, 0) = Y;
 }
 
-inline ErrorCode BGR_to_RGB(const ITensorDataStridedCuda &inData, const ITensorDataStridedCuda &outData,
+inline ErrorCode BGR_to_RGB(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                             NVCVColorConversionCode code, cudaStream_t stream)
 {
     int sch  = (code == NVCV_COLOR_BGRA2BGR || code == NVCV_COLOR_RGBA2BGR || code == NVCV_COLOR_BGRA2RGBA) ? 4 : 3;
@@ -716,7 +716,7 @@ inline ErrorCode BGR_to_RGB(const ITensorDataStridedCuda &inData, const ITensorD
     return ErrorCode::SUCCESS;
 }
 
-inline ErrorCode GRAY_to_BGR(const ITensorDataStridedCuda &inData, const ITensorDataStridedCuda &outData,
+inline ErrorCode GRAY_to_BGR(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                              NVCVColorConversionCode code, cudaStream_t stream)
 {
     int dch = (code == NVCV_COLOR_GRAY2BGRA) ? 4 : 3;
@@ -804,7 +804,7 @@ inline ErrorCode GRAY_to_BGR(const ITensorDataStridedCuda &inData, const ITensor
     return ErrorCode::SUCCESS;
 }
 
-inline ErrorCode BGR_to_GRAY(const ITensorDataStridedCuda &inData, const ITensorDataStridedCuda &outData,
+inline ErrorCode BGR_to_GRAY(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                              NVCVColorConversionCode code, cudaStream_t stream)
 {
     int bidx = (code == NVCV_COLOR_RGBA2GRAY || code == NVCV_COLOR_RGB2GRAY) ? 2 : 0;
@@ -877,7 +877,7 @@ inline ErrorCode BGR_to_GRAY(const ITensorDataStridedCuda &inData, const ITensor
     return ErrorCode::SUCCESS;
 }
 
-inline ErrorCode BGR_to_YUV(const ITensorDataStridedCuda &inData, const ITensorDataStridedCuda &outData,
+inline ErrorCode BGR_to_YUV(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                             NVCVColorConversionCode code, cudaStream_t stream)
 {
     int bidx = code == NVCV_COLOR_BGR2YUV ? 0 : 2;
@@ -948,7 +948,7 @@ inline ErrorCode BGR_to_YUV(const ITensorDataStridedCuda &inData, const ITensorD
     return ErrorCode::SUCCESS;
 }
 
-inline ErrorCode YUV_to_BGR(const ITensorDataStridedCuda &inData, const ITensorDataStridedCuda &outData,
+inline ErrorCode YUV_to_BGR(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                             NVCVColorConversionCode code, cudaStream_t stream)
 {
     int bidx = code == NVCV_COLOR_YUV2BGR ? 0 : 2;
@@ -1019,7 +1019,7 @@ inline ErrorCode YUV_to_BGR(const ITensorDataStridedCuda &inData, const ITensorD
     return ErrorCode::SUCCESS;
 }
 
-inline ErrorCode BGR_to_HSV(const ITensorDataStridedCuda &inData, const ITensorDataStridedCuda &outData,
+inline ErrorCode BGR_to_HSV(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                             NVCVColorConversionCode code, cudaStream_t stream)
 {
     bool isFullRange = (code == NVCV_COLOR_BGR2HSV_FULL || code == NVCV_COLOR_RGB2HSV_FULL);
@@ -1083,7 +1083,7 @@ inline ErrorCode BGR_to_HSV(const ITensorDataStridedCuda &inData, const ITensorD
     return ErrorCode::SUCCESS;
 }
 
-inline ErrorCode HSV_to_BGR(const ITensorDataStridedCuda &inData, const ITensorDataStridedCuda &outData,
+inline ErrorCode HSV_to_BGR(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                             NVCVColorConversionCode code, cudaStream_t stream)
 {
     bool isFullRange = (code == NVCV_COLOR_HSV2BGR_FULL || code == NVCV_COLOR_HSV2RGB_FULL);
@@ -1153,7 +1153,7 @@ inline ErrorCode HSV_to_BGR(const ITensorDataStridedCuda &inData, const ITensorD
     return ErrorCode::SUCCESS;
 }
 
-inline ErrorCode YUV420xp_to_BGR(const ITensorDataStridedCuda &inData, const ITensorDataStridedCuda &outData,
+inline ErrorCode YUV420xp_to_BGR(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                                  NVCVColorConversionCode code, cudaStream_t stream)
 {
     int bidx
@@ -1272,7 +1272,7 @@ inline ErrorCode YUV420xp_to_BGR(const ITensorDataStridedCuda &inData, const ITe
     return ErrorCode::SUCCESS;
 }
 
-inline ErrorCode YUV422_to_BGR(const ITensorDataStridedCuda &inData, const ITensorDataStridedCuda &outData,
+inline ErrorCode YUV422_to_BGR(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                                NVCVColorConversionCode code, cudaStream_t stream)
 {
     int bidx
@@ -1400,7 +1400,7 @@ inline static void bgr_to_yuv420sp_launcher(SrcWrapper srcWrap, DstWrapper dstWr
     // NPP
 }
 
-inline ErrorCode BGR_to_YUV420xp(const ITensorDataStridedCuda &inData, const ITensorDataStridedCuda &outData,
+inline ErrorCode BGR_to_YUV420xp(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                                  NVCVColorConversionCode code, cudaStream_t stream)
 {
     int bidx
@@ -1499,7 +1499,7 @@ size_t CvtColor::calBufferSize(DataShape max_input_shape, DataShape max_output_s
     return 0;
 }
 
-ErrorCode CvtColor::infer(const ITensorDataStridedCuda &inData, const ITensorDataStridedCuda &outData,
+ErrorCode CvtColor::infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                           NVCVColorConversionCode code, cudaStream_t stream)
 {
     DataFormat input_format  = helpers::GetLegacyDataFormat(inData.layout());
@@ -1519,7 +1519,7 @@ ErrorCode CvtColor::infer(const ITensorDataStridedCuda &inData, const ITensorDat
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
-    typedef ErrorCode (*func_t)(const ITensorDataStridedCuda &inData, const ITensorDataStridedCuda &outData,
+    typedef ErrorCode (*func_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                                 NVCVColorConversionCode code, cudaStream_t stream);
 
     static const func_t funcs[] = {

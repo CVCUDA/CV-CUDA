@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,6 +19,7 @@
 #define NVCV_PYTHON_PYUTIL_HPP
 
 #include <nvcv/DataType.hpp>
+#include <nvcv/cuda/TypeTraits.hpp>
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 
@@ -26,6 +27,7 @@
 #include <sstream>
 
 namespace nvcvpy::util {
+
 namespace py = pybind11;
 
 // Adds a method to an existing class
@@ -68,5 +70,15 @@ py::dtype ToDType(const std::string &str);
 py::dtype ToDType(const py::buffer_info &info);
 
 } // namespace nvcvpy::util
+
+namespace cvcudapy {
+
+namespace py = pybind11;
+
+using pyarray = py::array_t<float, py::array::c_style | py::array::forcecast>;
+
+float4 GetFloat4FromPyArray(const pyarray &array);
+
+} // namespace cvcudapy
 
 #endif // NVCV_PYTHON_PYUTIL_HPP

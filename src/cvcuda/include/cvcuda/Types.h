@@ -328,6 +328,80 @@ typedef enum
 
 } NVCVColorConversionCode;
 
+typedef enum
+{
+    NVCV_THRESH_BINARY     = 0x01,
+    NVCV_THRESH_BINARY_INV = 0x02,
+    NVCV_THRESH_TRUNC      = 0x04,
+    NVCV_THRESH_TOZERO     = 0x08,
+    NVCV_THRESH_TOZERO_INV = 0x10,
+    NVCV_THRESH_MASK       = 0x1F,
+    NVCV_THRESH_OTSU       = 0x20,
+    NVCV_THRESH_TRIANGLE   = 0x40,
+
+} NVCVThresholdType;
+
+typedef enum
+{
+    NVCV_ADAPTIVE_THRESH_MEAN_C     = 0,
+    NVCV_ADAPTIVE_THRESH_GAUSSIAN_C = 1
+} NVCVAdaptiveThresholdType;
+
+// @brief Flag to choose the map value type of the remap operator
+typedef enum
+{
+    NVCV_REMAP_ABSOLUTE            = 0,
+    NVCV_REMAP_ABSOLUTE_NORMALIZED = 1,
+    NVCV_REMAP_RELATIVE_NORMALIZED = 2
+} NVCVRemapMapValueType;
+
+typedef unsigned char uint8_t;
+typedef int           int32_t;
+
+typedef struct
+{
+    uint8_t r;
+    uint8_t g;
+    uint8_t b;
+    uint8_t a;
+} NVCVColorRGBA;
+
+typedef struct
+{
+    int32_t x;      //!< x coordinate of the top-left corner
+    int32_t y;      //!< y coordinate of the top-left corner
+    int32_t width;  //!< width of the box
+    int32_t height; //!< height of the box
+} NVCVBoxI;
+
+typedef struct
+{
+    NVCVBoxI      box;         // Bounding box, \ref NVCVBoxI.
+    int32_t       thickness;   // Border thickness of bounding box.
+    NVCVColorRGBA borderColor; // Border color of bounding box.
+    NVCVColorRGBA fillColor;   // Filled color of bounding box.
+} NVCVBndBoxI;
+
+typedef struct
+{
+    int32_t      batch;    // Number of images in the image batch.
+    int32_t     *numBoxes; // Number array of bounding boxes for image batch.
+    NVCVBndBoxI *boxes;    // Bounding box array for image batch, \ref NVCVBndBoxI.
+} NVCVBndBoxesI;
+
+typedef struct
+{
+    NVCVBoxI box;        // Blur box, \ref NVCVBoxI.
+    int32_t  kernelSize; // Kernel sizes of mean filter, refer to cv::blur().
+} NVCVBlurBoxI;
+
+typedef struct
+{
+    int32_t       batch;    // Number of images in the image batch.
+    int32_t      *numBoxes; // Number array of blurring boxes for image batch.
+    NVCVBlurBoxI *boxes;    // Blurring box array for image batch, \ref NVCVBlurBoxI.
+} NVCVBlurBoxesI;
+
 #ifdef __cplusplus
 }
 #endif

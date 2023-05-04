@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -93,8 +93,8 @@ void composite(const nvcv::TensorDataAccessStridedImagePlanar &foregroundData,
 
 namespace nvcv::legacy::cuda_op {
 
-ErrorCode Composite::infer(const ITensorDataStridedCuda &foreground, const ITensorDataStridedCuda &background,
-                           const ITensorDataStridedCuda &fgMask, const ITensorDataStridedCuda &outData,
+ErrorCode Composite::infer(const TensorDataStridedCuda &foreground, const TensorDataStridedCuda &background,
+                           const TensorDataStridedCuda &fgMask, const TensorDataStridedCuda &outData,
                            cudaStream_t stream)
 {
     DataFormat background_format = GetLegacyDataFormat(background.layout());

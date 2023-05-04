@@ -85,8 +85,49 @@ void ExportOpCenterCrop(py::module &m)
 {
     using namespace pybind11::literals;
 
-    m.def("center_crop", &CenterCrop, "src"_a, "crop_size"_a, py::kw_only(), "stream"_a = nullptr);
-    m.def("center_crop_into", &CenterCropInto, "dst"_a, "src"_a, "crop_size"_a, py::kw_only(), "stream"_a = nullptr);
+    m.def("center_crop", &CenterCrop, "src"_a, "crop_size"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Center Crop operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Center Crop operator
+            for more details and usage examples.
+
+        Args:
+            src (Tensor): Input tensor containing one or more images.
+            crop_size (Tuple [int,int]): Crop size in width and height.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.Tensor: The output tensor.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
+
+    m.def("center_crop_into", &CenterCropInto, "dst"_a, "src"_a, "crop_size"_a, py::kw_only(), "stream"_a = nullptr,
+          R"pbdoc(
+
+        Executes the Center Crop operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Center Crop operator
+            for more details and usage examples.
+
+        Args:
+            dst (Tensor): Output tensor to store the result of the operation.
+            src (Tensor): Input tensor containing one or more images.
+            crop_size (Tuple [int,int]): Crop size in width and height.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 }
 
 } // namespace cvcudapy

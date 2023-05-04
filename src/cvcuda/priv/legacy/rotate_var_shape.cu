@@ -54,130 +54,69 @@ __global__ void compute_warpAffine(const int numImages, const cuda::Tensor1DWrap
     aCoeffs[5] = yShift;
 }
 
-template<typename T>
-__global__ void rotate_linear(const Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> dst, const double *d_aCoeffs_)
+template<class SrcWrapper, class DstWrapper>
+__global__ void rotate(SrcWrapper src, DstWrapper dst, const double *d_aCoeffs_)
 {
-    int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
-    int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
-    const int batch_idx = get_batch_idx();
-    if (dst_x >= dst.at_cols(batch_idx) || dst_y >= dst.at_rows(batch_idx))
-        return;
-    int height = src.at_rows(batch_idx), width = src.at_cols(batch_idx);
+    int3 dstCoord = cuda::StaticCast<int>(blockDim * blockIdx + threadIdx);
 
-    const double *d_aCoeffs   = (const double *)((char *)d_aCoeffs_ + (sizeof(double) * 6) * batch_idx);
-    const double  dst_x_shift = dst_x - d_aCoeffs[2];
-    const double  dst_y_shift = dst_y - d_aCoeffs[5];
+    if (dstCoord.x >= dst.width(dstCoord.z) || dstCoord.y >= dst.height(dstCoord.z))
+        return;
+
+    const double *d_aCoeffs   = (const double *)((char *)d_aCoeffs_ + (sizeof(double) * 6) * dstCoord.z);
+    const double  dst_x_shift = dstCoord.x - d_aCoeffs[2];
+    const double  dst_y_shift = dstCoord.y - d_aCoeffs[5];
     float         src_x       = (float)(dst_x_shift * d_aCoeffs[0] + dst_y_shift * (-d_aCoeffs[1]));
     float         src_y       = (float)(dst_x_shift * (-d_aCoeffs[3]) + dst_y_shift * d_aCoeffs[4]);
 
+    const int width  = src.borderWrap().imageBatchWrap().width(dstCoord.z);
+    const int height = src.borderWrap().imageBatchWrap().height(dstCoord.z);
+
     if (src_x > -0.5 && src_x < width && src_y > -0.5 && src_y < height)
     {
-        using work_type = nvcv::cuda::ConvertBaseTypeTo<float, T>;
-        work_type out   = nvcv::cuda::SetAll<work_type>(0);
+        const float3 srcCoord{src_x, src_y, static_cast<float>(dstCoord.z)};
 
-        const int x1      = __float2int_rz(src_x);
-        const int y1      = __float2int_rz(src_y);
-        const int x2      = x1 + 1;
-        const int y2      = y1 + 1;
-        const int x2_read = min(x2, width - 1);
-        const int y2_read = min(y2, height - 1);
-
-        T src_reg = *src.ptr(batch_idx, y1, x1);
-        out       = out + src_reg * ((x2 - src_x) * (y2 - src_y));
-
-        src_reg = *src.ptr(batch_idx, y1, x2_read);
-        out     = out + src_reg * ((src_x - x1) * (y2 - src_y));
-
-        src_reg = *src.ptr(batch_idx, y2_read, x1);
-        out     = out + src_reg * ((x2 - src_x) * (src_y - y1));
-
-        src_reg = *src.ptr(batch_idx, y2_read, x2_read);
-        out     = out + src_reg * ((src_x - x1) * (src_y - y1));
-
-        *dst.ptr(batch_idx, dst_y, dst_x) = nvcv::cuda::SaturateCast<T>(out);
+        dst[dstCoord] = src[srcCoord];
     }
 }
 
-template<typename T>
-__global__ void rotate_nearest(const Ptr2dVarShapeNHWC<T> src, Ptr2dVarShapeNHWC<T> dst, const double *d_aCoeffs_)
+template<typename T, NVCVInterpolationType I>
+void rotate(const ImageBatchVarShapeDataStridedCuda &in, const ImageBatchVarShapeDataStridedCuda &out,
+            double *d_aCoeffs, cudaStream_t stream)
 {
-    int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
-    int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
-    const int batch_idx = get_batch_idx();
-    if (dst_x >= dst.at_cols(batch_idx) || dst_y >= dst.at_rows(batch_idx))
-        return;
-    int height = src.at_rows(batch_idx), width = src.at_cols(batch_idx);
+    Size2D outMaxSize = out.maxSize();
 
-    const double *d_aCoeffs   = (const double *)((char *)d_aCoeffs_ + (sizeof(double) * 6) * batch_idx);
-    const double  dst_x_shift = dst_x - d_aCoeffs[2];
-    const double  dst_y_shift = dst_y - d_aCoeffs[5];
-    float         src_x       = (float)(dst_x_shift * d_aCoeffs[0] + dst_y_shift * (-d_aCoeffs[1]));
-    float         src_y       = (float)(dst_x_shift * (-d_aCoeffs[3]) + dst_y_shift * d_aCoeffs[4]);
+    dim3 blockSize(BLOCK, BLOCK / 4, 1);
+    dim3 gridSize(divUp(outMaxSize.w, blockSize.x), divUp(outMaxSize.h, blockSize.y), in.numImages());
 
-    if (src_x > -0.5 && src_x < width && src_y > -0.5 && src_y < height)
-    {
-        const int x1 = min(__float2int_rz(src_x + 0.5), width - 1);
-        const int y1 = min(__float2int_rz(src_y + 0.5), height - 1);
+    cuda::InterpolationVarShapeWrap<const T, NVCV_BORDER_REPLICATE, I> src(in);
+    cuda::ImageBatchVarShapeWrap<T>                                    dst(out);
 
-        *dst.ptr(batch_idx, dst_y, dst_x) = *src.ptr(batch_idx, y1, x1);
-    }
-}
-
-template<typename T>
-__global__ void rotate_cubic(CubicFilter<BorderReader<Ptr2dVarShapeNHWC<T>, BrdReplicate<T>>> filteredSrc,
-                             Ptr2dVarShapeNHWC<T> dst, const double *d_aCoeffs_)
-{
-    int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
-    int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
-    const int batch_idx = get_batch_idx();
-    if (dst_x >= dst.at_cols(batch_idx) || dst_y >= dst.at_rows(batch_idx))
-        return;
-    int height = filteredSrc.src.ptr.at_rows(batch_idx), width = filteredSrc.src.ptr.at_cols(batch_idx);
-
-    const double *d_aCoeffs   = (const double *)((char *)d_aCoeffs_ + (sizeof(double) * 6) * batch_idx);
-    const double  dst_x_shift = dst_x - d_aCoeffs[2];
-    const double  dst_y_shift = dst_y - d_aCoeffs[5];
-    float         src_x       = (float)(dst_x_shift * d_aCoeffs[0] + dst_y_shift * (-d_aCoeffs[1]));
-    float         src_y       = (float)(dst_x_shift * (-d_aCoeffs[3]) + dst_y_shift * d_aCoeffs[4]);
-
-    if (src_x > -0.5 && src_x < width && src_y > -0.5 && src_y < height)
-    {
-        *dst.ptr(batch_idx, dst_y, dst_x) = filteredSrc(batch_idx, src_y, src_x);
-    }
+    rotate<<<gridSize, blockSize, 0, stream>>>(src, dst, d_aCoeffs);
+    checkKernelErrors();
 }
 
 template<typename T> // uchar3 float3 uchar1 float3
-void rotate(const IImageBatchVarShapeDataStridedCuda &in, const IImageBatchVarShapeDataStridedCuda &out,
+void rotate(const ImageBatchVarShapeDataStridedCuda &in, const ImageBatchVarShapeDataStridedCuda &out,
             double *d_aCoeffs, const NVCVInterpolationType interpolation, cudaStream_t stream)
 {
-    dim3 blockSize(BLOCK, BLOCK / 4, 1);
-
-    Size2D outMaxSize = out.maxSize();
-
     NVCV_ASSERT(in.numImages() == out.numImages());
 
-    dim3 gridSize(divUp(outMaxSize.w, blockSize.x), divUp(outMaxSize.h, blockSize.y), in.numImages());
+    switch (interpolation)
+    {
+    case NVCV_INTERP_NEAREST:
+        rotate<T, NVCV_INTERP_NEAREST>(in, out, d_aCoeffs, stream);
+        break;
 
-    Ptr2dVarShapeNHWC<T> src_ptr(in);  //batch_size, height, width, channels, (T **) d_in);
-    Ptr2dVarShapeNHWC<T> dst_ptr(out); //batch_size, out_height, out_width, channels, (T **) d_out);
-    if (interpolation == NVCV_INTERP_LINEAR)
-    {
-        rotate_linear<T><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, d_aCoeffs);
-        checkKernelErrors();
-    }
-    else if (interpolation == NVCV_INTERP_NEAREST)
-    {
-        rotate_nearest<T><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, d_aCoeffs);
-        checkKernelErrors();
-    }
-    else if (interpolation == NVCV_INTERP_CUBIC)
-    {
-        BrdReplicate<T>                                                  brd(0, 0);
-        BorderReader<Ptr2dVarShapeNHWC<T>, BrdReplicate<T>>              brdSrc(src_ptr, brd);
-        CubicFilter<BorderReader<Ptr2dVarShapeNHWC<T>, BrdReplicate<T>>> filteredSrc(brdSrc);
+    case NVCV_INTERP_LINEAR:
+        rotate<T, NVCV_INTERP_LINEAR>(in, out, d_aCoeffs, stream);
+        break;
 
-        rotate_cubic<T><<<gridSize, blockSize, 0, stream>>>(filteredSrc, dst_ptr, d_aCoeffs);
-        checkKernelErrors();
+    case NVCV_INTERP_CUBIC:
+        rotate<T, NVCV_INTERP_CUBIC>(in, out, d_aCoeffs, stream);
+        break;
+
+    default:
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid interpolation type");
     }
 }
 
@@ -211,10 +150,10 @@ RotateVarShape::~RotateVarShape()
     d_aCoeffs = nullptr;
 }
 
-ErrorCode RotateVarShape::infer(const IImageBatchVarShapeDataStridedCuda &inData,
-                                const IImageBatchVarShapeDataStridedCuda &outData,
-                                const ITensorDataStridedCuda &angleDeg, const ITensorDataStridedCuda &shift,
-                                const NVCVInterpolationType interpolation, cudaStream_t stream)
+ErrorCode RotateVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inData,
+                                const ImageBatchVarShapeDataStridedCuda &outData, const TensorDataStridedCuda &angleDeg,
+                                const TensorDataStridedCuda &shift, const NVCVInterpolationType interpolation,
+                                cudaStream_t stream)
 {
     if (m_maxBatchSize <= 0)
     {
@@ -280,7 +219,7 @@ ErrorCode RotateVarShape::infer(const IImageBatchVarShapeDataStridedCuda &inData
     compute_warpAffine<<<1, inData.numImages(), 0, stream>>>(inData.numImages(), angleDecPtr, shiftPtr, d_aCoeffs);
     checkKernelErrors();
 
-    typedef void (*func_t)(const IImageBatchVarShapeDataStridedCuda &in, const IImageBatchVarShapeDataStridedCuda &out,
+    typedef void (*func_t)(const ImageBatchVarShapeDataStridedCuda &in, const ImageBatchVarShapeDataStridedCuda &out,
                            double *d_aCoeffs, const NVCVInterpolationType interpolation, cudaStream_t stream);
 
     static const func_t funcs[6][4] = {

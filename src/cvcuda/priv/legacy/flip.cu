@@ -77,7 +77,7 @@ __global__ void flipHorizontalVertical(SrcWrapper src, DstWrapper dst, Size2D ds
 }
 
 template<typename T>
-void flip(const ITensorDataStridedCuda &input, const ITensorDataStridedCuda &output, const int32_t flipCode,
+void flip(const TensorDataStridedCuda &input, const TensorDataStridedCuda &output, const int32_t flipCode,
           cudaStream_t stream)
 {
     constexpr uint32_t BLOCK = 32;
@@ -120,7 +120,7 @@ size_t Flip::calBufferSize(DataShape max_input_shape, DataShape max_output_shape
     return 0;
 }
 
-ErrorCode Flip::infer(const ITensorDataStridedCuda &input, const ITensorDataStridedCuda &output, const int32_t flipCode,
+ErrorCode Flip::infer(const TensorDataStridedCuda &input, const TensorDataStridedCuda &output, const int32_t flipCode,
                       cudaStream_t stream)
 {
     if (input.dtype() != output.dtype())
@@ -161,10 +161,10 @@ ErrorCode Flip::infer(const ITensorDataStridedCuda &input, const ITensorDataStri
         return ErrorCode::INVALID_DATA_SHAPE;
     }
 
-    // using flip_t = void(const ITensorDataStridedCuda & input,
-    //                     const ITensorDataStridedCuda & output,
+    // using flip_t = void(const TensorDataStridedCuda & input,
+    //                     const TensorDataStridedCuda & output,
     //                     const int32_t flipCode, cudaStream_t stream);
-    typedef void (*flip_t)(const ITensorDataStridedCuda &input, const ITensorDataStridedCuda &output,
+    typedef void (*flip_t)(const TensorDataStridedCuda &input, const TensorDataStridedCuda &output,
                            const int32_t flipCode, cudaStream_t stream);
 
     static const flip_t funcs[6][4] = {

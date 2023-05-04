@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -68,9 +68,55 @@ void ExportOpPadAndStack(py::module &m)
     using namespace pybind11::literals;
 
     m.def("padandstack", &PadAndStack, "src"_a, "top"_a, "left"_a, "border"_a = NVCV_BORDER_CONSTANT, "bvalue"_a = 0,
-          py::kw_only(), "stream"_a = nullptr);
+          py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Pad and Stack operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Pad and Stack operator
+            for more details and usage examples.
+
+        Args:
+            src (ImageBatchVarShape): input image batch containing one or more images.
+            top (Tensor): Top tensor to store amount of top padding per batch input image.
+            left (Tensor): Left tensor to store amount of left padding per batch input image.
+            border (Border): Border mode to be used when accessing elements outside input image.
+            bvalue (float): Border value to be used for constant border mode.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.Tensor: The output tensor.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
+
     m.def("padandstack_into", &PadAndStackInto, "dst"_a, "src"_a, "top"_a, "left"_a, "border"_a = NVCV_BORDER_CONSTANT,
-          "bvalue"_a = 0, py::kw_only(), "stream"_a = nullptr);
+          "bvalue"_a = 0, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Pad and Stack operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Pad and Stack operator
+            for more details and usage examples.
+
+        Args:
+            dst (Tensor): Output tensor to store the result of the operation.
+            src (ImageBatchVarShape): input image batch containing one or more images.
+            top (Tensor): Top tensor to store amount of top padding per batch input image.
+            left (Tensor): Left tensor to store amount of left padding per batch input image.
+            border (Border): Border mode to be used when accessing elements outside input image.
+            bvalue (float): Border value to be used for constant border mode.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 }
 
 } // namespace cvcudapy

@@ -19,7 +19,7 @@
 #define NVCV_PYTHON_PRIV_DLPACKUTILS_HPP
 
 #include <dlpack/dlpack.h>
-#include <nvcv/ITensorData.hpp>
+#include <nvcv/TensorData.hpp>
 #include <pybind11/buffer_info.h>
 
 namespace nvcvpy::priv {
@@ -33,7 +33,7 @@ public:
     explicit DLPackTensor(const DLTensor &tensor);
     explicit DLPackTensor(DLManagedTensor &&tensor);
     explicit DLPackTensor(const py::buffer_info &info, const DLDevice &dev);
-    explicit DLPackTensor(const nvcv::ITensorDataStrided &tensorData);
+    explicit DLPackTensor(const nvcv::TensorDataStrided &tensorData);
 
     DLPackTensor(DLPackTensor &&that) noexcept;
     ~DLPackTensor();

@@ -18,13 +18,14 @@ import pytest as t
 
 
 @t.mark.parametrize(
-    "input, erasing_area_num, random, seed",
+    "input_args, erasing_area_num, random, seed",
     [
-        (cvcuda.Tensor((1, 460, 640, 3), cvcuda.Type.U8, "NHWC"), 1, False, 0),
-        (cvcuda.Tensor((5, 460, 640, 3), cvcuda.Type.U8, "NHWC"), 1, True, 1),
+        (((1, 460, 640, 3), cvcuda.Type.U8, "NHWC"), 1, False, 0),
+        (((5, 460, 640, 3), cvcuda.Type.U8, "NHWC"), 1, True, 1),
     ],
 )
-def test_op_erase(input, erasing_area_num, random, seed):
+def test_op_erase(input_args, erasing_area_num, random, seed):
+    input = cvcuda.Tensor(*input_args)
 
     parameter_shape = (erasing_area_num,)
     anchor = cvcuda.Tensor(parameter_shape, cvcuda.Type._2S32, "N")

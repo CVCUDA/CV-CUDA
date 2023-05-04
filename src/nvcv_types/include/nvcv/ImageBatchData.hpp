@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,17 +18,77 @@
 #ifndef NVCV_IMAGEBATCHDATA_HPP
 #define NVCV_IMAGEBATCHDATA_HPP
 
-#include "IImageBatchData.hpp"
+#include "ImageBatchData.h"
+#include "ImageData.hpp"
+#include "ImageFormat.hpp"
+#include "Optional.hpp"
+#include "detail/CudaFwd.h"
 
 namespace nvcv {
 
-// ImageBatchVarShapeDataStridedCuda definition -----------------------
+// Interface hierarchy of image batch contents
+class ImageBatchData
+{
+public:
+    template<typename Derived>
+    Optional<Derived> cast() const;
 
-class ImageBatchVarShapeDataStridedCuda : public IImageBatchVarShapeDataStridedCuda
+    static constexpr bool IsCompatibleKind(NVCVImageBatchBufferType type)
+    {
+        return type != NVCV_IMAGE_BATCH_BUFFER_NONE;
+    }
+
+    ImageBatchData() = default;
+
+    ImageBatchData(const NVCVImageBatchData &data)
+        : m_data(data)
+    {
+    }
+
+    const NVCVImageBatchData &cdata() const &;
+    NVCVImageBatchData        cdata() &&;
+
+    int32_t numImages() const;
+
+protected:
+    NVCVImageBatchData &data() &;
+
+private:
+    NVCVImageBatchData m_data{};
+};
+
+class ImageBatchVarShapeData : public ImageBatchData
+{
+public:
+    using ImageBatchData::ImageBatchData;
+    explicit ImageBatchVarShapeData(const NVCVImageBatchData &data);
+
+    const NVCVImageFormat *formatList() const;
+    const NVCVImageFormat *hostFormatList() const;
+    Size2D                 maxSize() const;
+    ImageFormat            uniqueFormat() const;
+
+    static constexpr bool IsCompatibleKind(NVCVImageBatchBufferType type)
+    {
+        return type == NVCV_IMAGE_BATCH_VARSHAPE_BUFFER_STRIDED_CUDA;
+    }
+};
+
+class ImageBatchVarShapeDataStrided : public ImageBatchVarShapeData
+{
+public:
+    using ImageBatchVarShapeData::ImageBatchVarShapeData;
+    explicit ImageBatchVarShapeDataStrided(const NVCVImageBatchData &data);
+
+    const NVCVImageBufferStrided *imageList() const;
+};
+
+class ImageBatchVarShapeDataStridedCuda : public ImageBatchVarShapeDataStrided
 {
 public:
     using Buffer = NVCVImageBatchVarShapeBufferStrided;
 
+    using ImageBatchVarShapeDataStrided::ImageBatchVarShapeDataStrided;
     explicit ImageBatchVarShapeDataStridedCuda(int32_t numImages, const Buffer &buffer);
     explicit ImageBatchVarShapeDataStridedCuda(const NVCVImageBatchData &data);
 };

@@ -39,25 +39,26 @@ class Tensor
     , public nvcv::ITensor
 {
 public:
-    static Tensor Create(const nvcv::TensorShape &tshape, nvcv::DataType dtype)
+    static Tensor Create(const nvcv::TensorShape &tshape, nvcv::DataType dtype, int rowalign = 0)
     {
         PyObject *otensor = capi().Tensor_Create(tshape.size(), &tshape[0], static_cast<NVCVDataType>(dtype),
-                                                 static_cast<NVCVTensorLayout>(tshape.layout()));
+                                                 static_cast<NVCVTensorLayout>(tshape.layout()), rowalign);
 
         py::object pytensor = py::reinterpret_steal<py::object>(otensor);
 
         return Tensor(pytensor);
     }
 
-    static Tensor Create(const Shape &shape, nvcv::DataType dtype, nvcv::TensorLayout layout = nvcv::TENSOR_NONE)
+    static Tensor Create(const Shape &shape, nvcv::DataType dtype, nvcv::TensorLayout layout = nvcv::TENSOR_NONE,
+                         int rowalign = 0)
     {
-        return Create(CreateNVCVTensorShape(shape, layout), dtype);
+        return Create(CreateNVCVTensorShape(shape, layout), dtype, rowalign);
     }
 
-    static Tensor CreateForImageBatch(int numImages, nvcv::Size2D size, nvcv::ImageFormat fmt)
+    static Tensor CreateForImageBatch(int numImages, nvcv::Size2D size, nvcv::ImageFormat fmt, int rowalign = 0)
     {
         PyObject *otensor
-            = capi().Tensor_CreateForImageBatch(numImages, size.w, size.h, static_cast<NVCVImageFormat>(fmt));
+            = capi().Tensor_CreateForImageBatch(numImages, size.w, size.h, static_cast<NVCVImageFormat>(fmt), rowalign);
 
         py::object pytensor = py::reinterpret_steal<py::object>(otensor);
 

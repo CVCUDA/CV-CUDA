@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,13 +17,13 @@
 
 #include "Definitions.hpp"
 
-#include <nvcv/detail/Optional.hpp>
+#include <nvcv/Optional.hpp>
 
-namespace d = nvcv::detail;
+#include <vector>
 
 TEST(Optional, default_no_value)
 {
-    d::Optional<int> opt;
+    nvcv::Optional<int> opt;
 
     EXPECT_FALSE(opt.hasValue());
     EXPECT_FALSE(opt && true);
@@ -33,7 +33,7 @@ TEST(Optional, default_no_value)
 
 TEST(Optional, ctor_with_value)
 {
-    d::Optional<int> opt(5);
+    nvcv::Optional<int> opt(5);
 
     EXPECT_TRUE(opt.hasValue());
     EXPECT_TRUE(opt && true);
@@ -41,10 +41,46 @@ TEST(Optional, ctor_with_value)
     EXPECT_EQ(5, *opt);
 }
 
+TEST(Optional, assignment)
+{
+    std::vector<int>                 test_value  = {1, 2, 3, 4, 42, 666, 31337};
+    std::vector<int>                 test_value2 = {10, 9, 8, 7};
+    nvcv::Optional<std::vector<int>> opt(test_value);
+
+    ASSERT_TRUE(opt.hasValue());
+    ASSERT_EQ(*opt, test_value);
+
+    nvcv::Optional<std::vector<int>> o1, o2;
+    o1 = opt;
+    EXPECT_TRUE(o1.hasValue());
+    EXPECT_EQ(o1.value(), test_value);
+    EXPECT_TRUE(opt.hasValue());
+    EXPECT_EQ(opt.value(), test_value);
+
+    o2 = std::move(opt);
+    EXPECT_TRUE(o1.hasValue());
+    EXPECT_EQ(o1.value(), test_value);
+    EXPECT_TRUE(opt.hasValue()) << "A moved-out optional still has a value.";
+    EXPECT_TRUE(opt.value().empty()) << "The value wasn't moved out properly";
+
+    opt = nvcv::NullOpt;
+    EXPECT_FALSE(opt.hasValue());
+
+    opt = test_value2;
+    EXPECT_TRUE(opt.hasValue());
+    EXPECT_EQ(opt.value(), test_value2);
+
+    nvcv::Optional<char> c = 42;
+    nvcv::Optional<int>  i;
+    i = c;
+    EXPECT_TRUE(i.hasValue());
+    EXPECT_EQ(i.value(), 42);
+}
+
 TEST(Optional, equality)
 {
-    d::Optional<int> optA(5);
-    d::Optional<int> optB(5);
+    nvcv::Optional<int> optA(5);
+    nvcv::Optional<int> optB(5);
     EXPECT_TRUE(optA == optB);
     EXPECT_FALSE(optA != optB);
 
@@ -57,14 +93,14 @@ TEST(Optional, equality)
     EXPECT_FALSE(optA == nullptr);
     EXPECT_TRUE(optA != nullptr);
 
-    EXPECT_FALSE(optA == d::NullOpt);
-    EXPECT_TRUE(optA != d::NullOpt);
+    EXPECT_FALSE(optA == nvcv::NullOpt);
+    EXPECT_TRUE(optA != nvcv::NullOpt);
 
     EXPECT_FALSE(nullptr == optA);
     EXPECT_TRUE(nullptr != optA);
 
-    EXPECT_FALSE(d::NullOpt == optA);
-    EXPECT_TRUE(d::NullOpt != optA);
+    EXPECT_FALSE(nvcv::NullOpt == optA);
+    EXPECT_TRUE(nvcv::NullOpt != optA);
 }
 
 // TODO need way more tests.

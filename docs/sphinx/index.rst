@@ -1,5 +1,5 @@
 ..
-  # SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  # SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
   # SPDX-License-Identifier: Apache-2.0
   #
   # Licensed under the Apache License, Version 2.0 (the "License");
@@ -50,7 +50,7 @@ CV-CUDA offers more than 20 Computer Vision and Image Processing operators. Find
 Where Are the Release Notes?
 ------------------
 
-An awesome product requires excellent support.  CV-CUDA release notes can be found `here <https://github.com/CVCUDA/CV-CUDA/releases/tag/v0.2.0-alpha>`_.
+An awesome product requires excellent support.  CV-CUDA release notes can be found `here <https://github.com/CVCUDA/CV-CUDA/releases/tag/v0.3.0-beta>`_.
 
 
 Where Can I Get Help?
@@ -123,6 +123,7 @@ Copyright
     :maxdepth: 1
     :hidden:
 
-    Pre-Alpha <relnotes/v0.1.0-prealpha>
-    Alpha <relnotes/v0.2.0-alpha>
+    Beta <relnotes/v0.3.0-beta>
     Alpha.1 <relnotes/v0.2.1-alpha>
+    Alpha <relnotes/v0.2.0-alpha>
+    Pre-Alpha <relnotes/v0.1.0-prealpha>

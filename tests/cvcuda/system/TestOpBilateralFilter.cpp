@@ -24,8 +24,6 @@
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
-#include <nvcv/alloc/CustomAllocator.hpp>
-#include <nvcv/alloc/CustomResourceAllocator.hpp>
 
 #include <iostream>
 #include <random>
@@ -183,8 +181,8 @@ TEST_P(OpBilateralFilter, BilateralFilter_packed)
     nvcv::Tensor imgOut = test::CreateTensor(numberOfImages, width, height, nvcv::FMT_U8);
     nvcv::Tensor imgIn  = test::CreateTensor(numberOfImages, width, height, nvcv::FMT_U8);
 
-    const auto *inData  = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(imgIn.exportData());
-    const auto *outData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(imgOut.exportData());
+    auto inData  = imgIn.exportData<nvcv::TensorDataStridedCuda>();
+    auto outData = imgOut.exportData<nvcv::TensorDataStridedCuda>();
 
     ASSERT_NE(nullptr, inData);
     ASSERT_NE(nullptr, outData);
@@ -267,8 +265,8 @@ TEST_P(OpBilateralFilter, BilateralFilter_VarShape)
         std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return udist(rng); });
         std::generate(goldVec[i].begin(), goldVec[i].end(), [&]() { return 0; });
         std::generate(dstVec[i].begin(), dstVec[i].end(), [&]() { return 0; });
-        auto *imgData = dynamic_cast<const nvcv::IImageDataStridedCuda *>(imgSrc[i]->exportData());
-        ASSERT_NE(imgData, nullptr);
+        auto imgData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_NE(imgData, nvcv::NullOpt);
 
         // Copy input data to the GPU
         ASSERT_EQ(cudaSuccess,
@@ -292,7 +290,7 @@ TEST_P(OpBilateralFilter, BilateralFilter_VarShape)
     std::vector<int> vDiameter(numberOfImages, diameter);
     nvcv::Tensor     diameterTensor({{numberOfImages}, "N"}, nvcv::TYPE_S32);
     {
-        auto *dev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(diameterTensor.exportData());
+        auto dev = diameterTensor.exportData<nvcv::TensorDataStridedCuda>();
         ASSERT_NE(dev, nullptr);
 
         ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(dev->basePtr(), vDiameter.data(), vDiameter.size() * sizeof(int),
@@ -303,7 +301,7 @@ TEST_P(OpBilateralFilter, BilateralFilter_VarShape)
     std::vector<float> vSigmaColor(numberOfImages, sigmaColor);
     nvcv::Tensor       sigmaColorTensor({{numberOfImages}, "N"}, nvcv::TYPE_F32);
     {
-        auto *dev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(sigmaColorTensor.exportData());
+        auto dev = sigmaColorTensor.exportData<nvcv::TensorDataStridedCuda>();
         ASSERT_NE(dev, nullptr);
 
         ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(dev->basePtr(), vSigmaColor.data(), vSigmaColor.size() * sizeof(float),
@@ -314,7 +312,7 @@ TEST_P(OpBilateralFilter, BilateralFilter_VarShape)
     std::vector<float> vSigmaSpace(numberOfImages, sigmaSpace);
     nvcv::Tensor       sigmaSpaceTensor({{numberOfImages}, "N"}, nvcv::TYPE_F32);
     {
-        auto *dev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(sigmaSpaceTensor.exportData());
+        auto dev = sigmaSpaceTensor.exportData<nvcv::TensorDataStridedCuda>();
         ASSERT_NE(dev, nullptr);
 
         ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(dev->basePtr(), vSigmaSpace.data(), vSigmaSpace.size() * sizeof(float),
@@ -333,8 +331,8 @@ TEST_P(OpBilateralFilter, BilateralFilter_VarShape)
     // Retrieve data from GPU
     for (int i = 0; i < numberOfImages; i++)
     {
-        auto *imgData = dynamic_cast<const nvcv::IImageDataStridedCuda *>(imgDst[i]->exportData());
-        ASSERT_NE(imgData, nullptr);
+        auto imgData = imgDst[i]->exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_NE(imgData, nvcv::NullOpt);
 
         // Copy input data to the GPU
         ASSERT_EQ(cudaSuccess, cudaMemcpy2DAsync(dstVec[i].data(), srcVecRowStride[i], imgData->plane(0).basePtr,

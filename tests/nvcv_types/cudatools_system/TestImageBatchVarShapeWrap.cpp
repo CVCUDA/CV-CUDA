@@ -83,8 +83,7 @@ NVCV_MIXTYPED_TEST(ImageBatchVarShapeWrapTest, correct_content)
 
     imageBatch.pushBack(imageList.begin(), imageList.end());
 
-    auto *imageBatchData
-        = dynamic_cast<const nvcv::IImageBatchVarShapeDataStridedCuda *>(imageBatch.exportData(stream));
+    auto imageBatchData = imageBatch.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     ASSERT_NE(imageBatchData, nullptr);
 
     int3 maxSize{imageBatchData->maxSize().w, imageBatchData->maxSize().h, imageBatchData->numImages()};
@@ -177,8 +176,7 @@ NVCV_MIXTYPED_TEST(ImageBatchVarShapeWrapNHWCTest, correct_content)
 
     imageBatch.pushBack(imageList.begin(), imageList.end());
 
-    auto *imageBatchData
-        = dynamic_cast<const nvcv::IImageBatchVarShapeDataStridedCuda *>(imageBatch.exportData(stream));
+    auto imageBatchData = imageBatch.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     ASSERT_NE(imageBatchData, nullptr);
 
     int3 maxSize{imageBatchData->maxSize().w, imageBatchData->maxSize().h, imageBatchData->numImages()};

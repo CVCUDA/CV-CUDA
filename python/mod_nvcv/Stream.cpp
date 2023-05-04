@@ -304,8 +304,11 @@ void Stream::Export(py::module &m)
 {
     py::class_<Stream, std::shared_ptr<Stream>> stream(m, "Stream");
 
-    stream.def_property_readonly_static("current", [](py::object) { return Current().shared_from_this(); })
-        .def(py::init(&Stream::Create));
+    stream
+        .def_property_readonly_static(
+            "current", [](py::object) { return Current().shared_from_this(); },
+            "Get the current CUDA stream for this thread.")
+        .def(py::init(&Stream::Create), "Create a new CUDA stream.");
 
     // Create the global stream object by wrapping cuda stream 0.
     // It'll be destroyed when python module is deinitialized.
@@ -319,13 +322,13 @@ void Stream::Export(py::module &m)
     ExportExternalStream<VOIDP>(m);
     ExportExternalStream<INT>(m);
 
-    stream.def("__enter__", &Stream::activate)
-        .def("__exit__", &Stream::deactivate)
-        .def("sync", &Stream::sync)
-        .def("__int__", &Stream::pyhandle)
-        .def("__repr__", &util::ToString<Stream>)
-        .def_property_readonly("handle", &Stream::pyhandle)
-        .def_property_readonly("id", &Stream::id);
+    stream.def("__enter__", &Stream::activate, "Activate the CUDA stream as the current stream for this thread.")
+        .def("__exit__", &Stream::deactivate, "Deactivate the CUDA stream as the current stream for this thread.")
+        .def("sync", &Stream::sync, "Wait for all preceding CUDA calls in the current stream to complete.")
+        .def("__int__", &Stream::pyhandle, "Cast the CUDA stream object to an integer handle.")
+        .def("__repr__", &util::ToString<Stream>, "Return a string representation of the CUDA stream object.")
+        .def_property_readonly("handle", &Stream::pyhandle, "Get the integer handle for the CUDA stream object.")
+        .def_property_readonly("id", &Stream::id, "Get the unique ID for the CUDA stream object.");
 
     // Make sure all streams we've created are synced when script ends.
     // Also make cleanup hold the globalStream reference during script execution.

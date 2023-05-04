@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +21,7 @@
 #include "Image.hpp"
 #include "ImageBatch.h"
 #include "ImageBatchData.hpp"
-#include "detail/Optional.hpp"
+#include "Optional.hpp"
 
 #include <iterator>
 
@@ -41,16 +41,16 @@ public:
     int32_t capacity() const;
     int32_t numImages() const;
 
-    const IImageBatchData *exportData(CUstream stream) const;
+    ImageBatchData exportData(CUstream stream) const;
+
+    template<typename DATA>
+    Optional<DATA> exportData(CUstream stream) const;
 
     void  setUserPointer(void *ptr);
     void *userPointer() const;
 
 private:
     virtual NVCVImageBatchHandle doGetHandle() const = 0;
-
-    // Only one leaf, we can use an optional for now.
-    mutable detail::Optional<ImageBatchVarShapeDataStridedCuda> m_cacheData;
 };
 
 class IImageBatchVarShape : public IImageBatch
@@ -70,7 +70,13 @@ public:
     Size2D      maxSize() const;
     ImageFormat uniqueFormat() const;
 
-    const IImageBatchVarShapeData *exportData(CUstream stream) const;
+    ImageBatchVarShapeData exportData(CUstream stream) const;
+
+    template<typename DATA>
+    Optional<DATA> exportData(CUstream stream) const
+    {
+        return IImageBatch::exportData<DATA>(stream);
+    }
 
     IImage &operator[](ptrdiff_t n) const;
 

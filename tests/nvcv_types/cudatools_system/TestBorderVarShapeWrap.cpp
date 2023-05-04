@@ -95,8 +95,8 @@ TYPED_TEST(BorderVarShapeWrapTest, correct_fill)
         srcImageList.emplace_back(
             std::make_unique<nvcv::Image>(nvcv::Size2D{width + randSize(randEng), height + randSize(randEng)}, format));
 
-        auto *srcData = dynamic_cast<const nvcv::IImageDataStridedCuda *>(srcImageList[i]->exportData());
-        ASSERT_NE(srcData, nullptr);
+        auto srcData = srcImageList[i]->exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_NE(srcData, nvcv::NullOpt);
 
         int srcRowStride = srcData->plane(0).rowStride;
         int srcHeight    = srcImageList[i]->size().h;
@@ -123,12 +123,10 @@ TYPED_TEST(BorderVarShapeWrapTest, correct_fill)
 
     dstImageBatch.pushBack(dstImageList.begin(), dstImageList.end());
 
-    auto *srcImageBatchData
-        = dynamic_cast<const nvcv::IImageBatchVarShapeDataStridedCuda *>(srcImageBatch.exportData(stream));
+    auto srcImageBatchData = srcImageBatch.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     ASSERT_NE(srcImageBatchData, nullptr);
 
-    auto *dstImageBatchData
-        = dynamic_cast<const nvcv::IImageBatchVarShapeDataStridedCuda *>(dstImageBatch.exportData(stream));
+    auto dstImageBatchData = dstImageBatch.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     ASSERT_NE(dstImageBatchData, nullptr);
 
     int3 dstMaxSize{dstImageBatchData->maxSize().w, dstImageBatchData->maxSize().h, dstImageBatchData->numImages()};
@@ -145,10 +143,10 @@ TYPED_TEST(BorderVarShapeWrapTest, correct_fill)
     {
         SCOPED_TRACE(i);
 
-        const auto *srcData = dynamic_cast<const nvcv::IImageDataStridedCuda *>(srcImageList[i]->exportData());
+        const auto srcData = srcImageList[i]->exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_EQ(srcData->numPlanes(), 1);
 
-        const auto *dstData = dynamic_cast<const nvcv::IImageDataStridedCuda *>(dstImageList[i]->exportData());
+        const auto dstData = dstImageList[i]->exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_EQ(dstData->numPlanes(), 1);
 
         nvcv::Size2D srcSize = srcImageList[i]->size();
@@ -182,6 +180,153 @@ TYPED_TEST(BorderVarShapeWrapTest, correct_fill)
                     = isInside ? *reinterpret_cast<ValueType *>(
                           &srcVec[i][srcCoord.y * srcRowStride + srcCoord.x * sizeof(ValueType)])
                                : borderValue;
+            }
+        }
+
+        EXPECT_EQ(testVec, goldVec);
+    }
+}
+
+// ----------------------- Testing BorderVarShapeWrapNHWC --------------------------
+
+#define NVCV_TEST_ROW(WIDTH, HEIGHT, VARSIZE, SAMPLES, BORDERSIZE, FORMAT, VALUETYPE, BORDERTYPE, NUMCHANNELS) \
+    ttype::Types<ttype::Value<WIDTH>, ttype::Value<HEIGHT>, ttype::Value<VARSIZE>, ttype::Value<SAMPLES>,      \
+                 ttype::Value<BORDERSIZE>, ttype::Value<FORMAT>, VALUETYPE, ttype::Value<BORDERTYPE>,          \
+                 ttype::Value<NUMCHANNELS>>
+
+NVCV_TYPED_TEST_SUITE(BorderVarShapeWrapNHWCTest,
+                      ttype::Types<NVCV_TEST_ROW(22, 33, 0, 1, 0, RGBA8, uchar1, NVCV_BORDER_CONSTANT, 3),
+                                   NVCV_TEST_ROW(33, 22, 2, 3, 3, _2S16, short1, NVCV_BORDER_CONSTANT, 2),
+                                   NVCV_TEST_ROW(11, 44, 3, 5, 55, RGBAf32, float1, NVCV_BORDER_REPLICATE, 4),
+                                   NVCV_TEST_ROW(122, 66, 7, 9, 7, RGBf32, float1, NVCV_BORDER_WRAP, 3),
+                                   NVCV_TEST_ROW(66, 163, 12, 6, 9, RGB8, uchar1, NVCV_BORDER_REFLECT, 3),
+                                   NVCV_TEST_ROW(199, 99, 23, 4, 19, S16, short1, NVCV_BORDER_REFLECT101, 1)>);
+
+#undef NVCV_TEST_ROW
+
+TYPED_TEST(BorderVarShapeWrapNHWCTest, correct_fill)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    int               width      = ttype::GetValue<TypeParam, 0>;
+    int               height     = ttype::GetValue<TypeParam, 1>;
+    int               varSize    = ttype::GetValue<TypeParam, 2>;
+    int               samples    = ttype::GetValue<TypeParam, 3>;
+    int               borderSize = ttype::GetValue<TypeParam, 4>;
+    nvcv::ImageFormat format{ttype::GetValue<TypeParam, 5>};
+    using ValueType            = ttype::GetType<TypeParam, 6>;
+    constexpr auto kBorderType = ttype::GetValue<TypeParam, 7>;
+    int            numChannels = ttype::GetValue<TypeParam, 8>;
+
+    ValueType borderValue = cuda::SetAll<ValueType>(123);
+
+    int2 bSize{borderSize, borderSize};
+
+    nvcv::ImageBatchVarShape srcImageBatch(samples);
+    nvcv::ImageBatchVarShape dstImageBatch(samples);
+
+    std::default_random_engine             randEng{0};
+    std::uniform_int_distribution<int>     randSize{-varSize, varSize};
+    std::uniform_int_distribution<uint8_t> randValues{0, 255};
+
+    std::vector<std::unique_ptr<nvcv::Image>> srcImageList;
+    std::vector<std::vector<uint8_t>>         srcVec(samples);
+
+    for (int i = 0; i < srcImageBatch.capacity(); ++i)
+    {
+        srcImageList.emplace_back(
+            std::make_unique<nvcv::Image>(nvcv::Size2D{width + randSize(randEng), height + randSize(randEng)}, format));
+
+        auto srcData = srcImageList[i]->exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_NE(srcData, nvcv::NullOpt);
+
+        int srcRowStride = srcData->plane(0).rowStride;
+        int srcHeight    = srcImageList[i]->size().h;
+
+        srcVec[i].resize(srcHeight * srcRowStride);
+        std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return randValues(randEng); });
+
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy2DAsync(srcData->plane(0).basePtr, srcRowStride, srcVec[i].data(), srcRowStride,
+                                    srcRowStride, srcHeight, cudaMemcpyHostToDevice, stream));
+    }
+
+    srcImageBatch.pushBack(srcImageList.begin(), srcImageList.end());
+
+    std::vector<std::unique_ptr<nvcv::Image>> dstImageList;
+
+    for (int i = 0; i < samples; ++i)
+    {
+        nvcv::Size2D size = srcImageList[i]->size();
+
+        dstImageList.emplace_back(std::make_unique<nvcv::Image>(
+            nvcv::Size2D{size.w + borderSize * 2, size.h + borderSize * 2}, srcImageList[i]->format()));
+    }
+
+    dstImageBatch.pushBack(dstImageList.begin(), dstImageList.end());
+
+    auto srcImageBatchData = srcImageBatch.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
+    ASSERT_NE(srcImageBatchData, nullptr);
+
+    auto dstImageBatchData = dstImageBatch.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
+    ASSERT_NE(dstImageBatchData, nullptr);
+
+    int3 dstMaxSize{dstImageBatchData->maxSize().w, dstImageBatchData->maxSize().h, dstImageBatchData->numImages()};
+
+    cuda::BorderVarShapeWrapNHWC<const ValueType, kBorderType> srcWrap(*srcImageBatchData, numChannels, borderValue);
+    cuda::ImageBatchVarShapeWrapNHWC<ValueType>                dstWrap(*dstImageBatchData, numChannels);
+
+    DeviceRunFillBorderVarShapeNHWC(dstWrap, srcWrap, dstMaxSize, bSize, numChannels, stream);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    for (int i = 0; i < samples; ++i)
+    {
+        SCOPED_TRACE(i);
+
+        const auto srcData = srcImageList[i]->exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_EQ(srcData->numPlanes(), 1);
+
+        const auto dstData = dstImageList[i]->exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_EQ(dstData->numPlanes(), 1);
+
+        nvcv::Size2D srcSize = srcImageList[i]->size();
+        nvcv::Size2D dstSize = dstImageList[i]->size();
+
+        int srcRowStride = srcData->plane(0).rowStride;
+        int dstRowStride = dstData->plane(0).rowStride;
+
+        std::vector<uint8_t> testVec(dstSize.h * dstRowStride);
+
+        // Copy output data to Host
+        ASSERT_EQ(cudaSuccess, cudaMemcpy2D(testVec.data(), dstRowStride, dstData->plane(0).basePtr, dstRowStride,
+                                            dstRowStride, dstSize.h, cudaMemcpyDeviceToHost));
+
+        std::vector<uint8_t> goldVec(dstSize.h * dstRowStride);
+
+        // Run gold fill border
+        int2 srcCoord;
+
+        for (int y = 0; y < dstSize.h; ++y)
+        {
+            srcCoord.y = y - borderSize;
+
+            for (int x = 0; x < dstSize.w; ++x)
+            {
+                srcCoord.x = x - borderSize;
+
+                bool isInside = test::IsInside(srcCoord, {srcSize.w, srcSize.h}, kBorderType);
+                for (int c = 0; c < numChannels; ++c)
+                {
+                    *reinterpret_cast<ValueType *>(
+                        &goldVec[y * dstRowStride + x * sizeof(ValueType) * numChannels + c * sizeof(ValueType)])
+                        = isInside ? *reinterpret_cast<ValueType *>(
+                              &srcVec[i][srcCoord.y * srcRowStride + srcCoord.x * sizeof(ValueType) * numChannels
+                                         + c * sizeof(ValueType)])
+                                   : borderValue;
+                }
             }
         }
 

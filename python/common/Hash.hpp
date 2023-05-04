@@ -54,7 +54,7 @@ size_t ComputeHash(const HEAD &a, const TAIL &...aa)
     return ComputeHash(a) ^ (ComputeHash(aa...) << 1);
 }
 
-template<class R, std::enable_if_t<nvcv::util::ranges::IsRange<R>, int> = 0>
+template<class R, std::enable_if_t<nvcv::util::ranges::IsRange<R>, int>>
 size_t ComputeHash(const R &a)
 {
     size_t hash = ComputeHash(nvcv::util::ranges::Size(a));

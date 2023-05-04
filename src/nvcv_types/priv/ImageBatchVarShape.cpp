@@ -240,10 +240,6 @@ void ImageBatchVarShape::exportData(CUstream stream, NVCVImageBatchData &data) c
         // Signal that we finished reading from m_hostBuffer
         NVCV_CHECK_THROW(cudaEventRecord(m_evPostFence, stream));
 
-        // WAR: need stream synchronization at this point to avoid data races.
-        // Must do a deeper analysis to see what's wrong. CVCUDA-443 tracks this effort.
-        NVCV_CHECK_THROW(cudaStreamSynchronize(stream));
-
         // up to m_numImages, we're all good
         m_dirtyStartingFromIndex = m_numImages;
     }

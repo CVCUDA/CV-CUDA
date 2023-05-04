@@ -23,41 +23,42 @@ RNG = np.random.default_rng(0)
 
 
 @t.mark.parametrize(
-    "input, ksize, scale, border",
+    "input_args, ksize, scale, border",
     [
         (
-            cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"),
+            ((5, 16, 23, 4), np.uint8, "NHWC"),
             3,
             1.0,
             cvcuda.Border.CONSTANT,
         ),
         (
-            cvcuda.Tensor((4, 4, 3), np.float32, "HWC"),
+            ((4, 4, 3), np.float32, "HWC"),
             1,
             0.8,
             cvcuda.Border.REPLICATE,
         ),
         (
-            cvcuda.Tensor((3, 88, 13, 3), np.uint16, "NHWC"),
+            ((3, 88, 13, 3), np.uint16, "NHWC"),
             3,
             1.7,
             cvcuda.Border.REFLECT,
         ),
         (
-            cvcuda.Tensor((3, 4, 4), np.uint16, "HWC"),
+            ((3, 4, 4), np.uint16, "HWC"),
             1,
             0.5,
             cvcuda.Border.WRAP,
         ),
         (
-            cvcuda.Tensor((1, 2, 3, 4), np.uint8, "NHWC"),
+            ((1, 2, 3, 4), np.uint8, "NHWC"),
             3,
             1.6,
             cvcuda.Border.REFLECT101,
         ),
     ],
 )
-def test_op_laplacian(input, ksize, scale, border):
+def test_op_laplacian(input_args, ksize, scale, border):
+    input = cvcuda.Tensor(*input_args)
     out = cvcuda.laplacian(input, ksize, scale, border)
     assert out.layout == input.layout
     assert out.shape == input.shape

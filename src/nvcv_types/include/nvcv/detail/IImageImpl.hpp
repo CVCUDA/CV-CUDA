@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,18 +24,9 @@
 
 namespace nvcv {
 
-inline IImage::IImage()
-    : m_cacheDataPtr(nullptr)
-{
-}
+inline IImage::IImage() {}
 
-inline IImage::~IImage()
-{
-    if (m_cacheDataPtr != nullptr)
-    {
-        m_cacheDataPtr->~IImageData();
-    }
-}
+inline IImage::~IImage() {}
 
 inline NVCVImageHandle IImage::handle() const
 {
@@ -63,35 +54,24 @@ inline ImageFormat IImage::format() const
     return ImageFormat{out};
 }
 
-inline const IImageData *IImage::exportData() const
+inline ImageData IImage::exportData() const
 {
-    NVCVImageData imgData;
-    detail::CheckThrow(nvcvImageExportData(this->handle(), &imgData));
-
-    if (m_cacheDataPtr != nullptr)
+    if (auto handle = this->handle())
     {
-        m_cacheDataPtr->~IImageData();
-        m_cacheDataPtr = nullptr;
+        ImageData data;
+        detail::CheckThrow(nvcvImageExportData(handle, &data.cdata()));
+        return data;
     }
-
-    switch (imgData.bufferType)
+    else
     {
-    case NVCV_IMAGE_BUFFER_STRIDED_HOST:
-    case NVCV_IMAGE_BUFFER_NONE:
-        break; // will return nullptr as per current semantics
-
-    case NVCV_IMAGE_BUFFER_STRIDED_CUDA:
-        m_cacheDataPtr
-            = ::new (&m_cacheDataArena) ImageDataStridedCuda(ImageFormat{imgData.format}, imgData.buffer.strided);
-        break;
-
-    case NVCV_IMAGE_BUFFER_CUDA_ARRAY:
-        m_cacheDataPtr
-            = ::new (&m_cacheDataArena) ImageDataCudaArray(ImageFormat{imgData.format}, imgData.buffer.cudaarray);
-        break;
+        throw Exception(Status::ERROR_INVALID_OPERATION, "Cannot export data from a NULL handle.");
     }
+}
 
-    return m_cacheDataPtr;
+template<typename DATA>
+inline Optional<DATA> IImage::exportData() const
+{
+    return exportData().cast<DATA>();
 }
 
 inline void IImage::setUserPointer(void *ptr)

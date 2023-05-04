@@ -15,13 +15,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-if [[ -z "${PRIVATE_TOKEN}" ]]; then
-    echo "PRIVATE_TOKEN environment variable was not set. Please set it to your private Gitlab access token with api, read_api scopes."
-    echo "Private token is used to fetch assets needed to build samples docker image from the package registry."
-    echo "Usage:  PRIVATE_TOKEN=... $(basename "$0") [--push]"
-    exit 1
-fi
-
 # SDIR is the directory where this script is located
 SDIR=$(dirname "$(readlink -f "$0")")
 
@@ -31,27 +24,19 @@ if [[ $# == 1 && $1 == "--push" ]]; then
     do_push=1
     shift
 elif [[ $# != 0 ]]; then
-    echo "Usage:  PRIVATE_TOKEN=... $(basename "$0") [--push]"
+    echo "Usage: $(basename "$0") [--push]"
     exit 1
 fi
 
 cd "$SDIR"
+# Copy install_dependencies script from the samples folder to the samples' docker folder
+# so that it can be added and used inside the image.
+cp $SDIR/../samples/scripts/install_dependencies.sh $SDIR/samples/
 
 # load up configuration variables
 . ./config
-
 cd samples
-
-image=$IMAGE_URL_BASE/samples-linux-x64:$TAG_IMAGE
-
-CACHEDIR=/tmp/samples/pkg_cache "$SDIR/../ci/download_assets.sh" ffmpeg-master-latest-linux64-gpl-shared 22.12
-tar -xvf "/tmp/samples/pkg_cache/ffmpeg-master-latest-linux64-gpl-shared/22.12/ffmpeg-master-latest-linux64-gpl-shared.tar.gz" -C $SDIR/samples
-
-CACHEDIR=/tmp/samples/pkg_cache "$SDIR/../ci/download_assets.sh" video_codec_sdk 22.12
-tar -xvf "/tmp/samples/pkg_cache/video_codec_sdk/22.12/Video_Codec_SDK.tar.gz" -C $SDIR/samples
-
-CACHEDIR=/tmp/samples/pkg_cache "$SDIR/../ci/download_assets.sh" video_processing_framework 22.12
-tar -xvf "/tmp/samples/pkg_cache/video_processing_framework/22.12/VideoProcessingFramework.tar.gz" -C $SDIR/samples
+image=$IMAGE_URL_BASE/samples-linux-x64:$TAG_IMAGE_SAMPLES
 
 nvidia-docker build --network=host --no-cache \
     --build-arg "VER_TRT=$VER_TRT" \

@@ -19,24 +19,29 @@
 Semantic Segmentation
 ====================
 
-In this example, we use CVCUDA to accelerate the pre and post processing pipelines in the deep learning inference use case involving a semantic segmentation model. The deep learning model can utilize either PyTorch or TensorRT as a backend. The pre-processing pipeline converts the input into the format required by the input layer of the model whereas the post processing pipeline converts the output produced by the model into a visualization-friendly frame. We use the DeepLabV3 model (from torchvision) pre-trained on ImageNet and PASCAL VOC 2012 datasets to generate the predictions in the case of PyTorch and use the FCN_ResNet101 model in the case of TensorRT. Both of these models are available as segmentation models in the torchvision package. This sample can work on a single image or a folder full of images or on a single video. All images have to be in the JPEG format and with the same dimensions unless run under the batch size of one. Video has to be in mp4 format with a fixed frame rate. We use the torchnvjpeg library to read the images and NVIDIA's Video Processing Framework (VPF) to read/write videos.
+In this example, we use CVCUDA to accelerate the pre and post processing pipelines in the deep learning inference use case involving a semantic segmentation model. The deep learning model can utilize either PyTorch or TensorRT to run the inference. The pre-processing pipeline converts the input into the format required by the input layer of the model whereas the post processing pipeline converts the output produced by the model into a visualization-friendly frame. We use the FCN ResNet101 model (from torchvision) to generate the predictions. This sample can work on a single image or a folder full of images or on a single video. All images have to be in the JPEG format and with the same dimensions unless run under the batch size of one. Video has to be in mp4 format with a fixed frame rate. We use the torchnvjpeg library to read the images and NVIDIA's Video Processing Framework (VPF) to read/write videos.
 
-**The exact pre-processing operations are:**
+**The exact pre-processing operations are:** ::
 
-Read Image or Video File -> Decode -> Resize -> Convert Datatype(Float) -> Normalize (to 0-1 range, mean and stddev) -> convert to NCHW
+   Decode Data -> Resize -> Convert Datatype(Float) -> Normalize (to 0-1 range, mean and stddev) -> convert to NCHW
 
-**The exact post-processing operations are:**
+**The exact post-processing operations are:** ::
 
-Normalize the output using softmax -> Create Binary mask -> Upscale the mask -> Blur the input frames -> Overlay the masks onto the original frame
+   Create Binary mask -> Upscale the mask -> Blur the input frames -> Joint Bilateral filter to smooth the mask -> Overlay the masks onto the original frame
 
 
 Writing the Sample App
 ----------------------
 
-The first stage in our pipeline is importing all necessary python modules. This includes the modules such as torch and torchvision,
-torchnvjpeg, vpf and the main package of CVCUDA (i.e. nvcv) among others. torchnvjpeg is used to batch decode JPEG images on the GPU. NVIDIA's Video Processing Framework (VPF) is used to decode videos.
+The segmentation sample app has been designed to be modular in all aspects. It imports and uses various modules such as data decoders, encoders, pipeline pre and post processors and the model inference. Some of these modules are defined in the same folder as the sample whereas the rest are defined in the common scripts folder for a wider re-use.
 
-.. literalinclude:: ../../../../samples/segmentation/python/inference.py
+1. Modules used by this sample app that are defined in the common folder (i.e. not specific just to this sample) are the ``ImageBatchDecoderPyTorch`` and ``ImageBatchEncoderPyTorch`` for PyTorch based image decoding and encoding and ``VideoBatchDecoderVPF`` and ``VideoBatchEncoderVPF`` for VPF based video decoding and encoding.
+
+2. Modules specific to this sample (i.e. defined in the segmentation sample folder) are ``PreprocessorCvcuda`` and ``PostprocessorCvcuda`` for CVCUDA based pre and post processing pipelines and ``SegmentationPyTorch`` and ``SegmentationTensorRT`` for the model inference.
+
+The first stage in our pipeline is importing all necessary python modules. Apart from the modules described above, this also includes modules such as torch and torchvision, torchnvjpeg, vpf and the main package of CVCUDA (i.e. nvcv) among others. Be sure to import ``pycuda.driver`` before importing any other GPU packages like torch or cvcuda to ensure a proper initialization.
+
+.. literalinclude:: ../../../../samples/segmentation/python/main.py
    :language: python
    :linenos:
    :start-after: begin_python_imports
@@ -51,293 +56,120 @@ arguments. This sample allows configuring following parameters. All of them have
 3. ``-c``, ``--class_name`` : The segmentation class to visualize the results for.
 4. ``-th``, ``--target_img_height`` : The height to which you want to resize the input_image before running inference.
 5. ``-tw``, ``--target_img_width`` : The width to which you want to resize the input_image before running inference.
-6. ``-b``, ``--batch_size`` : The batch size used during inference. If only one image is used as input, the same input image will be read and used this many times. Useful for performance benchmarking.
+6. ``-b``, ``--batch_size`` : The batch size used during inference. If only one image is used as input, the same input image will be read and used this many times. Useful for performance bench-marking.
 7. ``-d``, ``--device_id``  : The GPU device to use for this sample.
 8. ``-bk``, ``--backend``  : The inference backend to use. Currently supports pytorch or tensorrt.
 
-.. literalinclude:: ../../../../samples/segmentation/python/inference.py
+
+Once we are done parsing all the command line arguments, we would simply call the function ``run_sample`` with all those arguments.
+
+.. literalinclude:: ../../../../samples/segmentation/python/main.py
    :language: python
    :linenos:
-   :start-after: main_func
+   :start-after: start_call_run_sample
+   :end-before: end_call_run_sample
    :dedent:
 
-Notice that we have created an instance of the ``SemanticSegmentationSample`` class, giving it all these configuration parameters and
-then calling the ``run`` method on it. Let's understand what this class is and how its made. To start off, here is how the class is defined with its ``__init__`` method.
+The ``run_sample`` function is the primary function that runs this samples. It sets up the requested CUDA device, CUDA context and CUDA stream. CUDA streams help us execute CUDA operations on a non-default stream and enhances the overall performance. Additionally, NVTX markers are used throughout this sample to facilitate performance bench-marking using `NVIDIA NSIGHT systems <https://developer.nvidia.com/nsight-systems>`_. In order to keep things simple, we are only creating one CUDA stream to run all the stages of this sample. The same stream is available in CVCUDA, PyTorch and TensorRT.
 
-.. literalinclude:: ../../../../samples/segmentation/python/inference.py
+.. literalinclude:: ../../../../samples/segmentation/python/main.py
    :language: python
    :linenos:
-   :start-after: class_def
-   :end-before: begin_class_init
+   :start-after: begin_setup_gpu
+   :end-before: end_setup_gpu
    :dedent:
 
+Next, we instantiate various classes to help us run the sample. These classes are:
 
-This ``__init__`` method stores all the configuration parameters as class members and then tests to make sure they contain valid values.
+1. ``PreprocessorCvcuda`` : A CVCUDA based pre-processing pipeline for semantic segmentation.
+2. ``ImageBatchDecoderPyTorch`` : A PyTorch based image decoder to read the images.
+3. ``ImageBatchEncoderPyTorch`` : A PyTorch based image encoder to write the images.
+4. ``VideoBatchDecoderVPF`` : A VPF based video decoder to read the video.
+5. ``VideoBatchEncoderVPF`` : A VPF based video encoder to write the video.
+6. ``PostprocessorCvcuda`` : A CVCUDA based post-processing pipeline for semantic segmentation.
+7. ``SegmentationPyTorch`` : A PyTorch based semantic segmentation model to execute inference.
+8. ``SegmentationTensorRT`` : A TensorRT based semantic segmentation model to execute inference.
 
-.. literalinclude:: ../../../../samples/segmentation/python/inference.py
+These classes are defined in modular fashion and exposes a uniform interface which allows easy plug-and-play in appropriate places. For example, one can use the same API to decode/encode images using PyTorch as that of decode/encode videos using VPF. Similarly, one can invoke the inference in the exact same way with PyTorch as with TensorRT.
+
+Additionally, the encoder and decoder interfaces also exposes start and join methods, making it easy to upgrade them to a multi-threading environment (if needed.) Such multi-threading capabilities are slated for a future release.
+
+.. literalinclude:: ../../../../samples/segmentation/python/main.py
    :language: python
    :linenos:
-   :start-after: begin_class_init
-   :end-before: end_class_init
+   :start-after: begin_setup_stages
+   :end-before: end_setup_stages
    :dedent:
 
-.. literalinclude:: ../../../../samples/segmentation/python/inference.py
+With all of these components initialized, the overall data flow per a data batch looks like the following:
+
+Decode batch -> Preprocess Batch -> Run Inference -> Post Process Batch -> Encode batch
+
+.. literalinclude:: ../../../../samples/segmentation/python/main.py
    :language: python
    :linenos:
-   :start-after: begin_input_validation
-   :end-before: end_input_validation
-   :dedent:
-
-
-Depending on the ``input_path``'s value, we either read one image and create a dummy list with the data from the same image to simulate a batch or read a bunch of images from a directory or read a video. Video reading classes are defined as a high level wrapper in the helper script file ``vpf_utils.py``.
-
-.. literalinclude:: ../../../../samples/segmentation/python/inference.py
-   :language: python
-   :linenos:
-   :start-after: begin_data_read
-   :end-before: end_data_read
-   :dedent:
-
-Next, we define the ``setup_model`` method which, depending on the type of backend, performs basic activities regarding setting up the deep learning model.
-
-In case of PyTorch, we use the ``deeplabv3_resnet101`` model, cross check that the class name user supplied is a valid class name in
-the context of that model and then set the model on to the GPU in evaluation mode.
-
-
-.. literalinclude:: ../../../../samples/segmentation/python/inference.py
-   :language: python
-   :linenos:
-   :start-after: setup_model_def
-   :end-before: end_setup_pytorch
+   :start-after: begin_pipeline
+   :end-before: end_pipeline
    :dedent:
 
 
-In case of TensorRT, we use the ``fcn_resnet101`` model. Since we would like to run the inference using TensorRT, we would need a TensorRT serialized engine for that. One can generate such an engine file by first converting an existing PyTorch model to ONNX and then converting the ONNX to a TensorRT engine. The serialized TensorRT engine is good to work on the specific GPU with the maximum batch size it was given at the creation time. Since ONNX and TensorRT model generation is a time consuming operation, we avoid doing this every-time by first checking if one of those already exists (most likely due to a previous run of this sample.) If so, we simply use those models rather than generating a new one. The final piece to take care of in case of TensorRT is the I/O bindings. We allocate the output Tensors in advance for TensorRT.
+That's it for the semantic segmentation sample. To understand more about how each stage in the pipeline works, please explore the following sections:
 
-.. literalinclude:: ../../../../samples/segmentation/python/inference.py
-   :language: python
-   :linenos:
-   :start-after: begin_setup_tensorrt
-   :end-before: begin_load_tensorrt
-   :dedent:
+.. toctree::
+    :maxdepth: 1
 
-Once a serialized TensorRT engine file written to the disk, we can simply re-load it and continue to setup the I/O bindings.
-
-.. literalinclude:: ../../../../samples/segmentation/python/inference.py
-   :language: python
-   :linenos:
-   :start-after: begin_load_tensorrt
-   :end-before: end_setup_tensorrt
-   :dedent:
-
-Methods such as ``convert_onnx_to_tensorrt`` and ``setup_tensort_bindings`` are defined in the helper script file ``trt_utils.py``
-
-Now that we have implemented our model loading logic, we need to write the logic which runs these models with input Tensors and generates the output. Depending on the type of backend, we would handle these operations differently.
-
-
-In case of PyTorch, we simply execute the model without any gradients computation.
-
-.. literalinclude:: ../../../../samples/segmentation/python/inference.py
-   :language: python
-   :linenos:
-   :start-after: begin_execute_inference
-   :end-before: end_infer_pytorch
-   :dedent:
-
-In case of TensorRT, we first start by unpacking three pieces of information from the ``model_info`` object.
-
-.. literalinclude:: ../../../../samples/segmentation/python/inference.py
-   :language: python
-   :linenos:
-   :start-after: begin_infer_tensorrt
-   :end-before: end_tensorrt_unpack
-   :dedent:
-
-
-Next, we need to check if we are dealing with the last batch which may not have a full ``batch_size`` number of samples in it. If so, we would give padded inputs with all zeros so that TensorRT can still run inference as if a full batch was supplied and would simply discard the output results from these padded inputs later.
-
-.. literalinclude:: ../../../../samples/segmentation/python/inference.py
-   :language: python
-   :linenos:
-   :start-after: begin_check_last_batch
-   :end-before: end_check_last_batch
-   :dedent:
-
-Next, we prepare the I/O bindings and run the inference.
-
-.. literalinclude:: ../../../../samples/segmentation/python/inference.py
-   :language: python
-   :linenos:
-   :start-after: begin_tensorrt_run
-   :end-before: end_tensorrt_run
-   :dedent:
-
-Finally, we would check if we need to discard results corresponding to the padded input samples. We use the ``torch.split`` function here.
-
-.. literalinclude:: ../../../../samples/segmentation/python/inference.py
-   :language: python
-   :linenos:
-   :start-after: begin_discard_last_batch
-   :end-before: end_discard_last_batch
-   :dedent:
-
-Once we have the model setup logic and the run inference logic figured out, the only remaining part is to put these things to use in a complete deep learning semantic segmentation pipeline that uses CVCUDA to accelerate the pre and post processing operations. We do so by defining the run method.
-
-Then first couple of things the run method has to do is to actually call the ``setup_model`` method followed by splitting the data into batches with the batch size. Depending on the total items present in the data and the batch size, the last batch may be of size less than the batch size. Please note that in the case of input being a video, the file name batches and data batches are mostly there to help us iterate easily and consistently over all the possible data frames. It does not actually contain the file names or data frames. Unlike images, these variables are also not used during the visualization of the video.
-
-.. literalinclude:: ../../../../samples/segmentation/python/inference.py
-   :language: python
-   :linenos:
-   :start-after: begin_run
-   :end-before: end_run_basics
-   :dedent:
-
-Then we repeat the pre-processing, inference and post-processing steps for all the batches.
-
-.. literalinclude:: ../../../../samples/segmentation/python/inference.py
-   :language: python
-   :linenos:
-   :start-after: begin_batch_loop
-   :end-before: begin_decode
-   :dedent:
-
-We start off the processing by using either the torchnvjpeg library to decode the images in a batch or using VPF to decode video frames into the desired color format and create a tensor list on the device. Please note that ``contiguous()`` must be called on any tensors returned by VPF to make it compatible with the rest of the pipeline.
-
-Since the steps after this works on torch.Tensor instead of a list of torch.Tensor, we would also convert the list of torch.Tensor
-to a higher dimensional torch.Tensor by stacking all the tensors up.
-
-.. literalinclude:: ../../../../samples/segmentation/python/inference.py
-   :language: python
-   :linenos:
-   :start-after: begin_decode
-   :end-before: end_decode
-   :dedent:
-
-Once the torch.Tensor is created, we can convert it to a CVCUDA Tensor before starting any CVCUDA based pre-processing.
-
-.. literalinclude:: ../../../../samples/segmentation/python/inference.py
-   :language: python
-   :linenos:
-   :start-after: begin_torch_to_cvcuda
-   :end-before: end_torch_to_cvcuda
-   :dedent:
-
-Now we are ready for the pre-processing stages. Here we resize the frames, convert to float, normalize them and reformat them in NCHW layout.
-
-.. literalinclude:: ../../../../samples/segmentation/python/inference.py
-   :language: python
-   :linenos:
-   :start-after: begin_preproc
-   :end-before: end_preproc
-   :dedent:
-
-The pre-processed tensor is used as an input to the model for inference. We call the ``execute_inference`` method to run the inference.
-
-.. literalinclude:: ../../../../samples/segmentation/python/inference.py
-   :language: python
-   :linenos:
-   :start-after: begin_run_infer
-   :end-before: end_run_infer
-   :dedent:
-
-After the inference we deal with all the post-processing operations. We start off by applying softmax to normalize the segmentation probabilities.
-
-.. literalinclude:: ../../../../samples/segmentation/python/inference.py
-   :language: python
-   :linenos:
-   :start-after: begin_normalize
-   :end-before: end_normalize
-   :dedent:
-
-Then we filter out the class of our interest by using the argmax function and convert it to a regular uint8 image.
-
-.. literalinclude:: ../../../../samples/segmentation/python/inference.py
-   :language: python
-   :linenos:
-   :start-after: begin_argmax
-   :end-before: end_argmax
-   :dedent:
-
-After that we upscale the mask using CVCUDA to the size of the original inputs so that we can later overlay the mask onto them.
-
-.. literalinclude:: ../../../../samples/segmentation/python/inference.py
-   :language: python
-   :linenos:
-   :start-after: begin_mask_upscale
-   :end-before: end_mask_upscale
-   :dedent:
-
-Then we generate the blurred version of the inputs for later usage in generating the overlays.
-
-.. literalinclude:: ../../../../samples/segmentation/python/inference.py
-   :language: python
-   :linenos:
-   :start-after: begin_input_blur
-   :end-before: end_input_blur
-   :dedent:
-
-Now its time to create the overlays. We do this by selectively blurring out pixels in the inputs where the class mask prediction was absent (i.e. False)
-We already have all the things required for this: The input frames, the blurred version of it and the upscale version of the mask
-
-.. literalinclude:: ../../../../samples/segmentation/python/inference.py
-   :language: python
-   :linenos:
-   :start-after: begin_overlay
-   :end-before: end_overlay
-   :dedent:
-
-The final stage in the pipeline simply loops over all the frames in the batch, generates the overlays, converts it to a PIL image and saves it on the disk. In case where the input was a video, this would save the output as a video with help of a video encoder from VPF.
-
-.. literalinclude:: ../../../../samples/segmentation/python/inference.py
-   :language: python
-   :linenos:
-   :start-after: begin_visualization_loop
-   :end-before: end_visualization_loop
-   :dedent:
+    PreprocessorCvcuda <segmentation/preprocessor_cvcuda>
+    PostprocessorCvcuda <segmentation/postprocessor_cvcuda>
+    ImageBatchDecoderPyTorch <commons/imagebatchdecoder_pytorch>
+    ImageBatchEncoderPyTorch <commons/imagebatchencoder_pytorch>
+    VideoBatchDecoderVPF <commons/videobatchdecoder_vpf>
+    VideoBatchEncoderVPF <commons/videobatchencoder_vpf>
+    SegmentationPyTorch <segmentation/segmentation_pytorch>
+    SegmentationTensorRT <segmentation/segmentation_tensorrt>
 
 
 Running the Sample
 ------------------
-This sample can be invoked without any command-line arguments like the following. In that case it will use the default values. It uses the Weimaraner.jpg as the input image, writes the output overlay for the dog class to the /tmp directory with batch size of 1.
+This sample can be invoked without any command-line arguments like the following. In that case it will use the default values. It uses TensorRT as the inference engine, Weimaraner.jpg as the input image, writes the output overlay for the background class to the /tmp directory with batch size of 4. Upon the first run, generating serialized TensorRT model may take some time for a given batch size.
 
 .. code-block:: bash
 
-   python3 sample/segmentation/python/inference.py
+   python3 sample/segmentation/python/main.py
 
 
 To run it on a single image with batch size 5 for the background class writing the output to a specific directory:
 
 .. code-block:: bash
 
-   python3 segmentation/python/inference.py -i assets/images/tabby_tiger_cat.jpg -o /tmp -b 5 -c __background__
+   python3 segmentation/python/main.py -i assets/images/tabby_tiger_cat.jpg -o /tmp -b 5 -c __background__
 
 
 To run it on a folder worth of images with batch size 5 for the background class writing the output to a specific directory:
 
 .. code-block:: bash
 
-   python3 segmentation/python/inference.py -i assets/images/ -o /tmp -b 5 -c __background__
+   python3 segmentation/python/main.py -i assets/images/ -o /tmp -b 5 -c __background__
 
 
 To run on a single image with custom resized input given to the model for the dog class with batch size of 1:
 
 .. code-block:: bash
 
-   python3 segmentation/python/inference.py -i assets/images/Weimaraner.jpg -o /tmp -b 1 -c dog -th 224 -tw 224
+   python3 segmentation/python/main.py -i assets/images/Weimaraner.jpg -o /tmp -b 1 -c dog -th 224 -tw 224
 
 
-To run on a single image with custom resized input given to the model for the dog class with batch size of 1 using the TensorRT backend instead of PyTorch:
+To run on a single image with custom resized input given to the model for the dog class with batch size of 1 using the PyTorch backend instead of TensorRT:
 
 .. code-block:: bash
 
-   python3 segmentation/python/inference.py -i assets/images/Weimaraner.jpg -o /tmp -b 1 -c dog -th 224 -tw 224 -bk tensorrt
+   python3 segmentation/python/main.py -i assets/images/Weimaraner.jpg -o /tmp -b 1 -c dog -th 224 -tw 224 -bk pytorch
 
 
 To run on a single video with for the background class with batch size of 5:
 
 .. code-block:: bash
 
-   python segmentation/python/inference.py -i assets/videos/pexels-ilimdar-avgezer-7081456.mp4 -b 5 -c __background__
+   python segmentation/python/main.py -i assets/videos/pexels-ilimdar-avgezer-7081456.mp4 -b 5 -c __background__
 
 
 Understanding the Output
@@ -347,12 +179,12 @@ This sample takes as input the one or more images or one video and generates the
 
 .. code-block:: bash
 
-   user@machine:~/cvcuda/samples$ python3 segmentation/python/inference.py -b 5 -c __background__ -o /tmp -i assets/images/
+   user@machine:~/cvcuda/samples$ python3 segmentation/python/main.py -b 5 -c __background__ -o /tmp -i assets/images/
    Read a total of 2 JPEG images.
    Processing batch 1 of 1
       Saving the overlay result for __background__ class for to: /tmp/out_tabby_tiger_cat.jpg
       Saving the overlay result for __background__ class for to: /tmp/out_Weimaraner.jpg
-   user@machine:~/cvcuda/samples$ python3 segmentation/python/inference.py -i assets/images/Weimaraner.jpg -o /tmp -b 5 -c dog -th 224 -tw 224
+   user@machine:~/cvcuda/samples$ python3 segmentation/python/main.py -i assets/images/Weimaraner.jpg -o /tmp -b 5 -c dog -th 224 -tw 224
    Processing batch 1 of 1
       Saving the overlay result for dog class for to: /tmp/out_Weimaraner.jpg
       Saving the overlay result for dog class for to: /tmp/out_Weimaraner.jpg

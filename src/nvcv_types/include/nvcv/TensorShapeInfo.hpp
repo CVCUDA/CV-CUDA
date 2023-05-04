@@ -21,7 +21,6 @@
 #include "Size.hpp"
 #include "TensorLayoutInfo.hpp"
 #include "TensorShape.hpp"
-#include "detail/BaseFromMember.hpp"
 
 #include <cassert>
 
@@ -42,10 +41,13 @@ namespace nvcv {
 
 namespace detail {
 
+template<typename LAYOUT_INFO>
 class TensorShapeInfoImpl
 {
 public:
-    TensorShapeInfoImpl(const TensorShape &shape, const TensorLayoutInfo &infoLayout)
+    using LayoutInfo = LAYOUT_INFO;
+
+    TensorShapeInfoImpl(const TensorShape &shape, const LayoutInfo &infoLayout)
         : m_shape(shape)
         , m_infoLayout(infoLayout)
     {
@@ -75,7 +77,7 @@ public:
         return m_shape.layout();
     }
 
-    const TensorLayoutInfo &infoLayout() const
+    const LayoutInfo &infoLayout() const
     {
         return m_infoLayout;
     }
@@ -91,27 +93,87 @@ public:
     }
 
 protected:
-    const TensorShape &m_shape;
-    int                m_cacheNumSamples;
+    TensorShape m_shape;
+    LayoutInfo  m_infoLayout;
+    int         m_cacheNumSamples;
+};
 
-    TensorShapeInfoImpl(const TensorShapeInfoImpl &that) = delete;
+} // namespace detail
 
-    TensorShapeInfoImpl(const TensorShapeInfoImpl &that, const TensorLayoutInfo &infoLayout)
-        : m_shape(that.m_shape)
-        , m_cacheNumSamples(that.m_cacheNumSamples)
-        , m_infoLayout(infoLayout)
+class TensorShapeInfo : public detail::TensorShapeInfoImpl<TensorLayoutInfo>
+{
+    using Base = detail::TensorShapeInfoImpl<TensorLayoutInfo>;
+
+public:
+    static bool IsCompatible(const TensorShape &)
     {
+        return true;
+    }
+
+    static Optional<TensorShapeInfo> Create(const TensorShape &tshape)
+    {
+        return TensorShapeInfo(tshape);
     }
 
 private:
-    const TensorLayoutInfo &m_infoLayout;
+    TensorShapeInfo(const TensorShape &tshape)
+        : Base(tshape, *TensorLayoutInfo::Create(tshape.layout()))
+    {
+    }
+
+    Optional<TensorLayoutInfo> m_infoLayout;
 };
 
-class TensorShapeInfoImageImpl : public TensorShapeInfoImpl
+class TensorShapeInfoImage : public detail::TensorShapeInfoImpl<TensorLayoutInfoImage>
 {
+    using Base = detail::TensorShapeInfoImpl<TensorLayoutInfoImage>;
+
 public:
-    TensorShapeInfoImageImpl(const TensorShape &shape, const TensorLayoutInfoImage &infoLayout)
-        : TensorShapeInfoImpl(shape, infoLayout)
+    static bool IsCompatible(const TensorShape &tshape)
+    {
+        return TensorShapeInfo::IsCompatible(tshape) && TensorLayoutInfo::IsCompatible(tshape.layout());
+    }
+
+    static Optional<TensorShapeInfoImage> Create(const TensorShape &tshape)
+    {
+        if (IsCompatible(tshape))
+        {
+            return TensorShapeInfoImage(tshape);
+        }
+        else
+        {
+            return NullOpt;
+        }
+    }
+
+    int32_t numChannels() const
+    {
+        return m_cacheNumChannels;
+    }
+
+    int32_t numCols() const
+    {
+        return m_cacheSize.w;
+    }
+
+    int32_t numRows() const
+    {
+        return m_cacheSize.h;
+    }
+
+    const Size2D &size() const
+    {
+        return m_cacheSize;
+    }
+
+protected:
+    TensorShapeInfoImage(const TensorShape &tshape)
+        : TensorShapeInfoImage(tshape, *TensorLayoutInfoImage::Create(tshape.layout()))
+    {
+    }
+
+    TensorShapeInfoImage(const TensorShape &shape, const TensorLayoutInfoImage &infoLayout)
+        : Base(shape, infoLayout)
     {
         // idxChannel
         int idx = this->infoLayout().idxChannel();
@@ -144,120 +206,8 @@ public:
         }
     }
 
-    const TensorLayoutInfoImage &infoLayout() const
-    {
-        return static_cast<const TensorLayoutInfoImage &>(TensorShapeInfoImpl::infoLayout());
-    }
-
-    int32_t numChannels() const
-    {
-        return m_cacheNumChannels;
-    }
-
-    int32_t numCols() const
-    {
-        return m_cacheSize.w;
-    }
-
-    int32_t numRows() const
-    {
-        return m_cacheSize.h;
-    }
-
-    const Size2D &size() const
-    {
-        return m_cacheSize;
-    }
-
-protected:
-    TensorShapeInfoImageImpl(const TensorShapeInfoImageImpl &that) = delete;
-
-    TensorShapeInfoImageImpl(const TensorShapeInfoImageImpl &that, const TensorLayoutInfo &infoLayout)
-        : TensorShapeInfoImpl(that, infoLayout)
-        , m_cacheSize(that.m_cacheSize)
-        , m_cacheNumChannels(that.m_cacheNumChannels)
-    {
-    }
-
-private:
     Size2D m_cacheSize;
     int    m_cacheNumChannels;
-};
-
-} // namespace detail
-
-class TensorShapeInfo
-    // declaration order is important here
-    : private detail::BaseFromMember<TensorLayoutInfo>
-    , public detail::TensorShapeInfoImpl
-{
-public:
-    static bool IsCompatible(const TensorShape &)
-    {
-        return true;
-    }
-
-    static detail::Optional<TensorShapeInfo> Create(const TensorShape &tshape)
-    {
-        return TensorShapeInfo(tshape);
-    }
-
-    TensorShapeInfo(const TensorShapeInfo &that)
-        : MemberLayoutInfo(that)
-        , detail::TensorShapeInfoImpl(that, MemberLayoutInfo::member)
-    {
-    }
-
-private:
-    using MemberLayoutInfo = detail::BaseFromMember<TensorLayoutInfo>;
-
-    TensorShapeInfo(const TensorShape &tshape)
-        : MemberLayoutInfo{*TensorLayoutInfo::Create(tshape.layout())}
-        , detail::TensorShapeInfoImpl(tshape, MemberLayoutInfo::member)
-    {
-    }
-
-    detail::Optional<TensorLayoutInfo> m_infoLayout;
-};
-
-class TensorShapeInfoImage
-    // declaration order is important here
-    : private detail::BaseFromMember<TensorLayoutInfoImage>
-    , public detail::TensorShapeInfoImageImpl
-{
-public:
-    TensorShapeInfoImage(const TensorShapeInfoImage &that)
-        : MemberLayoutInfo(that)
-        , detail::TensorShapeInfoImageImpl(that, MemberLayoutInfo::member)
-    {
-    }
-
-    static bool IsCompatible(const TensorShape &tshape)
-    {
-        return TensorShapeInfo::IsCompatible(tshape) && TensorLayoutInfo::IsCompatible(tshape.layout());
-    }
-
-    static detail::Optional<TensorShapeInfoImage> Create(const TensorShape &tshape)
-    {
-        if (IsCompatible(tshape))
-        {
-            return TensorShapeInfoImage(tshape);
-        }
-        else
-        {
-            return detail::NullOpt;
-        }
-    }
-
-private:
-    using MemberLayoutInfo = detail::BaseFromMember<TensorLayoutInfoImage>;
-
-protected:
-    TensorShapeInfoImage(const TensorShape &tshape)
-        : MemberLayoutInfo{*TensorLayoutInfoImage::Create(tshape.layout())}
-        , detail::TensorShapeInfoImageImpl(tshape, MemberLayoutInfo::member)
-    {
-    }
 };
 
 class TensorShapeInfoImagePlanar : public TensorShapeInfoImage
@@ -292,7 +242,7 @@ public:
         return false;
     }
 
-    static detail::Optional<TensorShapeInfoImagePlanar> Create(const TensorShape &tshape)
+    static Optional<TensorShapeInfoImagePlanar> Create(const TensorShape &tshape)
     {
         if (IsCompatible(tshape))
         {
@@ -300,7 +250,7 @@ public:
         }
         else
         {
-            return detail::NullOpt;
+            return NullOpt;
         }
     }
 

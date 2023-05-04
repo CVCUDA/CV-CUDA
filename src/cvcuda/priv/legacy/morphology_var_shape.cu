@@ -123,9 +123,9 @@ __global__ void erode(const SrcWrapper src, DstWrapper dst, cuda::Tensor1DWrap<i
 }
 
 template<typename D, NVCVBorderType B>
-void MorphFilter2DCaller(const IImageBatchVarShapeDataStridedCuda &inData,
-                         const IImageBatchVarShapeDataStridedCuda &outData, const ITensorDataStridedCuda &kMasks,
-                         const ITensorDataStridedCuda &kAnchors, NVCVMorphologyType morph_type, cudaStream_t stream)
+void MorphFilter2DCaller(const ImageBatchVarShapeDataStridedCuda &inData,
+                         const ImageBatchVarShapeDataStridedCuda &outData, const TensorDataStridedCuda &kMasks,
+                         const TensorDataStridedCuda &kAnchors, NVCVMorphologyType morph_type, cudaStream_t stream)
 {
     cuda::Tensor1DWrap<int2> kernelSizeTensor(kMasks);
     cuda::Tensor1DWrap<int2> kernelAnchorTensor(kAnchors);
@@ -167,13 +167,13 @@ void MorphFilter2DCaller(const IImageBatchVarShapeDataStridedCuda &inData,
 }
 
 template<typename D>
-void MorphFilter2D(const IImageBatchVarShapeDataStridedCuda &inData, const IImageBatchVarShapeDataStridedCuda &outData,
-                   const ITensorDataStridedCuda &kMasks, const ITensorDataStridedCuda &kAnchors,
+void MorphFilter2D(const ImageBatchVarShapeDataStridedCuda &inData, const ImageBatchVarShapeDataStridedCuda &outData,
+                   const TensorDataStridedCuda &kMasks, const TensorDataStridedCuda &kAnchors,
                    NVCVMorphologyType morph_type, NVCVBorderType borderMode, cudaStream_t stream)
 {
-    typedef void (*func_t)(const IImageBatchVarShapeDataStridedCuda &inData,
-                           const IImageBatchVarShapeDataStridedCuda &outData, const ITensorDataStridedCuda &kMasks,
-                           const ITensorDataStridedCuda &kAnchors, NVCVMorphologyType morph_type, cudaStream_t stream);
+    typedef void (*func_t)(const ImageBatchVarShapeDataStridedCuda &inData,
+                           const ImageBatchVarShapeDataStridedCuda &outData, const TensorDataStridedCuda &kMasks,
+                           const TensorDataStridedCuda &kAnchors, NVCVMorphologyType morph_type, cudaStream_t stream);
 
     static const func_t funcs[]
         = {MorphFilter2DCaller<D, NVCV_BORDER_CONSTANT>, MorphFilter2DCaller<D, NVCV_BORDER_REPLICATE>,
@@ -211,16 +211,16 @@ MorphologyVarShape::MorphologyVarShape(const int maxBatchSize)
 MorphologyVarShape::~MorphologyVarShape() {}
 
 ErrorCode MorphologyVarShape::infer(const nvcv::IImageBatchVarShape &inBatch, const nvcv::IImageBatchVarShape &outBatch,
-                                    NVCVMorphologyType morph_type, const ITensorDataStridedCuda &masks,
-                                    const ITensorDataStridedCuda &anchors, int iteration, NVCVBorderType borderMode,
+                                    NVCVMorphologyType morph_type, const TensorDataStridedCuda &masks,
+                                    const TensorDataStridedCuda &anchors, int iteration, NVCVBorderType borderMode,
                                     cudaStream_t stream)
 {
-    auto *inData = dynamic_cast<const nvcv::IImageBatchVarShapeDataStridedCuda *>(inBatch.exportData(stream));
+    auto inData = inBatch.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (inData == nullptr)
     {
         LOG_ERROR("Input must be varshape image batch");
     }
-    auto *outData = dynamic_cast<const nvcv::IImageBatchVarShapeDataStridedCuda *>(outBatch.exportData(stream));
+    auto outData = outBatch.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (outData == nullptr)
     {
         LOG_ERROR("Output must be varshape image batch");
@@ -283,8 +283,8 @@ ErrorCode MorphologyVarShape::infer(const nvcv::IImageBatchVarShape &inBatch, co
         {
             const IImage            &inimg      = *init;
             const IImage            &outimg     = *outit;
-            auto                    *inimgdata  = dynamic_cast<const IImageDataStridedCuda *>(inimg.exportData());
-            auto                    *outimgdata = dynamic_cast<const IImageDataStridedCuda *>(outimg.exportData());
+            auto                     inimgdata  = inimg.exportData<ImageDataStridedCuda>();
+            auto                     outimgdata = outimg.exportData<ImageDataStridedCuda>();
             const ImagePlaneStrided &inplane    = inimgdata->plane(0);
             const ImagePlaneStrided &outplane   = outimgdata->plane(0);
             checkCudaErrors(cudaMemcpy2DAsync(outplane.basePtr, outplane.rowStride, inplane.basePtr, inplane.rowStride,
@@ -297,9 +297,9 @@ ErrorCode MorphologyVarShape::infer(const nvcv::IImageBatchVarShape &inBatch, co
     cuda::Tensor1DWrap<int2> kmasks(masks), kanchors(anchors);
     UpdateMasksAnchors<<<grid, block, 0, stream>>>(kmasks, kanchors, inData->numImages(), iteration);
 
-    typedef void (*filter2D_t)(const IImageBatchVarShapeDataStridedCuda &inData,
-                               const IImageBatchVarShapeDataStridedCuda &outData, const ITensorDataStridedCuda &kMasks,
-                               const ITensorDataStridedCuda &kAnchors, NVCVMorphologyType morph_type,
+    typedef void (*filter2D_t)(const ImageBatchVarShapeDataStridedCuda &inData,
+                               const ImageBatchVarShapeDataStridedCuda &outData, const TensorDataStridedCuda &kMasks,
+                               const TensorDataStridedCuda &kAnchors, NVCVMorphologyType morph_type,
                                NVCVBorderType borderMode, cudaStream_t stream);
 
     static const filter2D_t funcs[6][4] = {

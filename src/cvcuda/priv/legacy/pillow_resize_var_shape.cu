@@ -298,20 +298,20 @@ void pillow_resize_var_shape(const IImageBatchVarShape &inDataBase, const IImage
                              void *gpu_workspace, void *cpu_workspace, bool normalize_coeff, work_type init_buffer,
                              bool round_up, cudaStream_t stream)
 {
-    auto *inDataPtr = dynamic_cast<const IImageBatchVarShapeDataStridedCuda *>(inDataBase.exportData(stream));
-    if (inDataPtr == nullptr)
+    auto inDataPtr = inDataBase.exportData<ImageBatchVarShapeDataStridedCuda>(stream);
+    if (!inDataPtr)
     {
         throw std::runtime_error("Something wrong happend during conversion of type...!!!");
     }
 
-    auto *outDataPtr = dynamic_cast<const IImageBatchVarShapeDataStridedCuda *>(outDataBase.exportData(stream));
-    if (outDataPtr == nullptr)
+    auto outDataPtr = outDataBase.exportData<ImageBatchVarShapeDataStridedCuda>(stream);
+    if (!outDataPtr)
     {
         throw std::runtime_error("Something wrong happend during conversion of type...!!!");
     }
 
-    const IImageBatchVarShapeDataStridedCuda &inData  = *inDataPtr;
-    const IImageBatchVarShapeDataStridedCuda &outData = *outDataPtr;
+    const ImageBatchVarShapeDataStridedCuda &inData  = *inDataPtr;
+    const ImageBatchVarShapeDataStridedCuda &outData = *outDataPtr;
 
     int channels = inData.uniqueFormat().numChannels();
     int batch    = inData.numImages();

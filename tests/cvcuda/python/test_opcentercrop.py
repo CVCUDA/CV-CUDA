@@ -19,15 +19,16 @@ import numpy as np
 
 
 @t.mark.parametrize(
-    "input, crop_size, gold_shape",
+    "tensor_args, crop_size, gold_shape",
     [
-        (cvcuda.Tensor((5, 9, 9, 4), np.uint8, "NHWC"), [5, 5], (5, 5, 5, 4)),
-        (cvcuda.Tensor((9, 9, 3), np.uint8, "HWC"), [5, 5], (5, 5, 3)),
-        (cvcuda.Tensor((5, 21, 21, 4), np.uint8, "NHWC"), [15, 15], (5, 15, 15, 4)),
-        (cvcuda.Tensor((21, 21, 3), np.uint8, "HWC"), [15, 15], (15, 15, 3)),
+        (((5, 9, 9, 4), np.uint8, "NHWC"), [5, 5], (5, 5, 5, 4)),
+        (((9, 9, 3), np.uint8, "HWC"), [5, 5], (5, 5, 3)),
+        (((5, 21, 21, 4), np.uint8, "NHWC"), [15, 15], (5, 15, 15, 4)),
+        (((21, 21, 3), np.uint8, "HWC"), [15, 15], (15, 15, 3)),
     ],
 )
-def test_op_center_crop(input, crop_size, gold_shape):
+def test_op_center_crop(tensor_args, crop_size, gold_shape):
+    input = cvcuda.Tensor(*tensor_args)
     out = cvcuda.center_crop(input, crop_size)
     assert out.layout == input.layout
     assert out.shape == gold_shape

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -160,16 +160,23 @@ void ImageBatchVarShape::Export(py::module &m)
     using namespace py::literals;
 
     py::class_<ImageBatchVarShape, std::shared_ptr<ImageBatchVarShape>, Container>(m, "ImageBatchVarShape")
-        .def(py::init(&ImageBatchVarShape::Create), "capacity"_a)
-        .def_property_readonly("uniqueformat", &ImageBatchVarShape::uniqueFormat)
-        .def_property_readonly("maxsize", &ImageBatchVarShape::maxSize)
-        .def_property_readonly("capacity", &ImageBatchVarShape::capacity)
-        .def("__len__", &ImageBatchVarShape::numImages)
-        .def("__iter__", [](const ImageBatchVarShape &list) { return py::make_iterator(list); })
-        .def("pushback", &ImageBatchVarShape::pushBack)
-        .def("pushback", &ImageBatchVarShape::pushBackMany)
-        .def("popback", &ImageBatchVarShape::popBack, "count"_a = 1)
-        .def("clear", &ImageBatchVarShape::clear);
+        .def(py::init(&ImageBatchVarShape::Create), "capacity"_a,
+             "Create a new ImageBatchVarShape object with the specified capacity.")
+        .def_property_readonly("uniqueformat", &ImageBatchVarShape::uniqueFormat,
+                               "Return True if all the images have the same format, False otherwise.")
+        .def_property_readonly("maxsize", &ImageBatchVarShape::maxSize,
+                               "Return the maximum size of the ImageBatchVarShape in bytes.")
+        .def_property_readonly("capacity", &ImageBatchVarShape::capacity,
+                               "Return the capacity of the ImageBatchVarShape in number of images.")
+        .def("__len__", &ImageBatchVarShape::numImages, "Return the number of images in the ImageBatchVarShape.")
+        .def(
+            "__iter__", [](const ImageBatchVarShape &list) { return py::make_iterator(list); },
+            "Return an iterator over the images in the ImageBatchVarShape.")
+        .def("pushback", &ImageBatchVarShape::pushBack, "Add a new image to the end of the ImageBatchVarShape.")
+        .def("pushback", &ImageBatchVarShape::pushBackMany, "Add multiple images to the end of the ImageBatchVarShape.")
+        .def("popback", &ImageBatchVarShape::popBack, "count"_a = 1,
+             "Remove one or more images from the end of the ImageBatchVarShape.")
+        .def("clear", &ImageBatchVarShape::clear, "Remove all images from the ImageBatchVarShape.");
 }
 
 } // namespace nvcvpy::priv

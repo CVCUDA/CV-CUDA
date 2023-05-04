@@ -22,12 +22,14 @@
 
 #include <cstring>
 #include <functional>
+#include <memory>
 #include <type_traits>
 #include <utility>
 
 namespace nvcv {
 
 namespace detail {
+
 struct NoTranslation
 {
     template<typename Callable, typename... Args>

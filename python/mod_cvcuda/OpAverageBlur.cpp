@@ -111,14 +111,101 @@ void ExportOpAverageBlur(py::module &m)
     const std::tuple<int, int> def_anchor{-1, -1};
 
     m.def("averageblur", &AverageBlur, "src"_a, "kernel_size"_a, "kernel_anchor"_a = def_anchor,
-          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr);
+          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        Executes the AverageBlur operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the AverageBlur operator
+            for more details and usage examples.
+
+        Args:
+            src (Tensor): Input tensor containing one or more images.
+            kernel_size (Tuple [int,int]): Specifies the size of the blur kernel.
+            kernel_anchor (Tuple [int,int]): Kernel anchor, use (-1,-1) to indicate kernel center.
+            border (NVCVBorderType, optional): Border mode to be used when accessing elements outside input image.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the AverageBlur operator
+            for more details and usage examples.
+
+        Returns:
+            cvcuda.Tensor: The output tensor.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
+
     m.def("averageblur_into", &AverageBlurInto, "dst"_a, "src"_a, "kernel_size"_a, "kernel_anchor"_a = def_anchor,
-          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr);
+          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        Executes the AverageBlur operation on the given cuda stream and writes the result into the 'dst' tensor.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the AverageBlur operator
+            for more details and usage examples.
+
+        Args:
+            dst (Tensor): Output tensor to store the result of the operation.
+            src (Tensor): Input tensor containing one or more images.
+            kernel_size (Tuple [int,int]): Specifies the size of the blur kernel.
+            kernel_anchor (Tuple [int,int]): Kernel anchor, use (-1,-1) to indicate kernel center.
+            border (NVCVBorderType, optional): Border mode to be used when accessing elements outside input image.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 
     m.def("averageblur", &AverageBlurVarShape, "src"_a, "max_kernel_size"_a, "kernel_size"_a, "kernel_anchor"_a,
-          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr);
+          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        Executes the AverageBlur operation with a variable shape tensors on the given cuda stream.
+
+        Args:
+            src (Tensor): Input tensor containing one or more images.
+            max_kernel_size (Tuple [int,int]): Specifies the maximum size of the blur kernel.
+            kernel_size (Tuple [int,int]): Specifies the size of the blur kernel within the maximum kernel size.
+            kernel_anchor (Tuple [int,int]): Kernel anchor, use (-1,-1) to indicate kernel center.
+            border (NVCVBorderType, optional): Border mode to be used when accessing elements outside input image.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.ImageBatchVarShape: The output image batch.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
+
     m.def("averageblur_into", &AverageBlurVarShapeInto, "dst"_a, "src"_a, "max_kernel_size"_a, "kernel_size"_a,
-          "kernel_anchor"_a, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr);
+          "kernel_anchor"_a, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr,
+          R"pbdoc(
+
+        Executes the AverageBlur operation with a variable shape tensors on the given cuda stream.
+
+        Args:
+            dst (ImageBatchVarShape): Output containing one or more images.
+            src (ImageBatchVarShape): Input containing one or more images.
+            max_kernel_size (Tuple [int,int]): Specifies the maximum size of the blur kernel.
+            kernel_size (Tuple [int,int]): Specifies the size of the blur kernel within the maximum kernel size.
+            kernel_anchor (Tuple [int,int]): Kernel anchor, use (-1,-1) to indicate kernel center.
+            border (NVCVBorderType, optional): Border mode to be used when accessing elements outside input image.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 }
 
 } // namespace cvcudapy

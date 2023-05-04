@@ -199,7 +199,8 @@ void Cache::Export(py::module &m)
                               Cache::Instance().clear();
                           });
 
-    m.def("clear_cache", [] { Cache::Instance().clear(); });
+    m.def(
+        "clear_cache", [] { Cache::Instance().clear(); }, "Clears the NVCV Python cache");
 
     // Just to check if fetchAll compiles, it's harmless
     Cache::Instance().fetchAll<Cache>();

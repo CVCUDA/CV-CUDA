@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,35 +23,65 @@
 
 namespace nvcv::util {
 
-void ReplaceAllInline(char *strBuffer, int bufferSize, std::string_view what, std::string_view replace) noexcept
+void ReplaceAllInline(char *strBuffer, int bufferSize, const char *what, const char *replace) noexcept
 {
-    NVCV_ASSERT(strBuffer != nullptr);
-    NVCV_ASSERT(bufferSize >= 1);
-
-    std::string_view str(strBuffer);
-
-    std::string_view::size_type pos;
-    while ((pos = str.find(what, 0)) != std::string_view::npos)
+    if (strBuffer == nullptr || what == nullptr || replace == nullptr || bufferSize <= 0)
     {
-        // First create some space to write 'replace'.
+        return;
+    }
 
-        // Number of bytes to move
-        int count_orig = str.size() - pos - what.size();
-        // Make sure we won't write past end of buffer
-        int count = std::min<int>(pos + replace.size() + count_orig, bufferSize) - replace.size() - pos;
-        NVCV_ASSERT(count >= 0);
-        // Since buffers might overlap, let's use memmove
-        memmove(strBuffer + pos + replace.size(), strBuffer + pos + what.size(), count);
+    size_t whatSize    = std::strlen(what);
+    size_t replaceSize = std::strlen(replace);
+    size_t strSize     = std::strlen(strBuffer);
 
-        // Now copy the new string, replacing 'what'
-        replace.copy(strBuffer + pos, replace.size());
+    char *searchStart    = strBuffer;
+    char *writePos       = nullptr;
+    char *endOfNewString = nullptr;
+    char *endPos         = strBuffer + bufferSize - 1; //to make sure we do not overflow.
 
-        // Let's set strBuffer/set to where next search must start so that we don't search into the
-        // replaced string.
-        strBuffer += pos + replace.size();
-        str = std::string_view(strBuffer, count);
+    while (searchStart < strBuffer + strSize)
+    {
+        char *foundPos = std::strstr(searchStart, what);
+        if (foundPos == nullptr)
+        {
+            // No more occurrences of 'what' found
+            return;
+        }
+        searchStart += replaceSize; // update for next token
 
-        strBuffer[str.size()] = '\0'; // make sure strBuffer is zero-terminated
+        ptrdiff_t sizeOfRest = 0;
+        // Move string after token only if there is data after the token.
+        if (foundPos + (replaceSize - 1) < endPos)
+        {
+            char     *restOfString = (foundPos + whatSize); // string after the what token.
+            ptrdiff_t moveAmount   = static_cast<std::size_t>(
+                replaceSize);                     // how far from beginning of token to move the rest of the string.
+            writePos   = foundPos + moveAmount;     // where to start writing the rest of the string.
+            sizeOfRest = std::strlen(restOfString); //size of rest of string.
+
+            // Move string after token
+            // check for overflow we just want to write to buffer size
+            if (writePos + sizeOfRest > endPos)
+            {
+                sizeOfRest = endPos - writePos;
+            }
+            NVCV_ASSERT(writePos <= endPos);
+            NVCV_ASSERT(writePos + (sizeOfRest - 1) <= endPos);
+            std::memmove(writePos, restOfString,
+                         sizeOfRest); // move the remainder of the string to allow for replacement of what.
+        }
+        // Replace token
+        // check for overflow
+        if (foundPos + replaceSize > endPos)
+        {
+            replaceSize = endPos - foundPos;
+        }
+        NVCV_ASSERT(foundPos <= endPos);
+        NVCV_ASSERT(foundPos + (replaceSize - 1) <= endPos);
+        std::memmove(foundPos, replace, replaceSize); // replace the found token with the replacement string.
+        endOfNewString  = std::max(foundPos + replaceSize,
+                                   writePos + sizeOfRest); // update the end position to the new end of the string.
+        *endOfNewString = '\0';                            // Null-terminate the output in case token is last.
     }
 }
 

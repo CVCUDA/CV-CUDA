@@ -19,7 +19,7 @@
  * @file OpBilateralFilter.h
  *
  * @brief Defines types and functions to handle the bilateral filter operation.
- * @defgroup NVCV_C_ALGORITM_BILATERAL_FILTER bilateral filter
+ * @defgroup NVCV_C_ALGORITHM_BILATERAL_FILTER Bilateral Filter
  * @{
  */
 

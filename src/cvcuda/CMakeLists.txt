@@ -17,6 +17,11 @@
 add_subdirectory(priv)
 
 add_library(cvcuda SHARED
+    OpBoxBlur.cpp
+    OpBndBox.cpp
+    OpRemap.cpp
+    OpCropFlipNormalizeReformat.cpp
+    OpNonMaximumSuppression.cpp
     Operator.cpp
     OpReformat.cpp
     OpResize.cpp
@@ -44,6 +49,8 @@ add_library(cvcuda SHARED
     OpFlip.cpp
     OpGammaContrast.cpp
     OpPillowResize.cpp
+    OpThreshold.cpp
+    OpAdaptiveThreshold.cpp
 )
 
 target_link_libraries(cvcuda
@@ -52,6 +59,7 @@ target_link_libraries(cvcuda
         nvcv_types
     PRIVATE
         nvcv_util
+        nvcv_util_symver
         cvcuda_priv
 )
 

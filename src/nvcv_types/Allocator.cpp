@@ -30,7 +30,8 @@
 namespace priv = nvcv::priv;
 
 NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvAllocatorConstructCustom,
-                (const NVCVCustomAllocator *customAllocators, int32_t numCustomAllocators, NVCVAllocatorHandle *handle))
+                (const NVCVResourceAllocator *customAllocators, int32_t numCustomAllocators,
+                 NVCVAllocatorHandle *handle))
 {
     return priv::ProtectCall(
         [&]
@@ -116,6 +117,17 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvAllocatorGetUserPointer, (NVCVAllocatorHan
             {
                 *outUserPtr = img.userPointer();
             }
+        });
+}
+
+NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvAllocatorGet,
+                (NVCVAllocatorHandle halloc, NVCVResourceType resType, NVCVResourceAllocator *result))
+{
+    return priv::ProtectCall(
+        [&]
+        {
+            auto &alloc = priv::ToStaticRef<priv::IAllocator>(halloc);
+            *result     = alloc.get(resType);
         });
 }
 

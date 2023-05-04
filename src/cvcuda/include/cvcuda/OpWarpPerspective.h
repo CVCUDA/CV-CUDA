@@ -19,7 +19,7 @@
  * @file OpWarpPerspective.h
  *
  * @brief Defines types and functions to handle the WarpPerspective operation.
- * @defgroup NVCV_C_ALGORITHM_WARP_PERSPECTIVE WarpPerspective
+ * @defgroup NVCV_C_ALGORITHM_WARP_PERSPECTIVE Warp Perspective
  * @{
  */
 
@@ -120,7 +120,8 @@ CVCUDA_PUBLIC NVCVStatus cvcudaWarpPerspectiveCreate(NVCVOperatorHandle *handle,
  *
  * @param [in] borderMode pixel extrapolation method (NVCV_BORDER_CONSTANT or NVCV_BORDER_REPLICATE).
  *
- * @param [in] borderValue used in case of a constant border.
+ * @param [in] borderValue Used to specify values for a constant border for each color chanel i.e. If ARGB
+ *                         this would contain the values for Alpha, Red, Green, Blue channels.
  *
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
  * @retval #NVCV_ERROR_INTERNAL         Internal error in the operator, invalid types passed in.

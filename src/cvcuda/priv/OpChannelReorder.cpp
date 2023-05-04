@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -36,23 +36,22 @@ ChannelReorder::ChannelReorder()
 void ChannelReorder::operator()(cudaStream_t stream, const nvcv::IImageBatchVarShape &in,
                                 nvcv::IImageBatchVarShape &out, const nvcv::ITensor &orders) const
 {
-    auto *inData = dynamic_cast<const nvcv::IImageBatchVarShapeDataStridedCuda *>(in.exportData(stream));
+    auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (inData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "Input must be cuda-accessible, varshape pitch-linear image batch");
     }
 
-    auto *outData = dynamic_cast<const nvcv::IImageBatchVarShapeDataStridedCuda *>(out.exportData(stream));
+    auto outData = out.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (outData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "Output must be cuda-accessible, varshape pitch-linear image batch");
     }
 
-    const nvcv::ITensorDataStridedCuda *ordersData
-        = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(orders.exportData());
-    if (ordersData == nullptr)
+    auto ordersData = orders.exportData<nvcv::TensorDataStridedCuda>();
+    if (!ordersData)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "Input channel order tensor must be cuda-accessible, pitch-linear tensor");

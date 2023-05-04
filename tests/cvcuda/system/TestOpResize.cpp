@@ -17,6 +17,7 @@
 
 #include "Definitions.hpp"
 
+#include <common/InterpUtils.hpp>
 #include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpResize.hpp>
@@ -24,12 +25,13 @@
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
-#include <nvcv/alloc/CustomAllocator.hpp>
-#include <nvcv/alloc/CustomResourceAllocator.hpp>
+#include <nvcv/cuda/MathWrappers.hpp>
+#include <nvcv/cuda/SaturateCast.hpp>
 
 #include <cmath>
 #include <random>
 
+namespace cuda = nvcv::cuda;
 namespace test = nvcv::test;
 namespace t    = ::testing;
 
@@ -151,6 +153,104 @@ static void Resize(std::vector<uint8_t> &hDst, int dstRowStride, nvcv::Size2D ds
                     dstPtr[di * dstRowStride + dj * elementsPerPixel + k] = res < 0 ? 0 : (res > 255 ? 255 : res);
                 }
             }
+            else if (interpolation == NVCV_INTERP_AREA)
+            {
+                double fsx1 = dj * jScale;
+                double fsx2 = fsx1 + jScale;
+                double fsy1 = di * iScale;
+                double fsy2 = fsy1 + iScale;
+                int    sx1  = cuda::round<cuda::RoundMode::UP, int>(fsx1);
+                int    sx2  = cuda::round<cuda::RoundMode::DOWN, int>(fsx2);
+                int    sy1  = cuda::round<cuda::RoundMode::UP, int>(fsy1);
+                int    sy2  = cuda::round<cuda::RoundMode::DOWN, int>(fsy2);
+
+                for (int k = 0; k < elementsPerPixel; k++)
+                {
+                    double out = 0.0;
+
+                    if (std::ceil(jScale) == jScale && std::ceil(iScale) == iScale)
+                    {
+                        double invscale = 1.f / (jScale * iScale);
+
+                        for (int dy = sy1; dy < sy2; ++dy)
+                        {
+                            for (int dx = sx1; dx < sx2; ++dx)
+                            {
+                                if (dy >= 0 && dy < srcSize.h && dx >= 0 && dx < srcSize.w)
+                                {
+                                    out = out + srcPtr[dy * srcRowStride + dx * elementsPerPixel + k] * invscale;
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        double invscale
+                            = 1.f / (std::min(jScale, srcSize.w - fsx1) * std::min(iScale, srcSize.h - fsy1));
+
+                        for (int dy = sy1; dy < sy2; ++dy)
+                        {
+                            for (int dx = sx1; dx < sx2; ++dx)
+                                if (dy >= 0 && dy < srcSize.h && dx >= 0 && dx < srcSize.w)
+                                    out = out + srcPtr[dy * srcRowStride + dx * elementsPerPixel + k] * invscale;
+
+                            if (sx1 > fsx1)
+                                if (dy >= 0 && dy < srcSize.h && sx1 - 1 >= 0 && sx1 - 1 < srcSize.w)
+                                    out = out
+                                        + srcPtr[dy * srcRowStride + (sx1 - 1) * elementsPerPixel + k]
+                                              * ((sx1 - fsx1) * invscale);
+
+                            if (sx2 < fsx2)
+                                if (dy >= 0 && dy < srcSize.h && sx2 >= 0 && sx2 < srcSize.w)
+                                    out = out
+                                        + srcPtr[dy * srcRowStride + sx2 * elementsPerPixel + k]
+                                              * ((fsx2 - sx2) * invscale);
+                        }
+
+                        if (sy1 > fsy1)
+                            for (int dx = sx1; dx < sx2; ++dx)
+                                if (sy1 - 1 >= 0 && sy1 - 1 < srcSize.h && dx >= 0 && dx < srcSize.w)
+                                    out = out
+                                        + srcPtr[(sy1 - 1) * srcRowStride + dx * elementsPerPixel + k]
+                                              * ((sy1 - fsy1) * invscale);
+
+                        if (sy2 < fsy2)
+                            for (int dx = sx1; dx < sx2; ++dx)
+                                if (sy2 >= 0 && sy2 < srcSize.h && dx >= 0 && dx < srcSize.w)
+                                    out = out
+                                        + srcPtr[sy2 * srcRowStride + dx * elementsPerPixel + k]
+                                              * ((fsy2 - sy2) * invscale);
+
+                        if ((sy1 > fsy1) && (sx1 > fsx1))
+                            if (sy1 - 1 >= 0 && sy1 - 1 < srcSize.h && sx1 - 1 >= 0 && sx1 - 1 < srcSize.w)
+                                out = out
+                                    + srcPtr[(sy1 - 1) * srcRowStride + (sx1 - 1) * elementsPerPixel + k]
+                                          * ((sy1 - fsy1) * (sx1 - fsx1) * invscale);
+
+                        if ((sy1 > fsy1) && (sx2 < fsx2))
+                            if (sy1 - 1 >= 0 && sy1 - 1 < srcSize.h && sx2 >= 0 && sx2 < srcSize.w)
+                                out = out
+                                    + srcPtr[(sy1 - 1) * srcRowStride + sx2 * elementsPerPixel + k]
+                                          * ((sy1 - fsy1) * (fsx2 - sx2) * invscale);
+
+                        if ((sy2 < fsy2) && (sx2 < fsx2))
+                            if (sy2 >= 0 && sy2 < srcSize.h && sx2 >= 0 && sx2 < srcSize.w)
+                                out = out
+                                    + srcPtr[sy2 * srcRowStride + sx2 * elementsPerPixel + k]
+                                          * ((fsy2 - sy2) * (fsx2 - sx2) * invscale);
+
+                        if ((sy2 < fsy2) && (sx1 > fsx1))
+                            if (sy2 >= 0 && sy2 < srcSize.h && sx1 - 1 >= 0 && sx1 - 1 < srcSize.w)
+                                out = out
+                                    + srcPtr[sy2 * srcRowStride + (sx1 - 1) * elementsPerPixel + k]
+                                          * ((fsy2 - sy2) * (sx1 - fsx1) * invscale);
+                    }
+
+                    out = std::rint(std::abs(out));
+
+                    dstPtr[di * dstRowStride + dj * elementsPerPixel + k] = out < 0 ? 0 : (out > 255 ? 255 : out);
+                }
+            }
         }
     }
 }
@@ -173,6 +273,10 @@ NVCV_TEST_SUITE_P(OpResize, test::ValueList<int, int, int, int, NVCVInterpolatio
     {        420,      420,      420,       420,   NVCV_INTERP_CUBIC,           2},
     {        420,      420,      420,       420,   NVCV_INTERP_CUBIC,           1},
     {        420,      420,       40,        42,   NVCV_INTERP_CUBIC,           1},
+    {       1920,     1080,      640,       320,   NVCV_INTERP_CUBIC,           1},
+    {       1920,     1080,      640,       320,   NVCV_INTERP_CUBIC,           2},
+    {         44,       40,       22,        20,    NVCV_INTERP_AREA,           1},
+    {         30,       30,       20,        20,    NVCV_INTERP_AREA,           2},
 });
 
 // clang-format on
@@ -196,7 +300,7 @@ TEST_P(OpResize, tensor_correct_output)
     // Generate input
     nvcv::Tensor imgSrc = test::CreateTensor(numberOfImages, srcWidth, srcHeight, fmt);
 
-    const auto *srcData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(imgSrc.exportData());
+    auto srcData = imgSrc.exportData<nvcv::TensorDataStridedCuda>();
 
     ASSERT_NE(nullptr, srcData);
 
@@ -232,7 +336,7 @@ TEST_P(OpResize, tensor_correct_output)
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 
     // Check result
-    const auto *dstData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(imgDst.exportData());
+    auto dstData = imgDst.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_NE(nullptr, dstData);
 
     auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstData);
@@ -306,7 +410,7 @@ TEST_P(OpResize, varshape_correct_output)
     // Populate input
     for (int i = 0; i < numberOfImages; ++i)
     {
-        const auto *srcData = dynamic_cast<const nvcv::IImageDataStridedCuda *>(imgSrc[i]->exportData());
+        const auto srcData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
         assert(srcData->numPlanes() == 1);
 
         int srcWidth  = srcData->plane(0).width;
@@ -341,12 +445,12 @@ TEST_P(OpResize, varshape_correct_output)
     {
         SCOPED_TRACE(i);
 
-        const auto *srcData = dynamic_cast<const nvcv::IImageDataStridedCuda *>(imgSrc[i]->exportData());
+        const auto srcData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
         assert(srcData->numPlanes() == 1);
         int srcWidth  = srcData->plane(0).width;
         int srcHeight = srcData->plane(0).height;
 
-        const auto *dstData = dynamic_cast<const nvcv::IImageDataStridedCuda *>(imgDst[i]->exportData());
+        const auto dstData = imgDst[i]->exportData<nvcv::ImageDataStridedCuda>();
         assert(dstData->numPlanes() == 1);
 
         int dstWidth  = dstData->plane(0).width;

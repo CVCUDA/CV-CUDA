@@ -65,8 +65,8 @@ TEST_P(OpFlip, correct_output)
     nvcv::Tensor inTensor  = test::CreateTensor(batches, width, height, format);
     nvcv::Tensor outTensor = test::CreateTensor(batches, width, height, format);
 
-    const auto *input  = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(inTensor.exportData());
-    const auto *output = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(outTensor.exportData());
+    auto input  = inTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto output = outTensor.exportData<nvcv::TensorDataStridedCuda>();
 
     ASSERT_NE(input, nullptr);
     ASSERT_NE(output, nullptr);
@@ -147,8 +147,8 @@ TEST_P(OpFlip, varshape_correct_output)
         srcVec[i].resize(imgSrc[i]->size().h * srcRowStride);
         std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return udist(rng); });
 
-        auto *imgData = dynamic_cast<const nvcv::IImageDataStridedCuda *>(imgSrc[i]->exportData());
-        ASSERT_NE(imgData, nullptr);
+        auto imgData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_NE(imgData, nvcv::NullOpt);
 
         // Copy input data to the GPU
         ASSERT_EQ(cudaSuccess,
@@ -171,7 +171,7 @@ TEST_P(OpFlip, varshape_correct_output)
     // Create flip code tensor
     nvcv::Tensor flip_code({{batches}, "N"}, nvcv::TYPE_S32);
     {
-        auto *dev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(flip_code.exportData());
+        auto dev = flip_code.exportData<nvcv::TensorDataStridedCuda>();
         ASSERT_NE(dev, nullptr);
 
         std::vector<int> vec(batches, flipCode);
@@ -193,10 +193,10 @@ TEST_P(OpFlip, varshape_correct_output)
     {
         SCOPED_TRACE(i);
 
-        const auto *srcData = dynamic_cast<const nvcv::IImageDataStridedCuda *>(imgSrc[i]->exportData());
+        const auto srcData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_EQ(srcData->numPlanes(), 1);
 
-        const auto *dstData = dynamic_cast<const nvcv::IImageDataStridedCuda *>(imgDst[i]->exportData());
+        const auto dstData = imgDst[i]->exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_EQ(dstData->numPlanes(), 1);
 
         int dstRowStride = srcVecRowStride[i];

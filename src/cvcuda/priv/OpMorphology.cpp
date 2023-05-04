@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -39,14 +39,14 @@ void Morphology::operator()(cudaStream_t stream, const nvcv::ITensor &in, const 
                             NVCVMorphologyType morph_type, nvcv::Size2D mask_size, int2 anchor, int32_t iteration,
                             const NVCVBorderType borderMode) const
 {
-    auto *inData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(in.exportData());
+    auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
     if (inData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "Input must be cuda-accessible, pitch-linear tensor");
     }
 
-    auto *outData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(out.exportData());
+    auto outData = out.exportData<nvcv::TensorDataStridedCuda>();
     if (outData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
@@ -61,13 +61,13 @@ void Morphology::operator()(cudaStream_t stream, const nvcv::IImageBatchVarShape
                             const nvcv::IImageBatchVarShape &out, NVCVMorphologyType morph_type, nvcv::ITensor &masks,
                             nvcv::ITensor &anchors, int32_t iteration, NVCVBorderType borderMode) const
 {
-    auto *masksData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(masks.exportData());
+    auto masksData = masks.exportData<nvcv::TensorDataStridedCuda>();
     if (masksData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "masksData must be a tensor");
     }
 
-    auto *anchorsData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(anchors.exportData());
+    auto anchorsData = anchors.exportData<nvcv::TensorDataStridedCuda>();
     if (anchorsData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "anchors must be a tensor");

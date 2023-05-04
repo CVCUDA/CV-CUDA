@@ -24,4 +24,8 @@ template<class DstWrapper, class SrcWrapper>
 void DeviceRunFillBorderVarShape(DstWrapper &dstWrap, SrcWrapper &srcWrap, int3 dstMaxSize, int2 borderSize,
                                  cudaStream_t &stream);
 
+template<class DstWrapper, class SrcWrapper>
+void DeviceRunFillBorderVarShapeNHWC(DstWrapper &dstWrap, SrcWrapper &srcWrap, int3 dstMaxSize, int2 borderSize,
+                                     int numChannels, cudaStream_t &stream);
+
 #endif // NVCV_TESTS_DEVICE_BORDER_VAR_SHAPE_WRAP_HPP

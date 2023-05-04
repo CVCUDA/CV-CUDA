@@ -18,10 +18,14 @@
 #ifndef NVCV_TESTS_DEVICE_MATH_WRAPPERS_HPP
 #define NVCV_TESTS_DEVICE_MATH_WRAPPERS_HPP
 
-template<typename Type>
+#include <nvcv/cuda/MathWrappers.hpp> // the object of this test
+
+namespace cuda = nvcv::cuda;
+
+template<cuda::RoundMode RM, typename Type>
 Type DeviceRunRoundSameType(Type);
 
-template<typename TargetType, typename SourceType>
+template<cuda::RoundMode RM, typename TargetType, typename SourceType>
 TargetType DeviceRunRoundDiffType(SourceType);
 
 template<typename Type>

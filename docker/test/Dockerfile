@@ -44,6 +44,6 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get update \
 # It needs torch
 RUN set -e \
     && for ver in 3.7 3.8 3.9 3.10; do \
-           python$ver -m pip install torch numpy; \
+           python$ver -m pip install torch numpy torchvision; \
        done \
     && rm -rf /root/.cache/pip

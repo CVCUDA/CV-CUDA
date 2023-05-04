@@ -36,7 +36,8 @@ namespace nvcv::legacy::cuda_op {
 
 #define LEGACY_BICUBIC_MATH //apparently the legacy code has an abs() that needs to be matched
 
-#define CACHE_MEMORY_ALIGNMENT 15 //this is 'M' for _cacheAlignedBufferedRead
+// Replaced below 15 to 0 due to a reported regression
+#define CACHE_MEMORY_ALIGNMENT 0 //this is 'M' for _cacheAlignedBufferedRead
 
 //legal values for CACHE_MEMORY_ALIGNMENT are:
 // 31: 256-bit alignment
@@ -106,8 +107,8 @@ __global__ void resize_NN(SrcWrapper src, DstWrapper dst, int2 srcSize, int2 dst
 
     if ((dst_x < out_width) && (dst_y < out_height))
     { //generic copy pixel to pixel
-        const int sx                      = cuda::min(__float2int_rd(dst_x * scale_x), srcSize.x - 1);
-        const int sy                      = cuda::min(__float2int_rd(dst_y * scale_y), srcSize.y - 1);
+        const int sx = cuda::min(cuda::round<cuda::RoundMode::DOWN, int>(dst_x * scale_x), srcSize.x - 1);
+        const int sy = cuda::min(cuda::round<cuda::RoundMode::DOWN, int>(dst_y * scale_y), srcSize.y - 1);
         *dst.ptr(batch_idx, dst_y, dst_x) = *src.ptr(batch_idx, sy, sx);
     }
 } //resize_NN
@@ -127,11 +128,11 @@ __global__ void resize_NN_quad_alignread(SrcWrapper src, DstWrapper dst, int2 sr
     if ((dst_x >= out_width) | (dst_y >= out_height))
         return;
 
-    const int sx0 = cuda::min(__float2int_rd(dst_x * scale_x), srcSize.x - 1);
-    const int sx1 = cuda::min(__float2int_rd(dst_x * scale_x + scale_x), srcSize.x - 1);
-    const int sx2 = cuda::min(__float2int_rd((dst_x + 2) * scale_x), srcSize.x - 1);
-    const int sx3 = cuda::min(__float2int_rd((dst_x + 3) * scale_x), srcSize.x - 1);
-    const int sy  = cuda::min(__float2int_rd(dst_y * scale_y), srcSize.y - 1);
+    const int sx0 = cuda::min(cuda::round<cuda::RoundMode::DOWN, int>(dst_x * scale_x), srcSize.x - 1);
+    const int sx1 = cuda::min(cuda::round<cuda::RoundMode::DOWN, int>(dst_x * scale_x + scale_x), srcSize.x - 1);
+    const int sx2 = cuda::min(cuda::round<cuda::RoundMode::DOWN, int>((dst_x + 2) * scale_x), srcSize.x - 1);
+    const int sx3 = cuda::min(cuda::round<cuda::RoundMode::DOWN, int>((dst_x + 3) * scale_x), srcSize.x - 1);
+    const int sy  = cuda::min(cuda::round<cuda::RoundMode::DOWN, int>(dst_y * scale_y), srcSize.y - 1);
 
     //1 - optimized case if scale_x < some finite limit
     if ((scale_x <= MAX_BUFFERED_X_SCALE)) //local buffering is more efficient
@@ -177,7 +178,7 @@ __global__ void resize_bilinear(SrcWrapper src, DstWrapper dst, int2 srcSize, in
 
         //y coordinate
         float fy = (float)((dst_y + 0.5f) * scale_y - 0.5f);
-        int   sy = __float2int_rd(fy);
+        int   sy = cuda::round<cuda::RoundMode::DOWN, int>(fy);
         fy -= sy;
         sy = cuda::max(0, cuda::min(sy, height - 2));
 
@@ -187,7 +188,7 @@ __global__ void resize_bilinear(SrcWrapper src, DstWrapper dst, int2 srcSize, in
 
         { //compute source data position and weight for [x0] components
             float fx = (float)((dst_x + 0.5f) * scale_x - 0.5f);
-            int   sx = __float2int_rd(fx);
+            int   sx = cuda::round<cuda::RoundMode::DOWN, int>(fx);
             fx -= sx;
             fx *= ((sx >= 0) && (sx < width - 1));
             sx = cuda::max(0, cuda::min(sx, width - 2));
@@ -219,34 +220,34 @@ __global__ void resize_bilinear_quad_alignread(SrcWrapper src, DstWrapper dst, i
 
     //y coordinate math is the same for all points
     float fy = (float)((dst_y + 0.5f) * scale_y - 0.5f);
-    int   sy = __float2int_rd(fy);
+    int   sy = cuda::round<cuda::RoundMode::DOWN, int>(fy);
     fy -= sy;
     sy = cuda::max(0, cuda::min(sy, height - 2));
 
     //sx0
     float fx0 = (float)((dst_x + 0.5f) * scale_x - 0.5f);
-    int   sx0 = __float2int_rd(fx0);
+    int   sx0 = cuda::round<cuda::RoundMode::DOWN, int>(fx0);
     fx0 -= sx0;
     fx0 *= ((sx0 >= 0) && (sx0 < width - 1));
     sx0 = cuda::max(0, cuda::min(sx0, width - 2));
 
     //sx1
     float fx1 = (float)((dst_x + 1.5) * scale_x - 0.5f);
-    int   sx1 = __float2int_rd(fx1);
+    int   sx1 = cuda::round<cuda::RoundMode::DOWN, int>(fx1);
     fx1 -= sx1;
     fx1 *= ((sx1 >= 0) && (sx1 < width - 1));
     sx1 = cuda::max(0, cuda::min(sx1, width - 2));
 
     //sx2
     float fx2 = (float)((dst_x + 2.5f) * scale_x - 0.5f);
-    int   sx2 = __float2int_rd(fx2);
+    int   sx2 = cuda::round<cuda::RoundMode::DOWN, int>(fx2);
     fx2 -= sx2;
     fx2 *= ((sx2 >= 0) && (sx2 < width - 1));
     sx2 = cuda::max(0, cuda::min(sx2, width - 2));
 
     //sx3
     float fx3 = (float)((dst_x + 3.5f) * scale_x - 0.5f);
-    int   sx3 = __float2int_rd(fx3);
+    int   sx3 = cuda::round<cuda::RoundMode::DOWN, int>(fx3);
     fx3 -= sx3;
     fx3 *= ((sx3 >= 0) && (sx3 < width - 1));
     sx3 = cuda::max(0, cuda::min(sx3, width - 2));
@@ -325,7 +326,7 @@ __global__ void resize_bicubic(SrcWrapper src, DstWrapper dst, int2 srcSize, int
 
         //y coordinate
         float fy = (float)((dst_y + 0.5f) * scale_y - 0.5f);
-        int   sy = __float2int_rd(fy);
+        int   sy = cuda::round<cuda::RoundMode::DOWN, int>(fy);
         fy -= sy;
         sy = cuda::max(1, cuda::min(sy, height - 3));
 
@@ -340,7 +341,7 @@ __global__ void resize_bicubic(SrcWrapper src, DstWrapper dst, int2 srcSize, int
         work_type accum = cuda::SetAll<work_type>(0);
 
         float fx = (float)((dst_x + 0.5f) * scale_x - 0.5f);
-        int   sx = __float2int_rd(fx);
+        int   sx = cuda::round<cuda::RoundMode::DOWN, int>(fx);
         fx -= sx;
         fx *= ((sx >= 1) && (sx < width - 3));
         sx = cuda::max(1, cuda::min(sx, width - 3));
@@ -394,7 +395,7 @@ __global__ void resize_bicubic_quad_alignread(SrcWrapper src, DstWrapper dst, in
 
     //y coordinate
     float fy = (float)((dst_y + 0.5f) * scale_y - 0.5f);
-    int   sy = __float2int_rd(fy);
+    int   sy = cuda::round<cuda::RoundMode::DOWN, int>(fy);
     fy -= sy;
     sy = cuda::max(1, cuda::min(sy, height - 3));
 
@@ -422,7 +423,7 @@ __global__ void resize_bicubic_quad_alignread(SrcWrapper src, DstWrapper dst, in
 
             //1 - precalc sx's ahead of time to get range from sx0-1..sx3+2
             fx[pix] = (float)((dst_x + pix + 0.5f) * scale_x - 0.5f);
-            sx[pix] = __float2int_rd(fx[pix]);
+            sx[pix] = cuda::round<cuda::RoundMode::DOWN, int>(fx[pix]);
             fx[pix] -= sx[pix];
             fx[pix] *= ((sx[pix] >= 1) && (sx[pix] < width - 3));
             sx[pix] = cuda::max(1, cuda::min(sx[pix], width - 3));
@@ -470,7 +471,7 @@ __global__ void resize_bicubic_quad_alignread(SrcWrapper src, DstWrapper dst, in
             work_type accum = cuda::SetAll<work_type>(0);
 
             float fx = (float)((dst_x + pix + 0.5f) * scale_x - 0.5f);
-            int   sx = __float2int_rd(fx);
+            int   sx = cuda::round<cuda::RoundMode::DOWN, int>(fx);
             fx -= sx;
             fx *= ((sx >= 1) && (sx < width - 3));
             sx = cuda::max(1, cuda::min(sx, width - 3));
@@ -503,76 +504,24 @@ __global__ void resize_bicubic_quad_alignread(SrcWrapper src, DstWrapper dst, in
     _alignedCudaMemcpyQuad<T>(dst.ptr(batch_idx, dst_y, dst_x), result);
 } //resize_bicubic_quad_alignread
 
-template<typename T, typename IntegerAreaFilter, typename AreaFilter>
-__global__ void resize_area_ocv_align(const Ptr2dNHWC<T> src, const IntegerAreaFilter integer_filter,
-                                      const AreaFilter area_filter, Ptr2dNHWC<T> dst, const float scale_x,
-                                      const float scale_y)
+template<class SrcWrapper, class DstWrapper>
+__global__ void resize_area_ocv_align(SrcWrapper src, DstWrapper dst, int2 dstSize)
 {
     const int x          = blockDim.x * blockIdx.x + threadIdx.x;
     const int y          = blockDim.y * blockIdx.y + threadIdx.y;
     const int batch_idx  = get_batch_idx();
-    int       out_height = dst.rows, out_width = dst.cols;
+    int       out_height = dstSize.y, out_width = dstSize.x;
 
     if (x >= out_width || y >= out_height)
         return;
 
-    double inv_scale_x  = 1. / scale_x;
-    double inv_scale_y  = 1. / scale_y;
-    int    iscale_x     = cuda::SaturateCast<int>(scale_x);
-    int    iscale_y     = cuda::SaturateCast<int>(scale_y);
-    bool   is_area_fast = cuda::abs(scale_x - iscale_x) < DBL_EPSILON && cuda::abs(scale_y - iscale_y) < DBL_EPSILON;
+    const int3 coord{x, y, batch_idx};
 
-    if (scale_x >= 1.0f && scale_y >= 1.0f) // zoom out
-    {
-        if (is_area_fast) // integer multiples
-        {
-            *dst.ptr(batch_idx, y, x) = integer_filter(batch_idx, y, x);
-            return;
-        }
-
-        *dst.ptr(batch_idx, y, x) = area_filter(batch_idx, y, x);
-        return;
-    }
-
-    // zoom in, it is emulated using some variant of bilinear interpolation
-    int   sy = __float2int_rd(y * scale_y);
-    float fy = (float)((y + 1) - (sy + 1) * inv_scale_y);
-    fy       = fy <= 0 ? 0.f : fy - __float2int_rd(fy);
-
-    float cbufy[2];
-    cbufy[0] = 1.f - fy;
-    cbufy[1] = fy;
-
-    int   sx = __float2int_rd(x * scale_x);
-    float fx = (float)((x + 1) - (sx + 1) * inv_scale_x);
-    fx       = fx < 0 ? 0.f : fx - __float2int_rd(fx);
-
-    if (sx < 0)
-    {
-        fx = 0, sx = 0;
-    }
-
-    if (sx >= src.cols - 1)
-    {
-        fx = 0, sx = src.cols - 2;
-    }
-    if (sy >= src.rows - 1)
-    {
-        sy = src.rows - 2;
-    }
-
-    float cbufx[2];
-    cbufx[0] = 1.f - fx;
-    cbufx[1] = fx;
-
-    *dst.ptr(batch_idx, y, x) = cuda::SaturateCast<T>((*src.ptr(batch_idx, sy, sx) * cbufx[0] * cbufy[0]
-                                                       + *src.ptr(batch_idx, sy + 1, sx) * cbufx[0] * cbufy[1]
-                                                       + *src.ptr(batch_idx, sy, sx + 1) * cbufx[1] * cbufy[0]
-                                                       + *src.ptr(batch_idx, sy + 1, sx + 1) * cbufx[1] * cbufy[1]));
+    dst[coord] = src[cuda::StaticCast<float>(coord)];
 }
 
 template<typename T>
-void resize(const ITensorDataStridedCuda &inData, const ITensorDataStridedCuda &outData,
+void resize(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
             NVCVInterpolationType interpolation, cudaStream_t stream)
 
 {
@@ -608,8 +557,8 @@ void resize(const ITensorDataStridedCuda &inData, const ITensorDataStridedCuda &
     const dim3 quadGridSize(divUp(out_quad_width, blockSize.x), divUp(out_height, blockSize.y), batch_size);
 
     //bool can_quad = ((((size_t)dst_ptr) % sizeof(T)) == 0) && ((out_width % 4) == 0);  //is the output buffer quad-pixel aligned?
-    bool can_quad = ((out_width % 4) == 0); //is the output buffer quad-pixel aligned?
-    //bool can_quad = false; //override
+    //bool can_quad = ((out_width % 4) == 0); //is the output buffer quad-pixel aligned?
+    bool can_quad = false; // turning it off due to a reported regression
 
     //Note: resize is fundamentally a gather memory operation, with a little bit of compute
     //      our goals are to (a) maximize throughput, and (b) minimize occupancy for the same performance
@@ -655,14 +604,11 @@ void resize(const ITensorDataStridedCuda &inData, const ITensorDataStridedCuda &
 
     case NVCV_INTERP_AREA:
     {
-        Ptr2dNHWC<T>                                                  src_ptr(*inAccess);
-        Ptr2dNHWC<T>                                                  dst_ptr(*outAccess);
-        BrdConstant<T>                                                brd(src_ptr.rows, src_ptr.cols);
-        BorderReader<Ptr2dNHWC<T>, BrdConstant<T>>                    brdSrc(src_ptr, brd);
-        IntegerAreaFilter<BorderReader<Ptr2dNHWC<T>, BrdConstant<T>>> integer_filter(brdSrc, scale_x, scale_y);
-        AreaFilter<BorderReader<Ptr2dNHWC<T>, BrdConstant<T>>>        area_filter(brdSrc, scale_x, scale_y);
-        resize_area_ocv_align<T>
-            <<<gridSize, blockSize, 0, stream>>>(src_ptr, integer_filter, area_filter, dst_ptr, scale_x, scale_y);
+        auto src = cuda::CreateInterpolationWrapNHW<const T, NVCV_BORDER_CONSTANT, NVCV_INTERP_AREA>(inData, T{},
+                                                                                                     scale_x, scale_y);
+        auto dst = cuda::CreateTensorWrapNHW<T>(outData);
+
+        resize_area_ocv_align<<<gridSize, blockSize, 0, stream>>>(src, dst, dstSize);
     }
     break;
 
@@ -683,7 +629,7 @@ size_t Resize::calBufferSize(DataShape max_input_shape, DataShape max_output_sha
     return 0;
 } //Resize::calBufferSize
 
-ErrorCode Resize::infer(const ITensorDataStridedCuda &inData, const ITensorDataStridedCuda &outData,
+ErrorCode Resize::infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                         const NVCVInterpolationType interpolation, cudaStream_t stream)
 {
     DataFormat input_format  = GetLegacyDataFormat(inData.layout());
@@ -723,7 +669,7 @@ ErrorCode Resize::infer(const ITensorDataStridedCuda &inData, const ITensorDataS
         return ErrorCode::INVALID_DATA_TYPE;
     }
 
-    typedef void (*func_t)(const ITensorDataStridedCuda &inData, const ITensorDataStridedCuda &outData,
+    typedef void (*func_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                            const NVCVInterpolationType interpolation, cudaStream_t stream);
 
     static const func_t funcs[6][4] = {

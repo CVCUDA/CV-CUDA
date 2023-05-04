@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -76,9 +76,57 @@ void ExportOpConv2D(py::module &m)
     using namespace pybind11::literals;
 
     m.def("conv2d", &Conv2DVarShape, "src"_a, "kernel"_a, "kernel_anchor"_a,
-          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr);
+          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Convolve 2D operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Convolve 2D operator
+            for more details and usage examples.
+
+        Args:
+            src (ImageBatchVarShape): Input image batch containing one or more images.
+            kernel(Tensor): Convolution kernels (one for each batch image) to be used. Each image width and height
+                            correspond to the kernel width and height. (must be float)
+            kernel_anchor(Tensor): 1D Tensor with the anchor of each kernel (one for each batch image).  The anchor (x, y)
+                            indicates the relative position of a filtered point within the kernel.
+                            (-1, -1) means that the anchor is at the kernel center.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.ImageBatchVarShape: The output image batch.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
+
     m.def("conv2d_into", &Conv2DVarShapeInto, "dst"_a, "src"_a, "kernel"_a, "kernel_anchor"_a,
-          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr);
+          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Convolve 2D operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Convolve 2D operator
+            for more details and usage examples.
+
+        Args:
+            dst (ImageBatchVarShape): Output image batch to store the result of the operation.
+            src (ImageBatchVarShape): Input image batch containing one or more images.
+            kernel(Tensor): Convolution kernels (one for each batch image) to be used. Each image width and height
+                            correspond to the kernel width and height. (must be float)
+            kernel_anchor(Tensor): 1D Tensor with the anchor of each kernel (one for each batch image).  The anchor (x, y)
+                            indicates the relative position of a filtered point within the kernel.
+                            (-1, -1) means that the anchor is at the kernel center.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 }
 
 } // namespace cvcudapy

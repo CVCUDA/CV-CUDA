@@ -141,8 +141,8 @@ TYPED_TEST(BorderWrapNHWTest, correct_fill)
     nvcv::Tensor srcTensor = test::CreateTensor(batches, width, height, format);
     nvcv::Tensor dstTensor = test::CreateTensor(batches, width + borderSize * 2, height + borderSize * 2, format);
 
-    const auto *srcDev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(srcTensor.exportData());
-    const auto *dstDev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(dstTensor.exportData());
+    auto srcDev = srcTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto dstDev = dstTensor.exportData<nvcv::TensorDataStridedCuda>();
 
     ASSERT_NE(srcDev, nullptr);
     ASSERT_NE(dstDev, nullptr);

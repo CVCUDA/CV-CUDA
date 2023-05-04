@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -133,3 +133,26 @@ py::dtype ToDType(const std::string &fmt)
 }
 
 } // namespace nvcvpy::util
+
+namespace cvcudapy {
+
+float4 GetFloat4FromPyArray(const pyarray &array)
+{
+    if (array.ndim() == 0)
+    {
+        return nvcv::cuda::SetAll<float4>(*array.data());
+    }
+    else
+    {
+        float4 value = nvcv::cuda::SetAll<float4>(0.f);
+
+        for (int i = 0; i < static_cast<int>(array.size()); i++)
+        {
+            nvcv::cuda::GetElement(value, i) = *array.data(i);
+        }
+
+        return value;
+    }
+}
+
+} // namespace cvcudapy

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,7 +22,114 @@
 #    error "You must not include this header directly"
 #endif
 
+#include <stdexcept>
+
 namespace nvcv {
+
+// Implementation - ImageData ---------------------------------
+inline ImageData::ImageData(const NVCVImageData &data)
+    : m_data(data)
+{
+}
+
+inline const NVCVImageData &ImageData::cdata() const
+{
+    return m_data;
+}
+
+inline NVCVImageData &ImageData::cdata()
+{
+    return m_data;
+}
+
+inline ImageFormat ImageData::format() const
+{
+    return ImageFormat{this->cdata().format};
+}
+
+template<typename Derived>
+inline Optional<Derived> ImageData::cast() const
+{
+    static_assert(std::is_base_of<ImageData, Derived>::value, "Cannot cast ImageData to an unrelated type");
+
+    static_assert(sizeof(Derived) == sizeof(NVCVImageData),
+                  "The derived type is not a simple wrapper around NVCVImageData.");
+
+    if (Derived::IsCompatibleKind(m_data.bufferType))
+    {
+        return Derived{m_data};
+    }
+    else
+    {
+        return NullOpt;
+    }
+}
+
+// Implementation - ImageDataCudaArray -------------------------
+
+inline ImageDataCudaArray::ImageDataCudaArray(const NVCVImageData &data)
+    : ImageData(data)
+{
+    if (!IsCompatibleKind(data.bufferType))
+    {
+        throw Exception(Status::ERROR_INVALID_ARGUMENT, "Image buffer format must be suitable for pitch-linear data");
+    }
+}
+
+inline int32_t ImageDataCudaArray::numPlanes() const
+{
+    const NVCVImageBufferCudaArray &data = this->cdata().buffer.cudaarray;
+    return data.numPlanes;
+}
+
+inline cudaArray_t ImageDataCudaArray::plane(int p) const
+{
+    const NVCVImageBufferCudaArray &data = this->cdata().buffer.cudaarray;
+
+    if (p < 0 || p >= data.numPlanes)
+    {
+        throw Exception(Status::ERROR_INVALID_ARGUMENT, "Plane out of bounds");
+    }
+    return data.planes[p];
+}
+
+// Implementation - ImageDataStrided ------------------------------
+
+inline ImageDataStrided::ImageDataStrided(const NVCVImageData &data)
+    : ImageData(data)
+{
+    if (!IsCompatibleKind(data.bufferType))
+        throw std::invalid_argument("Incompatible buffer type.");
+}
+
+inline Size2D ImageDataStrided::size() const
+{
+    const NVCVImageBufferStrided &data = this->cdata().buffer.strided;
+    if (data.numPlanes > 0)
+    {
+        return {data.planes[0].width, data.planes[0].height};
+    }
+    else
+    {
+        return {0, 0};
+    }
+}
+
+inline int32_t ImageDataStrided::numPlanes() const
+{
+    const NVCVImageBufferStrided &data = this->cdata().buffer.strided;
+    return data.numPlanes;
+}
+
+inline const NVCVImagePlaneStrided &ImageDataStrided::plane(int p) const
+{
+    const NVCVImageBufferStrided &data = this->cdata().buffer.strided;
+    if (p < 0 || p >= data.numPlanes)
+    {
+        throw Exception(Status::ERROR_INVALID_ARGUMENT, "Plane out of bounds");
+    }
+    return data.planes[p];
+}
 
 // ImageDataCudaArray implementation -----------------------
 
@@ -33,16 +140,6 @@ inline ImageDataCudaArray::ImageDataCudaArray(ImageFormat format, const Buffer &
     data.format           = format;
     data.bufferType       = NVCV_IMAGE_BUFFER_CUDA_ARRAY;
     data.buffer.cudaarray = buffer;
-}
-
-inline ImageDataCudaArray::ImageDataCudaArray(const NVCVImageData &data)
-    : IImageDataCudaArray(data)
-{
-    if (data.bufferType != NVCV_IMAGE_BUFFER_CUDA_ARRAY)
-    {
-        throw Exception(Status::ERROR_INVALID_ARGUMENT,
-                        "Image buffer format must be suitable for cuda arrays (block-linear)");
-    }
 }
 
 // ImageDataStridedCuda implementation -----------------------
@@ -57,9 +154,9 @@ inline ImageDataStridedCuda::ImageDataStridedCuda(ImageFormat format, const Buff
 }
 
 inline ImageDataStridedCuda::ImageDataStridedCuda(const NVCVImageData &data)
-    : IImageDataStridedCuda(data)
+    : ImageDataStrided(data)
 {
-    if (data.bufferType != NVCV_IMAGE_BUFFER_STRIDED_CUDA)
+    if (!IsCompatibleKind(data.bufferType))
     {
         throw Exception(Status::ERROR_INVALID_ARGUMENT,
                         "Image buffer format must be suitable for pitch-linear CUDA-accessible data");
@@ -78,9 +175,9 @@ inline ImageDataStridedHost::ImageDataStridedHost(ImageFormat format, const Buff
 }
 
 inline ImageDataStridedHost::ImageDataStridedHost(const NVCVImageData &data)
-    : IImageDataStridedHost(data)
+    : ImageDataStrided(data)
 {
-    if (data.bufferType != NVCV_IMAGE_BUFFER_STRIDED_CUDA)
+    if (!IsCompatibleKind(data.bufferType))
     {
         throw Exception(Status::ERROR_INVALID_ARGUMENT,
                         "Image buffer format must be suitable for pitch-linear host-accessible data");

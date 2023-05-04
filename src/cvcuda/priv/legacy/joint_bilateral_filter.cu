@@ -167,8 +167,8 @@ __global__ void JointBilateralFilterKernel(SrcWrapper src, SrcWrapper srcColor, 
 }
 
 template<typename T, NVCVBorderType B>
-void JointBilateralFilterCaller(const ITensorDataStridedCuda &inData, const ITensorDataStridedCuda &inColorData,
-                                const ITensorDataStridedCuda &outData, const int batch, int rows, int columns,
+void JointBilateralFilterCaller(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &inColorData,
+                                const TensorDataStridedCuda &outData, const int batch, int rows, int columns,
                                 int radius, float sigmaColor, float sigmaSpace, float borderValue, cudaStream_t stream)
 {
     dim3 block(8, 8);
@@ -192,8 +192,8 @@ void JointBilateralFilterCaller(const ITensorDataStridedCuda &inData, const ITen
 #endif
 }
 
-ErrorCode JointBilateralFilter::infer(const ITensorDataStridedCuda &inData, const ITensorDataStridedCuda &inColorData,
-                                      const ITensorDataStridedCuda &outData, int d, float sigmaColor, float sigmaSpace,
+ErrorCode JointBilateralFilter::infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &inColorData,
+                                      const TensorDataStridedCuda &outData, int d, float sigmaColor, float sigmaSpace,
                                       NVCVBorderType borderMode, cudaStream_t stream)
 {
     cuda_op::DataFormat input_format      = GetLegacyDataFormat(inData.layout());
@@ -297,8 +297,8 @@ ErrorCode JointBilateralFilter::infer(const ITensorDataStridedCuda &inData, cons
     float borderValue = .0f;
 
     typedef void (*joint_bilateral_filter_t)(
-        const ITensorDataStridedCuda &inData, const ITensorDataStridedCuda &inColorData,
-        const ITensorDataStridedCuda &outData, int batch, int rows, int columns, int radius, float sigmaColor,
+        const TensorDataStridedCuda &inData, const TensorDataStridedCuda &inColorData,
+        const TensorDataStridedCuda &outData, int batch, int rows, int columns, int radius, float sigmaColor,
         float sigmaSpace, float borderValue, cudaStream_t stream);
 
     // All templated functions instantiated here to remove one level of indirection that just hides the same lookup

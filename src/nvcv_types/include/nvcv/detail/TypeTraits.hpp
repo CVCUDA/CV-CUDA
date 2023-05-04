@@ -18,6 +18,7 @@
 #ifndef NVCV_TYPE_TRAITS_HPP
 #define NVCV_TYPE_TRAITS_HPP
 
+#include <functional>
 #include <type_traits>
 
 namespace nvcv { namespace detail {
@@ -71,6 +72,54 @@ struct IsInvocable : decltype(IsInvocableF<Args...>(AddPointer_t<Callable>()))
 {
 };
 
+template<typename...>
+struct Conjunction : std::true_type
+{
+};
+
+template<bool, typename...>
+struct ConjunctionImpl;
+
+template<typename T, typename... Ts>
+struct Conjunction<T, Ts...> : ConjunctionImpl<T::value, Ts...>
+{
+};
+
+template<typename... Ts>
+struct ConjunctionImpl<false, Ts...> : std::false_type
+{
+};
+
+template<typename... Ts>
+struct ConjunctionImpl<true, Ts...> : Conjunction<Ts...>
+{
+};
+
+template<typename...>
+struct Disjunction : std::false_type
+{
+};
+
+template<bool, typename...>
+struct DisjunctionImpl;
+
+template<typename T, typename... Ts>
+struct Disjunction<T, Ts...> : DisjunctionImpl<T::value, Ts...>
+{
+};
+
+template<typename... Ts>
+struct DisjunctionImpl<true, Ts...> : std::true_type
+{
+};
+
+template<typename... Ts>
+struct DisjunctionImpl<false, Ts...> : Disjunction<Ts...>
+{
+};
+
+// std::function recognizer
+
 std::false_type IsStdFunctionF(...);
 
 template<typename T>
@@ -78,6 +127,18 @@ std::true_type IsStdFunctionF(const std::function<T> *);
 
 template<typename X>
 struct IsStdFunction : decltype(IsStdFunctionF(std::declval<X *>()))
+{
+};
+
+// std::reference_wrapper recognizer
+
+std::false_type IsRefWrapperF(...);
+
+template<typename T>
+std::false_type IsRefWrapperF(const std::reference_wrapper<T> *);
+
+template<typename X>
+struct IsRefWrapper : decltype(IsRefWrapperF(std::declval<X *>()))
 {
 };
 

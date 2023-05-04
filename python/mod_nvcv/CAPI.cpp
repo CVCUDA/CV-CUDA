@@ -141,7 +141,8 @@ extern "C" cudaStream_t ImplStream_GetCudaHandle(PyObject *stream)
     return ToSharedObj<Stream>(stream)->handle();
 }
 
-extern "C" PyObject *ImplTensor_Create(int32_t ndim, const int64_t *shape, NVCVDataType dtype, NVCVTensorLayout layout)
+extern "C" PyObject *ImplTensor_Create(int32_t ndim, const int64_t *shape, NVCVDataType dtype, NVCVTensorLayout layout,
+                                       int32_t rowalign)
 {
     std::optional<nvcv::TensorLayout> cxxLayout;
     if (layout != NVCV_TENSOR_NONE)
@@ -149,8 +150,8 @@ extern "C" PyObject *ImplTensor_Create(int32_t ndim, const int64_t *shape, NVCVD
         cxxLayout = nvcv::TensorLayout(layout);
     }
 
-    std::shared_ptr<Tensor> tensor
-        = Tensor::Create(CreateShape(nvcv::TensorShape(shape, ndim, layout)), nvcv::DataType{dtype}, std::move(layout));
+    std::shared_ptr<Tensor> tensor = Tensor::Create(CreateShape(nvcv::TensorShape(shape, ndim, layout)),
+                                                    nvcv::DataType{dtype}, std::move(layout), rowalign);
 
     return py::cast(std::move(tensor)).release().ptr();
 }
@@ -167,9 +168,10 @@ extern "C" NVCVImageBatchHandle ImplImageBatchVarShape_GetHandle(PyObject *varsh
 }
 
 extern "C" PyObject *ImplTensor_CreateForImageBatch(int32_t numImages, int32_t width, int32_t height,
-                                                    NVCVImageFormat fmt)
+                                                    NVCVImageFormat fmt, int32_t rowalign)
 {
-    std::shared_ptr<Tensor> tensor = Tensor::CreateForImageBatch(numImages, {width, height}, nvcv::ImageFormat(fmt));
+    std::shared_ptr<Tensor> tensor
+        = Tensor::CreateForImageBatch(numImages, {width, height}, nvcv::ImageFormat(fmt), rowalign);
     return py::cast(std::move(tensor)).release().ptr();
 }
 
@@ -214,9 +216,9 @@ extern "C" ICacheItem **ImplCache_Fetch(const IKey *pkey)
     return out.release();
 }
 
-extern "C" PyObject *ImplImage_Create(int32_t width, int32_t height, NVCVImageFormat fmt)
+extern "C" PyObject *ImplImage_Create(int32_t width, int32_t height, NVCVImageFormat fmt, int32_t rowAlign)
 {
-    std::shared_ptr<Image> img = Image::Create({width, height}, nvcv::ImageFormat{fmt});
+    std::shared_ptr<Image> img = Image::Create({width, height}, nvcv::ImageFormat{fmt}, rowAlign);
     return py::cast(std::move(img)).release().ptr();
 }
 

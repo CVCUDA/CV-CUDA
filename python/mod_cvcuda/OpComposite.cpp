@@ -105,13 +105,99 @@ void ExportOpComposite(py::module &m)
     using namespace pybind11::literals;
 
     m.def("composite", &Composite, "foreground"_a, "background"_a, "fgmask"_a, "outchannels"_a, py::kw_only(),
-          "stream"_a = nullptr);
+          "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Composite operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Composite operator
+            for more details and usage examples.
+
+        Args:
+            foreground (Tensor): Input tensor containing one or more foreground images. Each image is BGR (3-channel) 8-bit.
+            background (Tensor): Input tensor containing one or more background images. Each image is BGR (3-channel) 8-bit.
+            fgmask(Tensor): Input foreground mask tensor. Each mask image is grayscale 8-bit
+            outchannels(int): Specifies 3 channel for RGB and 4 channel for BGRA.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.Tensor: The output tensor.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
+
     m.def("composite_into", &CompositeInto, "dst"_a, "foreground"_a, "background"_a, "fgmask"_a, py::kw_only(),
-          "stream"_a = nullptr);
+          "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Composite operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Composite operator
+            for more details and usage examples.
+
+        Args:
+            dst (Tensor): Output tensor to store the result of the operation.
+            foreground (Tensor): Input tensor containing one or more foreground images. Each image is BGR (3-channel) 8-bit.
+            background (Tensor): Input tensor containing one or more background images. Each image is BGR (3-channel) 8-bit.
+            fgmask(Tensor): Input foreground mask tensor. Each mask image is grayscale 8-bit.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
+
     m.def("composite", &CompositeVarShape, "foreground"_a, "background"_a, "fgmask"_a, py::kw_only(),
-          "stream"_a = nullptr);
+          "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Composite operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Composite operator
+            for more details and usage examples.
+
+        Args:
+            foreground (ImageBatchVarShape): Input tensor containing one or more foreground images. Each image is BGR (3-channel) 8-bit.
+            background (ImageBatchVarShape): Input tensor containing one or more background images. Each image is BGR (3-channel) 8-bit.
+            fgmask(ImageBatchVarShape): Input foreground mask image batch. Each mask image is grayscale 8-bit.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.ImageBatchVarShape: The output image batch.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
+
     m.def("composite_into", &CompositeVarShapeInto, "dst"_a, "foreground"_a, "background"_a, "fgmask"_a, py::kw_only(),
-          "stream"_a = nullptr);
+          "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Composite operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Composite operator
+            for more details and usage examples.
+
+        Args:
+            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
+            foreground (ImageBatchVarShape): Input tensor containing one or more foreground images. Each image is BGR (3-channel) 8-bit.
+            background (ImageBatchVarShape): Input tensor containing one or more background images. Each image is BGR (3-channel) 8-bit.
+            fgmask(ImageBatchVarShape): Input foreground mask image batch. Each mask image is grayscale 8-bit.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 }
 
 } // namespace cvcudapy

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -281,11 +281,11 @@ NVCV_DEFINE_API(0, 0, const char *, nvcvColorSpecGetName, (NVCVColorSpec cspec))
 
         using namespace std::literals;
 
-        util::ReplaceAllInline(buffer, bufSize, "NVCV_CHROMA_LOC_"sv, "LOC_"sv);
-        util::ReplaceAllInline(buffer, bufSize, "NVCV_YCbCr_"sv, ""sv);
-        util::ReplaceAllInline(buffer, bufSize, "NVCV_COLOR_XFER_"sv, "XFER_"sv);
-        util::ReplaceAllInline(buffer, bufSize, "NVCV_COLOR_RANGE_"sv, "RANGE_"sv);
-        util::ReplaceAllInline(buffer, bufSize, "NVCV_COLOR_SPACE_"sv, "SPACE_"sv);
+        util::ReplaceAllInline(buffer, bufSize, "NVCV_CHROMA_LOC_", "LOC_");
+        util::ReplaceAllInline(buffer, bufSize, "NVCV_YCbCr_", "");
+        util::ReplaceAllInline(buffer, bufSize, "NVCV_COLOR_XFER_", "XFER_");
+        util::ReplaceAllInline(buffer, bufSize, "NVCV_COLOR_RANGE_", "RANGE_");
+        util::ReplaceAllInline(buffer, bufSize, "NVCV_COLOR_SPACE_", "SPACE_");
     }
     catch (std::exception &e)
     {

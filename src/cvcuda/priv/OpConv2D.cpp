@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,28 +37,28 @@ void Conv2D::operator()(cudaStream_t stream, const nvcv::IImageBatchVarShape &in
                         const nvcv::IImageBatchVarShape &kernel, const nvcv::ITensor &kernelAnchor,
                         NVCVBorderType borderMode) const
 {
-    auto *inData = dynamic_cast<const nvcv::IImageBatchVarShapeDataStridedCuda *>(in.exportData(stream));
+    auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (inData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "Input must be cuda-accessible, varshape pitch-linear image batch");
     }
 
-    auto *outData = dynamic_cast<const nvcv::IImageBatchVarShapeDataStridedCuda *>(out.exportData(stream));
+    auto outData = out.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (outData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "Output must be cuda-accessible, varshape pitch-linear image batch");
     }
 
-    auto *kernelData = dynamic_cast<const nvcv::IImageBatchVarShapeDataStridedCuda *>(kernel.exportData(stream));
+    auto kernelData = kernel.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (kernelData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "Kernel must be cuda-accessible, varshape pitch-linear image batch");
     }
 
-    auto *kernelAnchorData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(kernelAnchor.exportData());
+    auto kernelAnchorData = kernelAnchor.exportData<nvcv::TensorDataStridedCuda>();
     if (kernelAnchorData == nullptr)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,

@@ -23,14 +23,15 @@
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
-#include <nvcv/alloc/CustomAllocator.hpp>
-#include <nvcv/alloc/CustomResourceAllocator.hpp>
+#include <nvcv/cuda/MathWrappers.hpp>
+#include <nvcv/cuda/SaturateCast.hpp>
 
 #include <cmath>
 #include <random>
 
-namespace test = nvcv::test;
 namespace t    = ::testing;
+namespace test = nvcv::test;
+namespace cuda = nvcv::cuda;
 
 #define PI 3.1415926535897932384626433832795
 
@@ -106,20 +107,23 @@ static void Rotate(std::vector<T> &hDst, int dstRowStride, nvcv::Size2D dstSize,
     {
         for (int dst_x = 0; dst_x < dstSize.w; dst_x++)
         {
+            const double dst_x_shift = dst_x - d_aCoeffs[2];
+            const double dst_y_shift = dst_y - d_aCoeffs[5];
+
+            float src_x = (float)(dst_x_shift * d_aCoeffs[0] + dst_y_shift * (-d_aCoeffs[1]));
+            float src_y = (float)(dst_x_shift * (-d_aCoeffs[3]) + dst_y_shift * d_aCoeffs[4]);
+
             if (interpolation == NVCV_INTERP_LINEAR)
             {
-                const double dst_x_shift = dst_x - d_aCoeffs[2];
-                const double dst_y_shift = dst_y - d_aCoeffs[5];
-                float        src_x       = (float)(dst_x_shift * d_aCoeffs[0] + dst_y_shift * (-d_aCoeffs[1]));
-                float        src_y       = (float)(dst_x_shift * (-d_aCoeffs[3]) + dst_y_shift * d_aCoeffs[4]);
-
                 if (src_x > -0.5 && src_x < width && src_y > -0.5 && src_y < height)
                 {
-                    const int x1 = src_x > 0 ? std::floor(src_x) : std::rint(src_x);
-                    const int y1 = src_y > 0 ? std::floor(src_y) : std::rint(src_y);
+                    const int x1 = cuda::round<cuda::RoundMode::DOWN, int>(src_x);
+                    const int y1 = cuda::round<cuda::RoundMode::DOWN, int>(src_y);
 
                     const int x2      = x1 + 1;
                     const int y2      = y1 + 1;
+                    const int x1_read = std::max(x1, 0);
+                    const int y1_read = std::max(y1, 0);
                     const int x2_read = std::min(x2, width - 1);
                     const int y2_read = std::min(y2, height - 1);
 
@@ -127,21 +131,19 @@ static void Rotate(std::vector<T> &hDst, int dstRowStride, nvcv::Size2D dstSize,
                     {
                         float out = 0.;
 
-                        T src_reg = srcPtr[y1 * srcRowStride + x1 * elementsPerPixel + k];
+                        T src_reg = srcPtr[y1_read * srcRowStride + x1_read * elementsPerPixel + k];
                         out       = out + src_reg * ((x2 - src_x) * (y2 - src_y));
 
-                        src_reg = srcPtr[y1 * srcRowStride + x2_read * elementsPerPixel + k];
+                        src_reg = srcPtr[y1_read * srcRowStride + x2_read * elementsPerPixel + k];
                         out     = out + src_reg * ((src_x - x1) * (y2 - src_y));
 
-                        src_reg = srcPtr[y2_read * srcRowStride + x1 * elementsPerPixel + k];
+                        src_reg = srcPtr[y2_read * srcRowStride + x1_read * elementsPerPixel + k];
                         out     = out + src_reg * ((x2 - src_x) * (src_y - y1));
 
                         src_reg = srcPtr[y2_read * srcRowStride + x2_read * elementsPerPixel + k];
                         out     = out + src_reg * ((src_x - x1) * (src_y - y1));
 
-                        out = std::rint(out);
-                        dstPtr[dst_y * dstRowStride + dst_x * elementsPerPixel + k]
-                            = out < 0 ? 0 : (out > 255 ? 255 : out);
+                        dstPtr[dst_y * dstRowStride + dst_x * elementsPerPixel + k] = cuda::SaturateCast<T>(out);
                     }
                 }
             }
@@ -150,17 +152,10 @@ static void Rotate(std::vector<T> &hDst, int dstRowStride, nvcv::Size2D dstSize,
                 /*
                     Use this for NVCV_INTERP_CUBIC interpolation only for angles - {90, 180}
                 */
-
-                const double dst_x_shift = dst_x - d_aCoeffs[2];
-                const double dst_y_shift = dst_y - d_aCoeffs[5];
-
-                float src_x = (float)(dst_x_shift * d_aCoeffs[0] + dst_y_shift * (-d_aCoeffs[1]));
-                float src_y = (float)(dst_x_shift * (-d_aCoeffs[3]) + dst_y_shift * d_aCoeffs[4]);
-
                 if (src_x > -0.5 && src_x < width && src_y > -0.5 && src_y < height)
                 {
-                    const int x1 = std::min(static_cast<int>(src_x + 0.5), width - 1);
-                    const int y1 = std::min(static_cast<int>(src_y + 0.5), height - 1);
+                    const int x1 = std::min(cuda::round<cuda::RoundMode::DOWN, int>(src_x + .5f), width - 1);
+                    const int y1 = std::min(cuda::round<cuda::RoundMode::DOWN, int>(src_y + .5f), height - 1);
 
                     for (int k = 0; k < elementsPerPixel; k++)
                     {
@@ -224,7 +219,7 @@ TEST_P(OpRotate, tensor_correct_output)
     // Generate input
     nvcv::Tensor imgSrc(numberOfImages, {srcWidth, srcHeight}, fmt);
 
-    const auto *srcData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(imgSrc.exportData());
+    auto srcData = imgSrc.exportData<nvcv::TensorDataStridedCuda>();
 
     ASSERT_NE(nullptr, srcData);
 
@@ -264,7 +259,7 @@ TEST_P(OpRotate, tensor_correct_output)
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 
     // Check result
-    const auto *dstData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(imgDst.exportData());
+    auto dstData = imgDst.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_NE(nullptr, dstData);
 
     auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstData);
@@ -341,12 +336,12 @@ TEST_P(OpRotate, varshape_correct_output)
     std::uniform_int_distribution<int> rndAngle(0, 360);
 
     nvcv::Tensor angleDegTensor(nvcv::TensorShape({numberOfImages}, "N"), nvcv::TYPE_F64);
-    const auto  *angleDegTensorData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(angleDegTensor.exportData());
-    ASSERT_NE(nullptr, angleDegTensorData);
+    auto         angleDegTensorData = angleDegTensor.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_NE(nvcv::NullOpt, angleDegTensorData);
 
     nvcv::Tensor shiftTensor(nvcv::TensorShape({numberOfImages, 2}, nvcv::TENSOR_NW), nvcv::TYPE_F64);
-    const auto  *shiftTensorData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(shiftTensor.exportData());
-    ASSERT_NE(nullptr, shiftTensorData);
+    auto         shiftTensorData = shiftTensor.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_NE(nvcv::NullOpt, shiftTensorData);
 
     auto shiftTensorDataAccess = nvcv::TensorDataAccessStrided::Create(*shiftTensorData);
     ASSERT_TRUE(shiftTensorDataAccess);
@@ -402,7 +397,7 @@ TEST_P(OpRotate, varshape_correct_output)
     // Populate input
     for (int i = 0; i < numberOfImages; ++i)
     {
-        const auto *srcData = dynamic_cast<const nvcv::IImageDataStridedCuda *>(imgSrc[i]->exportData());
+        const auto srcData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
         assert(srcData->numPlanes() == 1);
 
         int srcWidth  = srcData->plane(0).width;
@@ -440,12 +435,12 @@ TEST_P(OpRotate, varshape_correct_output)
     {
         SCOPED_TRACE(i);
 
-        const auto *srcData = dynamic_cast<const nvcv::IImageDataStridedCuda *>(imgSrc[i]->exportData());
+        const auto srcData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
         assert(srcData->numPlanes() == 1);
         int srcWidth  = srcData->plane(0).width;
         int srcHeight = srcData->plane(0).height;
 
-        const auto *dstData = dynamic_cast<const nvcv::IImageDataStridedCuda *>(imgDst[i]->exportData());
+        const auto dstData = imgDst[i]->exportData<nvcv::ImageDataStridedCuda>();
         assert(dstData->numPlanes() == 1);
 
         int dstWidth  = dstData->plane(0).width;

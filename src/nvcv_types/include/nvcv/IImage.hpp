@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,7 +19,6 @@
 #define NVCV_IIMAGE_HPP
 
 #include "Casts.hpp"
-#include "IImageData.hpp"
 #include "Image.h"
 #include "ImageData.hpp"
 #include "Size.hpp"
@@ -44,7 +43,10 @@ public:
     Size2D      size() const;
     ImageFormat format() const;
 
-    const IImageData *exportData() const;
+    ImageData exportData() const;
+
+    template<typename DATA>
+    Optional<DATA> exportData() const;
 
     void  setUserPointer(void *ptr);
     void *userPointer() const;
@@ -54,17 +56,6 @@ protected:
 
 private:
     virtual NVCVImageHandle doGetHandle() const = 0;
-
-    // Where the concrete class for exported image data will be allocated
-    // Should be an std::variant in C++17.
-    union Arena
-    {
-        ImageDataCudaArray   cudaArray;
-        ImageDataStridedCuda devStrided;
-    };
-
-    mutable std::aligned_storage<sizeof(Arena), alignof(Arena)>::type m_cacheDataArena;
-    mutable IImageData                                               *m_cacheDataPtr;
 };
 
 } // namespace nvcv

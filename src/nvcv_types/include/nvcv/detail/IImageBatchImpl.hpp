@@ -45,7 +45,7 @@ inline int32_t IImageBatch::numImages() const
     return out;
 }
 
-inline const IImageBatchData *IImageBatch::exportData(CUstream stream) const
+inline ImageBatchData IImageBatch::exportData(CUstream stream) const
 {
     // ImageBatches are mutable, we can't cache previously exported data.
 
@@ -58,9 +58,13 @@ inline const IImageBatchData *IImageBatch::exportData(CUstream stream) const
                         "Image batch data cannot be exported, buffer type not supported");
     }
 
-    m_cacheData.emplace(batchData.numImages, batchData.buffer.varShapeStrided);
+    return ImageBatchData(batchData);
+}
 
-    return &*m_cacheData;
+template<typename DATA>
+Optional<DATA> IImageBatch::exportData(CUstream stream) const
+{
+    return exportData(stream).cast<DATA>();
 }
 
 inline void IImageBatch::setUserPointer(void *ptr)
@@ -99,9 +103,9 @@ inline IImageBatch *IImageBatch::cast(HandleType h)
 
 // IImageBatchVarShape implementation ----------------------------------
 
-inline const IImageBatchVarShapeData *IImageBatchVarShape::exportData(CUstream stream) const
+inline ImageBatchVarShapeData IImageBatchVarShape::exportData(CUstream stream) const
 {
-    return static_cast<const IImageBatchVarShapeData *>(IImageBatch::exportData(stream));
+    return IImageBatch::exportData<ImageBatchVarShapeData>(stream).value();
 }
 
 template<class IT>

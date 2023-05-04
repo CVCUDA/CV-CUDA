@@ -152,6 +152,22 @@ else()
     add_library(nvcv_util_compat INTERFACE)
 endif()
 
+# nvcv_util_symver ---------------------------------
+add_library(nvcv_util_symver INTERFACE)
+if(LTO_ENABLED AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND NOT CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 10.0)
+    # symver attribute only works with gcc>=10.0. If using anything below, we
+    # use the symver pragma, which doesn't work correcly when LTO is enabled.
+    # See https://gcc.gnu.org/bugzilla/show_bug.cgi?id=48200
+    # Our solution is to disable LTO *only* in targets that depend on
+    # nvcv_util_symver, which will be the ones that defines the public
+    # functions, not the private implementation. This minimizes the perf hit
+    # of disabling LTO to a small subset of the code.
+    target_compile_options(nvcv_util_symver INTERFACE -fno-lto)
+endif()
+target_include_directories(nvcv_util_symver
+    INTERFACE ..
+)
+
 # nvcv_util ---------------------------------
 add_library(nvcv_util
     Assert.cpp

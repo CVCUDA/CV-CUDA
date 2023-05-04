@@ -337,8 +337,8 @@ __global__ void medianForSmallKernel(const cuda::ImageBatchVarShapeWrapNHWC<T> s
 #undef fetchAs1d
 
 template<typename T>
-void median(const IImageBatchVarShapeDataStridedCuda &in, const IImageBatchVarShapeDataStridedCuda &out,
-            const ITensorDataStridedCuda &ksize, int maxKHeight, int maxKWidth, cudaStream_t stream)
+void median(const ImageBatchVarShapeDataStridedCuda &in, const ImageBatchVarShapeDataStridedCuda &out,
+            const TensorDataStridedCuda &ksize, int maxKHeight, int maxKWidth, cudaStream_t stream)
 {
     Size2D outMaxSize = out.maxSize();
 
@@ -402,9 +402,9 @@ MedianBlurVarShape::~MedianBlurVarShape()
     m_kernelSizes.shrink_to_fit();
 }
 
-ErrorCode MedianBlurVarShape::infer(const IImageBatchVarShapeDataStridedCuda &inData,
-                                    const IImageBatchVarShapeDataStridedCuda &outData,
-                                    const ITensorDataStridedCuda &ksize, cudaStream_t stream)
+ErrorCode MedianBlurVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inData,
+                                    const ImageBatchVarShapeDataStridedCuda &outData,
+                                    const TensorDataStridedCuda &ksize, cudaStream_t stream)
 {
     if (m_maxBatchSize <= 0)
     {
@@ -485,9 +485,8 @@ ErrorCode MedianBlurVarShape::infer(const IImageBatchVarShapeDataStridedCuda &in
         }
     }
 
-    typedef void (*median_t)(const IImageBatchVarShapeDataStridedCuda &in,
-                             const IImageBatchVarShapeDataStridedCuda &out, const ITensorDataStridedCuda &ksize,
-                             int maxKHeight, int maxKWidth, cudaStream_t stream);
+    typedef void (*median_t)(const ImageBatchVarShapeDataStridedCuda &in, const ImageBatchVarShapeDataStridedCuda &out,
+                             const TensorDataStridedCuda &ksize, int maxKHeight, int maxKWidth, cudaStream_t stream);
 
     static const median_t funcs[6] = {
         median<uchar>, 0, median<ushort>, 0, median<int>, median<float>,

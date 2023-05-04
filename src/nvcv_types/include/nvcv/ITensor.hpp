@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,11 +19,11 @@
 #define NVCV_ITENSOR_HPP
 
 #include "Casts.hpp"
+#include "Optional.hpp"
 #include "Tensor.h"
 #include "TensorData.hpp"
 #include "TensorLayout.hpp"
 #include "TensorShape.hpp"
-#include "detail/Optional.hpp"
 
 #include <nvcv/DataType.hpp>
 
@@ -45,15 +45,19 @@ public:
     DataType     dtype() const;
     TensorLayout layout() const;
 
-    const ITensorData *exportData() const;
+    TensorData exportData() const;
+
+    template<typename DerivedTensorData>
+    Optional<DerivedTensorData> exportData() const
+    {
+        return exportData().cast<DerivedTensorData>();
+    }
 
     void  setUserPointer(void *ptr);
     void *userPointer() const;
 
 private:
     virtual NVCVTensorHandle doGetHandle() const = 0;
-
-    mutable detail::Optional<TensorDataStridedCuda> m_cacheData;
 };
 
 } // namespace nvcv

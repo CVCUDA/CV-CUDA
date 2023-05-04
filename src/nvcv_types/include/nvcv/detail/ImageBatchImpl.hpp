@@ -33,13 +33,13 @@ inline auto ImageBatchVarShape::CalcRequirements(int32_t capacity) -> Requiremen
     return reqs;
 }
 
-inline ImageBatchVarShape::ImageBatchVarShape(const Requirements &reqs, IAllocator *alloc)
+inline ImageBatchVarShape::ImageBatchVarShape(const Requirements &reqs, const Allocator &alloc)
 {
-    detail::CheckThrow(nvcvImageBatchVarShapeConstruct(&reqs, alloc ? alloc->handle() : nullptr, &m_handle));
+    detail::CheckThrow(nvcvImageBatchVarShapeConstruct(&reqs, alloc.handle(), &m_handle));
     detail::SetObjectAssociation(nvcvImageBatchSetUserPointer, this, m_handle);
 }
 
-inline ImageBatchVarShape::ImageBatchVarShape(int32_t capacity, IAllocator *alloc)
+inline ImageBatchVarShape::ImageBatchVarShape(int32_t capacity, const Allocator &alloc)
     : ImageBatchVarShape(CalcRequirements(capacity), alloc)
 {
 }

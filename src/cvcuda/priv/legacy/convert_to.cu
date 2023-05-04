@@ -24,7 +24,7 @@
 #include "CvCudaUtils.cuh"
 
 #include <nvcv/IImage.hpp>
-#include <nvcv/IImageData.hpp>
+#include <nvcv/ImageData.hpp>
 #include <nvcv/cuda/TypeTraits.hpp>
 
 #include <cassert>
@@ -59,7 +59,7 @@ __global__ void convertFormat(SrcWrapper src, DstWrapper dst, UnOp op, int2 size
 }
 
 template<typename DT_SOURCE, typename DT_DEST, int NC>
-void convertToScaleCN(const nvcv::ITensorDataStridedCuda &inData, const nvcv::ITensorDataStridedCuda &outData,
+void convertToScaleCN(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,
                       const double alpha, const double beta, cudaStream_t stream)
 {
     auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(inData);
@@ -86,7 +86,7 @@ void convertToScaleCN(const nvcv::ITensorDataStridedCuda &inData, const nvcv::IT
 }
 
 template<typename DT_SOURCE, typename DT_DEST> // <uchar, float> <float double>
-void convertToScale(const nvcv::ITensorDataStridedCuda &inData, const nvcv::ITensorDataStridedCuda &outData,
+void convertToScale(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,
                     int numChannels, const double alpha, const double beta, cudaStream_t stream)
 {
     switch (numChannels)
@@ -125,7 +125,7 @@ size_t ConvertTo::calBufferSize(DataShape max_input_shape, DataShape max_output_
     return 0;
 }
 
-ErrorCode ConvertTo::infer(const ITensorDataStridedCuda &inData, const ITensorDataStridedCuda &outData,
+ErrorCode ConvertTo::infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                            const double alpha, const double beta, cudaStream_t stream)
 {
     cuda_op::DataFormat input_format    = GetLegacyDataFormat(inData.layout());
@@ -168,7 +168,7 @@ ErrorCode ConvertTo::infer(const ITensorDataStridedCuda &inData, const ITensorDa
         return ErrorCode::INVALID_DATA_TYPE;
     }
 
-    typedef void (*func_t)(const nvcv::ITensorDataStridedCuda &inData, const nvcv::ITensorDataStridedCuda &outData,
+    typedef void (*func_t)(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,
                            int numChannels, const double alpha, const double beta, cudaStream_t stream);
 
     // clang-format off

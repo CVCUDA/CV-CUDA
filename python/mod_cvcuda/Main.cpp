@@ -15,11 +15,15 @@
  * limitations under the License.
  */
 
+#include "AdaptiveThresholdType.hpp"
 #include "BorderType.hpp"
 #include "ColorConversionCode.hpp"
 #include "InterpolationType.hpp"
 #include "MorphologyType.hpp"
 #include "Operators.hpp"
+#include "OsdElement.hpp"
+#include "RemapMapValueType.hpp"
+#include "ThresholdType.hpp"
 
 #include <cvcuda/Version.h>
 #include <pybind11/pybind11.h>
@@ -66,13 +70,23 @@ PYBIND11_MODULE(cvcuda, m)
 
     using namespace cvcudapy;
 
-    // // Operators' auxiliary entities
+    // Operators' auxiliary entities
     ExportInterpolationType(m);
     ExportBorderType(m);
     ExportMorphologyType(m);
     ExportColorConversionCode(m);
+    ExportRemapMapValueType(m);
+    ExportBndBox(m);
+    ExportBoxBlur(m);
+    ExportThresholdType(m);
+    ExportAdaptiveThresholdType(m);
 
-    // Operators
+    // CV-CUDA Operators
+    ExportOpBoxBlur(m);
+    ExportOpBndBox(m);
+    ExportOpRemap(m);
+    ExportOpCropFlipNormalizeReformat(m);
+    ExportOpNonMaximumSuppression(m);
     ExportOpReformat(m);
     ExportOpResize(m);
     ExportOpCustomCrop(m);
@@ -99,4 +113,6 @@ PYBIND11_MODULE(cvcuda, m)
     ExportOpComposite(m);
     ExportOpGammaContrast(m);
     ExportOpPillowResize(m);
+    ExportOpThreshold(m);
+    ExportOpAdaptiveThreshold(m);
 }

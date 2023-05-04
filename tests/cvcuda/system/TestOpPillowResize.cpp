@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,8 +24,6 @@
 #include <nvcv/Rect.h>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
-#include <nvcv/alloc/CustomAllocator.hpp>
-#include <nvcv/alloc/CustomResourceAllocator.hpp>
 
 #include <cmath>
 #include <iostream>
@@ -833,7 +831,7 @@ void StartTest(int srcWidth, int srcHeight, int dstWidth, int dstHeight, NVCVInt
     // Generate input
     nvcv::Tensor imgSrc(numberOfImages, {srcWidth, srcHeight}, fmt);
 
-    const auto *srcData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(imgSrc.exportData());
+    auto srcData = imgSrc.exportData<nvcv::TensorDataStridedCuda>();
 
     ASSERT_NE(nullptr, srcData);
 
@@ -874,7 +872,7 @@ void StartTest(int srcWidth, int srcHeight, int dstWidth, int dstHeight, NVCVInt
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 
     // Check result
-    const auto *dstData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(imgDst.exportData());
+    auto dstData = imgDst.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_NE(nullptr, dstData);
 
     auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstData);
@@ -961,7 +959,7 @@ void StartVarShapeTest(int srcWidthBase, int srcHeightBase, int dstWidthBase, in
     // Populate input
     for (int i = 0; i < numberOfImages; ++i)
     {
-        const auto *srcData = dynamic_cast<const nvcv::IImageDataStridedCuda *>(imgSrc[i]->exportData());
+        const auto srcData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
         assert(srcData->numPlanes() == 1);
 
         int srcWidth  = srcData->plane(0).width;
@@ -1004,12 +1002,12 @@ void StartVarShapeTest(int srcWidthBase, int srcHeightBase, int dstWidthBase, in
     {
         SCOPED_TRACE(i);
 
-        const auto *srcData = dynamic_cast<const nvcv::IImageDataStridedCuda *>(imgSrc[i]->exportData());
+        const auto srcData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
         assert(srcData->numPlanes() == 1);
         int srcWidth  = srcData->plane(0).width;
         int srcHeight = srcData->plane(0).height;
 
-        const auto *dstData = dynamic_cast<const nvcv::IImageDataStridedCuda *>(imgDst[i]->exportData());
+        const auto dstData = imgDst[i]->exportData<nvcv::ImageDataStridedCuda>();
         assert(dstData->numPlanes() == 1);
 
         int dstWidth  = dstData->plane(0).width;

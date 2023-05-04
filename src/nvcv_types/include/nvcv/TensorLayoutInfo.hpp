@@ -18,8 +18,8 @@
 #ifndef NVCV_TENSOR_LAYOUT_INFO_HPP
 #define NVCV_TENSOR_LAYOUT_INFO_HPP
 
+#include "Optional.hpp"
 #include "TensorLayout.hpp"
-#include "detail/Optional.hpp"
 
 namespace nvcv {
 
@@ -31,7 +31,7 @@ public:
         return true;
     }
 
-    static detail::Optional<TensorLayoutInfo> Create(const TensorLayout &layout)
+    static Optional<TensorLayoutInfo> Create(const TensorLayout &layout)
     {
         return TensorLayoutInfo{layout};
     }
@@ -79,10 +79,10 @@ protected:
     }
 
 private:
-    const TensorLayout &m_layout;
-    bool                m_cacheIsBatch;
-    bool                m_cacheIsImage;
-    int                 m_cacheIdxSample;
+    TensorLayout m_layout;
+    bool         m_cacheIsBatch;
+    bool         m_cacheIsImage;
+    int          m_cacheIdxSample;
 };
 
 class TensorLayoutInfoImage : public TensorLayoutInfo
@@ -100,7 +100,7 @@ public:
         }
     }
 
-    static detail::Optional<TensorLayoutInfoImage> Create(const TensorLayout &layout)
+    static Optional<TensorLayoutInfoImage> Create(const TensorLayout &layout)
     {
         if (IsCompatible(layout))
         {
@@ -108,7 +108,7 @@ public:
         }
         else
         {
-            return detail::NullOpt;
+            return NullOpt;
         }
     }
 

@@ -728,8 +728,8 @@ __global__ void yuv422_to_gray_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src
     *dst.ptr(batch_idx, dst_y, dst_x, 0) = Y;
 }
 
-inline ErrorCode BGR_to_RGB(const IImageBatchVarShapeDataStridedCuda &inData,
-                            const IImageBatchVarShapeDataStridedCuda &outData, NVCVColorConversionCode code,
+inline ErrorCode BGR_to_RGB(const ImageBatchVarShapeDataStridedCuda &inData,
+                            const ImageBatchVarShapeDataStridedCuda &outData, NVCVColorConversionCode code,
                             cudaStream_t stream)
 {
     int sch  = (code == NVCV_COLOR_BGRA2BGR || code == NVCV_COLOR_RGBA2BGR || code == NVCV_COLOR_BGRA2RGBA) ? 4 : 3;
@@ -824,8 +824,8 @@ inline ErrorCode BGR_to_RGB(const IImageBatchVarShapeDataStridedCuda &inData,
     return ErrorCode::SUCCESS;
 }
 
-inline ErrorCode GRAY_to_BGR(const IImageBatchVarShapeDataStridedCuda &inData,
-                             const IImageBatchVarShapeDataStridedCuda &outData, NVCVColorConversionCode code,
+inline ErrorCode GRAY_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData,
+                             const ImageBatchVarShapeDataStridedCuda &outData, NVCVColorConversionCode code,
                              cudaStream_t stream)
 {
     int dch = (code == NVCV_COLOR_GRAY2BGRA) ? 4 : 3;
@@ -915,8 +915,8 @@ inline ErrorCode GRAY_to_BGR(const IImageBatchVarShapeDataStridedCuda &inData,
     return ErrorCode::SUCCESS;
 }
 
-inline ErrorCode BGR_to_GRAY(const IImageBatchVarShapeDataStridedCuda &inData,
-                             const IImageBatchVarShapeDataStridedCuda &outData, NVCVColorConversionCode code,
+inline ErrorCode BGR_to_GRAY(const ImageBatchVarShapeDataStridedCuda &inData,
+                             const ImageBatchVarShapeDataStridedCuda &outData, NVCVColorConversionCode code,
                              cudaStream_t stream)
 {
     int bidx = (code == NVCV_COLOR_RGBA2GRAY || code == NVCV_COLOR_RGB2GRAY) ? 2 : 0;
@@ -991,8 +991,8 @@ inline ErrorCode BGR_to_GRAY(const IImageBatchVarShapeDataStridedCuda &inData,
     return ErrorCode::SUCCESS;
 }
 
-inline ErrorCode BGR_to_YUV(const IImageBatchVarShapeDataStridedCuda &inData,
-                            const IImageBatchVarShapeDataStridedCuda &outData, NVCVColorConversionCode code,
+inline ErrorCode BGR_to_YUV(const ImageBatchVarShapeDataStridedCuda &inData,
+                            const ImageBatchVarShapeDataStridedCuda &outData, NVCVColorConversionCode code,
                             cudaStream_t stream)
 {
     int bidx = code == NVCV_COLOR_BGR2YUV ? 0 : 2;
@@ -1066,8 +1066,8 @@ inline ErrorCode BGR_to_YUV(const IImageBatchVarShapeDataStridedCuda &inData,
     return ErrorCode::SUCCESS;
 }
 
-inline ErrorCode YUV_to_BGR(const IImageBatchVarShapeDataStridedCuda &inData,
-                            const IImageBatchVarShapeDataStridedCuda &outData, NVCVColorConversionCode code,
+inline ErrorCode YUV_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData,
+                            const ImageBatchVarShapeDataStridedCuda &outData, NVCVColorConversionCode code,
                             cudaStream_t stream)
 {
     int bidx = code == NVCV_COLOR_YUV2BGR ? 0 : 2;
@@ -1141,8 +1141,8 @@ inline ErrorCode YUV_to_BGR(const IImageBatchVarShapeDataStridedCuda &inData,
     return ErrorCode::SUCCESS;
 }
 
-inline ErrorCode BGR_to_HSV(const IImageBatchVarShapeDataStridedCuda &inData,
-                            const IImageBatchVarShapeDataStridedCuda &outData, NVCVColorConversionCode code,
+inline ErrorCode BGR_to_HSV(const ImageBatchVarShapeDataStridedCuda &inData,
+                            const ImageBatchVarShapeDataStridedCuda &outData, NVCVColorConversionCode code,
                             cudaStream_t stream)
 {
     bool isFullRange = (code == NVCV_COLOR_BGR2HSV_FULL || code == NVCV_COLOR_RGB2HSV_FULL);
@@ -1209,8 +1209,8 @@ inline ErrorCode BGR_to_HSV(const IImageBatchVarShapeDataStridedCuda &inData,
     return ErrorCode::SUCCESS;
 }
 
-inline ErrorCode HSV_to_BGR(const IImageBatchVarShapeDataStridedCuda &inData,
-                            const IImageBatchVarShapeDataStridedCuda &outData, NVCVColorConversionCode code,
+inline ErrorCode HSV_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData,
+                            const ImageBatchVarShapeDataStridedCuda &outData, NVCVColorConversionCode code,
                             cudaStream_t stream)
 {
     bool isFullRange = (code == NVCV_COLOR_HSV2BGR_FULL || code == NVCV_COLOR_HSV2RGB_FULL);
@@ -1277,8 +1277,8 @@ inline ErrorCode HSV_to_BGR(const IImageBatchVarShapeDataStridedCuda &inData,
     return ErrorCode::SUCCESS;
 }
 
-inline ErrorCode YUV420xp_to_BGR(const IImageBatchVarShapeDataStridedCuda &inData,
-                                 const IImageBatchVarShapeDataStridedCuda &outData, NVCVColorConversionCode code,
+inline ErrorCode YUV420xp_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData,
+                                 const ImageBatchVarShapeDataStridedCuda &outData, NVCVColorConversionCode code,
                                  cudaStream_t stream)
 {
     int bidx
@@ -1381,8 +1381,8 @@ inline ErrorCode YUV420xp_to_BGR(const IImageBatchVarShapeDataStridedCuda &inDat
     return ErrorCode::SUCCESS;
 }
 
-inline ErrorCode YUV422_to_BGR(const IImageBatchVarShapeDataStridedCuda &inData,
-                               const IImageBatchVarShapeDataStridedCuda &outData, NVCVColorConversionCode code,
+inline ErrorCode YUV422_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData,
+                               const ImageBatchVarShapeDataStridedCuda &outData, NVCVColorConversionCode code,
                                cudaStream_t stream)
 {
     int bidx
@@ -1512,8 +1512,8 @@ inline static void bgr_to_yuv420sp_launcher(cuda::ImageBatchVarShapeWrapNHWC<T> 
     // NPP
 }
 
-inline ErrorCode BGR_to_YUV420xp(const IImageBatchVarShapeDataStridedCuda &inData,
-                                 const IImageBatchVarShapeDataStridedCuda &outData, NVCVColorConversionCode code,
+inline ErrorCode BGR_to_YUV420xp(const ImageBatchVarShapeDataStridedCuda &inData,
+                                 const ImageBatchVarShapeDataStridedCuda &outData, NVCVColorConversionCode code,
                                  cudaStream_t stream)
 {
     int bidx
@@ -1601,8 +1601,8 @@ size_t CvtColorVarShape::calBufferSize(int batch_size)
     return 0;
 }
 
-ErrorCode CvtColorVarShape::infer(const IImageBatchVarShapeDataStridedCuda &inData,
-                                  const IImageBatchVarShapeDataStridedCuda &outData, NVCVColorConversionCode code,
+ErrorCode CvtColorVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inData,
+                                  const ImageBatchVarShapeDataStridedCuda &outData, NVCVColorConversionCode code,
                                   cudaStream_t stream)
 {
     DataFormat input_format  = helpers::GetLegacyDataFormat(inData);
@@ -1621,8 +1621,8 @@ ErrorCode CvtColorVarShape::infer(const IImageBatchVarShapeDataStridedCuda &inDa
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
-    typedef ErrorCode (*func_t)(const IImageBatchVarShapeDataStridedCuda &inData,
-                                const IImageBatchVarShapeDataStridedCuda &outData, NVCVColorConversionCode code,
+    typedef ErrorCode (*func_t)(const ImageBatchVarShapeDataStridedCuda &inData,
+                                const ImageBatchVarShapeDataStridedCuda &outData, NVCVColorConversionCode code,
                                 cudaStream_t stream);
 
     static const func_t funcs[] = {

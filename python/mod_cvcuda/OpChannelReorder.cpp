@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -76,9 +76,55 @@ void ExportOpChannelReorder(py::module &m)
     using namespace pybind11::literals;
 
     m.def("channelreorder", &ChannelReorderVarShape, "src"_a, "order"_a, py::kw_only(), "format"_a = nullptr,
-          "stream"_a = nullptr);
+          "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Channel Reorder operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Channel Reorder operator
+            for more details and usage examples.
+
+        Args:
+            src (ImageBatchVarShape): Input tensor containing one or more images.
+            order(Tensor): 2D tensor with layout "NC" which specifies, for each output image sample in the batch,
+                           the index of the input channel to copy to the output channel.
+            format(ImageFormat): Format of the destination image.
+
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.ImageBatchVarShape: The output image batch.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
+
     m.def("channelreorder_into", &ChannelReorderVarShapeInto, "dst"_a, "src"_a, "orders"_a, py::kw_only(),
-          "stream"_a = nullptr);
+          "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Channel Reorder operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Channel Reorder operator
+            for more details and usage examples.
+
+        Args:
+            dst (ImageBatchVarShape): Output tensor to store the result of the operation.
+            src (ImageBatchVarShape): Input tensor containing one or more images.
+            order(Tensor): 2D tensor with layout "NC" which specifies, for each output image sample in the batch,
+                           the index of the input channel to copy to the output channel.
+            format(ImageFormat): Format of the destination image.
+
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 }
 
 } // namespace cvcudapy

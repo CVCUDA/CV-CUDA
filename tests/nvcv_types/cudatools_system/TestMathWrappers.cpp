@@ -38,15 +38,24 @@ using uint  = unsigned int;
 NVCV_TYPED_TEST_SUITE(
     MathWrappersRoundSameTypeTest, ttype::Types<
     // regular C types
-    ttype::Types<ttype::Value<uchar{123}>, ttype::Value<uchar{123}>>,
-    ttype::Types<ttype::Value<int{-123456}>, ttype::Value<int{-123456}>>,
-    ttype::Types<ttype::Value<float{-1.23456f}>, ttype::Value<float{-1.f}>>,
-    ttype::Types<ttype::Value<double{1.23456}>, ttype::Value<double{1.0}>>,
+    ttype::Types<ttype::Value<uchar{123}>, ttype::Value<uchar{123}>, ttype::Value<cuda::RoundMode::UP>>,
+    ttype::Types<ttype::Value<int{-123456}>, ttype::Value<int{-123456}>, ttype::Value<cuda::RoundMode::DOWN>>,
+    ttype::Types<ttype::Value<float{-1.23456f}>, ttype::Value<float{-1.f}>, ttype::Value<cuda::RoundMode::DEFAULT>>,
+    ttype::Types<ttype::Value<double{1.23456}>, ttype::Value<double{1.0}>, ttype::Value<cuda::RoundMode::NEAREST>>,
     // CUDA compound types
-    ttype::Types<ttype::Value<char1{123}>, ttype::Value<char1{123}>>,
-    ttype::Types<ttype::Value<uint2{0, 123456}>, ttype::Value<uint2{0, 123456}>>,
-    ttype::Types<ttype::Value<float3{-1.23456f, 0.789f, 3.456f}>, ttype::Value<float3{-1.f, 1.f, 3.f}>>,
-    ttype::Types<ttype::Value<double4{1.23456, 6.789, epsilon<double>, -4.567}>, ttype::Value<double4{1.0, 7.0, 0.0, -5.0}>>
+    ttype::Types<ttype::Value<char1{123}>, ttype::Value<char1{123}>, ttype::Value<cuda::RoundMode::UP>>,
+    ttype::Types<ttype::Value<uint2{0, 123456}>, ttype::Value<uint2{0, 123456}>, ttype::Value<cuda::RoundMode::DOWN>>,
+    ttype::Types<ttype::Value<float3{-1.23456f, 0.789f, 3.456f}>,
+                 ttype::Value<float3{-1.f, 1.f, 3.f}>, ttype::Value<cuda::RoundMode::DEFAULT>>,
+    ttype::Types<ttype::Value<double4{1.23456, 6.789, epsilon<double>, -4.567}>,
+                 ttype::Value<double4{1.0, 7.0, 0.0, -5.0}>, ttype::Value<cuda::RoundMode::NEAREST>>,
+    // unusual round modes
+    ttype::Types<ttype::Value<float2{-1.23456f, 0.789f}>, ttype::Value<float2{-1.f, 1.f}>, ttype::Value<cuda::RoundMode::UP>>,
+    ttype::Types<ttype::Value<double2{1.789, -6.123}>, ttype::Value<double2{1.0, -7.0}>, ttype::Value<cuda::RoundMode::DOWN>>,
+    ttype::Types<ttype::Value<float3{-0.999f, -0.23456f, 0.789f}>,
+                 ttype::Value<float3{0.f, 0.f, 0.f}>, ttype::Value<cuda::RoundMode::ZERO>>,
+    ttype::Types<ttype::Value<float4{-.5f, -1.5f, 2.5f, -3.5f}>,
+                 ttype::Value<float4{0.f, -2.f, 2.f, -4.f}>, ttype::Value<cuda::RoundMode::NEAREST>>
     >);
 
 // clang-format on
@@ -56,7 +65,9 @@ TYPED_TEST(MathWrappersRoundSameTypeTest, correct_output_in_host)
     auto input = ttype::GetValue<TypeParam, 0>;
     auto gold  = ttype::GetValue<TypeParam, 1>;
 
-    auto test = cuda::round(input);
+    constexpr cuda::RoundMode RM = ttype::GetValue<TypeParam, 2>;
+
+    auto test = (RM == cuda::RoundMode::DEFAULT) ? cuda::round(input) : cuda::round<RM>(input);
 
     EXPECT_TRUE((std::is_same_v<decltype(test), decltype(gold)>));
     EXPECT_EQ(test, gold);
@@ -67,7 +78,9 @@ TYPED_TEST(MathWrappersRoundSameTypeTest, correct_output_in_device)
     auto input = ttype::GetValue<TypeParam, 0>;
     auto gold  = ttype::GetValue<TypeParam, 1>;
 
-    auto test = DeviceRunRoundSameType(input);
+    constexpr cuda::RoundMode RM = ttype::GetValue<TypeParam, 2>;
+
+    auto test = DeviceRunRoundSameType<RM>(input);
 
     EXPECT_TRUE((std::is_same_v<decltype(test), decltype(gold)>));
     EXPECT_EQ(test, gold);
@@ -78,27 +91,39 @@ TYPED_TEST(MathWrappersRoundSameTypeTest, correct_output_in_device)
 NVCV_TYPED_TEST_SUITE(
     MathWrappersRoundDiffTypeTest, ttype::Types<
     // regular C types passing different type
-    ttype::Types<int, ttype::Value<float{-1.23456f}>, ttype::Value<int{-1}>>,
-    ttype::Types<uint, ttype::Value<double{1.23456}>, ttype::Value<uint{1}>>,
+    ttype::Types<int, ttype::Value<float{-1.23456f}>, ttype::Value<int{-1}>, ttype::Value<cuda::RoundMode::UP>>,
+    ttype::Types<uint, ttype::Value<double{1.23456}>, ttype::Value<uint{1}>, ttype::Value<cuda::RoundMode::DOWN>>,
     // CUDA compound types passing different type
-    ttype::Types<int, ttype::Value<float3{-1.23456f, 0.789f, 3.456f}>, ttype::Value<int3{-1, 1, 3}>>,
-    ttype::Types<long, ttype::Value<double4{1.23456, 6.789, epsilon<double>, -4.567}>, ttype::Value<long4{1, 7, 0, -5}>>,
+    ttype::Types<int, ttype::Value<float3{-1.23456f, 0.789f, 3.456f}>,
+                      ttype::Value<int3{-1, 1, 3}>, ttype::Value<cuda::RoundMode::NEAREST>>,
+    ttype::Types<long, ttype::Value<double4{1.23456, 6.789, epsilon<double>, -4.567}>,
+                       ttype::Value<long4{1, 7, 0, -5}>, ttype::Value<cuda::RoundMode::DEFAULT>>,
     // regular C types and CUDA compound types passing same type
-    ttype::Types<schar, ttype::Value<schar{123}>, ttype::Value<schar{123}>>,
-    ttype::Types<float, ttype::Value<float2{-4.56f, 7.89f}>, ttype::Value<float2{-5.f, 8.f}>>,
-    ttype::Types<uint, ttype::Value<uint1{123456}>, ttype::Value<uint1{123456}>>,
-    ttype::Types<double, ttype::Value<double2{1.23, epsilon<double>}>, ttype::Value<double2{1.0, 0.0}>>
+    ttype::Types<schar, ttype::Value<schar{123}>, ttype::Value<schar{123}>, ttype::Value<cuda::RoundMode::UP>>,
+    ttype::Types<float, ttype::Value<float2{-4.56f, 7.89f}>,
+                        ttype::Value<float2{-5.f, 8.f}>, ttype::Value<cuda::RoundMode::DEFAULT>>,
+    ttype::Types<uint, ttype::Value<uint1{123456}>, ttype::Value<uint1{123456}>, ttype::Value<cuda::RoundMode::DOWN>>,
+    ttype::Types<double2, ttype::Value<double2{1.23, epsilon<double>}>,
+                          ttype::Value<double2{1.0, 0.0}>, ttype::Value<cuda::RoundMode::NEAREST>>,
+    // unusual round modes
+    ttype::Types<int2, ttype::Value<float2{-1.789f, 0.123f}>, ttype::Value<int2{-1, 1}>, ttype::Value<cuda::RoundMode::UP>>,
+    ttype::Types<long long int, ttype::Value<double2{6.789, -1.123}>,
+                                ttype::Value<longlong2{6, -2}>, ttype::Value<cuda::RoundMode::DOWN>>,
+    ttype::Types<short, ttype::Value<float3{0.999f, -0.789f, 0.123f}>,
+                        ttype::Value<short3{0, 0, 0}>, ttype::Value<cuda::RoundMode::ZERO>>
     >);
 
 // clang-format on
 
 TYPED_TEST(MathWrappersRoundDiffTypeTest, correct_output_in_host)
 {
-    using TargetBaseType = ttype::GetType<TypeParam, 0>;
-    auto input           = ttype::GetValue<TypeParam, 1>;
-    auto gold            = ttype::GetValue<TypeParam, 2>;
+    using TargetType = ttype::GetType<TypeParam, 0>;
+    auto input       = ttype::GetValue<TypeParam, 1>;
+    auto gold        = ttype::GetValue<TypeParam, 2>;
 
-    auto test = cuda::round<TargetBaseType>(input);
+    constexpr cuda::RoundMode RM = ttype::GetValue<TypeParam, 3>;
+
+    auto test = (RM == cuda::RoundMode::DEFAULT) ? cuda::round<TargetType>(input) : cuda::round<RM, TargetType>(input);
 
     EXPECT_TRUE((std::is_same_v<decltype(test), decltype(gold)>));
     EXPECT_EQ(test, gold);
@@ -106,13 +131,17 @@ TYPED_TEST(MathWrappersRoundDiffTypeTest, correct_output_in_host)
 
 TYPED_TEST(MathWrappersRoundDiffTypeTest, correct_output_in_device)
 {
-    using TargetBaseType = ttype::GetType<TypeParam, 0>;
-    auto input           = ttype::GetValue<TypeParam, 1>;
-    auto gold            = ttype::GetValue<TypeParam, 2>;
+    using TargetType = ttype::GetType<TypeParam, 0>;
+    auto input       = ttype::GetValue<TypeParam, 1>;
+    auto gold        = ttype::GetValue<TypeParam, 2>;
+
+    constexpr cuda::RoundMode RM = ttype::GetValue<TypeParam, 3>;
+
     using SourceDataType = decltype(input);
+    using TargetBaseType = cuda::BaseType<TargetType>;
     using TargetDataType = cuda::ConvertBaseTypeTo<TargetBaseType, SourceDataType>;
 
-    auto test = DeviceRunRoundDiffType<TargetDataType>(input);
+    auto test = DeviceRunRoundDiffType<RM, TargetDataType>(input);
 
     EXPECT_TRUE((std::is_same_v<decltype(test), decltype(gold)>));
     EXPECT_EQ(test, gold);

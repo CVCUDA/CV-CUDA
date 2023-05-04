@@ -26,8 +26,8 @@
 
 #include "TypeTraits.hpp" // for HasTypeTraits, etc.
 
-#include <nvcv/IImageData.hpp>       // for IImageDataStridedCuda, etc.
-#include <nvcv/ITensorData.hpp>      // for ITensorDataStridedCuda, etc.
+#include <nvcv/ImageData.hpp>        // for ImageDataStridedCuda, etc.
+#include <nvcv/TensorData.hpp>       // for TensorDataStridedCuda, etc.
 #include <nvcv/TensorDataAccess.hpp> // for TensorDataAccessStridedImagePlanar, etc.
 #include <util/Assert.h>             // for NVCV_ASSERT, etc.
 
@@ -115,7 +115,7 @@ public:
      *
      * @param[in] image Image reference to the image that will be wrapped.
      */
-    __host__ TensorWrap(const IImageDataStridedCuda &image)
+    __host__ TensorWrap(const ImageDataStridedCuda &image)
     {
         static_assert(kVariableStrides == 1 && kNumDimensions == 2);
 
@@ -129,7 +129,7 @@ public:
      *
      * @param[in] tensor Tensor reference to the tensor that will be wrapped.
      */
-    __host__ TensorWrap(const ITensorDataStridedCuda &tensor)
+    __host__ TensorWrap(const TensorDataStridedCuda &tensor)
     {
         constexpr int kStride[] = {std::forward<int>(Strides)...};
 
@@ -283,7 +283,7 @@ public:
      *
      * @param[in] image Image reference to the image that will be wrapped.
      */
-    __host__ TensorWrap(const IImageDataStridedCuda &image)
+    __host__ TensorWrap(const ImageDataStridedCuda &image)
         : Base(image)
     {
     }
@@ -293,7 +293,7 @@ public:
      *
      * @param[in] tensor Tensor reference to the tensor that will be wrapped.
      */
-    __host__ TensorWrap(const ITensorDataStridedCuda &tensor)
+    __host__ TensorWrap(const TensorDataStridedCuda &tensor)
         : Base(tensor)
     {
     }
@@ -394,7 +394,7 @@ using TensorNDWrap = std::conditional_t<
 /**@}*/
 
 /**
- * Factory function to create a NHW tensor wrap given a tensor data.
+ * Factory function to create an NHW tensor wrap given a tensor data.
  *
  * The output \ref TensorWrap is an NHW 3D tensor allowing to access data per batch (N), per row (H) and per column
  * (W) of the input tensor.  The input tensor data must have either NHWC or HWC layout, where the channel C is
@@ -409,7 +409,7 @@ using TensorNDWrap = std::conditional_t<
  * @return Tensor wrap useful to access tensor data in CUDA kernels.
  */
 template<typename T, class = Require<HasTypeTraits<T>>>
-__host__ auto CreateTensorWrapNHW(const ITensorDataStridedCuda &tensor)
+__host__ auto CreateTensorWrapNHW(const TensorDataStridedCuda &tensor)
 {
     auto tensorAccess = TensorDataAccessStridedImagePlanar::Create(tensor);
     NVCV_ASSERT(tensorAccess);
@@ -421,11 +421,11 @@ __host__ auto CreateTensorWrapNHW(const ITensorDataStridedCuda &tensor)
 }
 
 /**
- * Factory function to create a NHWC tensor wrap given a tensor data.
+ * Factory function to create an NHWC tensor wrap given a tensor data.
  *
  * The output \ref TensorWrap is an NHWC 4D tensor allowing to access data per batch (N), per row (H), per column
  * (W) and per channel (C) of the input tensor.  The input tensor data must have either NHWC or HWC layout, where
- * the channel C is inside \p T, e.g. T=uchar3 for RGB8.
+ * the channel C is of type \p T, e.g. T=uchar for each channel of either RGB8 or RGBA8.
  *
  * @sa NVCV_CPP_CUDATOOLS_TENSORWRAP
  *
@@ -436,7 +436,7 @@ __host__ auto CreateTensorWrapNHW(const ITensorDataStridedCuda &tensor)
  * @return Tensor wrap useful to access tensor data in CUDA kernels.
  */
 template<typename T, class = Require<HasTypeTraits<T>>>
-__host__ auto CreateTensorWrapNHWC(const ITensorDataStridedCuda &tensor)
+__host__ auto CreateTensorWrapNHWC(const TensorDataStridedCuda &tensor)
 {
     auto tensorAccess = TensorDataAccessStridedImagePlanar::Create(tensor);
     NVCV_ASSERT(tensorAccess);

@@ -13,10 +13,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+if(ENABLE_TEGRA)
+    include_directories(
+        ${CUOSD_SOURCE_DIR}/aarch64/include
+    )
+    link_directories(
+        ${CUOSD_SOURCE_DIR}/aarch64/lib
+    )
+else()
+    include_directories(
+        ${CUOSD_SOURCE_DIR}/x86_64/include
+    )
+    link_directories(
+        ${CUOSD_SOURCE_DIR}/x86_64/lib
+    )
+endif()
+
 # system core -------------------------------------------------
 add_executable(cvcuda_test_system
+    TestOpBoxBlur.cpp
+    TestOpBndBox.cpp
+    OsdUtils.cu
+    TestOpRemap.cpp
+    TestOpCropFlipNormalizeReformat.cpp
     FlipUtils.cpp
     ConvUtils.cpp
+    TestOpNonMaximumSuppression.cpp
     TestOpReformat.cpp
     TestOpResize.cpp
     TestOpCustomCrop.cpp
@@ -43,12 +65,15 @@ add_executable(cvcuda_test_system
     TestOpFlip.cpp
     TestOpGammaContrast.cpp
     TestOpPillowResize.cpp
+    TestOpThreshold.cpp
+    TestOpAdaptiveThreshold.cpp
 )
 
 target_link_libraries(cvcuda_test_system
     PUBLIC
         cvcuda
         nvcv_test_common_system
+        cuosd
 )
 
 nvcv_add_test(cvcuda_test_system)

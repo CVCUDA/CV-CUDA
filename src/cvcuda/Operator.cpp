@@ -23,7 +23,7 @@
 
 namespace priv = cvcuda::priv;
 
-CVCUDA_DEFINE_API(0, 0, NVCVStatus, nvcvOperatorDestroy, (NVCVOperatorHandle handle))
+CVCUDA_DEFINE_API(0, 3, void, nvcvOperatorDestroy, (NVCVOperatorHandle handle))
 {
-    return nvcv::ProtectCall([&] { delete priv::ToOperatorPtr(handle); });
+    nvcv::ProtectCall([&] { delete priv::ToOperatorPtr(handle); });
 }

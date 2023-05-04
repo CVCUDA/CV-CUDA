@@ -33,13 +33,13 @@ inline auto Image::CalcRequirements(const Size2D &size, ImageFormat fmt, const M
     return reqs;
 }
 
-inline Image::Image(const Requirements &reqs, IAllocator *alloc)
+inline Image::Image(const Requirements &reqs, const Allocator &alloc)
 {
-    detail::CheckThrow(nvcvImageConstruct(&reqs, alloc ? alloc->handle() : nullptr, &m_handle));
+    detail::CheckThrow(nvcvImageConstruct(&reqs, alloc.handle(), &m_handle));
     detail::SetObjectAssociation(nvcvImageSetUserPointer, this, m_handle);
 }
 
-inline Image::Image(const Size2D &size, ImageFormat fmt, IAllocator *alloc, const MemAlignment &bufAlign)
+inline Image::Image(const Size2D &size, ImageFormat fmt, const Allocator &alloc, const MemAlignment &bufAlign)
     : Image(CalcRequirements(size, fmt, bufAlign), alloc)
 {
 }
@@ -56,11 +56,20 @@ inline NVCVImageHandle Image::doGetHandle() const
 
 // ImageWrapData implementation -------------------------------------
 
-inline ImageWrapData::ImageWrapData(const IImageData &data, std::function<ImageDataCleanupFunc> cleanup)
-    : m_cleanup(std::move(cleanup))
+inline ImageWrapData::ImageWrapData(const ImageData &data, ImageDataCleanupCallback &&cleanup)
 {
-    detail::CheckThrow(nvcvImageWrapDataConstruct(&data.cdata(), m_cleanup ? &doCleanup : nullptr, this, &m_handle));
-    detail::SetObjectAssociation(nvcvImageSetUserPointer, this, m_handle);
+    detail::CheckThrow(
+        nvcvImageWrapDataConstruct(&data.cdata(), cleanup.targetFunc(), cleanup.targetHandle(), &m_handle));
+    cleanup.release(); // the handle now owns the callback
+    try
+    {
+        detail::SetObjectAssociation(nvcvImageSetUserPointer, this, m_handle);
+    }
+    catch (...)
+    {
+        nvcvImageDecRef(m_handle, nullptr);
+        throw;
+    }
 }
 
 inline ImageWrapData::~ImageWrapData()
@@ -71,21 +80,6 @@ inline ImageWrapData::~ImageWrapData()
 inline NVCVImageHandle ImageWrapData::doGetHandle() const
 {
     return m_handle;
-}
-
-inline void ImageWrapData::doCleanup(void *ctx, const NVCVImageData *data)
-{
-    assert(data != nullptr);
-
-    auto *this_ = reinterpret_cast<ImageWrapData *>(ctx);
-    assert(this_ != nullptr);
-
-    // exportData refers to 'data'
-    const IImageData *imgData = this_->exportData();
-    assert(imgData != nullptr);
-
-    assert(this_->m_cleanup != nullptr);
-    this_->m_cleanup(*imgData);
 }
 
 } // namespace nvcv

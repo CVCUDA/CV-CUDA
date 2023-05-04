@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -104,10 +104,10 @@ void PreProcess(nvcv::TensorWrapData &inTensor, uint32_t batchSize, int inputLay
 
     // Copy the values from Host to Device
     // The R,G,B scale and mean will be applied to all the pixels across the batch of input images
-    const auto *baseData  = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(scaleTensor.exportData());
-    const auto *scaleData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(baseTensor.exportData());
-    float       scale[3]  = {0.229, 0.224, 0.225};
-    float       base[3]   = {0.485f, 0.456f, 0.406f};
+    auto  baseData  = scaleTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto  scaleData = baseTensor.exportData<nvcv::TensorDataStridedCuda>();
+    float scale[3]  = {0.229, 0.224, 0.225};
+    float base[3]   = {0.485f, 0.456f, 0.406f};
 
     // Flag to set the scale value as standard deviation i.e use 1/scale
     uint32_t flags = CVCUDA_NORMALIZE_SCALE_IS_STDDEV;
@@ -302,8 +302,8 @@ int main(int argc, char *argv[])
     PreProcess(inTensor, batchSize, inputDims.width, inputDims.height, stream, inputLayerTensor);
 
     // Setup the TensortRT Buffer needed for inference
-    const auto *inputData  = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(inputLayerTensor.exportData());
-    const auto *outputData = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(outputLayerTensor.exportData());
+    auto inputData  = inputLayerTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto outputData = outputLayerTensor.exportData<nvcv::TensorDataStridedCuda>();
 
     buffers[inputBindingIndex]  = inputData->basePtr();
     buffers[outputBindingIndex] = outputData->basePtr();

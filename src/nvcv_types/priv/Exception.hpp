@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -59,8 +59,8 @@ public:
     }
 
 private:
-    NVCVStatus m_code;
-    char       m_buffer[NVCV_MAX_STATUS_MESSAGE_LENGTH + 64 + 2];
+    NVCVStatus m_code = NVCV_ERROR_INTERNAL;
+    char       m_buffer[NVCV_MAX_STATUS_MESSAGE_LENGTH + 64 + 2]{};
 
     class StrBuffer : public std::strstreambuf
     {

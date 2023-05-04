@@ -28,42 +28,61 @@
 #include "ImageBatchVarShapeWrap.hpp" // for ImageBatchVarShapeWrap, etc.
 #include "TypeTraits.hpp"             // for NumElements, etc.
 
-#include <nvcv/IImageBatchData.hpp> // for IImageBatchVarShapeDataStridedCuda, etc.
+#include <nvcv/ImageBatchData.hpp> // for ImageBatchVarShapeDataStridedCuda, etc.
 
 namespace nvcv::cuda {
 
 namespace detail {
 
-template<typename T, NVCVBorderType B>
-class BorderVarShapeWrapImpl
+template<class IW, NVCVBorderType B>
+class BorderIWImpl
 {
 public:
-    using ImageBatchWrap = ImageBatchVarShapeWrap<T>;
-    using ValueType      = typename ImageBatchWrap::ValueType;
+    using ImageBatchWrapper = IW;
+    using ValueType         = typename ImageBatchWrapper::ValueType;
 
-    static constexpr int            kNumDimensions = ImageBatchWrap::kNumDimensions;
+    static constexpr int            kNumDimensions = ImageBatchWrapper::kNumDimensions;
     static constexpr NVCVBorderType kBorderType    = B;
 
-    BorderVarShapeWrapImpl() = default;
+    static constexpr bool kActiveDimensions[]  = {false, false, true, true};
+    static constexpr int  kNumActiveDimensions = 2;
 
-    explicit __host__ __device__ BorderVarShapeWrapImpl(ImageBatchWrap imageBatchWrap)
+    BorderIWImpl() = default;
+
+    explicit __host__ __device__ BorderIWImpl(ImageBatchWrapper imageBatchWrap)
         : m_imageBatchWrap(imageBatchWrap)
     {
     }
 
-    explicit __host__ BorderVarShapeWrapImpl(const IImageBatchVarShapeDataStridedCuda &images)
+    explicit __host__ BorderIWImpl(const ImageBatchVarShapeDataStridedCuda &images)
         : m_imageBatchWrap(images)
     {
     }
 
-    inline const __host__ __device__ ImageBatchWrap &imageBatchWrap() const
+    explicit __host__ BorderIWImpl(const ImageBatchVarShapeDataStridedCuda &images, int numChannels)
+        : m_imageBatchWrap(images, numChannels)
+    {
+    }
+
+    inline const __host__ __device__ ImageBatchWrapper &imageBatchWrap() const
     {
         return m_imageBatchWrap;
     }
 
+    inline __host__ __device__ ValueType borderValue() const
+    {
+        return ValueType{};
+    }
+
 protected:
-    const ImageBatchWrap m_imageBatchWrap = {};
+    const ImageBatchWrapper m_imageBatchWrap = {};
 };
+
+template<typename T, NVCVBorderType B>
+using BorderVarShapeWrapImpl = BorderIWImpl<ImageBatchVarShapeWrap<T>, B>;
+
+template<typename T, NVCVBorderType B>
+using BorderVarShapeWrapNHWCImpl = BorderIWImpl<ImageBatchVarShapeWrapNHWC<T>, B>;
 
 } // namespace detail
 
@@ -110,7 +129,7 @@ class BorderVarShapeWrap : public detail::BorderVarShapeWrapImpl<T, B>
     using Base = detail::BorderVarShapeWrapImpl<T, B>;
 
 public:
-    using typename Base::ImageBatchWrap;
+    using typename Base::ImageBatchWrapper;
     using typename Base::ValueType;
 
     using Base::kBorderType;
@@ -124,7 +143,7 @@ public:
      * @param[in] imageBatchWrap An \ref ImageBatchVarShapeWrap object to be wrapped.
      * @param[in] borderValue The border value is ignored in non-constant border types.
      */
-    explicit __host__ __device__ BorderVarShapeWrap(ImageBatchWrap imageBatchWrap, ValueType borderValue = {})
+    explicit __host__ __device__ BorderVarShapeWrap(ImageBatchWrapper imageBatchWrap, ValueType borderValue = {})
         : Base(imageBatchWrap)
     {
     }
@@ -132,10 +151,10 @@ public:
     /**
      * Constructs a BorderVarShapeWrap by wrapping \p images.
      *
-     * @param[in] images A \p IImageBatchVarShapeDataStridedCuda with image batch information.
+     * @param[in] images A \p ImageBatchVarShapeDataStridedCuda with image batch information.
      * @param[in] borderValue The border value is ignored in non-constant border types.
      */
-    explicit __host__ BorderVarShapeWrap(const IImageBatchVarShapeDataStridedCuda &images, ValueType borderValue = {})
+    explicit __host__ BorderVarShapeWrap(const ImageBatchVarShapeDataStridedCuda &images, ValueType borderValue = {})
         : Base(images)
     {
     }
@@ -216,7 +235,7 @@ class BorderVarShapeWrap<T, NVCV_BORDER_CONSTANT> : public detail::BorderVarShap
     using Base = detail::BorderVarShapeWrapImpl<T, NVCV_BORDER_CONSTANT>;
 
 public:
-    using typename Base::ImageBatchWrap;
+    using typename Base::ImageBatchWrapper;
     using typename Base::ValueType;
 
     using Base::kBorderType;
@@ -230,7 +249,7 @@ public:
      * @param[in] imageBatchWrap An \ref ImageBatchVarShapeWrap object to be wrapped.
      * @param[in] borderValue The border value to be used when accessing outside the image batch.
      */
-    explicit __host__ __device__ BorderVarShapeWrap(ImageBatchWrap imageBatchWrap, ValueType borderValue = {})
+    explicit __host__ __device__ BorderVarShapeWrap(ImageBatchWrapper imageBatchWrap, ValueType borderValue = {})
         : Base(imageBatchWrap)
         , m_borderValue(borderValue)
     {
@@ -239,10 +258,10 @@ public:
     /**
      * Constructs a BorderVarShapeWrap by wrapping \p images.
      *
-     * @param[in] images An \p IImageBatchVarShapeDataStridedCuda with image batch information.
+     * @param[in] images An \p ImageBatchVarShapeDataStridedCuda with image batch information.
      * @param[in] borderValue The border value to be used when accessing outside the tensor.
      */
-    explicit __host__ BorderVarShapeWrap(const IImageBatchVarShapeDataStridedCuda &images, ValueType borderValue = {})
+    explicit __host__ BorderVarShapeWrap(const ImageBatchVarShapeDataStridedCuda &images, ValueType borderValue = {})
         : Base(images)
         , m_borderValue(borderValue)
     {
@@ -252,15 +271,25 @@ public:
     using Base::imageBatchWrap;
 
     /**
+     * Get the border value of this border wrap.
+     *
+     * @return The border value.
+     */
+    inline __host__ __device__ ValueType borderValue() const
+    {
+        return m_borderValue;
+    }
+
+    /**
      * Subscript operator for read-only or read-and-write access (depending on value type).
      *
      * @param[in] c 4D coordinate (w sample, z plane, y row and x column) to be accessed.
      *
-     * @return Accessed (const) reference.
+     * @return Accessed const reference.
      */
-    inline __host__ __device__ ValueType &operator[](int4 c) const
+    inline const __host__ __device__ ValueType &operator[](int4 c) const
     {
-        ValueType *p = doGetPtr(c.w, c.z, c.y, c.x);
+        const ValueType *p = doGetPtr(c.w, c.z, c.y, c.x);
 
         if (p == nullptr)
         {
@@ -275,11 +304,11 @@ public:
      *
      * @param[in] c 3D coordinate (z sample, y row and x column) to be accessed.
      *
-     * @return Accessed (const) reference.
+     * @return Accessed const reference.
      */
-    inline __host__ __device__ ValueType &operator[](int3 c) const
+    inline const __host__ __device__ ValueType &operator[](int3 c) const
     {
-        ValueType *p = doGetPtr(c.z, 0, c.y, c.x);
+        const ValueType *p = doGetPtr(c.z, 0, c.y, c.x);
 
         if (p == nullptr)
         {
@@ -334,6 +363,246 @@ private:
             return nullptr;
         }
         return Base::m_imageBatchWrap.ptr(s, p, y, x);
+    }
+
+    const ValueType m_borderValue = SetAll<ValueType>(0);
+};
+
+template<typename T, NVCVBorderType B>
+class BorderVarShapeWrapNHWC : public detail::BorderVarShapeWrapNHWCImpl<T, B>
+{
+    using Base = detail::BorderVarShapeWrapNHWCImpl<T, B>;
+
+public:
+    using typename Base::ImageBatchWrapper;
+    using typename Base::ValueType;
+
+    using Base::kBorderType;
+    using Base::kNumDimensions;
+
+    BorderVarShapeWrapNHWC() = default;
+
+    /**
+     * Constructs a BorderVarShapeWrapNHWC by wrapping an \p imageBatchWrap.
+     *
+     * @param[in] imageBatchWrap An \ref ImageBatchVarShapeWrapNHWC object to be wrapped.
+     * @param[in] borderValue The border value is ignored in non-constant border types.
+     */
+    explicit __host__ __device__ BorderVarShapeWrapNHWC(ImageBatchWrapper imageBatchWrap, ValueType borderValue = {})
+        : Base(imageBatchWrap)
+    {
+    }
+
+    /**
+     * Constructs a BorderVarShapeWrapNHWC by wrapping \p images.
+     *
+     * @param[in] images A \p ImageBatchVarShapeDataStridedCuda with image batch information.
+     * @param[in] numChannels The number of (interleaved) channels inside the wrapper.
+     * @param[in] borderValue The border value is ignored in non-constant border types.
+     */
+    explicit __host__ BorderVarShapeWrapNHWC(const ImageBatchVarShapeDataStridedCuda &images, int numChannels,
+                                             ValueType borderValue = {})
+        : Base(images, numChannels)
+    {
+    }
+
+    // Get the image batch var-shape wrapped by this border var-shape wrap.
+    using Base::imageBatchWrap;
+
+    /**
+     * Subscript operator for read-only or read-and-write access (depending on value type).
+     *
+     * @param[in] c 4D coordinate (x column, y row, z sample, w channel) to be accessed.
+     *
+     * @return Accessed (const) reference.
+     */
+    inline __host__ __device__ ValueType &operator[](int4 c) const
+    {
+        return *doGetPtr(c.z, c.y, c.x, c.w);
+    }
+
+    /**
+     * Subscript operator for read-only or read-and-write access (depending on value type, considering plane=0).
+     *
+     * @param[in] c 3D coordinate (x column, y row, z sample) (first channel) to be accessed.
+     *
+     * @return Accessed (const) reference.
+     */
+    inline __host__ __device__ ValueType &operator[](int3 c) const
+    {
+        return *doGetPtr(c.z, c.y, c.x, 0);
+    }
+
+    /**
+     * Get a read-only or read-and-write proxy (as pointer) at the given coordinates.
+     *
+     * @param[in] s Sample image index in the list.
+     * @param[in] y Row index in the selected image.
+     * @param[in] x Column index in the selected image.
+     * @param[in] c Channel index in the image.
+     *
+     * @return The (const) pointer to the beginning of the given coordinates.
+     */
+    inline __host__ __device__ ValueType *ptr(int s, int y, int x, int c) const
+    {
+        return doGetPtr(s, y, x, c);
+    }
+
+    /**
+     * Get a read-only or read-and-write proxy (as pointer) at the given coordinates (considering plane=0).
+     *
+     * @param[in] s Sample image index in the list.
+     * @param[in] y Row index in the selected image.
+     * @param[in] x Column index in the selected image.
+     *
+     * @return The (const) pointer to the beginning of the given coordinates.
+     */
+    inline __host__ __device__ ValueType *ptr(int s, int y, int x) const
+    {
+        return doGetPtr(s, y, x, 0);
+    }
+
+private:
+    inline __host__ __device__ ValueType *doGetPtr(int s, int y, int x, int c) const
+    {
+        y = GetIndexWithBorder<kBorderType>(y, Base::m_imageBatchWrap.height(s, 0));
+        x = GetIndexWithBorder<kBorderType>(x, Base::m_imageBatchWrap.width(s, 0));
+        return Base::m_imageBatchWrap.ptr(s, y, x, c);
+    }
+};
+
+/**
+ * Border var-shape wrapper class specialized for \ref NVCV_BORDER_CONSTANT.
+ *
+ * @tparam T Type (it can be const) of each element inside the image batch var-shape wrapper.
+ */
+template<typename T>
+class BorderVarShapeWrapNHWC<T, NVCV_BORDER_CONSTANT>
+    : public detail::BorderVarShapeWrapNHWCImpl<T, NVCV_BORDER_CONSTANT>
+{
+    using Base = detail::BorderVarShapeWrapNHWCImpl<T, NVCV_BORDER_CONSTANT>;
+
+public:
+    using typename Base::ImageBatchWrapper;
+    using typename Base::ValueType;
+
+    using Base::kBorderType;
+    using Base::kNumDimensions;
+
+    BorderVarShapeWrapNHWC() = default;
+
+    /**
+     * Constructs a BorderVarShapeNHWCWrap by wrapping an \p imageBatchWrap.
+     *
+     * @param[in] imageBatchWrap An \ref ImageBatchVarShapeWrapNHWC object to be wrapped.
+     * @param[in] borderValue The border value to be used when accessing outside the image batch.
+     */
+    explicit __host__ __device__ BorderVarShapeWrapNHWC(ImageBatchWrapper imageBatchWrap, ValueType borderValue = {})
+        : Base(imageBatchWrap)
+        , m_borderValue(borderValue)
+    {
+    }
+
+    /**
+     * Constructs a BorderVarShapeWrapNHWC by wrapping \p images.
+     *
+     * @param[in] images An \p ImageBatchVarShapeDataStridedCuda with image batch information.
+     * @param[in] numChannels The number of (interleaved) channels inside the wrapper.
+     * @param[in] borderValue The border value to be used when accessing outside the tensor.
+     */
+    explicit __host__ BorderVarShapeWrapNHWC(const ImageBatchVarShapeDataStridedCuda &images, int numChannels,
+                                             ValueType borderValue = {})
+        : Base(images, numChannels)
+        , m_borderValue(borderValue)
+    {
+    }
+
+    // Get the image batch var-shape wrapped by this border var-shape wrap.
+    using Base::imageBatchWrap;
+
+    /**
+     * Subscript operator for read-only or read-and-write access (depending on value type).
+     *
+     * @param[in] c 4D coordinate (x column, y row, z sample, w channel) to be accessed.
+     *
+     * @return Accessed (const) reference.
+     */
+    inline __host__ __device__ ValueType &operator[](int4 c) const
+    {
+        ValueType *p = doGetPtr(c.z, c.y, c.x, c.w);
+
+        if (p == nullptr)
+        {
+            return m_borderValue;
+        }
+
+        return *p;
+    }
+
+    /**
+     * Subscript operator for read-only or read-and-write access (depending on value type, considering plane=0).
+     *
+     * @param[in] c 3D coordinate (x column, y row, z sample) (first channel) to be accessed.
+     *
+     * @return Accessed (const) reference.
+     */
+    inline __host__ __device__ ValueType &operator[](int3 c) const
+    {
+        ValueType *p = doGetPtr(c.z, c.y, c.x, 0);
+
+        if (p == nullptr)
+        {
+            return m_borderValue;
+        }
+
+        return *p;
+    }
+
+    /**
+     * Get a read-only or read-and-write proxy (as pointer) at the given coordinates.
+     *
+     * @note This method may return a nullptr pointer when accessing outside the wrapped \ref
+     * ImageBatchVarShapeWrap since this border wrap is for constant border and there is no pointer representation
+     * for the constant border value.
+     *
+     * @param[in] s Sample image index in the list.
+     * @param[in] y Row index in the selected image.
+     * @param[in] x Column index in the selected image.
+     * @param[in] c Channel index in the image.
+     *
+     * @return The (const) pointer to the beginning of the given coordinates.
+     */
+    inline __host__ __device__ ValueType *ptr(int s, int y, int x, int c) const
+    {
+        return doGetPtr(s, y, x, c);
+    }
+
+    /**
+     * Get a read-only or read-and-write proxy (as pointer) at the given coordinates (considering plane=0).
+     *
+     * @note This method may return a nullptr pointer when accessing outside the wrapped \ref
+     * ImageBatchVarShapeWrap since this border wrap is for constant border and there is no pointer representation
+     * for the constant border value.
+     *
+     * @param[in] s Sample image index in the list.
+     * @param[in] y Row index in the selected image.
+     * @param[in] x Column index in the selected image.
+     *
+     * @return The (const) pointer to the beginning of the given coordinates.
+     */
+    inline __host__ __device__ ValueType *ptr(int s, int y, int x) const
+    {
+        return doGetPtr(s, y, x, 0);
+    }
+
+private:
+    inline __host__ __device__ ValueType *doGetPtr(int s, int y, int x, int c) const
+    {
+        if (IsOutside(y, Base::m_imageBatchWrap.height(s, 0)) || IsOutside(x, Base::m_imageBatchWrap.width(s, 0)))
+        {
+            return nullptr;
+        }
+        return Base::m_imageBatchWrap.ptr(s, y, x, c);
     }
 
     ValueType m_borderValue = SetAll<ValueType>(0);

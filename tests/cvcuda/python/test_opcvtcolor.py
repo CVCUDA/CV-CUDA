@@ -23,36 +23,39 @@ RNG = np.random.default_rng(0)
 
 
 @t.mark.parametrize(
-    "input, code, output",
+    "input_args, code, output_args",
     [
         (
-            cvcuda.Tensor(5, [16, 23], cvcuda.Format.BGR8),
+            (5, [16, 23], cvcuda.Format.BGR8),
             cvcuda.ColorConversion.BGR2RGB,
-            cvcuda.Tensor(5, [16, 23], cvcuda.Format.RGB8),
+            (5, [16, 23], cvcuda.Format.RGB8),
         ),
         (
-            cvcuda.Tensor(3, [86, 22], cvcuda.Format.RGBA8),
+            (3, [86, 22], cvcuda.Format.RGBA8),
             cvcuda.ColorConversion.RGBA2BGRA,
-            cvcuda.Tensor(3, [86, 22], cvcuda.Format.BGRA8),
+            (3, [86, 22], cvcuda.Format.BGRA8),
         ),
         (
-            cvcuda.Tensor(7, [13, 21], cvcuda.Format.Y8),
+            (7, [13, 21], cvcuda.Format.Y8),
             cvcuda.ColorConversion.GRAY2BGR,
-            cvcuda.Tensor(7, [13, 21], cvcuda.Format.BGR8),
+            (7, [13, 21], cvcuda.Format.BGR8),
         ),
         (
-            cvcuda.Tensor(9, [66, 99], cvcuda.Format.HSV8),
+            (9, [66, 99], cvcuda.Format.HSV8),
             cvcuda.ColorConversion.HSV2RGB,
-            cvcuda.Tensor(9, [66, 99], cvcuda.Format.RGB8),
+            (9, [66, 99], cvcuda.Format.RGB8),
         ),
         (
-            cvcuda.Tensor((1, 61, 62, 3), np.uint8, "NHWC"),
+            ((1, 61, 62, 3), np.uint8, "NHWC"),
             cvcuda.ColorConversion.YUV2RGB,
-            cvcuda.Tensor((1, 61, 62, 3), np.uint8, "NHWC"),
+            ((1, 61, 62, 3), np.uint8, "NHWC"),
         ),
     ],
 )
-def test_op_cvtcolor(input, code, output):
+def test_op_cvtcolor(input_args, code, output_args):
+    input = cvcuda.Tensor(*input_args)
+    output = cvcuda.Tensor(*output_args)
+
     out = cvcuda.cvtcolor(input, code)
     assert out.shape == output.shape
     assert out.dtype == output.dtype

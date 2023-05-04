@@ -23,41 +23,42 @@ RNG = np.random.default_rng(0)
 
 
 @t.mark.parametrize(
-    "input, kernel_size, kernel_anchor, border",
+    "tensor_args, kernel_size, kernel_anchor, border",
     [
         (
-            cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"),
+            ((5, 16, 23, 4), np.uint8, "NHWC"),
             [3, 3],
             [1, 1],
             cvcuda.Border.CONSTANT,
         ),
         (
-            cvcuda.Tensor((4, 4, 3), np.float32, "HWC"),
+            ((4, 4, 3), np.float32, "HWC"),
             [5, 5],
             [0, 0],
             cvcuda.Border.REPLICATE,
         ),
         (
-            cvcuda.Tensor((3, 88, 13, 3), np.uint16, "NHWC"),
+            ((3, 88, 13, 3), np.uint16, "NHWC"),
             [7, 7],
             [2, 2],
             cvcuda.Border.REFLECT,
         ),
         (
-            cvcuda.Tensor((3, 4, 4), np.int32, "HWC"),
+            ((3, 4, 4), np.int32, "HWC"),
             [9, 9],
             [-1, -1],
             cvcuda.Border.WRAP,
         ),
         (
-            cvcuda.Tensor((1, 2, 3, 4), np.int16, "NHWC"),
+            ((1, 2, 3, 4), np.int16, "NHWC"),
             [11, 11],
             [8, 8],
             cvcuda.Border.REFLECT101,
         ),
     ],
 )
-def test_op_averageblur(input, kernel_size, kernel_anchor, border):
+def test_op_averageblur(tensor_args, kernel_size, kernel_anchor, border):
+    input = cvcuda.Tensor(*tensor_args)
     out = cvcuda.averageblur(input, kernel_size, kernel_anchor, border)
     assert out.layout == input.layout
     assert out.shape == input.shape

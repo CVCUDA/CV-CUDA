@@ -21,10 +21,19 @@ nvcv_python_add_module(
     OUTPUT_NAME cvcuda
     SOURCES
         Main.cpp
+        OpBndBox.cpp
+        OpBoxBlur.cpp
+        OsdElement.cpp
+        OpRemap.cpp
+        RemapMapValueType.cpp
+        OpCropFlipNormalizeReformat.cpp
         InterpolationType.cpp
         BorderType.cpp
         ColorConversionCode.cpp
         MorphologyType.cpp
+        ThresholdType.cpp
+        AdaptiveThresholdType.cpp
+        OpNonMaximumSuppression.cpp
         OpReformat.cpp
         OpResize.cpp
         OpCustomCrop.cpp
@@ -51,6 +60,8 @@ nvcv_python_add_module(
         OpComposite.cpp
         OpGammaContrast.cpp
         OpPillowResize.cpp
+        OpThreshold.cpp
+        OpAdaptiveThreshold.cpp
 )
 
 target_link_libraries(cvcuda_module_python

@@ -146,7 +146,7 @@ TYPED_TEST(FullTensorWrap1DTensorTest, correct_with_tensor)
 
     nvcv::Tensor tensor({{123}, "N"}, nvcv::DataType{dataType});
 
-    const auto *dev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(tensor.exportData());
+    auto dev = tensor.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_NE(dev, nullptr);
 
     cuda::FullTensorWrap<ValueType, 1> wrap(*dev);
@@ -172,7 +172,7 @@ TYPED_TEST(FullTensorWrap1DTensorTest, it_works_in_device)
 
     nvcv::Tensor tensor({{123}, "N"}, nvcv::DataType{dataType});
 
-    const auto *dev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(tensor.exportData());
+    auto dev = tensor.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_NE(dev, nullptr);
 
     cuda::FullTensorWrap<ValueType, 1> wrap(*dev);
@@ -358,7 +358,7 @@ TYPED_TEST(FullTensorWrap2DTensorWrapTest, correct_with_tensor_wrap)
         nvcv::TensorDataStridedCuda{nvcv::TensorShape{{H, W}, "HW"}, nvcv::DataType{dataType}, buf}
     };
 
-    const auto *dev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(tensor.exportData());
+    auto dev = tensor.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_NE(dev, nullptr);
 
     cuda::FullTensorWrap<ValueType, 2> wrap(*dev);
@@ -407,7 +407,7 @@ TYPED_TEST(FullTensorWrap2DTensorTest, correct_with_tensor)
     },
         nvcv::DataType{imgFormat});
 
-    const auto *dev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(tensor.exportData());
+    auto dev = tensor.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_NE(dev, nullptr);
 
     cuda::FullTensorWrap<ValueType, 2> wrap(*dev);
@@ -442,7 +442,7 @@ TYPED_TEST(FullTensorWrap2DTensorTest, it_works_in_device)
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
-    const auto *dev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(tensor.exportData());
+    auto dev = tensor.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_NE(dev, nullptr);
 
     cuda::FullTensorWrap<ValueType, 2> wrap(*dev);
@@ -632,7 +632,7 @@ TEST(FullTensorWrap3DBigPitchDeathTest, it_dies)
         nvcv::TensorDataStridedCuda{nvcv::TensorShape{{1, height, width}, "NHW"}, dt, buf}
     };
 
-    const auto *dev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(tensor.exportData());
+    auto dev = tensor.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_NE(dev, nullptr);
 
     using TensorWrapper = cuda::FullTensorWrap<DataType, 3>;
@@ -657,7 +657,7 @@ TEST(FullTensorWrap3DBigShapeDeathTest, it_dies)
         nvcv::TensorDataStridedCuda{nvcv::TensorShape{{1, height, width}, "NHW"}, dt, buf}
     };
 
-    const auto *dev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(tensor.exportData());
+    auto dev = tensor.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_NE(dev, nullptr);
 
     using TensorWrapper = cuda::FullTensorWrap<DataType, 3>;
@@ -709,7 +709,7 @@ TYPED_TEST(FullTensorWrap3DTensorWrapTest, correct_with_tensor_wrap)
         nvcv::TensorDataStridedCuda{nvcv::TensorShape{{N, H, W}, "NHW"}, nvcv::DataType{dataType}, buf}
     };
 
-    const auto *dev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(tensor.exportData());
+    auto dev = tensor.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_NE(dev, nullptr);
 
     cuda::FullTensorWrap<ValueType, 3> wrap(*dev);
@@ -756,7 +756,7 @@ TYPED_TEST(FullTensorWrap3DTensorTest, correct_with_tensor)
 
     nvcv::Tensor tensor(3, {213, 211}, nvcv::ImageFormat{imgFormat});
 
-    const auto *dev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(tensor.exportData());
+    auto dev = tensor.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_NE(dev, nullptr);
 
     cuda::FullTensorWrap<ValueType, 3> wrap(*dev);
@@ -786,7 +786,7 @@ TYPED_TEST(FullTensorWrap3DTensorTest, it_works_in_device)
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
-    const auto *dev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(tensor.exportData());
+    auto dev = tensor.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_NE(dev, nullptr);
 
     cuda::FullTensorWrap<ValueType, 3> wrap(*dev);
@@ -1021,7 +1021,7 @@ TYPED_TEST(FullTensorWrap4DTensorWrapTest, correct_with_tensor_wrap)
         nvcv::TensorDataStridedCuda{nvcv::TensorShape{{N, H, W, C}, "NHWC"}, nvcv::DataType{dataType}, buf}
     };
 
-    const auto *dev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(tensor.exportData());
+    auto dev = tensor.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_NE(dev, nullptr);
 
     cuda::FullTensorWrap<ValueType, 4> wrap(*dev);
@@ -1077,7 +1077,7 @@ TYPED_TEST(FullTensorWrap4DTensorTest, correct_with_tensor)
     },
         nvcv::DataType{dataType});
 
-    const auto *dev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(tensor.exportData());
+    auto dev = tensor.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_NE(dev, nullptr);
 
     cuda::FullTensorWrap<ValueType, 4> wrap(*dev);
@@ -1115,7 +1115,7 @@ TYPED_TEST(FullTensorWrap4DTensorTest, it_works_in_device)
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
-    const auto *dev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(tensor.exportData());
+    auto dev = tensor.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_NE(dev, nullptr);
 
     cuda::FullTensorWrap<ValueType, 4> wrap(*dev);
@@ -1202,8 +1202,8 @@ TYPED_TEST(BorderWrapFullTensorWrap3DTest, correct_fill)
     nvcv::Tensor srcTensor(batches, {width, height}, format);
     nvcv::Tensor dstTensor(batches, {width + borderSize * 2, height + borderSize * 2}, format);
 
-    const auto *srcDev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(srcTensor.exportData());
-    const auto *dstDev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(dstTensor.exportData());
+    auto srcDev = srcTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto dstDev = dstTensor.exportData<nvcv::TensorDataStridedCuda>();
 
     ASSERT_NE(srcDev, nullptr);
     ASSERT_NE(dstDev, nullptr);
@@ -1319,8 +1319,8 @@ TYPED_TEST(BorderWrapFullTensorWrap4DTest, correct_fill)
     nvcv::Tensor srcTensor(batches, {width, height}, format);
     nvcv::Tensor dstTensor(batches, {width + borderSize * 2, height + borderSize * 2}, format);
 
-    const auto *srcDev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(srcTensor.exportData());
-    const auto *dstDev = dynamic_cast<const nvcv::ITensorDataStridedCuda *>(dstTensor.exportData());
+    auto srcDev = srcTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto dstDev = dstTensor.exportData<nvcv::TensorDataStridedCuda>();
 
     ASSERT_NE(srcDev, nullptr);
     ASSERT_NE(dstDev, nullptr);

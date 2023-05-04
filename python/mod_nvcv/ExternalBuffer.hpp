@@ -42,6 +42,7 @@ public:
     const DLTensor &dlTensor() const;
 
     Shape      shape() const;
+    py::tuple  strides() const;
     py::object dtype() const;
 
     void *data() const;

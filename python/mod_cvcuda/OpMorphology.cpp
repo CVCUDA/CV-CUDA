@@ -113,15 +113,111 @@ void ExportOpMorphology(py::module &m)
     using namespace pybind11::literals;
 
     m.def("morphology", &Morphology, "src"_a, "morphologyType"_a, "maskSize"_a, "anchor"_a, py::kw_only(),
-          "iteration"_a = 1, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "stream"_a = nullptr);
+          "iteration"_a = 1, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Morphology operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Morphology operator
+            for more details and usage examples.
+
+        Args:
+            src (Tensor): Input tensor containing one or more images.
+            morphologyType (MorphologyType): Type of operation to perform (Erode/Dilate).
+            maskSize (Tuple [int,int]): Mask width and height for morphology operation.
+            anchor (Tuple [int,int]): X,Y offset of kernel, use -1,-1 for center.
+            iteration (int, optional): Number of times to run the kernel.
+            border (NVCVBorderType, optional): Border mode to be used when accessing elements outside input image.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.Tensor: The output tensor.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 
     m.def("morphology_into", &MorphologyInto, "dst"_a, "src"_a, "morphologyType"_a, "maskSize"_a, "anchor"_a,
-          py::kw_only(), "iteration"_a = 1, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "stream"_a = nullptr);
+          py::kw_only(), "iteration"_a = 1, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "stream"_a = nullptr,
+          R"pbdoc(
+
+        Executes the Morphology operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Morphology operator
+            for more details and usage examples.
+
+        Args:
+            dst (Tensor): Output tensor to store the result of the operation.
+            src (Tensor): Input tensor containing one or more images.
+            morphologyType (MorphologyType): Type of operation to perform (Erode/Dilate).
+            maskSize (Tuple [int,int]): Mask width and height for morphology operation.
+            anchor (Tuple [int,int]): X,Y offset of kernel, use -1,-1 for center.
+            iteration (int, optional): Number of times to run the kernel.
+            border (NVCVBorderType, optional): Border mode to be used when accessing elements outside input image.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 
     m.def("morphology", &MorphologyVarShape, "src"_a, "morphologyType"_a, "masks"_a, "anchors"_a, py::kw_only(),
-          "iteration"_a = 1, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "stream"_a = nullptr);
+          "iteration"_a = 1, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "stream"_a = nullptr, R"pbdoc(
+
+        Executes the Morphology operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Morphology operator
+            for more details and usage examples.
+
+        Args:
+            src (ImageBatchVarShape): Input image batch containing one or more images.
+            morphologyType (MorphologyType): Type of operation to perform (Erode/Dilate).
+            maskSize (Tensor): Mask width and height for morphology operation for every image.
+            anchor (Tensor): X,Y offset of kernel for every image, use -1,-1 for center.
+            iteration (int, optional): Number of times to run the kernel.
+            border (NVCVBorderType, optional): Border mode to be used when accessing elements outside input image.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.ImageBatchVarShape: The output image batch.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 
     m.def("morphology_into", &MorphologyVarShapeInto, "dst"_a, "src"_a, "morphologyType"_a, "masks"_a, "anchors"_a,
-          py::kw_only(), "iteration"_a = 1, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "stream"_a = nullptr);
+          py::kw_only(), "iteration"_a = 1, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "stream"_a = nullptr,
+          R"pbdoc(
+
+        Executes the Morphology operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Morphology operator
+            for more details and usage examples.
+
+        Args:
+            src (ImageBatchVarShape): Input image batch containing one or more images.
+            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
+            morphologyType (MorphologyType): Type of operation to perform (Erode/Dilate).
+            maskSize (Tensor): Mask width and height for morphology operation for every image.
+            anchor (Tensor): X,Y offset of kernel for every image, use -1,-1 for center.
+            iteration (int, optional): Number of times to run the kernel.
+            border (NVCVBorderType, optional): Border mode to be used when accessing elements outside input image.
+            stream (Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C
+            API references of the CV-CUDA operator.
+    )pbdoc");
 }
 } // namespace cvcudapy

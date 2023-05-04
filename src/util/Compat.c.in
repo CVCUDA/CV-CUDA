@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,6 +30,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdatomic.h>
+#include <math.h>
 
 // It only makes sense to implement getrandom compatibility
 // layer if it is available in c library.
@@ -378,6 +379,53 @@ __attribute__((weak))
 int getentropy(void *buffer, size_t length)
 {
     return Compat_getentropy(buffer, length);
+}
+
+// =========================================================
+// roundevenf
+
+// roundevenf functions showed up only in glibc 2.25, CentOS7 ships with glibc-2.17.
+float Compat_roundevenf (float x)
+{
+    float px = fabsf(x);
+    float rounded = roundf(px);
+    if (fabsf(px - rounded) == 0.5f)
+    {
+        if (fmodf(rounded, 2.0f) != 0)
+        {
+            rounded -= 1.0f;
+        }
+    }
+    return copysignf(rounded,x);
+}
+
+
+__attribute__((weak))
+float roundevenf(float x)
+{
+    return Compat_roundevenf(x);
+}
+
+// =========================================================
+// roundeven
+
+// roundeven functions showed up only in glibc 2.25, CentOS7 ships with glibc-2.17.
+double Compat_roundeven(double x)
+{
+    double px = fabs(x);
+    double rounded = round(px);
+    if (fabs(px - rounded) == 0.5) {
+        if (fmod(rounded, 2.0) != 0) {
+            rounded -= 1.0;
+        }
+    }
+    return copysign(rounded,x);
+}
+
+__attribute__((weak))
+double roundeven(double x)
+{
+    return Compat_roundeven(x);
 }
 
 #endif

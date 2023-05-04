@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,6 +22,14 @@
 #    define NVCV_CONSTEXPR constexpr
 #else
 #    define NVCV_CONSTEXPR
+#endif
+
+#if __cplusplus < 201703L
+#    define NVCV_NODISCARD
+#    define NVCV_IF_CONSTEXPR
+#else
+#    define NVCV_NODISCARD    [[nodiscard]]
+#    define NVCV_IF_CONSTEXPR constexpr
 #endif
 
 #endif // NVCV_DETAIL_COMPILERUTILS_H

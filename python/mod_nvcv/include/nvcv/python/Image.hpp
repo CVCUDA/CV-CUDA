@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -45,9 +45,9 @@ class Image
 public:
     using PrivateImpl = priv::Image;
 
-    static Image Create(nvcv::Size2D size, nvcv::ImageFormat fmt)
+    static Image Create(nvcv::Size2D size, nvcv::ImageFormat fmt, int rowAlign = 0)
     {
-        PyObject *oimg = capi().Image_Create(size.w, size.h, static_cast<NVCVImageFormat>(fmt));
+        PyObject *oimg = capi().Image_Create(size.w, size.h, static_cast<NVCVImageFormat>(fmt), rowAlign);
 
         py::object pyimg = py::reinterpret_steal<py::object>(oimg);
 

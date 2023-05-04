@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -81,6 +81,66 @@ void DefaultAllocator::doFreeCudaMem(void *ptr, int64_t size, int32_t align) noe
     (void)align;
 
     NVCV_CHECK_LOG(::cudaFree(ptr));
+}
+
+NVCVResourceAllocator DefaultAllocator::doGet(NVCVResourceType resType)
+{
+    NVCVResourceAllocator custAllocator = {};
+    custAllocator.ctx                   = this;
+    custAllocator.resType               = resType;
+
+    switch (resType)
+    {
+    case NVCV_RESOURCE_MEM_HOST:
+        static auto defAllocHostMem = [](void *ctx, int64_t size, int32_t align)
+        {
+            auto *self = static_cast<DefaultAllocator *>(ctx);
+            return self->allocHostMem(size, align);
+        };
+        static auto defFreeHostMem = [](void *ctx, void *ptr, int64_t size, int32_t align)
+        {
+            auto *self = static_cast<DefaultAllocator *>(ctx);
+            return self->freeHostMem(ptr, size, align);
+        };
+        custAllocator.res.mem.fnAlloc = defAllocHostMem;
+        custAllocator.res.mem.fnFree  = defFreeHostMem;
+        break;
+
+    case NVCV_RESOURCE_MEM_CUDA:
+        static auto defAllocCudaMem = [](void *ctx, int64_t size, int32_t align)
+        {
+            auto *self = static_cast<DefaultAllocator *>(ctx);
+            return self->allocCudaMem(size, align);
+        };
+        static auto defFreeCudaMem = [](void *ctx, void *ptr, int64_t size, int32_t align)
+        {
+            auto *self = static_cast<DefaultAllocator *>(ctx);
+            return self->freeCudaMem(ptr, size, align);
+        };
+        custAllocator.res.mem.fnAlloc = defAllocCudaMem;
+        custAllocator.res.mem.fnFree  = defFreeCudaMem;
+        break;
+
+    case NVCV_RESOURCE_MEM_HOST_PINNED:
+        static auto defAllocHostPinnedMem = [](void *ctx, int64_t size, int32_t align)
+        {
+            auto *self = static_cast<DefaultAllocator *>(ctx);
+            return self->allocHostPinnedMem(size, align);
+        };
+        static auto defFreeHostPinnedMem = [](void *ctx, void *ptr, int64_t size, int32_t align)
+        {
+            auto *self = static_cast<DefaultAllocator *>(ctx);
+            return self->freeHostPinnedMem(ptr, size, align);
+        };
+        custAllocator.res.mem.fnAlloc = defAllocHostPinnedMem;
+        custAllocator.res.mem.fnFree  = defFreeHostPinnedMem;
+        break;
+
+    default:
+        throw Exception(NVCV_ERROR_INVALID_ARGUMENT) << "Unknown resource type: " << resType << ".";
+    }
+
+    return custAllocator;
 }
 
 } // namespace nvcv::priv

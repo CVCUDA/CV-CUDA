@@ -99,6 +99,18 @@ Shape ExternalBuffer::shape() const
     return shape;
 }
 
+py::tuple ExternalBuffer::strides() const
+{
+    py::tuple strides(m_dlTensor->ndim);
+
+    for (size_t i = 0; i < strides.size(); ++i)
+    {
+        strides[i] = m_dlTensor->strides[i];
+    }
+
+    return strides;
+}
+
 py::object ExternalBuffer::dtype() const
 {
     return ToDType(ToNVCVDataType(m_dlTensor->dtype));
@@ -352,10 +364,11 @@ const DLTensor &ExternalBuffer::dlTensor() const
 void ExternalBuffer::Export(py::module &m)
 {
     py::class_<ExternalBuffer, std::shared_ptr<ExternalBuffer>>(m, "ExternalBuffer", py::dynamic_attr())
-        .def_property_readonly("shape", &ExternalBuffer::shape)
-        .def_property_readonly("dtype", &ExternalBuffer::dtype)
-        .def("__dlpack__", &ExternalBuffer::dlpack, "stream"_a=1)
-        .def("__dlpack_device__", &ExternalBuffer::dlpackDevice);
+        .def_property_readonly("shape", &ExternalBuffer::shape, "Get the shape of the buffer as an array")
+        .def_property_readonly("strides", &ExternalBuffer::strides, "Get the strides of the buffer")
+        .def_property_readonly("dtype", &ExternalBuffer::dtype, "Get the data type of the buffer")
+        .def("__dlpack__", &ExternalBuffer::dlpack, "stream"_a=1, "Export the buffer as a DLPack tensor")
+        .def("__dlpack_device__", &ExternalBuffer::dlpackDevice, "Get the device associated with the buffer");
 }
 
 } // namespace nv::vpi::python
@@ -377,7 +390,6 @@ bool type_caster<priv::ExternalBuffer>::load(handle src, bool implicit_conv)
         value_and_holder vh = reinterpret_cast<instance *>(src.ptr())->get_value_and_holder();
         value = vh.template holder<std::shared_ptr<priv::ExternalBuffer>>();
         NVCV_ASSERT(value != nullptr);
-        src.inc_ref();
         return true;
     }
     // If not, it could be an object that implements that __cuda_array_interface, let's try to

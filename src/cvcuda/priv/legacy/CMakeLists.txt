@@ -14,6 +14,7 @@
 # limitations under the License.
 
 add_library(cvcuda_legacy STATIC
+    filter_utils.cu
     custom_crop.cu
     reformat.cu
     resize.cu
@@ -60,6 +61,13 @@ add_library(cvcuda_legacy STATIC
     gamma_contrast_var_shape.cu
     pillow_resize.cu
     pillow_resize_var_shape.cu
+    threshold.cu
+    adaptive_threshold.cu
+    adaptive_threshold_var_shape.cu
+    threshold_var_shape.cu
+    threshold_util.cu
+    bnd_box.cu
+    box_blur.cu
 )
 
 target_link_libraries(cvcuda_legacy
