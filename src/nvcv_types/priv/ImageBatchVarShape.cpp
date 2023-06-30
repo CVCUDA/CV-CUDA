@@ -20,6 +20,7 @@
 #include "DataType.hpp"
 #include "IAllocator.hpp"
 #include "IImage.hpp"
+#include "ImageBatchManager.hpp"
 #include "ImageManager.hpp"
 #include "Requirements.hpp"
 
@@ -83,23 +84,20 @@ ImageBatchVarShape::ImageBatchVarShape(NVCVImageBatchVarShapeRequirements reqs, 
     try
     {
         m_devImagesBuffer
-            = reinterpret_cast<NVCVImageBufferStrided *>(m_alloc.allocCudaMem(bufImagesSize, m_reqs.alignBytes));
+            = static_cast<NVCVImageBufferStrided *>(m_alloc->allocCudaMem(bufImagesSize, m_reqs.alignBytes));
         NVCV_ASSERT(m_devImagesBuffer != nullptr);
 
         m_hostImagesBuffer
-            = reinterpret_cast<NVCVImageBufferStrided *>(m_alloc.allocHostMem(bufImagesSize, m_reqs.alignBytes));
+            = static_cast<NVCVImageBufferStrided *>(m_alloc->allocHostMem(bufImagesSize, m_reqs.alignBytes));
         NVCV_ASSERT(m_devImagesBuffer != nullptr);
 
-        m_devFormatsBuffer
-            = reinterpret_cast<NVCVImageFormat *>(m_alloc.allocCudaMem(bufFormatsSize, m_reqs.alignBytes));
+        m_devFormatsBuffer = static_cast<NVCVImageFormat *>(m_alloc->allocCudaMem(bufFormatsSize, m_reqs.alignBytes));
         NVCV_ASSERT(m_devFormatsBuffer != nullptr);
 
-        m_hostFormatsBuffer
-            = reinterpret_cast<NVCVImageFormat *>(m_alloc.allocHostMem(bufFormatsSize, m_reqs.alignBytes));
+        m_hostFormatsBuffer = static_cast<NVCVImageFormat *>(m_alloc->allocHostMem(bufFormatsSize, m_reqs.alignBytes));
         NVCV_ASSERT(m_devFormatsBuffer != nullptr);
 
-        m_imgHandleBuffer
-            = reinterpret_cast<NVCVImageHandle *>(m_alloc.allocHostMem(imgHandlesSize, m_reqs.alignBytes));
+        m_imgHandleBuffer = static_cast<NVCVImageHandle *>(m_alloc->allocHostMem(imgHandlesSize, m_reqs.alignBytes));
         NVCV_ASSERT(m_imgHandleBuffer != nullptr);
 
         NVCV_CHECK_THROW(cudaEventCreateWithFlags(&m_evPostFence, cudaEventDisableTiming));
@@ -111,13 +109,13 @@ ImageBatchVarShape::ImageBatchVarShape(NVCVImageBatchVarShapeRequirements reqs, 
             NVCV_CHECK_LOG(cudaEventDestroy(m_evPostFence));
         }
 
-        m_alloc.freeCudaMem(m_devImagesBuffer, bufImagesSize, m_reqs.alignBytes);
-        m_alloc.freeHostMem(m_hostImagesBuffer, bufImagesSize, m_reqs.alignBytes);
+        m_alloc->freeCudaMem(m_devImagesBuffer, bufImagesSize, m_reqs.alignBytes);
+        m_alloc->freeHostMem(m_hostImagesBuffer, bufImagesSize, m_reqs.alignBytes);
 
-        m_alloc.freeCudaMem(m_devFormatsBuffer, bufFormatsSize, m_reqs.alignBytes);
-        m_alloc.freeHostMem(m_hostFormatsBuffer, bufFormatsSize, m_reqs.alignBytes);
+        m_alloc->freeCudaMem(m_devFormatsBuffer, bufFormatsSize, m_reqs.alignBytes);
+        m_alloc->freeHostMem(m_hostFormatsBuffer, bufFormatsSize, m_reqs.alignBytes);
 
-        m_alloc.freeHostMem(m_imgHandleBuffer, imgHandlesSize, m_reqs.alignBytes);
+        m_alloc->freeHostMem(m_imgHandleBuffer, imgHandlesSize, m_reqs.alignBytes);
         throw;
     }
 }
@@ -125,18 +123,19 @@ ImageBatchVarShape::ImageBatchVarShape(NVCVImageBatchVarShapeRequirements reqs, 
 ImageBatchVarShape::~ImageBatchVarShape()
 {
     NVCV_CHECK_LOG(cudaEventSynchronize(m_evPostFence));
+    clear();
 
     int64_t bufImagesSize  = m_reqs.capacity * sizeof(NVCVImageBufferStrided);
     int64_t bufFormatsSize = m_reqs.capacity * sizeof(NVCVImageFormat);
     int64_t imgHandlesSize = m_reqs.capacity * sizeof(NVCVImageHandle);
 
-    m_alloc.freeCudaMem(m_devImagesBuffer, bufImagesSize, m_reqs.alignBytes);
-    m_alloc.freeHostMem(m_hostImagesBuffer, bufImagesSize, m_reqs.alignBytes);
+    m_alloc->freeCudaMem(m_devImagesBuffer, bufImagesSize, m_reqs.alignBytes);
+    m_alloc->freeHostMem(m_hostImagesBuffer, bufImagesSize, m_reqs.alignBytes);
 
-    m_alloc.freeCudaMem(m_devFormatsBuffer, bufFormatsSize, m_reqs.alignBytes);
-    m_alloc.freeHostMem(m_hostFormatsBuffer, bufFormatsSize, m_reqs.alignBytes);
+    m_alloc->freeCudaMem(m_devFormatsBuffer, bufFormatsSize, m_reqs.alignBytes);
+    m_alloc->freeHostMem(m_hostFormatsBuffer, bufFormatsSize, m_reqs.alignBytes);
 
-    m_alloc.freeHostMem(m_imgHandleBuffer, imgHandlesSize, m_reqs.alignBytes);
+    m_alloc->freeHostMem(m_imgHandleBuffer, imgHandlesSize, m_reqs.alignBytes);
 
     NVCV_CHECK_LOG(cudaEventDestroy(m_evPostFence));
 }
@@ -168,7 +167,7 @@ ImageFormat ImageBatchVarShape::uniqueFormat() const
     return *m_cacheUniqueFormat;
 }
 
-IAllocator &ImageBatchVarShape::alloc() const
+SharedCoreObj<IAllocator> ImageBatchVarShape::alloc() const
 {
     return m_alloc;
 }
@@ -278,6 +277,8 @@ void ImageBatchVarShape::pushImages(const NVCVImageHandle *images, int32_t numIm
         for (int i = 0; i < numImages; ++i)
         {
             doPushImage(images[i]);
+            if (images[i])
+                CoreObjectIncRef(images[i]);
         }
     }
     catch (...)
@@ -372,11 +373,22 @@ void ImageBatchVarShape::doPushImage(NVCVImageHandle imgHandle)
 
 void ImageBatchVarShape::popImages(int32_t numImages)
 {
+    if (numImages < 0)
+    {
+        throw Exception(NVCV_ERROR_INVALID_ARGUMENT, "The number of images to remove cannot be negative");
+    }
+
     if (m_numImages - numImages < 0)
     {
         throw Exception(NVCV_ERROR_UNDERFLOW,
                         "Cannot remove more images, %d, than the number of images, %d, in the image batch", numImages,
                         m_numImages);
+    }
+
+    for (int i = m_numImages - 1; i >= m_numImages - numImages; i--)
+    {
+        if (m_imgHandleBuffer[i])
+            CoreObjectDecRef(m_imgHandleBuffer[i]);
     }
 
     m_numImages -= numImages;
@@ -398,16 +410,30 @@ void ImageBatchVarShape::popImages(int32_t numImages)
 
 void ImageBatchVarShape::getImages(int32_t begIndex, NVCVImageHandle *outImages, int32_t numImages) const
 {
-    if (begIndex + numImages > m_numImages)
-    {
-        throw Exception(NVCV_ERROR_OVERFLOW, "Cannot get images past end of image batch");
-    }
+    if (begIndex < 0)
+        throw Exception(NVCV_ERROR_INVALID_ARGUMENT, "Image index cannot be negative");
 
-    std::copy(m_imgHandleBuffer + begIndex, m_imgHandleBuffer + begIndex + numImages, outImages);
+    if (begIndex + numImages > m_numImages)
+        throw Exception(NVCV_ERROR_OVERFLOW, "Cannot get images past end of image batch");
+
+    for (int i = 0; i < numImages; i++)
+    {
+        outImages[i] = m_imgHandleBuffer[i + begIndex];
+        if (outImages[i])
+            CoreObjectIncRef(outImages[i]);
+    }
 }
 
 void ImageBatchVarShape::clear()
 {
+    for (int i = 0; i < m_numImages; i++)
+    {
+        if (m_imgHandleBuffer[i])
+        {
+            CoreObjectDecRef(m_imgHandleBuffer[i]);
+            m_imgHandleBuffer[i] = nullptr;
+        }
+    }
     m_numImages              = 0;
     m_dirtyStartingFromIndex = 0;
     m_cacheMaxSize           = {0, 0};

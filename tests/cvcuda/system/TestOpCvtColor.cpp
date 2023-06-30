@@ -18,7 +18,6 @@
 #include "ConvUtils.hpp"
 #include "Definitions.hpp"
 
-#include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpCvtColor.hpp>
 #include <nvcv/Image.hpp>
@@ -26,6 +25,7 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
 #include <nvcv/cuda/TypeTraits.hpp>
+#include <util/TensorDataUtils.hpp>
 
 #include <random>
 
@@ -118,8 +118,8 @@ TEST_P(OpCvtColor, correct_output)
 
     double maxDiff{GetParamValue<7>()};
 
-    nvcv::Tensor srcTensor = test::CreateTensor(batches, width, height, srcFormat);
-    nvcv::Tensor dstTensor = test::CreateTensor(batches, width, height, dstFormat);
+    nvcv::Tensor srcTensor = nvcv::util::CreateTensor(batches, width, height, srcFormat);
+    nvcv::Tensor dstTensor = nvcv::util::CreateTensor(batches, width, height, dstFormat);
 
     auto srcData = srcTensor.exportData<nvcv::TensorDataStridedCuda>();
     auto dstData = dstTensor.exportData<nvcv::TensorDataStridedCuda>();
@@ -195,41 +195,41 @@ TEST_P(OpCvtColor, varshape_correct_output)
     std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
     std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
 
-    std::vector<std::unique_ptr<nvcv::Image>> imgSrc;
+    std::vector<nvcv::Image> imgSrc;
 
     std::vector<std::vector<uint8_t>> srcVec(batches);
     std::vector<int>                  srcVecRowStride(batches);
 
     for (int i = 0; i < batches; ++i)
     {
-        imgSrc.emplace_back(std::make_unique<nvcv::Image>(nvcv::Size2D{udistWidth(rng), udistHeight(rng)}, srcFormat));
+        imgSrc.emplace_back(nvcv::Size2D{udistWidth(rng), udistHeight(rng)}, srcFormat);
 
-        int srcRowStride   = imgSrc[i]->size().w * srcFormat.planePixelStrideBytes(0);
+        int srcRowStride   = imgSrc[i].size().w * srcFormat.planePixelStrideBytes(0);
         srcVecRowStride[i] = srcRowStride;
 
         std::uniform_int_distribution<uint8_t> udist(0, 255);
 
-        srcVec[i].resize(imgSrc[i]->size().h * srcRowStride);
+        srcVec[i].resize(imgSrc[i].size().h * srcRowStride);
         std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return udist(rng); });
 
-        auto imgData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
+        auto imgData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_NE(imgData, nvcv::NullOpt);
 
         // Copy input data to the GPU
         ASSERT_EQ(cudaSuccess,
                   cudaMemcpy2DAsync(imgData->plane(0).basePtr, imgData->plane(0).rowStride, srcVec[i].data(),
-                                    srcRowStride, srcRowStride, imgSrc[i]->size().h, cudaMemcpyHostToDevice, stream));
+                                    srcRowStride, srcRowStride, imgSrc[i].size().h, cudaMemcpyHostToDevice, stream));
     }
 
     nvcv::ImageBatchVarShape batchSrc(batches);
     batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
 
     // Create output varshape
-    std::vector<std::unique_ptr<nvcv::Image>> imgDst;
+    std::vector<nvcv::Image> imgDst;
 
     for (int i = 0; i < batches; ++i)
     {
-        imgDst.emplace_back(std::make_unique<nvcv::Image>(imgSrc[i]->size(), dstFormat));
+        imgDst.emplace_back(imgSrc[i].size(), dstFormat);
     }
 
     nvcv::ImageBatchVarShape batchDst(batches);
@@ -250,15 +250,15 @@ TEST_P(OpCvtColor, varshape_correct_output)
     {
         SCOPED_TRACE(i);
 
-        const auto imgData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
+        const auto imgData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_NE(imgData, nvcv::NullOpt);
         ASSERT_EQ(imgData->numPlanes(), 1);
 
-        std::vector<uint8_t> testVec(imgSrc[i]->size().h * srcVecRowStride[i]);
+        std::vector<uint8_t> testVec(imgSrc[i].size().h * srcVecRowStride[i]);
 
         // Copy output data to Host
         ASSERT_EQ(cudaSuccess, cudaMemcpy2D(testVec.data(), srcVecRowStride[i], imgData->plane(0).basePtr,
-                                            imgData->plane(0).rowStride, srcVecRowStride[i], imgSrc[i]->size().h,
+                                            imgData->plane(0).rowStride, srcVecRowStride[i], imgSrc[i].size().h,
                                             cudaMemcpyDeviceToHost));
 
         VEC_EXPECT_NEAR(testVec, srcVec[i], maxDiff);

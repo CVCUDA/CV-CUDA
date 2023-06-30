@@ -26,7 +26,10 @@
 
 #include "CvCudaLegacy.h"
 
+#include <nvcv/Image.hpp>
+#include <nvcv/ImageBatch.hpp>
 #include <nvcv/ImageBatchData.hpp>
+#include <nvcv/Tensor.hpp>
 #include <nvcv/TensorData.hpp>
 #include <nvcv/TensorShapeInfo.hpp>
 
@@ -40,7 +43,7 @@ cuda_op::DataType GetLegacyDataType(ImageFormat fmt);
 
 cuda_op::DataFormat GetLegacyDataFormat(const TensorLayout &layout);
 cuda_op::DataFormat GetLegacyDataFormat(const ImageBatchVarShapeDataStridedCuda &imgBatch);
-cuda_op::DataFormat GetLegacyDataFormat(const IImageBatchVarShape &imgBatch);
+cuda_op::DataFormat GetLegacyDataFormat(const ImageBatchVarShape &imgBatch);
 cuda_op::DataFormat GetLegacyDataFormat(const TensorDataStridedCuda &tensor);
 
 cuda_op::DataShape GetLegacyDataShape(const TensorShapeInfoImage &shapeInfo);

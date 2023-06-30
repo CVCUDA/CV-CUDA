@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,11 +18,15 @@
 #ifndef NVCV_CORE_PRIV_IMAGEBATCHVARSHAPE_HPP
 #define NVCV_CORE_PRIV_IMAGEBATCHVARSHAPE_HPP
 
+#include "IAllocator.hpp"
 #include "IImageBatch.hpp"
+#include "SharedCoreObj.hpp"
 
 #include <cuda_runtime.h>
 
 namespace nvcv::priv {
+
+class IImage;
 
 class ImageBatchVarShape final : public CoreObjectBase<IImageBatchVarShape>
 {
@@ -40,7 +44,7 @@ public:
 
     NVCVTypeImageBatch type() const override;
 
-    IAllocator &alloc() const override;
+    SharedCoreObj<IAllocator> alloc() const override;
 
     void getImages(int32_t begIndex, NVCVImageHandle *outImages, int32_t numImages) const override;
 
@@ -52,7 +56,7 @@ public:
     void clear() override;
 
 private:
-    IAllocator                        &m_alloc;
+    SharedCoreObj<IAllocator>          m_alloc;
     NVCVImageBatchVarShapeRequirements m_reqs;
 
     mutable int32_t m_dirtyStartingFromIndex;

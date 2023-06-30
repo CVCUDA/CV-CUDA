@@ -20,11 +20,8 @@ CV-CUDA includes:
 
 | Pre/Post-Processing Operators | Definition |
 |-------------------------------|------------|
-| Adaptive Thresholding | Computes the threshold value for each fractional region of the image |
 | AverageBlur | Reduces image noise using an average filter |
 | BilateralFilter | Reduces image noise while preserving strong edges |
-| Bounding Box | Draws an overlay 2D rectangular bounding box using the coordinate points |
-| Bounding Box Blur | Adds a 2D rectangular blur in the region of interest <br> (ROI) using the coordinate points |
 | CenterCrop | Crops an image at its center |
 | ChannelReorder | Shuffles the order of image channels |
 | Composite | Composites two images together |
@@ -35,21 +32,18 @@ CV-CUDA includes:
 | DataTypeConvert | Converts an image’s data type, with optional scaling |
 | Erase | Erases image regions |
 | Flip | Flips a 2D image around its axis |
-| GammaContrast | Adjusts image contrast based on gamma value |
+| GammaContrast | Adjusts image contrast |
 | Gaussian | Applies a gaussian blur filter to the image |
 | JointBilateralFilter | Reduces image noise while preserving strong edges <br> based on a guidance image |
 | Laplacian | Applies a Laplace transform to an image |
 | MedianBlur | Reduces an image’s salt-and-pepper noise |
 | Morphology | Performs morphological erode and dilate transformations |
-| Non-Max Suppression | Selects the best bounding box out of a set of <br> overlapping boxes based on IOU and confidence thresholds |
 | Normalize | Normalizes an image pixel’s range |
 | PadStack | Stacks several images into a tensor, with border extension |
 | PillowResize | Changes the size and scale of an image using python-pillow algorithm |
 | Reformat | Converts a planar image into non-planar and vice versa |
-| Remap | Applies a generic geometrical transformation to an image, for <br> example, to perform fisheye dewarping |
 | Resize | Changes the size and scale of an image |
 | Rotate | Rotates a 2D array in multiples of 90 degrees |
-| Thresholding | Computes the threshold value based on the histogram of the <br> overall pixel intensity distribution of the image |
 | WarpAffine | Applies an affine transformation to an image |
 | WarpPerspective | Applies a perspective transformation to an image |
 

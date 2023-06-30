@@ -17,13 +17,13 @@
 
 #include "Definitions.hpp"
 
-#include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpJointBilateralFilter.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
+#include <util/TensorDataUtils.hpp>
 
 #include <iostream>
 #include <random>
@@ -192,9 +192,9 @@ TEST_P(OpJointBilateralFilter, JointBilateralFilter_packed)
     float sigmaSpace     = GetParamValue<4>();
     int   numberOfImages = GetParamValue<5>();
 
-    nvcv::Tensor imgOut     = test::CreateTensor(numberOfImages, width, height, nvcv::FMT_U8);
-    nvcv::Tensor imgIn      = test::CreateTensor(numberOfImages, width, height, nvcv::FMT_U8);
-    nvcv::Tensor imgInColor = test::CreateTensor(numberOfImages, width, height, nvcv::FMT_U8);
+    nvcv::Tensor imgOut     = nvcv::util::CreateTensor(numberOfImages, width, height, nvcv::FMT_U8);
+    nvcv::Tensor imgIn      = nvcv::util::CreateTensor(numberOfImages, width, height, nvcv::FMT_U8);
+    nvcv::Tensor imgInColor = nvcv::util::CreateTensor(numberOfImages, width, height, nvcv::FMT_U8);
 
     auto inData      = imgIn.exportData<nvcv::TensorDataStridedCuda>();
     auto inColorData = imgInColor.exportData<nvcv::TensorDataStridedCuda>();
@@ -271,8 +271,8 @@ TEST_P(OpJointBilateralFilter, JointBilateralFilter_VarShape)
     std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
     std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
 
-    std::vector<std::unique_ptr<nvcv::Image>> imgSrc;
-    std::vector<std::unique_ptr<nvcv::Image>> imgSrcColor;
+    std::vector<nvcv::Image> imgSrc;
+    std::vector<nvcv::Image> imgSrcColor;
 
     std::vector<std::vector<uint8_t>> srcVec(numberOfImages);
     std::vector<std::vector<uint8_t>> srcColorVec(numberOfImages);
@@ -286,35 +286,35 @@ TEST_P(OpJointBilateralFilter, JointBilateralFilter_VarShape)
         int          w = udistWidth(rng);
         int          h = udistHeight(rng);
         nvcv::Size2D sz(w, h);
-        imgSrc.emplace_back(std::make_unique<nvcv::Image>(sz, format));
-        imgSrcColor.emplace_back(std::make_unique<nvcv::Image>(sz, format));
-        int srcRowStride   = imgSrc[i]->size().w * format.planePixelStrideBytes(0);
+        imgSrc.emplace_back(sz, format);
+        imgSrcColor.emplace_back(sz, format);
+        int srcRowStride   = imgSrc[i].size().w * format.planePixelStrideBytes(0);
         srcVecRowStride[i] = srcRowStride;
-        srcVecRows[i]      = imgSrc[i]->size().h;
-        srcVecColumns[i]   = imgSrc[i]->size().w;
+        srcVecRows[i]      = imgSrc[i].size().h;
+        srcVecColumns[i]   = imgSrc[i].size().w;
         std::uniform_int_distribution<uint8_t> udist(0, 255);
 
-        srcVec[i].resize(imgSrc[i]->size().h * srcRowStride);
-        srcColorVec[i].resize(imgSrcColor[i]->size().h * srcRowStride);
-        goldVec[i].resize(imgSrc[i]->size().h * srcRowStride);
-        dstVec[i].resize(imgSrc[i]->size().h * srcRowStride);
+        srcVec[i].resize(imgSrc[i].size().h * srcRowStride);
+        srcColorVec[i].resize(imgSrcColor[i].size().h * srcRowStride);
+        goldVec[i].resize(imgSrc[i].size().h * srcRowStride);
+        dstVec[i].resize(imgSrc[i].size().h * srcRowStride);
         std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return udist(rng); });
         std::generate(srcColorVec[i].begin(), srcColorVec[i].end(), [&]() { return udist(rng); });
         std::generate(goldVec[i].begin(), goldVec[i].end(), [&]() { return 0; });
         std::generate(dstVec[i].begin(), dstVec[i].end(), [&]() { return 0; });
-        auto imgData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
+        auto imgData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_NE(imgData, nvcv::NullOpt);
-        auto imgColorData = imgSrcColor[i]->exportData<nvcv::ImageDataStridedCuda>();
+        auto imgColorData = imgSrcColor[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_NE(imgColorData, nvcv::NullOpt);
 
         // Copy input data to the GPU
         ASSERT_EQ(cudaSuccess,
                   cudaMemcpy2DAsync(imgData->plane(0).basePtr, imgData->plane(0).rowStride, srcVec[i].data(),
-                                    srcRowStride, srcRowStride, imgSrc[i]->size().h, cudaMemcpyHostToDevice, stream));
+                                    srcRowStride, srcRowStride, imgSrc[i].size().h, cudaMemcpyHostToDevice, stream));
 
         ASSERT_EQ(cudaSuccess, cudaMemcpy2DAsync(imgColorData->plane(0).basePtr, imgColorData->plane(0).rowStride,
                                                  srcColorVec[i].data(), srcRowStride, srcRowStride,
-                                                 imgSrcColor[i]->size().h, cudaMemcpyHostToDevice, stream));
+                                                 imgSrcColor[i].size().h, cudaMemcpyHostToDevice, stream));
     }
 
     nvcv::ImageBatchVarShape batchSrc(numberOfImages);
@@ -323,10 +323,10 @@ TEST_P(OpJointBilateralFilter, JointBilateralFilter_VarShape)
     batchSrcColor.pushBack(imgSrcColor.begin(), imgSrcColor.end());
 
     // Create output varshape
-    std::vector<std::unique_ptr<nvcv::Image>> imgDst;
+    std::vector<nvcv::Image> imgDst;
     for (int i = 0; i < numberOfImages; ++i)
     {
-        imgDst.emplace_back(std::make_unique<nvcv::Image>(imgSrc[i]->size(), imgSrc[i]->format()));
+        imgDst.emplace_back(imgSrc[i].size(), imgSrc[i].format());
     }
     nvcv::ImageBatchVarShape batchDst(numberOfImages);
     batchDst.pushBack(imgDst.begin(), imgDst.end());
@@ -376,12 +376,12 @@ TEST_P(OpJointBilateralFilter, JointBilateralFilter_VarShape)
     // Retrieve data from GPU
     for (int i = 0; i < numberOfImages; i++)
     {
-        auto imgData = imgDst[i]->exportData<nvcv::ImageDataStridedCuda>();
+        auto imgData = imgDst[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_NE(imgData, nvcv::NullOpt);
 
         // Copy input data to the GPU
         ASSERT_EQ(cudaSuccess, cudaMemcpy2DAsync(dstVec[i].data(), srcVecRowStride[i], imgData->plane(0).basePtr,
-                                                 imgData->plane(0).rowStride, srcVecRowStride[i], imgDst[i]->size().h,
+                                                 imgData->plane(0).rowStride, srcVecRowStride[i], imgDst[i].size().h,
                                                  cudaMemcpyDeviceToHost, stream));
     }
     EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));

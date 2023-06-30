@@ -35,7 +35,7 @@ Morphology::Morphology(const int32_t maxVarShapeBatchSize)
     m_legacyOpVarShape = std::make_unique<legacy::MorphologyVarShape>(maxVarShapeBatchSize);
 }
 
-void Morphology::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &out,
+void Morphology::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                             NVCVMorphologyType morph_type, nvcv::Size2D mask_size, int2 anchor, int32_t iteration,
                             const NVCVBorderType borderMode) const
 {
@@ -57,9 +57,10 @@ void Morphology::operator()(cudaStream_t stream, const nvcv::ITensor &in, const 
         m_legacyOp->infer(*inData, *outData, morph_type, mask_size, anchor, iteration, borderMode, stream));
 }
 
-void Morphology::operator()(cudaStream_t stream, const nvcv::IImageBatchVarShape &in,
-                            const nvcv::IImageBatchVarShape &out, NVCVMorphologyType morph_type, nvcv::ITensor &masks,
-                            nvcv::ITensor &anchors, int32_t iteration, NVCVBorderType borderMode) const
+void Morphology::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
+                            const nvcv::ImageBatchVarShape &out, NVCVMorphologyType morph_type,
+                            const nvcv::Tensor &masks, const nvcv::Tensor &anchors, int32_t iteration,
+                            NVCVBorderType borderMode) const
 {
     auto masksData = masks.exportData<nvcv::TensorDataStridedCuda>();
     if (masksData == nullptr)

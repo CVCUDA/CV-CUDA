@@ -29,7 +29,7 @@ size_t ImageBatchVarShape::Key::doGetHash() const
     return ComputeHash(m_capacity);
 }
 
-bool ImageBatchVarShape::Key::doIsEqual(const IKey &ithat) const
+bool ImageBatchVarShape::Key::doIsCompatible(const IKey &ithat) const
 {
     auto &that = static_cast<const Key &>(ithat);
     return m_capacity == that.m_capacity;
@@ -110,17 +110,14 @@ void ImageBatchVarShape::pushBack(Image &img)
 
 void ImageBatchVarShape::pushBackMany(std::vector<std::shared_ptr<Image>> &imgList)
 {
-    // TODO: use an iterator that return the handle when dereferenced, this
-    // would avoid creating this vector.
-    std::vector<NVCVImageHandle> handles;
-    handles.reserve(imgList.size());
     for (auto &img : imgList)
     {
-        handles.push_back(img->impl().handle());
         m_list.push_back(img);
+        if (img)
+            m_impl.pushBack(img->impl());
+        else
+            m_impl.pushBack(nvcv::Image());
     }
-
-    m_impl.pushBack(handles.begin(), handles.end());
 }
 
 void ImageBatchVarShape::popBack(int imgCount)

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -53,9 +53,9 @@ auto Context::managerList() const -> const Managers &
     return m_managerList;
 }
 
-template class HandleManager<IImage, ImageStorage>;
-template class HandleManager<IImageBatch, ImageBatchStorage>;
-template class HandleManager<ITensor, TensorStorage>;
-template class HandleManager<IAllocator, AllocatorStorage>;
+template class HandleManager<IImage>;
+template class HandleManager<IImageBatch>;
+template class HandleManager<ITensor>;
+template class HandleManager<IAllocator>;
 
 } // namespace nvcv::priv

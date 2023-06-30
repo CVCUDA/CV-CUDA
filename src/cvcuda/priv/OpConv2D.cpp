@@ -33,8 +33,8 @@ Conv2D::Conv2D()
     m_legacyOpVarShape = std::make_unique<legacy::Conv2DVarShape>(maxIn, maxOut);
 }
 
-void Conv2D::operator()(cudaStream_t stream, const nvcv::IImageBatchVarShape &in, nvcv::IImageBatchVarShape &out,
-                        const nvcv::IImageBatchVarShape &kernel, const nvcv::ITensor &kernelAnchor,
+void Conv2D::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
+                        const nvcv::ImageBatchVarShape &kernel, const nvcv::Tensor &kernelAnchor,
                         NVCVBorderType borderMode) const
 {
     auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);

@@ -34,7 +34,7 @@ CvtColor::CvtColor()
     m_legacyOpVarShape = std::make_unique<legacy::CvtColorVarShape>(maxIn, maxOut);
 }
 
-void CvtColor::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &out,
+void CvtColor::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                           NVCVColorConversionCode code) const
 {
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
@@ -54,8 +54,8 @@ void CvtColor::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nv
     NVCV_CHECK_THROW(m_legacyOp->infer(*inData, *outData, code, stream));
 }
 
-void CvtColor::operator()(cudaStream_t stream, const nvcv::IImageBatchVarShape &in,
-                          const nvcv::IImageBatchVarShape &out, NVCVColorConversionCode code) const
+void CvtColor::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
+                          NVCVColorConversionCode code) const
 {
     auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (inData == nullptr)

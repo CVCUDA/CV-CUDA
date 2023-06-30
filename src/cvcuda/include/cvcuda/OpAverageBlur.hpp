@@ -30,10 +30,10 @@
 #include "OpAverageBlur.h"
 
 #include <cuda_runtime.h>
-#include <nvcv/IImageBatch.hpp>
-#include <nvcv/ITensor.hpp>
+#include <nvcv/ImageBatch.hpp>
 #include <nvcv/ImageFormat.hpp>
 #include <nvcv/Size.hpp>
+#include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
 namespace cvcuda {
@@ -45,11 +45,11 @@ public:
 
     ~AverageBlur();
 
-    void operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out, nvcv::Size2D kernelSize,
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, nvcv::Size2D kernelSize,
                     int2 kernelAnchor, NVCVBorderType borderMode);
 
-    void operator()(cudaStream_t stream, nvcv::IImageBatch &in, nvcv::IImageBatch &out, nvcv::ITensor &kernelSize,
-                    nvcv::ITensor &kernelAnchor, NVCVBorderType borderMode);
+    void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
+                    const nvcv::Tensor &kernelSize, const nvcv::Tensor &kernelAnchor, NVCVBorderType borderMode);
 
     virtual NVCVOperatorHandle handle() const noexcept override;
 
@@ -70,15 +70,16 @@ inline AverageBlur::~AverageBlur()
     m_handle = nullptr;
 }
 
-inline void AverageBlur::operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out, nvcv::Size2D kernelSize,
-                                    int2 kernelAnchor, NVCVBorderType borderMode)
+inline void AverageBlur::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                                    nvcv::Size2D kernelSize, int2 kernelAnchor, NVCVBorderType borderMode)
 {
     nvcv::detail::CheckThrow(cvcudaAverageBlurSubmit(m_handle, stream, in.handle(), out.handle(), kernelSize.w,
                                                      kernelSize.h, kernelAnchor.x, kernelAnchor.y, borderMode));
 }
 
-inline void AverageBlur::operator()(cudaStream_t stream, nvcv::IImageBatch &in, nvcv::IImageBatch &out,
-                                    nvcv::ITensor &kernelSize, nvcv::ITensor &kernelAnchor, NVCVBorderType borderMode)
+inline void AverageBlur::operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
+                                    const nvcv::Tensor &kernelSize, const nvcv::Tensor &kernelAnchor,
+                                    NVCVBorderType borderMode)
 {
     nvcv::detail::CheckThrow(cvcudaAverageBlurVarShapeSubmit(m_handle, stream, in.handle(), out.handle(),
                                                              kernelSize.handle(), kernelAnchor.handle(), borderMode));

@@ -94,24 +94,17 @@ NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvImageBatchRefCount, (NVCVImageBatchHandle 
     return priv::ProtectCall([&] { *refCount = priv::CoreObjectRefCount(handle); });
 }
 
-NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageBatchSetUserPointer, (NVCVImageBatchHandle handle, void *userPtr))
+NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvImageBatchSetUserPointer, (NVCVImageBatchHandle handle, void *userPtr))
 {
     return priv::ProtectCall(
         [&]
         {
             auto &img = priv::ToStaticRef<priv::IImageBatch>(handle);
-            if (priv::MustProvideHiddenFunctionality(handle))
-            {
-                img.setCXXObject(userPtr);
-            }
-            else
-            {
-                img.setUserPointer(userPtr);
-            }
+            img.setUserPointer(userPtr);
         });
 }
 
-NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageBatchGetUserPointer, (NVCVImageBatchHandle handle, void **outUserPtr))
+NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvImageBatchGetUserPointer, (NVCVImageBatchHandle handle, void **outUserPtr))
 {
     return priv::ProtectCall(
         [&]
@@ -121,15 +114,8 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageBatchGetUserPointer, (NVCVImageBatchH
                 throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Pointer to output user pointer cannot be NULL");
             }
 
-            auto &img = priv::ToStaticRef<const priv::IImageBatch>(handle);
-            if (priv::MustProvideHiddenFunctionality(handle))
-            {
-                img.getCXXObject(outUserPtr);
-            }
-            else
-            {
-                *outUserPtr = img.userPointer();
-            }
+            auto &img   = priv::ToStaticRef<const priv::IImageBatch>(handle);
+            *outUserPtr = img.userPointer();
         });
 }
 
@@ -221,7 +207,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageBatchGetAllocator,
 
             auto &batch = priv::ToStaticRef<const priv::IImageBatch>(handle);
 
-            *halloc = batch.alloc().handle();
+            *halloc = batch.alloc().release()->handle();
         });
 }
 
@@ -269,7 +255,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageBatchVarShapePushImages,
         });
 }
 
-NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageBatchVarShapePushImagesCallback,
+NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvImageBatchVarShapePushImagesCallback,
                 (NVCVImageBatchHandle handle, NVCVPushImageFunc cbPushImage, void *ctxCallback))
 {
     return priv::ProtectCall(
@@ -303,7 +289,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageBatchVarShapeClear, (NVCVImageBatchHa
         });
 }
 
-NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageBatchVarShapeGetImages,
+NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvImageBatchVarShapeGetImages,
                 (NVCVImageBatchHandle handle, int32_t begIndex, NVCVImageHandle *outImages, int32_t numImages))
 {
     return priv::ProtectCall(

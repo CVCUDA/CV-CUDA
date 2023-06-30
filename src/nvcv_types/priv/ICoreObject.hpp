@@ -57,9 +57,6 @@ public:
     virtual void  setUserPointer(void *ptr) = 0;
     virtual void *userPointer() const       = 0;
 
-    virtual void setCXXObject(void *ptr)        = 0;
-    virtual void getCXXObject(void **ptr) const = 0;
-
 protected:
     ICoreObject() = default;
 };
@@ -92,16 +89,6 @@ class CoreObjectBase : public Interface
 public:
     using HandleType = typename Interface::HandleType;
 
-    CoreObjectBase()
-        : m_cxxPtr(&m_wrapHandleStorage)
-    {
-        // Set initial bytes of storage to 0 so that
-        // we can tell whether there's an object constructed in
-        // it or not. The first sizeof(void *) bytes correspond
-        // to the vtbl, which is definitely not 0.
-        memset(&m_wrapHandleStorage, 0, sizeof(void *));
-    }
-
     void setHandle(HandleType h) final
     {
         m_handle = h;
@@ -130,59 +117,6 @@ public:
 private:
     HandleType m_handle  = {};
     void      *m_userPtr = nullptr;
-
-    // 512 bytes should be enough for all types we need.
-    // This value must never decrease, or else it'll break
-    // ABI compatibility.
-    using WrapHandleStorage = std::aligned_storage_t<512>;
-    WrapHandleStorage m_wrapHandleStorage;
-
-    void *m_cxxPtr = nullptr;
-
-    void setCXXObject(void *ptr) final
-    {
-        m_cxxPtr = ptr;
-    }
-
-    void getCXXObject(void **ptr) const final
-    {
-        NVCV_ASSERT(ptr != nullptr);
-
-        // Already pointing to the corresponding public C++ object?
-        // PS: m_cxxPtr initially points to m_wrapHandleStorage,
-        // which is initialized to zeros at ctor. This makes it easy
-        // for us to detect whether it was initialized or not.
-        NVCV_ASSERT(m_cxxPtr != nullptr);
-        if (*static_cast<uintptr_t *>(m_cxxPtr) != 0)
-        {
-            // return it!
-            *ptr = m_cxxPtr;
-        }
-        else
-        {
-            // Caller will allocate a HandleWrapper, we need to provide space.
-            // '*ptr' points to a value with the required size (C++ WrapHandle object).
-            uintptr_t reqsize = *static_cast<uintptr_t *>(*ptr);
-            // Do we have enough space?
-            if (reqsize <= sizeof(WrapHandleStorage))
-            {
-                // An uninitialized c++ obj pointer always point to the wrap handle storage.
-                NVCV_ASSERT(m_cxxPtr == &m_wrapHandleStorage);
-
-                // Return the wrap handle storage.
-                *ptr = m_cxxPtr;
-            }
-            else
-            {
-                // Oops, version mismatch. We can't risk a buffer overrun.
-                throw Exception(NVCV_ERROR_INTERNAL)
-                    << "Not enough space in internal wrap object storage for allocating " << reqsize
-                    << " bytes (limit=" << sizeof(WrapHandleStorage) << ")"
-                    << ", NVCV C++ API version not compatible with the C ABI version " << this->version()
-                    << " being used.";
-            }
-        }
-    }
 };
 
 template<class HandleType>

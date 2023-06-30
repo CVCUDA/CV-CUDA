@@ -33,7 +33,7 @@ BoxBlur::BoxBlur()
     m_legacyOp = std::make_unique<legacy::BoxBlur>(maxIn, maxOut);
 }
 
-void BoxBlur::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &out,
+void BoxBlur::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                          const NVCVBlurBoxesI &bboxes) const
 {
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();

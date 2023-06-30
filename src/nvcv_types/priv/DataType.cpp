@@ -121,6 +121,11 @@ std::ostream &operator<<(std::ostream &out, DataType type)
         NVCV_ENUM(NVCV_DATA_TYPE_3S32);
         NVCV_ENUM(NVCV_DATA_TYPE_4S32);
 
+        NVCV_ENUM(NVCV_DATA_TYPE_F16);
+        NVCV_ENUM(NVCV_DATA_TYPE_2F16);
+        NVCV_ENUM(NVCV_DATA_TYPE_3F16);
+        NVCV_ENUM(NVCV_DATA_TYPE_4F16);
+
         NVCV_ENUM(NVCV_DATA_TYPE_F32);
         NVCV_ENUM(NVCV_DATA_TYPE_2F32);
         NVCV_ENUM(NVCV_DATA_TYPE_3F32);

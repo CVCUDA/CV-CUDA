@@ -260,10 +260,10 @@ TEST_P(OpComposite, varshape_correct_output)
     std::uniform_int_distribution<int> udistWidth(inWidth * 0.8, inWidth * 1.1);
     std::uniform_int_distribution<int> udistHeight(inHeight * 0.8, inHeight * 1.1);
 
-    std::vector<std::unique_ptr<nvcv::Image>> imgForeground;
-    std::vector<std::unique_ptr<nvcv::Image>> imgBackground;
-    std::vector<std::unique_ptr<nvcv::Image>> imgFgMask;
-    std::vector<std::unique_ptr<nvcv::Image>> imgOut;
+    std::vector<nvcv::Image> imgForeground;
+    std::vector<nvcv::Image> imgBackground;
+    std::vector<nvcv::Image> imgFgMask;
+    std::vector<nvcv::Image> imgOut;
 
     std::vector<std::vector<uint8_t>> foregroundVec(numberOfImages);
     std::vector<std::vector<uint8_t>> backgroundVec(numberOfImages);
@@ -279,10 +279,10 @@ TEST_P(OpComposite, varshape_correct_output)
         nvcv::Size2D size{udistWidth(rng), udistHeight(rng)};
         sizeVec[i] = size;
 
-        imgForeground.emplace_back(std::make_unique<nvcv::Image>(size, inFormat));
-        imgBackground.emplace_back(std::make_unique<nvcv::Image>(size, inFormat));
-        imgFgMask.emplace_back(std::make_unique<nvcv::Image>(size, maskFormat));
-        imgOut.emplace_back(std::make_unique<nvcv::Image>(size, outFormat));
+        imgForeground.emplace_back(size, inFormat);
+        imgBackground.emplace_back(size, inFormat);
+        imgFgMask.emplace_back(size, maskFormat);
+        imgOut.emplace_back(size, outFormat);
 
         int foregroundRowStride = size.w * inFormat.numChannels();
         int fgMaskRowStride     = size.w * maskFormat.numChannels();
@@ -302,13 +302,13 @@ TEST_P(OpComposite, varshape_correct_output)
         generate(backgroundVec[i].begin(), backgroundVec[i].end(), [&]() { return udist(rng); });
         generate(fgMaskVec[i].begin(), fgMaskVec[i].end(), [&]() { return udist(rng); });
 
-        auto imgDataForeground = imgForeground[i]->exportData<nvcv::ImageDataStridedCuda>();
+        auto imgDataForeground = imgForeground[i].exportData<nvcv::ImageDataStridedCuda>();
         assert(imgDataForeground);
 
-        auto imgDataBackground = imgBackground[i]->exportData<nvcv::ImageDataStridedCuda>();
+        auto imgDataBackground = imgBackground[i].exportData<nvcv::ImageDataStridedCuda>();
         assert(imgDataBackground);
 
-        auto imgDataFgMask = imgFgMask[i]->exportData<nvcv::ImageDataStridedCuda>();
+        auto imgDataFgMask = imgFgMask[i].exportData<nvcv::ImageDataStridedCuda>();
         assert(imgDataFgMask);
 
         // Copy foreground image data to the GPU
@@ -353,7 +353,7 @@ TEST_P(OpComposite, varshape_correct_output)
         int width  = sizeVec[i].w;
         int height = sizeVec[i].h;
 
-        const auto outData = imgOut[i]->exportData<nvcv::ImageDataStridedCuda>();
+        const auto outData = imgOut[i].exportData<nvcv::ImageDataStridedCuda>();
         assert(outData->numPlanes() == 1);
 
         int outRowStride        = width * outFormat.numChannels();

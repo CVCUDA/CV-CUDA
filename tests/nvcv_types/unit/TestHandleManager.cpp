@@ -56,9 +56,17 @@ private:
 };
 } // namespace
 
-TEST(HandleManager, wip_handle_generation_wraps_around)
+namespace nvcv::priv {
+template<>
+struct ResourceStorage<IObject>
 {
-    priv::HandleManager<IObject, Object> mgr("Object");
+    using type = CompatibleStorage<Object>;
+};
+} // namespace nvcv::priv
+
+TEST(HandleManager, smoke_handle_generation_wraps_around)
+{
+    priv::HandleManager<IObject> mgr("Object");
 
     mgr.setFixedSize(1);
 
@@ -73,8 +81,8 @@ TEST(HandleManager, wip_handle_generation_wraps_around)
 
     void *origh = h;
 
-    // Maximum of 8 generations
-    for (int i = 1; i < 8; ++i)
+    // Maximum of 16 generations
+    for (int i = 1; i < 16; ++i)
     {
         IObject *obj = mgr.validate(h);
         ASSERT_EQ(i - 1, obj->value());
@@ -102,18 +110,18 @@ TEST(HandleManager, wip_handle_generation_wraps_around)
     mgr.decRef(h);
 }
 
-TEST(HandleManager, wip_destroy_already_destroyed)
+TEST(HandleManager, smoke_destroy_already_destroyed)
 {
-    priv::HandleManager<IObject, Object> mgr("Object");
+    priv::HandleManager<IObject> mgr("Object");
 
     void *h = mgr.create<Object>(0).first;
     ASSERT_EQ(0, mgr.decRef(h));
     ASSERT_THROW(mgr.decRef(h), nvcv::priv::Exception);
 }
 
-TEST(HandleManager, wip_ref_unref)
+TEST(HandleManager, smoke_ref_unref)
 {
-    priv::HandleManager<IObject, Object> mgr("Object");
+    priv::HandleManager<IObject> mgr("Object");
 
     void *h = mgr.create<Object>(0).first;
     ASSERT_EQ(2, mgr.incRef(h));
@@ -126,18 +134,18 @@ TEST(HandleManager, wip_ref_unref)
     EXPECT_THROW(mgr.decRef(h), nvcv::priv::Exception); // invalid handle
 }
 
-TEST(HandleManager, wip_dec_ref_invalid)
+TEST(HandleManager, smoke_dec_ref_invalid)
 {
-    priv::HandleManager<IObject, Object> mgr("Object");
+    priv::HandleManager<IObject> mgr("Object");
 
     void *h = mgr.create<Object>(0).first;
     EXPECT_THROW(mgr.decRef((void *)0x666), nvcv::priv::Exception);
     EXPECT_EQ(0, mgr.decRef(h));
 }
 
-TEST(HandleManager, wip_validate_already_destroyed)
+TEST(HandleManager, smoke_validate_already_destroyed)
 {
-    priv::HandleManager<IObject, Object> mgr("Object");
+    priv::HandleManager<IObject> mgr("Object");
 
     void *h = mgr.create<Object>(0).first;
     ASSERT_NE(nullptr, mgr.validate(h));
@@ -146,9 +154,9 @@ TEST(HandleManager, wip_validate_already_destroyed)
     ASSERT_EQ(nullptr, mgr.validate(h));
 }
 
-TEST(HandleManager, wip_validate_invalid)
+TEST(HandleManager, smoke_validate_invalid)
 {
-    priv::HandleManager<IObject, Object> mgr("Object");
+    priv::HandleManager<IObject> mgr("Object");
 
     void *h = mgr.create<Object>(0).first;
     ASSERT_NE(nullptr, mgr.validate(h)); // just to have something being managed already
@@ -158,9 +166,9 @@ TEST(HandleManager, wip_validate_invalid)
     ASSERT_EQ(0, mgr.decRef(h));
 }
 
-TEST(HandleManager, wip_handle_count_overflow)
+TEST(HandleManager, smoke_handle_count_overflow)
 {
-    priv::HandleManager<IObject, Object> mgr("Object");
+    priv::HandleManager<IObject> mgr("Object");
     mgr.setFixedSize(1);
 
     void *h = nullptr;
@@ -170,9 +178,9 @@ TEST(HandleManager, wip_handle_count_overflow)
     mgr.decRef(h);
 }
 
-TEST(HandleManager, wip_no_handle_leak_if_object_creation_throws)
+TEST(HandleManager, smoke_no_handle_leak_if_object_creation_throws)
 {
-    priv::HandleManager<IObject, Object> mgr("Object");
+    priv::HandleManager<IObject> mgr("Object");
     mgr.setFixedSize(1);
 
     ASSERT_THROW(mgr.create<Object>(FORCE_FAILURE), std::runtime_error);

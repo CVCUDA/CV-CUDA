@@ -27,7 +27,7 @@
 #include "IOperator.hpp"
 #include "legacy/CvCudaLegacy.h"
 
-#include <nvcv/ITensor.hpp>
+#include <nvcv/Tensor.hpp>
 
 #include <memory>
 
@@ -38,7 +38,7 @@ class BoxBlur final : public IOperator
 public:
     explicit BoxBlur();
 
-    void operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &out,
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                     const NVCVBlurBoxesI &bboxes) const;
 
 private:

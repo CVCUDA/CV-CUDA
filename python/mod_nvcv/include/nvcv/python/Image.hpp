@@ -40,7 +40,7 @@ class Image
 
 class Image
     : public Resource
-    , public nvcv::IImage
+    , public nvcv::Image
 {
 public:
     using PrivateImpl = priv::Image;
@@ -62,13 +62,8 @@ private:
 
     explicit Image(py::object obj)
         : Resource(obj)
-        , m_handle(capi().Image_GetHandle(this->ptr()))
+        , nvcv::Image(FromHandle(capi().Image_GetHandle(this->ptr()), true))
     {
-    }
-
-    NVCVImageHandle doGetHandle() const override
-    {
-        return m_handle;
     }
 };
 

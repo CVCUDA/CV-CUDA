@@ -31,12 +31,17 @@ set(DOXYGEN_IMAGE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/assets)
 # Replace variables inside @@ with the current value
 configure_file(${DOXYFILE_IN} ${DOXYFILE_OUT} @ONLY)
 
-# Only regenerate Doxygen when the Doxyfile change
+# Only regenerate Doxygen when the Doxyfile changes
+
+# Build docs once python libraries are generated
 file(MAKE_DIRECTORY ${DOXYGEN_OUTPUT_DIR})
+list(GET PYTHON_VERSIONS -1 VER)
+
 add_custom_command(OUTPUT ${DOXYGEN_INDEX_FILE}
                    COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYFILE_OUT}
                    MAIN_DEPENDENCY ${DOXYFILE_OUT} ${DOXYFILE_IN}
-                   COMMENT "Generating doxygen xml")
+                   COMMENT "Generating doxygen xml"
+	   	   DEPENDS nvcv_python${VER})
 
 add_custom_target(cvcuda_doxygen ALL DEPENDS ${DOXYGEN_INDEX_FILE})
 
@@ -54,6 +59,7 @@ add_custom_target(cvcuda_groups ALL
 # Generate Sphinx
 add_custom_command(OUTPUT ${SPHINX_INDEX_FILE}
                    COMMAND
+		   ${CMAKE_COMMAND} -E env "SPHINX_PYTHON_SRC=${CMAKE_BINARY_DIR}/lib/python"
                    ${SPHINX_EXECUTABLE} -j auto -b html
                    # Tell Breathe where to find the Doxygen output
                    -Dbreathe_projects.cvcuda=${DOXYGEN_OUTPUT_DIR}/xml
@@ -64,7 +70,6 @@ add_custom_command(OUTPUT ${SPHINX_INDEX_FILE}
                    ${DOXYGEN_INDEX_FILE}
                    MAIN_DEPENDENCY ${SPHINX_SOURCE}/conf.py
                    COMMENT "Generating documentation with Sphinx")
-
 
 add_custom_target(cvcuda_sphinx ALL DEPENDS ${SPHINX_INDEX_FILE})
 

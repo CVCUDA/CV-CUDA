@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,7 +18,9 @@
 #ifndef NVCV_CORE_PRIV_TENSOR_HPP
 #define NVCV_CORE_PRIV_TENSOR_HPP
 
+#include "IAllocator.hpp"
 #include "ITensor.hpp"
+#include "SharedCoreObj.hpp"
 
 #include <cuda_runtime.h>
 
@@ -42,13 +44,13 @@ public:
 
     DataType dtype() const override;
 
-    IAllocator &alloc() const override;
+    SharedCoreObj<IAllocator> alloc() const override;
 
     void exportData(NVCVTensorData &data) const override;
 
 private:
-    IAllocator            &m_alloc;
-    NVCVTensorRequirements m_reqs;
+    SharedCoreObj<IAllocator> m_alloc;
+    NVCVTensorRequirements    m_reqs;
 
     void *m_memBuffer;
 };

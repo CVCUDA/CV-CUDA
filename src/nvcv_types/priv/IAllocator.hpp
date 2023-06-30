@@ -82,6 +82,15 @@ void FreeHostObj(IAllocator &alloc, T *ptr) noexcept
 priv::IAllocator &GetAllocator(NVCVAllocatorHandle handle);
 priv::IAllocator &GetDefaultAllocator();
 
+template<>
+class CoreObjManager<NVCVAllocatorHandle> : public HandleManager<IAllocator>
+{
+    using Base = HandleManager<IAllocator>;
+
+public:
+    using Base::Base;
+};
+
 } // namespace nvcv::priv
 
 #endif // NVCV_CORE_PRIV_IALLOCATOR_HPP

@@ -195,13 +195,13 @@ Tensor::Tensor(NVCVTensorRequirements reqs, IAllocator &alloc)
     // Assuming reqs are already validated during its creation
 
     int64_t bufSize = CalcTotalSizeBytes(m_reqs.mem.cudaMem);
-    m_memBuffer     = m_alloc.allocCudaMem(bufSize, m_reqs.alignBytes);
+    m_memBuffer     = m_alloc->allocCudaMem(bufSize, m_reqs.alignBytes);
     NVCV_ASSERT(m_memBuffer != nullptr);
 }
 
 Tensor::~Tensor()
 {
-    m_alloc.freeCudaMem(m_memBuffer, CalcTotalSizeBytes(m_reqs.mem.cudaMem), m_reqs.alignBytes);
+    m_alloc->freeCudaMem(m_memBuffer, CalcTotalSizeBytes(m_reqs.mem.cudaMem), m_reqs.alignBytes);
 }
 
 int32_t Tensor::rank() const
@@ -224,7 +224,7 @@ DataType Tensor::dtype() const
     return DataType{m_reqs.dtype};
 }
 
-IAllocator &Tensor::alloc() const
+SharedCoreObj<IAllocator> Tensor::alloc() const
 {
     return m_alloc;
 }

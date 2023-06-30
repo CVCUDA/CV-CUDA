@@ -27,7 +27,7 @@
 #include "IOperator.hpp"
 #include "legacy/CvCudaLegacy.h"
 
-#include <nvcv/ITensor.hpp>
+#include <nvcv/Tensor.hpp>
 
 #include <memory>
 
@@ -38,7 +38,7 @@ class __OPNAME__ final : public IOperator
 public:
     explicit __OPNAME__();
 
-    void operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &out) const;
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out) const;
 
 private:
 };

@@ -136,7 +136,7 @@ public:
     UniqueHandle(const UniqueHandle &other) = delete;
 
     UniqueHandle(UniqueHandle &&other)
-        : m_handle(std::move(other.handle))
+        : m_handle(std::move(other.m_handle))
     {
         other.m_handle = HandleOps::Null();
     }
@@ -197,7 +197,7 @@ public:
      *
      * @return The managed handle.
      */
-    constexpr HandleType get() const noexcept
+    constexpr const HandleType get() const noexcept
     {
         return m_handle;
     }
@@ -261,7 +261,7 @@ public:
     }
 
     SharedHandle(SharedHandle &&other) noexcept
-        : m_handle(std::move(other.handle))
+        : m_handle(std::move(other.m_handle))
     {
         other.m_handle = HandleOps::Null();
     }
@@ -296,7 +296,7 @@ public:
      */
     SharedHandle &operator=(const SharedHandle &other)
     {
-        auto new_handle = other.get();
+        HandleType new_handle = other.get();
         if (m_handle == new_handle)
             return *this;
         if (!HandleOps::IsNull(new_handle))
@@ -353,7 +353,7 @@ public:
 
     /** Returns the currently managed handle.
      */
-    constexpr HandleType get() const noexcept
+    constexpr const HandleType get() const noexcept
     {
         return m_handle;
     }

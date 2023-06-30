@@ -30,9 +30,9 @@
 #include "OpThreshold.h"
 
 #include <cuda_runtime.h>
-#include <nvcv/IImageBatch.hpp>
-#include <nvcv/ITensor.hpp>
+#include <nvcv/ImageBatch.hpp>
 #include <nvcv/ImageFormat.hpp>
+#include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
 namespace cvcuda {
@@ -44,11 +44,11 @@ public:
 
     ~Threshold();
 
-    void operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out, nvcv::ITensor &thresh,
-                    nvcv::ITensor &maxval);
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const nvcv::Tensor &thresh,
+                    const nvcv::Tensor &maxval);
 
-    void operator()(cudaStream_t stream, nvcv::IImageBatchVarShape &in, nvcv::IImageBatchVarShape &out,
-                    nvcv::ITensor &thresh, nvcv::ITensor &maxval);
+    void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
+                    const nvcv::Tensor &thresh, const nvcv::Tensor &maxval);
 
     virtual NVCVOperatorHandle handle() const noexcept override;
 
@@ -68,15 +68,16 @@ inline Threshold::~Threshold()
     m_handle = nullptr;
 }
 
-inline void Threshold::operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out, nvcv::ITensor &thresh,
-                                  nvcv::ITensor &maxval)
+inline void Threshold::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                                  const nvcv::Tensor &thresh, const nvcv::Tensor &maxval)
 {
     nvcv::detail::CheckThrow(
         cvcudaThresholdSubmit(m_handle, stream, in.handle(), out.handle(), thresh.handle(), maxval.handle()));
 }
 
-inline void Threshold::operator()(cudaStream_t stream, nvcv::IImageBatchVarShape &in, nvcv::IImageBatchVarShape &out,
-                                  nvcv::ITensor &thresh, nvcv::ITensor &maxval)
+inline void Threshold::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
+                                  const nvcv::ImageBatchVarShape &out, const nvcv::Tensor &thresh,
+                                  const nvcv::Tensor &maxval)
 {
     nvcv::detail::CheckThrow(
         cvcudaThresholdVarShapeSubmit(m_handle, stream, in.handle(), out.handle(), thresh.handle(), maxval.handle()));

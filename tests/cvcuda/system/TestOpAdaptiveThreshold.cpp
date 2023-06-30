@@ -19,7 +19,6 @@
 #include "Definitions.hpp"
 
 #include <common/BorderUtils.hpp>
-#include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpAdaptiveThreshold.hpp>
 #include <nvcv/Image.hpp>
@@ -29,6 +28,7 @@
 #include <nvcv/cuda/DropCast.hpp>
 #include <nvcv/cuda/SaturateCast.hpp>
 #include <nvcv/cuda/TypeTraits.hpp>
+#include <util/TensorDataUtils.hpp>
 
 #include <random>
 
@@ -101,8 +101,8 @@ TEST_P(OpAdaptiveThreshold, correct_output)
     double                    c                     = GetParamValue<7>();
 
     nvcv::ImageFormat fmt    = nvcv::FMT_U8;
-    nvcv::Tensor      imgIn  = nvcv::test::CreateTensor(batch, width, height, fmt);
-    nvcv::Tensor      imgOut = nvcv::test::CreateTensor(batch, width, height, fmt);
+    nvcv::Tensor      imgIn  = nvcv::util::CreateTensor(batch, width, height, fmt);
+    nvcv::Tensor      imgOut = nvcv::util::CreateTensor(batch, width, height, fmt);
 
     auto inData = imgIn.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_NE(nullptr, inData);
@@ -206,40 +206,40 @@ TEST_P(OpAdaptiveThreshold, varshape_correct_output)
     std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
     std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
 
-    std::vector<std::unique_ptr<nvcv::Image>> imgSrc;
+    std::vector<nvcv::Image> imgSrc;
 
     std::vector<std::vector<uint8_t>> srcVec(batch);
     std::vector<int>                  srcVecRowStride(batch);
 
     for (int i = 0; i < batch; ++i)
     {
-        imgSrc.emplace_back(std::make_unique<nvcv::Image>(nvcv::Size2D{udistWidth(rng), udistHeight(rng)}, fmt));
+        imgSrc.emplace_back(nvcv::Size2D{udistWidth(rng), udistHeight(rng)}, fmt);
 
-        int srcRowStride   = imgSrc[i]->size().w * fmt.planePixelStrideBytes(0);
+        int srcRowStride   = imgSrc[i].size().w * fmt.planePixelStrideBytes(0);
         srcVecRowStride[i] = srcRowStride;
 
         std::uniform_int_distribution<uint8_t> udist(0, 255);
 
-        srcVec[i].resize(imgSrc[i]->size().h * srcRowStride);
+        srcVec[i].resize(imgSrc[i].size().h * srcRowStride);
         std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return udist(rng); });
 
-        auto imgData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
+        auto imgData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_NE(imgData, nvcv::NullOpt);
 
         // Copy input data to the GPU
         ASSERT_EQ(cudaSuccess,
                   cudaMemcpy2DAsync(imgData->plane(0).basePtr, imgData->plane(0).rowStride, srcVec[i].data(),
-                                    srcRowStride, srcRowStride, imgSrc[i]->size().h, cudaMemcpyHostToDevice, stream));
+                                    srcRowStride, srcRowStride, imgSrc[i].size().h, cudaMemcpyHostToDevice, stream));
     }
 
     nvcv::ImageBatchVarShape batchSrc(batch);
     batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
 
     // Create output varshape
-    std::vector<std::unique_ptr<nvcv::Image>> imgDst;
+    std::vector<nvcv::Image> imgDst;
     for (int i = 0; i < batch; ++i)
     {
-        imgDst.emplace_back(std::make_unique<nvcv::Image>(imgSrc[i]->size(), imgSrc[i]->format()));
+        imgDst.emplace_back(imgSrc[i].size(), imgSrc[i].format());
     }
     nvcv::ImageBatchVarShape batchDst(batch);
     batchDst.pushBack(imgDst.begin(), imgDst.end());
@@ -307,10 +307,10 @@ TEST_P(OpAdaptiveThreshold, varshape_correct_output)
     {
         SCOPED_TRACE(i);
 
-        const auto srcData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
+        const auto srcData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_EQ(srcData->numPlanes(), 1);
 
-        const auto dstData = imgDst[i]->exportData<nvcv::ImageDataStridedCuda>();
+        const auto dstData = imgDst[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_EQ(dstData->numPlanes(), 1);
 
         int  dstRowStride = srcVecRowStride[i];

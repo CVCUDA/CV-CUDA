@@ -30,10 +30,10 @@
 #include "OpJointBilateralFilter.h"
 
 #include <cuda_runtime.h>
-#include <nvcv/IImageBatch.hpp>
-#include <nvcv/ITensor.hpp>
+#include <nvcv/ImageBatch.hpp>
 #include <nvcv/ImageFormat.hpp>
 #include <nvcv/Size.hpp>
+#include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
 namespace cvcuda {
@@ -45,12 +45,12 @@ public:
 
     ~JointBilateralFilter();
 
-    void operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &inColor, nvcv::ITensor &out, int diameter,
-                    float sigmaColor, float sigmaSpace, NVCVBorderType borderMode);
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &inColor, const nvcv::Tensor &out,
+                    int diameter, float sigmaColor, float sigmaSpace, NVCVBorderType borderMode);
 
-    void operator()(cudaStream_t stream, nvcv::IImageBatch &in, nvcv::IImageBatch &inColor, nvcv::IImageBatch &out,
-                    nvcv::ITensor &diameterData, nvcv::ITensor &sigmaColorData, nvcv::ITensor &sigmaSpace,
-                    NVCVBorderType borderMode);
+    void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &inColor,
+                    const nvcv::ImageBatch &out, const nvcv::Tensor &diameterData, const nvcv::Tensor &sigmaColorData,
+                    const nvcv::Tensor &sigmaSpace, NVCVBorderType borderMode);
 
     virtual NVCVOperatorHandle handle() const noexcept override;
 
@@ -70,18 +70,18 @@ inline JointBilateralFilter::~JointBilateralFilter()
     m_handle = nullptr;
 }
 
-inline void JointBilateralFilter::operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &inColor,
-                                             nvcv::ITensor &out, int diameter, float sigmaColor, float sigmaSpace,
+inline void JointBilateralFilter::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &inColor,
+                                             const nvcv::Tensor &out, int diameter, float sigmaColor, float sigmaSpace,
                                              NVCVBorderType borderMode)
 {
     nvcv::detail::CheckThrow(cvcudaJointBilateralFilterSubmit(
         m_handle, stream, in.handle(), inColor.handle(), out.handle(), diameter, sigmaColor, sigmaSpace, borderMode));
 }
 
-inline void JointBilateralFilter::operator()(cudaStream_t stream, nvcv::IImageBatch &in, nvcv::IImageBatch &inColor,
-                                             nvcv::IImageBatch &out, nvcv::ITensor &diameterData,
-                                             nvcv::ITensor &sigmaColorData, nvcv::ITensor &sigmaSpaceData,
-                                             NVCVBorderType borderMode)
+inline void JointBilateralFilter::operator()(cudaStream_t stream, const nvcv::ImageBatch &in,
+                                             const nvcv::ImageBatch &inColor, const nvcv::ImageBatch &out,
+                                             const nvcv::Tensor &diameterData, const nvcv::Tensor &sigmaColorData,
+                                             const nvcv::Tensor &sigmaSpaceData, NVCVBorderType borderMode)
 {
     nvcv::detail::CheckThrow(cvcudaJointBilateralFilterVarShapeSubmit(
         m_handle, stream, in.handle(), inColor.handle(), out.handle(), diameterData.handle(), sigmaColorData.handle(),

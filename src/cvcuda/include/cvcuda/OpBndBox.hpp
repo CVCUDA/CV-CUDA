@@ -30,8 +30,8 @@
 #include "OpBndBox.h"
 
 #include <cuda_runtime.h>
-#include <nvcv/ITensor.hpp>
 #include <nvcv/ImageFormat.hpp>
+#include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
 namespace cvcuda {
@@ -43,7 +43,7 @@ public:
 
     ~BndBox();
 
-    void operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out, const NVCVBndBoxesI bboxes);
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const NVCVBndBoxesI bboxes);
 
     virtual NVCVOperatorHandle handle() const noexcept override;
 
@@ -63,7 +63,8 @@ inline BndBox::~BndBox()
     m_handle = nullptr;
 }
 
-inline void BndBox::operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out, const NVCVBndBoxesI bboxes)
+inline void BndBox::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                               const NVCVBndBoxesI bboxes)
 {
     nvcv::detail::CheckThrow(cvcudaBndBoxSubmit(m_handle, stream, in.handle(), out.handle(), bboxes));
 }

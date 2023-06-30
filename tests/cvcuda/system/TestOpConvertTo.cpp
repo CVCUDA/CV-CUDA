@@ -17,13 +17,13 @@
 
 #include "Definitions.hpp"
 
-#include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpConvertTo.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
 #include <nvcv/cuda/SaturateCast.hpp>
+#include <util/TensorDataUtils.hpp>
 
 #include <iostream>
 #include <random>
@@ -56,8 +56,8 @@ const void testConvertTo(nvcv::ImageFormat fmtIn, nvcv::ImageFormat fmtOut, int 
     cudaStream_t stream;
     EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
-    nvcv::Tensor imgOut = test::CreateTensor(batch, width, height, fmtOut);
-    nvcv::Tensor imgIn  = test::CreateTensor(batch, width, height, fmtIn);
+    nvcv::Tensor imgOut = nvcv::util::CreateTensor(batch, width, height, fmtOut);
+    nvcv::Tensor imgIn  = nvcv::util::CreateTensor(batch, width, height, fmtIn);
 
     auto inData  = imgIn.exportData<nvcv::TensorDataStridedCuda>();
     auto outData = imgOut.exportData<nvcv::TensorDataStridedCuda>();

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,8 +27,8 @@
 #include "IOperator.hpp"
 #include "legacy/CvCudaLegacy.h"
 
-#include <nvcv/IImageBatch.hpp>
-#include <nvcv/ITensor.hpp>
+#include <nvcv/ImageBatch.hpp>
+#include <nvcv/Tensor.hpp>
 
 #include <memory>
 
@@ -39,14 +39,13 @@ class CopyMakeBorder final : public IOperator
 public:
     explicit CopyMakeBorder();
 
-    void operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &out, const int top,
-                    const int left, const NVCVBorderType borderMode, const float4 borderValue) const;
-    void operator()(cudaStream_t stream, const nvcv::IImageBatch &in, const nvcv::IImageBatch &out,
-                    const nvcv::ITensor &top, const nvcv::ITensor &left, const NVCVBorderType borderMode,
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const int top, const int left,
+                    const NVCVBorderType borderMode, const float4 borderValue) const;
+    void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
+                    const nvcv::Tensor &top, const nvcv::Tensor &left, const NVCVBorderType borderMode,
                     const float4 borderValue) const;
-    void operator()(cudaStream_t stream, const nvcv::IImageBatch &in, const nvcv::ITensor &out,
-                    const nvcv::ITensor &top, const nvcv::ITensor &left, const NVCVBorderType borderMode,
-                    const float4 borderValue) const;
+    void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::Tensor &out, const nvcv::Tensor &top,
+                    const nvcv::Tensor &left, const NVCVBorderType borderMode, const float4 borderValue) const;
 
 private:
     std::unique_ptr<nvcv::legacy::cuda_op::CopyMakeBorder>         m_legacyOp;

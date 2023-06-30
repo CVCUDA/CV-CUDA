@@ -30,9 +30,9 @@
 #include "OpRemap.h"
 
 #include <cuda_runtime.h>
-#include <nvcv/IImageBatch.hpp>
-#include <nvcv/ITensor.hpp>
+#include <nvcv/ImageBatch.hpp>
 #include <nvcv/ImageFormat.hpp>
+#include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
 namespace cvcuda {
@@ -44,13 +44,13 @@ public:
 
     ~Remap();
 
-    void operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out, nvcv::ITensor &map,
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const nvcv::Tensor &map,
                     NVCVInterpolationType inInterp, NVCVInterpolationType mapInterp, NVCVRemapMapValueType mapValueType,
                     bool alignCorners, NVCVBorderType border, float4 borderValue);
 
-    void operator()(cudaStream_t stream, nvcv::IImageBatch &in, nvcv::IImageBatch &out, nvcv::ITensor &map,
-                    NVCVInterpolationType inInterp, NVCVInterpolationType mapInterp, NVCVRemapMapValueType mapValueType,
-                    bool alignCorners, NVCVBorderType border, float4 borderValue);
+    void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
+                    const nvcv::Tensor &map, NVCVInterpolationType inInterp, NVCVInterpolationType mapInterp,
+                    NVCVRemapMapValueType mapValueType, bool alignCorners, NVCVBorderType border, float4 borderValue);
 
     virtual NVCVOperatorHandle handle() const noexcept override;
 
@@ -69,8 +69,8 @@ inline Remap::~Remap()
     nvcvOperatorDestroy(m_handle);
 }
 
-inline void Remap::operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out, nvcv::ITensor &map,
-                              NVCVInterpolationType inInterp, NVCVInterpolationType mapInterp,
+inline void Remap::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                              const nvcv::Tensor &map, NVCVInterpolationType inInterp, NVCVInterpolationType mapInterp,
                               NVCVRemapMapValueType mapValueType, bool alignCorners, NVCVBorderType border,
                               float4 borderValue)
 {
@@ -79,8 +79,8 @@ inline void Remap::operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITen
                                                borderValue));
 }
 
-inline void Remap::operator()(cudaStream_t stream, nvcv::IImageBatch &in, nvcv::IImageBatch &out, nvcv::ITensor &map,
-                              NVCVInterpolationType inInterp, NVCVInterpolationType mapInterp,
+inline void Remap::operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
+                              const nvcv::Tensor &map, NVCVInterpolationType inInterp, NVCVInterpolationType mapInterp,
                               NVCVRemapMapValueType mapValueType, bool alignCorners, NVCVBorderType border,
                               float4 borderValue)
 {

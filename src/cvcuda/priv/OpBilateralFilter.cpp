@@ -35,7 +35,7 @@ BilateralFilter::BilateralFilter()
     m_legacyOpVarShape = std::make_unique<legacy::BilateralFilterVarShape>(maxIn, maxOut);
 }
 
-void BilateralFilter::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &out, int diameter,
+void BilateralFilter::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, int diameter,
                                  float sigmaColor, float sigmaSpace, NVCVBorderType borderMode) const
 {
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
@@ -55,9 +55,9 @@ void BilateralFilter::operator()(cudaStream_t stream, const nvcv::ITensor &in, c
     NVCV_CHECK_THROW(m_legacyOp->infer(*inData, *outData, diameter, sigmaColor, sigmaSpace, borderMode, stream));
 }
 
-void BilateralFilter::operator()(cudaStream_t stream, const nvcv::IImageBatchVarShape &in,
-                                 const nvcv::IImageBatchVarShape &out, const nvcv::ITensor &diameter,
-                                 const nvcv::ITensor &sigmaColor, const nvcv::ITensor &sigmaSpace,
+void BilateralFilter::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
+                                 const nvcv::ImageBatchVarShape &out, const nvcv::Tensor &diameter,
+                                 const nvcv::Tensor &sigmaColor, const nvcv::Tensor &sigmaSpace,
                                  NVCVBorderType borderMode) const
 {
     auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);

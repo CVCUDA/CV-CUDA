@@ -196,6 +196,26 @@ inline __host__ __device__ bool operator!=(T a, U b)
     return !(a == b);
 }
 
+namespace nvcv::cuda {
+
+template<typename T, typename U, class = nvcv::cuda::Require<nvcv::cuda::detail::IsSameCompound<T, U>>>
+inline __host__ __device__ auto dot(T a, U b)
+{
+    using PT = decltype(std::declval<nvcv::cuda::BaseType<T>>() * std::declval<nvcv::cuda::BaseType<U>>());
+    using RT = decltype(std::declval<PT>() + std::declval<PT>());
+
+    if constexpr (nvcv::cuda::NumComponents<T> == 1)
+        return RT{a.x * b.x};
+    else if constexpr (nvcv::cuda::NumComponents<T> == 2)
+        return RT{a.x * b.x + a.y * b.y};
+    else if constexpr (nvcv::cuda::NumComponents<T> == 3)
+        return RT{a.x * b.x + a.y * b.y + a.z * b.z};
+    else if constexpr (nvcv::cuda::NumComponents<T> == 4)
+        return RT{a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w};
+}
+
+} // namespace nvcv::cuda
+
 /**@}*/
 
 #endif // NVCV_CUDA_MATH_OPS_HPP

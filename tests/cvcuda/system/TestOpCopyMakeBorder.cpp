@@ -96,26 +96,26 @@ static void CopyMakeBorder(std::vector<T> &hDst, const std::vector<T> &hSrc,
 
 template<typename T>
 static void CopyMakeBorder(std::vector<std::vector<T>> &hBatchDst, const std::vector<std::vector<T>> &hBatchSrc,
-                           const std::vector<std::unique_ptr<nvcv::Image>> &dBatchDstData,
-                           const std::vector<std::unique_ptr<nvcv::Image>> &dBatchSrcData, const std::vector<int> &top,
-                           const std::vector<int> &left, const NVCVBorderType borderType, const float4 borderValue)
+                           const std::vector<nvcv::Image> &dBatchDstData, const std::vector<nvcv::Image> &dBatchSrcData,
+                           const std::vector<int> &top, const std::vector<int> &left, const NVCVBorderType borderType,
+                           const float4 borderValue)
 {
     int2 coords;
     for (size_t db = 0; db < dBatchDstData.size(); db++)
     {
         auto &hDst         = hBatchDst[db];
         auto &dDst         = dBatchDstData[db];
-        auto  imgDstData   = dDst->exportData<nvcv::ImageDataStridedCuda>();
+        auto  imgDstData   = dDst.exportData<nvcv::ImageDataStridedCuda>();
         int   dstRowStride = imgDstData->plane(0).rowStride / sizeof(T);
-        int   dstPixPitch  = dDst->format().numChannels();
+        int   dstPixPitch  = dDst.format().numChannels();
 
         auto &hSrc       = hBatchSrc[db];
         auto &dSrc       = dBatchSrcData[db];
-        auto  imgSrcData = dSrc->exportData<nvcv::ImageDataStridedCuda>();
+        auto  imgSrcData = dSrc.exportData<nvcv::ImageDataStridedCuda>();
         int   rowStride  = imgSrcData->plane(0).rowStride / sizeof(T);
         int   pixPitch   = imgSrcData->format().numChannels();
 
-        auto imgSize = dBatchSrcData[db]->size();
+        auto imgSize = dBatchSrcData[db].size();
         int2 size{imgSize.w, imgSize.h};
         for (int di = 0; di < imgDstData->plane(0).height; di++) //for rows
         {
@@ -163,8 +163,8 @@ static void CopyMakeBorder(std::vector<std::vector<T>> &hBatchDst, const std::ve
 
 template<typename T>
 static void CopyMakeBorder(std::vector<T> &hDst, const std::vector<std::vector<T>> &hBatchSrc,
-                           const nvcv::TensorDataAccessStridedImagePlanar  &dDstData,
-                           const std::vector<std::unique_ptr<nvcv::Image>> &dBatchSrcData, const std::vector<int> &top,
+                           const nvcv::TensorDataAccessStridedImagePlanar &dDstData,
+                           const std::vector<nvcv::Image> &dBatchSrcData, const std::vector<int> &top,
                            const std::vector<int> &left, const NVCVBorderType borderType, const float4 borderValue)
 {
     int dstPixPitch  = dDstData.numChannels();
@@ -175,11 +175,11 @@ static void CopyMakeBorder(std::vector<T> &hDst, const std::vector<std::vector<T
     for (int db = 0; db < dDstData.numSamples(); db++)
     {
         auto &hSrc       = hBatchSrc[db];
-        auto  imgSrcData = dBatchSrcData[db]->exportData<nvcv::ImageDataStridedCuda>();
+        auto  imgSrcData = dBatchSrcData[db].exportData<nvcv::ImageDataStridedCuda>();
         int   rowStride  = imgSrcData->plane(0).rowStride / sizeof(T);
         int   pixPitch   = imgSrcData->format().numChannels();
 
-        auto imgSize = dBatchSrcData[db]->size();
+        auto imgSize = dBatchSrcData[db].size();
         int2 size{imgSize.w, imgSize.h};
         for (int di = 0; di < dDstData.numRows(); di++)
         {
@@ -365,10 +365,10 @@ void StartTestVarShape(int srcWidthBase, int srcHeightBase, int numBatches, int 
     std::uniform_int_distribution<int> rndRight(rightPad * 0.8, rightPad * 1.2);
 
     //Prepare input and output buffer
-    std::vector<std::unique_ptr<nvcv::Image>> imgSrcVec, imgDstVec;
-    std::vector<std::vector<T>>               hImgSrcVec, hImgDstVec, batchGoldVec;
-    std::vector<int>                          topVec(numBatches);
-    std::vector<int>                          leftVec(numBatches);
+    std::vector<nvcv::Image>    imgSrcVec, imgDstVec;
+    std::vector<std::vector<T>> hImgSrcVec, hImgDstVec, batchGoldVec;
+    std::vector<int>            topVec(numBatches);
+    std::vector<int>            leftVec(numBatches);
     for (int i = 0; i < numBatches; ++i)
     {
         int srcWidth  = rndSrcWidth(randEng);
@@ -383,9 +383,9 @@ void StartTestVarShape(int srcWidthBase, int srcHeightBase, int numBatches, int 
         topVec[i]     = top;
         leftVec[i]    = left;
         //prepare input buffers
-        imgSrcVec.emplace_back(std::make_unique<nvcv::Image>(nvcv::Size2D{srcWidth, srcHeight}, format));
+        imgSrcVec.emplace_back(nvcv::Size2D{srcWidth, srcHeight}, format);
 
-        auto imgSrcData   = imgSrcVec.back()->exportData<nvcv::ImageDataStridedCuda>();
+        auto imgSrcData   = imgSrcVec.back().exportData<nvcv::ImageDataStridedCuda>();
         int  srcStride    = imgSrcData->plane(0).rowStride;
         int  srcRowStride = srcStride / sizeof(T);
         int  srcBufSize   = srcRowStride * imgSrcData->plane(0).height;
@@ -403,8 +403,8 @@ void StartTestVarShape(int srcWidthBase, int srcHeightBase, int numBatches, int 
         hImgSrcVec.push_back(std::move(srcVec));
 
         //prepare output Buffers
-        imgDstVec.emplace_back(std::make_unique<nvcv::Image>(nvcv::Size2D{dstWidth, dstHeight}, format));
-        auto imgDstData   = imgDstVec.back()->exportData<nvcv::ImageDataStridedCuda>();
+        imgDstVec.emplace_back(nvcv::Size2D{dstWidth, dstHeight}, format);
+        auto imgDstData   = imgDstVec.back().exportData<nvcv::ImageDataStridedCuda>();
         int  dstStride    = imgDstData->plane(0).rowStride;
         int  dstRowStride = dstStride / sizeof(T);
         int  dstBufSize   = dstRowStride * imgDstData->plane(0).height;
@@ -525,10 +525,10 @@ void StartTestStack(int srcWidthBase, int srcHeightBase, int numBatches, int top
     std::uniform_int_distribution<int> rndLeft(leftPad * 0.8, leftPad * 1.2);
 
     //Prepare input and output buffer
-    std::vector<std::unique_ptr<nvcv::Image>> imgSrcVec, imgDstVec;
-    std::vector<std::vector<T>>               hImgSrcVec;
-    std::vector<int>                          topVec(numBatches);
-    std::vector<int>                          leftVec(numBatches);
+    std::vector<nvcv::Image>    imgSrcVec, imgDstVec;
+    std::vector<std::vector<T>> hImgSrcVec;
+    std::vector<int>            topVec(numBatches);
+    std::vector<int>            leftVec(numBatches);
     for (int i = 0; i < numBatches; ++i)
     {
         int srcWidth  = rndSrcWidth(randEng);
@@ -539,9 +539,9 @@ void StartTestStack(int srcWidthBase, int srcHeightBase, int numBatches, int top
         topVec[i]  = top;
         leftVec[i] = left;
         //prepare input buffers
-        imgSrcVec.emplace_back(std::make_unique<nvcv::Image>(nvcv::Size2D{srcWidth, srcHeight}, format));
+        imgSrcVec.emplace_back(nvcv::Size2D{srcWidth, srcHeight}, format);
 
-        auto imgSrcData   = imgSrcVec.back()->exportData<nvcv::ImageDataStridedCuda>();
+        auto imgSrcData   = imgSrcVec.back().exportData<nvcv::ImageDataStridedCuda>();
         int  srcStride    = imgSrcData->plane(0).rowStride;
         int  srcRowStride = srcStride / sizeof(T);
         int  srcBufSize   = srcRowStride * imgSrcData->plane(0).height;

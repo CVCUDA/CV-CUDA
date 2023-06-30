@@ -161,7 +161,7 @@ def run_sample(input_path, output_dir, batch_size, url, device_id):
             # docs_tag: begin_sync_output
             # Stage 4 : Wait until the results are available
             while len(response) == 0:
-                time.sleep(1)
+                time.sleep(0.001)
 
             # Stage 5 : Parse recieved Infer response
             if len(response) == 1:

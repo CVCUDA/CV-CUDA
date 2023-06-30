@@ -30,9 +30,9 @@
 #include "OpLaplacian.h"
 
 #include <cuda_runtime.h>
-#include <nvcv/IImageBatch.hpp>
-#include <nvcv/ITensor.hpp>
+#include <nvcv/ImageBatch.hpp>
 #include <nvcv/ImageFormat.hpp>
+#include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
 namespace cvcuda {
@@ -44,11 +44,11 @@ public:
 
     ~Laplacian();
 
-    void operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out, int32_t ksize, float scale,
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, int32_t ksize, float scale,
                     NVCVBorderType borderMode);
 
-    void operator()(cudaStream_t stream, nvcv::IImageBatch &in, nvcv::IImageBatch &out, nvcv::ITensor &ksize,
-                    nvcv::ITensor &scale, NVCVBorderType borderMode);
+    void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
+                    const nvcv::Tensor &ksize, const nvcv::Tensor &scale, NVCVBorderType borderMode);
 
     virtual NVCVOperatorHandle handle() const noexcept override;
 
@@ -68,15 +68,15 @@ inline Laplacian::~Laplacian()
     m_handle = nullptr;
 }
 
-inline void Laplacian::operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out, int32_t ksize,
+inline void Laplacian::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, int32_t ksize,
                                   float scale, NVCVBorderType borderMode)
 {
     nvcv::detail::CheckThrow(
         cvcudaLaplacianSubmit(m_handle, stream, in.handle(), out.handle(), ksize, scale, borderMode));
 }
 
-inline void Laplacian::operator()(cudaStream_t stream, nvcv::IImageBatch &in, nvcv::IImageBatch &out,
-                                  nvcv::ITensor &ksize, nvcv::ITensor &scale, NVCVBorderType borderMode)
+inline void Laplacian::operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
+                                  const nvcv::Tensor &ksize, const nvcv::Tensor &scale, NVCVBorderType borderMode)
 {
     nvcv::detail::CheckThrow(cvcudaLaplacianVarShapeSubmit(m_handle, stream, in.handle(), out.handle(), ksize.handle(),
                                                            scale.handle(), borderMode));

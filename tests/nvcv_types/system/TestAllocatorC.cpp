@@ -129,8 +129,8 @@ TEST(AllocatorTest, CreateAndUseCustom)
     EXPECT_EQ(ctx1, 0xBAD);
 }
 
-// WIP: just to check if it compiles.
-TEST(Allocator, wip_test_default)
+// smoke: just to check if it compiles.
+TEST(Allocator, smoke_test_default)
 {
     nvcv::CustomAllocator myalloc;
 
@@ -143,8 +143,8 @@ TEST(Allocator, wip_test_default)
     myalloc.hostPinnedMem().free(ptrHostPinned, 144, 16);
 }
 
-// WIP: just to check if it compiles.
-TEST(Allocator, wip_test_custom_functors)
+// smoke: just to check if it compiles.
+TEST(Allocator, smoke_test_custom_functors)
 {
     int devCounter        = 1;
     int hostCounter       = 1;

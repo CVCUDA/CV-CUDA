@@ -33,8 +33,8 @@ ChannelReorder::ChannelReorder()
     m_legacyOpVarShape = std::make_unique<legacy::ChannelReorderVarShape>(maxIn, maxOut);
 }
 
-void ChannelReorder::operator()(cudaStream_t stream, const nvcv::IImageBatchVarShape &in,
-                                nvcv::IImageBatchVarShape &out, const nvcv::ITensor &orders) const
+void ChannelReorder::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
+                                const nvcv::ImageBatchVarShape &out, const nvcv::Tensor &orders) const
 {
     auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (inData == nullptr)

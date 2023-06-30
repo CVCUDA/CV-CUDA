@@ -260,6 +260,9 @@ NVCV_PUBLIC NVCVStatus nvcvImageGetFormat(NVCVImageHandle handle, NVCVImageForma
 /**
  * Get the allocator associated with an image.
  *
+ * This function creates a new reference to the allocator handle. The caller is responsible for freeing it
+ * by calling nvcvAllocatorDecRef.
+ *
  * @param[in] handle Image to be queried.
  *                   + Must not be NULL.
  *

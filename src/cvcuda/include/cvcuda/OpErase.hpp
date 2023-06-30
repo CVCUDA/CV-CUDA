@@ -30,9 +30,9 @@
 #include "OpErase.h"
 
 #include <cuda_runtime.h>
-#include <nvcv/IImageBatch.hpp>
-#include <nvcv/ITensor.hpp>
+#include <nvcv/ImageBatch.hpp>
 #include <nvcv/ImageFormat.hpp>
+#include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
 namespace cvcuda {
@@ -44,12 +44,13 @@ public:
 
     ~Erase();
 
-    void operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out, nvcv::ITensor &anchor,
-                    nvcv::ITensor &erasing, nvcv::ITensor &values, nvcv::ITensor &imgIdx, bool random, uint32_t seed);
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const nvcv::Tensor &anchor,
+                    const nvcv::Tensor &erasing, const nvcv::Tensor &values, const nvcv::Tensor &imgIdx, bool random,
+                    uint32_t seed);
 
-    void operator()(cudaStream_t stream, nvcv::IImageBatchVarShape &in, nvcv::IImageBatchVarShape &out,
-                    nvcv::ITensor &anchor, nvcv::ITensor &erasing, nvcv::ITensor &values, nvcv::ITensor &imgIdx,
-                    bool random, uint32_t seed);
+    void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
+                    const nvcv::Tensor &anchor, const nvcv::Tensor &erasing, const nvcv::Tensor &values,
+                    const nvcv::Tensor &imgIdx, bool random, uint32_t seed);
 
     virtual NVCVOperatorHandle handle() const noexcept override;
 
@@ -69,17 +70,18 @@ inline Erase::~Erase()
     m_handle = nullptr;
 }
 
-inline void Erase::operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out, nvcv::ITensor &anchor,
-                              nvcv::ITensor &erasing, nvcv::ITensor &values, nvcv::ITensor &imgIdx, bool random,
-                              uint32_t seed)
+inline void Erase::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                              const nvcv::Tensor &anchor, const nvcv::Tensor &erasing, const nvcv::Tensor &values,
+                              const nvcv::Tensor &imgIdx, bool random, uint32_t seed)
 {
     nvcv::detail::CheckThrow(cvcudaEraseSubmit(m_handle, stream, in.handle(), out.handle(), anchor.handle(),
                                                erasing.handle(), values.handle(), imgIdx.handle(), random, seed));
 }
 
-inline void Erase::operator()(cudaStream_t stream, nvcv::IImageBatchVarShape &in, nvcv::IImageBatchVarShape &out,
-                              nvcv::ITensor &anchor, nvcv::ITensor &erasing, nvcv::ITensor &values,
-                              nvcv::ITensor &imgIdx, bool random, uint32_t seed)
+inline void Erase::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
+                              const nvcv::ImageBatchVarShape &out, const nvcv::Tensor &anchor,
+                              const nvcv::Tensor &erasing, const nvcv::Tensor &values, const nvcv::Tensor &imgIdx,
+                              bool random, uint32_t seed)
 {
     nvcv::detail::CheckThrow(cvcudaEraseVarShapeSubmit(m_handle, stream, in.handle(), out.handle(), anchor.handle(),
                                                        erasing.handle(), values.handle(), imgIdx.handle(), random,

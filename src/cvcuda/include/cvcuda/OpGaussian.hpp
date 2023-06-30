@@ -30,10 +30,10 @@
 #include "OpGaussian.h"
 
 #include <cuda_runtime.h>
-#include <nvcv/IImageBatch.hpp>
-#include <nvcv/ITensor.hpp>
+#include <nvcv/ImageBatch.hpp>
 #include <nvcv/ImageFormat.hpp>
 #include <nvcv/Size.hpp>
+#include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
 namespace cvcuda {
@@ -45,11 +45,11 @@ public:
 
     ~Gaussian();
 
-    void operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out, nvcv::Size2D kernelSize, double2 sigma,
-                    NVCVBorderType borderMode);
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, nvcv::Size2D kernelSize,
+                    double2 sigma, NVCVBorderType borderMode);
 
-    void operator()(cudaStream_t stream, nvcv::IImageBatch &in, nvcv::IImageBatch &out, nvcv::ITensor &kernelSize,
-                    nvcv::ITensor &sigma, NVCVBorderType borderMode);
+    void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
+                    const nvcv::Tensor &kernelSize, const nvcv::Tensor &sigma, NVCVBorderType borderMode);
 
     virtual NVCVOperatorHandle handle() const noexcept override;
 
@@ -69,15 +69,15 @@ inline Gaussian::~Gaussian()
     m_handle = nullptr;
 }
 
-inline void Gaussian::operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out, nvcv::Size2D kernelSize,
-                                 double2 sigma, NVCVBorderType borderMode)
+inline void Gaussian::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                                 nvcv::Size2D kernelSize, double2 sigma, NVCVBorderType borderMode)
 {
     nvcv::detail::CheckThrow(cvcudaGaussianSubmit(m_handle, stream, in.handle(), out.handle(), kernelSize.w,
                                                   kernelSize.h, sigma.x, sigma.y, borderMode));
 }
 
-inline void Gaussian::operator()(cudaStream_t stream, nvcv::IImageBatch &in, nvcv::IImageBatch &out,
-                                 nvcv::ITensor &kernelSize, nvcv::ITensor &sigma, NVCVBorderType borderMode)
+inline void Gaussian::operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
+                                 const nvcv::Tensor &kernelSize, const nvcv::Tensor &sigma, NVCVBorderType borderMode)
 {
     nvcv::detail::CheckThrow(cvcudaGaussianVarShapeSubmit(m_handle, stream, in.handle(), out.handle(),
                                                           kernelSize.handle(), sigma.handle(), borderMode));

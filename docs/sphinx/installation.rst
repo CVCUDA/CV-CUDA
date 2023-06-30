@@ -32,7 +32,7 @@ Setup
 
 The following steps describe how to install cvcuda. Choose the installation method that meets your environment needs.
 
-Download the cvcuda tar/deb package from `here <https://github.com/CVCUDA/CV-CUDA/releases/tag/v0.3.0-beta>`_
+Download the cvcuda tar/deb package from `here <https://github.com/CVCUDA/CV-CUDA/releases/tag/v0.3.1-beta>`_
 
 * Tar File Installation
 

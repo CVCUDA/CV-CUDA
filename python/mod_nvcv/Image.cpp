@@ -35,7 +35,7 @@
 
 namespace nvcvpy::priv {
 
-bool Image::Key::doIsEqual(const IKey &ithat) const
+bool Image::Key::doIsCompatible(const IKey &ithat) const
 {
     auto &that = static_cast<const Key &>(ithat);
 
@@ -219,7 +219,7 @@ std::vector<BufferImageInfo> ExtractBufferImageInfo(const std::vector<DLPackTens
         bufInfo.numPlanes        = bufInfo.isChannelLast ? infoShape->numSamples() : infoShape->numChannels();
         bufInfo.numChannels      = infoShape->numChannels();
         bufInfo.size             = infoShape->size();
-        bufInfo.planeStride      = strides[infoLayout->idxSample()];
+        bufInfo.planeStride      = strides[bufInfo.isChannelLast ? infoLayout->idxSample() : infoLayout->idxChannel()];
         bufInfo.rowStride        = strides[infoLayout->idxHeight()];
         bufInfo.data             = tensor.data;
         bufInfo.dtype            = ToNVCVDataType(tensor.dtype);
@@ -451,9 +451,8 @@ nvcv::ImageDataStridedHost CreateNVCVImageDataHost(const std::vector<DLPackTenso
 } // namespace
 
 Image::Image(const Size2D &size, nvcv::ImageFormat fmt, int rowAlign)
-    : m_impl(
-        std::make_unique<nvcv::Image>(nvcv::Size2D{std::get<0>(size), std::get<1>(size)}, fmt, nullptr /* allocator */,
-                                      rowAlign == 0 ? nvcv::MemAlignment{} : nvcv::MemAlignment{}.rowAddr(rowAlign)))
+    : m_impl(nvcv::Size2D{std::get<0>(size), std::get<1>(size)}, fmt, nullptr /* allocator */,
+             rowAlign == 0 ? nvcv::MemAlignment{} : nvcv::MemAlignment{}.rowAddr(rowAlign))
     , m_key{size, fmt}
 {
 }
@@ -484,7 +483,7 @@ Image::Image(std::vector<std::shared_ptr<ExternalBuffer>> bufs, const nvcv::Imag
         m_wrapData->obj = py::cast(std::move(bufs));
     }
 
-    m_impl = std::make_unique<nvcv::ImageWrapData>(imgData);
+    m_impl = nvcv::ImageWrapData(imgData);
 }
 
 Image::Image(std::vector<py::buffer> bufs, const nvcv::ImageDataStridedHost &hostData, int rowAlign)
@@ -493,10 +492,10 @@ Image::Image(std::vector<py::buffer> bufs, const nvcv::ImageDataStridedHost &hos
     // We'll create a regular image and copy the host data into it.
 
     // Create the image with same size and format as host data
-    m_impl = std::make_unique<nvcv::Image>(hostData.size(), hostData.format(), nullptr /* allocator */,
-                                           nvcv::MemAlignment{}.rowAddr(rowAlign));
+    m_impl = nvcv::Image(hostData.size(), hostData.format(), nullptr /* allocator */,
+                         nvcv::MemAlignment{}.rowAddr(rowAlign));
 
-    auto devData = *m_impl->exportData<nvcv::ImageDataStridedCuda>();
+    auto devData = *m_impl.exportData<nvcv::ImageDataStridedCuda>();
     NVCV_ASSERT(hostData.format() == devData.format());
     NVCV_ASSERT(hostData.numPlanes() == devData.numPlanes());
 
@@ -515,8 +514,8 @@ Image::Image(std::vector<py::buffer> bufs, const nvcv::ImageDataStridedHost &hos
     }
 
     m_key = Key{
-        {m_impl->size().w, m_impl->size().h},
-        m_impl->format()
+        {m_impl.size().w, m_impl.size().h},
+        m_impl.format()
     };
 }
 
@@ -641,23 +640,23 @@ std::shared_ptr<Image> Image::CreateHostVector(std::vector<py::buffer> buffers, 
 
 Size2D Image::size() const
 {
-    nvcv::Size2D s = m_impl->size();
+    nvcv::Size2D s = m_impl.size();
     return {s.w, s.h};
 }
 
 int32_t Image::width() const
 {
-    return m_impl->size().w;
+    return m_impl.size().w;
 }
 
 int32_t Image::height() const
 {
-    return m_impl->size().h;
+    return m_impl.size().h;
 }
 
 nvcv::ImageFormat Image::format() const
 {
-    return m_impl->format();
+    return m_impl.format();
 }
 
 std::ostream &operator<<(std::ostream &out, const Image &img)
@@ -920,7 +919,7 @@ py::object Image::cuda(std::optional<nvcv::TensorLayout> layout) const
     }
     else
     {
-        auto imgData = m_impl->exportData<nvcv::ImageDataStridedCuda>();
+        auto imgData = m_impl.exportData<nvcv::ImageDataStridedCuda>();
         if (!imgData)
         {
             throw std::runtime_error("Image data can't be exported, it's not cuda-accessible");
@@ -941,7 +940,7 @@ py::object Image::cuda(std::optional<nvcv::TensorLayout> layout) const
 
 py::object Image::cpu(std::optional<nvcv::TensorLayout> layout) const
 {
-    auto devStrided = m_impl->exportData<nvcv::ImageDataStridedCuda>();
+    auto devStrided = m_impl.exportData<nvcv::ImageDataStridedCuda>();
     if (!devStrided)
     {
         throw std::runtime_error("Only images with pitch-linear formats can be exported to CPU");

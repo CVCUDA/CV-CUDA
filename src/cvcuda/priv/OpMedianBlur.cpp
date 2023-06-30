@@ -35,7 +35,7 @@ MedianBlur::MedianBlur(const int maxVarShapeBatchSize)
     m_legacyOpVarShape = std::make_unique<legacy::MedianBlurVarShape>(maxVarShapeBatchSize);
 }
 
-void MedianBlur::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &out,
+void MedianBlur::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                             const nvcv::Size2D ksize) const
 {
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
@@ -55,8 +55,8 @@ void MedianBlur::operator()(cudaStream_t stream, const nvcv::ITensor &in, const 
     NVCV_CHECK_THROW(m_legacyOp->infer(*inData, *outData, ksize, stream));
 }
 
-void MedianBlur::operator()(cudaStream_t stream, const nvcv::IImageBatchVarShape &in,
-                            const nvcv::IImageBatchVarShape &out, nvcv::ITensor &ksize) const
+void MedianBlur::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
+                            const nvcv::ImageBatchVarShape &out, const nvcv::Tensor &ksize) const
 {
     auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (inData == nullptr)

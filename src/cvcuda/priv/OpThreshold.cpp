@@ -35,8 +35,8 @@ Threshold::Threshold(uint32_t type, int maxBatchSize)
     m_legacyOpVarShape = std::make_unique<legacy::ThresholdVarShape>(maxIn, maxOut, type, maxBatchSize);
 }
 
-void Threshold::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &out,
-                           nvcv::ITensor &thresh, nvcv::ITensor &maxval) const
+void Threshold::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                           const nvcv::Tensor &thresh, const nvcv::Tensor &maxval) const
 {
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
     if (inData == nullptr)
@@ -69,8 +69,8 @@ void Threshold::operator()(cudaStream_t stream, const nvcv::ITensor &in, const n
     NVCV_CHECK_THROW(m_legacyOp->infer(*inData, *outData, *threshData, *maxvalData, stream));
 }
 
-void Threshold::operator()(cudaStream_t stream, const nvcv::IImageBatchVarShape &in,
-                           const nvcv::IImageBatchVarShape &out, nvcv::ITensor &thresh, nvcv::ITensor &maxval) const
+void Threshold::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
+                           const nvcv::Tensor &thresh, const nvcv::Tensor &maxval) const
 {
     auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (inData == nullptr)

@@ -190,6 +190,19 @@ public:
         return doGetPtr(s, 0, y, x);
     }
 
+    /**
+     * Get a read-only proxy (as pointer) of the given coordinates (considering plane=0).
+     *
+     * @param[in] s Sample image index in the list.
+     * @param[in] y Row index in the selected image.
+     *
+     * @return The const pointer to the beginning of the given coordinates.
+     */
+    inline const __host__ __device__ T *ptr(int s, int y) const
+    {
+        return doGetPtr(s, 0, y, 0);
+    }
+
 protected:
     inline const __host__ __device__ T *doGetPtr(int s, int p, int y, int x) const
     {
@@ -263,7 +276,7 @@ public:
     }
 
     /**
-     * Get a read-only proxy (as pointer) of the given coordinates.
+     * Get a read-and-write proxy (as pointer) of the given coordinates.
      *
      * @param[in] s Sample image index in the list.
      * @param[in] p Plane index in the image.
@@ -278,7 +291,7 @@ public:
     }
 
     /**
-     * Get a read-only proxy (as pointer) of the given coordinates (considering plane=0).
+     * Get a read-and-write proxy (as pointer) of the given coordinates (considering plane=0).
      *
      * @param[in] s Sample image index in the list.
      * @param[in] y Row index in the selected image.
@@ -289,6 +302,19 @@ public:
     inline __host__ __device__ T *ptr(int s, int y, int x) const
     {
         return doGetPtr(s, 0, y, x);
+    }
+
+    /**
+     * Get a read-and-write proxy (as pointer) of the given coordinates (considering plane=0).
+     *
+     * @param[in] s Sample image index in the list.
+     * @param[in] y Row index in the selected image.
+     *
+     * @return The pointer to the beginning of the given coordinates.
+     */
+    inline __host__ __device__ T *ptr(int s, int y) const
+    {
+        return doGetPtr(s, 0, y, 0);
     }
 
 protected:
@@ -406,6 +432,20 @@ public:
     inline __host__ __device__ T *ptr(int s, int y, int x) const
     {
         return doGetPtr(s, y, x, 0);
+    }
+
+    /**
+     * Get either read-only or read-and-write proxy (as pointer) of the given coordinates.
+     *
+     * @param[in] s Sample image index in the list.
+     * @param[in] y Row index in the selected image.
+     * @param[in] x Column index in the selected image.
+     *
+     * @return The pointer to the beginning of the given coordinates.
+     */
+    inline __host__ __device__ T *ptr(int s, int y) const
+    {
+        return doGetPtr(s, y, 0, 0);
     }
 
 private:

@@ -34,7 +34,7 @@ Flip::Flip(int32_t maxBatchSize)
     m_legacyOpVarShape = std::make_unique<legacy::FlipOrCopyVarShape>(maxIn, maxOut);
 }
 
-void Flip::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &out, int32_t flipCode) const
+void Flip::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, int32_t flipCode) const
 {
     auto input = in.exportData<nvcv::TensorDataStridedCuda>();
     if (input == nullptr)
@@ -53,8 +53,8 @@ void Flip::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::
     NVCV_CHECK_THROW(m_legacyOp->infer(*input, *output, flipCode, stream));
 }
 
-void Flip::operator()(cudaStream_t stream, const nvcv::IImageBatchVarShape &in, const nvcv::IImageBatchVarShape &out,
-                      const nvcv::ITensor &flipCode) const
+void Flip::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
+                      const nvcv::Tensor &flipCode) const
 {
     auto input = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (input == nullptr)

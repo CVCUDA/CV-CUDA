@@ -27,7 +27,10 @@ void ExportInterpolationType(py::module &m)
         .value("NEAREST", NVCV_INTERP_NEAREST, "Nearest-neighbor interpolation")
         .value("LINEAR", NVCV_INTERP_LINEAR, "Linear interpolation")
         .value("CUBIC", NVCV_INTERP_CUBIC, "Cubic interpolation")
-        .value("AREA", NVCV_INTERP_AREA, "Area-based (resampling using pixels in area) interpolation");
+        .value("AREA", NVCV_INTERP_AREA, "Area-based (resampling using pixels in area) interpolation")
+        .value("LANCZOS", NVCV_INTERP_LANCZOS, "Lanczos interpolation")
+        .value("HAMMING", NVCV_INTERP_HAMMING, "Hamming interpolation")
+        .value("BOX", NVCV_INTERP_BOX, "Box interpolation");
 }
 
 } // namespace cvcudapy

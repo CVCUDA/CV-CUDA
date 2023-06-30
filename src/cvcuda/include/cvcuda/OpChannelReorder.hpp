@@ -30,8 +30,8 @@
 #include "OpChannelReorder.h"
 
 #include <cuda_runtime.h>
-#include <nvcv/IImageBatch.hpp>
-#include <nvcv/ITensor.hpp>
+#include <nvcv/ImageBatch.hpp>
+#include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
 namespace cvcuda {
@@ -43,8 +43,8 @@ public:
 
     ~ChannelReorder();
 
-    void operator()(cudaStream_t stream, nvcv::IImageBatchVarShape &in, nvcv::IImageBatchVarShape &out,
-                    nvcv::ITensor &orders);
+    void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
+                    const nvcv::Tensor &orders);
 
     virtual NVCVOperatorHandle handle() const noexcept override;
 
@@ -64,8 +64,8 @@ inline ChannelReorder::~ChannelReorder()
     m_handle = nullptr;
 }
 
-inline void ChannelReorder::operator()(cudaStream_t stream, nvcv::IImageBatchVarShape &in,
-                                       nvcv::IImageBatchVarShape &out, nvcv::ITensor &orders)
+inline void ChannelReorder::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
+                                       const nvcv::ImageBatchVarShape &out, const nvcv::Tensor &orders)
 {
     nvcv::detail::CheckThrow(
         cvcudaChannelReorderVarShapeSubmit(m_handle, stream, in.handle(), out.handle(), orders.handle()));

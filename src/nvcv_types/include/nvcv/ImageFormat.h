@@ -93,11 +93,17 @@ typedef uint64_t NVCVImageFormat;
 /** Single plane with two interleaved block-linear 16-bit signed integer channel.*/
 #define NVCV_IMAGE_FORMAT_2S16_BL NVCV_DETAIL_MAKE_NONCOLOR_FMT1(BL, SIGNED, XY00, X16_Y16)
 
+/** Single plane with one 16-bit floating point channel. */
+#define NVCV_IMAGE_FORMAT_F16 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, FLOAT, X000, X16)
+
 /** Single plane with one 32-bit floating point channel. */
 #define NVCV_IMAGE_FORMAT_F32 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, FLOAT, X000, X32)
 
 /** Single plane with one 64-bit floating point channel. */
 #define NVCV_IMAGE_FORMAT_F64 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, FLOAT, X000, X64)
+
+/** Single plane with two interleaved 16-bit floating point channels. */
+#define NVCV_IMAGE_FORMAT_2F16 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, FLOAT, XY00, X16_Y16)
 
 /** Single plane with two interleaved 32-bit floating point channels. */
 #define NVCV_IMAGE_FORMAT_2F32 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, FLOAT, XY00, X32_Y32)
@@ -285,6 +291,30 @@ typedef uint64_t NVCVImageFormat;
 
 /** Planar BGRA unsigned 8-bit per channel. */
 #define NVCV_IMAGE_FORMAT_BGRA8p NVCV_DETAIL_MAKE_COLOR_FMT4(RGB, UNDEFINED, PL, UNSIGNED, ZYXW, X8, X8, X8, X8)
+
+/** Single plane with interleaved RGB float16 channel. */
+#define NVCV_IMAGE_FORMAT_RGBf16 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, FLOAT, XYZ1, X16_Y16_Z16)
+
+/** Single plane with interleaved BGR float16 channel. */
+#define NVCV_IMAGE_FORMAT_BGRf16 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, FLOAT, ZYX1, X16_Y16_Z16)
+
+/** Single plane with interleaved RGBA float16 channel. */
+#define NVCV_IMAGE_FORMAT_RGBAf16 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, FLOAT, XYZW, X16_Y16_Z16_W16)
+
+/** Single plane with interleaved BGRA float16 channel. */
+#define NVCV_IMAGE_FORMAT_BGRAf16 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, FLOAT, ZYXW, X16_Y16_Z16_W16)
+
+/** Planar RGB unsigned float16 per channel. */
+#define NVCV_IMAGE_FORMAT_RGBf16p NVCV_DETAIL_MAKE_COLOR_FMT3(RGB, UNDEFINED, PL, FLOAT, XYZ0, X16, X16, X16)
+
+/** Planar BGR unsigned float16 per channel. */
+#define NVCV_IMAGE_FORMAT_BGRf16p NVCV_DETAIL_MAKE_COLOR_FMT3(RGB, UNDEFINED, PL, FLOAT, ZYX1, X16, X16, X16)
+
+/** Planar RGBA unsigned float16 per channel. */
+#define NVCV_IMAGE_FORMAT_RGBAf16p NVCV_DETAIL_MAKE_COLOR_FMT4(RGB, UNDEFINED, PL, FLOAT, XYZW, X16, X16, X16, X16)
+
+/** Planar BGRA unsigned float16 per channel. */
+#define NVCV_IMAGE_FORMAT_BGRAf16p NVCV_DETAIL_MAKE_COLOR_FMT4(RGB, UNDEFINED, PL, FLOAT, ZYXW, X16, X16, X16, X16)
 
 /** Single plane with interleaved RGB float32 channel. */
 #define NVCV_IMAGE_FORMAT_RGBf32 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, FLOAT, XYZ1, X32_Y32_Z32)

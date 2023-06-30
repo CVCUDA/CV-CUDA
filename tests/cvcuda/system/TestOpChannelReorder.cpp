@@ -17,13 +17,13 @@
 
 #include "Definitions.hpp"
 
-#include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpChannelReorder.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/cuda/MathOps.hpp>
+#include <util/TensorDataUtils.hpp>
 
 namespace test = nvcv::test;
 
@@ -55,14 +55,14 @@ TEST(TestOpChannelReorder, smoke_test_works)
     inImageValues0.resize(inImageData0->plane(0).rowStride / sizeof(uchar4) * inImageData0->size().h);
     inImageValues0[0] = {1, 2, 3, 7};
     inImageValues0[1] = {7, 3, 2, 9};
-    test::SetTensorFromVector<uchar4>(nvcv::TensorWrapImage(inImages[0]).exportData(), inImageValues0, -1);
+    nvcv::util::SetTensorFromVector<uchar4>(nvcv::TensorWrapImage(inImages[0]).exportData(), inImageValues0, -1);
 
     std::vector<uchar4> inImageValues1;
     auto                inImageData1 = inImages[1].exportData<nvcv::ImageDataStrided>();
     inImageValues1.resize(inImageData1->plane(0).rowStride / sizeof(uchar4) * inImageData1->size().h);
     inImageValues1[0] = {3, 2, 1, 4};
     inImageValues1[1] = {1, 3, 10, 28};
-    test::SetTensorFromVector<uchar4>(nvcv::TensorWrapImage(inImages[1]).exportData(), inImageValues1, -1);
+    nvcv::util::SetTensorFromVector<uchar4>(nvcv::TensorWrapImage(inImages[1]).exportData(), inImageValues1, -1);
 
     // Populate the order tensor
     // clang-format off
@@ -79,11 +79,11 @@ TEST(TestOpChannelReorder, smoke_test_works)
 
     // N==0
     inOrderValues[0] = {2, -1, 1, 3};
-    test::SetTensorFromVector<int4>(inOrders.exportData(), inOrderValues, 0);
+    nvcv::util::SetTensorFromVector<int4>(inOrders.exportData(), inOrderValues, 0);
 
     // N=1
     inOrderValues[0] = {3, 2, 1, -1};
-    test::SetTensorFromVector<int4>(inOrders.exportData(), inOrderValues, 1);
+    nvcv::util::SetTensorFromVector<int4>(inOrders.exportData(), inOrderValues, 1);
 
     // Execute operation
     cudaStream_t stream;
@@ -100,13 +100,13 @@ TEST(TestOpChannelReorder, smoke_test_works)
     std::vector<uchar4> outImageValues;
 
     // image0 x order[0]
-    test::GetVectorFromTensor<uchar4>(nvcv::TensorWrapImage(outImages[0]).exportData(), 0, outImageValues);
+    nvcv::util::GetVectorFromTensor<uchar4>(nvcv::TensorWrapImage(outImages[0]).exportData(), 0, outImageValues);
     EXPECT_EQ(make_uchar4(3, 0, 2, 7), outImageValues[0]);
     EXPECT_EQ(make_uchar4(2, 0, 3, 9), outImageValues[1]);
 
     // image1 x order[1]
     outImageValues.clear();
-    test::GetVectorFromTensor<uchar4>(nvcv::TensorWrapImage(outImages[1]).exportData(), 0, outImageValues);
+    nvcv::util::GetVectorFromTensor<uchar4>(nvcv::TensorWrapImage(outImages[1]).exportData(), 0, outImageValues);
     EXPECT_EQ(make_uchar4(4, 1, 2, 0), outImageValues[0]);
     EXPECT_EQ(make_uchar4(28, 10, 3, 0), outImageValues[1]);
 }

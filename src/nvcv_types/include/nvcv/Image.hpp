@@ -18,37 +18,45 @@
 #ifndef NVCV_IMAGE_HPP
 #define NVCV_IMAGE_HPP
 
-#include "IImage.hpp"
+#include "CoreResource.hpp"
+#include "HandleWrapper.hpp"
+#include "Image.h"
 #include "ImageData.hpp"
+#include "ImageFormat.hpp"
 #include "Size.hpp"
 #include "alloc/Allocator.hpp"
 #include "detail/Callback.hpp"
-
-#include <nvcv/ImageFormat.hpp>
 
 #include <functional>
 
 namespace nvcv {
 
-// Image definition -------------------------------------
-// Image allocated by cv-cuda
-class Image : public IImage
+NVCV_IMPL_SHARED_HANDLE(Image);
+
+class Image : public CoreResource<NVCVImageHandle, Image>
 {
 public:
+    using HandleType   = NVCVImageHandle;
+    using Base         = CoreResource<NVCVImageHandle, Image>;
     using Requirements = NVCVImageRequirements;
+
     static Requirements CalcRequirements(const Size2D &size, ImageFormat fmt, const MemAlignment &bufAlign = {});
 
+    NVCV_IMPLEMENT_SHARED_RESOURCE(Image, Base);
     explicit Image(const Requirements &reqs, const Allocator &alloc = nullptr);
     explicit Image(const Size2D &size, ImageFormat fmt, const Allocator &alloc = nullptr,
                    const MemAlignment &bufAlign = {});
-    ~Image();
 
-    Image(const Image &) = delete;
+    Size2D      size() const;
+    ImageFormat format() const;
 
-private:
-    NVCVImageHandle doGetHandle() const final override;
+    ImageData exportData() const;
 
-    NVCVImageHandle m_handle;
+    template<typename DATA>
+    Optional<DATA> exportData() const;
+
+    void  setUserPointer(void *ptr);
+    void *userPointer() const;
 };
 
 // ImageWrapData definition -------------------------------------
@@ -69,22 +77,10 @@ using ImageDataCleanupCallback
     = CleanupCallback<ImageDataCleanupFunc, detail::RemovePointer_t<NVCVImageDataCleanupFunc>,
                       TranslateImageDataCleanup>;
 
-class ImageWrapData : public IImage
-{
-public:
-    explicit ImageWrapData(const ImageData &data, ImageDataCleanupCallback &&cleanup = ImageDataCleanupCallback{});
-    ~ImageWrapData();
-
-    ImageWrapData(const Image &) = delete;
-
-private:
-    NVCVImageHandle doGetHandle() const final override;
-
-    NVCVImageHandle m_handle;
-};
-
 // For API backward-compatibility
-using ImageWrapHandle = detail::WrapHandle<IImage>;
+inline Image ImageWrapData(const ImageData &data, ImageDataCleanupCallback &&cleanup = ImageDataCleanupCallback{});
+
+using ImageWrapHandle = NonOwningResource<Image>;
 
 } // namespace nvcv
 

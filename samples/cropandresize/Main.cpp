@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -141,7 +141,7 @@ int main(int argc, char *argv[])
                                        nvcv::DataType{inReqs.dtype}, inBuf);
 
     // TensorWrapData allows for interoperation of external tensor representations with CVCUDA Tensor.
-    nvcv::TensorWrapData inTensor(inData);
+    nvcv::Tensor inTensor = nvcv::TensorWrapData(inData);
 
     // tag: Image Loading
     // NvJpeg is used to load the images to create a batched input device buffer.

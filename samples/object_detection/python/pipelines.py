@@ -154,14 +154,13 @@ class PostprocessorCvcuda:
             self.y_values = torch.full([self.num_cols], 1).cuda(device=self.device_id)
             self.x_values = torch.arange(0, self.num_cols).cuda(device=self.device_id)
 
-        # Denormalize the bounding boxes
-        # Compute the center of each grid
-        for b in range(batch_size):
+            # Denormalize the bounding boxes
+            # Compute the center of each grid
             for r in range(0, self.num_rows):
-                self.center_y[b, r, :] = (
+                self.center_y[:, r, :] = (
                     self.y_values * r * self.stride + self.offset
                 ) / self.bbox_norm
-                self.center_x[b, r, :] = (
+                self.center_x[:, r, :] = (
                     self.x_values * self.stride + self.offset
                 ) / self.bbox_norm
 
@@ -171,17 +170,20 @@ class PostprocessorCvcuda:
         X is the row index of the grid, Y is the column index of the grid
         The order of the coordinates is left, bottom, right, top
         """
+        # Convert to [N, X, Y, C*4] format
+        boxes = boxes.permute(0, 2, 3, 1)
+        # Shift the grid centera
         for c in range(self.num_classes):
-            # Shift the grid centers
-            boxes[:, 4 * c + 0, :, :] -= self.center_x
-            boxes[:, 4 * c + 1, :, :] += self.center_y
-            boxes[:, 4 * c + 2, :, :] += self.center_x
-            boxes[:, 4 * c + 3, :, :] -= self.center_y
+            boxes[:, :, :, 4 * c + 0] -= self.center_x
+            boxes[:, :, :, 4 * c + 1] += self.center_y
+            boxes[:, :, :, 4 * c + 2] += self.center_x
+            boxes[:, :, :, 4 * c + 3] -= self.center_y
             # Apply the bounding box scale of the model
-            boxes[:, 4 * c + 0, :, :] *= -self.bbox_norm * image_scale_x
-            boxes[:, 4 * c + 1, :, :] *= self.bbox_norm * image_scale_y
-            boxes[:, 4 * c + 2, :, :] *= self.bbox_norm * image_scale_x
-            boxes[:, 4 * c + 3, :, :] *= -self.bbox_norm * image_scale_y
+            boxes[:, :, :, 4 * c + 0] *= -self.bbox_norm * image_scale_x
+            boxes[:, :, :, 4 * c + 1] *= self.bbox_norm * image_scale_y
+            boxes[:, :, :, 4 * c + 2] *= self.bbox_norm * image_scale_x
+            boxes[:, :, :, 4 * c + 3] *= -self.bbox_norm * image_scale_y
+
         return boxes
 
     # docs_tag: end_interpolate
@@ -191,7 +193,6 @@ class PostprocessorCvcuda:
         nvtx.push_range("postprocess.cvcuda")
 
         # docs_tag: begin_call_filterbboxcvcuda
-
         batch_size = raw_boxes.shape[0]
         image_scale_x = frame_nhwc.shape[2] / self.network_width
         image_scale_y = frame_nhwc.shape[1] / self.network_height
@@ -200,73 +201,37 @@ class PostprocessorCvcuda:
             raw_boxes, image_scale_x, image_scale_y, batch_size
         )
 
-        # NMS to filter bounding boxes based on confidence threshold and iou threshold
-        batch_boxes = None
-        batch_scores = None
-        for b in range(batch_size):
-            per_batch_bboxes = None
-            per_batch_scores = None
-            # Convert N, C*4, X, Y format into N, B, 4 format
-            # where N is batch size, C is number of classes,X,Y is the number of grids,
-            # B is the number of bounding boxes
-            for c in range(self.num_classes):
-                # Address formatting issue when indexed directly
-                class_idx = c * 4
-                class_idx_4 = class_idx + 4
-                # Extract the bounding boxes across all grids
-                per_class_bboxes = interpolated_boxes[b, class_idx:class_idx_4, :, :]
-                # Flatten the bounding boxes to 4, B
-                per_class_bboxes = per_class_bboxes.reshape(4, -1)
-                # Reshape 4, B to B, 4
-                per_class_bboxes = per_class_bboxes.T
-                # Convert to int32 data type required by cvcuda NMS
-                per_class_bboxes = per_class_bboxes.type(torch.int32)
-                # Convert from left, bottom, right, top format to x, y, w, h format
-                per_class_bboxes[:, [1, 3]] = per_class_bboxes[:, [3, 1]]
-                per_class_bboxes[:, 2] = per_class_bboxes[:, 2] - per_class_bboxes[:, 0]
-                per_class_bboxes[:, 3] = per_class_bboxes[:, 3] - per_class_bboxes[:, 1]
-                # Convert score to [B] format of float32 datatype
-                per_class_scores = raw_scores[b, c, :, :].flatten()
-                if per_batch_bboxes is None:
-                    per_batch_bboxes = per_class_bboxes
-                    per_batch_scores = per_class_scores
-                else:
-                    per_batch_bboxes = torch.cat(
-                        (per_batch_bboxes, per_class_bboxes), 0
-                    )
-                    per_batch_scores = torch.cat(
-                        (per_batch_scores, per_class_scores), 0
-                    )
-            if batch_boxes is None:
-                batch_boxes = per_batch_bboxes.unsqueeze(0)
-                batch_scores = per_batch_scores.unsqueeze(0)
-            else:
-                batch_boxes = torch.cat((batch_boxes, per_batch_bboxes.unsqueeze(0)), 0)
-                batch_scores = torch.cat(
-                    (batch_scores, per_batch_scores.unsqueeze(0)), 0
-                )
+        raw_scores = raw_scores.permute(0, 2, 3, 1)
+        batch_scores = torch.flatten(raw_scores, start_dim=1, end_dim=3)
+
+        # Apply NMS to filter the bounding boxes based on the confidence threshold
+        # and the IOU threshold.
+        batch_bboxes = torch.flatten(interpolated_boxes, start_dim=1, end_dim=2)
+        batch_bboxes = batch_bboxes.reshape(batch_size, -1, 4)
+        # Convert from left, bottom, right, top format to x, y, w, h format
+        batch_bboxes[:, :, [1, 3]] = batch_bboxes[:, :, [3, 1]]
+        batch_bboxes[:, :, 2] = batch_bboxes[:, :, 2] - batch_bboxes[:, :, 0]
+        batch_bboxes[:, :, 3] = batch_bboxes[:, :, 3] - batch_bboxes[:, :, 1]
+        # Convert to int16 for cvcuda NMS supported formats
+        batch_bboxes = batch_bboxes.to(
+            torch.int16, memory_format=torch.contiguous_format
+        )
 
         # Wrap torch tensor as cvcuda array
-        cvcuda_boxes = cvcuda.as_tensor(batch_boxes.contiguous().cuda())
+        cvcuda_boxes = cvcuda.as_tensor(batch_bboxes)
         cvcuda_scores = cvcuda.as_tensor(batch_scores.contiguous().cuda())
 
         # Filter bounding boxes using NMS
-        nms_boxes = cvcuda.nms(
+        nms_masks = cvcuda.nms(
             cvcuda_boxes, cvcuda_scores, self.confidence_threshold, self.iou_threshold
         )
 
-        # Wrap output of NMS as torch tensor. CVCUDA NMS zeros out the invalid bboxes
-        filtered_bboxes = torch.as_tensor(nms_boxes.cuda()).contiguous()
-
-        # Get the indices of the non zero bounding boxes
-        torch_indices = torch.nonzero(filtered_bboxes)
-        torch_unique_indices = torch.unique(torch_indices.T[1])
-        filtered_bboxes = torch.index_select(filtered_bboxes, 1, torch_unique_indices)
+        torch_masks = torch.as_tensor(nms_masks.cuda(), dtype=np.bool)
         # docs_tag: end_call_filterbboxcvcuda
 
         # render bounding boxes and Blur ROI's
         # docs_tag: start_outbuffer
-        frame_nhwc = self.bboxutil(filtered_bboxes, frame_nhwc)
+        frame_nhwc = self.bboxutil(batch_bboxes, torch_masks, frame_nhwc)
         if self.output_layout == "NCHW":
             render_output = cvcuda.reformat(frame_nhwc, "NCHW")
         else:
@@ -282,10 +247,8 @@ class PostprocessorCvcuda:
 
         nvtx.pop_range()  # postprocess
 
-        # Return 2 pieces of information:
-        #   1. The original nhwc frame with bboxes rendered and ROI's blurred
-        #   2. The bounding boxes predicted
-        return (render_output, filtered_bboxes)
+        # Return the original nhwc frame with bboxes rendered and ROI's blurred
+        return render_output
         # docs_tag: end_outbuffer
 
 
@@ -300,22 +263,26 @@ class BoundingBoxUtilsCvcuda:
         self.kernel_size = 7
         # docs_tag: end_init_cuosd_bboxes
 
-    def __call__(self, bboxes, frame_nhwc):
+    def __call__(self, bboxes, masks, frame_nhwc):
         # docs_tag: begin_call_cuosd_bboxes
         batch_size = frame_nhwc.shape[0]
         num_boxes = []
-        for b in range(len(bboxes)):
-            num_boxes.append(len(bboxes[b]))
         boxes = []
         blur_boxes = []
+
         # Create an array of bounding boxes with render settings.
         for b in range(batch_size):
-            for i in range(num_boxes[b]):
+            mask = masks[b]
+            box = bboxes[b, :, :]
+            filtered_boxes = box[mask, :]
+            len_boxes = filtered_boxes.shape[0]
+            num_boxes.append(len_boxes)
+            for i in range(len_boxes):
                 box = [
-                    bboxes[b][i][0],
-                    bboxes[b][i][1],
-                    bboxes[b][i][2],
-                    bboxes[b][i][3],
+                    filtered_boxes[i][0],
+                    filtered_boxes[i][1],
+                    filtered_boxes[i][2],
+                    filtered_boxes[i][3],
                 ]
                 boxes.append(
                     cvcuda.BndBoxI(

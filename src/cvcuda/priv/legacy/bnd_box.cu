@@ -23,7 +23,7 @@
 
 #include "CvCudaUtils.cuh"
 
-#include <nvcv/IImage.hpp>
+#include <nvcv/Image.hpp>
 #include <nvcv/ImageData.hpp>
 #include <nvcv/TensorData.hpp>
 

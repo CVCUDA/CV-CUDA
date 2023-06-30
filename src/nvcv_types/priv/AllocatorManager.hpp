@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,15 +26,11 @@ namespace nvcv::priv {
 
 using AllocatorManager = CoreObjManager<NVCVAllocatorHandle>;
 
-using AllocatorStorage = CompatibleStorage<DefaultAllocator, CustomAllocator>;
-
 template<>
-class CoreObjManager<NVCVAllocatorHandle> : public HandleManager<IAllocator, AllocatorStorage>
+struct ResourceStorage<IAllocator>
 {
-    using Base = HandleManager<IAllocator, AllocatorStorage>;
-
-public:
-    using Base::Base;
+    using type = CompatibleStorage<DefaultAllocator, CustomAllocator>;
+    ;
 };
 
 } // namespace nvcv::priv

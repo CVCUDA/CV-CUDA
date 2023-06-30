@@ -20,6 +20,7 @@
 
 #include "CvCudaLegacy.h"
 #include "CvCudaLegacyHelpers.hpp"
+#include "pillow_resize.h"
 
 #include "CvCudaUtils.cuh"
 
@@ -30,42 +31,12 @@ using namespace nvcv::legacy::helpers;
 
 #define BLOCK           32
 #define SHARE_MEM_LIMIT 4096
-#define work_type       float
 
 namespace nvcv::legacy::cuda_op {
 
-static constexpr float        bilinear_filter_support_var_shape = 1.;
-static constexpr unsigned int precision_bits_var_shape          = 32 - 8 - 2;
+static constexpr unsigned int precision_bits_var_shape = 32 - 8 - 2;
 
 namespace {
-
-class BilinearFilterVarShape
-{
-public:
-    __host__ __device__ BilinearFilterVarShape()
-        : _support(bilinear_filter_support_var_shape){};
-
-    __host__ __device__ work_type filter(work_type x)
-    {
-        if (x < 0.0)
-        {
-            x = -x;
-        }
-        if (x < 1.0)
-        {
-            return 1.0 - x;
-        }
-        return 0.0;
-    }
-
-    __host__ __device__ work_type support() const
-    {
-        return _support;
-    };
-
-private:
-    work_type _support;
-};
 
 template<class Filter>
 __global__ void _precomputeCoeffsVarShape(int *in_size_batch, int *in0_batch, work_type *scale_batch,
@@ -187,6 +158,7 @@ __global__ void horizontal_pass_var_shape(const Ptr2dVarShapeNHWC<T1> src, Ptr2d
     work_type *h_kk      = h_kk_batch + h_kk_offset[batch_idx];
 
     int out_height = dst.at_rows(batch_idx), out_width = dst.at_cols(batch_idx);
+    int in_height = src.at_rows(batch_idx), in_width = src.at_cols(batch_idx);
 
     work_type *h_k_tmp = h_kk + x_offset * h_ksize;
 
@@ -218,10 +190,13 @@ __global__ void horizontal_pass_var_shape(const Ptr2dVarShapeNHWC<T1> src, Ptr2d
             for (int x = 0; x < xmax; ++x)
             {
                 // offset = offset_src + x * src.nch + c = (dst_y * src.at_cols(batch_idx) + xmin  + x) * src.nch + c
-                h_ss = h_ss
-                     + *src.ptr(batch_idx, dst_y + (xmin + x) / src.at_cols(batch_idx),
-                                (xmin + x) % src.at_cols(batch_idx), c)
-                           * h_k[x];
+                int src_y = dst_y + (xmin + x) / src.at_cols(batch_idx);
+                int src_x = (xmin + x) % src.at_cols(batch_idx);
+                if (src_y < 0 || src_y >= in_height || src_x < 0 || src_x >= in_width)
+                {
+                    continue;
+                }
+                h_ss = h_ss + *src.ptr(batch_idx, src_y, src_x, c) * h_k[x];
             }
             if (round_up)
                 *dst.ptr(batch_idx, dst_y, dst_x, c) = cuda::SaturateCast<T2>(std::round(h_ss));
@@ -249,6 +224,7 @@ __global__ void vertical_pass_var_shape(const Ptr2dNHWC<T1> src, Ptr2dVarShapeNH
     work_type *v_kk      = v_kk_batch + v_kk_offset[batch_idx];
 
     int out_height = dst.at_rows(batch_idx), out_width = dst.at_cols(batch_idx);
+    int in_height = src.at_rows(batch_idx), in_width = src.at_cols(batch_idx);
 
     work_type *v_k_tmp = v_kk + y_offset * v_ksize;
     if (use_share_mem)
@@ -280,9 +256,13 @@ __global__ void vertical_pass_var_shape(const Ptr2dNHWC<T1> src, Ptr2dVarShapeNH
             for (int y = 0; y < ymax; ++y)
             {
                 // offset =  offset_src + y * col_offset_src + c = ((y + ymin)* src.at_cols(batch_idx) + dst_x) * src.nch + c
-                ss = ss
-                   + *src.ptr(batch_idx, y + ymin + (dst_x / src.at_cols(batch_idx)), dst_x % src.at_cols(batch_idx), c)
-                         * v_k[y];
+                int src_y = y + ymin + (dst_x / src.at_cols(batch_idx));
+                int src_x = dst_x % src.at_cols(batch_idx);
+                if (src_y < 0 || src_y >= in_height || src_x < 0 || src_x >= in_width)
+                {
+                    continue;
+                }
+                ss = ss + *src.ptr(batch_idx, src_y, src_x, c) * v_k[y];
             }
 
             if (round_up)
@@ -294,7 +274,7 @@ __global__ void vertical_pass_var_shape(const Ptr2dNHWC<T1> src, Ptr2dVarShapeNH
 }
 
 template<typename Filter, typename elem_type>
-void pillow_resize_var_shape(const IImageBatchVarShape &inDataBase, const IImageBatchVarShape &outDataBase,
+void pillow_resize_var_shape(const ImageBatchVarShape &inDataBase, const ImageBatchVarShape &outDataBase,
                              void *gpu_workspace, void *cpu_workspace, bool normalize_coeff, work_type init_buffer,
                              bool round_up, cudaStream_t stream)
 {
@@ -504,7 +484,7 @@ void pillow_resize_var_shape(const IImageBatchVarShape &inDataBase, const IImage
 } // namespace
 
 template<typename Filter>
-void pillow_resize_filter_var_shape(const IImageBatchVarShape &inData, const IImageBatchVarShape &outData,
+void pillow_resize_filter_var_shape(const ImageBatchVarShape &inData, const ImageBatchVarShape &outData,
                                     void *gpu_workspace, void *cpu_workspace, NVCVInterpolationType interpolation,
                                     cudaStream_t stream)
 {
@@ -587,8 +567,8 @@ size_t PillowResizeVarShape::calBufferSize(DataShape max_input_shape, DataShape 
     return buffer_size;
 }
 
-ErrorCode PillowResizeVarShape::infer(const nvcv::IImageBatchVarShape &inDataBase,
-                                      const nvcv::IImageBatchVarShape &outDataBase,
+ErrorCode PillowResizeVarShape::infer(const nvcv::ImageBatchVarShape &inDataBase,
+                                      const nvcv::ImageBatchVarShape &outDataBase,
                                       const NVCVInterpolationType interpolation, cudaStream_t stream)
 {
     if (!inDataBase.uniqueFormat() || !outDataBase.uniqueFormat())
@@ -627,20 +607,31 @@ ErrorCode PillowResizeVarShape::infer(const nvcv::IImageBatchVarShape &inDataBas
         return ErrorCode::INVALID_DATA_TYPE;
     }
 
-    if (!(interpolation == NVCV_INTERP_LINEAR))
-    {
-        LOG_ERROR("Unsupported interpolation method " << interpolation);
-        return ErrorCode::INVALID_PARAMETER;
-    }
-
     switch (interpolation)
     {
     case NVCV_INTERP_LINEAR:
-        pillow_resize_filter_var_shape<BilinearFilterVarShape>(inDataBase, outDataBase, gpu_workspace, cpu_workspace,
-                                                               interpolation, stream);
+        pillow_resize_filter_var_shape<BilinearFilter>(inDataBase, outDataBase, gpu_workspace, cpu_workspace,
+                                                       interpolation, stream);
+        break;
+    case NVCV_INTERP_BOX:
+        pillow_resize_filter_var_shape<BoxFilter>(inDataBase, outDataBase, gpu_workspace, cpu_workspace, interpolation,
+                                                  stream);
+        break;
+    case NVCV_INTERP_HAMMING:
+        pillow_resize_filter_var_shape<HammingFilter>(inDataBase, outDataBase, gpu_workspace, cpu_workspace,
+                                                      interpolation, stream);
+        break;
+    case NVCV_INTERP_CUBIC:
+        pillow_resize_filter_var_shape<BicubicFilter>(inDataBase, outDataBase, gpu_workspace, cpu_workspace,
+                                                      interpolation, stream);
+        break;
+    case NVCV_INTERP_LANCZOS:
+        pillow_resize_filter_var_shape<LanczosFilter>(inDataBase, outDataBase, gpu_workspace, cpu_workspace,
+                                                      interpolation, stream);
         break;
     default:
-        break;
+        LOG_ERROR("Unsupported interpolation method " << interpolation);
+        return ErrorCode::INVALID_PARAMETER;
     }
     return ErrorCode::SUCCESS;
 }

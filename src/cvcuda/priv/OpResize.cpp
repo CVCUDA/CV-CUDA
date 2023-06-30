@@ -35,7 +35,7 @@ Resize::Resize()
     m_legacyOpVarShape = std::make_unique<legacy::ResizeVarShape>(maxIn, maxOut);
 }
 
-void Resize::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &out,
+void Resize::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                         const NVCVInterpolationType interpolation) const
 {
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
@@ -55,7 +55,7 @@ void Resize::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv
     NVCV_CHECK_THROW(m_legacyOp->infer(*inData, *outData, interpolation, stream));
 }
 
-void Resize::operator()(cudaStream_t stream, const nvcv::IImageBatchVarShape &in, const nvcv::IImageBatchVarShape &out,
+void Resize::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
                         const NVCVInterpolationType interpolation) const
 {
     auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);

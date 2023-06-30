@@ -19,12 +19,12 @@
 
 #include "OsdUtils.cuh"
 
-#include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpBndBox.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
+#include <util/TensorDataUtils.hpp>
 
 #include <fstream>
 #include <iostream>
@@ -121,8 +121,8 @@ static void runOp(cudaStream_t &stream, cvcuda::BndBox &op, int &inN, int &inW, 
     bndBoxes.numBoxes = numBoxVec.data();
     bndBoxes.boxes    = bndBoxVec.data();
 
-    nvcv::Tensor imgIn  = test::CreateTensor(inN, inW, inH, format);
-    nvcv::Tensor imgOut = test::CreateTensor(inN, inW, inH, format);
+    nvcv::Tensor imgIn  = nvcv::util::CreateTensor(inN, inW, inH, format);
+    nvcv::Tensor imgOut = nvcv::util::CreateTensor(inN, inW, inH, format);
 
     auto input  = imgIn.exportData<nvcv::TensorDataStridedCuda>();
     auto output = imgOut.exportData<nvcv::TensorDataStridedCuda>();

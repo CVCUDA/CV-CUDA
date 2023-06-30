@@ -52,11 +52,23 @@ private:
     int m_value;
 };
 
+} // namespace
+
+namespace nvcv::priv {
+template<>
+struct ResourceStorage<IObject>
+{
+    using type = CompatibleStorage<DummyResource>;
+};
+} // namespace nvcv::priv
+
+namespace {
+
 typedef struct NVCVDummy *NVCVDummyHandle;
 
 auto &ManagerInst()
 {
-    static nvcv::priv::HandleManager<IObject, DummyResource> g_manager("Dummy");
+    static nvcv::priv::HandleManager<IObject> g_manager("Dummy");
     return g_manager;
 }
 

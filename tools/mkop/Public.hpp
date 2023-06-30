@@ -30,8 +30,8 @@
 #include "Op__OPNAME__.h"
 
 #include <cuda_runtime.h>
-#include <nvcv/ITensor.hpp>
 #include <nvcv/ImageFormat.hpp>
+#include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
 namespace cvcuda {
@@ -43,7 +43,7 @@ public:
 
     ~__OPNAME__();
 
-    void operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out);
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out);
 
     virtual NVCVOperatorHandle handle() const noexcept override;
 
@@ -63,7 +63,7 @@ inline __OPNAME__::~__OPNAME__()
     m_handle = nullptr;
 }
 
-inline void __OPNAME__::operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out)
+inline void __OPNAME__::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out)
 {
     nvcv::detail::CheckThrow(cvcuda__OPNAME__Submit(m_handle, stream, in.handle(), out.handle()));
 }

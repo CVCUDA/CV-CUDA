@@ -30,9 +30,9 @@
 #include "OpCenterCrop.h"
 
 #include <cuda_runtime.h>
-#include <nvcv/ITensor.hpp>
 #include <nvcv/ImageFormat.hpp>
 #include <nvcv/Size.hpp>
+#include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
 namespace cvcuda {
@@ -44,7 +44,7 @@ public:
 
     ~CenterCrop();
 
-    void operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out, const nvcv::Size2D &cropSize);
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const nvcv::Size2D &cropSize);
 
     virtual NVCVOperatorHandle handle() const noexcept override;
 
@@ -64,7 +64,7 @@ inline CenterCrop::~CenterCrop()
     m_handle = nullptr;
 }
 
-inline void CenterCrop::operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out,
+inline void CenterCrop::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                                    const nvcv::Size2D &cropSize)
 {
     nvcv::detail::CheckThrow(

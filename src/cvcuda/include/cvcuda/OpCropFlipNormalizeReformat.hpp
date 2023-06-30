@@ -30,9 +30,9 @@
 #include "OpCropFlipNormalizeReformat.h"
 
 #include <cuda_runtime.h>
-#include <nvcv/IImageBatch.hpp>
-#include <nvcv/ITensor.hpp>
+#include <nvcv/ImageBatch.hpp>
 #include <nvcv/ImageFormat.hpp>
+#include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
 namespace cvcuda {
@@ -44,9 +44,10 @@ public:
 
     ~CropFlipNormalizeReformat();
 
-    void operator()(cudaStream_t stream, nvcv::IImageBatch &in, nvcv::ITensor &out, nvcv::ITensor &cropRect,
-                    NVCVBorderType borderMode, float borderValue, nvcv::ITensor &flipCode, nvcv::ITensor &base,
-                    nvcv::ITensor &scale, float global_scale, float shift, float epsilon, uint32_t flags = 0);
+    void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::Tensor &out,
+                    const nvcv::Tensor &cropRect, NVCVBorderType borderMode, float borderValue,
+                    const nvcv::Tensor &flipCode, const nvcv::Tensor &base, const nvcv::Tensor &scale,
+                    float global_scale, float shift, float epsilon, uint32_t flags = 0);
 
     virtual NVCVOperatorHandle handle() const noexcept override;
 
@@ -66,10 +67,12 @@ inline CropFlipNormalizeReformat::~CropFlipNormalizeReformat()
     m_handle = nullptr;
 }
 
-inline void CropFlipNormalizeReformat::operator()(cudaStream_t stream, nvcv::IImageBatch &in, nvcv::ITensor &out,
-                                                  nvcv::ITensor &cropRect, NVCVBorderType borderMode, float borderValue,
-                                                  nvcv::ITensor &flipCode, nvcv::ITensor &base, nvcv::ITensor &scale,
-                                                  float global_scale, float shift, float epsilon, uint32_t flags)
+inline void CropFlipNormalizeReformat::operator()(cudaStream_t stream, const nvcv::ImageBatch &in,
+                                                  const nvcv::Tensor &out, const nvcv::Tensor &cropRect,
+                                                  NVCVBorderType borderMode, float borderValue,
+                                                  const nvcv::Tensor &flipCode, const nvcv::Tensor &base,
+                                                  const nvcv::Tensor &scale, float global_scale, float shift,
+                                                  float epsilon, uint32_t flags)
 {
     nvcv::detail::CheckThrow(cvcudaCropFlipNormalizeReformatSubmit(
         m_handle, stream, in.handle(), out.handle(), cropRect.handle(), borderMode, borderValue, flipCode.handle(),

@@ -70,6 +70,8 @@ struct CAPI
 
     PyObject *(*Container_Create)(Container *cont);
 
+    void (*Cache_RemoveAllNotInUseMatching)(const IKey *key);
+
     // always add new functions at the end, and never change the function prototypes above.
 };
 

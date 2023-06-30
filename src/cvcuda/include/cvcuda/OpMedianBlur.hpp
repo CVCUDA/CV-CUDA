@@ -30,9 +30,9 @@
 #include "OpMedianBlur.h"
 
 #include <cuda_runtime.h>
-#include <nvcv/IImageBatch.hpp>
-#include <nvcv/ITensor.hpp>
+#include <nvcv/ImageBatch.hpp>
 #include <nvcv/ImageFormat.hpp>
+#include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
 namespace cvcuda {
@@ -44,10 +44,10 @@ public:
 
     ~MedianBlur();
 
-    void operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out, const nvcv::Size2D ksize);
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const nvcv::Size2D ksize);
 
-    void operator()(cudaStream_t stream, nvcv::IImageBatchVarShape &in, nvcv::IImageBatchVarShape &out,
-                    nvcv::ITensor &ksize);
+    void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
+                    const nvcv::Tensor &ksize);
 
     virtual NVCVOperatorHandle handle() const noexcept override;
 
@@ -67,13 +67,14 @@ inline MedianBlur::~MedianBlur()
     m_handle = nullptr;
 }
 
-inline void MedianBlur::operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out, const nvcv::Size2D ksize)
+inline void MedianBlur::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                                   const nvcv::Size2D ksize)
 {
     nvcv::detail::CheckThrow(cvcudaMedianBlurSubmit(m_handle, stream, in.handle(), out.handle(), ksize.w, ksize.h));
 }
 
-inline void MedianBlur::operator()(cudaStream_t stream, nvcv::IImageBatchVarShape &in, nvcv::IImageBatchVarShape &out,
-                                   nvcv::ITensor &ksize)
+inline void MedianBlur::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
+                                   const nvcv::ImageBatchVarShape &out, const nvcv::Tensor &ksize)
 {
     nvcv::detail::CheckThrow(
         cvcudaMedianBlurVarShapeSubmit(m_handle, stream, in.handle(), out.handle(), ksize.handle()));

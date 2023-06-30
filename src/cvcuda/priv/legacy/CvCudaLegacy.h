@@ -21,13 +21,15 @@
 #include "CvCudaOSD.hpp"
 
 #include <cuda_runtime.h>
+#include <curand_kernel.h>
 #include <cvcuda/Types.h>
 #include <nvcv/BorderType.h>
-#include <nvcv/IImageBatch.hpp>
+#include <nvcv/ImageBatch.hpp>
 #include <nvcv/ImageBatchData.hpp>
 #include <nvcv/Rect.h>
 #include <nvcv/TensorData.hpp>
 
+#include <random>
 #include <vector>
 
 namespace nvcv::legacy::cuda_op {
@@ -808,7 +810,7 @@ public:
      * @param borderMode the border mode to use when acessing data outside of source
      * @param stream for the asynchronous execution.
      */
-    ErrorCode infer(const nvcv::IImageBatchVarShape &inData, const nvcv::IImageBatchVarShape &outData,
+    ErrorCode infer(const nvcv::ImageBatchVarShape &inData, const nvcv::ImageBatchVarShape &outData,
                     NVCVMorphologyType morph_type, const TensorDataStridedCuda &masks,
                     const TensorDataStridedCuda &anchors, int iteration, NVCVBorderType borderMode,
                     cudaStream_t stream);
@@ -1838,7 +1840,7 @@ public:
     * @param inplace for perform inplace op.
     * @param stream for the asynchronous execution.
     */
-    ErrorCode infer(const IImageBatchVarShape &inbatch, const IImageBatchVarShape &outbatch,
+    ErrorCode infer(const ImageBatchVarShape &inbatch, const ImageBatchVarShape &outbatch,
                     const TensorDataStridedCuda &anchor, const TensorDataStridedCuda &erasing,
                     const TensorDataStridedCuda &values, const TensorDataStridedCuda &imgIdx, bool random,
                     unsigned int seed, bool inplace, cudaStream_t stream);
@@ -2560,7 +2562,7 @@ public:
      * @param stream for the asynchronous execution.
      *
      */
-    ErrorCode infer(const IImageBatchVarShape &inData, const IImageBatchVarShape &outData,
+    ErrorCode infer(const ImageBatchVarShape &inData, const ImageBatchVarShape &outData,
                     const NVCVInterpolationType interpolation, cudaStream_t stream);
 
     /**
@@ -2712,6 +2714,131 @@ private:
     int     *m_histogram;
     uint32_t m_type;
     uint32_t m_automatic_thresh;
+};
+
+class RandomResizedCrop : public CudaBaseOp
+{
+public:
+    RandomResizedCrop() = delete;
+
+    RandomResizedCrop(DataShape max_input_shape, DataShape max_output_shape, const double min_scale,
+                      const double max_scale, const double min_ratio, const double max_ratio, int32_t maxBatchSize,
+                      uint32_t seed);
+
+    ~RandomResizedCrop();
+
+    /**
+     * @brief Resize and crop images
+     * @param inData gpu pointer, inputs[0] are batched input images, whose shape is input_shape and type is data_type.
+     * @param outData gpu pointer, outputs[0] are batched output images that have the size dsize and the same type as
+     * data_type.
+     * @param interpolation the interpolation used in resize implementation
+     * @param stream for the asynchronous execution.
+     */
+    ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                    const NVCVInterpolationType interpolation, cudaStream_t stream);
+
+    /**
+     * @brief calculate the cpu/gpu buffer size needed by this operator
+     * @param batch_size input batch size
+     */
+    size_t calBufferSize(int batch_size);
+
+protected:
+    void getCropParams(int input_rows, int input_cols, int *top_indices, int *left_indices, int *crop_rows,
+                       int *crop_cols);
+
+protected:
+    double       min_scale_;
+    double       max_scale_;
+    double       min_ratio_;
+    double       max_ratio_;
+    std::mt19937 generator_;
+    int32_t      m_maxBatchSize;
+    void        *m_cpuCropParams = nullptr;
+    void        *m_gpuCropParams = nullptr;
+};
+
+class RandomResizedCropVarShape : public RandomResizedCrop
+{
+public:
+    RandomResizedCropVarShape() = delete;
+
+    RandomResizedCropVarShape(DataShape max_input_shape, DataShape max_output_shape, const double min_scale,
+                              const double max_scale, const double min_ratio, const double max_ratio,
+                              int32_t maxBatchSize, uint32_t seed);
+
+    /**
+     * @brief Resize and crop images
+     * @param inData gpu pointer, inputs[i] is input image where i ranges from 0 to batch-1, whose shape is
+     * input_shape[i] and type is data_type.
+     * @param outData gpu pointer, outputs[i] is output image where i ranges from 0 to batch-1, whose size is dsize[i]
+     * and type is data_type.
+     * @param interpolation the interpolation used in resize implementation
+     * @param stream for the asynchronous execution.
+     */
+    ErrorCode infer(const ImageBatchVarShape &inData, const ImageBatchVarShape &outData,
+                    const NVCVInterpolationType interpolation, cudaStream_t stream);
+};
+
+class GaussianNoise : public CudaBaseOp
+{
+public:
+    GaussianNoise() = delete;
+
+    GaussianNoise(DataShape max_input_shape, DataShape max_output_shape, int maxBatchSize);
+
+    ~GaussianNoise();
+
+    /**
+     * @brief Add gaussian noise on images.
+     * @param inData gpu pointer, batched input images.
+     * @param outData gpu pointer, batched output images.
+     * @param mu mu value for gaussian noise.
+     * @param sigma sigma value for gaussian noise.
+     * @param per_channel whether to add the same noise for all channels.
+     * @param stream for the asynchronous execution.
+     */
+
+    ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                    const TensorDataStridedCuda &mu, const TensorDataStridedCuda &sigma, bool per_channel,
+                    unsigned long long seed, cudaStream_t stream);
+
+private:
+    curandState       *m_states;
+    unsigned long long m_seed;
+    bool               m_setupDone = false;
+    int                m_maxBatchSize;
+};
+
+class GaussianNoiseVarShape : public CudaBaseOp
+{
+public:
+    GaussianNoiseVarShape() = delete;
+
+    GaussianNoiseVarShape(DataShape max_input_shape, DataShape max_output_shape, int maxBatchSize);
+
+    ~GaussianNoiseVarShape();
+
+    /**
+     * @brief Add gaussian noise on images.
+     * @param inData gpu pointer, batched input images.
+     * @param outData gpu pointer, batched output images.
+     * @param mu mu value for gaussian noise.
+     * @param sigma sigma value for gaussian noise.
+     * @param per_channel whether to add the same noise for all channels.
+     * @param stream for the asynchronous execution.
+     */
+
+    ErrorCode infer(const ImageBatchVarShapeDataStridedCuda &inData, const ImageBatchVarShapeDataStridedCuda &outData,
+                    const TensorDataStridedCuda &mu, const TensorDataStridedCuda &sigma, bool per_channel,
+                    unsigned long long seed, cudaStream_t stream);
+
+private:
+    curandState       *m_states;
+    unsigned long long m_seed;
+    bool               m_setupDone = false;
+    int                m_maxBatchSize;
 };
 
 } // namespace nvcv::legacy::cuda_op

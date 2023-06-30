@@ -48,10 +48,8 @@ static void CheckValidCUDABuffer(const void *ptr)
 
 static std::string ToFormatString(const DLDataType &dtype)
 {
-    // TODO: these must be a more efficient way to retrieve the
-    // format string from a dtype...
-    py::array tmp(ToDType(ToNVCVDataType(dtype)), py::array::ShapeContainer{});
-    return tmp.request().format;
+    py::dtype dt = ToDType(ToNVCVDataType(dtype));
+    return dt.attr("str").cast<std::string>();
 }
 
 py::object ExternalBuffer::Create(DLPackTensor &&dlPackTensor, py::object wrappedObj)

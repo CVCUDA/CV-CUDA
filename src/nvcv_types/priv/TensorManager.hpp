@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,15 +26,10 @@ namespace nvcv::priv {
 
 using TensorManager = CoreObjManager<NVCVTensorHandle>;
 
-using TensorStorage = CompatibleStorage<Tensor, TensorWrapDataStrided>;
-
 template<>
-class CoreObjManager<NVCVTensorHandle> : public HandleManager<ITensor, TensorStorage>
+struct ResourceStorage<ITensor>
 {
-    using Base = HandleManager<ITensor, TensorStorage>;
-
-public:
-    using Base::Base;
+    using type = CompatibleStorage<Tensor, TensorWrapDataStrided>;
 };
 
 } // namespace nvcv::priv

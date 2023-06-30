@@ -31,7 +31,7 @@ namespace cvcudapy {
 
 namespace {
 
-Tensor NonMaximumSuppressionInto(Tensor &dst, Tensor &src, Tensor &scores, float score_threshold, float iou_threshold,
+Tensor NonMaximumSuppressionInto(Tensor &dst, Tensor &src, Tensor &scores, float scoreThreshold, float iouThreshold,
                                  std::optional<Stream> pstream)
 {
     if (!pstream)
@@ -46,40 +46,22 @@ Tensor NonMaximumSuppressionInto(Tensor &dst, Tensor &src, Tensor &scores, float
     guard.add(LockMode::LOCK_WRITE, {dst});
     guard.add(LockMode::LOCK_NONE, {*op});
 
-    op->submit(pstream->cudaHandle(), src, dst, scores, score_threshold, iou_threshold);
+    op->submit(pstream->cudaHandle(), src, dst, scores, scoreThreshold, iouThreshold);
 
     return std::move(dst);
 }
 
-Tensor NonMaximumSuppression(Tensor &src, Tensor &scores, float score_threshold, float iou_threshold,
+Tensor NonMaximumSuppression(Tensor &src, Tensor &scores, float scoreThreshold, float iouThreshold,
                              std::optional<Stream> pstream)
 {
-    const auto &srcShape    = src.shape();
-    const auto &scoresShape = scores.shape();
+    nvcvpy::Shape dstShape(2);
 
-    if ((srcShape.rank() - 1) != scoresShape.rank())
-    {
-        throw std::runtime_error("Input src rank must 1 greater than score tensors rank");
-    }
-    if (srcShape.shape()[0] != scoresShape.shape()[0])
-    {
-        throw std::runtime_error("Input src and scores must have same batch size");
-    }
-    if (srcShape.shape()[1] != scoresShape.shape()[1])
-    {
-        throw std::runtime_error("Input src and scores must have same number of proposal elements");
-    }
+    dstShape[0] = src.shape()[0];
+    dstShape[1] = src.shape()[1];
 
-    Shape dstShape(srcShape.rank());
-    for (int i = 0; i < srcShape.rank() - 1; ++i)
-    {
-        dstShape[i] = srcShape[i];
-    }
-    dstShape[srcShape.rank() - 1] = srcShape[srcShape.rank() - 1];
+    Tensor dst = Tensor::Create(dstShape, nvcv::TYPE_U8);
 
-    Tensor dst = Tensor::Create(dstShape, src.dtype(), src.layout());
-
-    return NonMaximumSuppressionInto(dst, src, scores, score_threshold, iou_threshold, pstream);
+    return NonMaximumSuppressionInto(dst, src, scores, scoreThreshold, iouThreshold, pstream);
 }
 
 } // namespace
@@ -92,38 +74,10 @@ void ExportOpNonMaximumSuppression(py::module &m)
           "score_threshold"_a = std::numeric_limits<float>::epsilon(), "iou_threshold"_a = 1.0, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
 
-        Executes the Non-Maximum Suppression operation on the given cuda stream.
+        Executes NMS.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Non-Maximum Suppression operator
-            for more details and usage examples.
-
-        Args:
-            src (Tensor): src[i, j] is the set of input bounding box proposals
-                for an image where i ranges from 0 to batch-1, j ranges from 0
-                to number of bounding box proposals anchored at the top-left of
-                the bounding box area
-            scores (Tensor): scores[i, j] are the associated scores for each
-                bounding box proposal in ``src`` considered during the reduce
-                operation of NMS
-            score_threshold (float): Minimum score of a bounding box proposals
-            iou_threshold (float): Maximum overlap between bounding box proposals
-                covering the same effective image region as calculated by
-                Intersection-over-Union (IoU)
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
-
-        Returns:
-            cvcuda.Tensor: The output tensor of selected bounding boxes.
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
-    )pbdoc");
-    m.def("non_maximum_suppression", &NonMaximumSuppression, "src"_a, "scores"_a,
-          "score_threshold"_a = std::numeric_limits<float>::epsilon(), "iou_threshold"_a = 1.0, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
-
-        Executes the Non-Maximum Suppression operation on the given cuda stream.
+        The Non-Maximum Suppression (NMS) operation reads a set of input bounding boxes (bboxes) proposals and
+        their scores and writes an output boolean mask with suppressed bboxes as zeros and selected bboxes as ones.
 
         See also:
             Refer to the CV-CUDA C API reference for the Non-Maximum Suppression operator
@@ -154,56 +108,24 @@ void ExportOpNonMaximumSuppression(py::module &m)
           "score_threshold"_a = std::numeric_limits<float>::epsilon(), "iou_threshold"_a = 1.0, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
 
-        Executes the Non-Maximum Suppression operation on the given cuda stream.
+        Executes NMS.
+
+        The Non-Maximum Suppression (NMS) operation reads a set of input bounding boxes (bboxes) proposals and
+        their scores and writes an output boolean mask with suppressed bboxes as zeros and selected bboxes as ones.
 
         See also:
             Refer to the CV-CUDA C API reference for the Non-Maximum Suppression operator
             for more details and usage examples.
 
         Args:
+            dst (Tensor): dst[i, j] is the output boolean mask marking selected
+                bounding boxes, where i ranges from 0 to batch-1, j ranges from 0
+                to the number of bounding box proposals anchored at the
+                top-left of the bounding box area
             src (Tensor): src[i, j] is the set of input bounding box proposals
                 for an image where i ranges from 0 to batch-1, j ranges from 0
                 to number of bounding box proposals anchored at the top-left of
                 the bounding box area
-            dst (Tensor): dst[i, j] is the set of output bounding box proposals
-                for an image where i ranges from 0 to batch-1, j ranges from 0
-                to the reduced number of bounding box proposals anchored at the
-                top-left of the bounding box area
-            scores (Tensor): scores[i, j] are the associated scores for each
-                bounding box proposal in ``src`` considered during the reduce
-                operation of NMS
-            score_threshold (float): Minimum score of a bounding box proposals
-            iou_threshold (float): Maximum overlap between bounding box proposals
-                covering the same effective image region as calculated by
-                Intersection-over-Union (IoU)
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
-
-        Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
-    )pbdoc");
-    m.def("non_maximum_suppression_into", &NonMaximumSuppressionInto, "dst"_a, "src"_a, "scores"_a,
-          "score_threshold"_a = std::numeric_limits<float>::epsilon(), "iou_threshold"_a = 1.0, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
-
-        Executes the Non-Maximum Suppression operation on the given cuda stream.
-
-        See also:
-            Refer to the CV-CUDA C API reference for the Non-Maximum Suppression operator
-            for more details and usage examples.
-
-        Args:
-            src (Tensor): src[i, j] is the set of input bounding box proposals
-                for an image where i ranges from 0 to batch-1, j ranges from 0
-                to number of bounding box proposals anchored at the top-left of
-                the bounding box area
-            dst (Tensor): dst[i, j] is the set of output bounding box proposals
-                for an image where i ranges from 0 to batch-1, j ranges from 0
-                to the reduced number of bounding box proposals anchored at the
-                top-left of the bounding box area
             scores (Tensor): scores[i, j] are the associated scores for each
                 bounding box proposal in ``src`` considered during the reduce
                 operation of NMS

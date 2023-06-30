@@ -197,6 +197,9 @@ NVCV_PUBLIC NVCVStatus nvcvImageBatchGetCapacity(NVCVImageBatchHandle handle, in
 /**
  * Get the allocator associated with an image batch.
  *
+ * This function creates a new reference to the allocator handle. The caller is responsible for freeing it
+ * by calling nvcvAllocatorDecRef.
+ *
  * @param[in] handle Image batch to be queried.
  *                   + Must not be NULL.
  *
@@ -370,6 +373,9 @@ NVCV_PUBLIC NVCVStatus nvcvImageBatchVarShapeClear(NVCVImageBatchHandle handle);
 /**
  * Retrieve the image handles from the varshape image batch.
  *
+ * This function creates new references to the image handles. The caller must release them by calling
+ * nvcvImageDecRef on all handles returned by this function.
+ *
  * @param[in] handle Varshape image batch to be queried
  *                   + Must not be NULL.
  *                   + The handle must have been created with @ref nvcvImageBatchVarShapeConstruct.
@@ -378,7 +384,8 @@ NVCV_PUBLIC NVCVStatus nvcvImageBatchVarShapeClear(NVCVImageBatchHandle handle);
  *                      To retrieve starting from the first image, pass 0.
  *                      + Must be < number of images in the batch.
  *
- * @param[out] outBuffer Where the image handles will be written to.
+ * @param[out] outImages Where the image handles will be written to.
+ *                       The caller must free the handles by calling nvcvImageDecRef.
  *
  * @param[in] numImages Number of images to be retrieved.
  *                      + Must be >= 0.

@@ -34,6 +34,116 @@
 namespace cvcudapy {
 
 namespace {
+
+// Specialized class for cvcuda::PillowResize operator with a better cache Key.
+// It allows for reusing an existing operator object from cache if its payload size is >= the required size.
+// It also allows to fetch the biggest payload object to be reused while removing all others.
+// This is more flexible than using the generic PyOperator class and its Key class.
+class PyOpPillowResize : public nvcvpy::Container
+{
+public:
+    // Define a Key class to be used by the cache to fetch similar items for potential reuse.
+    class Key : public nvcvpy::IKey
+    {
+    public:
+        // Arguments of the key constructor should match the corresponding cvcuda operator arguments.
+        Key(const nvcv::Size2D &maxSize, int maxBatchSize, nvcv::ImageFormat fmt)
+            : m_maxSize{maxSize}
+            , m_maxBatchSize{maxBatchSize}
+            , m_format{fmt}
+        {
+        }
+
+        // The payload size is an approximate function of the actual size of the payload.
+        // There is no need to be an exact value, it is just provide ordering inside cache.
+        size_t payloadSize() const
+        {
+            return m_maxSize.w * m_maxSize.h * m_maxBatchSize;
+        }
+
+    private:
+        // The hash is based only on the image format used by the operator.
+        // (In addition to the OP type as defined by IKey).
+        size_t doGetHash() const override
+        {
+            return ComputeHash(m_format);
+        }
+
+        // The comparison of keys is based on the payload size, the one in the cache is "that" key.
+        bool doIsCompatible(const nvcvpy::IKey &that_) const override
+        {
+            const Key &that = static_cast<const Key &>(that_);
+            return this->payloadSize() <= that.payloadSize();
+        }
+
+        nvcv::Size2D      m_maxSize;
+        int               m_maxBatchSize;
+        nvcv::ImageFormat m_format;
+    };
+
+    // Constructor instantiate the cache key and the operator object.
+    PyOpPillowResize(const nvcv::Size2D &maxSize, int maxBatchSize, nvcv::ImageFormat fmt)
+        : m_key(maxSize, maxBatchSize, fmt)
+        , m_op(maxSize, maxBatchSize, fmt)
+    {
+    }
+
+    // The submit forwards its args to the OP's call operator.
+    template<class... AA>
+    void submit(AA &&...args)
+    {
+        m_op(std::forward<AA>(args)...);
+    }
+
+    // Required override to get the py object container.
+    py::object container() const override
+    {
+        return *this;
+    }
+
+    // Required override to get the key as the base interface class.
+    const nvcvpy::IKey &key() const override
+    {
+        return m_key;
+    }
+
+    // The static fetch function can be used to specialize the fetch of a specific object from the cache.
+    // It can be used to select the best object among a number of matched cache objects.
+    // It can also be used to remove other objects that are not needed in the cache anymore.
+    // Here, it fetches the biggest payload OP among cache items and remove all other OPs from the cache.
+    // It is ok to remove them since the biggest payload OP can be used to accomodate all of them,
+    // so they will never be reused and thus are no longer necessary.
+    static std::shared_ptr<nvcvpy::ICacheItem> fetch(std::vector<std::shared_ptr<nvcvpy::ICacheItem>> &cache)
+    {
+        assert(!cache.empty());
+
+        std::shared_ptr<nvcvpy::ICacheItem> retItem        = cache[0];
+        size_t                              maxPayloadSize = 0;
+
+        for (const auto &item : cache)
+        {
+            const Key &key            = static_cast<const Key &>(item.get()->key());
+            size_t     keyPayloadSize = key.payloadSize();
+
+            if (keyPayloadSize > maxPayloadSize)
+            {
+                maxPayloadSize = keyPayloadSize;
+                retItem        = item;
+            }
+        }
+
+        cache.clear();
+
+        nvcvpy::Cache::removeAllNotInUseMatching(retItem.get()->key());
+
+        return retItem;
+    }
+
+private:
+    Key                  m_key;
+    cvcuda::PillowResize m_op;
+};
+
 Tensor PillowResizeInto(Tensor &output, Tensor &input, nvcv::ImageFormat format, NVCVInterpolationType interp,
                         std::optional<Stream> pstream)
 {
@@ -47,11 +157,15 @@ Tensor PillowResizeInto(Tensor &output, Tensor &input, nvcv::ImageFormat format,
     {
         throw std::runtime_error("Incompatible input/output tensor layout");
     }
-    int          w              = std::max(in_access->numCols(), out_access->numCols());
-    int          h              = std::max(in_access->numRows(), out_access->numRows());
-    int          max_batch_size = in_access->numSamples();
-    nvcv::Size2D size{w, h};
-    auto         pillowResize = CreateOperator<cvcuda::PillowResize>(size, max_batch_size, format);
+
+    nvcv::Size2D maxSize{std::max(in_access->numCols(), out_access->numCols()),
+                         std::max(in_access->numRows(), out_access->numRows())};
+
+    int maxBatchSize = static_cast<int>(in_access->numSamples());
+
+    // Use CreateOperatorEx to use the extended create operator function passing the specialized PyOperator above
+    // as template type, instead of the regular cvcuda::OP class used in the CreateOperator function.
+    auto pillowResize = CreateOperatorEx<PyOpPillowResize>(maxSize, maxBatchSize, format);
 
     ResourceGuard guard(*pstream);
     guard.add(LockMode::LOCK_READ, {input});
@@ -82,11 +196,12 @@ ImageBatchVarShape VarShapePillowResizeInto(ImageBatchVarShape &output, ImageBat
     nvcv::Size2D maxSrcSize = input.maxSize();
     nvcv::Size2D maxDstSize = output.maxSize();
 
-    int          w              = std::max(maxSrcSize.w, maxDstSize.w);
-    int          h              = std::max(maxSrcSize.h, maxDstSize.h);
-    int          max_batch_size = input.capacity();
-    nvcv::Size2D size{w, h};
-    auto         pillowResize = CreateOperator<cvcuda::PillowResize>(size, max_batch_size, input.uniqueFormat());
+    nvcv::Size2D maxSize{std::max(maxSrcSize.w, maxDstSize.w), std::max(maxSrcSize.h, maxDstSize.h)};
+
+    int maxBatchSize = static_cast<int>(input.capacity());
+
+    // The same PyOpPillowResize class and CreateOperatorEx function can be used regardless of Tensors or VarShape.
+    auto pillowResize = CreateOperatorEx<PyOpPillowResize>(maxSize, maxBatchSize, input.uniqueFormat());
 
     ResourceGuard guard(*pstream);
     guard.add(LockMode::LOCK_READ, {input});

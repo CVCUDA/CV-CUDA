@@ -30,9 +30,9 @@
 #include "OpPadAndStack.h"
 
 #include <cuda_runtime.h>
-#include <nvcv/IImageBatch.hpp>
-#include <nvcv/ITensor.hpp>
+#include <nvcv/ImageBatch.hpp>
 #include <nvcv/ImageFormat.hpp>
+#include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
 namespace cvcuda {
@@ -44,8 +44,8 @@ public:
 
     ~PadAndStack();
 
-    void operator()(cudaStream_t stream, nvcv::IImageBatchVarShape &in, nvcv::ITensor &out, nvcv::ITensor &top,
-                    nvcv::ITensor &left, NVCVBorderType borderMode, float borderValue);
+    void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::Tensor &out,
+                    const nvcv::Tensor &top, const nvcv::Tensor &left, NVCVBorderType borderMode, float borderValue);
 
     virtual NVCVOperatorHandle handle() const noexcept override;
 
@@ -65,8 +65,8 @@ inline PadAndStack::~PadAndStack()
     m_handle = nullptr;
 }
 
-inline void PadAndStack::operator()(cudaStream_t stream, nvcv::IImageBatchVarShape &in, nvcv::ITensor &out,
-                                    nvcv::ITensor &top, nvcv::ITensor &left, NVCVBorderType borderMode,
+inline void PadAndStack::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::Tensor &out,
+                                    const nvcv::Tensor &top, const nvcv::Tensor &left, NVCVBorderType borderMode,
                                     float borderValue)
 {
     nvcv::detail::CheckThrow(cvcudaPadAndStackSubmit(m_handle, stream, in.handle(), out.handle(), top.handle(),

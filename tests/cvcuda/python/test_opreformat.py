@@ -61,27 +61,27 @@ def test_op_reformat(input_args, out_shape, out_layout):
 
 
 def test_op_reformat_gpuload():
-    stream = cvcuda.Stream()
     src_layout = "NHWC"
     dst_layout = "NCHW"
     src_shape = (2, 720, 1280, 3)
     dst_shape = (src_shape[0], src_shape[3], src_shape[1], src_shape[2])
     src = cvcuda.Tensor(src_shape, np.uint8, src_layout)
-    host_data = np.ones(src_shape, np.float32)
-    torch_dst = torch.tensor(0.0, device="cuda")
+    dst = cvcuda.Tensor(dst_shape, np.uint8, dst_layout)
+
+    torch0 = torch.zeros(src_shape, dtype=torch.int32, device="cuda")
+    torch1 = torch.zeros(src_shape, dtype=torch.int32, device="cuda")
 
     thread = threading.Thread(
-        target=lambda: torch.square(
-            torch.as_tensor(host_data, device="cuda").abs().max(), out=torch_dst
-        )
+        target=lambda: (torch.abs(torch0, out=torch1), torch.square(torch1, out=torch0))
     )
     thread.start()
 
-    with stream:
-        dst = cvcuda.reformat(src, dst_layout)
-        assert dst.layout == dst_layout
-        assert dst.dtype == src.dtype
-        assert dst.shape == dst_shape
+    tmp = cvcuda.reformat_into(dst, src)
+    assert tmp is dst
+    assert dst.layout == dst_layout
+    assert dst.dtype == src.dtype
+    assert dst.shape == dst_shape
 
     thread.join()
-    assert torch_dst.cpu() == 1
+    assert torch0.shape == src_shape
+    assert torch1.shape == src_shape

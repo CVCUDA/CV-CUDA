@@ -28,8 +28,8 @@
 
 #include <cuda_runtime.h>
 #include <cvcuda/OpCropFlipNormalizeReformat.h>
-#include <nvcv/IImageBatch.hpp>
-#include <nvcv/ITensor.hpp>
+#include <nvcv/ImageBatch.hpp>
+#include <nvcv/Tensor.hpp>
 
 #include <memory>
 
@@ -40,9 +40,9 @@ class CropFlipNormalizeReformat final : public IOperator
 public:
     explicit CropFlipNormalizeReformat();
 
-    void operator()(cudaStream_t stream, const nvcv::IImageBatchVarShape &in, nvcv::ITensor &out,
-                    const nvcv::ITensor &cropRect, const NVCVBorderType borderMode, const float borderValue,
-                    const nvcv::ITensor &flipCode, const nvcv::ITensor &base, const nvcv::ITensor &scale,
+    void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::Tensor &out,
+                    const nvcv::Tensor &cropRect, const NVCVBorderType borderMode, const float borderValue,
+                    const nvcv::Tensor &flipCode, const nvcv::Tensor &base, const nvcv::Tensor &scale,
                     float global_scale, float shift, float epsilon, uint32_t flags) const;
 
 private:

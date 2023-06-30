@@ -21,38 +21,41 @@ import numpy as np
 @t.mark.parametrize(
     "input,dtype",
     [
-        (cvcuda.Tensor((5, 16, 23, 4), np.uint8, "NHWC"), np.int8),
-        (cvcuda.Tensor((16, 23, 2), np.uint8, "HWC"), np.int32),
+        (((5, 16, 23, 4), np.uint8, "NHWC"), np.int8),
+        (((16, 23, 2), np.uint8, "HWC"), np.int32),
     ],
 )
 def test_op___OPNAMELOW__(input, dtype):
-    out = cvcuda.__OPNAMELOW__(input, dtype)
-    assert out.layout == input.layout
-    assert out.shape == input.shape
+
+    inputTensor = cvcuda.Tensor(*input)
+
+    out = cvcuda.__OPNAMELOW__(inputTensor, dtype)
+    assert out.layout == inputTensor.layout
+    assert out.shape == inputTensor.shape
     assert out.dtype == dtype
 
-    out = cvcuda.Tensor(input.shape, dtype, input.layout)
-    tmp = cvcuda.__OPNAMELOW___into(out, input)
+    out = cvcuda.Tensor(input.shape, dtype, inputTensor.layout)
+    tmp = cvcuda.__OPNAMELOW___into(out, inputTensor)
     assert tmp is out
-    assert out.layout == input.layout
-    assert out.shape == input.shape
+    assert out.layout == inputTensor.layout
+    assert out.shape == inputTensor.shape
     assert out.dtype == dtype
 
-    out = cvcuda.__OPNAMELOW__(input, dtype)
+    out = cvcuda.__OPNAMELOW__(inputTensor, dtype)
 
-    out = cvcuda.Tensor(input.shape, dtype, input.layout)
-    tmp = cvcuda.__OPNAMELOW___into(out, input)
+    out = cvcuda.Tensor(inputTensor.shape, dtype, inputTensor.layout)
+    tmp = cvcuda.__OPNAMELOW___into(out, inputTensor)
 
     stream = cvcuda.Stream()
-    out = cvcuda.__OPNAMELOW__(src=input, dtype=dtype, stream=stream)
-    assert out.layout == input.layout
-    assert out.shape == input.shape
+    out = cvcuda.__OPNAMELOW__(src=inputTensor, dtype=dtype, stream=stream)
+    assert out.layout == inputTensor.layout
+    assert out.shape == inputTensor.shape
     assert out.dtype == dtype
 
-    tmp = cvcuda.__OPNAMELOW___into(dst=out, src=input, stream=stream)
+    tmp = cvcuda.__OPNAMELOW___into(dst=out, src=inputTensor, stream=stream)
     assert tmp is out
-    assert out.layout == input.layout
-    assert out.shape == input.shape
+    assert out.layout == inputTensor.layout
+    assert out.shape == inputTensor.shape
     assert out.dtype == dtype
 
     # TODO make test pass

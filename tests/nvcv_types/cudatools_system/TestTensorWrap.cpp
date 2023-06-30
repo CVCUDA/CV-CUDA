@@ -135,9 +135,11 @@ TEST(Tensor1DWrapWrongCompileStrideDeathTest, it_dies)
     buf.strides[0] = 2;
     buf.basePtr    = reinterpret_cast<NVCVByte *>(123);
 
-    nvcv::TensorWrapData tensor{
-        nvcv::TensorDataStridedCuda{nvcv::TensorShape{{1}, "J"}, dt, buf}
+    auto tdata = nvcv::TensorDataStridedCuda{
+        nvcv::TensorShape{{1}, "J"},
+        dt, buf
     };
+    auto tensor = nvcv::TensorWrapData(tdata);
 
     auto dev = tensor.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_NE(dev, nvcv::NullOpt);
@@ -368,9 +370,7 @@ TYPED_TEST(Tensor2DWrapImageWrapTest, correct_with_image_wrap)
     buf.planes[0].rowStride = InputType::kStrides[0];
     buf.planes[0].basePtr   = reinterpret_cast<NVCVByte *>(input.data());
 
-    nvcv::ImageWrapData img{
-        nvcv::ImageDataStridedCuda{nvcv::ImageFormat{imgFormat}, buf}
-    };
+    auto img = nvcv::ImageWrapData(nvcv::ImageDataStridedCuda{nvcv::ImageFormat{imgFormat}, buf});
 
     auto dev = img.exportData<nvcv::ImageDataStridedCuda>();
     ASSERT_NE(dev, nvcv::NullOpt);
@@ -622,9 +622,10 @@ TEST(Tensor3DWrapBigPitchDeathTest, it_dies)
     buf.strides[0] = height * buf.strides[1];
     buf.basePtr    = reinterpret_cast<NVCVByte *>(123);
 
-    nvcv::TensorWrapData tensor{
-        nvcv::TensorDataStridedCuda{nvcv::TensorShape{{1, height, width}, "NHW"}, dt, buf}
-    };
+    auto tensor = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{
+        nvcv::TensorShape{{1, height, width}, "NHW"},
+        dt, buf
+    });
 
     auto dev = tensor.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_NE(dev, nullptr);
@@ -672,9 +673,11 @@ TYPED_TEST(Tensor3DWrapTensorWrapTest, correct_with_tensor_wrap)
     buf.strides[2] = InputType::kStrides[2];
     buf.basePtr    = reinterpret_cast<NVCVByte *>(input.data());
 
-    nvcv::TensorWrapData tensor{
-        nvcv::TensorDataStridedCuda{nvcv::TensorShape{{N, H, W}, "NHW"}, nvcv::DataType{dataType}, buf}
-    };
+    auto tensor = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{
+        nvcv::TensorShape{{N, H, W}, "NHW"},
+        nvcv::DataType{ dataType      },
+        buf
+    });
 
     auto dev = tensor.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_NE(dev, nullptr);
@@ -988,9 +991,11 @@ TYPED_TEST(Tensor4DWrapTensorWrapTest, correct_with_tensor_wrap)
     buf.strides[3] = InputType::kStrides[3];
     buf.basePtr    = reinterpret_cast<NVCVByte *>(input.data());
 
-    nvcv::TensorWrapData tensor{
-        nvcv::TensorDataStridedCuda{nvcv::TensorShape{{N, H, W, C}, "NHWC"}, nvcv::DataType{dataType}, buf}
-    };
+    auto tensor = nvcv::TensorWrapData(nvcv::TensorDataStridedCuda{
+        nvcv::TensorShape{{N, H, W, C}, "NHWC"},
+        nvcv::DataType{    dataType       },
+        buf
+    });
 
     auto dev = tensor.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_NE(dev, nullptr);

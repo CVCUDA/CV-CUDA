@@ -119,6 +119,10 @@ constexpr int NumComponents = TypeTraits<T>::components;
 template<class T, class = Require<HasTypeTraits<T>>>
 constexpr int NumElements = TypeTraits<T>::elements;
 
+// Metavariable to get the lowest value from a regular C or CUDA compound type T.
+template<typename T, class = Require<HasTypeTraits<T>>>
+constexpr BaseType<T> Lowest = std::is_floating_point_v<BaseType<T>> ? -TypeTraits<T>::max : TypeTraits<T>::min;
+
 /**
  * Metatype to make a type from a base type and number of components.
  *

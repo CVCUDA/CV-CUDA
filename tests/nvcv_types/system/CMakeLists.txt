@@ -35,6 +35,7 @@ add_executable(nvcv_test_types_system
     TestTensorLayoutInfo.cpp
     TestTensorShapeInfo.cpp
     TestTensorDataAccess.cpp
+    TestTensorDataUtils.cpp
     TestExceptions.cpp
     TestConfig.cpp
 )

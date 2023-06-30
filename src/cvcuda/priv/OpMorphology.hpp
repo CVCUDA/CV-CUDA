@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,8 +27,8 @@
 #include "IOperator.hpp"
 #include "legacy/CvCudaLegacy.h"
 
-#include <nvcv/IImageBatch.hpp>
-#include <nvcv/ITensor.hpp>
+#include <nvcv/ImageBatch.hpp>
+#include <nvcv/Tensor.hpp>
 
 #include <memory>
 
@@ -39,13 +39,12 @@ class Morphology final : public IOperator
 public:
     explicit Morphology(const int32_t maxVarShapeBatchSize);
 
-    void operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &out,
-                    NVCVMorphologyType morph_type, nvcv::Size2D mask_size, int2 anchor, int32_t iteration,
-                    const NVCVBorderType borderMode) const;
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, NVCVMorphologyType morph_type,
+                    nvcv::Size2D mask_size, int2 anchor, int32_t iteration, const NVCVBorderType borderMode) const;
 
-    void operator()(cudaStream_t stream, const nvcv::IImageBatchVarShape &in, const nvcv::IImageBatchVarShape &out,
-                    NVCVMorphologyType morph_type, nvcv::ITensor &masks, nvcv::ITensor &anchors, int32_t iteration,
-                    NVCVBorderType borderMode) const;
+    void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
+                    NVCVMorphologyType morph_type, const nvcv::Tensor &masks, const nvcv::Tensor &anchors,
+                    int32_t iteration, NVCVBorderType borderMode) const;
 
 private:
     std::unique_ptr<nvcv::legacy::cuda_op::Morphology>         m_legacyOp;

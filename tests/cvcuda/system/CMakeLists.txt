@@ -33,11 +33,14 @@ endif()
 add_executable(cvcuda_test_system
     TestOpBoxBlur.cpp
     TestOpBndBox.cpp
+    TestOpBrightnessContrast.cpp
     OsdUtils.cu
+    TestOpColorTwist.cpp
     TestOpRemap.cpp
     TestOpCropFlipNormalizeReformat.cpp
     FlipUtils.cpp
     ConvUtils.cpp
+    ResizeUtils.cpp
     TestOpNonMaximumSuppression.cpp
     TestOpReformat.cpp
     TestOpResize.cpp
@@ -67,6 +70,9 @@ add_executable(cvcuda_test_system
     TestOpPillowResize.cpp
     TestOpThreshold.cpp
     TestOpAdaptiveThreshold.cpp
+    TestOpRandomResizedCrop.cpp
+    TestOpGaussianNoise.cpp
+    GaussianNoiseUtils.cu
 )
 
 target_link_libraries(cvcuda_test_system

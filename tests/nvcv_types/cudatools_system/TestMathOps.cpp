@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -465,6 +465,30 @@ TYPED_TEST(MathOpsBinaryBitwiseRSHTest, correct_output)
 
     EXPECT_SAME_EQ(test1, test2);
     EXPECT_SAME_EQ(test1, gold);
+}
+
+// --------------------------- Testing dot product -----------------------------
+
+// clang-format off
+NVCV_TYPED_TEST_SUITE(
+    MathOpsDotProductTest, ttype::Types<
+    ttype::Types<ttype::Value<int1{2}>, ttype::Value<short1{1}>, ttype::Value<int{2}>>,
+    ttype::Types<ttype::Value<uint2{2, 4}>, ttype::Value<ushort2{1, 3}>, ttype::Value<uint{14}>>,
+    ttype::Types<ttype::Value<uchar3{1, 2, 3}>, ttype::Value<dim3{2, 2, 2}>, ttype::Value<uint{12}>>,
+    ttype::Types<ttype::Value<float4{0.f, 1.f, 2.f, 3.f}>, ttype::Value<long4{1, 2, 3, 4}>, ttype::Value<float{20.f}>>
+>);
+
+// clang-format on
+
+TYPED_TEST(MathOpsDotProductTest, correct_output)
+{
+    auto input1 = ttype::GetValue<TypeParam, 0>;
+    auto input2 = ttype::GetValue<TypeParam, 1>;
+    auto gold   = ttype::GetValue<TypeParam, 2>;
+
+    auto test = cuda::dot(input1, input2);
+
+    EXPECT_SAME_EQ(test, gold);
 }
 
 #undef EXPECT_SAME_EQ

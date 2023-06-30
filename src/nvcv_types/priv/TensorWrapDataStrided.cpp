@@ -141,7 +141,7 @@ DataType TensorWrapDataStrided::dtype() const
     return DataType{m_tdata.dtype};
 }
 
-IAllocator &TensorWrapDataStrided::alloc() const
+SharedCoreObj<IAllocator> TensorWrapDataStrided::alloc() const
 {
     return GetDefaultAllocator();
 }

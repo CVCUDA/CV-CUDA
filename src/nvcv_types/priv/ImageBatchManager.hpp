@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,15 +25,10 @@ namespace nvcv::priv {
 
 using ImageBatchManager = CoreObjManager<NVCVImageBatchHandle>;
 
-using ImageBatchStorage = CompatibleStorage<ImageBatchVarShape>;
-
 template<>
-class CoreObjManager<NVCVImageBatchHandle> : public HandleManager<IImageBatch, ImageBatchStorage>
+struct ResourceStorage<IImageBatch>
 {
-    using Base = HandleManager<IImageBatch, ImageBatchStorage>;
-
-public:
-    using Base::Base;
+    using type = CompatibleStorage<ImageBatchVarShape>;
 };
 
 } // namespace nvcv::priv

@@ -34,7 +34,7 @@ ConvertTo::ConvertTo()
     m_legacyOp = std::make_unique<legacy::ConvertTo>(maxIn, maxOut);
 }
 
-void ConvertTo::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &out, const double alpha,
+void ConvertTo::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const double alpha,
                            const double beta) const
 {
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();

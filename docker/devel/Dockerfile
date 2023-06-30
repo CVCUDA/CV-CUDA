@@ -49,7 +49,7 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # needed by tests
-RUN python3 -m pip install torch==1.13.0 torchvision numpy==1.24.1 cupy-cuda11x \
+RUN python3 -m pip install torch==1.13.0 torchvision cupy-cuda11x \
     && rm -rf /root/.cache/pip
 
 WORKDIR /cvcuda

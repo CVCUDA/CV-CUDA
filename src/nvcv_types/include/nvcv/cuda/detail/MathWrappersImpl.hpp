@@ -398,6 +398,22 @@ __device__ __forceinline__ U DeviceAbsImpl(U u)
 
 #endif
 
+// CUDA does round-to-nearest-even, C/C++ functions that do the same are roundeven*, however they are available
+// only in recent C23 which may not be readily available, therefore we need our own implementation of roundeven
+template<typename U>
+inline __host__ U RoundEvenImpl(U u)
+{
+    U rounded = std::round(u);
+    if (std::abs(rounded - u) == U(0.5))
+    {
+        if (static_cast<int64_t>(rounded) & 1)
+        {
+            rounded -= std::copysign(U(1.0), u);
+        }
+    }
+    return rounded;
+}
+
 template<typename T, typename U, int RM = FE_TONEAREST>
 inline __host__ __device__ T RoundImpl(U u)
 {
@@ -408,13 +424,7 @@ inline __host__ __device__ T RoundImpl(U u)
     // round is to nearest; floor is downward; ceil is upward; and trunc is towards zero.
     if constexpr (RM == FE_TONEAREST)
     {
-        // CUDA does round-to-nearest-even, C/C++ functions that do the same are roundeven*
-        if constexpr (std::is_same_v<U, float>)
-            return roundevenf(u);
-        else if constexpr (std::is_same_v<U, double>)
-            return roundeven(u);
-        else
-            return roundevenl(u);
+        return RoundEvenImpl(u);
     }
     else if constexpr (RM == FE_DOWNWARD)
     {

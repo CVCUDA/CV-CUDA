@@ -30,9 +30,9 @@
 #include "OpCopyMakeBorder.h"
 
 #include <cuda_runtime.h>
-#include <nvcv/IImageBatch.hpp>
-#include <nvcv/ITensor.hpp>
+#include <nvcv/ImageBatch.hpp>
 #include <nvcv/ImageFormat.hpp>
+#include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
 namespace cvcuda {
@@ -44,12 +44,14 @@ public:
 
     ~CopyMakeBorder();
 
-    void operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out, int32_t top, int32_t left,
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, int32_t top, int32_t left,
                     NVCVBorderType borderMode, const float4 borderValue);
-    void operator()(cudaStream_t stream, nvcv::IImageBatchVarShape &in, nvcv::IImageBatchVarShape &out,
-                    nvcv::ITensor &top, nvcv::ITensor &left, NVCVBorderType borderMode, const float4 borderValue);
-    void operator()(cudaStream_t stream, nvcv::IImageBatchVarShape &in, nvcv::ITensor &out, nvcv::ITensor &top,
-                    nvcv::ITensor &left, NVCVBorderType borderMode, const float4 borderValue);
+    void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
+                    const nvcv::Tensor &top, const nvcv::Tensor &left, NVCVBorderType borderMode,
+                    const float4 borderValue);
+    void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::Tensor &out,
+                    const nvcv::Tensor &top, const nvcv::Tensor &left, NVCVBorderType borderMode,
+                    const float4 borderValue);
 
     virtual NVCVOperatorHandle handle() const noexcept override;
 
@@ -69,23 +71,23 @@ inline CopyMakeBorder::~CopyMakeBorder()
     m_handle = nullptr;
 }
 
-inline void CopyMakeBorder::operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out, int32_t top,
-                                       int32_t left, NVCVBorderType borderMode, const float4 borderValue)
+inline void CopyMakeBorder::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                                       int32_t top, int32_t left, NVCVBorderType borderMode, const float4 borderValue)
 {
     nvcv::detail::CheckThrow(
         cvcudaCopyMakeBorderSubmit(m_handle, stream, in.handle(), out.handle(), top, left, borderMode, borderValue));
 }
 
-inline void CopyMakeBorder::operator()(cudaStream_t stream, nvcv::IImageBatchVarShape &in,
-                                       nvcv::IImageBatchVarShape &out, nvcv::ITensor &top, nvcv::ITensor &left,
-                                       NVCVBorderType borderMode, const float4 borderValue)
+inline void CopyMakeBorder::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
+                                       const nvcv::ImageBatchVarShape &out, const nvcv::Tensor &top,
+                                       const nvcv::Tensor &left, NVCVBorderType borderMode, const float4 borderValue)
 {
     nvcv::detail::CheckThrow(cvcudaCopyMakeBorderVarShapeSubmit(m_handle, stream, in.handle(), out.handle(),
                                                                 top.handle(), left.handle(), borderMode, borderValue));
 }
 
-inline void CopyMakeBorder::operator()(cudaStream_t stream, nvcv::IImageBatchVarShape &in, nvcv::ITensor &out,
-                                       nvcv::ITensor &top, nvcv::ITensor &left, NVCVBorderType borderMode,
+inline void CopyMakeBorder::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::Tensor &out,
+                                       const nvcv::Tensor &top, const nvcv::Tensor &left, NVCVBorderType borderMode,
                                        const float4 borderValue)
 {
     nvcv::detail::CheckThrow(cvcudaCopyMakeBorderVarShapeStackSubmit(

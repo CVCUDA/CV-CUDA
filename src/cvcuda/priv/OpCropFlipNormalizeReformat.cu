@@ -340,11 +340,12 @@ namespace cvcuda::priv {
 
 CropFlipNormalizeReformat::CropFlipNormalizeReformat() {}
 
-void CropFlipNormalizeReformat::operator()(cudaStream_t stream, const nvcv::IImageBatchVarShape &in, nvcv::ITensor &out,
-                                           const nvcv::ITensor &cropRect, const NVCVBorderType borderMode,
-                                           const float borderValue, const nvcv::ITensor &flipCode,
-                                           const nvcv::ITensor &base, const nvcv::ITensor &scale, float global_scale,
-                                           float shift, float epsilon, uint32_t flags) const
+void CropFlipNormalizeReformat::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
+                                           const nvcv::Tensor &out, const nvcv::Tensor &cropRect,
+                                           const NVCVBorderType borderMode, const float borderValue,
+                                           const nvcv::Tensor &flipCode, const nvcv::Tensor &base,
+                                           const nvcv::Tensor &scale, float global_scale, float shift, float epsilon,
+                                           uint32_t flags) const
 {
     auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (inData == nullptr)

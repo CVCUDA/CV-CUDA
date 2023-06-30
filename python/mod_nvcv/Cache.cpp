@@ -157,6 +157,12 @@ void Cache::clear()
     pimpl->items.clear();
 }
 
+size_t Cache::size()
+{
+    std::unique_lock<std::mutex> lk(pimpl->mtx);
+    return pimpl->items.size();
+}
+
 void Cache::doIterateThroughItems(const std::function<void(CacheItem &item)> &fn) const
 {
     // To avoid keeping mutex locked for too long, let's first gather all items
@@ -201,6 +207,10 @@ void Cache::Export(py::module &m)
 
     m.def(
         "clear_cache", [] { Cache::Instance().clear(); }, "Clears the NVCV Python cache");
+
+    m.def(
+        "cache_size", [] { return Cache::Instance().size(); },
+        "Returns the quantity of items in the NVCV Python cache");
 
     // Just to check if fetchAll compiles, it's harmless
     Cache::Instance().fetchAll<Cache>();

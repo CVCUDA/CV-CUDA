@@ -140,12 +140,20 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorWrapImageConstruct, (NVCVImageHandle
                 throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Pointer to output handle must not be NULL");
             }
 
-            auto &img = priv::ToStaticRef<priv::IImage>(himg);
+            auto img = priv::ToSharedObj<priv::IImage>(himg); // this will call incRef
 
             NVCVTensorData tensorData;
-            FillTensorData(img, tensorData);
+            FillTensorData(*img, tensorData);
 
-            *handle = priv::CreateCoreObject<priv::TensorWrapDataStrided>(tensorData, nullptr, nullptr);
+            // The cleanup consists of dropping the reference
+            auto cleanup = [](void *h, const NVCVTensorData *)
+            {
+                priv::CoreObjectDecRef(static_cast<NVCVImageHandle>(h));
+            };
+            void *cleanup_ctx = himg;
+
+            *handle = priv::CreateCoreObject<priv::TensorWrapDataStrided>(tensorData, cleanup, cleanup_ctx);
+            (void)img.release(); // now the image reference is owned by the tensor, so we should release it here
         });
 }
 
@@ -204,7 +212,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorGetAllocator, (NVCVTensorHandle hand
 
             auto &tensor = priv::ToStaticRef<const priv::ITensor>(handle);
 
-            *halloc = tensor.alloc().handle();
+            *halloc = tensor.alloc().release()->handle();
         });
 }
 
@@ -271,24 +279,17 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorGetDataType, (NVCVTensorHandle handl
         });
 }
 
-NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorSetUserPointer, (NVCVTensorHandle handle, void *userPtr))
+NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvTensorSetUserPointer, (NVCVTensorHandle handle, void *userPtr))
 {
     return priv::ProtectCall(
         [&]
         {
             auto &tensor = priv::ToStaticRef<priv::ITensor>(handle);
-            if (priv::MustProvideHiddenFunctionality(handle))
-            {
-                tensor.setCXXObject(userPtr);
-            }
-            else
-            {
-                tensor.setUserPointer(userPtr);
-            }
+            tensor.setUserPointer(userPtr);
         });
 }
 
-NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorGetUserPointer, (NVCVTensorHandle handle, void **outUserPtr))
+NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvTensorGetUserPointer, (NVCVTensorHandle handle, void **outUserPtr))
 {
     return priv::ProtectCall(
         [&]
@@ -300,13 +301,6 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorGetUserPointer, (NVCVTensorHandle ha
 
             auto &tensor = priv::ToStaticRef<const priv::ITensor>(handle);
 
-            if (priv::MustProvideHiddenFunctionality(handle))
-            {
-                tensor.getCXXObject(outUserPtr);
-            }
-            else
-            {
-                *outUserPtr = tensor.userPointer();
-            }
+            *outUserPtr = tensor.userPointer();
         });
 }

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,6 +19,7 @@
 
 #include "DataType.hpp"
 #include "IAllocator.hpp"
+#include "ImageManager.hpp"
 #include "Requirements.hpp"
 
 #include <cuda_runtime.h>
@@ -129,13 +130,13 @@ Image::Image(NVCVImageRequirements reqs, IAllocator &alloc)
     }
 
     int64_t bufSize = CalcTotalSizeBytes(m_reqs.mem.cudaMem);
-    m_memBuffer     = m_alloc.allocCudaMem(bufSize, m_reqs.alignBytes);
+    m_memBuffer     = m_alloc->allocCudaMem(bufSize, m_reqs.alignBytes);
     NVCV_ASSERT(m_memBuffer != nullptr);
 }
 
 Image::~Image()
 {
-    m_alloc.freeCudaMem(m_memBuffer, CalcTotalSizeBytes(m_reqs.mem.cudaMem), m_reqs.alignBytes);
+    m_alloc->freeCudaMem(m_memBuffer, CalcTotalSizeBytes(m_reqs.mem.cudaMem), m_reqs.alignBytes);
 }
 
 NVCVTypeImage Image::type() const
@@ -153,7 +154,7 @@ ImageFormat Image::format() const
     return ImageFormat{m_reqs.format};
 }
 
-IAllocator &Image::alloc() const
+SharedCoreObj<IAllocator> Image::alloc() const
 {
     return m_alloc;
 }
@@ -260,7 +261,7 @@ void ImageWrapData::doValidateData(const NVCVImageData &data) const
     }
 }
 
-IAllocator &ImageWrapData::alloc() const
+SharedCoreObj<IAllocator> ImageWrapData::alloc() const
 {
     return GetDefaultAllocator();
 }

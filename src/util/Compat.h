@@ -27,8 +27,6 @@ extern "C"
 
 ssize_t Compat_getrandom(void *buffer, size_t length, unsigned int flags);
 int     Compat_getentropy(void *buffer, size_t length);
-double  Compat_roundeven(double x);
-float   Compat_roundevenf(float x);
 
 #ifdef __cplusplus
 }

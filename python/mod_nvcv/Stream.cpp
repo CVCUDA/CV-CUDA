@@ -167,7 +167,7 @@ size_t Stream::Key::doGetHash() const
     return 0;
 }
 
-bool Stream::Key::doIsEqual(const IKey &that) const
+bool Stream::Key::doIsCompatible(const IKey &that) const
 {
     return true;
 }
