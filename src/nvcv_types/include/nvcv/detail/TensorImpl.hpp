@@ -26,6 +26,71 @@ namespace nvcv {
 
 // Tensor implementation -------------------------------------
 
+inline TensorShape Tensor::shape() const
+{
+    NVCVTensorHandle htensor = this->handle();
+
+    int32_t rank = 0;
+    detail::CheckThrow(nvcvTensorGetShape(htensor, &rank, nullptr));
+
+    NVCVTensorLayout layout;
+    detail::CheckThrow(nvcvTensorGetLayout(htensor, &layout));
+
+    TensorShape::ShapeType shape(rank);
+    detail::CheckThrow(nvcvTensorGetShape(htensor, &rank, shape.begin()));
+    return {shape, layout};
+}
+
+inline int Tensor::rank() const
+{
+    int32_t rank = 0;
+    detail::CheckThrow(nvcvTensorGetShape(this->handle(), &rank, nullptr));
+    return rank;
+}
+
+inline TensorLayout Tensor::layout() const
+{
+    NVCVTensorLayout layout;
+    detail::CheckThrow(nvcvTensorGetLayout(this->handle(), &layout));
+    return static_cast<TensorLayout>(layout);
+}
+
+inline DataType Tensor::dtype() const
+{
+    NVCVDataType out;
+    detail::CheckThrow(nvcvTensorGetDataType(this->handle(), &out));
+    return DataType{out};
+}
+
+inline TensorData Tensor::exportData() const
+{
+    auto h = this->handle();
+    if (h == nullptr)
+        throw Exception(Status::ERROR_INVALID_OPERATION, "The tensor handle is null.");
+
+    NVCVTensorData data;
+    detail::CheckThrow(nvcvTensorExportData(this->handle(), &data));
+
+    if (data.bufferType != NVCV_TENSOR_BUFFER_STRIDED_CUDA)
+    {
+        throw Exception(Status::ERROR_INVALID_OPERATION, "Tensor data cannot be exported, buffer type not supported");
+    }
+
+    return TensorData(data);
+}
+
+inline void Tensor::setUserPointer(void *ptr)
+{
+    detail::CheckThrow(nvcvTensorSetUserPointer(this->handle(), ptr));
+}
+
+inline void *Tensor::userPointer() const
+{
+    void *ptr;
+    detail::CheckThrow(nvcvTensorGetUserPointer(this->handle(), &ptr));
+    return ptr;
+}
+
 inline auto Tensor::CalcRequirements(const TensorShape &shape, DataType dtype, const MemAlignment &bufAlign)
     -> Requirements
 {
@@ -47,8 +112,9 @@ inline auto Tensor::CalcRequirements(int numImages, Size2D imgSize, ImageFormat 
 
 inline Tensor::Tensor(const Requirements &reqs, const Allocator &alloc)
 {
-    detail::CheckThrow(nvcvTensorConstruct(&reqs, alloc.handle(), &m_handle));
-    detail::SetObjectAssociation(nvcvTensorSetUserPointer, this, m_handle);
+    NVCVTensorHandle handle;
+    detail::CheckThrow(nvcvTensorConstruct(&reqs, alloc.handle(), &handle));
+    reset(std::move(handle));
 }
 
 inline Tensor::Tensor(int numImages, Size2D imgSize, ImageFormat fmt, const MemAlignment &bufAlign,
@@ -62,60 +128,22 @@ inline Tensor::Tensor(const TensorShape &shape, DataType dtype, const MemAlignme
 {
 }
 
-inline NVCVTensorHandle Tensor::doGetHandle() const
-{
-    return m_handle;
-}
+// Factory functions --------------------------------------------------
 
-inline Tensor::~Tensor()
+inline Tensor TensorWrapData(const TensorData &data, TensorDataCleanupCallback &&cleanup)
 {
-    nvcvTensorDecRef(m_handle, nullptr);
-}
-
-// TensorWrapData implementation -------------------------------------
-
-inline TensorWrapData::TensorWrapData(const TensorData &data, TensorDataCleanupCallback &&cleanup)
-{
+    NVCVTensorHandle handle;
     detail::CheckThrow(
-        nvcvTensorWrapDataConstruct(&data.cdata(), cleanup.targetFunc(), cleanup.targetHandle(), &m_handle));
-    cleanup.release(); // already owned by the handle
-    try
-    {
-        detail::SetObjectAssociation(nvcvTensorSetUserPointer, this, m_handle);
-    }
-    catch (...)
-    {
-        nvcvTensorDecRef(m_handle, nullptr);
-        throw;
-    }
+        nvcvTensorWrapDataConstruct(&data.cdata(), cleanup.targetFunc(), cleanup.targetHandle(), &handle));
+    cleanup.release(); // already owned by the tensor
+    return Tensor(std::move(handle));
 }
 
-inline TensorWrapData::~TensorWrapData()
+inline Tensor TensorWrapImage(const Image &img)
 {
-    nvcvTensorDecRef(m_handle, nullptr);
-}
-
-inline NVCVTensorHandle TensorWrapData::doGetHandle() const
-{
-    return m_handle;
-}
-
-// TensorWrapImage implementation -------------------------------------
-
-inline TensorWrapImage::TensorWrapImage(const IImage &img)
-{
-    detail::CheckThrow(nvcvTensorWrapImageConstruct(img.handle(), &m_handle));
-    detail::SetObjectAssociation(nvcvTensorSetUserPointer, this, m_handle);
-}
-
-inline TensorWrapImage::~TensorWrapImage()
-{
-    nvcvTensorDecRef(m_handle, nullptr);
-}
-
-inline NVCVTensorHandle TensorWrapImage::doGetHandle() const
-{
-    return m_handle;
+    NVCVTensorHandle handle;
+    detail::CheckThrow(nvcvTensorWrapImageConstruct(img.handle(), &handle));
+    return Tensor(std::move(handle));
 }
 
 } // namespace nvcv

@@ -197,6 +197,9 @@ NVCV_PUBLIC NVCVStatus nvcvTensorWrapDataConstruct(const NVCVTensorData *data, N
  * to have one channel, but with element type (type) with multiple components with the
  * required bit depth each.
  *
+ * The tensor created by this function holds a reference to the image. The image handle can be safely released
+ * and the image object will be kept alive at least as long as the tensor that wraps it.
+ *
  * @param [in] img Image to be wrapped
  *                 + Must not be NULL.
  *                 + Must not have subsampled planes
@@ -317,6 +320,9 @@ NVCV_PUBLIC NVCVStatus nvcvTensorGetLayout(NVCVTensorHandle handle, NVCVTensorLa
 
 /**
  * Get the allocator associated with the tensor.
+ *
+ * This function creates a new reference to the allocator handle. The caller is responsible for freeing it
+ * by calling nvcvAllocatorDecRef.
  *
  * @param[in] handle Tensor to be queried.
  *                   + Must not be NULL.

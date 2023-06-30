@@ -134,6 +134,15 @@ constexpr DataType TYPE_3S32{NVCV_DATA_TYPE_3S32};
 /** Four interleaved channels of signed 32-bit values. */
 constexpr DataType TYPE_4S32{NVCV_DATA_TYPE_4S32};
 
+/** One channel of 16-bit IEEE 754 floating-point value. */
+constexpr DataType TYPE_F16{NVCV_DATA_TYPE_F16};
+/** Two interleaved channels of 16-bit IEEE 754 floating-point values. */
+constexpr DataType TYPE_2F16{NVCV_DATA_TYPE_2F16};
+/** Three interleaved channels of 16-bit IEEE 754 floating-point values. */
+constexpr DataType TYPE_3F16{NVCV_DATA_TYPE_3F16};
+/** Four interleaved channels of 16-bit IEEE 754 floating-point values. */
+constexpr DataType TYPE_4F16{NVCV_DATA_TYPE_4F16};
+
 /** One channel of 32-bit IEEE 754 floating-point value. */
 constexpr DataType TYPE_F32{NVCV_DATA_TYPE_F32};
 /** Two interleaved channels of 32-bit IEEE 754 floating-point values. */

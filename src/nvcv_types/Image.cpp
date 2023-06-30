@@ -165,7 +165,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageGetAllocator, (NVCVImageHandle handle
 
             auto &img = priv::ToStaticRef<const priv::IImage>(handle);
 
-            *halloc = img.alloc().handle();
+            *halloc = img.alloc().release()->handle();
         });
 }
 
@@ -200,25 +200,17 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageExportData, (NVCVImageHandle handle, 
         });
 }
 
-NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageSetUserPointer, (NVCVImageHandle handle, void *userPtr))
+NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvImageSetUserPointer, (NVCVImageHandle handle, void *userPtr))
 {
     return priv::ProtectCall(
         [&]
         {
             auto &img = priv::ToStaticRef<priv::IImage>(handle);
-
-            if (priv::MustProvideHiddenFunctionality(handle))
-            {
-                img.setCXXObject(userPtr);
-            }
-            else
-            {
-                img.setUserPointer(userPtr);
-            }
+            img.setUserPointer(userPtr);
         });
 }
 
-NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageGetUserPointer, (NVCVImageHandle handle, void **outUserPtr))
+NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvImageGetUserPointer, (NVCVImageHandle handle, void **outUserPtr))
 {
     return priv::ProtectCall(
         [&]
@@ -228,15 +220,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageGetUserPointer, (NVCVImageHandle hand
                 throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Pointer to output user pointer cannot be NULL");
             }
 
-            auto &img = priv::ToStaticRef<const priv::IImage>(handle);
-
-            if (priv::MustProvideHiddenFunctionality(handle))
-            {
-                img.getCXXObject(outUserPtr);
-            }
-            else
-            {
-                *outUserPtr = img.userPointer();
-            }
+            auto &img   = priv::ToStaticRef<const priv::IImage>(handle);
+            *outUserPtr = img.userPointer();
         });
 }

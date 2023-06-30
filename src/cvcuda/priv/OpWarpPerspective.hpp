@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,8 +28,8 @@
 #include "legacy/CvCudaLegacy.h"
 
 #include <cvcuda/OpWarpPerspective.h>
-#include <nvcv/IImageBatch.hpp>
-#include <nvcv/ITensor.hpp>
+#include <nvcv/ImageBatch.hpp>
+#include <nvcv/Tensor.hpp>
 
 #include <memory>
 
@@ -40,12 +40,12 @@ class WarpPerspective final : public IOperator
 public:
     explicit WarpPerspective(const int32_t maxVarShapeBatchSize);
 
-    void operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &out,
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                     const NVCVPerspectiveTransform transMatrix, const int32_t flags, const NVCVBorderType borderMode,
                     const float4 borderValue) const;
 
-    void operator()(cudaStream_t stream, const nvcv::IImageBatchVarShape &in, const nvcv::IImageBatchVarShape &out,
-                    const nvcv::ITensor &transMatrix, const int32_t flags, const NVCVBorderType borderMode,
+    void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
+                    const nvcv::Tensor &transMatrix, const int32_t flags, const NVCVBorderType borderMode,
                     const float4 borderValue) const;
 
 private:

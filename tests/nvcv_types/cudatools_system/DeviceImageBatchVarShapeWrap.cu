@@ -45,6 +45,7 @@ __global__ void SetTwos(cuda::ImageBatchVarShapeWrap<PixelType> dst, int numSamp
     CUDA_EXPECT_EQ(dst.plane(coord.z).width, dst.width(coord.z));
     CUDA_EXPECT_EQ(dst.plane(coord.z).height, dst.height(coord.z));
     CUDA_EXPECT_EQ(dst.plane(coord.z).rowStride, dst.rowStride(coord.z));
+    CUDA_EXPECT_EQ(dst.ptr(coord.z, coord.y), dst.ptr(coord.z, 0, coord.y, 0));
 
     *dst.ptr(coord.z, coord.y, coord.x) = cuda::SetAll<PixelType>(1);
 
@@ -64,6 +65,7 @@ __global__ void SetTwos(cuda::ImageBatchVarShapeWrapNHWC<ChannelType> dst, int n
     CUDA_EXPECT_EQ(dst.plane(coord.z).width, dst.width(coord.z));
     CUDA_EXPECT_EQ(dst.plane(coord.z).height, dst.height(coord.z));
     CUDA_EXPECT_EQ(dst.plane(coord.z).rowStride, dst.rowStride(coord.z));
+    CUDA_EXPECT_EQ(dst.ptr(coord.z, coord.y), dst.ptr(coord.z, coord.y, 0, 0));
 
     for (int ch = 0; ch < dst.numChannels(); ++ch)
     {

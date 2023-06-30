@@ -27,7 +27,6 @@ find_package(ZLIB REQUIRED)
 
 add_library(nvcv_test_common STATIC
     Printers.cpp
-    TensorDataUtils.cpp
     HashMD5.cpp
 )
 

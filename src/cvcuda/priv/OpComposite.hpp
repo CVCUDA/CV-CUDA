@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,8 +28,8 @@
 #include "legacy/CvCudaLegacy.h"
 
 #include <cuda_runtime.h>
-#include <nvcv/IImageBatch.hpp>
-#include <nvcv/ITensor.hpp>
+#include <nvcv/ImageBatch.hpp>
+#include <nvcv/Tensor.hpp>
 
 #include <memory>
 
@@ -40,12 +40,12 @@ class Composite final : public IOperator
 public:
     explicit Composite();
 
-    void operator()(cudaStream_t stream, const nvcv::ITensor &foreground, const nvcv::ITensor &background,
-                    const nvcv::ITensor &fgMask, const nvcv::ITensor &output) const;
+    void operator()(cudaStream_t stream, const nvcv::Tensor &foreground, const nvcv::Tensor &background,
+                    const nvcv::Tensor &fgMask, const nvcv::Tensor &output) const;
 
-    void operator()(cudaStream_t stream, const nvcv::IImageBatchVarShape &foreground,
-                    const nvcv::IImageBatchVarShape &background, const nvcv::IImageBatchVarShape &fgMask,
-                    const nvcv::IImageBatchVarShape &output) const;
+    void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &foreground,
+                    const nvcv::ImageBatchVarShape &background, const nvcv::ImageBatchVarShape &fgMask,
+                    const nvcv::ImageBatchVarShape &output) const;
 
 private:
     std::unique_ptr<nvcv::legacy::cuda_op::Composite>         m_legacyOp;

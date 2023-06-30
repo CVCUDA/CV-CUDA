@@ -35,9 +35,9 @@ Normalize::Normalize()
     m_legacyOpVarShape = std::make_unique<legacy::NormalizeVarShape>(maxIn, maxOut);
 }
 
-void Normalize::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &base,
-                           const nvcv::ITensor &scale, nvcv::ITensor &out, const float global_scale, const float shift,
-                           const float epsilon, const uint32_t flags) const
+void Normalize::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &base,
+                           const nvcv::Tensor &scale, const nvcv::Tensor &out, const float global_scale,
+                           const float shift, const float epsilon, const uint32_t flags) const
 {
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
     if (inData == nullptr)
@@ -71,8 +71,8 @@ void Normalize::operator()(cudaStream_t stream, const nvcv::ITensor &in, const n
         m_legacyOp->infer(*inData, *baseData, *scaleData, *outData, global_scale, shift, epsilon, flags, stream));
 }
 
-void Normalize::operator()(cudaStream_t stream, const nvcv::IImageBatchVarShape &in, const nvcv::ITensor &base,
-                           const nvcv::ITensor &scale, nvcv::IImageBatchVarShape &out, const float global_scale,
+void Normalize::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::Tensor &base,
+                           const nvcv::Tensor &scale, const nvcv::ImageBatchVarShape &out, const float global_scale,
                            const float shift, const float epsilon, const uint32_t flags) const
 {
     auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);

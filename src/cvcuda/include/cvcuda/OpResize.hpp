@@ -30,9 +30,9 @@
 #include "OpResize.h"
 
 #include <cuda_runtime.h>
-#include <nvcv/IImageBatch.hpp>
-#include <nvcv/ITensor.hpp>
+#include <nvcv/ImageBatch.hpp>
 #include <nvcv/ImageFormat.hpp>
+#include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
 namespace cvcuda {
@@ -44,9 +44,9 @@ public:
 
     ~Resize();
 
-    void operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out,
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                     const NVCVInterpolationType interpolation);
-    void operator()(cudaStream_t stream, nvcv::IImageBatchVarShape &in, nvcv::IImageBatchVarShape &out,
+    void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
                     const NVCVInterpolationType interpolation);
 
     virtual NVCVOperatorHandle handle() const noexcept override;
@@ -67,14 +67,14 @@ inline Resize::~Resize()
     m_handle = nullptr;
 }
 
-inline void Resize::operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out,
+inline void Resize::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                                const NVCVInterpolationType interpolation)
 {
     nvcv::detail::CheckThrow(cvcudaResizeSubmit(m_handle, stream, in.handle(), out.handle(), interpolation));
 }
 
-inline void Resize::operator()(cudaStream_t stream, nvcv::IImageBatchVarShape &in, nvcv::IImageBatchVarShape &out,
-                               const NVCVInterpolationType interpolation)
+inline void Resize::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
+                               const nvcv::ImageBatchVarShape &out, const NVCVInterpolationType interpolation)
 {
     nvcv::detail::CheckThrow(cvcudaResizeVarShapeSubmit(m_handle, stream, in.handle(), out.handle(), interpolation));
 }

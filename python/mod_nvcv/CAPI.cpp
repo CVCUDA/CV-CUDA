@@ -236,33 +236,41 @@ extern "C" PyObject *ImplContainer_Create(nvcvpy::Container *pcont)
     return ocont.release().ptr();
 }
 
+extern "C" void ImplCache_RemoveAllNotInUseMatching(const IKey *pkey)
+{
+    NVCV_ASSERT(pkey != nullptr);
+
+    Cache::Instance().removeAllNotInUseMatching(*pkey);
+}
+
 } // namespace
 
 void ExportCAPI(py::module &m)
 {
     static CAPI capi = {
-        .DataType_ToPython            = &ImplDataType_ToPython,
-        .DataType_FromPython          = &ImplDataType_FromPython,
-        .ImageFormat_ToPython         = &ImplImageFormat_ToPython,
-        .ImageFormat_FromPython       = &ImplImageFormat_FromPython,
-        .Resource_SubmitSync          = &ImplResource_SubmitSync,
-        .Resource_SubmitSignal        = &ImplResource_SubmitSignal,
-        .Stream_HoldResources         = &ImplStream_HoldResources,
-        .Stream_GetCurrent            = &ImplStream_GetCurrent,
-        .Stream_GetCudaHandle         = &ImplStream_GetCudaHandle,
-        .Tensor_GetHandle             = &ImplTensor_GetHandle,
-        .Tensor_Create                = &ImplTensor_Create,
-        .Tensor_CreateForImageBatch   = &ImplTensor_CreateForImageBatch,
-        .ImageBatchVarShape_Create    = &ImplImageBatchVarShape_Create,
-        .ImageBatchVarShape_GetHandle = &ImplImageBatchVarShape_GetHandle,
-        .ImageBatchVarShape_PushBack  = &ImplImageBatchVarShape_PushBack,
-        .ImageBatchVarShape_PopBack   = &ImplImageBatchVarShape_PopBack,
-        .ImageBatchVarShape_Clear     = &ImplImageBatchVarShape_Clear,
-        .Cache_Add                    = &ImplCache_Add,
-        .Cache_Fetch                  = &ImplCache_Fetch,
-        .Image_Create                 = &ImplImage_Create,
-        .Image_GetHandle              = &ImplImage_GetHandle,
-        .Container_Create             = &ImplContainer_Create,
+        .DataType_ToPython               = &ImplDataType_ToPython,
+        .DataType_FromPython             = &ImplDataType_FromPython,
+        .ImageFormat_ToPython            = &ImplImageFormat_ToPython,
+        .ImageFormat_FromPython          = &ImplImageFormat_FromPython,
+        .Resource_SubmitSync             = &ImplResource_SubmitSync,
+        .Resource_SubmitSignal           = &ImplResource_SubmitSignal,
+        .Stream_HoldResources            = &ImplStream_HoldResources,
+        .Stream_GetCurrent               = &ImplStream_GetCurrent,
+        .Stream_GetCudaHandle            = &ImplStream_GetCudaHandle,
+        .Tensor_GetHandle                = &ImplTensor_GetHandle,
+        .Tensor_Create                   = &ImplTensor_Create,
+        .Tensor_CreateForImageBatch      = &ImplTensor_CreateForImageBatch,
+        .ImageBatchVarShape_Create       = &ImplImageBatchVarShape_Create,
+        .ImageBatchVarShape_GetHandle    = &ImplImageBatchVarShape_GetHandle,
+        .ImageBatchVarShape_PushBack     = &ImplImageBatchVarShape_PushBack,
+        .ImageBatchVarShape_PopBack      = &ImplImageBatchVarShape_PopBack,
+        .ImageBatchVarShape_Clear        = &ImplImageBatchVarShape_Clear,
+        .Cache_Add                       = &ImplCache_Add,
+        .Cache_Fetch                     = &ImplCache_Fetch,
+        .Image_Create                    = &ImplImage_Create,
+        .Image_GetHandle                 = &ImplImage_GetHandle,
+        .Container_Create                = &ImplContainer_Create,
+        .Cache_RemoveAllNotInUseMatching = &ImplCache_RemoveAllNotInUseMatching,
     };
 
     m.add_object("_C_API", py::capsule(&capi, "nvcv._C_API"));

@@ -110,6 +110,15 @@ typedef uint64_t NVCVDataType;
 /** Four interleaved channels of signed 32-bit values. */
 #define NVCV_DATA_TYPE_4S32 NVCV_DETAIL_MAKE_PIX_TYPE(SIGNED, X32_Y32_Z32_W32)
 
+/** One channel of 16-bit IEEE 754 floating-point value. */
+#define NVCV_DATA_TYPE_F16  NVCV_DETAIL_MAKE_PIX_TYPE(FLOAT, X16)
+/** Two interleaved channels of 16-bit IEEE 754 floating-point values. */
+#define NVCV_DATA_TYPE_2F16 NVCV_DETAIL_MAKE_PIX_TYPE(FLOAT, X16_Y16)
+/** Three interleaved channels of 16-bit IEEE 754 floating-point values. */
+#define NVCV_DATA_TYPE_3F16 NVCV_DETAIL_MAKE_PIX_TYPE(FLOAT, X16_Y16_Z16)
+/** Four interleaved channels of 16-bit IEEE 754 floating-point values. */
+#define NVCV_DATA_TYPE_4F16 NVCV_DETAIL_MAKE_PIX_TYPE(FLOAT, X16_Y16_Z16_W16)
+
 /** One channel of 32-bit IEEE 754 floating-point value. */
 #define NVCV_DATA_TYPE_F32  NVCV_DETAIL_MAKE_PIX_TYPE(FLOAT, X32)
 /** Two interleaved channels of 32-bit IEEE 754 floating-point values. */

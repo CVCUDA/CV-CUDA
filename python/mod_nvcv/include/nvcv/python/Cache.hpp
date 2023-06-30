@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -44,7 +44,7 @@ public:
     {
         if (typeid(*this) == typeid(that))
         {
-            return doIsEqual(that);
+            return doIsCompatible(that);
         }
         else
         {
@@ -53,8 +53,8 @@ public:
     }
 
 private:
-    virtual size_t doGetHash() const                 = 0;
-    virtual bool   doIsEqual(const IKey &that) const = 0;
+    virtual size_t doGetHash() const                      = 0;
+    virtual bool   doIsCompatible(const IKey &that) const = 0;
 };
 
 class ICacheItem : public std::enable_shared_from_this<ICacheItem>
@@ -87,6 +87,11 @@ public:
             out.emplace_back(list[i]->shared_from_this());
         }
         return out;
+    }
+
+    static void removeAllNotInUseMatching(const IKey &key)
+    {
+        capi().Cache_RemoveAllNotInUseMatching(&key);
     }
 };
 

@@ -17,13 +17,13 @@
 
 #include "Definitions.hpp"
 
-#include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpErase.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
+#include <util/TensorDataUtils.hpp>
 
 #include <iostream>
 
@@ -36,8 +36,8 @@ TEST_P(OpErase, correct_output)
     cudaStream_t stream;
     EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
-    nvcv::Tensor imgIn  = nvcv::test::CreateTensor(N, 640, 480, nvcv::FMT_U8);
-    nvcv::Tensor imgOut = nvcv::test::CreateTensor(N, 640, 480, nvcv::FMT_U8);
+    nvcv::Tensor imgIn  = nvcv::util::CreateTensor(N, 640, 480, nvcv::FMT_U8);
+    nvcv::Tensor imgOut = nvcv::util::CreateTensor(N, 640, 480, nvcv::FMT_U8);
 
     auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(imgIn.exportData());
     ASSERT_TRUE(inAccess);
@@ -145,15 +145,15 @@ TEST(OpErase, OpErase_Varshape)
     cudaStream_t stream;
     EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
-    std::vector<std::unique_ptr<nvcv::Image>> imgSrc;
-    imgSrc.emplace_back(std::make_unique<nvcv::Image>(nvcv::Size2D{640, 480}, nvcv::FMT_U8));
+    std::vector<nvcv::Image> imgSrc;
+    imgSrc.emplace_back(nvcv::Size2D{640, 480}, nvcv::FMT_U8);
 
     nvcv::ImageBatchVarShape batchSrc(1);
     batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
 
     for (int i = 0; i < 1; ++i)
     {
-        const auto srcData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
+        const auto srcData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
         assert(srcData->numPlanes() == 1);
 
         int srcWidth  = srcData->plane(0).width;
@@ -221,7 +221,7 @@ TEST(OpErase, OpErase_Varshape)
 
     EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
 
-    const auto dstData = imgSrc[0]->exportData<nvcv::ImageDataStridedCuda>();
+    const auto dstData = imgSrc[0].exportData<nvcv::ImageDataStridedCuda>();
     assert(dstData->numPlanes() == 1);
 
     int dstWidth  = dstData->plane(0).width;

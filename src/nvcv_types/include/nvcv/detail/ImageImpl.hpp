@@ -26,6 +26,52 @@ namespace nvcv {
 
 // Image implementation -------------------------------------
 
+inline Size2D Image::size() const
+{
+    Size2D out;
+    detail::CheckThrow(nvcvImageGetSize(this->handle(), &out.w, &out.h));
+    return out;
+}
+
+inline ImageFormat Image::format() const
+{
+    NVCVImageFormat out;
+    detail::CheckThrow(nvcvImageGetFormat(this->handle(), &out));
+    return ImageFormat{out};
+}
+
+inline ImageData Image::exportData() const
+{
+    if (auto handle = this->handle())
+    {
+        ImageData data;
+        detail::CheckThrow(nvcvImageExportData(handle, &data.cdata()));
+        return data;
+    }
+    else
+    {
+        throw Exception(Status::ERROR_INVALID_OPERATION, "Cannot export data from a NULL handle.");
+    }
+}
+
+template<typename DATA>
+inline Optional<DATA> Image::exportData() const
+{
+    return exportData().cast<DATA>();
+}
+
+inline void Image::setUserPointer(void *ptr)
+{
+    detail::CheckThrow(nvcvImageSetUserPointer(this->handle(), ptr));
+}
+
+inline void *Image::userPointer() const
+{
+    void *ptr;
+    detail::CheckThrow(nvcvImageGetUserPointer(this->handle(), &ptr));
+    return ptr;
+}
+
 inline auto Image::CalcRequirements(const Size2D &size, ImageFormat fmt, const MemAlignment &bufAlign) -> Requirements
 {
     Requirements reqs;
@@ -35,8 +81,9 @@ inline auto Image::CalcRequirements(const Size2D &size, ImageFormat fmt, const M
 
 inline Image::Image(const Requirements &reqs, const Allocator &alloc)
 {
-    detail::CheckThrow(nvcvImageConstruct(&reqs, alloc.handle(), &m_handle));
-    detail::SetObjectAssociation(nvcvImageSetUserPointer, this, m_handle);
+    NVCVImageHandle handle;
+    detail::CheckThrow(nvcvImageConstruct(&reqs, alloc.handle(), &handle));
+    reset(std::move(handle));
 }
 
 inline Image::Image(const Size2D &size, ImageFormat fmt, const Allocator &alloc, const MemAlignment &bufAlign)
@@ -44,42 +91,15 @@ inline Image::Image(const Size2D &size, ImageFormat fmt, const Allocator &alloc,
 {
 }
 
-inline Image::~Image()
-{
-    nvcvImageDecRef(m_handle, nullptr);
-}
-
-inline NVCVImageHandle Image::doGetHandle() const
-{
-    return m_handle;
-}
-
 // ImageWrapData implementation -------------------------------------
 
-inline ImageWrapData::ImageWrapData(const ImageData &data, ImageDataCleanupCallback &&cleanup)
+inline Image ImageWrapData(const ImageData &data, ImageDataCleanupCallback &&cleanup)
 {
+    NVCVImageHandle handle = nullptr;
     detail::CheckThrow(
-        nvcvImageWrapDataConstruct(&data.cdata(), cleanup.targetFunc(), cleanup.targetHandle(), &m_handle));
-    cleanup.release(); // the handle now owns the callback
-    try
-    {
-        detail::SetObjectAssociation(nvcvImageSetUserPointer, this, m_handle);
-    }
-    catch (...)
-    {
-        nvcvImageDecRef(m_handle, nullptr);
-        throw;
-    }
-}
-
-inline ImageWrapData::~ImageWrapData()
-{
-    nvcvImageDecRef(m_handle, nullptr);
-}
-
-inline NVCVImageHandle ImageWrapData::doGetHandle() const
-{
-    return m_handle;
+        nvcvImageWrapDataConstruct(&data.cdata(), cleanup.targetFunc(), cleanup.targetHandle(), &handle));
+    (void)cleanup.release(); // The cleanup callback is now owned by the image object.
+    return Image(std::move(handle));
 }
 
 } // namespace nvcv

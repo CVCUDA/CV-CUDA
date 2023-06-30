@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,7 +32,7 @@ namespace py = pybind11;
 
 class ImageBatchVarShape
     : public Resource
-    , public nvcv::IImageBatchVarShape
+    , public nvcv::ImageBatchVarShape
 {
 public:
     static ImageBatchVarShape Create(int capacity)
@@ -45,11 +45,11 @@ public:
     }
 
     // For manipulating the image list we can't call directly the
-    // nvcv::IImageBatchVarShape methods, it must go through the python
+    // nvcv::ImageBatchVarShape methods, it must go through the python
     // bindings because it ends up storing a reference to the added images, to
     // keep them alive. We can't do it here, things must be consistent.
     // PROBLEM: these functions should be virtual but they aren't.
-    // We can't modify the image list through nvcv::IImageBatchVarShape
+    // We can't modify the image list through nvcv::ImageBatchVarShape
     // or else the this image list to keep their alive won't be updated.
     // We currently can't avoid this issue.
     void pushBack(Image img)
@@ -68,27 +68,21 @@ public:
     }
 
     // By default we use the varshape interface.
-    using nvcv::IImageBatchVarShape::operator[];
-    using nvcv::IImageBatchVarShape::begin;
-    using nvcv::IImageBatchVarShape::cbegin;
-    using nvcv::IImageBatchVarShape::cend;
-    using nvcv::IImageBatchVarShape::end;
+    using nvcv::ImageBatchVarShape::operator[];
+    using nvcv::ImageBatchVarShape::begin;
+    using nvcv::ImageBatchVarShape::cbegin;
+    using nvcv::ImageBatchVarShape::cend;
+    using nvcv::ImageBatchVarShape::end;
 
 private:
     friend struct py::detail::type_caster<ImageBatchVarShape>;
-    NVCVImageBatchHandle m_handle;
 
     ImageBatchVarShape() = default;
 
     explicit ImageBatchVarShape(py::object obj)
         : Resource(obj)
-        , m_handle(capi().ImageBatchVarShape_GetHandle(this->ptr()))
+        , nvcv::ImageBatchVarShape(FromHandle(capi().ImageBatchVarShape_GetHandle(this->ptr()), true))
     {
-    }
-
-    NVCVImageBatchHandle doGetHandle() const override
-    {
-        return m_handle;
     }
 };
 

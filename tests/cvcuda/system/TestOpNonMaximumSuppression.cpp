@@ -15,164 +15,198 @@
  * limitations under the License.
  */
 
-#include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpNonMaximumSuppression.hpp>
-#include <nvcv/Rect.h>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
 #include <nvcv/cuda/DropCast.hpp>
 #include <nvcv/cuda/MathOps.hpp>
 #include <nvcv/cuda/StaticCast.hpp>
 #include <nvcv/cuda/TypeTraits.hpp>
+#include <util/TensorDataUtils.hpp>
 
 #include <iostream>
 #include <vector>
 
 namespace test = nvcv::test;
+namespace util = nvcv::util;
 
-constexpr bool operator==(NVCVRectI box1, NVCVRectI box2);
+static std::default_random_engine g_rng(std::random_device{}());
 
-constexpr bool operator!=(NVCVRectI box1, NVCVRectI box2);
-
-std::ostream &operator<<(std::ostream &stream, const NVCVRectI &box);
-
-float IntersectionOverUnion(const NVCVRectI &box1, const NVCVRectI &box2);
-
-void CPUNonMaximumSuppression(const std::vector<NVCVRectI> &in, std::vector<NVCVRectI> &out,
-                              const std::vector<float> &scores, float score_threshold, float iou_threshold);
-
-constexpr bool operator==(NVCVRectI box1, NVCVRectI box2)
+template<typename T>
+float GoldArea(const T &bbox)
 {
-    return box1.x == box2.x && box1.y == box2.y && box1.width == box2.width && box1.height == box2.height;
+    return bbox.z * bbox.w;
 }
 
-constexpr bool operator!=(NVCVRectI box1, NVCVRectI box2)
+template<typename T>
+float GoldIoU(const T &box1, const T &box2)
 {
-    return !(box1 == box2);
-}
-
-std::ostream &operator<<(std::ostream &stream, const NVCVRectI &box)
-{
-    stream << "NVCVRectI(x=" << box.x << ", y=" << box.y << ", width=" << box.width << ", height=" << box.height << ")";
-    return stream;
-}
-
-float IntersectionOverUnion(const NVCVRectI &box1, const NVCVRectI &box2)
-{
-    float box1Area = box1.width * box1.height;
-    float box2Area = box2.width * box2.height;
-
-    auto xInterLeft   = std::max(box1.x, box2.x);
-    auto yInterTop    = std::max(box1.y, box2.y);
-    auto xInterRight  = std::min(box1.x + box1.width, box2.x + box2.width);
-    auto yInterBottom = std::min(box1.y + box1.height, box2.y + box2.height);
-
-    auto widthInter  = xInterRight - xInterLeft;
-    auto heightInter = yInterBottom - yInterTop;
-
-    float interArea = widthInter * heightInter;
-
-    return interArea / (box1Area + box2Area - interArea);
-}
-
-void CPUNonMaximumSuppression(const std::vector<NVCVRectI> &in, std::vector<NVCVRectI> &out,
-                              const std::vector<float> &scores, float score_threshold, float iou_threshold)
-{
-    const NVCVRectI ZERO_BBOX = {0, 0, 0, 0};
-
-    out = in;
-    for (size_t i = 0; i < 5; ++i)
+    int   xInterLeft   = std::max(box1.x, box2.x);
+    int   yInterTop    = std::max(box1.y, box2.y);
+    int   xInterRight  = std::min(box1.x + box1.z, box2.x + box2.z);
+    int   yInterBottom = std::min(box1.y + box1.w, box2.y + box2.w);
+    int   widthInter   = xInterRight - xInterLeft;
+    int   heightInter  = yInterBottom - yInterTop;
+    float interArea    = widthInter * heightInter;
+    float iou          = 0.f;
+    if (widthInter > 0.f && heightInter > 0.f)
     {
-        if (scores[i] < score_threshold)
+        float unionArea = GoldArea(box1) + GoldArea(box2) - interArea;
+        if (unionArea > 0.f)
         {
-            out[i] = ZERO_BBOX;
+            iou = interArea / unionArea;
         }
     }
+    return iou;
+}
 
-    for (size_t i = 0; i < 5; ++i)
+inline void GoldNMS(const std::vector<uint8_t> &srcBBVec, std::vector<uint8_t> &dstMkVec,
+                    const std::vector<uint8_t> &srcScVec, const long2 &srcBBStrides, const long2 &dstMkStrides,
+                    const long2 &srcScStrides, const int2 &shape, float scoreThreshold, float iouThreshold)
+{
+    for (int x = 0; x < shape.x; ++x)
     {
-        for (size_t j = 0; j < 5; ++j)
+        for (int y1 = 0; y1 < shape.y; ++y1)
         {
-            if (i != j && out[i] != ZERO_BBOX && in[j] != ZERO_BBOX && scores[i] < scores[j]
-                && IntersectionOverUnion(out[i], in[j]) > iou_threshold)
+            const float &score1 = util::ValueAt<float>(srcScVec, srcScStrides, int2{x, y1});
+            uint8_t     &dst    = util::ValueAt<uint8_t>(dstMkVec, dstMkStrides, int2{x, y1});
+
+            if (score1 < scoreThreshold)
             {
-                out[i] = ZERO_BBOX;
+                dst = 0;
+                continue;
             }
+
+            const short4 &src1    = util::ValueAt<short4>(srcBBVec, srcBBStrides, int2{x, y1});
+            bool          discard = false;
+
+            for (int y2 = 0; y2 < shape.y; ++y2)
+            {
+                if (y1 == y2)
+                {
+                    continue;
+                }
+
+                const short4 &src2 = util::ValueAt<short4>(srcBBVec, srcBBStrides, int2{x, y2});
+
+                if (GoldIoU(src1, src2) > iouThreshold)
+                {
+                    const float &score2 = util::ValueAt<float>(srcScVec, srcScStrides, int2{x, y2});
+                    if (score1 < score2 || (score1 == score2 && GoldArea(src1) < GoldArea(src2)))
+                    {
+                        discard = true;
+                        break;
+                    }
+                }
+            }
+
+            dst = discard ? 0 : 1;
         }
     }
 }
 
-TEST(OpNonMaximumSuppression, correct_output)
+// clang-format off
+
+NVCV_TEST_SUITE_P(OpNonMaximumSuppression, test::ValueList<int, int, float, float>
 {
-    const NVCVRectI ZERO_BBOX = {0, 0, 0, 0};
+    // numSamples, numBBoxes, scThresh, iouThresh,
+    {           1,         5,     .50f,      .75f,},
+    {           3,        23,     .25f,      .50f,},
+    {          10,       123,     .35f,      .45f,},
+    {          15,      1234,     .45f,      .65f,},
+    {           2,      8765,     .95f,      .85f,},
+    {        2000,         4,     .55f,      .25f,},
+});
 
-    auto tshape = nvcv::TensorShape{
-        {1, 5, 4},
-        nvcv::TENSOR_NCW
-    };
-    auto         dtype = nvcv::TYPE_S32;
-    nvcv::Tensor inBBoxes{tshape, dtype};
-    nvcv::Tensor outBBoxes{tshape, dtype};
-    nvcv::Tensor inScores{
-        nvcv::TensorShape{{1, 5}, nvcv::TENSOR_NW},
-        nvcv::TYPE_F32
-    };
+// clang-format on
 
-    auto                   inBBAccess    = nvcv::TensorDataAccessStrided::Create(inBBoxes.exportData());
-    auto                   numBBElements = inBBAccess->sampleStride() / sizeof(NVCVRectI);
-    std::vector<NVCVRectI> inBBoxValues(numBBElements, ZERO_BBOX);
+TEST_P(OpNonMaximumSuppression, correct_output)
+{
+    int   numSamples = GetParamValue<0>();
+    int   numBBoxes  = GetParamValue<1>();
+    float scThresh   = GetParamValue<2>();
+    float iouThresh  = GetParamValue<3>();
 
-    auto               inScoreAccess    = nvcv::TensorDataAccessStrided::Create(inScores.exportData());
-    auto               numScoreElements = inScoreAccess->sampleStride() / sizeof(float);
-    std::vector<float> inScoreValues(numScoreElements, 0.0f);
+    int2 inShape{numSamples, numBBoxes};
 
-    inBBoxValues[0]  = {0, 0, 0, 0};
-    inScoreValues[0] = .999f;
-    inBBoxValues[1]  = {0, 0, 0, 0};
-    inScoreValues[1] = 0.f;
-    inBBoxValues[2]  = {0, 0, 0, 0};
-    inScoreValues[2] = .6f;
-    inBBoxValues[3]  = {0, 0, 0, 0};
-    inScoreValues[3] = .5f;
-    inBBoxValues[4]  = {0, 0, 0, 0};
-    inScoreValues[4] = .8f;
+    // clang-format off
 
-    float scoreThresh = 0.5f;
-    float iouThresh   = 0.75f;
+    nvcv::Tensor srcBB({{numSamples, numBBoxes}, "NW"}, nvcv::TYPE_4S16);
+    nvcv::Tensor dstMk({{numSamples, numBBoxes}, "NW"}, nvcv::TYPE_U8);
+    nvcv::Tensor srcSc({{numSamples, numBBoxes}, "NW"}, nvcv::TYPE_F32);
 
-    decltype(inBBoxValues)  verBBoxValues(numBBElements, ZERO_BBOX);
-    decltype(inScoreValues) verScoreValues(numScoreElements, 0.0f);
+    // clang-format on
 
-    test::SetTensorFromVector<NVCVRectI>(inBBoxes.exportData(), inBBoxValues, -1);
-    test::GetVectorFromTensor<NVCVRectI>(inBBoxes.exportData(), 0, verBBoxValues);
-    ASSERT_EQ(inBBoxValues, verBBoxValues);
+    auto srcBBData = srcBB.exportData<nvcv::TensorDataStridedCuda>();
+    auto srcScData = srcSc.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(srcScData && srcScData);
+    ASSERT_EQ(srcBBData->shape(0), srcScData->shape(0));
+    ASSERT_EQ(srcBBData->shape(1), srcScData->shape(1));
 
-    test::SetTensorFromVector<float>(inScores.exportData(), inScoreValues, -1);
-    test::GetVectorFromTensor<float>(inScores.exportData(), 0, verScoreValues);
-    ASSERT_EQ(inScoreValues, verScoreValues);
+    long2 srcBBStrides{srcBBData->stride(0), srcBBData->stride(1)};
+    long2 srcScStrides{srcScData->stride(0), srcScData->stride(1)};
+
+    int2 shape = nvcv::cuda::StaticCast<int>(long2{srcBBData->shape(0), srcScData->shape(1)});
+    ASSERT_EQ(shape, inShape);
+
+    std::uniform_int_distribution<int16_t> randPos(0, 128), randSize(50, 100), randScore(0, 1024);
+
+    long srcBBBufSize{srcBBStrides.x * shape.x};
+    long srcScBufSize{srcScStrides.x * shape.x};
+
+    std::vector<uint8_t> srcBBVec(srcBBBufSize);
+    std::vector<uint8_t> srcScVec(srcScBufSize);
+
+    short4 bbox;
+    int    halfBBoxes = static_cast<int>(std::ceil(shape.y / 2.f)); // repeat bboxes after pass half total
+
+    for (int x = 0; x < shape.x; ++x)
+    {
+        for (int y = 0; y < shape.y; ++y)
+        {
+            if (y < halfBBoxes)
+            {
+                bbox = short4{randPos(g_rng), randPos(g_rng), randSize(g_rng), randSize(g_rng)};
+            }
+            else
+            {
+                bbox = util::ValueAt<short4>(srcBBVec, srcBBStrides, int2{x, y - halfBBoxes});
+            }
+
+            util::ValueAt<short4>(srcBBVec, srcBBStrides, int2{x, y}) = bbox;
+            util::ValueAt<float>(srcScVec, srcScStrides, int2{x, y})  = randScore(g_rng) / 1024.f;
+        }
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(srcBBData->basePtr(), srcBBVec.data(), srcBBBufSize, cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(srcScData->basePtr(), srcScVec.data(), srcScBufSize, cudaMemcpyHostToDevice));
 
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
     cvcuda::NonMaximumSuppression nms;
 
-    nms(stream, inBBoxes, outBBoxes, inScores, scoreThresh, iouThresh);
+    nms(stream, srcBB, dstMk, srcSc, scThresh, iouThresh);
 
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 
-    decltype(inBBoxValues) outBBoxValues(numBBElements, ZERO_BBOX);
-    decltype(inBBoxValues) outBBoxValues2(numBBElements, ZERO_BBOX);
+    auto dstMkData = dstMk.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(dstMkData);
+    ASSERT_EQ(dstMkData->shape(0), srcBBData->shape(0));
+    ASSERT_EQ(dstMkData->shape(1), srcBBData->shape(1));
 
-    test::GetVectorFromTensor<NVCVRectI>(outBBoxes.exportData(), 0, outBBoxValues);
+    long2 dstMkStrides{dstMkData->stride(0), dstMkData->stride(1)};
 
-    CPUNonMaximumSuppression(inBBoxValues, outBBoxValues2, inScoreValues, scoreThresh, iouThresh);
+    long dstMkBufSize{dstMkStrides.x * shape.x};
 
-    ASSERT_EQ(outBBoxValues.size(), outBBoxValues2.size());
+    std::vector<uint8_t> dstMkVecTest(dstMkBufSize);
+    std::vector<uint8_t> dstMkVecGold(dstMkBufSize);
 
-    for (size_t i = 0; i < outBBoxValues.size(); ++i)
-    {
-        EXPECT_EQ(outBBoxValues[i], outBBoxValues2[i]);
-    }
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(dstMkVecTest.data(), dstMkData->basePtr(), dstMkBufSize, cudaMemcpyDeviceToHost));
+
+    GoldNMS(srcBBVec, dstMkVecGold, srcScVec, srcBBStrides, dstMkStrides, srcScStrides, shape, scThresh, iouThresh);
+
+    EXPECT_EQ(dstMkVecTest, dstMkVecGold);
 }

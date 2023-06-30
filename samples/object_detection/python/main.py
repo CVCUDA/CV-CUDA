@@ -156,9 +156,7 @@ def run_sample(
 
             # docs_tag: start_postprocess
             # Stage 4: interpolate bounding boxes to image resolution and filter bounding boxes using NMS
-            out_tensor, filtered_bboxes = postprocess(
-                bboxes, probabilities, orig_tensor
-            )
+            out_tensor = postprocess(bboxes, probabilities, orig_tensor)
 
             # docs_tag: start_encode
             # encode the batch

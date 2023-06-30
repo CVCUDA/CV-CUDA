@@ -33,7 +33,7 @@ BndBox::BndBox()
     m_legacyOp = std::make_unique<legacy::BndBox>(maxIn, maxOut);
 }
 
-void BndBox::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &out,
+void BndBox::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                         const NVCVBndBoxesI &bboxes) const
 {
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();

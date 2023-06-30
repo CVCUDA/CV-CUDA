@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,7 +18,9 @@
 #ifndef NVCV_CORE_PRIV_IMAGE_HPP
 #define NVCV_CORE_PRIV_IMAGE_HPP
 
+#include "IAllocator.hpp"
 #include "IImage.hpp"
+#include "SharedCoreObj.hpp"
 
 namespace nvcv::priv {
 
@@ -30,17 +32,17 @@ public:
 
     static NVCVImageRequirements CalcRequirements(Size2D size, ImageFormat fmt, int32_t baseAlign, int32_t rowAlign);
 
-    Size2D        size() const override;
-    ImageFormat   format() const override;
-    IAllocator   &alloc() const override;
-    NVCVTypeImage type() const override;
+    Size2D                    size() const override;
+    ImageFormat               format() const override;
+    SharedCoreObj<IAllocator> alloc() const override;
+    NVCVTypeImage             type() const override;
 
     void exportData(NVCVImageData &data) const override;
 
 private:
-    IAllocator           &m_alloc;
-    NVCVImageRequirements m_reqs;
-    void                 *m_memBuffer;
+    SharedCoreObj<IAllocator> m_alloc;
+    NVCVImageRequirements     m_reqs;
+    void                     *m_memBuffer;
 };
 
 class ImageWrapData final : public CoreObjectBase<IImage>
@@ -50,10 +52,10 @@ public:
 
     ~ImageWrapData();
 
-    Size2D        size() const override;
-    ImageFormat   format() const override;
-    IAllocator   &alloc() const override;
-    NVCVTypeImage type() const override;
+    Size2D                    size() const override;
+    ImageFormat               format() const override;
+    SharedCoreObj<IAllocator> alloc() const override;
+    NVCVTypeImage             type() const override;
 
     void exportData(NVCVImageData &data) const override;
 

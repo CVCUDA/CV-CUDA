@@ -17,15 +17,15 @@
 
 #include "DeviceBorderWrap.hpp" // to test in the device
 
-#include <common/BorderUtils.hpp>     // for test::ReplicateBorderIndex, etc.
-#include <common/Printers.hpp>        // for stream operator, etc.
-#include <common/TensorDataUtils.hpp> // for test::CreateTensor, etc.
-#include <common/TypedTests.hpp>      // for NVCV_TYPED_TEST_SUITE, etc.
-#include <nvcv/Tensor.hpp>            // for Tensor, etc.
-#include <nvcv/TensorDataAccess.hpp>  // for TensorDataAccessStridedImagePlanar, etc.
-#include <nvcv/cuda/BorderWrap.hpp>   // the object of this test
-#include <nvcv/cuda/MathOps.hpp>      // for operator == to allow EXPECT_EQ
-#include <nvcv/cuda/TensorWrap.hpp>   // for Tensor3DWrap, etc.
+#include <common/BorderUtils.hpp>    // for test::ReplicateBorderIndex, etc.
+#include <common/Printers.hpp>       // for stream operator, etc.
+#include <common/TypedTests.hpp>     // for NVCV_TYPED_TEST_SUITE, etc.
+#include <nvcv/Tensor.hpp>           // for Tensor, etc.
+#include <nvcv/TensorDataAccess.hpp> // for TensorDataAccessStridedImagePlanar, etc.
+#include <nvcv/cuda/BorderWrap.hpp>  // the object of this test
+#include <nvcv/cuda/MathOps.hpp>     // for operator == to allow EXPECT_EQ
+#include <nvcv/cuda/TensorWrap.hpp>  // for Tensor3DWrap, etc.
+#include <util/TensorDataUtils.hpp>  // for nvcv::util::CreateTensor, etc.
 
 #include <algorithm>
 #include <array>
@@ -138,8 +138,8 @@ TYPED_TEST(BorderWrapNHWTest, correct_fill)
 
     int2 bSize{borderSize, borderSize};
 
-    nvcv::Tensor srcTensor = test::CreateTensor(batches, width, height, format);
-    nvcv::Tensor dstTensor = test::CreateTensor(batches, width + borderSize * 2, height + borderSize * 2, format);
+    nvcv::Tensor srcTensor = nvcv::util::CreateTensor(batches, width, height, format);
+    nvcv::Tensor dstTensor = nvcv::util::CreateTensor(batches, width + borderSize * 2, height + borderSize * 2, format);
 
     auto srcDev = srcTensor.exportData<nvcv::TensorDataStridedCuda>();
     auto dstDev = dstTensor.exportData<nvcv::TensorDataStridedCuda>();

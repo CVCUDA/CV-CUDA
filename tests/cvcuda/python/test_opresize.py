@@ -17,6 +17,11 @@ import cvcuda
 import pytest as t
 import numpy as np
 import cvcuda_util as util
+import threading
+import queue
+
+
+RNG = np.random.default_rng(0)
 
 
 @t.mark.parametrize(
@@ -117,3 +122,71 @@ def test_op_resizevarshape(inSize, outSize, interp):
     assert out.capacity == input.capacity
     assert out.uniqueformat == input.uniqueformat
     assert out.maxsize == outSize
+
+
+def test_op_resize_multithread():
+    src_dtype, src_layout = np.uint8, "NHWC"
+    src_shape = (2, 720, 1280, 3)
+    dst_shape = (2, 72, 128, 3)
+    dst_queue = queue.Queue()
+    num_threads = 16
+    threads = []
+
+    def thread_run(dst_queue, src, dst_shape):
+        import cvcuda
+
+        dst = cvcuda.resize(src, dst_shape)
+        dst_queue.put(dst)
+
+    for i in range(num_threads):
+        src = cvcuda.Tensor(
+            (src_shape[0], src_shape[1] + i, src_shape[2] + i, src_shape[3]),
+            src_dtype,
+            src_layout,
+        )
+        thread = threading.Thread(target=thread_run, args=(dst_queue, src, dst_shape))
+        thread.start()
+        threads.append(thread)
+
+    for thread in threads:
+        thread.join()
+
+    while not dst_queue.empty():
+        dst = dst_queue.get()
+        assert dst.layout == src_layout
+        assert dst.dtype == src_dtype
+        assert dst.shape == dst_shape
+
+
+def test_op_resize_user_stream_with_tensor():
+    stream = cvcuda.Stream()
+    src_shape = (5, 1080, 1920, 4)
+    dst_shape = (5, 108, 192, 4)
+    dtype, layout = np.uint8, "NHWC"
+    src = cvcuda.Tensor(src_shape, dtype, layout)
+
+    with stream:
+        dst = cvcuda.resize(src, dst_shape, cvcuda.Interp.NEAREST)
+        assert dst.layout == layout
+        assert dst.shape == dst_shape
+        assert dst.dtype == dtype
+
+
+@t.mark.parametrize("batch_size", [5])
+def test_op_resize_user_stream_with_image_batch(batch_size):
+    stream = cvcuda.Stream()
+    src_shape = (batch_size, 1080, 1920, 4)
+    dst_shape = (batch_size, 108, 192, 4)
+    dst_sizes = [(dst_shape[2], dst_shape[1]) for _ in range(src_shape[0])]
+    src = util.create_image_batch(
+        src_shape[0],
+        cvcuda.Format.RGBA8,
+        max_size=(dst_shape[2], dst_shape[1]),
+        rng=RNG,
+    )
+
+    with stream:
+        dst = cvcuda.resize(src, dst_sizes, cvcuda.Interp.NEAREST)
+        assert len(dst) == len(src)
+        assert dst.uniqueformat == dst.uniqueformat
+        assert dst.maxsize == dst_sizes[0]

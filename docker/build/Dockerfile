@@ -94,3 +94,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
      ./libstdc++-8-dev_8.4.0-3ubuntu2_amd64.deb \
      ./libisl22_0.22.1-1_amd64.deb \
     && rm -rf /var/lib/apt/lists/*
+
+# Needed for python sphinx docs
+RUN python3 -m pip install numpy==1.24.1

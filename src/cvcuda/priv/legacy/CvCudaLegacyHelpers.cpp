@@ -134,7 +134,7 @@ cuda_op::DataShape GetLegacyDataShape(const TensorShapeInfoImage &shapeInfo)
                               shapeInfo.numCols());
 }
 
-cuda_op::DataFormat GetLegacyDataFormat(const IImageBatchVarShape &imgBatch)
+cuda_op::DataFormat GetLegacyDataFormat(const ImageBatchVarShape &imgBatch)
 {
     ImageFormat fmt = imgBatch.uniqueFormat();
     if (!fmt)

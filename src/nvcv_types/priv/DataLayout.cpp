@@ -390,8 +390,8 @@ static NVCVSwizzle MakeNVCVSwizzleFromBits(const int (&bits)[4])
 
 std::optional<NVCVPacking> MakeNVCVPacking(const NVCVPackingParams &params) noexcept
 {
-    PackingData key;
-    key.params = params;
+    PackingData key = {};
+    key.params      = params;
 
     // Normalize swizzle
     if (key.params.swizzle != NVCV_SWIZZLE_XYXZ && key.params.swizzle != NVCV_SWIZZLE_YXZX && !IsSubWord(key.params))

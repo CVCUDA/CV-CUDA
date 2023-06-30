@@ -179,11 +179,17 @@ constexpr ImageFormat FMT_2S16{NVCV_IMAGE_FORMAT_2S16};
 /** Single plane with two interleaved block-linear 16-bit signed integer channel.*/
 constexpr ImageFormat FMT_2S16_BL{NVCV_IMAGE_FORMAT_2S16_BL};
 
+/** Single plane with one 16-bit floating point channel. */
+constexpr ImageFormat FMT_F16{NVCV_IMAGE_FORMAT_F16};
+
 /** Single plane with one 32-bit floating point channel. */
 constexpr ImageFormat FMT_F32{NVCV_IMAGE_FORMAT_F32};
 
 /** Single plane with one 64-bit floating point channel. */
 constexpr ImageFormat FMT_F64{NVCV_IMAGE_FORMAT_F64};
+
+/** Single plane with two interleaved 16-bit floating point channels. */
+constexpr ImageFormat FMT_2F16{NVCV_IMAGE_FORMAT_2F16};
 
 /** Single plane with two interleaved 32-bit floating point channels. */
 constexpr ImageFormat FMT_2F32{NVCV_IMAGE_FORMAT_2F32};
@@ -371,6 +377,30 @@ constexpr ImageFormat FMT_RGBA8p{NVCV_IMAGE_FORMAT_RGBA8p};
 
 /** Planar BGRA unsigned 8-bit per channel. */
 constexpr ImageFormat FMT_BGRA8p{NVCV_IMAGE_FORMAT_BGRA8p};
+
+/** Single plane with interleaved RGB float16 channel. */
+constexpr ImageFormat FMT_RGBf16{NVCV_IMAGE_FORMAT_RGBf16};
+
+/** Single plane with interleaved BGR float16 channel. */
+constexpr ImageFormat FMT_BGRf16{NVCV_IMAGE_FORMAT_BGRf16};
+
+/** Single plane with interleaved RGBA float16 channel. */
+constexpr ImageFormat FMT_RGBAf16{NVCV_IMAGE_FORMAT_RGBAf16};
+
+/** Single plane with interleaved BGRA float16 channel. */
+constexpr ImageFormat FMT_BGRAf16{NVCV_IMAGE_FORMAT_BGRAf16};
+
+/** Planar RGB unsigned float16 per channel. */
+constexpr ImageFormat FMT_RGBf16p{NVCV_IMAGE_FORMAT_RGBf16p};
+
+/** Planar BGR unsigned float16 per channel. */
+constexpr ImageFormat FMT_BGRf16p{NVCV_IMAGE_FORMAT_BGRf16p};
+
+/** Planar RGBA unsigned float16 per channel. */
+constexpr ImageFormat FMT_RGBAf16p{NVCV_IMAGE_FORMAT_RGBAf16p};
+
+/** Planar BGRA unsigned float16 per channel. */
+constexpr ImageFormat FMT_BGRAf16p{NVCV_IMAGE_FORMAT_BGRAf16p};
 
 /** Single plane with interleaved RGB float32 channel. */
 constexpr ImageFormat FMT_RGBf32{NVCV_IMAGE_FORMAT_RGBf32};

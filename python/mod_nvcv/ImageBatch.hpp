@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -72,7 +72,7 @@ public:
         int m_capacity;
 
         virtual size_t doGetHash() const override;
-        virtual bool   doIsEqual(const IKey &that) const override;
+        virtual bool   doIsCompatible(const IKey &that) const override;
     };
 
     virtual const Key &key() const override

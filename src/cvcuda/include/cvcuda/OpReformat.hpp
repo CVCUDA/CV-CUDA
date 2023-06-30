@@ -30,8 +30,8 @@
 #include "OpReformat.h"
 
 #include <cuda_runtime.h>
-#include <nvcv/ITensor.hpp>
 #include <nvcv/ImageFormat.hpp>
+#include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
 namespace cvcuda {
@@ -43,7 +43,7 @@ public:
 
     ~Reformat();
 
-    void operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out);
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out);
 
     virtual NVCVOperatorHandle handle() const noexcept override;
 
@@ -63,7 +63,7 @@ inline Reformat::~Reformat()
     m_handle = nullptr;
 }
 
-inline void Reformat::operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out)
+inline void Reformat::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out)
 {
     nvcv::detail::CheckThrow(cvcudaReformatSubmit(m_handle, stream, in.handle(), out.handle()));
 }

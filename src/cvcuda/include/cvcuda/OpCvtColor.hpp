@@ -30,10 +30,10 @@
 #include "OpCvtColor.h"
 
 #include <cuda_runtime.h>
-#include <nvcv/IImageBatch.hpp>
-#include <nvcv/ITensor.hpp>
+#include <nvcv/ImageBatch.hpp>
 #include <nvcv/ImageFormat.hpp>
 #include <nvcv/Size.hpp>
+#include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
 namespace cvcuda {
@@ -45,9 +45,10 @@ public:
 
     ~CvtColor();
 
-    void operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out, NVCVColorConversionCode code);
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, NVCVColorConversionCode code);
 
-    void operator()(cudaStream_t stream, nvcv::IImageBatch &in, nvcv::IImageBatch &out, NVCVColorConversionCode code);
+    void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
+                    NVCVColorConversionCode code);
 
     virtual NVCVOperatorHandle handle() const noexcept override;
 
@@ -67,13 +68,13 @@ inline CvtColor::~CvtColor()
     m_handle = nullptr;
 }
 
-inline void CvtColor::operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out,
+inline void CvtColor::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                                  NVCVColorConversionCode code)
 {
     nvcv::detail::CheckThrow(cvcudaCvtColorSubmit(m_handle, stream, in.handle(), out.handle(), code));
 }
 
-inline void CvtColor::operator()(cudaStream_t stream, nvcv::IImageBatch &in, nvcv::IImageBatch &out,
+inline void CvtColor::operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
                                  NVCVColorConversionCode code)
 {
     nvcv::detail::CheckThrow(cvcudaCvtColorVarShapeSubmit(m_handle, stream, in.handle(), out.handle(), code));

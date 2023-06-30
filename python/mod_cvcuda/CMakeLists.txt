@@ -23,6 +23,8 @@ nvcv_python_add_module(
         Main.cpp
         OpBndBox.cpp
         OpBoxBlur.cpp
+        OpBrightnessContrast.cpp
+        OpColorTwist.cpp
         OsdElement.cpp
         OpRemap.cpp
         RemapMapValueType.cpp
@@ -62,6 +64,8 @@ nvcv_python_add_module(
         OpPillowResize.cpp
         OpThreshold.cpp
         OpAdaptiveThreshold.cpp
+        OpRandomResizedCrop.cpp
+        OpGaussianNoise.cpp
 )
 
 target_link_libraries(cvcuda_module_python

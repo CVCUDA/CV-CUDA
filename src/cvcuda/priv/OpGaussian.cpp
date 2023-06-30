@@ -34,8 +34,8 @@ Gaussian::Gaussian(nvcv::Size2D maxKernelSize, int maxBatchSize)
     m_legacyOpVarShape = std::make_unique<legacy::GaussianVarShape>(maxIn, maxOut, maxKernelSize, maxBatchSize);
 }
 
-void Gaussian::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &out,
-                          nvcv::Size2D kernelSize, double2 sigma, NVCVBorderType borderMode) const
+void Gaussian::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, nvcv::Size2D kernelSize,
+                          double2 sigma, NVCVBorderType borderMode) const
 {
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
     if (inData == nullptr)
@@ -54,8 +54,8 @@ void Gaussian::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nv
     NVCV_CHECK_THROW(m_legacyOp->infer(*inData, *outData, kernelSize, sigma, borderMode, stream));
 }
 
-void Gaussian::operator()(cudaStream_t stream, const nvcv::IImageBatchVarShape &in, nvcv::IImageBatchVarShape &out,
-                          const nvcv::ITensor &kernelSize, const nvcv::ITensor &sigma, NVCVBorderType borderMode) const
+void Gaussian::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
+                          const nvcv::Tensor &kernelSize, const nvcv::Tensor &sigma, NVCVBorderType borderMode) const
 {
     auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (inData == nullptr)

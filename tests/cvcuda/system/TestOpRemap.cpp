@@ -16,7 +16,6 @@
  */
 
 #include <common/InterpUtils.hpp>
-#include <common/TensorDataUtils.hpp>
 #include <common/TypedTests.hpp>
 #include <cvcuda/OpRemap.hpp>
 #include <nvcv/Image.hpp>
@@ -26,6 +25,7 @@
 #include <nvcv/cuda/DropCast.hpp>
 #include <nvcv/cuda/StaticCast.hpp>
 #include <nvcv/cuda/TypeTraits.hpp>
+#include <util/TensorDataUtils.hpp>
 
 #include <iostream>
 #include <random>
@@ -132,11 +132,11 @@ NVCV_TYPED_TEST_SUITE(
     NVCV_TEST_ROW(NVCV_SHAPE(42, 42, 1), NVCV_SHAPE(42, 42, 1), NVCV_SHAPE(42, 42, 1), float1, NVCV_IMAGE_FORMAT_F32,
                   true, NVCV_INTERP_NEAREST, NVCV_INTERP_NEAREST, NVCV_REMAP_ABSOLUTE, NVCV_BORDER_CONSTANT, 72.f),
     NVCV_TEST_ROW(NVCV_SHAPE(41, 31, 2), NVCV_SHAPE(41, 31, 2), NVCV_SHAPE(2, 2, 1), uchar3, NVCV_IMAGE_FORMAT_RGB8,
-                  false, NVCV_INTERP_NEAREST, NVCV_INTERP_LINEAR, NVCV_REMAP_RELATIVE_NORMALIZED, NVCV_BORDER_REPLICATE, 0.f),
+                  false, NVCV_INTERP_NEAREST, NVCV_INTERP_LINEAR, NVCV_REMAP_ABSOLUTE_NORMALIZED, NVCV_BORDER_REPLICATE, 0.f),
     NVCV_TEST_ROW(NVCV_SHAPE(44, 33, 2), NVCV_SHAPE(44, 33, 2), NVCV_SHAPE(1, 1, 2), uchar3, NVCV_IMAGE_FORMAT_RGB8,
                   false, NVCV_INTERP_NEAREST, NVCV_INTERP_LINEAR, NVCV_REMAP_RELATIVE_NORMALIZED, NVCV_BORDER_REPLICATE, 0.f),
-    NVCV_TEST_ROW(NVCV_SHAPE(44, 33, 2), NVCV_SHAPE(44, 33, 2), NVCV_SHAPE(4, 3, 2), uchar3, NVCV_IMAGE_FORMAT_RGB8,
-                  true, NVCV_INTERP_NEAREST, NVCV_INTERP_LINEAR, NVCV_REMAP_RELATIVE_NORMALIZED, NVCV_BORDER_REPLICATE, 0.f),
+    NVCV_TEST_ROW(NVCV_SHAPE(44, 32, 2), NVCV_SHAPE(44, 32, 2), NVCV_SHAPE(4, 3, 2), uchar3, NVCV_IMAGE_FORMAT_RGB8,
+                  true, NVCV_INTERP_NEAREST, NVCV_INTERP_LINEAR, NVCV_REMAP_ABSOLUTE, NVCV_BORDER_REPLICATE, 0.f),
     NVCV_TEST_ROW(NVCV_SHAPE(23, 13, 3), NVCV_SHAPE(25, 27, 3), NVCV_SHAPE(23, 13, 3), uchar4, NVCV_IMAGE_FORMAT_RGBA8,
                   false, NVCV_INTERP_LINEAR, NVCV_INTERP_LINEAR, NVCV_REMAP_ABSOLUTE_NORMALIZED, NVCV_BORDER_REFLECT, 0.f),
     NVCV_TEST_ROW(NVCV_SHAPE(23, 13, 3), NVCV_SHAPE(25, 27, 3), NVCV_SHAPE(25, 27, 3), uchar4, NVCV_IMAGE_FORMAT_RGBA8,
@@ -177,9 +177,9 @@ TYPED_TEST(OpRemap, correct_output)
 
     const float4 borderValue = nvcv::cuda::SetAll<float4>(ttype::GetValue<TypeParam, 10>);
 
-    nvcv::Tensor srcTensor = test::CreateTensor(srcShape.z, srcShape.x, srcShape.y, imgFormat);
-    nvcv::Tensor dstTensor = test::CreateTensor(dstShape.z, dstShape.x, dstShape.y, imgFormat);
-    nvcv::Tensor mapTensor = test::CreateTensor(mapShape.z, mapShape.x, mapShape.y, nvcv::FMT_2F32);
+    nvcv::Tensor srcTensor = nvcv::util::CreateTensor(srcShape.z, srcShape.x, srcShape.y, imgFormat);
+    nvcv::Tensor dstTensor = nvcv::util::CreateTensor(dstShape.z, dstShape.x, dstShape.y, imgFormat);
+    nvcv::Tensor mapTensor = nvcv::util::CreateTensor(mapShape.z, mapShape.x, mapShape.y, nvcv::FMT_2F32);
 
     auto srcData = srcTensor.exportData<nvcv::TensorDataStridedCuda>();
     auto dstData = dstTensor.exportData<nvcv::TensorDataStridedCuda>();
@@ -269,7 +269,7 @@ TYPED_TEST(OpRemap, varshape_correct_output)
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
-    std::vector<std::unique_ptr<nvcv::Image>> imgSrc;
+    std::vector<nvcv::Image> imgSrc;
 
     std::vector<std::vector<uint8_t>> srcVec(srcShape.z);
 
@@ -282,24 +282,23 @@ TYPED_TEST(OpRemap, varshape_correct_output)
 
     for (int z = 0; z < srcShape.z; ++z)
     {
-        imgSrc.emplace_back(std::make_unique<nvcv::Image>(nvcv::Size2D{srcRandW(g_rng), srcRandH(g_rng)}, imgFormat));
+        imgSrc.emplace_back(nvcv::Size2D{srcRandW(g_rng), srcRandH(g_rng)}, imgFormat);
 
-        auto imgData = imgSrc[z]->exportData<nvcv::ImageDataStridedCuda>();
+        auto imgData = imgSrc[z].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_NE(imgData, nvcv::NullOpt);
 
         int   srcRowStride = imgData->plane(0).rowStride;
         long2 srcStrides   = long2{srcRowStride, sizeof(ValueType)};
 
-        srcVec[z].resize(srcRowStride * imgSrc[z]->size().h);
+        srcVec[z].resize(srcRowStride * imgSrc[z].size().h);
 
-        for (int y = 0; y < imgSrc[z]->size().h; ++y)
-            for (int x = 0; x < imgSrc[z]->size().w; ++x)
+        for (int y = 0; y < imgSrc[z].size().h; ++y)
+            for (int x = 0; x < imgSrc[z].size().w; ++x)
                 for (int k = 0; k < cuda::NumElements<ValueType>; ++k)
                     cuda::GetElement(test::ValueAt<ValueType>(srcVec[z], srcStrides, int2{x, y}), k) = rand(g_rng);
 
-        ASSERT_EQ(cudaSuccess,
-                  cudaMemcpy2DAsync(imgData->plane(0).basePtr, srcRowStride, srcVec[z].data(), srcRowStride,
-                                    srcRowStride, imgSrc[z]->size().h, cudaMemcpyHostToDevice, stream));
+        ASSERT_EQ(cudaSuccess, cudaMemcpy2D(imgData->plane(0).basePtr, srcRowStride, srcVec[z].data(), srcRowStride,
+                                            srcRowStride, imgSrc[z].size().h, cudaMemcpyHostToDevice));
     }
 
     std::uniform_int_distribution<int> dstRandW(dstShape.x * 0.8, dstShape.x * 1.2);
@@ -308,15 +307,15 @@ TYPED_TEST(OpRemap, varshape_correct_output)
     nvcv::ImageBatchVarShape batchSrc(srcShape.z);
     batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
 
-    std::vector<std::unique_ptr<nvcv::Image>> imgDst;
+    std::vector<nvcv::Image> imgDst;
     for (int z = 0; z < dstShape.z; ++z)
     {
-        imgDst.emplace_back(std::make_unique<nvcv::Image>(nvcv::Size2D{dstRandW(g_rng), dstRandH(g_rng)}, imgFormat));
+        imgDst.emplace_back(nvcv::Size2D{dstRandW(g_rng), dstRandH(g_rng)}, imgFormat);
     }
     nvcv::ImageBatchVarShape batchDst(dstShape.z);
     batchDst.pushBack(imgDst.begin(), imgDst.end());
 
-    nvcv::Tensor mapTensor = test::CreateTensor(mapShape.z, mapShape.x, mapShape.y, nvcv::FMT_2F32);
+    nvcv::Tensor mapTensor = nvcv::util::CreateTensor(mapShape.z, mapShape.x, mapShape.y, nvcv::FMT_2F32);
 
     auto mapData = mapTensor.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_TRUE(mapData);
@@ -351,10 +350,10 @@ TYPED_TEST(OpRemap, varshape_correct_output)
     {
         SCOPED_TRACE(z);
 
-        const auto srcData = imgSrc[z]->exportData<nvcv::ImageDataStridedCuda>();
+        const auto srcData = imgSrc[z].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_EQ(srcData->numPlanes(), 1);
 
-        const auto dstData = imgDst[z]->exportData<nvcv::ImageDataStridedCuda>();
+        const auto dstData = imgDst[z].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_EQ(dstData->numPlanes(), 1);
 
         long3 srcStrides{0, srcData->plane(0).rowStride, sizeof(ValueType)};

@@ -35,7 +35,7 @@ WarpAffine::WarpAffine(const int32_t maxVarShapeBatchSize)
     m_legacyOpVarShape = std::make_unique<legacy::WarpAffineVarShape>(maxVarShapeBatchSize);
 }
 
-void WarpAffine::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &out,
+void WarpAffine::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                             const NVCVAffineTransform xform, const int32_t flags, const NVCVBorderType borderMode,
                             const float4 borderValue) const
 {
@@ -56,8 +56,8 @@ void WarpAffine::operator()(cudaStream_t stream, const nvcv::ITensor &in, const 
     NVCV_CHECK_THROW(m_legacyOp->infer(*inData, *outData, xform, flags, borderMode, borderValue, stream));
 }
 
-void WarpAffine::operator()(cudaStream_t stream, const nvcv::IImageBatchVarShape &in,
-                            const nvcv::IImageBatchVarShape &out, const nvcv::ITensor &transMatrix, const int32_t flags,
+void WarpAffine::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
+                            const nvcv::ImageBatchVarShape &out, const nvcv::Tensor &transMatrix, const int32_t flags,
                             const NVCVBorderType borderMode, const float4 borderValue) const
 {
     auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);

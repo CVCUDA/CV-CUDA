@@ -34,7 +34,7 @@ Laplacian::Laplacian()
     m_legacyOpVarShape = std::make_unique<legacy::LaplacianVarShape>(maxIn, maxOut);
 }
 
-void Laplacian::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &out, const int ksize,
+void Laplacian::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const int ksize,
                            const float scale, const NVCVBorderType borderMode) const
 {
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
@@ -54,8 +54,8 @@ void Laplacian::operator()(cudaStream_t stream, const nvcv::ITensor &in, const n
     NVCV_CHECK_THROW(m_legacyOp->infer(*inData, *outData, ksize, scale, borderMode, stream));
 }
 
-void Laplacian::operator()(cudaStream_t stream, const nvcv::IImageBatchVarShape &in, nvcv::IImageBatchVarShape &out,
-                           const nvcv::ITensor &ksize, const nvcv::ITensor &scale, NVCVBorderType borderMode) const
+void Laplacian::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
+                           const nvcv::Tensor &ksize, const nvcv::Tensor &scale, NVCVBorderType borderMode) const
 {
     auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (inData == nullptr)

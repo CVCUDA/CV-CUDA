@@ -148,7 +148,7 @@ EraseVarShape::~EraseVarShape()
     temp_storage = nullptr;
 }
 
-ErrorCode EraseVarShape::infer(const nvcv::IImageBatchVarShape &inbatch, const nvcv::IImageBatchVarShape &outbatch,
+ErrorCode EraseVarShape::infer(const nvcv::ImageBatchVarShape &inbatch, const nvcv::ImageBatchVarShape &outbatch,
                                const TensorDataStridedCuda &anchor, const TensorDataStridedCuda &erasing,
                                const TensorDataStridedCuda &values, const TensorDataStridedCuda &imgIdx, bool random,
                                unsigned int seed, bool inplace, cudaStream_t stream)
@@ -254,8 +254,8 @@ ErrorCode EraseVarShape::infer(const nvcv::IImageBatchVarShape &inbatch, const n
         for (auto init = inbatch.begin(), outit = outbatch.begin(); init != inbatch.end(), outit != outbatch.end();
              ++init, ++outit)
         {
-            const IImage            &inimg      = *init;
-            const IImage            &outimg     = *outit;
+            const Image             &inimg      = *init;
+            const Image             &outimg     = *outit;
             auto                     inimgdata  = inimg.exportData<ImageDataStridedCuda>();
             auto                     outimgdata = outimg.exportData<ImageDataStridedCuda>();
             const ImagePlaneStrided &inplane    = inimgdata->plane(0);

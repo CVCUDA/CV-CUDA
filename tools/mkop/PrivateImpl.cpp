@@ -31,7 +31,7 @@ __OPNAME__::__OPNAME__()
     //TODO init
 }
 
-void __OPNAME__::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &out) const
+void __OPNAME__::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out) const
 {
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
     if (inData == nullptr)

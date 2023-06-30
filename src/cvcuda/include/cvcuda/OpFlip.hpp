@@ -30,10 +30,10 @@
 #include "OpFlip.h"
 
 #include <cuda_runtime.h>
-#include <nvcv/IImageBatch.hpp>
-#include <nvcv/ITensor.hpp>
+#include <nvcv/ImageBatch.hpp>
 #include <nvcv/ImageFormat.hpp>
 #include <nvcv/Size.hpp>
+#include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
 namespace cvcuda {
@@ -44,8 +44,9 @@ public:
     explicit Flip(int32_t maxVarShapeBatchSize = 0);
     ~Flip();
 
-    void operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out, int32_t flipCode);
-    void operator()(cudaStream_t stream, nvcv::IImageBatch &in, nvcv::IImageBatch &out, nvcv::ITensor &flipCode);
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, int32_t flipCode);
+    void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
+                    const nvcv::Tensor &flipCode);
 
     virtual NVCVOperatorHandle handle() const noexcept override;
 
@@ -65,13 +66,13 @@ inline Flip::~Flip()
     m_handle = nullptr;
 }
 
-inline void Flip::operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out, int32_t flipCode)
+inline void Flip::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, int32_t flipCode)
 {
     nvcv::detail::CheckThrow(cvcudaFlipSubmit(m_handle, stream, in.handle(), out.handle(), flipCode));
 }
 
-inline void Flip::operator()(cudaStream_t stream, nvcv::IImageBatch &in, nvcv::IImageBatch &out,
-                             nvcv::ITensor &flipCode)
+inline void Flip::operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
+                             const nvcv::Tensor &flipCode)
 {
     nvcv::detail::CheckThrow(cvcudaFlipVarShapeSubmit(m_handle, stream, in.handle(), out.handle(), flipCode.handle()));
 }

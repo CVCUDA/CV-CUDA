@@ -30,10 +30,10 @@
 #include "OpBilateralFilter.h"
 
 #include <cuda_runtime.h>
-#include <nvcv/IImageBatch.hpp>
-#include <nvcv/ITensor.hpp>
+#include <nvcv/ImageBatch.hpp>
 #include <nvcv/ImageFormat.hpp>
 #include <nvcv/Size.hpp>
+#include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
 namespace cvcuda {
@@ -45,11 +45,12 @@ public:
 
     ~BilateralFilter();
 
-    void operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out, int diameter, float sigmaColor,
-                    float sigmaSpace, NVCVBorderType borderMode);
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, int diameter,
+                    float sigmaColor, float sigmaSpace, NVCVBorderType borderMode);
 
-    void operator()(cudaStream_t stream, nvcv::IImageBatch &in, nvcv::IImageBatch &out, nvcv::ITensor &diameterData,
-                    nvcv::ITensor &sigmaColorData, nvcv::ITensor &sigmaSpace, NVCVBorderType borderMode);
+    void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
+                    const nvcv::Tensor &diameterData, const nvcv::Tensor &sigmaColorData,
+                    const nvcv::Tensor &sigmaSpace, NVCVBorderType borderMode);
 
     virtual NVCVOperatorHandle handle() const noexcept override;
 
@@ -69,16 +70,16 @@ inline BilateralFilter::~BilateralFilter()
     m_handle = nullptr;
 }
 
-inline void BilateralFilter::operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out, int diameter,
-                                        float sigmaColor, float sigmaSpace, NVCVBorderType borderMode)
+inline void BilateralFilter::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                                        int diameter, float sigmaColor, float sigmaSpace, NVCVBorderType borderMode)
 {
     nvcv::detail::CheckThrow(cvcudaBilateralFilterSubmit(m_handle, stream, in.handle(), out.handle(), diameter,
                                                          sigmaColor, sigmaSpace, borderMode));
 }
 
-inline void BilateralFilter::operator()(cudaStream_t stream, nvcv::IImageBatch &in, nvcv::IImageBatch &out,
-                                        nvcv::ITensor &diameterData, nvcv::ITensor &sigmaColorData,
-                                        nvcv::ITensor &sigmaSpaceData, NVCVBorderType borderMode)
+inline void BilateralFilter::operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
+                                        const nvcv::Tensor &diameterData, const nvcv::Tensor &sigmaColorData,
+                                        const nvcv::Tensor &sigmaSpaceData, NVCVBorderType borderMode)
 {
     nvcv::detail::CheckThrow(cvcudaBilateralFilterVarShapeSubmit(m_handle, stream, in.handle(), out.handle(),
                                                                  diameterData.handle(), sigmaColorData.handle(),

@@ -30,10 +30,10 @@
 #include "OpPillowResize.h"
 
 #include <cuda_runtime.h>
-#include <nvcv/IImageBatch.hpp>
-#include <nvcv/ITensor.hpp>
+#include <nvcv/ImageBatch.hpp>
 #include <nvcv/ImageFormat.hpp>
 #include <nvcv/Size.hpp>
+#include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
 namespace cvcuda {
@@ -45,10 +45,10 @@ public:
 
     ~PillowResize();
 
-    void operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out,
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                     const NVCVInterpolationType interpolation);
 
-    void operator()(cudaStream_t stream, nvcv::IImageBatchVarShape &in, nvcv::IImageBatchVarShape &out,
+    void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
                     const NVCVInterpolationType interpolation);
 
     virtual NVCVOperatorHandle handle() const noexcept override;
@@ -70,14 +70,14 @@ inline PillowResize::~PillowResize()
     m_handle = nullptr;
 }
 
-inline void PillowResize::operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out,
+inline void PillowResize::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                                      const NVCVInterpolationType interpolation)
 {
     nvcv::detail::CheckThrow(cvcudaPillowResizeSubmit(m_handle, stream, in.handle(), out.handle(), interpolation));
 }
 
-inline void PillowResize::operator()(cudaStream_t stream, nvcv::IImageBatchVarShape &in, nvcv::IImageBatchVarShape &out,
-                                     const NVCVInterpolationType interpolation)
+inline void PillowResize::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
+                                     const nvcv::ImageBatchVarShape &out, const NVCVInterpolationType interpolation)
 {
     nvcv::detail::CheckThrow(
         nvcvopPillowResizeVarShapeSubmit(m_handle, stream, in.handle(), out.handle(), interpolation));

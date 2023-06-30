@@ -17,13 +17,13 @@
 
 #include "Definitions.hpp"
 
-#include <common/TensorDataUtils.hpp>
 #include <common/TypedTests.hpp>
 #include <cvcuda/OpReformat.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
 #include <nvcv/cuda/TypeTraits.hpp>
+#include <util/TensorDataUtils.hpp>
 
 #include <iostream>
 #include <random>
@@ -100,8 +100,8 @@ TYPED_TEST(OpReformat, correct_output)
 
     using ValueType = ttype::GetType<TypeParam, 5>;
 
-    nvcv::Tensor inTensor  = test::CreateTensor(batches, width, height, inFormat);
-    nvcv::Tensor outTensor = test::CreateTensor(batches, width, height, outFormat);
+    nvcv::Tensor inTensor  = nvcv::util::CreateTensor(batches, width, height, inFormat);
+    nvcv::Tensor outTensor = nvcv::util::CreateTensor(batches, width, height, outFormat);
 
     auto inData  = inTensor.exportData<nvcv::TensorDataStridedCuda>();
     auto outData = outTensor.exportData<nvcv::TensorDataStridedCuda>();

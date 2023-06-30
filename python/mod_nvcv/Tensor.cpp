@@ -182,20 +182,20 @@ std::shared_ptr<Tensor> Tensor::WrapImage(Image &img)
 }
 
 Tensor::Tensor(const nvcv::Tensor::Requirements &reqs)
-    : m_impl{std::make_unique<nvcv::Tensor>(reqs)}
+    : m_impl{reqs}
     , m_key{reqs}
 {
 }
 
 Tensor::Tensor(const nvcv::TensorData &data, py::object wrappedObject)
-    : m_impl{std::make_unique<nvcv::TensorWrapData>(data)}
+    : m_impl{nvcv::TensorWrapData(data)}
     , m_key{}
     , m_wrappedObject(wrappedObject)
 {
 }
 
 Tensor::Tensor(Image &img)
-    : m_impl{std::make_unique<nvcv::TensorWrapImage>(img.impl())}
+    : m_impl{nvcv::TensorWrapImage(img.impl())}
     , m_key{}
     , m_wrappedObject(py::cast(img))
 {
@@ -211,24 +211,24 @@ std::shared_ptr<const Tensor> Tensor::shared_from_this() const
     return std::static_pointer_cast<const Tensor>(Container::shared_from_this());
 }
 
-nvcv::ITensor &Tensor::impl()
+nvcv::Tensor &Tensor::impl()
 {
-    return *m_impl;
+    return m_impl;
 }
 
-const nvcv::ITensor &Tensor::impl() const
+const nvcv::Tensor &Tensor::impl() const
 {
-    return *m_impl;
+    return m_impl;
 }
 
 Shape Tensor::shape() const
 {
-    return CreateShape(m_impl->shape());
+    return CreateShape(m_impl.shape());
 }
 
 std::optional<nvcv::TensorLayout> Tensor::layout() const
 {
-    const nvcv::TensorLayout &layout = m_impl->layout();
+    const nvcv::TensorLayout &layout = m_impl.layout();
     if (layout != nvcv::TENSOR_NONE)
     {
         return layout;
@@ -241,12 +241,12 @@ std::optional<nvcv::TensorLayout> Tensor::layout() const
 
 nvcv::DataType Tensor::dtype() const
 {
-    return m_impl->dtype();
+    return m_impl.dtype();
 }
 
 int Tensor::rank() const
 {
-    return m_impl->rank();
+    return m_impl.rank();
 }
 
 Tensor::Key::Key(const nvcv::Tensor::Requirements &reqs)
@@ -274,7 +274,7 @@ size_t Tensor::Key::doGetHash() const
     }
 }
 
-bool Tensor::Key::doIsEqual(const IKey &that_) const
+bool Tensor::Key::doIsCompatible(const IKey &that_) const
 {
     const Key &that = static_cast<const Key &>(that_);
 
@@ -316,7 +316,7 @@ static py::object ToPython(const nvcv::TensorData &tensorData, py::object owner)
 
 py::object Tensor::cuda() const
 {
-    nvcv::TensorData tensorData = m_impl->exportData();
+    nvcv::TensorData tensorData = m_impl.exportData();
 
     // Note: we can't cache the returned ExternalBuffer because it is holding
     // a reference to us. Doing so would lead to mem leaks.

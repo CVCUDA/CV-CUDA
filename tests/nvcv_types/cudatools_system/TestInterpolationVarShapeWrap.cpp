@@ -116,19 +116,18 @@ TYPED_TEST(InterpolationVarShapeWrapTest, correct_shift)
     std::uniform_int_distribution<int>     randSize{-varSize, varSize};
     std::uniform_int_distribution<uint8_t> randValues{0, 255};
 
-    std::vector<std::unique_ptr<nvcv::Image>> srcImageList;
-    std::vector<std::vector<uint8_t>>         srcVec(batches);
+    std::vector<nvcv::Image>          srcImageList;
+    std::vector<std::vector<uint8_t>> srcVec(batches);
 
     for (int i = 0; i < srcImageBatch.capacity(); ++i)
     {
-        srcImageList.emplace_back(
-            std::make_unique<nvcv::Image>(nvcv::Size2D{width + randSize(randEng), height + randSize(randEng)}, format));
+        srcImageList.emplace_back(nvcv::Size2D{width + randSize(randEng), height + randSize(randEng)}, format);
 
-        auto srcData = srcImageList[i]->exportData<nvcv::ImageDataStridedCuda>();
+        auto srcData = srcImageList[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_NE(srcData, nvcv::NullOpt);
 
         int srcRowStride = srcData->plane(0).rowStride;
-        int srcHeight    = srcImageList[i]->size().h;
+        int srcHeight    = srcImageList[i].size().h;
 
         srcVec[i].resize(srcHeight * srcRowStride);
         std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return randValues(randEng); });
@@ -140,17 +139,17 @@ TYPED_TEST(InterpolationVarShapeWrapTest, correct_shift)
 
     srcImageBatch.pushBack(srcImageList.begin(), srcImageList.end());
 
-    std::vector<std::unique_ptr<nvcv::Image>> dstImageList;
+    std::vector<nvcv::Image> dstImageList;
 
     for (int i = 0; i < dstImageBatch.capacity(); ++i)
     {
-        dstImageList.emplace_back(std::make_unique<nvcv::Image>(srcImageList[i]->size(), srcImageList[i]->format()));
+        dstImageList.emplace_back(srcImageList[i].size(), srcImageList[i].format());
 
-        auto dstData = dstImageList[i]->exportData<nvcv::ImageDataStridedCuda>();
+        auto dstData = dstImageList[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_NE(dstData, nvcv::NullOpt);
 
         int dstRowStride = dstData->plane(0).rowStride;
-        int dstHeight    = dstImageList[i]->size().h;
+        int dstHeight    = dstImageList[i].size().h;
 
         std::vector<uint8_t> dstVec(dstHeight * dstRowStride, 0);
 
@@ -181,14 +180,14 @@ TYPED_TEST(InterpolationVarShapeWrapTest, correct_shift)
     {
         SCOPED_TRACE(i);
 
-        const auto srcData = srcImageList[i]->exportData<nvcv::ImageDataStridedCuda>();
+        const auto srcData = srcImageList[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_EQ(srcData->numPlanes(), 1);
 
-        const auto dstData = dstImageList[i]->exportData<nvcv::ImageDataStridedCuda>();
+        const auto dstData = dstImageList[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_EQ(dstData->numPlanes(), 1);
 
-        int2 srcSize = int2{srcImageList[i]->size().w, srcImageList[i]->size().h};
-        int2 dstSize = int2{dstImageList[i]->size().w, dstImageList[i]->size().h};
+        int2 srcSize = int2{srcImageList[i].size().w, srcImageList[i].size().h};
+        int2 dstSize = int2{dstImageList[i].size().w, dstImageList[i].size().h};
         ASSERT_EQ(srcSize, dstSize);
 
         int srcRowStride = srcData->plane(0).rowStride;

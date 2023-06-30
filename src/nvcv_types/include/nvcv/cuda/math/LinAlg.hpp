@@ -944,6 +944,22 @@ constexpr __host__ __device__ bool operator<(const Matrix<T, M, N> &a, const Mat
     return false;
 }
 
+template<typename T, int N, int M>
+constexpr Matrix<T, N, M> as_matrix(const T (&values)[N][M])
+{
+    Matrix<T, N, M> m;
+#pragma unroll
+    for (int i = 0; i < N; i++)
+    {
+#pragma unroll
+        for (int j = 0; j < M; j++)
+        {
+            m[i][j] = values[i][j];
+        }
+    }
+    return m;
+}
+
 // Special matrices ------------------------------------------------------------
 
 template<class T, int N>

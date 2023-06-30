@@ -31,9 +31,9 @@
 #include "Types.h"
 
 #include <cuda_runtime.h>
-#include <nvcv/IImageBatch.hpp>
-#include <nvcv/ITensor.hpp>
+#include <nvcv/ImageBatch.hpp>
 #include <nvcv/ImageFormat.hpp>
+#include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
 namespace cvcuda {
@@ -45,12 +45,12 @@ public:
 
     ~WarpPerspective();
 
-    void operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out,
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                     const NVCVPerspectiveTransform transMatrix, const int32_t flags, const NVCVBorderType borderMode,
                     const float4 borderValue);
 
-    void operator()(cudaStream_t stream, nvcv::IImageBatchVarShape &in, nvcv::IImageBatchVarShape &out,
-                    nvcv::ITensor &transMatrix, const int32_t flags, const NVCVBorderType borderMode,
+    void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
+                    const nvcv::Tensor &transMatrix, const int32_t flags, const NVCVBorderType borderMode,
                     const float4 borderValue);
 
     virtual NVCVOperatorHandle handle() const noexcept override;
@@ -71,7 +71,7 @@ inline WarpPerspective::~WarpPerspective()
     m_handle = nullptr;
 }
 
-inline void WarpPerspective::operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out,
+inline void WarpPerspective::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                                         const NVCVPerspectiveTransform transMatrix, const int32_t flags,
                                         const NVCVBorderType borderMode, const float4 borderValue)
 {
@@ -79,9 +79,9 @@ inline void WarpPerspective::operator()(cudaStream_t stream, nvcv::ITensor &in, 
                                                          flags, borderMode, borderValue));
 }
 
-inline void WarpPerspective::operator()(cudaStream_t stream, nvcv::IImageBatchVarShape &in,
-                                        nvcv::IImageBatchVarShape &out, nvcv::ITensor &transMatrix, const int32_t flags,
-                                        const NVCVBorderType borderMode, const float4 borderValue)
+inline void WarpPerspective::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
+                                        const nvcv::ImageBatchVarShape &out, const nvcv::Tensor &transMatrix,
+                                        const int32_t flags, const NVCVBorderType borderMode, const float4 borderValue)
 {
     nvcv::detail::CheckThrow(cvcudaWarpPerspectiveVarShapeSubmit(m_handle, stream, in.handle(), out.handle(),
                                                                  transMatrix.handle(), flags, borderMode, borderValue));

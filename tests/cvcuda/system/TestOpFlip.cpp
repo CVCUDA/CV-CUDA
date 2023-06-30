@@ -18,7 +18,6 @@
 #include "Definitions.hpp"
 #include "FlipUtils.hpp"
 
-#include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpFlip.hpp>
 #include <nvcv/Image.hpp>
@@ -26,6 +25,7 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
 #include <nvcv/cuda/TypeTraits.hpp>
+#include <util/TensorDataUtils.hpp>
 
 #include <random>
 
@@ -62,8 +62,8 @@ TEST_P(OpFlip, correct_output)
 
     int3 shape{width, height, batches};
 
-    nvcv::Tensor inTensor  = test::CreateTensor(batches, width, height, format);
-    nvcv::Tensor outTensor = test::CreateTensor(batches, width, height, format);
+    nvcv::Tensor inTensor  = nvcv::util::CreateTensor(batches, width, height, format);
+    nvcv::Tensor outTensor = nvcv::util::CreateTensor(batches, width, height, format);
 
     auto input  = inTensor.exportData<nvcv::TensorDataStridedCuda>();
     auto output = outTensor.exportData<nvcv::TensorDataStridedCuda>();
@@ -130,40 +130,40 @@ TEST_P(OpFlip, varshape_correct_output)
     std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
     std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
 
-    std::vector<std::unique_ptr<nvcv::Image>> imgSrc;
+    std::vector<nvcv::Image> imgSrc;
 
     std::vector<std::vector<uint8_t>> srcVec(batches);
     std::vector<int>                  srcVecRowStride(batches);
 
     for (int i = 0; i < batches; ++i)
     {
-        imgSrc.emplace_back(std::make_unique<nvcv::Image>(nvcv::Size2D{udistWidth(rng), udistHeight(rng)}, format));
+        imgSrc.emplace_back(nvcv::Size2D{udistWidth(rng), udistHeight(rng)}, format);
 
-        int srcRowStride   = imgSrc[i]->size().w * format.planePixelStrideBytes(0);
+        int srcRowStride   = imgSrc[i].size().w * format.planePixelStrideBytes(0);
         srcVecRowStride[i] = srcRowStride;
 
         std::uniform_int_distribution<uint8_t> udist(0, 255);
 
-        srcVec[i].resize(imgSrc[i]->size().h * srcRowStride);
+        srcVec[i].resize(imgSrc[i].size().h * srcRowStride);
         std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return udist(rng); });
 
-        auto imgData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
+        auto imgData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_NE(imgData, nvcv::NullOpt);
 
         // Copy input data to the GPU
         ASSERT_EQ(cudaSuccess,
                   cudaMemcpy2DAsync(imgData->plane(0).basePtr, imgData->plane(0).rowStride, srcVec[i].data(),
-                                    srcRowStride, srcRowStride, imgSrc[i]->size().h, cudaMemcpyHostToDevice, stream));
+                                    srcRowStride, srcRowStride, imgSrc[i].size().h, cudaMemcpyHostToDevice, stream));
     }
 
     nvcv::ImageBatchVarShape batchSrc(batches);
     batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
 
     // Create output varshape
-    std::vector<std::unique_ptr<nvcv::Image>> imgDst;
+    std::vector<nvcv::Image> imgDst;
     for (int i = 0; i < batches; ++i)
     {
-        imgDst.emplace_back(std::make_unique<nvcv::Image>(imgSrc[i]->size(), imgSrc[i]->format()));
+        imgDst.emplace_back(imgSrc[i].size(), imgSrc[i].format());
     }
     nvcv::ImageBatchVarShape batchDst(batches);
     batchDst.pushBack(imgDst.begin(), imgDst.end());
@@ -193,10 +193,10 @@ TEST_P(OpFlip, varshape_correct_output)
     {
         SCOPED_TRACE(i);
 
-        const auto srcData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
+        const auto srcData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_EQ(srcData->numPlanes(), 1);
 
-        const auto dstData = imgDst[i]->exportData<nvcv::ImageDataStridedCuda>();
+        const auto dstData = imgDst[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_EQ(dstData->numPlanes(), 1);
 
         int dstRowStride = srcVecRowStride[i];

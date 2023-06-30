@@ -34,7 +34,7 @@ CenterCrop::CenterCrop()
     m_legacyOp = std::make_unique<legacy::CenterCrop>(maxIn, maxOut);
 }
 
-void CenterCrop::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &out,
+void CenterCrop::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                             const nvcv::Size2D &cropSize) const
 {
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();

@@ -19,7 +19,6 @@
 
 #include <common/BorderUtils.hpp>
 #include <common/InterpUtils.hpp>
-#include <common/TensorDataUtils.hpp>
 #include <common/TypedTests.hpp>
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpCropFlipNormalizeReformat.hpp>
@@ -30,6 +29,7 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
 #include <nvcv/cuda/SaturateCast.hpp>
+#include <util/TensorDataUtils.hpp>
 
 #include <cmath>
 #include <iostream>
@@ -170,7 +170,7 @@ const void testCropFlipNormalizeReformatPad(int width, int height, int numImages
     std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
     std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
 
-    std::vector<std::unique_ptr<nvcv::Image>> imgSrc;
+    std::vector<nvcv::Image> imgSrc;
 
     std::vector<std::vector<uint8_t>> srcVec(numImages);
     std::vector<int>                  srcVecRowStride(numImages);
@@ -184,30 +184,30 @@ const void testCropFlipNormalizeReformatPad(int width, int height, int numImages
     // create source images
     for (int i = 0; i < numImages; ++i)
     {
-        imgSrc.emplace_back(std::make_unique<nvcv::Image>(nvcv::Size2D{udistWidth(rng), udistHeight(rng)}, fmt));
-        max_out_width  = std::max(max_out_width, imgSrc[i]->size().w);
-        max_out_height = std::max(max_out_height, imgSrc[i]->size().h);
+        imgSrc.emplace_back(nvcv::Size2D{udistWidth(rng), udistHeight(rng)}, fmt);
+        max_out_width  = std::max(max_out_width, imgSrc[i].size().w);
+        max_out_height = std::max(max_out_height, imgSrc[i].size().h);
 
-        int srcRowStride   = imgSrc[i]->size().w * fmt.planePixelStrideBytes(0);
+        int srcRowStride   = imgSrc[i].size().w * fmt.planePixelStrideBytes(0);
         srcVecRowStride[i] = srcRowStride;
 
         std::uniform_int_distribution<uint8_t> udist(0, 255);
 
-        srcVec[i].resize(imgSrc[i]->size().h * srcRowStride * src_planes);
+        srcVec[i].resize(imgSrc[i].size().h * srcRowStride * src_planes);
 
-        for (int j = 0; j < imgSrc[i]->size().h * imgSrc[i]->size().w * numChannels; ++j)
+        for (int j = 0; j < imgSrc[i].size().h * imgSrc[i].size().w * numChannels; ++j)
         {
             reinterpret_cast<T_Src *>(srcVec[i].data())[j] = static_cast<T_Src>(udist(rng));
         }
 
-        auto imgData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
+        auto imgData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_NE(imgData, nvcv::NullOpt);
 
         // Copy input data to the GPU
         ASSERT_EQ(cudaSuccess,
                   cudaMemcpy2D(imgData->plane(0).basePtr, imgData->plane(0).rowStride, srcVec[i].data(), srcRowStride,
                                srcRowStride, // vec has no padding
-                               imgSrc[i]->size().h * src_planes, cudaMemcpyHostToDevice));
+                               imgSrc[i].size().h * src_planes, cudaMemcpyHostToDevice));
     }
 
     // Create batch
@@ -242,12 +242,12 @@ const void testCropFlipNormalizeReformatPad(int width, int height, int numImages
     std::vector<int> cropVec;
     for (int i = 0; i < numImages; i++)
     {
-        std::uniform_int_distribution<int> x_dist(-3, std::min(10, imgSrc[i]->size().w / 10) + 1);
-        std::uniform_int_distribution<int> y_dist(-3, std::min(10, imgSrc[i]->size().h / 10) + 1);
-        std::uniform_int_distribution<int> w_dist(std::max((int)(imgSrc[i]->size().w * 0.8), imgSrc[i]->size().w - 10),
-                                                  imgSrc[i]->size().w - 1);
-        std::uniform_int_distribution<int> h_dist(std::max((int)(imgSrc[i]->size().h * 0.8), imgSrc[i]->size().h - 10),
-                                                  imgSrc[i]->size().h - 1);
+        std::uniform_int_distribution<int> x_dist(-3, std::min(10, imgSrc[i].size().w / 10) + 1);
+        std::uniform_int_distribution<int> y_dist(-3, std::min(10, imgSrc[i].size().h / 10) + 1);
+        std::uniform_int_distribution<int> w_dist(std::max((int)(imgSrc[i].size().w * 0.8), imgSrc[i].size().w - 10),
+                                                  imgSrc[i].size().w - 1);
+        std::uniform_int_distribution<int> h_dist(std::max((int)(imgSrc[i].size().h * 0.8), imgSrc[i].size().h - 10),
+                                                  imgSrc[i].size().h - 1);
 
         std::vector<int> cropVecTmp = {x_dist(rng), y_dist(rng), w_dist(rng), h_dist(rng)};
 
@@ -329,8 +329,8 @@ const void testCropFlipNormalizeReformatPad(int width, int height, int numImages
     {
         SCOPED_TRACE(i);
 
-        int src_width  = imgSrc[i]->size().w;
-        int src_height = imgSrc[i]->size().h;
+        int src_width  = imgSrc[i].size().w;
+        int src_height = imgSrc[i].size().h;
 
         int dst_width  = max_out_width;
         int dst_height = max_out_height;

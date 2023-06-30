@@ -18,38 +18,54 @@
 #ifndef NVCV_TENSOR_HPP
 #define NVCV_TENSOR_HPP
 
-#include "IImage.hpp"
-#include "ITensor.hpp"
+#include "CoreResource.hpp"
+#include "Image.hpp"
 #include "ImageFormat.hpp"
 #include "Size.hpp"
+#include "Tensor.h"
 #include "TensorData.hpp"
 #include "alloc/Allocator.hpp"
 #include "detail/Callback.hpp"
 
 namespace nvcv {
 
+NVCV_IMPL_SHARED_HANDLE(Tensor);
+
 // Tensor tensor definition -------------------------------------
-class Tensor : public ITensor
+class Tensor : public CoreResource<NVCVTensorHandle, Tensor>
 {
 public:
+    using HandleType   = NVCVTensorHandle;
+    using Base         = CoreResource<NVCVTensorHandle, Tensor>;
     using Requirements = NVCVTensorRequirements;
+
+    int          rank() const;
+    TensorShape  shape() const;
+    DataType     dtype() const;
+    TensorLayout layout() const;
+
+    TensorData exportData() const;
+
+    template<typename DerivedTensorData>
+    Optional<DerivedTensorData> exportData() const
+    {
+        return exportData().cast<DerivedTensorData>();
+    }
+
+    void  setUserPointer(void *ptr);
+    void *userPointer() const;
+
     static Requirements CalcRequirements(const TensorShape &shape, DataType dtype, const MemAlignment &bufAlign = {});
     static Requirements CalcRequirements(int numImages, Size2D imgSize, ImageFormat fmt,
                                          const MemAlignment &bufAlign = {});
+
+    NVCV_IMPLEMENT_SHARED_RESOURCE(Tensor, Base);
 
     explicit Tensor(const Requirements &reqs, const Allocator &alloc = nullptr);
     explicit Tensor(const TensorShape &shape, DataType dtype, const MemAlignment &bufAlign = {},
                     const Allocator &alloc = nullptr);
     explicit Tensor(int numImages, Size2D imgSize, ImageFormat fmt, const MemAlignment &bufAlign = {},
                     const Allocator &alloc = nullptr);
-    ~Tensor();
-
-    Tensor(const Tensor &) = delete;
-
-private:
-    NVCVTensorHandle doGetHandle() const final override;
-
-    NVCVTensorHandle m_handle;
 };
 
 // TensorWrapData definition -------------------------------------
@@ -68,37 +84,13 @@ using TensorDataCleanupCallback
     = CleanupCallback<TensorDataCleanupFunc, detail::RemovePointer_t<NVCVTensorDataCleanupFunc>,
                       TranslateTensorDataCleanup>;
 
-class TensorWrapData : public ITensor
-{
-public:
-    explicit TensorWrapData(const TensorData &data, TensorDataCleanupCallback &&cleanup = {});
-    ~TensorWrapData();
-
-    TensorWrapData(const TensorWrapData &) = delete;
-
-private:
-    NVCVTensorHandle doGetHandle() const final override;
-
-    NVCVTensorHandle m_handle;
-};
-
 // TensorWrapImage definition -------------------------------------
-class TensorWrapImage : public ITensor
-{
-public:
-    explicit TensorWrapImage(const IImage &mg);
-    ~TensorWrapImage();
 
-    TensorWrapImage(const TensorWrapImage &) = delete;
+inline Tensor TensorWrapData(const TensorData &data, TensorDataCleanupCallback &&cleanup = {});
 
-private:
-    NVCVTensorHandle doGetHandle() const final override;
+inline Tensor TensorWrapImage(const Image &img);
 
-    NVCVTensorHandle m_handle;
-};
-
-// For API backward-compatibility
-using TensorWrapHandle = detail::WrapHandle<ITensor>;
+using TensorWrapHandle = NonOwningResource<Tensor>;
 
 } // namespace nvcv
 

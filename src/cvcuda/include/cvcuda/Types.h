@@ -40,8 +40,11 @@ typedef enum
     NVCV_INTERP_LINEAR    = 1,
     NVCV_INTERP_CUBIC     = 2,
     NVCV_INTERP_AREA      = 3,
+    NVCV_INTERP_LANCZOS   = 4,
     NVCV_INTERP_MAX       = 7,
-    NVCV_WARP_INVERSE_MAP = 16
+    NVCV_WARP_INVERSE_MAP = 16,
+    NVCV_INTERP_HAMMING   = 17,
+    NVCV_INTERP_BOX       = 18
 } NVCVInterpolationType;
 
 typedef enum

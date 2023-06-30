@@ -28,23 +28,23 @@ namespace t     = ::testing;
 namespace ttest = nvcv::test::type;
 
 template<class T>
-std::unique_ptr<T> CreateObj()
+T CreateObj()
 {
-    if constexpr (std::is_same_v<nvcv::IImage, T>)
+    if constexpr (std::is_same_v<nvcv::Image, T>)
     {
-        return std::make_unique<nvcv::Image>(nvcv::Size2D{64, 32}, nvcv::FMT_RGBA8);
+        return nvcv::Image(nvcv::Size2D{64, 32}, nvcv::FMT_RGBA8);
     }
-    else if constexpr (std::is_same_v<nvcv::IImageBatch, T>)
+    else if constexpr (std::is_same_v<nvcv::ImageBatch, T>)
     {
-        return std::make_unique<nvcv::ImageBatchVarShape>(32);
+        return nvcv::ImageBatchVarShape(32);
     }
     else if constexpr (std::is_same_v<nvcv::Allocator, T>)
     {
-        return std::make_unique<nvcv::CustomAllocator<>>();
+        return nvcv::CustomAllocator<>();
     }
-    else if constexpr (std::is_same_v<nvcv::ITensor, T>)
+    else if constexpr (std::is_same_v<nvcv::Tensor, T>)
     {
-        return std::make_unique<nvcv::Tensor>(nvcv::TensorShape({32, 12, 4}, nvcv::TENSOR_NONE), nvcv::TYPE_U8);
+        return nvcv::Tensor(nvcv::TensorShape({32, 12, 4}, nvcv::TENSOR_NONE), nvcv::TYPE_U8);
     }
     else
     {
@@ -55,11 +55,11 @@ std::unique_ptr<T> CreateObj()
 template<class T>
 void SetMaxCount(int32_t maxCount)
 {
-    if constexpr (std::is_same_v<nvcv::IImage, T>)
+    if constexpr (std::is_same_v<nvcv::Image, T>)
     {
         nvcv::cfg::SetMaxImageCount(maxCount);
     }
-    else if constexpr (std::is_same_v<nvcv::IImageBatch, T>)
+    else if constexpr (std::is_same_v<nvcv::ImageBatch, T>)
     {
         nvcv::cfg::SetMaxImageBatchCount(maxCount);
     }
@@ -67,7 +67,7 @@ void SetMaxCount(int32_t maxCount)
     {
         nvcv::cfg::SetMaxAllocatorCount(maxCount);
     }
-    else if constexpr (std::is_same_v<nvcv::ITensor, T>)
+    else if constexpr (std::is_same_v<nvcv::Tensor, T>)
     {
         nvcv::cfg::SetMaxTensorCount(maxCount);
     }
@@ -77,7 +77,7 @@ void SetMaxCount(int32_t maxCount)
     }
 }
 
-using AllCoreTypes = ttest::Types<nvcv::IImage, nvcv::IImageBatch, nvcv::ITensor, nvcv::Allocator>;
+using AllCoreTypes = ttest::Types<nvcv::Image, nvcv::ImageBatch, nvcv::Tensor, nvcv::Allocator>;
 
 template<class T>
 class ConfigTests : public ::testing::Test
@@ -94,7 +94,7 @@ NVCV_TYPED_TEST_SUITE_F(ConfigTests, AllCoreTypes);
 
 TYPED_TEST(ConfigTests, set_max_obj_count_works)
 {
-    std::vector<std::unique_ptr<TypeParam>> objs;
+    std::vector<TypeParam> objs;
 
     ASSERT_NO_THROW(SetMaxCount<TypeParam>(5));
 
@@ -112,7 +112,7 @@ TYPED_TEST(ConfigTests, set_max_obj_count_works)
 
 TYPED_TEST(ConfigTests, cant_change_limits_when_objects_are_alive)
 {
-    std::unique_ptr<TypeParam> obj = CreateObj<TypeParam>();
+    TypeParam obj = CreateObj<TypeParam>();
 
     NVCV_ASSERT_STATUS(NVCV_ERROR_INVALID_OPERATION, SetMaxCount<TypeParam>(5));
 

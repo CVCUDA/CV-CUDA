@@ -28,7 +28,7 @@
 #include "OpNonMaximumSuppression.h"
 
 #include <cuda_runtime.h>
-#include <nvcv/ITensor.hpp>
+#include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
 namespace cvcuda {
@@ -40,8 +40,8 @@ public:
 
     ~NonMaximumSuppression();
 
-    void operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out, nvcv::ITensor &scores,
-                    float score_threshold, float iou_threshold);
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const nvcv::Tensor &scores,
+                    float scoreThreshold, float iouThreshold);
 
     virtual NVCVOperatorHandle handle() const noexcept override;
 
@@ -60,11 +60,11 @@ inline NonMaximumSuppression::~NonMaximumSuppression()
     nvcvOperatorDestroy(m_handle);
 }
 
-inline void NonMaximumSuppression::operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out,
-                                              nvcv::ITensor &scores, float score_threshold, float iou_threshold)
+inline void NonMaximumSuppression::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                                              const nvcv::Tensor &scores, float scoreThreshold, float iouThreshold)
 {
     nvcv::detail::CheckThrow(cvcudaNonMaximumSuppressionSubmit(m_handle, stream, in.handle(), out.handle(),
-                                                               scores.handle(), score_threshold, iou_threshold));
+                                                               scores.handle(), scoreThreshold, iouThreshold));
 }
 
 inline NVCVOperatorHandle NonMaximumSuppression::handle() const noexcept

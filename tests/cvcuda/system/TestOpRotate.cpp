@@ -346,18 +346,18 @@ TEST_P(OpRotate, varshape_correct_output)
     auto shiftTensorDataAccess = nvcv::TensorDataAccessStrided::Create(*shiftTensorData);
     ASSERT_TRUE(shiftTensorDataAccess);
 
-    std::vector<std::unique_ptr<nvcv::Image>> imgSrc, imgDst;
-    std::vector<double>                       angleDegVecs;
-    std::vector<double2>                      shiftVecs;
+    std::vector<nvcv::Image> imgSrc, imgDst;
+    std::vector<double>      angleDegVecs;
+    std::vector<double2>     shiftVecs;
 
     for (int i = 0; i < numberOfImages; ++i)
     {
         int tmpWidth  = i == 0 ? srcWidthBase : rndSrcWidth(randEng);
         int tmpHeight = i == 0 ? srcHeightBase : rndSrcHeight(randEng);
 
-        imgSrc.emplace_back(std::make_unique<nvcv::Image>(nvcv::Size2D{tmpWidth, tmpHeight}, fmt));
+        imgSrc.emplace_back(nvcv::Size2D{tmpWidth, tmpHeight}, fmt);
 
-        imgDst.emplace_back(std::make_unique<nvcv::Image>(nvcv::Size2D{tmpWidth, tmpHeight}, fmt));
+        imgDst.emplace_back(nvcv::Size2D{tmpWidth, tmpHeight}, fmt);
 
         double2 shift    = {-1, -1};
         double  angleDeg = i == 0 ? angleDegBase : rndAngle(randEng);
@@ -397,7 +397,7 @@ TEST_P(OpRotate, varshape_correct_output)
     // Populate input
     for (int i = 0; i < numberOfImages; ++i)
     {
-        const auto srcData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
+        const auto srcData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
         assert(srcData->numPlanes() == 1);
 
         int srcWidth  = srcData->plane(0).width;
@@ -435,12 +435,12 @@ TEST_P(OpRotate, varshape_correct_output)
     {
         SCOPED_TRACE(i);
 
-        const auto srcData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
+        const auto srcData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
         assert(srcData->numPlanes() == 1);
         int srcWidth  = srcData->plane(0).width;
         int srcHeight = srcData->plane(0).height;
 
-        const auto dstData = imgDst[i]->exportData<nvcv::ImageDataStridedCuda>();
+        const auto dstData = imgDst[i].exportData<nvcv::ImageDataStridedCuda>();
         assert(dstData->numPlanes() == 1);
 
         int dstWidth  = dstData->plane(0).width;

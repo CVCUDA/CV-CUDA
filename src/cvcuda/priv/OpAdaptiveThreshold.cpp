@@ -35,7 +35,7 @@ AdaptiveThreshold::AdaptiveThreshold(int32_t maxBlockSize, int32_t maxVarShapeBa
         = std::make_unique<legacy::AdaptiveThresholdVarShape>(maxIn, maxOut, maxBlockSize, maxVarShapeBatchSize);
 }
 
-void AdaptiveThreshold::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &out,
+void AdaptiveThreshold::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                                    const double maxValue, const NVCVAdaptiveThresholdType adaptiveMethod,
                                    const NVCVThresholdType thresholdType, const int32_t blockSize, const double c) const
 {
@@ -57,11 +57,11 @@ void AdaptiveThreshold::operator()(cudaStream_t stream, const nvcv::ITensor &in,
         m_legacyOp->infer(*inData, *outData, maxValue, adaptiveMethod, thresholdType, blockSize, c, stream));
 }
 
-void AdaptiveThreshold::operator()(cudaStream_t stream, const nvcv::IImageBatchVarShape &in,
-                                   const nvcv::IImageBatchVarShape &out, const nvcv::ITensor &maxValue,
+void AdaptiveThreshold::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
+                                   const nvcv::ImageBatchVarShape &out, const nvcv::Tensor &maxValue,
                                    const NVCVAdaptiveThresholdType adaptiveMethod,
-                                   const NVCVThresholdType thresholdType, const nvcv::ITensor &blockSize,
-                                   const nvcv::ITensor &c) const
+                                   const NVCVThresholdType thresholdType, const nvcv::Tensor &blockSize,
+                                   const nvcv::Tensor &c) const
 {
     auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (inData == nullptr)

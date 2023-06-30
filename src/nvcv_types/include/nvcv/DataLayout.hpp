@@ -307,7 +307,7 @@ struct PackingParams
 
 inline Packing MakePacking(const PackingParams &params)
 {
-    NVCVPackingParams p;
+    NVCVPackingParams p{};
     p.byteOrder = static_cast<NVCVByteOrder>(params.byteOrder);
     p.swizzle   = static_cast<NVCVSwizzle>(params.swizzle);
     for (size_t i = 0; i < params.bits.size(); ++i)
@@ -315,7 +315,7 @@ inline Packing MakePacking(const PackingParams &params)
         p.bits[i] = params.bits[i];
     }
 
-    NVCVPacking out;
+    NVCVPacking out{};
     detail::CheckThrow(nvcvMakePacking(&out, &p));
     return static_cast<Packing>(out);
 };

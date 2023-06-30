@@ -30,8 +30,8 @@
 #include "OpCustomCrop.h"
 
 #include <cuda_runtime.h>
-#include <nvcv/ITensor.hpp>
 #include <nvcv/ImageFormat.hpp>
+#include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
 namespace cvcuda {
@@ -43,7 +43,7 @@ public:
 
     ~CustomCrop();
 
-    void operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out, const NVCVRectI cropRect);
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const NVCVRectI cropRect);
 
     virtual NVCVOperatorHandle handle() const noexcept override;
 
@@ -63,7 +63,8 @@ inline CustomCrop::~CustomCrop()
     m_handle = nullptr;
 }
 
-inline void CustomCrop::operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &out, const NVCVRectI cropRect)
+inline void CustomCrop::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                                   const NVCVRectI cropRect)
 {
     nvcv::detail::CheckThrow(cvcudaCustomCropSubmit(m_handle, stream, in.handle(), out.handle(), cropRect));
 }

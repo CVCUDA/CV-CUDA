@@ -321,8 +321,8 @@ TEST_P(OpMedianBlur, varshape_correct_output)
     std::uniform_int_distribution<int> rndSrcKSizeWidth(ksize.w * 0.8, ksize.w * 1.1);
     std::uniform_int_distribution<int> rndSrcKSizeHeight(ksize.h * 0.8, ksize.h * 1.1);
 
-    std::vector<std::unique_ptr<nvcv::Image>> imgSrc, imgSrcBrdReplicate, imgDst;
-    std::vector<nvcv::Size2D>                 ksizeVecs;
+    std::vector<nvcv::Image>  imgSrc, imgSrcBrdReplicate, imgDst;
+    std::vector<nvcv::Size2D> ksizeVecs;
 
     for (int i = 0; i < numberOfImages; ++i)
     {
@@ -338,11 +338,10 @@ TEST_P(OpMedianBlur, varshape_correct_output)
         int tmpBrdReplicateWidth  = tmpWidth + (ksize.w / 2) * 2;
         int tmpBrdReplicateHeight = tmpHeight + (ksize.h / 2) * 2;
 
-        imgSrc.emplace_back(std::make_unique<nvcv::Image>(nvcv::Size2D{tmpWidth, tmpHeight}, fmt));
-        imgSrcBrdReplicate.emplace_back(
-            std::make_unique<nvcv::Image>(nvcv::Size2D{tmpBrdReplicateWidth, tmpBrdReplicateHeight}, fmt));
+        imgSrc.emplace_back(nvcv::Size2D{tmpWidth, tmpHeight}, fmt);
+        imgSrcBrdReplicate.emplace_back(nvcv::Size2D{tmpBrdReplicateWidth, tmpBrdReplicateHeight}, fmt);
 
-        imgDst.emplace_back(std::make_unique<nvcv::Image>(nvcv::Size2D{tmpWidth, tmpHeight}, fmt));
+        imgDst.emplace_back(nvcv::Size2D{tmpWidth, tmpHeight}, fmt);
 
         ksizeVecs.push_back({tmpKernelSizeWidth, tmpKernelSizeHeight});
     }
@@ -367,7 +366,7 @@ TEST_P(OpMedianBlur, varshape_correct_output)
     // Populate input
     for (int i = 0; i < numberOfImages; ++i)
     {
-        const auto srcData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
+        const auto srcData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_NE(nvcv::NullOpt, srcData);
 
         assert(srcData->numPlanes() == 1);
@@ -391,7 +390,7 @@ TEST_P(OpMedianBlur, varshape_correct_output)
                                             srcHeight, cudaMemcpyHostToDevice));
 
         // Fill the border with BORDER_REPLICATE
-        auto srcBrdReplicateData = imgSrcBrdReplicate[i]->exportData<nvcv::ImageDataStridedCuda>();
+        auto srcBrdReplicateData = imgSrcBrdReplicate[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_NE(nvcv::NullOpt, srcBrdReplicateData);
 
         assert(srcBrdReplicateData->numPlanes() == 1);
@@ -424,12 +423,12 @@ TEST_P(OpMedianBlur, varshape_correct_output)
     {
         SCOPED_TRACE(i);
 
-        auto srcBrdReplicateData = imgSrcBrdReplicate[i]->exportData<nvcv::ImageDataStridedCuda>();
+        auto srcBrdReplicateData = imgSrcBrdReplicate[i].exportData<nvcv::ImageDataStridedCuda>();
         assert(srcBrdReplicateData->numPlanes() == 1);
         int srcBrdReplicateWidth  = srcBrdReplicateData->plane(0).width;
         int srcBrdReplicateHeight = srcBrdReplicateData->plane(0).height;
 
-        const auto dstData = imgDst[i]->exportData<nvcv::ImageDataStridedCuda>();
+        const auto dstData = imgDst[i].exportData<nvcv::ImageDataStridedCuda>();
         assert(dstData->numPlanes() == 1);
 
         int dstWidth  = dstData->plane(0).width;

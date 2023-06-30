@@ -35,8 +35,8 @@ Erase::Erase(int num_erasing_area)
     m_legacyOpVarShape = std::make_unique<legacy::EraseVarShape>(maxIn, maxOut, num_erasing_area);
 }
 
-void Erase::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &out, nvcv::ITensor &anchor,
-                       nvcv::ITensor &erasing, nvcv::ITensor &values, nvcv::ITensor &imgIdx, bool random,
+void Erase::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const nvcv::Tensor &anchor,
+                       const nvcv::Tensor &erasing, const nvcv::Tensor &values, const nvcv::Tensor &imgIdx, bool random,
                        unsigned int seed) const
 {
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
@@ -86,9 +86,9 @@ void Erase::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv:
                                        seed, inplace, stream));
 }
 
-void Erase::operator()(cudaStream_t stream, const nvcv::IImageBatchVarShape &in, const nvcv::IImageBatchVarShape &out,
-                       nvcv::ITensor &anchor, nvcv::ITensor &erasing, nvcv::ITensor &values, nvcv::ITensor &imgIdx,
-                       bool random, unsigned int seed) const
+void Erase::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
+                       const nvcv::Tensor &anchor, const nvcv::Tensor &erasing, const nvcv::Tensor &values,
+                       const nvcv::Tensor &imgIdx, bool random, unsigned int seed) const
 {
     auto anchorData = anchor.exportData<nvcv::TensorDataStridedCuda>();
     if (anchorData == nullptr)

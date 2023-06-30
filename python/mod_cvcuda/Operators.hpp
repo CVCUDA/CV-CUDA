@@ -73,12 +73,16 @@ void ExportOpPillowResize(py::module &m);
 void ExportOpThreshold(py::module &m);
 void ExportOpBndBox(py::module &m);
 void ExportOpBoxBlur(py::module &m);
+void ExportOpBrightnessContrast(py::module &m);
+void ExportOpColorTwist(py::module &m);
 void ExportOpRemap(py::module &m);
 void ExportOpCropFlipNormalizeReformat(py::module &m);
 void ExportOpAdaptiveThreshold(py::module &m);
 void ExportOpNonMaximumSuppression(py::module &m);
+void ExportOpRandomResizedCrop(py::module &m);
+void ExportOpGaussianNoise(py::module &m);
 
-// Helper class that serves as python-side operator class.
+// Helper class that serves as generic python-side operator class.
 // OP: native operator class
 // CTOR: ctor signature
 template<class OP, class CTOR>
@@ -88,6 +92,39 @@ template<class OP, class... CTOR_ARGS>
 class PyOperator<OP, void(CTOR_ARGS...)> : public nvcvpy::Container
 {
 public:
+    // This defines a generic cache key class for any cvcuda::OP operator.
+    // It allows for reusing cache objects (instead of allocating new ones) only if the hash and key equal match.
+    // By default, the hash uses the OP type (in IKey) and OP ctor args, and the equal checks if all args are equal.
+    // This may be too restrict for operators with payloads, for them it may be better to specialize PyOperator/Key.
+    class Key : public nvcvpy::IKey
+    {
+    public:
+        Key(const CTOR_ARGS &...args)
+            : m_args{args...}
+        {
+        }
+
+    private:
+        size_t doGetHash() const override
+        {
+            return apply([](auto... items) { return nvcvpy::util::ComputeHash(items...); }, m_args);
+        }
+
+        bool doIsCompatible(const nvcvpy::IKey &that_) const override
+        {
+            const Key &that = static_cast<const Key &>(that_);
+            return m_args == that.m_args;
+        }
+
+        std::tuple<std::decay_t<CTOR_ARGS>...> m_args;
+    };
+
+    PyOperator(CTOR_ARGS &&...args)
+        : m_key(args...)
+        , m_op{std::forward<CTOR_ARGS>(args)...}
+    {
+    }
+
     template<class... AA>
     void submit(AA &&...args)
     {
@@ -104,60 +141,33 @@ public:
         return m_key;
     }
 
-    class Key : public nvcvpy::IKey
+    // The static fetch function is used to fetch one object from a sub-set of objects from cache.
+    // All objects passed in the cache argument already match the operator object, this second-level fetch
+    // allows to choose one of them and further do cache operations on the matched items.
+    static std::shared_ptr<nvcvpy::ICacheItem> fetch(std::vector<std::shared_ptr<nvcvpy::ICacheItem>> &cache)
     {
-    public:
-        Key(const CTOR_ARGS &...args)
-            : m_args{args...}
-        {
-        }
-
-    private:
-        size_t doGetHash() const override
-        {
-            return apply(
-                [](auto... args)
-                {
-                    using nvcvpy::util::ComputeHash;
-                    return ComputeHash(args...);
-                },
-                m_args);
-        }
-
-        bool doIsEqual(const nvcvpy::IKey &that_) const override
-        {
-            const Key &that = static_cast<const Key &>(that_);
-            return m_args == that.m_args;
-        }
-
-        std::tuple<std::decay_t<CTOR_ARGS>...> m_args;
-    };
-
-private:
-    template<class OP2, class... AA2>
-    friend std::shared_ptr<PyOperator<OP2, void(AA2...)>> CreateOperator(AA2 &&...args);
-
-    PyOperator(CTOR_ARGS &&...args)
-        : m_key(args...)
-        , m_op{std::forward<CTOR_ARGS>(args)...}
-    {
+        assert(!cache.empty());
+        // This generic operator just returns the first one found in cache.
+        return cache[0];
     }
 
+private:
     // Order is important
     Key m_key;
     OP  m_op;
 };
 
-// Returns an operator instance.
+// Creates an operator instance.
 // Either gets it from the resource cache or creates one from scratch.
-// When creationg, it'll add it to the cache.
-template<class OP, class... AA>
-std::shared_ptr<PyOperator<OP, void(AA...)>> CreateOperator(AA &&...args)
+// When creating, it'll be added to the cache.
+template<class PyOP, class... CTOR_ARGS>
+std::shared_ptr<PyOP> CreateOperatorEx(CTOR_ARGS &&...args)
 {
-    using PyOP = PyOperator<OP, void(AA...)>;
+    // The Key class is defined by the operator.
+    using Key = typename PyOP::Key;
 
     // Creates a key out of the operator's ctor parameters
-    typename PyOP::Key key(args...);
+    Key key{args...};
 
     // Try to fetch it from cache
     std::vector<std::shared_ptr<nvcvpy::ICacheItem>> vcont = nvcvpy::Cache::fetch(key);
@@ -166,20 +176,27 @@ std::shared_ptr<PyOperator<OP, void(AA...)>> CreateOperator(AA &&...args)
     if (vcont.empty())
     {
         // Creates a new one
-        auto op = std::shared_ptr<PyOP>(new PyOP(std::forward<AA>(args)...));
+        auto op = std::shared_ptr<PyOP>(new PyOP(std::forward<CTOR_ARGS>(args)...));
 
         // Adds to the resource cache
         nvcvpy::Cache::add(*op);
+
         return op;
     }
     else
     {
-        // Get the first one found in cache
-        auto op = std::dynamic_pointer_cast<PyOP>(vcont[0]);
+        auto op = std::dynamic_pointer_cast<PyOP>(PyOP::fetch(vcont));
         assert(op);
         return op;
     }
 }
+
+template<class OP, class... CTOR_ARGS>
+std::shared_ptr<PyOperator<OP, void(CTOR_ARGS...)>> CreateOperator(CTOR_ARGS &&...args)
+{
+    return CreateOperatorEx<PyOperator<OP, void(CTOR_ARGS...)>>(std::forward<CTOR_ARGS>(args)...);
+}
+
 } // namespace cvcudapy
 
 namespace nvcv {

@@ -17,12 +17,12 @@
 
 #include "Definitions.hpp"
 
-#include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
 #include <cvcuda/Op__OPNAME__.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
+#include <util/TensorDataUtils.hpp>
 
 #include <iostream>
 #include <random>
@@ -48,8 +48,8 @@ TEST_P(Op__OPNAME__, __OPNAME___sanity)
     nvcv::ImageFormat format{GetParamValue<2>()};
     int               batches = GetParamValue<3>();
 
-    nvcv::Tensor inTensor  = test::CreateTensor(batches, width, height, format);
-    nvcv::Tensor outTensor = test::CreateTensor(batches, width, height, format);
+    nvcv::Tensor inTensor  = nvcv::util::CreateTensor(batches, width, height, format);
+    nvcv::Tensor outTensor = nvcv::util::CreateTensor(batches, width, height, format);
 
     auto input  = inTensor.exportData<nvcv::TensorDataStridedCuda>();
     auto output = outTensor.exportData<nvcv::TensorDataStridedCuda>();

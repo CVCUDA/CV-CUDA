@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -64,6 +64,7 @@ TYPED_TEST(TypeTraitsSupportedBaseTest, correct_type_traits)
 
     EXPECT_EQ(TypeTraitsT::min, std::numeric_limits<typename TestFixture::Type>::min());
     EXPECT_EQ(TypeTraitsT::max, std::numeric_limits<typename TestFixture::Type>::max());
+    EXPECT_EQ(cuda::Lowest<typename TestFixture::Type>, std::numeric_limits<typename TestFixture::Type>::lowest());
 }
 
 // ------------------------- Testing HasTypeTraits -----------------------------
@@ -183,6 +184,7 @@ TYPED_TEST(TypeTraitsSupportedVectorTest, correct_type_traits)
 
     EXPECT_EQ(TypeTraitsT::min, std::numeric_limits<typename TypeTraitsT::base_type>::min());
     EXPECT_EQ(TypeTraitsT::max, std::numeric_limits<typename TypeTraitsT::base_type>::max());
+    EXPECT_EQ(cuda::Lowest<typename TestFixture::Type>, std::numeric_limits<typename TypeTraitsT::base_type>::lowest());
 }
 
 // ------------------- Testing TypeTraits with Type Qualifiers -----------------

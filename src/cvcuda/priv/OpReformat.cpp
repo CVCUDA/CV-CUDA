@@ -34,7 +34,7 @@ Reformat::Reformat()
     m_legacyOp = std::make_unique<legacy::Reformat>(maxIn, maxOut);
 }
 
-void Reformat::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &out) const
+void Reformat::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out) const
 {
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
     if (inData == nullptr)

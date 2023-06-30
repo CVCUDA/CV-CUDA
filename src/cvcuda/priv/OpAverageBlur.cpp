@@ -34,7 +34,7 @@ AverageBlur::AverageBlur(nvcv::Size2D maxKernelSize, int maxBatchSize)
     m_legacyOpVarShape = std::make_unique<legacy::AverageBlurVarShape>(maxIn, maxOut, maxKernelSize, maxBatchSize);
 }
 
-void AverageBlur::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &out,
+void AverageBlur::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                              nvcv::Size2D kernelSize, int2 kernelAnchor, NVCVBorderType borderMode) const
 {
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
@@ -54,9 +54,9 @@ void AverageBlur::operator()(cudaStream_t stream, const nvcv::ITensor &in, const
     NVCV_CHECK_THROW(m_legacyOp->infer(*inData, *outData, kernelSize, kernelAnchor, borderMode, stream));
 }
 
-void AverageBlur::operator()(cudaStream_t stream, const nvcv::IImageBatchVarShape &in, nvcv::IImageBatchVarShape &out,
-                             const nvcv::ITensor &kernelSize, const nvcv::ITensor &kernelAnchor,
-                             NVCVBorderType borderMode) const
+void AverageBlur::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
+                             const nvcv::ImageBatchVarShape &out, const nvcv::Tensor &kernelSize,
+                             const nvcv::Tensor &kernelAnchor, NVCVBorderType borderMode) const
 {
     auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (inData == nullptr)

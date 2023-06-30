@@ -17,13 +17,12 @@
 
 #include "Definitions.hpp"
 
-#include <nvcv/Casts.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/alloc/Allocator.hpp>
 
 #include <nvcv/Fwd.hpp>
 
-TEST(Image, wip_create)
+TEST(Image, smoke_create)
 {
     nvcv::Image img({163, 117}, nvcv::FMT_RGBA8);
 
@@ -52,30 +51,8 @@ TEST(Image, wip_create)
     EXPECT_EQ(cudaSuccess, cudaMemset2D(plane.basePtr, plane.rowStride, 123, plane.width * 4, plane.height));
 }
 
-TEST(Image, wip_cast)
+TEST(Image, smoke_cast)
 {
-    nvcv::Image img({163, 117}, nvcv::FMT_RGBA8);
-
-    EXPECT_EQ(&img, nvcv::StaticCast<nvcv::Image *>(img.handle()));
-    EXPECT_EQ(&img, &nvcv::StaticCast<nvcv::Image>(img.handle()));
-
-    EXPECT_EQ(&img, nvcv::StaticCast<nvcv::IImage *>(img.handle()));
-    EXPECT_EQ(&img, &nvcv::StaticCast<nvcv::IImage>(img.handle()));
-
-    EXPECT_EQ(&img, nvcv::DynamicCast<nvcv::Image *>(img.handle()));
-    EXPECT_EQ(&img, &nvcv::DynamicCast<nvcv::Image>(img.handle()));
-
-    EXPECT_EQ(&img, nvcv::DynamicCast<nvcv::IImage *>(img.handle()));
-    EXPECT_EQ(&img, &nvcv::DynamicCast<nvcv::IImage>(img.handle()));
-
-    EXPECT_EQ(nullptr, nvcv::DynamicCast<nvcv::ImageWrapData *>(img.handle()));
-
-    EXPECT_EQ(nullptr, nvcv::StaticCast<nvcv::IImage *>(nullptr));
-    EXPECT_EQ(nullptr, nvcv::DynamicCast<nvcv::IImage *>(nullptr));
-    EXPECT_THROW(nvcv::DynamicCast<nvcv::IImage>(nullptr), std::bad_cast);
-
-    // Now when we create the object via C API
-
     NVCVImageHandle       handle;
     NVCVImageRequirements reqs;
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageCalcRequirements(163, 117, NVCV_IMAGE_FORMAT_RGBA8, 0, 0, &reqs));
@@ -84,60 +61,40 @@ TEST(Image, wip_cast)
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageRefCount(handle, &ref));
     EXPECT_EQ(ref, 1);
 
-    // Size of the internal buffer used to store the WrapHandle object
-    // we might have to create for containers allocated via C API.
-    // This value must never decrease, or else it'll break ABI compatibility.
-    uintptr_t max = 512;
+    auto        h = handle;
+    nvcv::Image img(std::move(handle));
+    EXPECT_EQ(h, img.handle());
+    EXPECT_EQ(163, img.size().w);
+    EXPECT_EQ(117, img.size().h);
+    EXPECT_EQ(nvcv::FMT_RGBA8, img.format());
 
-    EXPECT_GE(max, sizeof(nvcv::detail::WrapHandle<nvcv::IImage>)) << "Must be big enough for the WrapHandle";
-
-    void *cxxPtr = &max;
-    ASSERT_EQ(NVCV_SUCCESS, nvcvImageGetUserPointer((NVCVImageHandle)(((uintptr_t)handle) | 1), &cxxPtr));
-    ASSERT_NE(&max, cxxPtr) << "Pointer must have been changed";
-
-    // Buffer too big, bail.
-    max    = 513;
-    cxxPtr = &max;
-    ASSERT_EQ(NVCV_ERROR_INTERNAL, nvcvImageGetUserPointer((NVCVImageHandle)(((uintptr_t)handle) | 1), &cxxPtr))
-        << "Required WrapHandle buffer storage should have been too big";
-
-    nvcv::IImage *pimg = nvcv::StaticCast<nvcv::IImage *>(handle);
-    ASSERT_NE(nullptr, pimg);
-    EXPECT_EQ(handle, pimg->handle());
-    EXPECT_EQ(163, pimg->size().w);
-    EXPECT_EQ(117, pimg->size().h);
-    EXPECT_EQ(nvcv::FMT_RGBA8, pimg->format());
-
-    EXPECT_EQ(pimg, nvcv::DynamicCast<nvcv::IImage *>(handle));
-    EXPECT_EQ(nullptr, nvcv::DynamicCast<nvcv::Image *>(handle));
-
-    EXPECT_EQ(NVCV_SUCCESS, nvcvImageDecRef(handle, &ref));
+    ref = img.reset();
     EXPECT_EQ(ref, 0);
 }
 
-TEST(Image, wip_user_pointer)
+TEST(Image, smoke_user_pointer)
 {
     nvcv::Image img({163, 117}, nvcv::FMT_RGBA8);
     EXPECT_EQ(nullptr, img.userPointer());
 
-    void *cxxPtr;
-    ASSERT_EQ(NVCV_SUCCESS, nvcvImageGetUserPointer((NVCVImageHandle)(((uintptr_t)img.handle()) | 1), &cxxPtr));
-    ASSERT_EQ(&img, cxxPtr) << "cxx object pointer must always be associated with the corresponding handle";
+    void *userPtr;
+    ASSERT_EQ(NVCV_SUCCESS, nvcvImageGetUserPointer(img.handle(), &userPtr));
+    EXPECT_EQ(nullptr, userPtr);
 
     img.setUserPointer((void *)0x123);
     EXPECT_EQ((void *)0x123, img.userPointer());
 
-    ASSERT_EQ(NVCV_SUCCESS, nvcvImageGetUserPointer((NVCVImageHandle)(((uintptr_t)img.handle()) | 1), &cxxPtr));
-    ASSERT_EQ(&img, cxxPtr) << "cxx object pointer must always be associated with the corresponding handle";
+    ASSERT_EQ(NVCV_SUCCESS, nvcvImageGetUserPointer(img.handle(), &userPtr));
+    EXPECT_EQ((void *)0x123, userPtr);
 
     img.setUserPointer(nullptr);
     EXPECT_EQ(nullptr, img.userPointer());
 
-    ASSERT_EQ(NVCV_SUCCESS, nvcvImageGetUserPointer((NVCVImageHandle)(((uintptr_t)img.handle()) | 1), &cxxPtr));
-    ASSERT_EQ(&img, cxxPtr) << "cxx object pointer must always be associated with the corresponding handle";
+    ASSERT_EQ(NVCV_SUCCESS, nvcvImageGetUserPointer(img.handle(), &userPtr));
+    EXPECT_EQ(nullptr, userPtr);
 }
 
-TEST(Image, wip_create_managed)
+TEST(Image, smoke_create_managed)
 {
     ;
 
@@ -194,7 +151,7 @@ TEST(Image, wip_create_managed)
     }
 }
 
-TEST(ImageWrapData, wip_create)
+TEST(ImageWrapData, smoke_create)
 {
     nvcv::ImageDataStridedCuda::Buffer buf;
     buf.numPlanes           = 1;
@@ -203,9 +160,7 @@ TEST(ImageWrapData, wip_create)
     buf.planes[0].rowStride = 190;
     buf.planes[0].basePtr   = reinterpret_cast<NVCVByte *>(678);
 
-    nvcv::ImageWrapData img{
-        nvcv::ImageDataStridedCuda{nvcv::FMT_U8, buf}
-    };
+    auto img = nvcv::ImageWrapData(nvcv::ImageDataStridedCuda{nvcv::FMT_U8, buf});
 
     EXPECT_EQ(nvcv::Size2D(173, 79), img.size());
     EXPECT_EQ(nvcv::FMT_U8, img.format());
@@ -230,7 +185,7 @@ TEST(ImageWrapData, wip_create)
     EXPECT_EQ(buf.planes[0].basePtr, devdata->plane(0).basePtr);
 }
 
-TEST(ImageWrapData, wip_user_pointer)
+TEST(ImageWrapData, smoke_user_pointer)
 {
     nvcv::ImageDataStridedCuda::Buffer buf;
     buf.numPlanes           = 1;
@@ -239,9 +194,7 @@ TEST(ImageWrapData, wip_user_pointer)
     buf.planes[0].rowStride = 190;
     buf.planes[0].basePtr   = reinterpret_cast<NVCVByte *>(678);
 
-    nvcv::ImageWrapData img{
-        nvcv::ImageDataStridedCuda{nvcv::FMT_U8, buf}
-    };
+    auto img = nvcv::ImageWrapData(nvcv::ImageDataStridedCuda{nvcv::FMT_U8, buf});
 
     EXPECT_EQ(nullptr, img.userPointer());
 
@@ -252,7 +205,7 @@ TEST(ImageWrapData, wip_user_pointer)
     EXPECT_EQ(nullptr, img.userPointer());
 }
 
-TEST(Image, wip_operator)
+TEST(Image, smoke_operator)
 {
     ;
 
@@ -294,7 +247,7 @@ TEST(Image, wip_operator)
     }
 }
 
-TEST(ImageWrapData, wip_cleanup)
+TEST(ImageWrapData, smoke_cleanup)
 {
     nvcv::ImageDataStridedCuda::Buffer buf;
     buf.numPlanes           = 1;
@@ -310,13 +263,13 @@ TEST(ImageWrapData, wip_cleanup)
     };
 
     {
-        nvcv::ImageWrapData img(nvcv::ImageDataStridedCuda{nvcv::FMT_U8, buf}, cleanup);
+        auto img = nvcv::ImageWrapData(nvcv::ImageDataStridedCuda{nvcv::FMT_U8, buf}, cleanup);
         EXPECT_EQ(0, cleanupCalled);
     }
     EXPECT_EQ(1, cleanupCalled) << "Cleanup must have been called when img got destroyed";
 }
 
-TEST(ImageWrapData, wip_mem_reqs)
+TEST(ImageWrapData, smoke_mem_reqs)
 {
     nvcv::Image::Requirements reqs = nvcv::Image::CalcRequirements({512, 256}, nvcv::FMT_NV12);
 
@@ -349,7 +302,7 @@ TEST(ImageWrapData, wip_mem_reqs)
 
 // Future API ideas
 #if 0
-TEST(Image, wip_image_managed_memory)
+TEST(Image, smoke_image_managed_memory)
 {
     ;
 
@@ -441,13 +394,13 @@ TEST(Image, wip_image_managed_memory)
     img.lock(nvcv::READ).accept(ProcessImageVisitor(stream));
 }
 
-TEST(Image, wip_wrap_opencv_read)
+TEST(Image, smoke_wrap_opencv_read)
 {
     ;
 
     // create opencv mat and wrap it
     nvcv::Mat mat(256,512,CV_8UC3);
-    nvcv::ImageWrapData img(mat, nvcv::FMT_BGR8);
+    auto img = nvcv::ImageWrapData(mat, nvcv::FMT_BGR8);
 
     // ... op write to img ...
 
@@ -458,13 +411,13 @@ TEST(Image, wip_wrap_opencv_read)
     }
 }
 
-TEST(Image, wip_wrap_opencv_write)
+TEST(Image, smoke_wrap_opencv_write)
 {
     ;
 
     // create opencv mat and wrap it
     nvcv::Mat mat(256,512,CV_8UC3);
-    nvcv::ImageWrapData img(mat, nvcv::FMT_BGR8);
+    auto img = nvcv::ImageWrapData(mat, nvcv::FMT_BGR8);
 
     {
         nvcv::LockedImage lk = img.lock(nvcv::LOCK_WRITE);
@@ -474,7 +427,7 @@ TEST(Image, wip_wrap_opencv_write)
     // ... op read from img ...
 }
 
-TEST(Image, wip_img_opencv_read)
+TEST(Image, smoke_img_opencv_read)
 {
     ;
 
@@ -489,11 +442,11 @@ TEST(Image, wip_img_opencv_read)
     }
 }
 
-TEST(Image, wip_memcpy_opencv_read)
+TEST(Image, smoke_memcpy_opencv_read)
 {
     ;
 
-    nvcv::ImageWrapData img({512,256}, nvcv::FMT_BGR8);
+    auto img = nvcv::ImageWrapData({512,256}, nvcv::FMT_BGR8);
 
     // ... op write to img ...
 
@@ -509,11 +462,11 @@ TEST(Image, wip_memcpy_opencv_read)
 }
 
 
-TEST(Image, wip_memcpy_opencv_write)
+TEST(Image, smoke_memcpy_opencv_write)
 {
     ;
 
-    nvcv::ImageWrapData img({512,256}, nvcv::FMT_BGR8);
+    auto img = nvcv::ImageWrapData({512,256}, nvcv::FMT_BGR8);
 
     // read result from disk
     {

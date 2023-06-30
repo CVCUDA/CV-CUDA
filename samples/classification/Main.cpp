@@ -59,8 +59,8 @@
  *
  */
 
-void PreProcess(nvcv::TensorWrapData &inTensor, uint32_t batchSize, int inputLayerWidth, int inputLayerHeight,
-                cudaStream_t stream, nvcv::TensorWrapData &outTensor)
+void PreProcess(const nvcv::Tensor &inTensor, uint32_t batchSize, int inputLayerWidth, int inputLayerHeight,
+                cudaStream_t stream, const nvcv::Tensor &outTensor)
 {
 #ifdef PROFILE_SAMPLE
     cudaEvent_t start, stop;
@@ -90,7 +90,8 @@ void PreProcess(nvcv::TensorWrapData &inTensor, uint32_t batchSize, int inputLay
     CHECK_CUDA_ERROR(cudaMalloc(&bufScale.basePtr, scaleBufferSize));
     nvcv::TensorDataStridedCuda scaleIn(nvcv::TensorShape{reqsScale.shape, reqsScale.rank, reqsScale.layout},
                                         nvcv::DataType{reqsScale.dtype}, bufScale);
-    nvcv::TensorWrapData        scaleTensor(scaleIn);
+
+    nvcv::Tensor scaleTensor = TensorWrapData(scaleIn);
 
     // Create a Tensor to store the mean values for R,G,B
     nvcv::TensorDataStridedCuda::Buffer bufBase;
@@ -100,7 +101,8 @@ void PreProcess(nvcv::TensorWrapData &inTensor, uint32_t batchSize, int inputLay
     CHECK_CUDA_ERROR(cudaMalloc(&bufBase.basePtr, baseBufferSize));
     nvcv::TensorDataStridedCuda baseIn(nvcv::TensorShape{reqsBase.shape, reqsBase.rank, reqsBase.layout},
                                        nvcv::DataType{reqsBase.dtype}, bufBase);
-    nvcv::TensorWrapData        baseTensor(baseIn);
+
+    nvcv::Tensor baseTensor = TensorWrapData(baseIn);
 
     // Copy the values from Host to Device
     // The R,G,B scale and mean will be applied to all the pixels across the batch of input images
@@ -230,7 +232,8 @@ int main(int argc, char *argv[])
 
     nvcv::TensorDataStridedCuda inData(nvcv::TensorShape{inReqs.shape, inReqs.rank, inReqs.layout},
                                        nvcv::DataType{inReqs.dtype}, inBuf);
-    nvcv::TensorWrapData        inTensor(inData);
+
+    nvcv::Tensor inTensor = TensorWrapData(inData);
 
     // NvJpeg is used to load the images to create a batched input device buffer.
     uint8_t *gpuInput = reinterpret_cast<uint8_t *>(inBuf.basePtr);
@@ -284,7 +287,7 @@ int main(int argc, char *argv[])
     nvcv::TensorDataStridedCuda inputLayerTensorData(
         nvcv::TensorShape{reqsInputLayer.shape, reqsInputLayer.rank, reqsInputLayer.layout},
         nvcv::DataType{reqsInputLayer.dtype}, bufInputLayer);
-    nvcv::TensorWrapData inputLayerTensor(inputLayerTensorData);
+    nvcv::Tensor inputLayerTensor = TensorWrapData(inputLayerTensorData);
 
     // Allocate ouput layer buffer based on the output layer dimensions and batch size
     nvcv::Tensor::Requirements reqsOutputLayer
@@ -296,7 +299,7 @@ int main(int argc, char *argv[])
     nvcv::TensorDataStridedCuda outputLayerTensorData(
         nvcv::TensorShape{reqsOutputLayer.shape, reqsOutputLayer.rank, reqsOutputLayer.layout},
         nvcv::DataType{reqsOutputLayer.dtype}, bufOutputLayer);
-    nvcv::TensorWrapData outputLayerTensor(outputLayerTensorData);
+    nvcv::Tensor outputLayerTensor = TensorWrapData(outputLayerTensorData);
 
     // Run preprocess on the input image batch
     PreProcess(inTensor, batchSize, inputDims.width, inputDims.height, stream, inputLayerTensor);

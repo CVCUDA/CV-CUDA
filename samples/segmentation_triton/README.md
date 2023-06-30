@@ -26,7 +26,7 @@
 3. Start the triton server
 
       ```
-      tritonserver --model-repository `pwd`/samples/segmentation_triton/python/models
+      tritonserver --model-repository `pwd`/samples/segmentation_triton/python/models [--log-verbose=1]
       ```
 ## Triton Client instructions
 

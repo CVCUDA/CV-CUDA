@@ -34,8 +34,9 @@ PadAndStack::PadAndStack()
     m_legacyOp = std::make_unique<legacy::PadAndStack>(maxIn, maxOut);
 }
 
-void PadAndStack::operator()(cudaStream_t stream, nvcv::IImageBatchVarShape &in, nvcv::ITensor &out, nvcv::ITensor &top,
-                             nvcv::ITensor &left, const NVCVBorderType borderMode, const float borderValue) const
+void PadAndStack::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::Tensor &out,
+                             const nvcv::Tensor &top, const nvcv::Tensor &left, const NVCVBorderType borderMode,
+                             const float borderValue) const
 {
     auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (inData == nullptr)

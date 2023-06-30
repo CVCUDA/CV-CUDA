@@ -63,6 +63,30 @@ RNG = np.random.default_rng(0)
             cvcuda.Interp.LINEAR,
             cvcuda.Format.RGBf32,
         ),
+        (
+            ((5, 55, 55, 4), np.float32, "NHWC"),
+            (5, 31, 31, 4),
+            cvcuda.Interp.CUBIC,
+            cvcuda.Format.RGBf32,
+        ),
+        (
+            ((5, 55, 55, 4), np.float32, "NHWC"),
+            (5, 31, 31, 4),
+            cvcuda.Interp.LANCZOS,
+            cvcuda.Format.RGBf32,
+        ),
+        (
+            ((5, 55, 55, 4), np.float32, "NHWC"),
+            (5, 31, 31, 4),
+            cvcuda.Interp.HAMMING,
+            cvcuda.Format.RGBf32,
+        ),
+        (
+            ((5, 55, 55, 4), np.float32, "NHWC"),
+            (5, 31, 31, 4),
+            cvcuda.Interp.BOX,
+            cvcuda.Format.RGBf32,
+        ),
     ],
 )
 def test_op_pillowresize(input_args, out_shape, interp, fmt):
@@ -171,29 +195,89 @@ def test_op_pillowresizevarshape(
     assert base_output.maxsize == base_output.maxsize
 
 
-@t.mark.skip(reason="test currently fails CVCUDA-558 tracking")
+def test_op_pillowresize_reused_from_cache():
+    fmt = cvcuda.Format.RGBA8
+    src = [
+        cvcuda.Tensor((3, 51, 15, 4), np.uint8, "NHWC"),
+        util.create_image_batch(2, fmt, max_size=(12, 35), rng=RNG),
+    ]
+    dst = [
+        cvcuda.Tensor((3, 13, 31, 4), np.uint8, "NHWC"),
+        cvcuda.Tensor((3, 46, 33, 4), np.uint8, "NHWC"),
+        util.create_image_batch(2, fmt, max_size=(47, 32), rng=RNG),
+    ]
+
+    cvcuda.pillowresize_into(dst[0], src[0], fmt)
+
+    items_in_cache = cvcuda.cache_size()
+
+    cvcuda.pillowresize_into(dst[1], src[0], fmt)
+    cvcuda.pillowresize_into(dst[2], src[1])
+
+    assert cvcuda.cache_size() == items_in_cache
+
+
 def test_op_pillowresize_gpuload():
-    stream = cvcuda.Stream()
     src_shape = (5, 1080, 1920, 4)
-    dst_sizes = [(src_shape[1] // 10, src_shape[2] // 10) for _ in range(src_shape[0])]
-    src = util.create_image_batch(
-        src_shape[0], cvcuda.Format.RGBA8, max_size=src_shape[1:3], rng=RNG
-    )
-    host_data = np.ones(src_shape, np.float32)
-    torch_dst = torch.tensor(0.0, device="cuda")
+    dst_shape = (5, 108, 192, 4)
+    fmt, dtype, layout = cvcuda.Format.RGBA8, np.uint8, "NHWC"
+    src = cvcuda.Tensor(src_shape, dtype, layout)
+    dst = cvcuda.Tensor(dst_shape, dtype, layout)
+
+    torch0 = torch.zeros(src_shape, dtype=torch.int32, device="cuda")
+    torch1 = torch.zeros(src_shape, dtype=torch.int32, device="cuda")
 
     thread = threading.Thread(
-        target=lambda: torch.square(
-            torch.as_tensor(host_data, device="cuda").abs().max(), out=torch_dst
-        )
+        target=lambda: (torch.abs(torch0, out=torch1), torch.square(torch1, out=torch0))
     )
     thread.start()
 
+    tmp = cvcuda.pillowresize_into(dst, src, fmt, cvcuda.Interp.LANCZOS)
+    assert tmp is dst
+    assert tmp.layout == layout
+    assert tmp.shape == dst_shape
+    assert tmp.dtype == dtype
+
+    thread.join()
+    assert torch0.shape == src_shape
+    assert torch1.shape == src_shape
+
+
+def test_op_pillowresize_user_stream_with_tensor():
+    stream = cvcuda.Stream()
+    src_shape = (5, 1080, 1920, 4)
+    dst_shape = (5, 108, 192, 4)
+    fmt, dtype, layout = cvcuda.Format.RGBA8, np.uint8, "NHWC"
+    src = cvcuda.Tensor(src_shape, dtype, layout)
+
     with stream:
-        dst = cvcuda.pillowresize(src, dst_sizes)
+        dst = cvcuda.pillowresize(src, dst_shape, fmt, cvcuda.Interp.BOX)
+        assert dst.layout == layout
+        assert dst.shape == dst_shape
+        assert dst.dtype == dtype
+
+
+@t.mark.parametrize(
+    "batch_size",
+    [
+        3,
+        4,
+    ],
+)
+def test_op_pillowresize_user_stream_with_image_batch(batch_size):
+    stream = cvcuda.Stream()
+    src_shape = (batch_size, 1080, 1920, 4)
+    dst_shape = (batch_size, 108, 192, 4)
+    dst_sizes = [(dst_shape[2], dst_shape[1]) for _ in range(dst_shape[0])]
+    src = util.create_image_batch(
+        src_shape[0],
+        cvcuda.Format.RGBA8,
+        max_size=(dst_shape[2], dst_shape[1]),
+        rng=RNG,
+    )
+
+    with stream:
+        dst = cvcuda.pillowresize(src, dst_sizes, cvcuda.Interp.BOX)
         assert len(dst) == len(src)
         assert dst.uniqueformat == dst.uniqueformat
         assert dst.maxsize == dst_sizes[0]
-
-    thread.join()
-    assert torch_dst.cpu() == 1

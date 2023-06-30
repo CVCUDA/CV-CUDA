@@ -36,7 +36,7 @@ namespace py = pybind11;
 
 class Tensor
     : public Resource
-    , public nvcv::ITensor
+    , public nvcv::Tensor
 {
 public:
     static Tensor Create(const nvcv::TensorShape &tshape, nvcv::DataType dtype, int rowalign = 0)
@@ -67,19 +67,13 @@ public:
 
 private:
     friend struct py::detail::type_caster<Tensor>;
-    NVCVTensorHandle m_handle;
 
     Tensor() = default;
 
     explicit Tensor(py::object obj)
         : Resource(obj)
-        , m_handle(capi().Tensor_GetHandle(this->ptr()))
+        , nvcv::Tensor(FromHandle(capi().Tensor_GetHandle(this->ptr()), true))
     {
-    }
-
-    NVCVTensorHandle doGetHandle() const override
-    {
-        return m_handle;
     }
 };
 

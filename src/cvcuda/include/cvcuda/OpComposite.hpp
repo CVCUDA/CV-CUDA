@@ -30,9 +30,9 @@
 #include "OpComposite.h"
 
 #include <cuda_runtime.h>
-#include <nvcv/IImageBatch.hpp>
-#include <nvcv/ITensor.hpp>
+#include <nvcv/ImageBatch.hpp>
 #include <nvcv/ImageFormat.hpp>
+#include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
 namespace cvcuda {
@@ -44,11 +44,12 @@ public:
 
     ~Composite();
 
-    void operator()(cudaStream_t stream, nvcv::ITensor &foreground, nvcv::ITensor &background, nvcv::ITensor &fgMask,
-                    nvcv::ITensor &output);
+    void operator()(cudaStream_t stream, const nvcv::Tensor &foreground, const nvcv::Tensor &background,
+                    const nvcv::Tensor &fgMask, const nvcv::Tensor &output);
 
-    void operator()(cudaStream_t stream, nvcv::IImageBatchVarShape &foreground, nvcv::IImageBatchVarShape &background,
-                    nvcv::IImageBatchVarShape &fgMask, nvcv::IImageBatchVarShape &output);
+    void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &foreground,
+                    const nvcv::ImageBatchVarShape &background, const nvcv::ImageBatchVarShape &fgMask,
+                    const nvcv::ImageBatchVarShape &output);
 
     virtual NVCVOperatorHandle handle() const noexcept override;
 
@@ -68,16 +69,16 @@ inline Composite::~Composite()
     m_handle = nullptr;
 }
 
-inline void Composite::operator()(cudaStream_t stream, nvcv::ITensor &foreground, nvcv::ITensor &background,
-                                  nvcv::ITensor &fgMask, nvcv::ITensor &output)
+inline void Composite::operator()(cudaStream_t stream, const nvcv::Tensor &foreground, const nvcv::Tensor &background,
+                                  const nvcv::Tensor &fgMask, const nvcv::Tensor &output)
 {
     nvcv::detail::CheckThrow(cvcudaCompositeSubmit(m_handle, stream, foreground.handle(), background.handle(),
                                                    fgMask.handle(), output.handle()));
 }
 
-inline void Composite::operator()(cudaStream_t stream, nvcv::IImageBatchVarShape &foreground,
-                                  nvcv::IImageBatchVarShape &background, nvcv::IImageBatchVarShape &fgMask,
-                                  nvcv::IImageBatchVarShape &output)
+inline void Composite::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &foreground,
+                                  const nvcv::ImageBatchVarShape &background, const nvcv::ImageBatchVarShape &fgMask,
+                                  const nvcv::ImageBatchVarShape &output)
 {
     nvcv::detail::CheckThrow(cvcudaCompositeVarShapeSubmit(m_handle, stream, foreground.handle(), background.handle(),
                                                            fgMask.handle(), output.handle()));

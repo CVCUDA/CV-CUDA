@@ -1,0 +1,52 @@
+..
+  # SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  # SPDX-License-Identifier: Apache-2.0
+  #
+  # Licensed under the Apache License, Version 2.0 (the "License");
+  # you may not use this file except in compliance with the License.
+  # You may obtain a copy of the License at
+  #
+  # http://www.apache.org/licenses/LICENSE-2.0
+  #
+  # Unless required by applicable law or agreed to in writing, software
+  # distributed under the License is distributed on an "AS IS" BASIS,
+  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  # See the License for the specific language governing permissions and
+  # limitations under the License.
+
+.. _v0.3.1-beta:
+
+Beta.1
+======
+
+The v0.3.1 release provides several bug fixes along with documentation updates and performance improvements.
+
+Release Highlights
+------------------
+
+* Added documentation for Python APIs
+* Added CentOS 7 build support with GLIBC >= 2.17
+* Improved APIs with C handler reference counting, C++ move semantics, and VarShape iterators
+* Removed legacy interfaces typedefs: IImage, ITensor, and IImageBatch
+* Handler Manager no longer requires resource requirements object
+* Moderate performance improvement for Non-Maximal Suppression (NMS) operator
+
+Bug Fixes
+---------
+
+* Addressed `QUESTION #23 <https://github.com/CVCUDA/CV-CUDA/issues/23>`_: RuntimeError: cudaErrorIllegalAddress: an illegal memory access was encountered`
+* Addressed `BUG #72 <https://github.com/CVCUDA/CV-CUDA/issues/72>`_: RuntimeError: pybind11_object_dealloc(): Tried to deallocate unregistered instance!
+* Addressed `BUG #77 <https://github.com/CVCUDA/CV-CUDA/issues/77>`_: Memory sanitizer detects multiple problems when running nvcv_test_types_python
+* Fixed Pillow Resize operator bug in clip8_lookups
+
+
+Known Issues
+------------
+
+- Morphology Operator: poor benchmarking performance when iteration parameter > 1
+  - Workaround: Set iteration parameter == 1 and run operator multiple times
+  - Fix expected in the next release
+
+Acknowledgements
+----------------
+CV-CUDA is developed jointly by NVIDIA and the ByteDance Machine Learning team.

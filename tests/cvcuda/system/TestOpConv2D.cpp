@@ -77,31 +77,30 @@ TEST_P(OpConv2D, varshape_correct_output)
     std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
     std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
 
-    std::vector<std::unique_ptr<nvcv::Image>> imgSrc;
+    std::vector<nvcv::Image> imgSrc;
 
     std::vector<std::vector<uint8_t>> srcVec(numImages);
     std::vector<int>                  srcVecRowStride(numImages);
 
     for (int i = 0; i < numImages; ++i)
     {
-        imgSrc.emplace_back(
-            std::make_unique<nvcv::Image>(nvcv::Size2D{udistWidth(rng), udistHeight(rng)}, imageFormat));
+        imgSrc.emplace_back(nvcv::Size2D{udistWidth(rng), udistHeight(rng)}, imageFormat);
 
-        int srcRowStride   = imgSrc[i]->size().w * imageFormat.numChannels();
+        int srcRowStride   = imgSrc[i].size().w * imageFormat.numChannels();
         srcVecRowStride[i] = srcRowStride;
 
         std::uniform_int_distribution<uint8_t> udist(0, 255);
 
-        srcVec[i].resize(imgSrc[i]->size().h * srcRowStride);
+        srcVec[i].resize(imgSrc[i].size().h * srcRowStride);
         std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return udist(rng); });
 
-        auto imgData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
+        auto imgData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_NE(imgData, nvcv::NullOpt);
 
         // Copy input data to the GPU
         ASSERT_EQ(cudaSuccess,
                   cudaMemcpy2DAsync(imgData->plane(0).basePtr, imgData->plane(0).rowStride, srcVec[i].data(),
-                                    srcRowStride, srcRowStride, imgSrc[i]->size().h, cudaMemcpyHostToDevice, stream));
+                                    srcRowStride, srcRowStride, imgSrc[i].size().h, cudaMemcpyHostToDevice, stream));
     }
 
     nvcv::ImageBatchVarShape batchSrc(numImages);
@@ -109,38 +108,38 @@ TEST_P(OpConv2D, varshape_correct_output)
 
     // Create output varshape
 
-    std::vector<std::unique_ptr<nvcv::Image>> imgDst;
+    std::vector<nvcv::Image> imgDst;
     for (int i = 0; i < numImages; ++i)
     {
-        imgDst.emplace_back(std::make_unique<nvcv::Image>(imgSrc[i]->size(), imgSrc[i]->format()));
+        imgDst.emplace_back(imgSrc[i].size(), imgSrc[i].format());
     }
     nvcv::ImageBatchVarShape batchDst(numImages);
     batchDst.pushBack(imgDst.begin(), imgDst.end());
 
     // Create kernel varshape
 
-    std::vector<std::unique_ptr<nvcv::Image>> kernel;
-    std::vector<std::vector<float>>           kernelVec(numImages);
+    std::vector<nvcv::Image>        kernel;
+    std::vector<std::vector<float>> kernelVec(numImages);
 
     for (int i = 0; i < numImages; ++i)
     {
-        kernel.emplace_back(std::make_unique<nvcv::Image>(kernelSize, kernelFormat));
+        kernel.emplace_back(kernelSize, kernelFormat);
 
-        int rowStride = kernel[i]->size().w * sizeof(float);
+        int rowStride = kernel[i].size().w * sizeof(float);
 
         std::uniform_real_distribution<float> udist(0.f, 1.f);
 
-        kernelVec[i].resize(kernel[i]->size().h * kernel[i]->size().w);
+        kernelVec[i].resize(kernel[i].size().h * kernel[i].size().w);
 
         std::generate(kernelVec[i].begin(), kernelVec[i].end(), [&]() { return udist(rng); });
 
-        auto data = kernel[i]->exportData<nvcv::ImageDataStridedCuda>();
+        auto data = kernel[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_NE(data, nvcv::NullOpt);
 
         // Copy kernel data to the GPU
         ASSERT_EQ(cudaSuccess,
                   cudaMemcpy2DAsync(data->plane(0).basePtr, data->plane(0).rowStride, kernelVec[i].data(), rowStride,
-                                    rowStride, kernel[i]->size().h, cudaMemcpyHostToDevice, stream));
+                                    rowStride, kernel[i].size().h, cudaMemcpyHostToDevice, stream));
     }
 
     nvcv::ImageBatchVarShape batchKernel(numImages);
@@ -173,10 +172,10 @@ TEST_P(OpConv2D, varshape_correct_output)
     {
         SCOPED_TRACE(i);
 
-        const auto srcData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
+        const auto srcData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_EQ(srcData->numPlanes(), 1);
 
-        const auto dstData = imgDst[i]->exportData<nvcv::ImageDataStridedCuda>();
+        const auto dstData = imgDst[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_EQ(dstData->numPlanes(), 1);
 
         int dstRowStride = srcVecRowStride[i];

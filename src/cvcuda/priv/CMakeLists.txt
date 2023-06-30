@@ -18,7 +18,9 @@ add_subdirectory(legacy)
 add_library(cvcuda_priv STATIC
     OpBoxBlur.cpp
     OpBndBox.cpp
+    OpBrightnessContrast.cu
     OpRemap.cu
+    OpColorTwist.cu
     OpCropFlipNormalizeReformat.cu
     OpNonMaximumSuppression.cu
     IOperator.cpp
@@ -50,6 +52,8 @@ add_library(cvcuda_priv STATIC
     OpPillowResize.cpp
     OpThreshold.cpp
     OpAdaptiveThreshold.cpp
+    OpRandomResizedCrop.cpp
+    OpGaussianNoise.cpp
 )
 
 target_link_libraries(cvcuda_priv

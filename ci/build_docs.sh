@@ -1,6 +1,6 @@
 #!/bin/bash -e
 
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,4 +25,4 @@ if [[ $# -ge 1 ]]; then
    build_dir=$1
 fi
 
- ./ci/build.sh $build_type $build_dir "-DBUILD_DOCS=ON -DBUILD_TESTS=OFF -DBUILD_PYTHON=OFF"
+./ci/build.sh $build_type $build_dir "-DBUILD_DOCS=ON -DBUILD_TESTS=OFF -DBUILD_PYTHON=ON"

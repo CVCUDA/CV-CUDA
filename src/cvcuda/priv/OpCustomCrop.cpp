@@ -34,7 +34,7 @@ CustomCrop::CustomCrop()
     m_legacyOp = std::make_unique<legacy::CustomCrop>(maxIn, maxOut);
 }
 
-void CustomCrop::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &out,
+void CustomCrop::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                             const NVCVRectI &cropRect) const
 {
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();

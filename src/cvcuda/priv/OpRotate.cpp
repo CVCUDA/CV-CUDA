@@ -35,7 +35,7 @@ Rotate::Rotate(const int maxVarShapeBatchSize)
     m_legacyOpVarShape = std::make_unique<legacy::RotateVarShape>(maxVarShapeBatchSize);
 }
 
-void Rotate::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &out, const double angleDeg,
+void Rotate::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const double angleDeg,
                         const double2 shift, const NVCVInterpolationType interpolation) const
 {
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
@@ -55,8 +55,9 @@ void Rotate::operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv
     NVCV_CHECK_THROW(m_legacyOp->infer(*inData, *outData, angleDeg, shift, interpolation, stream));
 }
 
-void Rotate::operator()(cudaStream_t stream, const nvcv::IImageBatchVarShape &in, const nvcv::IImageBatchVarShape &out,
-                        nvcv::ITensor &angleDeg, nvcv::ITensor &shift, const NVCVInterpolationType interpolation) const
+void Rotate::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
+                        const nvcv::Tensor &angleDeg, const nvcv::Tensor &shift,
+                        const NVCVInterpolationType interpolation) const
 {
     auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (inData == nullptr)

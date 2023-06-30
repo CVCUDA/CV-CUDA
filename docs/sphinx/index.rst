@@ -123,6 +123,7 @@ Copyright
     :maxdepth: 1
     :hidden:
 
+    Beta.1 <relnotes/v0.3.1-beta>
     Beta <relnotes/v0.3.0-beta>
     Alpha.1 <relnotes/v0.2.1-alpha>
     Alpha <relnotes/v0.2.0-alpha>

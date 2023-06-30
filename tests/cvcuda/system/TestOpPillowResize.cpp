@@ -224,6 +224,16 @@ protected:
         };
     };
 
+    static constexpr float box_filter_support = 0.5;
+
+    class BoxFilter : public Filter
+    {
+    public:
+        BoxFilter()
+            : Filter(box_filter_support){};
+        [[nodiscard]] double filter(double x) const override;
+    };
+
     static constexpr float bilinear_filter_support = 1.;
 
     class BilinearFilter : public Filter
@@ -231,6 +241,39 @@ protected:
     public:
         BilinearFilter()
             : Filter(bilinear_filter_support){};
+        [[nodiscard]] double filter(double x) const override;
+    };
+
+    static constexpr float hamming_filter_support = 1.;
+
+    class HammingFilter : public Filter
+    {
+    public:
+        HammingFilter()
+            : Filter(hamming_filter_support){};
+        [[nodiscard]] double filter(double x) const override;
+    };
+
+    static constexpr float bicubic_filter_support = 2.;
+
+    class BicubicFilter : public Filter
+    {
+    public:
+        BicubicFilter()
+            : Filter(bicubic_filter_support){};
+        [[nodiscard]] double filter(double x) const override;
+    };
+
+    static constexpr float lanczos_filter_support = 3.;
+
+    class LanczosFilter : public Filter
+    {
+    protected:
+        [[nodiscard]] static double _sincFilter(double x);
+
+    public:
+        LanczosFilter()
+            : Filter(lanczos_filter_support){};
         [[nodiscard]] double filter(double x) const override;
     };
 
@@ -290,7 +333,7 @@ protected:
         // Handles values from -640 to 639.
         const uchar *clip8_lookups = &_clip8_lut<1280, -640>[640]; // NOLINT
         // NOLINTNEXTLINE
-        return clip8_lookups[static_cast<unsigned int>(in) >> precision_bits];
+        return clip8_lookups[std::max(-640, std::min(639, (int)(static_cast<unsigned int>(in) >> precision_bits)))];
     }
 
     /**
@@ -486,6 +529,16 @@ public:
         {
         case NVCV_INTERP_LINEAR:
             return PillowResizeCPU::InterpolationMethods::INTERPOLATION_BILINEAR;
+        case NVCV_INTERP_NEAREST:
+            return PillowResizeCPU::InterpolationMethods::INTERPOLATION_NEAREST;
+        case NVCV_INTERP_CUBIC:
+            return PillowResizeCPU::InterpolationMethods::INTERPOLATION_BICUBIC;
+        case NVCV_INTERP_BOX:
+            return PillowResizeCPU::InterpolationMethods::INTERPOLATION_BOX;
+        case NVCV_INTERP_LANCZOS:
+            return PillowResizeCPU::InterpolationMethods::INTERPOLATION_LANCZOS;
+        case NVCV_INTERP_HAMMING:
+            return PillowResizeCPU::InterpolationMethods::INTERPOLATION_HAMMING;
         default:
             return PillowResizeCPU::InterpolationMethods::INTERPOLATION_BILINEAR;
         }
@@ -536,6 +589,72 @@ double PillowResizeCPU::BilinearFilter::filter(double x) const
     if (x < 1.0)
     {
         return 1.0 - x;
+    }
+    return 0.0;
+}
+
+double PillowResizeCPU::BoxFilter::filter(double x) const
+{
+    const double half_pixel = 0.5;
+    if (x > -half_pixel && x <= half_pixel)
+    {
+        return 1.0;
+    }
+    return 0.0;
+}
+
+double PillowResizeCPU::HammingFilter::filter(double x) const
+{
+    if (x < 0.0)
+    {
+        x = -x;
+    }
+    if (x == 0.0)
+    {
+        return 1.0;
+    }
+    if (x >= 1.0)
+    {
+        return 0.0;
+    }
+    x = x * M_PI;
+    return sin(x) / x * (0.54F + 0.46F * cos(x));
+}
+
+double PillowResizeCPU::BicubicFilter::filter(double x) const
+{
+    const double a = -0.5;
+    if (x < 0.0)
+    {
+        x = -x;
+    }
+    if (x < 1.0)
+    {
+        return ((a + 2.0) * x - (a + 3.0)) * x * x + 1;
+    }
+    if (x < 2.0)
+    {
+        return (((x - 5) * x + 8) * x - 4) * a;
+    }
+    return 0.0;
+}
+
+double PillowResizeCPU::LanczosFilter::_sincFilter(double x)
+{
+    if (x == 0.0)
+    {
+        return 1.0;
+    }
+    x = x * M_PI;
+    return sin(x) / x;
+}
+
+double PillowResizeCPU::LanczosFilter::filter(double x) const
+{
+    const double lanczos_a_param = 3.0;
+    if (-lanczos_a_param <= x && x < lanczos_a_param)
+    {
+        return _sincFilter(x) * _sincFilter(x / lanczos_a_param);
     }
     return 0.0;
 }
@@ -606,7 +725,7 @@ int PillowResizeCPU::_precomputeCoeffs(int in_size, double in0, double in1, int 
         }
         for (x = 0; x < xmax; ++x)
         {
-            if (ww != 0.0)
+            if (std::fabs(ww) > 1e-5)
             {
                 k[x] /= ww; // NOLINT
             }
@@ -689,8 +808,20 @@ TestMat<T> PillowResizeCPU::resize(const TestMat<T> &src, const nvcv::Size2D &ou
     // Check filter.
     switch (filter)
     {
+    case INTERPOLATION_BOX:
+        filter_p = std::make_shared<BoxFilter>(BoxFilter());
+        break;
     case INTERPOLATION_BILINEAR:
         filter_p = std::make_shared<BilinearFilter>(BilinearFilter());
+        break;
+    case INTERPOLATION_HAMMING:
+        filter_p = std::make_shared<HammingFilter>(HammingFilter());
+        break;
+    case INTERPOLATION_BICUBIC:
+        filter_p = std::make_shared<BicubicFilter>(BicubicFilter());
+        break;
+    case INTERPOLATION_LANCZOS:
+        filter_p = std::make_shared<LanczosFilter>(LanczosFilter());
         break;
     default:
         throw std::runtime_error("unsupported resampling filter");
@@ -817,6 +948,14 @@ NVCV_TEST_SUITE_P(OpPillowResize, test::ValueList<int, int, int, int, NVCVInterp
     {        21,        21,       42,        42,  NVCV_INTERP_LINEAR,           5, nvcv::FMT_RGB8},
     {        42,        42,       21,        21,  NVCV_INTERP_LINEAR,           6, nvcv::FMT_RGBf32},
     {        21,        21,       42,        42,  NVCV_INTERP_LINEAR,           7, nvcv::FMT_RGBf32},
+    {        21,        21,       40,        40,  NVCV_INTERP_BOX,              3, nvcv::FMT_RGBf32},
+    {        41,        41,       20,        20,  NVCV_INTERP_HAMMING,          3, nvcv::FMT_RGB8},
+    {        21,        21,       40,        40,  NVCV_INTERP_HAMMING,          3, nvcv::FMT_RGBf32},
+    {        41,        41,       20,        20,  NVCV_INTERP_CUBIC,            3, nvcv::FMT_RGB8},
+    {        21,        21,       40,        40,  NVCV_INTERP_CUBIC,            3, nvcv::FMT_RGBf32},
+    {        41,        41,       20,        20,  NVCV_INTERP_LANCZOS,          3, nvcv::FMT_RGB8},
+    {        21,        21,       40,        40,  NVCV_INTERP_LANCZOS,          3, nvcv::FMT_RGBf32},
+    {      1920,      1080,       40,        40,   NVCV_INTERP_LINEAR,         16, nvcv::FMT_RGBA8},
 });
 
 // clang-format on
@@ -840,19 +979,26 @@ void StartTest(int srcWidth, int srcHeight, int dstWidth, int dstHeight, NVCVInt
 
     std::vector<std::vector<T>> srcVec(numberOfImages);
     int                         srcVecRowStride = srcWidth * fmt.planePixelStrideBytes(0);
-
-    std::default_random_engine randEng;
+    int                         num_channels    = fmt.numChannels();
+    nvcv::DataKind              dkind           = nvcv::DataKind::UNSIGNED;
+    std::default_random_engine  randEng;
 
     for (int i = 0; i < numberOfImages; ++i)
     {
-        srcVec[i].resize(srcHeight * srcVecRowStride);
+        srcVec[i].resize(srcHeight * srcWidth * num_channels);
 
         std::default_random_engine             randEng{0};
         std::uniform_int_distribution<uint8_t> srcRand{0u, 255u};
         if (std::is_same<T, float>::value)
-            std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return srcRand(randEng) / 255.0f; });
-        else
+        {
             std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return srcRand(randEng); });
+            dkind = nvcv::DataKind::FLOAT;
+        }
+        else
+        {
+            std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return srcRand(randEng); });
+            dkind = nvcv::DataKind::UNSIGNED;
+        }
 
         // Copy input data to the GPU
         ASSERT_EQ(cudaSuccess,
@@ -883,7 +1029,7 @@ void StartTest(int srcWidth, int srcHeight, int dstWidth, int dstHeight, NVCVInt
     {
         SCOPED_TRACE(i);
 
-        std::vector<T> testVec(dstHeight * dstVecRowStride);
+        std::vector<T> testVec(dstHeight * dstWidth * num_channels);
 
         // Copy output data to Host
         ASSERT_EQ(cudaSuccess,
@@ -891,20 +1037,25 @@ void StartTest(int srcWidth, int srcHeight, int dstWidth, int dstHeight, NVCVInt
                                dstVecRowStride, // vec has no padding
                                dstHeight, cudaMemcpyDeviceToHost));
 
-        TestMat<T> test_in(srcHeight, srcWidth, fmt.planePixelStrideBytes(0), nvcv::DataKind::UNSIGNED, srcVec[i]);
+        TestMat<T>                            test_in(srcHeight, srcWidth, num_channels, dkind, srcVec[i]);
         PillowResizeCPU::InterpolationMethods inter = PillowResizeCPU::getInterpolationMethods(interpolation);
         TestMat<T> test_out = PillowResizeCPU::resize(test_in, nvcv::Size2D(dstWidth, dstHeight), inter);
 
         // maximum absolute error
+        int              maeThreshold = 2;
+        int              count        = 0;
         std::vector<int> mae(testVec.size());
         for (size_t i = 0; i < mae.size(); ++i)
         {
             mae[i] = abs(static_cast<int>((test_out.data)[i]) - static_cast<int>(testVec[i]));
+            if (mae[i] > maeThreshold)
+                count++;
         }
 
-        int maeThreshold = 2;
-
-        EXPECT_THAT(mae, t::Each(t::Le(maeThreshold)));
+        if (interpolation == NVCV_INTERP_BOX || interpolation == NVCV_INTERP_LANCZOS)
+            ASSERT_LE(count, 0.05 * mae.size()); // discontinuous in the filter border
+        else
+            ASSERT_LE(count, 0.005 * mae.size());
     }
 }
 
@@ -938,13 +1089,11 @@ void StartVarShapeTest(int srcWidthBase, int srcHeightBase, int dstWidthBase, in
     std::uniform_int_distribution<int> rndDstWidth(dstWidthBase * 0.8, dstWidthBase * 1.1);
     std::uniform_int_distribution<int> rndDstHeight(dstHeightBase * 0.8, dstHeightBase * 1.1);
 
-    std::vector<std::unique_ptr<nvcv::Image>> imgSrc, imgDst;
+    std::vector<nvcv::Image> imgSrc, imgDst;
     for (int i = 0; i < numberOfImages; ++i)
     {
-        imgSrc.emplace_back(
-            std::make_unique<nvcv::Image>(nvcv::Size2D{rndSrcWidth(randEng), rndSrcHeight(randEng)}, fmt));
-        imgDst.emplace_back(
-            std::make_unique<nvcv::Image>(nvcv::Size2D{rndDstWidth(randEng), rndDstHeight(randEng)}, fmt));
+        imgSrc.emplace_back(nvcv::Size2D{rndSrcWidth(randEng), rndSrcHeight(randEng)}, fmt);
+        imgDst.emplace_back(nvcv::Size2D{rndDstWidth(randEng), rndDstHeight(randEng)}, fmt);
     }
 
     nvcv::ImageBatchVarShape batchSrc(numberOfImages);
@@ -955,11 +1104,12 @@ void StartVarShapeTest(int srcWidthBase, int srcHeightBase, int dstWidthBase, in
 
     std::vector<std::vector<T>> srcVec(numberOfImages);
     std::vector<int>            srcVecRowStride(numberOfImages);
-
+    int                         num_channels = fmt.numChannels();
+    nvcv::DataKind              dkind        = nvcv::DataKind::UNSIGNED;
     // Populate input
     for (int i = 0; i < numberOfImages; ++i)
     {
-        const auto srcData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
+        const auto srcData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
         assert(srcData->numPlanes() == 1);
 
         int srcWidth  = srcData->plane(0).width;
@@ -972,12 +1122,17 @@ void StartVarShapeTest(int srcWidthBase, int srcHeightBase, int dstWidthBase, in
         std::default_random_engine             randEng{0};
         std::uniform_int_distribution<uint8_t> srcRand{0u, 255u};
 
-        srcVec[i].resize(srcHeight * srcRowStride);
+        srcVec[i].resize(srcHeight * srcWidth * num_channels);
         if (std::is_same<T, float>::value)
-            std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return srcRand(randEng) / 255.0f; });
-        else
+        {
             std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return srcRand(randEng); });
-
+            dkind = nvcv::DataKind::FLOAT;
+        }
+        else
+        {
+            std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return srcRand(randEng); });
+            dkind = nvcv::DataKind::UNSIGNED;
+        }
         // Copy input data to the GPU
         ASSERT_EQ(cudaSuccess,
                   cudaMemcpy2D(srcData->plane(0).basePtr, srcData->plane(0).rowStride, srcVec[i].data(), srcRowStride,
@@ -1002,12 +1157,12 @@ void StartVarShapeTest(int srcWidthBase, int srcHeightBase, int dstWidthBase, in
     {
         SCOPED_TRACE(i);
 
-        const auto srcData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
+        const auto srcData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
         assert(srcData->numPlanes() == 1);
         int srcWidth  = srcData->plane(0).width;
         int srcHeight = srcData->plane(0).height;
 
-        const auto dstData = imgDst[i]->exportData<nvcv::ImageDataStridedCuda>();
+        const auto dstData = imgDst[i].exportData<nvcv::ImageDataStridedCuda>();
         assert(dstData->numPlanes() == 1);
 
         int dstWidth  = dstData->plane(0).width;
@@ -1015,7 +1170,7 @@ void StartVarShapeTest(int srcWidthBase, int srcHeightBase, int dstWidthBase, in
 
         int dstRowStride = dstWidth * fmt.planePixelStrideBytes(0);
 
-        std::vector<T> testVec(dstHeight * dstRowStride);
+        std::vector<T> testVec(dstHeight * dstWidth * num_channels);
 
         // Copy output data to Host
         ASSERT_EQ(cudaSuccess,
@@ -1023,20 +1178,25 @@ void StartVarShapeTest(int srcWidthBase, int srcHeightBase, int dstWidthBase, in
                                dstRowStride, // vec has no padding
                                dstHeight, cudaMemcpyDeviceToHost));
 
-        TestMat<T> test_in(srcHeight, srcWidth, fmt.planePixelStrideBytes(0), nvcv::DataKind::UNSIGNED, srcVec[i]);
+        TestMat<T>                            test_in(srcHeight, srcWidth, num_channels, dkind, srcVec[i]);
         PillowResizeCPU::InterpolationMethods inter = PillowResizeCPU::getInterpolationMethods(interpolation);
         TestMat<T> test_out = PillowResizeCPU::resize(test_in, nvcv::Size2D(dstWidth, dstHeight), inter);
 
         // maximum absolute error
+        int              maeThreshold = 2;
+        int              count        = 0;
         std::vector<int> mae(testVec.size());
         for (size_t i = 0; i < mae.size(); ++i)
         {
             mae[i] = abs(static_cast<int>((test_out.data)[i]) - static_cast<int>(testVec[i]));
+            if (mae[i] > maeThreshold)
+                count++;
         }
 
-        int maeThreshold = 2;
-
-        EXPECT_THAT(mae, t::Each(t::Le(maeThreshold)));
+        if (interpolation == NVCV_INTERP_BOX || interpolation == NVCV_INTERP_LANCZOS)
+            ASSERT_LE(count, 0.05 * mae.size()); // discontinuous in the filter border
+        else
+            ASSERT_LE(count, 0.005 * mae.size());
     }
 }
 

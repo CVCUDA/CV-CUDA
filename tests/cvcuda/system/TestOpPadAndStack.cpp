@@ -166,7 +166,7 @@ TEST_P(OpPadAndStack, correct_output)
     ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(inLeftData->basePtr(), leftVec.data(), leftVec.size() * sizeof(int),
                                            cudaMemcpyHostToDevice, stream));
 
-    std::vector<std::unique_ptr<nvcv::IImage>> srcImgVec;
+    std::vector<nvcv::Image> srcImgVec;
 
     std::vector<std::vector<uint8_t>> batchSrcVec;
 
@@ -176,9 +176,9 @@ TEST_P(OpPadAndStack, correct_output)
 
     for (int b = 0; b < numBatches; ++b)
     {
-        srcImgVec.emplace_back(std::make_unique<nvcv::Image>(nvcv::Size2D{srcWidth, srcHeight}, nvcv::FMT_RGBA8));
+        srcImgVec.emplace_back(nvcv::Size2D{srcWidth, srcHeight}, nvcv::FMT_RGBA8);
 
-        auto imgSrcData = srcImgVec.back()->exportData<nvcv::ImageDataStridedCuda>();
+        auto imgSrcData = srcImgVec.back().exportData<nvcv::ImageDataStridedCuda>();
 
         srcStride      = imgSrcData->plane(0).rowStride;
         srcRowStride   = srcStride / sizeof(uint8_t);

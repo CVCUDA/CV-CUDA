@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,13 +30,17 @@
 # -- Project information -----------------------------------------------------
 import os
 import sphinx_rtd_theme
+import sys
 
 project = "CV-CUDA"
-copyright = "2022, NVIDIA."
+copyright = "2022-2023, NVIDIA."
 author = "NVIDIA"
-version = "Alpha"
+version = "Beta"
 release = version
 
+# set python docstring source path
+lib_path = os.getenv("SPHINX_PYTHON_SRC", default=".")
+sys.path.insert(0, os.path.abspath(lib_path))
 
 # -- General configuration ---------------------------------------------------
 
@@ -114,6 +118,9 @@ pygments_style = "sphinx"
 # Enable the breathe extension
 extensions.append("breathe")
 extensions.append("exhale")
+extensions.append("sphinx.ext.autodoc")
+extensions.append("sphinx.ext.viewcode")
+extensions.append("sphinx.ext.napoleon")
 
 # Set up the default project for breathe extension
 breathe_default_project = "cvcuda"
@@ -183,3 +190,5 @@ primary_domain = "cpp"
 
 # Tell sphinx what the pygments highlight language should be.
 highlight_language = "cpp"
+
+autodoc_inherit_docstrings = False

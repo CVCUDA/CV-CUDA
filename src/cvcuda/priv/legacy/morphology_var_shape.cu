@@ -210,7 +210,7 @@ MorphologyVarShape::MorphologyVarShape(const int maxBatchSize)
 
 MorphologyVarShape::~MorphologyVarShape() {}
 
-ErrorCode MorphologyVarShape::infer(const nvcv::IImageBatchVarShape &inBatch, const nvcv::IImageBatchVarShape &outBatch,
+ErrorCode MorphologyVarShape::infer(const nvcv::ImageBatchVarShape &inBatch, const nvcv::ImageBatchVarShape &outBatch,
                                     NVCVMorphologyType morph_type, const TensorDataStridedCuda &masks,
                                     const TensorDataStridedCuda &anchors, int iteration, NVCVBorderType borderMode,
                                     cudaStream_t stream)
@@ -281,8 +281,8 @@ ErrorCode MorphologyVarShape::infer(const nvcv::IImageBatchVarShape &inBatch, co
         for (auto init = inBatch.begin(), outit = outBatch.begin(); init != inBatch.end(), outit != outBatch.end();
              ++init, ++outit)
         {
-            const IImage            &inimg      = *init;
-            const IImage            &outimg     = *outit;
+            const Image             &inimg      = *init;
+            const Image             &outimg     = *outit;
             auto                     inimgdata  = inimg.exportData<ImageDataStridedCuda>();
             auto                     outimgdata = outimg.exportData<ImageDataStridedCuda>();
             const ImagePlaneStrided &inplane    = inimgdata->plane(0);

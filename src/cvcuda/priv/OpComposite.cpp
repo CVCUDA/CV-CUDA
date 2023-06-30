@@ -35,8 +35,8 @@ Composite::Composite()
     m_legacyOpVarShape = std::make_unique<legacy::CompositeVarShape>(maxIn, maxOut);
 }
 
-void Composite::operator()(cudaStream_t stream, const nvcv::ITensor &foreground, const nvcv::ITensor &background,
-                           const nvcv::ITensor &fgMask, const nvcv::ITensor &output) const
+void Composite::operator()(cudaStream_t stream, const nvcv::Tensor &foreground, const nvcv::Tensor &background,
+                           const nvcv::Tensor &fgMask, const nvcv::Tensor &output) const
 {
     auto foregroundData = foreground.exportData<nvcv::TensorDataStridedCuda>();
     if (foregroundData == nullptr)
@@ -69,9 +69,9 @@ void Composite::operator()(cudaStream_t stream, const nvcv::ITensor &foreground,
     NVCV_CHECK_THROW(m_legacyOp->infer(*foregroundData, *backgroundData, *fgMaskData, *outData, stream));
 }
 
-void Composite::operator()(cudaStream_t stream, const nvcv::IImageBatchVarShape &foreground,
-                           const nvcv::IImageBatchVarShape &background, const nvcv::IImageBatchVarShape &fgMask,
-                           const nvcv::IImageBatchVarShape &output) const
+void Composite::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &foreground,
+                           const nvcv::ImageBatchVarShape &background, const nvcv::ImageBatchVarShape &fgMask,
+                           const nvcv::ImageBatchVarShape &output) const
 {
     auto foregroundData = foreground.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (foregroundData == nullptr)

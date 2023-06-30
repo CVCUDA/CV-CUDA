@@ -174,6 +174,7 @@ add_library(nvcv_util
     CheckError.cpp
     String.cpp
     Version.cpp
+    TensorDataUtils.cpp
 )
 
 target_include_directories(nvcv_util

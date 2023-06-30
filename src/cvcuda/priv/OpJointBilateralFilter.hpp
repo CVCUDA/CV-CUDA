@@ -27,8 +27,8 @@
 #include "IOperator.hpp"
 #include "legacy/CvCudaLegacy.h"
 
-#include <nvcv/IImageBatch.hpp>
-#include <nvcv/ITensor.hpp>
+#include <nvcv/ImageBatch.hpp>
+#include <nvcv/Tensor.hpp>
 
 #include <memory>
 
@@ -39,13 +39,12 @@ class JointBilateralFilter final : public IOperator
 public:
     explicit JointBilateralFilter();
 
-    void operator()(cudaStream_t stream, const nvcv::ITensor &in, const nvcv::ITensor &inColor,
-                    const nvcv::ITensor &out, int diameter, float sigmaColor, float sigmaSpace,
-                    NVCVBorderType borderMode) const;
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &inColor, const nvcv::Tensor &out,
+                    int diameter, float sigmaColor, float sigmaSpace, NVCVBorderType borderMode) const;
 
-    void operator()(cudaStream_t stream, const nvcv::IImageBatchVarShape &in, const nvcv::IImageBatchVarShape &inColor,
-                    const nvcv::IImageBatchVarShape &out, const nvcv::ITensor &diameter,
-                    const nvcv::ITensor &sigmaColor, const nvcv::ITensor &sigmaSpace, NVCVBorderType borderMode) const;
+    void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &inColor,
+                    const nvcv::ImageBatchVarShape &out, const nvcv::Tensor &diameter, const nvcv::Tensor &sigmaColor,
+                    const nvcv::Tensor &sigmaSpace, NVCVBorderType borderMode) const;
 
 private:
     std::unique_ptr<nvcv::legacy::cuda_op::JointBilateralFilter>         m_legacyOp;

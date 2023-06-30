@@ -30,9 +30,9 @@
 #include "OpNormalize.h"
 
 #include <cuda_runtime.h>
-#include <nvcv/IImageBatch.hpp>
-#include <nvcv/ITensor.hpp>
+#include <nvcv/ImageBatch.hpp>
 #include <nvcv/ImageFormat.hpp>
+#include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
 namespace cvcuda {
@@ -44,11 +44,12 @@ public:
 
     ~Normalize();
 
-    void operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &base, nvcv::ITensor &scale,
-                    nvcv::ITensor &out, float global_scale, float shift, float epsilon, uint32_t flags = 0);
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &base, const nvcv::Tensor &scale,
+                    const nvcv::Tensor &out, float global_scale, float shift, float epsilon, uint32_t flags = 0);
 
-    void operator()(cudaStream_t stream, nvcv::IImageBatch &in, nvcv::ITensor &base, nvcv::ITensor &scale,
-                    nvcv::IImageBatch &out, float global_scale, float shift, float epsilon, uint32_t flags = 0);
+    void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::Tensor &base,
+                    const nvcv::Tensor &scale, const nvcv::ImageBatch &out, float global_scale, float shift,
+                    float epsilon, uint32_t flags = 0);
 
     virtual NVCVOperatorHandle handle() const noexcept override;
 
@@ -68,16 +69,17 @@ inline Normalize::~Normalize()
     m_handle = nullptr;
 }
 
-inline void Normalize::operator()(cudaStream_t stream, nvcv::ITensor &in, nvcv::ITensor &base, nvcv::ITensor &scale,
-                                  nvcv::ITensor &out, float global_scale, float shift, float epsilon, uint32_t flags)
+inline void Normalize::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &base,
+                                  const nvcv::Tensor &scale, const nvcv::Tensor &out, float global_scale, float shift,
+                                  float epsilon, uint32_t flags)
 {
     nvcv::detail::CheckThrow(cvcudaNormalizeSubmit(m_handle, stream, in.handle(), base.handle(), scale.handle(),
                                                    out.handle(), global_scale, shift, epsilon, flags));
 }
 
-inline void Normalize::operator()(cudaStream_t stream, nvcv::IImageBatch &in, nvcv::ITensor &base, nvcv::ITensor &scale,
-                                  nvcv::IImageBatch &out, float global_scale, float shift, float epsilon,
-                                  uint32_t flags)
+inline void Normalize::operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::Tensor &base,
+                                  const nvcv::Tensor &scale, const nvcv::ImageBatch &out, float global_scale,
+                                  float shift, float epsilon, uint32_t flags)
 {
     nvcv::detail::CheckThrow(cvcudaNormalizeVarShapeSubmit(m_handle, stream, in.handle(), base.handle(), scale.handle(),
                                                            out.handle(), global_scale, shift, epsilon, flags));

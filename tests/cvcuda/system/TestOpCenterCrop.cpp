@@ -17,12 +17,12 @@
 
 #include "Definitions.hpp"
 
-#include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpCenterCrop.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
+#include <util/TensorDataUtils.hpp>
 
 #include <iostream>
 #include <random>
@@ -144,8 +144,8 @@ TEST_P(OpCenterCrop, CenterCrop_packed)
     int     numberOfImages = GetParamValue<4>();
     uint8_t cropVal        = 0x56;
 
-    nvcv::Tensor imgOut = test::CreateTensor(numberOfImages, inWidth, inHeight, nvcv::FMT_RGBA8);
-    nvcv::Tensor imgIn  = test::CreateTensor(numberOfImages, inWidth, inHeight, nvcv::FMT_RGBA8);
+    nvcv::Tensor imgOut = nvcv::util::CreateTensor(numberOfImages, inWidth, inHeight, nvcv::FMT_RGBA8);
+    nvcv::Tensor imgIn  = nvcv::util::CreateTensor(numberOfImages, inWidth, inHeight, nvcv::FMT_RGBA8);
 
     auto inData  = imgIn.exportData<nvcv::TensorDataStridedCuda>();
     auto outData = imgOut.exportData<nvcv::TensorDataStridedCuda>();

@@ -71,7 +71,7 @@ static std::ostream &operator<<(std::ostream &out, const NVCVImageBufferStrided 
     return out;
 }
 
-TEST(ImageBatchVarShape, wip_create)
+TEST(ImageBatchVarShape, smoke_create)
 {
     nvcv::ImageBatchVarShape batch(100);
 
@@ -104,7 +104,7 @@ TEST(ImageBatchVarShape, wip_create)
     std::vector<NVCVImageFormat>        goldFormats;
     std::vector<NVCVImageHandle>        goldHandles;
 
-    auto addToGold = [&goldImages, &goldFormats, &goldHandles](const nvcv::IImage &img)
+    auto addToGold = [&goldImages, &goldFormats, &goldHandles](const nvcv::Image &img)
     {
         auto imgdata = img.exportData<nvcv::ImageDataStridedCuda>();
         EXPECT_NE(nvcv::NullOpt, imgdata);
@@ -154,11 +154,11 @@ TEST(ImageBatchVarShape, wip_create)
     }
     batch.pushBack(vec0.begin(), vec0.end());
 
-    std::vector<std::unique_ptr<nvcv::IImage>> vec1;
+    std::vector<nvcv::Image> vec1;
     for (int i = 0; i < 10; ++i)
     {
-        vec1.emplace_back(std::make_unique<nvcv::Image>(nvcv::Size2D{328 + i * 2, 130 - i * 2}, nvcv::FMT_NV12));
-        addToGold(*vec1.back());
+        vec1.emplace_back(nvcv::Image(nvcv::Size2D{328 + i * 2, 130 - i * 2}, nvcv::FMT_NV12));
+        addToGold(vec1.back());
     }
     batch.pushBack(vec1.begin(), vec1.end());
 
@@ -169,15 +169,15 @@ TEST(ImageBatchVarShape, wip_create)
     EXPECT_EQ(calcMaxSize(), devdata->maxSize());
     EXPECT_EQ(devdata->maxSize(), batch.maxSize());
 
-    std::vector<std::shared_ptr<nvcv::IImage>> vec2;
+    std::vector<nvcv::Image> vec2;
     for (int i = 0; i < 10; ++i)
     {
-        vec2.emplace_back(std::make_shared<nvcv::Image>(nvcv::Size2D{328 + i * 2, 130 - i * 2}, nvcv::FMT_NV12));
-        addToGold(*vec2.back());
+        vec2.emplace_back(nvcv::Image(nvcv::Size2D{328 + i * 2, 130 - i * 2}, nvcv::FMT_NV12));
+        addToGold(vec2.back());
     }
     batch.pushBack(vec2.begin(), vec2.end());
 
-    std::vector<std::reference_wrapper<nvcv::IImage>> vec3;
+    std::vector<std::reference_wrapper<nvcv::Image>> vec3;
     for (nvcv::Image &img : vec0)
     {
         vec3.emplace_back(img);
@@ -209,22 +209,19 @@ TEST(ImageBatchVarShape, wip_create)
     batch.pushBack(imgRGBA8);
 
     // use callback
-    std::vector<std::shared_ptr<nvcv::IImage>> vec4;
     batch.pushBack(
-        [&]()
+        [&]() -> nvcv::Image
         {
-            if (vec4.size() < 5)
+            int i = batch.numImages();
+            if (i < 5)
             {
-                int i = vec4.size();
-
-                auto img = std::make_shared<nvcv::Image>(nvcv::Size2D{320 + i * 2, 122 - i * 2}, nvcv::FMT_NV12);
-                addToGold(*img);
-                vec4.push_back(img);
+                nvcv::Image img(nvcv::Size2D{320 + i * 2, 122 - i * 2}, nvcv::FMT_NV12);
+                addToGold(img);
                 return img;
             }
             else
             {
-                return std::shared_ptr<nvcv::Image>{};
+                return {};
             }
         });
 
@@ -262,6 +259,7 @@ TEST(ImageBatchVarShape, wip_create)
         int cur = 0;
         for (auto it = batch.begin(); it != batch.end(); ++it, ++cur)
         {
+            ASSERT_LT(cur, (int)goldHandles.size());
             EXPECT_EQ(goldHandles[cur], it->handle()) << "Image #" << cur;
         }
 
@@ -273,12 +271,13 @@ TEST(ImageBatchVarShape, wip_create)
 
     {
         nvcv::ImageBatchVarShapeWrapHandle wrap(batch.handle());
-        EXPECT_EQ(batch.capacity(), wrap.capacity());
-        ASSERT_EQ(batch.numImages(), wrap.numImages());
-        EXPECT_EQ(batch.handle(), wrap.handle());
+        const nvcv::ImageBatchVarShape    &wrapref = wrap;
+        EXPECT_EQ(batch.capacity(), wrapref.capacity());
+        ASSERT_EQ(batch.numImages(), wrapref.numImages());
+        EXPECT_EQ(batch.handle(), wrapref.handle());
 
         int  cur    = 0;
-        auto itwrap = wrap.begin();
+        auto itwrap = wrapref.begin();
         for (auto itgold = batch.begin(); itgold != batch.end(); ++itgold, ++itwrap, ++cur)
         {
             EXPECT_EQ(itgold->handle(), itwrap->handle()) << "Image #" << cur;
@@ -288,13 +287,13 @@ TEST(ImageBatchVarShape, wip_create)
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
-TEST(ImageBatchVarShape, wip_sync)
+TEST(ImageBatchVarShape, smoke_sync)
 {
     std::vector<NVCVImageBufferStrided> goldImages;
     std::vector<NVCVImageFormat>        goldFormats;
     std::vector<NVCVImageHandle>        goldHandles;
 
-    auto addToGold = [&goldImages, &goldFormats, &goldHandles](const nvcv::IImage &img)
+    auto addToGold = [&goldImages, &goldFormats, &goldHandles](const nvcv::Image &img)
     {
         auto imgdata = img.exportData<nvcv::ImageDataStridedCuda>();
         EXPECT_NE(nvcv::NullOpt, imgdata);
@@ -357,7 +356,7 @@ TEST(ImageBatchVarShape, wip_sync)
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
-TEST(ImageBatch, wip_user_pointer)
+TEST(ImageBatch, smoke_user_pointer)
 {
     nvcv::ImageBatchVarShape batch(3);
     EXPECT_EQ(nullptr, batch.userPointer());
@@ -369,23 +368,8 @@ TEST(ImageBatch, wip_user_pointer)
     EXPECT_EQ(nullptr, batch.userPointer());
 }
 
-TEST(ImageBatch, wip_cast)
+TEST(ImageBatch, smoke_cast)
 {
-    nvcv::ImageBatchVarShape img(5);
-
-    EXPECT_EQ(&img, nvcv::StaticCast<nvcv::IImageBatch *>(img.handle()));
-    EXPECT_EQ(&img, nvcv::StaticCast<nvcv::IImageBatchVarShape *>(img.handle()));
-    EXPECT_EQ(&img, nvcv::StaticCast<nvcv::ImageBatchVarShape *>(img.handle()));
-
-    EXPECT_EQ(&img, &nvcv::StaticCast<nvcv::IImageBatch>(img.handle()));
-    EXPECT_EQ(&img, &nvcv::StaticCast<nvcv::IImageBatchVarShape>(img.handle()));
-    EXPECT_EQ(&img, &nvcv::StaticCast<nvcv::ImageBatchVarShape>(img.handle()));
-
-    EXPECT_EQ(nullptr, nvcv::DynamicCast<nvcv::ImageBatchWrapHandle *>(img.handle()));
-
-    EXPECT_EQ(nullptr, nvcv::DynamicCast<nvcv::IImageBatch *>(nullptr));
-    EXPECT_THROW(nvcv::DynamicCast<nvcv::IImageBatch>(nullptr), std::bad_cast);
-
     // Now when we create the object via C API
 
     NVCVImageBatchHandle               handle;
@@ -396,33 +380,16 @@ TEST(ImageBatch, wip_cast)
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageBatchRefCount(handle, &ref));
     EXPECT_EQ(ref, 1);
 
-    // Size of the internal buffer used to store the WrapHandle object
-    // we might have to create for containers allocated via C API.
-    // This value must never decrease, or else it'll break ABI compatibility.
-    uintptr_t max = 512;
+    auto             h = handle;
+    nvcv::ImageBatch img(std::move(handle));
+    EXPECT_EQ(h, img.handle());
+    EXPECT_EQ(5, img.capacity());
 
-    EXPECT_GE(max, sizeof(nvcv::detail::WrapHandle<nvcv::IImageBatch>)) << "Must be big enough for the WrapHandle";
+    auto h2 = h;
+    ASSERT_EQ(NVCV_SUCCESS, nvcvImageBatchIncRef(h2, &ref));
+    EXPECT_EQ(ref, 2);
+    EXPECT_NO_THROW(nvcv::ImageBatchVarShape{std::move(h2)});
 
-    void *cxxPtr = &max;
-    ASSERT_EQ(NVCV_SUCCESS, nvcvImageBatchGetUserPointer((NVCVImageBatchHandle)(((uintptr_t)handle) | 1), &cxxPtr));
-    ASSERT_NE(&max, cxxPtr) << "Pointer must have been changed";
-
-    // Buffer too big, bail.
-    max    = 513;
-    cxxPtr = &max;
-    ASSERT_EQ(NVCV_ERROR_INTERNAL,
-              nvcvImageBatchGetUserPointer((NVCVImageBatchHandle)(((uintptr_t)handle) | 1), &cxxPtr))
-        << "Required WrapHandle buffer storage should have been too big";
-
-    nvcv::IImageBatch *pimg = nvcv::StaticCast<nvcv::IImageBatch *>(handle);
-    ASSERT_NE(nullptr, pimg);
-    EXPECT_EQ(handle, pimg->handle());
-    EXPECT_EQ(5, pimg->capacity());
-
-    EXPECT_EQ(pimg, nvcv::DynamicCast<nvcv::IImageBatch *>(handle));
-    EXPECT_EQ(pimg, nvcv::DynamicCast<nvcv::IImageBatchVarShape *>(handle));
-    EXPECT_EQ(nullptr, nvcv::DynamicCast<nvcv::ImageBatchVarShape *>(handle));
-
-    EXPECT_EQ(NVCV_SUCCESS, nvcvImageBatchDecRef(handle, &ref));
+    ref = img.reset();
     EXPECT_EQ(ref, 0);
 }

@@ -17,13 +17,13 @@
 
 #include "Definitions.hpp"
 
-#include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpThreshold.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
+#include <util/TensorDataUtils.hpp>
 
 #include <cmath>
 #include <iostream>
@@ -242,8 +242,8 @@ TEST_P(OpThreshold, tensor_correct_output)
     double   maxval = GetParamValue<5>();
 
     nvcv::ImageFormat fmt    = nvcv::FMT_U8;
-    nvcv::Tensor      imgIn  = nvcv::test::CreateTensor(batch, width, height, fmt);
-    nvcv::Tensor      imgOut = nvcv::test::CreateTensor(batch, width, height, fmt);
+    nvcv::Tensor      imgIn  = nvcv::util::CreateTensor(batch, width, height, fmt);
+    nvcv::Tensor      imgOut = nvcv::util::CreateTensor(batch, width, height, fmt);
 
     auto inData = imgIn.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_NE(nullptr, inData);
@@ -344,13 +344,13 @@ TEST_P(OpThreshold, varshape_correct_shape)
     std::uniform_int_distribution<int> rndWidth(width * 0.8, width * 1.1);
     std::uniform_int_distribution<int> rndHeight(height * 0.8, height * 1.1);
 
-    std::vector<std::unique_ptr<nvcv::Image>> imgSrc, imgDst;
+    std::vector<nvcv::Image> imgSrc, imgDst;
     for (int i = 0; i < batch; ++i)
     {
         int rw = rndWidth(randEng);
         int rh = rndHeight(randEng);
-        imgSrc.emplace_back(std::make_unique<nvcv::Image>(nvcv::Size2D{rw, rh}, fmt));
-        imgDst.emplace_back(std::make_unique<nvcv::Image>(nvcv::Size2D{rw, rh}, fmt));
+        imgSrc.emplace_back(nvcv::Size2D{rw, rh}, fmt);
+        imgDst.emplace_back(nvcv::Size2D{rw, rh}, fmt);
     }
 
     nvcv::ImageBatchVarShape batchSrc(batch);
@@ -383,7 +383,7 @@ TEST_P(OpThreshold, varshape_correct_shape)
 
     for (int i = 0; i < batch; i++)
     {
-        const auto srcData = imgSrc[i]->exportData<nvcv::ImageDataStridedCuda>();
+        const auto srcData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
         assert(srcData->numPlanes() == 1);
 
         int srcWidth  = srcData->plane(0).width;
@@ -412,7 +412,7 @@ TEST_P(OpThreshold, varshape_correct_shape)
     {
         SCOPED_TRACE(i);
 
-        const auto dstData = imgDst[i]->exportData<nvcv::ImageDataStridedCuda>();
+        const auto dstData = imgDst[i].exportData<nvcv::ImageDataStridedCuda>();
         assert(dstData->numPlanes() == 1);
 
         int dstWidth  = dstData->plane(0).width;

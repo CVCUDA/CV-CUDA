@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,7 +30,7 @@ struct Node
     Node *next = nullptr;
 };
 
-TEST(LockFreeStack, wip_push)
+TEST(LockFreeStack, smoke_push)
 {
     priv::LockFreeStack<Node> stack;
     ASSERT_TRUE(stack.empty());
@@ -57,7 +57,7 @@ TEST(LockFreeStack, wip_push)
     ASSERT_TRUE(stack.empty());
 }
 
-TEST(LockFreeStack, wip_push_stack)
+TEST(LockFreeStack, smoke_push_stack)
 {
     priv::LockFreeStack<Node> stack;
     ASSERT_TRUE(stack.empty());
@@ -96,7 +96,7 @@ TEST(LockFreeStack, wip_push_stack)
     ASSERT_TRUE(stack.empty());
 }
 
-TEST(LockFreeStack, wip_release)
+TEST(LockFreeStack, smoke_release)
 {
     priv::LockFreeStack<Node> stack;
     ASSERT_TRUE(stack.empty());

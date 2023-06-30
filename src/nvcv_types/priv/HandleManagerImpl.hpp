@@ -71,20 +71,20 @@ public:
     }
 };
 
-template<typename Interface, typename Storage>
-HandleManager<Interface, Storage>::Resource::Resource()
+template<typename Interface>
+HandleManager<Interface>::ResourceBase::ResourceBase()
 {
     this->generation = 0;
 }
 
-template<typename Interface, typename Storage>
-HandleManager<Interface, Storage>::Resource::~Resource()
+template<typename Interface>
+HandleManager<Interface>::ResourceBase::~ResourceBase()
 {
-    this->destroyObject();
+    assert(m_ptrObj == nullptr && "Internal error - the object must be destroyed by ~Resource");
 }
 
-template<typename Interface, typename Storage>
-void HandleManager<Interface, Storage>::Resource::destroyObject()
+template<typename Interface>
+void HandleManager<Interface>::ResourceBase::destroyObject()
 {
     if (m_ptrObj)
     {
@@ -95,9 +95,35 @@ void HandleManager<Interface, Storage>::Resource::destroyObject()
     NVCV_ASSERT(!this->live());
 }
 
-template<typename Interface, typename Storage>
-struct HandleManager<Interface, Storage>::Impl
+template<class Interface>
+void *HandleManager<Interface>::ResourceBase::getStorage()
 {
+    using Resource = typename HandleManager<Interface>::Impl::Resource;
+    return static_cast<Resource *>(this)->getStorage();
+}
+
+template<typename Interface>
+struct HandleManager<Interface>::Impl
+{
+    using Storage = typename ResourceStorage<Interface>::type;
+
+    class Resource : public ResourceBase
+    {
+    public:
+        ~Resource()
+        {
+            this->destroyObject();
+        }
+
+        void *getStorage()
+        {
+            return m_storage;
+        }
+
+    private:
+        alignas(Storage) std::byte m_storage[sizeof(Storage)];
+    };
+
     static constexpr int kMinHandles = 1024;
 
     std::mutex mtxAlloc;
@@ -113,15 +139,31 @@ struct HandleManager<Interface, Storage>::Impl
         std::vector<Resource> resources;
     };
 
+    void allocate(size_t count)
+    {
+        auto     *res_block = resourceStack.emplace(count);
+        Resource *data      = res_block->resources.data();
+
+        // Turn the newly allocated resources into a forward_list
+        if (count > 1)
+            for (size_t i = 0; i < count - 1; i++)
+            {
+                data[i].next = &data[i + 1];
+            }
+
+        // Add them to the list of free resources.
+        freeResources.pushStack(data, data + count - 1);
+    }
+
     // Store the resources' buffer.
     // For efficient validation, it's divided into several pools,
     // it's easy to check if a given resource belong to a pool, O(1).
     ManagedLockFreeStack<ResourcePool> resourceStack;
 
     // All the free resources we have
-    LockFreeStack<Resource> freeResources;
+    LockFreeStack<ResourceBase> freeResources;
 
-    static_assert(std::atomic<Resource *>::is_always_lock_free);
+    static_assert(std::atomic<ResourceBase *>::is_always_lock_free);
 
     bool            hasFixedSize  = false;
     int             totalCapacity = 0;
@@ -129,26 +171,26 @@ struct HandleManager<Interface, Storage>::Impl
     const char     *name;
 };
 
-template<typename Interface, typename Storage>
-HandleManager<Interface, Storage>::HandleManager(const char *name)
+template<typename Interface>
+HandleManager<Interface>::HandleManager(const char *name)
     : pimpl(std::make_unique<Impl>())
 {
     pimpl->name = name;
 }
 
-template<typename Interface, typename Storage>
-HandleManager<Interface, Storage>::~HandleManager()
+template<typename Interface>
+HandleManager<Interface>::~HandleManager()
 {
     this->clear();
 }
 
-template<typename Interface, typename Storage>
-int HandleManager<Interface, Storage>::decRef(HandleType handle)
+template<typename Interface>
+int HandleManager<Interface>::decRef(HandleType handle)
 {
     if (!handle)
         return 0; // "destruction" of a null handle is a no-op
 
-    if (Resource *res = this->getValidResource(handle))
+    if (ResourceBase *res = this->getValidResource(handle))
     {
         int ref = res->decRef();
         if (ref == 0)
@@ -164,10 +206,10 @@ int HandleManager<Interface, Storage>::decRef(HandleType handle)
     }
 }
 
-template<typename Interface, typename Storage>
-int HandleManager<Interface, Storage>::incRef(HandleType handle)
+template<typename Interface>
+int HandleManager<Interface>::incRef(HandleType handle)
 {
-    if (Resource *res = this->getValidResource(handle))
+    if (ResourceBase *res = this->getValidResource(handle))
     {
         return res->incRef();
     }
@@ -177,10 +219,10 @@ int HandleManager<Interface, Storage>::incRef(HandleType handle)
     }
 }
 
-template<typename Interface, typename Storage>
-int HandleManager<Interface, Storage>::refCount(HandleType handle)
+template<typename Interface>
+int HandleManager<Interface>::refCount(HandleType handle)
 {
-    if (Resource *res = this->getValidResource(handle))
+    if (ResourceBase *res = this->getValidResource(handle))
     {
         return res->refCount();
     }
@@ -190,8 +232,8 @@ int HandleManager<Interface, Storage>::refCount(HandleType handle)
     }
 }
 
-template<typename Interface, typename Storage>
-bool HandleManager<Interface, Storage>::isManagedResource(Resource *r) const
+template<typename Interface>
+bool HandleManager<Interface>::isManagedResource(ResourceBase *r) const
 {
     for (auto *range = pimpl->resourceStack.top(); range; range = range->next)
     {
@@ -205,8 +247,8 @@ bool HandleManager<Interface, Storage>::isManagedResource(Resource *r) const
     return false;
 }
 
-template<typename Interface, typename Storage>
-Interface *HandleManager<Interface, Storage>::validate(HandleType handle) const
+template<typename Interface>
+Interface *HandleManager<Interface>::validate(HandleType handle) const
 {
     if (auto *res = getValidResource(handle))
     {
@@ -218,15 +260,15 @@ Interface *HandleManager<Interface, Storage>::validate(HandleType handle) const
     }
 }
 
-template<typename Interface, typename Storage>
-auto HandleManager<Interface, Storage>::getValidResource(HandleType handle) const -> Resource *
+template<typename Interface>
+auto HandleManager<Interface>::getValidResource(HandleType handle) const -> ResourceBase *
 {
     if (!handle)
     {
         return nullptr;
     }
 
-    Resource *res = doGetResourceFromHandle(handle);
+    ResourceBase *res = doGetResourceFromHandle(handle);
 
     if (this->isManagedResource(res) && res->live() && res->generation == doGetHandleGeneration(handle))
     {
@@ -238,8 +280,8 @@ auto HandleManager<Interface, Storage>::getValidResource(HandleType handle) cons
     }
 }
 
-template<typename Interface, typename Storage>
-void HandleManager<Interface, Storage>::setFixedSize(int32_t maxSize)
+template<typename Interface>
+void HandleManager<Interface>::setFixedSize(int32_t maxSize)
 {
     std::lock_guard lock(pimpl->mtxAlloc);
     if (pimpl->usedCount > 0)
@@ -260,8 +302,8 @@ void HandleManager<Interface, Storage>::setFixedSize(int32_t maxSize)
     doAllocate(maxSize - pimpl->totalCapacity);
 }
 
-template<typename Interface, typename Storage>
-void HandleManager<Interface, Storage>::setDynamicSize(int32_t minSize)
+template<typename Interface>
+void HandleManager<Interface>::setDynamicSize(int32_t minSize)
 {
     std::lock_guard lock(pimpl->mtxAlloc);
 
@@ -272,8 +314,8 @@ void HandleManager<Interface, Storage>::setDynamicSize(int32_t minSize)
     }
 }
 
-template<typename Interface, typename Storage>
-void HandleManager<Interface, Storage>::clear()
+template<typename Interface>
+void HandleManager<Interface>::clear()
 {
     if (pimpl->usedCount > 0)
     {
@@ -319,25 +361,15 @@ void HandleManager<Interface, Storage>::clear()
     pimpl->resourceStack.clear();
 }
 
-template<typename Interface, typename Storage>
-void HandleManager<Interface, Storage>::doAllocate(size_t count)
+template<typename Interface>
+void HandleManager<Interface>::doAllocate(size_t count)
 {
     NVCV_ASSERT(count > 0);
-    auto     *res_block = pimpl->resourceStack.emplace(count);
-    Resource *data      = res_block->resources.data();
-
-    // Turn the newly allocated resources into a forward_list
-    for (size_t i = 0; i < count - 1; i++)
-    {
-        data[i].next = &data[i + 1];
-    }
-
-    // Add them to the list of free resources.
-    pimpl->freeResources.pushStack(data, data + count - 1);
+    pimpl->allocate(count);
 }
 
-template<typename Interface, typename Storage>
-void HandleManager<Interface, Storage>::doGrow()
+template<typename Interface>
+void HandleManager<Interface>::doGrow()
 {
     if (pimpl->hasFixedSize)
     {
@@ -352,8 +384,8 @@ void HandleManager<Interface, Storage>::doGrow()
     }
 }
 
-template<typename Interface, typename Storage>
-auto HandleManager<Interface, Storage>::doFetchFreeResource() -> Resource *
+template<typename Interface>
+auto HandleManager<Interface>::doFetchFreeResource() -> ResourceBase *
 {
     for (;;)
     {
@@ -371,26 +403,26 @@ auto HandleManager<Interface, Storage>::doFetchFreeResource() -> Resource *
     }
 }
 
-template<typename Interface, typename Storage>
-void HandleManager<Interface, Storage>::doReturnResource(Resource *r)
+template<typename Interface>
+void HandleManager<Interface>::doReturnResource(ResourceBase *r)
 {
     pimpl->freeResources.push(r);
     pimpl->usedCount--;
 }
 
-template<typename Interface, typename Storage>
-uint8_t HandleManager<Interface, Storage>::doGetHandleGeneration(HandleType handle) const noexcept
+template<typename Interface>
+uint8_t HandleManager<Interface>::doGetHandleGeneration(HandleType handle) const noexcept
 {
-    return ((uintptr_t)handle & (kResourceAlignment - 1)) >> 1;
+    return ((uintptr_t)handle & (kResourceAlignment - 1));
 }
 
-template<typename Interface, typename Storage>
-auto HandleManager<Interface, Storage>::doGetHandleFromResource(Resource *r) const noexcept -> HandleType
+template<typename Interface>
+auto HandleManager<Interface>::doGetHandleFromResource(ResourceBase *r) const noexcept -> HandleType
 {
     if (r)
     {
-        // generation corresponds to 2th,3th and 4th LSBs (3 bits, max 2^3==8 generations)
-        return reinterpret_cast<HandleType>((uintptr_t)r | (r->generation << 1));
+        // generation corresponds to 4 LSBs -> max 16 generations
+        return reinterpret_cast<HandleType>((uintptr_t)r | r->generation);
     }
     else
     {
@@ -398,12 +430,12 @@ auto HandleManager<Interface, Storage>::doGetHandleFromResource(Resource *r) con
     }
 }
 
-template<typename Interface, typename Storage>
-auto HandleManager<Interface, Storage>::doGetResourceFromHandle(HandleType handle) const noexcept -> Resource *
+template<typename Interface>
+auto HandleManager<Interface>::doGetResourceFromHandle(HandleType handle) const noexcept -> ResourceBase *
 {
     if (handle)
     {
-        return reinterpret_cast<Resource *>((uintptr_t)handle & -kResourceAlignment);
+        return reinterpret_cast<ResourceBase *>((uintptr_t)handle & -kResourceAlignment);
     }
     else
     {

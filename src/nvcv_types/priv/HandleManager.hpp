@@ -49,42 +49,48 @@ struct GetHandleType<T, std::void_t<decltype(sizeof(typename T::HandleType))>>
 template<class T>
 using GetHandleType = typename detail::GetHandleType<T>::type;
 
-// We use the 1st LSB of the Resource address to enable special (private) API
-// processing, which dependent on the C function the handle is passed to.
-// The next 3 bits are used to store the handle generation.
-// For all of this  to work, Resource object address must be aligned to 16 bytes.
-// Handle:        RRRR.RRRR.RRRR.GGGP
+// The 4 least significant bits are used to store the handle generation.
+// For this to work, Resource object address must be aligned to 16 bytes.
+// Handle:        RRRR.RRRR.RRRR.GGGG
 // Resource addr: RRRR.RRRR.RRRR.0000
-// R=resource address, G=generation, P=private API bit
+// R=resource address, G=generation
 static constexpr int kResourceAlignment = 16; // Must be a power of two.
 
-template<typename Interface, typename Storage>
+/** A type trait that defines storage for objects implementing given interface
+ *
+ * This struct must define a ::type that is sufficiently large and aligned to contain
+ * any type that the user might want to store inside a HandleManager<Interface>.
+ */
+template<typename Interface>
+struct ResourceStorage;
+
+template<typename Interface>
 class HandleManager
 {
-    struct alignas(kResourceAlignment) Resource
+    struct ResourceBase
     {
-        // We allow the resource to be reused up to 8 times,
+        // We allow the resource to be reused up to 16 times,
         // the corresponding handle will have a different value each time.
         // After that, a handle to an object that was already destroyed might
         // refer to a different object.
-        uint8_t generation : 3; // must be log2(kResourceAlignment-1)
+        uint8_t generation : 4; // must be log2(kResourceAlignment-1)
 
-        Resource *next = nullptr;
+        ResourceBase *next = nullptr;
 
-        Resource();
-        ~Resource();
+        ResourceBase();
 
         template<class T, typename... Args>
         T *constructObject(Args &&...args)
         {
             static_assert(std::is_base_of_v<Interface, T>);
 
+            using Storage = typename ResourceStorage<Interface>::type;
             static_assert(sizeof(Storage) >= sizeof(T));
             static_assert(alignof(Storage) % alignof(T) == 0);
 
             NVCV_ASSERT(!this->live());
-            T *obj   = new (m_storage) T{std::forward<Args>(args)...};
-            m_ptrObj = obj;
+            T *obj         = new (getStorage()) T{std::forward<Args>(args)...};
+            this->m_ptrObj = obj;
             this->generation++;
 
             NVCV_ASSERT(this->live());
@@ -119,10 +125,12 @@ class HandleManager
             return m_ptrObj != nullptr;
         }
 
-    private:
+    protected:
+        void *getStorage();
+
+        ~ResourceBase();
         Interface      *m_ptrObj = nullptr;
         std::atomic_int m_refCount{0};
-        alignas(Storage) std::byte m_storage[sizeof(Storage)];
     };
 
 public:
@@ -134,7 +142,7 @@ public:
     template<class T, typename... Args>
     std::pair<HandleType, T *> create(Args &&...args)
     {
-        Resource *res = doFetchFreeResource();
+        ResourceBase *res = doFetchFreeResource();
         try
         {
             T *obj = res->template constructObject<T>(std::forward<Args>(args)...);
@@ -181,22 +189,15 @@ private:
     void doAllocate(size_t count);
     void doGrow();
 
-    Resource *getValidResource(HandleType handle) const;
+    ResourceBase *getValidResource(HandleType handle) const;
 
-    Resource  *doFetchFreeResource();
-    void       doReturnResource(Resource *r);
-    uint8_t    doGetHandleGeneration(HandleType handle) const noexcept;
-    HandleType doGetHandleFromResource(Resource *r) const noexcept;
-    Resource  *doGetResourceFromHandle(HandleType handle) const noexcept;
-    bool       isManagedResource(Resource *r) const;
+    ResourceBase *doFetchFreeResource();
+    void          doReturnResource(ResourceBase *r);
+    uint8_t       doGetHandleGeneration(HandleType handle) const noexcept;
+    HandleType    doGetHandleFromResource(ResourceBase *r) const noexcept;
+    ResourceBase *doGetResourceFromHandle(HandleType handle) const noexcept;
+    bool          isManagedResource(ResourceBase *r) const;
 };
-
-inline bool MustProvideHiddenFunctionality(void *h)
-{
-    // Handle LSB tells us whether C public function that receives it
-    // must provide special/hidden functionality.
-    return ((uintptr_t)h) & 1;
-}
 
 template<class... AA>
 struct alignas(util::Max(alignof(AA)...)) CompatibleStorage
