@@ -61,6 +61,7 @@ target_link_libraries(cvcuda
     PUBLIC
         CUDA::cudart_static
         nvcv_types
+        -lrt
     PRIVATE
         nvcv_util
         nvcv_util_symver
