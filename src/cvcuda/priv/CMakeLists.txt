@@ -15,7 +15,9 @@
 
 add_subdirectory(legacy)
 
-add_library(cvcuda_priv STATIC
+set(CV_CUDA_PRIV_FILES IOperator.cpp)
+
+set(CV_CUDA_PRIV_OP_FILES
     OpBoxBlur.cpp
     OpBndBox.cpp
     OpBrightnessContrast.cu
@@ -23,7 +25,6 @@ add_library(cvcuda_priv STATIC
     OpColorTwist.cu
     OpCropFlipNormalizeReformat.cu
     OpNonMaximumSuppression.cu
-    IOperator.cpp
     OpReformat.cpp
     OpResize.cpp
     OpCustomCrop.cpp
@@ -54,6 +55,29 @@ add_library(cvcuda_priv STATIC
     OpAdaptiveThreshold.cpp
     OpRandomResizedCrop.cpp
     OpGaussianNoise.cpp
+)
+
+# filter only one that matches the patern (case insensitive), should be set on the global level
+# usage:
+# set(CV_CUDA_SRC_PATERN medianblur median_blur"
+#
+# will compile only files relevant to themedian blur op "OpMedianBlur.cpp"
+if (NOT "${CV_CUDA_SRC_PATERN}" STREQUAL "")
+    foreach(PATTERN ${CV_CUDA_SRC_PATERN})
+        string(TOLOWER ${PATTERN} PATTERN)
+        foreach(FILENAME ${CV_CUDA_PRIV_OP_FILES})
+            string(TOLOWER ${FILENAME} FILENAME_LOWERCASE)
+            if (${FILENAME_LOWERCASE} MATCHES ${PATTERN})
+                list(APPEND CV_CUDA_PRIV_FILES ${FILENAME})
+            endif()
+        endforeach()
+    endforeach()
+else()
+    list(APPEND CV_CUDA_PRIV_FILES ${CV_CUDA_PRIV_OP_FILES})
+endif()
+
+add_library(cvcuda_priv STATIC
+    ${CV_CUDA_PRIV_FILES}
 )
 
 target_link_libraries(cvcuda_priv
