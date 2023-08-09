@@ -79,6 +79,7 @@ target_link_libraries(nvcv_module_python
         nvcv_python_common
         CUDA::cudart_static
         dlpack::dlpack
+        -lrt
 )
 
 add_library(pynvcv INTERFACE)

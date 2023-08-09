@@ -75,6 +75,7 @@ target_link_libraries(cvcuda_module_python
         nvcv_util_compat
         cvcuda
         nvcv_python_common
+        -lrt
 )
 
 set_target_properties(cvcuda_module_python PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/python)

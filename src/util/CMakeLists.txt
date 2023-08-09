@@ -190,6 +190,7 @@ target_link_libraries(nvcv_util
         nvcv_types_headers
         CUDA::cudart_static
         nvcv_util_compat
+        -lrt
 )
 
 target_compile_definitions(nvcv_util

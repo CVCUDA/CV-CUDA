@@ -81,4 +81,5 @@ target_link_libraries(cvcuda_legacy
         nvcv_types
         nvcv_util
         cvcuda_headers
+        -lrt
 )

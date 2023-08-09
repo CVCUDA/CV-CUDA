@@ -64,4 +64,5 @@ target_link_libraries(cvcuda_priv
         nvcv_util_sanitizer
         cvcuda_legacy
         CUDA::cudart_static
+        -lrt
 )
