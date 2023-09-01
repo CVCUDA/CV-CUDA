@@ -8,7 +8,7 @@
 
 [![Cuda](https://img.shields.io/badge/CUDA-v11.7-%2376B900?logo=nvidia)](https://developer.nvidia.com/cuda-toolkit-archive)
 [![GCC](https://img.shields.io/badge/GCC-v11.0-yellow)](https://gcc.gnu.org/gcc-11/changes.html)
-[![Python](https://img.shields.io/badge/python-v3.7_%7c_v3.8_%7c_v3.9_%7c_v3.10-blue?logo=python)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-v3.7_%7c_v3.8_%7c_v3.10-blue?logo=python)](https://www.python.org/)
 [![CMake](https://img.shields.io/badge/CMake-v3.22-%23008FBA?logo=cmake)](https://cmake.org/)
 
 CV-CUDA is an open-source project that enables building efficient cloud-scale
