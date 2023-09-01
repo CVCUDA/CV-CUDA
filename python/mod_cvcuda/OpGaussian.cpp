@@ -104,10 +104,13 @@ ImageBatchVarShape VarShapeGaussian(ImageBatchVarShape &input, const std::tuple<
 void ExportOpGaussian(py::module &m)
 {
     using namespace pybind11::literals;
+    py::options options;
+    options.disable_function_signatures();
 
     m.def("gaussian", &Gaussian, "src"_a, "kernel_size"_a, "sigma"_a, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT,
           py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
+        cvcuda.gaussian(src : nvcv.Tensor, kernel_size: Tuple [int,int], sigma : Tuple [double,double], border : border_mode:NVCVBorderType, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
         Executes the Gaussian operation on the given cuda stream.
 
         See also:
@@ -132,6 +135,7 @@ void ExportOpGaussian(py::module &m)
     m.def("gaussian_into", &GaussianInto, "dst"_a, "src"_a, "kernel_size"_a, "sigma"_a,
           "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
+        cvcuda.gaussian_into(dst : nvcv.Tensor, src :  Tensor, kernel_size: Tuple [int,int], sigma : Tuple [double,double], border : border_mode:NVCVBorderType, stream: Optional[nvcv.cuda.Stream] = None)
         Executes the Gaussian operation on the given cuda stream.
 
         See also:
@@ -157,6 +161,8 @@ void ExportOpGaussian(py::module &m)
     m.def("gaussian", &VarShapeGaussian, "src"_a, "max_kernel_size"_a, "kernel_size"_a, "sigma"_a,
           "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
+        cvcuda.gaussian(src : nvcv.ImageBatchVarShape, kernel_size: nvcv.Tensor, sigma : nvcv.Tensor, border : border_mode:NVCVBorderType, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+
         Executes the Gaussian operation on the given cuda stream.
 
         See also:
@@ -181,7 +187,9 @@ void ExportOpGaussian(py::module &m)
     m.def("gaussian_into", &VarShapeGaussianInto, "dst"_a, "src"_a, "max_kernel_size"_a, "kernel_size"_a, "sigma"_a,
           "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
-        Executes the Gaussian operation on the given cuda stream.
+        cvcuda.gaussian_into(dst : nvcv.ImageBatchVarShape, src : nvcv.ImageBatchVarShape, kernel_size: nvcv.Tensor, sigma : nvcv.Tensor, border : border_mode:NVCVBorderType, stream: Optional[nvcv.cuda.Stream] = None)
+
+	Executes the Gaussian operation on the given cuda stream.
 
         See also:
             Refer to the CV-CUDA C API reference for the Gaussian operator

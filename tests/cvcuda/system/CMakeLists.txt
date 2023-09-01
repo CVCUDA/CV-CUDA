@@ -31,10 +31,20 @@ endif()
 
 # system core -------------------------------------------------
 add_executable(cvcuda_test_system
+    TestOpFindContours.cpp
+    TestOpOSD.cpp
+    TestOpHistogramEq.cpp
+    TestOpAdvCvtColor.cpp
+    TestOpSIFT.cpp
+    TestOpMinMaxLoc.cpp
+    TestOpHistogram.cpp
+    TestOpMinAreaRect.cpp
     TestOpBoxBlur.cpp
     TestOpBndBox.cpp
-    TestOpBrightnessContrast.cpp
     OsdUtils.cu
+    TestOpSIFT.cpp
+    TestOpMinMaxLoc.cpp
+    TestOpBrightnessContrast.cpp
     TestOpColorTwist.cpp
     TestOpRemap.cpp
     TestOpCropFlipNormalizeReformat.cpp
@@ -73,6 +83,7 @@ add_executable(cvcuda_test_system
     TestOpRandomResizedCrop.cpp
     TestOpGaussianNoise.cpp
     GaussianNoiseUtils.cu
+    TestOpInpaint.cpp
 )
 
 target_link_libraries(cvcuda_test_system

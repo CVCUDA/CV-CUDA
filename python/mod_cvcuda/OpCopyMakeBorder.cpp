@@ -197,11 +197,16 @@ void ExportOpCopyMakeBorder(py::module &m)
 {
     using namespace pybind11::literals;
 
+    py::options options;
+    options.disable_function_signatures();
+
     m.def("copymakeborder", &CopyMakeBorder, "src"_a, "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT,
           "border_value"_a = std::vector<float>(), py::kw_only(), "top"_a, "bottom"_a, "left"_a, "right"_a,
           "stream"_a       = nullptr, R"pbdoc(
 
-        Executes the Copy Make Border operation on the given cuda stream.
+	cvcuda.copymakeborder(src: nvcv.Tensor, border_mode : NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, border_value : float array , top : int, bottom : int, right : int , stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
+
+	Executes the Copy Make Border operation on the given cuda stream.
 
         See also:
             Refer to the CV-CUDA C API reference for the Copy Make Border operator
@@ -229,6 +234,8 @@ void ExportOpCopyMakeBorder(py::module &m)
     m.def("copymakeborder_into", &CopyMakeBorderInto, "dst"_a, "src"_a,
           "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "border_value"_a = std::vector<float>(),
           py::kw_only(), "top"_a, "left"_a, "stream"_a = nullptr, R"pbdoc(
+
+	cvcuda.copymakeborder_into(dst: nvcv.Tensor, src: nvcv.Tensor, border_mode : NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, border_value : float array, top : int, bottom : int, right : int , stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Copy Make Border operation on the given cuda stream.
 
@@ -258,6 +265,8 @@ void ExportOpCopyMakeBorder(py::module &m)
           "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "border_value"_a = std::vector<float>(),
           py::kw_only(), "top"_a, "left"_a, "out_height"_a, "out_width"_a, "stream"_a = nullptr, R"pbdoc(
 
+	cvcuda.copymakeborderstack(src: nvcv.ImageBatchVarShape, border_mode : NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, border_value : float array, top : int, bottom : int, right : int , stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
+
         Executes the Copy Make Border Stack operation on the given cuda stream.
 
         See also:
@@ -286,6 +295,8 @@ void ExportOpCopyMakeBorder(py::module &m)
     m.def("copymakeborderstack_into", &VarShapeCopyMakeBorderStackInto, "dst"_a, "src"_a,
           "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "border_value"_a = std::vector<float>(),
           py::kw_only(), "top"_a, "left"_a, "stream"_a = nullptr, R"pbdoc(
+
+	cvcuda.copymakeborderstack_into(dst: nvcv.Tensor, src: nvcv.ImageBatchVarShape, border_mode : NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, border_value : float array, top : int, bottom : int, right : int , stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Copy Make Border Stack operation on the given cuda stream.
 
@@ -317,6 +328,8 @@ void ExportOpCopyMakeBorder(py::module &m)
           "border_value"_a = std::vector<float>(), py::kw_only(), "top"_a, "left"_a, "out_heights"_a, "out_widths"_a,
           "stream"_a       = nullptr, R"pbdoc(
 
+	cvcuda.copymakeborder(src: nvcv.ImageBatchVarShape, border_mode : NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, border_value : float array, top : int, bottom : int, right : int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+
         Executes the Copy Make Border operation on the given cuda stream.
 
         See also:
@@ -345,6 +358,8 @@ void ExportOpCopyMakeBorder(py::module &m)
     m.def("copymakeborder_into", &VarShapeCopyMakeBorderInto, "dst"_a, "src"_a,
           "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "border_value"_a = std::vector<float>(),
           py::kw_only(), "top"_a, "left"_a, "stream"_a = nullptr, R"pbdoc(
+
+	cvcuda.copymakeborder_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, border_mode : NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, border_value : float array, top : int, bottom : int, right : int , stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Copy Make Border operation on the given cuda stream.
 

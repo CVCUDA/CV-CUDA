@@ -101,9 +101,13 @@ ImageBatchVarShape LaplacianVarShape(ImageBatchVarShape &input, Tensor &ksize, T
 void ExportOpLaplacian(py::module &m)
 {
     using namespace pybind11::literals;
+    py::options options;
+    options.disable_function_signatures();
 
     m.def("laplacian", &Laplacian, "src"_a, "ksize"_a, "scale"_a = 1.f,
           "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+	cvcuda.laplacian(src: nvcv.Tensor, ksize: int, scale: float, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the Laplacian operation on the given cuda stream.
 
@@ -127,6 +131,8 @@ void ExportOpLaplacian(py::module &m)
 
     m.def("laplacian_into", &LaplacianInto, "dst"_a, "src"_a, "ksize"_a, "scale"_a = 1.f,
           "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+	cvcuda.laplacian_into(dst: nvcv.Tensor, src: nvcv.Tensor, ksize: int, scale: float, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Laplacian operation on the given cuda stream.
 
@@ -152,6 +158,8 @@ void ExportOpLaplacian(py::module &m)
     m.def("laplacian", &LaplacianVarShape, "src"_a, "ksize"_a, "scale"_a,
           "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
+	cvcuda.laplacian(src: nvcv.ImageBatchVarShape, ksize: nvcv.Tensor, scale: nvcv.Tensor, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+
         Executes the Laplacian operation on the given cuda stream.
 
         See also:
@@ -174,6 +182,8 @@ void ExportOpLaplacian(py::module &m)
 
     m.def("laplacian_into", &LaplacianVarShapeInto, "dst"_a, "src"_a, "ksize"_a, "scale"_a,
           "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+	cvcuda.laplacian_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, ksize: nvcv.Tensor, scale: nvcv.Tensor, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Laplacian operation on the given cuda stream.
 

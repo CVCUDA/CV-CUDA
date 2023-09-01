@@ -54,6 +54,8 @@ typedef signed char   schar;
 
 #define get_batch_idx() (blockIdx.z)
 #define get_lid()       (threadIdx.y * blockDim.x + threadIdx.x)
+#define get_bid()       (blockIdx.x + blockIdx.y * gridDim.x)
+#define get_grid_size() (gridDim.x * gridDim.y)
 
 inline int divUp(int a, int b)
 {
@@ -102,6 +104,83 @@ struct NewAPITag
 };
 
 constexpr NewAPITag NewAPI = {};
+
+template<typename T>
+struct Ptr2dNL
+{
+    typedef T value_type;
+
+    __host__ __device__ __forceinline__ Ptr2dNL()
+        : batches(0)
+        , rows(0)
+        , cols(0)
+        , ch(0)
+        , imgStride(0)
+        , rowStride(0)
+        , chStride(0)
+        , data(nullptr)
+    {
+    }
+
+    __host__ __device__ __forceinline__ Ptr2dNL(int rows_, T *data_)
+        : batches(1)
+        , rows(rows_)
+        , cols(1)
+        , ch(1)
+        , imgStride(rows_)
+        , rowStride(0)
+        , chStride(0)
+        , data(data_)
+    {
+    }
+
+    __host__ __device__ __forceinline__ Ptr2dNL(int batches_, int rows_, T *data_)
+        : batches(batches_)
+        , rows(rows_)
+        , cols(1)
+        , ch(1)
+        , imgStride(rows_)
+        , rowStride(0)
+        , chStride(0)
+        , data(data_)
+    {
+    }
+
+    __host__ __device__ __forceinline__ Ptr2dNL(NewAPITag, int rows_, T *data_)
+        : Ptr2dNL(rows_, data_)
+    {
+    }
+
+    // each fetch operation to get an element
+    __host__ __device__ __forceinline__ T *ptr(int b, int x)
+    {
+        return (T *)(reinterpret_cast<std::byte *>(data) + b * imgStride + x * sizeof(T));
+    }
+
+    const __host__ __device__ __forceinline__ T *ptr(int b, int x) const
+    {
+        return (const T *)(reinterpret_cast<const std::byte *>(data) + b * imgStride + x * sizeof(T));
+    }
+
+    __host__ __device__ __forceinline__ int at_rows(int b)
+    {
+        return rows;
+    }
+
+    __host__ __device__ __forceinline__ int at_rows(int b) const
+    {
+        return rows;
+    }
+
+    int batches;
+    int rows;
+    int cols;
+    int ch;
+    int imgStride;
+    int rowStride;
+    int chStride;
+    T  *data;
+};
 
 template<typename T>
 struct Ptr2dNCHW

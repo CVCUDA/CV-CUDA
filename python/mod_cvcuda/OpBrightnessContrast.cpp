@@ -124,21 +124,36 @@ ImageBatchVarShape VarShapeBrightnessContrast(ImageBatchVarShape &src, std::opti
 void ExportOpBrightnessContrast(py::module &m)
 {
     using namespace pybind11::literals;
+    py::options options;
+    options.disable_function_signatures();
 
     m.def("brightness_contrast", &BrightnessContrast, "src"_a, "brightness"_a = nullptr, "contrast"_a = nullptr,
           "brightness_shift"_a = nullptr, "contrast_center"_a = nullptr, py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
+
+	cvcuda.brightness_contrast(src: nvcv.Tensor, brightness: nvcv.Tensor, contrast: nvcv.Tensor, brightness_shift: nvcv.Tensor, contrast_center: nvcv.Tensor, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
+
         Adjusts the brightness and contrast of the images according to the formula:
         `out = brightness_shift + brightness * (contrast_center + contrast * (in - contrast_center))`.
     )pbdoc");
     m.def("brightness_contrast_into", &BrightnessContrastInto, "dst"_a, "src"_a, "brightness"_a = nullptr,
           "contrast"_a = nullptr, "brightness_shift"_a = nullptr, "contrast_center"_a = nullptr, py::kw_only(),
-          "stream"_a = nullptr);
+          "stream"_a = nullptr,
+          R"pbdoc(
+
+	cvcuda.brightness_contrast_into(dst: nvcv.Tensor, src: nvcv.Tensor, brightness: nvcv.Tensor, contrast: nvcv.Tensor, brightness_shift: nvcv.Tensor, contrast_center: nvcv.Tensor, stream: Optional[nvcv.cuda.Stream] = None)
+
+        Adjusts the brightness and contrast of the images according to the formula:
+        `out = brightness_shift + brightness * (contrast_center + contrast * (in - contrast_center))`.
+    )pbdoc");
 
     // VarShape variants
     m.def("brightness_contrast", &VarShapeBrightnessContrast, "src"_a, "brightness"_a = nullptr, "contrast"_a = nullptr,
           "brightness_shift"_a = nullptr, "contrast_center"_a = nullptr, py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
+
+	cvcuda.brightness_contrast(src: nvcv.ImageBatchVarShape, brightness: nvcv.Tensor, contrast: nvcv.Tensor, brightness_shift: nvcv.Tensor, contrast_center: nvcv.Tensor, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+
         Adjusts the brightness and contrast of the images according to the formula:
         `out = brightness_shift + brightness * (contrast_center + contrast * (in - contrast_center))`.
 
@@ -147,7 +162,14 @@ void ExportOpBrightnessContrast(py::module &m)
     )pbdoc");
     m.def("brightness_contrast_into", &VarShapeBrightnessContrastInto, "dst"_a, "src"_a, "brightness"_a = nullptr,
           "contrast"_a = nullptr, "brightness_shift"_a = nullptr, "contrast_center"_a = nullptr, py::kw_only(),
-          "stream"_a = nullptr);
+          "stream"_a = nullptr,
+          R"pbdoc(
+
+	cvcuda.brightness_contrast_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, brightness: nvcv.Tensor, contrast: nvcv.Tensor, brightness_shift: nvcv.Tensor, contrast_center: nvcv.Tensor, stream: Optional[nvcv.cuda.Stream] = None)
+
+        Adjusts the brightness and contrast of the images according to the formula:
+        `out = brightness_shift + brightness * (contrast_center + contrast * (in - contrast_center))`.
+    )pbdoc");
 }
 
 } // namespace cvcudapy

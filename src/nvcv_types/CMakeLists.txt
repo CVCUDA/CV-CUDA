@@ -31,6 +31,7 @@ add_library(nvcv_types SHARED
     DataLayout.cpp
     DataType.cpp
     ImageFormat.cpp
+    Array.cpp
 )
 
 target_link_libraries(nvcv_types

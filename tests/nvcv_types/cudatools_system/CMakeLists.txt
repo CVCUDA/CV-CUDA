@@ -44,6 +44,7 @@ add_executable(nvcv_test_cudatools_system
     TestDropCast.cpp
     TestTypeTraits.cpp
     TestMetaprogramming.cpp
+    TestArrayWrap.cpp
 )
 
 target_link_libraries(nvcv_test_cudatools_system

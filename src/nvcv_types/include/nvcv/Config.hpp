@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,21 +29,56 @@
 
 namespace nvcv { namespace cfg {
 
+/**
+ * @brief Sets the maximum number of image handles that can be created.
+ *
+ * @param maxCount The maximum number of image handles. If negative, dynamic allocation is used and no hard limit is defined.
+ * @throw An exception is thrown if the nvcvConfigSetMaxImageCount function fails.
+ */
 inline void SetMaxImageCount(int32_t maxCount)
 {
     detail::CheckThrow(nvcvConfigSetMaxImageCount(maxCount));
 }
 
+/**
+ * @brief Sets the maximum number of image batch handles that can be created.
+ *
+ * @param maxCount The maximum number of image batch handles. If negative, dynamic allocation is used and no hard limit is defined.
+ * @throw An exception is thrown if the nvcvConfigSetMaxImageBatchCount function fails.
+ */
 inline void SetMaxImageBatchCount(int32_t maxCount)
 {
     detail::CheckThrow(nvcvConfigSetMaxImageBatchCount(maxCount));
 }
 
+/**
+ * @brief Sets the maximum number of tensor handles that can be created.
+ *
+ * @param maxCount The maximum number of tensor handles. If negative, dynamic allocation is used and no hard limit is defined.
+ * @throw An exception is thrown if the nvcvConfigSetMaxTensorCount function fails.
+ */
 inline void SetMaxTensorCount(int32_t maxCount)
 {
     detail::CheckThrow(nvcvConfigSetMaxTensorCount(maxCount));
 }
 
+/**
+ * @brief Sets the maximum number of array handles that can be created.
+ *
+ * @param maxCount The maximum number of array handles. If negative, dynamic allocation is used and no hard limit is defined.
+ * @throw An exception is thrown if the nvcvConfigSetMaxArrayCount function fails.
+ */
+inline void SetMaxArrayCount(int32_t maxCount)
+{
+    detail::CheckThrow(nvcvConfigSetMaxArrayCount(maxCount));
+}
+
+/**
+ * @brief Sets the maximum number of allocator handles that can be created.
+ *
+ * @param maxCount The maximum number of allocator handles. If negative, dynamic allocation is used and no hard limit is defined.
+ * @throw An exception is thrown if the nvcvConfigSetMaxAllocatorCount function fails.
+ */
 inline void SetMaxAllocatorCount(int32_t maxCount)
 {
     detail::CheckThrow(nvcvConfigSetMaxAllocatorCount(maxCount));

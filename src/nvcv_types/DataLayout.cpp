@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,6 +41,10 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvMakeSwizzle,
             }
 
             *outSwizzle = priv::MakeNVCVSwizzle(x, y, z, w);
+            if (*outSwizzle == NVCV_SWIZZLE_UNSUPPORTED)
+            {
+                throw priv::Exception(NVCV_ERROR_NOT_IMPLEMENTED, "Given swizzle is not supported");
+            }
         });
 }
 

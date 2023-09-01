@@ -59,7 +59,7 @@ add_custom_target(cvcuda_groups ALL
 # Generate Sphinx
 add_custom_command(OUTPUT ${SPHINX_INDEX_FILE}
                    COMMAND
-		   ${CMAKE_COMMAND} -E env "SPHINX_PYTHON_SRC=${CMAKE_BINARY_DIR}/lib/python"
+		   ${CMAKE_COMMAND} -E env "SPHINX_PYTHON_SRC=${CMAKE_BINARY_DIR}/lib/python" "DOXYGEN_STRIP_PATH=${CMAKE_CURRENT_SOURCE_DIR}/../src"
                    ${SPHINX_EXECUTABLE} -j auto -b html
                    # Tell Breathe where to find the Doxygen output
                    -Dbreathe_projects.cvcuda=${DOXYGEN_OUTPUT_DIR}/xml
@@ -68,6 +68,7 @@ add_custom_command(OUTPUT ${SPHINX_INDEX_FILE}
                    DEPENDS
 		   ${SPHINX_SOURCE}/index.rst
                    ${DOXYGEN_INDEX_FILE}
+		   cvcuda_groups
                    MAIN_DEPENDENCY ${SPHINX_SOURCE}/conf.py
                    COMMENT "Generating documentation with Sphinx")
 

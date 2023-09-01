@@ -13,18 +13,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from batch import Batch
-
 import os
+import sys
 import glob
 import logging
-import nvtx
 import torch
 import torchnvjpeg
 import torchvision.transforms.functional as F
 
+from pathlib import Path
+
+# Bring module folders from the samples directory into our path so that
+# we can import modules from it.
+samples_dir = Path(os.path.abspath(__file__)).parents[2]  # samples/
+sys.path.insert(0, os.path.join(samples_dir, ""))
+
+from common.python.batch import Batch  # noqa: E402
 
 # docs_tag: begin_init_imagebatchdecoder_pytorch
+
+
 class ImageBatchDecoderPyTorch:
     def __init__(
         self,
@@ -32,6 +40,7 @@ class ImageBatchDecoderPyTorch:
         batch_size,
         device_id,
         cuda_ctx,
+        cvcuda_perf,
     ):
         self.logger = logging.getLogger(__name__)
         self.batch_size = batch_size
@@ -40,6 +49,7 @@ class ImageBatchDecoderPyTorch:
         self.total_decoded = 0
         self.batch_idx = 0
         self.cuda_ctx = cuda_ctx
+        self.cvcuda_perf = cvcuda_perf
 
         if os.path.isfile(self.input_path):
             if os.path.splitext(self.input_path)[1] == ".jpg":
@@ -78,11 +88,11 @@ class ImageBatchDecoderPyTorch:
         # docs_tag: end_init_imagebatchdecoder_pytorch
 
     def __call__(self):
-        # docs_tag: begin_call_imagebatchdecoder_pytorch
-        nvtx.push_range("decoder.torch.%d" % self.batch_idx)
-
         if self.total_decoded == len(self.file_names):
             return None
+
+        # docs_tag: begin_call_imagebatchdecoder_pytorch
+        self.cvcuda_perf.push_range("decoder.torch")
 
         file_name_batch = self.file_name_batches[self.batch_idx]
         effective_batch_size = len(file_name_batch)
@@ -117,7 +127,7 @@ class ImageBatchDecoderPyTorch:
         )
         self.batch_idx += 1
 
-        nvtx.pop_range()
+        self.cvcuda_perf.pop_range()
 
         return batch
         # docs_tag: end_return_imagebatchdecoder_pytorch
@@ -137,6 +147,7 @@ class ImageBatchEncoderPyTorch:
         fps,
         device_id,
         cuda_ctx,
+        cvcuda_perf,
     ):
         self.logger = logging.getLogger(__name__)
         self._encoder = None
@@ -144,13 +155,14 @@ class ImageBatchEncoderPyTorch:
         self.gpu_input = True
         self.output_path = output_path
         self.device_id = device_id
+        self.cvcuda_perf = cvcuda_perf
 
         self.logger.info("Using PyTorch/PIL as encoder.")
         # docs_tag: end_init_imagebatchencoder_pytorch
 
     # docs_tag: begin_call_imagebatchencoder_pytorch
     def __call__(self, batch):
-        nvtx.push_range("encoder.torch.%d" % batch.batch_idx)
+        self.cvcuda_perf.push_range("encoder.torch")
 
         image_tensors_nchw = batch.data
 
@@ -164,7 +176,7 @@ class ImageBatchEncoderPyTorch:
             overlay_pil = F.to_pil_image(overlay_cpu)
             overlay_pil.save(results_path)
 
-        nvtx.pop_range()
+        self.cvcuda_perf.pop_range()
 
         # docs_tag: end_call_imagebatchencoder_pytorch
 

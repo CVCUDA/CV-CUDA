@@ -41,12 +41,30 @@ namespace nvcv {
 
 namespace detail {
 
+/**
+ * @class TensorShapeInfoImpl
+ * @brief This class provides detailed information about the shape of a tensor.
+ *
+ * The class is templated on the layout information type, which allows it to be adapted to various tensor layout schemes.
+ * It provides functions to retrieve the shape, layout, and additional metadata about the tensor.
+ *
+ * @tparam LAYOUT_INFO The type that contains layout information for the tensor.
+ */
 template<typename LAYOUT_INFO>
 class TensorShapeInfoImpl
 {
 public:
+    /**
+    * @brief Type alias for the layout information of the tensor.
+    */
     using LayoutInfo = LAYOUT_INFO;
 
+    /**
+     * @brief A constructor that initializes a `TensorShapeInfoImpl` with the provided shape and layout information.
+     *
+     * @param shape The shape of the tensor.
+     * @param infoLayout The layout information of the tensor.
+     */
     TensorShapeInfoImpl(const TensorShape &shape, const LayoutInfo &infoLayout)
         : m_shape(shape)
         , m_infoLayout(infoLayout)
@@ -67,26 +85,51 @@ public:
         }
     }
 
+    /**
+     * @brief Returns the shape of the tensor.
+     *
+     * @return The shape of the tensor.
+     */
     const TensorShape &shape() const
     {
         return m_shape;
     }
 
+    /**
+     * @brief Returns the layout of the tensor, this is a subset of LayoutInfo and is a convenience function.
+     *
+     * @return The layout of the tensor.
+     */
     const TensorLayout &layout() const
     {
         return m_shape.layout();
     }
 
+    /**
+     * @brief Returns the layout and additional information of the tensor @see TensorLayoutInfo.
+     *
+     * @return The layout information of the tensor.
+     */
     const LayoutInfo &infoLayout() const
     {
         return m_infoLayout;
     }
 
+    /**
+     * @brief Returns the number of samples in the tensor. If the tensor is not batched, the number of samples is 1. (i.e Nhwc)
+     *
+     * @return The number of samples in the tensor.
+     */
     TensorShape::DimType numSamples() const
     {
         return m_cacheNumSamples;
     }
 
+    /**
+     * @brief Checks if the tensor is an image.
+     *
+     * @return True if the tensor is an image, false otherwise.
+     */
     bool isImage() const
     {
         return m_infoLayout.isImage();
@@ -100,16 +143,39 @@ protected:
 
 } // namespace detail
 
+/**
+ * @class TensorShapeInfo
+ * @brief This class provides information about the shape of a tensor.
+ *
+ * It inherits from TensorShapeInfoImpl and is specialized for the base tensor layout type, providing functions to
+ * retrieve the shape, layout, and whether the tensor is batched or corresponds to an image.
+ */
 class TensorShapeInfo : public detail::TensorShapeInfoImpl<TensorLayoutInfo>
 {
     using Base = detail::TensorShapeInfoImpl<TensorLayoutInfo>;
 
 public:
-    static bool IsCompatible(const TensorShape &)
+    /**
+     * @brief Checks if the provided tensor shape is compatible with this class.
+     *        In this case, all tensor shapes are considered compatible.
+     *
+     * @param tshape The tensor shape to check.
+     *
+     * @return Always true, as all tensor shapes are considered compatible.
+     */
+    static bool IsCompatible(const TensorShape &tshape)
     {
+        (void)tshape;
         return true;
     }
 
+    /**
+     * @brief Creates a `TensorShapeInfo` object for the provided tensor shape.
+     *
+     * @param tshape The tensor shape to create the `TensorShapeInfo` for.
+     *
+     * @return A `TensorShapeInfo` object for the provided tensor shape.
+     */
     static Optional<TensorShapeInfo> Create(const TensorShape &tshape)
     {
         return TensorShapeInfo(tshape);
@@ -124,16 +190,38 @@ private:
     Optional<TensorLayoutInfo> m_infoLayout;
 };
 
+/**
+ * @class TensorShapeInfoImage
+ * @brief This class provides detailed information about the shape of an image tensor.
+ *
+ * It inherits from TensorShapeInfoImpl and is specialized for the image tensor layout type, offering additional
+ * functionality tailored to image tensors, such as retrieving the number of channels, rows, columns, and the overall size.
+ */
 class TensorShapeInfoImage : public detail::TensorShapeInfoImpl<TensorLayoutInfoImage>
 {
     using Base = detail::TensorShapeInfoImpl<TensorLayoutInfoImage>;
 
 public:
+    /**
+     * @brief Checks if the provided tensor shape is compatible with this class.
+     *        A tensor shape is considered compatible if both `TensorShapeInfo` and `TensorLayoutInfo` deem it compatible.
+     *
+     * @param tshape The tensor shape to check.
+     *
+     * @return True if the tensor shape is compatible, false otherwise.
+     */
     static bool IsCompatible(const TensorShape &tshape)
     {
         return TensorShapeInfo::IsCompatible(tshape) && TensorLayoutInfo::IsCompatible(tshape.layout());
     }
 
+    /**
+     * @brief Creates a `TensorShapeInfoImage` object for the provided tensor shape if it is compatible.
+     *
+     * @param tshape The tensor shape to create the `TensorShapeInfoImage` for.
+     *
+     * @return A `TensorShapeInfoImage` object for the provided tensor shape if it is compatible, NullOpt otherwise.
+     */
     static Optional<TensorShapeInfoImage> Create(const TensorShape &tshape)
     {
         if (IsCompatible(tshape))
@@ -146,16 +234,31 @@ public:
         }
     }
 
+    /**
+     * @brief Returns the number of channels in the tensor. (i.e nhwC)
+     *
+     * @return The number of channels.
+     */
     int32_t numChannels() const
     {
         return m_cacheNumChannels;
     }
 
+    /**
+     * @brief Returns the number of columns in the tensor. (i.e nhWc)
+     *
+     * @return The number of columns.
+     */
     int32_t numCols() const
     {
         return m_cacheSize.w;
     }
 
+    /**
+     * @brief Returns the number of rows in the tensor. (i.e nHwc)
+     *
+     * @return The number of rows.
+     */
     int32_t numRows() const
     {
         return m_cacheSize.h;
@@ -210,9 +313,24 @@ protected:
     int    m_cacheNumChannels;
 };
 
+/**
+ * @class TensorShapeInfoImagePlanar
+ * @brief This class provides information about the shape of a planar image tensor.
+ *
+ * It inherits from TensorShapeInfoImage and is specialized for planar image tensors. The class provides functions to
+ * check the compatibility of a given tensor shape and to retrieve the number of planes in the tensor.
+ */
 class TensorShapeInfoImagePlanar : public TensorShapeInfoImage
 {
 public:
+    /**
+     * @brief Checks if the provided tensor shape is compatible with this class.
+     *        A tensor shape is considered compatible if it matches certain criteria related to the layout of the tensor.
+     *
+     * @param tshape The tensor shape to check.
+     *
+     * @return True if the tensor shape is compatible, false otherwise.
+     */
     static bool IsCompatible(const TensorShape &tshape)
     {
         if (auto infoLayout = TensorLayoutInfoImage::Create(tshape.layout()))
@@ -242,6 +360,13 @@ public:
         return false;
     }
 
+    /**
+     * @brief Creates a `TensorShapeInfoImagePlanar` object for the provided tensor shape if it is compatible.
+     *
+     * @param tshape The tensor shape to create the `TensorShapeInfoImagePlanar` for.
+     *
+     * @return A `TensorShapeInfoImagePlanar` object for the provided tensor shape if it is compatible, NullOpt otherwise.
+     */
     static Optional<TensorShapeInfoImagePlanar> Create(const TensorShape &tshape)
     {
         if (IsCompatible(tshape))
@@ -254,6 +379,11 @@ public:
         }
     }
 
+    /**
+     * @brief Returns the number of planes in the tensor. (i.e nCwh)
+     *
+     * @return The number of planes.
+     */
     int32_t numPlanes() const
     {
         return m_cacheNumPlanes;

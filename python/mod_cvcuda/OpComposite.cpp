@@ -103,9 +103,13 @@ ImageBatchVarShape CompositeVarShape(ImageBatchVarShape &foreground, ImageBatchV
 void ExportOpComposite(py::module &m)
 {
     using namespace pybind11::literals;
+    py::options options;
+    options.disable_function_signatures();
 
     m.def("composite", &Composite, "foreground"_a, "background"_a, "fgmask"_a, "outchannels"_a, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
+
+        cvcuda.composite(foreground: nvcv.Tensor, background: nvcv.Tensor, fgmask : nvcv.Tensor, outchannels: int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the Composite operation on the given cuda stream.
 
@@ -131,7 +135,9 @@ void ExportOpComposite(py::module &m)
     m.def("composite_into", &CompositeInto, "dst"_a, "foreground"_a, "background"_a, "fgmask"_a, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
 
-        Executes the Composite operation on the given cuda stream.
+        cvcuda.composite_into(dst: nvcv.Tensor, foreground: nvcv.Tensor, background: nvcv.Tensor, fgmask : nvcv.Tensor, outchannels: int, stream: Optional[nvcv.cuda.Stream] = None)
+
+	Executes the Composite operation on the given cuda stream.
 
         See also:
             Refer to the CV-CUDA C API reference for the Composite operator
@@ -155,7 +161,9 @@ void ExportOpComposite(py::module &m)
     m.def("composite", &CompositeVarShape, "foreground"_a, "background"_a, "fgmask"_a, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
 
-        Executes the Composite operation on the given cuda stream.
+	cvcuda.composite(foreground: nvcv.ImageBatchVarShape, background: nvcv.ImageBatchVarShape, fgmask : nvcv.ImageBatchVarShape, outchannels: int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+
+	Executes the Composite operation on the given cuda stream.
 
         See also:
             Refer to the CV-CUDA C API reference for the Composite operator
@@ -177,6 +185,8 @@ void ExportOpComposite(py::module &m)
 
     m.def("composite_into", &CompositeVarShapeInto, "dst"_a, "foreground"_a, "background"_a, "fgmask"_a, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
+
+	cvcuda.composite_into(dst: nvcv.ImageBatchVarShape, foreground: nvcv.ImageBatchVarShape, background: nvcv.ImageBatchVarShape, fgmask : nvcv.ImageBatchVarShape, outchannels: int, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Composite operation on the given cuda stream.
 

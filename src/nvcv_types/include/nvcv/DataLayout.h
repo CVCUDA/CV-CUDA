@@ -42,7 +42,9 @@ extern "C"
 /**
  * Maximum channel count
  */
-#define NVCV_MAX_CHANNEL_COUNT (4)
+#define NVCV_MAX_CHANNEL_COUNT       (4)
+#define NVCV_MAX_EXTRA_CHANNEL_COUNT (7)
+#define NVCV_MAX_SWIZZLE_COUNT       (57)
 
 /** Defines how channels are packed into an image plane element.
  *
@@ -257,10 +259,11 @@ typedef enum
 /** Defines the channel data type. */
 typedef enum
 {
-    NVCV_DATA_KIND_UNSIGNED, /**< Channels are unsigned integer values. */
-    NVCV_DATA_KIND_SIGNED,   /**< Channels are signed integer values. */
-    NVCV_DATA_KIND_FLOAT,    /**< Channels are floating point values. */
-    NVCV_DATA_KIND_COMPLEX   /**< Channels are complex values. */
+    NVCV_DATA_KIND_UNSPECIFIED = -1, /**< Unspecified data kind. */
+    NVCV_DATA_KIND_UNSIGNED,         /**< Channels are unsigned integer values. */
+    NVCV_DATA_KIND_SIGNED,           /**< Channels are signed integer values. */
+    NVCV_DATA_KIND_FLOAT,            /**< Channels are floating point values. */
+    NVCV_DATA_KIND_COMPLEX           /**< Channels are complex values. */
 } NVCVDataKind;
 
 /** Defines how the 2D plane pixels are laid out in memory.
@@ -319,6 +322,30 @@ typedef enum
     /* \endcond */
 } NVCVChannel;
 
+/** Defines the kind of alpha channel data present. */
+typedef enum
+{
+    NVCV_ALPHA_ASSOCIATED,   /**< Associated alpha type */
+    NVCV_ALPHA_UNASSOCIATED, /**< Unassociated alpha type */
+} NVCVAlphaType;
+
+/** Defines the different kinds of extra channels supported. */
+typedef enum
+{
+    NVCV_EXTRA_CHANNEL_U = 0, /**< Unspecified Channel. */
+    NVCV_EXTRA_CHANNEL_D,     /**< Depth data. */
+    NVCV_EXTRA_CHANNEL_POS3D, /**< 3D Position data. */
+} NVCVExtraChannel;
+
+/** Data structure for passing additional channel information. */
+typedef struct
+{
+    int32_t          numChannels;
+    int32_t          bitsPerPixel;
+    NVCVDataKind     datakind;
+    NVCVExtraChannel channelType;
+} NVCVExtraChannelInfo;
+
 /** Defines the supported channel swizzle operations.
  *
  * The operations map an input vector \f$(x,y,z,w)\f$ into an output vector
@@ -330,82 +357,65 @@ typedef enum
 typedef enum
 {
     /** @{ Swizzle operation. */
-    NVCV_SWIZZLE_0000 = NVCV_DETAIL_MAKE_SWZL(0, 0, 0, 0),
-    NVCV_SWIZZLE_1000 = NVCV_DETAIL_MAKE_SWZL(1, 0, 0, 0),
-    NVCV_SWIZZLE_0001 = NVCV_DETAIL_MAKE_SWZL(0, 0, 0, 1),
-    NVCV_SWIZZLE_XYZW = NVCV_DETAIL_MAKE_SWZL(X, Y, Z, W),
-    NVCV_SWIZZLE_ZYXW = NVCV_DETAIL_MAKE_SWZL(Z, Y, X, W),
-    NVCV_SWIZZLE_WXYZ = NVCV_DETAIL_MAKE_SWZL(W, X, Y, Z),
-    NVCV_SWIZZLE_WZYX = NVCV_DETAIL_MAKE_SWZL(W, Z, Y, X),
-    NVCV_SWIZZLE_YZWX = NVCV_DETAIL_MAKE_SWZL(Y, Z, W, X),
-    NVCV_SWIZZLE_XYZ1 = NVCV_DETAIL_MAKE_SWZL(X, Y, Z, 1),
-    NVCV_SWIZZLE_XYZ0 = NVCV_DETAIL_MAKE_SWZL(X, Y, Z, 0),
-    NVCV_SWIZZLE_YZW1 = NVCV_DETAIL_MAKE_SWZL(Y, Z, W, 1),
-    NVCV_SWIZZLE_XXX1 = NVCV_DETAIL_MAKE_SWZL(X, X, X, 1),
-    NVCV_SWIZZLE_XZY1 = NVCV_DETAIL_MAKE_SWZL(X, Z, Y, 1),
-    NVCV_SWIZZLE_ZYX1 = NVCV_DETAIL_MAKE_SWZL(Z, Y, X, 1),
-    NVCV_SWIZZLE_ZYX0 = NVCV_DETAIL_MAKE_SWZL(Z, Y, X, 0),
-    NVCV_SWIZZLE_WZY1 = NVCV_DETAIL_MAKE_SWZL(W, Z, Y, 1),
-    NVCV_SWIZZLE_X000 = NVCV_DETAIL_MAKE_SWZL(X, 0, 0, 0),
-    NVCV_SWIZZLE_0X00 = NVCV_DETAIL_MAKE_SWZL(0, X, 0, 0),
-    NVCV_SWIZZLE_00X0 = NVCV_DETAIL_MAKE_SWZL(0, 0, X, 0),
-    NVCV_SWIZZLE_000X = NVCV_DETAIL_MAKE_SWZL(0, 0, 0, X),
-    NVCV_SWIZZLE_Y000 = NVCV_DETAIL_MAKE_SWZL(Y, 0, 0, 0),
-    NVCV_SWIZZLE_0Y00 = NVCV_DETAIL_MAKE_SWZL(0, Y, 0, 0),
-    NVCV_SWIZZLE_00Y0 = NVCV_DETAIL_MAKE_SWZL(0, 0, Y, 0),
-    NVCV_SWIZZLE_000Y = NVCV_DETAIL_MAKE_SWZL(0, 0, 0, Y),
-    NVCV_SWIZZLE_0XY0 = NVCV_DETAIL_MAKE_SWZL(0, X, Y, 0),
-    NVCV_SWIZZLE_XXXY = NVCV_DETAIL_MAKE_SWZL(X, X, X, Y),
-    NVCV_SWIZZLE_YYYX = NVCV_DETAIL_MAKE_SWZL(Y, Y, Y, X),
-    NVCV_SWIZZLE_0YX0 = NVCV_DETAIL_MAKE_SWZL(0, Y, X, 0),
-    NVCV_SWIZZLE_X00Y = NVCV_DETAIL_MAKE_SWZL(X, 0, 0, Y),
-    NVCV_SWIZZLE_Y00X = NVCV_DETAIL_MAKE_SWZL(Y, 0, 0, X),
-    NVCV_SWIZZLE_X001 = NVCV_DETAIL_MAKE_SWZL(X, 0, 0, 1),
-    NVCV_SWIZZLE_XY01 = NVCV_DETAIL_MAKE_SWZL(X, Y, 0, 1),
-    NVCV_SWIZZLE_XY00 = NVCV_DETAIL_MAKE_SWZL(X, Y, 0, 0),
-    NVCV_SWIZZLE_0XZ0 = NVCV_DETAIL_MAKE_SWZL(0, X, Z, 0),
-    NVCV_SWIZZLE_0ZX0 = NVCV_DETAIL_MAKE_SWZL(0, Z, X, 0),
-    NVCV_SWIZZLE_XZY0 = NVCV_DETAIL_MAKE_SWZL(X, Z, Y, 0),
-    NVCV_SWIZZLE_YZX1 = NVCV_DETAIL_MAKE_SWZL(Y, Z, X, 1),
-    NVCV_SWIZZLE_ZYW1 = NVCV_DETAIL_MAKE_SWZL(Z, Y, W, 1),
-    NVCV_SWIZZLE_0YX1 = NVCV_DETAIL_MAKE_SWZL(0, Y, X, 1),
-    NVCV_SWIZZLE_XYXZ = NVCV_DETAIL_MAKE_SWZL(X, Y, X, Z),
-    NVCV_SWIZZLE_YXZX = NVCV_DETAIL_MAKE_SWZL(Y, X, Z, X),
-    NVCV_SWIZZLE_XZ00 = NVCV_DETAIL_MAKE_SWZL(X, Z, 0, 0),
-    NVCV_SWIZZLE_WYXZ = NVCV_DETAIL_MAKE_SWZL(W, Y, X, Z),
-    NVCV_SWIZZLE_YX00 = NVCV_DETAIL_MAKE_SWZL(Y, X, 0, 0),
-    NVCV_SWIZZLE_YX01 = NVCV_DETAIL_MAKE_SWZL(Y, X, 0, 1),
-    NVCV_SWIZZLE_00YX = NVCV_DETAIL_MAKE_SWZL(0, 0, Y, X),
-    NVCV_SWIZZLE_00XY = NVCV_DETAIL_MAKE_SWZL(0, 0, X, Y),
-    NVCV_SWIZZLE_0XY1 = NVCV_DETAIL_MAKE_SWZL(0, X, Y, 1),
-    NVCV_SWIZZLE_0X01 = NVCV_DETAIL_MAKE_SWZL(0, X, 0, 1),
-    NVCV_SWIZZLE_YZXW = NVCV_DETAIL_MAKE_SWZL(Y, Z, X, W),
-    NVCV_SWIZZLE_YW00 = NVCV_DETAIL_MAKE_SWZL(Y, W, 0, 0),
-    NVCV_SWIZZLE_XYW0 = NVCV_DETAIL_MAKE_SWZL(X, Y, W, 0),
-    NVCV_SWIZZLE_YZW0 = NVCV_DETAIL_MAKE_SWZL(Y, Z, W, 0),
-    NVCV_SWIZZLE_YZ00 = NVCV_DETAIL_MAKE_SWZL(Y, Z, 0, 0),
+    NVCV_SWIZZLE_0000,
+    NVCV_SWIZZLE_X000,
+    NVCV_SWIZZLE_XY00,
+    NVCV_SWIZZLE_XYZ0,
+    NVCV_SWIZZLE_XYZW,
+    NVCV_SWIZZLE_1000,
+    NVCV_SWIZZLE_0001,
+    NVCV_SWIZZLE_ZYXW,
+    NVCV_SWIZZLE_WXYZ,
+    NVCV_SWIZZLE_WZYX,
+    NVCV_SWIZZLE_YZWX,
+    NVCV_SWIZZLE_XYZ1,
+    NVCV_SWIZZLE_YZW1,
+    NVCV_SWIZZLE_XXX1,
+    NVCV_SWIZZLE_XZY1,
+    NVCV_SWIZZLE_ZYX1,
+    NVCV_SWIZZLE_ZYX0,
+    NVCV_SWIZZLE_WZY1,
+    NVCV_SWIZZLE_0X00,
+    NVCV_SWIZZLE_00X0,
+    NVCV_SWIZZLE_000X,
+    NVCV_SWIZZLE_Y000,
+    NVCV_SWIZZLE_0Y00,
+    NVCV_SWIZZLE_00Y0,
+    NVCV_SWIZZLE_000Y,
+    NVCV_SWIZZLE_0XY0,
+    NVCV_SWIZZLE_XXXY,
+    NVCV_SWIZZLE_YYYX,
+    NVCV_SWIZZLE_0YX0,
+    NVCV_SWIZZLE_X00Y,
+    NVCV_SWIZZLE_Y00X,
+    NVCV_SWIZZLE_X001,
+    NVCV_SWIZZLE_XY01,
+    NVCV_SWIZZLE_0XZ0,
+    NVCV_SWIZZLE_0ZX0,
+    NVCV_SWIZZLE_XZY0,
+    NVCV_SWIZZLE_YZX1,
+    NVCV_SWIZZLE_ZYW1,
+    NVCV_SWIZZLE_0YX1,
+    NVCV_SWIZZLE_XYXZ,
+    NVCV_SWIZZLE_YXZX,
+    NVCV_SWIZZLE_XZ00,
+    NVCV_SWIZZLE_WYXZ,
+    NVCV_SWIZZLE_YX00,
+    NVCV_SWIZZLE_YX01,
+    NVCV_SWIZZLE_00YX,
+    NVCV_SWIZZLE_00XY,
+    NVCV_SWIZZLE_0XY1,
+    NVCV_SWIZZLE_0X01,
+    NVCV_SWIZZLE_YZXW,
+    NVCV_SWIZZLE_YW00,
+    NVCV_SWIZZLE_XYW0,
+    NVCV_SWIZZLE_YZW0,
+    NVCV_SWIZZLE_YZ00,
+    NVCV_SWIZZLE_00X1,
+    NVCV_SWIZZLE_0ZXY,
+    NVCV_SWIZZLE_UNSUPPORTED = 0b111111
     /** @} */
 } NVCVSwizzle;
-
-/** Creates a user-defined swizzle operation.
- * This macro is used to create a user-defined swizzle operation if it's not predefined.
- * Example:
- * \code{.c}
- *   NVCVSwizzle sw = NVCV_MAKE_SWIZZLE(NVCV_CHANNEL_0,NVCV_CHANNEL_Y,NVCV_CHANNEL_Z,NVCV_CHANNEL_W);
- * \endcode
- *
- * @param[in] x Channel that will correspond to the first component.
- * @param[in] y Channel that will correspond to the second component.
- * @param[in] z Channel that will correspond to the third component.
- * @param[in] w Channel that will correspond to the fourth component.
- *
- * @returns the user-defined \ref NVCVSwizzle operation.
- */
-#ifdef DOXYGEN_SHOULD_SKIP_THIS
-#    define NVCV_MAKE_SWIZZLE(x, y, z, w)
-#else
-#    define NVCV_MAKE_SWIZZLE (NVCVSwizzle) NVCV_DETAIL_MAKE_SWIZZLE
-#endif
 
 /** Creates a user-defined \ref NVCVSwizzle operation.
  * This is similar to \ref NVCV_MAKE_SWIZZLE, but accepts the swizzle channels as runtime variables.

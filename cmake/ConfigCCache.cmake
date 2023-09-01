@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,7 +26,7 @@ if(CCACHE_EXEC)
 "#!/bin/bash
 CCACHE_STATSLOG=${CCACHE_STATSLOG} ${CCACHE_EXEC} $@
 ")
-    file(CHMOD ${compiler_driver} PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_EXECUTE GROUP_READ WORLD_EXECUTE WORLD_READ)
+    execute_process(COMMAND "chmod" "755" ${compiler_driver})
 
     set(CMAKE_CXX_COMPILER_LAUNCHER ${compiler_driver})
     set(CMAKE_C_COMPILER_LAUNCHER ${compiler_driver})

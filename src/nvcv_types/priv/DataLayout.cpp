@@ -25,14 +25,16 @@
 #include <util/Math.hpp>
 #include <util/String.hpp>
 
-#include <map>
+#include <iostream>
 
 //                    |63 62 61|60 59 58|57 56 55|54|53 52 51|50 49 48|47|46 45 44|43 42 41 40|39 38|37 36 35|
 //                    |DataKind|  BPP3  |  BPP2  +C2+ Pack2  |  BPP1  +C1+ Pack1  |    BPP0   +Chan0+  Pack0 |
+//                                            |DataKind|  BPP   |    CX  | CHType |
+//                                            |      Additional channel info      |
 //
 //  |34 33 32 31 30 29 28 27 26 25 24 23 22 21 20|19 18 17|16|15|14 13 12|11 10 09|08 07 06|05 04 03|02 01 00|
 //  |14|13 12|11 10|09 08 07|06 05 04 03|02 01 00|
-//  |RG+CLocV+CLocH+YCbCrEnc+ XferFunc  + CSpace |  CSS   | 0|  | MemLay |SwizzleW|SwizzleZ|SwizzleY|SwizzleX|
+//  |RG+CLocV+CLocH+YCbCrEnc+ XferFunc  + CSpace |  CSS   | 0|  | MemLay |    unused |C |AT|     Swizzle     |
 //  |RG+CLocV+CLocH+        + XferFunc  + CSpace |RGB,HSV,| 1|
 //  |                       |   Raw Pattern   | 0| 1  1  1| 1|
 //  |                       | XYZ,LAB,LUV,... | 1| 1  1  1| 1|
@@ -467,9 +469,39 @@ std::optional<NVCVPacking> MakeNVCVPacking(const NVCVPackingParams &params) noex
     }
 }
 
+const uint64_t swizzleBitsArray[NVCV_MAX_SWIZZLE_COUNT]
+    = {NVCV_DETAIL_MAKE_SWZL(0, 0, 0, 0), NVCV_DETAIL_MAKE_SWZL(X, 0, 0, 0), NVCV_DETAIL_MAKE_SWZL(X, Y, 0, 0),
+       NVCV_DETAIL_MAKE_SWZL(X, Y, Z, 0), NVCV_DETAIL_MAKE_SWZL(X, Y, Z, W), NVCV_DETAIL_MAKE_SWZL(1, 0, 0, 0),
+       NVCV_DETAIL_MAKE_SWZL(0, 0, 0, 1), NVCV_DETAIL_MAKE_SWZL(Z, Y, X, W), NVCV_DETAIL_MAKE_SWZL(W, X, Y, Z),
+       NVCV_DETAIL_MAKE_SWZL(W, Z, Y, X), NVCV_DETAIL_MAKE_SWZL(Y, Z, W, X), NVCV_DETAIL_MAKE_SWZL(X, Y, Z, 1),
+       NVCV_DETAIL_MAKE_SWZL(Y, Z, W, 1), NVCV_DETAIL_MAKE_SWZL(X, X, X, 1), NVCV_DETAIL_MAKE_SWZL(X, Z, Y, 1),
+       NVCV_DETAIL_MAKE_SWZL(Z, Y, X, 1), NVCV_DETAIL_MAKE_SWZL(Z, Y, X, 0), NVCV_DETAIL_MAKE_SWZL(W, Z, Y, 1),
+       NVCV_DETAIL_MAKE_SWZL(0, X, 0, 0), NVCV_DETAIL_MAKE_SWZL(0, 0, X, 0), NVCV_DETAIL_MAKE_SWZL(0, 0, 0, X),
+       NVCV_DETAIL_MAKE_SWZL(Y, 0, 0, 0), NVCV_DETAIL_MAKE_SWZL(0, Y, 0, 0), NVCV_DETAIL_MAKE_SWZL(0, 0, Y, 0),
+       NVCV_DETAIL_MAKE_SWZL(0, 0, 0, Y), NVCV_DETAIL_MAKE_SWZL(0, X, Y, 0), NVCV_DETAIL_MAKE_SWZL(X, X, X, Y),
+       NVCV_DETAIL_MAKE_SWZL(Y, Y, Y, X), NVCV_DETAIL_MAKE_SWZL(0, Y, X, 0), NVCV_DETAIL_MAKE_SWZL(X, 0, 0, Y),
+       NVCV_DETAIL_MAKE_SWZL(Y, 0, 0, X), NVCV_DETAIL_MAKE_SWZL(X, 0, 0, 1), NVCV_DETAIL_MAKE_SWZL(X, Y, 0, 1),
+       NVCV_DETAIL_MAKE_SWZL(0, X, Z, 0), NVCV_DETAIL_MAKE_SWZL(0, Z, X, 0), NVCV_DETAIL_MAKE_SWZL(X, Z, Y, 0),
+       NVCV_DETAIL_MAKE_SWZL(Y, Z, X, 1), NVCV_DETAIL_MAKE_SWZL(Z, Y, W, 1), NVCV_DETAIL_MAKE_SWZL(0, Y, X, 1),
+       NVCV_DETAIL_MAKE_SWZL(X, Y, X, Z), NVCV_DETAIL_MAKE_SWZL(Y, X, Z, X), NVCV_DETAIL_MAKE_SWZL(X, Z, 0, 0),
+       NVCV_DETAIL_MAKE_SWZL(W, Y, X, Z), NVCV_DETAIL_MAKE_SWZL(Y, X, 0, 0), NVCV_DETAIL_MAKE_SWZL(Y, X, 0, 1),
+       NVCV_DETAIL_MAKE_SWZL(0, 0, Y, X), NVCV_DETAIL_MAKE_SWZL(0, 0, X, Y), NVCV_DETAIL_MAKE_SWZL(0, X, Y, 1),
+       NVCV_DETAIL_MAKE_SWZL(0, X, 0, 1), NVCV_DETAIL_MAKE_SWZL(Y, Z, X, W), NVCV_DETAIL_MAKE_SWZL(Y, W, 0, 0),
+       NVCV_DETAIL_MAKE_SWZL(X, Y, W, 0), NVCV_DETAIL_MAKE_SWZL(Y, Z, W, 0), NVCV_DETAIL_MAKE_SWZL(Y, Z, 0, 0),
+       NVCV_DETAIL_MAKE_SWZL(0, 0, X, 1), NVCV_DETAIL_MAKE_SWZL(0, Z, X, Y)};
+
 NVCVSwizzle MakeNVCVSwizzle(NVCVChannel x, NVCVChannel y, NVCVChannel z, NVCVChannel w) noexcept
 {
-    return NVCV_MAKE_SWIZZLE(x, y, z, w);
+    NVCVSwizzle swizzle     = NVCV_SWIZZLE_UNSUPPORTED;
+    uint64_t    swizzleBits = NVCV_DETAIL_MAKE_SWIZZLE(x, y, z, w);
+    for (int i = 0; i < NVCV_MAX_SWIZZLE_COUNT; i++)
+    {
+        if (swizzleBitsArray[i] == swizzleBits)
+        {
+            return (NVCVSwizzle)i;
+        }
+    }
+    return swizzle;
 }
 
 bool IsSubWord(const NVCVPackingParams &p)
@@ -588,7 +620,14 @@ int GetBitsPerPixel(NVCVPacking packing) noexcept
 
 NVCVChannel GetSwizzleChannel(NVCVSwizzle swizzle, int idx) noexcept
 {
-    return (NVCVChannel)ExtractBitfield(swizzle, idx * 3, 3);
+    // initialize with max in case swizzle is not supported
+    uint64_t swizzleBits = UINT64_MAX;
+    for (int i = 0; i < NVCV_MAX_SWIZZLE_COUNT; i++)
+    {
+        if (swizzle == i)
+            swizzleBits = swizzleBitsArray[i];
+    }
+    return (NVCVChannel)ExtractBitfield(swizzleBits, idx * 3, 3);
 }
 
 std::array<NVCVChannel, 4> GetChannels(NVCVSwizzle swizzle) noexcept
@@ -835,7 +874,7 @@ NVCVSwizzle FlipByteOrder(NVCVSwizzle swizzle, int off, int len) noexcept
     }
 
     // assemble the resulting swizzle.
-    return NVCV_MAKE_SWIZZLE(comp[0], comp[1], comp[2], comp[3]);
+    return MakeNVCVSwizzle(comp[0], comp[1], comp[2], comp[3]);
 }
 
 const char *GetName(NVCVDataKind dataKind)
@@ -845,6 +884,7 @@ const char *GetName(NVCVDataKind dataKind)
 #define ENUM_CASE(X) \
     case X:          \
         return #X
+        ENUM_CASE(NVCV_DATA_KIND_UNSPECIFIED);
         ENUM_CASE(NVCV_DATA_KIND_UNSIGNED);
         ENUM_CASE(NVCV_DATA_KIND_SIGNED);
         ENUM_CASE(NVCV_DATA_KIND_FLOAT);
@@ -902,6 +942,42 @@ const char *GetName(NVCVChannel swizzleChannel)
     priv::CoreTLS &tls = priv::GetCoreTLS();
     util::BufferOStream(tls.bufChannelName, sizeof(tls.bufChannelName)) << "NVCVChannel(" << (int)swizzleChannel << ")";
     return tls.bufChannelName;
+}
+
+const char *GetName(NVCVAlphaType alphaType)
+{
+    switch (alphaType)
+    {
+    case NVCV_ALPHA_ASSOCIATED:
+        return "ASSOCIATED";
+    case NVCV_ALPHA_UNASSOCIATED:
+        return "UNASSOCIATED";
+    default:
+        return "ASSOCIATED";
+    }
+
+    priv::CoreTLS &tls = priv::GetCoreTLS();
+    util::BufferOStream(tls.bufAlphaTypeName, sizeof(tls.bufAlphaTypeName))
+        << "NVCVAlphaType(" << (int)alphaType << ")";
+    return tls.bufAlphaTypeName;
+}
+
+const char *GetName(NVCVExtraChannel channelType)
+{
+    switch (channelType)
+    {
+    case NVCV_EXTRA_CHANNEL_U:
+        return "U";
+    case NVCV_EXTRA_CHANNEL_D:
+        return "D";
+    case NVCV_EXTRA_CHANNEL_POS3D:
+        return "POS3D";
+    }
+
+    priv::CoreTLS &tls = priv::GetCoreTLS();
+    util::BufferOStream(tls.bufExtraChannelTypeName, sizeof(tls.bufExtraChannelTypeName))
+        << "NVCVExtraChannel(" << (int)channelType << ")";
+    return tls.bufExtraChannelTypeName;
 }
 
 const char *GetName(NVCVSwizzle swizzle)
@@ -977,4 +1053,14 @@ std::ostream &operator<<(std::ostream &out, NVCVPacking packing)
 std::ostream &operator<<(std::ostream &out, NVCVByteOrder byteOrder)
 {
     return out << priv::GetName(byteOrder);
+}
+
+std::ostream &operator<<(std::ostream &out, NVCVAlphaType alphaType)
+{
+    return out << priv::GetName(alphaType);
+}
+
+std::ostream &operator<<(std::ostream &out, NVCVExtraChannel channelType)
+{
+    return out << priv::GetName(channelType);
 }

@@ -23,8 +23,10 @@
 #include "DataType.hpp"
 #include "Exception.hpp"
 
+#include <math.h>
 #include <util/Assert.h>
 
+#include <iostream>
 #include <map>
 #include <sstream>
 #include <vector>
@@ -38,7 +40,6 @@ static void ValidateSwizzlePacking(NVCVSwizzle swizzle, NVCVPacking packing0, NV
     {
         throw Exception(NVCV_ERROR_INVALID_ARGUMENT, "Packing of first plane must not be 0");
     }
-
     // packing0's pack code must be at most 3 bits.
     if (packing0 & 0b1000)
     {
@@ -62,7 +63,6 @@ static void ValidateSwizzlePacking(NVCVSwizzle swizzle, NVCVPacking packing0, NV
     {
         throw Exception(NVCV_ERROR_INVALID_ARGUMENT, "Code of 4th plane packing must be 0");
     }
-
     int swchannels = GetNumChannels(swizzle);
 
     NVCVPacking packing[] = {packing0, packing1, packing2, packing3};
@@ -108,9 +108,41 @@ static void ValidateSwizzlePacking(NVCVSwizzle swizzle, NVCVPacking packing0, NV
     }
 }
 
+static void ValidateExtraChannelInfo(const NVCVExtraChannelInfo *exChannelInfo, NVCVPacking packing0,
+                                     NVCVPacking packing1, NVCVPacking packing2, NVCVPacking packing3)
+{
+    if (exChannelInfo)
+    {
+        if (exChannelInfo->numChannels > 7)
+        {
+            throw Exception(NVCV_ERROR_INVALID_ARGUMENT) << "Maximum allowed number of extra channels is 7. ";
+        }
+
+        if (exChannelInfo->numChannels > 0 && packing0 == NVCV_PACKING_0)
+        {
+            throw Exception(NVCV_ERROR_INVALID_IMAGE_FORMAT)
+                << "No support for extra channels when packing of plane 0 is NVCV_PACKING_0. ";
+        }
+
+        if (exChannelInfo->numChannels > 0 && packing0 != NVCV_PACKING_0
+            && (packing1 != NVCV_PACKING_0 || packing2 != NVCV_PACKING_0 || packing3 != NVCV_PACKING_0))
+        {
+            throw Exception(NVCV_ERROR_INVALID_IMAGE_FORMAT)
+                << "No support for extra channels for planar image format. ";
+        }
+
+        if (exChannelInfo->bitsPerPixel > 128)
+        {
+            throw Exception(NVCV_ERROR_INVALID_ARGUMENT)
+                << "No support for extra channels with bits per pixel more than 128. ";
+        }
+    }
+}
+
 ImageFormat::ImageFormat(NVCVColorModel colorModel, ColorSpec colorSpec, NVCVChromaSubsampling chromaSub,
                          NVCVMemLayout memLayout, NVCVDataKind dataKind, NVCVSwizzle swizzle, NVCVPacking packing0,
-                         NVCVPacking packing1, NVCVPacking packing2, NVCVPacking packing3)
+                         NVCVPacking packing1, NVCVPacking packing2, NVCVPacking packing3, NVCVAlphaType alphaType,
+                         const NVCVExtraChannelInfo *exChannelInfo)
 {
     ValidateSwizzlePacking(swizzle, packing0, packing1, packing2, packing3);
 
@@ -133,6 +165,8 @@ ImageFormat::ImageFormat(NVCVColorModel colorModel, ColorSpec colorSpec, NVCVChr
         switch (colorModel)
         {
         case NVCV_COLOR_MODEL_RGB:
+        case NVCV_COLOR_MODEL_YCCK:
+        case NVCV_COLOR_MODEL_CMYK:
         case NVCV_COLOR_MODEL_YCbCr:
             break;
 
@@ -145,10 +179,30 @@ ImageFormat::ImageFormat(NVCVColorModel colorModel, ColorSpec colorSpec, NVCVChr
             break;
         }
 
+        ValidateExtraChannelInfo(exChannelInfo, packing0, packing1, packing2, packing3);
+
         if (colorModel == NVCV_COLOR_MODEL_YCbCr)
         {
-            m_format = NVCV_MAKE_YCbCr_IMAGE_FORMAT(colorSpec, chromaSub, memLayout, dataKind, swizzle, 4, packing0,
-                                                    packing1, packing2, packing3);
+            if (exChannelInfo == nullptr)
+            {
+                m_format = NVCV_MAKE_YCbCr_IMAGE_FORMAT(colorSpec, chromaSub, memLayout, dataKind, swizzle, alphaType,
+                                                        4, packing0, packing1, packing2, packing3);
+            }
+            else
+            {
+                if (exChannelInfo->numChannels > 0)
+                {
+                    m_format = NVCV_MAKE_YCbCr_IMAGE_EXTRA_CHANNELS_FORMAT(
+                        colorSpec, chromaSub, memLayout, dataKind, swizzle, alphaType, exChannelInfo->numChannels,
+                        exChannelInfo->bitsPerPixel, exChannelInfo->datakind, exChannelInfo->channelType, 4, packing0,
+                        packing1, packing2, packing3);
+                }
+                else
+                {
+                    m_format = NVCV_MAKE_YCbCr_IMAGE_FORMAT(colorSpec, chromaSub, memLayout, dataKind, swizzle,
+                                                            alphaType, 4, packing0, packing1, packing2, packing3);
+                }
+            }
         }
         else if (chromaSub != NVCV_CSS_NONE)
         {
@@ -157,32 +211,91 @@ ImageFormat::ImageFormat(NVCVColorModel colorModel, ColorSpec colorSpec, NVCVChr
         }
         else
         {
-            m_format = NVCV_MAKE_COLOR_IMAGE_FORMAT(colorModel, colorSpec, memLayout, dataKind, swizzle, 4, packing0,
-                                                    packing1, packing2, packing3);
+            if (exChannelInfo == nullptr)
+            {
+                m_format = NVCV_MAKE_COLOR_IMAGE_FORMAT(colorModel, colorSpec, memLayout, dataKind, swizzle, alphaType,
+                                                        4, packing0, packing1, packing2, packing3);
+            }
+            else
+            {
+                if (exChannelInfo->numChannels > 0)
+                {
+                    m_format = NVCV_MAKE_COLOR_IMAGE_EXTRA_CHANNELS_FORMAT(
+                        colorModel, colorSpec, memLayout, dataKind, swizzle, alphaType, exChannelInfo->numChannels,
+                        exChannelInfo->bitsPerPixel, exChannelInfo->datakind, exChannelInfo->channelType, 4, packing0,
+                        packing1, packing2, packing3);
+                }
+                else
+                {
+                    m_format = NVCV_MAKE_COLOR_IMAGE_FORMAT(colorModel, colorSpec, memLayout, dataKind, swizzle,
+                                                            alphaType, 4, packing0, packing1, packing2, packing3);
+                }
+            }
         }
     }
 }
 
 ImageFormat::ImageFormat(NVCVRawPattern rawPattern, NVCVMemLayout memLayout, NVCVDataKind dataKind, NVCVSwizzle swizzle,
-                         NVCVPacking packing0, NVCVPacking packing1, NVCVPacking packing2, NVCVPacking packing3)
+                         NVCVPacking packing0, NVCVPacking packing1, NVCVPacking packing2, NVCVPacking packing3,
+                         NVCVAlphaType alphaType, const NVCVExtraChannelInfo *exChannelInfo)
 {
     ValidateSwizzlePacking(swizzle, packing0, packing1, packing2, packing3);
+    ValidateExtraChannelInfo(exChannelInfo, packing0, packing1, packing2, packing3);
 
-    m_format = NVCV_MAKE_RAW_IMAGE_FORMAT(rawPattern, memLayout, dataKind, swizzle, 4, packing0, packing1, packing2,
-                                          packing3);
+    if (exChannelInfo == nullptr)
+    {
+        m_format = NVCV_MAKE_RAW_IMAGE_FORMAT(rawPattern, memLayout, dataKind, swizzle, alphaType, 4, packing0,
+                                              packing1, packing2, packing3);
+    }
+    else
+    {
+        if (exChannelInfo->numChannels > 0)
+        {
+            m_format = NVCV_MAKE_RAW_IMAGE_EXTRA_CHANNELS_FORMAT(
+                rawPattern, memLayout, dataKind, swizzle, alphaType, exChannelInfo->numChannels,
+                exChannelInfo->bitsPerPixel, exChannelInfo->datakind, exChannelInfo->channelType, 4, packing0, packing1,
+                packing2, packing3);
+        }
+        else
+        {
+            m_format = NVCV_MAKE_RAW_IMAGE_FORMAT(rawPattern, memLayout, dataKind, swizzle, alphaType, 4, packing0,
+                                                  packing1, packing2, packing3);
+        }
+    }
 }
 
 ImageFormat::ImageFormat(NVCVMemLayout memLayout, NVCVDataKind dataKind, NVCVSwizzle swizzle, NVCVPacking packing0,
-                         NVCVPacking packing1, NVCVPacking packing2, NVCVPacking packing3)
+                         NVCVPacking packing1, NVCVPacking packing2, NVCVPacking packing3, NVCVAlphaType alphaType,
+                         const NVCVExtraChannelInfo *exChannelInfo)
 {
     ValidateSwizzlePacking(swizzle, packing0, packing1, packing2, packing3);
+    ValidateExtraChannelInfo(exChannelInfo, packing0, packing1, packing2, packing3);
 
-    m_format = NVCV_MAKE_NONCOLOR_IMAGE_FORMAT(memLayout, dataKind, swizzle, 4, packing0, packing1, packing2, packing3);
+    if (exChannelInfo == nullptr)
+    {
+        m_format = NVCV_MAKE_NONCOLOR_IMAGE_FORMAT(memLayout, dataKind, swizzle, alphaType, 4, packing0, packing1,
+                                                   packing2, packing3);
+    }
+    else
+    {
+        if (exChannelInfo->numChannels > 0)
+        {
+            m_format = NVCV_MAKE_NONCOLOR_IMAGE_EXTRA_CHANNELS_FORMAT(
+                memLayout, dataKind, swizzle, alphaType, exChannelInfo->numChannels, exChannelInfo->bitsPerPixel,
+                exChannelInfo->datakind, exChannelInfo->channelType, 4, packing0, packing1, packing2, packing3);
+        }
+        else
+        {
+            m_format = NVCV_MAKE_NONCOLOR_IMAGE_FORMAT(memLayout, dataKind, swizzle, alphaType, 4, packing0, packing1,
+                                                       packing2, packing3);
+        }
+    }
 }
 
 ImageFormat::ImageFormat(const ColorFormat &colorFormat, NVCVChromaSubsampling chromaSub, NVCVMemLayout memLayout,
                          NVCVDataKind dataKind, NVCVSwizzle swizzle, NVCVPacking packing0, NVCVPacking packing1,
-                         NVCVPacking packing2, NVCVPacking packing3)
+                         NVCVPacking packing2, NVCVPacking packing3, NVCVAlphaType alphaType,
+                         const NVCVExtraChannelInfo *exChannelInfo)
 {
     if (colorFormat.model == NVCV_COLOR_MODEL_RAW)
     {
@@ -192,15 +305,15 @@ ImageFormat::ImageFormat(const ColorFormat &colorFormat, NVCVChromaSubsampling c
                 << "When color model is raw, chroma subsampling must be NONE, not " << chromaSub;
         }
 
-        m_format = ImageFormat{colorFormat.raw, memLayout, dataKind, swizzle, packing0, packing1, packing2, packing3}
+        m_format = ImageFormat{colorFormat.raw, memLayout, dataKind, swizzle,   packing0,
+                               packing1,        packing2,  packing3, alphaType, exChannelInfo}
                        .value();
     }
     else
     {
-        m_format = ImageFormat{colorFormat.model, colorFormat.cspec, chromaSub, memLayout, dataKind,
-                               swizzle,           packing0,          packing1,  packing2,  packing3}
+        m_format = ImageFormat{colorFormat.model, colorFormat.cspec, chromaSub, memLayout, dataKind,  swizzle,
+                               packing0,          packing1,          packing2,  packing3,  alphaType, exChannelInfo}
                        .value();
-        ;
     }
 }
 
@@ -211,10 +324,11 @@ ImageFormat ImageFormat::FromPlanes(const util::StaticVector<ImageFormat, 4> &fm
         throw Exception(NVCV_ERROR_INVALID_ARGUMENT, "At least one plane must be specified");
     }
 
-    ColorFormat                   colorFormat = fmtPlanes[0].colorFormat();
-    NVCVMemLayout                 memLayout   = fmtPlanes[0].memLayout();
-    NVCVDataKind                  dataKind    = fmtPlanes[0].dataKind();
-    std::optional<NVCVRawPattern> rawPattern  = fmtPlanes[0].rawPattern();
+    ColorFormat                   colorFormat      = fmtPlanes[0].colorFormat();
+    NVCVMemLayout                 memLayout        = fmtPlanes[0].memLayout();
+    NVCVDataKind                  dataKind         = fmtPlanes[0].dataKind();
+    std::optional<NVCVRawPattern> rawPattern       = fmtPlanes[0].rawPattern();
+    NVCVAlphaType                 alphaChannelType = fmtPlanes[0].alphaType();
 
     NVCVChromaSubsampling css = NVCV_CSS_NONE;
 
@@ -232,6 +346,11 @@ ImageFormat ImageFormat::FromPlanes(const util::StaticVector<ImageFormat, 4> &fm
         {
             throw Exception(NVCV_ERROR_INVALID_ARGUMENT)
                 << "Format for plane #" << i << " must have a non-zero packing";
+        }
+
+        if (fmtPlanes[i].alphaType() != alphaChannelType)
+        {
+            throw Exception(NVCV_ERROR_INVALID_IMAGE_FORMAT) << "All image planes must have same alphaType";
         }
 
         NVCV_ASSERT(fmtPlanes[i].planePacking(1) == NVCV_PACKING_0);
@@ -310,8 +429,8 @@ ImageFormat ImageFormat::FromPlanes(const util::StaticVector<ImageFormat, 4> &fm
         fmtPlanes.size() > 3 ? fmtPlanes[3].planePacking(0) : NVCV_PACKING_0,
     };
 
-    return ImageFormat{colorFormat,  css,          memLayout,    dataKind,    swizzle,
-                       packPlane[0], packPlane[1], packPlane[2], packPlane[3]};
+    return ImageFormat{colorFormat,  css,          memLayout,    dataKind,         swizzle, packPlane[0],
+                       packPlane[1], packPlane[2], packPlane[3], alphaChannelType, nullptr};
 }
 
 namespace {
@@ -445,7 +564,7 @@ int ImageFormat::planeBPP(int plane) const noexcept
 
 NVCVSwizzle ImageFormat::swizzle() const noexcept
 {
-    return static_cast<NVCVSwizzle>(ExtractBitfield(m_format, 0, 3 * 4));
+    return static_cast<NVCVSwizzle>(ExtractBitfield(m_format, 0, 6));
 }
 
 NVCVColorModel ImageFormat::colorModel() const noexcept
@@ -566,9 +685,96 @@ int ImageFormat::numPlanes() const noexcept
          + (this->planeNumChannels(2) != 0 ? 1 : 0) + (this->planeNumChannels(3) != 0 ? 1 : 0);
 }
 
+NVCVAlphaType ImageFormat::alphaType() const noexcept
+{
+    return static_cast<NVCVAlphaType>(ExtractBitfield(m_format, 6, 1));
+}
+
+ImageFormat ImageFormat::alphaType(NVCVAlphaType newAlphaType) const
+{
+    if (m_format == NVCV_IMAGE_FORMAT_NONE)
+    {
+        throw Exception(NVCV_ERROR_INVALID_ARGUMENT, "Can't set alpha channel type of NONE format");
+    }
+    else
+    {
+        return ImageFormat{static_cast<NVCVImageFormat>(
+            (((uint64_t)m_format & ~MaskBitfield(6, 1)) | SetBitfield(newAlphaType, 6, 1)))};
+    }
+}
+
 int ImageFormat::numChannels() const noexcept
 {
     return GetNumChannels(this->swizzle());
+}
+
+void ImageFormat::extraChannelInfo(NVCVExtraChannelInfo *exChannelInfo) const noexcept
+{
+    int nPlanes = this->numPlanes();
+    if (nPlanes == 1)
+    {
+        int32_t numExtraChannels = static_cast<int32_t>(ExtractBitfield(m_format, 47, 3));
+        if (numExtraChannels > 0)
+        {
+            exChannelInfo->numChannels  = numExtraChannels;
+            exChannelInfo->bitsPerPixel = std::pow(2, 3 + static_cast<int32_t>(ExtractBitfield(m_format, 50, 3)));
+            exChannelInfo->datakind     = static_cast<NVCVDataKind>(ExtractBitfield(m_format, 53, 3));
+            exChannelInfo->channelType  = static_cast<NVCVExtraChannel>(ExtractBitfield(m_format, 44, 3));
+        }
+        else
+        {
+            exChannelInfo->numChannels  = 0;
+            exChannelInfo->bitsPerPixel = 0;
+            exChannelInfo->datakind     = NVCV_DATA_KIND_UNSPECIFIED;
+            exChannelInfo->channelType  = NVCV_EXTRA_CHANNEL_U;
+        }
+    }
+    else
+    {
+        exChannelInfo->numChannels  = 0;
+        exChannelInfo->bitsPerPixel = 0;
+        exChannelInfo->datakind     = NVCV_DATA_KIND_UNSPECIFIED;
+        exChannelInfo->channelType  = NVCV_EXTRA_CHANNEL_U;
+    }
+}
+
+ImageFormat ImageFormat::extraChannelInfo(const NVCVExtraChannelInfo *newExChannelInfo) const
+{
+    if (m_format == NVCV_IMAGE_FORMAT_NONE)
+    {
+        throw Exception(NVCV_ERROR_INVALID_ARGUMENT, "Can't set extra channel information of NONE image format");
+    }
+
+    if (newExChannelInfo->numChannels < 0 || newExChannelInfo->numChannels > 7)
+    {
+        throw Exception(NVCV_ERROR_INVALID_ARGUMENT,
+                        "Minimum allowed number of extra channels is 0 and maximum allowed is 7");
+    }
+
+    if (newExChannelInfo->bitsPerPixel > 128)
+    {
+        throw Exception(NVCV_ERROR_INVALID_ARGUMENT, "Maximum allowed bits per pixel for extra channels is 128");
+    }
+
+    if (newExChannelInfo->datakind == NVCV_DATA_KIND_UNSPECIFIED)
+    {
+        throw Exception(NVCV_ERROR_INVALID_ARGUMENT,
+                        "Can't set extra channel information when data kind is unspecified");
+    }
+
+    if (this->numPlanes() == 1)
+    {
+        return ImageFormat{static_cast<NVCVImageFormat>((
+            ((uint64_t)m_format & ~MaskBitfield(44, 12))
+            | (SetBitfield(newExChannelInfo->numChannels, 47, 3)
+               | SetBitfield(NVCV_DETAIL_ENCODE_BPP(newExChannelInfo->bitsPerPixel), 50, 3)
+               | SetBitfield(newExChannelInfo->datakind, 53, 3) | SetBitfield(newExChannelInfo->channelType, 44, 3))))};
+    }
+    else
+    {
+        throw Exception(NVCV_ERROR_INVALID_ARGUMENT,
+                        "Can't set extra channel information of for non-planar image format");
+    }
 }
 
 std::array<int32_t, 4> ImageFormat::bpc() const
@@ -707,9 +913,19 @@ ImageFormat ImageFormat::planeFormat(int plane) const
 {
     if (plane < this->numPlanes())
     {
-        return ImageFormat{this->colorFormat(),       plane == 0 ? NVCV_CSS_NONE : this->css(),
-                           this->memLayout(),         this->dataKind(),
-                           this->planeSwizzle(plane), this->planePacking(plane)};
+        NVCVExtraChannelInfo exChannelInfo;
+        this->extraChannelInfo(&exChannelInfo);
+        return ImageFormat{this->colorFormat(),
+                           plane == 0 ? NVCV_CSS_NONE : this->css(),
+                           this->memLayout(),
+                           this->dataKind(),
+                           this->planeSwizzle(plane),
+                           this->planePacking(plane),
+                           NVCV_PACKING_0,
+                           NVCV_PACKING_0,
+                           NVCV_PACKING_0,
+                           this->alphaType(),
+                           &exChannelInfo};
     }
     else
     {
@@ -869,8 +1085,11 @@ ImageFormat ImageFormat::swizzleAndPacking(NVCVSwizzle newSwizzle, NVCVPacking n
         throw Exception(NVCV_ERROR_INVALID_ARGUMENT, "Can't set raw pattern of NONE format");
     }
 
-    return ImageFormat{this->colorFormat(), this->css(), this->memLayout(), this->dataKind(), newSwizzle,
-                       newPacking0,         newPacking1, newPacking2,       newPacking3};
+    NVCVExtraChannelInfo exChannelInfo;
+    this->extraChannelInfo(&exChannelInfo);
+    return ImageFormat{this->colorFormat(), this->css(),       this->memLayout(), this->dataKind(),
+                       newSwizzle,          newPacking0,       newPacking1,       newPacking2,
+                       newPacking3,         this->alphaType(), &exChannelInfo};
 }
 
 ImageFormat ImageFormat::memLayout(NVCVMemLayout newMemLayout) const
@@ -1049,6 +1268,16 @@ std::ostream &operator<<(std::ostream &out, ImageFormat fmt)
         NVCV_ENUM(NVCV_IMAGE_FORMAT_YUYV_BL);
         NVCV_ENUM(NVCV_IMAGE_FORMAT_YUYV_ER);
         NVCV_ENUM(NVCV_IMAGE_FORMAT_YUYV_ER_BL);
+        NVCV_ENUM(NVCV_IMAGE_FORMAT_RGB8_1U_U8);
+        NVCV_ENUM(NVCV_IMAGE_FORMAT_RGB8_7U_U8);
+        NVCV_ENUM(NVCV_IMAGE_FORMAT_RGBA8_3U_U16);
+        NVCV_ENUM(NVCV_IMAGE_FORMAT_RGBA8_3POS3D_U32);
+        NVCV_ENUM(NVCV_IMAGE_FORMAT_RGB8_3D_F32);
+        NVCV_ENUM(NVCV_IMAGE_FORMAT_YCCK8);
+        NVCV_ENUM(NVCV_IMAGE_FORMAT_CMYK8);
+        NVCV_ENUM(NVCV_IMAGE_FORMAT_HSV8);
+        NVCV_ENUM(NVCV_IMAGE_FORMAT_RGBAf32);
+        NVCV_ENUM(NVCV_IMAGE_FORMAT_RGBAf32p);
 #undef NVCV_ENUM
     }
 
@@ -1076,7 +1305,13 @@ std::ostream &operator<<(std::ostream &out, ImageFormat fmt)
         break;
     }
 
-    out << fmt.memLayout() << "," << fmt.dataKind() << "," << fmt.swizzle();
+    out << fmt.memLayout() << "," << fmt.dataKind() << "," << fmt.swizzle() << "," << fmt.alphaType();
+    NVCVExtraChannelInfo exChannelInfo;
+    fmt.extraChannelInfo(&exChannelInfo);
+    if (exChannelInfo.numChannels > 0)
+        out << "," << exChannelInfo.numChannels << "," << exChannelInfo.bitsPerPixel << "," << exChannelInfo.datakind
+            << "," << exChannelInfo.channelType;
+
     for (int i = 0; i < fmt.numPlanes(); ++i)
     {
         out << "," << fmt.planePacking(i);

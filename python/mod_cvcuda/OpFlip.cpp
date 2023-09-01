@@ -97,8 +97,12 @@ ImageBatchVarShape FlipVarShape(ImageBatchVarShape &input, Tensor &flipCode, std
 void ExportOpFlip(py::module &m)
 {
     using namespace pybind11::literals;
+    py::options options;
+    options.disable_function_signatures();
 
     m.def("flip", &Flip, "src"_a, "flipCode"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        cvcuda.flip(src: nvcv.Tensor, flipCode : int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the Flip operation on the given cuda stream.
 
@@ -124,7 +128,9 @@ void ExportOpFlip(py::module &m)
 
     m.def("flip_into", &FlipInto, "dst"_a, "src"_a, "flipCode"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
-        Executes the Flip operation on the given cuda stream.
+        cvcuda.flip_into(dst : nvcv.Tensor, src: nvcv.Tensor, flipCode : int, stream: Optional[nvcv.cuda.Stream] = None)
+
+	Executes the Flip operation on the given cuda stream.
 
         See also:
             Refer to the CV-CUDA C API reference for the Flip operator
@@ -149,7 +155,9 @@ void ExportOpFlip(py::module &m)
 
     m.def("flip", &FlipVarShape, "src"_a, "flipCode"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
-        Executes the Flip operation on the given cuda stream.
+        cvcuda.flip(src: nvcv.ImageBatchVarShape, flipCode : nvcv.Tensor , stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+
+	Executes the Flip operation on the given cuda stream.
 
         See also:
             Refer to the CV-CUDA C API reference for the Flip operator
@@ -172,6 +180,8 @@ void ExportOpFlip(py::module &m)
     )pbdoc");
 
     m.def("flip_into", &FlipVarShapeInto, "dst"_a, "src"_a, "flipCode"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        cvcuda.flip_into(dst:nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, flipCode : nvcv.Tensor , stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Flip operation on the given cuda stream.
 

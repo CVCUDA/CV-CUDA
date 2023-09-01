@@ -167,12 +167,15 @@ enum class Packing : int32_t
     X64_Y64_Z64_W64 = NVCV_PACKING_X64_Y64_Z64_W64,
 };
 
+using ExtraChannelInfo = NVCVExtraChannelInfo;
+
 enum class DataKind : int8_t
 {
-    UNSIGNED = NVCV_DATA_KIND_UNSIGNED,
-    SIGNED   = NVCV_DATA_KIND_SIGNED,
-    FLOAT    = NVCV_DATA_KIND_FLOAT,
-    COMPLEX  = NVCV_DATA_KIND_COMPLEX
+    UNSPECIFIED = NVCV_DATA_KIND_UNSPECIFIED,
+    UNSIGNED    = NVCV_DATA_KIND_UNSIGNED,
+    SIGNED      = NVCV_DATA_KIND_SIGNED,
+    FLOAT       = NVCV_DATA_KIND_FLOAT,
+    COMPLEX     = NVCV_DATA_KIND_COMPLEX
 };
 
 enum class MemLayout : int8_t
@@ -200,61 +203,78 @@ enum class Channel : int8_t
     MAX  = NVCV_CHANNEL_1,
 };
 
+enum class ExtraChannel : int8_t
+{
+    U     = NVCV_EXTRA_CHANNEL_U,
+    D     = NVCV_EXTRA_CHANNEL_D,
+    POS3D = NVCV_EXTRA_CHANNEL_POS3D,
+};
+
+enum class AlphaType : int8_t
+{
+    ASSOCIATED   = NVCV_ALPHA_ASSOCIATED,
+    UNASSOCIATED = NVCV_ALPHA_UNASSOCIATED,
+};
+
 enum class Swizzle : int32_t
 {
-    S_0000 = NVCV_SWIZZLE_0000,
-    S_1000 = NVCV_SWIZZLE_1000,
-    S_0001 = NVCV_SWIZZLE_0001,
-    S_XYZW = NVCV_SWIZZLE_XYZW,
-    S_ZYXW = NVCV_SWIZZLE_ZYXW,
-    S_WXYZ = NVCV_SWIZZLE_WXYZ,
-    S_WZYX = NVCV_SWIZZLE_WZYX,
-    S_YZWX = NVCV_SWIZZLE_YZWX,
-    S_XYZ1 = NVCV_SWIZZLE_XYZ1,
-    S_XYZ0 = NVCV_SWIZZLE_XYZ0,
-    S_YZW1 = NVCV_SWIZZLE_YZW1,
-    S_XXX1 = NVCV_SWIZZLE_XXX1,
-    S_XZY1 = NVCV_SWIZZLE_XZY1,
-    S_ZYX1 = NVCV_SWIZZLE_ZYX1,
-    S_ZYX0 = NVCV_SWIZZLE_ZYX0,
-    S_WZY1 = NVCV_SWIZZLE_WZY1,
-    S_X000 = NVCV_SWIZZLE_X000,
-    S_0X00 = NVCV_SWIZZLE_0X00,
-    S_00X0 = NVCV_SWIZZLE_00X0,
-    S_000X = NVCV_SWIZZLE_000X,
-    S_Y000 = NVCV_SWIZZLE_Y000,
-    S_0Y00 = NVCV_SWIZZLE_0Y00,
-    S_00Y0 = NVCV_SWIZZLE_00Y0,
-    S_000Y = NVCV_SWIZZLE_000Y,
-    S_0XY0 = NVCV_SWIZZLE_0XY0,
-    S_XXXY = NVCV_SWIZZLE_XXXY,
-    S_YYYX = NVCV_SWIZZLE_YYYX,
-    S_0YX0 = NVCV_SWIZZLE_0YX0,
-    S_X00Y = NVCV_SWIZZLE_X00Y,
-    S_Y00X = NVCV_SWIZZLE_Y00X,
-    S_X001 = NVCV_SWIZZLE_X001,
-    S_XY01 = NVCV_SWIZZLE_XY01,
-    S_XY00 = NVCV_SWIZZLE_XY00,
-    S_0XZ0 = NVCV_SWIZZLE_0XZ0,
-    S_0ZX0 = NVCV_SWIZZLE_0ZX0,
-    S_XZY0 = NVCV_SWIZZLE_XZY0,
-    S_YZX1 = NVCV_SWIZZLE_YZX1,
-    S_ZYW1 = NVCV_SWIZZLE_ZYW1,
-    S_0YX1 = NVCV_SWIZZLE_0YX1,
-    S_XYXZ = NVCV_SWIZZLE_XYXZ,
-    S_YXZX = NVCV_SWIZZLE_YXZX,
-    S_XZ00 = NVCV_SWIZZLE_XZ00,
-    S_WYXZ = NVCV_SWIZZLE_WYXZ,
-    S_YX00 = NVCV_SWIZZLE_YX00,
-    S_YX01 = NVCV_SWIZZLE_YX01,
-    S_00YX = NVCV_SWIZZLE_00YX,
-    S_00XY = NVCV_SWIZZLE_00XY,
-    S_0XY1 = NVCV_SWIZZLE_0XY1,
-    S_0X01 = NVCV_SWIZZLE_0X01,
-    S_YZXW = NVCV_SWIZZLE_YZXW,
-    S_YW00 = NVCV_SWIZZLE_YW00,
-    S_XYW0 = NVCV_SWIZZLE_XYW0,
-    S_YZW0 = NVCV_SWIZZLE_YZW0,
+    S_0000        = NVCV_SWIZZLE_0000,
+    S_1000        = NVCV_SWIZZLE_1000,
+    S_0001        = NVCV_SWIZZLE_0001,
+    S_XYZW        = NVCV_SWIZZLE_XYZW,
+    S_ZYXW        = NVCV_SWIZZLE_ZYXW,
+    S_WXYZ        = NVCV_SWIZZLE_WXYZ,
+    S_WZYX        = NVCV_SWIZZLE_WZYX,
+    S_YZWX        = NVCV_SWIZZLE_YZWX,
+    S_XYZ1        = NVCV_SWIZZLE_XYZ1,
+    S_XYZ0        = NVCV_SWIZZLE_XYZ0,
+    S_YZW1        = NVCV_SWIZZLE_YZW1,
+    S_XXX1        = NVCV_SWIZZLE_XXX1,
+    S_XZY1        = NVCV_SWIZZLE_XZY1,
+    S_ZYX1        = NVCV_SWIZZLE_ZYX1,
+    S_ZYX0        = NVCV_SWIZZLE_ZYX0,
+    S_WZY1        = NVCV_SWIZZLE_WZY1,
+    S_X000        = NVCV_SWIZZLE_X000,
+    S_0X00        = NVCV_SWIZZLE_0X00,
+    S_00X0        = NVCV_SWIZZLE_00X0,
+    S_000X        = NVCV_SWIZZLE_000X,
+    S_Y000        = NVCV_SWIZZLE_Y000,
+    S_0Y00        = NVCV_SWIZZLE_0Y00,
+    S_00Y0        = NVCV_SWIZZLE_00Y0,
+    S_000Y        = NVCV_SWIZZLE_000Y,
+    S_0XY0        = NVCV_SWIZZLE_0XY0,
+    S_XXXY        = NVCV_SWIZZLE_XXXY,
+    S_YYYX        = NVCV_SWIZZLE_YYYX,
+    S_0YX0        = NVCV_SWIZZLE_0YX0,
+    S_X00Y        = NVCV_SWIZZLE_X00Y,
+    S_Y00X        = NVCV_SWIZZLE_Y00X,
+    S_X001        = NVCV_SWIZZLE_X001,
+    S_XY01        = NVCV_SWIZZLE_XY01,
+    S_XY00        = NVCV_SWIZZLE_XY00,
+    S_0XZ0        = NVCV_SWIZZLE_0XZ0,
+    S_0ZX0        = NVCV_SWIZZLE_0ZX0,
+    S_XZY0        = NVCV_SWIZZLE_XZY0,
+    S_YZX1        = NVCV_SWIZZLE_YZX1,
+    S_ZYW1        = NVCV_SWIZZLE_ZYW1,
+    S_0YX1        = NVCV_SWIZZLE_0YX1,
+    S_XYXZ        = NVCV_SWIZZLE_XYXZ,
+    S_YXZX        = NVCV_SWIZZLE_YXZX,
+    S_XZ00        = NVCV_SWIZZLE_XZ00,
+    S_WYXZ        = NVCV_SWIZZLE_WYXZ,
+    S_YX00        = NVCV_SWIZZLE_YX00,
+    S_YX01        = NVCV_SWIZZLE_YX01,
+    S_00YX        = NVCV_SWIZZLE_00YX,
+    S_00XY        = NVCV_SWIZZLE_00XY,
+    S_0XY1        = NVCV_SWIZZLE_0XY1,
+    S_0X01        = NVCV_SWIZZLE_0X01,
+    S_YZXW        = NVCV_SWIZZLE_YZXW,
+    S_YW00        = NVCV_SWIZZLE_YW00,
+    S_XYW0        = NVCV_SWIZZLE_XYW0,
+    S_YZW0        = NVCV_SWIZZLE_YZW0,
+    S_YZ00        = NVCV_SWIZZLE_YZ00,
+    S_00X1        = NVCV_SWIZZLE_00X1,
+    S_0ZXY        = NVCV_SWIZZLE_0ZXY,
+    S_UNSUPPORTED = NVCV_SWIZZLE_UNSUPPORTED
 };
 
 inline Swizzle MakeSwizzle(Channel x, Channel y, Channel z, Channel w)
@@ -263,12 +283,6 @@ inline Swizzle MakeSwizzle(Channel x, Channel y, Channel z, Channel w)
     detail::CheckThrow(nvcvMakeSwizzle(&out, static_cast<NVCVChannel>(x), static_cast<NVCVChannel>(y),
                                        static_cast<NVCVChannel>(z), static_cast<NVCVChannel>(w)));
     return static_cast<Swizzle>(out);
-}
-
-constexpr Swizzle MakeConstSwizzle(Channel x, Channel y, Channel z, Channel w)
-{
-    return static_cast<Swizzle>(NVCV_MAKE_SWIZZLE(static_cast<NVCVChannel>(x), static_cast<NVCVChannel>(y),
-                                                  static_cast<NVCVChannel>(z), static_cast<NVCVChannel>(w)));
 }
 
 inline std::array<Channel, 4> GetChannels(Swizzle swizzle)

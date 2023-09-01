@@ -20,18 +20,20 @@ import sys
 import logging
 import cvcuda
 import torch
-import nvtx
 from torchvision.models import segmentation as segmentation_models
 import tensorrt as trt
 
-common_dir = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    "common",
-    "python",
-)
-sys.path.insert(0, common_dir)
+from pathlib import Path
 
-from trt_utils import convert_onnx_to_tensorrt, setup_tensort_bindings  # noqa: E402
+# Bring module folders from the samples directory into our path so that
+# we can import modules from it.
+samples_dir = Path(os.path.abspath(__file__)).parents[2]  # samples/
+sys.path.insert(0, os.path.join(samples_dir, ""))
+
+from common.python.trt_utils import (  # noqa: E402
+    convert_onnx_to_tensorrt,
+    setup_tensort_bindings,
+)
 
 # docs_tag: begin_init_segmentationpytorch
 class SegmentationPyTorch:  # noqa: E302
@@ -42,10 +44,12 @@ class SegmentationPyTorch:  # noqa: E302
         batch_size,
         image_size,
         device_id,
+        cvcuda_perf,
     ):
         self.logger = logging.getLogger(__name__)
         self.output_dir = output_dir
         self.device_id = device_id
+        self.cvcuda_perf = cvcuda_perf
         # Fetch the segmentation index to class name information from the weights
         # meta properties.
         # The underlying pytorch model that we use for inference is the FCN model
@@ -83,13 +87,13 @@ class SegmentationPyTorch:  # noqa: E302
 
     # docs_tag: begin_call_segmentationpytorch
     def __call__(self, tensor):
-        nvtx.push_range("inference.torch")
+        self.cvcuda_perf.push_range("inference.torch")
 
         with torch.no_grad():
 
             if isinstance(tensor, torch.Tensor):
-                # We are all good here. Nothing needs to be done.
-                pass
+                if not tensor.is_cuda:
+                    tensor = tensor.to("cuda:%d" % self.device_id)
             else:
                 # Convert CVCUDA tensor to Torch tensor.
                 tensor = torch.as_tensor(
@@ -98,7 +102,7 @@ class SegmentationPyTorch:  # noqa: E302
 
             segmented = self.model(tensor)
 
-        nvtx.pop_range()
+        self.cvcuda_perf.pop_range()
         return segmented
 
     # docs_tag: end_call_segmentationpytorch
@@ -113,10 +117,12 @@ class SegmentationTensorRT:
         batch_size,
         image_size,
         device_id,
+        cvcuda_perf,
     ):
         self.logger = logging.getLogger(__name__)
         self.output_dir = output_dir
         self.device_id = device_id
+        self.cvcuda_perf = cvcuda_perf
         # For TensorRT, the process is the following:
         # We check if there already exists a TensorRT engine generated
         # previously. If not, we check if there exists an ONNX model generated
@@ -241,7 +247,7 @@ class SegmentationTensorRT:
 
     # docs_tag: begin_call_segmentationtensorrt
     def __call__(self, tensor):
-        nvtx.push_range("inference.tensorrt")
+        self.cvcuda_perf.push_range("inference.tensorrt")
 
         # Grab the data directly from the pre-allocated tensor.
         input_bindings = [tensor.cuda().__cuda_array_interface__["data"][0]]
@@ -260,7 +266,7 @@ class SegmentationTensorRT:
 
         segmented = self.output_tensors[self.output_idx]
 
-        nvtx.pop_range()
+        self.cvcuda_perf.pop_range()
         return segmented
 
     # docs_tag: end_call_segmentationtensorrt

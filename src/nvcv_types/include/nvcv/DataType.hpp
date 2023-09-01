@@ -41,6 +41,10 @@ enum class Byte : uint8_t
 /**
  * @brief Defines types and functions to handle data types.
  *
+ * This class represents the data type of an element in a tensor or array.
+ * This includes the kind of data (e.g., floating point, integer), the packing
+ * of multiple channels (e.g., RGB), and additional meta-information.
+ *
  * @defgroup NVCV_CPP_CORE_DATATYPE Data types
  * @{
  */
@@ -48,14 +52,43 @@ enum class Byte : uint8_t
 class DataType
 {
 public:
+    /**
+     * @brief Default constructor. Initializes to a default data type.
+     */
     constexpr DataType();
+
+    /**
+     * @brief Construct from a native data type.
+     *
+     * @param type The native data type.
+     */
     explicit constexpr DataType(NVCVDataType type);
+
+    /**
+     * @brief Construct from a data kind and packing.
+     *
+     * @param dataKind The kind of data (e.g., floating point, integer).
+     * @param packing The packing of the data (e.g., channel ordering).
+     */
     DataType(DataKind dataKind, Packing packing);
 
+    /**
+     * @brief Construct a constant data type from a data kind and packing.
+     *
+     * @param dataKind The kind of data.
+     * @param packing The packing of the data.
+     * @return The constructed data type.
+     */
     static constexpr DataType ConstCreate(DataKind dataKind, Packing packing);
 
+    /**
+     * @brief Implicit conversion to the native data type.
+     *
+     * @return The native data type.
+     */
     constexpr operator NVCVDataType() const;
 
+    // Accessors for data type properties
     Packing                packing() const;
     std::array<int32_t, 4> bitsPerChannel() const;
     DataKind               dataKind() const;

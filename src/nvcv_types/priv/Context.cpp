@@ -34,7 +34,8 @@ Context::Context()
     , m_imageManager("Image")
     , m_imageBatchManager("ImageBatch")
     , m_tensorManager("Tensor")
-    , m_managerList{m_allocatorManager, m_imageManager, m_imageBatchManager, m_tensorManager}
+    , m_arrayManager("Array")
+    , m_managerList{m_allocatorManager, m_imageManager, m_imageBatchManager, m_tensorManager, m_arrayManager}
 {
 }
 
@@ -56,6 +57,7 @@ auto Context::managerList() const -> const Managers &
 template class HandleManager<IImage>;
 template class HandleManager<IImageBatch>;
 template class HandleManager<ITensor>;
+template class HandleManager<IArray>;
 template class HandleManager<IAllocator>;
 
 } // namespace nvcv::priv

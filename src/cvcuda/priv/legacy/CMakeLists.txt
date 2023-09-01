@@ -13,7 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-add_library(cvcuda_legacy STATIC
+set(CV_CUDA_PRIV_LEGACY_FILES CvCudaLegacyHelpers.cpp)
+
+set(CV_CUDA_PRIV_LEGACY_OP_FILES
+    find_contours.cu
     filter_utils.cu
     custom_crop.cu
     reformat.cu
@@ -49,7 +52,6 @@ add_library(cvcuda_legacy STATIC
     flip.cu
     flip_or_copy_var_shape.cu
     composite_var_shape.cu
-    CvCudaLegacyHelpers.cpp
     custom_crop.cu
     reformat.cu
     resize.cu
@@ -68,11 +70,46 @@ add_library(cvcuda_legacy STATIC
     threshold_util.cu
     bnd_box.cu
     box_blur.cu
+    osd.cu
+    textbackend/backend.cpp
+    textbackend/stb.cpp
     random_resized_crop.cu
     random_resized_crop_var_shape.cu
     gaussian_noise.cu
     gaussian_noise_var_shape.cu
     gaussian_noise_util.cu
+    inpaint.cu
+    inpaint_var_shape.cu
+    inpaint_utils.cu
+    calc_hist.cu
+    histogram_eq.cu
+    histogram_eq_var_shape.cu
+    min_area_rect.cu
+)
+
+add_compile_definitions(ENABLE_TEXT_BACKEND_STB)
+
+# filter only one that matches the patern (case insensitive), should be set on the global level
+# usage:
+# set(CV_CUDA_SRC_PATERN medianblur median_blur"
+#
+# will compile only files relevant to themedian blur op "median_blur.cu;median_blur_var_shape.cu"
+if (NOT "${CV_CUDA_SRC_PATERN}" STREQUAL "")
+    foreach(PATTERN ${CV_CUDA_SRC_PATERN})
+        string(TOLOWER ${PATTERN} PATTERN)
+        foreach(FILENAME ${CV_CUDA_PRIV_LEGACY_OP_FILES})
+            string(TOLOWER ${FILENAME} FILENAME_LOWERCASE)
+            if (${FILENAME_LOWERCASE} MATCHES ${PATTERN})
+                list(APPEND CV_CUDA_PRIV_LEGACY_FILES ${FILENAME})
+            endif()
+        endforeach()
+    endforeach()
+else()
+    list(APPEND CV_CUDA_PRIV_LEGACY_FILES ${CV_CUDA_PRIV_LEGACY_OP_FILES})
+endif()
+
+add_library(cvcuda_legacy STATIC
+    ${CV_CUDA_PRIV_LEGACY_FILES}
 )
 
 target_link_libraries(cvcuda_legacy
@@ -81,4 +118,5 @@ target_link_libraries(cvcuda_legacy
         nvcv_types
         nvcv_util
         cvcuda_headers
+        -lrt
 )

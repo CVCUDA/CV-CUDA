@@ -19,6 +19,7 @@
 #define NVCV_PYTHON_HASH_HPP
 
 #include <nvcv/Size.hpp>
+#include <nvcv/cuda/TypeTraits.hpp>
 #include <util/Ranges.hpp>
 
 #include <functional>
@@ -83,6 +84,28 @@ size_t ComputeHash(const std::tuple<TT...> &a)
 inline size_t ComputeHash()
 {
     return ComputeHash(612 /* any value works */);
+}
+
+// Hashing for CUDA compound types -------
+template<typename T, class = nvcv::cuda::Require<nvcv::cuda::IsCompound<T>>>
+inline size_t ComputeHash(const T &a)
+{
+    if constexpr (nvcv::cuda::NumComponents<T> == 1)
+    {
+        return ComputeHash(a.x);
+    }
+    else if constexpr (nvcv::cuda::NumComponents<T> == 2)
+    {
+        return ComputeHash(a.x, a.y);
+    }
+    else if constexpr (nvcv::cuda::NumComponents<T> == 3)
+    {
+        return ComputeHash(a.x, a.y, a.z);
+    }
+    else if constexpr (nvcv::cuda::NumComponents<T> == 4)
+    {
+        return ComputeHash(a.x, a.y, a.z, a.w);
+    }
 }
 
 } // namespace nvcvpy::util

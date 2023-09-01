@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,6 +29,15 @@
 
 namespace nvcv {
 
+/**
+ * @brief Template class representing an N-dimensional shape.
+ *
+ * This class is designed to encapsulate the shape of an N-dimensional tensor,
+ * where the size in each dimension is of type T.
+ *
+ * @tparam T The type of the size in each dimension (e.g., int, size_t).
+ * @tparam N The maximum number of dimensions this shape can represent.
+ */
 template<class T, int N>
 class Shape
 {
@@ -44,22 +53,37 @@ public:
 
     constexpr static int MAX_RANK = N;
 
+    // Constructors
     Shape();
     Shape(const Shape &that);
+
+    /**
+     * @brief Construct with a given rank, sizes default to 0.
+     *
+     * @param size The rank of the shape.
+     */
     explicit Shape(size_type size);
 
-    // copy 'n' elements from buffer pointed by 'data'
+    /**
+     * @brief Constructor using a buffer.
+     *
+     * Constructs a shape by copying 'n' elements from the buffer pointed by 'data'.
+     *
+     * @param data Pointer to the buffer.
+     * @param n Number of elements to copy from the buffer.
+     */
     Shape(const T *data, size_t n);
 
     Shape(std::initializer_list<value_type> shape);
 
-    reference       operator[](int i);
+    reference       operator[](int i); ///< Access the i-th dimension.
     const_reference operator[](int i) const;
 
-    size_type rank() const;
-    size_type size() const;
-    bool      empty() const;
+    size_type rank() const;  ///< Get the rank (number of dimensions) of the shape.
+    size_type size() const;  ///< Get the total size represented by the shape.
+    bool      empty() const; ///< Check if the shape is empty.
 
+    // iterators
     iterator begin();
     iterator end();
 
@@ -69,6 +93,7 @@ public:
     const_iterator cbegin() const;
     const_iterator cend() const;
 
+    // Comparison operators
     bool operator==(const Shape &that) const;
     bool operator!=(const Shape &that) const;
 

@@ -102,8 +102,13 @@ void ExportOpBilateralFilter(py::module &m)
 {
     using namespace pybind11::literals;
 
+    py::options options;
+    options.disable_function_signatures();
+
     m.def("bilateral_filter", &BilateralFilter, "src"_a, "diameter"_a, "sigma_color"_a, "sigma_space"_a,
           "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        cvcuda.bilateral_filter(src: nvcv.Tensor, diameter: int, sigma_color: float, sigma_space: float, border:NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT > , stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the Bilateral Filter operation on the given cuda stream.
 
@@ -131,6 +136,8 @@ void ExportOpBilateralFilter(py::module &m)
           "sigma_space"_a, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
 
+        cvcuda.bilateral_filter_into(dst: nvcv.Tensor, src: nvcv.Tensor, diameter: int, sigma_color: float, sigma_space: float, border:NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, stream: Optional[nvcv.cuda.Stream] = None)
+
         Executes the Bilateral Filter operation on the given cuda stream.
 
         See also:
@@ -157,6 +164,8 @@ void ExportOpBilateralFilter(py::module &m)
     m.def("bilateral_filter", &VarShapeBilateralFilter, "src"_a, "diameter"_a, "sigma_color"_a, "sigma_space"_a,
           py::kw_only(), "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "stream"_a = nullptr, R"pbdoc(
 
+        cvcuda.bilateral_filter(src: nvcv.ImageBatchVarShape, diameter:  nvcv.Tensor, sigma_color:  nvcv.Tensor, sigma_space:  nvcv.Tensor, border:NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT > , stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+
         Executes the Bilateral Filter operation on the given cuda stream.
 
         See also:
@@ -182,6 +191,8 @@ void ExportOpBilateralFilter(py::module &m)
     m.def("bilateral_filter_into", &VarShapeBilateralFilterInto, "dst"_a, "src"_a, "diameter"_a, "sigma_color"_a,
           "sigma_space"_a, py::kw_only(), "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "stream"_a = nullptr,
           R"pbdoc(
+
+        cvcuda.bilateral_filter_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, diameter: nvcv.Tensor, sigma_color:  nvcv.Tensor, sigma_space:  nvcv.Tensor, border:NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT > , stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Bilateral Filter operation on the given cuda stream.
 

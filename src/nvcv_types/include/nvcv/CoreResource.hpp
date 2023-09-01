@@ -38,21 +38,36 @@ public:
     using HandleType = Handle;
     using Base       = SharedHandle<Handle>;
 
+    /**
+     * @brief A default constructor that constructs an empty `CoreResource`.
+     */
     CoreResource() = default;
 
+    /**
+    * @brief A constructor that constructs an empty `CoreResource` from a nullptr.
+    */
     CoreResource(std::nullptr_t) {}
 
     /** Wraps and assumes ownership of a handle.
      *
      * This functions stores the resource handle in the wrapper object.
      * The handle passed in the argument is reset to a null handle value to prevent
-     * inadvertent usage by the caller after the ownership has been transfered to the wrapper.
+     * inadvertent usage by the caller after the ownership has been transferred to the wrapper.
+     *
+     * @param handle The handle to the resource.
      */
     explicit CoreResource(HandleType &&handle)
         : Base(std::move(handle))
     {
     }
 
+    /**
+     * @brief A factory method to create a `CoreResource` from a handle.
+     *
+     * @param handle The handle to the resource.
+     * @param incRef Indicates whether to increment the reference count of the handle.
+     * @return A `CoreResource` wrapping the provided handle.
+     */
     static Actual FromHandle(HandleType handle, bool incRef)
     {
         if (incRef && handle)
@@ -60,38 +75,77 @@ public:
         return Actual(std::move(handle));
     }
 
+    /**
+     * @brief A copy constructor that creates a `CoreResource` from another instance.
+     *
+     * @param other The other instance to copy from.
+     */
     CoreResource(const Actual &other)
         : Base(other)
     {
     }
 
+    /**
+     * @brief A move constructor that transfers ownership from another instance.
+     *
+     * @param other The other instance to move from.
+     */
     CoreResource(Actual &&other)
         : Base(std::move(other))
     {
     }
 
+    /**
+     * @brief A copy assignment operator that copies from another instance.
+     *
+     * @param other The other instance to copy from.
+     * @return This instance after the copy.
+     */
     CoreResource &operator=(const Actual &other)
     {
         Base::operator=(other);
         return *this;
     }
 
+    /**
+     * @brief A move assignment operator that moves from another instance.
+     *
+     * @param other The other instance to move from.
+     * @return This instance after the move.
+     */
     CoreResource &operator=(Actual &&other)
     {
         Base::operator=(std::move(other));
         return *this;
     }
 
+    /**
+     * @brief Returns the handle to the resource.
+     *
+     * @return The handle to the resource.
+     */
     const HandleType handle() const noexcept
     {
         return this->get();
     }
 
+    /**
+     * @brief Checks if this instance is equal to another.
+     *
+     * @param other The other instance to compare with.
+     * @return true if they are equal, false otherwise.
+     */
     bool operator==(const Actual &other) const
     {
         return handle() == other.handle();
     }
 
+    /**
+     * @brief Checks if this instance is not equal to another.
+     *
+     * @param other The other instance to compare with.
+     * @return true if they are not equal, false otherwise.
+     */
     bool operator!=(const Actual &other) const
     {
         return handle() != other.handle();
@@ -103,6 +157,12 @@ public:
     using Base::reset;
     using Base::operator bool;
 
+    /**
+     * @brief Casts this instance to a derived type.
+     *
+     * @tparam Derived The derived type to cast to.
+     * @return The instance cast to the derived type.
+     */
     template<typename Derived>
     Derived cast() const
     {
@@ -182,29 +242,64 @@ template<typename Resource>
 class NonOwningResource
 {
 public:
+    /**
+     * @brief Type alias for the handle type of the resource.
+     */
     using HandleType = typename Resource::HandleType;
 
+    /**
+     * @brief A constructor that creates a `NonOwningResource` from a resource handle.
+     *
+     * @param handle The handle to the resource.
+     */
     NonOwningResource(HandleType handle)
         : m_resource(std::move(handle))
     {
     }
 
+    /**
+     * @brief The copy constructor is deleted to prevent copying.
+     */
     NonOwningResource(const NonOwningResource &) = delete;
-    NonOwningResource(NonOwningResource &&)      = default;
 
+    /**
+    * @brief The move constructor is defaulted.
+    */
+    NonOwningResource(NonOwningResource &&) = default;
+
+    /**
+     * @brief The copy assignment operator is deleted to prevent copying.
+     */
     NonOwningResource &operator=(const NonOwningResource &) = delete;
-    NonOwningResource &operator=(NonOwningResource &&)      = default;
 
+    /**
+    * @brief The move assignment operator is defaulted.
+    */
+    NonOwningResource &operator=(NonOwningResource &&) = default;
+
+    /**
+     * @brief Returns the handle to the resource.
+     *
+     * @return The handle to the resource.
+     */
     const HandleType handle() const
     {
         return m_resource.handle();
     }
 
+    /**
+     * @brief The destructor releases the handle to the resource.
+     */
     ~NonOwningResource()
     {
         (void)m_resource.release();
     }
 
+    /**
+     * @brief Conversion operator to the underlying resource type.
+     *
+     * @return A const reference to the underlying resource.
+     */
     operator const Resource &() const &
     {
         return m_resource;

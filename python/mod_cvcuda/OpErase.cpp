@@ -117,11 +117,15 @@ ImageBatchVarShape EraseVarShape(ImageBatchVarShape &input, Tensor &anchor, Tens
 void ExportOpErase(py::module &m)
 {
     using namespace pybind11::literals;
+    py::options options;
+    options.disable_function_signatures();
 
     m.def("erase", &Erase, "src"_a, "anchor"_a, "erasing"_a, "values"_a, "imgIdx"_a, py::kw_only(), "random"_a = false,
           "seed"_a = 0, "stream"_a = nullptr, R"pbdoc(
 
-        Executes the Erase operation on the given cuda stream.
+	cvcuda.erase(src: nvcv.Tensor, anchor : nvcv.Tensor, erasing : nvcv.Tensor, values : nvcv.Tensor, imgIdx : nvcv.Tensor, random : int8, seed : int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
+
+	Executes the Erase operation on the given cuda stream.
 
         See also:
             Refer to the CV-CUDA C API reference for the Erase operator
@@ -150,6 +154,8 @@ void ExportOpErase(py::module &m)
 
     m.def("erase_into", &EraseInto, "dst"_a, "src"_a, "anchor"_a, "erasing"_a, "values"_a, "imgIdx"_a, py::kw_only(),
           "random"_a = false, "seed"_a = 0, "stream"_a = nullptr, R"pbdoc(
+
+	cvcuda.erase_into(dst: nvcv.Tensor, src: nvcv.Tensor, anchor : nvcv.Tensor, erasing : nvcv.Tensor, values : nvcv.Tensor, imgIdx : nvcv.Tensor, random : int8, seed : int, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Erase operation on the given cuda stream.
 
@@ -182,6 +188,8 @@ void ExportOpErase(py::module &m)
     m.def("erase", &EraseVarShape, "src"_a, "anchor"_a, "erasing"_a, "values"_a, "imgIdx"_a, py::kw_only(),
           "random"_a = false, "seed"_a = 0, "stream"_a = nullptr, R"pbdoc(
 
+	cvcuda.erase(src: nvcv.ImageBatchVarShape, anchor : nvcv.Tensor, erasing : nvcv.Tensor, values : nvcv.Tensor, imgIdx : nvcv.Tensor, random : int8, seed : int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+
         Executes the Erase operation on the given cuda stream.
 
         See also:
@@ -212,6 +220,8 @@ void ExportOpErase(py::module &m)
 
     m.def("erase_into", &EraseVarShapeInto, "dst"_a, "src"_a, "anchor"_a, "erasing"_a, "values"_a, "imgIdx"_a,
           py::kw_only(), "random"_a = false, "seed"_a = 0, "stream"_a = nullptr, R"pbdoc(
+
+	cvcuda.erase_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, anchor : nvcv.Tensor, erasing : nvcv.Tensor, values : nvcv.Tensor, imgIdx : nvcv.Tensor, random : int8, seed : int, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Erase operation on the given cuda stream.
 

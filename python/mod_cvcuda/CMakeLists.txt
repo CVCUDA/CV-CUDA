@@ -21,6 +21,15 @@ nvcv_python_add_module(
     OUTPUT_NAME cvcuda
     SOURCES
         Main.cpp
+        OpFindContours.cpp
+        OpHistogramEq.cpp
+        OpOSD.cpp
+        OpAdvCvtColor.cpp
+        OpSIFT.cpp
+        SIFTFlagType.cpp
+        OpMinMaxLoc.cpp
+        OpHistogram.cpp
+        OpMinAreaRect.cpp
         OpBndBox.cpp
         OpBoxBlur.cpp
         OpBrightnessContrast.cpp
@@ -66,6 +75,8 @@ nvcv_python_add_module(
         OpAdaptiveThreshold.cpp
         OpRandomResizedCrop.cpp
         OpGaussianNoise.cpp
+        OpInpaint.cpp
+        CvtColorUtil.cpp
 )
 
 target_link_libraries(cvcuda_module_python
@@ -75,6 +86,7 @@ target_link_libraries(cvcuda_module_python
         nvcv_util_compat
         cvcuda
         nvcv_python_common
+        -lrt
 )
 
 set_target_properties(cvcuda_module_python PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/python)

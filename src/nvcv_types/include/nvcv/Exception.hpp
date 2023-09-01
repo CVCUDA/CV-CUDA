@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -39,10 +39,23 @@ void ThrowException(NVCVStatus status);
  * @defgroup NVCV_CPP_UTIL_EXCEPTION Exception
  * @{
 */
-
+/**
+ * @class Exception
+ * @brief Custom exception class to represent errors specific to this application.
+ *
+ * This class extends the standard exception class and is designed to encapsulate error codes
+ * and messages specific to this application's context.
+ */
 class Exception : public std::exception
 {
 public:
+    /**
+     * @brief Constructs an exception with a status code and a formatted message.
+     *
+     * @param code The error status code.
+     * @param fmt The format string for the error message.
+     * @param ... The format arguments.
+     */
     explicit Exception(Status code, const char *fmt = nullptr, ...)
 #if __GNUC__
         __attribute__((format(printf, 3, 4)))
@@ -59,16 +72,33 @@ public:
         va_end(va);
     }
 
+    /**
+     * @brief Retrieves the status code of the exception.
+     *
+     * @return The error status code.
+     */
     Status code() const
     {
         return m_code;
     }
 
+    /**
+     * @brief Retrieves the message of the exception.
+     *
+     * @return The error message.
+     */
     const char *msg() const
     {
         return m_msg;
     }
 
+    /**
+     * @brief Retrieves the exception message.
+     *
+     * This function overrides the standard exception's what() method.
+     *
+     * @return The error message.
+     */
     const char *what() const noexcept override
     {
         return m_msgBuffer;
@@ -121,6 +151,14 @@ private:
     }
 };
 
+/**
+ * @brief Sets the thread's error status based on a captured exception.
+ *
+ * This function tries to rethrow the given exception and based on its type, it sets the appropriate
+ * error status for the current thread using the `nvcvSetThreadStatus` function.
+ *
+ * @param e The captured exception to be rethrown and processed.
+ */
 inline void SetThreadError(std::exception_ptr e)
 {
     try
@@ -156,6 +194,18 @@ inline void SetThreadError(std::exception_ptr e)
     }
 }
 
+/**
+ * @brief Safely executes a function, capturing and setting any exceptions that arise.
+ *
+ * This function acts as a wrapper to safely execute a given function or lambda (`fn`).
+ * If the function throws any exception, the exception is captured, and the error status is
+ * set for the current thread using the `SetThreadError` function.
+ *
+ * @param fn The function or lambda to be executed.
+ * @return NVCV_SUCCESS if `fn` executed without exceptions, otherwise the error code from the caught exception.
+ *
+ * @tparam F The type of the function or lambda.
+ */
 template<class F>
 NVCVStatus ProtectCall(F &&fn)
 {

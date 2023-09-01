@@ -24,14 +24,15 @@
 #ifndef NVCV_CUDA_MATH_LINALG_HPP
 #define NVCV_CUDA_MATH_LINALG_HPP
 
-#include <cuda_runtime.h> // for __host__, etc.
+#include <nvcv/cuda/MathWrappers.hpp> // for cuda::max, etc.
 
-#include <algorithm> // for std::swap, etc.
-#include <cassert>   // for assert, etc.
-#include <cmath>     // for std::pow, etc.
-#include <cstdlib>   // for std::size_t, etc.
-#include <ostream>   // for std::ostream, etc.
-#include <vector>    // for std::vector, etc.
+#include <algorithm>   // for std::swap, etc.
+#include <cassert>     // for assert, etc.
+#include <cmath>       // for std::pow, etc.
+#include <cstdlib>     // for std::size_t, etc.
+#include <ostream>     // for std::ostream, etc.
+#include <type_traits> // for std::enable_if_t, etc.
+#include <vector>      // for std::vector, etc.
 
 namespace nvcv::cuda::math {
 
@@ -834,7 +835,7 @@ constexpr __host__ __device__ Vector<T, M> operator*(const Matrix<T, M, N> &m, c
     return r;
 }
 
-template<class T, int M, int N>
+template<class T, int M, int N, class = std::enable_if_t<(M == N && N > 1)>>
 constexpr __host__ __device__ Matrix<T, M, N> operator*(const Matrix<T, M, 1> &m, const Vector<T, N> &v)
 {
     Matrix<T, M, N> r;
@@ -1047,7 +1048,7 @@ constexpr __host__ __device__ Matrix<T, M, N> ones()
 }
 
 template<class T, int M, int N>
-__host__ __device__ Matrix<T, M, N> identity()
+constexpr __host__ __device__ Matrix<T, M, N> identity()
 {
     Matrix<T, M, N> mat;
 
@@ -1063,16 +1064,14 @@ __host__ __device__ Matrix<T, M, N> identity()
 }
 
 template<class T, int M>
-__host__ __device__ Matrix<T, M, M> vander(const Vector<T, M> &v)
+constexpr __host__ __device__ Matrix<T, M, M> vander(const Vector<T, M> &v)
 {
-    using std::pow;
-
     Matrix<T, M, M> m;
     for (int i = 0; i < M; ++i)
     {
         for (int j = 0; j < M; ++j)
         {
-            m[i][j] = pow(v[j], i);
+            m[i][j] = cuda::pow(v[j], i);
         }
     }
 
@@ -1080,7 +1079,7 @@ __host__ __device__ Matrix<T, M, M> vander(const Vector<T, M> &v)
 }
 
 template<class T, int R>
-__host__ __device__ Matrix<T, R, R> compan(const Vector<T, R> &a)
+constexpr __host__ __device__ Matrix<T, R, R> compan(const Vector<T, R> &a)
 {
     Matrix<T, R, R> m;
     for (int i = 0; i < R; ++i)
@@ -1101,7 +1100,7 @@ __host__ __device__ Matrix<T, R, R> compan(const Vector<T, R> &a)
 }
 
 template<class T, int M>
-__host__ __device__ Matrix<T, M, M> diag(const Vector<T, M> &v)
+constexpr __host__ __device__ Matrix<T, M, M> diag(const Vector<T, M> &v)
 {
     Matrix<T, M, M> m;
     for (int i = 0; i < M; ++i)
@@ -1119,7 +1118,7 @@ __host__ __device__ Matrix<T, M, M> diag(const Vector<T, M> &v)
 template<class T, int N>
 constexpr __host__ __device__ T dot(const Vector<T, N> &a, const Vector<T, N> &b)
 {
-    T d = a[0] + b[0];
+    T d = a[0] * b[0];
 #pragma unroll
     for (int j = 1; j < a.size(); ++j)
     {
@@ -1143,7 +1142,7 @@ constexpr __host__ __device__ Vector<T, N> reverse(const Vector<T, N> &a)
 // Transposition ---------------------------------------------------------------
 
 template<class T, int M>
-__host__ __device__ Matrix<T, M, M> &transp_inplace(Matrix<T, M, M> &m)
+constexpr __host__ __device__ Matrix<T, M, M> &transp_inplace(Matrix<T, M, M> &m)
 {
     for (int i = 0; i < m.rows(); ++i)
     {
@@ -1268,18 +1267,18 @@ constexpr __host__ __device__ T det(const Matrix<T, M, M> &m)
 
 // Matrix Inverse --------------------------------------------------------------
 
+namespace detail {
+
 template<class T>
-constexpr __host__ __device__ void inv_inplace(Matrix<T, 1, 1> &m)
+constexpr __host__ __device__ void inv_inplace(Matrix<T, 1, 1> &m, const T &d)
 {
-    m[0][0] = T{1} / m[0][0];
+    m[0][0] = T{1} / d;
 }
 
 template<class T>
-constexpr __host__ __device__ void inv_inplace(Matrix<T, 2, 2> &m)
+constexpr __host__ __device__ void inv_inplace(Matrix<T, 2, 2> &m, const T &d)
 {
-    T d = det(m);
-
-    detail::swap(m[0][0], m[1][1]);
+    swap(m[0][0], m[1][1]);
     m[0][0] /= d;
     m[1][1] /= d;
 
@@ -1288,10 +1287,8 @@ constexpr __host__ __device__ void inv_inplace(Matrix<T, 2, 2> &m)
 }
 
 template<class T>
-constexpr __host__ __device__ void inv_inplace(Matrix<T, 3, 3> &m)
+constexpr __host__ __device__ void inv_inplace(Matrix<T, 3, 3> &m, const T &d)
 {
-    T d = det(m);
-
     Matrix<T, 3, 3> A;
     A[0][0] = (m[1][1] * m[2][2] - m[1][2] * m[2][1]) / d;
     A[0][1] = -(m[0][1] * m[2][2] - m[0][2] * m[2][1]) / d;
@@ -1304,6 +1301,158 @@ constexpr __host__ __device__ void inv_inplace(Matrix<T, 3, 3> &m)
     A[2][2] = (m[0][0] * m[1][1] - m[0][1] * m[1][0]) / d;
 
     m = A;
+}
+
+} // namespace detail
+
+// Do inverse in-place of matrix m returning true if succeeded (m has determinant)
+template<class T, int N, class = std::enable_if_t<(N < 4)>>
+constexpr __host__ __device__ bool inv_inplace(Matrix<T, N, N> &m)
+{
+    T d = det(m);
+
+    if (d == 0)
+    {
+        return false;
+    }
+
+    detail::inv_inplace(m, d);
+
+    return true;
+}
+
+// LU decomposition & solve ----------------------------------------------------
+
+// Do LU decomposition of matrix m using auxiliary pivot vector p and working type F (defaults to float)
+template<class F = float, class T, int N>
+constexpr __host__ __device__ bool lu_inplace(Matrix<T, N, N> &m, Vector<int, N> &p)
+{
+    Vector<F, N> v;
+
+#pragma unroll
+    for (int i = 0; i < N; ++i)
+    {
+        F big = 0;
+
+#pragma unroll
+        for (int j = 0; j < N; ++j)
+        {
+            big = cuda::max<F>(big, cuda::abs(m[i][j]));
+        }
+
+        if (big == 0)
+        {
+            return false;
+        }
+
+        v[i] = 1.0 / big;
+    }
+
+#pragma unroll
+    for (int k = 0; k < N; ++k)
+    {
+        F   big  = 0;
+        int imax = k;
+
+#pragma unroll
+        for (int i = k; i < N; ++i)
+        {
+            F aux = v[i] * cuda::abs(m[i][k]);
+
+            if (aux > big)
+            {
+                big  = aux;
+                imax = i;
+            }
+        }
+
+        if (k != imax)
+        {
+            detail::swap(m[imax], m[k]);
+
+            v[imax] = v[k];
+        }
+
+        p[k] = imax;
+
+        if (m[k][k] == 0)
+        {
+            return false;
+        }
+
+#pragma unroll
+        for (int i = k + 1; i < N; ++i)
+        {
+            T aux = m[i][k] /= m[k][k];
+
+#pragma unroll
+            for (int j = k + 1; j < N; ++j)
+            {
+                m[i][j] -= aux * m[k][j];
+            }
+        }
+    }
+
+    return true;
+}
+
+template<class T, int N>
+constexpr __host__ __device__ void solve_inplace(const Matrix<T, N, N> &lu, const Vector<int, N> &p, Vector<T, N> &b)
+{
+    int ii = -1;
+
+#pragma unroll
+    for (int i = 0; i < N; ++i)
+    {
+        int ip  = p[i];
+        T   sum = b[ip];
+        b[ip]   = b[i];
+
+        if (ii >= 0)
+        {
+#pragma unroll
+            for (int j = ii; j < i; ++j)
+            {
+                sum -= lu[i][j] * b[j];
+            }
+        }
+        else if (sum != 0)
+        {
+            ii = i;
+        }
+
+        b[i] = sum;
+    }
+
+#pragma unroll
+    for (int i = N - 1; i >= 0; --i)
+    {
+        T sum = b[i];
+
+#pragma unroll
+        for (int j = i + 1; j < N; ++j)
+        {
+            sum -= lu[i][j] * b[j];
+        }
+
+        b[i] = sum / lu[i][i];
+    }
+}
+
+template<class T, int N>
+constexpr __host__ __device__ bool solve_inplace(const Matrix<T, N, N> &m, Vector<T, N> &b)
+{
+    Vector<int, N>  p;
+    Matrix<T, N, N> LU = m;
+
+    if (!lu_inplace(LU, p))
+    {
+        return false;
+    }
+
+    solve_inplace(LU, p, b);
+
+    return true;
 }
 
 /**@}*/

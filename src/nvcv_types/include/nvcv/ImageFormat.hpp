@@ -37,7 +37,13 @@
 namespace nvcv {
 
 /**
- * @brief Defines types and functions to handle image format types.
+ *
+ * @brief Represents the format of an image, encapsulating various properties like data kind, memory layout, color spec, etc.
+ *
+ * The `ImageFormat` class is a comprehensive representation of how image data is organized in memory,
+ * including its data type, layout, and color information. This format is crucial when processing or
+ * manipulating images, as it provides the necessary metadata for correct interpretation of the image data.
+ *
  *
  * @defgroup NVCV_CPP_CORE_IMAGETYPE Image Formats
  * @{
@@ -46,42 +52,125 @@ class ImageFormat
 {
 public:
     constexpr ImageFormat();
+
+    /**
+     * @brief Constructor that initializes from a native format representation.
+     *
+     * @param format The native format to initialize from.
+     */
     explicit constexpr ImageFormat(NVCVImageFormat format);
 
+    /**
+     * @brief Constructs an `ImageFormat` using the provided parameters.
+     *
+     * @param colorSpec Specification of the color.
+     * @param chromaSub Chroma subsampling information.
+     * @param memLayout Memory layout type.
+     * @param dataKind Kind of data (e.g., float, integer).
+     * @param swizzle Channel swizzling information.
+     * @param packing0 Primary packing format.
+     * @param packing1 Secondary packing format (optional).
+     * @param packing2 Tertiary packing format (optional).
+     * @param packing3 Quaternary packing format (optional).
+     */
     ImageFormat(ColorSpec colorSpec, ChromaSubsampling chromaSub, MemLayout memLayout, DataKind dataKind,
                 Swizzle swizzle, Packing packing0, Packing packing1 = Packing::NONE, Packing packing2 = Packing::NONE,
-                Packing packing3 = Packing::NONE);
+                Packing packing3 = Packing::NONE, AlphaType alphaType = AlphaType::ASSOCIATED,
+                const ExtraChannelInfo *exChannelInfo = 0);
 
+    /**
+     * @brief Constructs an `ImageFormat` using the provided parameters.
+     *
+     * @param colorModel Model of the color representation (e.g., RGB, YUV).
+     * @param colorSpec Specification of the color.
+     * @param memLayout Memory layout type.
+     * @param dataKind Kind of data (e.g., float, integer).
+     * @param swizzle Channel swizzling information.
+     * @param packing0 Primary packing format.
+     * @param packing1 Secondary packing format (optional).
+     * @param packing2 Tertiary packing format (optional).
+     * @param packing3 Quaternary packing format (optional).
+     */
     ImageFormat(ColorModel colorModel, ColorSpec colorSpec, MemLayout memLayout, DataKind dataKind, Swizzle swizzle,
                 Packing packing0, Packing packing1 = Packing::NONE, Packing packing2 = Packing::NONE,
-                Packing packing3 = Packing::NONE);
+                Packing packing3 = Packing::NONE, AlphaType alphaType = AlphaType::ASSOCIATED,
+                const ExtraChannelInfo *exChannelInfo = 0);
 
+    /**
+     * @brief Constructs an `ImageFormat` using the given memory layout, data kind, swizzle, and packing parameters.
+     *
+     * @param memLayout Memory layout type.
+     * @param dataKind Kind of data (e.g., float, integer).
+     * @param swizzle Channel swizzling information.
+     * @param packing0 Primary packing format.
+     * @param packing1 Secondary packing format (optional).
+     * @param packing2 Tertiary packing format (optional).
+     * @param packing3 Quaternary packing format (optional).
+     */
     ImageFormat(MemLayout memLayout, DataKind dataKind, Swizzle swizzle, Packing packing0,
-                Packing packing1 = Packing::NONE, Packing packing2 = Packing::NONE, Packing packing3 = Packing::NONE);
+                Packing packing1 = Packing::NONE, Packing packing2 = Packing::NONE, Packing packing3 = Packing::NONE,
+                AlphaType alphaType = AlphaType::ASSOCIATED, const ExtraChannelInfo *exChannelInfo = 0);
 
+    /**
+     * @brief Constructs an `ImageFormat` using a raw pattern along with other parameters.
+     *
+     * @param rawPattern Pattern of raw data.
+     * @param memLayout Memory layout type.
+     * @param dataKind Kind of data (e.g., float, integer).
+     * @param swizzle Channel swizzling information.
+     * @param packing0 Primary packing format.
+     * @param packing1 Secondary packing format (optional).
+     * @param packing2 Tertiary packing format (optional).
+     * @param packing3 Quaternary packing format (optional).
+     */
     ImageFormat(RawPattern rawPattern, MemLayout memLayout, DataKind dataKind, Swizzle swizzle, Packing packing0,
-                Packing packing1 = Packing::NONE, Packing packing2 = Packing::NONE, Packing packing3 = Packing::NONE);
+                Packing packing1 = Packing::NONE, Packing packing2 = Packing::NONE, Packing packing3 = Packing::NONE,
+                AlphaType alphaType = AlphaType::ASSOCIATED, const ExtraChannelInfo *exChannelInfo = 0);
 
+    /// Const versions of `ImageFormat` using the provided parameters.
     static constexpr ImageFormat ConstCreate(ColorSpec colorSpec, ChromaSubsampling chromaSub, MemLayout memLayout,
                                              DataKind dataKind, Swizzle swizzle, Packing packing0,
                                              Packing packing1 = Packing::NONE, Packing packing2 = Packing::NONE,
-                                             Packing packing3 = Packing::NONE);
+                                             Packing   packing3  = Packing::NONE,
+                                             AlphaType alphaType = AlphaType::ASSOCIATED);
 
     static constexpr ImageFormat ConstCreate(ColorModel colorModel, ColorSpec colorSpec, MemLayout memLayout,
                                              DataKind dataKind, Swizzle swizzle, Packing packing0,
                                              Packing packing1 = Packing::NONE, Packing packing2 = Packing::NONE,
-                                             Packing packing3 = Packing::NONE);
+                                             Packing   packing3  = Packing::NONE,
+                                             AlphaType alphaType = AlphaType::ASSOCIATED);
 
     static constexpr ImageFormat ConstCreate(MemLayout memLayout, DataKind dataKind, Swizzle swizzle, Packing packing0,
                                              Packing packing1 = Packing::NONE, Packing packing2 = Packing::NONE,
-                                             Packing packing3 = Packing::NONE);
+                                             Packing   packing3  = Packing::NONE,
+                                             AlphaType alphaType = AlphaType::ASSOCIATED);
 
     static constexpr ImageFormat ConstCreate(RawPattern rawPattern, MemLayout memLayout, DataKind dataKind,
                                              Swizzle swizzle, Packing packing0, Packing packing1 = Packing::NONE,
-                                             Packing packing2 = Packing::NONE, Packing packing3 = Packing::NONE);
+                                             Packing packing2 = Packing::NONE, Packing packing3 = Packing::NONE,
+                                             AlphaType alphaType = AlphaType::ASSOCIATED);
 
+    /**
+     * @brief Creates an `ImageFormat` from a given FourCC code and other parameters.
+     *
+     * @param fourcc The FourCC code representing the format.
+     * @param colorSpec Specification of the color.
+     * @param memLayout Memory layout type.
+     *
+     * @return An `ImageFormat` object constructed from the FourCC code.
+     */
     static ImageFormat FromFourCC(uint32_t fourcc, ColorSpec colorSpec, MemLayout memLayout);
 
+    /**
+     * @brief Creates an `ImageFormat` that represents a combination of multiple image planes.
+     *
+     * @param plane0 Primary image plane format.
+     * @param plane1 Secondary image plane format (optional).
+     * @param plane2 Tertiary image plane format (optional).
+     * @param plane3 Quaternary image plane format (optional).
+     *
+     * @return An `ImageFormat` object representing multiple image planes.
+     */
     static ImageFormat FromPlanes(ImageFormat plane0, ImageFormat plane1 = {}, ImageFormat plane2 = {},
                                   ImageFormat plane3 = {});
 
@@ -105,6 +194,12 @@ public:
 
     ImageFormat rawPattern(RawPattern newRawPattern) const;
     RawPattern  rawPattern() const noexcept;
+
+    AlphaType   alphaType() const noexcept;
+    ImageFormat alphaType(AlphaType newAlphaType) const;
+
+    void        extraChannelInfo(ExtraChannelInfo *exChannelInfo) const noexcept;
+    ImageFormat extraChannelInfo(const ExtraChannelInfo *newExChannelInfo) const;
 
     Swizzle                swizzle() const noexcept;
     ColorModel             colorModel() const noexcept;
@@ -286,6 +381,26 @@ constexpr ImageFormat FMT_NV12_ER{NVCV_IMAGE_FORMAT_NV12_ER};
      */
 constexpr ImageFormat FMT_NV12_ER_BL{NVCV_IMAGE_FORMAT_NV12_ER_BL};
 
+/** YUV420sp 8-bit pitch-linear format with full range.
+     *  Format is composed of two planes:
+     *  1. One 8-bit channel with luma (Y'). Values range from 16 to 235.
+     *  2. Two interleaved 8-bit channels with chroma (Cr,Cb).
+     *     Values range from 0 to 255. Resolution is half of luma plane,
+     *     both horizontally and vertically.
+     *     For a given pixel, Cb channel has lower memory address than Cr.
+     */
+constexpr ImageFormat FMT_NV21{NVCV_IMAGE_FORMAT_NV21};
+
+/** YUV420sp 8-bit pitch-linear format with full range.
+     *  Format is composed of two planes:
+     *  1. One 8-bit channel with luma (Y'). Values range from 0 to 255.
+     *  2. Two interleaved 8-bit channels with chroma (Cr,Cb).
+     *     Values range from 0 to 255. Resolution is half of luma plane,
+     *     both horizontally and vertically.
+     *     For a given pixel, Cb channel has lower memory address than Cr.
+     */
+constexpr ImageFormat FMT_NV21_ER{NVCV_IMAGE_FORMAT_NV21_ER};
+
 /** YUV444sp 8-bit pitch-linear format with limited range.
      *  Format is composed of two planes:
      *  1. One 8-bit channel with luma (Y'). Values range from 16 to 235.
@@ -353,6 +468,9 @@ constexpr ImageFormat FMT_YUYV_ER{NVCV_IMAGE_FORMAT_YUYV_ER};
      *  Also known as YUY2 format.
      */
 constexpr ImageFormat FMT_YUYV_ER_BL{NVCV_IMAGE_FORMAT_YUYV_ER_BL};
+
+/** Single plane with interleaved YUV 8-bit channel. */
+constexpr ImageFormat FMT_YUV8{NVCV_IMAGE_FORMAT_YUV8};
 
 /** Single plane with interleaved RGB 8-bit channel. */
 constexpr ImageFormat FMT_RGB8{NVCV_IMAGE_FORMAT_RGB8};
@@ -429,86 +547,120 @@ constexpr ImageFormat FMT_BGRAf32p{NVCV_IMAGE_FORMAT_BGRAf32p};
 /** Single plane with interleaved HSV 8-bit channel. */
 constexpr ImageFormat FMT_HSV8{NVCV_IMAGE_FORMAT_HSV8};
 
+/** Single plane with interleaved CMYK unsigned 8-bit channel. */
+constexpr ImageFormat FMT_CMYK8{NVCV_IMAGE_FORMAT_CMYK8};
+
+/** Single plane with interleaved YCCK unsigned 8-bit channel. */
+constexpr ImageFormat FMT_YCCK8{NVCV_IMAGE_FORMAT_YCCK8};
+
+/** Single plane with interleaved RGBA 8-bit channel with alpha channel is unassociated */
+constexpr ImageFormat FMT_RGBA8_UNASSOCIATED_ALPHA{NVCV_IMAGE_FORMAT_RGBA8_UNASSOCIATED_ALPHA};
+
+/** Single plane with interleaved RGB 8-bit channel and 1 extra 8-bit unspecified channel */
+constexpr ImageFormat FMT_RGB8_1U_U8{NVCV_IMAGE_FORMAT_RGB8_1U_U8};
+
+/** Single plane with interleaved RGB 8-bit channel and 7 extra 8-bit unspecified channel */
+constexpr ImageFormat FMT_RGB8_7U_U8{NVCV_IMAGE_FORMAT_RGB8_7U_U8};
+
+/** Single plane with interleaved RGBA 8-bit channels and 3 extra 16-bit unspecified channel */
+constexpr ImageFormat FMT_RGBA8_3U_U16{NVCV_IMAGE_FORMAT_RGBA8_3U_U16};
+
+/** Single plane with interleaved RGBA 8-bit channel and 3 extra 32-bit unsigned int 3D position channels */
+constexpr ImageFormat FMT_RGBA8_3POS3D_U32{NVCV_IMAGE_FORMAT_RGBA8_3POS3D_U32};
+
+/** Single plane with interleaved RGB 8-bit channel and 3 extra 32-bit float depth channels */
+constexpr ImageFormat FMT_RGB8_3D_F32{NVCV_IMAGE_FORMAT_RGB8_3D_F32};
+
 #endif
 
 inline ImageFormat::ImageFormat(ColorSpec colorSpec, ChromaSubsampling chromaSub, MemLayout memLayout,
                                 DataKind dataKind, Swizzle swizzle, Packing packing0, Packing packing1,
-                                Packing packing2, Packing packing3)
+                                Packing packing2, Packing packing3, AlphaType alphaType,
+                                const ExtraChannelInfo *exChannelInfo)
 {
     detail::CheckThrow(nvcvMakeYCbCrImageFormat(
         &m_format, static_cast<NVCVColorSpec>(colorSpec), static_cast<NVCVChromaSubsampling>(chromaSub),
         static_cast<NVCVMemLayout>(memLayout), static_cast<NVCVDataKind>(dataKind), static_cast<NVCVSwizzle>(swizzle),
         static_cast<NVCVPacking>(packing0), static_cast<NVCVPacking>(packing1), static_cast<NVCVPacking>(packing2),
-        static_cast<NVCVPacking>(packing3)));
+        static_cast<NVCVPacking>(packing3), static_cast<NVCVAlphaType>(alphaType),
+        static_cast<const NVCVExtraChannelInfo *>(exChannelInfo)));
 }
 
 constexpr ImageFormat ImageFormat::ConstCreate(ColorSpec colorSpec, ChromaSubsampling chromaSub, MemLayout memLayout,
                                                DataKind dataKind, Swizzle swizzle, Packing packing0, Packing packing1,
-                                               Packing packing2, Packing packing3)
+                                               Packing packing2, Packing packing3, AlphaType alphaType)
 {
     return ImageFormat{NVCV_MAKE_YCbCr_IMAGE_FORMAT(
         static_cast<NVCVColorSpec>(colorSpec), static_cast<NVCVChromaSubsampling>(chromaSub),
         static_cast<NVCVMemLayout>(memLayout), static_cast<NVCVDataKind>(dataKind), static_cast<NVCVSwizzle>(swizzle),
-        4, static_cast<NVCVPacking>(packing0), static_cast<NVCVPacking>(packing1), static_cast<NVCVPacking>(packing2),
-        static_cast<NVCVPacking>(packing3))};
+        static_cast<NVCVAlphaType>(alphaType), 4, static_cast<NVCVPacking>(packing0),
+        static_cast<NVCVPacking>(packing1), static_cast<NVCVPacking>(packing2), static_cast<NVCVPacking>(packing3))};
 }
 
 inline ImageFormat::ImageFormat(ColorModel colorModel, ColorSpec colorSpec, MemLayout memLayout, DataKind dataKind,
-                                Swizzle swizzle, Packing packing0, Packing packing1, Packing packing2, Packing packing3)
+                                Swizzle swizzle, Packing packing0, Packing packing1, Packing packing2, Packing packing3,
+                                AlphaType alphaType, const ExtraChannelInfo *exChannelInfo)
 {
     detail::CheckThrow(nvcvMakeColorImageFormat(
         &m_format, static_cast<NVCVColorModel>(colorModel), static_cast<NVCVColorSpec>(colorSpec),
         static_cast<NVCVMemLayout>(memLayout), static_cast<NVCVDataKind>(dataKind), static_cast<NVCVSwizzle>(swizzle),
         static_cast<NVCVPacking>(packing0), static_cast<NVCVPacking>(packing1), static_cast<NVCVPacking>(packing2),
-        static_cast<NVCVPacking>(packing3)));
+        static_cast<NVCVPacking>(packing3), static_cast<NVCVAlphaType>(alphaType),
+        static_cast<const NVCVExtraChannelInfo *>(exChannelInfo)));
 }
 
 constexpr ImageFormat ImageFormat::ConstCreate(ColorModel colorModel, ColorSpec colorSpec, MemLayout memLayout,
                                                DataKind dataKind, Swizzle swizzle, Packing packing0, Packing packing1,
-                                               Packing packing2, Packing packing3)
+                                               Packing packing2, Packing packing3, AlphaType alphaType)
 {
     return ImageFormat{NVCV_MAKE_COLOR_IMAGE_FORMAT(
         static_cast<NVCVColorModel>(colorModel), static_cast<NVCVColorSpec>(colorSpec),
         static_cast<NVCVMemLayout>(memLayout), static_cast<NVCVDataKind>(dataKind), static_cast<NVCVSwizzle>(swizzle),
-        4, static_cast<NVCVPacking>(packing0), static_cast<NVCVPacking>(packing1), static_cast<NVCVPacking>(packing2),
-        static_cast<NVCVPacking>(packing3))};
+        static_cast<NVCVAlphaType>(alphaType), 4, static_cast<NVCVPacking>(packing0),
+        static_cast<NVCVPacking>(packing1), static_cast<NVCVPacking>(packing2), static_cast<NVCVPacking>(packing3))};
 }
 
 inline ImageFormat::ImageFormat(MemLayout memLayout, DataKind dataKind, Swizzle swizzle, Packing packing0,
-                                Packing packing1, Packing packing2, Packing packing3)
+                                Packing packing1, Packing packing2, Packing packing3, AlphaType alphaType,
+                                const ExtraChannelInfo *exChannelInfo)
 {
     detail::CheckThrow(nvcvMakeNonColorImageFormat(
         &m_format, static_cast<NVCVMemLayout>(memLayout), static_cast<NVCVDataKind>(dataKind),
         static_cast<NVCVSwizzle>(swizzle), static_cast<NVCVPacking>(packing0), static_cast<NVCVPacking>(packing1),
-        static_cast<NVCVPacking>(packing2), static_cast<NVCVPacking>(packing3)));
+        static_cast<NVCVPacking>(packing2), static_cast<NVCVPacking>(packing3), static_cast<NVCVAlphaType>(alphaType),
+        static_cast<const NVCVExtraChannelInfo *>(exChannelInfo)));
 }
 
 constexpr ImageFormat ImageFormat::ConstCreate(MemLayout memLayout, DataKind dataKind, Swizzle swizzle,
-                                               Packing packing0, Packing packing1, Packing packing2, Packing packing3)
+                                               Packing packing0, Packing packing1, Packing packing2, Packing packing3,
+                                               AlphaType alphaType)
 {
     return ImageFormat{NVCV_MAKE_NONCOLOR_IMAGE_FORMAT(
         static_cast<NVCVMemLayout>(memLayout), static_cast<NVCVDataKind>(dataKind), static_cast<NVCVSwizzle>(swizzle),
-        4, static_cast<NVCVPacking>(packing0), static_cast<NVCVPacking>(packing1), static_cast<NVCVPacking>(packing2),
-        static_cast<NVCVPacking>(packing3))};
+        static_cast<NVCVAlphaType>(alphaType), 4, static_cast<NVCVPacking>(packing0),
+        static_cast<NVCVPacking>(packing1), static_cast<NVCVPacking>(packing2), static_cast<NVCVPacking>(packing3))};
 }
 
 inline ImageFormat::ImageFormat(RawPattern rawPattern, MemLayout memLayout, DataKind dataKind, Swizzle swizzle,
-                                Packing packing0, Packing packing1, Packing packing2, Packing packing3)
+                                Packing packing0, Packing packing1, Packing packing2, Packing packing3,
+                                AlphaType alphaType, const ExtraChannelInfo *exChannelInfo)
 {
     detail::CheckThrow(nvcvMakeRawImageFormat(
         &m_format, static_cast<NVCVRawPattern>(rawPattern), static_cast<NVCVMemLayout>(memLayout),
         static_cast<NVCVDataKind>(dataKind), static_cast<NVCVSwizzle>(swizzle), static_cast<NVCVPacking>(packing0),
-        static_cast<NVCVPacking>(packing1), static_cast<NVCVPacking>(packing2), static_cast<NVCVPacking>(packing3)));
+        static_cast<NVCVPacking>(packing1), static_cast<NVCVPacking>(packing2), static_cast<NVCVPacking>(packing3),
+        static_cast<NVCVAlphaType>(alphaType), static_cast<const NVCVExtraChannelInfo *>(exChannelInfo)));
 }
 
 constexpr ImageFormat ImageFormat::ConstCreate(RawPattern rawPattern, MemLayout memLayout, DataKind dataKind,
                                                Swizzle swizzle, Packing packing0, Packing packing1, Packing packing2,
-                                               Packing packing3)
+                                               Packing packing3, AlphaType alphaType)
 {
     return ImageFormat{NVCV_MAKE_RAW_IMAGE_FORMAT(
         static_cast<NVCVRawPattern>(rawPattern), static_cast<NVCVMemLayout>(memLayout),
-        static_cast<NVCVDataKind>(dataKind), static_cast<NVCVSwizzle>(swizzle), 4, static_cast<NVCVPacking>(packing0),
-        static_cast<NVCVPacking>(packing1), static_cast<NVCVPacking>(packing2), static_cast<NVCVPacking>(packing3))};
+        static_cast<NVCVDataKind>(dataKind), static_cast<NVCVSwizzle>(swizzle), static_cast<NVCVAlphaType>(alphaType),
+        4, static_cast<NVCVPacking>(packing0), static_cast<NVCVPacking>(packing1), static_cast<NVCVPacking>(packing2),
+        static_cast<NVCVPacking>(packing3))};
 }
 
 inline ImageFormat ImageFormat::FromFourCC(uint32_t fourcc, ColorSpec colorSpec, MemLayout memLayout)
@@ -560,6 +712,34 @@ inline DataKind ImageFormat::dataKind() const noexcept
     NVCVDataKind out;
     detail::CheckThrow(nvcvImageFormatGetDataKind(m_format, &out));
     return static_cast<DataKind>(out);
+}
+
+inline ImageFormat ImageFormat::alphaType(AlphaType newAlphaType) const
+{
+    NVCVImageFormat out = m_format;
+    detail::CheckThrow(nvcvImageFormatSetAlphaType(&out, static_cast<NVCVAlphaType>(newAlphaType)));
+    return ImageFormat{out};
+}
+
+inline AlphaType ImageFormat::alphaType() const noexcept
+{
+    NVCVAlphaType out;
+    detail::CheckThrow(nvcvImageFormatGetAlphaType(m_format, &out));
+    return static_cast<AlphaType>(out);
+}
+
+inline ImageFormat ImageFormat::extraChannelInfo(const ExtraChannelInfo *exChannelInfo) const
+{
+    NVCVImageFormat out = m_format;
+    detail::CheckThrow(
+        nvcvImageFormatSetExtraChannelInfo(&out, static_cast<const NVCVExtraChannelInfo *>(exChannelInfo)));
+    return ImageFormat{out};
+}
+
+inline void ImageFormat::extraChannelInfo(ExtraChannelInfo *exChannelInfo) const noexcept
+{
+    detail::CheckThrow(
+        nvcvImageFormatGetExtraChannelInfo(m_format, static_cast<NVCVExtraChannelInfo *>(exChannelInfo)));
 }
 
 inline ImageFormat ImageFormat::memLayout(MemLayout newMemLayout) const

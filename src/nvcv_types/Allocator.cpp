@@ -21,9 +21,11 @@
 #include "priv/Exception.hpp"
 #include "priv/Status.hpp"
 #include "priv/SymbolVersioning.hpp"
+#include "priv/TLS.hpp"
 
 #include <nvcv/alloc/Allocator.h>
 #include <util/Assert.h>
+#include <util/String.hpp>
 
 #include <memory>
 
@@ -197,4 +199,47 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvAllocatorFreeCudaMemory,
                 priv::ToStaticRef<priv::IAllocator>(halloc).freeCudaMem(ptr, sizeBytes, alignBytes);
             }
         });
+}
+
+NVCV_DEFINE_API(0, 4, const char *, nvcvResourceTypeGetName, (NVCVResourceType resource))
+{
+    priv::CoreTLS &tls = priv::GetCoreTLS();
+
+    char         *buffer  = tls.bufResourceTypeName;
+    constexpr int bufSize = sizeof(tls.bufResourceTypeName);
+
+    try
+    {
+        std::string result = "";
+        switch (resource)
+        {
+        case NVCV_RESOURCE_MEM_CUDA:
+            result = "NVCV_RESOURCE_MEM_CUDA";
+            break;
+        case NVCV_RESOURCE_MEM_HOST:
+            result = "NVCV_RESOURCE_MEM_HOST";
+            break;
+        case NVCV_RESOURCE_MEM_HOST_PINNED:
+            result = "NVCV_RESOURCE_MEM_HOST_PINNED";
+            break;
+        default:
+            result = "Unexpected error retrieving NVCVResourceType string representation";
+            break;
+        }
+
+        // Must insert EOS to make 'str' a correctly delimited string
+        nvcv::util::BufferOStream(buffer, bufSize) << result;
+    }
+    catch (std::exception &e)
+    {
+        strncpy(buffer, e.what(), bufSize - 1);
+        buffer[bufSize - 1] = '\0';
+    }
+    catch (...)
+    {
+        strncpy(buffer, "Unexpected error retrieving NVCVResourceType string representation", bufSize - 1);
+        buffer[bufSize - 1] = '\0';
+    }
+
+    return buffer;
 }

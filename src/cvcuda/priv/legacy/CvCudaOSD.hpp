@@ -18,11 +18,14 @@
 #ifndef CV_CUDA_OSD_HPP
 #define CV_CUDA_OSD_HPP
 
+#include "textbackend/backend.hpp"
+
 #include <cuda_runtime.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace nvcv::cuda { namespace osd {
@@ -114,29 +117,138 @@ private:
     size_t capacity_ = 0;
 };
 
+enum class cuOSDClockFormat : int
+{
+    None          = 0,
+    YYMMDD_HHMMSS = 1,
+    YYMMDD        = 2,
+    HHMMSS        = 3
+};
+
+enum class cuOSDTextBackend : int
+{
+    None        = 0,
+    StbTrueType = 1
+};
+
+struct cuOSDColor
+{
+    unsigned char r;
+    unsigned char g;
+    unsigned char b;
+    unsigned char a;
+};
+
+enum class cuOSDImageFormat : int
+{
+    None = 0,
+    RGB  = 1,
+    RGBA = 2
+};
+
+enum class CommandType : int
+{
+    None      = 0,
+    Circle    = 1,
+    Rectangle = 2,
+    Text      = 3,
+    Segment   = 4,
+    PolyFill  = 5,
+    BoxBlur   = 6
+};
+
+struct TextLocation
+{
+    int image_x, image_y;
+    int text_x;
+    int text_w, text_h;
+};
+
+// cuOSDContextCommand includes basic attributes for color and bounding box coordinate
+struct cuOSDContextCommand
+{
+    CommandType   type = CommandType::None;
+    unsigned char c0, c1, c2, c3;
+    int           bounding_left   = 0;
+    int           bounding_top    = 0;
+    int           bounding_right  = 0;
+    int           bounding_bottom = 0;
+    int           batch_index     = 0;
+    int           reserved        = 0;
+};
+
+// CircleCommand:
+// cx, cy: center point coordinate of the circle
+// thickness: border width in case > 0, -1 stands for fill mode
+struct CircleCommand : cuOSDContextCommand
+{
+    int cx, cy, radius, thickness;
+
+    CircleCommand(int batch_idx, int cx, int cy, int radius, int thickness, unsigned char c0, unsigned char c1,
+                  unsigned char c2, unsigned char c3)
+    {
+        this->batch_index = batch_idx;
+        this->type        = CommandType::Circle;
+        this->cx          = cx;
+        this->cy          = cy;
+        this->radius      = radius;
+        this->thickness   = thickness;
+        this->c0          = c0;
+        this->c1          = c1;
+        this->c2          = c2;
+        this->c3          = c3;
+
+        int half_thickness    = (thickness + 1) / 2 + 2;
+        this->bounding_left   = cx - radius - half_thickness;
+        this->bounding_right  = cx + radius + half_thickness;
+        this->bounding_top    = cy - radius - half_thickness;
+        this->bounding_bottom = cy + radius + half_thickness;
+    }
+};
+
+// SegmentCommand:
+// scale_x: seg mask w / outer rect w
+// scale_y: seg mask h / outer rect h
+struct SegmentCommand : cuOSDContextCommand
+{
+    float *dSeg;
+    int    segWidth, segHeight;
+    float  scale_x, scale_y;
+    float  segThreshold;
+
+    SegmentCommand()
+    {
+        this->type = CommandType::Segment;
+    }
+};
+
+// PolyFillCommand:
+struct PolyFillCommand : cuOSDContextCommand
+{
+    int *dPoints;
+    int  numPoints;
+
+    PolyFillCommand()
+    {
+        this->type = CommandType::PolyFill;
+    }
+};
+
 // RectangleCommand:
 // ax1, ..., dy1: 4 outer corner points coordinate of the rectangle
 // ax2, ..., dy2: 4 inner corner points coordinate of the rectangle
-//    a1 ------ d1
-//    | a2---d2 |
-//    | |     | |
-//    | b2---c2 |
-//    b1 ------ c1
 // thickness: border width in case > 0, -1 stands for fill mode
-struct RectangleCommand
+struct RectangleCommand : cuOSDContextCommand
 {
-    uint8_t c0, c1, c2, c3;
-    int     bounding_left   = 0;
-    int     bounding_top    = 0;
-    int     bounding_right  = 0;
-    int     bounding_bottom = 0;
-
-    int  batch_index   = 0;
-    int  thickness     = -1;
-    bool interpolation = false;
-
+    int   thickness     = -1;
+    bool  interpolation = false;
     float ax1, ay1, bx1, by1, cx1, cy1, dx1, dy1;
     float ax2, ay2, bx2, by2, cx2, cy2, dx2, dy2;
+
+    RectangleCommand()
+    {
+        this->type = CommandType::Rectangle;
+    }
 };
 
 struct BoxBlurCommand
@@ -151,17 +263,78 @@ struct BoxBlurCommand
     int kernel_size = 7;
 };
 
+// TextCommand:
+// text_line_size && ilocation are inner attribute for text memory management
+struct TextCommand : cuOSDContextCommand
+{
+    int text_line_size;
+    int ilocation;
+
+    TextCommand() = default;
+
+    TextCommand(int text_line_size, int ilocation, unsigned char c0, unsigned char c1, unsigned char c2,
+                unsigned char c3)
+    {
+        this->text_line_size = text_line_size;
+        this->ilocation      = ilocation;
+        this->type           = CommandType::Text;
+        this->c0             = c0;
+        this->c1             = c1;
+        this->c2             = c2;
+        this->c3             = c3;
+    }
+};
+
+struct TextHostCommand : cuOSDContextCommand
+{
+    TextCommand                    gputile;
+    std::vector<unsigned long int> text;
+    unsigned short                 font_size;
+    std::string                    font_name;
+    int                            x, y;
+
+    TextHostCommand(int batch_idx, const std::vector<unsigned long int> &text, unsigned short font_size,
+                    const char *font, int x, int y, unsigned char c0, unsigned char c1, unsigned char c2,
+                    unsigned char c3)
+    {
+        this->batch_index = batch_idx;
+        this->text        = text;
+        this->font_size   = font_size;
+        this->font_name   = font;
+        this->x           = x;
+        this->y           = y;
+        this->c0          = c0;
+        this->c1          = c1;
+        this->c2          = c2;
+        this->c3          = c3;
+        this->type        = CommandType::Text;
+    }
+};
+
 struct cuOSDContext
 {
+    std::unique_ptr<Memory<TextLocation>> text_location;
+    std::unique_ptr<Memory<int>>          line_location_base;
+
+    std::vector<std::shared_ptr<cuOSDContextCommand>> commands;
+    std::unique_ptr<Memory<unsigned char>>            gpu_commands;
+    std::unique_ptr<Memory<int>>                      gpu_commands_offset;
+
+    // For OpBndBox only, to be deprecated.
     std::vector<std::shared_ptr<RectangleCommand>> rect_commands;
     std::unique_ptr<Memory<RectangleCommand>>      gpu_rect_commands;
-    std::vector<std::shared_ptr<BoxBlurCommand>>   blur_commands;
-    std::unique_ptr<Memory<BoxBlurCommand>>        gpu_blur_commands;
 
-    int bounding_left   = 0;
-    int bounding_top    = 0;
-    int bounding_right  = 0;
-    int bounding_bottom = 0;
+    std::vector<std::shared_ptr<BoxBlurCommand>> blur_commands;
+    std::unique_ptr<Memory<BoxBlurCommand>>      gpu_blur_commands;
+
+    std::shared_ptr<TextBackend> text_backend;
+    cuOSDTextBackend             text_backend_type = cuOSDTextBackend::StbTrueType;
+
+    bool have_rotate_msaa = false;
+    int  bounding_left    = 0;
+    int  bounding_top     = 0;
+    int  bounding_right   = 0;
+    int  bounding_bottom  = 0;
 };
 
 typedef cuOSDContext *cuOSDContext_t;

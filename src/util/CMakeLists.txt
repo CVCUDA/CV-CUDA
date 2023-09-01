@@ -65,11 +65,20 @@ if(ENABLE_COMPAT_OLD_GLIBC)
         endif()
     endforeach()
 
+    macro(path_is_relative PATH IS_REL)
+        string(FIND ${PATH} "/" idx)
+        if(idx EQUAL "0")
+            set(${IS_REL} OFF)
+        else()
+            set(${IS_REL} ON)
+        endif()
+    endmacro()
+
     # Same as configure_file, but create backups instead
     # of overwriten existing destination file.
     macro(safe_configure_file TEMPLATE DEST)
         set(dest ${DEST})
-        cmake_path(IS_RELATIVE dest isrel)
+        path_is_relative(${dest} isrel)
         if(isrel)
             set(dest ${CMAKE_CURRENT_BINARY_DIR}/${dest})
         endif()
@@ -85,7 +94,7 @@ if(ENABLE_COMPAT_OLD_GLIBC)
                     math(EXPR idx "${idx}+1")
                 endwhile()
 
-                file(COPY_FILE ${dest} ${dest}.bak${idx})
+                file(COPY ${dest} DESTINATION ${dest}.bak${idx})
                 file(RENAME ${dest}.new ${dest})
             else()
                 file(REMOVE ${dest}.new)
@@ -190,6 +199,7 @@ target_link_libraries(nvcv_util
         nvcv_types_headers
         CUDA::cudart_static
         nvcv_util_compat
+        -lrt
 )
 
 target_compile_definitions(nvcv_util

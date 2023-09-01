@@ -51,5 +51,7 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get update \
 # needed by tests
 RUN python3 -m pip install torch==1.13.0 torchvision cupy-cuda11x \
     && rm -rf /root/.cache/pip
+RUN python3.9 -m pip install pytest torch==1.13.0 torchvision cupy-cuda11x \
+    && rm -rf /root/.cache/pip
 
 WORKDIR /cvcuda

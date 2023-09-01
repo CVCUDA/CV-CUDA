@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -48,6 +48,8 @@ typedef enum
     NVCV_COLOR_MODEL_RAW       = 2 + 7, /**< RAW color model, used for Bayer image formats. */
     NVCV_COLOR_MODEL_XYZ,               /**< CIE XYZ tristimulus color spec. */
     NVCV_COLOR_MODEL_HSV,               /**< hue, saturation, value components. */
+    NVCV_COLOR_MODEL_CMYK,              /**< cyan, magenta, yellow, black components. */
+    NVCV_COLOR_MODEL_YCCK               /**< Luma + chroma (blue-luma, red-luma) and black components. */
 } NVCVColorModel;
 
 /** Defines the color primaries and the white point of a \ref NVCVColorSpec. */
@@ -364,6 +366,15 @@ typedef enum
 
     /** 4:2:0 sub-sampling. Chroma has half horizontal and vertical resolutions.*/
     NVCV_CSS_420,
+
+    /** 4:4:0 sub-sampling. Chroma has full horizontal and half vertical resolutions */
+    NVCV_CSS_440 = NVCV_CSS_422R,
+
+    /** 4:1:0 sub-sampling. Chroma has 1/4 horizontal and half vertical resolutions. */
+    NVCV_CSS_410,
+
+    /** 4:1:0V sub-sampling. Chroma has half horizontal and 1/4 vertical resolutions. */
+    NVCV_CSS_410R
 } NVCVChromaSubsampling;
 
 /** Creates a \ref NVCVChromaSubsampling given the horizontal and vertical sampling.

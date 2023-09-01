@@ -45,13 +45,12 @@ extern "C"
  *
  * @param [out] handle Where the image instance handle will be written to.
  *                     + Must not be NULL.
- * @param [in] maxVarShapeBatchSize maximum batch size for var shape operator, can be 0 if VarShape is not used.
  *
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Handle is null.
  * @retval #NVCV_ERROR_OUT_OF_MEMORY    Not enough memory to create the operator.
  * @retval #NVCV_SUCCESS                Operation executed successfully.
  */
-CVCUDA_PUBLIC NVCVStatus cvcudaMorphologyCreate(NVCVOperatorHandle *handle, const int32_t maxVarShapeBatchSize);
+CVCUDA_PUBLIC NVCVStatus cvcudaMorphologyCreate(NVCVOperatorHandle *handle);
 
 /**
  * Executes the morphology operation of Dilates/Erodes on images
@@ -107,6 +106,8 @@ CVCUDA_PUBLIC NVCVStatus cvcudaMorphologyCreate(NVCVOperatorHandle *handle, cons
  *
  * @param [out] out Output tensor.
  *
+ * @param [in] workspace Workspace tensor, must be the same size as the input tensor; can be null if not calling Dilate/Erode with an iteration of 1
+ *
  * @param [in] morphType Type of operation to performs Erode/Dilate. \ref NVCVMorphologyType.
  *
  * @param [in] maskWidth Width of the mask to use (set heigh/width to -1 for default of 3,3).
@@ -127,8 +128,9 @@ CVCUDA_PUBLIC NVCVStatus cvcudaMorphologyCreate(NVCVOperatorHandle *handle, cons
  * @retval #NVCV_SUCCESS                Operation executed successfully.
  */
 CVCUDA_PUBLIC NVCVStatus cvcudaMorphologySubmit(NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in,
-                                                NVCVTensorHandle out, NVCVMorphologyType morphType, int32_t maskWidth,
-                                                int32_t maskHeight, int32_t anchorX, int32_t anchorY, int32_t iteration,
+                                                NVCVTensorHandle out, NVCVTensorHandle workspace,
+                                                NVCVMorphologyType morphType, int32_t maskWidth, int32_t maskHeight,
+                                                int32_t anchorX, int32_t anchorY, int32_t iteration,
                                                 const NVCVBorderType borderMode);
 
 /**
@@ -185,6 +187,8 @@ CVCUDA_PUBLIC NVCVStatus cvcudaMorphologySubmit(NVCVOperatorHandle handle, cudaS
  *
  * @param [out] out Output variable shape tensor.
  *
+ * @param [in] workspace Workspace tensor, must be the same size as the input var shape tensor; can be null if not calling Dilate/Erode with an iteration of 1
+ *
  * @param [in] morphType Type of operation to perform (Erode/Dilate). \ref NVCVMorphologyType.
  *
  * @param [in] masks  1D Tensor of NVCV_DATA_TYPE_2S32 mask W/H pairs, where the 1st pair is for image 0, second for image 1, etc.
@@ -206,9 +210,9 @@ CVCUDA_PUBLIC NVCVStatus cvcudaMorphologySubmit(NVCVOperatorHandle handle, cudaS
  */
 CVCUDA_PUBLIC NVCVStatus cvcudaMorphologyVarShapeSubmit(NVCVOperatorHandle handle, cudaStream_t stream,
                                                         NVCVImageBatchHandle in, NVCVImageBatchHandle out,
-                                                        NVCVMorphologyType morphType, NVCVTensorHandle masks,
-                                                        NVCVTensorHandle anchors, int32_t iteration,
-                                                        const NVCVBorderType borderMode);
+                                                        NVCVImageBatchHandle workspace, NVCVMorphologyType morphType,
+                                                        NVCVTensorHandle masks, NVCVTensorHandle anchors,
+                                                        int32_t iteration, const NVCVBorderType borderMode);
 
 #ifdef __cplusplus
 }

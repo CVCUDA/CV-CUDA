@@ -23,35 +23,78 @@
 
 namespace nvcv {
 
+/**
+ * @class TensorLayoutInfo
+ * @brief Provides information and utility functions related to tensor layouts.
+ *
+ * The TensorLayoutInfo class provides a series of utility functions to
+ * inspect and work with tensor layouts. It allows checking the compatibility
+ * of a given layout, creating instances from a layout, and querying specific
+ * properties of the layout, such as whether it represents a batch or an image.
+ */
 class TensorLayoutInfo
 {
 public:
+    /**
+     * @brief Check if the given layout is compatible.
+     *
+     * For this base class, all layouts are considered compatible.
+     *
+     * @param layout The layout to check for compatibility.
+     * @return true since all layouts are compatible.
+     */
     static bool IsCompatible(const TensorLayout &)
     {
         return true;
     }
 
+    /**
+     * @brief Create a TensorLayoutInfo object from the given layout.
+     *
+     * @param layout The layout to use for creating the TensorLayoutInfo object.
+     * @return A TensorLayoutInfo object constructed with the given layout.
+     */
     static Optional<TensorLayoutInfo> Create(const TensorLayout &layout)
     {
         return TensorLayoutInfo{layout};
     }
 
+    /**
+     * @brief Get the layout of the tensor.
+     *
+     * @return The tensor's layout.
+     */
     constexpr const TensorLayout &layout() const
 
     {
         return m_layout;
     }
 
+    /**
+     * @brief Check if the layout includes a batch dimension.
+     *
+     * @return true if the layout includes a batch dimension, false otherwise.
+     */
     constexpr bool isBatch() const
     {
         return m_cacheIsBatch;
     }
 
+    /**
+     * @brief Get the index of the sample dimension in the layout.
+     *
+     * @return The index of the sample dimension, or -1 if there is no sample dimension.
+     */
     int idxSample() const
     {
         return m_cacheIdxSample;
     }
 
+    /**
+     * @brief Check if the layout corresponds to an image.
+     *
+     * @return true if the layout corresponds to an image, false otherwise.
+     */
     bool isImage() const
     {
         return m_cacheIsImage;
@@ -85,9 +128,24 @@ private:
     int          m_cacheIdxSample;
 };
 
+/**
+ * @class TensorLayoutInfoImage
+ * @brief This class provides more information about tensor layout for image tensors.
+ *
+ * The class inherits from TensorLayoutInfo and adds functions specific to image tensors.
+ * It provides detailed information about the tensor layout such as the number of spatial dimensions,
+ * the index of various dimensions (channel, width, height, depth), and whether the layout is row-major.
+ * It also provides functions to check whether the channel is in the first or last position.
+ */
 class TensorLayoutInfoImage : public TensorLayoutInfo
 {
 public:
+    /**
+     * @brief Check if the given layout is compatible with the image tensor.
+     *
+     * @param layout The layout to check for compatibility.
+     * @return true if the layout is compatible with an image tensor, false otherwise.
+     */
     static bool IsCompatible(const TensorLayout &layout)
     {
         if (auto info = TensorLayoutInfo::Create(layout))
@@ -100,6 +158,12 @@ public:
         }
     }
 
+    /**
+     * @brief Create a TensorLayoutInfoImage object if the provided layout is compatible.
+     *
+     * @param layout The layout to use for creating the TensorLayoutInfoImage object.
+     * @return An optional TensorLayoutInfoImage object. The object is valid if the layout is compatible.
+     */
     static Optional<TensorLayoutInfoImage> Create(const TensorLayout &layout)
     {
         if (IsCompatible(layout))
@@ -112,50 +176,82 @@ public:
         }
     }
 
+    /**
+     * @brief Retrieves the number of spatial dimensions in the tensor layout.
+     * @return Number of spatial dimensions.
+     */
     int numSpatialDims() const
     {
         return m_cacheNumSpatialDims;
     }
 
+    /**
+     * @brief Checks if the tensor layout is row-major.
+     * @return true if row-major, false otherwise.
+     */
     bool isRowMajor() const
     {
         return m_cacheIsRowMajor;
     }
 
-    // -1 if not found
+    /**
+     * @brief Retrieves the index of the channel in the tensor layout.
+     * @return Index of the channel or -1 if not found.
+     */
     int idxChannel() const
     {
         return m_cacheIdxChannel;
     }
 
-    // -1 if not found
+    /**
+     * @brief Retrieves the width index in the tensor layout.
+     * @return Width index or -1 if not found.
+     */
     int idxWidth() const
     {
         return m_cacheIdxWidth;
     }
 
-    // -1 if not found
+    /**
+     * @brief Retrieves the height index in the tensor layout.
+     * @return Height index or -1 if not found.
+     */
     int idxHeight() const
     {
         return m_cacheIdxHeight;
     }
 
-    // -1 if not found
+    /**
+     * @brief Retrieves the depth index in the tensor layout.
+     * @return Depth index or -1 if not found.
+     */
     int idxDepth() const
     {
         return m_cacheIdxDepth;
     }
 
+    /**
+     * @brief Checks if the tensor layout contains a channel.
+     * @return true if there's a channel, false otherwise.
+     */
     bool hasChannel() const
     {
         return m_cacheHasChannel;
     }
 
+    /**
+     * @brief Checks if the channel appears first in the tensor layout (i.e CHW).
+     * @return true if channel is first, false otherwise.
+     */
     bool isChannelFirst() const
     {
         return m_cacheIsChannelFirst;
     }
 
+    /**
+     * @brief Checks if the channel appears last in the tensor layout (i.e. HWC).
+     * @return true if channel is last, false otherwise.
+     */
     bool isChannelLast() const
     {
         return m_cacheIsChannelLast;

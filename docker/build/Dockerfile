@@ -30,12 +30,15 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get update \
         gcc-9=9.4.0-5ubuntu1 cpp-9=9.4.0-5ubuntu1 gcc-9-base=9.4.0-5ubuntu1 libgcc-9-dev=9.4.0-5ubuntu1 libasan5=9.4.0-5ubuntu1 g++-9=9.4.0-5ubuntu1 libstdc++-9-dev=9.4.0-5ubuntu1 \
         # Compilers to which public headers must be compatible
         clang-14 clang-11 \
-        cmake ninja-build \
+        ninja-build \
         ccache \
         libgtest-dev libgmock-dev \
         pre-commit shellcheck \
         curl \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -L https://cmake.org/files/v3.18/cmake-3.18.6-Linux-x86_64.tar.gz --output /tmp/cmake-3.18.6.tar.gz \
+    && tar -xzf /tmp/cmake-3.18.6.tar.gz -C /tmp/ && cd /tmp/cmake-3.18.6-Linux-x86_64/ \
+    && cp bin/ share/ doc/ /usr/local/ -r && rm -rf /tmp/cmake-3.18.6*
 
 # Configure ccache
 RUN mkdir -p /cache

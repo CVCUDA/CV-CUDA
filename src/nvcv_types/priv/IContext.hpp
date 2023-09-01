@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,6 +31,7 @@ class CoreObjManager;
 using ImageManager      = CoreObjManager<NVCVImageHandle>;
 using ImageBatchManager = CoreObjManager<NVCVImageBatchHandle>;
 using TensorManager     = CoreObjManager<NVCVTensorHandle>;
+using ArrayManager      = CoreObjManager<NVCVArrayHandle>;
 using AllocatorManager  = CoreObjManager<NVCVAllocatorHandle>;
 
 class IAllocator;
@@ -38,7 +39,8 @@ class IAllocator;
 class IContext
 {
 public:
-    using Managers = std::tuple<AllocatorManager &, ImageManager &, ImageBatchManager &, TensorManager &>;
+    using Managers
+        = std::tuple<AllocatorManager &, ImageManager &, ImageBatchManager &, TensorManager &, ArrayManager &>;
 
     template<class HandleType>
     CoreObjManager<HandleType> &manager()

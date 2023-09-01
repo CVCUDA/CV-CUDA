@@ -240,8 +240,13 @@ void ExportOpPillowResize(py::module &m)
 {
     using namespace pybind11::literals;
 
+    py::options options;
+    options.disable_function_signatures();
+
     m.def("pillowresize", &PillowResize, "src"_a, "shape"_a, "format"_a, "interp"_a = NVCV_INTERP_LINEAR, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
+
+	cvcuda.pillowresize(src: nvcv.Tensor, shape:Shape, format:ImageFormat, interp: Interp = < NVCV_INTERP_LINEAR >, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the Pillow Resize operation on the given cuda stream.
 
@@ -266,6 +271,8 @@ void ExportOpPillowResize(py::module &m)
 
     m.def("pillowresize_into", &PillowResizeInto, "dst"_a, "src"_a, "format"_a, "interp"_a = NVCV_INTERP_LINEAR,
           py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+	cvcuda.pillowresize_into(dst: nvcv.Tensor, src: nvcv.Tensor, shape:Shape, format:ImageFormat, interp: Interp = < NVCV_INTERP_LINEAR >, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Pillow Resize operation on the given cuda stream.
 
@@ -292,6 +299,8 @@ void ExportOpPillowResize(py::module &m)
     m.def("pillowresize", &VarShapePillowResize, "src"_a, "sizes"_a, "interp"_a = NVCV_INTERP_LINEAR, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
 
+	cvcuda.pillowresize(src: nvcv.ImageBatchVarShape, shape:Shape, format:ImageFormat, interp: Interp = < NVCV_INTERP_LINEAR >, stream: Optional[nvcv.cuda.Stream] = None) ->ImageBatchVarShape
+
         Executes the Pillow Resize operation on the given cuda stream.
 
         See also:
@@ -314,6 +323,8 @@ void ExportOpPillowResize(py::module &m)
 
     m.def("pillowresize_into", &VarShapePillowResizeInto, "dst"_a, "src"_a, "interp"_a = NVCV_INTERP_LINEAR,
           py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+	cvcuda.pillowresize(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, shape:Shape, format:ImageFormat, interp: Interp = < NVCV_INTERP_LINEAR >, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Pillow Resize operation on the given cuda stream.
 

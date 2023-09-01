@@ -32,7 +32,6 @@ set(CPPSAMPLES common
 
 set(PYSAMPLES classification
     segmentation
-    segmentation_triton
     object_detection)
 
 foreach(sample ${CPPSAMPLES})

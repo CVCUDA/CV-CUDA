@@ -107,13 +107,16 @@ ImageBatchVarShape AverageBlurVarShape(ImageBatchVarShape &input, const std::tup
 void ExportOpAverageBlur(py::module &m)
 {
     using namespace pybind11::literals;
+    py::options options;
+    options.disable_function_signatures();
 
     const std::tuple<int, int> def_anchor{-1, -1};
 
     m.def("averageblur", &AverageBlur, "src"_a, "kernel_size"_a, "kernel_anchor"_a = def_anchor,
           "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+	cvcuda.averageblur(src: nvcv.Tensor, kernel_size: Tuple [int,int], kernel_anchor: Tuple [int,int], border: NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
-        Executes the AverageBlur operation on the given cuda stream.
+	Executes the AverageBlur operation on the given cuda stream.
 
         See also:
             Refer to the CV-CUDA C API reference for the AverageBlur operator
@@ -140,6 +143,7 @@ void ExportOpAverageBlur(py::module &m)
 
     m.def("averageblur_into", &AverageBlurInto, "dst"_a, "src"_a, "kernel_size"_a, "kernel_anchor"_a = def_anchor,
           "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+	cvcuda.averageblur_into(dst: nvcv.Tensor, src: nvcv.Tensor, kernel_size: Tuple [int,int], kernel_anchor: Tuple [int,int], border: NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the AverageBlur operation on the given cuda stream and writes the result into the 'dst' tensor.
 
@@ -165,6 +169,7 @@ void ExportOpAverageBlur(py::module &m)
 
     m.def("averageblur", &AverageBlurVarShape, "src"_a, "max_kernel_size"_a, "kernel_size"_a, "kernel_anchor"_a,
           "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+	cvcuda.averageblur(src: nvcv.ImageBatchVarShape, kernel_size: Tuple [int,int], kernel_anchor: Tuple [int,int], border: NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
 
         Executes the AverageBlur operation with a variable shape tensors on the given cuda stream.
 
@@ -187,6 +192,7 @@ void ExportOpAverageBlur(py::module &m)
     m.def("averageblur_into", &AverageBlurVarShapeInto, "dst"_a, "src"_a, "max_kernel_size"_a, "kernel_size"_a,
           "kernel_anchor"_a, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
+	cvcuda.averageblur_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, kernel_size: Tuple [int,int], kernel_anchor: Tuple [int,int], border: NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT > , stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the AverageBlur operation with a variable shape tensors on the given cuda stream.
 

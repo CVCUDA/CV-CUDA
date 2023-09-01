@@ -28,6 +28,8 @@ void ExportBndBox(py::module &m);
 
 void ExportBoxBlur(py::module &m);
 
+void ExportOSD(py::module &m);
+
 } // namespace cvcudapy
 
 #endif // NVCV_PYTHON_PRIV_OSD_ELEMENT_HPP

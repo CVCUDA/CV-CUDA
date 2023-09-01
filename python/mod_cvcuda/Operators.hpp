@@ -16,6 +16,7 @@
  */
 
 #include <common/Hash.hpp>
+#include <nvcv/cuda/MathOps.hpp>
 #include <nvcv/python/Cache.hpp>
 #include <nvcv/python/Container.hpp>
 #include <nvcv/python/ImageFormat.hpp>
@@ -44,6 +45,7 @@ using nvcvpy::Tensor;
 namespace util = nvcvpy::util;
 namespace py   = ::pybind11;
 
+void ExportOpFindContours(py::module &m);
 void ExportOpReformat(py::module &m);
 void ExportOpResize(py::module &m);
 void ExportOpCustomCrop(py::module &m);
@@ -79,8 +81,16 @@ void ExportOpRemap(py::module &m);
 void ExportOpCropFlipNormalizeReformat(py::module &m);
 void ExportOpAdaptiveThreshold(py::module &m);
 void ExportOpNonMaximumSuppression(py::module &m);
+void ExportOpOSD(py::module &m);
 void ExportOpRandomResizedCrop(py::module &m);
 void ExportOpGaussianNoise(py::module &m);
+void ExportOpMinMaxLoc(py::module &m);
+void ExportOpSIFT(py::module &m);
+void ExportOpHistogram(py::module &m);
+void ExportOpInpaint(py::module &m);
+void ExportOpHistogramEq(py::module &m);
+void ExportOpMinAreaRect(py::module &m);
+void ExportOpAdvCvtColor(py::module &m);
 
 // Helper class that serves as generic python-side operator class.
 // OP: native operator class

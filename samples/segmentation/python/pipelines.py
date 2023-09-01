@@ -17,14 +17,14 @@ import numpy as np
 import logging
 import cvcuda
 import torch
-import nvtx
 
 
 class PreprocessorCvcuda:
     # docs_tag: begin_init_preprocessorcvcuda
-    def __init__(self, device_id):
+    def __init__(self, device_id, cvcuda_perf):
         self.logger = logging.getLogger(__name__)
         self.device_id = device_id
+        self.cvcuda_perf = cvcuda_perf
         self.mean_tensor = torch.Tensor([0.485, 0.456, 0.406])
         self.mean_tensor = self.mean_tensor.reshape(1, 1, 1, 3).cuda(self.device_id)
         self.mean_tensor = cvcuda.as_tensor(self.mean_tensor, "NHWC")
@@ -37,7 +37,7 @@ class PreprocessorCvcuda:
 
     # docs_tag: begin_call_preprocessorcvcuda
     def __call__(self, frame_nhwc, out_size):
-        nvtx.push_range("preprocess.cvcuda")
+        self.cvcuda_perf.push_range("preprocess.cvcuda")
 
         # docs_tag: begin_tensor_conversion
         # Need to check what type of input we have received:
@@ -46,9 +46,7 @@ class PreprocessorCvcuda:
         # 3) Torch Tensor --> Convert to CVCUDA tensor
         if isinstance(frame_nhwc, torch.Tensor):
             frame_nhwc = cvcuda.as_tensor(frame_nhwc, "NHWC")
-            has_copy = False
         elif isinstance(frame_nhwc, np.ndarray):
-            has_copy = True  # noqa: F841
             frame_nhwc = cvcuda.as_tensor(
                 torch.as_tensor(frame_nhwc).to(
                     device="cuda:%d" % self.device_id, non_blocking=True
@@ -91,7 +89,7 @@ class PreprocessorCvcuda:
         # Convert it to NCHW layout and return it.
         normalized = cvcuda.reformat(normalized, "NCHW")
 
-        nvtx.pop_range()
+        self.cvcuda_perf.pop_range()
 
         # Return 3 pieces of information:
         #   1. The original nhwc frame
@@ -107,10 +105,7 @@ class PreprocessorCvcuda:
 
 class PostprocessorCvcuda:
     def __init__(
-        self,
-        output_layout,
-        gpu_output,
-        device_id,
+        self, output_layout, gpu_output, device_id, cvcuda_perf, torch_output=True
     ):
         self.logger = logging.getLogger(__name__)
         if output_layout != "NCHW" and output_layout != "NHWC":
@@ -120,12 +115,14 @@ class PostprocessorCvcuda:
         self.gpu_output = gpu_output
         self.output_layout = output_layout
         self.device_id = device_id
+        self.cvcuda_perf = cvcuda_perf
+        self.torch_output = torch_output
 
         self.logger.info("Using CVCUDA as post-processor.")
 
     # docs_tag: begin_call_postprocessorcvcuda
     def __call__(self, probabilities, frame_nhwc, resized_tensor, class_index):
-        nvtx.push_range("postprocess.cvcuda")
+        self.cvcuda_perf.push_range("postprocess.cvcuda")
 
         # docs_tag: begin_proces_probs
         # We assume that everything other than probabilities will be a CVCUDA tensor.
@@ -145,24 +142,31 @@ class PostprocessorCvcuda:
 
         # docs_tag: begin_postproc_pipeline
         # Upscale the resulting masks to the full resolution of the input image.
+        self.cvcuda_perf.push_range("resize")
         cvcuda_class_masks_upscaled = cvcuda.resize(
             cvcuda_class_masks,
             (frame_nhwc.shape[0], frame_nhwc.shape[1], frame_nhwc.shape[2], 1),
             cvcuda.Interp.NEAREST,
         )
+        self.cvcuda_perf.pop_range()
 
         # Blur the down-scaled input images and upscale them back to their original resolution.
         # A part of this will be used to create a background blur effect later when the
         # overlay happens.
         # Note: We apply blur on the low-res version of the images to save computation time.
+        self.cvcuda_perf.push_range("gaussian")
         cvcuda_blurred_input_imgs = cvcuda.gaussian(
             resized_tensor, kernel_size=(15, 15), sigma=(5, 5)
         )
+        self.cvcuda_perf.pop_range()
+
+        self.cvcuda_perf.push_range("resize")
         cvcuda_blurred_input_imgs = cvcuda.resize(
             cvcuda_blurred_input_imgs,
             (frame_nhwc.shape[0], frame_nhwc.shape[1], frame_nhwc.shape[2], 3),
             cvcuda.Interp.LINEAR,
         )
+        self.cvcuda_perf.pop_range()
 
         # Next we apply joint bilateral filter on the up-scaled masks with the gray version of the
         # input image as guidance to smooth out the edges of the masks. This is needed because
@@ -170,10 +174,13 @@ class PostprocessorCvcuda:
         # in smoothing out the edges, resulting in a nice smooth mask.
         cvcuda_frame_nhwc = cvcuda.as_tensor(frame_nhwc.cuda(), "NHWC")
 
+        self.cvcuda_perf.push_range("cvtcolor")
         cvcuda_image_tensor_nhwc_gray = cvcuda.cvtcolor(
-            cvcuda_frame_nhwc, cvcuda.ColorConversion.BGR2GRAY
+            cvcuda_frame_nhwc, cvcuda.ColorConversion.RGB2GRAY
         )
+        self.cvcuda_perf.pop_range()
 
+        self.cvcuda_perf.push_range("joint_bilateral_filter")
         cvcuda_jb_masks = cvcuda.joint_bilateral_filter(
             cvcuda_class_masks_upscaled,
             cvcuda_image_tensor_nhwc_gray,
@@ -181,18 +188,21 @@ class PostprocessorCvcuda:
             sigma_color=50,
             sigma_space=1,
         )
+        self.cvcuda_perf.pop_range()
 
         # Create an overlay image. We do this by selectively blurring out pixels
         # in the input image where the class mask prediction was absent (i.e. False)
         # We already have all the things required for this: The input images,
         # the blurred version of the input images and the upscale version
         # of the mask.
+        self.cvcuda_perf.push_range("composite")
         cvcuda_composite_imgs_nhwc = cvcuda.composite(
             cvcuda_frame_nhwc,
             cvcuda_blurred_input_imgs,
             cvcuda_jb_masks,
             3,
         )
+        self.cvcuda_perf.pop_range()
 
         # Based on the output requirements, we return appropriate tensors.
         if self.output_layout == "NCHW":
@@ -204,15 +214,16 @@ class PostprocessorCvcuda:
             cvcuda_composite_imgs_out = cvcuda_composite_imgs_nhwc
 
         if self.gpu_output:
-            cvcuda_composite_imgs_out = torch.as_tensor(
-                cvcuda_composite_imgs_out.cuda(), device="cuda:%d" % self.device_id
-            )
+            if self.torch_output:
+                cvcuda_composite_imgs_out = torch.as_tensor(
+                    cvcuda_composite_imgs_out.cuda(), device="cuda:%d" % self.device_id
+                )
         else:
             cvcuda_composite_imgs_out = (
                 torch.as_tensor(cvcuda_composite_imgs_out.cuda()).cpu().numpy()
             )
 
-        nvtx.pop_range()  # postprocess
+        self.cvcuda_perf.pop_range()  # postprocess
 
         # docs_tag: end_postproc_pipeline
 

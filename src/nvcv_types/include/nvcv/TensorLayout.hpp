@@ -25,21 +25,49 @@
 #include <cassert>
 #include <iostream>
 
+/**
+ * @brief Compares two NVCVTensorLayouts for equality.
+ *
+ * @param lhs The left-hand side tensor layout to compare.
+ * @param rhs The right-hand side tensor layout to compare.
+ * @return true if both tensor layouts are equal, false otherwise.
+ */
 inline bool operator==(const NVCVTensorLayout &lhs, const NVCVTensorLayout &rhs)
 {
     return nvcvTensorLayoutCompare(lhs, rhs) == 0;
 }
 
+/**
+ * @brief Compares two NVCVTensorLayouts for inequality.
+ *
+ * @param lhs The left-hand side tensor layout to compare.
+ * @param rhs The right-hand side tensor layout to compare.
+ * @return true if both tensor layouts are not equal, false otherwise.
+ */
 inline bool operator!=(const NVCVTensorLayout &lhs, const NVCVTensorLayout &rhs)
 {
     return !operator==(lhs, rhs);
 }
 
+/**
+ * @brief Compares two NVCVTensorLayouts to determine if one is less than the other.
+ *
+ * @param lhs The left-hand side tensor layout to compare.
+ * @param rhs The right-hand side tensor layout to compare.
+ * @return true if lhs is less than rhs, false otherwise.
+ */
 inline bool operator<(const NVCVTensorLayout &lhs, const NVCVTensorLayout &rhs)
 {
     return nvcvTensorLayoutCompare(lhs, rhs) < 0;
 }
 
+/**
+ * @brief Outputs the name of an NVCVTensorLayout to a stream.
+ *
+ * @param out The output stream.
+ * @param layout The tensor layout whose name will be output.
+ * @return The output stream.
+ */
 inline std::ostream &operator<<(std::ostream &out, const NVCVTensorLayout &layout)
 {
     return out << nvcvTensorLayoutGetName(&layout);
@@ -57,6 +85,15 @@ enum TensorLabel : char
     LABEL_WIDTH   = NVCV_TLABEL_WIDTH
 };
 
+/**
+ * @brief Represents the layout of a tensor.
+ *
+ * This class wraps around the NVCVTensorLayout structure and provides additional
+ * functionality for handling and manipulating tensor layouts. The class allows
+ * for easy construction from character descriptions or from other tensor layout
+ * structures. It also supports a range of operations including subsetting and
+ * checking for prefixes or suffixes.
+ */
 class TensorLayout final
 {
 public:
@@ -66,37 +103,83 @@ public:
 
     TensorLayout() = default;
 
+    /**
+     * @brief Constructs a TensorLayout from an NVCVTensorLayout.
+     * @param layout The NVCVTensorLayout to wrap.
+     */
     constexpr TensorLayout(const NVCVTensorLayout &layout)
         : m_layout(layout)
     {
     }
 
+    /**
+     * @brief Constructs a TensorLayout from a character description.
+     * @param descr The character description of the layout.
+     */
     explicit TensorLayout(const char *descr)
     {
         detail::CheckThrow(nvcvTensorLayoutMake(descr, &m_layout));
     }
 
+    /**
+     * @brief Constructs a TensorLayout from a range of iterators.
+     * @tparam IT The type of the iterators.
+     * @param itbeg The beginning of the range.
+     * @param itend The end of the range.
+     */
     template<class IT, class = detail::IsRandomAccessIterator<IT>>
     explicit TensorLayout(IT itbeg, IT itend)
     {
         detail::CheckThrow(nvcvTensorLayoutMakeRange(&*itbeg, &*itend, &m_layout));
     }
 
+    /**
+     * @brief Fetches the character representation of a dimension at a specified index.
+     * @param idx The index of the dimension.
+     * @return The character representation of the dimension.
+     */
     constexpr char operator[](int idx) const;
-    constexpr int  rank() const;
 
+    /**
+     * @brief Gets the rank (number of dimensions) of the tensor layout.
+     * @return The rank of the tensor layout.
+     */
+    constexpr int rank() const;
+
+    /**
+     * @brief Finds the index of the first occurrence of a specified dimension label.
+     * @param dimLabel The dimension label to search for.
+     * @param start The starting index for the search.
+     * @return The index of the first occurrence of the dimension label, or -1 if not found.
+     */
     int find(char dimLabel, int start = 0) const;
 
+    /**
+     * @brief Checks if the current layout starts with a specified layout.
+     * @param test The layout to check against.
+     * @return true if the current layout starts with the test layout, false otherwise.
+     */
     bool startsWith(const TensorLayout &test) const
     {
         return nvcvTensorLayoutStartsWith(m_layout, test.m_layout) != 0;
     }
 
+    /**
+     * @brief Checks if the current layout ends with a specified layout.
+     * @param test The layout to check against.
+     * @return true if the current layout ends with the test layout, false otherwise.
+     */
     bool endsWith(const TensorLayout &test) const
     {
         return nvcvTensorLayoutEndsWith(m_layout, test.m_layout) != 0;
     }
 
+    /**
+     * @brief Creates a sub-layout from a specified range.
+     * @param beg The starting index of the range.
+     * @param end The ending index of the range.
+     * @return A new TensorLayout representing the sub-range.
+     */
     TensorLayout subRange(int beg, int end) const
     {
         TensorLayout out;
@@ -104,6 +187,11 @@ public:
         return out;
     }
 
+    /**
+     * @brief Creates a sub-layout consisting of the first n dimensions.
+     * @param n The number of dimensions to include.
+     * @return A new TensorLayout representing the first n dimensions.
+     */
     TensorLayout first(int n) const
     {
         TensorLayout out;
@@ -111,6 +199,11 @@ public:
         return out;
     }
 
+    /**
+     * @brief Creates a sub-layout consisting of the last n dimensions.
+     * @param n The number of dimensions to include.
+     * @return A new TensorLayout representing the last n dimensions.
+     */
     TensorLayout last(int n) const
     {
         TensorLayout out;
@@ -129,6 +222,12 @@ public:
 
     constexpr operator const NVCVTensorLayout &() const;
 
+    /**
+     * @brief Outputs the TensorLayout to a stream.
+     * @param out The output stream.
+     * @param that The TensorLayout to output.
+     * @return The output stream.
+     */
     friend std::ostream &operator<<(std::ostream &out, const TensorLayout &that);
 
     // Public so that class is trivial but still the
@@ -141,6 +240,15 @@ NVCV_DETAIL_DEF_TLAYOUT(NONE)
 #include "TensorLayoutDef.inc"
 #undef NVCV_DETAIL_DEF_TLAYOUT
 
+/**
+ * @brief Retrieves the default tensor layout based on the rank (number of dimensions).
+ *
+ * This function maps commonly used tensor ranks to their typical tensor layouts.
+ * For example, a rank of 4 typically corresponds to the NCHW layout (Batch, Channel, Height, Width).
+ *
+ * @param rank The rank (number of dimensions) of the tensor.
+ * @return The corresponding default tensor layout. Returns TENSOR_NONE for unsupported ranks.
+ */
 constexpr const TensorLayout &GetImplicitTensorLayout(int rank)
 {
     // clang-format off

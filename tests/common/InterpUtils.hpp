@@ -36,6 +36,12 @@
 namespace nvcv::test {
 
 template<typename T>
+inline T &ValueAt(std::vector<uint8_t> &vec, long1 strides, int1 coord)
+{
+    return *reinterpret_cast<T *>(&vec[coord.x * strides.x]);
+}
+
+template<typename T>
 inline T &ValueAt(std::vector<uint8_t> &vec, long2 strides, int2 coord)
 {
     return *reinterpret_cast<T *>(&vec[coord.y * strides.x + coord.x * strides.y]);

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,6 +22,7 @@
 // Not to be used directly.
 
 #include <stdint.h>
+#include <stdio.h>
 
 // Utilities ================================
 
@@ -71,12 +72,24 @@
 
 #define NVCV_DETAIL_EXTRACT_PACKING_CHANNELS(Packing) (NVCV_DETAIL_GET_BITFIELD(Packing, 4, 2) + 1)
 
+#define NVCV_DETAIL_SET_EXTRA_CHANNEL_INFO(NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType) \
+    (NVCV_DETAIL_SET_BITFIELD(ExtraChannelType, 44, 3) | NVCV_DETAIL_SET_BITFIELD(NumExtraChannel, 47, 3)            \
+     | NVCV_DETAIL_SET_BITFIELD(NVCV_DETAIL_ENCODE_BPP(ExtraChannelBPP), 50, 3)                                      \
+     | NVCV_DETAIL_SET_BITFIELD(ExtraChannelDataKind, 53, 3))
+
+#define PRINT_MESSAGE(NumExtraChannel)                \
+    do                                                \
+    {                                                 \
+        printf("Num Channels %d\n", NumExtraChannel); \
+    }                                                 \
+    while (0)
+
 /* clang-format off */
 #define NVCV_DETAIL_MAKE_FMTTYPE(ColorModel, ColorSpecOrRawPattern, Subsampling, MemLayout, DataKind, Swizzle, \
-                               Packing0, Packing1, Packing2, Packing3)                                        \
+                               AlphaType, Packing0, Packing1, Packing2, Packing3, NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType)                                        \
     (                                                              \
-        NVCV_DETAIL_SET_BITFIELD(DataKind, 61, 3) | NVCV_DETAIL_SET_BITFIELD(Swizzle, 0, 4 * 3) |           \
-        NVCV_DETAIL_SET_BITFIELD(MemLayout, 12, 3) | \
+        NVCV_DETAIL_SET_BITFIELD(DataKind, 61, 3) | NVCV_DETAIL_SET_BITFIELD(Swizzle, 0, 6) |           \
+        NVCV_DETAIL_SET_BITFIELD(AlphaType, 6, 1) | NVCV_DETAIL_SET_BITFIELD(MemLayout, 12, 3) | \
         ((ColorModel) == NVCV_COLOR_MODEL_YCbCr \
             ? NVCV_DETAIL_SET_BITFIELD(ColorSpecOrRawPattern, 20, 15) | NVCV_DETAIL_SET_BITFIELD(Subsampling, 17, 3) \
             : ((ColorModel) == NVCV_COLOR_MODEL_UNDEFINED \
@@ -95,70 +108,154 @@
                   ) \
               ) \
         ) | \
-        NVCV_DETAIL_SET_BITFIELD(NVCV_DETAIL_ENCODE_PACKING(Packing0, 2, 3, 4), 35, 9) |                           \
-        NVCV_DETAIL_SET_BITFIELD(NVCV_DETAIL_ENCODE_PACKING(Packing1, 1, 3, 3), 44, 7) |                           \
-        NVCV_DETAIL_SET_BITFIELD(NVCV_DETAIL_ENCODE_PACKING(Packing2, 1, 3, 3), 51, 7) |                           \
-        NVCV_DETAIL_SET_BITFIELD(NVCV_DETAIL_ENCODE_PACKING(Packing3, 0, 0, 3), 58, 3))
+        NVCV_DETAIL_SET_BITFIELD(NVCV_DETAIL_ENCODE_PACKING(Packing0, 2, 3, 4), 35, 9) | \
+        ((Packing1) == NVCV_PACKING_0 && (NumExtraChannel) > 0 \
+        ? NVCV_DETAIL_SET_BITFIELD(ExtraChannelType, 44, 3) | NVCV_DETAIL_SET_BITFIELD(NumExtraChannel, 47, 3) | NVCV_DETAIL_SET_BITFIELD(NVCV_DETAIL_ENCODE_BPP(ExtraChannelBPP), 50, 3) | NVCV_DETAIL_SET_BITFIELD(ExtraChannelDataKind, 53, 3) \
+        : NVCV_DETAIL_SET_BITFIELD(1, 7, 1) | NVCV_DETAIL_SET_BITFIELD(NVCV_DETAIL_ENCODE_PACKING(Packing1, 1, 3, 3), 44, 7) | NVCV_DETAIL_SET_BITFIELD(NVCV_DETAIL_ENCODE_PACKING(Packing2, 1, 3, 3), 51, 7) | NVCV_DETAIL_SET_BITFIELD(NVCV_DETAIL_ENCODE_PACKING(Packing3, 0, 0, 3), 58, 3) \
+        ) \
+    )
+
 /* clang-format on */
 
-#define NVCV_DETAIL_MAKE_FORMAT(ColorModel, ColorSpecOrRawPattern, Subsampling, MemLayout, DataKind, Swizzle,       \
-                                Packing0, Packing1, Packing2, Packing3)                                             \
-    ((NVCVImageFormat)NVCV_DETAIL_MAKE_FMTTYPE(ColorModel, ColorSpecOrRawPattern, Subsampling, MemLayout, DataKind, \
-                                               Swizzle, Packing0, Packing1, Packing2, Packing3))
+#define NVCV_DETAIL_MAKE_FORMAT(ColorModel, ColorSpecOrRawPattern, Subsampling, MemLayout, DataKind, Swizzle,        \
+                                AlphaType, Packing0, Packing1, Packing2, Packing3, NumExtraChannel, ExtraChannelBPP, \
+                                ExtraChannelDataKind, ExtraChannelType)                                              \
+    ((NVCVImageFormat)NVCV_DETAIL_MAKE_FMTTYPE(                                                                      \
+        ColorModel, ColorSpecOrRawPattern, Subsampling, MemLayout, DataKind, Swizzle, AlphaType, Packing0, Packing1, \
+        Packing2, Packing3, NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType))
 
-#define NVCV_DETAIL_MAKE_FMT(ColorModel, ColorSpec, CSS, MemLayout, DataKind, Swizzle, P0, P1, P2, P3)      \
-    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_##ColorModel, NVCV_COLOR_SPEC_##ColorSpec, NVCV_CSS_##CSS,     \
-                            NVCV_MEM_LAYOUT_##MemLayout, NVCV_DATA_KIND_##DataKind, NVCV_SWIZZLE_##Swizzle, \
-                            NVCV_PACKING_##P0, NVCV_PACKING_##P1, NVCV_PACKING_##P2, NVCV_PACKING_##P3)
+#define NVCV_DETAIL_MAKE_FMT(ColorModel, ColorSpec, CSS, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P2, P3, \
+                             NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType)            \
+    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_##ColorModel, NVCV_COLOR_SPEC_##ColorSpec, NVCV_CSS_##CSS,           \
+                            NVCV_MEM_LAYOUT_##MemLayout, NVCV_DATA_KIND_##DataKind, NVCV_SWIZZLE_##Swizzle,       \
+                            NVCV_ALPHA_##AlphaType, NVCV_PACKING_##P0, NVCV_PACKING_##P1, NVCV_PACKING_##P2,      \
+                            NVCV_PACKING_##P3, NumExtraChannel, ExtraChannelBPP,                                  \
+                            NVCV_DATA_KIND_##ExtraChannelDataKind, NVCV_EXTRA_CHANNEL_##ExtraChannelType)
 
 // MAKE_COLOR ================================================
 
 // Full arg name
 
-#define NVCV_DETAIL_MAKE_COLOR_FORMAT1(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, P0) \
-    NVCV_DETAIL_MAKE_FORMAT(ColorModel, ColorSpec, NVCV_CSS_NONE, MemLayout, DataKind, Swizzle, P0, 0, 0, 0)
+// No extra channel
 
-#define NVCV_DETAIL_MAKE_COLOR_FORMAT2(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, P0, P1) \
-    NVCV_DETAIL_MAKE_FORMAT(ColorModel, ColorSpec, NVCV_CSS_NONE, MemLayout, DataKind, Swizzle, P0, P1, 0, 0)
+#define NVCV_DETAIL_MAKE_COLOR_FORMAT1(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, AlphaType, P0)           \
+    NVCV_DETAIL_MAKE_FORMAT(ColorModel, ColorSpec, NVCV_CSS_NONE, MemLayout, DataKind, Swizzle, AlphaType, P0, 0, 0, \
+                            0, 0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U)
 
-#define NVCV_DETAIL_MAKE_COLOR_FORMAT3(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, P0, P1, P2) \
-    NVCV_DETAIL_MAKE_FORMAT(ColorModel, ColorSpec, NVCV_CSS_NONE, MemLayout, DataKind, Swizzle, P0, P1, P2, 0)
+#define NVCV_DETAIL_MAKE_COLOR_FORMAT2(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, AlphaType, P0, P1)        \
+    NVCV_DETAIL_MAKE_FORMAT(ColorModel, ColorSpec, NVCV_CSS_NONE, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, 0, \
+                            0, 0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U)
 
-#define NVCV_DETAIL_MAKE_COLOR_FORMAT4(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, P0, P1, P2, P3) \
-    NVCV_DETAIL_MAKE_FORMAT(ColorModel, ColorSpec, NVCV_CSS_NONE, MemLayout, DataKind, Swizzle, P0, P1, P2, P3)
+#define NVCV_DETAIL_MAKE_COLOR_FORMAT3(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P2)     \
+    NVCV_DETAIL_MAKE_FORMAT(ColorModel, ColorSpec, NVCV_CSS_NONE, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P2, \
+                            0, 0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U)
 
-#define NVCV_DETAIL_MAKE_COLOR_FORMAT(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, NumPlanes, ...) \
-    NVCV_DETAIL_MAKE_COLOR_FORMAT##NumPlanes(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, __VA_ARGS__)
+#define NVCV_DETAIL_MAKE_COLOR_FORMAT4(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P2, P3) \
+    NVCV_DETAIL_MAKE_FORMAT(ColorModel, ColorSpec, NVCV_CSS_NONE, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P2, \
+                            P3, 0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U)
+
+#define NVCV_DETAIL_MAKE_COLOR_FORMAT(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, AlphaType, NumPlanes, ...) \
+    NVCV_DETAIL_MAKE_COLOR_FORMAT##NumPlanes(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, AlphaType,          \
+                                             __VA_ARGS__)
+
+// Extra Channel
+
+#define NVCV_DETAIL_MAKE_COLOR_EXTRA_CHANNELS_FORMAT1(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, AlphaType, \
+                                                      NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind,         \
+                                                      ExtraChannelType, P0)                                           \
+    NVCV_DETAIL_MAKE_FORMAT(ColorModel, ColorSpec, NVCV_CSS_NONE, MemLayout, DataKind, Swizzle, AlphaType, P0, 0, 0,  \
+                            0, NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_COLOR_EXTRA_CHANNELS_FORMAT2(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, AlphaType, \
+                                                      NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind,         \
+                                                      ExtraChannelType, P0, P1)                                       \
+    NVCV_DETAIL_MAKE_FORMAT(ColorModel, ColorSpec, NVCV_CSS_NONE, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, 0, \
+                            0, NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_COLOR_EXTRA_CHANNELS_FORMAT3(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, AlphaType,  \
+                                                      NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind,          \
+                                                      ExtraChannelType, P0, P1, P2)                                    \
+    NVCV_DETAIL_MAKE_FORMAT(ColorModel, ColorSpec, NVCV_CSS_NONE, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P2, \
+                            0, NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_COLOR_EXTRA_CHANNELS_FORMAT4(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, AlphaType,  \
+                                                      NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind,          \
+                                                      ExtraChannelType, P0, P1, P2, P3)                                \
+    NVCV_DETAIL_MAKE_FORMAT(ColorModel, ColorSpec, NVCV_CSS_NONE, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P2, \
+                            P3, NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_COLOR_EXTRA_CHANNELS_FORMAT(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, AlphaType, \
+                                                     NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind,         \
+                                                     ExtraChannelType, NumPlanes, ...)                               \
+    NVCV_DETAIL_MAKE_COLOR_EXTRA_CHANNELS_FORMAT##NumPlanes(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle,     \
+                                                            AlphaType, NumExtraChannel, ExtraChannelBPP,             \
+                                                            ExtraChannelDataKind, ExtraChannelType, __VA_ARGS__)
 
 // Abbreviated
 
-#define NVCV_DETAIL_MAKE_COLOR_FMT1(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, P0) \
-    NVCV_DETAIL_MAKE_FMT(ColorModel, ColorSpec, NONE, MemLayout, DataKind, Swizzle, P0, 0, 0, 0)
+// No extra channel
 
-#define NVCV_DETAIL_MAKE_COLOR_FMT2(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, P0, P1) \
-    NVCV_DETAIL_MAKE_FMT(ColorModel, ColorSpec, NONE, MemLayout, DataKind, Swizzle, P0, P1, 0, 0)
+#define NVCV_DETAIL_MAKE_COLOR_FMT1(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, AlphaType, P0)           \
+    NVCV_DETAIL_MAKE_FMT(ColorModel, ColorSpec, NONE, MemLayout, DataKind, Swizzle, AlphaType, P0, 0, 0, 0, 0, 0, \
+                         UNSPECIFIED, U)
 
-#define NVCV_DETAIL_MAKE_COLOR_FMT3(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, P0, P1, P3) \
-    NVCV_DETAIL_MAKE_FMT(ColorModel, ColorSpec, NONE, MemLayout, DataKind, Swizzle, P0, P1, P3, 0)
+#define NVCV_DETAIL_MAKE_COLOR_FMT2(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, AlphaType, P0, P1)        \
+    NVCV_DETAIL_MAKE_FMT(ColorModel, ColorSpec, NONE, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, 0, 0, 0, 0, \
+                         UNSPECIFIED, U)
 
-#define NVCV_DETAIL_MAKE_COLOR_FMT4(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, P0, P1, P3, P4) \
-    NVCV_DETAIL_MAKE_FMT(ColorModel, ColorSpec, NONE, MemLayout, DataKind, Swizzle, P0, P1, P3, P4)
+#define NVCV_DETAIL_MAKE_COLOR_FMT3(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P3)     \
+    NVCV_DETAIL_MAKE_FMT(ColorModel, ColorSpec, NONE, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P3, 0, 0, 0, \
+                         UNSPECIFIED, U)
 
-#define NVCV_DETAIL_MAKE_COLOR_FMT(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, NumPlanes, ...) \
-    NVCV_DETAIL_MAKE_COLOR_FMT##NumPlanes(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, __VA_ARGS__)
+#define NVCV_DETAIL_MAKE_COLOR_FMT4(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P3, P4)  \
+    NVCV_DETAIL_MAKE_FMT(ColorModel, ColorSpec, NONE, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P3, P4, 0, 0, \
+                         UNSPECIFIED, U)
+
+#define NVCV_DETAIL_MAKE_COLOR_FMT(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, AlphaType, NumPlanes, ...) \
+    NVCV_DETAIL_MAKE_COLOR_FMT##NumPlanes(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, AlphaType, __VA_ARGS__)
+
+// Extra channel
+
+#define NVCV_DETAIL_MAKE_COLOR_EXTRA_CHANNELS_FMT1(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, AlphaType, \
+                                                   NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind,         \
+                                                   ExtraChannelType, P0)                                           \
+    NVCV_DETAIL_MAKE_FMT(ColorModel, ColorSpec, NONE, MemLayout, DataKind, Swizzle, AlphaType, P0, 0, 0, 0,        \
+                         NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_COLOR_EXTRA_CHANNELS_FMT2(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, AlphaType, \
+                                                   NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind,         \
+                                                   ExtraChannelType, P0, P1)                                       \
+    NVCV_DETAIL_MAKE_FMT(ColorModel, ColorSpec, NONE, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, 0, 0,       \
+                         NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_COLOR_EXTRA_CHANNELS_FMT3(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, AlphaType, \
+                                                   NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind,         \
+                                                   ExtraChannelType, P0, P1, P3)                                   \
+    NVCV_DETAIL_MAKE_FMT(ColorModel, ColorSpec, NONE, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P3, 0,      \
+                         NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_COLOR_EXTRA_CHANNELS_FMT4(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, AlphaType, \
+                                                   NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind,         \
+                                                   ExtraChannelType, P0, P1, P3, P4)                               \
+    NVCV_DETAIL_MAKE_FMT(ColorModel, ColorSpec, NONE, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P3, P4,     \
+                         NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_COLOR_EXTRA_CHANNELS_FMT(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle, AlphaType, \
+                                                  NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind,         \
+                                                  ExtraChannelType, NumPlanes, ...)                               \
+    NVCV_DETAIL_MAKE_COLOR_EXTRA_CHANNELS_FMT##NumPlanes(ColorModel, ColorSpec, MemLayout, DataKind, Swizzle,     \
+                                                         AlphaType, NumExtraChannel, ExtraChannelBPP,             \
+                                                         ExtraChannelDataKind, ExtraChannelType, __VA_ARGS__)
 
 // MAKE_DATA_TYPE ========================================
 
 // Full arg name
 
-#define NVCV_DETAIL_MAKE_DATA_TYPE(DataKind, Packing)                                                       \
-    ((NVCVDataType)NVCV_DETAIL_MAKE_FMTTYPE(                                                                \
-        NVCV_COLOR_MODEL_UNDEFINED, NVCV_COLOR_SPEC_UNDEFINED, NVCV_CSS_NONE, NVCV_MEM_LAYOUT_PL, DataKind, \
-        NVCV_DETAIL_MAKE_SWIZZLE(NVCV_CHANNEL_X,                                                            \
-                                 NVCV_DETAIL_EXTRACT_PACKING_CHANNELS(Packing) >= 2 ? NVCV_CHANNEL_Y : 0,   \
-                                 NVCV_DETAIL_EXTRACT_PACKING_CHANNELS(Packing) >= 3 ? NVCV_CHANNEL_Z : 0,   \
-                                 NVCV_DETAIL_EXTRACT_PACKING_CHANNELS(Packing) >= 4 ? NVCV_CHANNEL_W : 0),  \
-        Packing, 0, 0, 0))
+#define NVCV_DETAIL_MAKE_DATA_TYPE(DataKind, Packing)                                                             \
+    ((NVCVDataType)NVCV_DETAIL_MAKE_FMTTYPE(NVCV_COLOR_MODEL_UNDEFINED, NVCV_COLOR_SPEC_UNDEFINED, NVCV_CSS_NONE, \
+                                            NVCV_MEM_LAYOUT_PL, DataKind,                                         \
+                                            NVCV_DETAIL_EXTRACT_PACKING_CHANNELS(Packing), NVCV_ALPHA_ASSOCIATED, \
+                                            Packing, 0, 0, 0, 0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U))
 
 // Abbreviated
 
@@ -169,123 +266,361 @@
 
 // Full arg name
 
-#define NVCV_DETAIL_MAKE_NONCOLOR_FORMAT1(MemLayout, DataKind, Swizzle, P0)                                            \
-    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_UNDEFINED, NVCV_COLOR_SPEC_UNDEFINED, NVCV_CSS_NONE, MemLayout, DataKind, \
-                            Swizzle, P0, 0, 0, 0)
+// No extra Channel
 
-#define NVCV_DETAIL_MAKE_NONCOLOR_FORMAT2(MemLayout, DataKind, Swizzle, P0, P1)                                        \
+#define NVCV_DETAIL_MAKE_NONCOLOR_FORMAT1(MemLayout, DataKind, Swizzle, AlphaType, P0)                                 \
     NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_UNDEFINED, NVCV_COLOR_SPEC_UNDEFINED, NVCV_CSS_NONE, MemLayout, DataKind, \
-                            Swizzle, P0, P1, 0, 0)
+                            Swizzle, AlphaType, P0, 0, 0, 0, 0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U)
 
-#define NVCV_DETAIL_MAKE_NONCOLOR_FORMAT3(MemLayout, DataKind, Swizzle, P0, P1, P2)                                    \
+#define NVCV_DETAIL_MAKE_NONCOLOR_FORMAT2(MemLayout, DataKind, Swizzle, AlphaType, P0, P1)                             \
     NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_UNDEFINED, NVCV_COLOR_SPEC_UNDEFINED, NVCV_CSS_NONE, MemLayout, DataKind, \
-                            Swizzle, P0, P1, P2, 0)
+                            Swizzle, AlphaType, P0, P1, 0, 0, 0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U)
 
-#define NVCV_DETAIL_MAKE_NONCOLOR_FORMAT4(MemLayout, DataKind, Swizzle, P0, P1, P2, P3)                                \
+#define NVCV_DETAIL_MAKE_NONCOLOR_FORMAT3(MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P2)                         \
     NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_UNDEFINED, NVCV_COLOR_SPEC_UNDEFINED, NVCV_CSS_NONE, MemLayout, DataKind, \
-                            Swizzle, P0, P1, P2, P3)
+                            Swizzle, AlphaType, P0, P1, P2, 0, 0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U)
 
-#define NVCV_DETAIL_MAKE_NONCOLOR_FORMAT(MemLayout, DataKind, Swizzle, NumPlanes, ...) \
-    NVCV_DETAIL_MAKE_NONCOLOR_FORMAT##NumPlanes(MemLayout, DataKind, Swizzle, __VA_ARGS__)
+#define NVCV_DETAIL_MAKE_NONCOLOR_FORMAT4(MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P2, P3)                     \
+    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_UNDEFINED, NVCV_COLOR_SPEC_UNDEFINED, NVCV_CSS_NONE, MemLayout, DataKind, \
+                            Swizzle, AlphaType, P0, P1, P2, P3, 0, 0, NVCV_DATA_KIND_UNSPECIFIED,                      \
+                            NVCV_EXTRA_CHANNEL_U)
+
+#define NVCV_DETAIL_MAKE_NONCOLOR_FORMAT(MemLayout, DataKind, Swizzle, AlphaType, NumPlanes, ...) \
+    NVCV_DETAIL_MAKE_NONCOLOR_FORMAT##NumPlanes(MemLayout, DataKind, Swizzle, AlphaType, __VA_ARGS__)
+
+// Extra Channel
+
+#define NVCV_DETAIL_MAKE_NONCOLOR_EXTRA_CHANNELS_FORMAT1(MemLayout, DataKind, Swizzle, AlphaType, NumExtraChannel,     \
+                                                         ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType, P0)  \
+    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_UNDEFINED, NVCV_COLOR_SPEC_UNDEFINED, NVCV_CSS_NONE, MemLayout, DataKind, \
+                            Swizzle, AlphaType, P0, 0, 0, 0, NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind,   \
+                            ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_NONCOLOR_EXTRA_CHANNELS_FORMAT2(MemLayout, DataKind, Swizzle, AlphaType, NumExtraChannel,     \
+                                                         ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType, P0,  \
+                                                         P1)                                                           \
+    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_UNDEFINED, NVCV_COLOR_SPEC_UNDEFINED, NVCV_CSS_NONE, MemLayout, DataKind, \
+                            Swizzle, AlphaType, P0, P1, 0, 0, NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind,  \
+                            ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_NONCOLOR_EXTRA_CHANNELS_FORMAT3(MemLayout, DataKind, Swizzle, AlphaType, NumExtraChannel,     \
+                                                         ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType, P0,  \
+                                                         P1, P2)                                                       \
+    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_UNDEFINED, NVCV_COLOR_SPEC_UNDEFINED, NVCV_CSS_NONE, MemLayout, DataKind, \
+                            Swizzle, AlphaType, P0, P1, P2, 0, NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind, \
+                            ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_NONCOLOR_EXTRA_CHANNELS_FORMAT4(MemLayout, DataKind, Swizzle, AlphaType, NumExtraChannel,     \
+                                                         ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType, P0,  \
+                                                         P1, P2, P3)                                                   \
+    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_UNDEFINED, NVCV_COLOR_SPEC_UNDEFINED, NVCV_CSS_NONE, MemLayout, DataKind, \
+                            Swizzle, AlphaType, P0, P1, P2, P3, NumExtraChannel, ExtraChannelBPP,                      \
+                            ExtraChannelDataKind, ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_NONCOLOR_EXTRA_CHANNELS_FORMAT(MemLayout, DataKind, Swizzle, AlphaType, NumExtraChannel,      \
+                                                        ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType,       \
+                                                        NumPlanes, ...)                                                \
+    NVCV_DETAIL_MAKE_NONCOLOR_EXTRA_CHANNELS_FORMAT##NumPlanes(MemLayout, DataKind, Swizzle, AlphaType,                \
+                                                               NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind, \
+                                                               ExtraChannelType, __VA_ARGS__)
 
 // Abbreviated
 
-#define NVCV_DETAIL_MAKE_NONCOLOR_FMT1(MemLayout, DataKind, Swizzle, P0) \
-    NVCV_DETAIL_MAKE_FMT(UNDEFINED, UNDEFINED, NONE, MemLayout, DataKind, Swizzle, P0, 0, 0, 0)
+// No extra channels
 
-#define NVCV_DETAIL_MAKE_NONCOLOR_FMT2(MemLayout, DataKind, Swizzle, P0, P1) \
-    NVCV_DETAIL_MAKE_FMT(UNDEFINED, UNDEFINED, NONE, MemLayout, DataKind, Swizzle, P0, P1, 0, 0)
+#define NVCV_DETAIL_MAKE_NONCOLOR_FMT1(MemLayout, DataKind, Swizzle, AlphaType, P0)                              \
+    NVCV_DETAIL_MAKE_FMT(UNDEFINED, UNDEFINED, NONE, MemLayout, DataKind, Swizzle, AlphaType, P0, 0, 0, 0, 0, 0, \
+                         UNSPECIFIED, U)
 
-#define NVCV_DETAIL_MAKE_NONCOLOR_FMT3(MemLayout, DataKind, Swizzle, P0, P1, P2) \
-    NVCV_DETAIL_MAKE_FMT(UNDEFINED, UNDEFINED, NONE, MemLayout, DataKind, Swizzle, P0, P1, P2, 0)
+#define NVCV_DETAIL_MAKE_NONCOLOR_FMT2(MemLayout, DataKind, Swizzle, AlphaType, P0, P1)                           \
+    NVCV_DETAIL_MAKE_FMT(UNDEFINED, UNDEFINED, NONE, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, 0, 0, 0, 0, \
+                         UNSPECIFIED, U)
 
-#define NVCV_DETAIL_MAKE_NONCOLOR_FMT4(MemLayout, DataKind, Swizzle, P0, P1, P2, P3) \
-    NVCV_DETAIL_MAKE_FMT(UNDEFINED, UNDEFINED, NONE, MemLayout, DataKind, Swizzle, P0, P1, P2, P3)
+#define NVCV_DETAIL_MAKE_NONCOLOR_FMT3(MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P2)                        \
+    NVCV_DETAIL_MAKE_FMT(UNDEFINED, UNDEFINED, NONE, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P2, 0, 0, 0, \
+                         UNSPECIFIED, U)
 
-#define NVCV_DETAIL_MAKE_NONCOLOR_FMT(MemLayout, DataKind, Swizzle, NumPlanes, ...) \
-    NVCV_DETAIL_MAKE_NONCOLOR_FMT##NumPlanes(MemLayout, DataKind, Swizzle, __VA_ARGS__)
+#define NVCV_DETAIL_MAKE_NONCOLOR_FMT4(MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P2, P3)                     \
+    NVCV_DETAIL_MAKE_FMT(UNDEFINED, UNDEFINED, NONE, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P2, P3, 0, 0, \
+                         UNSPECIFIED, U)
+
+#define NVCV_DETAIL_MAKE_NONCOLOR_FMT(MemLayout, DataKind, Swizzle, AlphaType, NumPlanes, ...) \
+    NVCV_DETAIL_MAKE_NONCOLOR_FMT##NumPlanes(MemLayout, DataKind, Swizzle, AlphaType, __VA_ARGS__)
+
+// Extra channels
+
+#define NVCV_DETAIL_MAKE_NONCOLOR_EXTRA_CHANNELS_FMT1(MemLayout, DataKind, Swizzle, AlphaType, NumExtraChannel,    \
+                                                      ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType, P0) \
+    NVCV_DETAIL_MAKE_FMT(UNDEFINED, UNDEFINED, NONE, MemLayout, DataKind, Swizzle, AlphaType, P0, 0, 0, 0,         \
+                         NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_NONCOLOR_EXTRA_CHANNELS_FMT2(MemLayout, DataKind, Swizzle, AlphaType, NumExtraChannel,        \
+                                                      ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType, P0, P1) \
+    NVCV_DETAIL_MAKE_FMT(UNDEFINED, UNDEFINED, NONE, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, 0, 0,            \
+                         NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_NONCOLOR_EXTRA_CHANNELS_FMT3(MemLayout, DataKind, Swizzle, AlphaType, NumExtraChannel,        \
+                                                      ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType, P0, P1, \
+                                                      P2)                                                              \
+    NVCV_DETAIL_MAKE_FMT(UNDEFINED, UNDEFINED, NONE, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P2, 0,           \
+                         NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_NONCOLOR_EXTRA_CHANNELS_FMT4(MemLayout, DataKind, Swizzle, AlphaType, NumExtraChannel,        \
+                                                      ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType, P0, P1, \
+                                                      P2, P3)                                                          \
+    NVCV_DETAIL_MAKE_FMT(UNDEFINED, UNDEFINED, NONE, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P2, P3,          \
+                         NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_NONCOLOR_EXTRA_CHANNELS_FMT(MemLayout, DataKind, Swizzle, AlphaType, NumExtraChannel,        \
+                                                     ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType,         \
+                                                     NumPlanes, ...)                                                  \
+    NVCV_DETAIL_MAKE_NONCOLOR_EXTRA_CHANNELS_FMT##NumPlanes(MemLayout, DataKind, Swizzle, AlphaType, NumExtraChannel, \
+                                                            ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType,  \
+                                                            __VA_ARGS__)
 
 // MAKE_RAW =============================================
 
 // Full arg name
 
-#define NVCV_DETAIL_MAKE_RAW_FORMAT1(RawPattern, MemLayout, DataKind, Swizzle, P0) \
-    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_RAW, RawPattern, NVCV_CSS_NONE, MemLayout, DataKind, Swizzle, P0, 0, 0, 0)
+// No extra channel
 
-#define NVCV_DETAIL_MAKE_RAW_FORMAT2(RawPattern, MemLayout, DataKind, Swizzle, P0, P1) \
-    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_RAW, RawPattern, NVCV_CSS_NONE, MemLayout, DataKind, Swizzle, P0, P1, 0, 0)
+#define NVCV_DETAIL_MAKE_RAW_FORMAT1(RawPattern, MemLayout, DataKind, Swizzle, AlphaType, P0)                         \
+    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_RAW, RawPattern, NVCV_CSS_NONE, MemLayout, DataKind, Swizzle, AlphaType, \
+                            P0, 0, 0, 0, 0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U)
 
-#define NVCV_DETAIL_MAKE_RAW_FORMAT3(RawPattern, MemLayout, DataKind, Swizzle, P0, P1, P2)                             \
-    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_RAW, RawPattern, NVCV_CSS_NONE, MemLayout, DataKind, Swizzle, P0, P1, P2, \
-                            0)
+#define NVCV_DETAIL_MAKE_RAW_FORMAT2(RawPattern, MemLayout, DataKind, Swizzle, AlphaType, P0, P1)                     \
+    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_RAW, RawPattern, NVCV_CSS_NONE, MemLayout, DataKind, Swizzle, AlphaType, \
+                            P0, P1, 0, 0, 0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U)
 
-#define NVCV_DETAIL_MAKE_RAW_FORMAT4(RawPattern, MemLayout, DataKind, Swizzle, P0, P1, P2, P3)                         \
-    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_RAW, RawPattern, NVCV_CSS_NONE, MemLayout, DataKind, Swizzle, P0, P1, P2, \
-                            P3)
+#define NVCV_DETAIL_MAKE_RAW_FORMAT3(RawPattern, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P2)                 \
+    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_RAW, RawPattern, NVCV_CSS_NONE, MemLayout, DataKind, Swizzle, AlphaType, \
+                            P0, P1, P2, 0, 0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U)
 
-#define NVCV_DETAIL_MAKE_RAW_FORMAT(RawPattern, MemLayout, DataKind, Swizzle, NumPlanes, ...) \
-    NVCV_DETAIL_MAKE_RAW_FORMAT##NumPlanes(RawPattern, MemLayout, DataKind, Swizzle, __VA_ARGS__)
+#define NVCV_DETAIL_MAKE_RAW_FORMAT4(RawPattern, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P2, P3)             \
+    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_RAW, RawPattern, NVCV_CSS_NONE, MemLayout, DataKind, Swizzle, AlphaType, \
+                            P0, P1, P2, P3, 0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U)
+
+#define NVCV_DETAIL_MAKE_RAW_FORMAT(RawPattern, MemLayout, DataKind, Swizzle, AlphaType, NumPlanes, ...) \
+    NVCV_DETAIL_MAKE_RAW_FORMAT##NumPlanes(RawPattern, MemLayout, DataKind, Swizzle, AlphaType, __VA_ARGS__)
+
+// Extra channels
+
+#define NVCV_DETAIL_MAKE_RAW_EXTRA_CHANNELS_FORMAT1(RawPattern, MemLayout, DataKind, Swizzle, AlphaType,              \
+                                                    NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind,           \
+                                                    ExtraChannelType, P0)                                             \
+    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_RAW, RawPattern, NVCV_CSS_NONE, MemLayout, DataKind, Swizzle, AlphaType, \
+                            P0, 0, 0, 0, NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_RAW_EXTRA_CHANNELS_FORMAT2(RawPattern, MemLayout, DataKind, Swizzle, AlphaType,              \
+                                                    NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind,           \
+                                                    ExtraChannelType, P0, P1)                                         \
+    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_RAW, RawPattern, NVCV_CSS_NONE, MemLayout, DataKind, Swizzle, AlphaType, \
+                            P0, P1, 0, 0, NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_RAW_EXTRA_CHANNELS_FORMAT3(RawPattern, MemLayout, DataKind, Swizzle, AlphaType,              \
+                                                    NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind,           \
+                                                    ExtraChannelType, P0, P1, P2)                                     \
+    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_RAW, RawPattern, NVCV_CSS_NONE, MemLayout, DataKind, Swizzle, AlphaType, \
+                            P0, P1, P2, 0, NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_RAW_EXTRA_CHANNELS_FORMAT4(RawPattern, MemLayout, DataKind, Swizzle, AlphaType,              \
+                                                    NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind,           \
+                                                    ExtraChannelType, P0, P1, P2, P3)                                 \
+    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_RAW, RawPattern, NVCV_CSS_NONE, MemLayout, DataKind, Swizzle, AlphaType, \
+                            P0, P1, P2, P3, NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_RAW_EXTRA_CHANNELS_FORMAT(RawPattern, MemLayout, DataKind, Swizzle, AlphaType,           \
+                                                   NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind,        \
+                                                   ExtraChannelType, NumPlanes, ...)                              \
+    NVCV_DETAIL_MAKE_RAW_EXTRA_CHANNELS_FORMAT##NumPlanes(RawPattern, MemLayout, DataKind, Swizzle, AlphaType,    \
+                                                          NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind, \
+                                                          ExtraChannelType, __VA_ARGS__)
 
 // Abbreviated
 
-#define NVCV_DETAIL_MAKE_RAW_FMT1(RawPattern, MemLayout, DataKind, Swizzle, P0)                                 \
-    NVCV_DETAIL_MAKE_RAW_FORMAT1(NVCV_RAW_##RawPattern, NVCV_MEM_LAYOUT_##MemLayout, NVCV_DATA_KIND_##DataKind, \
-                                 NVCV_SWIZZLE_##Swizzle, NVCV_PACKING_##P0)
+// No extra channels
 
-#define NVCV_DETAIL_MAKE_RAW_FMT2(RawPattern, MemLayout, DataKind, Swizzle, P0, P1)                             \
-    NVCV_DETAIL_MAKE_RAW_FORMAT2(NVCV_RAW_##RawPattern, NVCV_MEM_LAYOUT_##MemLayout, NVCV_DATA_KIND_##DataKind, \
-                                 NVCV_SWIZZLE_##Swizzle, NVCV_PACKING_##P0, NVCV_PACKING_##P1)
+#define NVCV_DETAIL_MAKE_RAW_FMT1(RawPattern, MemLayout, DataKind, Swizzle, AlphaType, P0)                             \
+    NVCV_DETAIL_MAKE_RAW_FORMAT1(NVCV_RAW_##RawPattern, NVCV_MEM_LAYOUT_##MemLayout, NVCV_DATA_KIND_##DataKind,        \
+                                 NVCV_SWIZZLE_##Swizzle, NVCV_ALPHA_##AlphaType, NVCV_PACKING_##P0, 0, 0, UNSPECIFIED, \
+                                 U)
 
-#define NVCV_DETAIL_MAKE_RAW_FMT3(RawPattern, MemLayout, DataKind, Swizzle, P0, P1, P2)                         \
-    NVCV_DETAIL_MAKE_RAW_FORMAT3(NVCV_RAW_##RawPattern, NVCV_MEM_LAYOUT_##MemLayout, NVCV_DATA_KIND_##DataKind, \
-                                 NVCV_SWIZZLE_##Swizzle, NVCV_PACKING_##P0, NVCV_PACKING_##P1, NVCV_PACKING_##P2)
+#define NVCV_DETAIL_MAKE_RAW_FMT2(RawPattern, MemLayout, DataKind, Swizzle, AlphaType, P0, P1)                         \
+    NVCV_DETAIL_MAKE_RAW_FORMAT2(NVCV_RAW_##RawPattern, NVCV_MEM_LAYOUT_##MemLayout, NVCV_DATA_KIND_##DataKind,        \
+                                 NVCV_SWIZZLE_##Swizzle, NVCV_ALPHA_##AlphaType, NVCV_PACKING_##P0, NVCV_PACKING_##P1, \
+                                 0, 0, UNSPECIFIED, U)
 
-#define NVCV_DETAIL_MAKE_RAW_FMT4(RawPattern, MemLayout, DataKind, Swizzle, P0, P1, P2, P3)                       \
-    NVCV_DETAIL_MAKE_RAW_FORMAT4(NVCV_RAW_##RawPattern, NVCV_MEM_LAYOUT_##MemLayout, NVCV_DATA_KIND_##DataKind,   \
-                                 NVCV_SWIZZLE_##Swizzle, NVCV_PACKING_##P0, NVCV_PACKING_##P1, NVCV_PACKING_##P2, \
-                                 NVCV_PACKING_##P3)
+#define NVCV_DETAIL_MAKE_RAW_FMT3(RawPattern, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P2)                     \
+    NVCV_DETAIL_MAKE_RAW_FORMAT3(NVCV_RAW_##RawPattern, NVCV_MEM_LAYOUT_##MemLayout, NVCV_DATA_KIND_##DataKind,        \
+                                 NVCV_SWIZZLE_##Swizzle, NVCV_ALPHA_##AlphaType, NVCV_PACKING_##P0, NVCV_PACKING_##P1, \
+                                 NVCV_PACKING_##P2, 0, 0, UNSPECIFIED, U)
 
-#define NVCV_DETAIL_MAKE_RAW_FMT(RawPattern, MemLayout, DataKind, Swizzle, NumPlanes, ...) \
-    NVCV_DETAIL_MAKE_RAW_FMT##NumPlanes(RawPattern, MemLayout, DataKind, Swizzle, __VA_ARGS__)
+#define NVCV_DETAIL_MAKE_RAW_FMT4(RawPattern, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P2, P3)                 \
+    NVCV_DETAIL_MAKE_RAW_FORMAT4(NVCV_RAW_##RawPattern, NVCV_MEM_LAYOUT_##MemLayout, NVCV_DATA_KIND_##DataKind,        \
+                                 NVCV_SWIZZLE_##Swizzle, NVCV_ALPHA_##AlphaType, NVCV_PACKING_##P0, NVCV_PACKING_##P1, \
+                                 NVCV_PACKING_##P2, NVCV_PACKING_##P3, 0, 0, UNSPECIFIED, U)
+
+#define NVCV_DETAIL_MAKE_RAW_FMT(RawPattern, MemLayout, DataKind, Swizzle, AlphaType, NumPlanes, ...) \
+    NVCV_DETAIL_MAKE_RAW_FMT##NumPlanes(RawPattern, MemLayout, DataKind, Swizzle, AlphaType, __VA_ARGS__)
+
+// Extra channels
+
+#define NVCV_DETAIL_MAKE_RAW_EXTRA_CHANNELS_FMT1(RawPattern, MemLayout, DataKind, Swizzle, AlphaType, NumExtraChannel, \
+                                                 ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType, P0)          \
+    NVCV_DETAIL_MAKE_RAW_EXTRA_CHANNELS_FORMAT1(                                                                       \
+        NVCV_RAW_##RawPattern, NVCV_MEM_LAYOUT_##MemLayout, NVCV_DATA_KIND_##DataKind, NVCV_SWIZZLE_##Swizzle,         \
+        NVCV_ALPHA_##AlphaType, NVCV_PACKING_##P0, NumExtraChannel, ExtraChannelBPP,                                   \
+        NVCV_DATAKIND_##ExtraChannelDataKind, NVCV_EXTRA_CHANNEL_##ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_RAW_EXTRA_CHANNELS_FMT2(RawPattern, MemLayout, DataKind, Swizzle, AlphaType, NumExtraChannel, \
+                                                 ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType, P0, P1)      \
+    NVCV_DETAIL_MAKE_RAW_EXTRA_CHANNELS_FORMAT2(                                                                       \
+        NVCV_RAW_##RawPattern, NVCV_MEM_LAYOUT_##MemLayout, NVCV_DATA_KIND_##DataKind, NVCV_SWIZZLE_##Swizzle,         \
+        NVCV_ALPHA_##AlphaType, NVCV_PACKING_##P0, NVCV_PACKING_##P1, NumExtraChannel, ExtraChannelBPP,                \
+        NVCV_DATAKIND_##ExtraChannelDataKind, NVCV_EXTRA_CHANNEL_##ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_RAW_EXTRA_CHANNELS_FMT3(RawPattern, MemLayout, DataKind, Swizzle, AlphaType, NumExtraChannel, \
+                                                 ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType, P0, P1, P2)  \
+    NVCV_DETAIL_MAKE_RAW_EXTRA_CHANNELS_FORMAT3(                                                                       \
+        NVCV_RAW_##RawPattern, NVCV_MEM_LAYOUT_##MemLayout, NVCV_DATA_KIND_##DataKind, NVCV_SWIZZLE_##Swizzle,         \
+        NVCV_ALPHA_##AlphaType, NVCV_PACKING_##P0, NVCV_PACKING_##P1, NVCV_PACKING_##P2, NumExtraChannel,              \
+        ExtraChannelBPP, NVCV_DATAKIND_##ExtraChannelDataKind, NVCV_EXTRA_CHANNEL_##ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_RAW_EXTRA_CHANNELS_FMT4(RawPattern, MemLayout, DataKind, Swizzle, AlphaType, NumExtraChannel, \
+                                                 ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType, P0, P1, P2,  \
+                                                 P3)                                                                   \
+    NVCV_DETAIL_MAKE_RAW_EXTRA_CHANNELS_FORMAT4(                                                                       \
+        NVCV_RAW_##RawPattern, NVCV_MEM_LAYOUT_##MemLayout, NVCV_DATA_KIND_##DataKind, NVCV_SWIZZLE_##Swizzle,         \
+        NVCV_ALPHA_##AlphaType, NVCV_PACKING_##P0, NVCV_PACKING_##P1, NVCV_PACKING_##P2, NVCV_PACKING_##P3,            \
+        NumExtraChannel, ExtraChannelBPP, NVCV_DATAKIND_##ExtraChannelDataKind, NVCV_EXTRA_CHANNEL_##ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_RAW_EXTRA_CHANNELS_FMT(RawPattern, MemLayout, DataKind, Swizzle, AlphaType, NumExtraChannel, \
+                                                ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType, NumPlanes,   \
+                                                ...)                                                                  \
+    NVCV_DETAIL_MAKE_RAW_EXTRA_CHANNELS_FMT##NumPlanes(RawPattern, MemLayout, DataKind, Swizzle, AlphaType,           \
+                                                       NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind,        \
+                                                       ExtraChannelType, __VA_ARGS__)
 
 // MAKE_YCbCr ===============================================
 
 // Full arg name
 
-#define NVCV_DETAIL_MAKE_YCbCr_FORMAT1(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, P0)                   \
-    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_##YCbCr, ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, P0, 0, \
-                            0, 0)
+// No extra channels
 
-#define NVCV_DETAIL_MAKE_YCbCr_FORMAT2(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, P0, P1)                \
-    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_##YCbCr, ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, P0, P1, \
-                            0, 0)
+#define NVCV_DETAIL_MAKE_YCbCr_FORMAT1(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, AlphaType, P0) \
+    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_##YCbCr, ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, \
+                            AlphaType, P0, 0, 0, 0, 0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U)
 
-#define NVCV_DETAIL_MAKE_YCbCr_FORMAT3(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, P0, P1, P2)            \
-    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_##YCbCr, ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, P0, P1, \
-                            P2, 0)
+#define NVCV_DETAIL_MAKE_YCbCr_FORMAT2(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, AlphaType, P0, P1) \
+    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_##YCbCr, ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle,     \
+                            AlphaType, P0, P1, 0, 0, 0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U)
 
-#define NVCV_DETAIL_MAKE_YCbCr_FORMAT4(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, P0, P1, P2, P3)        \
-    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_##YCbCr, ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, P0, P1, \
-                            P2, P3)
+#define NVCV_DETAIL_MAKE_YCbCr_FORMAT3(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P2) \
+    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_##YCbCr, ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle,         \
+                            AlphaType, P0, P1, P2, 0, 0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U)
 
-#define NVCV_DETAIL_MAKE_YCbCr_FORMAT(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, NumPlanes, ...) \
-    NVCV_DETAIL_MAKE_YCbCr_FORMAT##NumPlanes(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, __VA_ARGS__)
+#define NVCV_DETAIL_MAKE_YCbCr_FORMAT4(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P2, \
+                                       P3)                                                                            \
+    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_##YCbCr, ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle,         \
+                            AlphaType, P0, P1, P2, P3, 0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U)
+
+#define NVCV_DETAIL_MAKE_YCbCr_FORMAT(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, AlphaType, Numplanes, \
+                                      ...)                                                                          \
+    NVCV_DETAIL_MAKE_YCbCr_FORMAT##Numplanes(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, AlphaType,     \
+                                             __VA_ARGS__)
+
+// Extra channels
+
+#define NVCV_DETAIL_MAKE_YCbCr_EXTRA_CHANNELS_FORMAT1(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, \
+                                                      AlphaType, NumExtraChannel, ExtraChannelBPP,            \
+                                                      ExtraChannelDataKind, ExtraChannelType, P0)             \
+    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_##YCbCr, ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, \
+                            AlphaType, P0, 0, 0, 0, NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind,   \
+                            ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_YCbCr_EXTRA_CHANNELS_FORMAT2(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, \
+                                                      AlphaType, NumExtraChannel, ExtraChannelBPP,            \
+                                                      ExtraChannelDataKind, ExtraChannelType, P0, P1)         \
+    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_##YCbCr, ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, \
+                            AlphaType, P0, P1, 0, 0, NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind,  \
+                            ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_YCbCr_EXTRA_CHANNELS_FORMAT3(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, \
+                                                      AlphaType, NumExtraChannel, ExtraChannelBPP,            \
+                                                      ExtraChannelDataKind, ExtraChannelType, P0, P1, P2)     \
+    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_##YCbCr, ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, \
+                            AlphaType, P0, P1, P2, 0, NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind, \
+                            ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_YCbCr_EXTRA_CHANNELS_FORMAT4(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle,  \
+                                                      AlphaType, NumExtraChannel, ExtraChannelBPP,             \
+                                                      ExtraChannelDataKind, ExtraChannelType, P0, P1, P2, P3)  \
+    NVCV_DETAIL_MAKE_FORMAT(NVCV_COLOR_MODEL_##YCbCr, ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle,  \
+                            AlphaType, P0, P1, P2, P3, NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind, \
+                            ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_YCbCr_EXTRA_CHANNELS_FORMAT(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle,        \
+                                                     AlphaType, NumExtraChannel, ExtraChannelBPP,                   \
+                                                     ExtraChannelDataKind, ExtraChannelType, Numplanes, ...)        \
+    NVCV_DETAIL_MAKE_YCbCr_EXTRA_CHANNELS_FORMAT##Numplanes(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, \
+                                                            AlphaType, NumExtraChannel, ExtraChannelBPP,            \
+                                                            ExtraChannelDataKind, ExtraChannelType, __VA_ARGS__)
 
 // Abbreviated
 
-#define NVCV_DETAIL_MAKE_YCbCr_FMT1(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, P0) \
-    NVCV_DETAIL_MAKE_FMT(YCbCr, ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, P0, 0, 0, 0)
+// No extra channels
 
-#define NVCV_DETAIL_MAKE_YCbCr_FMT2(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, P0, P1) \
-    NVCV_DETAIL_MAKE_FMT(YCbCr, ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, P0, P1, 0, 0)
+#define NVCV_DETAIL_MAKE_YCbCr_FMT1(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, AlphaType, P0)            \
+    NVCV_DETAIL_MAKE_FMT(YCbCr, ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, AlphaType, P0, 0, 0, 0, 0, 0, \
+                         UNSPECIFIED, U)
 
-#define NVCV_DETAIL_MAKE_YCbCr_FMT3(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, P0, P1, P2) \
-    NVCV_DETAIL_MAKE_FMT(YCbCr, ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, P0, P1, P2, 0)
+#define NVCV_DETAIL_MAKE_YCbCr_FMT2(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, AlphaType, P0, P1)         \
+    NVCV_DETAIL_MAKE_FMT(YCbCr, ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, 0, 0, 0, 0, \
+                         UNSPECIFIED, U)
 
-#define NVCV_DETAIL_MAKE_YCbCr_FMT4(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, P0, P1, P2, P3) \
-    NVCV_DETAIL_MAKE_FMT(YCbCr, ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, P0, P1, P2, P3)
+#define NVCV_DETAIL_MAKE_YCbCr_FMT3(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P2)   \
+    NVCV_DETAIL_MAKE_FMT(YCbCr, ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P2, 0, 0, \
+                         0, UNSPECIFIED, U)
 
-#define NVCV_DETAIL_MAKE_YCbCr_FMT(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, NumPlanes, ...) \
-    NVCV_DETAIL_MAKE_YCbCr_FMT##NumPlanes(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, __VA_ARGS__)
+#define NVCV_DETAIL_MAKE_YCbCr_FMT4(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P2, P3) \
+    NVCV_DETAIL_MAKE_FMT(YCbCr, ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P2, P3, 0,  \
+                         0, UNSPECIFIED, U)
+
+#define NVCV_DETAIL_MAKE_YCbCr_FMT(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, AlphaType, Numplanes, ...) \
+    NVCV_DETAIL_MAKE_YCbCr_FMT##NumPlanes(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, AlphaType,          \
+                                          __VA_ARGS__)
+
+// Extra channels
+
+#define NVCV_DETAIL_MAKE_YCbCr_EXTRA_CHANNELS_FMT1(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, AlphaType, \
+                                                   NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind,            \
+                                                   ExtraChannelType, P0)                                              \
+    NVCV_DETAIL_MAKE_FMT(YCbCr, ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, AlphaType, P0, 0, 0, 0,       \
+                         NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_YCbCr_EXTRA_CHANNELS_FMT2(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, AlphaType, \
+                                                   NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind,            \
+                                                   ExtraChannelType, P0, P1)                                          \
+    NVCV_DETAIL_MAKE_FMT(YCbCr, ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, 0, 0,      \
+                         NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_YCbCr_EXTRA_CHANNELS_FMT3(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, AlphaType, \
+                                                   NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind,            \
+                                                   ExtraChannelType, P0, P1, P2)                                      \
+    NVCV_DETAIL_MAKE_FMT(YCbCr, ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P2, 0,     \
+                         NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_YCbCr_EXTRA_CHANNELS_FMT4(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, AlphaType, \
+                                                   NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind,            \
+                                                   ExtraChannelType, P0, P1, P2, P3)                                  \
+    NVCV_DETAIL_MAKE_FMT(YCbCr, ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P2, P3,    \
+                         NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind, ExtraChannelType)
+
+#define NVCV_DETAIL_MAKE_YCbCr_EXTRA_CHANNELS_FMT(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle, AlphaType, \
+                                                  NumExtraChannel, ExtraChannelBPP, ExtraChannelDataKind,            \
+                                                  ExtraChannelType, Numplanes, ...)                                  \
+    NVCV_DETAIL_MAKE_YCbCr_EXTRA_CHANNELS_FMT##NumPlanes(ColorSpec, ChromaSubsamp, MemLayout, DataKind, Swizzle,     \
+                                                         AlphaType, NumExtraChannel, ExtraChannelBPP,                \
+                                                         ExtraChannelDataKind, ExtraChannelType, __VA_ARGS__)
 
 #endif /* NVCV_DETAIL_FORMATUTILS_H */

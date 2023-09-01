@@ -138,8 +138,13 @@ void ExportOpWarpPerspective(py::module &m)
 {
     using namespace pybind11::literals;
 
+    py::options options;
+    options.disable_function_signatures();
+
     m.def("warp_perspective", &WarpPerspective, "src"_a, "xform"_a, "flags"_a, py::kw_only(), "border_mode"_a,
           "border_value"_a, "stream"_a = nullptr, R"pbdoc(
+
+        cvcuda.warp_perspective(src: nvcv.Tensor, xform: nvcv.Tensor, flags: int, border_mode:NVCVBorderType, border_value:pyarray,stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the Warp Perspective operation on the given cuda stream.
 
@@ -167,6 +172,8 @@ void ExportOpWarpPerspective(py::module &m)
 
     m.def("warp_perspective_into", &WarpPerspectiveInto, "dst"_a, "src"_a, "xform"_a, "flags"_a, py::kw_only(),
           "border_mode"_a, "border_value"_a, "stream"_a = nullptr, R"pbdoc(
+
+        cvcuda.warp_perspective_into(dst: nvcv.Tensor,src: nvcv.Tensor, xform: nvcv.Tensor, flags: int, border_mode:NVCVBorderType, border_value:pyarray,stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Warp Perspective operation on the given cuda stream.
 
@@ -196,6 +203,8 @@ void ExportOpWarpPerspective(py::module &m)
     m.def("warp_perspective", &WarpPerspectiveVarShape, "src"_a, "xform"_a, "flags"_a, py::kw_only(), "border_mode"_a,
           "border_value"_a, "stream"_a = nullptr, R"pbdoc(
 
+        cvcuda.warp_perspective(src: nvcv.ImageBatchVarShape, xform: nvcv.Tensor, flags: int, border_mode:NVCVBorderType, border_value:pyarray,stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+
         Executes the Warp Perspective operation on the given cuda stream.
 
         See also:
@@ -222,6 +231,8 @@ void ExportOpWarpPerspective(py::module &m)
 
     m.def("warp_perspective_into", &WarpPerspectiveVarShapeInto, "dst"_a, "src"_a, "xform"_a, "flags"_a, py::kw_only(),
           "border_mode"_a, "border_value"_a, "stream"_a = nullptr, R"pbdoc(
+
+        cvcuda.warp_perspective_into(dst: nvcv.ImageBatchVarShape,src: nvcv.ImageBatchVarShape, xform: nvcv.Tensor, flags: int, border_mode:NVCVBorderType, border_value:pyarray,stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Warp Perspective operation on the given cuda stream.
 

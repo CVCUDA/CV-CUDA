@@ -90,8 +90,9 @@ void MorphFilter2DCaller(const TensorDataStridedCuda &inData, const TensorDataSt
                          NVCVMorphologyType morph_type, Size2D kernelSize, int2 kernelAnchor, cudaStream_t stream)
 {
     using BT = cuda::BaseType<D>;
-    BT val   = (morph_type == NVCVMorphologyType::NVCV_DILATE) ? std::numeric_limits<BT>::min()
-                                                               : std::numeric_limits<BT>::max();
+
+    BT val = (morph_type == NVCVMorphologyType::NVCV_DILATE) ? std::numeric_limits<BT>::min()
+                                                             : std::numeric_limits<BT>::max();
 
     auto src = cuda::CreateBorderWrapNHW<const D, B>(inData, cuda::SetAll<D>(val));
     auto dst = cuda::CreateTensorWrapNHW<D>(outData);
@@ -150,7 +151,7 @@ void MorphFilter2D(const TensorDataStridedCuda &inData, const TensorDataStridedC
 }
 
 ErrorCode Morphology::infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
-                            NVCVMorphologyType morph_type, Size2D mask_size, int2 anchor, int iteration,
+                            NVCVMorphologyType morph_type, Size2D mask_size, int2 anchor, bool noop,
                             const NVCVBorderType borderMode, cudaStream_t stream)
 {
     DataFormat input_format  = GetLegacyDataFormat(inData.layout());
@@ -197,6 +198,12 @@ ErrorCode Morphology::infer(const TensorDataStridedCuda &inData, const TensorDat
         LOG_ERROR("Invalid borderMode " << borderMode);
         return ErrorCode::INVALID_PARAMETER;
     }
+    if (!(morph_type == NVCVMorphologyType::NVCV_ERODE || morph_type == NVCVMorphologyType::NVCV_DILATE))
+    {
+        LOG_ERROR("Invalid morph_type " << morph_type);
+        return ErrorCode::INVALID_PARAMETER;
+    }
+
     Size2D mask_size_ = mask_size;
     if (mask_size.w == -1 || mask_size.h == -1)
     {
@@ -207,7 +214,7 @@ ErrorCode Morphology::infer(const TensorDataStridedCuda &inData, const TensorDat
     int2 anchor_ = anchor;
     normalizeAnchor(anchor_, mask_size_);
 
-    if (iteration == 0 || mask_size_.w * mask_size_.h == 1)
+    if (noop == true || mask_size_.w * mask_size_.h == 1)
     {
         // just a unity copy here
         for (uint32_t i = 0; i < inAccess->numSamples(); ++i)
@@ -225,10 +232,6 @@ ErrorCode Morphology::infer(const TensorDataStridedCuda &inData, const TensorDat
         }
         return SUCCESS;
     }
-
-    mask_size_.w = mask_size_.w + (iteration - 1) * (mask_size_.w - 1);
-    mask_size_.h = mask_size_.h + (iteration - 1) * (mask_size_.h - 1);
-    anchor_      = anchor_ * iteration;
 
     typedef void (*filter2D_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                                NVCVMorphologyType morph_type, Size2D kernelSize, int2 kernelAnchor,

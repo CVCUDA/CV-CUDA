@@ -91,7 +91,7 @@ void PreProcess(const nvcv::Tensor &inTensor, uint32_t batchSize, int inputLayer
     nvcv::TensorDataStridedCuda scaleIn(nvcv::TensorShape{reqsScale.shape, reqsScale.rank, reqsScale.layout},
                                         nvcv::DataType{reqsScale.dtype}, bufScale);
 
-    nvcv::Tensor scaleTensor = TensorWrapData(scaleIn);
+    nvcv::Tensor stddevTensor = TensorWrapData(scaleIn);
 
     // Create a Tensor to store the mean values for R,G,B
     nvcv::TensorDataStridedCuda::Buffer bufBase;
@@ -102,25 +102,25 @@ void PreProcess(const nvcv::Tensor &inTensor, uint32_t batchSize, int inputLayer
     nvcv::TensorDataStridedCuda baseIn(nvcv::TensorShape{reqsBase.shape, reqsBase.rank, reqsBase.layout},
                                        nvcv::DataType{reqsBase.dtype}, bufBase);
 
-    nvcv::Tensor baseTensor = TensorWrapData(baseIn);
+    nvcv::Tensor meanTensor = TensorWrapData(baseIn);
 
     // Copy the values from Host to Device
     // The R,G,B scale and mean will be applied to all the pixels across the batch of input images
-    auto  baseData  = scaleTensor.exportData<nvcv::TensorDataStridedCuda>();
-    auto  scaleData = baseTensor.exportData<nvcv::TensorDataStridedCuda>();
-    float scale[3]  = {0.229, 0.224, 0.225};
-    float base[3]   = {0.485f, 0.456f, 0.406f};
+    float stddev[3]  = {0.229, 0.224, 0.225};
+    float mean[3]    = {0.485f, 0.456f, 0.406f};
+    auto  meanData   = meanTensor.exportData<nvcv::TensorDataStridedCuda>();
+    auto  stddevData = stddevTensor.exportData<nvcv::TensorDataStridedCuda>();
 
     // Flag to set the scale value as standard deviation i.e use 1/scale
     uint32_t flags = CVCUDA_NORMALIZE_SCALE_IS_STDDEV;
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(scaleData->basePtr(), scale, 3 * sizeof(float), cudaMemcpyHostToDevice, stream));
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(baseData->basePtr(), base, 3 * sizeof(float), cudaMemcpyHostToDevice, stream));
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(stddevData->basePtr(), stddev, 3 * sizeof(float), cudaMemcpyHostToDevice, stream));
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(meanData->basePtr(), mean, 3 * sizeof(float), cudaMemcpyHostToDevice, stream));
 
     nvcv::Tensor normTensor(batchSize, {inputLayerWidth, inputLayerHeight}, nvcv::FMT_RGBf32);
 
     // Normalize
     cvcuda::Normalize normOp;
-    normOp(stream, floatTensor, baseTensor, scaleTensor, normTensor, 1.0f, 0.0f, 0.0f, flags);
+    normOp(stream, floatTensor, meanTensor, stddevTensor, normTensor, 1.0f, 0.0f, 0.0f, flags);
 
     // Convert the data layout from interleaved to planar
     cvcuda::Reformat reformatOp;

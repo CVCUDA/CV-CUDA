@@ -34,6 +34,75 @@ namespace cuda = nvcv::cuda;
 
 using uchar = unsigned char;
 
+static void hostMorphDilateErode(std::vector<uint8_t> &hDst, const long3 &dstStrides, const std::vector<uint8_t> &hSrc,
+                                 const long3 &srcStrides, const int3 &shape, const nvcv::ImageFormat &format,
+                                 const nvcv::Size2D &kernelSize, int2 &kernelAnchor, int iterations,
+                                 const NVCVBorderType &borderMode, NVCVMorphologyType type)
+{
+    std::vector<uint8_t> tmpDst;
+    tmpDst.reserve(hSrc.size());
+    for (int i = 0; i < iterations; i++)
+    {
+        if (i == 0)
+        {
+            test::Morph(hDst, dstStrides, hSrc, srcStrides, shape, format, kernelSize, kernelAnchor, borderMode, type);
+        }
+        else
+        {
+            tmpDst = hDst;
+            test::Morph(hDst, dstStrides, tmpDst, dstStrides, shape, format, kernelSize, kernelAnchor, borderMode,
+                        type);
+        }
+    }
+}
+
+static void hostMorph(std::vector<uint8_t> &hDst, const long3 &dstStrides, const std::vector<uint8_t> &hSrc,
+                      const long3 &srcStrides, const int3 &shape, const nvcv::ImageFormat &format,
+                      const nvcv::Size2D &kernelSize, int2 &kernelAnchor, int iterations,
+                      const NVCVBorderType &borderMode, NVCVMorphologyType type)
+{
+    switch (type)
+    {
+    case NVCVMorphologyType::NVCV_DILATE:
+    case NVCVMorphologyType::NVCV_ERODE:
+    {
+        hostMorphDilateErode(hDst, dstStrides, hSrc, srcStrides, shape, format, kernelSize, kernelAnchor, iterations,
+                             borderMode, type);
+        break;
+    }
+    case NVCVMorphologyType::NVCV_OPEN:
+    case NVCVMorphologyType::NVCV_CLOSE:
+    {
+        NVCVMorphologyType   first  = (type == NVCVMorphologyType::NVCV_OPEN ? NVCVMorphologyType::NVCV_ERODE
+                                                                             : NVCVMorphologyType::NVCV_DILATE);
+        NVCVMorphologyType   second = (type == NVCVMorphologyType::NVCV_OPEN ? NVCVMorphologyType::NVCV_DILATE
+                                                                             : NVCVMorphologyType::NVCV_ERODE);
+        std::vector<uint8_t> tmpDst;
+        tmpDst.reserve(hSrc.size());
+        for (int i = 0; i < iterations; i++)
+        {
+            if (i == 0)
+            {
+                test::Morph(tmpDst, dstStrides, hSrc, srcStrides, shape, format, kernelSize, kernelAnchor, borderMode,
+                            first);
+            }
+            else
+            {
+                test::Morph(tmpDst, dstStrides, hDst, srcStrides, shape, format, kernelSize, kernelAnchor, borderMode,
+                            first);
+            }
+            test::Morph(hDst, dstStrides, tmpDst, srcStrides, shape, format, kernelSize, kernelAnchor, borderMode,
+                        second);
+        }
+        break;
+    }
+
+    default:
+        throw std::runtime_error("Unsupported morph type");
+        break;
+    }
+}
+
 // checks pixels only in the logical image region.
 template<class T>
 static bool imageRegionValuesSame(nvcv::util::TensorImageData &a, nvcv::util::TensorImageData &b)
@@ -82,17 +151,18 @@ bool MatchTensorToTestVector(const uchar checkVals[rows][cols], int width, int h
 
 template<class T, size_t rows, size_t cols>
 void checkTestVectors(cudaStream_t &stream, nvcv::Tensor &inTensor, nvcv::Tensor &outTensor,
-                      const uchar input[rows][cols], const uchar output[rows][cols], int width, int height,
-                      const nvcv::Size2D &maskSize, const int2 &anchor, int iteration, NVCVMorphologyType type,
-                      NVCVBorderType borderMode, int batches)
+                      nvcv::OptionalTensorConstRef workspace, const uchar input[rows][cols],
+                      const uchar output[rows][cols], int width, int height, const nvcv::Size2D &maskSize,
+                      const int2 &anchor, int iteration, NVCVMorphologyType type, NVCVBorderType borderMode,
+                      int batches)
 {
     for (int i = 0; i < batches; ++i)
     {
         SetTensorToTestVector<uchar, rows, cols>(input, width, height, inTensor, i);
     }
 
-    cvcuda::Morphology morphOp(0);
-    morphOp(stream, inTensor, outTensor, type, maskSize, anchor, iteration, borderMode);
+    cvcuda::Morphology morphOp;
+    morphOp(stream, inTensor, outTensor, workspace, type, maskSize, anchor, iteration, borderMode);
 
     if (cudaSuccess != cudaStreamSynchronize(stream))
         throw std::runtime_error("Cuda Sync failed");
@@ -117,8 +187,9 @@ TEST(OpMorphology, morph_check_dilate_kernel)
 
     nvcv::ImageFormat format{NVCV_IMAGE_FORMAT_U8};
 
-    nvcv::Tensor inTensor  = nvcv::util::CreateTensor(batches, width, height, format);
-    nvcv::Tensor outTensor = nvcv::util::CreateTensor(batches, width, height, format);
+    nvcv::Tensor inTensor        = nvcv::util::CreateTensor(batches, width, height, format);
+    nvcv::Tensor outTensor       = nvcv::util::CreateTensor(batches, width, height, format);
+    nvcv::Tensor workspaceTensor = nvcv::util::CreateTensor(batches, width, height, format);
 
     int2               anchor(-1, -1);
     nvcv::Size2D       maskSize(3, 3);
@@ -145,8 +216,8 @@ TEST(OpMorphology, morph_check_dilate_kernel)
                     };
         // clang-format on
         EXPECT_NO_THROW(
-            (checkTestVectors<uchar, width, height>(stream, inTensor, outTensor, inImg, expImg, width, height, maskSize,
-                                                    anchor, iteration, type, borderMode, batches)));
+            (checkTestVectors<uchar, width, height>(stream, inTensor, outTensor, nvcv::NullOpt, inImg, expImg, width,
+                                                    height, maskSize, anchor, iteration, type, borderMode, batches)));
     }
 
     // iteration = 2
@@ -170,13 +241,13 @@ TEST(OpMorphology, morph_check_dilate_kernel)
                     };
         // clang-format on
         EXPECT_NO_THROW(
-            (checkTestVectors<uchar, width, height>(stream, inTensor, outTensor, inImg, expImg, width, height, maskSize,
-                                                    anchor, iteration, type, borderMode, batches)));
-        iteration = 1;
+            (checkTestVectors<uchar, width, height>(stream, inTensor, outTensor, workspaceTensor, inImg, expImg, width,
+                                                    height, maskSize, anchor, iteration, type, borderMode, batches)));
     }
 
     {
         // overlap
+        iteration = 1;
         // clang-format off
         uchar inImg[height][width] ={
                         {1,0,0,0,2},
@@ -195,12 +266,13 @@ TEST(OpMorphology, morph_check_dilate_kernel)
                     };
         // clang-format on
         EXPECT_NO_THROW(
-            (checkTestVectors<uchar, width, height>(stream, inTensor, outTensor, inImg, expImg, width, height, maskSize,
-                                                    anchor, iteration, type, borderMode, batches)));
+            (checkTestVectors<uchar, width, height>(stream, inTensor, outTensor, nvcv::NullOpt, inImg, expImg, width,
+                                                    height, maskSize, anchor, iteration, type, borderMode, batches)));
     }
 
     {
         // mask
+        iteration = 1;
         // clang-format off
         maskSize.w = 1;
         maskSize.h = 2;
@@ -221,14 +293,15 @@ TEST(OpMorphology, morph_check_dilate_kernel)
                     };
         // clang-format on
         EXPECT_NO_THROW(
-            (checkTestVectors<uchar, width, height>(stream, inTensor, outTensor, inImg, expImg, width, height, maskSize,
-                                                    anchor, iteration, type, borderMode, batches)));
+            (checkTestVectors<uchar, width, height>(stream, inTensor, outTensor, nvcv::NullOpt, inImg, expImg, width,
+                                                    height, maskSize, anchor, iteration, type, borderMode, batches)));
         maskSize.w = 3;
         maskSize.h = 3;
     }
 
-    // anchor
     {
+        // anchor
+        iteration = 1;
         // clang-format off
         anchor.x = 0;
         anchor.y = 0;
@@ -250,8 +323,8 @@ TEST(OpMorphology, morph_check_dilate_kernel)
                     };
         // clang-format on
         EXPECT_NO_THROW(
-            (checkTestVectors<uchar, width, height>(stream, inTensor, outTensor, inImg, expImg, width, height, maskSize,
-                                                    anchor, iteration, type, borderMode, batches)));
+            (checkTestVectors<uchar, width, height>(stream, inTensor, outTensor, nvcv::NullOpt, inImg, expImg, width,
+                                                    height, maskSize, anchor, iteration, type, borderMode, batches)));
         anchor.x = -1;
         anchor.y = -1;
     }
@@ -298,8 +371,8 @@ TEST(OpMorphology, morph_check_erode_kernel)
                     };
         // clang-format on
         EXPECT_NO_THROW(
-            (checkTestVectors<uchar, width, height>(stream, inTensor, outTensor, inImg, expImg, width, height, maskSize,
-                                                    anchor, iteration, type, borderMode, batches)));
+            (checkTestVectors<uchar, width, height>(stream, inTensor, outTensor, nvcv::NullOpt, inImg, expImg, width,
+                                                    height, maskSize, anchor, iteration, type, borderMode, batches)));
     }
 
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
@@ -345,23 +418,33 @@ TEST(OpMorphology, morph_check_dilate_kernel_even)
                         {4,4,0,0,3,3}
                     };
 
-        EXPECT_NO_THROW((checkTestVectors<uchar,width, height>(stream, inTensor, outTensor, inImg, expImg, width, height, maskSize,anchor,iteration, type, borderMode, batches)));
+        EXPECT_NO_THROW((checkTestVectors<uchar,width, height>(stream, inTensor, outTensor, nvcv::NullOpt, inImg, expImg, width, height, maskSize,anchor,iteration, type, borderMode, batches)));
     }
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
 // clang-format off
-NVCV_TEST_SUITE_P(OpMorphology, test::ValueList<int, int, int, NVCVImageFormat, int, int, NVCVBorderType, NVCVMorphologyType>
+NVCV_TEST_SUITE_P(OpMorphology, test::ValueList<int, int, int, NVCVImageFormat, int, int, NVCVBorderType, NVCVMorphologyType, int>
 {
-    // width, height, batches,                    format,  maskWidth, maskHeight,            borderMode, morphType
-    {      5,      5,       1,      NVCV_IMAGE_FORMAT_U8,          2,         2,   NVCV_BORDER_CONSTANT, NVCV_ERODE},
-    {      5,      5,       1,      NVCV_IMAGE_FORMAT_RGBAf32,     3,         3,   NVCV_BORDER_CONSTANT, NVCV_DILATE},
-    {     25,     45,       2,      NVCV_IMAGE_FORMAT_U8,          3,         3,   NVCV_BORDER_CONSTANT, NVCV_DILATE},
-    {    125,     35,       1,      NVCV_IMAGE_FORMAT_RGBA8,       3,         3,   NVCV_BORDER_CONSTANT, NVCV_ERODE},
-    {     52,     45,       1,      NVCV_IMAGE_FORMAT_U16,         3,         3,   NVCV_BORDER_CONSTANT, NVCV_ERODE},
-    {    325,     45,       3,      NVCV_IMAGE_FORMAT_RGB8,        3,         3,   NVCV_BORDER_CONSTANT, NVCV_DILATE},
-    {     25,     45,       1,      NVCV_IMAGE_FORMAT_U8,          3,         3,   NVCV_BORDER_CONSTANT, NVCV_ERODE},
-    {     25,     45,       2,      NVCV_IMAGE_FORMAT_U8,          3,         3,   NVCV_BORDER_CONSTANT, NVCV_DILATE},
+    // width, height, batches,               format,  maskWidth, maskHeight,             borderMode,  morphType,    iteration
+    {      5,      5,       1, NVCV_IMAGE_FORMAT_U8,          2,          2,   NVCV_BORDER_CONSTANT, NVCV_ERODE,            3},
+    {      5,      5,       1, NVCV_IMAGE_FORMAT_RGBAf32,     3,          3,   NVCV_BORDER_CONSTANT, NVCV_DILATE,           1},
+    {     25,     45,       2, NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_CONSTANT, NVCV_DILATE,           2},
+    {    125,     35,       1, NVCV_IMAGE_FORMAT_RGBA8,       4,          4,   NVCV_BORDER_CONSTANT, NVCV_ERODE,            1},
+    {     52,     45,       1, NVCV_IMAGE_FORMAT_U16,         3,          3,   NVCV_BORDER_CONSTANT, NVCV_ERODE,            1},
+    {    325,     45,       3, NVCV_IMAGE_FORMAT_RGB8,        3,          2,   NVCV_BORDER_CONSTANT, NVCV_DILATE,           10},
+    {     25,     45,       1, NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_CONSTANT, NVCV_ERODE,            1},
+    {     25,     45,       2, NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_CONSTANT, NVCV_DILATE,           3},
+    {     25,     45,       2, NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_CONSTANT, NVCV_OPEN,             3},
+    {     25,     45,       1, NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_CONSTANT, NVCV_CLOSE,            1},
+    {     13,      5,       1, NVCV_IMAGE_FORMAT_U8,          2,          2,   NVCV_BORDER_CONSTANT, NVCV_OPEN,             3},
+    {    345,      5,       1, NVCV_IMAGE_FORMAT_RGBAf32,     3,          3,   NVCV_BORDER_CONSTANT, NVCV_CLOSE,            1},
+    {    217,    451,       2, NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_CONSTANT, NVCV_CLOSE,            2},
+    {    125,     35,       1, NVCV_IMAGE_FORMAT_RGBA8,       4,          4,   NVCV_BORDER_CONSTANT, NVCV_OPEN,             1},
+    {     52,     87,       1, NVCV_IMAGE_FORMAT_U16,         3,          3,   NVCV_BORDER_CONSTANT, NVCV_OPEN,             1},
+    {    325,    800,       3, NVCV_IMAGE_FORMAT_RGB8,        3,          2,   NVCV_BORDER_CONSTANT, NVCV_OPEN,            10},
+    {     25,     44,       1, NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_CONSTANT, NVCV_CLOSE,            1},
+    {     21,    435,       2, NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_CONSTANT, NVCV_CLOSE,            3},
 
 });
 
@@ -378,6 +461,10 @@ TEST_P(OpMorphology, morph_noop)
     NVCVBorderType     borderMode = GetParamValue<6>();
     NVCVMorphologyType morphType  = GetParamValue<7>();
 
+    // do not check noop on open/close since it needs workspace.
+    if (morphType == NVCVMorphologyType::NVCV_OPEN || morphType == NVCVMorphologyType::NVCV_CLOSE)
+        return;
+
     nvcv::ImageFormat format{NVCV_IMAGE_FORMAT_U8};
 
     nvcv::Tensor inTensor  = nvcv::util::CreateTensor(batches, width, height, format);
@@ -386,13 +473,14 @@ TEST_P(OpMorphology, morph_noop)
     EXPECT_NO_THROW(nvcv::util::SetTensorToRandomValue<uint8_t>(inTensor.exportData(), 0, 0xFF));
     EXPECT_NO_THROW(nvcv::util::SetTensorTo<uint8_t>(outTensor.exportData(), 0));
 
-    cvcuda::Morphology morphOp(0);
+    cvcuda::Morphology morphOp;
     int2               anchor(0, 0);
 
     nvcv::Size2D maskSize(1, 1);
     int          iteration = 0;
 
-    EXPECT_NO_THROW(morphOp(stream, inTensor, outTensor, morphType, maskSize, anchor, iteration, borderMode));
+    EXPECT_NO_THROW(
+        morphOp(stream, inTensor, outTensor, nvcv::NullOpt, morphType, maskSize, anchor, iteration, borderMode));
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
 
     for (int i = 0; i < batches; ++i)
@@ -422,12 +510,13 @@ TEST_P(OpMorphology, morph_random)
     maskSize.h                    = GetParamValue<5>();
     NVCVBorderType     borderMode = GetParamValue<6>();
     NVCVMorphologyType morphType  = GetParamValue<7>();
+    int                iteration  = GetParamValue<8>();
 
-    int  iteration = 1;
     int3 shape{width, height, batches};
 
-    nvcv::Tensor inTensor  = nvcv::util::CreateTensor(batches, width, height, format);
-    nvcv::Tensor outTensor = nvcv::util::CreateTensor(batches, width, height, format);
+    nvcv::Tensor inTensor        = nvcv::util::CreateTensor(batches, width, height, format);
+    nvcv::Tensor outTensor       = nvcv::util::CreateTensor(batches, width, height, format);
+    nvcv::Tensor workspaceTensor = nvcv::util::CreateTensor(batches, width, height, format);
 
     auto inData  = inTensor.exportData<nvcv::TensorDataStridedCuda>();
     auto outData = outTensor.exportData<nvcv::TensorDataStridedCuda>();
@@ -464,10 +553,11 @@ TEST_P(OpMorphology, morph_random)
     ASSERT_EQ(cudaSuccess, cudaMemcpy(inData->basePtr(), inVec.data(), inBufSize, cudaMemcpyHostToDevice));
 
     // run operator
-    cvcuda::Morphology morphOp(0);
+    cvcuda::Morphology morphOp;
     int2               anchor(-1, -1);
 
-    EXPECT_NO_THROW(morphOp(stream, inTensor, outTensor, morphType, maskSize, anchor, iteration, borderMode));
+    EXPECT_NO_THROW(
+        morphOp(stream, inTensor, outTensor, workspaceTensor, morphType, maskSize, anchor, iteration, borderMode));
 
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
@@ -480,23 +570,32 @@ TEST_P(OpMorphology, morph_random)
 
     // generate gold result
     int2 kernelAnchor{maskSize.w / 2, maskSize.h / 2};
-    test::Morph(goldVec, outStrides, inVec, inStrides, shape, format, maskSize, kernelAnchor, borderMode, morphType);
+    hostMorph(goldVec, outStrides, inVec, inStrides, shape, format, maskSize, kernelAnchor, iteration, borderMode,
+              morphType);
 
     EXPECT_EQ(testVec, goldVec);
 }
 
 // clang-format off
-NVCV_TEST_SUITE_P(OpMorphologyVarShape, test::ValueList<int, int, int, NVCVImageFormat, int, int, NVCVBorderType, NVCVMorphologyType>
+NVCV_TEST_SUITE_P(OpMorphologyVarShape, test::ValueList<int, int, int, NVCVImageFormat, int, int, NVCVBorderType, NVCVMorphologyType, int>
 {
-    // width, height, batches,                    format,  maskWidth, maskHeight,            borderMode, morphType
-    {      5,      5,       5,      NVCV_IMAGE_FORMAT_U8,          3,        3,    NVCV_BORDER_CONSTANT, NVCV_ERODE},
-    {      5,      5,       1,      NVCV_IMAGE_FORMAT_RGBAf32,     3,         3,   NVCV_BORDER_CONSTANT, NVCV_DILATE},
-    {     25,     45,       2,      NVCV_IMAGE_FORMAT_U8,          2,         2,   NVCV_BORDER_CONSTANT, NVCV_DILATE},
-    {    125,     35,       1,      NVCV_IMAGE_FORMAT_RGBA8,       3,         3,   NVCV_BORDER_CONSTANT, NVCV_ERODE},
-    {     52,     45,       1,      NVCV_IMAGE_FORMAT_U16,         1,         2,   NVCV_BORDER_CONSTANT, NVCV_ERODE},
-    {    325,     45,       3,      NVCV_IMAGE_FORMAT_RGB8,        3,         4,   NVCV_BORDER_CONSTANT, NVCV_DILATE},
-    {     25,     45,       4,      NVCV_IMAGE_FORMAT_U8,          3,         3,   NVCV_BORDER_CONSTANT, NVCV_ERODE},
-    {     25,     45,       2,      NVCV_IMAGE_FORMAT_U8,          -1,       -1,   NVCV_BORDER_CONSTANT, NVCV_DILATE}
+    // width, height, batches,                    format,  maskWidth, maskHeight,            borderMode,   morphType, iteration
+    {      5,      5,       1,      NVCV_IMAGE_FORMAT_U8,          3,         3,    NVCV_BORDER_CONSTANT, NVCV_ERODE,          2},
+    {      5,      5,       1,      NVCV_IMAGE_FORMAT_RGBAf32,     3,         3,    NVCV_BORDER_CONSTANT, NVCV_DILATE,         3},
+    {     25,     45,       2,      NVCV_IMAGE_FORMAT_U8,          2,         2,    NVCV_BORDER_CONSTANT, NVCV_DILATE,         2},
+    {    125,     35,       1,      NVCV_IMAGE_FORMAT_RGBA8,       3,         3,    NVCV_BORDER_CONSTANT, NVCV_ERODE,          7},
+    {     52,     45,       1,      NVCV_IMAGE_FORMAT_U16,         1,         2,    NVCV_BORDER_CONSTANT, NVCV_ERODE,          1},
+    {    325,     45,       3,      NVCV_IMAGE_FORMAT_RGB8,        3,         4,    NVCV_BORDER_CONSTANT, NVCV_DILATE,         1},
+    {     25,     45,       4,      NVCV_IMAGE_FORMAT_U8,          3,         3,    NVCV_BORDER_CONSTANT, NVCV_ERODE,          1},
+    {     25,     45,       2,      NVCV_IMAGE_FORMAT_U8,          -1,       -1,    NVCV_BORDER_CONSTANT, NVCV_DILATE,         1},
+    {      5,      5,       1,      NVCV_IMAGE_FORMAT_U8,          3,         3,    NVCV_BORDER_CONSTANT, NVCV_OPEN,           2},
+    {      5,      5,       1,      NVCV_IMAGE_FORMAT_RGBAf32,     3,         3,    NVCV_BORDER_CONSTANT, NVCV_CLOSE,          3},
+    {     25,     45,       2,      NVCV_IMAGE_FORMAT_U8,          2,         2,    NVCV_BORDER_CONSTANT, NVCV_CLOSE,          2},
+    {    125,     35,       1,      NVCV_IMAGE_FORMAT_RGBA8,       3,         3,    NVCV_BORDER_CONSTANT, NVCV_OPEN,           7},
+    {     52,     45,      21,      NVCV_IMAGE_FORMAT_U16,         1,         2,    NVCV_BORDER_CONSTANT, NVCV_CLOSE,          1},
+    {    325,     45,       3,      NVCV_IMAGE_FORMAT_RGB8,        3,         4,    NVCV_BORDER_CONSTANT, NVCV_CLOSE,          1},
+    {     25,    456,       4,      NVCV_IMAGE_FORMAT_U8,          3,         3,    NVCV_BORDER_CONSTANT, NVCV_OPEN,           1},
+    {     55,     45,       2,      NVCV_IMAGE_FORMAT_U8,         -1,        -1,    NVCV_BORDER_CONSTANT, NVCV_OPEN,           1}
 
 });
 
@@ -516,11 +615,12 @@ TEST_P(OpMorphologyVarShape, varshape_correct_output)
     int maskSizeX = GetParamValue<4>();
     int maskSizeY = GetParamValue<5>();
 
-    int                anchorX    = -1;
-    int                anchorY    = -1;
-    int                iteration  = 1;
+    int anchorX = -1;
+    int anchorY = -1;
+
     NVCVBorderType     borderMode = GetParamValue<6>();
     NVCVMorphologyType morphType  = GetParamValue<7>();
+    int                iteration  = GetParamValue<8>();
 
     // Create input varshape
     std::default_random_engine         rng;
@@ -559,12 +659,17 @@ TEST_P(OpMorphologyVarShape, varshape_correct_output)
 
     // Create output varshape
     std::vector<nvcv::Image> imgDst;
+    std::vector<nvcv::Image> imgWorkspace;
     for (int i = 0; i < batches; ++i)
     {
         imgDst.emplace_back(imgSrc[i].size(), imgSrc[i].format());
+        imgWorkspace.emplace_back(imgSrc[i].size(), imgSrc[i].format());
     }
     nvcv::ImageBatchVarShape batchDst(batches);
     batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    nvcv::ImageBatchVarShape batchWorkspace(batches);
+    batchWorkspace.pushBack(imgWorkspace.begin(), imgWorkspace.end());
 
     // Create kernel mask size tensor
     nvcv::Tensor maskTensor({{batches}, "N"}, nvcv::TYPE_2S32);
@@ -591,9 +696,10 @@ TEST_P(OpMorphologyVarShape, varshape_correct_output)
     }
 
     // Run operator set the max batches
-    cvcuda::Morphology morphOp(batches);
+    cvcuda::Morphology morphOp;
 
-    EXPECT_NO_THROW(morphOp(stream, batchSrc, batchDst, morphType, maskTensor, anchorTensor, iteration, borderMode));
+    EXPECT_NO_THROW(morphOp(stream, batchSrc, batchDst, batchWorkspace, morphType, maskTensor, anchorTensor, iteration,
+                            borderMode));
 
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
@@ -633,7 +739,8 @@ TEST_P(OpMorphologyVarShape, varshape_correct_output)
         std::vector<uint8_t> goldVec(shape.y * pitches.y);
 
         //generate gold result
-        test::Morph(goldVec, pitches, srcVec[i], pitches, shape, format, maskSize, kernelAnchor, borderMode, morphType);
+        hostMorph(goldVec, pitches, srcVec[i], pitches, shape, format, maskSize, kernelAnchor, iteration, borderMode,
+                  morphType);
 
         EXPECT_EQ(testVec, goldVec);
     }
@@ -658,6 +765,10 @@ TEST_P(OpMorphologyVarShape, varshape_noop)
     int                iteration  = 0; // this will bypass and do a copy
     NVCVBorderType     borderMode = GetParamValue<6>();
     NVCVMorphologyType morphType  = GetParamValue<7>();
+
+    // do not check noop on open/close since it needs workspace.
+    if (morphType == NVCVMorphologyType::NVCV_OPEN || morphType == NVCVMorphologyType::NVCV_CLOSE)
+        return;
 
     // Create input varshape
     std::default_random_engine         rng;
@@ -728,9 +839,10 @@ TEST_P(OpMorphologyVarShape, varshape_noop)
     }
 
     // Run operator set the max batches
-    cvcuda::Morphology morphOp(batches);
+    cvcuda::Morphology morphOp;
 
-    EXPECT_NO_THROW(morphOp(stream, batchSrc, batchDst, morphType, maskTensor, anchorTensor, iteration, borderMode));
+    EXPECT_NO_THROW(
+        morphOp(stream, batchSrc, batchDst, nvcv::NullOpt, morphType, maskTensor, anchorTensor, iteration, borderMode));
 
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
