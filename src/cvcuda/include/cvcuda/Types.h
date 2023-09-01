@@ -28,6 +28,8 @@
 
 #include "detail/Export.h"
 
+#include <stdbool.h>
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -51,6 +53,8 @@ typedef enum
 {
     NVCV_ERODE  = 0,
     NVCV_DILATE = 1,
+    NVCV_OPEN   = 2,
+    NVCV_CLOSE  = 3,
 } NVCVMorphologyType;
 
 // @brief Flag to choose the color conversion to be used
@@ -358,6 +362,29 @@ typedef enum
     NVCV_REMAP_RELATIVE_NORMALIZED = 2
 } NVCVRemapMapValueType;
 
+typedef enum
+{
+    NVCV_OSD_NONE         = 0,
+    NVCV_OSD_RECT         = 1,  // \ref NVCVBndBoxI.
+    NVCV_OSD_TEXT         = 2,  // \ref NVCVText.
+    NVCV_OSD_SEGMENT      = 3,  // \ref NVCVSegment.
+    NVCV_OSD_POINT        = 4,  // \ref NVCVPoint.
+    NVCV_OSD_LINE         = 5,  // \ref NVCVLine.
+    NVCV_OSD_POLYLINE     = 6,  // \ref NVCVPolyLine.
+    NVCV_OSD_ROTATED_RECT = 7,  // \ref NVCVRotatedBox.
+    NVCV_OSD_CIRCLE       = 8,  // \ref NVCVCircle.
+    NVCV_OSD_ARROW        = 9,  // \ref NVCVArrow.
+    NVCV_OSD_CLOCK        = 10, // \ref NVCVClock.
+    NVCV_OSD_MAX          = 11,
+} NVCVOSDType;
+
+// @brief Flag to choose SIFT operator flags
+typedef enum
+{
+    NVCV_SIFT_USE_ORIGINAL_INPUT = 0,
+    NVCV_SIFT_USE_EXPANDED_INPUT = 1
+} NVCVSIFTFlagType;
+
 typedef unsigned char uint8_t;
 typedef int           int32_t;
 
@@ -368,6 +395,12 @@ typedef struct
     uint8_t b;
     uint8_t a;
 } NVCVColorRGBA;
+
+typedef struct
+{
+    int32_t x; //!< x coordinate
+    int32_t y; //!< y coordinate
+} NVCVPointI;
 
 typedef struct
 {
@@ -404,6 +437,147 @@ typedef struct
     int32_t      *numBoxes; // Number array of blurring boxes for image batch.
     NVCVBlurBoxI *boxes;    // Blurring box array for image batch, \ref NVCVBlurBoxI.
 } NVCVBlurBoxesI;
+
+// Default font, user can install via below command:
+//      sudo apt-get update
+//      sudo apt-get install ttf-dejavu fonts-dejavu
+#define DEFAULT_OSD_FONT "DejaVuSansMono"
+
+typedef struct
+{
+    const char   *utf8Text;  // Text to draw in utf8 format.
+    int32_t       fontSize;  // Font size for the text.
+    const char   *fontName;  // Font name for the text.
+    NVCVPointI    tlPos;     // Top-left corner point for label text, \ref NVCVPointI.
+    NVCVColorRGBA fontColor; // Font color of the text.
+    NVCVColorRGBA bgColor;   // Background color of text box.
+} NVCVText;
+
+typedef struct
+{
+    NVCVBoxI      box;          // Bounding box of segment, \ref NVCVBoxI.
+    int32_t       thickness;    // Line thickness of segment outter rect.
+    float        *dSeg;         // Device pointer for segment mask, cannot be nullptr.
+                                // Array length: segWidth * segHeight
+                                // Format:
+                                //      Score_00, Score_01, ..., Score_0k, ...
+                                //      Score_10, Score_11, ..., Score_kk, ...
+                                //          ... ,     ... , ...,     ... , ...
+    int32_t       segWidth;     // Segment mask width.
+    int32_t       segHeight;    // Segment mask height.
+    float         segThreshold; // Segment threshold.
+    NVCVColorRGBA borderColor;  // Line color of segment outter rect.
+    NVCVColorRGBA segColor;     // Segment mask color.
+} NVCVSegment;
+
+typedef struct
+{
+    NVCVPointI    centerPos; // Center point, \ref NVCVPointI.
+    int32_t       radius;    // Point size.
+    NVCVColorRGBA color;     // Point color.
+} NVCVPoint;
+
+typedef struct
+{
+    NVCVPointI    pos0;          // Start point, \ref NVCVPointI.
+    NVCVPointI    pos1;          // End point, \ref NVCVPointI.
+    int32_t       thickness;     // Line thickness.
+    NVCVColorRGBA color;         // Line color.
+    bool          interpolation; // Default: true.
+} NVCVLine;
+
+typedef struct
+{
+    int32_t      *hPoints;       // Host pointer for polyline points' xy, cannot be nullptr.
+                                 // Array length: 2 * numPoints.
+                                 // Format : X0, Y0, X1, Y1, ..., Xk, Yk, ...
+    int32_t      *dPoints;       // Device pointer for polyline points' xy.
+                                 // Can be nullptr only if fillColor.a == 0.
+                                 // Array length: 2 * numPoints.
+                                 // Format: X0, Y0, X1, Y1, ..., Xk, Yk, ...
+    int32_t       numPoints;     // Number of polyline points.
+    int32_t       thickness;     // Polyline thickness.
+    bool          isClosed;      // Connect p(0) to p(n-1) or not.
+    NVCVColorRGBA borderColor;   // Line color of polyline border.
+    NVCVColorRGBA fillColor;     // Fill color of poly fill area.
+    bool          interpolation; // Default: true
+} NVCVPolyLine;
+
+typedef struct
+{
+    NVCVPointI    centerPos;     // Center point, \ref NVCVPointI.
+    int32_t       width;         // Box width.
+    int32_t       height;        // Box height.
+    float         yaw;           // Box yaw.
+    int32_t       thickness;     // Box border thickness.
+    NVCVColorRGBA borderColor;   // Box border color.
+    NVCVColorRGBA bgColor;       // Box filled color.
+    bool          interpolation; // Default: false.
+} NVCVRotatedBox;
+
+typedef struct
+{
+    NVCVPointI    centerPos;   // Center point, \ref NVCVPointI.
+    int32_t       radius;      // Circle radius.
+    int32_t       thickness;   // Circle thickness.
+    NVCVColorRGBA borderColor; // Circle border color.
+    NVCVColorRGBA bgColor;     // Circle filled color.
+} NVCVCircle;
+
+typedef struct
+{
+    NVCVPointI    pos0;          // Start point, \ref NVCVPointI.
+    NVCVPointI    pos1;          // End point, \ref NVCVPointI.
+    int32_t       arrowSize;     // Arrow size.
+    int32_t       thickness;     // Arrow line thickness.
+    NVCVColorRGBA color;         // Arrow line color.
+    bool          interpolation; // Default: false
+} NVCVArrow;
+
+typedef enum
+{
+    None          = 0,
+    YYMMDD_HHMMSS = 1,
+    YYMMDD        = 2,
+    HHMMSS        = 3
+} NVCVClockFormat;
+
+typedef struct
+{
+    NVCVClockFormat clockFormat; // Pre-defined clock format.
+    long            time;        // Clock time.
+    int32_t         fontSize;    // Font size.
+    const char     *font;        // Font name.
+    NVCVPointI      tlPos;       // Top-left corner point, \ref NVCVPointI.
+    NVCVColorRGBA   fontColor;   // Font color of the text.
+    NVCVColorRGBA   bgColor;     // Background color of text box.
+} NVCVClock;
+
+typedef struct
+{
+    /*
+    *  type:
+    *      NVCV_OSD_RECT           -   \ref NVCVBndBoxI.
+    *      NVCV_OSD_TEXT           -   \ref NVCVText.
+    *      NVCV_OSD_SEGMENT        -   \ref NVCVSegment.
+    *      NVCV_OSD_POINT          -   \ref NVCVPoint.
+    *      NVCV_OSD_LINE           -   \ref NVCVLine.
+    *      NVCV_OSD_POLYLINE       -   \ref NVCVPolyLine.
+    *      NVCV_OSD_ROTATED_RECT   -   \ref NVCVRotatedBox.
+    *      NVCV_OSD_CIRCLE         -   \ref NVCVCircle.
+    *      NVCV_OSD_ARROW          -   \ref NVCVArrow.
+    *      NVCV_OSD_CLOCK          -   \ref NVCVClock.
+    */
+    NVCVOSDType type; // OSD element type to draw.
+    void       *data; // OSD element data pointer.
+} NVCVElement;
+
+typedef struct
+{
+    int32_t      batch;       // Number of images in the image batch.
+    int32_t     *numElements; // Number array of texts for image batch.
+    NVCVElement *elements;    // Element array for image batch, \ref NVCVElement.
+} NVCVElements;
 
 #ifdef __cplusplus
 }

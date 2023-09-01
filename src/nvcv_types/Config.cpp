@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,7 @@
  */
 
 #include "priv/AllocatorManager.hpp"
+#include "priv/ArrayManager.hpp"
 #include "priv/ImageBatchManager.hpp"
 #include "priv/ImageManager.hpp"
 #include "priv/Status.hpp"
@@ -66,6 +67,23 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvConfigSetMaxTensorCount, (int32_t maxCount
         [&]
         {
             auto &mgr = std::get<priv::TensorManager &>(priv::GlobalContext().managerList());
+            if (maxCount >= 0)
+            {
+                mgr.setFixedSize(maxCount);
+            }
+            else
+            {
+                mgr.setDynamicSize();
+            }
+        });
+}
+
+NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvConfigSetMaxArrayCount, (int32_t maxCount))
+{
+    return priv::ProtectCall(
+        [&]
+        {
+            auto &mgr = std::get<priv::ArrayManager &>(priv::GlobalContext().managerList());
             if (maxCount >= 0)
             {
                 mgr.setFixedSize(maxCount);

@@ -20,3 +20,4 @@
 *.bmp filter=lfs diff=lfs merge=lfs -text
 *.mp4 filter=lfs diff=lfs merge=lfs -text
 *.a filter=lfs diff=lfs merge=lfs -text
+*.hdf5 filter=lfs diff=lfs merge=lfs -text

@@ -122,6 +122,8 @@ NVCVChromaSubsampling MakeNVCVChromaSubsampling(int samplesHoriz, int samplesVer
             return NVCV_CSS_422;
         case 2:
             return NVCV_CSS_420;
+        case 1:
+            return NVCV_CSS_410R;
         }
         break;
 
@@ -130,6 +132,8 @@ NVCVChromaSubsampling MakeNVCVChromaSubsampling(int samplesHoriz, int samplesVer
         {
         case 1:
             return NVCV_CSS_444;
+        case 2:
+            return NVCV_CSS_410;
         case 4:
             return NVCV_CSS_411;
         }
@@ -217,6 +221,8 @@ bool NeedsColorspec(NVCVColorModel cmodel)
     case NVCV_COLOR_MODEL_RAW:
     case NVCV_COLOR_MODEL_XYZ:
     case NVCV_COLOR_MODEL_HSV:
+    case NVCV_COLOR_MODEL_CMYK:
+    case NVCV_COLOR_MODEL_YCCK:
         return false;
     }
 
@@ -269,6 +275,8 @@ const char *GetName(NVCVColorModel colorModel)
         ENUM_CASE(NVCV_COLOR_MODEL_RAW);
         ENUM_CASE(NVCV_COLOR_MODEL_XYZ);
         ENUM_CASE(NVCV_COLOR_MODEL_HSV);
+        ENUM_CASE(NVCV_COLOR_MODEL_CMYK);
+        ENUM_CASE(NVCV_COLOR_MODEL_YCCK);
 #undef ENUM_CASE
     }
 

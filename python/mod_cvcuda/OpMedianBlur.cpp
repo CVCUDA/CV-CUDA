@@ -100,8 +100,12 @@ ImageBatchVarShape VarShapeMedianBlur(ImageBatchVarShape &input, Tensor &ksize, 
 void ExportOpMedianBlur(py::module &m)
 {
     using namespace pybind11::literals;
+    py::options options;
+    options.disable_function_signatures();
 
     m.def("median_blur", &MedianBlur, "src"_a, "ksize"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+	cvcuda.median_blur(src: nvcv.Tensor, ksize:Tuple [int,int], stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the Median Blur operation on the given cuda stream.
 
@@ -125,6 +129,8 @@ void ExportOpMedianBlur(py::module &m)
     m.def("median_blur_into", &MedianBlurInto, "dst"_a, "src"_a, "ksize"_a, py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
 
+	cvcuda.median_blur_into(dst: nvcv.Tensor,src: nvcv.Tensor, ksize:Tuple [int,int], stream: Optional[nvcv.cuda.Stream] = None)
+
         Executes the Median Blur operation on the given cuda stream.
 
         See also:
@@ -146,6 +152,8 @@ void ExportOpMedianBlur(py::module &m)
     )pbdoc");
 
     m.def("median_blur", &VarShapeMedianBlur, "src"_a, "ksize"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+	cvcuda.median_blur(src: nvcv.ImageBatchVarShape, ksize:Tuple [int,int], stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
 
         Executes the Median Blur operation on the given cuda stream.
 
@@ -169,7 +177,9 @@ void ExportOpMedianBlur(py::module &m)
     m.def("median_blur_into", &VarShapeMedianBlurInto, "dst"_a, "src"_a, "ksize"_a, py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
 
-        Executes the Median Blur operation on the given cuda stream.
+	cvcuda.median_blur_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, ksize:Tuple [int,int], stream: Optional[nvcv.cuda.Stream] = None)
+
+	Executes the Median Blur operation on the given cuda stream.
 
         See also:
             Refer to the CV-CUDA C API reference for the Median Blur operator

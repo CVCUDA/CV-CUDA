@@ -103,8 +103,13 @@ void ExportOpThreshold(py::module &m)
 {
     using namespace pybind11::literals;
 
+    py::options options;
+    options.disable_function_signatures();
+
     m.def("threshold", &Threshold, "src"_a, "thresh"_a, "maxval"_a, "type"_a, py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
+
+	cvcuda.threshold(src: nvcv.Tensor, thresh: nvcv.Tensor, maxval: nvcv.Tensor, type:ThresholdType, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the Threshold operation on the given cuda stream.
 
@@ -130,6 +135,8 @@ void ExportOpThreshold(py::module &m)
 
     m.def("threshold_into", &ThresholdInto, "dst"_a, "src"_a, "thresh"_a, "maxval"_a, "type"_a, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
+
+	cvcuda.threshold_into(dst: nvcv.Tensor,src: nvcv.Tensor, thresh: nvcv.Tensor, maxval: nvcv.Tensor, type:ThresholdType, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Threshold operation on the given cuda stream.
 
@@ -157,6 +164,8 @@ void ExportOpThreshold(py::module &m)
     m.def("threshold", &ThresholdVarShape, "src"_a, "thresh"_a, "maxval"_a, "type"_a, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
 
+	cvcuda.threshold(src: nvcv.ImageBatchVarShape, thresh: nvcv.Tensor, maxval: nvcv.Tensor, type:ThresholdType, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+
         Executes the Threshold operation on the given cuda stream.
 
         See also:
@@ -181,6 +190,8 @@ void ExportOpThreshold(py::module &m)
 
     m.def("threshold_into", &ThresholdVarShapeInto, "dst"_a, "src"_a, "thresh"_a, "maxval"_a, "type"_a, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
+
+	cvcuda.threshold_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, thresh: nvcv.Tensor, maxval: nvcv.Tensor, type:ThresholdType, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Threshold operation on the given cuda stream.
 

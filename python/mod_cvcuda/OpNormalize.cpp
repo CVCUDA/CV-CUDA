@@ -117,6 +117,9 @@ void ExportOpNormalize(py::module &m)
 {
     using namespace pybind11::literals;
 
+    py::options options;
+    options.disable_function_signatures();
+
     py::enum_<OpFlags>(m, "NormalizeFlags").value("SCALE_IS_STDDEV", OpFlags::SCALE_IS_STDDEV);
 
     float defGlobalScale = 1;
@@ -126,6 +129,8 @@ void ExportOpNormalize(py::module &m)
     m.def("normalize", &Normalize, "src"_a, "base"_a, "scale"_a, "flags"_a = std::nullopt, py::kw_only(),
           "globalscale"_a = defGlobalScale, "globalshift"_a = defGlobalShift, "epsilon"_a = defEpsilon,
           "stream"_a = nullptr, R"pbdoc(
+
+	cvcuda.normalize(src: nvcv.Tensor, base:Tensor, scale:Tensor, flags:int, globalscale: float, globalshift: float, epsilon: float, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the Normalize operation on the given cuda stream.
 
@@ -156,6 +161,8 @@ void ExportOpNormalize(py::module &m)
     m.def("normalize_into", &NormalizeInto, "dst"_a, "src"_a, "base"_a, "scale"_a, "flags"_a = std::nullopt,
           py::kw_only(), "globalscale"_a = defGlobalScale, "globalshift"_a = defGlobalShift, "epsilon"_a = defEpsilon,
           "stream"_a = nullptr, R"pbdoc(
+
+	cvcuda.normalize_into(dst* Tensor, src: nvcv.Tensor, base:Tensor, scale:Tensor, flags:int, globalscale: float, globalshift: float, epsilon: float, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Normalize operation on the given cuda stream.
 
@@ -188,7 +195,9 @@ void ExportOpNormalize(py::module &m)
           "globalscale"_a = defGlobalScale, "globalshift"_a = defGlobalShift, "epsilon"_a = defEpsilon,
           "stream"_a = nullptr, R"pbdoc(
 
-        Executes the Normalize operation on the given cuda stream.
+	cvcuda.normalize(src: nvcv.ImageBatchVarShape, base:Tensor, scale:Tensor, flags:int, globalscale: float, globalshift: float, epsilon: float, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+
+	Executes the Normalize operation on the given cuda stream.
 
         See also:
             Refer to the CV-CUDA C API reference for the Normalize operator
@@ -217,6 +226,8 @@ void ExportOpNormalize(py::module &m)
     m.def("normalize_into", &VarShapeNormalizeInto, "dst"_a, "src"_a, "base"_a, "scale"_a, "flags"_a = std::nullopt,
           py::kw_only(), "globalscale"_a = defGlobalScale, "globalshift"_a = defGlobalShift, "epsilon"_a = defEpsilon,
           "stream"_a = nullptr, R"pbdoc(
+
+	cvcuda.normalize_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, base:Tensor, scale:Tensor, flags:int, globalscale: float, globalshift: float, epsilon: float, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Normalize operation on the given cuda stream.
 

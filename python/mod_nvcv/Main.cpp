@@ -17,6 +17,7 @@
 
 #include "CAPI.hpp"
 #include "Cache.hpp"
+#include "ColorSpec.hpp"
 #include "Container.hpp"
 #include "DataType.hpp"
 #include "ExternalBuffer.hpp"
@@ -64,4 +65,5 @@ PYBIND11_MODULE(nvcv, m)
     Image::Export(m);
     ImageBatchVarShape::Export(m);
     ExportCAPI(m);
+    ExportColorSpec(m);
 }

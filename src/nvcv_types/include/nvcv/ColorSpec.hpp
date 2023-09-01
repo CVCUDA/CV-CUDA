@@ -117,38 +117,144 @@ enum class ChromaSubsampling : int8_t
     CSS_411  = NVCV_CSS_411,
     CSS_411R = NVCV_CSS_411R,
     CSS_420  = NVCV_CSS_420,
+    CSS_440  = NVCV_CSS_440,
+    CSS_410  = NVCV_CSS_410,
+    CSS_410R = NVCV_CSS_410R
 };
 
+/**
+ * @class ColorSpec
+ * @brief Class for color specification.
+ *
+ * This class encapsulates various properties related to color space and encoding.
+ */
 class ColorSpec
 {
 public:
+    /**
+     * @brief Construct a new ColorSpec object.
+     * @param cspec Existing NVCVColorSpec object.
+     */
     constexpr ColorSpec(NVCVColorSpec cspec)
         : m_cspec(cspec)
     {
     }
 
+    /**
+     * @brief Create a ColorSpec object.
+     *
+     * @param cspace Color space.
+     * @param encoding YCbCr encoding.
+     * @param xferFunc Color transfer function.
+     * @param range Color range.
+     * @param locHoriz Horizontal chroma location.
+     * @param locVert Vertical chroma location.
+     * @return A ColorSpec object.
+     */
     constexpr static ColorSpec ConstCreate(ColorSpace cspace, YCbCrEncoding encoding, ColorTransferFunction xferFunc,
                                            ColorRange range, ChromaLocation locHoriz, ChromaLocation locVert);
 
+    /**
+     * @brief Construct a new ColorSpec object.
+     *
+     * @param cspace Color space.
+     * @param encoding YCbCr encoding.
+     * @param xferFunc Color transfer function.
+     * @param range Color range.
+     * @param locHoriz Horizontal chroma location.
+     * @param locVert Vertical chroma location.
+     */
     ColorSpec(ColorSpace cspace, YCbCrEncoding encoding, ColorTransferFunction xferFunc, ColorRange range,
               ChromaLocation locHoriz, ChromaLocation locVert);
 
+    /**
+     * @brief Get the NVCVColorSpec object.
+     *
+     * @return NVCVColorSpec object.
+     */
     constexpr operator NVCVColorSpec() const;
 
-    ColorSpec      chromaLoc(ChromaLocation locHoriz, ChromaLocation locVert) const;
+    /**
+     * @brief Set the chroma location and return a new ColorSpec.
+     *
+     * @param locHoriz Horizontal chroma location.
+     * @param locVert Vertical chroma location.
+     * @return A new ColorSpec with the specified chroma location.
+     */
+    ColorSpec chromaLoc(ChromaLocation locHoriz, ChromaLocation locVert) const;
+
+    /**
+     * @brief Get the horizontal chroma location.
+     *
+     * @return Horizontal chroma location.
+     */
     ChromaLocation chromaLocHoriz() const;
+
+    /**
+     * @brief Get the vertical chroma location.
+     *
+     * @return Vertical chroma location.
+     */
     ChromaLocation chromaLocVert() const;
 
-    ColorSpec  colorSpace(ColorSpace cspace) const;
+    /**
+     * @brief Set the color space and return a new ColorSpec.
+     *
+     * @param cspace Color space.
+     * @return A new ColorSpec with the specified color space.
+     */
+    ColorSpec colorSpace(ColorSpace cspace) const;
+
+    /**
+     * @brief Get the color space.
+     *
+     * @return Color space.
+     */
     ColorSpace colorSpace() const;
 
-    ColorSpec     yCbCrEncoding(YCbCrEncoding encoding) const;
+    /**
+     * @brief Set the YCbCr encoding and return a new ColorSpec.
+     *
+     * @param encoding YCbCr encoding.
+     * @return A new ColorSpec with the specified YCbCr encoding.
+     */
+    ColorSpec yCbCrEncoding(YCbCrEncoding encoding) const;
+
+    /**
+     * @brief Get the YCbCr encoding.
+     *
+     * @return YCbCr encoding.
+     */
     YCbCrEncoding yCbCrEncoding() const;
 
-    ColorSpec             colorTransferFunction(ColorTransferFunction xferFunc) const;
+    /**
+     * @brief Set the color transfer function and return a new ColorSpec.
+     *
+     * @param xferFunc Color transfer function.
+     * @return A new ColorSpec with the specified color transfer function.
+     */
+    ColorSpec colorTransferFunction(ColorTransferFunction xferFunc) const;
+
+    /**
+     * @brief Get the color transfer function.
+     *
+     * @return Color transfer function.
+     */
     ColorTransferFunction colorTransferFunction() const;
 
-    ColorSpec  colorRange(ColorRange range) const;
+    /**
+     * @brief Set the color range and return a new ColorSpec.
+     *
+     * @param range Color range.
+     * @return A new ColorSpec with the specified color range.
+     */
+    ColorSpec colorRange(ColorRange range) const;
+
+    /**
+     * @brief Get the color range.
+     *
+     * @return Color range.
+     */
     ColorRange colorRange() const;
 
 private:

@@ -21,9 +21,14 @@
 #include <cuda_runtime.h>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
+#include <nvcv/cuda/DropCast.hpp>
 #include <nvcv/cuda/MathOps.hpp>
+#include <nvcv/cuda/TypeTraits.hpp>
 
+#include <cstdio>
+#include <fstream>
 #include <random>
+#include <string>
 
 namespace nvcv::util {
 
@@ -64,7 +69,7 @@ public:
     };
 
     // Returns the size in bytes of the color component.
-    const int32_t bytesPerC() const
+    const int32_t &bytesPerC() const
     {
         return m_bytesPerC;
     };
@@ -663,6 +668,138 @@ void SetCvDataTo(TensorImageData &cvImg, DT data, Size2D region, uint8_t chFlags
                     *cvImg.item<DT>(x, y, c) = data;
 
     return;
+}
+
+// Useful for debugging
+template<typename VT, typename ST>
+inline void PrintBuffer(const std::vector<uint8_t> &vec, const ST &strides, const ST &shape, const char *name = "")
+{
+    std::cout << "I Printing buffer " << name << " with:\nI\tSize = " << vec.size() << " Bytes\nI\tShape = " << shape
+              << "\nI\tStrides = " << strides << "\nI\tValues = " << std::flush;
+
+    for (long w = 0; w < (nvcv::cuda::NumElements<ST> == 4 ? nvcv::cuda::GetElement(shape, 3) : 1); ++w)
+    {
+        if (w > 0)
+            std::cout << std::endl;
+        std::cout << "{" << std::flush;
+        for (long z = 0; z < (nvcv::cuda::NumElements<ST> >= 3 ? nvcv::cuda::GetElement(shape, 2) : 1); ++z)
+        {
+            std::cout << "[" << std::flush;
+            for (long y = 0; y < (nvcv::cuda::NumElements<ST> >= 2 ? nvcv::cuda::GetElement(shape, 1) : 1); ++y)
+            {
+                std::cout << "(" << std::flush;
+                for (long x = 0; x < (nvcv::cuda::NumElements<ST> >= 1 ? nvcv::cuda::GetElement(shape, 0) : 1); ++x)
+                {
+                    ST coord = nvcv::cuda::DropCast<nvcv::cuda::NumElements<ST>>(long4{x, y, z, w});
+
+                    if (x > 0)
+                        std::cout << ", " << std::flush;
+                    std::cout << ValueAt<VT>(vec, strides, coord) << std::flush;
+                }
+                std::cout << ")" << std::flush;
+            }
+            std::cout << "]" << std::flush;
+        }
+        std::cout << "}" << std::flush;
+    }
+    std::cout << std::endl;
+}
+
+// Write images in *HW tensor buffer vec to PGM files.
+// The file name provided should have two (one) "%ld" format substr to place the first two (one) indices.
+// The value type VT is converted to U8 when writing to each PGM file.
+template<typename VT, typename ST>
+inline void WriteImagesToPGM(const char *filename, const std::vector<uint8_t> &vec, const ST &strides, const ST &shape)
+{
+    static_assert(nvcv::cuda::NumElements<ST> >= 2);
+
+    int widthIdx  = nvcv::cuda::NumElements<ST> - 1;
+    int heightIdx = nvcv::cuda::NumElements<ST> - 2;
+    int width     = nvcv::cuda::GetElement(shape, widthIdx);
+    int height    = nvcv::cuda::GetElement(shape, heightIdx);
+
+    int c0size = 1, c1size = 1;
+    if constexpr (nvcv::cuda::NumElements<ST> == 4)
+    {
+        c0size = nvcv::cuda::GetElement(shape, 0);
+        c1size = nvcv::cuda::GetElement(shape, 1);
+    }
+    else if constexpr (nvcv::cuda::NumElements<ST> == 3)
+    {
+        c1size = nvcv::cuda::GetElement(shape, 0);
+    }
+
+    auto stripCoord = [](long4 coord)
+    {
+        if constexpr (nvcv::cuda::NumElements<ST> == 4)
+            return ST{coord};
+        else if constexpr (nvcv::cuda::NumElements<ST> == 3)
+            return ST{coord.y, coord.z, coord.w};
+        return ST{coord.z, coord.w};
+    };
+
+    char fn[256];
+
+    for (long c0 = 0; c0 < c0size; ++c0)
+    {
+        for (long c1 = 0; c1 < c1size; ++c1)
+        {
+            sprintf(fn, filename, c1, c0);
+
+            std::ofstream ofs(fn);
+
+            ofs << "P2\n" << width << " " << height << " 255\n";
+
+            for (long i = 0; i < height; ++i)
+            {
+                for (long j = 0; j < width; ++j)
+                {
+                    ST coord = stripCoord(long4{c0, c1, i, j});
+
+                    VT val = util::ValueAt<VT>(vec, strides, coord);
+
+                    int iVal = std::min(255, std::max(0, (int)std::round(std::abs(val))));
+
+                    ofs << iVal << ((j == width - 1) ? "\n" : " ");
+                }
+            }
+
+            ofs.close();
+        }
+    }
+}
+
+// Write pyramid to PGM files, a pyramid is a list of a list of tensors
+template<typename VT>
+inline void WritePyramidToPGM(const char *header, const std::vector<std::vector<std::vector<uint8_t>>> &pyr,
+                              const std::vector<long3> &strides, const std::vector<long3> &shape)
+{
+    std::string h = std::string(header) + std::string("_%ld_");
+
+    for (int o = 0; o < (int)pyr.size(); ++o)
+    {
+        for (int l = 0; l < (int)pyr[o].size(); ++l)
+        {
+            std::string filename = h + std::to_string(o) + "_" + std::to_string(l) + ".pgm";
+
+            WriteImagesToPGM<VT>(filename.c_str(), pyr[o][l], strides[o], shape[o]);
+        }
+    }
+}
+
+// Write "fat" pyramid to PGM files, a pyramid is list of octave LNHWC tensors
+template<typename VT>
+inline void WritePyramidToPGM(const char *header, const std::vector<std::vector<uint8_t>> &pyr,
+                              const std::vector<long4> &strides, const std::vector<long4> &shape)
+{
+    std::string h = std::string(header) + std::string("_%ld_");
+
+    for (int o = 0; o < (int)pyr.size(); ++o)
+    {
+        std::string filename = h + std::to_string(o) + "_%ld" + ".pgm";
+
+        WriteImagesToPGM<VT>(filename.c_str(), pyr[o], strides[o], shape[o]);
+    }
 }
 
 } // namespace nvcv::util

@@ -807,6 +807,8 @@ TYPED_TEST(LinAlgVectorScalarMulTest, correct_output)
 // clang-format off
 NVCV_TYPED_TEST_SUITE(LinAlgMatrixMulTest, ttype::Types<
     ttype::Types<MAT(schar, 2, 3, {1, 2, 3}, {4, 5, 6}), VEC(schar, 3, 1, 2, 3), VEC(schar, 2, 14, 32)>,
+    ttype::Types<MAT(short, 1, 2, {1, 2}), VEC(short, 2, 0, -2), VEC(short, 1, -4)>,
+    ttype::Types<MAT(long, 2, 1, {1}, {2}), VEC(long, 2, -1, 2), MAT(long, 2, 2, {-1, 2}, {-2, 4})>,
     ttype::Types<MAT(int, 2, 2, {1, 2}, {3, 4}), MAT(int, 2, 2, {2, 3}, {4, 5}), MAT(int, 2, 2, {10, 13}, {22, 29})>,
     ttype::Types<MAT(float, 2, 3, {2.f, 1.f, 2.f}, {1.f, 3.f, 1.f}), MAT(float, 3, 2, {1.f, 3.f}, {2.f, 2.f}, {3.f, 1.f}),
                  MAT(float, 2, 2, {10.f, 10.f}, {10.f, 10.f})>
@@ -1043,8 +1045,8 @@ TYPED_TEST(LinAlgDotAndReverseVectorTest, correct_content_of_dot)
 
     math::Vector<Type, M> vec1, vec2;
 
-    std::iota(vec1.begin(), vec1.end(), 0);
-    std::iota(vec2.begin(), vec2.end(), 0);
+    std::iota(vec1.begin(), vec1.end(), 1);
+    std::iota(vec2.begin(), vec2.end(), 1);
 
     auto test = math::dot(vec1, vec2);
 
@@ -1328,12 +1330,7 @@ TYPED_TEST(LinAlgDetMatrixTest, correct_content_of_det)
     using Type      = ttype::GetType<TypeParam, 0>;
     constexpr int M = ttype::GetValue<TypeParam, 1>;
 
-    math::Matrix<Type, M, M> mat;
-
-    for (int i = 0; i < mat.rows(); ++i)
-    {
-        std::iota(mat[i].begin(), mat[i].end(), 0);
-    }
+    math::Matrix<Type, M, M> mat = math::identity<Type, M, M>();
 
     auto test = math::det(mat);
 
@@ -1415,19 +1412,11 @@ TYPED_TEST(LinAlgInvMatrixTest, correct_content_of_inv_inplace)
     using Type      = ttype::GetType<TypeParam, 0>;
     constexpr int M = ttype::GetValue<TypeParam, 1>;
 
-    math::Matrix<Type, M, M> mat;
-
-    for (int i = 0; i < mat.rows(); ++i)
-    {
-        for (int j = 0; j < mat.cols(); ++j)
-        {
-            mat[i][j] = (i * mat.cols() + j) / static_cast<Type>(M * M);
-        }
-    }
+    math::Matrix<Type, M, M> mat = math::identity<Type, M, M>();
 
     auto test = mat;
 
-    math::inv_inplace(test);
+    EXPECT_TRUE(math::inv_inplace(test));
 
     GoldInv<Type, M> goldInv;
 
@@ -1436,4 +1425,24 @@ TYPED_TEST(LinAlgInvMatrixTest, correct_content_of_inv_inplace)
     goldInv(gold);
 
     EXPECT_EQ(test, gold);
+}
+
+// --------------------- Testing LinAlg solve operations -----------------------
+
+NVCV_TYPED_TEST_SUITE(
+    LinAlgSolveTest,
+    ttype::Types<ttype::Types<MAT(int, 1, 1, {1}), VEC(int, 1, 2), VEC(int, 1, 2)>,
+                 ttype::Types<MAT(float, 2, 2, {1, 2}, {3, 4}), VEC(float, 2, 0, 0.5), VEC(float, 2, 1, 2)>,
+                 ttype::Types<MAT(float, 3, 3, {3, -2, 5}, {4, -7, -1}, {5, -6, 4}), VEC(float, 3, 1, -2, -1),
+                              VEC(float, 3, 2, 19, 13)>>);
+
+TYPED_TEST(LinAlgSolveTest, correct_solve)
+{
+    auto A = ttype::GetValue<TypeParam, 0>;
+    auto x = ttype::GetValue<TypeParam, 1>;
+    auto b = ttype::GetValue<TypeParam, 2>;
+
+    math::solve_inplace(A, b);
+
+    EXPECT_EQ(b, x);
 }

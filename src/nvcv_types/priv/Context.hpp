@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,6 +19,7 @@
 #define NVCV_PRIV_CORE_CONTEXT_HPP
 
 #include "AllocatorManager.hpp"
+#include "ArrayManager.hpp"
 #include "DefaultAllocator.hpp"
 #include "IContext.hpp"
 #include "ImageBatchManager.hpp"
@@ -43,6 +44,7 @@ private:
     ImageManager      m_imageManager;
     ImageBatchManager m_imageBatchManager;
     TensorManager     m_tensorManager;
+    ArrayManager      m_arrayManager;
 
     Managers m_managerList;
 };

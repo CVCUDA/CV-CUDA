@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,6 +34,8 @@ add_library(nvcv_types_priv STATIC
     ColorFormat.cpp
     DataType.cpp
     ImageFormat.cpp
+    Array.cpp
+    ArrayWrapData.cpp
 )
 
 target_include_directories(nvcv_types_priv
@@ -48,4 +50,5 @@ target_link_libraries(nvcv_types_priv
         nvcv_types_headers
         nvcv_util_sanitizer
         CUDA::cudart_static
+        -lrt
 )

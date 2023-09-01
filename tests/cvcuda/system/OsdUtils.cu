@@ -100,6 +100,71 @@ Image *create_image(int width, int height, ImageFormat format)
     return output;
 }
 
+Segment *create_segment()
+{
+    Segment *output = new Segment();
+    output->width   = 10;
+    output->height  = 10;
+    checkRuntime(cudaMalloc(&output->data, output->width * output->height * sizeof(float)));
+    std::vector<float> diamond;
+    diamond.insert(diamond.end(), {0, 0, 0, 0, 0.2, 0.2, 0, 0, 0, 0});
+    diamond.insert(diamond.end(), {0, 0, 0, 0.2, 0.3, 0.3, 0.2, 0, 0, 0});
+    diamond.insert(diamond.end(), {0, 0, 0.2, 0.3, 0.4, 0.4, 0.3, 0.2, 0, 0});
+    diamond.insert(diamond.end(), {0, 0.2, 0.3, 0.4, 0.5, 0.5, 0.4, 0.3, 0.2, 0});
+    diamond.insert(diamond.end(), {0.2, 0.3, 0.4, 0.5, 0.5, 0.5, 0.5, 0.4, 0.3, 0.2});
+    diamond.insert(diamond.end(), {0.2, 0.3, 0.4, 0.5, 0.5, 0.5, 0.5, 0.4, 0.3, 0.2});
+    diamond.insert(diamond.end(), {0, 0.2, 0.3, 0.4, 0.5, 0.5, 0.4, 0.3, 0.2, 0});
+    diamond.insert(diamond.end(), {0, 0, 0.2, 0.3, 0.4, 0.4, 0.3, 0.2, 0, 0});
+    diamond.insert(diamond.end(), {0, 0, 0, 0.2, 0.3, 0.3, 0.2, 0, 0, 0});
+    diamond.insert(diamond.end(), {0, 0, 0, 0, 0.2, 0.2, 0, 0, 0, 0});
+    checkRuntime(cudaMemcpy(output->data, diamond.data(), output->width * output->height * sizeof(float),
+                            cudaMemcpyHostToDevice));
+    return output;
+}
+
+void free_segment(Segment *segment)
+{
+    if (segment->data)
+    {
+        checkRuntime(cudaFree(segment->data));
+    }
+    segment->width  = 0;
+    segment->height = 0;
+    delete (segment);
+}
+
+Polyline *create_polyline()
+{
+    Polyline          *output = new Polyline();
+    std::vector<Point> points;
+    points.push_back(Point({100, 100}));
+    points.push_back(Point({600, 100}));
+    points.push_back(Point({350, 300}));
+    points.push_back(Point({600, 500}));
+    points.push_back(Point({300, 500}));
+
+    output->n_pts = points.size();
+    output->h_pts = (int *)malloc(output->n_pts * 2 * sizeof(int));
+    memcpy(output->h_pts, points.data(), output->n_pts * 2 * sizeof(int));
+    checkRuntime(cudaMalloc(&output->d_pts, output->n_pts * 2 * sizeof(int)));
+    checkRuntime(cudaMemcpy(output->d_pts, points.data(), output->n_pts * 2 * sizeof(int), cudaMemcpyHostToDevice));
+    return output;
+}
+
+void free_polyline(Polyline *polyline)
+{
+    if (polyline->d_pts)
+    {
+        checkRuntime(cudaFree(polyline->d_pts));
+    }
+    if (polyline->h_pts)
+    {
+        free(polyline->h_pts);
+    }
+    polyline->n_pts = 0;
+    delete (polyline);
+}
+
 // Free image pointer
 void free_image(Image *image)
 {
@@ -185,4 +250,5 @@ void cuosd_launch(cuOSDContext_t context, Image *image, void *_stream)
     }
     cuosd_launch(context, image->data0, image->data1, image->width, image->stride, image->height, format, stream);
 }
+
 }} // namespace nvcv::test::osd

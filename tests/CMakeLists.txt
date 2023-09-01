@@ -30,6 +30,7 @@ target_link_libraries(nvcv_test_main
     PRIVATE
         nvcv_types
         CUDA::cudart_static
+        -lrt
 )
 
 # Now we want to create a script in the output directory that will run

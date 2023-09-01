@@ -23,15 +23,15 @@ NVIDIA CV-CUDA™ is an open-source project for building cloud-scale `Artificial
 
 CV-CUDA includes:
 
-*  A unified, specialized set of high-performance CV and image processing kernels
-*  C, C++, and Python APIs
-*  Batching support, with variable shape images
-*  Zero-copy interfaces to PyTorch
-*  Sample applications: object classification and image segmentation
+* A unified, specialized set of high-performance CV and image processing kernels
+* C, C++, and Python APIs
+* Batching support, with variable shape images
+* Zero-copy interfaces to PyTorch
+* Sample applications: classification, object detection, and image segmentation
 
 
 .. image:: content/cvcuda_arch.jpg
-   :width: 610
+   :width: 500
 
 
 
@@ -50,7 +50,7 @@ CV-CUDA offers more than 20 Computer Vision and Image Processing operators. Find
 Where Are the Release Notes?
 ------------------
 
-An awesome product requires excellent support.  CV-CUDA release notes can be found `here <https://github.com/CVCUDA/CV-CUDA/releases/tag/v0.3.0-beta>`_.
+An awesome product requires excellent support.  CV-CUDA release notes can be found `here <https://github.com/CVCUDA/CV-CUDA/releases/tag/v0.4.0-beta>`_.
 
 
 Where Can I Get Help?
@@ -64,10 +64,10 @@ What Other Computer Vision Products Does NVIDIA Offer?
 
 NVIDIA offers a number of products for accelerating computer vision and image processing applications. In addition to CV-CUDA, some of the others include:
 
-*  `DALI <https://developer.nvidia.com/dali>`_ (Data Loading Library), a portable, holistic framework for accelerated data loading and augmentation in deep learning workflows involving images, videos, and audio data.
-*  `VPI <https://developer.nvidia.com/embedded/vpi>`_ (Vision Programming Interface), an accelerated computer vision and image processing software library primarily for embedded/edge applications.
-*  `cuCIM <https://developer.nvidia.com/multidimensional-image-processing>`_ (Compute Unified Device Architecture Clara Image), an open source, accelerated computer vision and image processing library for multidimensional images in biomedical, geospatial, material life science, and remote sensing use cases.
-*  `NPP <https://developer.nvidia.com/npp>`_ (NVIDIA Performance Primitives), an image, signal, and video processing library that accelerates and performs domain-specific functions.
+* `DALI <https://developer.nvidia.com/dali>`_ (Data Loading Library), a portable, holistic framework for accelerated data loading and augmentation in deep learning workflows involving images, videos, and audio data.
+* `VPI <https://developer.nvidia.com/embedded/vpi>`_ (Vision Programming Interface), an accelerated computer vision and image processing software library primarily for embedded/edge applications.
+* `cuCIM <https://developer.nvidia.com/multidimensional-image-processing>`_ (Compute Unified Device Architecture Clara Image), an open source, accelerated computer vision and image processing library for multidimensional images in biomedical, geospatial, material life science, and remote sensing use cases.
+* `NPP <https://developer.nvidia.com/npp>`_ (NVIDIA Performance Primitives), an image, signal, and video processing library that accelerates and performs domain-specific functions.
 
 If you want to learn more about what computer vision solutions are available, review the `computer vision solutions landing page <https://developer.nvidia.com/computer-vision>`_.
 
@@ -97,7 +97,7 @@ NVIDIA, the NVIDIA logo, NVIDIA CV-CUDA, and NVIDIA TensorRT are trademarks and/
 
 Copyright
 --------------------
-© 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+© 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
 
 
@@ -116,6 +116,7 @@ Copyright
 
     C Modules <modules/c_modules>
     C++ Modules <modules/cpp_modules>
+    Python Modules <modules/python_modules>
     Index <_exhale_api/cvcuda_api>
 
 .. toctree::
@@ -123,6 +124,7 @@ Copyright
     :maxdepth: 1
     :hidden:
 
+    Beta.2 <relnotes/v0.4.0-beta>
     Beta.1 <relnotes/v0.3.1-beta>
     Beta <relnotes/v0.3.0-beta>
     Alpha.1 <relnotes/v0.2.1-alpha>

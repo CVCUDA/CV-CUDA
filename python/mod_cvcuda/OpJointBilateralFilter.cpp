@@ -106,10 +106,14 @@ ImageBatchVarShape VarShapeJointBilateralFilter(ImageBatchVarShape &input, Image
 void ExportOpJointBilateralFilter(py::module &m)
 {
     using namespace pybind11::literals;
+    py::options options;
+    options.disable_function_signatures();
 
     m.def("joint_bilateral_filter", &JointBilateralFilter, "src"_a, "srcColor"_a, "diameter"_a, "sigma_color"_a,
           "sigma_space"_a, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
+
+	cvcuda.joint_bilateral_filter(src: nvcv.Tensor, srcColor:Tensor, diameter: int, sigma_color: float, sigma_space: float, border:NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the Joint Bilateral Filter operation on the given cuda stream.
 
@@ -137,6 +141,8 @@ void ExportOpJointBilateralFilter(py::module &m)
     m.def("joint_bilateral_filter_into", &JointBilateralFilterInto, "dst"_a, "src"_a, "srcColor"_a, "diameter"_a,
           "sigma_color"_a, "sigma_space"_a, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
+
+	cvcuda.joint_bilateral_filter_into(dst: nvcv.Tensor,src: nvcv.Tensor, srcColor:Tensor, diameter: int, sigma_color: float, sigma_space: float, border:NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Joint Bilateral Filter operation on the given cuda stream.
 
@@ -166,6 +172,8 @@ void ExportOpJointBilateralFilter(py::module &m)
           "sigma_space"_a, py::kw_only(), "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "stream"_a = nullptr,
           R"pbdoc(
 
+	cvcuda.joint_bilateral_filter(src: nvcv.ImageBatchVarShape, srcColor:ImageBatchVarShape,*, diameter: int, sigma_color: float, sigma_space: float, border:NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+
         Executes the Joint Bilateral operation on the given cuda stream.
 
         See also:
@@ -192,7 +200,9 @@ void ExportOpJointBilateralFilter(py::module &m)
           "diameter"_a, "sigma_color"_a, "sigma_space"_a, py::kw_only(),
           "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "stream"_a = nullptr, R"pbdoc(
 
-        Executes the Joint Bilateral operation on the given cuda stream.
+	cvcuda.joint_bilateral_filter_into(dst: nvcv.ImageBatchVarShape,src: nvcv.ImageBatchVarShape, srcColor:ImageBatchVarShape,*, diameter: int, sigma_color: float, sigma_space: float, border:NVCVBorderType = <NVCVBorderType::NVCV_BORDER_CONSTANT >, stream: Optional[nvcv.cuda.Stream] = None)
+
+	Executes the Joint Bilateral operation on the given cuda stream.
 
         See also:
             Refer to the CV-CUDA C API reference for the Joint Bilateral operator

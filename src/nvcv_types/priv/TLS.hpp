@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -49,6 +49,10 @@ struct CoreTLS
 
     char bufDataTypeName[1024];
     char bufImageFormatName[1024];
+    char bufAlphaTypeName[1024];
+    char bufExtraChannelTypeName[1024];
+
+    char bufResourceTypeName[128];
 };
 
 CoreTLS &GetCoreTLS() noexcept;

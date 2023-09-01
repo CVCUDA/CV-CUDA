@@ -49,7 +49,7 @@ The first stage in our pipeline is importing all necessary python modules. Apart
    :dedent:
 
 Then we define the main function which helps us parse various configuration parameters used throughout this sample as command line
-arguments. This sample allows configuring following parameters. All of them have their default values already set so that one can execute the sample without supplying any.
+arguments. This sample allows configuring following parameters. All of them have their default values already set so that one can execute the sample without supplying any. Some of these arguments are shared across many other CVCUDA samples and hence come from the ``perf_utils.py`` class's ``get_default_arg_parser()`` method.
 
 1. ``-i``, ``--input_path`` : Either a path to a JPEG image/MP4 video or a directory containing JPG images to use as input. When pointing to a directory, only JPG images will be read.
 2. ``-o``, ``--output_dir`` : The directory where the output segmentation overlay should be stored.
@@ -58,10 +58,11 @@ arguments. This sample allows configuring following parameters. All of them have
 5. ``-tw``, ``--target_img_width`` : The width to which you want to resize the input_image before running inference.
 6. ``-b``, ``--batch_size`` : The batch size used during inference. If only one image is used as input, the same input image will be read and used this many times. Useful for performance bench-marking.
 7. ``-d``, ``--device_id``  : The GPU device to use for this sample.
-8. ``-bk``, ``--backend``  : The inference backend to use. Currently supports pytorch or tensorrt.
+8. ``-bk``, ``--backend``  : The inference backend to use. Currently supports PyTorch or TensorRT.
 
 
-Once we are done parsing all the command line arguments, we would simply call the function ``run_sample`` with all those arguments.
+Once we are done parsing all the command line arguments, we would setup the ``CvCudaPerf`` object for any performance benchmarking needs and simply call the function ``run_sample`` with all those arguments.
+
 
 .. literalinclude:: ../../../../samples/segmentation/python/main.py
    :language: python
@@ -70,7 +71,7 @@ Once we are done parsing all the command line arguments, we would simply call th
    :end-before: end_call_run_sample
    :dedent:
 
-The ``run_sample`` function is the primary function that runs this samples. It sets up the requested CUDA device, CUDA context and CUDA stream. CUDA streams help us execute CUDA operations on a non-default stream and enhances the overall performance. Additionally, NVTX markers are used throughout this sample to facilitate performance bench-marking using `NVIDIA NSIGHT systems <https://developer.nvidia.com/nsight-systems>`_. In order to keep things simple, we are only creating one CUDA stream to run all the stages of this sample. The same stream is available in CVCUDA, PyTorch and TensorRT.
+The ``run_sample`` function is the primary function that runs this sample. It sets up the requested CUDA device, CUDA context and CUDA stream. CUDA streams help us execute CUDA operations on a non-default stream and enhances the overall performance. Additionally, NVTX markers are used throughout this sample (via ``CvCudaPerf``) to facilitate performance bench-marking using `NVIDIA NSIGHT systems <https://developer.nvidia.com/nsight-systems>`_ and ``benchmark.py``. In order to keep things simple, we are only creating one CUDA stream to run all the stages of this sample. The same stream is available in CVCUDA, PyTorch and TensorRT.
 
 .. literalinclude:: ../../../../samples/segmentation/python/main.py
    :language: python
@@ -134,7 +135,7 @@ This sample can be invoked without any command-line arguments like the following
 
 .. code-block:: bash
 
-   python3 sample/segmentation/python/main.py
+   python3 segmentation/python/main.py
 
 
 To run it on a single image with batch size 5 for the background class writing the output to a specific directory:
@@ -180,18 +181,18 @@ This sample takes as input the one or more images or one video and generates the
 .. code-block:: bash
 
    user@machine:~/cvcuda/samples$ python3 segmentation/python/main.py -b 5 -c __background__ -o /tmp -i assets/images/
-   Read a total of 2 JPEG images.
-   Processing batch 1 of 1
-      Saving the overlay result for __background__ class for to: /tmp/out_tabby_tiger_cat.jpg
-      Saving the overlay result for __background__ class for to: /tmp/out_Weimaraner.jpg
-   user@machine:~/cvcuda/samples$ python3 segmentation/python/main.py -i assets/images/Weimaraner.jpg -o /tmp -b 5 -c dog -th 224 -tw 224
-   Processing batch 1 of 1
-      Saving the overlay result for dog class for to: /tmp/out_Weimaraner.jpg
-      Saving the overlay result for dog class for to: /tmp/out_Weimaraner.jpg
-      Saving the overlay result for dog class for to: /tmp/out_Weimaraner.jpg
-      Saving the overlay result for dog class for to: /tmp/out_Weimaraner.jpg
-      Saving the overlay result for dog class for to: /tmp/out_Weimaraner.jpg
-
+   [perf_utils:85] 2023-07-27 23:17:49 WARNING perf_utils is used without benchmark.py. Benchmarking mode is turned off.
+   [perf_utils:89] 2023-07-27 23:17:49 INFO   Using CV-CUDA version: 0.4.0-beta
+   [pipelines:35] 2023-07-27 23:17:50 INFO   Using CVCUDA as preprocessor.
+   [torch_utils:60] 2023-07-27 23:17:50 INFO   Found a total of 3 JPEG images.
+   [torch_utils:77] 2023-07-27 23:17:50 INFO   Using torchnvjpeg as decoder.
+   [torch_utils:151] 2023-07-27 23:17:50 INFO   Using PyTorch/PIL as encoder.
+   [pipelines:124] 2023-07-27 23:17:50 INFO   Using CVCUDA as post-processor.
+   [model_inference:242] 2023-07-27 23:17:50 INFO   Using TensorRT as the inference engine.
+   [segmentation:183] 2023-07-27 23:17:50 INFO   Processing batch 0
+   [torch_utils:165] 2023-07-27 23:17:50 INFO   Saving the overlay result to: /tmp/out_peoplenet.jpg
+   [torch_utils:165] 2023-07-27 23:17:50 INFO   Saving the overlay result to: /tmp/out_tabby_tiger_cat.jpg
+   [torch_utils:165] 2023-07-27 23:17:50 INFO   Saving the overlay result to: /tmp/out_Weimaraner.jpg
 
 .. image:: out_Weimaraner.jpg
    :width: 350

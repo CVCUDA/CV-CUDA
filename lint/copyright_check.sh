@@ -138,7 +138,6 @@ function check_copyright_year()
         # and the last commit this file was touched is not present. In this situation,
         # we can't tell when it was last changed. Since this commit is old, we can assume
         # that the copyright year is correct, i.e., the file wasn't touched recently.
-        # Shallow repos are common in gitlab CI.
         if [ "$is_grafted" ]; then
             return 0
         else

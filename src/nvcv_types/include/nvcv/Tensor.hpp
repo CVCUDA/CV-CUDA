@@ -21,6 +21,7 @@
 #include "CoreResource.hpp"
 #include "Image.hpp"
 #include "ImageFormat.hpp"
+#include "Optional.hpp"
 #include "Size.hpp"
 #include "Tensor.h"
 #include "TensorData.hpp"
@@ -31,7 +32,12 @@ namespace nvcv {
 
 NVCV_IMPL_SHARED_HANDLE(Tensor);
 
-// Tensor tensor definition -------------------------------------
+/**
+ * @brief Represents a tensor as a core resource in the system.
+ *
+ * The Tensor class is built upon the CoreResource utility class, which handles the resource management of the tensor.
+ * This class provides various interfaces to access and manage tensor properties such as rank, shape, data type, and layout.
+ */
 class Tensor : public CoreResource<NVCVTensorHandle, Tensor>
 {
 public:
@@ -39,28 +45,94 @@ public:
     using Base         = CoreResource<NVCVTensorHandle, Tensor>;
     using Requirements = NVCVTensorRequirements;
 
-    int          rank() const;
-    TensorShape  shape() const;
-    DataType     dtype() const;
+    /**
+     * @brief Retrieves the rank (number of dimensions) of the tensor.
+     *
+     * @return Rank of the tensor.
+     */
+    int rank() const;
+
+    /**
+     * @brief Retrieves the shape of the tensor.
+     *
+     * @return Shape of the tensor.
+     */
+    TensorShape shape() const;
+
+    /**
+     * @brief Retrieves the data type of the tensor elements.
+     *
+     * @return Data type of the tensor.
+     */
+    DataType dtype() const;
+
+    /**
+     * @brief Retrieves the layout of the tensor.
+     *
+     * @return Layout of the tensor.
+     */
     TensorLayout layout() const;
 
+    /**
+     * @brief Exports the data of the tensor.
+     *
+     * @return TensorData object representing the tensor's data.
+     */
     TensorData exportData() const;
 
+    /**
+     * @brief Exports the tensor data and casts it to a specified derived data type.
+     *
+     * @tparam DerivedTensorData The derived tensor data type to cast to.
+     * @return An optional object of the derived tensor data type.
+     */
     template<typename DerivedTensorData>
     Optional<DerivedTensorData> exportData() const
     {
         return exportData().cast<DerivedTensorData>();
     }
 
-    void  setUserPointer(void *ptr);
+    /**
+     * @brief Sets a user-defined pointer associated with the tensor.
+     *
+     * @param ptr Pointer to set.
+     */
+    void setUserPointer(void *ptr);
+
+    /**
+     * @brief Retrieves the user-defined pointer associated with the tensor.
+     *
+     * @return User-defined pointer.
+     */
     void *userPointer() const;
 
+    /**
+     * @brief Calculates the requirements for a tensor given its shape and data type.
+     *
+     * @param shape Shape of the tensor.
+     * @param dtype Data type of the tensor elements.
+     * @param bufAlign Memory alignment for the tensor.
+     * @return Requirements object representing the tensor's requirements.
+     */
     static Requirements CalcRequirements(const TensorShape &shape, DataType dtype, const MemAlignment &bufAlign = {});
+
+    /**
+     * @brief Calculates the requirements for a tensor representing a set of images.
+     *
+     * @param numImages Number of images.
+     * @param imgSize Dimensions of the images.
+     * @param fmt Format of the images.
+     * @param bufAlign Memory alignment for the tensor.
+     * @return Requirements object representing the tensor's requirements.
+     */
     static Requirements CalcRequirements(int numImages, Size2D imgSize, ImageFormat fmt,
                                          const MemAlignment &bufAlign = {});
 
     NVCV_IMPLEMENT_SHARED_RESOURCE(Tensor, Base);
 
+    /**
+     * @brief Constructors
+     */
     explicit Tensor(const Requirements &reqs, const Allocator &alloc = nullptr);
     explicit Tensor(const TensorShape &shape, DataType dtype, const MemAlignment &bufAlign = {},
                     const Allocator &alloc = nullptr);
@@ -85,12 +157,31 @@ using TensorDataCleanupCallback
                       TranslateTensorDataCleanup>;
 
 // TensorWrapImage definition -------------------------------------
-
+/**
+ * @brief Wraps tensor data into a tensor object.
+ *
+ * @param data Tensor data to be wrapped.
+ * @param cleanup Cleanup callback to manage the tensor data's lifecycle.
+ * @return A tensor object wrapping the given data.
+ */
 inline Tensor TensorWrapData(const TensorData &data, TensorDataCleanupCallback &&cleanup = {});
 
+/**
+ * @brief Wraps an image into a tensor object.
+ *
+ * @param img Image to be wrapped.
+ * @return A tensor object wrapping the given image.
+ */
 inline Tensor TensorWrapImage(const Image &img);
 
 using TensorWrapHandle = NonOwningResource<Tensor>;
+
+// Tensor const ref optional definition ---------------------------
+
+using OptionalTensorConstRef = nvcv::Optional<std::reference_wrapper<const nvcv::Tensor>>;
+
+#define NVCV_TENSOR_HANDLE_TO_OPTIONAL(X) X ? nvcv::OptionalTensorConstRef(nvcv::TensorWrapHandle{X}) : nvcv::NullOpt
+#define NVCV_OPTIONAL_TO_HANDLE(X)        X ? X->get().handle() : nullptr
 
 } // namespace nvcv
 

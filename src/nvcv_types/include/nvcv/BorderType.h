@@ -23,14 +23,23 @@ extern "C"
 {
 #endif
 
-// @brief Flag to choose the border mode to be used
+/* @brief Flag to choose the border mode to be used
+ *
+ * This enum is used to specify the type of border to be used for functions
+ * that require it. Here are the different types:
+ * - `NVCV_BORDER_CONSTANT`: Uses a constant value for borders.
+ * - `NVCV_BORDER_REPLICATE`: Replicates the last element for borders.
+ * - `NVCV_BORDER_REFLECT`: Reflects the border elements.
+ * - `NVCV_BORDER_WRAP`: Wraps the border elements.
+ * - `NVCV_BORDER_REFLECT101`: Reflects the border elements, excluding the last element.
+ */
 typedef enum
 {
-    NVCV_BORDER_CONSTANT   = 0,
-    NVCV_BORDER_REPLICATE  = 1,
-    NVCV_BORDER_REFLECT    = 2,
-    NVCV_BORDER_WRAP       = 3,
-    NVCV_BORDER_REFLECT101 = 4,
+    NVCV_BORDER_CONSTANT   = 0, ///< Uses a constant value for borders.
+    NVCV_BORDER_REPLICATE  = 1, ///< Replicates the last element for borders.
+    NVCV_BORDER_REFLECT    = 2, ///< Reflects the border elements.
+    NVCV_BORDER_WRAP       = 3, ///< Wraps the border elements.
+    NVCV_BORDER_REFLECT101 = 4, ///< Reflects the border elements, excluding the last element.
 } NVCVBorderType;
 
 #ifdef __cplusplus

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,26 +35,63 @@ namespace nvcv {
  * @{
 */
 
+/**
+ * @brief Struct representing a two-dimensional size.
+ *
+ * This structure is designed to represent a width and height in 2D space.
+ */
 struct Size2D
 {
     int w, h;
 };
 
+/**
+ * @brief Compares two Size2D structures for equality.
+ *
+ * @param a First size to compare.
+ * @param b Second size to compare.
+ * @return true if both width and height of `a` and `b` are equal, otherwise false.
+ */
 inline bool operator==(const Size2D &a, const Size2D &b)
 {
     return std::tie(a.w, a.h) == std::tie(b.w, b.h);
 }
 
+/**
+ * @brief Compares two Size2D structures for inequality.
+ *
+ * @param a First size to compare.
+ * @param b Second size to compare.
+ * @return true if width or height of `a` and `b` are not equal, otherwise false.
+ */
 inline bool operator!=(const Size2D &a, const Size2D &b)
 {
     return !(a == b);
 }
 
+/**
+ * @brief Compares two Size2D structures.
+ *
+ * The comparison is based on the width first, and then the height.
+ *
+ * @param a First size to compare.
+ * @param b Second size to compare.
+ * @return true if `a` is less than `b`, otherwise false.
+ */
 inline bool operator<(const Size2D &a, const Size2D &b)
 {
     return std::tie(a.w, a.h) < std::tie(b.w, b.h);
 }
 
+/**
+ * @brief Overloads the stream insertion operator for Size2D.
+ *
+ * This allows for easy printing of Size2D structures in the format "width x height".
+ *
+ * @param out Output stream to which the size string will be written.
+ * @param size Size2D structure to be output.
+ * @return Reference to the modified output stream.
+ */
 inline std::ostream &operator<<(std::ostream &out, const Size2D &size)
 {
     return out << size.w << "x" << size.h;

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -47,19 +47,23 @@ public:
     ImageFormat(NVCVColorModel colorModel, ColorSpec colorSpec, NVCVChromaSubsampling chromaSub,
                 NVCVMemLayout memLayout, NVCVDataKind dataKind, NVCVSwizzle swizzle, NVCVPacking packing0,
                 NVCVPacking packing1 = NVCV_PACKING_0, NVCVPacking packing2 = NVCV_PACKING_0,
-                NVCVPacking packing3 = NVCV_PACKING_0);
+                NVCVPacking packing3 = NVCV_PACKING_0, NVCVAlphaType alphaType = NVCV_ALPHA_ASSOCIATED,
+                const NVCVExtraChannelInfo *exChannelInfo = 0);
 
     ImageFormat(NVCVRawPattern rawPattern, NVCVMemLayout memLayout, NVCVDataKind dataKind, NVCVSwizzle swizzle,
                 NVCVPacking packing0, NVCVPacking packing1 = NVCV_PACKING_0, NVCVPacking packing2 = NVCV_PACKING_0,
-                NVCVPacking packing3 = NVCV_PACKING_0);
+                NVCVPacking packing3 = NVCV_PACKING_0, NVCVAlphaType alphaType = NVCV_ALPHA_ASSOCIATED,
+                const NVCVExtraChannelInfo *exChannelInfo = 0);
 
     ImageFormat(NVCVMemLayout memLayout, NVCVDataKind dataKind, NVCVSwizzle swizzle, NVCVPacking packing0,
                 NVCVPacking packing1 = NVCV_PACKING_0, NVCVPacking packing2 = NVCV_PACKING_0,
-                NVCVPacking packing3 = NVCV_PACKING_0);
+                NVCVPacking packing3 = NVCV_PACKING_0, NVCVAlphaType alphaType = NVCV_ALPHA_ASSOCIATED,
+                const NVCVExtraChannelInfo *exChannelInfo = 0);
 
     ImageFormat(const ColorFormat &colorFormat, NVCVChromaSubsampling chromaSub, NVCVMemLayout memLayout,
                 NVCVDataKind dataKind, NVCVSwizzle swizzle, NVCVPacking packing0, NVCVPacking packing1 = NVCV_PACKING_0,
-                NVCVPacking packing2 = NVCV_PACKING_0, NVCVPacking packing3 = NVCV_PACKING_0);
+                NVCVPacking packing2 = NVCV_PACKING_0, NVCVPacking packing3 = NVCV_PACKING_0,
+                NVCVAlphaType alphaType = NVCV_ALPHA_ASSOCIATED, const NVCVExtraChannelInfo *exChannelInfo = 0);
 
     static ImageFormat FromFourCC(uint32_t fourcc, ColorSpec colorSpec, NVCVMemLayout memLayout);
 
@@ -91,11 +95,18 @@ public:
     ImageFormat colorFormat(const ColorFormat &newColorFormat) const;
     ColorFormat colorFormat() const noexcept;
 
-    int                    bpp(int plane) const noexcept;
-    NVCVSwizzle            swizzle() const noexcept;
-    NVCVColorModel         colorModel() const noexcept;
-    int                    blockHeightLog2() const noexcept;
-    int                    numChannels() const noexcept;
+    NVCVAlphaType alphaType() const noexcept;
+    ImageFormat   alphaType(NVCVAlphaType newAlphaType) const;
+
+    void        extraChannelInfo(NVCVExtraChannelInfo *exChannelInfo) const noexcept;
+    ImageFormat extraChannelInfo(const NVCVExtraChannelInfo *newExChannelInfo) const;
+
+    int            bpp(int plane) const noexcept;
+    NVCVSwizzle    swizzle() const noexcept;
+    NVCVColorModel colorModel() const noexcept;
+    int            blockHeightLog2() const noexcept;
+    int            numChannels() const noexcept;
+
     std::array<int32_t, 4> bpc() const;
     uint32_t               fourCC() const;
     int                    numPlanes() const noexcept;
@@ -147,11 +158,23 @@ constexpr NVCVPacking ImageFormat::planePacking(int plane) const noexcept
     // |11 10 09 08|05 04|03 02 01 00|
     // |  ENC(BPP) |#CH-1|   PACK    |
 
-    auto decode = [](uint32_t plane, uint32_t value, int chlen, int packlen, int bpplen)
+    auto decode = [](uint32_t plane, uint32_t isPlanar, uint32_t value, int chlen, int packlen, int bpplen)
     {
-        uint32_t bpp  = ExtractBitfield(value, packlen + chlen, bpplen);
-        uint32_t nch  = ExtractBitfield(value, packlen, chlen);
-        uint32_t pack = ExtractBitfield(value, 0, packlen);
+        uint32_t bpp;
+        uint32_t nch;
+        uint32_t pack;
+        if (isPlanar)
+        {
+            bpp  = ExtractBitfield(value, packlen + chlen, bpplen);
+            nch  = ExtractBitfield(value, packlen, chlen);
+            pack = ExtractBitfield(value, 0, packlen);
+        }
+        else
+        {
+            bpp  = 0;
+            nch  = 0;
+            pack = 0;
+        }
 
         // if we keep using bpp==0 for 8-bit, since the 4th plane doesn't
         // have a channel count nor packing, the corresponding NVCVPacking
@@ -167,19 +190,20 @@ constexpr NVCVPacking ImageFormat::planePacking(int plane) const noexcept
         return SetBitfield(bpp, 6, 4) | SetBitfield(nch, 4, 2) | SetBitfield(pack, 0, 4);
     };
 
+    uint32_t isPlanar = ExtractBitfield(m_format, 7, 1);
     switch (plane)
     {
     case 0:
-        return (NVCVPacking)decode(plane, ExtractBitfield(m_format, 35, 9), 2, 3, 4);
+        return (NVCVPacking)decode(plane, 1, ExtractBitfield(m_format, 35, 9), 2, 3, 4);
 
     case 1:
-        return (NVCVPacking)decode(plane, ExtractBitfield(m_format, 44, 7), 1, 3, 3);
+        return (NVCVPacking)decode(plane, isPlanar, ExtractBitfield(m_format, 44, 7), 1, 3, 3);
 
     case 2:
-        return (NVCVPacking)decode(plane, ExtractBitfield(m_format, 51, 7), 1, 3, 3);
+        return (NVCVPacking)decode(plane, isPlanar, ExtractBitfield(m_format, 51, 7), 1, 3, 3);
 
     case 3:
-        return (NVCVPacking)decode(plane, ExtractBitfield(m_format, 58, 3), 0, 0, 3);
+        return (NVCVPacking)decode(plane, isPlanar, ExtractBitfield(m_format, 58, 3), 0, 0, 3);
 
     default:
         return NVCV_PACKING_0;

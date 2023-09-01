@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-yellogreen.svg)](https://opensource.org/licenses/Apache-2.0)
 
-![Version](https://img.shields.io/badge/Version-v0.3.1--beta-blue)
+![Version](https://img.shields.io/badge/Version-v0.4.0--beta-blue)
 
 ![Platform](https://img.shields.io/badge/Platform-linux--64_%7C_win--64_wsl2-gray)
 
@@ -18,7 +18,7 @@ efficient pre- and post-processing pipelines. CV-CUDA originated as a
 collaborative effort between [NVIDIA][NVIDIA Develop] and [ByteDance][ByteDance].
 
 Refer to our [Developer Guide](DEVELOPER_GUIDE.md) for more information on the
-operators available as of release v0.3.1-beta.
+operators available as of release v0.4.0-beta.
 
 ## Getting Started
 
@@ -27,7 +27,7 @@ To get a local copy up and running follow these steps.
 ### Pre-requisites
 
 - Linux distro:
-  - Ubuntu x86_64 >= 18.04
+  - Ubuntu x86_64 >= 20.04
   - WSL2 with Ubuntu >= 20.04 (tested with 20.04)
 - NVIDIA driver
     - Linux: Driver version 520.56.06 or higher
@@ -45,20 +45,20 @@ packages. Choose the installation method that meets your environment needs.
 #### Tar File Installation
 
 ```shell
-tar -xvf nvcv-lib-0.3.1-cuda11-x86_64-linux.tar.xz
-tar -xvf nvcv-dev-0.3.1-cuda11-x86_64-linux.tar.xz
+tar -xvf nvcv-lib-0.4.0-cuda11-x86_64-linux.tar.xz
+tar -xvf nvcv-dev-0.4.0-cuda11-x86_64-linux.tar.xz
 ```
 
 #### DEB File Installation
 
 ```shell
-sudo apt-get install -y ./nvcv-lib-0.3.1-cuda11-x86_64-linux.deb ./nvcv-dev-0.3.1-cuda11-x86_64-linux.deb
+sudo apt-get install -y ./nvcv-lib-0.4.0-cuda11-x86_64-linux.deb ./nvcv-dev-0.4.0-cuda11-x86_64-linux.deb
 ```
 
 #### Python WHL File Installation
 
 ```shell
-pip install nvcv_python-0.3.1-cp38-cp38-linux_x86_64.whl
+pip install nvcv_python-0.4.0-cp38-cp38-linux_x86_64.whl
 ```
 
 ### Build from Source
@@ -208,7 +208,7 @@ Follow these instruction to build CV-CUDA from source:
 
 CV-CUDA is an open source project. As part of the Open Source Community, we are
 committed to the cycle of learning, improving, and updating that makes this
-community thrive. However, as of release v0.3.1-beta, CV-CUDA is not yet ready
+community thrive. However, as of release v0.4.0-beta, CV-CUDA is not yet ready
 for external contributions.
 
 To understand the process for contributing the CV-CUDA, see our

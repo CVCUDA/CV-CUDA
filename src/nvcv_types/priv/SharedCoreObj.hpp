@@ -198,13 +198,13 @@ private:
 };
 
 template<typename T>
-constexpr bool operator==(nullptr_t, const SharedCoreObj<T> &x)
+constexpr bool operator==(std::nullptr_t, const SharedCoreObj<T> &x)
 {
     return !x;
 }
 
 template<typename T>
-constexpr bool operator!=(nullptr_t, const SharedCoreObj<T> &x)
+constexpr bool operator!=(std::nullptr_t, const SharedCoreObj<T> &x)
 {
     return x;
 }

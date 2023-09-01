@@ -105,8 +105,13 @@ void ExportOpGaussianNoise(py::module &m)
 {
     using namespace pybind11::literals;
 
+    py::options options;
+    options.disable_function_signatures();
+
     m.def("gaussiannoise", &GaussianNoise, "src"_a, "mu"_a, "sigma"_a, "per_channel"_a, "seed"_a, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
+
+        cvcuda.gaussiannoise(src : nvcv.Tensor, mu : nvcv.Tensor, sigma : nvcv.Tensor, per_channel : bool, seed : int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the GaussianNoise operation on the given cuda stream.
 
@@ -132,6 +137,8 @@ void ExportOpGaussianNoise(py::module &m)
 
     m.def("gaussiannoise_into", &GaussianNoiseInto, "dst"_a, "src"_a, "mu"_a, "sigma"_a, "per_channel"_a, "seed"_a,
           py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        cvcuda.gaussiannoise_into(dst : nvcv.Tensor, src : nvcv.Tensor, mu : nvcv.Tensor, sigma : nvcv.Tensor, per_channel : bool, seed : int, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the GaussianNoise operation on the given cuda stream.
 
@@ -159,6 +166,8 @@ void ExportOpGaussianNoise(py::module &m)
     m.def("gaussiannoise", &GaussianNoiseVarShape, "src"_a, "mu"_a, "sigma"_a, "per_channel"_a, "seed"_a, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
 
+        cvcuda.gaussiannoise(src : nvcv.ImageBatchVarShape, mu : nvcv.Tensor, sigma : nvcv.Tensor, per_channel : bool, seed : int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+
         Executes the GaussianNoise operation on the given cuda stream.
 
         See also:
@@ -184,7 +193,9 @@ void ExportOpGaussianNoise(py::module &m)
     m.def("gaussiannoise_into", &GaussianNoiseVarShapeInto, "dst"_a, "src"_a, "mu"_a, "sigma"_a, "per_channel"_a,
           "seed"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
-        Executes the GaussianNoise operation on the given cuda stream.
+        cvcuda.gaussiannoise_into(dst : nvcv.ImageBatchVarShape, src : nvcv.ImageBatchVarShape, mu : nvcv.Tensor, sigma : nvcv.Tensor, per_channel : bool, seed : int, stream: Optional[nvcv.cuda.Stream] = None)
+
+	Executes the GaussianNoise operation on the given cuda stream.
 
         See also:
             Refer to the CV-CUDA C API reference for the GaussianNoise operator

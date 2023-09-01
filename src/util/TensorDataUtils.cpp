@@ -179,6 +179,35 @@ bool TensorImageData::operator!=(const TensorImageData &that) const
 
 nvcv::Tensor CreateTensor(int numImages, int imgWidth, int imgHeight, const nvcv::ImageFormat &imgFormat)
 {
+    //semi planar 420 NV12/21 format
+    if (imgFormat == NVCV_IMAGE_FORMAT_NV12 || imgFormat == NVCV_IMAGE_FORMAT_NV12_ER
+        || imgFormat == NVCV_IMAGE_FORMAT_NV21 || imgFormat == NVCV_IMAGE_FORMAT_NV21_ER)
+    {
+        int height420
+            = (imgHeight * 3) / 2; // tensor size is 3/2 times the image size to accommodate the 1/2 chroma planes
+        // width must be even and height must be multiple of 3 (original height must be even and multiple of 2)
+        if (height420 % 3 != 0 || imgWidth % 2 != 0)
+        {
+            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid height");
+        }
+
+        if (numImages == 1)
+        {
+            return nvcv::Tensor(
+                {
+                    {height420, imgWidth, 1},
+                    "HWC"
+            },
+                imgFormat.planeDataType(0).channelType(0));
+        }
+        else
+        {
+            // Note this tensor is being passed an YUV8 format, but the tensor is actually YUV420 however the tensor
+            // class does not yet understand semi planar formats such as NV12/21 hence we just create an Y8 tensor with
+            // modified height.
+            return nvcv::Tensor(numImages, {imgWidth, height420}, nvcv::ImageFormat(NVCV_IMAGE_FORMAT_Y8));
+        }
+    }
     if (numImages == 1)
     {
         int numChannels = imgFormat.numPlanes() == 1 ? imgFormat.planeNumChannels(0) : imgFormat.numPlanes();

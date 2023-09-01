@@ -52,7 +52,7 @@ static void TestCompile_DataLayout()
     NVCVMemLayout     layout  = NVCV_MEM_LAYOUT_BL;
     NVCVChannel       ch      = NVCV_CHANNEL_Z;
     NVCVSwizzle       sw      = NVCV_SWIZZLE_XYW0;
-    NVCVSwizzle       sw2     = NVCV_MAKE_SWIZZLE(NVCV_CHANNEL_0, NVCV_CHANNEL_Z, NVCV_CHANNEL_X, NVCV_CHANNEL_Z);
+    NVCVSwizzle       sw2     = NVCV_SWIZZLE_0ZXY;
     NVCVByteOrder     byOrder = NVCV_ORDER_MSB;
     NVCVPackingParams pparams = {};
 }

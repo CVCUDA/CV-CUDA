@@ -17,14 +17,14 @@
 #         reason: we include this file from other scripts, no need to export it
 # shellcheck disable=SC2034
 
-IMAGE_URL_BASE='gitlab-master.nvidia.com:5005/cv/cvcuda'
+IMAGE_URL_BASE=''
 
 # image versions must be upgraded whenever a breaking
 # change is done, such as removing some package, or updating
 # packaged versions that introduces incompatibilities.
-TAG_IMAGE=4
-TAG_IMAGE_SAMPLES=5
+TAG_IMAGE=5
+TAG_IMAGE_SAMPLES=5.1
 
-VER_CUDA=11.7.0
+VER_CUDA=11.7.1
 VER_UBUNTU=22.04
 VER_TRT=22.09

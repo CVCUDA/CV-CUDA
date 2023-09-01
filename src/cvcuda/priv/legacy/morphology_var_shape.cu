@@ -183,36 +183,9 @@ void MorphFilter2D(const ImageBatchVarShapeDataStridedCuda &inData, const ImageB
     funcs[borderMode](inData, outData, kMasks, kAnchors, morph_type, stream);
 }
 
-MorphologyVarShape::MorphologyVarShape(const int maxBatchSize)
-    : CudaBaseOp()
-    , m_maxBatchSize(maxBatchSize)
-    , m_kernelMaskSizes(maxBatchSize)
-    , m_kernelAnchors(maxBatchSize)
-{
-    if (m_maxBatchSize > 0)
-    {
-        // {Width, Height} per image for mask and anchor
-        size_t totalNumElements = m_maxBatchSize * 2;
-
-        m_kernelMaskSizes.resize(totalNumElements);
-        if (m_kernelMaskSizes.size() != totalNumElements)
-        {
-            throw std::runtime_error("Host memory allocation error!");
-        }
-
-        m_kernelAnchors.resize(totalNumElements);
-        if (m_kernelAnchors.size() != totalNumElements)
-        {
-            throw std::runtime_error("Host memory allocation error!");
-        }
-    }
-}
-
-MorphologyVarShape::~MorphologyVarShape() {}
-
 ErrorCode MorphologyVarShape::infer(const nvcv::ImageBatchVarShape &inBatch, const nvcv::ImageBatchVarShape &outBatch,
                                     NVCVMorphologyType morph_type, const TensorDataStridedCuda &masks,
-                                    const TensorDataStridedCuda &anchors, int iteration, NVCVBorderType borderMode,
+                                    const TensorDataStridedCuda &anchors, bool noop, NVCVBorderType borderMode,
                                     cudaStream_t stream)
 {
     auto inData = inBatch.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
@@ -229,12 +202,6 @@ ErrorCode MorphologyVarShape::infer(const nvcv::ImageBatchVarShape &inBatch, con
     DataFormat input_format  = GetLegacyDataFormat(*inData);
     DataFormat output_format = GetLegacyDataFormat(*outData);
     DataType   data_type     = GetLegacyDataType(inData->uniqueFormat());
-
-    if (inData->numImages() > m_maxBatchSize)
-    {
-        LOG_ERROR("Number of VarShape Images exceeds configured max size");
-        return ErrorCode::INVALID_PARAMETER;
-    }
 
     if (input_format != output_format)
     {
@@ -268,6 +235,12 @@ ErrorCode MorphologyVarShape::infer(const nvcv::ImageBatchVarShape &inBatch, con
         return ErrorCode::INVALID_PARAMETER;
     }
 
+    if (!(morph_type == NVCVMorphologyType::NVCV_ERODE || morph_type == NVCVMorphologyType::NVCV_DILATE))
+    {
+        LOG_ERROR("Invalid morph_type " << morph_type);
+        return ErrorCode::INVALID_PARAMETER;
+    }
+
     const int channels = inData->uniqueFormat().numChannels();
 
     if (!(channels == 1 || channels == 3 || channels == 4))
@@ -276,7 +249,7 @@ ErrorCode MorphologyVarShape::infer(const nvcv::ImageBatchVarShape &inBatch, con
         return ErrorCode::INVALID_PARAMETER;
     }
 
-    if (iteration == 0)
+    if (noop)
     {
         for (auto init = inBatch.begin(), outit = outBatch.begin(); init != inBatch.end(), outit != outBatch.end();
              ++init, ++outit)
@@ -295,7 +268,7 @@ ErrorCode MorphologyVarShape::infer(const nvcv::ImageBatchVarShape &inBatch, con
 
     dim3                     block(32), grid(divUp(inData->numImages(), 32));
     cuda::Tensor1DWrap<int2> kmasks(masks), kanchors(anchors);
-    UpdateMasksAnchors<<<grid, block, 0, stream>>>(kmasks, kanchors, inData->numImages(), iteration);
+    UpdateMasksAnchors<<<grid, block, 0, stream>>>(kmasks, kanchors, inData->numImages(), 1);
 
     typedef void (*filter2D_t)(const ImageBatchVarShapeDataStridedCuda &inData,
                                const ImageBatchVarShapeDataStridedCuda &outData, const TensorDataStridedCuda &kMasks,

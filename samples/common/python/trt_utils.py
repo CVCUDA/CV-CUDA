@@ -120,15 +120,31 @@ def setup_tensort_bindings(trt_model, batch_size, device_id, logger):
     for b_idx in range(trt_model.num_io_tensors):
         # Get various properties associated with the bindings.
         b_name = trt_model.get_tensor_name(b_idx)
-        b_shape = tuple(trt_model.get_tensor_shape(b_name))
+        b_shape = list(trt_model.get_tensor_shape(b_name))
         b_dtype = np.dtype(trt.nptype(trt_model.get_tensor_dtype(b_name))).name
 
         # Append to the appropriate list.
         if trt_model.get_tensor_mode(b_name) == trt.TensorIOMode.OUTPUT:
             # First allocate on device output buffers, using PyTorch.
-            # Get the C, H, W dimensions from the layer shape to set the output layer size for the buffer
+            # Get the dimensions other the the batch size from the layer shape
+            # and set the output layer size for the buffer.
+            # The first dimension is the batch size if there is a -1 in its place.
+            # If not, then we will simply insert it.
+            if b_shape[0] == -1:
+                # We need to replace the -1 with the batch size.
+                b_shape[0] = batch_size
+            elif b_shape[0] == 1 and batch_size == 1:
+                # In this case where batch size is 1 and our binding already
+                # has it, we will assume it is the batch size dim and not
+                # change it.
+                pass
+            else:
+                # Batch size dimension was not present at all. We will need to
+                # add it.
+                b_shape.insert(0, batch_size)
+
             output = torch.zeros(
-                size=(batch_size, b_shape[-3], b_shape[-2], b_shape[-1]),
+                size=b_shape,
                 dtype=getattr(torch, b_dtype),
                 device="cuda:%d" % device_id,
             )

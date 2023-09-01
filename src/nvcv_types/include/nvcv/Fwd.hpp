@@ -49,6 +49,12 @@ class TensorData;
 class TensorDataStrided;
 class TensorDataStridedCuda;
 
+class Array;
+class ArrayData;
+class ArrayDataCuda;
+class ArrayDataHost;
+class ArrayDataHostPinned;
+
 } // namespace nvcv
 
 #endif // NVCV_FWD_HPP

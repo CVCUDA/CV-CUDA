@@ -31,7 +31,7 @@ apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Add repositories and install g++
-add-apt-repository ppa:ubuntu-toolchain-r/test
+add-apt-repository -y ppa:ubuntu-toolchain-r/test
 apt-get update && apt-get install -y --no-install-recommends \
     gcc-11 g++-11 \
     ninja-build \
@@ -52,10 +52,10 @@ apt-get update && apt-get install -y --no-install-recommends \
 
 # Install pip and all the python packages.
 pip3 install --upgrade pip
-pip3 install torch==1.13.0 torchvision==0.14.0 av==10.0.0 pycuda==2022.1 nvtx==0.2.5
+pip3 install torch==1.13.0 torchvision==0.14.0 av==10.0.0 pycuda==2022.1 nvtx==0.2.5 tensorflow==2.11.1
 cd /tmp
-git clone https://github.com/itsliupeng/torchnvjpeg.git
-cd torchnvjpeg && python setup.py bdist_wheel && cd dist && pip3 install torchnvjpeg-0.1.0-cp38-cp38-linux_x86_64.whl
+[ ! -d 'torchnvjpeg' ] && git clone https://github.com/itsliupeng/torchnvjpeg.git
+cd torchnvjpeg && python3 setup.py bdist_wheel && cd dist && pip3 install torchnvjpeg-0.1.0-*-linux_x86_64.whl
 echo "export PATH=$PATH:/opt/tensorrt/bin" >> ~/.bashrc
 
 # Install VPF and its dependencies.
@@ -70,15 +70,25 @@ apt-get update && apt-get install -y --no-install-recommends \
     libavutil-dev\
     && rm -rf /var/lib/apt/lists/*
 cd /tmp
-git clone https://github.com/NVIDIA/VideoProcessingFramework.git
+[ ! -d 'VideoProcessingFramework' ] && git clone https://github.com/NVIDIA/VideoProcessingFramework.git
 pip3 install /tmp/VideoProcessingFramework
 pip3 install /tmp/VideoProcessingFramework/src/PytorchNvCodec
 
 # Install tao-converter which parses the .etlt model file, and generates an optimized TensorRT engine
+wget --content-disposition 'https://api.ngc.nvidia.com/v2/resources/nvidia/tao/tao-converter/versions/v4.0.0_trt8.5.1.7_x86/files/tao-converter' --directory-prefix=/usr/local/bin
+chmod a+x /usr/local/bin/tao-converter
+
+# Install NVIDIA NSIGHT 2023.2.1
 cd /tmp
-mkdir tao_binaries
-cd tao_binaries
-wget --content-disposition 'https://api.ngc.nvidia.com/v2/resources/nvidia/tao/tao-converter/versions/v4.0.0_trt8.5.1.7_x86/files/tao-converter'
-chmod a+x tao-converter
-echo "export PATH=$PATH:/tmp/tao_binaries" >> ~/.bashrc
+wget https://developer.download.nvidia.com/devtools/nsight-systems/nsight-systems-2023.2.1_2023.2.1.122-1_amd64.deb
+apt-get update && apt-get install -y \
+    libsm6 \
+    libxrender1 \
+    libfontconfig1 \
+    libxext6 \
+    libx11-dev \
+    libxkbfile-dev \
+    /tmp/nsight-systems-2023.2.1_2023.2.1.122-1_amd64.deb \
+    && rm -rf /var/lib/apt/lists/*
+
 # Done

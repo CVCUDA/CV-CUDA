@@ -23,7 +23,9 @@
 #include <array>
 #include <cstdint>
 #include <iosfwd>
+#include <map>
 #include <optional>
+#include <unordered_map>
 
 namespace nvcv::priv {
 
@@ -67,6 +69,8 @@ const char *GetName(NVCVMemLayout memLayout);
 const char *GetName(NVCVChannel swizzleChannel);
 const char *GetName(NVCVSwizzle swizzle);
 const char *GetName(NVCVByteOrder byteOrder);
+const char *GetName(NVCVAlphaType alphaType);
+const char *GetName(NVCVExtraChannel channelType);
 
 } // namespace nvcv::priv
 
@@ -76,5 +80,7 @@ std::ostream &operator<<(std::ostream &out, NVCVMemLayout memLayout);
 std::ostream &operator<<(std::ostream &out, NVCVChannel swizzleChannel);
 std::ostream &operator<<(std::ostream &out, NVCVSwizzle swizzle);
 std::ostream &operator<<(std::ostream &out, NVCVByteOrder byteOrder);
+std::ostream &operator<<(std::ostream &out, NVCVAlphaType alphaType);
+std::ostream &operator<<(std::ostream &out, NVCVExtraChannel channelType);
 
 #endif // NVCV_FORMAT_PRIV_DATA_LAYOUT_HPP

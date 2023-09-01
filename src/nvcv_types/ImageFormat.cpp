@@ -33,7 +33,8 @@ namespace util = nvcv::util;
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvMakeColorImageFormat,
                 (NVCVImageFormat * outFormat, NVCVColorModel colorModel, NVCVColorSpec colorSpec,
                  NVCVMemLayout memLayout, NVCVDataKind dataKind, NVCVSwizzle swizzle, NVCVPacking packing0,
-                 NVCVPacking packing1, NVCVPacking packing2, NVCVPacking packing3))
+                 NVCVPacking packing1, NVCVPacking packing2, NVCVPacking packing3, NVCVAlphaType alphaType,
+                 const NVCVExtraChannelInfo *exChannelInfo))
 {
     return priv::ProtectCall(
         [&]
@@ -42,8 +43,8 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvMakeColorImageFormat,
             {
                 throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Pointer to output image format cannot be NULL");
             }
-            priv::ImageFormat pout{colorModel, colorSpec, NVCV_CSS_NONE, memLayout, dataKind,
-                                   swizzle,    packing0,  packing1,      packing2,  packing3};
+            priv::ImageFormat pout{colorModel, colorSpec, NVCV_CSS_NONE, memLayout, dataKind,  swizzle,
+                                   packing0,   packing1,  packing2,      packing3,  alphaType, exChannelInfo};
             *outFormat = pout.value();
         });
 }
@@ -51,7 +52,8 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvMakeColorImageFormat,
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvMakeYCbCrImageFormat,
                 (NVCVImageFormat * outFormat, NVCVColorSpec colorSpec, NVCVChromaSubsampling chromaSub,
                  NVCVMemLayout memLayout, NVCVDataKind dataKind, NVCVSwizzle swizzle, NVCVPacking packing0,
-                 NVCVPacking packing1, NVCVPacking packing2, NVCVPacking packing3))
+                 NVCVPacking packing1, NVCVPacking packing2, NVCVPacking packing3, NVCVAlphaType alphaType,
+                 const NVCVExtraChannelInfo *exChannelInfo))
 {
     return priv::ProtectCall(
         [&]
@@ -70,14 +72,17 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvMakeYCbCrImageFormat,
                                    packing0,
                                    packing1,
                                    packing2,
-                                   packing3};
+                                   packing3,
+                                   alphaType,
+                                   exChannelInfo};
             *outFormat = pout.value();
         });
 }
 
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvMakeNonColorImageFormat,
                 (NVCVImageFormat * outFormat, NVCVMemLayout memLayout, NVCVDataKind dataKind, NVCVSwizzle swizzle,
-                 NVCVPacking packing0, NVCVPacking packing1, NVCVPacking packing2, NVCVPacking packing3))
+                 NVCVPacking packing0, NVCVPacking packing1, NVCVPacking packing2, NVCVPacking packing3,
+                 NVCVAlphaType alphaType, const NVCVExtraChannelInfo *exChannelInfo))
 {
     return priv::ProtectCall(
         [&]
@@ -87,7 +92,8 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvMakeNonColorImageFormat,
                 throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Pointer to output image format cannot be NULL");
             }
 
-            priv::ImageFormat pout{memLayout, dataKind, swizzle, packing0, packing1, packing2, packing3};
+            priv::ImageFormat pout{memLayout, dataKind, swizzle,   packing0,     packing1,
+                                   packing2,  packing3, alphaType, exChannelInfo};
             *outFormat = pout.value();
         });
 }
@@ -95,7 +101,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvMakeNonColorImageFormat,
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvMakeRawImageFormat,
                 (NVCVImageFormat * outFormat, NVCVRawPattern rawPattern, NVCVMemLayout memLayout, NVCVDataKind dataKind,
                  NVCVSwizzle swizzle, NVCVPacking packing0, NVCVPacking packing1, NVCVPacking packing2,
-                 NVCVPacking packing3))
+                 NVCVPacking packing3, NVCVAlphaType alphaType, const NVCVExtraChannelInfo *exChannelInfo))
 {
     return priv::ProtectCall(
         [&]
@@ -105,7 +111,8 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvMakeRawImageFormat,
                 throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Pointer to output image format cannot be NULL");
             }
 
-            priv::ImageFormat pout{rawPattern, memLayout, dataKind, swizzle, packing0, packing1, packing2, packing3};
+            priv::ImageFormat pout{rawPattern, memLayout, dataKind, swizzle,   packing0,
+                                   packing1,   packing2,  packing3, alphaType, exChannelInfo};
             *outFormat = pout.value();
         });
 }
@@ -590,6 +597,8 @@ NVCV_DEFINE_API(0, 0, const char *, nvcvImageFormatGetName, (NVCVImageFormat fmt
         util::ReplaceAllInline(buffer, bufSize, "NVCV_CHROMA_", "");
         util::ReplaceAllInline(buffer, bufSize, "NVCV_YCbCr_", "");
         util::ReplaceAllInline(buffer, bufSize, "NVCV_COLOR_", "");
+        util::ReplaceAllInline(buffer, bufSize, "NVCV_ALPHA_", "");
+        util::ReplaceAllInline(buffer, bufSize, "NVCV_EXTRA_CHANNEL_", "");
     }
     catch (std::exception &e)
     {
@@ -603,4 +612,62 @@ NVCV_DEFINE_API(0, 0, const char *, nvcvImageFormatGetName, (NVCVImageFormat fmt
     }
 
     return buffer;
+}
+
+NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetAlphaType, (NVCVImageFormat fmt, NVCVAlphaType *alphaChannelType))
+{
+    return priv::ProtectCall(
+        [&]
+        {
+            if (alphaChannelType == nullptr)
+            {
+                throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Pointer to alphaChannelType cannot be NULL");
+            }
+            priv::ImageFormat pfmt{fmt};
+            *alphaChannelType = pfmt.alphaType();
+        });
+}
+
+NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatSetAlphaType, (NVCVImageFormat * fmt, NVCVAlphaType alphaChannelType))
+{
+    return priv::ProtectCall(
+        [&]
+        {
+            if (fmt == nullptr)
+            {
+                throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Pointer to input image format cannot be NULL");
+            }
+            priv::ImageFormat pfmt{*fmt};
+            *fmt = pfmt.alphaType(alphaChannelType).value();
+        });
+}
+
+NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetExtraChannelInfo,
+                (NVCVImageFormat fmt, NVCVExtraChannelInfo *exChannelInfo))
+{
+    return priv::ProtectCall(
+        [&]
+        {
+            if (exChannelInfo == nullptr)
+            {
+                throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Pointer to exChannelInfo cannot be NULL");
+            }
+            priv::ImageFormat pfmt{fmt};
+            pfmt.extraChannelInfo(exChannelInfo);
+        });
+}
+
+NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatSetExtraChannelInfo,
+                (NVCVImageFormat * fmt, const NVCVExtraChannelInfo *exChannelInfo))
+{
+    return priv::ProtectCall(
+        [&]
+        {
+            if (fmt == nullptr)
+            {
+                throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Pointer to input image format cannot be NULL");
+            }
+            priv::ImageFormat pfmt{*fmt};
+            *fmt = pfmt.extraChannelInfo(exChannelInfo).value();
+        });
 }

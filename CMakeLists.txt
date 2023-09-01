@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.18)
 
 # We need to check this variable before starting a CUDA project - otherwise it will appear
 # as set, with the default value pointing to the oldest supported architecture (52 as of CUDA 11.8)
@@ -23,7 +23,7 @@ endif()
 
 project(cvcuda
         LANGUAGES C CXX
-        VERSION 0.3.1
+        VERSION 0.4.0
         DESCRIPTION "CUDA-accelerated Computer Vision algorithms"
 )
 

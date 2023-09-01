@@ -61,6 +61,7 @@ nvcv_python_add_module(
         Object.cpp
         CAPI.cpp
         DLPackUtils.cpp
+        ColorSpec.cpp
 )
 
 target_include_directories(nvcv_module_python
@@ -79,6 +80,7 @@ target_link_libraries(nvcv_module_python
         nvcv_python_common
         CUDA::cudart_static
         dlpack::dlpack
+        -lrt
 )
 
 add_library(pynvcv INTERFACE)

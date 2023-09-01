@@ -159,6 +159,7 @@ NVCV_TEST_INST(uchar3);
 NVCV_TEST_INST(uchar4);
 NVCV_TEST_INST(float4);
 NVCV_TEST_INST(float3);
+NVCV_TEST_INST(float);
 
 #undef NVCV_TEST_INST
 
@@ -184,6 +185,7 @@ void Convolve(std::vector<uint8_t> &hDst, const long3 &dstStrides, const std::ve
         NVCV_TEST_CASE(4U8, uchar4);
         NVCV_TEST_CASE(4F32, float4);
         NVCV_TEST_CASE(3F32, float3);
+        NVCV_TEST_CASE(F32, float);
 
 #undef NVCV_TEST_CASE
 

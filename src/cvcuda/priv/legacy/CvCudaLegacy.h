@@ -27,6 +27,7 @@
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/ImageBatchData.hpp>
 #include <nvcv/Rect.h>
+#include <nvcv/Tensor.hpp>
 #include <nvcv/TensorData.hpp>
 
 #include <random>
@@ -382,6 +383,87 @@ public:
     size_t    calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type);
 };
 
+class MinAreaRect : public CudaBaseOp
+{
+public:
+    MinAreaRect() = delete;
+
+    MinAreaRect(DataShape max_input_shape, DataShape max_output_shape, int maxContourNum);
+    ~MinAreaRect();
+
+    /**
+     * @brief Creating Bounding rotated boxes and ellipses for contours
+     *        Given a set of contours, and each contour is consist of a set of points, such as [[c1_p1_x, c1_p1_y,...],[c2_p1_x, c2_p1_y,...],
+     *        c1_p1_x means the x-coordinate of the first point in first contour.
+     *        The output will give 4 points' cooridinate(x,y) of each contour's minimum rotated bounding boxes
+     *
+     *
+     * Input:
+     *      Data Layout:    [NWC]
+     *      Channels:       [2]
+     *
+     *      Data Type      | Allowed
+     *      -------------- | -------------
+     *      8bit  Unsigned | No
+     *      8bit  Signed   | No
+     *      16bit Unsigned | Yes
+     *      16bit Signed   | Yes
+     *      32bit Unsigned | No
+     *      32bit Signed   | Yes
+     *      32bit Float    | No
+     *      64bit Float    | No
+     *
+     * Output:
+     *      Data Layout:    [NW]
+     *      Channels:       [1]
+     *
+     *      Data Type      | Allowed
+     *      -------------- | -------------
+     *      8bit  Unsigned | No
+     *      8bit  Signed   | No
+     *      16bit Unsigned | No
+     *      16bit Signed   | No
+     *      32bit Unsigned | No
+     *      32bit Signed   | No
+     *      32bit Float    | Yes
+     *      64bit Float    | No
+     *
+     * Input/Output dependency
+     *
+     *      Property      |  Input == Output
+     *     -------------- | -------------
+     *      Data Layout   | No
+     *      Data Type     | No
+     *      Number        | Yes
+     *      Channels      | No
+     *      Width         | No
+     *      Height        | No
+     *
+     *
+     * @param [in] in input tensor.
+     * @param [in] numPointsInContourHost number of point of each contour.
+     * @param [in] totalContours total number of contour.
+     *
+     * @param [out] out output tensor.
+     *
+     * @param stream for the asynchronous execution.
+     */
+    ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                    const TensorDataStridedCuda &numPointsInContour, const int totalContours, cudaStream_t stream);
+    /**
+     * @brief calculate the cpu/gpu buffer size needed by this operator
+     * @param max_input_shape maximum input DataShape that may be used
+     * @param max_output_shape maximum output DataShape that may be used
+     * @param max_data_type DataType with the maximum size that may be used
+     */
+    size_t    calBufferSize(DataShape max_input_shape, DataShape max_output_shape, int maxContourNum);
+
+private:
+    int   mMaxContourNum;
+    void *mRotateCoeffsBufDev = nullptr;
+    void *mRotatedPointsDev   = nullptr;
+};
+
 class Flip : public CudaBaseOp
 {
 public:
@@ -683,12 +765,8 @@ public:
 class Morphology : public CudaBaseOp
 {
 public:
-    Morphology() = delete;
-
-    Morphology(DataShape max_input_shape, DataShape max_output_shape)
-        : CudaBaseOp(max_input_shape, max_output_shape)
-    {
-    }
+    Morphology()          = default;
+    virtual ~Morphology() = default;
 
     /**
      * @brief Dilates/Erodes an image
@@ -740,22 +818,21 @@ public:
      * @param morph_type Type of operation to perform on data Erode/Dilate
      * @param mask_size shape and size of the mask to use for the operation
      * @param anchor anchor to use for the kernel (-1,-1) will use center of kernel
-     * @param iteraton number of times to perform the kernel pass
-     * @param borderMode the border mode to use when acessing data outside of source
+     * @param noop if 0 this will be a copy operation
+     * @param borderMode the border mode to use when accessing data outside of source
      * @param stream for the asynchronous execution.
      */
     ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
-                    NVCVMorphologyType morph_type, Size2D mask_size, int2 anchor, int iteration,
+                    NVCVMorphologyType morph_type, Size2D mask_size, int2 anchor, bool noop,
                     const NVCVBorderType borderMode, cudaStream_t stream);
 };
 
 class MorphologyVarShape : public CudaBaseOp
 {
 public:
-    MorphologyVarShape() = delete;
-    MorphologyVarShape(const int maxBatchSize);
+    MorphologyVarShape() = default;
 
-    ~MorphologyVarShape();
+    virtual ~MorphologyVarShape() = default;
     /**
      * @brief Dilates/Erodes an image
      *
@@ -806,19 +883,13 @@ public:
      * @param morph_type Type of operation to perform on data Erode/Dilate
      * @param mask_size Tensor of the shape and sizes of the mask to use for the operation
      * @param anchor Tensor to as anchor data in the kernel (-1,-1) will use center of kernel
-     * @param iteraton number of times to perform the kernel pass
+     * @param noop if true this will be a copy operation
      * @param borderMode the border mode to use when acessing data outside of source
      * @param stream for the asynchronous execution.
      */
-    ErrorCode infer(const nvcv::ImageBatchVarShape &inData, const nvcv::ImageBatchVarShape &outData,
+    ErrorCode infer(const nvcv::ImageBatchVarShape &inBatch, const nvcv::ImageBatchVarShape &outBatch,
                     NVCVMorphologyType morph_type, const TensorDataStridedCuda &masks,
-                    const TensorDataStridedCuda &anchors, int iteration, NVCVBorderType borderMode,
-                    cudaStream_t stream);
-
-protected:
-    const int        m_maxBatchSize;
-    std::vector<int> m_kernelMaskSizes;
-    std::vector<int> m_kernelAnchors;
+                    const TensorDataStridedCuda &anchors, bool noop, NVCVBorderType borderMode, cudaStream_t stream);
 };
 
 class Normalize : public CudaBaseOp
@@ -2146,6 +2217,36 @@ public:
                     NVCVBorderType borderMode, cudaStream_t stream);
 };
 
+class OSD : public CudaBaseOp
+{
+public:
+    OSD() = delete;
+
+    OSD(DataShape max_input_shape, DataShape max_output_shape);
+
+    ~OSD();
+
+    /**
+     * @brief Converts an image from one color space to another.
+     * @param inData Input tensor.
+     * @param outData Output tensor.
+     * @param elements OSD elements, \ref NVCVElement.
+     */
+    ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, NVCVElements elements,
+                    cudaStream_t stream);
+
+    /**
+     * @brief calculate the cpu/gpu buffer size needed by this operator
+     * @param max_input_shape maximum input DataShape that may be used
+     * @param max_output_shape maximum output DataShape that may be used
+     * @param max_data_type DataType with the maximum size that may be used
+     */
+    size_t calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type);
+
+private:
+    nvcv::cuda::osd::cuOSDContext_t m_context;
+};
+
 class BndBox : public CudaBaseOp
 {
 public:
@@ -2839,6 +2940,183 @@ private:
     unsigned long long m_seed;
     bool               m_setupDone = false;
     int                m_maxBatchSize;
+};
+
+class Histogram : public CudaBaseOp
+{
+public:
+    Histogram() = default;
+    /**
+     * @brief Resize and crop images
+     * @param inData input tensor kNHWC/HWC tensor representing the input image(s)
+     * @param mask mask tensor of the same size as the input image(s). Only non-zero values are counted for histogram.
+     * @param histogram output tensor of size HWC representing the histogram where each row is an image histogram.
+     * @param stream for the asynchronous execution.
+     */
+    ErrorCode infer(const TensorDataStridedCuda &inData, OptionalTensorConstRef mask,
+                    const TensorDataStridedCuda &histogram, cudaStream_t stream);
+};
+
+class Inpaint : public CudaBaseOp
+{
+public:
+    Inpaint() = delete;
+
+    Inpaint(DataShape max_input_shape, DataShape max_output_shape, int maxBatchSize, Size2D maxShape);
+
+    ~Inpaint();
+
+    /**
+    * @brief Restores the selected region in an image using the region neighborhood. TELEA algorithm is used here.
+    * @param inputs gpu pointer, batched input images.
+    * @param masks gpu pointer, batched inpainting mask, 8-bit 1-channel image. Non-zero pixels indicate the area that needs to be inpainted.
+    * @param outputs gpu pointer, batched output images that have the same type.
+    * @param inpaintRadius Radius of a circular neighborhood of each point inpainted that is considered by the algorithm.
+    * @param stream for the asynchronous execution.
+    */
+    ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &masks,
+                    const TensorDataStridedCuda &outData, double inpaintRadius, cudaStream_t stream);
+
+private:
+    bool     m_init_dilate = false; // whether kernel is initialized
+    int      m_maxBatchSize;
+    uint8_t *m_kernel_ptr;
+    void    *m_workspace;
+};
+
+class InpaintVarShape : public CudaBaseOp
+{
+public:
+    InpaintVarShape() = delete;
+
+    InpaintVarShape(DataShape max_input_shape, DataShape max_output_shape, int maxBatchSize, Size2D maxShape);
+
+    ~InpaintVarShape();
+
+    /**
+    * @brief Restores the selected region in an image using the region neighborhood. TELEA algorithm is used here.
+    * @param inputs gpu pointer, batched input images.
+    * @param masks gpu pointer, batched inpainting mask, 8-bit 1-channel image. Non-zero pixels indicate the area that needs to be inpainted.
+    * @param outputs gpu pointer, batched output images that have the same type.
+    * @param inpaintRadius Radius of a circular neighborhood of each point inpainted that is considered by the algorithm.
+    * @param stream for the asynchronous execution.
+    */
+    ErrorCode infer(const ImageBatchVarShape &inBatch, const ImageBatchVarShapeDataStridedCuda &masks,
+                    const ImageBatchVarShape &outBatch, double inpaintRadius, cudaStream_t stream);
+
+private:
+    bool     m_init_dilate = false; // whether kernel is initialized
+    int      m_maxBatchSize;
+    uint8_t *m_kernel_ptr;
+    void    *m_workspace;
+};
+
+class HistogramEq : public CudaBaseOp
+{
+public:
+    HistogramEq() = delete;
+
+    HistogramEq(int maxBatchSize);
+
+    ~HistogramEq();
+
+    ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, cudaStream_t stream);
+
+private:
+    int        m_maxBatchSize;
+    int        m_maxChannelCount;
+    int        m_sizeOfHisto;
+    std::byte *m_histoArray;
+};
+
+class HistogramEqVarShape : public CudaBaseOp
+{
+public:
+    HistogramEqVarShape() = delete;
+
+    HistogramEqVarShape(int maxBatchSize);
+
+    ~HistogramEqVarShape();
+
+    ErrorCode infer(const ImageBatchVarShapeDataStridedCuda &inData, const ImageBatchVarShapeDataStridedCuda &outData,
+                    cudaStream_t stream);
+
+private:
+    int        m_maxBatchSize;
+    int        m_maxChannelCount;
+    int        m_sizeOfHisto;
+    std::byte *m_histoArray;
+};
+
+class FindContours : public CudaBaseOp
+{
+public:
+    static constexpr int32_t MAX_NUM_CONTOURS   = 256;
+    static constexpr int32_t MAX_CONTOUR_POINTS = 4 * 1024;
+    static constexpr int32_t MAX_TOTAL_POINTS   = MAX_NUM_CONTOURS * MAX_CONTOUR_POINTS;
+
+    FindContours() = delete;
+    FindContours(DataShape max_input_shape, DataShape max_output_shape);
+
+    ~FindContours();
+
+    /**
+     * Limitations:
+     *
+     * Input:
+     *   Data Layout: [kNHWC, kHWC]
+     *   Channels:    [1]
+     *
+     *   | Data Type       | Allowed     |
+     *   |-----------------|-------------|
+     *   | 8bit  Unsigned  | Yes         |
+     *   ... [other types]
+     *
+     * Output:
+     *   Data Layout: [kNCW, CW]
+     *   Width:       [2]
+     *
+     *   | Data Type       | Allowed     |
+     *   |-----------------|-------------|
+     *   | 32bit Signed    | Yes         |
+     *   ... [other types]
+     *
+     * - Input/Output Dependency:
+     *   | Property        | Input == Output |
+     *   |-----------------|-----------------|
+     *   | Data Layout     | Yes             |
+     *   ... [other properties]
+     *
+     * @brief Extracts contours from a binary image.
+     *
+     * @param inData GPU pointer to input data. Represents an 8-bit, unsigned,
+     *     single-channel image. Non-zero pixels are treated as 1's, and zero
+     *     pixels remain as 0's, which makes the image binary.
+     * @param outData GPU pointer to output data. It contains the detected
+     *     contours for the input image. The data is structured as: [x_c0_p0,
+     *     y_c0_p0, ..., x_ci_pj, y_ci_pj, ...], where "ci" denotes a contour's
+     *     index in the output array and "pj" is a point's index within a
+     *     contour.
+     * @param numPoints Holds the number of contour points for each image.
+     *     Specifically, numPoints[i] gives the number of contours for the i-th
+     *     image, while numPoints[i][j] gives the number of points in the j-th
+     *     contour of i-th image.
+     * @param stream CUDA stream for asynchronous execution.
+     */
+    ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                    const TensorDataStridedCuda &numPoints, cudaStream_t stream);
+
+    /**
+     * @brief Computes the necessary GPU buffer size for the operation.
+     *
+     * @param max_input_shape The largest possible shape for input data.
+     * @param max_output_shape The largest possible shape for output data.
+     * @param max_data_type The data type of the maximum size that is used.
+     */
+    size_t calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type);
+
+private:
+    void *gpu_workspace{nullptr};
 };
 
 } // namespace nvcv::legacy::cuda_op

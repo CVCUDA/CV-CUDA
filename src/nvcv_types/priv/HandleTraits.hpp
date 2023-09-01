@@ -39,6 +39,12 @@ struct HandleTraits<NVCVTensorHandle>
 };
 
 template<>
+struct HandleTraits<NVCVArrayHandle>
+{
+    constexpr static bool hasManager = true;
+};
+
+template<>
 struct HandleTraits<NVCVAllocatorHandle>
 {
     constexpr static bool hasManager = true;

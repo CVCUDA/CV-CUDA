@@ -43,11 +43,41 @@ struct Image
     ImageFormat format   = ImageFormat::None;
 };
 
+struct Segment
+{
+    float *data   = nullptr;
+    int    width  = 0;
+    int    height = 0;
+};
+
+struct Point
+{
+    int x = 0;
+    int y = 0;
+};
+
+struct Polyline
+{
+    int *h_pts = nullptr;
+    int *d_pts = nullptr;
+    int  n_pts = 0;
+};
+
+void cuosd_apply(cuOSDContext_t context, Image *image, void *_stream, bool launch = true);
+
+void cuosd_launch(cuOSDContext_t context, Image *image, void *_stream);
+
 // Get name of enumerate type
 const char *image_format_name(ImageFormat format);
 
 // Create gpu image using size and format
 Image *create_image(int width, int height, ImageFormat format);
+
+// Create segment with fixed size 10 x 10
+Segment *create_segment();
+
+// Create polyline for test
+Polyline *create_polyline();
 
 // Set image color
 void set_color(Image *image, unsigned char r, unsigned char g, unsigned char b, unsigned char a = 255,
@@ -56,9 +86,12 @@ void set_color(Image *image, unsigned char r, unsigned char g, unsigned char b, 
 // Free image pointer
 void free_image(Image *image);
 
-void cuosd_apply(cuOSDContext_t context, Image *image, void *_stream, bool launch = true);
+// Free segment pointer
+void free_segment(Segment *segment);
 
-void cuosd_launch(cuOSDContext_t context, Image *image, void *_stream);
+// Free polyline pointer
+void free_polyline(Polyline *segment);
+
 }} // namespace nvcv::test::osd
 
 #endif // NVCV_TEST_COMMON_OSD_UTILS_HPP

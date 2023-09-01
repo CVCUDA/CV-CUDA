@@ -113,10 +113,15 @@ void ExportOpRandomResizedCrop(py::module &m)
 {
     using namespace pybind11::literals;
 
+    py::options options;
+    options.disable_function_signatures();
+
     m.def("random_resized_crop", &RandomResizedCrop, "src"_a, "shape"_a, "min_scale"_a = 0.08, "max_scale"_a = 1.0,
           "min_ratio"_a = 0.75, "max_ratio"_a = 1.3333333333333333, "interp"_a = NVCV_INTERP_LINEAR, "seed"_a = 0,
           py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
+
+	cvcuda.random_resized_crop(src: nvcv.Tensor, shape:Tuple, min_scale:double, max_scale:double, min_ratio:double, max_ratio:double, interp: Interp = < NVCV_INTERP_LINEAR >, seed: int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the RandomResizedCrop operation on the given cuda stream.
 
@@ -147,6 +152,8 @@ void ExportOpRandomResizedCrop(py::module &m)
           "max_scale"_a = 1.0, "min_ratio"_a = 0.75, "max_ratio"_a = 1.3333333333333333,
           "interp"_a = NVCV_INTERP_LINEAR, "seed"_a = 0, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
+	cvcuda.random_resized_crop_into(dst: nvcv.Tensor,src: nvcv.Tensor, shape:Tuple, min_scale:double, max_scale:double, min_ratio:double, max_ratio:double, interp: Interp = < NVCV_INTERP_LINEAR >, seed: int, stream: Optional[nvcv.cuda.Stream] = None)
+
         Executes the RandomResizedCrop operation on the given cuda stream.
 
         See also:
@@ -176,6 +183,8 @@ void ExportOpRandomResizedCrop(py::module &m)
           "max_scale"_a = 1.0, "min_ratio"_a = 0.75, "max_ratio"_a = 1.3333333333333333,
           "interp"_a = NVCV_INTERP_LINEAR, "seed"_a = 0, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
+	cvcuda.random_resized_crop(src: nvcv.ImageBatchVarShape, shape:Tuple, min_scale:double, max_scale:double, min_ratio:double, max_ratio:double, interp: Interp = < NVCV_INTERP_LINEAR >, seed: int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+
         Executes the RandomResizedCrop operation on the given cuda stream.
 
         See also:
@@ -204,6 +213,8 @@ void ExportOpRandomResizedCrop(py::module &m)
     m.def("random_resized_crop_into", &RandomResizedCropVarShapeInto, "dst"_a, "src"_a, "min_scale"_a = 0.08,
           "max_scale"_a = 1.0, "min_ratio"_a = 0.75, "max_ratio"_a = 1.3333333333333333,
           "interp"_a = NVCV_INTERP_LINEAR, "seed"_a = 0, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+	cvcuda.random_resized_crop_into(dst: nvcv.ImageBatchVarShape,src: nvcv.ImageBatchVarShape, shape:Tuple, min_scale:double, max_scale:double, min_ratio:double, max_ratio:double, interp: Interp = < NVCV_INTERP_LINEAR >, seed: int, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the RandomResizedCrop operation on the given cuda stream.
 

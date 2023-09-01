@@ -139,8 +139,13 @@ void ExportOpWarpAffine(py::module &m)
 {
     using namespace pybind11::literals;
 
+    py::options options;
+    options.disable_function_signatures();
+
     m.def("warp_affine", &WarpAffine, "src"_a, "xform"_a, "flags"_a, py::kw_only(),
           "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "border_value"_a = 0, "stream"_a = nullptr, R"pbdoc(
+
+	cvcuda.warp_affine(src: nvcv.Tensor, xform: nvcv.Tensor, flags: nvcv.Tensor, border_mode: NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, border_value:pyarray,stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the Warp Affine operation on the given cuda stream.
 
@@ -168,6 +173,8 @@ void ExportOpWarpAffine(py::module &m)
 
     m.def("warp_affine_into", &WarpAffineInto, "dst"_a, "src"_a, "xform"_a, "flags"_a, py::kw_only(),
           "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "border_value"_a = 0, "stream"_a = nullptr, R"pbdoc(
+
+	cvcuda.warp_affine_into(dst: nvcv.Tensor, src: nvcv.Tensor, xform: nvcv.Tensor, flags: nvcv.Tensor, border_mode: NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, border_value:pyarray,stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Warp Affine operation on the given cuda stream.
 
@@ -197,6 +204,8 @@ void ExportOpWarpAffine(py::module &m)
     m.def("warp_affine", &WarpAffineVarShape, "src"_a, "xform"_a, "flags"_a, py::kw_only(),
           "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "border_value"_a = 0, "stream"_a = nullptr, R"pbdoc(
 
+	cvcuda.warp_affine(src: nvcv.ImageBatchVarShape, xform: nvcv.Tensor, flags: nvcv.Tensor, border_mode: NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, border_value:pyarray,stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+
         Executes the Warp Affine operation on the given cuda stream.
 
         See also:
@@ -223,6 +232,8 @@ void ExportOpWarpAffine(py::module &m)
 
     m.def("warp_affine_into", &WarpAffineVarShapeInto, "dst"_a, "src"_a, "xform"_a, "flags"_a, py::kw_only(),
           "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "border_value"_a = 0, "stream"_a = nullptr, R"pbdoc(
+
+	cvcuda.warp_affine_into(dst: nvcv.ImageBatchVarShape,src: nvcv.ImageBatchVarShape, xform: nvcv.Tensor, flags: nvcv.Tensor, border_mode: NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, border_value:pyarray,stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Warp Affine operation on the given cuda stream.
 

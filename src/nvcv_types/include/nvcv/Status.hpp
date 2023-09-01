@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,7 +32,7 @@
 namespace nvcv {
 
 /**
- * @brief Status codes.
+ * @brief Enum class representing various status codes for operations.
  *
  * This enum is coupled to NVCVStatus, the status codes are the same.
  * For further details, see \ref NVCVStatus.
@@ -55,16 +55,36 @@ enum class Status : int8_t
     ERROR_UNDERFLOW            = NVCV_ERROR_UNDERFLOW
 };
 
+/**
+ * @brief Retrieves the name (string representation) of the given status.
+ *
+ * @param status Status code whose name is to be retrieved.
+ * @return String representation of the status.
+ */
 inline const char *GetName(Status status)
 {
     return nvcvStatusGetName(static_cast<NVCVStatus>(status));
 }
 
+/**
+ * @brief Overloads the stream insertion operator for Status enum.
+ *
+ * @param out Output stream to which the status string will be written.
+ * @param status Status code to be output.
+ * @return Reference to the modified output stream.
+ */
 inline std::ostream &operator<<(std::ostream &out, Status status)
 {
     return out << static_cast<NVCVStatus>(status);
 }
 
+/**
+ * @brief Overloads the stream insertion operator for NVCVStatus.
+ *
+ * @param out Output stream to which the status string will be written.
+ * @param status NVCVStatus code to be output.
+ * @return Reference to the modified output stream.
+ */
 inline std::ostream &operator<<(std::ostream &out, NVCVStatus status)
 {
     return out << nvcvStatusGetName(status);

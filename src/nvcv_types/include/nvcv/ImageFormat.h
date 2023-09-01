@@ -45,6 +45,7 @@ extern "C"
  * - \ref NVCVMemLayout
  * - \ref NVCVDataKind
  * - \ref NVCVSwizzle
+ * - \ref NVCVAlphaType
  * - Number of planes
  * - Format packing of each plane.
  *
@@ -60,105 +61,106 @@ extern "C"
  */
 typedef uint64_t NVCVImageFormat;
 
+// clang-format off
 /** Denotes a special image format that doesn't represent any format. */
 #define NVCV_IMAGE_FORMAT_NONE ((NVCVImageFormat)0)
 
 /** Single plane with one 8-bit unsigned integer channel. */
-#define NVCV_IMAGE_FORMAT_U8 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, UNSIGNED, X000, X8)
+#define NVCV_IMAGE_FORMAT_U8 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, UNSIGNED, X000, ASSOCIATED, X8)
 
 /** Single plane with one block-linear 8-bit unsigned integer channel. */
-#define NVCV_IMAGE_FORMAT_U8_BL NVCV_DETAIL_MAKE_NONCOLOR_FMT1(BL, UNSIGNED, X000, X8)
+#define NVCV_IMAGE_FORMAT_U8_BL NVCV_DETAIL_MAKE_NONCOLOR_FMT1(BL, UNSIGNED, X000, ASSOCIATED, X8)
 
 /** Single plane with one 8-bit signed integer channel. */
-#define NVCV_IMAGE_FORMAT_S8 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, SIGNED, X000, X8)
+#define NVCV_IMAGE_FORMAT_S8 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, SIGNED, X000, ASSOCIATED, X8)
 
 /** Single plane with one 16-bit unsigned integer channel. */
-#define NVCV_IMAGE_FORMAT_U16 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, UNSIGNED, X000, X16)
+#define NVCV_IMAGE_FORMAT_U16 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, UNSIGNED, X000, ASSOCIATED, X16)
 
 /** Single plane with one 32-bit unsigned integer channel. */
-#define NVCV_IMAGE_FORMAT_U32 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, UNSIGNED, X000, X32)
+#define NVCV_IMAGE_FORMAT_U32 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, UNSIGNED, X000, ASSOCIATED, X32)
 
 /** Single plane with one 32-bit signed integer channel.*/
-#define NVCV_IMAGE_FORMAT_S32 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, SIGNED, X000, X32)
+#define NVCV_IMAGE_FORMAT_S32 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, SIGNED, X000, ASSOCIATED, X32)
 
 /** Single plane with one 16-bit signed integer channel.*/
-#define NVCV_IMAGE_FORMAT_S16 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, SIGNED, X000, X16)
+#define NVCV_IMAGE_FORMAT_S16 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, SIGNED, X000, ASSOCIATED, X16)
 
 /** Single plane with one block-linear 16-bit signed integer channel.*/
-#define NVCV_IMAGE_FORMAT_S16_BL NVCV_DETAIL_MAKE_NONCOLOR_FMT1(BL, SIGNED, X000, X16)
+#define NVCV_IMAGE_FORMAT_S16_BL NVCV_DETAIL_MAKE_NONCOLOR_FMT1(BL, SIGNED, X000, ASSOCIATED, X16)
 
 /** Single plane with two interleaved 16-bit signed integer channel.*/
-#define NVCV_IMAGE_FORMAT_2S16 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, SIGNED, XY00, X16_Y16)
+#define NVCV_IMAGE_FORMAT_2S16 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, SIGNED, XY00, ASSOCIATED, X16_Y16)
 
 /** Single plane with two interleaved block-linear 16-bit signed integer channel.*/
-#define NVCV_IMAGE_FORMAT_2S16_BL NVCV_DETAIL_MAKE_NONCOLOR_FMT1(BL, SIGNED, XY00, X16_Y16)
+#define NVCV_IMAGE_FORMAT_2S16_BL NVCV_DETAIL_MAKE_NONCOLOR_FMT1(BL, SIGNED, XY00, ASSOCIATED, X16_Y16)
 
 /** Single plane with one 16-bit floating point channel. */
-#define NVCV_IMAGE_FORMAT_F16 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, FLOAT, X000, X16)
+#define NVCV_IMAGE_FORMAT_F16 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, FLOAT, X000, ASSOCIATED, X16)
 
 /** Single plane with one 32-bit floating point channel. */
-#define NVCV_IMAGE_FORMAT_F32 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, FLOAT, X000, X32)
+#define NVCV_IMAGE_FORMAT_F32 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, FLOAT, X000, ASSOCIATED, X32)
 
 /** Single plane with one 64-bit floating point channel. */
-#define NVCV_IMAGE_FORMAT_F64 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, FLOAT, X000, X64)
+#define NVCV_IMAGE_FORMAT_F64 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, FLOAT, X000, ASSOCIATED, X64)
 
 /** Single plane with two interleaved 16-bit floating point channels. */
-#define NVCV_IMAGE_FORMAT_2F16 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, FLOAT, XY00, X16_Y16)
+#define NVCV_IMAGE_FORMAT_2F16 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, FLOAT, XY00, ASSOCIATED, X16_Y16)
 
 /** Single plane with two interleaved 32-bit floating point channels. */
-#define NVCV_IMAGE_FORMAT_2F32 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, FLOAT, XY00, X32_Y32)
+#define NVCV_IMAGE_FORMAT_2F32 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, FLOAT, XY00, ASSOCIATED, X32_Y32)
 
 /** Single plane with one 64-bit complex floating point channel. */
-#define NVCV_IMAGE_FORMAT_C64 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, COMPLEX, X000, X64)
+#define NVCV_IMAGE_FORMAT_C64 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, COMPLEX, X000, ASSOCIATED, X64)
 
 /** Single plane with two interleaved 64-bit complex floating point channels. */
-#define NVCV_IMAGE_FORMAT_2C64 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, COMPLEX, XY00, X64_Y64)
+#define NVCV_IMAGE_FORMAT_2C64 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, COMPLEX, XY00, ASSOCIATED, X64_Y64)
 
 /** Single plane with one 128-bit complex floating point channel. */
-#define NVCV_IMAGE_FORMAT_C128 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, COMPLEX, X000, X128)
+#define NVCV_IMAGE_FORMAT_C128 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, COMPLEX, X000, ASSOCIATED, X128)
 
 /** Single plane with two interleaved 128-bit complex floating point channels. */
-#define NVCV_IMAGE_FORMAT_2C128 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, COMPLEX, XY00, X128_Y128)
+#define NVCV_IMAGE_FORMAT_2C128 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, COMPLEX, XY00, ASSOCIATED, X128_Y128)
 
 /** Single plane with one pitch-linear 8-bit unsigned integer channel with limited-range luma (grayscale) information.
  * Values range from 16 to 235. Below this range is considered black, above is considered white.
  */
-#define NVCV_IMAGE_FORMAT_Y8 NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, NONE, PL, UNSIGNED, X000, X8)
+#define NVCV_IMAGE_FORMAT_Y8 NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, NONE, PL, UNSIGNED, X000, ASSOCIATED, X8)
 
 /** Single plane with one block-linear 8-bit unsigned integer channel with limited-range luma (grayscale) information.
  * Values range from 16 to 235. Below this range is considered black, above is considered white.
  */
-#define NVCV_IMAGE_FORMAT_Y8_BL NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, NONE, BL, UNSIGNED, X000, X8)
+#define NVCV_IMAGE_FORMAT_Y8_BL NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, NONE, BL, UNSIGNED, X000, ASSOCIATED, X8)
 
 /** Single plane with one pitch-linear 8-bit unsigned integer channel with full-range luma (grayscale) information.
  * Values range from 0 to 255.
  */
-#define NVCV_IMAGE_FORMAT_Y8_ER NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601_ER, NONE, PL, UNSIGNED, X000, X8)
+#define NVCV_IMAGE_FORMAT_Y8_ER NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601_ER, NONE, PL, UNSIGNED, X000, ASSOCIATED, X8)
 
 /** Single plane with one block-linear 8-bit unsigned integer channel with full-range luma (grayscale) information.
  * Values range from 0 to 255.
  */
-#define NVCV_IMAGE_FORMAT_Y8_ER_BL NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601_ER, NONE, BL, UNSIGNED, X000, X8)
+#define NVCV_IMAGE_FORMAT_Y8_ER_BL NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601_ER, NONE, BL, UNSIGNED, X000, ASSOCIATED, X8)
 
 /** Single plane with one pitch-linear 16-bit unsigned integer channel with limited-range luma (grayscale) information.
  * Values range from 4096 to 60160. Below this range is considered black, above is considered white.
  */
-#define NVCV_IMAGE_FORMAT_Y16 NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, NONE, PL, UNSIGNED, X000, X16)
+#define NVCV_IMAGE_FORMAT_Y16 NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, NONE, PL, UNSIGNED, X000, ASSOCIATED, X16)
 
 /** Single plane with one block-linear 16-bit unsigned integer channel with limited-range luma (grayscale) information.
  * Values range from 4096 to 60160. Below this range is considered black, above is considered white.
  */
-#define NVCV_IMAGE_FORMAT_Y16_BL NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, NONE, BL, UNSIGNED, X000, X16)
+#define NVCV_IMAGE_FORMAT_Y16_BL NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, NONE, BL, UNSIGNED, X000, ASSOCIATED, X16)
 
 /** Single plane with one pitch-linear 16-bit unsigned integer channel with full-range luma (grayscale) information.
  * Values range from 0 to 65535.
  */
-#define NVCV_IMAGE_FORMAT_Y16_ER NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601_ER, NONE, PL, UNSIGNED, X000, X16)
+#define NVCV_IMAGE_FORMAT_Y16_ER NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601_ER, NONE, PL, UNSIGNED, X000, ASSOCIATED, X16)
 
 /** Single plane with one block-linear 16-bit unsigned integer channel with full-range luma (grayscale) information.
  * Values range from 0 to 65535.
  */
-#define NVCV_IMAGE_FORMAT_Y16_ER_BL NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601_ER, NONE, BL, UNSIGNED, X000, X16)
+#define NVCV_IMAGE_FORMAT_Y16_ER_BL NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601_ER, NONE, BL, UNSIGNED, X000, ASSOCIATED, X16)
 
 /** YUV420sp 8-bit pitch-linear format with limited range.
  * Format is composed of two planes:
@@ -168,7 +170,7 @@ typedef uint64_t NVCVImageFormat;
  *    both horizontally and vertically.
  *    For a given pixel, Cb channel has lower memory address than Cr.
  */
-#define NVCV_IMAGE_FORMAT_NV12 NVCV_DETAIL_MAKE_YCbCr_FMT2(BT601, 420, PL, UNSIGNED, XYZ0, X8, X8_Y8)
+#define NVCV_IMAGE_FORMAT_NV12 NVCV_DETAIL_MAKE_YCbCr_FMT2(BT601, 420, PL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8_Y8)
 
 /** YUV420sp 8-bit block-linear format with limited range.
  * Format is composed of two planes:
@@ -178,7 +180,7 @@ typedef uint64_t NVCVImageFormat;
  *    both horizontally and vertically.
  *    For a given pixel, Cb channel has lower memory address than Cr.
  */
-#define NVCV_IMAGE_FORMAT_NV12_BL NVCV_DETAIL_MAKE_YCbCr_FMT2(BT601, 420, BL, UNSIGNED, XYZ0, X8, X8_Y8)
+#define NVCV_IMAGE_FORMAT_NV12_BL NVCV_DETAIL_MAKE_YCbCr_FMT2(BT601, 420, BL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8_Y8)
 
 /** YUV420sp 8-bit pitch-linear format with full range.
  * Format is composed of two planes:
@@ -188,7 +190,7 @@ typedef uint64_t NVCVImageFormat;
  *    both horizontally and vertically.
  *    For a given pixel, Cb channel has lower memory address than Cr.
  */
-#define NVCV_IMAGE_FORMAT_NV12_ER NVCV_DETAIL_MAKE_YCbCr_FMT2(BT601_ER, 420, PL, UNSIGNED, XYZ0, X8, X8_Y8)
+#define NVCV_IMAGE_FORMAT_NV12_ER NVCV_DETAIL_MAKE_YCbCr_FMT2(BT601_ER, 420, PL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8_Y8)
 
 /** YUV420sp 8-bit block-linear format with full range.
  * Format is composed of two planes:
@@ -198,7 +200,27 @@ typedef uint64_t NVCVImageFormat;
  *    both horizontally and vertically.
  *    For a given pixel, Cb channel has lower memory address than Cr.
  */
-#define NVCV_IMAGE_FORMAT_NV12_ER_BL NVCV_DETAIL_MAKE_YCbCr_FMT2(BT601_ER, 420, BL, UNSIGNED, XYZ0, X8, X8_Y8)
+#define NVCV_IMAGE_FORMAT_NV12_ER_BL NVCV_DETAIL_MAKE_YCbCr_FMT2(BT601_ER, 420, BL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8_Y8)
+
+/** YUV420sp 8-bit block-linear format with limited range.
+ * Format is composed of two planes:
+ * 1. One 8-bit channel with luma (Y'). Values range from 16 to 255.
+ * 2. Two interleaved 8-bit channels with chroma (Cr,Cb).
+ *    Values range from 0 to 255. Resolution is half of luma plane,
+ *    both horizontally and vertically.
+ *    For a given pixel, Cb channel has lower memory address than Cr.
+ */
+#define NVCV_IMAGE_FORMAT_NV21 NVCV_DETAIL_MAKE_YCbCr_FMT2(BT601_ER, 420, PL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8_Y8)
+
+/** YUV420sp 8-bit pitch-linear format with full range.
+ * Format is composed of two planes:
+ * 1. One 8-bit channel with luma (Y'). Values range from 0 to 255.
+ * 2. Two interleaved 8-bit channels with chroma (Cr,Cb).
+ *    Values range from 0 to 255. Resolution is half of luma plane,
+ *    both horizontally and vertically.
+ *    For a given pixel, Cb channel has lower memory address than Cr.
+ */
+#define NVCV_IMAGE_FORMAT_NV21_ER NVCV_DETAIL_MAKE_YCbCr_FMT2(BT601_ER, 420, PL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8_Y8)
 
 /** YUV444sp 8-bit pitch-linear format with limited range.
  * Format is composed of two planes:
@@ -207,7 +229,7 @@ typedef uint64_t NVCVImageFormat;
  *    Values range from 16 to 240. It has the same resolution as luma plane.
  *    For a given pixel, Cb channel has lower memory address than Cr.
  */
-#define NVCV_IMAGE_FORMAT_NV24 NVCV_DETAIL_MAKE_YCbCr_FMT2(BT601, 444, PL, UNSIGNED, XYZ0, X8, X8_Y8)
+#define NVCV_IMAGE_FORMAT_NV24 NVCV_DETAIL_MAKE_YCbCr_FMT2(BT601, 444, PL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8_Y8)
 
 /** YUV444sp 8-bit block-linear format with limited range.
  * Format is composed of two planes:
@@ -216,7 +238,7 @@ typedef uint64_t NVCVImageFormat;
  *    Values range from 0 to 255. It has the same resolution as luma plane.
  *    For a given pixel, Cb channel has lower memory address than Cr.
  */
-#define NVCV_IMAGE_FORMAT_NV24_BL NVCV_DETAIL_MAKE_YCbCr_FMT2(BT601, 444, BL, UNSIGNED, XYZ0, X8, X8_Y8)
+#define NVCV_IMAGE_FORMAT_NV24_BL NVCV_DETAIL_MAKE_YCbCr_FMT2(BT601, 444, BL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8_Y8)
 
 /** YUV444sp 8-bit pitch-linear format with full range.
  * Format is composed of two planes:
@@ -225,7 +247,7 @@ typedef uint64_t NVCVImageFormat;
  *    Values range from 0 to 255. It has the same resolution as luma plane.
  *    For a given pixel, Cb channel has lower memory address than Cr.
  */
-#define NVCV_IMAGE_FORMAT_NV24_ER NVCV_DETAIL_MAKE_YCbCr_FMT2(BT601_ER, 444, PL, UNSIGNED, XYZ0, X8, X8_Y8)
+#define NVCV_IMAGE_FORMAT_NV24_ER NVCV_DETAIL_MAKE_YCbCr_FMT2(BT601_ER, 444, PL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8_Y8)
 
 /** YUV444sp 8-bit block-linear format with full range.
  * Format is composed of two planes:
@@ -234,133 +256,177 @@ typedef uint64_t NVCVImageFormat;
  *    Values range from 0 to 255. It has the same resolution as luma plane.
  *    For a given pixel, Cb channel has lower memory address than Cr.
  */
-#define NVCV_IMAGE_FORMAT_NV24_ER_BL NVCV_DETAIL_MAKE_YCbCr_FMT2(BT601_ER, 444, BL, UNSIGNED, XYZ0, X8, X8_Y8)
+#define NVCV_IMAGE_FORMAT_NV24_ER_BL NVCV_DETAIL_MAKE_YCbCr_FMT2(BT601_ER, 444, BL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8_Y8)
 
 /** YUV422 8-bit pitch-linear format in one plane with UYVY ordering and limited range. */
-#define NVCV_IMAGE_FORMAT_UYVY NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, 422, PL, UNSIGNED, XYZ1, Y8_X8__Z8_X8)
+#define NVCV_IMAGE_FORMAT_UYVY NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, 422, PL, UNSIGNED, XYZ1, ASSOCIATED, Y8_X8__Z8_X8)
 
 /** YUV422 8-bit block-linear format in one plane with UYVY ordering and limited range. */
-#define NVCV_IMAGE_FORMAT_UYVY_BL NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, 422, BL, UNSIGNED, XYZ1, Y8_X8__Z8_X8)
+#define NVCV_IMAGE_FORMAT_UYVY_BL NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, 422, BL, UNSIGNED, XYZ1, ASSOCIATED, Y8_X8__Z8_X8)
 
 /** YUV422 8-bit pitch-linear format in one plane with UYVY ordering and full range. */
-#define NVCV_IMAGE_FORMAT_UYVY_ER NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601_ER, 422, PL, UNSIGNED, XYZ1, Y8_X8__Z8_X8)
+#define NVCV_IMAGE_FORMAT_UYVY_ER NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601_ER, 422, PL, UNSIGNED, XYZ1, ASSOCIATED, Y8_X8__Z8_X8)
 
 /** YUV422 8-bit block-linear format in one plane with UYVY ordering and full range. */
-#define NVCV_IMAGE_FORMAT_UYVY_ER_BL NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601_ER, 422, BL, UNSIGNED, XYZ1, Y8_X8__Z8_X8)
+#define NVCV_IMAGE_FORMAT_UYVY_ER_BL NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601_ER, 422, BL, UNSIGNED, XYZ1, ASSOCIATED, Y8_X8__Z8_X8)
 
 /** YUV422 8-bit pitch-linear format in one plane with YUYV ordering and limited range.
  * Also known as YUY2 format.
  */
-#define NVCV_IMAGE_FORMAT_YUYV NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, 422, PL, UNSIGNED, XYZ1, X8_Y8__X8_Z8)
+#define NVCV_IMAGE_FORMAT_YUYV NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, 422, PL, UNSIGNED, XYZ1, ASSOCIATED, X8_Y8__X8_Z8)
 
 /** YUV422 8-bit block-linear format in one plane with YUYV ordering and limited range.
  * Also known as YUY2 format.
  */
-#define NVCV_IMAGE_FORMAT_YUYV_BL NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, 422, BL, UNSIGNED, XYZ1, X8_Y8__X8_Z8)
+#define NVCV_IMAGE_FORMAT_YUYV_BL NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, 422, BL, UNSIGNED, XYZ1, ASSOCIATED, X8_Y8__X8_Z8)
 
 /** YUV422 8-bit pitch-linear format in one plane with YUYV ordering and full range.
  * Also known as YUY2 format.
  */
-#define NVCV_IMAGE_FORMAT_YUYV_ER NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601_ER, 422, PL, UNSIGNED, XYZ1, X8_Y8__X8_Z8)
+#define NVCV_IMAGE_FORMAT_YUYV_ER NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601_ER, 422, PL, UNSIGNED, XYZ1, ASSOCIATED, X8_Y8__X8_Z8)
 
 /** YUV422 8-bit block-linear format in one plane with YUYV ordering and full range.
  * Also known as YUY2 format.
  */
-#define NVCV_IMAGE_FORMAT_YUYV_ER_BL NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601_ER, 422, BL, UNSIGNED, XYZ1, X8_Y8__X8_Z8)
+#define NVCV_IMAGE_FORMAT_YUYV_ER_BL NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601_ER, 422, BL, UNSIGNED, XYZ1, ASSOCIATED, X8_Y8__X8_Z8)
+
+/** Single plane with interleaved YUV 8-bit channel. */
+#define NVCV_IMAGE_FORMAT_YUV8  NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, NONE, PL, UNSIGNED, XYZ1, ASSOCIATED, X8_Y8_Z8)
 
 /** Single plane with interleaved RGB 8-bit channel. */
-#define NVCV_IMAGE_FORMAT_RGB8 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, UNSIGNED, XYZ1, X8_Y8_Z8)
+#define NVCV_IMAGE_FORMAT_RGB8 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, UNSIGNED, XYZ1, ASSOCIATED, X8_Y8_Z8)
 
 /** Single plane with interleaved BGR 8-bit channel. */
-#define NVCV_IMAGE_FORMAT_BGR8 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, UNSIGNED, ZYX1, X8_Y8_Z8)
+#define NVCV_IMAGE_FORMAT_BGR8 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, UNSIGNED, ZYX1, ASSOCIATED, X8_Y8_Z8)
 
 /** Single plane with interleaved RGBA 8-bit channel. */
-#define NVCV_IMAGE_FORMAT_RGBA8 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, UNSIGNED, XYZW, X8_Y8_Z8_W8)
+#define NVCV_IMAGE_FORMAT_RGBA8 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, UNSIGNED, XYZW, ASSOCIATED, X8_Y8_Z8_W8)
 
 /** Single plane with interleaved BGRA 8-bit channel. */
-#define NVCV_IMAGE_FORMAT_BGRA8 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, UNSIGNED, ZYXW, X8_Y8_Z8_W8)
+#define NVCV_IMAGE_FORMAT_BGRA8 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, UNSIGNED, ZYXW, ASSOCIATED, X8_Y8_Z8_W8)
 
 /** Planar RGB unsigned 8-bit per channel. */
-#define NVCV_IMAGE_FORMAT_RGB8p NVCV_DETAIL_MAKE_COLOR_FMT3(RGB, UNDEFINED, PL, UNSIGNED, XYZ0, X8, X8, X8)
+#define NVCV_IMAGE_FORMAT_RGB8p NVCV_DETAIL_MAKE_COLOR_FMT3(RGB, UNDEFINED, PL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8, X8)
 
 /** Planar BGR unsigned 8-bit per channel. */
-#define NVCV_IMAGE_FORMAT_BGR8p NVCV_DETAIL_MAKE_COLOR_FMT3(RGB, UNDEFINED, PL, UNSIGNED, ZYX1, X8, X8, X8)
+#define NVCV_IMAGE_FORMAT_BGR8p NVCV_DETAIL_MAKE_COLOR_FMT3(RGB, UNDEFINED, PL, UNSIGNED, ZYX1, ASSOCIATED, X8, X8, X8)
 
 /** Planar RGBA unsigned 8-bit per channel. */
-#define NVCV_IMAGE_FORMAT_RGBA8p NVCV_DETAIL_MAKE_COLOR_FMT4(RGB, UNDEFINED, PL, UNSIGNED, XYZW, X8, X8, X8, X8)
+#define NVCV_IMAGE_FORMAT_RGBA8p NVCV_DETAIL_MAKE_COLOR_FMT4(RGB, UNDEFINED, PL, UNSIGNED, XYZW, ASSOCIATED, X8, X8, X8, X8)
 
 /** Planar BGRA unsigned 8-bit per channel. */
-#define NVCV_IMAGE_FORMAT_BGRA8p NVCV_DETAIL_MAKE_COLOR_FMT4(RGB, UNDEFINED, PL, UNSIGNED, ZYXW, X8, X8, X8, X8)
+#define NVCV_IMAGE_FORMAT_BGRA8p NVCV_DETAIL_MAKE_COLOR_FMT4(RGB, UNDEFINED, PL, UNSIGNED, ZYXW, ASSOCIATED, X8, X8, X8, X8)
 
 /** Single plane with interleaved RGB float16 channel. */
-#define NVCV_IMAGE_FORMAT_RGBf16 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, FLOAT, XYZ1, X16_Y16_Z16)
+#define NVCV_IMAGE_FORMAT_RGBf16 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, FLOAT, XYZ1, ASSOCIATED, X16_Y16_Z16)
 
 /** Single plane with interleaved BGR float16 channel. */
-#define NVCV_IMAGE_FORMAT_BGRf16 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, FLOAT, ZYX1, X16_Y16_Z16)
+#define NVCV_IMAGE_FORMAT_BGRf16 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, FLOAT, ZYX1, ASSOCIATED, X16_Y16_Z16)
 
 /** Single plane with interleaved RGBA float16 channel. */
-#define NVCV_IMAGE_FORMAT_RGBAf16 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, FLOAT, XYZW, X16_Y16_Z16_W16)
+#define NVCV_IMAGE_FORMAT_RGBAf16 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, FLOAT, XYZW, ASSOCIATED, X16_Y16_Z16_W16)
 
 /** Single plane with interleaved BGRA float16 channel. */
-#define NVCV_IMAGE_FORMAT_BGRAf16 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, FLOAT, ZYXW, X16_Y16_Z16_W16)
+#define NVCV_IMAGE_FORMAT_BGRAf16 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, FLOAT, ZYXW, ASSOCIATED, X16_Y16_Z16_W16)
 
 /** Planar RGB unsigned float16 per channel. */
-#define NVCV_IMAGE_FORMAT_RGBf16p NVCV_DETAIL_MAKE_COLOR_FMT3(RGB, UNDEFINED, PL, FLOAT, XYZ0, X16, X16, X16)
+#define NVCV_IMAGE_FORMAT_RGBf16p NVCV_DETAIL_MAKE_COLOR_FMT3(RGB, UNDEFINED, PL, FLOAT, XYZ0, ASSOCIATED, X16, X16, X16)
 
 /** Planar BGR unsigned float16 per channel. */
-#define NVCV_IMAGE_FORMAT_BGRf16p NVCV_DETAIL_MAKE_COLOR_FMT3(RGB, UNDEFINED, PL, FLOAT, ZYX1, X16, X16, X16)
+#define NVCV_IMAGE_FORMAT_BGRf16p NVCV_DETAIL_MAKE_COLOR_FMT3(RGB, UNDEFINED, PL, FLOAT, ZYX1, ASSOCIATED, X16, X16, X16)
 
 /** Planar RGBA unsigned float16 per channel. */
-#define NVCV_IMAGE_FORMAT_RGBAf16p NVCV_DETAIL_MAKE_COLOR_FMT4(RGB, UNDEFINED, PL, FLOAT, XYZW, X16, X16, X16, X16)
+#define NVCV_IMAGE_FORMAT_RGBAf16p NVCV_DETAIL_MAKE_COLOR_FMT4(RGB, UNDEFINED, PL, FLOAT, XYZW, ASSOCIATED, X16, X16, X16, X16)
 
 /** Planar BGRA unsigned float16 per channel. */
-#define NVCV_IMAGE_FORMAT_BGRAf16p NVCV_DETAIL_MAKE_COLOR_FMT4(RGB, UNDEFINED, PL, FLOAT, ZYXW, X16, X16, X16, X16)
+#define NVCV_IMAGE_FORMAT_BGRAf16p NVCV_DETAIL_MAKE_COLOR_FMT4(RGB, UNDEFINED, PL, FLOAT, ZYXW, ASSOCIATED, X16, X16, X16, X16)
 
 /** Single plane with interleaved RGB float32 channel. */
-#define NVCV_IMAGE_FORMAT_RGBf32 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, FLOAT, XYZ1, X32_Y32_Z32)
+#define NVCV_IMAGE_FORMAT_RGBf32 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, FLOAT, XYZ1, ASSOCIATED, X32_Y32_Z32)
 
 /** Single plane with interleaved BGR float32 channel. */
-#define NVCV_IMAGE_FORMAT_BGRf32 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, FLOAT, ZYX1, X32_Y32_Z32)
+#define NVCV_IMAGE_FORMAT_BGRf32 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, FLOAT, ZYX1, ASSOCIATED, X32_Y32_Z32)
 
 /** Single plane with interleaved RGBA float32 channel. */
-#define NVCV_IMAGE_FORMAT_RGBAf32 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, FLOAT, XYZW, X32_Y32_Z32_W32)
+#define NVCV_IMAGE_FORMAT_RGBAf32 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, FLOAT, XYZW, ASSOCIATED, X32_Y32_Z32_W32)
 
 /** Single plane with interleaved BGRA float32 channel. */
-#define NVCV_IMAGE_FORMAT_BGRAf32 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, FLOAT, ZYXW, X32_Y32_Z32_W32)
+#define NVCV_IMAGE_FORMAT_BGRAf32 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, FLOAT, ZYXW, ASSOCIATED, X32_Y32_Z32_W32)
 
 /** Planar RGB unsigned float32 per channel. */
-#define NVCV_IMAGE_FORMAT_RGBf32p NVCV_DETAIL_MAKE_COLOR_FMT3(RGB, UNDEFINED, PL, FLOAT, XYZ0, X32, X32, X32)
+#define NVCV_IMAGE_FORMAT_RGBf32p NVCV_DETAIL_MAKE_COLOR_FMT3(RGB, UNDEFINED, PL, FLOAT, XYZ0, ASSOCIATED, X32, X32, X32)
 
 /** Planar BGR unsigned float32 per channel. */
-#define NVCV_IMAGE_FORMAT_BGRf32p NVCV_DETAIL_MAKE_COLOR_FMT3(RGB, UNDEFINED, PL, FLOAT, ZYX1, X32, X32, X32)
+#define NVCV_IMAGE_FORMAT_BGRf32p NVCV_DETAIL_MAKE_COLOR_FMT3(RGB, UNDEFINED, PL, FLOAT, ZYX1, ASSOCIATED, X32, X32, X32)
 
 /** Planar RGBA unsigned float32 per channel. */
-#define NVCV_IMAGE_FORMAT_RGBAf32p NVCV_DETAIL_MAKE_COLOR_FMT4(RGB, UNDEFINED, PL, FLOAT, XYZW, X32, X32, X32, X32)
+#define NVCV_IMAGE_FORMAT_RGBAf32p NVCV_DETAIL_MAKE_COLOR_FMT4(RGB, UNDEFINED, PL, FLOAT, XYZW, ASSOCIATED, X32, X32, X32, X32)
 
 /** Planar BGRA unsigned float32 per channel. */
-#define NVCV_IMAGE_FORMAT_BGRAf32p NVCV_DETAIL_MAKE_COLOR_FMT4(RGB, UNDEFINED, PL, FLOAT, ZYXW, X32, X32, X32, X32)
+#define NVCV_IMAGE_FORMAT_BGRAf32p NVCV_DETAIL_MAKE_COLOR_FMT4(RGB, UNDEFINED, PL, FLOAT, ZYXW, ASSOCIATED, X32, X32, X32, X32)
 
 /** Single plane with interleaved HSV 8-bit channel. */
-#define NVCV_IMAGE_FORMAT_HSV8 NVCV_DETAIL_MAKE_COLOR_FMT1(HSV, UNDEFINED, PL, UNSIGNED, XYZ1, X8_Y8_Z8)
+#define NVCV_IMAGE_FORMAT_HSV8 NVCV_DETAIL_MAKE_COLOR_FMT1(HSV, UNDEFINED, PL, UNSIGNED, XYZ0, ASSOCIATED, X8_Y8_Z8)
+
+/** Single plane with interleaved CMYK 8-bit channel. */
+#define NVCV_IMAGE_FORMAT_CMYK8 NVCV_DETAIL_MAKE_COLOR_FMT1(CMYK, UNDEFINED, PL, UNSIGNED, XYZW, ASSOCIATED, X8_Y8_Z8_W8)
+
+/** Single plane with interleaved YCCK 8-bit channel. */
+#define NVCV_IMAGE_FORMAT_YCCK8 NVCV_DETAIL_MAKE_COLOR_FMT1(YCCK, UNDEFINED, PL, UNSIGNED, XYZW, ASSOCIATED, X8_Y8_Z8_W8)
+
+/** Single plane with interleaved RGBA 8-bit channel with alpha channel is unassociated */
+#define NVCV_IMAGE_FORMAT_RGBA8_UNASSOCIATED_ALPHA NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, UNSIGNED, XYZW, UNASSOCIATED, X8_Y8_Z8_W8)
+
+/** Single plane with interleaved RGB 8-bit channel and 1 extra 8-bit unspecified channel */
+#define NVCV_IMAGE_FORMAT_RGB8_1U_U8 NVCV_DETAIL_MAKE_COLOR_EXTRA_CHANNELS_FMT1(RGB, UNDEFINED, PL, UNSIGNED, XYZ1, ASSOCIATED, 1, 8, UNSIGNED, U, X8_Y8_Z8)
+
+/** Single plane with interleaved RGB 8-bit channel and 7 extra 8-bit unspecified channel */
+#define NVCV_IMAGE_FORMAT_RGB8_7U_U8 NVCV_DETAIL_MAKE_COLOR_EXTRA_CHANNELS_FMT1(RGB, UNDEFINED, PL, UNSIGNED, XYZ1, ASSOCIATED, 7, 8, UNSIGNED, U, X8_Y8_Z8)
+
+/** Single plane with interleaved RGBA 8-bit channels and 3 extra 16-bit unspecified channel */
+#define NVCV_IMAGE_FORMAT_RGBA8_3U_U16 NVCV_DETAIL_MAKE_COLOR_EXTRA_CHANNELS_FMT1(RGB, UNDEFINED, PL, UNSIGNED, XYZW, ASSOCIATED, 3, 16, UNSIGNED, U, X8_Y8_Z8_W8)
+
+/** Single plane with interleaved RGBA 8-bit channel and 3 extra 32-bit unsigned int 3D position channels */
+#define NVCV_IMAGE_FORMAT_RGBA8_3POS3D_U32 NVCV_DETAIL_MAKE_COLOR_EXTRA_CHANNELS_FMT1(RGB, UNDEFINED, PL, UNSIGNED, XYZW, ASSOCIATED, 3, 32, UNSIGNED, POS3D, X8_Y8_Z8)
+
+/** Single plane with interleaved RGB 8-bit channel and 3 extra 32-bit float depth channels */
+#define NVCV_IMAGE_FORMAT_RGB8_3D_F32 NVCV_DETAIL_MAKE_COLOR_EXTRA_CHANNELS_FMT1(RGB, UNDEFINED, PL, UNSIGNED, XYZ1, ASSOCIATED, 3, 32, FLOAT, D, X8_Y8_Z8)
+// clang-format on
 
 /** Creates a user-defined YCbCr color image format constant.
  *
  * Example to create a YUV422R ITU-R BT.709 full-range with SMPTE240M transfer function, block-linear format.
+ * If there is no alpha channel, the value of alphaType does not matter.
  * \code{.c}
  * NVCVImageFormat fmt = NVCV_MAKE_YCbCr_IMAGE_FORMAT(NVCV_MAKE_COLOR_SPEC(BT601, SMPTE240M, FULL),
  *                                                  NVCV_CSS_422R, NVCV_BLOCK_LINEAR, NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0,
- *                                                  2, NVCV_PACKING_X8, NVCV_PACKING_X8_Y8);
+ *                                                  NVCV_ALPHA_ASSOCIATED, 2, NVCV_PACKING_X8, NVCV_PACKING_X8_Y8);
+ * \endcode
+ * If 4 extra 32-bit floating point Depth type channels are needed in the image then use
+ * \ref NVCV_MAKE_YCbCr_IMAGE_EXTRA_CHANNELS_FORMAT macro as follows.
+ * Note : extra channels are only supported in non-planar format.
+ * Using extra channels with planar format will result in unexpected behavior
+ * \code{.c}
+ * NVCVImageFormat fmt = NVCV_MAKE_YCbCr_IMAGE_EXTRA_CHANNELS_FORMAT(NVCV_MAKE_COLOR_SPEC(BT601, SMPTE240M, FULL),
+ *                                                  NVCV_CSS_444, NVCV_BLOCK_LINEAR, NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0,
+ *                                                  NVCV_ALPHA_ASSOCIATED, 4, 32, NVCV_DATA_KIND_FLOAT, NVCV_EXTRA_CHANNEL_D,
+ *                                                  1, NVCV_PACKING_X8_Y8_Z8)
  * \endcode
  *
  * Fourth plane (packing3) must have at most 64bpp.
  *
- * @param[in] colorModel    \ref NVCVColorModel to be used.
- * @param[in] colorSpec     \ref NVCVColorSpec to be used.
- * @param[in] chromaSubsamp \ref NVCVChromaSubsampling to be used.
- * @param[in] memLayout     \ref NVCVMemLayout to be used.
- * @param[in] dataKind      \ref NVCVDataKind to be used.
- * @param[in] swizzle       \ref NVCVSwizzle operation to be performed on the channels.
- * @param[in] numPlanes     Number of planes this format has.
+ * @param[in] colorModel           \ref NVCVColorModel to be used.
+ * @param[in] colorSpec            \ref NVCVColorSpec to be used.
+ * @param[in] chromaSubsamp        \ref NVCVChromaSubsampling to be used.
+ * @param[in] memLayout            \ref NVCVMemLayout to be used.
+ * @param[in] dataKind             \ref NVCVDataKind to be used.
+ * @param[in] swizzle              \ref NVCVSwizzle operation to be performed on the channels.
+ * @param[in] alphaType            \ref NVCVAlphaType to be used.
+ * @param[in] numExtraChannels     Number of extra channels (maximum 7).
+ * @param[in] extraChannelsBPP     Bits per pixel of the extra channels.
+ * @param[in] extraChannelDataKind \ref NVCVDataKind to be used.
+ * @param[in] extraChannelType     \ref NVCVExtraChannel to be used.
+ * @param[in] numPlanes            Number of planes this format has.
  * @param[in] packing0,packing1,packing2,packing3 Format packing of each plane.
  *                                                Exactly #numPlanes packings must be passed.
  *
@@ -370,7 +436,8 @@ typedef uint64_t NVCVImageFormat;
 // WAR sphinx is acting up on this
 //#    define NVCV_MAKE_YCbCr_IMAGE_FORMAT(colorModel, colorSpec, chromaSubsamp, memLayout, dataKind, swizzle, numPlanes, packing0, packing1, packing2, packing3)
 #else
-#    define NVCV_MAKE_YCbCr_IMAGE_FORMAT (NVCVImageFormat) NVCV_DETAIL_MAKE_YCbCr_FORMAT
+#    define NVCV_MAKE_YCbCr_IMAGE_FORMAT                (NVCVImageFormat) NVCV_DETAIL_MAKE_YCbCr_FORMAT
+#    define NVCV_MAKE_YCbCr_IMAGE_EXTRA_CHANNELS_FORMAT (NVCVImageFormat) NVCV_DETAIL_MAKE_YCbCr_EXTRA_CHANNELS_FORMAT
 #endif
 
 /** Creates a user-defined color image format constant.
@@ -379,22 +446,38 @@ typedef uint64_t NVCVImageFormat;
  * \code{.c}
  * NVCVImageFormat fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(NVCV_COLOR_MODEL_RGB, NVCV_MAKE_COLOR_SPEC(BT601, SMPTE240M, FULL),
  *                                                  NVCV_MEM_LAYOUT_BL, NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0,
- *                                                  2, NVCV_PACKING_X8, NVCV_PACKING_X8, NVCV_PACKING_Y8);
+ *                                                  NVCV_ALPHA_ASSOCIATED, 2, NVCV_PACKING_X8, NVCV_PACKING_X8, NVCV_PACKING_Y8);
+ * \endcode
+ *
+ * Similarly to create a RGB interleaved ITU-R BT.709 full-range with SMPTE240M encoding, block-linear format
+ * with 3 extra channels of unsigned 16-bit 3D position.
+ * \code{.c}
+ * NVCVImageFormat fmt = NVCV_MAKE_COLOR_IMAGE_EXTRA_CHANNELS_FORMAT(NVCV_COLOR_MODEL_RGB, NVCV_MAKE_COLOR_SPEC(BT601, SMPTE240M, FULL),
+ *                                                  NVCV_MEM_LAYOUT_BL, NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_ALPHA_ASSOCIATED,
+ *                                                  3, 16, NVCV_DATA_KIND_UNSIGNED, NVCV_EXTRA_CHANNEL_POS3D,
+ *                                                  1, NVCV_PACKING_X8_Y8_Z8)
  * \endcode
  *
  * If the color model is \ref NVCV_COLOR_MODEL_YCbCr, it's assumed that the chroma subsampling is 4:4:4,
  * i.e, \ref NVCV_CSS_444.
  *
- * @param[in] colorModel \ref NVCVColorModel to be used.
- * @param[in] colorSpec  \ref NVCVColorSpec to be used.
- * @param[in] memLayout  \ref NVCVMemLayout to be used.
- * @param[in] dataKind   \ref NVCVDataKind to be used.
- * @param[in] swizzle    \ref NVCVSwizzle operation to be performed on the channels.
+ * @param[in] colorModel           \ref NVCVColorModel to be used.
+ * @param[in] colorSpec            \ref NVCVColorSpec to be used.
+ * @param[in] memLayout            \ref NVCVMemLayout to be used.
+ * @param[in] dataKind             \ref NVCVDataKind to be used.
+ * @param[in] swizzle              \ref NVCVSwizzle operation to be performed on the channels.
+ * @param[in] alphaType            \ref NVCVAlphaType to be used.
+ * @param[in] numExtraChannels     Number of extra channels (maximum 7).
+ * @param[in] extraChannelsBPP     Bits per pixel of the extra channels.
+ * @param[in] extraChannelDataKind \ref NVCVDataKind to be used.
+ * @param[in] extraChannelType     \ref NVCVExtraChannel to be used.
  * @param[in] numPlanes  Number of planes this format has.
  * @param[in] packing0,packing1,packing2,packing3 Format packing of each plane.
  *                                                Exactly #numPlanes packings must be passed.
  *                                                + Fourth plane (packing3), if passed,
  *                                                  must have at most 64bpp.
+ * @param[in] numExtraChannels Number of extra channels beyond 4 channels.
+ * @param[in] extraChannelDataKind \ref NVCVDataKind to be used. Data kind of extra channels
  *
  * @returns The user-defined image format.
  */
@@ -402,7 +485,8 @@ typedef uint64_t NVCVImageFormat;
 // WAR sphinx is acting up on this
 //#    define NVCV_MAKE_COLOR_IMAGE_FORMAT(colorModel, colorSpec, memLayout, dataKind, swizzle, numPlanes, packing0, packing1, packing2, packing3)
 #else
-#    define NVCV_MAKE_COLOR_IMAGE_FORMAT (NVCVImageFormat) NVCV_DETAIL_MAKE_COLOR_FORMAT
+#    define NVCV_MAKE_COLOR_IMAGE_FORMAT                (NVCVImageFormat) NVCV_DETAIL_MAKE_COLOR_FORMAT
+#    define NVCV_MAKE_COLOR_IMAGE_EXTRA_CHANNELS_FORMAT (NVCVImageFormat) NVCV_DETAIL_MAKE_COLOR_EXTRA_CHANNELS_FORMAT
 #endif
 
 /** Creates a user-defined non-color image format constant.
@@ -413,9 +497,22 @@ typedef uint64_t NVCVImageFormat;
  *                                                    3, NVCV_PACKING_X8, NVCV_PACKING_X16, NVCV_PACKING_X32);
  * \endcode
  *
- * @param[in] memLayout \ref NVCVMemLayout to be used.
- * @param[in] dataKind  \ref NVCVDataKind to be used.
- * @param[in] swizzle   \ref NVCVSwizzle operation to be performed on the channels.
+ * Similarly to create a 1-plane float block-linear image with 8-bit unsigned integer data and 2 extra unspecified channels of
+ * type 8-bit unsigned integer
+ * \code{.c}
+ * NVCVImageFormat fmt = NVCV_MAKE_NONCOLOR_IMAGE_EXTRA_CHANNELS_FORMAT(NVCV_MEM_LAYOUT_BL, NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_X000,
+ *                                                    NVCV_ALPHA_ASSOCIATED, 2, 8, NVCV_DATA_KIND_UNSIGNED, NVCV_EXTRA_CHANNEL_U,
+ *                                                    1, NVCV_PACKING_X8)
+ * \endcode
+ *
+ * @param[in] memLayout            \ref NVCVMemLayout to be used.
+ * @param[in] dataKind             \ref NVCVDataKind to be used.
+ * @param[in] swizzle              \ref NVCVSwizzle operation to be performed on the channels.
+ * @param[in] alphaType            \ref NVCVAlphaType to be used.
+ * @param[in] numExtraChannels     Number of extra channels (maximum 7).
+ * @param[in] extraChannelsBPP     Bits per pixel of the extra channels.
+ * @param[in] extraChannelDataKind \ref NVCVDataKind to be used.
+ * @param[in] extraChannelType     \ref NVCVExtraChannel to be used.
  * @param[in] numPlanes Number of planes this format has.
  * @param[in] packing0,packing1,packing2,packing3 Format packing of each plane.
  *                                                Exactly #numPlanes packings must be passed.
@@ -429,6 +526,8 @@ typedef uint64_t NVCVImageFormat;
 //#    define NVCV_MAKE_NONCOLOR_IMAGE_FORMAT(memLayout, dataKind, swizzle, numPlanes, packing0, packing1, packing2, packing3)
 #else
 #    define NVCV_MAKE_NONCOLOR_IMAGE_FORMAT (NVCVImageFormat) NVCV_DETAIL_MAKE_NONCOLOR_FORMAT
+#    define NVCV_MAKE_NONCOLOR_IMAGE_EXTRA_CHANNELS_FORMAT \
+        (NVCVImageFormat) NVCV_DETAIL_MAKE_NONCOLOR_EXTRA_CHANNELS_FORMAT
 #endif
 
 /** Creates a user-defined raw (Bayer pattern) image format constant.
@@ -436,14 +535,26 @@ typedef uint64_t NVCVImageFormat;
  * Example to create a RGGB Bayer pattern format:
  * \code{.c}
  * NVCVImageFormat fmt = NVCV_MAKE_RAW_IMAGE_FORMAT(NVCV_RAW_BAYER_RGGB, NVCV_MEM_LAYOUT_BL,
- *                                                NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_X000,
+ *                                                NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_X000, NVCV_ALPHA_ASSOCIATED,
+ *                                                1, NVCV_PACKING_X8);
+ * \endcode
+ * For the same format with 3 extra unspecified channels of datatype 16-bit signed, the following macro should be used
+ * \code{.c}
+ * NVCVImageFormat fmt = NVCV_MAKE_RAW_IMAGE_EXTRA_CHANNELS_FORMAT(NVCV_RAW_BAYER_RGGB, NVCV_MEM_LAYOUT_BL,
+ *                                                NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_X000, NVCV_ALPHA_ASSOCIATED,
+ *                                                3, 16, NVCV_DATA_KIND_SIGNED, NVCV_EXTRA_CHANNEL_U,
  *                                                1, NVCV_PACKING_X8);
  * \endcode
  *
- * @param[in] rawPattern \ref NVCVRawPattern to be used.
- * @param[in] memLayout  \ref NVCVMemLayout to be used.
- * @param[in] dataKind   \ref NVCVDataKind to be used.
- * @param[in] swizzle    \ref NVCVSwizzle operation to be performed on the channels.
+ * @param[in] rawPattern           \ref NVCVRawPattern to be used.
+ * @param[in] memLayout            \ref NVCVMemLayout to be used.
+ * @param[in] dataKind             \ref NVCVDataKind to be used.
+ * @param[in] swizzle              \ref NVCVSwizzle operation to be performed on the channels.
+ * @param[in] alphaType            \ref NVCVAlphaType to be used.
+ * @param[in] numExtraChannels     Number of extra channels (maximum 7).
+ * @param[in] extraChannelsBPP     Bits per pixel of the extra channels.
+ * @param[in] extraChannelDataKind \ref NVCVDataKind to be used.
+ * @param[in] extraChannelType     \ref NVCVExtraChannel to be used.
  * @param[in] numPlanes  Number of planes this format has.
  * @param[in] packing    Format packing of image plane.
  *
@@ -453,7 +564,8 @@ typedef uint64_t NVCVImageFormat;
 // WAR sphinx is acting up on this
 //#    define NVCV_MAKE_RAW_IMAGE_FORMAT(rawPattern, memLayout, dataKind, numPlanes, swizzle, packing)
 #else
-#    define NVCV_MAKE_RAW_IMAGE_FORMAT (NVCVImageFormat) NVCV_DETAIL_MAKE_RAW_FORMAT
+#    define NVCV_MAKE_RAW_IMAGE_FORMAT                (NVCVImageFormat) NVCV_DETAIL_MAKE_RAW_FORMAT
+#    define NVCV_MAKE_RAW_IMAGE_EXTRA_CHANNELS_FORMAT (NVCVImageFormat) NVCV_DETAIL_MAKE_RAW_EXTRA_CHANNELS_FORMAT
 #endif
 
 /** Creates a user-defined YCbCr color image format.
@@ -474,6 +586,8 @@ typedef uint64_t NVCVImageFormat;
  * @param[in] packing0,packing1,packing2,packing3 Format packing of each plane.
  *                                                + When remaining planes aren't needed,
  *                                                  pass \ref NVCV_PACKING_0 for them.
+ * @param[in] alphaType \ref NVCVAlphaType to be used. Default: NVCV_ALPHA_ASSOCIATED.
+ * @param[in] exChannelInfo \ref NVCVExtraChannelInfo to be used. Default: NULL.
  *
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some argument is outside its valid range.
  * @retval #NVCV_SUCCESS                Operation executed successfully.
@@ -481,7 +595,8 @@ typedef uint64_t NVCVImageFormat;
 NVCV_PUBLIC NVCVStatus nvcvMakeYCbCrImageFormat(NVCVImageFormat *outFormat, NVCVColorSpec colorSpec,
                                                 NVCVChromaSubsampling chromaSub, NVCVMemLayout memLayout,
                                                 NVCVDataKind dataKind, NVCVSwizzle swizzle, NVCVPacking packing0,
-                                                NVCVPacking packing1, NVCVPacking packing2, NVCVPacking packing3);
+                                                NVCVPacking packing1, NVCVPacking packing2, NVCVPacking packing3,
+                                                NVCVAlphaType alphaType, const NVCVExtraChannelInfo *exChannelInfo);
 
 /** Creates a user-defined color image format.
  *
@@ -502,6 +617,8 @@ NVCV_PUBLIC NVCVStatus nvcvMakeYCbCrImageFormat(NVCVImageFormat *outFormat, NVCV
  * @param[in] packing0,packing1,packing2,packing3 Format packing of each plane.
  *                                                + When remaining planes aren't needed, pass \ref NVCV_PACKING_0 for them.
  *                                                + Fourth plane (packing3) must have at most 64bpp.
+ * @param[in] alphaType \ref NVCVAlphaType to be used. Default: NVCV_ALPHA_ASSOCIATED.
+ * @param[in] exChannelInfo \ref NVCVExtraChannelInfo to be used. Default: NULL.
  *
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some argument is outside its valid range.
  * @retval #NVCV_SUCCESS                Operation executed successfully.
@@ -509,7 +626,8 @@ NVCV_PUBLIC NVCVStatus nvcvMakeYCbCrImageFormat(NVCVImageFormat *outFormat, NVCV
 NVCV_PUBLIC NVCVStatus nvcvMakeColorImageFormat(NVCVImageFormat *outFormat, NVCVColorModel colorModel,
                                                 NVCVColorSpec colorSpec, NVCVMemLayout memLayout, NVCVDataKind dataKind,
                                                 NVCVSwizzle swizzle, NVCVPacking packing0, NVCVPacking packing1,
-                                                NVCVPacking packing2, NVCVPacking packing3);
+                                                NVCVPacking packing2, NVCVPacking packing3, NVCVAlphaType alphaType,
+                                                const NVCVExtraChannelInfo *exChannelInfo);
 
 /** Creates a user-defined non-color image format.
  *
@@ -526,13 +644,16 @@ NVCV_PUBLIC NVCVStatus nvcvMakeColorImageFormat(NVCVImageFormat *outFormat, NVCV
  * @param[in] packing0,packing1,packing2,packing3 Format packing of each plane.
  *                                                + When remaining planes aren't needed, pass \ref NVCV_PACKING_0 for them.
  *                                                + Fourth plane (packing3) must have at most 64bpp.
+ * @param[in] alphaType \ref NVCVAlphaType to be used. Default: NVCV_ALPHA_ASSOCIATED.
+ * @param[in] exChannelInfo \ref NVCVExtraChannelInfo to be used. Default: NULL.
  *
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some argument is outside its valid range.
  * @retval #NVCV_SUCCESS                Operation executed successfully.
  */
 NVCV_PUBLIC NVCVStatus nvcvMakeNonColorImageFormat(NVCVImageFormat *outFormat, NVCVMemLayout memLayout,
                                                    NVCVDataKind dataKind, NVCVSwizzle swizzle, NVCVPacking packing0,
-                                                   NVCVPacking packing1, NVCVPacking packing2, NVCVPacking packing3);
+                                                   NVCVPacking packing1, NVCVPacking packing2, NVCVPacking packing3,
+                                                   NVCVAlphaType alphaType, const NVCVExtraChannelInfo *exChannelInfo);
 
 /** Creates a user-defined raw image format.
  *
@@ -549,6 +670,8 @@ NVCV_PUBLIC NVCVStatus nvcvMakeNonColorImageFormat(NVCVImageFormat *outFormat, N
  * @param[in] packing0,packing1,packing2,packing3 Format packing of each plane.
  *                                                + When remaining planes aren't needed, pass \ref NVCV_PACKING_0 for them.
  *                                                + Fourth plane (packing3) must have at most 64bpp.
+ * @param[in] alphaType \ref NVCVAlphaType to be used. Default: NVCV_ALPHA_ASSOCIATED.
+ * @param[in] exChannelInfo \ref NVCVExtraChannelInfo to be used. Default: NULL.
  *
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some argument is outside its valid range.
  * @retval #NVCV_SUCCESS                Operation executed successfully.
@@ -556,7 +679,8 @@ NVCV_PUBLIC NVCVStatus nvcvMakeNonColorImageFormat(NVCVImageFormat *outFormat, N
 NVCV_PUBLIC NVCVStatus nvcvMakeRawImageFormat(NVCVImageFormat *outFormat, NVCVRawPattern rawPattern,
                                               NVCVMemLayout memLayout, NVCVDataKind dataKind, NVCVSwizzle swizzle,
                                               NVCVPacking packing0, NVCVPacking packing1, NVCVPacking packing2,
-                                              NVCVPacking packing3);
+                                              NVCVPacking packing3, NVCVAlphaType alphaType,
+                                              const NVCVExtraChannelInfo *exChannelInfo);
 
 /** Creates a image format from a FourCC code.
  *
@@ -958,6 +1082,53 @@ NVCV_PUBLIC NVCVStatus nvcvImageFormatSetRawPattern(NVCVImageFormat *fmt, NVCVRa
  * @retval #NVCV_SUCCESS                Operation executed successfully.
  */
 NVCV_PUBLIC NVCVStatus nvcvImageFormatHasSameDataLayout(NVCVImageFormat a, NVCVImageFormat b, int8_t *outBool);
+
+/** Get the image format's alpha Channel type.
+ *
+ * @param[in] fmt Image format to be queried.
+ *
+ * @param[out] outAlphaChannelType The image format's alpha channel type.
+ *                         + Cannot be NULL.
+ *
+ * @retval #NVCV_ERROR_INVALID_ARGUMENT Some argument is outside its valid range.
+ * @retval #NVCV_SUCCESS                Operation executed successfully.
+ */
+NVCV_PUBLIC NVCVStatus nvcvImageFormatGetAlphaType(NVCVImageFormat fmt, NVCVAlphaType *outAlphaChannelType);
+
+/** Set the image format's alpha channel type.
+ *
+ * @param[inout] fmt      Image format have its data type replaced.
+ *                        + Cannot be NULL.
+ * @param[in] alphaChannelType The new alphaChannel type.
+ *
+ * @retval #NVCV_ERROR_INVALID_ARGUMENT Some argument is outside its valid range.
+ * @retval #NVCV_SUCCESS                Operation executed successfully.
+ */
+NVCV_PUBLIC NVCVStatus nvcvImageFormatSetAlphaType(NVCVImageFormat *fmt, NVCVAlphaType alphaChannelType);
+
+/** Get the image format's extra channel information.
+ *
+ * @param[in] fmt Image format to be queried.
+ *
+ * @param[out] outExChannelInfo The image format's extra channel information.
+ *                         + Cannot be NULL.
+ *
+ * @retval #NVCV_ERROR_INVALID_ARGUMENT Some argument is outside its valid range.
+ * @retval #NVCV_SUCCESS                Operation executed successfully.
+ */
+NVCV_PUBLIC NVCVStatus nvcvImageFormatGetExtraChannelInfo(NVCVImageFormat fmt, NVCVExtraChannelInfo *outExChannelInfo);
+
+/** Set the image format's extra channel information.
+ *
+ * @param[inout] fmt      Image format have its data type replaced.
+ *                        + Cannot be NULL.
+ * @param[in] exChannelInfo The new extra channel info.
+ *
+ * @retval #NVCV_ERROR_INVALID_ARGUMENT Some argument is outside its valid range.
+ * @retval #NVCV_SUCCESS                Operation executed successfully.
+ */
+NVCV_PUBLIC NVCVStatus nvcvImageFormatSetExtraChannelInfo(NVCVImageFormat            *fmt,
+                                                          const NVCVExtraChannelInfo *exChannelInfo);
 
 /**@}*/
 

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -42,8 +42,8 @@ extern "C"
  *                     If negative, switches to dynamic allocation, no hard limit is defined.
  *                     + There must be no image handles created and not destroyed.
  *
- * @retval #VPI_ERROR_INVALID_ARGUMENT Some parameter is outside its valid range.
- * @retval #VPI_SUCCESS                Operation executed successfully.
+ * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside its valid range.
+ * @retval #NVCV_SUCCESS                Operation executed successfully.
  */
 NVCV_PUBLIC NVCVStatus nvcvConfigSetMaxImageCount(int32_t maxCount);
 
@@ -57,8 +57,8 @@ NVCV_PUBLIC NVCVStatus nvcvConfigSetMaxImageCount(int32_t maxCount);
  *                     If negative, switches to dynamic allocation, no hard limit is defined.
  *                     + There must be no image batch handles created and not destroyed.
  *
- * @retval #VPI_ERROR_INVALID_ARGUMENT Some parameter is outside its valid range.
- * @retval #VPI_SUCCESS                Operation executed successfully.
+ * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside its valid range.
+ * @retval #NVCV_SUCCESS                Operation executed successfully.
  */
 NVCV_PUBLIC NVCVStatus nvcvConfigSetMaxImageBatchCount(int32_t maxCount);
 
@@ -72,10 +72,25 @@ NVCV_PUBLIC NVCVStatus nvcvConfigSetMaxImageBatchCount(int32_t maxCount);
  *                     If negative, switches to dynamic allocation, no hard limit is defined.
  *                     + There must be no tensor handles created and not destroyed.
  *
+ * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside its valid range.
+ * @retval #NVCV_SUCCESS                Operation executed successfully.
+ */
+NVCV_PUBLIC NVCVStatus nvcvConfigSetMaxTensorCount(int32_t maxCount);
+
+/**
+ * Set a hard limit on the number of array handles that can be created.
+ *
+ * The function will preallocate all resources necessary to satisfy creation
+ * of a limited number of array handles in the future.
+ *
+ * @param[in] maxCount Maximum number of array handles that can be created.
+ *                     If negative, switches to dynamic allocation, no hard limit is defined.
+ *                     + There must be no array handles created and not destroyed.
+ *
  * @retval #VPI_ERROR_INVALID_ARGUMENT Some parameter is outside its valid range.
  * @retval #VPI_SUCCESS                Operation executed successfully.
  */
-NVCV_PUBLIC NVCVStatus nvcvConfigSetMaxTensorCount(int32_t maxCount);
+NVCV_PUBLIC NVCVStatus nvcvConfigSetMaxArrayCount(int32_t maxCount);
 
 /**
  * Set a hard limit on the number of allocator handles that can be created.
@@ -87,8 +102,8 @@ NVCV_PUBLIC NVCVStatus nvcvConfigSetMaxTensorCount(int32_t maxCount);
  *                     If negative, switches to dynamic allocation, no hard limit is defined.
  *                     + There must be no allocator handles created and not destroyed.
  *
- * @retval #VPI_ERROR_INVALID_ARGUMENT Some parameter is outside its valid range.
- * @retval #VPI_SUCCESS                Operation executed successfully.
+ * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside its valid range.
+ * @retval #NVCV_SUCCESS                Operation executed successfully.
  */
 NVCV_PUBLIC NVCVStatus nvcvConfigSetMaxAllocatorCount(int32_t maxCount);
 

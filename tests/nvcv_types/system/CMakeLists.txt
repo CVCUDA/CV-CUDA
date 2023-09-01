@@ -38,6 +38,7 @@ add_executable(nvcv_test_types_system
     TestTensorDataUtils.cpp
     TestExceptions.cpp
     TestConfig.cpp
+    TestArray.cpp
 )
 
 target_link_libraries(nvcv_test_types_system

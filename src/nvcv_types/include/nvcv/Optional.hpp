@@ -40,22 +40,35 @@ struct NullOptT
 
 constexpr NullOptT NullOpt;
 
+/**
+ * @brief A container object that may or may not contain a value of a given type.
+ *
+ * This is a simplified version of the `std::optional` type introduced in C++17.
+ * It provides a mechanism to represent non-value states without resorting to
+ * pointers, dynamic allocation, or custom 'null' values.
+ *
+ * @tparam T The type of the value to be stored.
+ */
 template<class T>
 class Optional
 {
 public:
     using value_type = T;
 
+    /// @brief Default constructor that initializes an empty `Optional`
     Optional() noexcept
         : m_hasValue(false)
     {
     }
 
+    /// @brief Constructs an empty `Optional` using the specified `NullOptT` tag.
     Optional(NullOptT) noexcept
         : Optional()
     {
     }
 
+    /// @brief Copy constructor.
+    /// If the other `Optional` contains a value, it will be copied to this `Optional`.
     Optional(const Optional &that)
         : m_hasValue(that.m_hasValue)
     {
@@ -65,6 +78,7 @@ public:
         }
     }
 
+    /// @brief Move constructor.
     Optional(Optional &&that) noexcept(std::is_nothrow_move_constructible<T>::value)
         : m_hasValue(that.m_hasValue)
     {
@@ -75,6 +89,17 @@ public:
         }
     }
 
+    /**
+     * @brief Constructs an `Optional` object by copying the contents of another `Optional` of a different type.
+     *
+     * This constructor allows for converting between `Optional` objects of different types,
+     * provided that the contained type `T` can be constructed from the type `U` of the source `Optional`.
+     *
+     * @tparam U The contained type of the source `Optional`.
+     * @tparam std::is_constructible<T, const U &>::value Ensures that this constructor is only available
+     *         if `T` can be constructed from a constant reference to `U`.
+     * @param that The source `Optional` object to be copied from.
+     */
     template<typename U, detail::EnableIf_t<std::is_constructible<T, const U &>::value, int> = 0>
     Optional(const Optional<U> &that)
         : m_hasValue(that.m_hasValue)
@@ -85,6 +110,21 @@ public:
         }
     }
 
+    /**
+     * @brief Constructs an `Optional` object by moving the contents of another `Optional` of a different type.
+     *
+     * This constructor allows for converting between `Optional` objects of different types using move semantics,
+     * provided that the contained type `T` can be constructed from the type `U` of the source `Optional` using move construction.
+     *
+     * It is marked `noexcept` if the move construction of `T` from `U` does not throw exceptions.
+     *
+     * After the move, the source `Optional` retains its state (i.e., whether it has a value or not) as per the C++17 standard.
+     *
+     * @tparam U The contained type of the source `Optional`.
+     * @tparam std::is_constructible<T, U &&>::value Ensures that this constructor is only available
+     *         if `T` can be move-constructed from type `U`.
+     * @param that The source `Optional` object to be moved from.
+     */
     template<typename U, detail::EnableIf_t<std::is_constructible<T, U &&>::value, int> = 0>
     Optional(Optional<U> &&that) noexcept(std::is_nothrow_constructible<T, U &&>::value)
         : m_hasValue(that.m_hasValue)
@@ -96,6 +136,24 @@ public:
         }
     }
 
+    /**
+     * @brief Constructs an `Optional` object with a contained value by forwarding the given argument.
+     *
+     * This constructor is designed for direct value initialization of the `Optional` object's contained value.
+     * It employs perfect forwarding to ensure efficiency and flexibility, allowing for both lvalue and rvalue arguments.
+     *
+     * Importantly, this constructor is selectively disabled in the following scenarios:
+     * 1. When the passed argument is of type `detail::InPlaceT`, which is used to signal in-place construction.
+     * 2. When the passed argument is another `Optional` object, preventing accidental nesting of `Optional` objects.
+     *
+     * The use of SFINAE (`detail::EnableIf_t`) ensures that this constructor is only available under appropriate conditions.
+     *
+     * @tparam U The type of the argument used to initialize the contained value.
+     * @tparam std::is_constructible<T, U &&>::value Ensures that the contained type `T` can be constructed from the argument `U`.
+     * @tparam !std::is_same<typename std::decay<U>::type, detail::InPlaceT>::value Ensures that the constructor is disabled when the argument is `detail::InPlaceT`.
+     * @tparam !std::is_same<typename std::decay<U>::type, Optional<U>>::value Ensures that the constructor is disabled when the argument is another `Optional` object.
+     * @param that The argument used to initialize the `Optional` object's contained value.
+     */
     template<class U, detail::EnableIf_t<std::is_constructible<T, U &&>::value
                                              && !std::is_same<typename std::decay<U>::type, detail::InPlaceT>::value
                                              && !std::is_same<typename std::decay<U>::type, Optional<U>>::value,
@@ -106,6 +164,23 @@ public:
         new (&m_storage) T(std::forward<U>(that));
     }
 
+    /**
+     * @brief Constructs an `Optional` object with an in-place constructed contained value.
+     *
+     * This constructor is designed for in-place construction of the `Optional` object's contained value.
+     * The purpose of in-place construction is to construct the value directly within the storage of the `Optional` object,
+     * eliminating the need for temporary objects and providing better performance in certain scenarios.
+     *
+     * The `detail::InPlaceT` tag is used to distinguish this constructor from other overloads and to signal in-place construction.
+     *
+     * The use of SFINAE (`detail::EnableIf_t`) ensures that this constructor is only available when the contained type `T` can be constructed
+     * from the provided argument pack `AA...`.
+     *
+     * @tparam AA The types of the arguments used for in-place construction of the contained value.
+     * @tparam std::is_constructible<T, AA...>::value Ensures that the contained type `T` can be constructed from the argument pack `AA...`.
+     * @param std::ignore A tag that indicates in-place construction.
+     * @param args... The arguments used for in-place construction of the `Optional` object's contained value.
+     */
     template<class... AA, detail::EnableIf_t<std::is_constructible<T, AA...>::value, int> = 0>
     Optional(detail::InPlaceT, AA &&...args)
         : m_hasValue(true)
@@ -113,6 +188,7 @@ public:
         new (&m_storage) T(std::forward<AA>(args)...);
     }
 
+    // Dtor
     ~Optional()
     {
         if (m_hasValue)
@@ -121,6 +197,7 @@ public:
         }
     }
 
+    /// Comparison operators below
     Optional &operator=(NullOptT) noexcept
     {
         if (m_hasValue)
@@ -184,6 +261,7 @@ public:
         return *this;
     }
 
+    // copy/move assignment
     Optional &operator=(const Optional &that)
     {
         return this->operator=<T>(that);
@@ -239,6 +317,12 @@ public:
         return *p;
     }
 
+    /**
+     * @brief Resets the `Optional` to its default (empty) state.
+     *
+     * If the `Optional` contains a value, the value is destroyed and
+     * the `Optional` becomes empty.
+     */
     void reset() noexcept
     {
         if (m_hasValue)
@@ -248,6 +332,14 @@ public:
         }
     }
 
+    /**
+     * @brief Swaps the contents of two `Optional` objects.
+     *
+     * If both objects have values, their values are swapped.
+     * If only one object has a value, the value is moved to the other object.
+     *
+     * @param that Another `Optional` object of the same type.
+     */
     void swap(Optional &that)
     {
         if (m_hasValue && that.m_hasValue)
@@ -280,16 +372,29 @@ public:
         }
     }
 
+    /**
+     * @brief Checks if the `Optional` contains a value.
+     * @return true if the `Optional` has a value, false otherwise.
+     */
     bool hasValue() const
     {
         return m_hasValue;
     }
 
+    /**
+     * @brief Conversion to bool that checks if the `Optional` contains a value.
+     * @return true if the `Optional` has a value, false otherwise.
+     */
     explicit operator bool() const
     {
         return m_hasValue;
     }
 
+    /**
+     * @brief Returns the contained value.
+     * @return A reference to the contained value.
+     * @throws std::runtime_error If the `Optional` does not contain a value.
+     */
     T &value()
     {
         if (!m_hasValue)
@@ -305,6 +410,11 @@ public:
 #endif
     }
 
+    /**
+     * @brief Returns the contained value (const version).
+     * @return A const reference to the contained value.
+     * @throws std::runtime_error If the `Optional` does not contain a value.
+     */
     const T &value() const
     {
         if (!m_hasValue)

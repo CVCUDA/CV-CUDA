@@ -13,16 +13,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import nvcv
 import numpy as np
 import numbers
 import torch
+import nvcv
 import copy
 import colorsys
 import math
 
 
-DTYPE = {
+IMG_FORMAT_TO_TYPE = {
+    nvcv.Format.U8: nvcv.Type.U8,
+    nvcv.Format.U16: nvcv.Type.U16,
+    nvcv.Format.U32: nvcv.Type.U32,
+    nvcv.Format.S8: nvcv.Type.S8,
+    nvcv.Format.S16: nvcv.Type.S16,
+    nvcv.Format.S32: nvcv.Type.S32,
+    nvcv.Format.F32: nvcv.Type.F32,
+    nvcv.Format.F64: nvcv.Type.F64,
+}
+
+IMG_FORMAT_TO_NUMPY_DTYPE = {
     nvcv.Format.HSV8: np.uint8,
     nvcv.Format.BGRA8: np.uint8,
     nvcv.Format.RGBA8: np.uint8,
@@ -31,11 +42,14 @@ DTYPE = {
     nvcv.Format.RGBf32: np.float32,
     nvcv.Format.RGBAf32: np.float32,
     nvcv.Format.F32: np.float32,
+    nvcv.Format.F64: np.float64,
     nvcv.Format.U8: np.uint8,
+    nvcv.Format.S8: np.int8,
     nvcv.Format.Y8: np.uint8,
     nvcv.Format.Y8_ER: np.uint8,
     nvcv.Format.U16: np.uint16,
     nvcv.Format.S16: np.int16,
+    nvcv.Format.U32: np.uint32,
     nvcv.Format.S32: np.int32,
 }
 
@@ -81,6 +95,50 @@ def generate_data(shape, dtype, max_random=None, rng=None):
     return data
 
 
+class CudaBuffer:
+    __cuda_array_interface = None
+    obj = None
+
+
+def to_torch_dtype(data_type):
+    """Convert a data type into one supported by torch
+
+    Args:
+        data_type (numpy dtype): Original data type
+
+    Returns:
+        dtype: A data type supported by torch
+    """
+    if data_type == np.uint16:
+        return np.dtype(np.int16)
+    elif data_type == np.uint32:
+        return np.dtype(np.int32)
+    elif data_type == np.uint64:
+        return np.dtype(np.int64)
+    else:
+        return data_type
+
+
+def to_cpu_numpy_buffer(cuda_buffer):
+    """Convert a CUDA buffer to host (CPU) data
+
+    Args:
+        cuda_buffer: CUDA buffer with __cuda_array_interface__
+
+    Returns:
+        numpy array: The CUDA buffer copied to the CPU
+    """
+    torch_dtype = copy.copy(cuda_buffer.dtype)
+    torch_dtype = to_torch_dtype(torch_dtype)
+
+    buf = CudaBuffer
+    buf.obj = cuda_buffer
+    buf.__cuda_array_interface__ = cuda_buffer.__cuda_array_interface__
+    buf.__cuda_array_interface__["typestr"] = torch_dtype.str
+
+    return torch.as_tensor(buf).cpu().numpy()
+
+
 def to_cuda_buffer(host_data):
     """Convert host data to a CUDA buffer
 
@@ -92,17 +150,10 @@ def to_cuda_buffer(host_data):
     """
     orig_dtype = copy.copy(host_data.dtype)
 
-    # torch doesn't accept uint16. Let's make it believe
-    # it is handling int16 instead.
-    if host_data.dtype == np.uint16:
-        host_data.dtype = np.int16
+    host_data.dtype = to_torch_dtype(host_data.dtype)
 
     dev = torch.as_tensor(host_data, device="cuda").cuda()
     host_data.dtype = orig_dtype  # restore it
-
-    class CudaBuffer:
-        __cuda_array_interface = None
-        obj = None
 
     # The cuda buffer only needs the cuda array interface.
     # We can then set its dtype to whatever we want.
@@ -174,7 +225,7 @@ def create_image(size, img_format, max_random=None, rng=None):
         nvcv.Image: The created image
     """
     shape = (size[1], size[0], img_format.channels)
-    dtype = DTYPE[img_format]
+    dtype = IMG_FORMAT_TO_NUMPY_DTYPE[img_format]
     h_data = generate_data(shape, dtype, max_random, rng)
     return to_nvcv_image(h_data)
 
@@ -195,7 +246,7 @@ def create_image_pattern(
         np.array: The created image
     """
     shape = (size[1], size[0], img_format.channels)
-    dtype = DTYPE[img_format]
+    dtype = IMG_FORMAT_TO_NUMPY_DTYPE[img_format]
     ci, cj = shape[0] - 1, shape[1] - 1
     max_r = max(ci, cj) * math.sqrt(2)
     image = np.zeros(shape, dtype=dtype)

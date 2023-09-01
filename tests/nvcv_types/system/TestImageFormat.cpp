@@ -32,9 +32,6 @@ namespace test = nvcv::test;
 
 namespace {
 
-NVCVSwizzle NVCV_SWIZZLE_00X1 = NVCV_MAKE_SWIZZLE(NVCV_CHANNEL_0, NVCV_CHANNEL_0, NVCV_CHANNEL_X, NVCV_CHANNEL_1),
-            NVCV_SWIZZLE_ZXY1 = NVCV_MAKE_SWIZZLE(NVCV_CHANNEL_Z, NVCV_CHANNEL_X, NVCV_CHANNEL_Y, NVCV_CHANNEL_1);
-
 struct Params
 {
     NVCVImageFormat       imgFormat;
@@ -43,6 +40,7 @@ struct Params
     NVCVChromaSubsampling chromaSubSamp;
     NVCVMemLayout         memLayout;
     NVCVSwizzle           swizzle;
+    NVCVAlphaType         alphaType;
     NVCVPacking           packing0, packing1, packing2, packing3;
     NVCVDataKind          dataKind;
     int                   samplesHoriz, samplesVert;
@@ -57,6 +55,8 @@ struct Params
         NVCVDataType pixFormat = NVCV_DATA_TYPE_NONE;
         NVCVSwizzle  swizzle   = NVCV_SWIZZLE_0000;
     } planes[4];
+
+    NVCVExtraChannelInfo exChannelInfo;
 };
 
 std::ostream &operator<<(std::ostream &out, const Params &p)
@@ -65,7 +65,10 @@ std::ostream &operator<<(std::ostream &out, const Params &p)
                << ", colorSpec=" << p.colorSpec << ", chromaSubSamp=" << p.chromaSubSamp
                << ", memLayout=" << p.memLayout << ", swizzle=" << p.swizzle << ", packing0=" << p.packing0
                << ", packing1=" << p.packing1 << ", packing2=" << p.packing2 << ", packing3=" << p.packing3
-               << ", dataKind=" << p.dataKind;
+               << ", dataKind=" << p.dataKind << ", exChannelInfo.numChannels= " << p.exChannelInfo.numChannels
+               << ", exChannelInfo.bitsPerPixel= " << p.exChannelInfo.bitsPerPixel
+               << ", exChannelInfo.datakind= " << p.exChannelInfo.datakind
+               << ", exChannelInfo.channelType = " << p.exChannelInfo.channelType << ", alphaType= " << p.alphaType;
 }
 
 } // namespace
@@ -74,205 +77,260 @@ class ImageFormatTests : public t::TestWithParam<Params>
 {
 };
 
-#define FMT_IMAGE_PARAMS(ColorModel, ColorStd, Subsampling, MemLayout, DataKind, Swizzle, Packing0, Packing1,       \
-                         Packing2, Packing3)                                                                        \
+#define FMT_IMAGE_PARAMS(ColorModel, ColorStd, Subsampling, MemLayout, DataKind, Swizzle, AlphaType, Packing0,      \
+                         Packing1, Packing2, Packing3)                                                              \
     NVCV_COLOR_MODEL_##ColorModel, NVCV_COLOR_SPEC_##ColorStd, NVCV_CSS_##Subsampling, NVCV_MEM_LAYOUT_##MemLayout, \
-        NVCV_SWIZZLE_##Swizzle, NVCV_PACKING_##Packing0, NVCV_PACKING_##Packing1, NVCV_PACKING_##Packing2,          \
-        NVCV_PACKING_##Packing3, NVCV_DATA_KIND_##DataKind
+        NVCV_SWIZZLE_##Swizzle, NVCV_ALPHA_##AlphaType, NVCV_PACKING_##Packing0, NVCV_PACKING_##Packing1,           \
+        NVCV_PACKING_##Packing2, NVCV_PACKING_##Packing3, NVCV_DATA_KIND_##DataKind
 
-#define MAKE_IMAGE_FORMAT_ENUM(ColorModel, ColorStd, Subsampling, Layout, DataKind, Swizzle, Packing0, Packing1,     \
-                               Packing2, Packing3)                                                                   \
-    NVCV_MAKE_IMAGE_FORMAT_ENUM(ColorModel, ColorStd, Subsampling, Layout, DataKind, Swizzle, 4, Packing0, Packing1, \
-                                Packing2, Packing3),                                                                 \
-        FMT_IMAGE_PARAMS(ColorModel, ColorStd, Subsampling, Layout, DataKind, Swizzle, Packing0, Packing1, Packing2, \
-                         Packing3)
+#define MAKE_IMAGE_FORMAT_ENUM(ColorModel, ColorStd, Subsampling, Layout, DataKind, Swizzle, AlphaType, Packing0,     \
+                               Packing1, Packing2, Packing3)                                                          \
+    NVCV_MAKE_IMAGE_FORMAT_ENUM(ColorModel, ColorStd, Subsampling, Layout, DataKind, Swizzle, AlphaType, 4, Packing0, \
+                                Packing1, Packing2, Packing3),                                                        \
+        FMT_IMAGE_PARAMS(ColorModel, ColorStd, Subsampling, Layout, DataKind, Swizzle, AlphaType, Packing0, Packing1, \
+                         Packing2, Packing3)
 
-INSTANTIATE_TEST_SUITE_P(ExplicitTypes, ImageFormatTests,
-                         t::Values(
-                             Params{
-                                 NVCV_IMAGE_FORMAT_U8,
-                                 FMT_IMAGE_PARAMS(UNDEFINED, UNDEFINED, NONE, PL, UNSIGNED, X000, X8, 0, 0, 0),
-                                 4,
-                                 4,
-                                 NVCV_CHROMA_LOC_EVEN,
-                                 NVCV_CHROMA_LOC_EVEN,
-                                 {                                           8, 0, 0, 0},
-                                 1,
-                                 {{8, 1, NVCV_DATA_TYPE_U8, NVCV_SWIZZLE_X000}  }
+INSTANTIATE_TEST_SUITE_P(
+    ExplicitTypes, ImageFormatTests,
+    t::Values(
+        Params{
+            NVCV_IMAGE_FORMAT_U8,
+            FMT_IMAGE_PARAMS(UNDEFINED, UNDEFINED, NONE, PL, UNSIGNED, X000, ASSOCIATED, X8, 0, 0, 0),
+            4,
+            4,
+            NVCV_CHROMA_LOC_EVEN,
+            NVCV_CHROMA_LOC_EVEN,
+            {                                           8, 0,                          0,                    0},
+            1,
+            {{8, 1, NVCV_DATA_TYPE_U8, NVCV_SWIZZLE_X000}  },
+            {                                           0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U }
 },
-                             Params{NVCV_IMAGE_FORMAT_S8,
-                                    FMT_IMAGE_PARAMS(UNDEFINED, UNDEFINED, NONE, PL, SIGNED, X000, X8, 0, 0, 0),
-                                    4,
-                                    4,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    {8, 0, 0, 0},
-                                    1,
-                                    {{8, 1, NVCV_DATA_TYPE_S8, NVCV_SWIZZLE_X000}}},
-                             Params{NVCV_IMAGE_FORMAT_U16,
-                                    FMT_IMAGE_PARAMS(UNDEFINED, UNDEFINED, NONE, PL, UNSIGNED, X000, X16, 0, 0, 0),
-                                    4,
-                                    4,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    {16, 0, 0, 0},
-                                    1,
-                                    {{16, 1, NVCV_DATA_TYPE_U16, NVCV_SWIZZLE_X000}}},
-                             Params{NVCV_IMAGE_FORMAT_S16,
-                                    FMT_IMAGE_PARAMS(UNDEFINED, UNDEFINED, NONE, PL, SIGNED, X000, X16, 0, 0, 0),
-                                    4,
-                                    4,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    {16, 0, 0, 0},
-                                    1,
-                                    {{16, 1, NVCV_DATA_TYPE_S16, NVCV_SWIZZLE_X000}}},
-                             Params{NVCV_IMAGE_FORMAT_NV12_ER,
-                                    FMT_IMAGE_PARAMS(YCbCr, BT601_ER, 420, PL, UNSIGNED, XYZ0, X8, X8_Y8, 0, 0),
-                                    2,
-                                    2,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    {8, 8, 8, 0},
-                                    2,
-                                    {{8, 1, NVCV_DATA_TYPE_U8, NVCV_SWIZZLE_X000},
-                                     {16, 2, NVCV_DATA_TYPE_2U8, NVCV_SWIZZLE_0XY0}}},
-
-                             Params{NVCV_IMAGE_FORMAT_YUYV_ER,
-                                    FMT_IMAGE_PARAMS(YCbCr, BT601_ER, 422, PL, UNSIGNED, XYZ1, X8_Y8__X8_Z8, 0, 0, 0),
-                                    2,
-                                    4,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    {8, 8, 8, 0},
-                                    1,
-                                    {{16, 3, NVCV_DATA_TYPE_2U8, NVCV_SWIZZLE_XYZ1}}},
-
-                             Params{NVCV_IMAGE_FORMAT_UYVY_ER,
-                                    FMT_IMAGE_PARAMS(YCbCr, BT601_ER, 422, PL, UNSIGNED, XYZ1, Y8_X8__Z8_X8, 0, 0, 0),
-                                    2,
-                                    4,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    {8, 8, 8, 0},
-                                    1,
-                                    {{16, 3, NVCV_DATA_TYPE_2U8, NVCV_SWIZZLE_XYZ1}}},
-
-                             Params{NVCV_IMAGE_FORMAT_RGB8,
-                                    FMT_IMAGE_PARAMS(RGB, UNDEFINED, NONE, PL, UNSIGNED, XYZ1, X8_Y8_Z8, 0, 0, 0),
-                                    4,
-                                    4,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    {8, 8, 8, 0},
-                                    1,
-                                    {{24, 3, NVCV_DATA_TYPE_3U8, NVCV_SWIZZLE_XYZ1}}},
-                             Params{NVCV_IMAGE_FORMAT_RGBA8,
-                                    FMT_IMAGE_PARAMS(RGB, UNDEFINED, NONE, PL, UNSIGNED, XYZW, X8_Y8_Z8_W8, 0, 0, 0),
-                                    4,
-                                    4,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    {8, 8, 8, 8},
-                                    1,
-                                    {{32, 4, NVCV_DATA_TYPE_4U8, NVCV_SWIZZLE_XYZW}}},
-                             Params{NVCV_IMAGE_FORMAT_F16,
-                                    FMT_IMAGE_PARAMS(UNDEFINED, UNDEFINED, NONE, PL, FLOAT, X000, X16, 0, 0, 0),
-                                    4,
-                                    4,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    {16, 0, 0, 0},
-                                    1,
-                                    {{16, 1, NVCV_DATA_TYPE_F16, NVCV_SWIZZLE_X000}}},
-                             Params{NVCV_IMAGE_FORMAT_F32,
-                                    FMT_IMAGE_PARAMS(UNDEFINED, UNDEFINED, NONE, PL, FLOAT, X000, X32, 0, 0, 0),
-                                    4,
-                                    4,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    {32, 0, 0, 0},
-                                    1,
-                                    {{32, 1, NVCV_DATA_TYPE_F32, NVCV_SWIZZLE_X000}}},
-                             Params{NVCV_IMAGE_FORMAT_F64,
-                                    FMT_IMAGE_PARAMS(UNDEFINED, UNDEFINED, NONE, PL, FLOAT, X000, X64, 0, 0, 0),
-                                    4,
-                                    4,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    {64, 0, 0, 0},
-                                    1,
-                                    {{64, 1, NVCV_DATA_TYPE_F64, NVCV_SWIZZLE_X000}}},
-                             Params{NVCV_IMAGE_FORMAT_2F32,
-                                    FMT_IMAGE_PARAMS(UNDEFINED, UNDEFINED, NONE, PL, FLOAT, XY00, X32_Y32, 0, 0, 0),
-                                    4,
-                                    4,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    {32, 32, 0, 0},
-                                    1,
-                                    {{64, 2, NVCV_DATA_TYPE_2F32, NVCV_SWIZZLE_XY00}}},
-                             Params{NVCV_IMAGE_FORMAT_C64,
-                                    FMT_IMAGE_PARAMS(UNDEFINED, UNDEFINED, NONE, PL, COMPLEX, X000, X64, 0, 0, 0),
-                                    4,
-                                    4,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    {64, 0, 0, 0},
-                                    1,
-                                    {{64, 1, NVCV_DATA_TYPE_C64, NVCV_SWIZZLE_X000}}},
-                             Params{NVCV_IMAGE_FORMAT_2C64,
-                                    FMT_IMAGE_PARAMS(UNDEFINED, UNDEFINED, NONE, PL, COMPLEX, XY00, X64_Y64, 0, 0, 0),
-                                    4,
-                                    4,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    {64, 64, 0, 0},
-                                    1,
-                                    {{128, 2, NVCV_DATA_TYPE_2C64, NVCV_SWIZZLE_XY00}}},
-                             Params{NVCV_IMAGE_FORMAT_BGR8,
-                                    FMT_IMAGE_PARAMS(RGB, UNDEFINED, NONE, PL, UNSIGNED, ZYX1, X8_Y8_Z8, 0, 0, 0),
-                                    4,
-                                    4,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    {8, 8, 8, 0},
-                                    1,
-                                    {{24, 3, NVCV_DATA_TYPE_3U8, NVCV_SWIZZLE_ZYX1}}},
-                             Params{NVCV_IMAGE_FORMAT_BGRA8,
-                                    FMT_IMAGE_PARAMS(RGB, UNDEFINED, NONE, PL, UNSIGNED, ZYXW, X8_Y8_Z8_W8, 0, 0, 0),
-                                    4,
-                                    4,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    {8, 8, 8, 8},
-                                    1,
-                                    {{32, 4, NVCV_DATA_TYPE_4U8, NVCV_SWIZZLE_ZYXW}}},
-                             Params{NVCV_IMAGE_FORMAT_2S16,
-                                    FMT_IMAGE_PARAMS(UNDEFINED, UNDEFINED, NONE, PL, SIGNED, XY00, X16_Y16, 0, 0, 0),
-                                    4,
-                                    4,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    NVCV_CHROMA_LOC_EVEN,
-                                    {16, 16, 0, 0},
-                                    1,
-                                    {{32, 2, NVCV_DATA_TYPE_2S16, NVCV_SWIZZLE_XY00}}}));
+        Params{NVCV_IMAGE_FORMAT_S8,
+               FMT_IMAGE_PARAMS(UNDEFINED, UNDEFINED, NONE, PL, SIGNED, X000, ASSOCIATED, X8, 0, 0, 0),
+               4,
+               4,
+               NVCV_CHROMA_LOC_EVEN,
+               NVCV_CHROMA_LOC_EVEN,
+               {8, 0, 0, 0},
+               1,
+               {{8, 1, NVCV_DATA_TYPE_S8, NVCV_SWIZZLE_X000}},
+               {0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U}},
+        Params{NVCV_IMAGE_FORMAT_U16,
+               FMT_IMAGE_PARAMS(UNDEFINED, UNDEFINED, NONE, PL, UNSIGNED, X000, ASSOCIATED, X16, 0, 0, 0),
+               4,
+               4,
+               NVCV_CHROMA_LOC_EVEN,
+               NVCV_CHROMA_LOC_EVEN,
+               {16, 0, 0, 0},
+               1,
+               {{16, 1, NVCV_DATA_TYPE_U16, NVCV_SWIZZLE_X000}},
+               {0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U}},
+        Params{NVCV_IMAGE_FORMAT_S16,
+               FMT_IMAGE_PARAMS(UNDEFINED, UNDEFINED, NONE, PL, SIGNED, X000, ASSOCIATED, X16, 0, 0, 0),
+               4,
+               4,
+               NVCV_CHROMA_LOC_EVEN,
+               NVCV_CHROMA_LOC_EVEN,
+               {16, 0, 0, 0},
+               1,
+               {{16, 1, NVCV_DATA_TYPE_S16, NVCV_SWIZZLE_X000}},
+               {0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U}},
+        Params{NVCV_IMAGE_FORMAT_NV12_ER,
+               FMT_IMAGE_PARAMS(YCbCr, BT601_ER, 420, PL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8_Y8, 0, 0),
+               2,
+               2,
+               NVCV_CHROMA_LOC_EVEN,
+               NVCV_CHROMA_LOC_EVEN,
+               {8, 8, 8, 0},
+               2,
+               {{8, 1, NVCV_DATA_TYPE_U8, NVCV_SWIZZLE_X000}, {16, 2, NVCV_DATA_TYPE_2U8, NVCV_SWIZZLE_0XY0}},
+               {0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U}},
+        Params{NVCV_IMAGE_FORMAT_YUYV_ER,
+               FMT_IMAGE_PARAMS(YCbCr, BT601_ER, 422, PL, UNSIGNED, XYZ1, ASSOCIATED, X8_Y8__X8_Z8, 0, 0, 0),
+               2,
+               4,
+               NVCV_CHROMA_LOC_EVEN,
+               NVCV_CHROMA_LOC_EVEN,
+               {8, 8, 8, 0},
+               1,
+               {{16, 3, NVCV_DATA_TYPE_2U8, NVCV_SWIZZLE_XYZ1}},
+               {0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U}},
+        Params{NVCV_IMAGE_FORMAT_UYVY_ER,
+               FMT_IMAGE_PARAMS(YCbCr, BT601_ER, 422, PL, UNSIGNED, XYZ1, ASSOCIATED, Y8_X8__Z8_X8, 0, 0, 0),
+               2,
+               4,
+               NVCV_CHROMA_LOC_EVEN,
+               NVCV_CHROMA_LOC_EVEN,
+               {8, 8, 8, 0},
+               1,
+               {{16, 3, NVCV_DATA_TYPE_2U8, NVCV_SWIZZLE_XYZ1}},
+               {0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U}},
+        Params{NVCV_IMAGE_FORMAT_RGB8,
+               FMT_IMAGE_PARAMS(RGB, UNDEFINED, NONE, PL, UNSIGNED, XYZ1, ASSOCIATED, X8_Y8_Z8, 0, 0, 0),
+               4,
+               4,
+               NVCV_CHROMA_LOC_EVEN,
+               NVCV_CHROMA_LOC_EVEN,
+               {8, 8, 8, 0},
+               1,
+               {{24, 3, NVCV_DATA_TYPE_3U8, NVCV_SWIZZLE_XYZ1}},
+               {0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U}},
+        Params{NVCV_IMAGE_FORMAT_RGBA8,
+               FMT_IMAGE_PARAMS(RGB, UNDEFINED, NONE, PL, UNSIGNED, XYZW, ASSOCIATED, X8_Y8_Z8_W8, 0, 0, 0),
+               4,
+               4,
+               NVCV_CHROMA_LOC_EVEN,
+               NVCV_CHROMA_LOC_EVEN,
+               {8, 8, 8, 8},
+               1,
+               {{32, 4, NVCV_DATA_TYPE_4U8, NVCV_SWIZZLE_XYZW}},
+               {0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U}},
+        Params{NVCV_IMAGE_FORMAT_F16,
+               FMT_IMAGE_PARAMS(UNDEFINED, UNDEFINED, NONE, PL, FLOAT, X000, ASSOCIATED, X16, 0, 0, 0),
+               4,
+               4,
+               NVCV_CHROMA_LOC_EVEN,
+               NVCV_CHROMA_LOC_EVEN,
+               {16, 0, 0, 0},
+               1,
+               {{16, 1, NVCV_DATA_TYPE_F16, NVCV_SWIZZLE_X000}},
+               {0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U}},
+        Params{NVCV_IMAGE_FORMAT_F32,
+               FMT_IMAGE_PARAMS(UNDEFINED, UNDEFINED, NONE, PL, FLOAT, X000, ASSOCIATED, X32, 0, 0, 0),
+               4,
+               4,
+               NVCV_CHROMA_LOC_EVEN,
+               NVCV_CHROMA_LOC_EVEN,
+               {32, 0, 0, 0},
+               1,
+               {{32, 1, NVCV_DATA_TYPE_F32, NVCV_SWIZZLE_X000}},
+               {0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U}},
+        Params{NVCV_IMAGE_FORMAT_F64,
+               FMT_IMAGE_PARAMS(UNDEFINED, UNDEFINED, NONE, PL, FLOAT, X000, ASSOCIATED, X64, 0, 0, 0),
+               4,
+               4,
+               NVCV_CHROMA_LOC_EVEN,
+               NVCV_CHROMA_LOC_EVEN,
+               {64, 0, 0, 0},
+               1,
+               {{64, 1, NVCV_DATA_TYPE_F64, NVCV_SWIZZLE_X000}},
+               {0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U}},
+        Params{NVCV_IMAGE_FORMAT_2F32,
+               FMT_IMAGE_PARAMS(UNDEFINED, UNDEFINED, NONE, PL, FLOAT, XY00, ASSOCIATED, X32_Y32, 0, 0, 0),
+               4,
+               4,
+               NVCV_CHROMA_LOC_EVEN,
+               NVCV_CHROMA_LOC_EVEN,
+               {32, 32, 0, 0},
+               1,
+               {{64, 2, NVCV_DATA_TYPE_2F32, NVCV_SWIZZLE_XY00}},
+               {0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U}},
+        Params{NVCV_IMAGE_FORMAT_C64,
+               FMT_IMAGE_PARAMS(UNDEFINED, UNDEFINED, NONE, PL, COMPLEX, X000, ASSOCIATED, X64, 0, 0, 0),
+               4,
+               4,
+               NVCV_CHROMA_LOC_EVEN,
+               NVCV_CHROMA_LOC_EVEN,
+               {64, 0, 0, 0},
+               1,
+               {{64, 1, NVCV_DATA_TYPE_C64, NVCV_SWIZZLE_X000}},
+               {0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U}},
+        Params{NVCV_IMAGE_FORMAT_2C64,
+               FMT_IMAGE_PARAMS(UNDEFINED, UNDEFINED, NONE, PL, COMPLEX, XY00, ASSOCIATED, X64_Y64, 0, 0, 0),
+               4,
+               4,
+               NVCV_CHROMA_LOC_EVEN,
+               NVCV_CHROMA_LOC_EVEN,
+               {64, 64, 0, 0},
+               1,
+               {{128, 2, NVCV_DATA_TYPE_2C64, NVCV_SWIZZLE_XY00}},
+               {0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U}},
+        Params{NVCV_IMAGE_FORMAT_BGR8,
+               FMT_IMAGE_PARAMS(RGB, UNDEFINED, NONE, PL, UNSIGNED, ZYX1, ASSOCIATED, X8_Y8_Z8, 0, 0, 0),
+               4,
+               4,
+               NVCV_CHROMA_LOC_EVEN,
+               NVCV_CHROMA_LOC_EVEN,
+               {8, 8, 8, 0},
+               1,
+               {{24, 3, NVCV_DATA_TYPE_3U8, NVCV_SWIZZLE_ZYX1}},
+               {0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U}},
+        Params{NVCV_IMAGE_FORMAT_BGRA8,
+               FMT_IMAGE_PARAMS(RGB, UNDEFINED, NONE, PL, UNSIGNED, ZYXW, ASSOCIATED, X8_Y8_Z8_W8, 0, 0, 0),
+               4,
+               4,
+               NVCV_CHROMA_LOC_EVEN,
+               NVCV_CHROMA_LOC_EVEN,
+               {8, 8, 8, 8},
+               1,
+               {{32, 4, NVCV_DATA_TYPE_4U8, NVCV_SWIZZLE_ZYXW}},
+               {0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U}},
+        Params{NVCV_IMAGE_FORMAT_2S16,
+               FMT_IMAGE_PARAMS(UNDEFINED, UNDEFINED, NONE, PL, SIGNED, XY00, ASSOCIATED, X16_Y16, 0, 0, 0),
+               4,
+               4,
+               NVCV_CHROMA_LOC_EVEN,
+               NVCV_CHROMA_LOC_EVEN,
+               {16, 16, 0, 0},
+               1,
+               {{32, 2, NVCV_DATA_TYPE_2S16, NVCV_SWIZZLE_XY00}},
+               {0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U}},
+        Params{NVCV_IMAGE_FORMAT_RGB8_1U_U8,
+               FMT_IMAGE_PARAMS(RGB, UNDEFINED, NONE, PL, UNSIGNED, XYZ1, ASSOCIATED, X8_Y8_Z8, 0, 0, 0),
+               4,
+               4,
+               NVCV_CHROMA_LOC_EVEN,
+               NVCV_CHROMA_LOC_EVEN,
+               {8, 8, 8, 0},
+               1,
+               {{24, 3, NVCV_DATA_TYPE_3U8, NVCV_SWIZZLE_XYZ1}},
+               {1, 8, NVCV_DATA_KIND_UNSIGNED, NVCV_EXTRA_CHANNEL_U}},
+        Params{NVCV_IMAGE_FORMAT_YCCK8,
+               FMT_IMAGE_PARAMS(YCCK, UNDEFINED, NONE, PL, UNSIGNED, XYZW, ASSOCIATED, X8_Y8_Z8_W8, 0, 0, 0),
+               4,
+               4,
+               NVCV_CHROMA_LOC_EVEN,
+               NVCV_CHROMA_LOC_EVEN,
+               {8, 8, 8, 8},
+               1,
+               {{32, 4, NVCV_DATA_TYPE_4U8, NVCV_SWIZZLE_XYZW}},
+               {0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U}},
+        Params{NVCV_IMAGE_FORMAT_CMYK8,
+               FMT_IMAGE_PARAMS(CMYK, UNDEFINED, NONE, PL, UNSIGNED, XYZW, ASSOCIATED, X8_Y8_Z8_W8, 0, 0, 0),
+               4,
+               4,
+               NVCV_CHROMA_LOC_EVEN,
+               NVCV_CHROMA_LOC_EVEN,
+               {8, 8, 8, 8},
+               1,
+               {{32, 4, NVCV_DATA_TYPE_4U8, NVCV_SWIZZLE_XYZW}},
+               {0, 0, NVCV_DATA_KIND_UNSPECIFIED, NVCV_EXTRA_CHANNEL_U}}));
 
 TEST_P(ImageFormatTests, make_image_format)
 {
     const Params &p = GetParam();
 
-    NVCVImageFormat fmt;
-
-    if (p.colorModel == NVCV_COLOR_MODEL_YCbCr)
+    NVCVImageFormat             fmt;
+    const NVCVExtraChannelInfo *exChannelInfo;
+    if (p.exChannelInfo.numChannels == 0)
     {
-        ASSERT_EQ(NVCV_SUCCESS, nvcvMakeYCbCrImageFormat(&fmt, p.colorSpec, p.chromaSubSamp, p.memLayout, p.dataKind,
-                                                         p.swizzle, p.packing0, p.packing1, p.packing2, p.packing3));
+        exChannelInfo = nullptr;
     }
     else
     {
-        ASSERT_EQ(NVCV_SUCCESS, nvcvMakeColorImageFormat(&fmt, p.colorModel, p.colorSpec, p.memLayout, p.dataKind,
-                                                         p.swizzle, p.packing0, p.packing1, p.packing2, p.packing3));
+        exChannelInfo = &p.exChannelInfo;
+    }
+    if (p.colorModel == NVCV_COLOR_MODEL_YCbCr)
+    {
+        ASSERT_EQ(NVCV_SUCCESS,
+                  nvcvMakeYCbCrImageFormat(&fmt, p.colorSpec, p.chromaSubSamp, p.memLayout, p.dataKind, p.swizzle,
+                                           p.packing0, p.packing1, p.packing2, p.packing3, p.alphaType, exChannelInfo));
+    }
+    else
+    {
+        ASSERT_EQ(NVCV_SUCCESS,
+                  nvcvMakeColorImageFormat(&fmt, p.colorModel, p.colorSpec, p.memLayout, p.dataKind, p.swizzle,
+                                           p.packing0, p.packing1, p.packing2, p.packing3, p.alphaType, exChannelInfo));
     }
 
     EXPECT_EQ(p.imgFormat, fmt);
@@ -285,7 +343,7 @@ TEST(ImageFormatTests, make_image_format_fourth_plane_128bpp_fails)
     ASSERT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
               nvcvMakeColorImageFormat(&fmt, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_BT601, NVCV_MEM_LAYOUT_PL,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZW, NVCV_PACKING_X8, NVCV_PACKING_X8,
-                                       NVCV_PACKING_X8, NVCV_PACKING_X128));
+                                       NVCV_PACKING_X8, NVCV_PACKING_X128, NVCV_ALPHA_ASSOCIATED, 0));
     EXPECT_EQ(NVCV_IMAGE_FORMAT_NV12, fmt) << "Must not have changed output";
 }
 
@@ -342,6 +400,54 @@ TEST(ImageFormatTests, get_color_model_image_format_none)
     NVCVColorModel colorModel;
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetColorModel(NVCV_IMAGE_FORMAT_NONE, &colorModel));
     EXPECT_EQ(NVCV_COLOR_MODEL_UNDEFINED, colorModel);
+}
+
+TEST(ImageFormatTests, get_alpha_type_image_format_none)
+{
+    NVCVAlphaType alphaType;
+    ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetAlphaType(NVCV_IMAGE_FORMAT_NONE, &alphaType));
+    EXPECT_EQ(NVCV_ALPHA_ASSOCIATED, alphaType);
+}
+
+TEST(ImageFormatTests, get_extra_channel_info_image_format_none)
+{
+    NVCVExtraChannelInfo exChannelInfo;
+    ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetExtraChannelInfo(NVCV_IMAGE_FORMAT_NONE, &exChannelInfo));
+    EXPECT_EQ(0, exChannelInfo.numChannels);
+    EXPECT_EQ(0, exChannelInfo.bitsPerPixel);
+    EXPECT_EQ(NVCV_DATA_KIND_UNSPECIFIED, exChannelInfo.datakind);
+    EXPECT_EQ(NVCV_EXTRA_CHANNEL_U, exChannelInfo.channelType);
+}
+
+TEST(ImageFormatTests, set_extra_channel_info_image_format_none)
+{
+    NVCVExtraChannelInfo exChannelInfo = {2, 8, NVCV_DATA_KIND_UNSIGNED, NVCV_EXTRA_CHANNEL_POS3D};
+    NVCVImageFormat      fmt           = NVCV_IMAGE_FORMAT_NONE;
+    ASSERT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatSetExtraChannelInfo(&fmt, &exChannelInfo));
+}
+
+TEST(ImageFormatTests, set_extra_channel_info_max_min_bounds)
+{
+    NVCVExtraChannelInfo exChannelInfo = {8, 8, NVCV_DATA_KIND_UNSIGNED, NVCV_EXTRA_CHANNEL_POS3D};
+    NVCVImageFormat      fmt           = NVCV_IMAGE_FORMAT_BGRf32;
+    ASSERT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatSetExtraChannelInfo(&fmt, &exChannelInfo));
+
+    exChannelInfo.numChannels = -1;
+    ASSERT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatSetExtraChannelInfo(&fmt, &exChannelInfo));
+}
+
+TEST(ImageFormatTests, set_extra_channel_info_planar_image_format)
+{
+    NVCVImageFormat      fmt           = NVCV_IMAGE_FORMAT_BGRf32p;
+    NVCVExtraChannelInfo exChannelInfo = {2, 8, NVCV_DATA_KIND_UNSIGNED, NVCV_EXTRA_CHANNEL_POS3D};
+    ASSERT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatSetExtraChannelInfo(&fmt, &exChannelInfo));
+}
+
+TEST(ImageFormatTests, set_extra_channel_info_256bpp_fails)
+{
+    NVCVImageFormat      fmt           = NVCV_IMAGE_FORMAT_BGRf32;
+    NVCVExtraChannelInfo exChannelInfo = {2, 256, NVCV_DATA_KIND_UNSIGNED, NVCV_EXTRA_CHANNEL_POS3D};
+    ASSERT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatSetExtraChannelInfo(&fmt, &exChannelInfo));
 }
 
 TEST(ImageFormatTests, get_mem_layout_of_image_format_none)
@@ -461,6 +567,30 @@ TEST_P(ImageFormatTests, check_swizzle)
     NVCVSwizzle swizzle;
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetSwizzle(p.imgFormat, &swizzle));
     EXPECT_EQ(p.swizzle, swizzle);
+}
+
+TEST(ImageFormatTests, check_alpha_type)
+{
+    NVCVImageFormat fmt = NVCV_IMAGE_FORMAT_RGBA8_UNASSOCIATED_ALPHA;
+    NVCVAlphaType   alphaType;
+    ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetAlphaType(fmt, &alphaType));
+    EXPECT_EQ(NVCV_ALPHA_UNASSOCIATED, alphaType);
+
+    fmt = NVCV_IMAGE_FORMAT_RGBA8;
+    ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetAlphaType(fmt, &alphaType));
+    EXPECT_EQ(NVCV_ALPHA_ASSOCIATED, alphaType);
+}
+
+TEST_P(ImageFormatTests, check_extra_channel_info)
+{
+    const Params        &p = GetParam();
+    NVCVExtraChannelInfo exChannelInfo;
+    ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetExtraChannelInfo(p.imgFormat, &exChannelInfo));
+
+    EXPECT_EQ(p.exChannelInfo.numChannels, exChannelInfo.numChannels);
+    EXPECT_EQ(p.exChannelInfo.bitsPerPixel, exChannelInfo.bitsPerPixel);
+    EXPECT_EQ(p.exChannelInfo.datakind, exChannelInfo.datakind);
+    EXPECT_EQ(p.exChannelInfo.channelType, exChannelInfo.channelType);
 }
 
 TEST_P(ImageFormatTests, check_plane_swizzle)
@@ -588,9 +718,9 @@ TEST_P(ImageFormatTests, check_plane_pixel_type)
 TEST(ImageFormatTests, invalid_plane_swizzle)
 {
     // purposedly wrong fmt (more packing channels than swizzle channels)
-    NVCVImageFormat fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_BT601, NVCV_MEM_LAYOUT_PL,
-                                                       NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ1, 3, NVCV_PACKING_X8,
-                                                       NVCV_PACKING_X8_Y8, NVCV_PACKING_X8);
+    NVCVImageFormat fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(
+        NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_BT601, NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ1,
+        NVCV_ALPHA_ASSOCIATED, 3, NVCV_PACKING_X8, NVCV_PACKING_X8_Y8, NVCV_PACKING_X8);
 
     NVCVSwizzle sw;
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetPlaneSwizzle(fmt, 0, &sw));
@@ -706,19 +836,20 @@ TEST(ImageFormatTests, packing_and_bits_per_pixel)
                             switch (planes)
                             {
                             case 1:
-                                fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, 4, packing, 0, 0, 0);
+                                fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, mask, 4, packing, 0, 0,
+                                                                   0);
                                 break;
                             case 2:
-                                fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, 4, packing, mask, 0,
-                                                                   0);
+                                fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, mask, 4, packing, mask,
+                                                                   0, 0);
                                 break;
                             case 3:
-                                fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, 4, packing, mask, mask,
-                                                                   0);
+                                fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, mask, 4, packing, mask,
+                                                                   mask, 0);
                                 break;
                             case 4:
-                                fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, 4, packing, mask, mask,
-                                                                   mask);
+                                fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, mask, 4, packing, mask,
+                                                                   mask, mask);
                                 break;
                             }
                             break;
@@ -727,16 +858,16 @@ TEST(ImageFormatTests, packing_and_bits_per_pixel)
                             switch (planes)
                             {
                             case 2:
-                                fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, 4, mask, packing, 0,
-                                                                   0);
+                                fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, mask, 4, mask, packing,
+                                                                   0, 0);
                                 break;
                             case 3:
-                                fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, 4, mask, packing, mask,
-                                                                   0);
+                                fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, mask, 4, mask, packing,
+                                                                   mask, 0);
                                 break;
                             case 4:
-                                fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, 4, mask, packing, mask,
-                                                                   mask);
+                                fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, mask, 4, mask, packing,
+                                                                   mask, mask);
                                 break;
                             }
                             break;
@@ -744,17 +875,17 @@ TEST(ImageFormatTests, packing_and_bits_per_pixel)
                             switch (planes)
                             {
                             case 3:
-                                fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, 4, mask, mask, packing,
-                                                                   0);
+                                fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, mask, 4, mask, mask,
+                                                                   packing, 0);
                                 break;
                             case 4:
-                                fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, 4, mask, mask, packing,
-                                                                   mask);
+                                fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, mask, 4, mask, mask,
+                                                                   packing, mask);
                                 break;
                             }
                             break;
                         case 3:
-                            fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, 4, mask, mask, mask,
+                            fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, mask, 4, mask, mask, mask,
                                                                packing);
                             break;
                         }
@@ -803,25 +934,21 @@ TEST(ImageFormatTests, packing_and_bits_per_pixel)
 #if !NVCV_SANITIZED
 TEST(ImageFormatTests, get_swizzle)
 {
-    for (int pos = 0; pos < 4; ++pos)
+    std::vector<NVCVSwizzle> swizzleList
+        = {NVCV_SWIZZLE_0000, NVCV_SWIZZLE_YYYX, NVCV_SWIZZLE_0YX0, NVCV_SWIZZLE_X00Y, NVCV_SWIZZLE_Y00X,
+           NVCV_SWIZZLE_X001, NVCV_SWIZZLE_XY01, NVCV_SWIZZLE_0XZ0, NVCV_SWIZZLE_0ZX0, NVCV_SWIZZLE_XZY0,
+           NVCV_SWIZZLE_YZX1, NVCV_SWIZZLE_ZYW1, NVCV_SWIZZLE_0YX1, NVCV_SWIZZLE_XYXZ, NVCV_SWIZZLE_YXZX,
+           NVCV_SWIZZLE_XZ00, NVCV_SWIZZLE_WYXZ, NVCV_SWIZZLE_YX00, NVCV_SWIZZLE_YX01, NVCV_SWIZZLE_00YX,
+           NVCV_SWIZZLE_00XY, NVCV_SWIZZLE_0XY1};
+    uint64_t mask = UINT64_MAX;
+    for (auto swizzle : swizzleList)
     {
-        for (int swizzlePos = 0; swizzlePos < 5; ++swizzlePos)
-        {
-            std::ostringstream ss;
-            ss << "pos=" << pos << ", swizzlePos=" << swizzlePos;
-            SCOPED_TRACE(ss.str());
+        NVCVImageFormat fmt
+            = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, swizzle, mask, 4, mask, mask, mask, mask);
 
-            uint64_t mask = UINT64_MAX;
-
-            uint64_t swizzle = NVCV_MAKE_SWIZZLE(pos == 0 ? swizzlePos : mask, pos == 1 ? swizzlePos : mask,
-                                                 pos == 2 ? swizzlePos : mask, pos == 3 ? swizzlePos : mask);
-            NVCVImageFormat fmt
-                = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, swizzle, 4, mask, mask, mask, mask);
-
-            NVCVSwizzle testSwizzle;
-            ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetSwizzle(fmt, &testSwizzle));
-            ASSERT_EQ(swizzle, testSwizzle);
-        }
+        NVCVSwizzle testSwizzle;
+        ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetSwizzle(fmt, &testSwizzle));
+        ASSERT_EQ(swizzle, testSwizzle);
     }
 }
 
@@ -831,7 +958,8 @@ TEST(ImageFormatTests, get_data_type)
     {
         uint64_t mask = UINT64_MAX;
 
-        NVCVImageFormat fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, dataKind, mask, 4, mask, mask, mask, mask);
+        NVCVImageFormat fmt
+            = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, dataKind, mask, mask, 4, mask, mask, mask, mask);
 
         NVCVDataKind testDataKind;
         ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetDataKind(fmt, &testDataKind));
@@ -845,7 +973,8 @@ TEST(ImageFormatTests, get_raw_pattern)
     {
         uint64_t mask = UINT64_MAX;
 
-        NVCVImageFormat fmt = NVCV_MAKE_RAW_IMAGE_FORMAT(raw_pattern, mask, mask, mask, 4, mask, mask, mask, mask);
+        NVCVImageFormat fmt
+            = NVCV_MAKE_RAW_IMAGE_FORMAT(raw_pattern, mask, mask, mask, mask, 4, mask, mask, mask, mask);
 
         NVCVRawPattern testRawPattern;
         ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetRawPattern(fmt, &testRawPattern));
@@ -860,7 +989,7 @@ TEST(ImageFormatTests, get_mem_layout)
         uint64_t mask = UINT64_MAX;
 
         NVCVImageFormat fmt
-            = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, memLayout, mask, mask, 4, mask, mask, mask, mask);
+            = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, memLayout, mask, mask, mask, 4, mask, mask, mask, mask);
 
         NVCVMemLayout testMemLayout;
         ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetMemLayout(fmt, &testMemLayout));
@@ -874,7 +1003,8 @@ TEST(ImageFormatTests, get_color_model)
     {
         uint64_t mask = UINT64_MAX;
 
-        NVCVImageFormat fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(model, mask, mask, mask, mask, 4, mask, mask, mask, mask);
+        NVCVImageFormat fmt
+            = NVCV_MAKE_COLOR_IMAGE_FORMAT(model, mask, mask, mask, mask, mask, 4, mask, mask, mask, mask);
 
         NVCVColorModel testColorModel;
         ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetColorModel(fmt, &testColorModel));
@@ -886,7 +1016,7 @@ TEST(ImageFormatTests, get_color_model)
         uint64_t mask = UINT64_MAX;
 
         NVCVImageFormat fmt
-            = NVCV_MAKE_COLOR_IMAGE_FORMAT(model + 7 + 2, mask, mask, mask, mask, 4, mask, mask, mask, mask);
+            = NVCV_MAKE_COLOR_IMAGE_FORMAT(model + 7 + 2, mask, mask, mask, mask, mask, 4, mask, mask, mask, mask);
 
         NVCVColorModel testColorModel;
         ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetColorModel(fmt, &testColorModel));
@@ -902,27 +1032,28 @@ TEST(ImageFormatTests, make_image_format_null_packing_returns_invalid)
     ASSERT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
               nvcvMakeColorImageFormat(&imgFormat, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_UNDEFINED, NVCV_MEM_LAYOUT_PL,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_0000, NVCV_PACKING_0, NVCV_PACKING_0,
-                                       NVCV_PACKING_0, NVCV_PACKING_0));
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
     EXPECT_EQ(NVCV_IMAGE_FORMAT_NV12, imgFormat) << "Output must not have changed";
 
     ASSERT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
               nvcvMakeColorImageFormat(&imgFormat, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_UNDEFINED, NVCV_MEM_LAYOUT_PL,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_X000, NVCV_PACKING_0, NVCV_PACKING_X8,
-                                       NVCV_PACKING_0, NVCV_PACKING_0));
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
     ASSERT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
               nvcvMakeColorImageFormat(&imgFormat, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_UNDEFINED, NVCV_MEM_LAYOUT_PL,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_X000, NVCV_PACKING_0, NVCV_PACKING_0,
-                                       NVCV_PACKING_X8, NVCV_PACKING_0));
+                                       NVCV_PACKING_X8, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
     ASSERT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
               nvcvMakeColorImageFormat(&imgFormat, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_UNDEFINED, NVCV_MEM_LAYOUT_PL,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_X000, NVCV_PACKING_0, NVCV_PACKING_0,
-                                       NVCV_PACKING_0, NVCV_PACKING_X8));
+                                       NVCV_PACKING_0, NVCV_PACKING_X8, NVCV_ALPHA_ASSOCIATED, 0));
 
-    ASSERT_EQ(NVCV_SUCCESS, nvcvMakeColorImageFormat(&imgFormat, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_UNDEFINED,
-                                                     NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_X000,
-                                                     NVCV_PACKING_X8, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0));
+    ASSERT_EQ(NVCV_SUCCESS,
+              nvcvMakeColorImageFormat(&imgFormat, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_UNDEFINED, NVCV_MEM_LAYOUT_PL,
+                                       NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_X000, NVCV_PACKING_X8, NVCV_PACKING_0,
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 }
 
 TEST(ImageFormatTests, set_datatype)
@@ -931,16 +1062,60 @@ TEST(ImageFormatTests, set_datatype)
     ASSERT_EQ(NVCV_SUCCESS,
               nvcvMakeColorImageFormat(&imgFormat, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_UNDEFINED, NVCV_MEM_LAYOUT_PL,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8_Y8_Z8,
-                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0));
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
     NVCVImageFormat gold;
     ASSERT_EQ(NVCV_SUCCESS,
               nvcvMakeColorImageFormat(&gold, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_UNDEFINED, NVCV_MEM_LAYOUT_PL,
                                        NVCV_DATA_KIND_FLOAT, NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8_Y8_Z8, NVCV_PACKING_0,
-                                       NVCV_PACKING_0, NVCV_PACKING_0));
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatSetDataKind(&imgFormat, NVCV_DATA_KIND_FLOAT));
     EXPECT_EQ(gold, imgFormat);
+}
+
+TEST(ImageFormatTests, set_alphatype)
+{
+    NVCVImageFormat imgFormat;
+    ASSERT_EQ(NVCV_SUCCESS,
+              nvcvMakeColorImageFormat(&imgFormat, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_UNDEFINED, NVCV_MEM_LAYOUT_PL,
+                                       NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZW, NVCV_PACKING_X8_Y8_Z8_W8,
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
+
+    NVCVImageFormat gold;
+    ASSERT_EQ(NVCV_SUCCESS,
+              nvcvMakeColorImageFormat(&gold, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_UNDEFINED, NVCV_MEM_LAYOUT_PL,
+                                       NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZW, NVCV_PACKING_X8_Y8_Z8_W8,
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_UNASSOCIATED, 0));
+
+    ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatSetAlphaType(&imgFormat, NVCV_ALPHA_UNASSOCIATED));
+    EXPECT_EQ(gold, imgFormat);
+}
+
+TEST(ImageFormatTests, set_extra_channel_info)
+{
+    NVCVImageFormat      imgFormat;
+    NVCVExtraChannelInfo exChannelInfo{2, 8, NVCV_DATA_KIND_UNSIGNED, NVCV_EXTRA_CHANNEL_U};
+    ASSERT_EQ(NVCV_SUCCESS, nvcvMakeColorImageFormat(&imgFormat, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_UNDEFINED,
+                                                     NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZW,
+                                                     NVCV_PACKING_X8_Y8_Z8_W8, NVCV_PACKING_0, NVCV_PACKING_0,
+                                                     NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, &exChannelInfo));
+
+    NVCVImageFormat      gold;
+    NVCVExtraChannelInfo newExChannelInfo{3, 16, NVCV_DATA_KIND_SIGNED, NVCV_EXTRA_CHANNEL_D};
+    ASSERT_EQ(NVCV_SUCCESS, nvcvMakeColorImageFormat(&gold, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_UNDEFINED,
+                                                     NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZW,
+                                                     NVCV_PACKING_X8_Y8_Z8_W8, NVCV_PACKING_0, NVCV_PACKING_0,
+                                                     NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, &newExChannelInfo));
+
+    ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatSetExtraChannelInfo(&imgFormat, &newExChannelInfo));
+    EXPECT_EQ(gold, imgFormat);
+}
+
+TEST(ImageFormatTests, set_alphatype_imageformat_none)
+{
+    NVCVImageFormat imgFormat = NVCV_IMAGE_FORMAT_NONE;
+    ASSERT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatSetAlphaType(&imgFormat, NVCV_ALPHA_UNASSOCIATED));
 }
 
 TEST(ImageFormatTests, set_memlayout)
@@ -949,13 +1124,13 @@ TEST(ImageFormatTests, set_memlayout)
     ASSERT_EQ(NVCV_SUCCESS,
               nvcvMakeColorImageFormat(&imgFormat, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_UNDEFINED, NVCV_MEM_LAYOUT_PL,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8_Y8_Z8,
-                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0));
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
     NVCVImageFormat gold;
     ASSERT_EQ(NVCV_SUCCESS,
               nvcvMakeColorImageFormat(&gold, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_UNDEFINED, NVCV_MEM_LAYOUT_BL,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8_Y8_Z8,
-                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0));
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatSetMemLayout(&imgFormat, NVCV_MEM_LAYOUT_BL));
     EXPECT_EQ(gold, imgFormat);
@@ -971,13 +1146,13 @@ TEST(ImageFormatTests, set_raw_pattern)
             nvcvMakeRawImageFormat(
                 &imgFormat, raw_pattern == NVCV_RAW_BAYER_CRCC ? NVCV_RAW_BAYER_GRBG : (NVCVRawPattern)raw_pattern,
                 NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8_Y8_Z8, NVCV_PACKING_0,
-                NVCV_PACKING_0, NVCV_PACKING_0));
+                NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
         NVCVImageFormat gold;
         ASSERT_EQ(NVCV_SUCCESS,
                   nvcvMakeRawImageFormat(&gold, (NVCVRawPattern)raw_pattern, NVCV_MEM_LAYOUT_PL,
                                          NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8_Y8_Z8,
-                                         NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0));
+                                         NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
         ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatSetRawPattern(&imgFormat, (NVCVRawPattern)raw_pattern));
         EXPECT_EQ(gold, imgFormat) << (NVCVRawPattern)raw_pattern;
@@ -990,12 +1165,13 @@ TEST(ImageFormatTests, set_color_standard_ycbcr)
     ASSERT_EQ(NVCV_SUCCESS,
               nvcvMakeYCbCrImageFormat(&imgFormat, NVCV_COLOR_SPEC_UNDEFINED, NVCV_CSS_420, NVCV_MEM_LAYOUT_PL,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8_Y8_Z8,
-                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0));
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
     NVCVImageFormat gold;
-    ASSERT_EQ(NVCV_SUCCESS, nvcvMakeYCbCrImageFormat(&gold, NVCV_COLOR_SPEC_BT601, NVCV_CSS_420, NVCV_MEM_LAYOUT_PL,
-                                                     NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8_Y8_Z8,
-                                                     NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0));
+    ASSERT_EQ(NVCV_SUCCESS,
+              nvcvMakeYCbCrImageFormat(&gold, NVCV_COLOR_SPEC_BT601, NVCV_CSS_420, NVCV_MEM_LAYOUT_PL,
+                                       NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8_Y8_Z8,
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatSetColorSpec(&imgFormat, NVCV_COLOR_SPEC_BT601));
     EXPECT_EQ(gold, imgFormat);
@@ -1007,15 +1183,16 @@ TEST(ImageFormatTests, set_color_standard_rgb_with_ycbcr_colorspec)
     ASSERT_EQ(NVCV_SUCCESS,
               nvcvMakeColorImageFormat(&imgFormat, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_UNDEFINED, NVCV_MEM_LAYOUT_PL,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8_Y8_Z8,
-                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0));
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
     NVCVColorSpec cspec = NVCV_COLOR_SPEC_BT601;
     ASSERT_EQ(NVCV_SUCCESS, nvcvColorSpecSetYCbCrEncoding(&cspec, NVCV_YCbCr_ENC_UNDEFINED));
 
     NVCVImageFormat gold;
-    ASSERT_EQ(NVCV_SUCCESS, nvcvMakeColorImageFormat(&gold, NVCV_COLOR_MODEL_RGB, cspec, NVCV_MEM_LAYOUT_PL,
-                                                     NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8_Y8_Z8,
-                                                     NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0));
+    ASSERT_EQ(NVCV_SUCCESS,
+              nvcvMakeColorImageFormat(&gold, NVCV_COLOR_MODEL_RGB, cspec, NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED,
+                                       NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8_Y8_Z8, NVCV_PACKING_0, NVCV_PACKING_0,
+                                       NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatSetColorSpec(&imgFormat, NVCV_COLOR_SPEC_BT601));
 
@@ -1028,12 +1205,13 @@ TEST(ImageFormatTests, set_chroma_subsampling)
     ASSERT_EQ(NVCV_SUCCESS,
               nvcvMakeYCbCrImageFormat(&imgFormat, NVCV_COLOR_SPEC_UNDEFINED, NVCV_CSS_422R, NVCV_MEM_LAYOUT_PL,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8_Y8_Z8,
-                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0));
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
     NVCVImageFormat gold;
-    ASSERT_EQ(NVCV_SUCCESS, nvcvMakeYCbCrImageFormat(&gold, NVCV_COLOR_SPEC_UNDEFINED, NVCV_CSS_420, NVCV_MEM_LAYOUT_PL,
-                                                     NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8_Y8_Z8,
-                                                     NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0));
+    ASSERT_EQ(NVCV_SUCCESS,
+              nvcvMakeYCbCrImageFormat(&gold, NVCV_COLOR_SPEC_UNDEFINED, NVCV_CSS_420, NVCV_MEM_LAYOUT_PL,
+                                       NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8_Y8_Z8,
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatSetChromaSubsampling(&imgFormat, NVCV_CSS_420));
     EXPECT_EQ(gold, imgFormat);
@@ -1045,33 +1223,78 @@ TEST(ImageFormatTests, make_color_image_format_macro)
     ASSERT_EQ(NVCV_SUCCESS,
               nvcvMakeColorImageFormat(&imgFormat, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_UNDEFINED, NVCV_MEM_LAYOUT_PL,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8_Y8_Z8,
-                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0));
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
-    EXPECT_EQ(imgFormat,
-              NVCV_MAKE_COLOR_IMAGE_FORMAT(NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_UNDEFINED, NVCV_MEM_LAYOUT_PL,
-                                           NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, 1, NVCV_PACKING_X8_Y8_Z8));
+    EXPECT_EQ(imgFormat, NVCV_MAKE_COLOR_IMAGE_FORMAT(NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_UNDEFINED,
+                                                      NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0,
+                                                      NVCV_ALPHA_ASSOCIATED, 1, NVCV_PACKING_X8_Y8_Z8));
+}
+
+TEST(ImageFormatTests, make_color_extra_channel_image_format_macro)
+{
+    NVCVImageFormat      imgFormat;
+    NVCVExtraChannelInfo exChannelInfo{3, 32, NVCV_DATA_KIND_FLOAT, NVCV_EXTRA_CHANNEL_D};
+    ASSERT_EQ(NVCV_SUCCESS, nvcvMakeColorImageFormat(&imgFormat, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_UNDEFINED,
+                                                     NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0,
+                                                     NVCV_PACKING_X8_Y8_Z8, NVCV_PACKING_0, NVCV_PACKING_0,
+                                                     NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, &exChannelInfo));
+
+    EXPECT_EQ(imgFormat, NVCV_MAKE_COLOR_IMAGE_EXTRA_CHANNELS_FORMAT(
+                             NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_UNDEFINED, NVCV_MEM_LAYOUT_PL,
+                             NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_ALPHA_ASSOCIATED, 3, 32,
+                             NVCV_DATA_KIND_FLOAT, NVCV_EXTRA_CHANNEL_D, 1, NVCV_PACKING_X8_Y8_Z8));
 }
 
 TEST(ImageFormatTests, make_noncolor_image_format_macro)
 {
     NVCVImageFormat imgFormat;
-    ASSERT_EQ(NVCV_SUCCESS,
-              nvcvMakeNonColorImageFormat(&imgFormat, NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0,
-                                          NVCV_PACKING_X8_Y8_Z8, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0));
+    ASSERT_EQ(NVCV_SUCCESS, nvcvMakeNonColorImageFormat(&imgFormat, NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED,
+                                                        NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8_Y8_Z8, NVCV_PACKING_0,
+                                                        NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
     EXPECT_EQ(imgFormat, NVCV_MAKE_NONCOLOR_IMAGE_FORMAT(NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0,
-                                                         1, NVCV_PACKING_X8_Y8_Z8));
+                                                         NVCV_ALPHA_ASSOCIATED, 1, NVCV_PACKING_X8_Y8_Z8));
+}
+
+TEST(ImageFormatTests, make_noncolor_extra_channel_image_format_macro)
+{
+    NVCVImageFormat      imgFormat;
+    NVCVExtraChannelInfo exChannelInfo{7, 64, NVCV_DATA_KIND_FLOAT, NVCV_EXTRA_CHANNEL_U};
+    ASSERT_EQ(NVCV_SUCCESS,
+              nvcvMakeNonColorImageFormat(&imgFormat, NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0,
+                                          NVCV_PACKING_X8_Y8_Z8, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0,
+                                          NVCV_ALPHA_ASSOCIATED, &exChannelInfo));
+
+    EXPECT_EQ(imgFormat, NVCV_MAKE_NONCOLOR_IMAGE_EXTRA_CHANNELS_FORMAT(
+                             NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_ALPHA_ASSOCIATED, 7,
+                             64, NVCV_DATA_KIND_FLOAT, NVCV_EXTRA_CHANNEL_U, 1, NVCV_PACKING_X8_Y8_Z8));
 }
 
 TEST(ImageFormatTests, make_raw_image_format_macro)
 {
     NVCVImageFormat imgFormat;
-    ASSERT_EQ(NVCV_SUCCESS, nvcvMakeRawImageFormat(&imgFormat, NVCV_RAW_BAYER_CRBC, NVCV_MEM_LAYOUT_PL,
-                                                   NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_X000, NVCV_PACKING_X8,
-                                                   NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0));
+    ASSERT_EQ(NVCV_SUCCESS,
+              nvcvMakeRawImageFormat(&imgFormat, NVCV_RAW_BAYER_CRBC, NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED,
+                                     NVCV_SWIZZLE_X000, NVCV_PACKING_X8, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0,
+                                     NVCV_ALPHA_ASSOCIATED, 0));
 
     EXPECT_EQ(imgFormat, NVCV_MAKE_RAW_IMAGE_FORMAT(NVCV_RAW_BAYER_CRBC, NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED,
-                                                    NVCV_SWIZZLE_X000, 1, NVCV_PACKING_X8));
+                                                    NVCV_SWIZZLE_X000, NVCV_ALPHA_ASSOCIATED, 1, NVCV_PACKING_X8));
+}
+
+TEST(ImageFormatTests, make_raw_extra_channel_image_format_macro)
+{
+    NVCVImageFormat      imgFormat;
+    NVCVExtraChannelInfo exChannelInfo{7, 64, NVCV_DATA_KIND_FLOAT, NVCV_EXTRA_CHANNEL_U};
+    ASSERT_EQ(NVCV_SUCCESS,
+              nvcvMakeRawImageFormat(&imgFormat, NVCV_RAW_BAYER_CRBC, NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED,
+                                     NVCV_SWIZZLE_X000, NVCV_PACKING_X8, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0,
+                                     NVCV_ALPHA_ASSOCIATED, &exChannelInfo));
+
+    EXPECT_EQ(imgFormat, NVCV_MAKE_RAW_IMAGE_EXTRA_CHANNELS_FORMAT(NVCV_RAW_BAYER_CRBC, NVCV_MEM_LAYOUT_PL,
+                                                                   NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_X000,
+                                                                   NVCV_ALPHA_ASSOCIATED, 7, 64, NVCV_DATA_KIND_FLOAT,
+                                                                   NVCV_EXTRA_CHANNEL_U, 1, NVCV_PACKING_X8));
 }
 
 namespace {
@@ -1086,9 +1309,10 @@ struct ParamsPlaneSwizzle
         , planeSwizzle2(planeSwizzle2_)
         , planeSwizzle3(planeSwizzle3_)
     {
-        EXPECT_EQ(NVCV_SUCCESS, nvcvMakeColorImageFormat(&imgFormat, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_UNDEFINED,
-                                                         NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED, swizzle_,
-                                                         packing0_, packing1_, packing2_, packing3_));
+        EXPECT_EQ(NVCV_SUCCESS,
+                  nvcvMakeColorImageFormat(&imgFormat, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_UNDEFINED,
+                                           NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED, swizzle_, packing0_, packing1_,
+                                           packing2_, packing3_, NVCV_ALPHA_ASSOCIATED, 0));
     }
 
     NVCVImageFormat imgFormat;
@@ -1128,7 +1352,6 @@ INSTANTIATE_TEST_SUITE_P(_, ImageFormatPlaneSwizzleTests,
                                    DEF_PLANE_SWIZZLE(XYZ1, X8_Y8__X8_Z8, 0, 0, 0, XYZ1, 0000, 0000, 0000),
                                    DEF_PLANE_SWIZZLE(XYZ1, Y8_X8__Z8_X8, 0, 0, 0, XYZ1, 0000, 0000, 0000),
                                    DEF_PLANE_SWIZZLE(XZY1, X8_Y8__X8_Z8, 0, 0, 0, XZY1, 0000, 0000, 0000),
-                                   DEF_PLANE_SWIZZLE(ZXY1, X8, X8_Y8, 0, 0, 00X1, XY01, 0000, 0000),
                                    DEF_PLANE_SWIZZLE(XXX1, X8, 0, 0, 0, XXX1, 0000, 0000, 0000),
                                    DEF_PLANE_SWIZZLE(XXXY, X8_Y8, 0, 0, 0, XXXY, 0000, 0000, 0000),
                                    DEF_PLANE_SWIZZLE(ZYX0, X8_Y8_Z8, 0, 0, 0, ZYX0, 0000, 0000, 0000),
@@ -1178,9 +1401,9 @@ TEST_P(ImageFormatPlaneSwizzleTests, get_plane_format)
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetPlanePacking(params.imgFormat, 0, &planePacking));
 
     NVCVImageFormat goldPlaneFormat;
-    ASSERT_EQ(NVCV_SUCCESS,
-              nvcvMakeColorImageFormat(&goldPlaneFormat, cmodel, cspec, memLayout, dataKind, params.planeSwizzle0,
-                                       planePacking, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0));
+    ASSERT_EQ(NVCV_SUCCESS, nvcvMakeColorImageFormat(&goldPlaneFormat, cmodel, cspec, memLayout, dataKind,
+                                                     params.planeSwizzle0, planePacking, NVCV_PACKING_0, NVCV_PACKING_0,
+                                                     NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
     NVCVImageFormat testPlaneFormat;
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetPlaneFormat(params.imgFormat, 0, &testPlaneFormat));
@@ -1191,9 +1414,9 @@ TEST_P(ImageFormatPlaneSwizzleTests, get_plane_format)
         // plane 1
         ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetPlanePacking(params.imgFormat, 1, &planePacking));
 
-        ASSERT_EQ(NVCV_SUCCESS,
-                  nvcvMakeColorImageFormat(&goldPlaneFormat, cmodel, cspec, memLayout, dataKind, params.planeSwizzle1,
-                                           planePacking, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0));
+        ASSERT_EQ(NVCV_SUCCESS, nvcvMakeColorImageFormat(&goldPlaneFormat, cmodel, cspec, memLayout, dataKind,
+                                                         params.planeSwizzle1, planePacking, NVCV_PACKING_0,
+                                                         NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
         ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetPlaneFormat(params.imgFormat, 1, &testPlaneFormat));
         EXPECT_EQ(goldPlaneFormat, testPlaneFormat);
@@ -1204,9 +1427,9 @@ TEST_P(ImageFormatPlaneSwizzleTests, get_plane_format)
         // plane 2
         ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetPlanePacking(params.imgFormat, 2, &planePacking));
 
-        ASSERT_EQ(NVCV_SUCCESS,
-                  nvcvMakeColorImageFormat(&goldPlaneFormat, cmodel, cspec, memLayout, dataKind, params.planeSwizzle2,
-                                           planePacking, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0));
+        ASSERT_EQ(NVCV_SUCCESS, nvcvMakeColorImageFormat(&goldPlaneFormat, cmodel, cspec, memLayout, dataKind,
+                                                         params.planeSwizzle2, planePacking, NVCV_PACKING_0,
+                                                         NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
         ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetPlaneFormat(params.imgFormat, 2, &testPlaneFormat));
         EXPECT_EQ(goldPlaneFormat, testPlaneFormat);
@@ -1217,9 +1440,9 @@ TEST_P(ImageFormatPlaneSwizzleTests, get_plane_format)
         // plane 3
         ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetPlanePacking(params.imgFormat, 3, &planePacking));
 
-        ASSERT_EQ(NVCV_SUCCESS,
-                  nvcvMakeColorImageFormat(&goldPlaneFormat, cmodel, cspec, memLayout, dataKind, params.planeSwizzle3,
-                                           planePacking, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0));
+        ASSERT_EQ(NVCV_SUCCESS, nvcvMakeColorImageFormat(&goldPlaneFormat, cmodel, cspec, memLayout, dataKind,
+                                                         params.planeSwizzle3, planePacking, NVCV_PACKING_0,
+                                                         NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
         ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetPlaneFormat(params.imgFormat, 3, &testPlaneFormat));
         EXPECT_EQ(goldPlaneFormat, testPlaneFormat);
@@ -1239,6 +1462,65 @@ TEST_P(ImageFormatPlaneSwizzleTests, make_imageformat_from_planes)
     NVCVImageFormat test;
     ASSERT_EQ(NVCV_SUCCESS, nvcvMakeImageFormatFromPlanes(&test, planes[0], planes[1], planes[2], planes[3]));
     EXPECT_EQ(p.imgFormat, test);
+}
+
+TEST(ImageFormatTests, invalid_make_imageformat_from_planes)
+{
+    NVCVImageFormat fmt;
+    // Pointer to output image format cannot be NULL
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvMakeImageFormatFromPlanes(nullptr, NVCV_IMAGE_FORMAT_NONE, NVCV_IMAGE_FORMAT_NONE,
+                                            NVCV_IMAGE_FORMAT_NONE, NVCV_IMAGE_FORMAT_NONE));
+    // At least one plane must be specified
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvMakeImageFormatFromPlanes(&fmt, NVCV_IMAGE_FORMAT_NONE, NVCV_IMAGE_FORMAT_NONE,
+                                            NVCV_IMAGE_FORMAT_NONE, NVCV_IMAGE_FORMAT_NONE));
+    // all plane types must have just one plane.
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvMakeImageFormatFromPlanes(&fmt, NVCV_IMAGE_FORMAT_RGB8p, NVCV_IMAGE_FORMAT_NONE,
+                                            NVCV_IMAGE_FORMAT_NONE, NVCV_IMAGE_FORMAT_NONE));
+    // total number of channels must be at most 4.
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvMakeImageFormatFromPlanes(&fmt, NVCV_IMAGE_FORMAT_2S16, NVCV_IMAGE_FORMAT_2S16, NVCV_IMAGE_FORMAT_U8,
+                                            NVCV_IMAGE_FORMAT_U8));
+    // color spec, mem layout and data type of all planes must be the same
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvMakeImageFormatFromPlanes(&fmt, NVCV_IMAGE_FORMAT_Y8_BL, NVCV_IMAGE_FORMAT_Y8_ER,
+                                            NVCV_IMAGE_FORMAT_NONE, NVCV_IMAGE_FORMAT_NONE));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvMakeImageFormatFromPlanes(&fmt, NVCV_IMAGE_FORMAT_U8, NVCV_IMAGE_FORMAT_U8_BL, NVCV_IMAGE_FORMAT_NONE,
+                                            NVCV_IMAGE_FORMAT_NONE));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvMakeImageFormatFromPlanes(&fmt, NVCV_IMAGE_FORMAT_U8, NVCV_IMAGE_FORMAT_S8, NVCV_IMAGE_FORMAT_NONE,
+                                            NVCV_IMAGE_FORMAT_NONE));
+
+    NVCVImageFormat fmt_raw1;
+    NVCVImageFormat fmt_raw2;
+    ASSERT_EQ(NVCV_SUCCESS,
+              nvcvMakeRawImageFormat(&fmt_raw1, NVCV_RAW_BAYER_RGGB, NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED,
+                                     NVCV_SWIZZLE_X000, NVCV_PACKING_X8, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0,
+                                     NVCV_ALPHA_ASSOCIATED, 0));
+    ASSERT_EQ(NVCV_SUCCESS,
+              nvcvMakeRawImageFormat(&fmt_raw2, NVCV_RAW_BAYER_BGGR, NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED,
+                                     NVCV_SWIZZLE_X000, NVCV_PACKING_X8, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0,
+                                     NVCV_ALPHA_ASSOCIATED, 0));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvMakeImageFormatFromPlanes(&fmt, fmt_raw1, fmt_raw2, NVCV_IMAGE_FORMAT_NONE, NVCV_IMAGE_FORMAT_NONE));
+
+    // Only one chroma-subsampling type must be specified
+    NVCVImageFormat fmt_ycbcr1;
+    NVCVImageFormat fmt_ycbcr2;
+    ASSERT_EQ(NVCV_SUCCESS,
+              nvcvMakeYCbCrImageFormat(&fmt_ycbcr1, NVCV_COLOR_SPEC_BT601, NVCV_CSS_422, NVCV_MEM_LAYOUT_PL,
+                                       NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_X000, NVCV_PACKING_X8, NVCV_PACKING_0,
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
+    ASSERT_EQ(NVCV_SUCCESS,
+              nvcvMakeYCbCrImageFormat(&fmt_ycbcr2, NVCV_COLOR_SPEC_BT601, NVCV_CSS_422R, NVCV_MEM_LAYOUT_PL,
+                                       NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_X000, NVCV_PACKING_X8, NVCV_PACKING_0,
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
+    EXPECT_EQ(
+        NVCV_ERROR_INVALID_ARGUMENT,
+        nvcvMakeImageFormatFromPlanes(&fmt, fmt_ycbcr2, fmt_ycbcr1, NVCV_IMAGE_FORMAT_NONE, NVCV_IMAGE_FORMAT_NONE));
 }
 
 struct SwizzlePacking
@@ -1295,7 +1577,7 @@ TEST_P(ImageFormatNegativeSwizzlePackingTests, wrong_number_of_planes_for_swizzl
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
               nvcvMakeColorImageFormat(&fmt, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_UNDEFINED, NVCV_MEM_LAYOUT_PL,
                                        NVCV_DATA_KIND_UNSIGNED, sp.swizzle, sp.packing[0], sp.packing[1], sp.packing[2],
-                                       sp.packing[3]));
+                                       sp.packing[3], NVCV_ALPHA_ASSOCIATED, 0));
 }
 
 TEST(ImageFormatTests, make_yuv422_packed_yuyv)
@@ -1304,11 +1586,28 @@ TEST(ImageFormatTests, make_yuv422_packed_yuyv)
     ASSERT_EQ(NVCV_SUCCESS,
               nvcvMakeYCbCrImageFormat(&fmt, NVCV_COLOR_SPEC_SMPTE240M, NVCV_CSS_422, NVCV_MEM_LAYOUT_BLOCK16_LINEAR,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ1, NVCV_PACKING_X8_Y8__X8_Z8,
-                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0));
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
-    NVCVImageFormat gold
-        = NVCV_MAKE_YCbCr_IMAGE_FORMAT(NVCV_COLOR_SPEC_SMPTE240M, NVCV_CSS_422, NVCV_MEM_LAYOUT_BLOCK16_LINEAR,
-                                       NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ1, 1, NVCV_PACKING_X8_Y8__X8_Z8);
+    NVCVImageFormat gold = NVCV_MAKE_YCbCr_IMAGE_FORMAT(
+        NVCV_COLOR_SPEC_SMPTE240M, NVCV_CSS_422, NVCV_MEM_LAYOUT_BLOCK16_LINEAR, NVCV_DATA_KIND_UNSIGNED,
+        NVCV_SWIZZLE_XYZ1, NVCV_ALPHA_ASSOCIATED, 1, NVCV_PACKING_X8_Y8__X8_Z8);
+
+    EXPECT_EQ(gold, fmt);
+}
+
+TEST(ImageFormatTests, make_yuv422_packed_yuyv_extra_channels)
+{
+    NVCVImageFormat      fmt;
+    NVCVExtraChannelInfo exChannelInfo{3, 16, NVCV_DATA_KIND_SIGNED, NVCV_EXTRA_CHANNEL_U};
+    ASSERT_EQ(NVCV_SUCCESS, nvcvMakeYCbCrImageFormat(
+                                &fmt, NVCV_COLOR_SPEC_SMPTE240M, NVCV_CSS_422, NVCV_MEM_LAYOUT_BLOCK16_LINEAR,
+                                NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ1, NVCV_PACKING_X8_Y8__X8_Z8, NVCV_PACKING_0,
+                                NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, &exChannelInfo));
+
+    NVCVImageFormat gold = NVCV_MAKE_YCbCr_IMAGE_EXTRA_CHANNELS_FORMAT(
+        NVCV_COLOR_SPEC_SMPTE240M, NVCV_CSS_422, NVCV_MEM_LAYOUT_BLOCK16_LINEAR, NVCV_DATA_KIND_UNSIGNED,
+        NVCV_SWIZZLE_XYZ1, NVCV_ALPHA_ASSOCIATED, 3, 16, NVCV_DATA_KIND_SIGNED, NVCV_EXTRA_CHANNEL_U, 1,
+        NVCV_PACKING_X8_Y8__X8_Z8);
 
     EXPECT_EQ(gold, fmt);
 }
@@ -1319,11 +1618,28 @@ TEST(ImageFormatTests, make_yuv422_packed_yvyu)
     ASSERT_EQ(NVCV_SUCCESS,
               nvcvMakeYCbCrImageFormat(&fmt, NVCV_COLOR_SPEC_SMPTE240M, NVCV_CSS_422, NVCV_MEM_LAYOUT_BLOCK16_LINEAR,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XZY1, NVCV_PACKING_X8_Y8__X8_Z8,
-                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0));
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
-    NVCVImageFormat gold
-        = NVCV_MAKE_YCbCr_IMAGE_FORMAT(NVCV_COLOR_SPEC_SMPTE240M, NVCV_CSS_422, NVCV_MEM_LAYOUT_BLOCK16_LINEAR,
-                                       NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XZY1, 1, NVCV_PACKING_X8_Y8__X8_Z8);
+    NVCVImageFormat gold = NVCV_MAKE_YCbCr_IMAGE_FORMAT(
+        NVCV_COLOR_SPEC_SMPTE240M, NVCV_CSS_422, NVCV_MEM_LAYOUT_BLOCK16_LINEAR, NVCV_DATA_KIND_UNSIGNED,
+        NVCV_SWIZZLE_XZY1, NVCV_ALPHA_ASSOCIATED, 1, NVCV_PACKING_X8_Y8__X8_Z8);
+
+    EXPECT_EQ(gold, fmt);
+}
+
+TEST(ImageFormatTests, make_yuv422_packed_yvyu_extra_channels)
+{
+    NVCVImageFormat      fmt;
+    NVCVExtraChannelInfo exChannelInfo{3, 16, NVCV_DATA_KIND_SIGNED, NVCV_EXTRA_CHANNEL_U};
+    ASSERT_EQ(NVCV_SUCCESS, nvcvMakeYCbCrImageFormat(
+                                &fmt, NVCV_COLOR_SPEC_SMPTE240M, NVCV_CSS_422, NVCV_MEM_LAYOUT_BLOCK16_LINEAR,
+                                NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XZY1, NVCV_PACKING_X8_Y8__X8_Z8, NVCV_PACKING_0,
+                                NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, &exChannelInfo));
+
+    NVCVImageFormat gold = NVCV_MAKE_YCbCr_IMAGE_EXTRA_CHANNELS_FORMAT(
+        NVCV_COLOR_SPEC_SMPTE240M, NVCV_CSS_422, NVCV_MEM_LAYOUT_BLOCK16_LINEAR, NVCV_DATA_KIND_UNSIGNED,
+        NVCV_SWIZZLE_XZY1, NVCV_ALPHA_ASSOCIATED, 3, 16, NVCV_DATA_KIND_SIGNED, NVCV_EXTRA_CHANNEL_U, 1,
+        NVCV_PACKING_X8_Y8__X8_Z8);
 
     EXPECT_EQ(gold, fmt);
 }
@@ -1334,11 +1650,11 @@ TEST(ImageFormatTests, make_yuv422_packed_uyvy)
     ASSERT_EQ(NVCV_SUCCESS,
               nvcvMakeYCbCrImageFormat(&fmt, NVCV_COLOR_SPEC_SMPTE240M, NVCV_CSS_422, NVCV_MEM_LAYOUT_BLOCK16_LINEAR,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ1, NVCV_PACKING_Y8_X8__Z8_X8,
-                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0));
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
-    NVCVImageFormat gold
-        = NVCV_MAKE_YCbCr_IMAGE_FORMAT(NVCV_COLOR_SPEC_SMPTE240M, NVCV_CSS_422, NVCV_MEM_LAYOUT_BLOCK16_LINEAR,
-                                       NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ1, 1, NVCV_PACKING_Y8_X8__Z8_X8);
+    NVCVImageFormat gold = NVCV_MAKE_YCbCr_IMAGE_FORMAT(
+        NVCV_COLOR_SPEC_SMPTE240M, NVCV_CSS_422, NVCV_MEM_LAYOUT_BLOCK16_LINEAR, NVCV_DATA_KIND_UNSIGNED,
+        NVCV_SWIZZLE_XYZ1, NVCV_ALPHA_ASSOCIATED, 1, NVCV_PACKING_Y8_X8__Z8_X8);
 
     EXPECT_EQ(gold, fmt);
 }
@@ -1349,11 +1665,11 @@ TEST(ImageFormatTests, make_yuv422_packed_vyuy)
     ASSERT_EQ(NVCV_SUCCESS,
               nvcvMakeYCbCrImageFormat(&fmt, NVCV_COLOR_SPEC_SMPTE240M, NVCV_CSS_422, NVCV_MEM_LAYOUT_BLOCK16_LINEAR,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XZY1, NVCV_PACKING_Y8_X8__Z8_X8,
-                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0));
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
-    NVCVImageFormat gold
-        = NVCV_MAKE_YCbCr_IMAGE_FORMAT(NVCV_COLOR_SPEC_SMPTE240M, NVCV_CSS_422, NVCV_MEM_LAYOUT_BLOCK16_LINEAR,
-                                       NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XZY1, 1, NVCV_PACKING_Y8_X8__Z8_X8);
+    NVCVImageFormat gold = NVCV_MAKE_YCbCr_IMAGE_FORMAT(
+        NVCV_COLOR_SPEC_SMPTE240M, NVCV_CSS_422, NVCV_MEM_LAYOUT_BLOCK16_LINEAR, NVCV_DATA_KIND_UNSIGNED,
+        NVCV_SWIZZLE_XZY1, NVCV_ALPHA_ASSOCIATED, 1, NVCV_PACKING_Y8_X8__Z8_X8);
 
     EXPECT_EQ(gold, fmt);
 }
@@ -1366,37 +1682,166 @@ TEST(ImageFormatTests, get_name_noncolor_predefined)
 TEST(ImageFormatTests, get_name_noncolor_non_predefined)
 {
     NVCVImageFormat fmt;
-    ASSERT_EQ(NVCV_SUCCESS,
-              nvcvMakeNonColorImageFormat(&fmt, NVCV_MEM_LAYOUT_BLOCK4_LINEAR, NVCV_DATA_KIND_FLOAT, NVCV_SWIZZLE_YZWX,
-                                          NVCV_PACKING_X16, NVCV_PACKING_X32_Y32, NVCV_PACKING_X1, NVCV_PACKING_0));
+    ASSERT_EQ(NVCV_SUCCESS, nvcvMakeNonColorImageFormat(&fmt, NVCV_MEM_LAYOUT_BLOCK4_LINEAR, NVCV_DATA_KIND_FLOAT,
+                                                        NVCV_SWIZZLE_YZWX, NVCV_PACKING_X16, NVCV_PACKING_X32_Y32,
+                                                        NVCV_PACKING_X1, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
-    EXPECT_STREQ("NVCVImageFormat(UNDEFINED,BLOCK4_LINEAR,FLOAT,YZWX,X16,X32_Y32,X1)", nvcvImageFormatGetName(fmt));
+    EXPECT_STREQ("NVCVImageFormat(UNDEFINED,BLOCK4_LINEAR,FLOAT,YZWX,ASSOCIATED,X16,X32_Y32,X1)",
+                 nvcvImageFormatGetName(fmt));
+}
+
+TEST(ImageFormatTests, get_name_predefined_NONE)
+{
+    EXPECT_STREQ("NVCV_IMAGE_FORMAT_NONE", nvcvImageFormatGetName(NVCV_IMAGE_FORMAT_NONE));
+}
+
+TEST(ImageFormatTests, get_name_predefined_U8_BL)
+{
+    EXPECT_STREQ("NVCV_IMAGE_FORMAT_U8_BL", nvcvImageFormatGetName(NVCV_IMAGE_FORMAT_U8_BL));
+}
+
+TEST(ImageFormatTests, get_name_predefined_S16_BL)
+{
+    EXPECT_STREQ("NVCV_IMAGE_FORMAT_S16_BL", nvcvImageFormatGetName(NVCV_IMAGE_FORMAT_S16_BL));
+}
+
+TEST(ImageFormatTests, get_name_predefined_S32)
+{
+    EXPECT_STREQ("NVCV_IMAGE_FORMAT_S32", nvcvImageFormatGetName(NVCV_IMAGE_FORMAT_S32));
+}
+
+TEST(ImageFormatTests, get_name_predefined_Y8_BL)
+{
+    EXPECT_STREQ("NVCV_IMAGE_FORMAT_Y8_BL", nvcvImageFormatGetName(NVCV_IMAGE_FORMAT_Y8_BL));
+}
+
+TEST(ImageFormatTests, get_name_predefined_Y8_ER)
+{
+    EXPECT_STREQ("NVCV_IMAGE_FORMAT_Y8_ER", nvcvImageFormatGetName(NVCV_IMAGE_FORMAT_Y8_ER));
+}
+
+TEST(ImageFormatTests, get_name_predefined_Y8_ER_BL)
+{
+    EXPECT_STREQ("NVCV_IMAGE_FORMAT_Y8_ER_BL", nvcvImageFormatGetName(NVCV_IMAGE_FORMAT_Y8_ER_BL));
+}
+
+TEST(ImageFormatTests, get_name_predefined_Y16_BL)
+{
+    EXPECT_STREQ("NVCV_IMAGE_FORMAT_Y16_BL", nvcvImageFormatGetName(NVCV_IMAGE_FORMAT_Y16_BL));
+}
+
+TEST(ImageFormatTests, get_name_predefined_Y16_ER)
+{
+    EXPECT_STREQ("NVCV_IMAGE_FORMAT_Y16_ER", nvcvImageFormatGetName(NVCV_IMAGE_FORMAT_Y16_ER));
+}
+
+TEST(ImageFormatTests, get_name_predefined_Y16_ER_BL)
+{
+    EXPECT_STREQ("NVCV_IMAGE_FORMAT_Y16_ER_BL", nvcvImageFormatGetName(NVCV_IMAGE_FORMAT_Y16_ER_BL));
+}
+
+TEST(ImageFormatTests, get_name_predefined_NV12_BL)
+{
+    EXPECT_STREQ("NVCV_IMAGE_FORMAT_NV12_BL", nvcvImageFormatGetName(NVCV_IMAGE_FORMAT_NV12_BL));
+}
+
+TEST(ImageFormatTests, get_name_predefined_NV12_ER_BL)
+{
+    EXPECT_STREQ("NVCV_IMAGE_FORMAT_NV12_ER_BL", nvcvImageFormatGetName(NVCV_IMAGE_FORMAT_NV12_ER_BL));
+}
+
+TEST(ImageFormatTests, get_name_predefined_NV24)
+{
+    EXPECT_STREQ("NVCV_IMAGE_FORMAT_NV24", nvcvImageFormatGetName(NVCV_IMAGE_FORMAT_NV24));
+}
+
+TEST(ImageFormatTests, get_name_predefined_NV24_BL)
+{
+    EXPECT_STREQ("NVCV_IMAGE_FORMAT_NV24_BL", nvcvImageFormatGetName(NVCV_IMAGE_FORMAT_NV24_BL));
+}
+
+TEST(ImageFormatTests, get_name_predefined_NV24_ER)
+{
+    EXPECT_STREQ("NVCV_IMAGE_FORMAT_NV24_ER", nvcvImageFormatGetName(NVCV_IMAGE_FORMAT_NV24_ER));
+}
+
+TEST(ImageFormatTests, get_name_predefined_NV24_ER_BL)
+{
+    EXPECT_STREQ("NVCV_IMAGE_FORMAT_NV24_ER_BL", nvcvImageFormatGetName(NVCV_IMAGE_FORMAT_NV24_ER_BL));
+}
+
+TEST(ImageFormatTests, get_name_predefined_2S16_BL)
+{
+    EXPECT_STREQ("NVCV_IMAGE_FORMAT_2S16_BL", nvcvImageFormatGetName(NVCV_IMAGE_FORMAT_2S16_BL));
+}
+
+TEST(ImageFormatTests, get_name_predefined_UYVY_BL)
+{
+    EXPECT_STREQ("NVCV_IMAGE_FORMAT_UYVY_BL", nvcvImageFormatGetName(NVCV_IMAGE_FORMAT_UYVY_BL));
+}
+
+TEST(ImageFormatTests, get_name_predefined_UYVY_ER_BL)
+{
+    EXPECT_STREQ("NVCV_IMAGE_FORMAT_UYVY_ER_BL", nvcvImageFormatGetName(NVCV_IMAGE_FORMAT_UYVY_ER_BL));
+}
+
+TEST(ImageFormatTests, get_name_predefined_YUYV_BL)
+{
+    EXPECT_STREQ("NVCV_IMAGE_FORMAT_YUYV_BL", nvcvImageFormatGetName(NVCV_IMAGE_FORMAT_YUYV_BL));
+}
+
+TEST(ImageFormatTests, get_name_predefined_YUYV_ER_BL)
+{
+    EXPECT_STREQ("NVCV_IMAGE_FORMAT_YUYV_ER_BL", nvcvImageFormatGetName(NVCV_IMAGE_FORMAT_YUYV_ER_BL));
 }
 
 TEST(ImageFormatTests, get_name_color_predefined)
 {
     EXPECT_STREQ("NVCV_IMAGE_FORMAT_RGB8", nvcvImageFormatGetName(NVCV_IMAGE_FORMAT_RGB8));
+    EXPECT_STREQ("NVCV_IMAGE_FORMAT_CMYK8", nvcvImageFormatGetName(NVCV_IMAGE_FORMAT_CMYK8));
+    EXPECT_STREQ("NVCV_IMAGE_FORMAT_YCCK8", nvcvImageFormatGetName(NVCV_IMAGE_FORMAT_YCCK8));
+}
+
+TEST(ImageFormatTests, get_name_color_predefined_extra_channels)
+{
+    EXPECT_STREQ("NVCV_IMAGE_FORMAT_RGB8_1U_U8", nvcvImageFormatGetName(NVCV_IMAGE_FORMAT_RGB8_1U_U8));
 }
 
 TEST(ImageFormatTests, get_name_color_non_predefined)
 {
     NVCVImageFormat fmt;
-    ASSERT_EQ(NVCV_SUCCESS,
-              nvcvMakeColorImageFormat(&fmt, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_BT2020,
-                                       NVCV_MEM_LAYOUT_BLOCK16_LINEAR, NVCV_DATA_KIND_FLOAT, NVCV_SWIZZLE_YZWX,
-                                       NVCV_PACKING_X8, NVCV_PACKING_X8_Y8, NVCV_PACKING_X32, NVCV_PACKING_0));
+    ASSERT_EQ(NVCV_SUCCESS, nvcvMakeColorImageFormat(&fmt, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_BT2020,
+                                                     NVCV_MEM_LAYOUT_BLOCK16_LINEAR, NVCV_DATA_KIND_FLOAT,
+                                                     NVCV_SWIZZLE_YZWX, NVCV_PACKING_X8, NVCV_PACKING_X8_Y8,
+                                                     NVCV_PACKING_X32, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
-    EXPECT_STREQ("NVCVImageFormat(RGB,BT2020,BLOCK16_LINEAR,FLOAT,YZWX,X8,X8_Y8,X32)", nvcvImageFormatGetName(fmt));
+    EXPECT_STREQ("NVCVImageFormat(RGB,BT2020,BLOCK16_LINEAR,FLOAT,YZWX,ASSOCIATED,X8,X8_Y8,X32)",
+                 nvcvImageFormatGetName(fmt));
+}
+
+TEST(ImageFormatTests, get_name_color_non_predefined_extra_channels)
+{
+    NVCVImageFormat      fmt;
+    NVCVExtraChannelInfo exChannelInfo{3, 16, NVCV_DATA_KIND_SIGNED, NVCV_EXTRA_CHANNEL_D};
+    ASSERT_EQ(NVCV_SUCCESS, nvcvMakeColorImageFormat(
+                                &fmt, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_BT2020, NVCV_MEM_LAYOUT_BLOCK16_LINEAR,
+                                NVCV_DATA_KIND_FLOAT, NVCV_SWIZZLE_XYZW, NVCV_PACKING_X8_Y8_Z8_W8, NVCV_PACKING_0,
+                                NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, &exChannelInfo));
+
+    EXPECT_STREQ("NVCVImageFormat(RGB,BT2020,BLOCK16_LINEAR,FLOAT,XYZW,ASSOCIATED,3,16,SIGNED,D,X8_Y8_Z8_W8)",
+                 nvcvImageFormatGetName(fmt));
 }
 
 TEST(ImageFormatTests, get_name_raw_non_predefined)
 {
     NVCVImageFormat fmt;
-    ASSERT_EQ(NVCV_SUCCESS, nvcvMakeRawImageFormat(&fmt, NVCV_RAW_BAYER_CRCC, NVCV_MEM_LAYOUT_BLOCK8_LINEAR,
-                                                   NVCV_DATA_KIND_FLOAT, NVCV_SWIZZLE_YZWX, NVCV_PACKING_X16,
-                                                   NVCV_PACKING_X8_Y8, NVCV_PACKING_X1, NVCV_PACKING_0));
+    ASSERT_EQ(NVCV_SUCCESS,
+              nvcvMakeRawImageFormat(&fmt, NVCV_RAW_BAYER_CRCC, NVCV_MEM_LAYOUT_BLOCK8_LINEAR, NVCV_DATA_KIND_FLOAT,
+                                     NVCV_SWIZZLE_YZWX, NVCV_PACKING_X16, NVCV_PACKING_X8_Y8, NVCV_PACKING_X1,
+                                     NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
-    EXPECT_STREQ("NVCVImageFormat(RAW,BAYER_CRCC,BLOCK8_LINEAR,FLOAT,YZWX,X16,X8_Y8,X1)", nvcvImageFormatGetName(fmt));
+    EXPECT_STREQ("NVCVImageFormat(RAW,BAYER_CRCC,BLOCK8_LINEAR,FLOAT,YZWX,ASSOCIATED,X16,X8_Y8,X1)",
+                 nvcvImageFormatGetName(fmt));
 }
 
 TEST(ImageFormatTests, get_name_not_predefined_with_predefined_parameters)
@@ -1405,9 +1850,9 @@ TEST(ImageFormatTests, get_name_not_predefined_with_predefined_parameters)
     ASSERT_EQ(NVCV_SUCCESS,
               nvcvMakeYCbCrImageFormat(&fmt, NVCV_COLOR_SPEC_BT2020, NVCV_CSS_422R, NVCV_MEM_LAYOUT_BLOCK16_LINEAR,
                                        NVCV_DATA_KIND_FLOAT, NVCV_SWIZZLE_YZWX, NVCV_PACKING_X8, NVCV_PACKING_X8_Y8,
-                                       NVCV_PACKING_X32, NVCV_PACKING_0));
+                                       NVCV_PACKING_X32, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
-    EXPECT_STREQ("NVCVImageFormat(YCbCr,BT2020,4:2:2R,BLOCK16_LINEAR,FLOAT,YZWX,X8,X8_Y8,X32)",
+    EXPECT_STREQ("NVCVImageFormat(YCbCr,BT2020,4:2:2R,BLOCK16_LINEAR,FLOAT,YZWX,ASSOCIATED,X8,X8_Y8,X32)",
                  nvcvImageFormatGetName(fmt));
 }
 
@@ -1420,14 +1865,16 @@ TEST(ImageFormatTests, get_name_color_not_predefined)
                                 NVCV_COLOR_RANGE_LIMITED, NVCV_CHROMA_LOC_EVEN, NVCV_CHROMA_LOC_ODD));
 
     NVCVImageFormat fmt;
-    ASSERT_EQ(NVCV_SUCCESS, nvcvMakeYCbCrImageFormat(
-                                &fmt, cspec, NVCV_CSS_411R, NVCV_MEM_LAYOUT_BLOCK16_LINEAR, NVCV_DATA_KIND_FLOAT,
-                                NVCV_MAKE_SWIZZLE(NVCV_CHANNEL_W, NVCV_CHANNEL_X, NVCV_CHANNEL_1, NVCV_CHANNEL_Y),
-                                NVCV_PACKING_X8, NVCV_PACKING_X16_Y16, NVCV_PACKING_0, NVCV_PACKING_0));
+    NVCVSwizzle     swizzle;
+    ASSERT_EQ(NVCV_SUCCESS, nvcvMakeSwizzle(&swizzle, NVCV_CHANNEL_Z, NVCV_CHANNEL_Y, NVCV_CHANNEL_W, NVCV_CHANNEL_1));
+    ASSERT_EQ(NVCV_SUCCESS,
+              nvcvMakeYCbCrImageFormat(&fmt, cspec, NVCV_CSS_411R, NVCV_MEM_LAYOUT_BLOCK16_LINEAR, NVCV_DATA_KIND_FLOAT,
+                                       swizzle, NVCV_PACKING_X8, NVCV_PACKING_X16_Y16, NVCV_PACKING_0, NVCV_PACKING_0,
+                                       NVCV_ALPHA_ASSOCIATED, 0));
 
     // clang-format off
     EXPECT_STREQ(
-        "NVCVImageFormat(YCbCr,NVCVColorSpec(SPACE_DCIP3,ENC_SMPTE240M,XFER_BT2020,RANGE_LIMITED,LOC_EVEN,LOC_ODD),4:1:1R,BLOCK16_LINEAR,FLOAT,WX1Y,X8,X16_Y16)",
+        "NVCVImageFormat(YCbCr,NVCVColorSpec(SPACE_DCIP3,ENC_SMPTE240M,XFER_BT2020,RANGE_LIMITED,LOC_EVEN,LOC_ODD),4:1:1R,BLOCK16_LINEAR,FLOAT,ZYW1,ASSOCIATED,X8,X16_Y16)",
         nvcvImageFormatGetName(fmt));
     // clang-format on
 }
@@ -1444,9 +1891,9 @@ TEST(ImageFormatTests, get_name_yuv422_packed)
     ASSERT_EQ(NVCV_SUCCESS,
               nvcvMakeYCbCrImageFormat(&fmt, NVCV_COLOR_SPEC_SMPTE240M, NVCV_CSS_422, NVCV_MEM_LAYOUT_BLOCK16_LINEAR,
                                        NVCV_DATA_KIND_FLOAT, NVCV_SWIZZLE_XZY1, NVCV_PACKING_X8_Y8__X8_Z8,
-                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0));
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
-    EXPECT_STREQ("NVCVImageFormat(YCbCr,SMPTE240M,4:2:2,BLOCK16_LINEAR,FLOAT,XZY1,X8_Y8__X8_Z8)",
+    EXPECT_STREQ("NVCVImageFormat(YCbCr,SMPTE240M,4:2:2,BLOCK16_LINEAR,FLOAT,XZY1,ASSOCIATED,X8_Y8__X8_Z8)",
                  nvcvImageFormatGetName(fmt));
 }
 
@@ -1456,9 +1903,9 @@ TEST(ImageFormatTests, get_name_ycbcr_444_not_predefined)
     ASSERT_EQ(NVCV_SUCCESS,
               nvcvMakeYCbCrImageFormat(&fmt, NVCV_COLOR_SPEC_BT2020, NVCV_CSS_444, NVCV_MEM_LAYOUT_BLOCK16_LINEAR,
                                        NVCV_DATA_KIND_FLOAT, NVCV_SWIZZLE_YZWX, NVCV_PACKING_X8, NVCV_PACKING_X8_Y8,
-                                       NVCV_PACKING_X32, NVCV_PACKING_0));
+                                       NVCV_PACKING_X32, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
-    EXPECT_STREQ("NVCVImageFormat(YCbCr,BT2020,4:4:4,BLOCK16_LINEAR,FLOAT,YZWX,X8,X8_Y8,X32)",
+    EXPECT_STREQ("NVCVImageFormat(YCbCr,BT2020,4:4:4,BLOCK16_LINEAR,FLOAT,YZWX,ASSOCIATED,X8,X8_Y8,X32)",
                  nvcvImageFormatGetName(fmt));
 }
 
@@ -1468,9 +1915,9 @@ TEST(ImageFormatTests, get_name_host_endian_packing)
     ASSERT_EQ(NVCV_SUCCESS,
               nvcvMakeYCbCrImageFormat(&fmt, NVCV_COLOR_SPEC_BT2020, NVCV_CSS_444, NVCV_MEM_LAYOUT_BLOCK16_LINEAR,
                                        NVCV_DATA_KIND_FLOAT, NVCV_SWIZZLE_YZWX, NVCV_PACKING_X2Y10Z10W10,
-                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0));
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
-    EXPECT_STREQ("NVCVImageFormat(YCbCr,BT2020,4:4:4,BLOCK16_LINEAR,FLOAT,YZWX,X2Y10Z10W10)",
+    EXPECT_STREQ("NVCVImageFormat(YCbCr,BT2020,4:4:4,BLOCK16_LINEAR,FLOAT,YZWX,ASSOCIATED,X2Y10Z10W10)",
                  nvcvImageFormatGetName(fmt));
 }
 
@@ -1492,7 +1939,7 @@ TEST(ImageFormatTests, set_rgb_fmt_to_undefined_colorspec)
     ASSERT_EQ(NVCV_SUCCESS,
               nvcvMakeColorImageFormat(&fmt, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_BT2020, NVCV_MEM_LAYOUT_PL,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ1, NVCV_PACKING_X8_Y8_Z8,
-                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0));
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatSetColorSpec(&fmt, NVCV_COLOR_SPEC_UNDEFINED));
     EXPECT_EQ(NVCV_IMAGE_FORMAT_RGB8, fmt);
@@ -1501,9 +1948,10 @@ TEST(ImageFormatTests, set_rgb_fmt_to_undefined_colorspec)
 TEST(ImageFormatTests, set_ycbcr_fmt_to_undefined_colorspec)
 {
     NVCVImageFormat fmt;
-    ASSERT_EQ(NVCV_SUCCESS, nvcvMakeYCbCrImageFormat(&fmt, NVCV_COLOR_SPEC_BT2020, NVCV_CSS_420, NVCV_MEM_LAYOUT_PL,
-                                                     NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8,
-                                                     NVCV_PACKING_X8_Y8, NVCV_PACKING_0, NVCV_PACKING_0));
+    ASSERT_EQ(NVCV_SUCCESS,
+              nvcvMakeYCbCrImageFormat(&fmt, NVCV_COLOR_SPEC_BT2020, NVCV_CSS_420, NVCV_MEM_LAYOUT_PL,
+                                       NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8, NVCV_PACKING_X8_Y8,
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatSetColorSpec(&fmt, NVCV_COLOR_SPEC_BT601));
     EXPECT_EQ(NVCV_IMAGE_FORMAT_NV12, fmt);
@@ -1512,9 +1960,10 @@ TEST(ImageFormatTests, set_ycbcr_fmt_to_undefined_colorspec)
 TEST(ImageFormatTests, set_raw_fmt_to_undefined_colorspec)
 {
     NVCVImageFormat fmtGold;
-    ASSERT_EQ(NVCV_SUCCESS, nvcvMakeRawImageFormat(&fmtGold, NVCV_RAW_BAYER_BGGR, NVCV_MEM_LAYOUT_PL,
-                                                   NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_X000, NVCV_PACKING_X8,
-                                                   NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0));
+    ASSERT_EQ(NVCV_SUCCESS,
+              nvcvMakeRawImageFormat(&fmtGold, NVCV_RAW_BAYER_BGGR, NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED,
+                                     NVCV_SWIZZLE_X000, NVCV_PACKING_X8, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0,
+                                     NVCV_ALPHA_ASSOCIATED, 0));
 
     NVCVImageFormat fmt = fmtGold;
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatSetColorSpec(&fmt, NVCV_COLOR_SPEC_UNDEFINED));
@@ -1543,79 +1992,82 @@ struct SetSwizzlePackingTestParams
     }
 };
 
-#define MAKE_COLOR_IMAGE_FORMAT_ABBREV1(model, cspec, layout, datatype, swizzle, pack0)                       \
-    NVCV_MAKE_COLOR_IMAGE_FORMAT(NVCV_COLOR_MODEL_##model, NVCV_COLOR_SPEC_##cspec, NVCV_MEM_LAYOUT_##layout, \
-                                 NVCV_DATA_KIND_##datatype, NVCV_SWIZZLE_##swizzle, 1, NVCV_PACKING_##pack0)
+#define MAKE_COLOR_IMAGE_FORMAT_ABBREV1(model, cspec, layout, datatype, swizzle, alphatype, pack0)             \
+    NVCV_MAKE_COLOR_IMAGE_FORMAT(NVCV_COLOR_MODEL_##model, NVCV_COLOR_SPEC_##cspec, NVCV_MEM_LAYOUT_##layout,  \
+                                 NVCV_DATA_KIND_##datatype, NVCV_SWIZZLE_##swizzle, NVCV_ALPHA_##alphatype, 1, \
+                                 NVCV_PACKING_##pack0)
 
-#define MAKE_COLOR_IMAGE_FORMAT_ABBREV2(model, cspec, layout, datatype, swizzle, pack0, pack1)                \
-    NVCV_MAKE_COLOR_IMAGE_FORMAT(NVCV_COLOR_MODEL_##model, NVCV_COLOR_SPEC_##cspec, NVCV_MEM_LAYOUT_##layout, \
-                                 NVCV_DATA_KIND_##datatype, NVCV_SWIZZLE_##swizzle, 2, NVCV_PACKING_##pack0,  \
-                                 NVCV_PACKING_##pack1)
+#define MAKE_COLOR_IMAGE_FORMAT_ABBREV2(model, cspec, layout, datatype, swizzle, alphatype, pack0, pack1)      \
+    NVCV_MAKE_COLOR_IMAGE_FORMAT(NVCV_COLOR_MODEL_##model, NVCV_COLOR_SPEC_##cspec, NVCV_MEM_LAYOUT_##layout,  \
+                                 NVCV_DATA_KIND_##datatype, NVCV_SWIZZLE_##swizzle, NVCV_ALPHA_##alphatype, 2, \
+                                 NVCV_PACKING_##pack0, NVCV_PACKING_##pack1)
 
-#define MAKE_COLOR_IMAGE_FORMAT_ABBREV3(model, cspec, layout, datatype, swizzle, pack0, pack1, pack2)         \
-    NVCV_MAKE_COLOR_IMAGE_FORMAT(NVCV_COLOR_MODEL_##model, NVCV_COLOR_SPEC_##cspec, NVCV_MEM_LAYOUT_##layout, \
-                                 NVCV_DATA_KIND_##datatype, NVCV_SWIZZLE_##swizzle, 3, NVCV_PACKING_##pack0,  \
-                                 NVCV_PACKING_##pack1, NVCV_PACKING_##pack2)
+#define MAKE_COLOR_IMAGE_FORMAT_ABBREV3(model, cspec, layout, datatype, swizzle, alphatype, pack0, pack1, pack2) \
+    NVCV_MAKE_COLOR_IMAGE_FORMAT(NVCV_COLOR_MODEL_##model, NVCV_COLOR_SPEC_##cspec, NVCV_MEM_LAYOUT_##layout,    \
+                                 NVCV_DATA_KIND_##datatype, NVCV_SWIZZLE_##swizzle, NVCV_ALPHA_##alphatype, 3,   \
+                                 NVCV_PACKING_##pack0, NVCV_PACKING_##pack1, NVCV_PACKING_##pack2)
 
-#define MAKE_COLOR_IMAGE_FORMAT_ABBREV4(model, cspec, layout, datatype, swizzle, pack0, pack1, pack2, pack3)  \
-    NVCV_MAKE_COLOR_IMAGE_FORMAT(NVCV_COLOR_MODEL_##model, NVCV_COLOR_SPEC_##cspec, NVCV_MEM_LAYOUT_##layout, \
-                                 NVCV_DATA_KIND_##datatype, NVCV_SWIZZLE_##swizzle, 4, NVCV_PACKING_##pack0,  \
-                                 NVCV_PACKING_##pack1, NVCV_PACKING_##pack2, NVCV_PACKING_##pack3)
+#define MAKE_COLOR_IMAGE_FORMAT_ABBREV4(model, cspec, layout, datatype, swizzle, alphatype, pack0, pack1, pack2, \
+                                        pack3)                                                                   \
+    NVCV_MAKE_COLOR_IMAGE_FORMAT(NVCV_COLOR_MODEL_##model, NVCV_COLOR_SPEC_##cspec, NVCV_MEM_LAYOUT_##layout,    \
+                                 NVCV_DATA_KIND_##datatype, NVCV_SWIZZLE_##swizzle, NVCV_ALPHA_##alphatype, 4,   \
+                                 NVCV_PACKING_##pack0, NVCV_PACKING_##pack1, NVCV_PACKING_##pack2,               \
+                                 NVCV_PACKING_##pack3)
 
 // clang-format off
 
 static std::vector<SetSwizzlePackingTestParams> g_SSPParamsSuccess = {
-    {MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, BT601, PL, UNSIGNED, XYZ1, X64, X16, X32),
-     MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, BT601, PL, UNSIGNED, ZYX1, X16, X32, X64),
+    {MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, BT601, PL, UNSIGNED, XYZ1, ASSOCIATED, X64, X16, X32),
+     MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, BT601, PL, UNSIGNED, ZYX1, ASSOCIATED, X16, X32, X64),
      NVCV_SWIZZLE_ZYX1,
      {NVCV_PACKING_X16, NVCV_PACKING_X32, NVCV_PACKING_X64},
      "Update all same number of channels"},
 
-    {MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, BT601, PL, UNSIGNED, XYZ1, X64, X16, X32),
-     MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, BT601, PL, UNSIGNED, ZYX0, X16, X32, X64),
+    {MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, BT601, PL, UNSIGNED, XYZ1, ASSOCIATED, X64, X16, X32),
+     MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, BT601, PL, UNSIGNED, ZYX0, ASSOCIATED, X16, X32, X64),
      NVCV_SWIZZLE_ZYX0,
      {NVCV_PACKING_X16, NVCV_PACKING_X32, NVCV_PACKING_X64},
      "Update all same number of channels and remove alpha"},
 
-    {MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, BT601, PL, UNSIGNED, XYZ1, X64, X16, X32),
-     MAKE_COLOR_IMAGE_FORMAT_ABBREV1(RGB, BT601, PL, UNSIGNED, YX00, X8_Y8),
+    {MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, BT601, PL, UNSIGNED, XYZ1, ASSOCIATED, X64, X16, X32),
+     MAKE_COLOR_IMAGE_FORMAT_ABBREV1(RGB, BT601, PL, UNSIGNED, YX00, ASSOCIATED, X8_Y8),
      NVCV_SWIZZLE_YX00,
      {NVCV_PACKING_X8_Y8},
      "Change number of channels"},
 
-    {MAKE_COLOR_IMAGE_FORMAT_ABBREV4(RGB, BT601, PL, UNSIGNED, XYZW, X16, X32, X8, X16),
-     MAKE_COLOR_IMAGE_FORMAT_ABBREV4(RGB, BT601, PL, UNSIGNED, XYZW, X16, X32, X8, X16),
+    {MAKE_COLOR_IMAGE_FORMAT_ABBREV4(RGB, BT601, PL, UNSIGNED, XYZW, ASSOCIATED, X16, X32, X8, X16),
+     MAKE_COLOR_IMAGE_FORMAT_ABBREV4(RGB, BT601, PL, UNSIGNED, XYZW, ASSOCIATED, X16, X32, X8, X16),
      NVCV_SWIZZLE_XYZW,
      {NVCV_PACKING_X16, NVCV_PACKING_X32, NVCV_PACKING_X8, NVCV_PACKING_X16},
      "Identity, no-op"},
 };
 
 static std::vector<SetSwizzlePackingTestParams> g_SSPParamsFailure = {
-    {MAKE_COLOR_IMAGE_FORMAT_ABBREV4(RGB, BT601, PL, UNSIGNED, XYZW, X16, X32, X8, X16),
+    {MAKE_COLOR_IMAGE_FORMAT_ABBREV4(RGB, BT601, PL, UNSIGNED, XYZW, ASSOCIATED, X16, X32, X8, X16),
      NVCV_IMAGE_FORMAT_NONE,
      NVCV_SWIZZLE_XYZ1,
      {NVCV_PACKING_X16, NVCV_PACKING_X32, NVCV_PACKING_X8, NVCV_PACKING_X16},
      "swizzle has less channels"},
 
-    {MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, BT601, PL, UNSIGNED, XYZW, X16, X32, X8),
+    {MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, BT601, PL, UNSIGNED, XYZW, ASSOCIATED, X16, X32, X8),
      NVCV_IMAGE_FORMAT_NONE,
      NVCV_SWIZZLE_XYZW,
      {NVCV_PACKING_X16, NVCV_PACKING_X32, NVCV_PACKING_X8},
      "swizzle has more channels"},
 
-    {MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, BT601, PL, UNSIGNED, XYZW, X16, X32, X8_Y8),
+    {MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, BT601, PL, UNSIGNED, XYZW, ASSOCIATED, X16, X32, X8_Y8),
      NVCV_IMAGE_FORMAT_NONE,
      NVCV_SWIZZLE_XYZW,
      {NVCV_PACKING_X16, NVCV_PACKING_X32, NVCV_PACKING_X8},
      "packing has less channels, same number of planes"},
 
-    {MAKE_COLOR_IMAGE_FORMAT_ABBREV4(RGB, BT601, PL, UNSIGNED, XYZW, X16, X32, X8, X16),
+    {MAKE_COLOR_IMAGE_FORMAT_ABBREV4(RGB, BT601, PL, UNSIGNED, XYZW, ASSOCIATED, X16, X32, X8, X16),
      NVCV_IMAGE_FORMAT_NONE,
      NVCV_SWIZZLE_XYZW,
      {NVCV_PACKING_X16, NVCV_PACKING_X32, NVCV_PACKING_X8},
      "packing has less channels, different number of planes"},
 
-    {MAKE_COLOR_IMAGE_FORMAT_ABBREV4(RGB, BT601, PL, UNSIGNED, XYZW, X16, X32, X8, X16),
+    {MAKE_COLOR_IMAGE_FORMAT_ABBREV4(RGB, BT601, PL, UNSIGNED, XYZW, ASSOCIATED, X16, X32, X8, X16),
      NVCV_IMAGE_FORMAT_NONE,
      NVCV_SWIZZLE_XYZW,
      {NVCV_PACKING_X16, NVCV_PACKING_X32, NVCV_PACKING_X8, NVCV_PACKING_X128},
@@ -1659,77 +2111,79 @@ class ImageFormatDataLayoutTests : public t::TestWithParam<std::tuple<int, Image
 {
 };
 
-#define MAKE_YCbCr_IMAGE_FORMAT_ABBREV1(cspec, css, layout, datatype, swizzle, pack0)               \
-    NVCV_MAKE_YCbCr_IMAGE_FORMAT(NVCV_COLOR_SPEC_##cspec, NVCV_CSS_##css, NVCV_MEM_LAYOUT_##layout, \
-                                 NVCV_DATA_KIND_##datatype, NVCV_SWIZZLE_##swizzle, 1, NVCV_PACKING_##pack0)
+#define MAKE_YCbCr_IMAGE_FORMAT_ABBREV1(cspec, css, layout, datatype, swizzle, alphatype, pack0)               \
+    NVCV_MAKE_YCbCr_IMAGE_FORMAT(NVCV_COLOR_SPEC_##cspec, NVCV_CSS_##css, NVCV_MEM_LAYOUT_##layout,            \
+                                 NVCV_DATA_KIND_##datatype, NVCV_SWIZZLE_##swizzle, NVCV_ALPHA_##alphatype, 1, \
+                                 NVCV_PACKING_##pack0)
 
-#define MAKE_YCbCr_IMAGE_FORMAT_ABBREV2(cspec, css, layout, datatype, swizzle, pack0, pack1)                 \
-    NVCV_MAKE_YCbCr_IMAGE_FORMAT(NVCV_COLOR_SPEC_##cspec, NVCV_CSS_##css, NVCV_MEM_LAYOUT_##layout,          \
-                                 NVCV_DATA_KIND_##datatype, NVCV_SWIZZLE_##swizzle, 2, NVCV_PACKING_##pack0, \
-                                 NVCV_PACKING_##pack1)
+#define MAKE_YCbCr_IMAGE_FORMAT_ABBREV2(cspec, css, layout, datatype, swizzle, alphatype, pack0, pack1)        \
+    NVCV_MAKE_YCbCr_IMAGE_FORMAT(NVCV_COLOR_SPEC_##cspec, NVCV_CSS_##css, NVCV_MEM_LAYOUT_##layout,            \
+                                 NVCV_DATA_KIND_##datatype, NVCV_SWIZZLE_##swizzle, NVCV_ALPHA_##alphatype, 2, \
+                                 NVCV_PACKING_##pack0, NVCV_PACKING_##pack1)
 
-#define MAKE_YCbCr_IMAGE_FORMAT_ABBREV3(cspec, css, layout, datatype, swizzle, pack0, pack1, pack2)          \
-    NVCV_MAKE_YCbCr_IMAGE_FORMAT(NVCV_COLOR_SPEC_##cspec, NVCV_CSS_##css, NVCV_MEM_LAYOUT_##layout,          \
-                                 NVCV_DATA_KIND_##datatype, NVCV_SWIZZLE_##swizzle, 3, NVCV_PACKING_##pack0, \
-                                 NVCV_PACKING_##pack1, NVCV_PACKING_##pack2)
+#define MAKE_YCbCr_IMAGE_FORMAT_ABBREV3(cspec, css, layout, datatype, swizzle, alphatype, pack0, pack1, pack2) \
+    NVCV_MAKE_YCbCr_IMAGE_FORMAT(NVCV_COLOR_SPEC_##cspec, NVCV_CSS_##css, NVCV_MEM_LAYOUT_##layout,            \
+                                 NVCV_DATA_KIND_##datatype, NVCV_SWIZZLE_##swizzle, NVCV_ALPHA_##alphatype, 3, \
+                                 NVCV_PACKING_##pack0, NVCV_PACKING_##pack1, NVCV_PACKING_##pack2)
 
-#define MAKE_YCbCr_IMAGE_FORMAT_ABBREV4(cspec, css, layout, datatype, swizzle, pack0, pack1, pack2, pack3)   \
-    NVCV_MAKE_YCbCr_IMAGE_FORMAT(NVCV_COLOR_SPEC_##cspec, NVCV_CSS_##css, NVCV_MEM_LAYOUT_##layout,          \
-                                 NVCV_DATA_KIND_##datatype, NVCV_SWIZZLE_##swizzle, 4, NVCV_PACKING_##pack0, \
-                                 NVCV_PACKING_##pack1, NVCV_PACKING_##pack2, NVCV_PACKING_##pack3)
+#define MAKE_YCbCr_IMAGE_FORMAT_ABBREV4(cspec, css, layout, datatype, swizzle, alphatype, pack0, pack1, pack2, pack3) \
+    NVCV_MAKE_YCbCr_IMAGE_FORMAT(NVCV_COLOR_SPEC_##cspec, NVCV_CSS_##css, NVCV_MEM_LAYOUT_##layout,                   \
+                                 NVCV_DATA_KIND_##datatype, NVCV_SWIZZLE_##swizzle, NVCV_ALPHA_##alphatype, 4,        \
+                                 NVCV_PACKING_##pack0, NVCV_PACKING_##pack1, NVCV_PACKING_##pack2,                    \
+                                 NVCV_PACKING_##pack3)
 
 // clang-format off
 static std::vector<ImageFormatPair> g_SameDataLayout = {
     {
-        MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, UNDEFINED, BL, UNSIGNED, XYZ0, X8, X8, X8),
-        MAKE_COLOR_IMAGE_FORMAT_ABBREV3(XYZ, UNDEFINED, BL, UNSIGNED, XYZ0, X8, X8, X8),
+        MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, UNDEFINED, BL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8, X8),
+        MAKE_COLOR_IMAGE_FORMAT_ABBREV3(XYZ, UNDEFINED, BL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8, X8),
     },
     {
-        MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, UNDEFINED, BL, UNSIGNED, XYZ0, X8, X8, X8),
-        MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, BT601, BL, UNSIGNED, XYZ0, X8, X8, X8),
+        MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, UNDEFINED, BL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8, X8),
+        MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, BT601, BL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8, X8),
     },
     {
-        MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, UNDEFINED, BL, UNSIGNED, XYZ0, X8, X8, X8),
-        MAKE_YCbCr_IMAGE_FORMAT_ABBREV3(UNDEFINED, 444, BL, UNSIGNED, XYZ0, X8, X8, X8),
+        MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, UNDEFINED, BL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8, X8),
+        MAKE_YCbCr_IMAGE_FORMAT_ABBREV3(UNDEFINED, 444, BL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8, X8),
     },
     {
-        MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, UNDEFINED, BL, UNSIGNED, XYZ0, X8, X8, X8),
-        MAKE_YCbCr_IMAGE_FORMAT_ABBREV3(BT709, 444, BL, UNSIGNED, XYZ0, X8, X8, X8),
+        MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, UNDEFINED, BL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8, X8),
+        MAKE_YCbCr_IMAGE_FORMAT_ABBREV3(BT709, 444, BL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8, X8),
     },
     {
-        MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, UNDEFINED, BL, UNSIGNED, XYZ0, X8, X8, X8),
-        MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, UNDEFINED, BL, UNSIGNED, XYZ1, X8, X8, X8),
+        MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, UNDEFINED, BL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8, X8),
+        MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, UNDEFINED, BL, UNSIGNED, XYZ1, ASSOCIATED, X8, X8, X8),
     },
 };
 
 static std::vector<ImageFormatPair> g_DifferentDataLayout = {
     {
-        MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, UNDEFINED, BL, UNSIGNED, XYZ0, X8, X8, X8),
-        MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, UNDEFINED, BLOCK4_LINEAR, UNSIGNED, XYZ0, X8, X8, X8),
+        MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, UNDEFINED, BL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8, X8),
+        MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, UNDEFINED, BLOCK4_LINEAR, UNSIGNED, XYZ0, ASSOCIATED, X8, X8, X8),
     },
     {
-        MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, UNDEFINED, BL, UNSIGNED, XYZ0, X8, X8, X8),
-        MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, UNDEFINED, BL, SIGNED, XYZ0, X8, X8, X8),
+        MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, UNDEFINED, BL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8, X8),
+        MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, UNDEFINED, BL, SIGNED, XYZ0, ASSOCIATED, X8, X8, X8),
     },
     {
-        MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, UNDEFINED, BL, UNSIGNED, XYZ0, X8, X8, X8),
-        MAKE_COLOR_IMAGE_FORMAT_ABBREV2(RGB, UNDEFINED, BL, UNSIGNED, XZY0, X8, X8),
+        MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, UNDEFINED, BL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8, X8),
+        MAKE_COLOR_IMAGE_FORMAT_ABBREV2(RGB, UNDEFINED, BL, UNSIGNED, XZY0, ASSOCIATED, X8, X8),
     },
     {
-        MAKE_COLOR_IMAGE_FORMAT_ABBREV2(RGB, UNDEFINED, BL, UNSIGNED, XY00, X8, b4X12),
-        MAKE_COLOR_IMAGE_FORMAT_ABBREV2(RGB, UNDEFINED, BL, UNSIGNED, XY00, X8, X12b4),
+        MAKE_COLOR_IMAGE_FORMAT_ABBREV2(RGB, UNDEFINED, BL, UNSIGNED, XY00, ASSOCIATED, X8, b4X12),
+        MAKE_COLOR_IMAGE_FORMAT_ABBREV2(RGB, UNDEFINED, BL, UNSIGNED, XY00, ASSOCIATED, X8, X12b4),
     },
     {
-        MAKE_COLOR_IMAGE_FORMAT_ABBREV1(RGB, UNDEFINED, BL, UNSIGNED, XY00, X10b6_Y10b6),
-        MAKE_COLOR_IMAGE_FORMAT_ABBREV1(RGB, UNDEFINED, BL, UNSIGNED, XY00, X12b4_Y12b4),
+        MAKE_COLOR_IMAGE_FORMAT_ABBREV1(RGB, UNDEFINED, BL, UNSIGNED, XY00, ASSOCIATED, X10b6_Y10b6),
+        MAKE_COLOR_IMAGE_FORMAT_ABBREV1(RGB, UNDEFINED, BL, UNSIGNED, XY00, ASSOCIATED, X12b4_Y12b4),
     },
     {
-        MAKE_YCbCr_IMAGE_FORMAT_ABBREV2(BT709, 444, BL, UNSIGNED, XYZ0, X8, X8_Y8),
-        MAKE_YCbCr_IMAGE_FORMAT_ABBREV2(BT709, 420, BL, UNSIGNED, XYZ0, X8, X8_Y8),
+        MAKE_YCbCr_IMAGE_FORMAT_ABBREV2(BT709, 444, BL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8_Y8),
+        MAKE_YCbCr_IMAGE_FORMAT_ABBREV2(BT709, 420, BL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8_Y8),
     },
     {
-        MAKE_YCbCr_IMAGE_FORMAT_ABBREV1(BT709, 422, BL, UNSIGNED, XYZ0, X8_Y8__X8_Z8),
-        MAKE_YCbCr_IMAGE_FORMAT_ABBREV1(BT709, 422, BL, UNSIGNED, XYZ0, Y8_X8__Z8_X8),
+        MAKE_YCbCr_IMAGE_FORMAT_ABBREV1(BT709, 422, BL, UNSIGNED, XYZ0, ASSOCIATED, X8_Y8__X8_Z8),
+        MAKE_YCbCr_IMAGE_FORMAT_ABBREV1(BT709, 422, BL, UNSIGNED, XYZ0, ASSOCIATED, Y8_X8__Z8_X8),
     },
 };
 // clang-format on
@@ -1755,12 +2209,12 @@ TEST(ImageFormatTests, packing1_at_most_128_bpp)
     EXPECT_EQ(NVCV_SUCCESS,
               nvcvMakeColorImageFormat(&fmt, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_BT601, NVCV_MEM_LAYOUT_PL,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XY00, NVCV_PACKING_X8, NVCV_PACKING_X128,
-                                       NVCV_PACKING_0, NVCV_PACKING_0));
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
               nvcvMakeColorImageFormat(&fmt, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_BT601, NVCV_MEM_LAYOUT_PL,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XY00, NVCV_PACKING_X8, NVCV_PACKING_X192,
-                                       NVCV_PACKING_0, NVCV_PACKING_0));
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 }
 
 TEST(ImageFormatTests, packing2_at_most_128_bpp)
@@ -1769,12 +2223,12 @@ TEST(ImageFormatTests, packing2_at_most_128_bpp)
     EXPECT_EQ(NVCV_SUCCESS,
               nvcvMakeColorImageFormat(&fmt, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_BT601, NVCV_MEM_LAYOUT_PL,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8, NVCV_PACKING_X8,
-                                       NVCV_PACKING_X128, NVCV_PACKING_0));
+                                       NVCV_PACKING_X128, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
               nvcvMakeColorImageFormat(&fmt, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_BT601, NVCV_MEM_LAYOUT_PL,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8, NVCV_PACKING_X8,
-                                       NVCV_PACKING_X192, NVCV_PACKING_0));
+                                       NVCV_PACKING_X192, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 }
 
 TEST(ImageFormatTests, packing3_at_most_128_bpp)
@@ -1783,12 +2237,12 @@ TEST(ImageFormatTests, packing3_at_most_128_bpp)
     EXPECT_EQ(NVCV_SUCCESS,
               nvcvMakeColorImageFormat(&fmt, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_BT601, NVCV_MEM_LAYOUT_PL,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZW, NVCV_PACKING_X8, NVCV_PACKING_X8,
-                                       NVCV_PACKING_X8, NVCV_PACKING_X64));
+                                       NVCV_PACKING_X8, NVCV_PACKING_X64, NVCV_ALPHA_ASSOCIATED, 0));
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
               nvcvMakeColorImageFormat(&fmt, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_BT601, NVCV_MEM_LAYOUT_PL,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZW, NVCV_PACKING_X8, NVCV_PACKING_X8,
-                                       NVCV_PACKING_X8, NVCV_PACKING_X128));
+                                       NVCV_PACKING_X8, NVCV_PACKING_X128, NVCV_ALPHA_ASSOCIATED, 0));
 }
 
 TEST(ImageFormatTests, packing0_code_at_most_3_bits)
@@ -1797,27 +2251,28 @@ TEST(ImageFormatTests, packing0_code_at_most_3_bits)
     EXPECT_EQ(NVCV_SUCCESS, nvcvMakeColorImageFormat(&fmt, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_BT601,
                                                      NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_X000,
                                                      (NVCVPacking)(NVCV_DETAIL_BPP_NCH(16, 1) + 7), NVCV_PACKING_0,
-                                                     NVCV_PACKING_0, NVCV_PACKING_0));
+                                                     NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
               nvcvMakeColorImageFormat(&fmt, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_BT601, NVCV_MEM_LAYOUT_PL,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_X000,
                                        (NVCVPacking)(NVCV_DETAIL_BPP_NCH(16, 1) + 8), NVCV_PACKING_0, NVCV_PACKING_0,
-                                       NVCV_PACKING_0));
+                                       NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 }
 
 TEST(ImageFormatTests, packing1_code_at_most_3_bits)
 {
     NVCVImageFormat fmt;
-    EXPECT_EQ(NVCV_SUCCESS,
-              nvcvMakeColorImageFormat(&fmt, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_BT601, NVCV_MEM_LAYOUT_PL,
-                                       NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XY00, NVCV_PACKING_X8,
-                                       (NVCVPacking)(NVCV_DETAIL_BPP_NCH(16, 1) + 7), NVCV_PACKING_0, NVCV_PACKING_0));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvMakeColorImageFormat(&fmt, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_BT601,
+                                                     NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XY00,
+                                                     NVCV_PACKING_X8, (NVCVPacking)(NVCV_DETAIL_BPP_NCH(16, 1) + 7),
+                                                     NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
               nvcvMakeColorImageFormat(&fmt, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_BT601, NVCV_MEM_LAYOUT_PL,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XY00, NVCV_PACKING_X8,
-                                       (NVCVPacking)(NVCV_DETAIL_BPP_NCH(16, 1) + 8), NVCV_PACKING_0, NVCV_PACKING_0));
+                                       (NVCVPacking)(NVCV_DETAIL_BPP_NCH(16, 1) + 8), NVCV_PACKING_0, NVCV_PACKING_0,
+                                       NVCV_ALPHA_ASSOCIATED, 0));
 }
 
 TEST(ImageFormatTests, packing2_code_at_most_3_bits)
@@ -1826,12 +2281,14 @@ TEST(ImageFormatTests, packing2_code_at_most_3_bits)
     EXPECT_EQ(NVCV_SUCCESS,
               nvcvMakeColorImageFormat(&fmt, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_BT601, NVCV_MEM_LAYOUT_PL,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8, NVCV_PACKING_X8,
-                                       (NVCVPacking)(NVCV_DETAIL_BPP_NCH(16, 1) + 7), NVCV_PACKING_0));
+                                       (NVCVPacking)(NVCV_DETAIL_BPP_NCH(16, 1) + 7), NVCV_PACKING_0,
+                                       NVCV_ALPHA_ASSOCIATED, 0));
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
               nvcvMakeColorImageFormat(&fmt, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_BT601, NVCV_MEM_LAYOUT_PL,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8, NVCV_PACKING_X8,
-                                       (NVCVPacking)(NVCV_DETAIL_BPP_NCH(16, 1) + 8), NVCV_PACKING_0));
+                                       (NVCVPacking)(NVCV_DETAIL_BPP_NCH(16, 1) + 8), NVCV_PACKING_0,
+                                       NVCV_ALPHA_ASSOCIATED, 0));
 }
 
 TEST(ImageFormatTests, packing3_code_at_most_0_bits)
@@ -1840,12 +2297,14 @@ TEST(ImageFormatTests, packing3_code_at_most_0_bits)
     EXPECT_EQ(NVCV_SUCCESS,
               nvcvMakeColorImageFormat(&fmt, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_BT601, NVCV_MEM_LAYOUT_PL,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZW, NVCV_PACKING_X8, NVCV_PACKING_X8,
-                                       NVCV_PACKING_X8, (NVCVPacking)(NVCV_DETAIL_BPP_NCH(16, 1) + 0)));
+                                       NVCV_PACKING_X8, (NVCVPacking)(NVCV_DETAIL_BPP_NCH(16, 1) + 0),
+                                       NVCV_ALPHA_ASSOCIATED, 0));
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
               nvcvMakeColorImageFormat(&fmt, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_BT601, NVCV_MEM_LAYOUT_PL,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZW, NVCV_PACKING_X8, NVCV_PACKING_X8,
-                                       NVCV_PACKING_X8, (NVCVPacking)(NVCV_DETAIL_BPP_NCH(16, 1) + 1)));
+                                       NVCV_PACKING_X8, (NVCVPacking)(NVCV_DETAIL_BPP_NCH(16, 1) + 1),
+                                       NVCV_ALPHA_ASSOCIATED, 0));
 }
 
 TEST(ImageFormatTests, packing1_code_at_most_2_channels)
@@ -1854,12 +2313,98 @@ TEST(ImageFormatTests, packing1_code_at_most_2_channels)
     EXPECT_EQ(NVCV_SUCCESS,
               nvcvMakeColorImageFormat(&fmt, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_BT601, NVCV_MEM_LAYOUT_PL,
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8, NVCV_PACKING_X8_Y8,
-                                       NVCV_PACKING_0, NVCV_PACKING_0));
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
+    EXPECT_EQ(
+        NVCV_ERROR_INVALID_ARGUMENT,
+        nvcvMakeColorImageFormat(&fmt, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_BT601, NVCV_MEM_LAYOUT_PL,
+                                 NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZW, NVCV_PACKING_X8, NVCV_PACKING_X8_Y8_Z8,
+                                 NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
+}
+
+TEST(ImageFormatTests, get_valid_plane_size)
+{
+    int32_t outPlaneWidth;
+    int32_t outPlaneHeight;
+    auto    reset_output = [&outPlaneWidth, &outPlaneHeight]() -> void
+    {
+        outPlaneWidth  = -1;
+        outPlaneHeight = -1;
+    };
+    EXPECT_EQ(NVCV_SUCCESS,
+              nvcvImageFormatGetPlaneSize(NVCV_IMAGE_FORMAT_U8, 0, 224, 224, &outPlaneWidth, &outPlaneHeight));
+    EXPECT_EQ(224, outPlaneWidth);
+    EXPECT_EQ(224, outPlaneHeight);
+
+    reset_output();
+    EXPECT_EQ(NVCV_SUCCESS,
+              nvcvImageFormatGetPlaneSize(NVCV_IMAGE_FORMAT_U8, 0, 224, 112, &outPlaneWidth, &outPlaneHeight));
+    EXPECT_EQ(224, outPlaneWidth);
+    EXPECT_EQ(112, outPlaneHeight);
+
+    reset_output();
+    EXPECT_EQ(NVCV_SUCCESS,
+              nvcvImageFormatGetPlaneSize(NVCV_IMAGE_FORMAT_UYVY, 0, 224, 224, &outPlaneWidth, &outPlaneHeight));
+    EXPECT_EQ(224, outPlaneWidth);
+    EXPECT_EQ(224, outPlaneHeight);
+
+    reset_output();
+    EXPECT_EQ(NVCV_SUCCESS,
+              nvcvImageFormatGetPlaneSize(NVCV_IMAGE_FORMAT_UYVY, 1, 224, 224, &outPlaneWidth, &outPlaneHeight));
+    EXPECT_EQ(112, outPlaneWidth);
+    EXPECT_EQ(224, outPlaneHeight);
+}
+
+TEST(ImageFormatTests, null_outputs_or_inputs)
+{
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-              nvcvMakeColorImageFormat(&fmt, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_BT601, NVCV_MEM_LAYOUT_PL,
-                                       NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZW, NVCV_PACKING_X8,
-                                       NVCV_PACKING_X8_Y8_Z8, NVCV_PACKING_0, NVCV_PACKING_0));
+              nvcvMakeImageFormatFromFourCC(nullptr, 0, NVCV_COLOR_SPEC_BT601, NVCV_MEM_LAYOUT_PL));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvMakeColorImageFormat(nullptr, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_UNDEFINED, NVCV_MEM_LAYOUT_PL,
+                                       NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8_Y8_Z8,
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvMakeYCbCrImageFormat(nullptr, NVCV_COLOR_SPEC_BT601, NVCV_CSS_420, NVCV_MEM_LAYOUT_PL,
+                                       NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8_Y8_Z8,
+                                       NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvMakeNonColorImageFormat(nullptr, NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0,
+                                          NVCV_PACKING_X8_Y8_Z8, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0,
+                                          NVCV_ALPHA_ASSOCIATED, 0));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvMakeRawImageFormat(nullptr, NVCV_RAW_BAYER_CRBC, NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED,
+                                     NVCV_SWIZZLE_X000, NVCV_PACKING_X8, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0,
+                                     NVCV_ALPHA_ASSOCIATED, 0));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatGetPlanePacking(NVCV_IMAGE_FORMAT_NONE, 0, nullptr));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatGetPlaneBitsPerPixel(NVCV_IMAGE_FORMAT_NONE, 0, nullptr));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvImageFormatSetSwizzleAndPacking(nullptr, NVCV_SWIZZLE_XYZW, NVCV_PACKING_X8, NVCV_PACKING_X8,
+                                                  NVCV_PACKING_X8, NVCV_PACKING_X8));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatSetDataKind(nullptr, NVCV_DATA_KIND_FLOAT));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatGetDataKind(NVCV_IMAGE_FORMAT_U8, nullptr));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatGetSwizzle(NVCV_IMAGE_FORMAT_NONE, nullptr));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatSetMemLayout(nullptr, NVCV_MEM_LAYOUT_BL));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatGetMemLayout(NVCV_IMAGE_FORMAT_NONE, nullptr));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatSetColorSpec(nullptr, NVCV_COLOR_SPEC_BT601));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatGetColorSpec(NVCV_IMAGE_FORMAT_NONE, nullptr));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatGetColorModel(NVCV_IMAGE_FORMAT_NONE, nullptr));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatSetChromaSubsampling(nullptr, NVCV_CSS_420));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatGetChromaSubsampling(NVCV_IMAGE_FORMAT_NONE, nullptr));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatGetPlaneNumChannels(NVCV_IMAGE_FORMAT_U8, 0, nullptr));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatGetPlanePixelStrideBytes(NVCV_IMAGE_FORMAT_NV12, 0, nullptr));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatGetNumPlanes(NVCV_IMAGE_FORMAT_U8, nullptr));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatGetNumChannels(NVCV_IMAGE_FORMAT_U8, nullptr));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatGetPlaneDataType(NVCV_IMAGE_FORMAT_U8, 0, nullptr));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatGetPlaneSwizzle(NVCV_IMAGE_FORMAT_U8, 0, nullptr));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatGetPlaneFormat(NVCV_IMAGE_FORMAT_U8, 0, nullptr));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatSetRawPattern(nullptr, NVCV_RAW_BAYER_BGGR));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvImageFormatHasSameDataLayout(NVCV_IMAGE_FORMAT_U8, NVCV_IMAGE_FORMAT_U8, nullptr));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatToFourCC(NVCV_IMAGE_FORMAT_RGBA8, nullptr));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatGetBitsPerChannel(NVCV_IMAGE_FORMAT_U8, nullptr));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatGetRawPattern(NVCV_IMAGE_FORMAT_U8, nullptr));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvImageFormatGetPlaneSize(NVCV_IMAGE_FORMAT_U8, 0, 224, 224, nullptr, nullptr));
 }
 
 class FCC
@@ -2050,6 +2595,8 @@ NVCV_INSTANTIATE_TEST_SUITE_P(_,ImageFormatPlanePixelStrideBytesExecTests,
                                 {NVCV_IMAGE_FORMAT_RGB8, 0, 3},
                                 {NVCV_IMAGE_FORMAT_RGBA8, 0, 4},
                                 {NVCV_IMAGE_FORMAT_HSV8, 0, 3},
+                                {NVCV_IMAGE_FORMAT_CMYK8, 0, 4},
+                                {NVCV_IMAGE_FORMAT_YCCK8, 0, 4},
                                 {NVCV_IMAGE_FORMAT_U8, 0, 1},
                                 {NVCV_IMAGE_FORMAT_U16, 0, 2},
                               });

@@ -371,6 +371,16 @@ NVCV_PUBLIC NVCVStatus nvcvAllocatorAllocCudaMemory(NVCVAllocatorHandle halloc, 
 NVCV_PUBLIC NVCVStatus nvcvAllocatorFreeCudaMemory(NVCVAllocatorHandle halloc, void *ptr, int64_t sizeBytes,
                                                    int32_t alignBytes);
 
+/** Returns a string representation of the resource type.
+ *
+ * @param[in] resource Resource type whose name is to be returned.
+ *
+ * @returns The string representation of the resource type.
+ *          Returned string is valid until next call of this function from the same calling thread.
+ *          Returned pointer must not be freed.
+ */
+NVCV_PUBLIC const char *nvcvResourceTypeGetName(NVCVResourceType resource);
+
 #ifdef __cplusplus
 }
 #endif

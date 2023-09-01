@@ -102,8 +102,13 @@ void ExportOpResize(py::module &m)
 {
     using namespace pybind11::literals;
 
+    py::options options;
+    options.disable_function_signatures();
+
     m.def("resize", &Resize, "src"_a, "shape"_a, "interp"_a = NVCV_INTERP_LINEAR, py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
+
+	cvcuda.resize(src: nvcv.Tensor, shape:Tuple, interp: Interp = < NVCV_INTERP_LINEAR >, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the Resize operation on the given cuda stream.
 
@@ -128,6 +133,8 @@ void ExportOpResize(py::module &m)
     m.def("resize_into", &ResizeInto, "dst"_a, "src"_a, "interp"_a = NVCV_INTERP_LINEAR, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
 
+	cvcuda.resize_into(dst: nvcv.Tensor, src: nvcv.Tensor, shape:Tuple, interp: Interp = < NVCV_INTERP_LINEAR >, stream: Optional[nvcv.cuda.Stream] = None)
+
         Executes the Resize operation on the given cuda stream.
 
         See also:
@@ -151,6 +158,8 @@ void ExportOpResize(py::module &m)
     m.def("resize", &ResizeVarShape, "src"_a, "sizes"_a, "interp"_a = NVCV_INTERP_LINEAR, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
 
+	cvcuda.resize(src: nvcv.ImageBatchVarShape, shape:Tuple, interp: Interp = < NVCV_INTERP_LINEAR >, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+
         Executes the Resize operation on the given cuda stream.
 
         See also:
@@ -173,6 +182,8 @@ void ExportOpResize(py::module &m)
 
     m.def("resize_into", &ResizeVarShapeInto, "dst"_a, "src"_a, "interp"_a = NVCV_INTERP_LINEAR, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
+
+	cvcuda.resize_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, shape:Tuple, interp: Interp = < NVCV_INTERP_LINEAR >, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Resize operation on the given cuda stream.
 

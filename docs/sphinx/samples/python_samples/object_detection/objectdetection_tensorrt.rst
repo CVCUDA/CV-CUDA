@@ -14,7 +14,7 @@
    # See the License for the specific language governing permissions and
    # limitations under the License.
 
-.. _object_detection_tensorrt:
+.. _objectdetection_tensorrt:
 
 Object Detection Inference Using TensorRT
 ==========================================
