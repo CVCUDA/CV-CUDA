@@ -23,7 +23,6 @@
 
 #include "CvCudaUtils.cuh"
 
-#include <cvcuda/priv/Types.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/ImageData.hpp>
 #include <nvcv/TensorData.hpp>
@@ -36,7 +35,6 @@
 using namespace nvcv::legacy::cuda_op;
 using namespace nvcv::legacy::helpers;
 using namespace nvcv::cuda::osd;
-using namespace cvcuda::priv;
 
 namespace nvcv::legacy::cuda_op {
 
@@ -1360,7 +1358,7 @@ static ErrorCode cuosd_draw_rectangle(cuOSDContext_t context, int batch_idx, int
 }
 
 static ErrorCode cuosd_draw_segmentmask(cuOSDContext_t context, int batch_idx, int width, int height,
-                                        const NVCVSegment &segment)
+                                        NVCVSegment segment)
 {
     int left   = segment.box.x;
     int top    = segment.box.y;
@@ -1510,7 +1508,7 @@ static ErrorCode cuosd_draw_line(cuOSDContext_t context, int batch_idx, NVCVLine
     return ErrorCode::SUCCESS;
 }
 
-static ErrorCode cuosd_draw_polyline(cuOSDContext_t context, int batch_idx, const NVCVPolyLine &pl)
+static ErrorCode cuosd_draw_polyline(cuOSDContext_t context, int batch_idx, NVCVPolyLine pl)
 {
     if (pl.numPoints < 2)
         return ErrorCode::INVALID_PARAMETER;
@@ -1724,17 +1722,16 @@ static ErrorCode cuosd_draw_clock(cuOSDContext_t context, int batch_idx, NVCVClo
     return ErrorCode::SUCCESS;
 }
 
-static ErrorCode cuosd_draw_elements(cuOSDContext_t context, int width, int height, NVCVElementsImpl *ctx)
+static ErrorCode cuosd_draw_elements(cuOSDContext_t context, int width, int height, NVCVElements ctx)
 {
-    for (int n = 0; n < ctx->batch(); n++)
+    for (int n = 0; n < ctx.batch; n++)
     {
-        auto numElements = ctx->numElementsAt(n);
+        auto numElements = ctx.numElements[n];
 
         for (int i = 0; i < numElements; i++)
         {
-            auto element = ctx->elementAt(n, i);
-            auto type    = element->type();
-            auto data    = element->ptr();
+            auto type = ctx.elements[i].type;
+            auto data = ctx.elements[i].data;
             switch (type)
             {
             case NVCVOSDType::NVCV_OSD_NONE:
@@ -1795,21 +1792,7 @@ static ErrorCode cuosd_draw_elements(cuOSDContext_t context, int width, int heig
                 break;
             }
         }
-    }
-    return ErrorCode::SUCCESS;
-}
-
-static ErrorCode cuosd_draw_bndbox(cuOSDContext_t context, int width, int height, NVCVBndBoxesImpl *bboxes)
-{
-    for (int n = 0; n < bboxes->batch(); n++)
-    {
-        auto numBoxes = bboxes->numBoxesAt(n);
-
-        for (int i = 0; i < numBoxes; i++)
-        {
-            auto bbox = bboxes->boxAt(n, i);
-            cuosd_draw_rectangle(context, n, width, height, bbox);
-        }
+        ctx.elements = (NVCVElement *)((unsigned char *)ctx.elements + numElements * sizeof(NVCVElement));
     }
     return ErrorCode::SUCCESS;
 }
@@ -1827,6 +1810,11 @@ OSD::~OSD()
         cuOSDContext *p = (cuOSDContext *)m_context;
         delete p;
     }
+}
+
+size_t OSD::calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type)
+{
+    return 0;
 }
 
 ErrorCode OSD::infer(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,
@@ -1865,10 +1853,9 @@ ErrorCode OSD::infer(const nvcv::TensorDataStridedCuda &inData, const nvcv::Tens
         return ErrorCode::INVALID_DATA_SHAPE;
     }
 
-    NVCVElementsImpl *_elements = (NVCVElementsImpl *)elements;
-    if (_elements->batch() != batch)
+    if (elements.batch != batch)
     {
-        LOG_ERROR("Invalid elements batch = " << _elements->batch());
+        LOG_ERROR("Invalid elements batch = " << elements.batch);
         return ErrorCode::INVALID_DATA_SHAPE;
     }
 
@@ -1897,96 +1884,10 @@ ErrorCode OSD::infer(const nvcv::TensorDataStridedCuda &inData, const nvcv::Tens
         return ErrorCode::INVALID_DATA_SHAPE;
     }
 
-    auto ret = cuosd_draw_elements(m_context, cols, rows, _elements);
+    auto ret = cuosd_draw_elements(m_context, cols, rows, elements);
     if (ret != ErrorCode::SUCCESS)
     {
         LOG_ERROR("cuosd_draw_elements failed, ret - " << ret);
-        return ret;
-    }
-
-    auto format = cuOSDImageFormat::RGBA;
-    if (inputShape.C == 3)
-        format = cuOSDImageFormat::RGB;
-
-    cuosd_apply(m_context, inputShape.W, inputShape.H, format, stream);
-
-    auto src     = nvcv::cuda::CreateTensorWrapNHWC<uint8_t>(inData);
-    auto dst     = nvcv::cuda::CreateTensorWrapNHWC<uint8_t>(outData);
-    bool inplace = inData.basePtr() == outData.basePtr();
-
-    cuosd_launch(m_context, src, dst, inputShape.W, inputShape.C * inputShape.W, inputShape.H, format, inplace,
-                 inputShape.N, stream);
-
-    checkKernelErrors();
-
-    cuosd_clear(m_context);
-
-    return ErrorCode::SUCCESS;
-}
-
-ErrorCode OSD::inferBox(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,
-                        NVCVBndBoxesI bboxes, cudaStream_t stream)
-{
-    cuda_op::DataFormat input_format  = GetLegacyDataFormat(inData.layout());
-    cuda_op::DataFormat output_format = GetLegacyDataFormat(outData.layout());
-
-    if (!(input_format == kNHWC || input_format == kHWC) || !(output_format == kNHWC || output_format == kHWC))
-    {
-        LOG_ERROR("Invliad DataFormat both Input and Output must be kNHWC or kHWC");
-        return ErrorCode::INVALID_DATA_FORMAT;
-    }
-
-    if (inData.dtype() != outData.dtype())
-    {
-        LOG_ERROR("Input and Output formats must be same input format =" << inData.dtype()
-                                                                         << " output format = " << outData.dtype());
-        return ErrorCode::INVALID_DATA_FORMAT;
-    }
-
-    auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(inData);
-    if (!inAccess)
-    {
-        return ErrorCode::INVALID_DATA_FORMAT;
-    }
-
-    auto outAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(outData);
-    if (!outAccess)
-    {
-        return ErrorCode::INVALID_DATA_FORMAT;
-    }
-
-    cuda_op::DataShape inputShape  = helpers::GetLegacyDataShape(inAccess->infoShape());
-    cuda_op::DataShape outputShape = helpers::GetLegacyDataShape(outAccess->infoShape());
-
-    if (outputShape.H != inputShape.H || outputShape.W != inputShape.W || outputShape.N != inputShape.N
-        || outputShape.C != inputShape.C)
-    {
-        LOG_ERROR("Invalid input/output shape " << inputShape << "/" << outputShape);
-        return ErrorCode::INVALID_DATA_SHAPE;
-    }
-
-    int batch    = inAccess->numSamples();
-    int channels = inAccess->numChannels();
-    int rows     = inAccess->numRows();
-    int cols     = inAccess->numCols();
-
-    if (channels > 4 || channels < 1)
-    {
-        LOG_ERROR("Invalid channel number ch = " << channels);
-        return ErrorCode::INVALID_DATA_SHAPE;
-    }
-
-    NVCVBndBoxesImpl *_bboxes = (NVCVBndBoxesImpl *)bboxes;
-    if (_bboxes->batch() != batch)
-    {
-        LOG_ERROR("Invalid bboxes batch = " << _bboxes->batch());
-        return ErrorCode::INVALID_DATA_SHAPE;
-    }
-
-    auto ret = cuosd_draw_bndbox(m_context, cols, rows, _bboxes);
-    if (ret != ErrorCode::SUCCESS)
-    {
-        LOG_ERROR("cuosd_draw_bndbox failed, ret - " << ret);
         return ret;
     }
 

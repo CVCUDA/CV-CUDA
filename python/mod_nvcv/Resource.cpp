@@ -22,6 +22,8 @@
 #include <common/Assert.hpp>
 #include <common/CheckError.hpp>
 
+#include <iostream>
+
 namespace nvcvpy::priv {
 
 Resource::Resource()

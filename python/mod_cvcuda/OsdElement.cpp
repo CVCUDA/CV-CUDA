@@ -20,7 +20,6 @@
 #include <common/String.hpp>
 #include <cuda_runtime.h>
 #include <cvcuda/Types.h>
-#include <cvcuda/priv/Types.hpp>
 #include <pybind11/numpy.h>
 #include <pybind11/stl.h>
 
@@ -92,36 +91,12 @@ static NVCVColorRGBA pytocolor(py::tuple color)
 
 } // namespace
 
-void ExportBoxBlur(py::module &m)
+void ExportBndBox(py::module &m)
 {
     using namespace py::literals;
-    using namespace cvcuda::priv;
-
-    py::class_<NVCVBlurBoxI>(m, "BlurBoxI")
-        .def(py::init(
-                 [](py::tuple box, int kernelSize)
-                 {
-                     NVCVBlurBoxI blurbox;
-                     blurbox.box        = pytobox(box);
-                     blurbox.kernelSize = kernelSize;
-                     return blurbox;
-                 }),
-             "box"_a, "kernelSize"_a)
-        .def_readonly("box", &NVCVBlurBoxI::box, "Tuple describing a box: x-coordinate, y-coordinate, width, height.")
-        .def_readonly("kernelSize", &NVCVBlurBoxI::kernelSize, "Kernel sizes of mean filter.");
-
-    py::class_<NVCVBlurBoxesImpl, std::shared_ptr<NVCVBlurBoxesImpl>>(m, "BlurBoxesI")
-        .def(py::init([](const std::vector<std::vector<NVCVBlurBoxI>> &blurboxes_vec)
-                      { return std::make_shared<NVCVBlurBoxesImpl>(blurboxes_vec); }),
-             "boxes"_a);
-}
-
-void ExportOSD(py::module &m)
-{
-    using namespace py::literals;
-    using namespace cvcuda::priv;
 
     py::class_<NVCVBndBoxI>(m, "BndBoxI")
+        .def(py::init([]() { return NVCVBndBoxI{}; }))
         .def(py::init(
                  [](py::tuple box, int thickness, py::tuple borderColor, py::tuple fillColor)
                  {
@@ -138,37 +113,139 @@ void ExportOSD(py::module &m)
         .def_readonly("borderColor", &NVCVBndBoxI::borderColor, "Border color of bounding box.")
         .def_readonly("fillColor", &NVCVBndBoxI::fillColor, "Filled color of bounding box.");
 
-    py::class_<NVCVBndBoxesImpl, std::shared_ptr<NVCVBndBoxesImpl>>(m, "BndBoxesI")
-        .def(py::init([](const std::vector<std::vector<NVCVBndBoxI>> &bndboxes_vec)
-                      { return std::make_shared<NVCVBndBoxesImpl>(bndboxes_vec); }),
-             "boxes"_a);
+    py::class_<NVCVBndBoxesI>(m, "BndBoxesI")
+        .def(py::init([]() { return NVCVBndBoxesI{}; }))
+        .def(py::init(
+                 [](std::vector<int> numBoxes_vec, std::vector<NVCVBndBoxI> bndboxes_vec)
+                 {
+                     NVCVBndBoxesI bndboxes;
 
-    py::class_<NVCVText, std::shared_ptr<NVCVText>>(m, "Label")
+                     bndboxes.batch    = numBoxes_vec.size();
+                     bndboxes.numBoxes = new int[bndboxes.batch];
+                     memcpy(bndboxes.numBoxes, numBoxes_vec.data(), numBoxes_vec.size() * sizeof(int));
+
+                     int total_box_num = bndboxes_vec.size();
+                     bndboxes.boxes    = new NVCVBndBoxI[total_box_num];
+                     memcpy(bndboxes.boxes, bndboxes_vec.data(), bndboxes_vec.size() * sizeof(NVCVBndBoxI));
+
+                     return bndboxes;
+                 }),
+             "numBoxes"_a, "boxes"_a)
+        .def_readonly("batch", &NVCVBndBoxesI::batch, "Number of images in the image batch.")
+        .def_readonly("numBoxes", &NVCVBndBoxesI::numBoxes, "Number array of bounding boxes for image batch.")
+        .def_readonly("boxes", &NVCVBndBoxesI::boxes, "Bounding box array for image batch, \ref NVCVBndBoxI.");
+}
+
+void ExportBoxBlur(py::module &m)
+{
+    using namespace py::literals;
+
+    py::class_<NVCVBlurBoxI>(m, "BlurBoxI")
+        .def(py::init([]() { return NVCVBlurBoxI{}; }))
+        .def(py::init(
+                 [](py::tuple box, int kernelSize)
+                 {
+                     NVCVBlurBoxI blurbox;
+                     blurbox.box        = pytobox(box);
+                     blurbox.kernelSize = kernelSize;
+                     return blurbox;
+                 }),
+             "box"_a, "kernelSize"_a)
+        .def_readonly("box", &NVCVBlurBoxI::box, "Tuple describing a box: x-coordinate, y-coordinate, width, height.")
+        .def_readonly("kernelSize", &NVCVBlurBoxI::kernelSize, "Kernel sizes of mean filter.");
+
+    py::class_<NVCVBlurBoxesI>(m, "BlurBoxesI")
+        .def(py::init([]() { return NVCVBlurBoxesI{}; }))
+        .def(py::init(
+                 [](std::vector<int> numBoxes_vec, std::vector<NVCVBlurBoxI> blurboxes_vec)
+                 {
+                     NVCVBlurBoxesI blurboxes;
+
+                     blurboxes.batch    = numBoxes_vec.size();
+                     blurboxes.numBoxes = new int[blurboxes.batch];
+                     memcpy(blurboxes.numBoxes, numBoxes_vec.data(), numBoxes_vec.size() * sizeof(int));
+
+                     int total_box_num = blurboxes_vec.size();
+                     blurboxes.boxes   = new NVCVBlurBoxI[total_box_num];
+                     memcpy(blurboxes.boxes, blurboxes_vec.data(), blurboxes_vec.size() * sizeof(NVCVBlurBoxI));
+
+                     return blurboxes;
+                 }),
+             "numBoxes"_a, "boxes"_a)
+        .def_readonly("batch", &NVCVBlurBoxesI::batch, "Number of images in the image batch.")
+        .def_readonly("numBoxes", &NVCVBlurBoxesI::numBoxes, "Number array of blurring boxes for image batch.")
+        .def_readonly("boxes", &NVCVBlurBoxesI::boxes, "Blurring box array for image batch, \ref NVCVBlurBoxI.");
+}
+
+void ExportOSD(py::module &m)
+{
+    using namespace py::literals;
+
+    py::class_<NVCVText>(m, "Label")
+        .def(py::init([]() { return NVCVText{}; }))
         .def(py::init(
                  [](const char *utf8Text, int32_t fontSize, const char *fontName, py::tuple tlPos, py::tuple fontColor,
-                    py::tuple bgColor) {
-                     return NVCVText(utf8Text, fontSize, fontName, pytopoint(tlPos), pytocolor(fontColor),
-                                     pytocolor(bgColor));
+                    py::tuple bgColor)
+                 {
+                     NVCVText label;
+                     label.utf8Text = (const char *)malloc(strlen(utf8Text));
+                     memcpy(const_cast<char *>(label.utf8Text), utf8Text, strlen(utf8Text) + 1);
+                     label.fontName = (const char *)malloc(strlen(fontName));
+                     memcpy(const_cast<char *>(label.fontName), fontName, strlen(fontName) + 1);
+                     label.fontSize  = fontSize;
+                     label.tlPos     = pytopoint(tlPos);
+                     label.fontColor = pytocolor(fontColor);
+                     label.bgColor   = pytocolor(bgColor);
+                     return label;
                  }),
-             "utf8Text"_a, "fontSize"_a, py::arg("fontName") = "DejaVuSansMono", "tlPos"_a, "fontColor"_a, "bgColor"_a);
+             "utf8Text"_a, "fontSize"_a, py::arg("fontName") = "DejaVuSansMono", "tlPos"_a, "fontColor"_a, "bgColor"_a)
+        .def_readonly("utf8Text", &NVCVText::utf8Text, "Label text in utf8 format.")
+        .def_readonly("fontSize", &NVCVText::fontSize, "Font size of label text.")
+        .def_readonly("fontName", &NVCVText::fontName, "Font name of label text, default: DejaVuSansMono.")
+        .def_readonly("tlPos", &NVCVText::tlPos, "Top-left corner point for label text.")
+        .def_readonly("fontColor", &NVCVText::fontColor, "Font color of label text.")
+        .def_readonly("bgColor", &NVCVText::bgColor, "Back color of label text.");
 
     py::class_<NVCVSegment>(m, "Segment")
+        .def(py::init([]() { return NVCVSegment{}; }))
         .def(py::init(
                  [](py::tuple box, int32_t thickness, py::array_t<float> segArray, float segThreshold,
                     py::tuple borderColor, py::tuple segColor)
                  {
+                     NVCVSegment segment;
+                     segment.box       = pytobox(box);
+                     segment.thickness = thickness;
+
                      py::buffer_info hSeg = segArray.request();
                      if (hSeg.ndim != 2)
                      {
                          throw std::runtime_error("segArray dims must be 2!");
                      }
+                     segment.segWidth  = hSeg.shape[0];
+                     segment.segHeight = hSeg.shape[1];
 
-                     return NVCVSegment(pytobox(box), thickness, (float *)hSeg.ptr, hSeg.shape[0], hSeg.shape[1],
-                                        segThreshold, pytocolor(borderColor), pytocolor(segColor));
+                     checkRuntime(cudaMalloc(&segment.dSeg, segment.segWidth * segment.segHeight * sizeof(float)));
+                     checkRuntime(cudaMemcpy(segment.dSeg, hSeg.ptr,
+                                             segment.segWidth * segment.segHeight * sizeof(float),
+                                             cudaMemcpyHostToDevice));
+
+                     segment.segThreshold = segThreshold;
+                     segment.borderColor  = pytocolor(borderColor);
+                     segment.segColor     = pytocolor(segColor);
+                     return segment;
                  }),
-             "box"_a, "thickness"_a, "segArray"_a, "segThreshold"_a, "borderColor"_a, "segColor"_a);
+             "box"_a, "thickness"_a, "segArray"_a, "segThreshold"_a, "borderColor"_a, "segColor"_a)
+        .def_readonly("box", &NVCVSegment::box, "Bounding box of segment.")
+        .def_readonly("thickness", &NVCVSegment::thickness, "Line thickness of segment outter rect.")
+        .def_readonly("dSeg", &NVCVSegment::dSeg, "Device pointer for segment mask.")
+        .def_readonly("segWidth", &NVCVSegment::segWidth, "Segment mask width.")
+        .def_readonly("segHeight", &NVCVSegment::segHeight, "Segment mask height.")
+        .def_readonly("segThreshold", &NVCVSegment::segThreshold, "Segment threshold.")
+        .def_readonly("borderColor", &NVCVSegment::borderColor, "Line color of segment outter rect.")
+        .def_readonly("segColor", &NVCVSegment::segColor, "Segment mask color.");
 
     py::class_<NVCVPoint>(m, "Point")
+        .def(py::init([]() { return NVCVPoint{}; }))
         .def(py::init(
                  [](py::tuple centerPos, int32_t radius, py::tuple color)
                  {
@@ -184,6 +261,7 @@ void ExportOSD(py::module &m)
         .def_readonly("color", &NVCVPoint::color, "Point color.");
 
     py::class_<NVCVLine>(m, "Line")
+        .def(py::init([]() { return NVCVLine{}; }))
         .def(py::init(
                  [](py::tuple pos0, py::tuple pos1, int32_t thickness, py::tuple color, bool interpolation)
                  {
@@ -203,22 +281,46 @@ void ExportOSD(py::module &m)
         .def_readonly("interpolation", &NVCVLine::interpolation, "Default: true.");
 
     py::class_<NVCVPolyLine>(m, "PolyLine")
+        .def(py::init([]() { return NVCVPolyLine{}; }))
         .def(py::init(
                  [](py::array_t<int> points, int32_t thickness, bool isClosed, py::tuple borderColor,
                     py::tuple fillColor, bool interpolation)
                  {
+                     NVCVPolyLine pl;
+
                      py::buffer_info points_info = points.request();
                      if (points_info.ndim != 2 || points_info.shape[1] != 2)
                      {
                          throw std::runtime_error("points dims and shape[1] must be 2!");
                      }
 
-                     return NVCVPolyLine((int32_t *)points_info.ptr, points_info.shape[0], thickness, isClosed,
-                                         pytocolor(borderColor), pytocolor(fillColor), interpolation);
+                     pl.numPoints = points_info.shape[0];
+                     pl.hPoints   = new int[pl.numPoints * 2];
+                     checkRuntime(cudaMalloc(&pl.dPoints, 2 * pl.numPoints * sizeof(int)));
+
+                     memcpy(pl.hPoints, points_info.ptr, 2 * pl.numPoints * sizeof(int));
+                     checkRuntime(cudaMemcpy(pl.dPoints, points_info.ptr, 2 * pl.numPoints * sizeof(int),
+                                             cudaMemcpyHostToDevice));
+
+                     pl.thickness     = thickness;
+                     pl.isClosed      = isClosed;
+                     pl.borderColor   = pytocolor(borderColor);
+                     pl.fillColor     = pytocolor(fillColor);
+                     pl.interpolation = interpolation;
+                     return pl;
                  }),
-             "points"_a, "thickness"_a, "isClosed"_a, "borderColor"_a, "fillColor"_a, py::arg("interpolation") = true);
+             "points"_a, "thickness"_a, "isClosed"_a, "borderColor"_a, "fillColor"_a, py::arg("interpolation") = true)
+        .def_readonly("hPoints", &NVCVPolyLine::hPoints, "Host pointer for polyline points.")
+        .def_readonly("dPoints", &NVCVPolyLine::dPoints, "Device pointer for polyline points.")
+        .def_readonly("numPoints", &NVCVPolyLine::numPoints, "Number of polyline points.")
+        .def_readonly("thickness", &NVCVPolyLine::thickness, "Polyline thickness.")
+        .def_readonly("isClosed", &NVCVPolyLine::isClosed, "Connect p(0) to p(n-1) or not.")
+        .def_readonly("borderColor", &NVCVPolyLine::borderColor, "Line color of polyline border.")
+        .def_readonly("fillColor", &NVCVPolyLine::fillColor, "Fill color of poly fill area.")
+        .def_readonly("interpolation", &NVCVPolyLine::interpolation, "Default: true.");
 
     py::class_<NVCVRotatedBox>(m, "RotatedBox")
+        .def(py::init([]() { return NVCVRotatedBox{}; }))
         .def(py::init(
                  [](py::tuple centerPos, int32_t width, int32_t height, float yaw, int32_t thickness,
                     py::tuple borderColor, py::tuple bgColor, bool interpolation)
@@ -246,6 +348,7 @@ void ExportOSD(py::module &m)
         .def_readonly("interpolation", &NVCVRotatedBox::interpolation, "Default: false.");
 
     py::class_<NVCVCircle>(m, "Circle")
+        .def(py::init([]() { return NVCVCircle{}; }))
         .def(py::init(
                  [](py::tuple centerPos, int32_t radius, int32_t thickness, py::tuple borderColor, py::tuple bgColor)
                  {
@@ -265,6 +368,7 @@ void ExportOSD(py::module &m)
         .def_readonly("bgColor", &NVCVCircle::bgColor, "Circle filled color.");
 
     py::class_<NVCVArrow>(m, "Arrow")
+        .def(py::init([]() { return NVCVArrow{}; }))
         .def(py::init(
                  [](py::tuple pos0, py::tuple pos1, int32_t arrowSize, int32_t thickness, py::tuple color,
                     bool interpolation)
@@ -292,88 +396,144 @@ void ExportOSD(py::module &m)
         .value("HHMMSS", NVCVClockFormat::HHMMSS);
 
     py::class_<NVCVClock>(m, "Clock")
+        .def(py::init([]() { return NVCVClock{}; }))
         .def(py::init(
                  [](NVCVClockFormat clockFormat, long time, int32_t fontSize, const char *font, py::tuple tlPos,
-                    py::tuple fontColor, py::tuple bgColor) {
-                     return NVCVClock(clockFormat, time, fontSize, font, pytopoint(tlPos), pytocolor(fontColor),
-                                      pytocolor(bgColor));
+                    py::tuple fontColor, py::tuple bgColor)
+                 {
+                     NVCVClock clock;
+                     clock.clockFormat = clockFormat;
+                     clock.time        = time;
+                     clock.fontSize    = fontSize;
+                     clock.font        = (const char *)malloc(strlen(font));
+                     memcpy(const_cast<char *>(clock.font), font, strlen(font) + 1);
+                     clock.tlPos     = pytopoint(tlPos);
+                     clock.fontColor = pytocolor(fontColor);
+                     clock.bgColor   = pytocolor(bgColor);
+                     return clock;
                  }),
              "clockFormat"_a, "time"_a, "fontSize"_a, py::arg("font") = "DejaVuSansMono", "tlPos"_a, "fontColor"_a,
-             "bgColor"_a);
+             "bgColor"_a)
+        .def_readonly("clockFormat", &NVCVClock::clockFormat, "Pre-defined clock format.")
+        .def_readonly("time", &NVCVClock::time, "Clock time.")
+        .def_readonly("fontSize", &NVCVClock::fontSize, "Font size.")
+        .def_readonly("font", &NVCVClock::font, "Font name, default: DejaVuSansMono.")
+        .def_readonly("tlPos", &NVCVClock::tlPos, "Top-left corner point of the text.")
+        .def_readonly("fontColor", &NVCVClock::fontColor, "Font color of the text.")
+        .def_readonly("bgColor", &NVCVClock::bgColor, "Background color of text box.");
 
-    py::class_<NVCVElementsImpl, std::shared_ptr<NVCVElementsImpl>>(m, "Elements")
+    py::class_<NVCVElement>(m, "Element")
+        .def(py::init([]() { return NVCVElement{}; }))
         .def(py::init(
-                 [](const std::vector<py::list> &elements_list_vec)
+                 [](NVCVOSDType type, void *data)
                  {
-                     std::vector<std::vector<std::shared_ptr<NVCVElement>>> elements_vec;
-                     for (const auto &elements_list : elements_list_vec)
+                     NVCVElement element;
+                     element.type = type;
+                     element.data = data;
+                     return element;
+                 }),
+             "type"_a, "data"_a)
+        .def_readonly("type", &NVCVElement::type, "Element type.")
+        .def_readonly("data", &NVCVElement::data, "Element data pointer.");
+
+    py::class_<NVCVElements>(m, "Elements")
+        .def(py::init([]() { return NVCVElements{}; }))
+        .def(py::init(
+                 [](std::vector<int> numElements_vec, py::tuple elements_list)
+                 {
+                     NVCVElements ctx;
+
+                     ctx.batch       = numElements_vec.size();
+                     ctx.numElements = new int[ctx.batch];
+                     memcpy(ctx.numElements, numElements_vec.data(), numElements_vec.size() * sizeof(int));
+
+                     int total_element_num = elements_list.size();
+                     ctx.elements          = new NVCVElement[total_element_num];
+
+                     for (size_t i = 0; i < elements_list.size(); ++i)
                      {
-                         std::vector<std::shared_ptr<NVCVElement>> curVec;
-                         for (size_t i = 0; i < elements_list.size(); ++i)
+                         if (pybind11::isinstance<NVCVBndBoxI>(elements_list[i]))
                          {
-                             std::shared_ptr<NVCVElement> element;
-                             if (pybind11::isinstance<NVCVBndBoxI>(elements_list[i]))
-                             {
-                                 auto rect = elements_list[i].cast<NVCVBndBoxI>();
-                                 element   = std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_RECT, &rect);
-                             }
-                             else if (pybind11::isinstance<NVCVText>(elements_list[i]))
-                             {
-                                 auto text = elements_list[i].cast<NVCVText>();
-                                 element   = std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_TEXT, &text);
-                             }
-                             else if (pybind11::isinstance<NVCVSegment>(elements_list[i]))
-                             {
-                                 auto segment = elements_list[i].cast<NVCVSegment>();
-                                 element      = std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_SEGMENT, &segment);
-                             }
-                             else if (pybind11::isinstance<NVCVPoint>(elements_list[i]))
-                             {
-                                 auto point = elements_list[i].cast<NVCVPoint>();
-                                 element    = std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_POINT, &point);
-                             }
-                             else if (pybind11::isinstance<NVCVLine>(elements_list[i]))
-                             {
-                                 auto line = elements_list[i].cast<NVCVLine>();
-                                 element   = std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_LINE, &line);
-                             }
-                             else if (pybind11::isinstance<NVCVPolyLine>(elements_list[i]))
-                             {
-                                 auto pl = elements_list[i].cast<NVCVPolyLine>();
-                                 element = std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_POLYLINE, &pl);
-                             }
-                             else if (pybind11::isinstance<NVCVRotatedBox>(elements_list[i]))
-                             {
-                                 auto rb = elements_list[i].cast<NVCVRotatedBox>();
-                                 element = std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_ROTATED_RECT, &rb);
-                             }
-                             else if (pybind11::isinstance<NVCVCircle>(elements_list[i]))
-                             {
-                                 auto circle = elements_list[i].cast<NVCVCircle>();
-                                 element     = std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_CIRCLE, &circle);
-                             }
-                             else if (pybind11::isinstance<NVCVArrow>(elements_list[i]))
-                             {
-                                 auto arrow = elements_list[i].cast<NVCVArrow>();
-                                 element    = std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_ARROW, &arrow);
-                             }
-                             else if (pybind11::isinstance<NVCVClock>(elements_list[i]))
-                             {
-                                 auto clock = elements_list[i].cast<NVCVClock>();
-                                 element    = std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_CLOCK, &clock);
-                             }
-                             else
-                             {
-                                 element = std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_NONE, nullptr);
-                             }
-                             curVec.emplace_back(element);
+                             ctx.elements[i].type = NVCVOSDType::NVCV_OSD_RECT;
+                             ctx.elements[i].data = new NVCVBndBoxI();
+                             auto bndbox          = elements_list[i].cast<NVCVBndBoxI>();
+                             memcpy(ctx.elements[i].data, &bndbox, sizeof(NVCVBndBoxI));
                          }
-                         elements_vec.emplace_back(curVec);
+                         else if (pybind11::isinstance<NVCVText>(elements_list[i]))
+                         {
+                             ctx.elements[i].type = NVCVOSDType::NVCV_OSD_TEXT;
+                             ctx.elements[i].data = new NVCVText();
+                             auto text            = elements_list[i].cast<NVCVText>();
+                             memcpy(ctx.elements[i].data, &text, sizeof(NVCVText));
+                         }
+                         else if (pybind11::isinstance<NVCVSegment>(elements_list[i]))
+                         {
+                             ctx.elements[i].type = NVCVOSDType::NVCV_OSD_SEGMENT;
+                             ctx.elements[i].data = new NVCVSegment();
+                             auto segment         = elements_list[i].cast<NVCVSegment>();
+                             memcpy(ctx.elements[i].data, &segment, sizeof(NVCVSegment));
+                         }
+                         else if (pybind11::isinstance<NVCVPoint>(elements_list[i]))
+                         {
+                             ctx.elements[i].type = NVCVOSDType::NVCV_OSD_POINT;
+                             ctx.elements[i].data = new NVCVPoint();
+                             auto point           = elements_list[i].cast<NVCVPoint>();
+                             memcpy(ctx.elements[i].data, &point, sizeof(NVCVPoint));
+                         }
+                         else if (pybind11::isinstance<NVCVLine>(elements_list[i]))
+                         {
+                             ctx.elements[i].type = NVCVOSDType::NVCV_OSD_LINE;
+                             ctx.elements[i].data = new NVCVLine();
+                             auto line            = elements_list[i].cast<NVCVLine>();
+                             memcpy(ctx.elements[i].data, &line, sizeof(NVCVLine));
+                         }
+                         else if (pybind11::isinstance<NVCVPolyLine>(elements_list[i]))
+                         {
+                             ctx.elements[i].type = NVCVOSDType::NVCV_OSD_POLYLINE;
+                             ctx.elements[i].data = new NVCVPolyLine();
+                             auto pl              = elements_list[i].cast<NVCVPolyLine>();
+                             memcpy(ctx.elements[i].data, &pl, sizeof(NVCVPolyLine));
+                         }
+                         else if (pybind11::isinstance<NVCVRotatedBox>(elements_list[i]))
+                         {
+                             ctx.elements[i].type = NVCVOSDType::NVCV_OSD_ROTATED_RECT;
+                             ctx.elements[i].data = new NVCVRotatedBox();
+                             auto pl              = elements_list[i].cast<NVCVRotatedBox>();
+                             memcpy(ctx.elements[i].data, &pl, sizeof(NVCVRotatedBox));
+                         }
+                         else if (pybind11::isinstance<NVCVCircle>(elements_list[i]))
+                         {
+                             ctx.elements[i].type = NVCVOSDType::NVCV_OSD_CIRCLE;
+                             ctx.elements[i].data = new NVCVCircle();
+                             auto circle          = elements_list[i].cast<NVCVCircle>();
+                             memcpy(ctx.elements[i].data, &circle, sizeof(NVCVCircle));
+                         }
+                         else if (pybind11::isinstance<NVCVArrow>(elements_list[i]))
+                         {
+                             ctx.elements[i].type = NVCVOSDType::NVCV_OSD_ARROW;
+                             ctx.elements[i].data = new NVCVArrow();
+                             auto arrow           = elements_list[i].cast<NVCVArrow>();
+                             memcpy(ctx.elements[i].data, &arrow, sizeof(NVCVArrow));
+                         }
+                         else if (pybind11::isinstance<NVCVClock>(elements_list[i]))
+                         {
+                             ctx.elements[i].type = NVCVOSDType::NVCV_OSD_CLOCK;
+                             ctx.elements[i].data = new NVCVClock();
+                             auto clock           = elements_list[i].cast<NVCVClock>();
+                             memcpy(ctx.elements[i].data, &clock, sizeof(NVCVClock));
+                         }
+                         else
+                         {
+                             ctx.elements[i].type = NVCVOSDType::NVCV_OSD_NONE;
+                         }
                      }
 
-                     return std::make_shared<NVCVElementsImpl>(elements_vec);
+                     return ctx;
                  }),
-             "elements"_a);
+             "numElements"_a, "elements"_a)
+        .def_readonly("batch", &NVCVElements::batch, "Number of images in the image batch.")
+        .def_readonly("numElements", &NVCVElements::numElements, "Number array of OSD elements for image batch.")
+        .def_readonly("elements", &NVCVElements::elements, "OSD elements array for image batch, \ref NVCVElement.");
 }
 
 } // namespace cvcudapy

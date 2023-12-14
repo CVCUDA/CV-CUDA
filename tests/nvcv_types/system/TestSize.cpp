@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,20 +22,6 @@
 
 namespace gt   = ::testing;
 namespace test = nvcv::test;
-
-TEST(Size2D, C_interop)
-{
-    NVCVSize2D   c_size{5, 7};
-    nvcv::Size2D cxx_size = c_size; // construction
-    EXPECT_EQ(cxx_size, c_size);    // comparison
-    cxx_size.w++;
-    EXPECT_NE(cxx_size, c_size);
-    cxx_size = c_size; // assignment
-    EXPECT_EQ(cxx_size, c_size);
-    c_size             = cxx_size; // reverse assignment
-    NVCVSize2D c_size2 = cxx_size; // reverse construction
-    EXPECT_EQ(c_size2, cxx_size);
-}
 
 // Size2D Equality --------------------------------------------
 class Size2DEqualityTests : public gt::TestWithParam<std::tuple<nvcv::Size2D, nvcv::Size2D, bool>>

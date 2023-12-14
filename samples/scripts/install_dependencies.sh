@@ -75,7 +75,7 @@ pip3 install /tmp/VideoProcessingFramework
 pip3 install /tmp/VideoProcessingFramework/src/PytorchNvCodec
 
 # Install tao-converter which parses the .etlt model file, and generates an optimized TensorRT engine
-wget 'https://api.ngc.nvidia.com/v2/resources/nvidia/tao/tao-converter/versions/v4.0.0_trt8.5.1.7_x86/files/tao-converter' --directory-prefix=/usr/local/bin
+wget --content-disposition 'https://api.ngc.nvidia.com/v2/resources/nvidia/tao/tao-converter/versions/v4.0.0_trt8.5.1.7_x86/files/tao-converter' --directory-prefix=/usr/local/bin
 chmod a+x /usr/local/bin/tao-converter
 
 # Install NVIDIA NSIGHT 2023.2.1

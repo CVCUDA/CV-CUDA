@@ -31,11 +31,10 @@ extern "C"
 {
 #endif
 
-typedef struct NVCVImage       *NVCVImageHandle;
-typedef struct NVCVImageBatch  *NVCVImageBatchHandle;
-typedef struct NVCVTensor      *NVCVTensorHandle;
-typedef struct NVCVTensorBatch *NVCVTensorBatchHandle;
-typedef struct NVCVArray       *NVCVArrayHandle;
+typedef struct NVCVImage      *NVCVImageHandle;
+typedef struct NVCVImageBatch *NVCVImageBatchHandle;
+typedef struct NVCVTensor     *NVCVTensorHandle;
+typedef struct NVCVArray      *NVCVArrayHandle;
 
 #ifdef __cplusplus
 }

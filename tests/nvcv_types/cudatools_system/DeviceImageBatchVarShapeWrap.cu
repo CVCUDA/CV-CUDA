@@ -71,7 +71,7 @@ __global__ void SetTwos(cuda::ImageBatchVarShapeWrapNHWC<ChannelType> dst, int n
     {
         *dst.ptr(coord.z, coord.y, coord.x, ch) = cuda::SetAll<ChannelType>(1);
 
-        int4 dstCoord{coord.z, coord.y, coord.x, ch};
+        int4 dstCoord{coord.x, coord.y, coord.z, ch};
         dst[dstCoord] += cuda::SetAll<ChannelType>(1);
     }
 }

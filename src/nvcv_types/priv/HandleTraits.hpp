@@ -56,12 +56,6 @@ struct HandleTraits<NVCVImageBatchHandle>
     constexpr static bool hasManager = true;
 };
 
-template<>
-struct HandleTraits<NVCVTensorBatchHandle>
-{
-    constexpr static bool hasManager = true;
-};
-
 template<class T>
 constexpr bool HasObjManager = HandleTraits<T>::hasManager;
 

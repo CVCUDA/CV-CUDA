@@ -157,7 +157,6 @@ Array::Array(NVCVArrayRequirements reqs, IAllocator &alloc, NVCVResourceType tar
     NVCV_ASSERT(m_memBuffer != nullptr);
 
     this->exportData(m_data);
-    m_data.length = 0;
 }
 
 Array::~Array()
@@ -221,14 +220,6 @@ void Array::exportData(NVCVArrayData &data) const
     {
         buf.stride  = m_reqs.stride;
         buf.basePtr = reinterpret_cast<NVCVByte *>(m_memBuffer);
-    }
-}
-
-void Array::resize(int64_t length)
-{
-    if (length <= this->capacity())
-    {
-        m_data.length = length;
     }
 }
 

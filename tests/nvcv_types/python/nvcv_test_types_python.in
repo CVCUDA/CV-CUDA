@@ -45,30 +45,14 @@ function on_exit()
 }
 trap 'on_exit' EXIT
 
-export PYTHONPATH="$PYTHONPATH:@PYTHON_MODULE_DIR@"
-
 for ver in $python_versions; do
 
     if [[ "$NVCV_FORCE_PYTHON" != 1 && "$NVCV_FORCE_PYTHON" != yes ]]; then
-        if ! python$ver -c 'import nvcv'; then
+        if ! PYTHONPATH="$PYTHONPATH:@PYTHON_MODULE_DIR@" python$ver -c 'import nvcv'; then
             echo "Skipping python-$ver, NVCV python bindings not installed"
             continue
         fi
     fi
 
-    # Check if python module is exposing only PyInit_cvcuda.
-    # Also provide some helpful info is exposing too much.
-    modfile=$(python$ver -c "import nvcv; print(nvcv.__file__)")
-    pubsyms=$(readelf -sWD $modfile | grep -v ' UND ' | grep ' GLOBAL ')
-    if [[ $(echo "$pubsyms" | wc -l) != 1 ]]; then
-        echo -e "nvcv python $ver module is exposing too many symbols:\n$pubsyms"
-        exit 1
-    fi
-    if ! echo "$pubsyms" | grep PyInit_nvcv > /dev/null; then
-        echo -e "nvcv python $ver module must expose symbol PyInit_nvcv, but instead exposes:\n$pubsyms"
-        exit 2
-    fi
-
-    # Run python tests
-    NVCV_VERSION="@NVCV_VERSION_FULL@" python$ver -m pytest -o cache_dir="$tmpdir" "$@" "$tests_dir"
+    PYTHONPATH="$PYTHONPATH:@PYTHON_MODULE_DIR@" NVCV_VERSION="@NVCV_VERSION_FULL@" python$ver -m pytest -o cache_dir="$tmpdir" "$@" "$tests_dir"
 done

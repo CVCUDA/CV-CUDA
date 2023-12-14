@@ -100,7 +100,7 @@ __device__ void transfer_data(cuda::BorderVarShapeWrapNHWC<const T1, B> srcWrap,
             float base  = get_base_value(baseWrap, c, base_channels);
             float scale = get_scale_value(scaleWrap, c, scale_channels, epsilon, flags);
             dstWrap[(int4){dst_idx.x, dst_idx.y, c, batchidx}] = cuda::SaturateCast<T2>(
-                (srcWrap[(int4){batchidx, src_idx.y, src_idx.x, c}] - base) * scale * global_scale + global_shift);
+                (srcWrap[(int4){src_idx.x, src_idx.y, batchidx, c}] - base) * scale * global_scale + global_shift);
         }
     }
     else
@@ -110,7 +110,7 @@ __device__ void transfer_data(cuda::BorderVarShapeWrapNHWC<const T1, B> srcWrap,
             float base  = get_base_value(baseWrap, c, base_channels);
             float scale = get_scale_value(scaleWrap, c, scale_channels, epsilon, flags);
             dstWrap[(int4){c, dst_idx.x, dst_idx.y, batchidx}] = cuda::SaturateCast<T2>(
-                (srcWrap[(int4){batchidx, src_idx.y, src_idx.x, c}] - base) * scale * global_scale + global_shift);
+                (srcWrap[(int4){src_idx.x, src_idx.y, batchidx, c}] - base) * scale * global_scale + global_shift);
         }
     }
 }

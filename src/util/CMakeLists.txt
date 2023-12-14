@@ -184,9 +184,6 @@ add_library(nvcv_util
     String.cpp
     Version.cpp
     TensorDataUtils.cpp
-    Event.cpp
-    Stream.cpp
-    StreamId.cpp
 )
 
 target_include_directories(nvcv_util

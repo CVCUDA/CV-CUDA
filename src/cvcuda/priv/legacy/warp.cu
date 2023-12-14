@@ -216,6 +216,11 @@ ErrorCode WarpAffine::infer(const TensorDataStridedCuda &inData, const TensorDat
     return ErrorCode::SUCCESS;
 }
 
+size_t WarpPerspective::calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type)
+{
+    return 9 * sizeof(float);
+}
+
 ErrorCode WarpPerspective::infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                                  const float *transMatrix, const int32_t flags, const NVCVBorderType borderMode,
                                  const float4 borderValue, cudaStream_t stream)
@@ -285,7 +290,7 @@ ErrorCode WarpPerspective::infer(const TensorDataStridedCuda &inData, const Tens
 
     PerspectiveTransform transform(transMatrix);
 
-    if (!(flags & NVCV_WARP_INVERSE_MAP))
+    if (flags & NVCV_WARP_INVERSE_MAP)
     {
         cuda::math::Matrix<float, 3, 3> tempMatrixForInverse;
 

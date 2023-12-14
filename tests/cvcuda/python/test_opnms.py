@@ -13,11 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
 import cvcuda
 import cvcuda_util as util
 import pytest as t
 import numpy as np
+import torch
 
 
 RNG = np.random.default_rng(0)

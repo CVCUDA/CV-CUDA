@@ -68,7 +68,7 @@ typedef struct NVCVImageBatchVarShapeRequirementsRec
 /** Calculates the resource requirements needed to create a varshape image batch.
  *
  * @param [in] capacity Maximum number of images that fits in the image batch.
- *                      + Must be >= 0.
+ *                      + Must be >= 1.
  *
  * @param [out] reqs  Where the image batch requirements will be written to.
  *                    + Must not be NULL.
@@ -104,9 +104,11 @@ NVCV_PUBLIC NVCVStatus nvcvImageBatchVarShapeConstruct(const NVCVImageBatchVarSh
 /** Decrements the reference count of an existing image batch instance.
  *
  * The image batch is destroyed when its reference count reaches zero.
- *
+
  * If the image has type @ref NVCV_TYPE_IMAGEBATCH_TENSOR_WRAPDATA and has a cleanup function defined,
  * cleanup will be called.
+ *
+ * @note The image batch object must not be in use in current and future operations.
  *
  * @param [in] handle       Image batch to be destroyed.
  *                          If NULL, no operation is performed, successfully.

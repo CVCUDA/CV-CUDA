@@ -76,7 +76,7 @@ class CvCudaPerf:
         self.timing_info = {}
         self.batch_info = {}
         self.inside_batch_info = []
-        self.is_inside_batch = 0
+        self.is_inside_batch = False
         self.total_batches_processed = {}
         # Check if the benchmark.py script was used to run this. We do so
         # by checking whether an environment variable only set by that script is
@@ -108,7 +108,7 @@ class CvCudaPerf:
         """
         if batch_idx is not None:
             message += "_%d" % batch_idx
-            self.is_inside_batch += 1
+            self.is_inside_batch = True
 
         nvtx.push_range(message, color, domain, category)
 
@@ -133,12 +133,12 @@ class CvCudaPerf:
             # Actual timing information will be recorded and pulled from NSYS by a
             # script like benchmark.py.
 
-            if self.is_inside_batch > 0:
+            if self.is_inside_batch:
                 self.inside_batch_info.append(self.stack_path)
 
             # Record the batch information if it was present.
             if total_items is not None:
-                if self.is_inside_batch <= 0:
+                if not self.is_inside_batch:
                     raise ValueError(
                         "Non zero value for total_items in pop_range can only be "
                         "passed once inside a batch. No known batch was pushed previously. Please "
@@ -146,7 +146,7 @@ class CvCudaPerf:
                     )
 
                 self.batch_info[self.stack_path] = (batch_idx, total_items)
-                self.is_inside_batch -= 1
+                self.is_inside_batch = False
 
                 if total_items > 0:
                     batch_level_prefix = os.path.dirname(self.stack_path)

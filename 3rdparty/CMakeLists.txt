@@ -38,11 +38,3 @@ set(DLPACK_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/dlpack" PARENT_SCOPE)
 
 # cuOSD -----------------------------
 set(CUOSD_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/cuOSD" PARENT_SCOPE)
-
-# NVBench --------------------------------
-set(NVBENCH_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/nvbench" PARENT_SCOPE)
-
-if(BUILD_BENCH)
-    set(NVBench_ENABLE_CUPTI off)
-    add_subdirectory(nvbench)
-endif()

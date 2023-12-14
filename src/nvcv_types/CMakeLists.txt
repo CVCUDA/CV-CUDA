@@ -32,7 +32,6 @@ add_library(nvcv_types SHARED
     DataType.cpp
     ImageFormat.cpp
     Array.cpp
-    TensorBatch.cpp
 )
 
 target_link_libraries(nvcv_types

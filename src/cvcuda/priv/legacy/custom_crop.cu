@@ -64,6 +64,11 @@ void customCrop(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDat
 
 namespace nvcv::legacy::cuda_op {
 
+size_t CustomCrop::calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type)
+{
+    return 0;
+}
+
 ErrorCode CustomCrop::infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, NVCVRectI roi,
                             cudaStream_t stream)
 {

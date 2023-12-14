@@ -32,10 +32,7 @@
 namespace cvcudapy {
 
 namespace {
-
-using TupleTensor2 = std::tuple<Tensor, Tensor>;
-
-TupleTensor2 FindContoursInto(Tensor &points, Tensor &numPoints, Tensor &input, std::optional<Stream> pstream)
+Tensor FindContoursInto(Tensor &points, Tensor &numPoints, Tensor &input, std::optional<Stream> pstream)
 {
     if (!pstream)
     {
@@ -53,10 +50,10 @@ TupleTensor2 FindContoursInto(Tensor &points, Tensor &numPoints, Tensor &input, 
 
     findContours->submit(pstream->cudaHandle(), input, points, numPoints);
 
-    return TupleTensor2(std::move(points), std::move(numPoints));
+    return points;
 }
 
-TupleTensor2 FindContours(Tensor &input, std::optional<Stream> pstream)
+Tensor FindContours(Tensor &input, std::optional<Stream> pstream)
 {
     auto pointShape = nvcv::TensorShape{
         {input.shape()[0], cvcuda::FindContours::MAX_TOTAL_POINTS, 2},
@@ -68,7 +65,7 @@ TupleTensor2 FindContours(Tensor &input, std::optional<Stream> pstream)
         {input.shape()[0], cvcuda::FindContours::MAX_NUM_CONTOURS},
         nvcv::TENSOR_NW
     };
-    Tensor numPoints = Tensor::Create(countShape, nvcv::TYPE_S32);
+    Tensor numPoints = Tensor::Create(countShape, nvcv::TYPE_U32);
 
     return FindContoursInto(points, numPoints, input, pstream);
 }
@@ -95,12 +92,7 @@ void ExportOpFindContours(py::module &m)
             stream (Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            Tuple[Tensor, Tensor]: A tuple of two tensors. The first is the contour points tensor with dimensions NxMx2 -
-            where N is the batch size, M is the maximum number of points allowed. Each point of the contour is specified
-            in (x, y) coordinates. The second tensor specifies the number of valid contours per image and the number of
-            valid points in those contours. It has dimensions NxC where N is the batch size and C is the maximum number
-            of contours found. The actual number of contours can be calculated by counting the number of non-zero elements
-            in the C dimension and the actual number of points in each of those contours are the values stored in the C dimension.
+            cvcuda.Tensor: The output tensor.
 
         Caution:
             Restrictions to several arguments may apply. Check the C

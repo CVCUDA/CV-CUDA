@@ -108,10 +108,6 @@ def parse_nvtx_pushpop_trace_json(json_path):
     #
     range_info = {}
 
-    # Check if the file was empty or not. Empty file means no ops were recorded.
-    if os.stat(json_path).st_size == 0:
-        return range_info
-
     # Read the JSON.
     with open(json_path, "r") as f:
         json_data = json.loads(f.read())
@@ -1097,14 +1093,9 @@ def main():
             # behaves correctly.
             proc_device_id = str(args.gpu_offset_id + gpu_idx)
             proc_args = args.args.copy()
-            # The following will make sure that it inserts the additional args
-            # only at the beginning of the list so that it doesn't interfere with a
-            # potentially argparse.REMAINDER style arg present at the end.
+            proc_args.extend(["--device_id", proc_device_id])
+            proc_args.extend(["--output_dir", proc_output_dir])
 
-            # Need to set this to 0 because once CUDA_VISIBLE_DEVICES is used,
-            # the process won't be able to see other gpus
-            proc_args[:0] = ["--device_id", "0"]
-            proc_args[:0] = ["--output_dir", proc_output_dir]
             # Start the pool.
             result = pool.apply_async(
                 benchmark_script,

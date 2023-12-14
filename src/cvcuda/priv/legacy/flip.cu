@@ -115,6 +115,11 @@ void flip(const TensorDataStridedCuda &input, const TensorDataStridedCuda &outpu
 #endif // CUDA_DEBUG_LOG
 }
 
+size_t Flip::calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type)
+{
+    return 0;
+}
+
 ErrorCode Flip::infer(const TensorDataStridedCuda &input, const TensorDataStridedCuda &output, const int32_t flipCode,
                       cudaStream_t stream)
 {

@@ -385,42 +385,6 @@ typedef enum
     NVCV_SIFT_USE_EXPANDED_INPUT = 1
 } NVCVSIFTFlagType;
 
-// @brief Defines connectivity of elements
-typedef enum
-{
-    NVCV_CONNECTIVITY_4_2D,  //!< Immediate (cross) neighborhood of pixels.
-    NVCV_CONNECTIVITY_6_3D,  //!< Immediate (cross) neighborhood of voxels.
-    NVCV_CONNECTIVITY_8_2D,  //!< All direct (full) neighborhood of pixels.
-    NVCV_CONNECTIVITY_26_3D, //!< All direct (full) neighborhood of voxels.
-} NVCVConnectivityType;
-
-// @brief Defines how labels are assigned in Label operator
-typedef enum
-{
-    NVCV_LABEL_FAST,       //!< Does not guarantee consecutive label numbers.
-    NVCV_LABEL_SEQUENTIAL, //!< Assigns consecutive numbers to labels.
-} NVCVLabelType;
-
-// @brief Defines pair-wise matcher algorithms of choice
-typedef enum
-{
-    NVCV_BRUTE_FORCE //!< Select brute-force algorithm as the matcher
-} NVCVPairwiseMatcherType;
-
-// @brief Defines how a vector normalization should occur
-typedef enum
-{
-    NVCV_NORM_HAMMING = 0, //!< Equivalent to the Hamming distance (or L_0 norm)
-    NVCV_NORM_L1      = 1, //!< Equivalent to the absolute distance = |x1-x2| + |y1-y2| (or L_1 norm)
-    NVCV_NORM_L2      = 2, //!< Equivalent to the Euclidean distance (or L_2 norm)
-    NVCV_NORM_C       = 3, //!< distance = max(|x1-x2|,|y1-y2|)
-    NVCV_NORM_L12     = 4, //!< L1-L2 metric: distance = 2(sqrt(1+x*x/2) - 1))
-    NVCV_NORM_FAIR    = 5, //!< distance = c^2(|x|/c-log(1+|x|/c)), c = 1.3998
-    NVCV_NORM_WELSCH  = 6, //!< distance = c^2/2(1-exp(-(x/c)^2)), c = 2.9846
-    NVCV_NORM_HUBER   = 7, //!< distance = |x|<c ? x^2/2 : c(|x|-c/2), c=1.345
-
-} NVCVNormType;
-
 typedef unsigned char uint8_t;
 typedef int           int32_t;
 
@@ -454,7 +418,12 @@ typedef struct
     NVCVColorRGBA fillColor;   // Filled color of bounding box.
 } NVCVBndBoxI;
 
-typedef void *NVCVBndBoxesI;
+typedef struct
+{
+    int32_t      batch;    // Number of images in the image batch.
+    int32_t     *numBoxes; // Number array of bounding boxes for image batch.
+    NVCVBndBoxI *boxes;    // Bounding box array for image batch, \ref NVCVBndBoxI.
+} NVCVBndBoxesI;
 
 typedef struct
 {
@@ -462,7 +431,44 @@ typedef struct
     int32_t  kernelSize; // Kernel sizes of mean filter, refer to cv::blur().
 } NVCVBlurBoxI;
 
-typedef void *NVCVBlurBoxesI;
+typedef struct
+{
+    int32_t       batch;    // Number of images in the image batch.
+    int32_t      *numBoxes; // Number array of blurring boxes for image batch.
+    NVCVBlurBoxI *boxes;    // Blurring box array for image batch, \ref NVCVBlurBoxI.
+} NVCVBlurBoxesI;
+
+// Default font, user can install via below command:
+//      sudo apt-get update
+//      sudo apt-get install ttf-dejavu fonts-dejavu
+#define DEFAULT_OSD_FONT "DejaVuSansMono"
+
+typedef struct
+{
+    const char   *utf8Text;  // Text to draw in utf8 format.
+    int32_t       fontSize;  // Font size for the text.
+    const char   *fontName;  // Font name for the text.
+    NVCVPointI    tlPos;     // Top-left corner point for label text, \ref NVCVPointI.
+    NVCVColorRGBA fontColor; // Font color of the text.
+    NVCVColorRGBA bgColor;   // Background color of text box.
+} NVCVText;
+
+typedef struct
+{
+    NVCVBoxI      box;          // Bounding box of segment, \ref NVCVBoxI.
+    int32_t       thickness;    // Line thickness of segment outter rect.
+    float        *dSeg;         // Device pointer for segment mask, cannot be nullptr.
+                                // Array length: segWidth * segHeight
+                                // Format:
+                                //      Score_00, Score_01, ..., Score_0k, ...
+                                //      Score_10, Score_11, ..., Score_kk, ...
+                                //          ... ,     ... , ...,     ... , ...
+    int32_t       segWidth;     // Segment mask width.
+    int32_t       segHeight;    // Segment mask height.
+    float         segThreshold; // Segment threshold.
+    NVCVColorRGBA borderColor;  // Line color of segment outter rect.
+    NVCVColorRGBA segColor;     // Segment mask color.
+} NVCVSegment;
 
 typedef struct
 {
@@ -479,6 +485,23 @@ typedef struct
     NVCVColorRGBA color;         // Line color.
     bool          interpolation; // Default: true.
 } NVCVLine;
+
+typedef struct
+{
+    int32_t      *hPoints;       // Host pointer for polyline points' xy, cannot be nullptr.
+                                 // Array length: 2 * numPoints.
+                                 // Format : X0, Y0, X1, Y1, ..., Xk, Yk, ...
+    int32_t      *dPoints;       // Device pointer for polyline points' xy.
+                                 // Can be nullptr only if fillColor.a == 0.
+                                 // Array length: 2 * numPoints.
+                                 // Format: X0, Y0, X1, Y1, ..., Xk, Yk, ...
+    int32_t       numPoints;     // Number of polyline points.
+    int32_t       thickness;     // Polyline thickness.
+    bool          isClosed;      // Connect p(0) to p(n-1) or not.
+    NVCVColorRGBA borderColor;   // Line color of polyline border.
+    NVCVColorRGBA fillColor;     // Fill color of poly fill area.
+    bool          interpolation; // Default: true
+} NVCVPolyLine;
 
 typedef struct
 {
@@ -519,7 +542,42 @@ typedef enum
     HHMMSS        = 3
 } NVCVClockFormat;
 
-typedef void *NVCVElements;
+typedef struct
+{
+    NVCVClockFormat clockFormat; // Pre-defined clock format.
+    long            time;        // Clock time.
+    int32_t         fontSize;    // Font size.
+    const char     *font;        // Font name.
+    NVCVPointI      tlPos;       // Top-left corner point, \ref NVCVPointI.
+    NVCVColorRGBA   fontColor;   // Font color of the text.
+    NVCVColorRGBA   bgColor;     // Background color of text box.
+} NVCVClock;
+
+typedef struct
+{
+    /*
+    *  type:
+    *      NVCV_OSD_RECT           -   \ref NVCVBndBoxI.
+    *      NVCV_OSD_TEXT           -   \ref NVCVText.
+    *      NVCV_OSD_SEGMENT        -   \ref NVCVSegment.
+    *      NVCV_OSD_POINT          -   \ref NVCVPoint.
+    *      NVCV_OSD_LINE           -   \ref NVCVLine.
+    *      NVCV_OSD_POLYLINE       -   \ref NVCVPolyLine.
+    *      NVCV_OSD_ROTATED_RECT   -   \ref NVCVRotatedBox.
+    *      NVCV_OSD_CIRCLE         -   \ref NVCVCircle.
+    *      NVCV_OSD_ARROW          -   \ref NVCVArrow.
+    *      NVCV_OSD_CLOCK          -   \ref NVCVClock.
+    */
+    NVCVOSDType type; // OSD element type to draw.
+    void       *data; // OSD element data pointer.
+} NVCVElement;
+
+typedef struct
+{
+    int32_t      batch;       // Number of images in the image batch.
+    int32_t     *numElements; // Number array of texts for image batch.
+    NVCVElement *elements;    // Element array for image batch, \ref NVCVElement.
+} NVCVElements;
 
 #ifdef __cplusplus
 }

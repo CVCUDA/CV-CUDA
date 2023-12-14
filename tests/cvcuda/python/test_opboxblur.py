@@ -24,22 +24,17 @@ import numpy as np
         (
             (((3, 224, 224, 4), np.uint8, "NHWC")),
             cvcuda.BlurBoxesI(
+                numBoxes=[3, 3, 3],
                 boxes=[
-                    [
-                        cvcuda.BlurBoxI(box=(10, 10, 5, 5), kernelSize=7),
-                        cvcuda.BlurBoxI(box=(50, 50, 7, 7), kernelSize=11),
-                        cvcuda.BlurBoxI(box=(90, 90, 9, 9), kernelSize=17),
-                    ],
-                    [
-                        cvcuda.BlurBoxI(box=(10, 10, 5, 5), kernelSize=7),
-                        cvcuda.BlurBoxI(box=(50, 50, 7, 7), kernelSize=11),
-                        cvcuda.BlurBoxI(box=(90, 90, 9, 9), kernelSize=17),
-                    ],
-                    [
-                        cvcuda.BlurBoxI(box=(10, 10, 5, 5), kernelSize=7),
-                        cvcuda.BlurBoxI(box=(50, 50, 7, 7), kernelSize=11),
-                        cvcuda.BlurBoxI(box=(90, 90, 9, 9), kernelSize=17),
-                    ],
+                    cvcuda.BlurBoxI(box=(10, 10, 5, 5), kernelSize=7),
+                    cvcuda.BlurBoxI(box=(50, 50, 7, 7), kernelSize=11),
+                    cvcuda.BlurBoxI(box=(90, 90, 9, 9), kernelSize=17),
+                    cvcuda.BlurBoxI(box=(10, 10, 5, 5), kernelSize=7),
+                    cvcuda.BlurBoxI(box=(50, 50, 7, 7), kernelSize=11),
+                    cvcuda.BlurBoxI(box=(90, 90, 9, 9), kernelSize=17),
+                    cvcuda.BlurBoxI(box=(10, 10, 5, 5), kernelSize=7),
+                    cvcuda.BlurBoxI(box=(50, 50, 7, 7), kernelSize=11),
+                    cvcuda.BlurBoxI(box=(90, 90, 9, 9), kernelSize=17),
                 ],
             ),
         ),

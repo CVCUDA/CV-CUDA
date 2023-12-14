@@ -391,7 +391,7 @@ ErrorCode WarpPerspectiveVarShape::infer(const ImageBatchVarShapeDataStridedCuda
     cuda::Tensor2DWrap<float> transMatrixInput(transMatrix);
     cuda::Tensor2DWrap<float> transMatrixOutput(m_transformationMatrix, static_cast<int>(sizeof(float) * 9));
 
-    if (!performInverse)
+    if (performInverse)
     {
         inverseMatWarpPerspective<<<1, inData.numImages(), 0, stream>>>(inData.numImages(), transMatrixInput,
                                                                         transMatrixOutput);

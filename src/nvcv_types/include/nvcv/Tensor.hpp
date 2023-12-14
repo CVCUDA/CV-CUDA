@@ -107,12 +107,6 @@ public:
     void *userPointer() const;
 
     /**
-     * @brief Creates a view of the tensor with a new shape and layout
-     *
-     */
-    Tensor reshape(const TensorShape &new_shape);
-
-    /**
      * @brief Calculates the requirements for a tensor given its shape and data type.
      *
      * @param shape Shape of the tensor.

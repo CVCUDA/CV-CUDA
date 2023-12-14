@@ -28,7 +28,6 @@
 #include "Resource.hpp"
 #include "Stream.hpp"
 #include "Tensor.hpp"
-#include "TensorBatch.hpp"
 
 #include <nvcv/Version.h>
 #include <pybind11/pybind11.h>
@@ -63,7 +62,6 @@ PYBIND11_MODULE(nvcv, m)
     Resource::Export(m);
     Container::Export(m);
     Tensor::Export(m);
-    TensorBatch::Export(m);
     Image::Export(m);
     ImageBatchVarShape::Export(m);
     ExportCAPI(m);

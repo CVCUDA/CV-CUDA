@@ -26,8 +26,8 @@ set(CV_CUDA_PRIV_OP_FILES
     OpMinMaxLoc.cu
     OpHistogram.cpp
     OpMinAreaRect.cpp
-    OpBndBox.cpp
     OpBoxBlur.cpp
+    OpBndBox.cpp
     OpBrightnessContrast.cu
     OpRemap.cu
     OpColorTwist.cu
@@ -64,10 +64,6 @@ set(CV_CUDA_PRIV_OP_FILES
     OpRandomResizedCrop.cpp
     OpGaussianNoise.cpp
     OpInpaint.cpp
-    OpLabel.cu
-    OpPairwiseMatcher.cu
-    OpStack.cpp
-    OpFindHomography.cu
 )
 
 # filter only one that matches the patern (case insensitive), should be set on the global level
@@ -101,8 +97,5 @@ target_link_libraries(cvcuda_priv
         nvcv_util_sanitizer
         cvcuda_legacy
         CUDA::cudart_static
-	CUDA::cusolver
-        CUDA::cublas
-        CUDA::cublasLt
         -lrt
 )

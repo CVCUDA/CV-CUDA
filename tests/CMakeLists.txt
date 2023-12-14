@@ -42,7 +42,7 @@ if(UNIX)
     configure_file(${CMAKE_CURRENT_SOURCE_DIR}/run_tests.sh.in ${TESTS_DRIVER}
         @ONLY)
 
-    macro(nvcv_add_test TESTCMD TESTGROUP)
+    macro(nvcv_add_test TESTCMD)
         get_filename_component(TESTNAME "${TESTCMD}" NAME)
 
         add_test(NAME "${TESTNAME}" COMMAND "${TESTCMD}")
@@ -57,7 +57,7 @@ if(UNIX)
 
         set_tests_properties(${TESTNAME} PROPERTIES TIMEOUT ${TIMEOUT_TERM})
 
-        file(APPEND "${TESTS_DRIVER}" "run ${TESTNAME} ${TESTGROUP}\n")
+        file(APPEND "${TESTS_DRIVER}" "run ${TESTNAME}\n")
 
         if(TARGET ${TESTNAME})
             install(TARGETS ${TESTNAME}

@@ -36,7 +36,6 @@ add_library(nvcv_types_priv STATIC
     ImageFormat.cpp
     Array.cpp
     ArrayWrapData.cpp
-    TensorBatch.cpp
 )
 
 target_include_directories(nvcv_types_priv

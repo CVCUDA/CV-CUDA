@@ -80,9 +80,3 @@ python3 ./object_detection/python/main.py -i ./assets/videos/pexels-chiel-slotma
 python3 ./object_detection/python/main.py -i ./assets/images/ -b 3
 # RUn it with the TensorFlow backend
 python3 ./object_detection/python/main.py -i ./assets/videos/pexels-chiel-slotman-4423925-1920x1080-25fps.mp4 -b 4 -bk tensorflow
-
-# Run the label Python sample with default settings, without any command-line args.
-find /tmp/ -maxdepth 1 -type f -delete
-python3 ./label/python/main.py
-# Run it with batch size 1 on a single image
-python3 ./label/python/main.py -i ./assets/images/peoplenet.jpg  -b 1

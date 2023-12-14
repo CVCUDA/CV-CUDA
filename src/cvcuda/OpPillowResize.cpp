@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,9 +15,8 @@
  * limitations under the License.
  */
 
-#include "cvcuda/OpPillowResize.h"
-
 #include "priv/OpPillowResize.hpp"
+
 #include "priv/SymbolVersioning.hpp"
 
 #include <nvcv/Exception.hpp>
@@ -27,7 +26,9 @@
 
 namespace priv = cvcuda::priv;
 
-CVCUDA_DEFINE_API(0, 3, NVCVStatus, cvcudaPillowResizeCreate, (NVCVOperatorHandle * handle))
+CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaPillowResizeCreate,
+                  (NVCVOperatorHandle * handle, int32_t maxWidth, int32_t maxHeight, int32_t maxBatchSize,
+                   NVCVImageFormat fmt))
 {
     return nvcv::ProtectCall(
         [&]
@@ -37,63 +38,31 @@ CVCUDA_DEFINE_API(0, 3, NVCVStatus, cvcudaPillowResizeCreate, (NVCVOperatorHandl
                 throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
-            *handle = reinterpret_cast<NVCVOperatorHandle>(new priv::PillowResize());
+            *handle = reinterpret_cast<NVCVOperatorHandle>(
+                new priv::PillowResize(nvcv::Size2D{maxWidth, maxHeight}, maxBatchSize, fmt));
         });
 }
 
-CVCUDA_DEFINE_API(0, 3, NVCVStatus, cvcudaPillowResizeGetWorkspaceRequirements,
-                  (NVCVOperatorHandle handle, int maxBatchSize, int32_t maxInWidth, int32_t maxInHeight,
-                   int32_t maxOutWidth, int32_t maxOutHeight, NVCVImageFormat fmt, NVCVWorkspaceRequirements *reqOut))
-{
-    if (!reqOut)
-        return NVCV_ERROR_INVALID_ARGUMENT;
-
-    return nvcv::ProtectCall(
-        [&]
-        {
-            NVCVSize2D maxInSize  = {maxInWidth, maxInHeight};
-            NVCVSize2D maxOutSize = {maxOutWidth, maxOutHeight};
-            *reqOut = priv::ToDynamicRef<priv::PillowResize>(handle).getWorkspaceRequirements(maxBatchSize, maxInSize,
-                                                                                              maxOutSize, fmt);
-        });
-}
-
-CVCUDA_DEFINE_API(0, 3, NVCVStatus, cvcudaPillowResizeVarShapeGetWorkspaceRequirements,
-                  (NVCVOperatorHandle handle, int batchSize, const NVCVSize2D *inputSizes,
-                   const NVCVSize2D *outputSizes, NVCVImageFormat fmt, NVCVWorkspaceRequirements *reqOut))
-{
-    if (!reqOut)
-        return NVCV_ERROR_INVALID_ARGUMENT;
-
-    return nvcv::ProtectCall(
-        [&]
-        {
-            *reqOut = priv::ToDynamicRef<priv::PillowResize>(handle).getWorkspaceRequirements(
-                batchSize, static_cast<const nvcv::Size2D *>(inputSizes),
-                static_cast<const nvcv::Size2D *>(outputSizes), fmt);
-        });
-}
-
-CVCUDA_DEFINE_API(0, 3, NVCVStatus, cvcudaPillowResizeSubmit,
-                  (NVCVOperatorHandle handle, cudaStream_t stream, const NVCVWorkspace *ws, NVCVTensorHandle in,
-                   NVCVTensorHandle out, const NVCVInterpolationType interpolation))
+CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaPillowResizeSubmit,
+                  (NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in, NVCVTensorHandle out,
+                   const NVCVInterpolationType interpolation))
 {
     return nvcv::ProtectCall(
         [&]
         {
             nvcv::TensorWrapHandle input(in), output(out);
-            priv::ToDynamicRef<priv::PillowResize>(handle)(stream, *ws, input, output, interpolation);
+            priv::ToDynamicRef<priv::PillowResize>(handle)(stream, input, output, interpolation);
         });
 }
 
-CVCUDA_DEFINE_API(0, 3, NVCVStatus, cvcudaPillowResizeVarShapeSubmit,
-                  (NVCVOperatorHandle handle, cudaStream_t stream, const NVCVWorkspace *ws, NVCVImageBatchHandle in,
-                   NVCVImageBatchHandle out, const NVCVInterpolationType interpolation))
+CVCUDA_DEFINE_API(0, 2, NVCVStatus, nvcvopPillowResizeVarShapeSubmit,
+                  (NVCVOperatorHandle handle, cudaStream_t stream, NVCVImageBatchHandle in, NVCVImageBatchHandle out,
+                   const NVCVInterpolationType interpolation))
 {
     return nvcv::ProtectCall(
         [&]
         {
             nvcv::ImageBatchVarShapeWrapHandle input(in), output(out);
-            priv::ToDynamicRef<priv::PillowResize>(handle)(stream, *ws, input, output, interpolation);
+            priv::ToDynamicRef<priv::PillowResize>(handle)(stream, input, output, interpolation);
         });
 }

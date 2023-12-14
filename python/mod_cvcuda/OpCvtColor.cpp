@@ -56,25 +56,17 @@ Tensor CvtColorInto(Tensor &output, Tensor &input, NVCVColorConversionCode code,
 
 Tensor CvtColor(Tensor &input, NVCVColorConversionCode code, std::optional<Stream> pstream)
 {
-    int  ndim      = input.shape().size();
-    auto layout    = input.layout();
     auto outFormat = GetOutputFormat(input.dtype(), code);
-    auto out_dtype = outFormat.planeDataType(0).channelType(0);
-    if (ndim < 3)
+
+    if (input.shape().size() < 3)
     {
         throw std::runtime_error("Invalid input tensor shape");
     }
+    int          numImgs{static_cast<int>(input.shape()[0])};
+    nvcv::Size2D size{static_cast<int>(input.shape()[2]), static_cast<int>(input.shape()[1])};
 
-    std::array<int64_t, NVCV_TENSOR_MAX_RANK> shape_data;
-    for (int d = 0; d < ndim; d++)
-    {
-        if (layout[d] == 'C')
-            shape_data[d] = outFormat.numChannels();
-        else
-            shape_data[d] = input.shape()[d];
-    }
-    nvcv::TensorShape out_shape(shape_data.data(), ndim, layout);
-    Tensor            output = Tensor::Create(out_shape, out_dtype);
+    Tensor output = Tensor::CreateForImageBatch(numImgs, size, outFormat);
+
     return CvtColorInto(output, input, code, pstream);
 }
 

@@ -104,6 +104,11 @@ void Reformat::checkDataFormat(DataFormat format)
     NVCV_ASSERT(format == kNHWC || format == kHWC || format == kNCHW || format == kCHW);
 }
 
+size_t Reformat::calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type)
+{
+    return 0;
+}
+
 ErrorCode Reformat::infer(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,
                           cudaStream_t stream)
 {

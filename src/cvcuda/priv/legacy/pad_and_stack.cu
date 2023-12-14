@@ -81,6 +81,11 @@ void padAndStack(const ImageBatchVarShapeDataStridedCuda &inData, const TensorDa
     funcs[borderMode](inData, outData, top, left, borderValue, stream);
 }
 
+size_t PadAndStack::calBufferSize(int batch_size)
+{
+    return 0;
+}
+
 ErrorCode PadAndStack::infer(const ImageBatchVarShapeDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                              const TensorDataStridedCuda &top, const TensorDataStridedCuda &left,
                              const NVCVBorderType borderMode, const float borderValue, cudaStream_t stream)

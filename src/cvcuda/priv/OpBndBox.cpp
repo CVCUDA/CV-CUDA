@@ -30,7 +30,7 @@ namespace legacy = nvcv::legacy::cuda_op;
 BndBox::BndBox()
 {
     legacy::DataShape maxIn, maxOut; //maxIn/maxOut not used by op.
-    m_legacyOp = std::make_unique<legacy::OSD>(maxIn, maxOut);
+    m_legacyOp = std::make_unique<legacy::BndBox>(maxIn, maxOut);
 }
 
 void BndBox::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
@@ -50,7 +50,7 @@ void BndBox::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv:
                               "Output must be cuda-accessible, pitch-linear tensor");
     }
 
-    NVCV_CHECK_THROW(m_legacyOp->inferBox(*inData, *outData, bboxes, stream));
+    NVCV_CHECK_THROW(m_legacyOp->infer(*inData, *outData, bboxes, stream));
 }
 
 } // namespace cvcuda::priv

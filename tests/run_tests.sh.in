@@ -17,15 +17,7 @@
 
 shopt -s extglob
 
-# Defaults
-test_set="all"
 curdir=$(dirname "$(readlink -f "$0")")
-
-if [[ $# -ge 1 ]]; then
-    test_set=$1
-fi
-
-IFS="," read -r -a test_set <<< "$test_set"
 
 function on_exit()
 {
@@ -51,16 +43,8 @@ trap 'on_exit' EXIT
 function run()
 {
     local testexec=$1
-    local testgroup=$2
 
-    for test in "${test_set[@]}"
-    do
-        if [ "$testgroup" == "$test" ] || [ "$test" == "all" ];then
-            echo "Running $testexec test suite..."
-            NVCV_LEAK_DETECTION=abort "$curdir/$testexec"
-            return
-        fi
-    done
+    echo "Running $testexec test suite..."
 
-    echo "Skipping $testexec test suite..."
+    NVCV_LEAK_DETECTION=abort "$curdir/$testexec"
 }

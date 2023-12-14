@@ -22,6 +22,3 @@
 [submodule "3rdparty/dlpack"]
 	path = 3rdparty/dlpack
 	url = https://github.com/dmlc/dlpack.git
-[submodule "3rdparty/nvbench"]
-	path = 3rdparty/nvbench
-	url = https://github.com/NVIDIA/nvbench.git

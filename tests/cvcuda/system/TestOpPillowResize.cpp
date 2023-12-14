@@ -1010,11 +1010,9 @@ void StartTest(int srcWidth, int srcHeight, int dstWidth, int dstHeight, NVCVInt
     // Generate test result
     nvcv::Tensor imgDst(numberOfImages, {dstWidth, dstHeight}, fmt);
 
-    cvcuda::PillowResize pillowResizeOp;
-
-    cvcuda::UniqueWorkspace ws = cvcuda::AllocateWorkspace(
-        pillowResizeOp.getWorkspaceRequirements(numberOfImages, {srcWidth, srcHeight}, {dstWidth, dstHeight}, fmt));
-    EXPECT_NO_THROW(pillowResizeOp(stream, ws.get(), imgSrc, imgDst, interpolation));
+    cvcuda::PillowResize pillowResizeOp(nvcv::Size2D{std::max(srcWidth, dstWidth), std::max(srcHeight, dstHeight)},
+                                        numberOfImages, fmt);
+    EXPECT_NO_THROW(pillowResizeOp(stream, imgSrc, imgDst, interpolation));
 
     EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
@@ -1146,11 +1144,9 @@ void StartVarShapeTest(int srcWidthBase, int srcHeightBase, int dstWidthBase, in
     nvcv::Size2D maxDstSize = batchDst.maxSize();
 
     // Generate test result
-    cvcuda::PillowResize pillowResizeOp;
-
-    cvcuda::UniqueWorkspace ws = cvcuda::AllocateWorkspace(
-        pillowResizeOp.getWorkspaceRequirements(numberOfImages, maxSrcSize, maxDstSize, fmt));
-    EXPECT_NO_THROW(pillowResizeOp(stream, ws.get(), batchSrc, batchDst, interpolation));
+    cvcuda::PillowResize pillowResizeOp(
+        nvcv::Size2D{std::max(maxSrcSize.w, maxDstSize.w), std::max(maxSrcSize.h, maxDstSize.h)}, numberOfImages, fmt);
+    EXPECT_NO_THROW(pillowResizeOp(stream, batchSrc, batchDst, interpolation));
 
     // Get test data back
     EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));

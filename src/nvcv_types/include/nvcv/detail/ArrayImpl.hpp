@@ -36,13 +36,6 @@ inline int64_t Array::length() const
     return length;
 }
 
-inline void Array::resize(int64_t length)
-{
-    NVCVArrayHandle harray = this->handle();
-
-    detail::CheckThrow(nvcvArrayResize(harray, length));
-}
-
 inline int64_t Array::capacity() const
 {
     NVCVArrayHandle harray = this->handle();

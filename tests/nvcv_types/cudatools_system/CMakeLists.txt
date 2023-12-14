@@ -59,4 +59,4 @@ target_include_directories(nvcv_test_cudatools_system
         ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
 )
 
-nvcv_add_test(nvcv_test_cudatools_system nvcv)
+nvcv_add_test(nvcv_test_cudatools_system)
