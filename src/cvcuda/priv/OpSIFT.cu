@@ -1237,6 +1237,16 @@ void SIFT::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::T
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Operator call arg. initSigma=%f must be positive",
                               initSigma);
     }
+    if (contrastThreshold <= 0)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Argument contrastThreshold=%f must be positive",
+                              contrastThreshold);
+    }
+    if (edgeThreshold <= 0)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Argument edgeThreshold=%f must be positive",
+                              edgeThreshold);
+    }
 
     if (numOctaveLayers < 1 || numOctaveLayers > m_maxOctaveLayers)
     {

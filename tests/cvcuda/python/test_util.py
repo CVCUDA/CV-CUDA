@@ -13,9 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import torch
 import nvcv
 import numpy as np
-import torch
 import cvcuda_util as util
 
 

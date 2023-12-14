@@ -384,25 +384,26 @@ public:
     /**
      * Subscript operator for either read-only or read-and-write access.
      *
-     * @param[in] c 4D coordinates (x column, y row, z sample, w channel) to be accessed.
+     * @param[in] c 4D coordinates (x sample, y row, z col, w channel) to be accessed.
+     *
      *
      * @return Accessed reference.
      */
     inline __host__ __device__ T &operator[](int4 c) const
     {
-        return *doGetPtr(c.z, c.y, c.x, c.w);
+        return *doGetPtr(c.x, c.y, c.z, c.w);
     }
 
     /**
      * Subscript operator for either read-only or read-and-write access.
      *
-     * @param[in] c 3D coordinates (x column, y row, z sample) (first channel) to be accessed.
+     * @param[in] c 3D coordinates (x sample, y row, z col) (first channel) to be accessed.
      *
      * @return Accessed reference.
      */
     inline __host__ __device__ T &operator[](int3 c) const
     {
-        return *doGetPtr(c.z, c.y, c.x, 0);
+        return *doGetPtr(c.x, c.y, c.z, 0);
     }
 
     /**

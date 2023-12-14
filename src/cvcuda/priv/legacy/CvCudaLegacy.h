@@ -23,6 +23,7 @@
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 #include <cvcuda/Types.h>
+#include <cvcuda/Workspace.hpp>
 #include <nvcv/BorderType.h>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/ImageBatchData.hpp>
@@ -34,6 +35,11 @@
 #include <vector>
 
 namespace nvcv::legacy::cuda_op {
+
+using cvcuda::Workspace;
+using cvcuda::WorkspaceMem;
+using cvcuda::WorkspaceMemRequirements;
+using cvcuda::WorkspaceRequirements;
 
 enum ErrorCode
 {
@@ -294,13 +300,6 @@ public:
      */
     ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, const double alpha,
                     const double beta, cudaStream_t stream);
-    /**
-     * @brief calculate the cpu/gpu buffer size needed by this operator
-     * @param max_input_shape maximum input DataShape that may be used
-     * @param max_output_shape maximum output DataShape that may be used
-     * @param max_data_type DataType with the maximum size that may be used
-     */
-    size_t    calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type);
 };
 
 class CustomCrop : public CudaBaseOp
@@ -374,13 +373,6 @@ public:
      */
     ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, NVCVRectI roi,
                     cudaStream_t stream);
-    /**
-     * @brief calculate the cpu/gpu buffer size needed by this operator
-     * @param max_input_shape maximum input DataShape that may be used
-     * @param max_output_shape maximum output DataShape that may be used
-     * @param max_data_type DataType with the maximum size that may be used
-     */
-    size_t    calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type);
 };
 
 class MinAreaRect : public CudaBaseOp
@@ -527,14 +519,6 @@ public:
      */
     ErrorCode infer(const TensorDataStridedCuda &input, const TensorDataStridedCuda &output, const int32_t flipCode,
                     cudaStream_t stream);
-
-    /**
-     * @brief calculate the cpu/gpu buffer size needed by this operator
-     * @param max_input_shape maximum input DataShape that may be used
-     * @param max_output_shape maximum output DataShape that may be used
-     * @param max_data_type DataType with the maximum size that may be used
-     */
-    size_t calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type);
 };
 
 class FlipOrCopyVarShape : public CudaBaseOp
@@ -600,12 +584,6 @@ public:
      */
     ErrorCode infer(const ImageBatchVarShapeDataStridedCuda &input, const ImageBatchVarShapeDataStridedCuda &output,
                     const TensorDataStridedCuda &flipCode, cudaStream_t stream);
-
-    /**
-     * @brief calculate the gpu buffer size needed by this operator
-     * @param maxBatchSize Maximum batch size that may be used
-     */
-    size_t calBufferSize(int maxBatchSize);
 };
 
 class Reformat : public CudaBaseOp
@@ -677,14 +655,8 @@ public:
      * @param stream for the asynchronous execution.
      */
     ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, cudaStream_t stream);
-    /**
-     * @brief calculate the cpu/gpu buffer size needed by this operator
-     * @param max_input_shape maximum input DataShape that may be used
-     * @param max_output_shape maximum output DataShape that may be used
-     * @param max_data_type DataType with the maximum size that may be used
-     */
-    size_t    calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type);
-    void      checkDataFormat(DataFormat format);
+
+    void checkDataFormat(DataFormat format);
 };
 
 class Resize : public CudaBaseOp
@@ -753,13 +725,6 @@ public:
      */
     ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                     const NVCVInterpolationType interpolation, cudaStream_t stream);
-    /**
-     * @brief calculate the cpu/gpu buffer size needed by this operator
-     * @param max_input_shape maximum input DataShape that may be used
-     * @param max_output_shape maximum output DataShape that may be used
-     * @param max_data_type DataType with the maximum size that may be used
-     */
-    size_t    calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type);
 };
 
 class Morphology : public CudaBaseOp
@@ -986,14 +951,8 @@ public:
                     const TensorDataStridedCuda &scaleData, const TensorDataStridedCuda &outData,
                     const float global_scale, const float shift, const float epsilon, const uint32_t flags,
                     cudaStream_t stream);
-    /**
-     * @brief calculate the cpu/gpu buffer size needed by this operator
-     * @param max_input_shape maximum input DataShape that may be used
-     * @param max_output_shape maximum output DataShape that may be used
-     * @param max_data_type DataType with the maximum size that may be used
-     */
-    size_t    calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type);
-    void      checkParamShape(DataShape input_shape, DataShape param_shape);
+
+    void checkParamShape(DataShape input_shape, DataShape param_shape);
 };
 
 class PadAndStack : public CudaBaseOp
@@ -1059,8 +1018,6 @@ public:
     ErrorCode infer(const ImageBatchVarShapeDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                     const TensorDataStridedCuda &top, const TensorDataStridedCuda &left,
                     const NVCVBorderType borderMode, const float borderValue, cudaStream_t stream);
-
-    size_t calBufferSize(int batch_size);
 };
 
 class Rotate : public CudaBaseOp
@@ -1125,13 +1082,6 @@ public:
      */
     ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, const nvcv::Size2D ksize,
                     cudaStream_t stream);
-    /**
-     * @brief calculate the cpu/gpu buffer size needed by this operator
-     * @param max_input_shape maximum input DataShape that may be used
-     * @param max_output_shape maximum output DataShape that may be used
-     * @param max_data_type DataType with the maximum size that may be used
-     */
-    size_t    calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type);
 };
 
 class NormalizeVarShape : public CudaBaseOp
@@ -1386,13 +1336,6 @@ public:
      */
     ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, int crop_rows,
                     int crop_columns, cudaStream_t stream);
-    /**
-     * @brief calculate the cpu/gpu buffer size needed by this operator
-     * @param max_input_shape maximum input DataShape that may be used
-     * @param max_output_shape maximum output DataShape that may be used
-     * @param max_data_type DataType with the maximum size that may be used
-     */
-    size_t    calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type);
 };
 
 class RotateVarShape : public CudaBaseOp
@@ -1496,14 +1439,6 @@ public:
      */
     ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, int ksize, float scale,
                     NVCVBorderType borderMode, cudaStream_t stream);
-
-    /**
-     * @brief calculate the cpu/gpu buffer size needed by this operator
-     * @param max_input_shape maximum input DataShape that may be used
-     * @param max_output_shape maximum output DataShape that may be used
-     * @param max_data_type DataType with the maximum size that may be used
-     */
-    size_t calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type);
 };
 
 class Gaussian : public CudaBaseOp
@@ -2227,43 +2162,22 @@ public:
     ~OSD();
 
     /**
-     * @brief Converts an image from one color space to another.
+     * @brief Draw OSD elements onto input tensor, then return back output tensor.
      * @param inData Input tensor.
      * @param outData Output tensor.
-     * @param elements OSD elements, \ref NVCVElement.
+     * @param elements OSD elements, \ref NVCVElements.
      */
     ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, NVCVElements elements,
                     cudaStream_t stream);
 
     /**
-     * @brief calculate the cpu/gpu buffer size needed by this operator
-     * @param max_input_shape maximum input DataShape that may be used
-     * @param max_output_shape maximum output DataShape that may be used
-     * @param max_data_type DataType with the maximum size that may be used
-     */
-    size_t calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type);
-
-private:
-    nvcv::cuda::osd::cuOSDContext_t m_context;
-};
-
-class BndBox : public CudaBaseOp
-{
-public:
-    BndBox() = delete;
-
-    BndBox(DataShape max_input_shape, DataShape max_output_shape);
-
-    ~BndBox();
-
-    /**
-     * @brief Converts an image from one color space to another.
+     * @brief Draw BndBox elements onto input tensor, then return back output tensor.
      * @param inData Input tensor.
      * @param outData Output tensor.
      * @param boxes Bounding box rectangle, \ref NVCVBndBoxesI.
      */
-    ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, NVCVBndBoxesI bboxes,
-                    cudaStream_t stream);
+    ErrorCode inferBox(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, NVCVBndBoxesI bboxes,
+                       cudaStream_t stream);
 
     /**
      * @brief calculate the cpu/gpu buffer size needed by this operator
@@ -2326,14 +2240,6 @@ public:
      */
     ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                     NVCVColorConversionCode code, cudaStream_t stream);
-
-    /**
-     * @brief calculate the cpu/gpu buffer size needed by this operator
-     * @param max_input_shape maximum input DataShape that may be used
-     * @param max_output_shape maximum output DataShape that may be used
-     * @param max_data_type DataType with the maximum size that may be used
-     */
-    size_t calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type);
 };
 
 class WarpAffine : public CudaBaseOp
@@ -2394,13 +2300,6 @@ public:
     ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, const float *transMatrix,
                     const int32_t flags, const NVCVBorderType borderMode, const float4 borderValue,
                     cudaStream_t stream);
-    /**
-     * @brief calculate the cpu/gpu buffer size needed by this operator
-     * @param max_input_shape maximum input DataShape that may be used
-     * @param max_output_shape maximum output DataShape that may be used
-     * @param max_data_type DataType with the maximum size that may be used
-     */
-    size_t    calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type);
 };
 
 class WarpPerspectiveVarShape : public CudaBaseOp
@@ -2502,12 +2401,6 @@ public:
      */
     ErrorCode infer(const ImageBatchVarShapeDataStridedCuda &inData, const ImageBatchVarShapeDataStridedCuda &outData,
                     NVCVColorConversionCode code, cudaStream_t stream);
-
-    /**
-     * @brief calculate the cpu/gpu buffer size needed by this operator
-     * @param batch_size maximum input batch size
-     */
-    size_t calBufferSize(int batch_size);
 };
 
 class Composite : public CudaBaseOp
@@ -2602,12 +2495,6 @@ public:
 class PillowResize : public CudaBaseOp
 {
 public:
-    PillowResize() = delete;
-
-    PillowResize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type);
-
-    ~PillowResize();
-
     /**
      * @brief Resizes the input images. The function resize resizes the image down to or up to the specified size.
      * @param inputs gpu pointer, inputs[0] are batched input images, whose shape is input_shape and type is data_type.
@@ -2623,29 +2510,15 @@ public:
      *
      */
     ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
-                    const NVCVInterpolationType interpolation, cudaStream_t stream);
+                    const NVCVInterpolationType interpolation, cudaStream_t stream, const Workspace &workspace);
 
-    /**
-     * @brief calculate the cpu/gpu buffer size needed by this operator
-     * @param max_input_shape maximum input DataShape that may be used
-     * @param max_output_shape maximum output DataShape that may be used
-     * @param max_data_type DataType with the maximum size that may be used
-     */
-    size_t calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type);
-
-private:
-    void *gpu_workspace;
+    NVCVWorkspaceRequirements getWorkspaceRequirements(DataShape max_input_shape, DataShape max_output_shape,
+                                                       DataType max_data_type);
 };
 
 class PillowResizeVarShape : public CudaBaseOp
 {
 public:
-    PillowResizeVarShape() = delete;
-
-    PillowResizeVarShape(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type);
-
-    ~PillowResizeVarShape();
-
     /**
      * @brief Resizes the input images. The function resize resizes the image down to or up to the specified size.
      * @param inputs gpu pointer, inputs[0] are batched input images, whose shape is input_shape and type is data_type.
@@ -2664,19 +2537,10 @@ public:
      *
      */
     ErrorCode infer(const ImageBatchVarShape &inData, const ImageBatchVarShape &outData,
-                    const NVCVInterpolationType interpolation, cudaStream_t stream);
+                    const NVCVInterpolationType interpolation, cudaStream_t stream, const Workspace &workspace);
 
-    /**
-     * @brief calculate the cpu/gpu buffer size needed by this operator
-     * @param max_input_shape maximum input DataShape that may be used
-     * @param max_output_shape maximum output DataShape that may be used
-     * @param max_data_type DataType with the maximum size that may be used
-     */
-    size_t calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type);
-
-private:
-    void *gpu_workspace = nullptr;
-    void *cpu_workspace = nullptr;
+    NVCVWorkspaceRequirements getWorkspaceRequirements(DataShape max_input_shape, DataShape max_output_shape,
+                                                       DataType max_data_type);
 };
 
 class Threshold : public CudaBaseOp

@@ -13,10 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import torch
 import nvcv
 import pytest as t
 import numpy as np
-import torch
 
 
 @t.mark.parametrize(
@@ -296,3 +296,135 @@ def test_tensor_create_packed():
 def test_tensor_create_for_imgbatch_packed():
     tensor = nvcv.Tensor(2, (37, 7), nvcv.Format.RGB8, rowalign=1)
     assert tensor.cuda().strides == (37 * 7 * 3, 37 * 3, 3, 1)
+
+
+@t.mark.parametrize(
+    "orig_shape, orig_layout, dtype, shape_arg, layout_arg",
+    [
+        ((1, 23, 65, 3), "NHWC", np.uint8, (23, 65, 3), "HWC"),
+        ((5, 23, 65, 3), None, np.int8, (5, 23 * 65, 3), None),
+        ((5, 23, 65, 3), None, np.int8, (5, 23 * 65, 3), "ABC"),
+        ((1,), "A", np.float32, (1, 1, 1, 1, 1, 1), "ABCDEF"),
+    ],
+)
+def test_tensor_reshape(orig_shape, orig_layout, dtype, shape_arg, layout_arg):
+    tensor = nvcv.Tensor(orig_shape, dtype, layout=orig_layout, rowalign=1)
+
+    def strides(shape):
+        out = [0] * len(shape)
+        for d in range(len(shape)):
+            out[d] = 1
+            for d2 in range(d + 1, len(shape)):
+                out[d] = out[d] * shape[d2]
+        return tuple(out)
+
+    assert tensor.dtype == dtype
+    assert tensor.shape == orig_shape
+    assert tensor.cuda().strides == strides(orig_shape)
+
+    new_tensors = [
+        tensor.reshape(shape_arg, layout=layout_arg),
+        nvcv.reshape(tensor, shape_arg, layout=layout_arg),
+    ]
+    for new_tensor in new_tensors:
+        assert new_tensor.dtype == dtype
+        assert new_tensor.shape == shape_arg
+        assert new_tensor.cuda().strides == strides(shape_arg)
+
+
+@t.mark.parametrize(
+    "orig_shape, orig_layout, dtype, shape_arg, layout_arg",
+    [
+        # wrong number of dims in layout
+        ((1, 23, 65, 3), "NHWC", np.uint8, (23, 65, 3), "ABCD"),
+        # wrong number of dims in layout
+        ((1, 23, 65, 3), None, np.uint8, (23, 65, 3), "ABCD"),
+        # dims in current layout
+        ((5, 23, 65, 3), "NHWC", np.int8, (5, 23 * 65, 3), None),
+        # volume mismatch
+        ((5, 23, 65, 3), "NHWC", np.int8, (100, 100), "AB"),
+        # 0-dim tensors not supported
+        ((1,), "A", np.int8, tuple(), ""),
+    ],
+)
+def test_tensor_reshape_error(orig_shape, orig_layout, dtype, shape_arg, layout_arg):
+    tensor = nvcv.Tensor(orig_shape, dtype, layout=orig_layout, rowalign=1)
+
+    with t.raises(RuntimeError):
+        tensor.reshape(shape_arg, layout=layout_arg),
+
+    with t.raises(RuntimeError):
+        nvcv.reshape(tensor, shape_arg, layout=layout_arg)
+
+
+def test_tensor_reshape_lifetime_ref_obj():
+    tensor1 = nvcv.Tensor((20, 10, 3), np.uint8, layout="HWC", rowalign=1)
+    tensor2 = tensor1.reshape((200, 3), layout="WC")
+
+    # tensor2 increased the reference count of the underlying handle,
+    # so it should be kept alive after tensor1 is deleted
+    del tensor1
+
+    assert tensor2.dtype == np.uint8
+    assert tensor2.shape == (200, 3)
+    assert tensor2.cuda().strides == (3, 1)
+
+
+@t.mark.parametrize(
+    "shape_arg, layout_arg, expected_strides",
+    [
+        ((1, 10, 10, 3), "XHWC", (320, 32, 3, 1)),
+        ((10, 10, 3, 1), "HWCX", (32, 3, 1, 1)),
+        ((10, 1, 10, 3), "HXWC", (32, 32, 3, 1)),
+        ((10, 2, 5, 3), "HABC", (32, 15, 3, 1)),
+        ((2, 5, 10, 3), "ABWC", (160, 32, 3, 1)),
+    ],
+)
+def test_tensor_reshape_strided(shape_arg, layout_arg, expected_strides):
+    tensor = nvcv.Tensor((10, 10, 3), np.uint8, layout="HWC")
+    assert tensor.cuda().strides == (32, 3, 1)  # strided rows
+
+    new_tensors = [
+        tensor.reshape(shape_arg, layout=layout_arg),
+        nvcv.reshape(tensor, shape_arg, layout=layout_arg),
+    ]
+    for new_tensor in new_tensors:
+        assert new_tensor.cuda().strides == expected_strides
+
+
+@t.mark.parametrize(
+    "shape_arg, layout_arg",
+    [((300,), "A")],
+)
+def test_tensor_reshape_strided_error(shape_arg, layout_arg):
+    tensor = nvcv.Tensor((10, 10, 3), np.uint8, layout="HWC")
+    assert tensor.cuda().strides == (32, 3, 1)  # strided rows
+
+    with t.raises(RuntimeError):
+        tensor.reshape(shape_arg, layout=layout_arg)
+
+    with t.raises(RuntimeError):
+        nvcv.reshape(tensor, shape_arg, layout=layout_arg)
+
+
+@t.mark.parametrize(
+    "shape_arg, dtype_arg, layout_arg",
+    [
+        ((3, 5, 7), np.dtype("2f4"), "NHW"),
+        ((3, 5, 3), np.dtype("4f8"), "NHW"),
+        ((3, 5, 2), np.dtype("2i1"), "NHW"),
+    ],
+)
+def test_tensor_wrap_cuda_array_interface(shape_arg, dtype_arg, layout_arg):
+    tensor = nvcv.Tensor(shape_arg, dtype_arg, layout_arg)
+
+    tcuda = tensor.cuda()
+    cai = tcuda.__cuda_array_interface__
+    assert cai["typestr"] == dtype_arg.str
+    assert cai["shape"] == shape_arg
+
+    wrapped = nvcv.as_tensor(tcuda, layout_arg)
+
+    assert wrapped.shape == shape_arg
+    assert wrapped.dtype == dtype_arg
+    assert wrapped.layout == layout_arg

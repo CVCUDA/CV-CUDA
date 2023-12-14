@@ -243,8 +243,7 @@ static void SetTensorToRandomValue(const TensorData &tensorData, DT minVal, DT m
 
 /**
  * Writes over the Tensor data with an array of type DT array must be
- * the size of sampleStride(). All samples will be overriden.
- * Function does not do data type checking
+ * the size of H*W*C with DT matching the Tensor datatype. Function does not do data type checking.
  *
  * @param[in,out] tensorData created tensor object.
  *
@@ -272,7 +271,20 @@ template<typename DT>
 static void SetImageTensorFromVector(const TensorData &tensorData, std::vector<DT> &data, int sample = -1);
 
 /**
- * Returns a vector contains the values of the provided sample.
+ * Writes over the Tensor data with an byte array, array must be
+ * the size of H*W*C*bytesPerC. Function does not do data type checking.
+ *
+ * @param[in,out] tensorData created tensor object.
+ *
+ * @param[in] data vector of bytes with the data to set the tensor to.
+ *
+ * @param[in] sample optional the sample to write to if -1 all samples are written
+ */
+void SetImageTensorFromByteVector(const TensorData &tensorData, std::vector<nvcv::Byte> &data, int sample = -1);
+
+/**
+ * Returns a vector contains the values of the provided sample including any padding. This function assumes that the DT data type
+ * matches the datatype in the TensorData.
  *
  * @param[in] tensorData created tensor object.
  *
@@ -286,7 +298,8 @@ static void GetVectorFromTensor(const TensorData &tensorData, int sample, std::v
 
 /**
  * Returns a vector contains the values of the provided sample. This vector will only contain
- * the values of the image and not any padding/stride.
+ * the values of the image and not any padding/stride. This function assumes that the DT data type
+ * matches the datatype in the TensorData.
  *
  * @param[in] tensorData created tensor object.
  *
@@ -297,6 +310,20 @@ static void GetVectorFromTensor(const TensorData &tensorData, int sample, std::v
  */
 template<typename DT>
 static void GetImageVectorFromTensor(const TensorData &tensorData, int sample, std::vector<DT> &outData);
+
+/**
+ * Returns a byte vector which contains the values of the specified sample. This vector will only contain
+ * the values of the image and not any padding/stride. Also this will return a byte array regardless of
+ * the DataType of the tensor. The byte vector returned will be the size of H*W*C*bytesPerC.
+ *
+ * @param[in] tensorData created tensor object.
+ *
+ * @param[in] sample the sample to copy to vector 0 index.
+ *
+ * @param[out] outData the data to set the tensor to.
+ *
+ */
+void GetImageByteVectorFromTensor(const TensorData &tensorData, int sample, std::vector<nvcv::Byte> &outData);
 
 /**
  * Sets the TensorImageData to the value set by the data parameter
@@ -534,9 +561,9 @@ static void SetImageTensorFromVectorPlanar(const TensorData &tensorData, std::ve
     if ((int64_t)data.size() != tDataAc->numCols() * tDataAc->numRows() * tDataAc->numChannels())
         throw std::runtime_error("Data vector is incorrect size, size must be W*C*sizeof(DT)*channels.");
 
-    auto copyToGpu = [&](int i)
+    auto copyToGpu = [&](int j)
     {
-        Byte *basePtr = tDataAc->sampleData(i);
+        Byte *basePtr = tDataAc->sampleData(j);
         for (int i = 0; i < tDataAc->numChannels(); ++i)
         {
             if (cudaSuccess
@@ -672,37 +699,49 @@ void SetCvDataTo(TensorImageData &cvImg, DT data, Size2D region, uint8_t chFlags
 
 // Useful for debugging
 template<typename VT, typename ST>
-inline void PrintBuffer(const std::vector<uint8_t> &vec, const ST &strides, const ST &shape, const char *name = "")
+inline void PrintBuffer(const std::vector<uint8_t> &vec, const ST &strides, const ST &shape, const char *name = "",
+                        uint32_t endls = 0b1111)
 {
+    using BT  = nvcv::cuda::BaseType<ST>;
+    using BT4 = nvcv::cuda::MakeType<BT, 4>;
+    using CVT = std::conditional_t<sizeof(VT) == 1, int, VT>;
+
     std::cout << "I Printing buffer " << name << " with:\nI\tSize = " << vec.size() << " Bytes\nI\tShape = " << shape
-              << "\nI\tStrides = " << strides << "\nI\tValues = " << std::flush;
+              << "\nI\tStrides = " << strides << "\nI\tValues = " << std::endl;
 
-    for (long w = 0; w < (nvcv::cuda::NumElements<ST> == 4 ? nvcv::cuda::GetElement(shape, 3) : 1); ++w)
+    for (BT x = 0; x < (nvcv::cuda::NumElements<ST> >= 1 ? nvcv::cuda::GetElement(shape, 0) : 1); ++x)
     {
-        if (w > 0)
-            std::cout << std::endl;
-        std::cout << "{" << std::flush;
-        for (long z = 0; z < (nvcv::cuda::NumElements<ST> >= 3 ? nvcv::cuda::GetElement(shape, 2) : 1); ++z)
+        if (endls & 0b1000)
+            std::cout << "{" << std::endl;
+        else
+            std::cout << "{" << std::flush;
+        for (BT y = 0; y < (nvcv::cuda::NumElements<ST> >= 2 ? nvcv::cuda::GetElement(shape, 1) : 1); ++y)
         {
-            std::cout << "[" << std::flush;
-            for (long y = 0; y < (nvcv::cuda::NumElements<ST> >= 2 ? nvcv::cuda::GetElement(shape, 1) : 1); ++y)
+            if (endls & 0b0100)
+                std::cout << "  [" << std::endl;
+            else
+                std::cout << "  [" << std::flush;
+            for (BT z = 0; z < (nvcv::cuda::NumElements<ST> >= 3 ? nvcv::cuda::GetElement(shape, 2) : 1); ++z)
             {
-                std::cout << "(" << std::flush;
-                for (long x = 0; x < (nvcv::cuda::NumElements<ST> >= 1 ? nvcv::cuda::GetElement(shape, 0) : 1); ++x)
+                std::cout << " " << std::flush;
+                for (BT w = 0; w < (nvcv::cuda::NumElements<ST> >= 4 ? nvcv::cuda::GetElement(shape, 3) : 1); ++w)
                 {
-                    ST coord = nvcv::cuda::DropCast<nvcv::cuda::NumElements<ST>>(long4{x, y, z, w});
+                    ST coord = nvcv::cuda::DropCast<nvcv::cuda::NumElements<ST>>(BT4{x, y, z, w});
 
-                    if (x > 0)
-                        std::cout << ", " << std::flush;
-                    std::cout << ValueAt<VT>(vec, strides, coord) << std::flush;
+                    std::cout << " " << static_cast<CVT>(ValueAt<VT>(vec, strides, coord)) << std::flush;
                 }
-                std::cout << ")" << std::flush;
+                if (endls & 0b0010)
+                    std::cout << std::endl;
+                else
+                    std::cout << std::flush;
             }
-            std::cout << "]" << std::flush;
+            if (endls & 0b0001)
+                std::cout << "  ]" << std::endl;
+            else
+                std::cout << "  ]" << std::flush;
         }
-        std::cout << "}" << std::flush;
+        std::cout << "}" << std::endl;
     }
-    std::cout << std::endl;
 }
 
 // Write images in *HW tensor buffer vec to PGM files.
@@ -738,6 +777,18 @@ inline void WriteImagesToPGM(const char *filename, const std::vector<uint8_t> &v
         return ST{coord.z, coord.w};
     };
 
+    auto convertValue = [](VT val)
+    {
+        if constexpr (std::is_same_v<VT, uint8_t>)
+            return val;
+        else if constexpr (std::is_integral_v<VT> && !std::is_signed_v<VT>)
+            return std::min((VT)255, std::max((VT)0, val));
+        else if constexpr (std::is_integral_v<VT> && std::is_signed_v<VT>)
+            return std::min((VT)255, std::max((VT)0, (VT)std::abs(val)));
+        else
+            return std::min((VT)255, std::max((VT)0, (VT)std::round(std::abs(val))));
+    };
+
     char fn[256];
 
     for (long c0 = 0; c0 < c0size; ++c0)
@@ -758,9 +809,7 @@ inline void WriteImagesToPGM(const char *filename, const std::vector<uint8_t> &v
 
                     VT val = util::ValueAt<VT>(vec, strides, coord);
 
-                    int iVal = std::min(255, std::max(0, (int)std::round(std::abs(val))));
-
-                    ofs << iVal << ((j == width - 1) ? "\n" : " ");
+                    ofs << convertValue(val) << ((j == width - 1) ? "\n" : " ");
                 }
             }
 

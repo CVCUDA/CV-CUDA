@@ -24,8 +24,6 @@ namespace cvcudapy {
 
 namespace py = ::pybind11;
 
-void ExportBndBox(py::module &m);
-
 void ExportBoxBlur(py::module &m);
 
 void ExportOSD(py::module &m);

@@ -24,100 +24,109 @@ import numpy as np
         (
             (((2, 224, 224, 4), np.uint8, "NHWC")),
             cvcuda.Elements(
-                numElements=[5, 5],
-                elements=(
-                    cvcuda.BndBoxI(
-                        box=(10, 10, 5, 5),
-                        thickness=2,
-                        borderColor=(255, 255, 0),
-                        fillColor=(0, 128, 255, 128),
-                    ),
-                    cvcuda.Label(
-                        utf8Text="def",
-                        fontSize=30,
-                        tlPos=(50, 50),
-                        fontColor=(255, 255, 0),
-                        bgColor=(0, 128, 255, 128),
-                    ),
-                    cvcuda.Segment(
-                        box=(20, 20, 30, 30),
-                        thickness=1,
-                        segArray=np.array(
-                            [
-                                [0, 0, 0, 0, 0.2, 0.2, 0, 0, 0, 0],
-                                [0, 0, 0, 0.2, 0.3, 0.3, 0.2, 0, 0, 0],
-                                [0, 0, 0.2, 0.3, 0.4, 0.4, 0.3, 0.2, 0, 0],
-                                [0, 0.2, 0.3, 0.4, 0.5, 0.5, 0.4, 0.3, 0.2, 0],
-                                [0.2, 0.3, 0.4, 0.5, 0.5, 0.5, 0.5, 0.4, 0.3, 0.2],
-                                [0.2, 0.3, 0.4, 0.5, 0.5, 0.5, 0.5, 0.4, 0.3, 0.2],
-                                [0, 0.2, 0.3, 0.4, 0.5, 0.5, 0.4, 0.3, 0.2, 0],
-                                [0, 0, 0.2, 0.3, 0.4, 0.4, 0.3, 0.2, 0, 0],
-                                [0, 0, 0, 0.2, 0.3, 0.3, 0.2, 0, 0, 0],
-                                [0, 0, 0, 0, 0.2, 0.2, 0, 0, 0, 0],
-                            ]
+                elements=[
+                    [
+                        cvcuda.BndBoxI(
+                            box=(10, 10, 5, 5),
+                            thickness=2,
+                            borderColor=(255, 255, 0),
+                            fillColor=(0, 128, 255, 128),
+                        )
+                    ],
+                    [
+                        cvcuda.BndBoxI(
+                            box=(10, 10, 5, 5),
+                            thickness=2,
+                            borderColor=(255, 255, 0),
+                            fillColor=(0, 128, 255, 128),
                         ),
-                        segThreshold=0.2,
-                        borderColor=(255, 255, 0),
-                        segColor=(0, 128, 255, 128),
-                    ),
-                    cvcuda.Point(
-                        centerPos=(30, 30),
-                        radius=5,
-                        color=(255, 255, 0),
-                    ),
-                    cvcuda.Line(
-                        pos0=(50, 50),
-                        pos1=(150, 50),
-                        thickness=1,
-                        color=(255, 0, 0),
-                    ),
-                    cvcuda.PolyLine(
-                        points=np.array(
-                            [
-                                [100, 100],
-                                [600, 100],
-                                [350, 300],
-                                [600, 500],
-                                [300, 500],
-                            ]
+                        cvcuda.Label(
+                            utf8Text="def",
+                            fontSize=30,
+                            tlPos=(50, 50),
+                            fontColor=(255, 255, 0),
+                            bgColor=(0, 128, 255, 128),
                         ),
-                        thickness=1,
-                        isClosed=True,
-                        borderColor=(255, 255, 0),
-                        fillColor=(0, 128, 255, 128),
-                    ),
-                    cvcuda.RotatedBox(
-                        centerPos=(30, 30),
-                        width=5,
-                        height=5,
-                        yaw=0.3,
-                        thickness=1,
-                        borderColor=(255, 255, 0),
-                        bgColor=(0, 128, 255, 128),
-                    ),
-                    cvcuda.Circle(
-                        centerPos=(30, 30),
-                        radius=5,
-                        thickness=2,
-                        borderColor=(255, 255, 0),
-                        bgColor=(0, 128, 255, 128),
-                    ),
-                    cvcuda.Arrow(
-                        pos0=(50, 50),
-                        pos1=(150, 50),
-                        arrowSize=3,
-                        thickness=1,
-                        color=(255, 0, 0),
-                    ),
-                    cvcuda.Clock(
-                        clockFormat=cvcuda.ClockFormat.YYMMDD_HHMMSS,
-                        time=0,
-                        fontSize=10,
-                        tlPos=(150, 50),
-                        fontColor=(255, 255, 0),
-                        bgColor=(0, 128, 255, 128),
-                    ),
-                ),
+                        cvcuda.Segment(
+                            box=(20, 20, 30, 30),
+                            thickness=1,
+                            segArray=np.array(
+                                [
+                                    [0, 0, 0, 0, 0.2, 0.2, 0, 0, 0, 0],
+                                    [0, 0, 0, 0.2, 0.3, 0.3, 0.2, 0, 0, 0],
+                                    [0, 0, 0.2, 0.3, 0.4, 0.4, 0.3, 0.2, 0, 0],
+                                    [0, 0.2, 0.3, 0.4, 0.5, 0.5, 0.4, 0.3, 0.2, 0],
+                                    [0.2, 0.3, 0.4, 0.5, 0.5, 0.5, 0.5, 0.4, 0.3, 0.2],
+                                    [0.2, 0.3, 0.4, 0.5, 0.5, 0.5, 0.5, 0.4, 0.3, 0.2],
+                                    [0, 0.2, 0.3, 0.4, 0.5, 0.5, 0.4, 0.3, 0.2, 0],
+                                    [0, 0, 0.2, 0.3, 0.4, 0.4, 0.3, 0.2, 0, 0],
+                                    [0, 0, 0, 0.2, 0.3, 0.3, 0.2, 0, 0, 0],
+                                    [0, 0, 0, 0, 0.2, 0.2, 0, 0, 0, 0],
+                                ]
+                            ),
+                            segThreshold=0.2,
+                            borderColor=(255, 255, 0),
+                            segColor=(0, 128, 255, 128),
+                        ),
+                        cvcuda.Point(
+                            centerPos=(30, 30),
+                            radius=5,
+                            color=(255, 255, 0),
+                        ),
+                        cvcuda.Line(
+                            pos0=(50, 50),
+                            pos1=(150, 50),
+                            thickness=1,
+                            color=(255, 0, 0),
+                        ),
+                        cvcuda.PolyLine(
+                            points=np.array(
+                                [
+                                    [100, 100],
+                                    [600, 100],
+                                    [350, 300],
+                                    [600, 500],
+                                    [300, 500],
+                                ]
+                            ),
+                            thickness=1,
+                            isClosed=True,
+                            borderColor=(255, 255, 0),
+                            fillColor=(0, 128, 255, 128),
+                        ),
+                        cvcuda.RotatedBox(
+                            centerPos=(30, 30),
+                            width=5,
+                            height=5,
+                            yaw=0.3,
+                            thickness=1,
+                            borderColor=(255, 255, 0),
+                            bgColor=(0, 128, 255, 128),
+                        ),
+                        cvcuda.Circle(
+                            centerPos=(30, 30),
+                            radius=5,
+                            thickness=2,
+                            borderColor=(255, 255, 0),
+                            bgColor=(0, 128, 255, 128),
+                        ),
+                        cvcuda.Arrow(
+                            pos0=(50, 50),
+                            pos1=(150, 50),
+                            arrowSize=3,
+                            thickness=1,
+                            color=(255, 0, 0),
+                        ),
+                        cvcuda.Clock(
+                            clockFormat=cvcuda.ClockFormat.YYMMDD_HHMMSS,
+                            time=0,
+                            fontSize=10,
+                            tlPos=(150, 50),
+                            fontColor=(255, 255, 0),
+                            bgColor=(0, 128, 255, 128),
+                        ),
+                    ],
+                ],
             ),
         ),
     ],

@@ -38,6 +38,8 @@ public:
     static void Export(py::module &m);
 
     static std::shared_ptr<ImageBatchVarShape> Create(int capacity);
+    static std::shared_ptr<ImageBatchVarShape> WrapExternalBufferVector(std::vector<py::object> buffer,
+                                                                        nvcv::ImageFormat       fmt);
 
     std::shared_ptr<ImageBatchVarShape>       shared_from_this();
     std::shared_ptr<const ImageBatchVarShape> shared_from_this() const;

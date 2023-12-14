@@ -105,7 +105,7 @@ Segment *create_segment()
     Segment *output = new Segment();
     output->width   = 10;
     output->height  = 10;
-    checkRuntime(cudaMalloc(&output->data, output->width * output->height * sizeof(float)));
+    output->data    = (float *)malloc(output->width * output->height * sizeof(float));
     std::vector<float> diamond;
     diamond.insert(diamond.end(), {0, 0, 0, 0, 0.2, 0.2, 0, 0, 0, 0});
     diamond.insert(diamond.end(), {0, 0, 0, 0.2, 0.3, 0.3, 0.2, 0, 0, 0});
@@ -117,16 +117,16 @@ Segment *create_segment()
     diamond.insert(diamond.end(), {0, 0, 0.2, 0.3, 0.4, 0.4, 0.3, 0.2, 0, 0});
     diamond.insert(diamond.end(), {0, 0, 0, 0.2, 0.3, 0.3, 0.2, 0, 0, 0});
     diamond.insert(diamond.end(), {0, 0, 0, 0, 0.2, 0.2, 0, 0, 0, 0});
-    checkRuntime(cudaMemcpy(output->data, diamond.data(), output->width * output->height * sizeof(float),
-                            cudaMemcpyHostToDevice));
+    memcpy(output->data, diamond.data(), output->width * output->height * sizeof(float));
     return output;
 }
 
 void free_segment(Segment *segment)
 {
-    if (segment->data)
+    if (segment->data != nullptr)
     {
-        checkRuntime(cudaFree(segment->data));
+        free(segment->data);
+        segment->data = nullptr;
     }
     segment->width  = 0;
     segment->height = 0;
@@ -146,17 +146,11 @@ Polyline *create_polyline()
     output->n_pts = points.size();
     output->h_pts = (int *)malloc(output->n_pts * 2 * sizeof(int));
     memcpy(output->h_pts, points.data(), output->n_pts * 2 * sizeof(int));
-    checkRuntime(cudaMalloc(&output->d_pts, output->n_pts * 2 * sizeof(int)));
-    checkRuntime(cudaMemcpy(output->d_pts, points.data(), output->n_pts * 2 * sizeof(int), cudaMemcpyHostToDevice));
     return output;
 }
 
 void free_polyline(Polyline *polyline)
 {
-    if (polyline->d_pts)
-    {
-        checkRuntime(cudaFree(polyline->d_pts));
-    }
     if (polyline->h_pts)
     {
         free(polyline->h_pts);

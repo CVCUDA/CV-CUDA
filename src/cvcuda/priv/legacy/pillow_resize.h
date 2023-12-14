@@ -29,8 +29,9 @@ using namespace nvcv;
 using namespace nvcv::legacy::cuda_op;
 using namespace nvcv::legacy::helpers;
 
-#define work_type float
-#define M_PI      3.14159265358979323846 /* pi */
+using work_type = float;
+
+#define M_PI 3.14159265358979323846 /* pi */
 
 namespace nvcv::legacy::cuda_op {
 

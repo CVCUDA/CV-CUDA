@@ -302,6 +302,20 @@ NVCV_PUBLIC NVCVStatus nvcvArrayGetLength(NVCVArrayHandle handle, int64_t *lengt
 NVCV_PUBLIC NVCVStatus nvcvArrayGetCapacity(NVCVArrayHandle handle, int64_t *capacity);
 
 /**
+ * Resizes the array legnth to the specified length up to the capacity.
+ *
+ * @param[in] handle Array to be queried.
+ *                   + Must not be NULL.
+ *                   + Must have been created by @ref nvcvArrayConstruct.
+ *
+ * @param[in] length The input length of the array.
+ *
+ * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside its valid range.
+ * @retval #NVCV_SUCCESS                Operation executed successfully.
+ */
+NVCV_PUBLIC NVCVStatus nvcvArrayResize(NVCVArrayHandle handle, int64_t length);
+
+/**
  * Retrieve the array target.
  *
  * @param[in] handle Array to be queried.

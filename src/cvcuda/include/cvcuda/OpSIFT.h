@@ -157,12 +157,12 @@ CVCUDA_PUBLIC NVCVStatus cvcudaSIFTCreate(NVCVOperatorHandle *handle, int3 maxSh
  * @param [in] contrastThreshold The contrast threshold used to remove features with low contrast.  The larger this
  *                               threshold, the less features are extracted by the operator.  One suggestion, given
  *                               by the original algorithm description, is to use \f$ 0.03 \f$.
- *                               + It must be between 0 and 1.
+ *                               + It must be positive.
  *
  * @param [in] edgeThreshold The edge threshold used to remove features that are similar to edges.  The larger this
  *                           threshold, the more features are extracted by the operator. One suggestion, given by
  *                           the original algorithm description, is to use \f$ 10.0 \f$.
- *                           + It must be between 0 and 1.
+ *                           + It must be positive.
  *
  * @param [in] initSigma The initial sigma to be applied by the first Gaussian filter done at the first octave.
  *                       This sigma is progressively applied for each scale-space layer within each octave

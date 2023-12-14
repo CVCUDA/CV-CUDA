@@ -27,8 +27,8 @@ set(CV_CUDA_OP_FILES
     OpMinMaxLoc.cpp
     OpHistogram.cpp
     OpMinAreaRect.cpp
-    OpBoxBlur.cpp
     OpBndBox.cpp
+    OpBoxBlur.cpp
     OpBrightnessContrast.cpp
     OpRemap.cpp
     OpColorTwist.cpp
@@ -65,6 +65,9 @@ set(CV_CUDA_OP_FILES
     OpRandomResizedCrop.cpp
     OpGaussianNoise.cpp
     OpInpaint.cpp
+    OpLabel.cpp
+    OpPairwiseMatcher.cpp
+    OpFindHomography.cpp
 )
 
 # filter only one that matches the patern (case insensitive), should be set on the global level
@@ -87,6 +90,7 @@ else()
 endif()
 
 add_library(cvcuda SHARED
+    OpStack.cpp
     ${CV_CUDA_LIB_FILES}
 )
 

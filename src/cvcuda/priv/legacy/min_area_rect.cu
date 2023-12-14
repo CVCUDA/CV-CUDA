@@ -230,8 +230,7 @@ void minAreaRect(const TensorDataStridedCuda &inData, void *rotatedPointsDev,
 }
 
 MinAreaRect::MinAreaRect(DataShape max_input_shape, DataShape max_output_shape, int maxContourNum)
-    : CudaBaseOp(max_input_shape, max_output_shape)
-    , mMaxContourNum(maxContourNum)
+    : mMaxContourNum(maxContourNum)
 {
     NVCV_CHECK_THROW(cudaMalloc(&mRotateCoeffsBufDev, _MAX_ROTATE_DEGREES * 2 * sizeof(float)));
     NVCV_CHECK_THROW(
