@@ -371,6 +371,31 @@ NVCV_PUBLIC NVCVStatus nvcvTensorExportData(NVCVTensorHandle handle, NVCVTensorD
  */
 NVCV_PUBLIC NVCVStatus nvcvTensorGetShape(NVCVTensorHandle handle, int32_t *rank, int64_t *shape);
 
+/**
+ * Creates a view of a tensor with a different shape and layout.
+ *
+ * @param[in] handle Tensor to create a view from.
+ *                   + Must not be NULL.
+ *
+ * @param[in] rank Number of elements in the shape buffer argument.
+ *                   + Must be a number between 1 and NVCV_TENSOR_MAX_RANK
+ *
+ * @param[in] shape New shape.
+ *                   Must point to a buffer with @p rank elements.
+ *                   Elements above actual number of dimensions will be ignored.
+ *
+ * @param[in] layout New layout.
+ *                   Must have @p rank elements or be empty.
+ *
+ * @param [out] handle Where the tensor instance handle will be written to.
+ *                     + Must not be NULL.
+ *
+ * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is invalid.
+ * @retval #NVCV_SUCCESS                Operation executed successfully.
+ */
+NVCV_PUBLIC NVCVStatus nvcvTensorReshape(NVCVTensorHandle handle, int32_t rank, const int64_t *shape,
+                                         NVCVTensorLayout layout, NVCVTensorHandle *out_handle);
+
 #ifdef __cplusplus
 }
 #endif

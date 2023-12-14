@@ -119,4 +119,12 @@ void ArrayWrapData::exportData(NVCVArrayData &data) const
     data = m_data;
 }
 
+void ArrayWrapData::resize(int64_t length)
+{
+    if (length <= this->capacity())
+    {
+        m_data.length = length;
+    }
+}
+
 } // namespace nvcv::priv

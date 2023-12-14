@@ -47,6 +47,9 @@ public:
 
     static std::shared_ptr<Tensor> Wrap(ExternalBuffer &buffer, std::optional<nvcv::TensorLayout> layout);
     static std::shared_ptr<Tensor> WrapImage(Image &img);
+    static std::shared_ptr<Tensor> ReshapeTensor(Tensor &tensor, Shape shape, std::optional<nvcv::TensorLayout> layout);
+
+    std::shared_ptr<Tensor> Reshape(Shape shape, std::optional<nvcv::TensorLayout> layout);
 
     std::shared_ptr<Tensor>       shared_from_this();
     std::shared_ptr<const Tensor> shared_from_this() const;
@@ -87,6 +90,7 @@ private:
     Tensor(const nvcv::Tensor::Requirements &reqs);
     Tensor(const nvcv::TensorData &data, py::object wrappedObject);
     Tensor(Image &img);
+    Tensor(nvcv::Tensor &&tensor);
 
     // m_impl must come before m_key
     nvcv::Tensor m_impl;

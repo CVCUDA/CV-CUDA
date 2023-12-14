@@ -624,11 +624,6 @@ void resize(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &ou
 #endif
 } //resize
 
-size_t Resize::calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type)
-{
-    return 0;
-} //Resize::calBufferSize
-
 ErrorCode Resize::infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                         const NVCVInterpolationType interpolation, cudaStream_t stream)
 {

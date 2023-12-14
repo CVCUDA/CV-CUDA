@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,9 @@
 
 # System tests for cvcuda public API
 add_subdirectory(system)
+
+# Unit tests for cvcuda utilities and operator internals
+add_subdirectory(unit)
 
 if(BUILD_PYTHON)
     # System tests for cvcuda python

@@ -25,6 +25,7 @@
 #define CVCUDA_PRIV_PILLOW_RESIZE_HPP
 
 #include "IOperator.hpp"
+#include "cvcuda/Workspace.hpp"
 #include "legacy/CvCudaLegacy.h"
 
 #include <nvcv/ImageBatch.hpp>
@@ -37,12 +38,19 @@ namespace cvcuda::priv {
 class PillowResize final : public IOperator
 {
 public:
-    explicit PillowResize(nvcv::Size2D maxSize, int maxBatchSize, NVCVImageFormat fmt);
+    PillowResize();
 
-    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+    WorkspaceRequirements getWorkspaceRequirements(int batchSize, const nvcv::Size2D *in_sizes,
+                                                   const nvcv::Size2D *out_sizes, NVCVImageFormat fmt);
+
+    WorkspaceRequirements getWorkspaceRequirements(int batchSize, nvcv::Size2D maxInSize, nvcv::Size2D maxOutSize,
+                                                   NVCVImageFormat fmt);
+
+    void operator()(cudaStream_t stream, const Workspace &ws, const nvcv::Tensor &in, const nvcv::Tensor &out,
                     const NVCVInterpolationType interpolation) const;
-    void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
-                    const NVCVInterpolationType interpolation) const;
+
+    void operator()(cudaStream_t stream, const Workspace &ws, const nvcv::ImageBatchVarShape &in,
+                    const nvcv::ImageBatchVarShape &out, const NVCVInterpolationType interpolation) const;
 
 private:
     std::unique_ptr<nvcv::legacy::cuda_op::PillowResize>         m_legacyOp;

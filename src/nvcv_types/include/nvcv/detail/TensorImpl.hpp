@@ -91,6 +91,15 @@ inline void *Tensor::userPointer() const
     return ptr;
 }
 
+inline Tensor Tensor::reshape(const TensorShape &new_shape)
+{
+    NVCVTensorHandle out_handle;
+    detail::CheckThrow(
+        nvcvTensorReshape(this->handle(), new_shape.rank(), &new_shape.shape()[0], new_shape.layout(), &out_handle));
+    Tensor out_tensor(std::move(out_handle));
+    return out_tensor;
+}
+
 inline auto Tensor::CalcRequirements(const TensorShape &shape, DataType dtype, const MemAlignment &bufAlign)
     -> Requirements
 {

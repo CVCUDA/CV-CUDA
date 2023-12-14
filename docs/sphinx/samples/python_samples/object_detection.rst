@@ -177,7 +177,7 @@ This sample takes as input one or more images or one video and generates the obj
 
         user@machine:~/cvcuda/samples$ python3 object_detection/python/main.py
         [perf_utils:85] 2023-07-27 23:15:34 WARNING perf_utils is used without benchmark.py. Benchmarking mode is turned off.
-        [perf_utils:89] 2023-07-27 23:15:34 INFO   Using CV-CUDA version: 0.4.0-beta
+        [perf_utils:89] 2023-07-27 23:15:34 INFO   Using CV-CUDA version: 0.5.0-beta
         [pipelines:30] 2023-07-27 23:15:36 INFO   Using CVCUDA as preprocessor.
         [torch_utils:77] 2023-07-27 23:15:36 INFO   Using torchnvjpeg as decoder.
         [torch_utils:151] 2023-07-27 23:15:36 INFO   Using PyTorch/PIL as encoder.

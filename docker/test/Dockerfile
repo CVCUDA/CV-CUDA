@@ -47,3 +47,10 @@ RUN set -e \
            python$ver -m pip install torch numpy torchvision; \
        done \
     && rm -rf /root/.cache/pip
+
+# Other dependencies of python tests
+# binutils: for readelf
+RUN DEBIAN_FRONTEND="noninteractive" apt-get update \
+    && apt-get install -y --no-install-recommends \
+        binutils \
+    && rm -rf /var/lib/apt/lists/*

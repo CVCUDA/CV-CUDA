@@ -35,6 +35,9 @@ add_executable(nvcv_test_types_unit
     TestHandleWrapper.cpp
     TestTypeTraits.cpp
     TestSharedCoreObj.cpp
+    TestStreamId.cpp
+    TestSimpleCache.cpp
+    TestPerStreamCache.cpp
 )
 
 if(ENABLE_COMPAT_OLD_GLIBC)
@@ -52,6 +55,7 @@ target_link_libraries(nvcv_test_types_unit
         nvcv_util
         nvcv_test_common
         nvcv_types_priv
+        cuda
 )
 
-nvcv_add_test(nvcv_test_types_unit)
+nvcv_add_test(nvcv_test_types_unit nvcv)

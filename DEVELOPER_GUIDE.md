@@ -24,7 +24,7 @@ CV-CUDA includes:
 | Advanced Color Format Conversions | Performs color conversion from interleaved RGB/BGR <-> YUV/YVU and semi planar. Supported standards: BT.601. BT.709. BT.2020 |
 | AverageBlur | Reduces image noise using an average filter |
 | BilateralFilter | Reduces image noise while preserving strong edges |
-| Bounding Box | Draws an rectangular border using the X-Y coordinates and dimensions typically to define the location and size of an object in an image |
+| Bounding Box | Draws a rectangular border using the X-Y coordinates and dimensions typically to define the location and size of an object in an image |
 | Box Blurring | Overlays a blurred rectangle using the X-Y coordinates and dimensions that define the location and size of an object in an image |
 | Brightness_Contrast | Adjusts brightness and contrast of an image |
 | CenterCrop | Crops an image at its center |
@@ -38,6 +38,7 @@ CV-CUDA includes:
 | DataTypeConvert | Converts an image’s data type with optional scaling |
 | Erase | Erases image regions |
 | Find Contours | Extract closed contours from an input binary image |
+| FindHomography | Calculates a perspective transform from four pairs of the corresponding points  |
 | Flip | Flips a 2D image around its axis |
 | GammaContrast | Adjusts image contrast |
 | Gaussian | Applies a gaussian blur filter to the image |
@@ -45,18 +46,20 @@ CV-CUDA includes:
 | Histogram | Provides a grayscale value distribution showing the frequency of occurrence of each gray value. |
 | Histogram Equalizer | Allows effective spreading out the intensity range of the image typically used to improve contrast |
 | Inpainting | Performs inpainting by replacing a pixel by normalized weighted sum of all the known pixels in the neighborhood |
-| Joint Bilateral Filter | Provides a edge-preserving denoising filter |
+| Joint Bilateral Filter | Reduces image noise while preserving strong edges based on a guidance image |
+| Label | Labels connected regions in an image using 4-way connectivity for foreground and 8-way for background pixels |
 | Laplacian | Applies a Laplace transform to an image |
 | MedianBlur | Reduces an image’s salt-and-pepper noise |
 | MinArea Rect | Finds the minimum area rotated rectangle typically used to draw bounding rectangle with minimum area |
 | MinMaxLoc | Finds the maximum and minimum values in a given array |
 | Morphology | Performs morphological erode and dilate transformations |
-| Morphology (close) |  Performs morphological operation that involves dilation followed by erosion on an image |
-| Morphology (open) |  Performs morphological operation that involves erosion followed by dilation on an image |
+| Morphology (close) | Performs a morphological operation that involves dilation followed by erosion on an image |
+| Morphology (open) | Performs a morphological operation that involves erosion followed by dilation on an image |
 | Non-max Suppression | Enables selecting a single entity out of many overlapping ones typically used for selecting from multiple bounding boxes during object detection |
 | Normalize | Normalizes an image pixel’s range |
-| OSD (Polyline Line Text Rotated Rect Segmented Mask) | Displays an overlay on the image of of different forms including polyline line text rotated rectangle segmented mask |
+| OSD (Polyline Line Text Rotated Rect Segmented Mask) | Displays an overlay on the image of different forms including polyline line text rotated rectangle segmented mask |
 | PadStack | Stacks several images into a tensor with border extension |
+| PairwiseMatcher | Matches features computed separately (e.g. via the SIFT operator) in two images using the brute force method |
 | PillowResize | Changes the size and scale of an image using python-pillow algorithm |
 | RandomResizedCrop | Crops a random portion of an image and resizes it to a specified size. |
 | Reformat | Converts a planar image into non-planar and vice versa |

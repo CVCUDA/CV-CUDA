@@ -42,6 +42,8 @@ public:
 
     void exportData(NVCVArrayData &data) const override;
 
+    void resize(int64_t length) override;
+
 private:
     NVCVArrayData    m_data;
     NVCVResourceType m_target;

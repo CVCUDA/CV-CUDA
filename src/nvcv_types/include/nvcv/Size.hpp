@@ -24,6 +24,8 @@
 #ifndef NVCV_SIZE_HPP
 #define NVCV_SIZE_HPP
 
+#include "Size.h"
+
 #include <cassert>
 #include <iostream>
 #include <tuple>
@@ -35,52 +37,75 @@ namespace nvcv {
  * @{
 */
 
-/**
- * @brief Struct representing a two-dimensional size.
- *
- * This structure is designed to represent a width and height in 2D space.
- */
-struct Size2D
+struct Size2D : NVCVSize2D
 {
-    int w, h;
+    using NVCVSize2D::NVCVSize2D;
+
+    constexpr Size2D(int32_t w, int32_t h)
+        : NVCVSize2D{w, h}
+    {
+    }
+
+    constexpr Size2D(const NVCVSize2D &s)
+        : NVCVSize2D{s.w, s.h}
+    {
+    }
+
+    inline Size2D &operator=(const NVCVSize2D &s)
+    {
+        static_cast<NVCVSize2D &>(*this) = s;
+        return *this;
+    }
+
+    /**
+     * @brief Compares two Size2D structures for equality.
+     *
+     * @param a First size to compare.
+     * @param b Second size to compare.
+     * @return true if both width and height of `a`  and `b` are equal, otherwise false.
+     */
+    constexpr bool operator==(const Size2D &rhs) const
+    {
+        return w == rhs.w && h == rhs.h;
+    }
+
+    /**
+     * @brief Compares two Size2D structures for inequality.
+     *
+     * @param a First size to compare.
+     * @param b Second size to compare.
+     * @return true if width or height of `a` and `b` are not equal, otherwise false.
+     */
+    constexpr bool operator!=(const Size2D &rhs) const
+    {
+        return !(*this == rhs);
+    }
+
+    /**
+     * @brief Compares two Size2D structures.
+     *
+     * The comparison is based on the width first, and then the height.
+     *
+     * @param a First size to compare.
+     * @param b Second size to compare.
+     * @return true if `a` is less than `b`, otherwise false.
+     */
+    inline bool operator<(const nvcv::Size2D &rhs) const
+    {
+        return std::tie(w, h) < std::tie(rhs.w, rhs.h);
+    }
 };
 
 /**
- * @brief Compares two Size2D structures for equality.
+ * @brief Computes the maximum size in each dimension
  *
  * @param a First size to compare.
  * @param b Second size to compare.
- * @return true if both width and height of `a` and `b` are equal, otherwise false.
+ * @return The size with `w` and `h` computed as a maximum of the respective fields in `a` and `b`.
  */
-inline bool operator==(const Size2D &a, const Size2D &b)
+constexpr Size2D MaxSize(const Size2D &a, const Size2D &b)
 {
-    return std::tie(a.w, a.h) == std::tie(b.w, b.h);
-}
-
-/**
- * @brief Compares two Size2D structures for inequality.
- *
- * @param a First size to compare.
- * @param b Second size to compare.
- * @return true if width or height of `a` and `b` are not equal, otherwise false.
- */
-inline bool operator!=(const Size2D &a, const Size2D &b)
-{
-    return !(a == b);
-}
-
-/**
- * @brief Compares two Size2D structures.
- *
- * The comparison is based on the width first, and then the height.
- *
- * @param a First size to compare.
- * @param b Second size to compare.
- * @return true if `a` is less than `b`, otherwise false.
- */
-inline bool operator<(const Size2D &a, const Size2D &b)
-{
-    return std::tie(a.w, a.h) < std::tie(b.w, b.h);
+    return {b.w > a.w ? b.w : a.w, b.h > a.h ? b.h : a.h};
 }
 
 /**
@@ -92,7 +117,7 @@ inline bool operator<(const Size2D &a, const Size2D &b)
  * @param size Size2D structure to be output.
  * @return Reference to the modified output stream.
  */
-inline std::ostream &operator<<(std::ostream &out, const Size2D &size)
+inline std::ostream &operator<<(std::ostream &out, const nvcv::Size2D &size)
 {
     return out << size.w << "x" << size.h;
 }

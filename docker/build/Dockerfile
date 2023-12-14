@@ -36,9 +36,9 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get update \
         pre-commit shellcheck \
         curl \
     && rm -rf /var/lib/apt/lists/* \
-    && curl -L https://cmake.org/files/v3.18/cmake-3.18.6-Linux-x86_64.tar.gz --output /tmp/cmake-3.18.6.tar.gz \
-    && tar -xzf /tmp/cmake-3.18.6.tar.gz -C /tmp/ && cd /tmp/cmake-3.18.6-Linux-x86_64/ \
-    && cp bin/ share/ doc/ /usr/local/ -r && rm -rf /tmp/cmake-3.18.6*
+    && curl -L https://cmake.org/files/v3.20/cmake-3.20.1-linux-x86_64.tar.gz --output /tmp/cmake-3.20.1.tar.gz \
+    && tar -xzf /tmp/cmake-3.20.1.tar.gz -C /tmp/ && cd /tmp/cmake-3.20.1-linux-x86_64/ \
+    && cp bin/ share/ doc/ /usr/local/ -r && rm -rf /tmp/cmake-3.20.1*
 
 # Configure ccache
 RUN mkdir -p /cache

@@ -182,7 +182,7 @@ This sample takes as input the one or more images or one video and generates the
 
    user@machine:~/cvcuda/samples$ python3 segmentation/python/main.py -b 5 -c __background__ -o /tmp -i assets/images/
    [perf_utils:85] 2023-07-27 23:17:49 WARNING perf_utils is used without benchmark.py. Benchmarking mode is turned off.
-   [perf_utils:89] 2023-07-27 23:17:49 INFO   Using CV-CUDA version: 0.4.0-beta
+   [perf_utils:89] 2023-07-27 23:17:49 INFO   Using CV-CUDA version: 0.5.0-beta
    [pipelines:35] 2023-07-27 23:17:50 INFO   Using CVCUDA as preprocessor.
    [torch_utils:60] 2023-07-27 23:17:50 INFO   Found a total of 3 JPEG images.
    [torch_utils:77] 2023-07-27 23:17:50 INFO   Using torchnvjpeg as decoder.

@@ -275,9 +275,18 @@ __global__ void vertical_pass_var_shape(const Ptr2dNHWC<T1> src, Ptr2dVarShapeNH
 
 template<typename Filter, typename elem_type>
 void pillow_resize_var_shape(const ImageBatchVarShape &inDataBase, const ImageBatchVarShape &outDataBase,
-                             void *gpu_workspace, void *cpu_workspace, bool normalize_coeff, work_type init_buffer,
-                             bool round_up, cudaStream_t stream)
+                             const Workspace &ws, bool normalize_coeff, work_type init_buffer, bool round_up,
+                             cudaStream_t stream)
 {
+    if (ws.hostMem.ready != nullptr)
+        checkCudaErrors(cudaEventSynchronize(ws.hostMem.ready));
+
+    if (ws.cudaMem.ready != nullptr)
+        checkCudaErrors(cudaStreamWaitEvent(stream, ws.cudaMem.ready));
+
+    void *cpu_workspace = ws.hostMem.data;
+    void *gpu_workspace = ws.cudaMem.data;
+
     auto inDataPtr = inDataBase.exportData<ImageBatchVarShapeDataStridedCuda>(stream);
     if (!inDataPtr)
     {
@@ -419,6 +428,9 @@ void pillow_resize_var_shape(const ImageBatchVarShape &inDataBase, const ImageBa
     checkCudaErrors(cudaMemcpyAsync((void *)gpu_workspace, (void *)cpu_workspace, current_buffer_size,
                                     cudaMemcpyHostToDevice, stream));
 
+    if (ws.hostMem.ready != nullptr)
+        checkCudaErrors(cudaEventRecord(ws.hostMem.ready, stream));
+
     Ptr2dVarShapeNHWC<elem_type> src_ptr(inData);
     Ptr2dVarShapeNHWC<elem_type> dst_ptr(outData);
     Ptr2dNHWC<work_type>         ptr_h_out(batch, max_input_height, max_width, channels, (work_type *)hori_gpu_data);
@@ -479,39 +491,37 @@ void pillow_resize_var_shape(const ImageBatchVarShape &inDataBase, const ImageBa
         init_buffer, round_up, hv_use_share_mem);
 
     checkKernelErrors();
+
+    if (ws.cudaMem.ready != nullptr)
+        checkCudaErrors(cudaEventRecord(ws.cudaMem.ready, stream));
 }
 
 } // namespace
 
 template<typename Filter>
 void pillow_resize_filter_var_shape(const ImageBatchVarShape &inData, const ImageBatchVarShape &outData,
-                                    void *gpu_workspace, void *cpu_workspace, NVCVInterpolationType interpolation,
-                                    cudaStream_t stream)
+                                    const Workspace &ws, NVCVInterpolationType interpolation, cudaStream_t stream)
 {
     DataType data_type = helpers::GetLegacyDataType(inData.uniqueFormat());
     switch (data_type)
     {
     case kCV_8U:
-        pillow_resize_var_shape<Filter, unsigned char>(inData, outData, gpu_workspace, cpu_workspace, false, 0., false,
-                                                       stream);
+        pillow_resize_var_shape<Filter, unsigned char>(inData, outData, ws, false, 0., false, stream);
         break;
     case kCV_8S:
-        pillow_resize_var_shape<Filter, signed char>(inData, outData, gpu_workspace, cpu_workspace, false, 0., true,
-                                                     stream);
+        pillow_resize_var_shape<Filter, signed char>(inData, outData, ws, false, 0., true, stream);
         break;
     case kCV_16U:
-        pillow_resize_var_shape<Filter, std::uint16_t>(inData, outData, gpu_workspace, cpu_workspace, false, 0., false,
-                                                       stream);
+        pillow_resize_var_shape<Filter, std::uint16_t>(inData, outData, ws, false, 0., false, stream);
         break;
     case kCV_16S:
-        pillow_resize_var_shape<Filter, std::int16_t>(inData, outData, gpu_workspace, cpu_workspace, false, 0., true,
-                                                      stream);
+        pillow_resize_var_shape<Filter, std::int16_t>(inData, outData, ws, false, 0., true, stream);
         break;
     case kCV_32S:
-        pillow_resize_var_shape<Filter, int>(inData, outData, gpu_workspace, cpu_workspace, false, 0., true, stream);
+        pillow_resize_var_shape<Filter, int>(inData, outData, ws, false, 0., true, stream);
         break;
     case kCV_32F:
-        pillow_resize_var_shape<Filter, float>(inData, outData, gpu_workspace, cpu_workspace, false, 0., false, stream);
+        pillow_resize_var_shape<Filter, float>(inData, outData, ws, false, 0., false, stream);
         break;
     case kCV_64F:
     default:
@@ -519,10 +529,13 @@ void pillow_resize_filter_var_shape(const ImageBatchVarShape &inData, const Imag
     }
 }
 
-PillowResizeVarShape::PillowResizeVarShape(DataShape max_input_shape, DataShape max_output_shape,
-                                           DataType max_data_type)
-    : CudaBaseOp(max_input_shape, max_output_shape)
+WorkspaceRequirements PillowResizeVarShape::getWorkspaceRequirements(DataShape max_input_shape,
+                                                                     DataShape max_output_shape, DataType max_data_type)
 {
+    constexpr size_t kDefaultDeviceAlignment = 256;
+
+    WorkspaceRequirements req{};
+
     int    max_support = 1; //3
     size_t size        = std::ceil(
                max_output_shape.H
@@ -531,45 +544,24 @@ PillowResizeVarShape::PillowResizeVarShape(DataShape max_input_shape, DataShape 
                + max_output_shape.W
                      * (((1.0 * max_input_shape.W / max_output_shape.W + 1) * max_support * 2 + 1) * sizeof(work_type)
                  + 2 * sizeof(int)));
+
     size_t buffer_size = (sizeof(void *) * 3 + sizeof(int) * 12 + sizeof(work_type) * 6 + size) * max_input_shape.N;
+
+    req.hostMem.size      = buffer_size;
+    req.hostMem.alignment = alignof(std::max_align_t);
+
     buffer_size += max_input_shape.N * max_input_shape.C * max_input_shape.H * max_output_shape.W * sizeof(float);
 
-    NVCV_CHECK_LOG(cudaMalloc(&gpu_workspace, buffer_size));
+    req.cudaMem.size      = buffer_size;
+    req.cudaMem.alignment = kDefaultDeviceAlignment;
 
-    cpu_workspace = malloc(buffer_size);
-    if (!cpu_workspace)
-    {
-        LOG_ERROR("Memory allocation error of size: " << buffer_size);
-        throw std::runtime_error("Memory allocation error!");
-    }
-}
-
-PillowResizeVarShape::~PillowResizeVarShape()
-{
-    NVCV_CHECK_LOG(cudaFree(gpu_workspace));
-    free(cpu_workspace);
-}
-
-size_t PillowResizeVarShape::calBufferSize(DataShape max_input_shape, DataShape max_output_shape,
-                                           DataType max_data_type)
-{
-    int    max_support = 1; //3
-    size_t size        = std::ceil(
-               max_output_shape.H
-                   * (((1.0 * max_input_shape.H / max_output_shape.H + 1) * max_support * 2 + 1) * sizeof(work_type)
-               + 2 * sizeof(int))
-               + max_output_shape.W
-                     * (((1.0 * max_input_shape.W / max_output_shape.W + 1) * max_support * 2 + 1) * sizeof(work_type)
-                 + 2 * sizeof(int)));
-    size_t buffer_size = (sizeof(void *) * 3 + sizeof(int) * 12 + sizeof(work_type) * 6 + size) * max_input_shape.N;
-    buffer_size += max_input_shape.N * max_input_shape.C * max_input_shape.H * max_output_shape.W * sizeof(float);
-
-    return buffer_size;
+    return req;
 }
 
 ErrorCode PillowResizeVarShape::infer(const nvcv::ImageBatchVarShape &inDataBase,
                                       const nvcv::ImageBatchVarShape &outDataBase,
-                                      const NVCVInterpolationType interpolation, cudaStream_t stream)
+                                      const NVCVInterpolationType interpolation, cudaStream_t stream,
+                                      const NVCVWorkspace &ws)
 {
     if (!inDataBase.uniqueFormat() || !outDataBase.uniqueFormat())
     {
@@ -610,24 +602,19 @@ ErrorCode PillowResizeVarShape::infer(const nvcv::ImageBatchVarShape &inDataBase
     switch (interpolation)
     {
     case NVCV_INTERP_LINEAR:
-        pillow_resize_filter_var_shape<BilinearFilter>(inDataBase, outDataBase, gpu_workspace, cpu_workspace,
-                                                       interpolation, stream);
+        pillow_resize_filter_var_shape<BilinearFilter>(inDataBase, outDataBase, ws, interpolation, stream);
         break;
     case NVCV_INTERP_BOX:
-        pillow_resize_filter_var_shape<BoxFilter>(inDataBase, outDataBase, gpu_workspace, cpu_workspace, interpolation,
-                                                  stream);
+        pillow_resize_filter_var_shape<BoxFilter>(inDataBase, outDataBase, ws, interpolation, stream);
         break;
     case NVCV_INTERP_HAMMING:
-        pillow_resize_filter_var_shape<HammingFilter>(inDataBase, outDataBase, gpu_workspace, cpu_workspace,
-                                                      interpolation, stream);
+        pillow_resize_filter_var_shape<HammingFilter>(inDataBase, outDataBase, ws, interpolation, stream);
         break;
     case NVCV_INTERP_CUBIC:
-        pillow_resize_filter_var_shape<BicubicFilter>(inDataBase, outDataBase, gpu_workspace, cpu_workspace,
-                                                      interpolation, stream);
+        pillow_resize_filter_var_shape<BicubicFilter>(inDataBase, outDataBase, ws, interpolation, stream);
         break;
     case NVCV_INTERP_LANCZOS:
-        pillow_resize_filter_var_shape<LanczosFilter>(inDataBase, outDataBase, gpu_workspace, cpu_workspace,
-                                                      interpolation, stream);
+        pillow_resize_filter_var_shape<LanczosFilter>(inDataBase, outDataBase, ws, interpolation, stream);
         break;
     default:
         LOG_ERROR("Unsupported interpolation method " << interpolation);

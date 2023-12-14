@@ -79,7 +79,7 @@ static constexpr int ITUR_BT_601_CBV = -74448;
 
 namespace nvcv::legacy::cuda_op {
 
-__device__ inline bool checkShapeFromYUV420(int rows, int cols, NVCVColorConversionCode code)
+inline __device__ bool checkShapeFromYUV420(int rows, int cols, NVCVColorConversionCode code)
 {
     int valid_row = 1, valid_col = 1;
     switch (code)
@@ -210,7 +210,8 @@ __global__ void bgr_to_gray_float_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, 
     T g = *src.ptr(batch_idx, dst_y, dst_x, 1);
     T r = *src.ptr(batch_idx, dst_y, dst_x, bidx ^ 2);
 
-    T gray = (T)(b * B2YF + g * G2YF + r * R2YF) * dst.ptr(batch_idx, dst_y, dst_x, 0) = gray;
+    T gray                               = (T)(b * B2YF + g * G2YF + r * R2YF);
+    *dst.ptr(batch_idx, dst_y, dst_x, 0) = gray;
 }
 
 template<class T>
@@ -400,7 +401,7 @@ __global__ void bgr_to_hsv_float_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, c
     *dst.ptr(batch_idx, dst_y, dst_x, 2) = v;
 }
 
-__device__ inline void HSV2RGB_native_var_shape(float h, float s, float v, float &b, float &g, float &r,
+inline __device__ void HSV2RGB_native_var_shape(float h, float s, float v, float &b, float &g, float &r,
                                                 const float hscale)
 {
     if (s == 0)
@@ -980,7 +981,7 @@ inline ErrorCode BGR_to_GRAY(const ImageBatchVarShapeDataStridedCuda &inData,
     {
         cuda::ImageBatchVarShapeWrapNHWC<float> src_ptr(inData, channels);
         cuda::ImageBatchVarShapeWrapNHWC<float> dst_ptr(outData, dcn);
-        bgr_to_gray_char_nhwc<float><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
+        bgr_to_gray_float_nhwc<float><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
         checkKernelErrors();
     }
     break;
@@ -1594,11 +1595,6 @@ inline ErrorCode BGR_to_YUV420xp(const ImageBatchVarShapeDataStridedCuda &inData
         return ErrorCode::INVALID_DATA_TYPE;
     }
     return ErrorCode::SUCCESS;
-}
-
-size_t CvtColorVarShape::calBufferSize(int batch_size)
-{
-    return 0;
 }
 
 ErrorCode CvtColorVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inData,

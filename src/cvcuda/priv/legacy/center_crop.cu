@@ -70,11 +70,6 @@ void center_crop(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDa
 
 namespace nvcv::legacy::cuda_op {
 
-size_t CenterCrop::calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type)
-{
-    return 0;
-}
-
 ErrorCode CenterCrop::infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, int crop_rows,
                             int crop_columns, cudaStream_t stream)
 {

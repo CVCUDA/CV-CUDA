@@ -171,7 +171,7 @@ The top 5 classification results for the tabby_cat_tiger.jpg image is as follows
 
    user@machine:~/cvcuda/samples$ python3 classification/python/main.py -b 1
    [perf_utils:85] 2023-07-27 22:27:17 WARNING perf_utils is used without benchmark.py. Benchmarking mode is turned off.
-   [perf_utils:89] 2023-07-27 22:27:17 INFO    Using CV-CUDA version: 0.4.0-beta
+   [perf_utils:89] 2023-07-27 22:27:17 INFO    Using CV-CUDA version: 0.5.0-beta
    [pipelines:35] 2023-07-27 22:27:17 INFO     Using CVCUDA as preprocessor.
    [torch_utils:77] 2023-07-27 22:27:17 INFO   Using torchnvjpeg as decoder.
    [pipelines:122] 2023-07-27 22:27:17 INFO    Using CVCUDA as post-processor.
