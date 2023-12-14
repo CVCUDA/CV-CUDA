@@ -368,8 +368,8 @@ void pillow_resize_filter(const TensorDataAccessStridedImagePlanar &inData,
     }
 }
 
-WorkspaceRequirements PillowResize::getWorkspaceRequirements(DataShape max_input_shape, DataShape max_output_shape,
-                                                             DataType max_data_type)
+PillowResize::PillowResize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type)
+    : CudaBaseOp(max_input_shape, max_output_shape)
 {
     int    max_support = 1; //3
     size_t size
@@ -381,21 +381,34 @@ WorkspaceRequirements PillowResize::getWorkspaceRequirements(DataShape max_input
                     * (((1.0 * max_input_shape.W / max_output_shape.W + 1) * max_support * 2 + 1) * sizeof(work_type)
                        + 2 * sizeof(int)))
         + max_input_shape.N * max_input_shape.C * max_input_shape.H * max_output_shape.W * DataSize(max_data_type);
-    WorkspaceRequirements req{};
-    req.cudaMem = {size, 256};
-    return req;
+    NVCV_CHECK_LOG(cudaMalloc(&gpu_workspace, size));
+}
+
+PillowResize::~PillowResize()
+{
+    NVCV_CHECK_LOG(cudaFree(gpu_workspace));
+}
+
+size_t PillowResize::calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type)
+{
+    int    max_support = 1; //3
+    size_t size
+        = std::ceil(
+              max_output_shape.H
+                  * (((1.0 * max_input_shape.H / max_output_shape.H + 1) * max_support * 2 + 1) * sizeof(work_type)
+                     + 2 * sizeof(int))
+              + max_output_shape.W
+                    * (((1.0 * max_input_shape.W / max_output_shape.W + 1) * max_support * 2 + 1) * sizeof(work_type)
+                       + 2 * sizeof(int)))
+        + max_input_shape.N * max_input_shape.C * max_input_shape.H * max_output_shape.W * DataSize(max_data_type);
+    return size;
 }
 
 ErrorCode PillowResize::infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
-                              const NVCVInterpolationType interpolation, cudaStream_t stream, const Workspace &ws)
+                              const NVCVInterpolationType interpolation, cudaStream_t stream)
 {
     DataFormat format        = GetLegacyDataFormat(inData.layout());
     DataFormat output_format = GetLegacyDataFormat(outData.layout());
-
-    if (ws.cudaMem.ready != nullptr)
-        checkCudaErrors(cudaStreamWaitEvent(stream, ws.cudaMem.ready));
-
-    void *gpu_workspace = ws.cudaMem.data;
 
     if (format != output_format)
     {
@@ -454,10 +467,6 @@ ErrorCode PillowResize::infer(const TensorDataStridedCuda &inData, const TensorD
         return ErrorCode::INVALID_PARAMETER;
         break;
     }
-
-    if (ws.cudaMem.ready != nullptr)
-        checkCudaErrors(cudaEventRecord(ws.cudaMem.ready, stream));
-
     return ErrorCode::SUCCESS;
 }
 

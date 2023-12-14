@@ -320,6 +320,10 @@ struct cuOSDContext
     std::unique_ptr<Memory<unsigned char>>            gpu_commands;
     std::unique_ptr<Memory<int>>                      gpu_commands_offset;
 
+    // For OpBndBox only, to be deprecated.
+    std::vector<std::shared_ptr<RectangleCommand>> rect_commands;
+    std::unique_ptr<Memory<RectangleCommand>>      gpu_rect_commands;
+
     std::vector<std::shared_ptr<BoxBlurCommand>> blur_commands;
     std::unique_ptr<Memory<BoxBlurCommand>>      gpu_blur_commands;
 

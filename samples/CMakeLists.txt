@@ -32,8 +32,7 @@ set(CPPSAMPLES common
 
 set(PYSAMPLES classification
     segmentation
-    object_detection
-    label)
+    object_detection)
 
 foreach(sample ${CPPSAMPLES})
     add_subdirectory(${sample})

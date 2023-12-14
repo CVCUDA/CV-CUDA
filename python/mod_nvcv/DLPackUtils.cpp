@@ -135,64 +135,14 @@ DLPackTensor::DLPackTensor(const nvcv::TensorDataStrided &tensorData)
         for (int i = 0; i < tensor.ndim; ++i)
         {
             int64_t stride = tensorData.cdata().buffer.strided.strides[i];
+
             if (stride % tensorData.dtype().strideBytes() != 0)
             {
-                throw std::runtime_error("Stride must be a multiple of the element size in bytes");
+                throw std::runtime_error("Stride must be multiple of the element size in bytes");
             }
 
             tensor.strides[i] = tensorData.cdata().buffer.strided.strides[i] / tensorData.dtype().strideBytes();
         }
-    }
-    catch (...)
-    {
-        m_tensor.deleter(&m_tensor);
-        throw;
-    }
-}
-
-DLPackTensor::DLPackTensor(const nvcv::ArrayData &arrayData)
-{
-    m_tensor         = {};
-    m_tensor.deleter = [](DLManagedTensor *self)
-    {
-        delete[] self->dl_tensor.shape;
-        delete[] self->dl_tensor.strides;
-    };
-
-    try
-    {
-        DLTensor &tensor = m_tensor.dl_tensor;
-
-        // Set up device
-        if (arrayData.IsCompatible<nvcv::ArrayDataCuda>())
-        {
-            // TODO: detect correct device_type from memory buffer
-            tensor.device.device_type = kDLCUDA;
-            // TODO: detect correct device_id from memory buffer (if possible)
-            tensor.device.device_id = 0;
-        }
-        else
-        {
-            throw std::runtime_error("Array buffer type not supported, must be either CUDA");
-        }
-
-        // Set up ndim
-        tensor.ndim = arrayData.rank();
-
-        // Set up data
-        tensor.data        = arrayData.basePtr();
-        tensor.byte_offset = 0;
-
-        // Set up shape
-        tensor.shape    = new int64_t[tensor.ndim];
-        tensor.shape[0] = arrayData.capacity();
-
-        // Set up dtype
-        tensor.dtype = ToDLDataType(arrayData.dtype());
-
-        // Set up strides
-        tensor.strides    = new int64_t[tensor.ndim];
-        tensor.strides[0] = arrayData.stride();
     }
     catch (...)
     {
@@ -266,7 +216,7 @@ bool IsCudaAccessible(DLDeviceType devType)
 nvcv::DataType ToNVCVDataType(const DLDataType &dtype)
 {
     nvcv::PackingParams pp;
-    pp.byteOrder = nvcv::ByteOrder::MSB;
+    pp.byteOrder = nvcv::ByteOrder::LSB;
 
     int lanes = dtype.lanes;
     int bits  = dtype.bits;

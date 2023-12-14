@@ -2,13 +2,13 @@
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-yellogreen.svg)](https://opensource.org/licenses/Apache-2.0)
 
-![Version](https://img.shields.io/badge/Version-v0.5.0--beta-blue)
+![Version](https://img.shields.io/badge/Version-v0.4.0--beta-blue)
 
 ![Platform](https://img.shields.io/badge/Platform-linux--64_%7C_win--64_wsl2-gray)
 
 [![Cuda](https://img.shields.io/badge/CUDA-v11.7-%2376B900?logo=nvidia)](https://developer.nvidia.com/cuda-toolkit-archive)
 [![GCC](https://img.shields.io/badge/GCC-v11.0-yellow)](https://gcc.gnu.org/gcc-11/changes.html)
-[![Python](https://img.shields.io/badge/python-v3.7_%7c_v3.8_%7c_v3.9_%7c_v3.10-blue?logo=python)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-v3.7_%7c_v3.8_%7c_v3.10-blue?logo=python)](https://www.python.org/)
 [![CMake](https://img.shields.io/badge/CMake-v3.22-%23008FBA?logo=cmake)](https://cmake.org/)
 
 CV-CUDA is an open-source project that enables building efficient cloud-scale
@@ -18,7 +18,7 @@ efficient pre- and post-processing pipelines. CV-CUDA originated as a
 collaborative effort between [NVIDIA][NVIDIA Develop] and [ByteDance][ByteDance].
 
 Refer to our [Developer Guide](DEVELOPER_GUIDE.md) for more information on the
-operators available as of release v0.5.0-beta.
+operators available as of release v0.4.0-beta.
 
 ## Getting Started
 
@@ -45,150 +45,170 @@ packages. Choose the installation method that meets your environment needs.
 #### Tar File Installation
 
 ```shell
-tar -xvf nvcv-lib-0.5.0-cuda11-x86_64-linux.tar.xz
-tar -xvf nvcv-dev-0.5.0-cuda11-x86_64-linux.tar.xz
+tar -xvf nvcv-lib-0.4.0-cuda11-x86_64-linux.tar.xz
+tar -xvf nvcv-dev-0.4.0-cuda11-x86_64-linux.tar.xz
 ```
 
 #### DEB File Installation
 
 ```shell
-sudo apt-get install -y ./nvcv-lib-0.5.0-cuda11-x86_64-linux.deb ./nvcv-dev-0.5.0-cuda11-x86_64-linux.deb
+sudo apt-get install -y ./nvcv-lib-0.4.0-cuda11-x86_64-linux.deb ./nvcv-dev-0.4.0-cuda11-x86_64-linux.deb
 ```
 
 #### Python WHL File Installation
 
 ```shell
-pip install nvcv_python-0.5.0-cp38-cp38-linux_x86_64.whl
+pip install nvcv_python-0.4.0-cp38-cp38-linux_x86_64.whl
 ```
 
 ### Build from Source
 
-Building CV-CUDA from source allows for customization and is essential for contributing to the project. Here are detailed steps to guide you through the process:
+Follow these instruction to build CV-CUDA from source:
 
-#### 1. Repository Setup
+1. Set up your local CV-CUDA repository
 
-   Before you begin, ensure you have cloned the CV-CUDA repository to your local machine. Let's assume you've cloned it into `~/cvcuda`.
+    1. Install prerequisites needed to setup up the repository.
 
-   - **Initialize the Repository**:
-     After cloning, initialize the repository to configure it correctly. This setup is required only once.
+       On Ubuntu 22.04, install the following packages:
+       - git-lfs: to retrieve binary files from remote repository
 
-     ```shell
-     cd ~/cvcuda
-     ./init_repo.sh
-     ```
+       ```shell
+       sudo apt-get install -y git git-lfs
+       ```
 
-#### 2. Install Build Dependencies
+    2. After cloning the repository (assuming it was cloned in `~/cvcuda`),
+       it needs to be properly configured by running the `init_repo.sh` script only once.
 
-   CV-CUDA requires several dependencies to build from source. The following steps are based on Ubuntu 22.04, but similar packages can be found for other distributions.
+       ```shell
+       cd ~/cvcuda
+       ./init_repo.sh
+       ```
 
-   - **Install Essential Packages**:
-     These include the compiler, build system, and necessary libraries.
+1. Build CV-CUDA
 
-     ```shell
-     sudo apt-get install -y g++-11 cmake ninja-build python3-dev libssl-dev
-     ```
+    1. Install the dependencies required for building CV-CUDA
 
-   - **CUDA Toolkit**:
-     The CUDA Toolkit is essential for GPU acceleration. Although any 11.x version is compatible, 11.7 is recommended.
+       On Ubuntu 22.04, install the following packages:
+       - g++-11: compiler to be used
+       - cmake, ninja-build (optional): manage build rules
+       - python3-dev: for python bindings
+       - libssl-dev: needed by the testsuite (MD5 hashing utilities)
 
-     ```shell
-     sudo apt-get install -y cuda-minimal-build-11-7
-     ```
+       ```shell
+       sudo apt-get install -y g++-11 cmake ninja-build python3-dev libssl-dev
+       ```
 
-#### 3. Build Process
+       For CUDA Toolkit, any version of the 11.x series should work.
+       CV-CUDA was tested with 11.7, thus it should be preferred.
 
-   Once the dependencies are in place, you can proceed to build CV-CUDA.
+       ```shell
+       sudo apt-get install -y cuda-minimal-build-11-7
+       ```
 
-   - **Run Build Script**:
-     A build script is provided to simplify the compilation process. It creates a build tree and compiles the source code.
+    2. Build the project
 
-     ```shell
-     ci/build.sh
-     ```
+       ```shell
+       ci/build.sh
+       ```
 
-     This script creates a release build by default, placing output in `build-rel`. You can specify a debug build or a different output directory:
+       This will compile a x86 release build of CV-CUDA inside `build-rel` directory.
+       The library is in build-rel/lib, docs in build-rel/docs and executables
+       (tests, etc...) are in build-rel/bin.
 
-     ```shell
-     ci/build.sh [release|debug] [output build tree path]
-     ```
+       The script accepts some parameters to control the creation of the build tree:
 
-#### 4. Build Documentation (Optional)
+       ```shell
+       ci/build.sh [release|debug] [output build tree path]
+       ```
 
-   If you need to build the documentation, additional dependencies are required:
+       By default it builds for release.
 
-   - **Install Documentation Dependencies**:
-     These tools are used to generate and format the documentation.
+       If output build tree path isn't specified, it'll be `build-rel` for release
+       builds, and `build-deb` for debug.
 
-     ```shell
-     sudo apt-get install -y doxygen graphviz python3 python3-pip
-     sudo python3 -m pip install sphinx==4.5.0 breathe exhale recommonmark graphviz sphinx-rtd-theme
-     ```
+1. Build Documentation
 
-   - **Generate Documentation**:
-     Use the provided script to build the documentation.
+    1. Install the dependencies required for building the documentation
 
-     ```shell
-     ci/build_docs.sh [build folder]
-     ```
+       On Ubuntu 22.04, install the following packages:
+       - doxygen: parse header files for reference documentation
+       - python3, python3-pip: to install some python packages needed
+       - sphinx, breathe, exhale, recommonmark, graphiviz: to render the documentation
+       - sphinx-rtd-theme: documenation theme used
 
-     For example:
+       ```shell
+       sudo apt-get install -y doxygen graphviz python3 python3-pip
+       sudo python3 -m pip install sphinx==4.5.0 breathe exhale recommonmark graphviz sphinx-rtd-theme
+       ```
 
-     ```shell
-     ci/build_docs.sh build_docs
-     ```
+    2. Build the documentation
+       ```shell
+       ci/build_docs.sh [build folder]
+       ```
 
-#### 5. Build and Run Samples (Optional)
+       Example:
+       `ci/build_docs.sh build_docs`
 
-   CV-CUDA comes with a variety of samples to demonstrate its capabilities.
+1. Build and run Samples
 
-   - **See the Samples Documentation**:
-     Detailed instructions for building and running samples are available in the [Samples](samples/README.md) documentation.
+   1. For instructions on how to build samples from source and run them, see the [Samples](samples/README.md) documentation.
 
-#### 6. Running Tests
+1. Run Tests
 
-   To ensure everything is working as expected, you can run CV-CUDA's test suite.
+   1. Install the dependencies required for running the tests
 
-   - **Install Test Dependencies**:
-     These are necessary to run the Python binding tests.
+       On Ubuntu 22.04, install the following packages:
+       - python3, python3-pip: to run python bindings tests
+       - torch: dependencies needed by python bindings tests
 
-     ```shell
-     sudo apt-get install -y python3 python3-pip
-     sudo python3 -m pip install pytest torch
-     ```
+       ```shell
+       sudo apt-get install -y python3 python3-pip
+       sudo python3 -m pip install pytest torch
+       ```
 
-   - **Execute Tests**:
-     Run the test scripts located in the build tree.
+   2. Run the tests
 
-     ```shell
-     build-rel/bin/run_tests.sh
-     ```
+       The tests are in `<buildtree>/bin`. You can run the script below to run all
+       tests at once. Here's an example when build tree is created in `build-rel`
 
-#### 7. Packaging
+       ```shell
+       build-rel/bin/run_tests.sh
+       ```
 
-   After a successful build, you can create installers using `cpack`.
+1. Package installers
 
-   - **Generate Installers**:
-     This step produces Debian packages and tarballs, suitable for distribution or installation on other systems.
+   Installers can be generated using the following cpack command once you have successfully built the project
 
-     ```shell
-     cd build-rel
-     cpack .
-     ```
+   ```shell
+   cd build-rel
+   cpack .
+   ```
 
-     For specific installer types:
+   This will generate in the build directory both Debian installers and tarballs
+   (\*.tar.xz), needed for integration in other distros.
 
-     ```shell
-     cpack . -G [DEB|TXZ]
-     ```
+   For a fine-grained choice of what installers to generate, the full syntax is:
 
-     - `DEB` for Debian packages.
-     - `TXZ` for `.tar.xz` tarballs.
+   ```shell
+   cpack . -G [DEB|TXZ]
+   ```
+
+   - DEB for Debian packages
+   - TXZ for \*.tar.xz tarballs.
+
+## Tools
+
+1. CV-CUDA make operator tool
+
+   This tool will create an noop operator; python bindings, and tests.
+
+   This tool is located in 'tools/mkop'. To run it, navigate to the directory and execute the command './mkop.sh OperatorName', where 'OperatorName' is the desired name of the operator.
 
 ## Contributing
 
 CV-CUDA is an open source project. As part of the Open Source Community, we are
 committed to the cycle of learning, improving, and updating that makes this
-community thrive. However, as of release v0.5.0-beta, CV-CUDA is not yet ready
+community thrive. However, as of release v0.4.0-beta, CV-CUDA is not yet ready
 for external contributions.
 
 To understand the process for contributing the CV-CUDA, see our
@@ -196,48 +216,6 @@ To understand the process for contributing the CV-CUDA, see our
 Source Community, and providing an environment that both supports and respects
 the efforts of all contributors, please read our
 [Code of Conduct](CODE_OF_CONDUCT.md).
-
-### CV-CUDA Make Operator Tool
-
-The `mkop.sh` script is a powerful tool for creating a scaffold for new operators in the CV-CUDA library. It automates several tasks, ensuring consistency and saving time.
-
-#### Features of `mkop.sh`:
-
-1. **Operator Stub Creation**: Generates no-op (no-operation) operator templates, which serve as a starting point for implementing new functionalities.
-
-1. **File Customization**: Modifies template files to include the new operator's name, ensuring consistent naming conventions across the codebase.
-
-1. **CMake Integration**: Adds the new operator files to the appropriate CMakeLists, facilitating seamless compilation and integration into the build system.
-
-1. **Python Bindings**: Creates Python wrapper stubs for the new operator, allowing it to be used within Python environments.
-
-1. **Test Setup**: Generates test files for both C++ and Python, enabling immediate development of unit tests for the new operator.
-
-#### How to Use `mkop.sh`:
-
-Run the script with the desired operator name. The script assumes it's located in `/cvcuda/tools/mkop`.
-
-  ```shell
-  ./mkop.sh [Operator Name]
-  ```
-
-If the script is run from a different location, provide the path to the CV-CUDA root directory.
-
-  ```shell
-  ./mkop.sh [Operator Name] [CV-CUDA root]
-  ```
-
-**NOTE**: The first letter of the new operator name is captitalized where needed to match the rest of the file structures.
-
-#### Process Details:
-
-- **Initial Setup**: The script begins by validating the input and setting up necessary variables. It then capitalizes the first letter of the operator name to adhere to naming conventions.
-
-- **Template Modification**: It processes various template files (`Public.h`, `PrivateImpl.cpp`, etc.), replacing placeholders with the new operator name. This includes adjusting file headers, namespaces, and function signatures.
-
-- **CMake and Python Integration**: The script updates `CMakeLists.txt` files and Python module files to include the new operator, ensuring it's recognized by the build system and Python interface.
-
-- **Testing Framework**: Finally, it sets up test files for both C++ and Python, allowing developers to immediately start writing tests for the new operator.
 
 ## License
 

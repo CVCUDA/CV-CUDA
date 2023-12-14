@@ -923,11 +923,10 @@ __global__ void flattenContours(IndexType *dConnectList, CountType *dNodeCount, 
                    + block.group_index().y * grid.group_dim().x + block.group_index().x;
 
     // Calculate block tile dimensions and total number of iterations needed.
-    auto contourTile       = util::DivUp(FindContours::MAX_NUM_CONTOURS, warp.meta_group_size());
-    auto neededThreads     = warp.size() * FindContours::MAX_NUM_CONTOURS * batchSize;
-    auto neededBlocks      = (neededThreads + block.size() - 1) / block.size();
-    auto numStepsBatchSize = ((batchSize * contourTile - blockRank) + gridBlocks - 1) / gridBlocks;
-    auto numSteps          = max((neededBlocks + gridBlocks - 1) / gridBlocks, numStepsBatchSize);
+    auto contourTile   = util::DivUp(FindContours::MAX_NUM_CONTOURS, warp.meta_group_size());
+    auto neededThreads = warp.size() * FindContours::MAX_NUM_CONTOURS * batchSize;
+    auto neededBlocks  = (neededThreads + block.size() - 1) / block.size();
+    auto numSteps      = (neededBlocks + gridBlocks - 1) / gridBlocks;
 
     // Calculate the thread's block dimensions and its position within the block.
     CoordType blockDims{warp.size(), warp.meta_group_size(), 1};

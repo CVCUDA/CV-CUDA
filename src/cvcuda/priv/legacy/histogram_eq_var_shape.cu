@@ -51,7 +51,7 @@ __global__ void hist_kernel(const SrcWrapper src, DstWrapper histogram, int chan
     {
         for (int ch = 0; ch < channels; ch++)
         {
-            int4  coordImg{batch_idx, src_y, src_x, ch};
+            int4  coordImg{src_x, src_y, batch_idx, ch};
             uchar out = src[coordImg];
             int   idx = out + (256 * ch);
             atomicAdd(&shist[idx], 1);
@@ -160,7 +160,7 @@ __global__ void lookup(const SrcWrapper src, DstWrapper dst, CdfWrapper cdf, int
         for (int ch = 0; ch < channels; ch++)
         {
             offset = 256 * ch;
-            int4 coordImg{batch_idx, src_y, src_x, ch};
+            int4 coordImg{src_x, src_y, batch_idx, ch};
             int2 coordHisto{src[coordImg] + offset, batch_idx};
             dst[coordImg] = nvcv::cuda::SaturateCast<uchar>((temp[src[coordImg] + offset]));
         }

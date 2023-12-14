@@ -35,7 +35,7 @@ namespace util = nvcv::util;
 NVCV_TEST_SUITE_P(TensorDataUtils, test::ValueList<int, int, int, uint8_t, nvcv::ImageFormat>
 {
     //width, height, numImages, fill byte, format
-    {     2,      2,         1,         2, nvcv::FMT_RGB8},
+    {     2,      2,         2,         2, nvcv::FMT_RGB8},
     {     3,      3,         5,         2, nvcv::FMT_BGR8},
     {     10,    11,         2,         2, nvcv::FMT_RGBA8},
     {     5,      5,         1,         2, nvcv::FMT_BGRA8},
@@ -214,41 +214,6 @@ TEST_P(TensorDataUtils, SetGetTensorFromVector)
     EXPECT_NO_THROW(GetSetTensor<uint16_t>(tensor));
     EXPECT_NO_THROW(GetSetTensor<int>(tensor));
     EXPECT_NO_THROW(GetSetTensor<float>(tensor));
-}
-
-TEST_P(TensorDataUtils, SetGetTensorToFromByteVector)
-{
-    int               width  = GetParamValue<0>();
-    int               height = GetParamValue<1>();
-    int               number = GetParamValue<2>();
-    nvcv::ImageFormat fmt    = GetParamValue<4>();
-
-    // This will return the number of channels in the plane 0, so with planar
-    // this must be considered only for that plane.
-    int numChannels   = fmt.numChannels();
-    int bytesPerPixel = 0;
-
-    for (int i = 0; i < numChannels; i++)
-    {
-        bytesPerPixel += fmt.bitsPerChannel()[i] / 8;
-    }
-    nvcv::Tensor tensor(number, {width, height}, fmt);
-
-    std::default_random_engine    randEng(0);
-    std::uniform_int_distribution rand(0u, 255u);
-
-    // Test the CHW/HWC tensors
-    for (int i = 0; i < number; ++i)
-    {
-        std::vector<nvcv::Byte> imageVec((width * height) * bytesPerPixel);
-        std::generate(imageVec.begin(), imageVec.end(), [&]() { return (nvcv::Byte)rand(randEng); });
-        std::vector<nvcv::Byte> outVec((width * height) * bytesPerPixel);
-        EXPECT_NO_THROW(util::SetImageTensorFromByteVector(tensor.exportData(), imageVec, i));
-        EXPECT_NO_THROW(util::GetImageByteVectorFromTensor(tensor.exportData(), i, outVec));
-        EXPECT_EQ(imageVec, outVec);
-    }
-
-    return;
 }
 
 TEST_P(TensorDataUtils, SetGetTensorFromImageVector)

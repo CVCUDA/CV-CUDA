@@ -23,7 +23,6 @@
 
 #include "CvCudaUtils.cuh"
 
-#include <cvcuda/priv/Types.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/ImageData.hpp>
 #include <nvcv/TensorData.hpp>
@@ -33,7 +32,6 @@
 using namespace nvcv::legacy::cuda_op;
 using namespace nvcv::legacy::helpers;
 using namespace nvcv::cuda::osd;
-using namespace cvcuda::priv;
 
 namespace nvcv::legacy::cuda_op {
 
@@ -329,15 +327,15 @@ inline ErrorCode ApplyBoxBlur_RGBA(const nvcv::TensorDataStridedCuda &inData,
     return ErrorCode::SUCCESS;
 }
 
-static ErrorCode cuosd_draw_boxblur(cuOSDContext_t context, int width, int height, NVCVBlurBoxesImpl *bboxes)
+static ErrorCode cuosd_draw_boxblur(cuOSDContext_t context, int width, int height, NVCVBlurBoxesI bboxes)
 {
-    for (int n = 0; n < bboxes->batch(); n++)
+    for (int n = 0; n < bboxes.batch; n++)
     {
-        auto numBoxes = bboxes->numBoxesAt(n);
+        auto numBoxes = bboxes.numBoxes[n];
 
         for (int i = 0; i < numBoxes; i++)
         {
-            auto bbox   = bboxes->boxAt(n, i);
+            auto bbox   = bboxes.boxes[i];
             int  left   = max(min(bbox.box.x, width - 1), 0);
             int  top    = max(min(bbox.box.y, height - 1), 0);
             int  right  = max(min(left + bbox.box.width - 1, width - 1), 0);
@@ -369,6 +367,8 @@ static ErrorCode cuosd_draw_boxblur(cuOSDContext_t context, int width, int heigh
             cmd->bounding_bottom = bottom;
             context->blur_commands.emplace_back(cmd);
         }
+
+        bboxes.boxes = (NVCVBlurBoxI *)((uint8_t *)bboxes.boxes + numBoxes * sizeof(NVCVBlurBoxI));
     }
     return ErrorCode::SUCCESS;
 }
@@ -392,6 +392,11 @@ BoxBlur::~BoxBlur()
         cuOSDContext *p = (cuOSDContext *)m_context;
         delete p;
     }
+}
+
+size_t BoxBlur::calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type)
+{
+    return 0;
 }
 
 ErrorCode BoxBlur::infer(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,
@@ -430,10 +435,9 @@ ErrorCode BoxBlur::infer(const nvcv::TensorDataStridedCuda &inData, const nvcv::
         return ErrorCode::INVALID_DATA_SHAPE;
     }
 
-    NVCVBlurBoxesImpl *_bboxes = (NVCVBlurBoxesImpl *)bboxes;
-    if (_bboxes->batch() != batch)
+    if (bboxes.batch != batch)
     {
-        LOG_ERROR("Invalid bboxes batch = " << _bboxes->batch());
+        LOG_ERROR("Invalid bboxes batch = " << bboxes.batch);
         return ErrorCode::INVALID_DATA_SHAPE;
     }
 
@@ -443,7 +447,7 @@ ErrorCode BoxBlur::infer(const nvcv::TensorDataStridedCuda &inData, const nvcv::
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
-    auto ret = cuosd_draw_boxblur(m_context, cols, rows, _bboxes);
+    auto ret = cuosd_draw_boxblur(m_context, cols, rows, bboxes);
     if (ret != ErrorCode::SUCCESS)
     {
         return ret;
@@ -460,6 +464,7 @@ ErrorCode BoxBlur::infer(const nvcv::TensorDataStridedCuda &inData, const nvcv::
     int type_idx = channels - 3;
     funcs[type_idx](inData, outData, m_context, stream);
     m_context->blur_commands.clear(); // Clear the command buffer so next render does not contain previous boxes.
+    m_context->rect_commands.clear();
     return ErrorCode::SUCCESS;
 }
 

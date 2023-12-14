@@ -129,7 +129,7 @@ static void WarpPerspectiveGold(std::vector<uint8_t> &hDst, const int dstRowStri
 
     NVCVPerspectiveTransform finalTransformMatrix;
 
-    if (!(flags & NVCV_WARP_INVERSE_MAP))
+    if (flags & NVCV_WARP_INVERSE_MAP)
     {
         cuda::math::Matrix<float, 3, 3> tempMatrixForInverse;
 

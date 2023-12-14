@@ -42,8 +42,6 @@ public:
     virtual NVCVResourceType target() const = 0;
 
     virtual void exportData(NVCVArrayData &data) const = 0;
-
-    virtual void resize(int64_t length) = 0;
 };
 
 template<>

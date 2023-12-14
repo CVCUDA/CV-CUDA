@@ -677,47 +677,6 @@ TEST(PackingTests, get_name)
     EXPECT_STREQ("NVCVPacking(2147483647)", nvcvPackingGetName(NVCV_PACKING_LIMIT32));
 }
 
-class PackingTests_Alignment : public t::TestWithParam<std::tuple<NVCVPacking, int32_t>>
-{
-};
-
-INSTANTIATE_TEST_SUITE_P(
-    _, PackingTests_Alignment,
-    t::Values(std::make_tuple(NVCV_PACKING_X24, 4), std::make_tuple(NVCV_PACKING_X4b4, 1),
-              std::make_tuple(NVCV_PACKING_X10b6, 2), std::make_tuple(NVCV_PACKING_b4X12, 2),
-              std::make_tuple(NVCV_PACKING_b4X12, 2), std::make_tuple(NVCV_PACKING_X8_Y8, 1),
-              std::make_tuple(NVCV_PACKING_X5Y5Z6, 2), std::make_tuple(NVCV_PACKING_b4X4Y4Z4, 2),
-              std::make_tuple(NVCV_PACKING_X1Y5Z5W5, 2), std::make_tuple(NVCV_PACKING_X8_Y8__X8_Z8, 1),
-              std::make_tuple(NVCV_PACKING_X8_Y8_Z8, 1), std::make_tuple(NVCV_PACKING_b2X10Y10Z10, 4),
-              std::make_tuple(NVCV_PACKING_X12b4_Y12b4, 2), std::make_tuple(NVCV_PACKING_X32_Y24b8, 4)));
-
-TEST_P(PackingTests_Alignment, get_alignment)
-{
-    auto param = GetParam();
-
-    NVCVPacking   packing           = std::get<0>(param);
-    const int32_t expectedAlignment = std::get<1>(param);
-    int32_t       outAlignment      = -1;
-
-    ASSERT_EQ(NVCV_SUCCESS, nvcvPackingGetAlignment(packing, &outAlignment)); // 16 / 8 = 2
-    EXPECT_EQ(expectedAlignment, outAlignment);
-}
-
-TEST(PackingTests_Negative, Invalid_parameter)
-{
-    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvPackingGetParams(NVCV_PACKING_X16, nullptr));
-    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvPackingGetNumComponents(NVCV_PACKING_X16, nullptr));
-    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvPackingGetBitsPerPixel(NVCV_PACKING_X16, nullptr));
-    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvPackingGetBitsPerComponent(NVCV_PACKING_X16, nullptr));
-    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvPackingGetAlignment(NVCV_PACKING_X16, nullptr));
-
-    NVCVPackingParams params;
-    NVCVPacking       packing;
-    ASSERT_EQ(NVCV_SUCCESS, nvcvPackingGetParams(NVCV_PACKING_X16, &params));
-    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvMakePacking(&packing, nullptr));
-    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvMakePacking(nullptr, &params));
-}
-
 TEST(ByteOrderTests, get_name)
 {
     EXPECT_STREQ("LSB", nvcvByteOrderGetName(NVCV_ORDER_LSB));
@@ -731,26 +690,15 @@ TEST(SwizzleTests, get_name)
     //              nvcvSwizzleGetName(NVCV_DETAIL_MAKE_SWIZZLE(NVCV_CHANNEL_1, NVCV_CHANNEL_1, NVCV_CHANNEL_0, NVCV_CHANNEL_X)));
 }
 
-TEST(SwizzleTests_Negative, Invalid_parameter)
-{
-    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvSwizzleGetNumChannels(NVCV_SWIZZLE_0000, nullptr));
-    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-              nvcvMakeSwizzle(nullptr, NVCV_CHANNEL_X, NVCV_CHANNEL_Y, NVCV_CHANNEL_Z, NVCV_CHANNEL_W));
-    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvSwizzleGetChannels(NVCV_SWIZZLE_0000, nullptr));
-}
-
 TEST(SwizzleChannelTests, get_name)
 {
     EXPECT_STREQ("Y", nvcvChannelGetName(NVCV_CHANNEL_Y));
-    EXPECT_STREQ("NVCVChannel(255)", nvcvChannelGetName(NVCV_CHANNEL_FORCE8));
     EXPECT_STREQ("NVCVChannel(7)", nvcvChannelGetName(static_cast<NVCVChannel>(7)));
 }
 
 TEST(MemLayoutTests, get_name)
 {
-    EXPECT_STREQ("NVCV_MEM_LAYOUT_BLOCK1_LINEAR", nvcvMemLayoutGetName(NVCV_MEM_LAYOUT_BLOCK1_LINEAR));
     EXPECT_STREQ("NVCV_MEM_LAYOUT_BLOCK2_LINEAR", nvcvMemLayoutGetName(NVCV_MEM_LAYOUT_BLOCK2_LINEAR));
-    EXPECT_STREQ("NVCV_MEM_LAYOUT_BLOCK32_LINEAR", nvcvMemLayoutGetName(NVCV_MEM_LAYOUT_BLOCK32_LINEAR));
     EXPECT_STREQ("NVCVMemLayout(-1)", nvcvMemLayoutGetName(static_cast<NVCVMemLayout>(-1)));
 }
 
@@ -758,5 +706,4 @@ TEST(DataKindTests, get_name)
 {
     EXPECT_STREQ("NVCV_DATA_KIND_FLOAT", nvcvDataKindGetName(NVCV_DATA_KIND_FLOAT));
     EXPECT_STREQ("NVCV_DATA_KIND_UNSPECIFIED", nvcvDataKindGetName(static_cast<NVCVDataKind>(-1)));
-    EXPECT_STREQ("NVCVDataKind(-128)", nvcvDataKindGetName(static_cast<NVCVDataKind>(-128)));
 }

@@ -412,25 +412,25 @@ public:
     /**
      * Subscript operator for read-only or read-and-write access (depending on value type).
      *
-     * @param[in] c 4D coordinates (x sample, y row, z col, w channel) to be accessed.
+     * @param[in] c 4D coordinate (x column, y row, z sample, w channel) to be accessed.
      *
      * @return Accessed (const) reference.
      */
     inline __host__ __device__ ValueType &operator[](int4 c) const
     {
-        return *doGetPtr(c.x, c.y, c.z, c.w);
+        return *doGetPtr(c.z, c.y, c.x, c.w);
     }
 
     /**
      * Subscript operator for read-only or read-and-write access (depending on value type, considering plane=0).
      *
-     * @param[in] c 3D coordinates (x sammple, y row, z col) (first channel) to be accessed.
+     * @param[in] c 3D coordinate (x column, y row, z sample) (first channel) to be accessed.
      *
      * @return Accessed (const) reference.
      */
     inline __host__ __device__ ValueType &operator[](int3 c) const
     {
-        return *doGetPtr(c.x, c.y, c.z, 0);
+        return *doGetPtr(c.z, c.y, c.x, 0);
     }
 
     /**
@@ -523,13 +523,13 @@ public:
     /**
      * Subscript operator for read-only or read-and-write access (depending on value type).
      *
-     * @param[in] c 4D coordinate (x sample, y row, z column, w channel) to be accessed.
+     * @param[in] c 4D coordinate (x column, y row, z sample, w channel) to be accessed.
      *
      * @return Accessed (const) reference.
      */
     inline __host__ __device__ ValueType &operator[](int4 c) const
     {
-        ValueType *p = doGetPtr(c.x, c.y, c.z, c.w);
+        ValueType *p = doGetPtr(c.z, c.y, c.x, c.w);
 
         if (p == nullptr)
         {
@@ -542,13 +542,13 @@ public:
     /**
      * Subscript operator for read-only or read-and-write access (depending on value type, considering plane=0).
      *
-     * @param[in] c 3D coordinate (x sample, y row, z col) (first channel) to be accessed.
+     * @param[in] c 3D coordinate (x column, y row, z sample) (first channel) to be accessed.
      *
      * @return Accessed (const) reference.
      */
     inline __host__ __device__ ValueType &operator[](int3 c) const
     {
-        ValueType *p = doGetPtr(c.x, c.y, c.z, 0);
+        ValueType *p = doGetPtr(c.z, c.y, c.x, 0);
 
         if (p == nullptr)
         {

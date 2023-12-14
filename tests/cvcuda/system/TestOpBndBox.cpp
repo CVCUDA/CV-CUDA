@@ -21,7 +21,6 @@
 
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpBndBox.hpp>
-#include <cvcuda/priv/Types.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
@@ -34,7 +33,6 @@
 
 namespace gt   = ::testing;
 namespace test = nvcv::test;
-using namespace cvcuda::priv;
 
 static int randl(int l, int h)
 {
@@ -43,12 +41,12 @@ static int randl(int l, int h)
 }
 
 static void setGoldBuffer(std::vector<uint8_t> &vect, nvcv::ImageFormat format,
-                          const nvcv::TensorDataAccessStridedImagePlanar &data, nvcv::Byte *inBuf,
-                          std::shared_ptr<NVCVBndBoxesImpl> bboxes, cudaStream_t stream)
+                          const nvcv::TensorDataAccessStridedImagePlanar &data, nvcv::Byte *inBuf, NVCVBndBoxesI bboxes,
+                          cudaStream_t stream)
 {
     auto context = cuosd_context_create();
 
-    for (int n = 0; n < bboxes->batch(); n++)
+    for (int n = 0; n < bboxes.batch; n++)
     {
         test::osd::Image *image = test::osd::create_image(
             data.numCols(), data.numRows(),
@@ -56,11 +54,11 @@ static void setGoldBuffer(std::vector<uint8_t> &vect, nvcv::ImageFormat format,
         int bufSize = data.numCols() * data.numRows() * data.numChannels();
         EXPECT_EQ(cudaSuccess, cudaMemcpy(image->data0, inBuf + n * bufSize, bufSize, cudaMemcpyDeviceToDevice));
 
-        auto numBoxes = bboxes->numBoxesAt(n);
+        auto numBoxes = bboxes.numBoxes[n];
 
         for (int i = 0; i < numBoxes; i++)
         {
-            auto bbox = bboxes->boxAt(n, i);
+            auto bbox = bboxes.boxes[i];
 
             int left   = std::max(std::min(bbox.box.x, data.numCols() - 1), 0);
             int top    = std::max(std::min(bbox.box.y, data.numRows() - 1), 0);
@@ -82,6 +80,7 @@ static void setGoldBuffer(std::vector<uint8_t> &vect, nvcv::ImageFormat format,
 
         test::osd::cuosd_apply(context, image, stream);
 
+        bboxes.boxes = (NVCVBndBoxI *)((unsigned char *)bboxes.boxes + numBoxes * sizeof(NVCVBndBoxI));
         EXPECT_EQ(cudaSuccess, cudaMemcpy(vect.data() + n * bufSize, image->data0, bufSize, cudaMemcpyDeviceToHost));
 
         test::osd::free_image(image);
@@ -94,12 +93,14 @@ static void setGoldBuffer(std::vector<uint8_t> &vect, nvcv::ImageFormat format,
 static void runOp(cudaStream_t &stream, cvcuda::BndBox &op, int &inN, int &inW, int &inH, int &num, int &sed,
                   nvcv::ImageFormat &format)
 {
-    std::vector<std::vector<NVCVBndBoxI>> bndBoxVec;
+    NVCVBndBoxesI            bndBoxes;
+    std::vector<int>         numBoxVec;
+    std::vector<NVCVBndBoxI> bndBoxVec;
 
     srand(sed);
     for (int n = 0; n < inN; n++)
     {
-        std::vector<NVCVBndBoxI> curVec;
+        numBoxVec.push_back(num);
         for (int i = 0; i < num; i++)
         {
             NVCVBndBoxI bndBox;
@@ -112,12 +113,13 @@ static void runOp(cudaStream_t &stream, cvcuda::BndBox &op, int &inN, int &inW, 
                                   (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)};
             bndBox.borderColor = {(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
                                   (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)};
-            curVec.push_back(bndBox);
+            bndBoxVec.push_back(bndBox);
         }
-        bndBoxVec.push_back(curVec);
     }
 
-    std::shared_ptr<NVCVBndBoxesImpl> bndBoxes = std::make_shared<NVCVBndBoxesImpl>(bndBoxVec);
+    bndBoxes.batch    = inN;
+    bndBoxes.numBoxes = numBoxVec.data();
+    bndBoxes.boxes    = bndBoxVec.data();
 
     nvcv::Tensor imgIn  = nvcv::util::CreateTensor(inN, inW, inH, format);
     nvcv::Tensor imgOut = nvcv::util::CreateTensor(inN, inW, inH, format);
@@ -143,7 +145,7 @@ static void runOp(cudaStream_t &stream, cvcuda::BndBox &op, int &inN, int &inW, 
     EXPECT_EQ(cudaSuccess, cudaMemset(input->basePtr(), 0xFF, inSampleStride * inAccess->numSamples()));
     EXPECT_EQ(cudaSuccess, cudaMemset(output->basePtr(), 0xFF, outSampleStride * outAccess->numSamples()));
 
-    EXPECT_NO_THROW(op(stream, imgIn, imgOut, (NVCVBndBoxesI)bndBoxes.get()));
+    EXPECT_NO_THROW(op(stream, imgIn, imgOut, bndBoxes));
 
     // check cdata
     std::vector<uint8_t> test(outBufSize);

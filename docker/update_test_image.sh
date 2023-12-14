@@ -35,7 +35,7 @@ cd "$SDIR"
 
 cd test
 
-image=$IMAGE_URL_BASE/test-linux-x64:$TAG_IMAGE_TEST
+image=$IMAGE_URL_BASE/test-linux-x64:$TAG_IMAGE
 
 docker build --network=host \
     --build-arg "VER_CUDA=$VER_CUDA" \

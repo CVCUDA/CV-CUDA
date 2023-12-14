@@ -29,10 +29,9 @@ RNG = np.random.default_rng(0)
 def test_op_find_contours(shape, dtype, layout):
     print(shape, dtype, layout)
     image = util.create_tensor(shape, dtype, layout, 1, rng=RNG)
-    points, num_contours_and_points = cvcuda.find_contours(image)
+    points = cvcuda.find_contours(image)
     assert points.shape[0] == image.shape[0]
     assert points.shape[2] == 2
-    assert points.shape[0] == num_contours_and_points.shape[0]
 
     stream = cvcuda.Stream()
     points = cvcuda.Tensor(
@@ -41,13 +40,12 @@ def test_op_find_contours(shape, dtype, layout):
     num_points = cvcuda.Tensor(
         (image.shape[0], 32), nvcv.Type.U32, nvcv.TensorLayout.NW
     )
-    points_into, num_contours_and_points_into = cvcuda.find_contours_into(
+    tmp = cvcuda.find_contours_into(
         src=image,
         points=points,
         num_points=num_points,
         stream=stream,
     )
-    assert points_into is points
-    assert points_into.shape[0] == image.shape[0]
-    assert points_into.shape[2] == 2
-    assert points_into.shape[0] == num_contours_and_points_into.shape[0]
+    assert tmp is points
+    assert points.shape[0] == image.shape[0]
+    assert points.shape[2] == 2

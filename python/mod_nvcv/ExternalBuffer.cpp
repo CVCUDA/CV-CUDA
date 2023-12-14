@@ -263,9 +263,9 @@ std::optional<py::dict> ExternalBuffer::cudaArrayInterface() const
 
         nvcv::DataType dataType = ToNVCVDataType(m_dlTensor->dtype);
 
+        NVCV_ASSERT(dataType.strideBytes() * 8 == m_dlTensor->dtype.bits);
         NVCV_ASSERT(m_dlTensor->dtype.bits % 8 == 0);
-        NVCV_ASSERT(dataType.strideBytes() * 8 == m_dlTensor->dtype.bits * m_dlTensor->dtype.lanes);
-        int elemStrideBytes = dataType.strideBytes();
+        int elemStrideBytes = m_dlTensor->dtype.bits / 8;
 
         py::object strides;
 
@@ -369,7 +369,7 @@ void ExternalBuffer::Export(py::module &m)
         .def("__dlpack_device__", &ExternalBuffer::dlpackDevice, "Get the device associated with the buffer");
 }
 
-} // namespace nvcvpy::priv
+} // namespace nv::vpi::python
 
 namespace pybind11::detail {
 

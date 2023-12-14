@@ -37,13 +37,6 @@ inline Shape CreateShape(const nvcv::TensorShape &tshape)
     return s;
 }
 
-inline Shape CreateShape(int64_t length)
-{
-    Shape s(1);
-    s[0] = length;
-    return s;
-}
-
 inline nvcv::TensorShape CreateNVCVTensorShape(const Shape &shape, nvcv::TensorLayout layout = nvcv::TENSOR_NONE)
 {
     std::vector<int64_t> dims;
@@ -54,24 +47,6 @@ inline nvcv::TensorShape CreateNVCVTensorShape(const Shape &shape, nvcv::TensorL
     }
 
     return nvcv::TensorShape(dims.data(), dims.size(), layout);
-}
-
-inline int64_t LengthIf1D(const Shape &shape)
-{
-    int64_t largest = 1;
-    for (size_t i = 0; i < shape.size(); ++i)
-    {
-        if (shape[i].cast<int64_t>() > 1)
-        {
-            if (largest > 1)
-            {
-                throw std::invalid_argument("Non-supported array shape");
-            }
-            largest = shape[i].cast<int64_t>();
-        }
-    }
-
-    return largest;
 }
 
 } // namespace nvcvpy

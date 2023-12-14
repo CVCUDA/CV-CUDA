@@ -49,12 +49,6 @@ else()
     message(STATUS "    ENABLE_SANITIZER         : off")
 endif()
 
-if(BUILD_BENCH)
-    message(STATUS "    BUILD_BENCH              : ON")
-else()
-    message(STATUS "    BUILD_BENCH              : off")
-endif()
-
 if(ENABLE_TEGRA)
     message(STATUS "    ENABLE_TEGRA             : ON")
 else()

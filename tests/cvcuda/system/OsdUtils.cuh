@@ -59,6 +59,7 @@ struct Point
 struct Polyline
 {
     int *h_pts = nullptr;
+    int *d_pts = nullptr;
     int  n_pts = 0;
 };
 

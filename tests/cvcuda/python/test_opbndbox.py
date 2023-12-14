@@ -24,67 +24,62 @@ import numpy as np
         (
             (((3, 224, 224, 4), np.uint8, "NHWC")),
             cvcuda.BndBoxesI(
+                numBoxes=[3, 3, 3],
                 boxes=[
-                    [
-                        cvcuda.BndBoxI(
-                            box=(10, 10, 5, 5),
-                            thickness=2,
-                            borderColor=(255, 255, 0),
-                            fillColor=(0, 128, 255, 128),
-                        ),
-                        cvcuda.BndBoxI(
-                            box=(20, 10, 5, 5),
-                            thickness=3,
-                            borderColor=(0, 255, 255),
-                            fillColor=(0, 128, 255, 128),
-                        ),
-                        cvcuda.BndBoxI(
-                            box=(30, 10, 5, 5),
-                            thickness=3,
-                            borderColor=(0, 255, 255),
-                            fillColor=(0, 128, 255, 128),
-                        ),
-                    ],
-                    [
-                        cvcuda.BndBoxI(
-                            box=(10, 20, 5, 5),
-                            thickness=2,
-                            borderColor=(255, 255, 0),
-                            fillColor=(0, 128, 255, 128),
-                        ),
-                        cvcuda.BndBoxI(
-                            box=(20, 20, 5, 5),
-                            thickness=3,
-                            borderColor=(0, 255, 255),
-                            fillColor=(0, 128, 255, 128),
-                        ),
-                        cvcuda.BndBoxI(
-                            box=(30, 20, 5, 5),
-                            thickness=3,
-                            borderColor=(0, 255, 255),
-                            fillColor=(0, 128, 255, 128),
-                        ),
-                    ],
-                    [
-                        cvcuda.BndBoxI(
-                            box=(10, 20, 5, 5),
-                            thickness=2,
-                            borderColor=(255, 255, 0),
-                            fillColor=(0, 128, 255, 128),
-                        ),
-                        cvcuda.BndBoxI(
-                            box=(20, 20, 5, 5),
-                            thickness=3,
-                            borderColor=(0, 255, 255),
-                            fillColor=(0, 128, 255, 128),
-                        ),
-                        cvcuda.BndBoxI(
-                            box=(30, 20, 5, 5),
-                            thickness=3,
-                            borderColor=(0, 255, 255),
-                            fillColor=(0, 128, 255, 128),
-                        ),
-                    ],
+                    cvcuda.BndBoxI(
+                        box=(10, 10, 5, 5),
+                        thickness=2,
+                        borderColor=(255, 255, 0),
+                        fillColor=(0, 128, 255, 128),
+                    ),
+                    cvcuda.BndBoxI(
+                        box=(20, 10, 5, 5),
+                        thickness=3,
+                        borderColor=(0, 255, 255),
+                        fillColor=(0, 128, 255, 128),
+                    ),
+                    cvcuda.BndBoxI(
+                        box=(30, 10, 5, 5),
+                        thickness=3,
+                        borderColor=(0, 255, 255),
+                        fillColor=(0, 128, 255, 128),
+                    ),
+                    cvcuda.BndBoxI(
+                        box=(10, 20, 5, 5),
+                        thickness=2,
+                        borderColor=(255, 255, 0),
+                        fillColor=(0, 128, 255, 128),
+                    ),
+                    cvcuda.BndBoxI(
+                        box=(20, 20, 5, 5),
+                        thickness=3,
+                        borderColor=(0, 255, 255),
+                        fillColor=(0, 128, 255, 128),
+                    ),
+                    cvcuda.BndBoxI(
+                        box=(30, 20, 5, 5),
+                        thickness=3,
+                        borderColor=(0, 255, 255),
+                        fillColor=(0, 128, 255, 128),
+                    ),
+                    cvcuda.BndBoxI(
+                        box=(10, 20, 5, 5),
+                        thickness=2,
+                        borderColor=(255, 255, 0),
+                        fillColor=(0, 128, 255, 128),
+                    ),
+                    cvcuda.BndBoxI(
+                        box=(20, 20, 5, 5),
+                        thickness=3,
+                        borderColor=(0, 255, 255),
+                        fillColor=(0, 128, 255, 128),
+                    ),
+                    cvcuda.BndBoxI(
+                        box=(30, 20, 5, 5),
+                        thickness=3,
+                        borderColor=(0, 255, 255),
+                        fillColor=(0, 128, 255, 128),
+                    ),
                 ],
             ),
         ),

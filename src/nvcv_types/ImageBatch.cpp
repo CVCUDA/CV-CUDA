@@ -39,11 +39,6 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageBatchVarShapeCalcRequirements,
                 throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Pointer to output requirements must not be NULL");
             }
 
-            if (capacity < 0)
-            {
-                throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Capacity must >= 0");
-            }
-
             *reqs = priv::ImageBatchVarShape::CalcRequirements(capacity);
         });
 }
@@ -300,11 +295,6 @@ NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvImageBatchVarShapeGetImages,
     return priv::ProtectCall(
         [&]
         {
-            if (outImages == nullptr)
-            {
-                throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Pointer to output handle cannot be NULL");
-            }
-
             auto &batch = priv::ToDynamicRef<const priv::IImageBatchVarShape>(handle);
 
             batch.getImages(begIndex, outImages, numImages);

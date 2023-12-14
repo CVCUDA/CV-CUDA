@@ -19,7 +19,6 @@
 #define NVCV_PYTHON_CAPI_HPP
 
 #include <cuda_runtime.h>
-#include <nvcv/Array.h>
 #include <nvcv/DataType.hpp>
 #include <nvcv/ImageBatch.h>
 #include <nvcv/Tensor.h>
@@ -57,9 +56,6 @@ struct CAPI
     PyObject *(*Tensor_CreateForImageBatch)(int32_t numImages, int32_t width, int32_t height, NVCVImageFormat fmt,
                                             int32_t rowAlign);
 
-    NVCVArrayHandle (*Array_GetHandle)(PyObject *array);
-    PyObject *(*Array_Create)(int64_t length, NVCVDataType dtype);
-
     PyObject *(*ImageBatchVarShape_Create)(int32_t capacity);
     NVCVImageBatchHandle (*ImageBatchVarShape_GetHandle)(PyObject *varshape);
     void (*ImageBatchVarShape_PushBack)(PyObject *varshape, PyObject *image);
@@ -75,16 +71,6 @@ struct CAPI
     PyObject *(*Container_Create)(Container *cont);
 
     void (*Cache_RemoveAllNotInUseMatching)(const IKey *key);
-
-    PyObject *(*TensorBatch_Create)(int32_t capacity);
-
-    NVCVTensorBatchHandle (*TensorBatch_GetHandle)(PyObject *tensorBatch);
-
-    void (*TensorBatch_PushBack)(PyObject *tensorBatch, PyObject *tensor);
-
-    void (*TensorBatch_PopBack)(PyObject *tensorBatch, uint32_t cnt);
-
-    void (*TensorBatch_Clear)(PyObject *tensorBatch);
 
     // always add new functions at the end, and never change the function prototypes above.
 };

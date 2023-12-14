@@ -43,4 +43,4 @@ set(PYTHON_TEST_DIR ${CMAKE_INSTALL_PREFIX}/${PYTHON_TEST_INSTDIR})
 set(PYTHON_MODULE_DIR ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR})
 configure_file(nvcv_test_types_python.in nvcv_test_types_python @ONLY)
 
-nvcv_add_test(${CMAKE_CURRENT_BINARY_DIR}/nvcv_test_types_python nvcv)
+nvcv_add_test(${CMAKE_CURRENT_BINARY_DIR}/nvcv_test_types_python)

@@ -42,7 +42,7 @@ public:
                     const NVCVBndBoxesI &bboxes) const;
 
 private:
-    std::unique_ptr<nvcv::legacy::cuda_op::OSD> m_legacyOp;
+    std::unique_ptr<nvcv::legacy::cuda_op::BndBox> m_legacyOp;
 };
 
 } // namespace cvcuda::priv

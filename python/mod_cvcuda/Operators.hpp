@@ -17,14 +17,12 @@
 
 #include <common/Hash.hpp>
 #include <nvcv/cuda/MathOps.hpp>
-#include <nvcv/python/Array.hpp>
 #include <nvcv/python/Cache.hpp>
 #include <nvcv/python/Container.hpp>
 #include <nvcv/python/ImageFormat.hpp>
 #include <nvcv/python/Shape.hpp>
 #include <nvcv/python/Size.hpp>
 #include <nvcv/python/Tensor.hpp>
-#include <nvcv/python/TensorBatch.hpp>
 #include <pybind11/pybind11.h>
 
 #include <nvcv/python/Fwd.hpp>
@@ -34,7 +32,6 @@ namespace nvcvpy::util {
 
 namespace cvcudapy {
 
-using nvcvpy::Array;
 using nvcvpy::CreateNVCVTensorShape;
 using nvcvpy::CreateShape;
 using nvcvpy::Image;
@@ -44,7 +41,6 @@ using nvcvpy::ResourceGuard;
 using nvcvpy::Shape;
 using nvcvpy::Stream;
 using nvcvpy::Tensor;
-using nvcvpy::TensorBatch;
 
 namespace util = nvcvpy::util;
 namespace py   = ::pybind11;
@@ -95,10 +91,6 @@ void ExportOpInpaint(py::module &m);
 void ExportOpHistogramEq(py::module &m);
 void ExportOpMinAreaRect(py::module &m);
 void ExportOpAdvCvtColor(py::module &m);
-void ExportOpLabel(py::module &m);
-void ExportOpPairwiseMatcher(py::module &m);
-void ExportOpStack(py::module &m);
-void ExportOpFindHomography(py::module &m);
 
 // Helper class that serves as generic python-side operator class.
 // OP: native operator class

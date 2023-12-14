@@ -1,3 +1,5 @@
+#!/bin/bash -e
+
 # SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -13,12 +15,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Create build tree
+if [ $# = 0 ]; then
+    # No arguments? Lint all code.
+    echo "Linting all code in the repository =========================="
+    pre-commit run -a
+else
+    from=$1
+    if [ $# = 1 ]; then
+        to=HEAD
+    elif [ $# = 2 ]; then
+        to=$2
+    else
+        echo "Invalid arguments"
+        echo "Usage: $(basename "$0") [ref_from [ref_to]]"
+        exit 1
+    fi
 
-# System tests for cvcuda public API
-add_subdirectory(system)
-
-if(BUILD_PYTHON)
-    # System tests for cvcuda python
-    add_subdirectory(python)
-endif()
+    echo "Linting files touched from commit $from to $to =============="
+    echo "Files to be linted:"
+    git diff --stat $from..$to
+    if ! pre-commit run --from-ref $from --to-ref $to ; then
+        echo "Formatting errors:"
+        git diff
+        false
+    fi
+fi

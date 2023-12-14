@@ -17,8 +17,6 @@
 
 #include "ImageBatch.hpp"
 
-#include "CastUtils.hpp"
-#include "ExternalBuffer.hpp"
 #include "Image.hpp"
 
 #include <common/Assert.hpp>
@@ -55,23 +53,6 @@ std::shared_ptr<ImageBatchVarShape> ImageBatchVarShape::Create(int capacity)
         batch->clear(); // make sure it's in pristine state
         return batch;
     }
-}
-
-std::shared_ptr<ImageBatchVarShape> ImageBatchVarShape::WrapExternalBufferVector(std::vector<py::object> buffers,
-                                                                                 nvcv::ImageFormat       fmt)
-{
-    auto batch = Create(buffers.size());
-    for (auto &obj : buffers)
-    {
-        std::shared_ptr<ExternalBuffer> buffer = cast_py_object_as<ExternalBuffer>(obj);
-        if (!buffer)
-        {
-            throw std::runtime_error("Input buffer doesn't provide cuda_array_interface or DLPack interfaces");
-        }
-        auto image = Image::WrapExternalBuffer(*buffer, fmt);
-        batch->pushBack(*image);
-    }
-    return batch;
 }
 
 ImageBatchVarShape::ImageBatchVarShape(int capacity)
@@ -193,10 +174,6 @@ void ImageBatchVarShape::Export(py::module &m)
         .def("popback", &ImageBatchVarShape::popBack, "count"_a = 1,
              "Remove one or more images from the end of the ImageBatchVarShape.")
         .def("clear", &ImageBatchVarShape::clear, "Remove all images from the ImageBatchVarShape.");
-
-    m.def("as_images", &ImageBatchVarShape::WrapExternalBufferVector, py::arg_v("buffers", std::vector<py::object>{}),
-          "format"_a = nvcv::FMT_NONE, py::keep_alive<0, 1>(),
-          "Wrap a vector of external buffers as a batch of images, and tie the buffers lifetime to it");
 }
 
 } // namespace nvcvpy::priv

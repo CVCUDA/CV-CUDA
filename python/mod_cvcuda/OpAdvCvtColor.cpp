@@ -88,12 +88,14 @@ Tensor AdvCvtColor(Tensor &input, NVCVColorConversionCode code, NVCVColorSpec sp
     {
         nvcv::TensorShape yuvCorrectedShape({outputShape[0], outputShape[1], outputShape[2], outputShape[3]}, "NHWC");
         Tensor            output = Tensor::Create(yuvCorrectedShape, input.dtype());
+        std::cout << yuvCorrectedShape;
         return AdvCvtColorInto(output, input, code, spec, pstream);
     }
     else
     {
         nvcv::TensorShape yuvCorrectedShape({outputShape[0], outputShape[1], outputShape[2]}, "HWC");
         Tensor            output = Tensor::Create(yuvCorrectedShape, input.dtype());
+        std::cout << yuvCorrectedShape;
         return AdvCvtColorInto(output, input, code, spec, pstream);
     }
 }

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,12 +28,10 @@
 
 #include "Operator.h"
 #include "Types.h"
-#include "Workspace.h"
 #include "detail/Export.h"
 
 #include <cuda_runtime.h>
 #include <nvcv/ImageBatch.h>
-#include <nvcv/Size.h>
 #include <nvcv/Status.h>
 #include <nvcv/Tensor.h>
 
@@ -46,51 +44,17 @@ extern "C"
  *
  * @param [out] handle Where the image instance handle will be written to.
  *                     + Must not be NULL.
+ * @param [in] maxWidth Maximum input and output image width.
+ * @param [in] maxHeight Maximum input and output image height.
+ * @param [in] maxBatchSize Maximum batchsize used in this operator.
  * @param [in] fmt Image format
  *
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Handle is null.
  * @retval #NVCV_ERROR_OUT_OF_MEMORY    Not enough memory to create the operator.
  * @retval #NVCV_SUCCESS                Operation executed successfully.
  */
-CVCUDA_PUBLIC NVCVStatus cvcudaPillowResizeCreate(NVCVOperatorHandle *handle);
-
-/** Calculates the upper bounds of buffer sizes required to run the operator
- *
- * @param [in] handle Where the image instance handle will be written to.
- *                     + Must not be NULL.
- * @param [in] maxBatchSize Maximum batchsize used in this operator.
- * @param [in] maxWidth Maximum input and output image width.
- * @param [in] maxHeight Maximum input and output image height.
- * @param [in] fmt Image format
- * @param [out] reqOut Requirements for the operator's workspace
- *
- * @retval #NVCV_ERROR_INVALID_ARGUMENT Handle is null or one of the arguments is out of range.
- * @retval #NVCV_SUCCESS                Operation executed successfully.
- */
-CVCUDA_PUBLIC NVCVStatus cvcudaPillowResizeGetWorkspaceRequirements(NVCVOperatorHandle handle, int maxBatchSize,
-                                                                    int32_t maxInWidth, int32_t maxInHeight,
-                                                                    int32_t maxOutWidth, int32_t maxOutHeight,
-                                                                    NVCVImageFormat            fmt,
-                                                                    NVCVWorkspaceRequirements *reqOut);
-
-/** Calculates the buffer sizes required to run the operator
- *
- * @param [in] handle Where the image instance handle will be written to.
- *                     + Must not be NULL.
- * @param [in] batchSize The number of images
- * @param [in] inputSizes The sizes of the input images
- * @param [in] outputSizes The sizes of the output images
- * @param [in] fmt Image format
- * @param [out] reqOut Requirements for the operator's workspace
- *
- * @retval #NVCV_ERROR_INVALID_ARGUMENT Handle is null or one of the arguments is out of range.
- * @retval #NVCV_SUCCESS                Operation executed successfully.
- */
-CVCUDA_PUBLIC NVCVStatus cvcudaPillowResizeVarShapeGetWorkspaceRequirements(NVCVOperatorHandle handle, int batchSize,
-                                                                            const NVCVSize2D          *inputSizesWH,
-                                                                            const NVCVSize2D          *outputSizesWH,
-                                                                            NVCVImageFormat            fmt,
-                                                                            NVCVWorkspaceRequirements *reqOut);
+CVCUDA_PUBLIC NVCVStatus cvcudaPillowResizeCreate(NVCVOperatorHandle *handle, int32_t maxWidth, int32_t maxHeight,
+                                                  int32_t maxBatchSize, NVCVImageFormat fmt);
 
 /** Executes the pillow resize operation on the given cuda stream. This operation does not
  *  wait for completion.
@@ -153,14 +117,12 @@ CVCUDA_PUBLIC NVCVStatus cvcudaPillowResizeVarShapeGetWorkspaceRequirements(NVCV
  * @retval #NVCV_SUCCESS                Operation executed successfully.
  */
 /** @{ */
-CVCUDA_PUBLIC NVCVStatus cvcudaPillowResizeSubmit(NVCVOperatorHandle handle, cudaStream_t stream,
-                                                  const NVCVWorkspace *workspace, NVCVTensorHandle in,
-                                                  NVCVTensorHandle out, NVCVInterpolationType interpolation);
+CVCUDA_PUBLIC NVCVStatus cvcudaPillowResizeSubmit(NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in,
+                                                  NVCVTensorHandle out, const NVCVInterpolationType interpolation);
 
-CVCUDA_PUBLIC NVCVStatus cvcudaPillowResizeVarShapeSubmit(NVCVOperatorHandle handle, cudaStream_t stream,
-                                                          const NVCVWorkspace *workspace, NVCVImageBatchHandle in,
-                                                          NVCVImageBatchHandle  out,
-                                                          NVCVInterpolationType interpolation);
+CVCUDA_PUBLIC NVCVStatus nvcvopPillowResizeVarShapeSubmit(NVCVOperatorHandle handle, cudaStream_t stream,
+                                                          NVCVImageBatchHandle in, NVCVImageBatchHandle out,
+                                                          const NVCVInterpolationType interpolation);
 /** @} */
 #ifdef __cplusplus
 }

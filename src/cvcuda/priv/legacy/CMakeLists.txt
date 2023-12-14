@@ -68,6 +68,7 @@ set(CV_CUDA_PRIV_LEGACY_OP_FILES
     adaptive_threshold_var_shape.cu
     threshold_var_shape.cu
     threshold_util.cu
+    bnd_box.cu
     box_blur.cu
     osd.cu
     textbackend/backend.cpp

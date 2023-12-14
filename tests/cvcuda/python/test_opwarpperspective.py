@@ -102,17 +102,6 @@ RNG = np.random.default_rng(0)
             cvcuda.Border.REPLICATE,
             [1, 2, 3, 4],
         ),
-        (
-            ((11, 21, 4), np.uint8, "HWC"),
-            [
-                [1, 2, 0],
-                [2, 1, 1],
-                [0, 0, 1],
-            ],
-            cvcuda.Interp.LINEAR | cvcuda.Interp.WARP_INVERSE_MAP,
-            cvcuda.Border.REPLICATE,
-            [1, 2, 3, 4],
-        ),
     ],
 )
 def test_op_warp_perspective(input_args, xform, flags, border_mode, border_value):

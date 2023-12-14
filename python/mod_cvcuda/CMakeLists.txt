@@ -21,14 +21,6 @@ nvcv_python_add_module(
     OUTPUT_NAME cvcuda
     SOURCES
         Main.cpp
-        OpPairwiseMatcher.cpp
-        PairwiseMatcherType.cpp
-        NormType.cpp
-        OpStack.cpp
-        WorkspaceCache.cpp
-        OpLabel.cpp
-        LabelType.cpp
-        ConnectivityType.cpp
         OpFindContours.cpp
         OpHistogramEq.cpp
         OpOSD.cpp
@@ -85,7 +77,6 @@ nvcv_python_add_module(
         OpGaussianNoise.cpp
         OpInpaint.cpp
         CvtColorUtil.cpp
-        OpFindHomography.cpp
 )
 
 target_link_libraries(cvcuda_module_python
@@ -95,16 +86,7 @@ target_link_libraries(cvcuda_module_python
         nvcv_util_compat
         cvcuda
         nvcv_python_common
-        nvcv_util
-        cuda
         -lrt
-)
-
-# use exports file to expose only the symbol dl-loaded by python,
-# and nothing else.
-target_link_options(cvcuda_module_python
-    PRIVATE
-        -Wl,--version-script ${CMAKE_CURRENT_SOURCE_DIR}/exports.ldscript
 )
 
 set_target_properties(cvcuda_module_python PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/python)

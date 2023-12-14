@@ -31,9 +31,6 @@ endif()
 
 # system core -------------------------------------------------
 add_executable(cvcuda_test_system
-    TestOpPairwiseMatcher.cpp
-    TestOpStack.cpp
-    TestOpLabel.cpp
     TestOpFindContours.cpp
     TestOpOSD.cpp
     TestOpHistogramEq.cpp
@@ -42,8 +39,8 @@ add_executable(cvcuda_test_system
     TestOpMinMaxLoc.cpp
     TestOpHistogram.cpp
     TestOpMinAreaRect.cpp
-    TestOpBndBox.cpp
     TestOpBoxBlur.cpp
+    TestOpBndBox.cpp
     OsdUtils.cu
     TestOpSIFT.cpp
     TestOpMinMaxLoc.cpp
@@ -87,7 +84,6 @@ add_executable(cvcuda_test_system
     TestOpGaussianNoise.cpp
     GaussianNoiseUtils.cu
     TestOpInpaint.cpp
-    TestOpFindHomography.cpp
 )
 
 target_link_libraries(cvcuda_test_system
@@ -97,7 +93,7 @@ target_link_libraries(cvcuda_test_system
         cuosd
 )
 
-nvcv_add_test(cvcuda_test_system cvcuda)
+nvcv_add_test(cvcuda_test_system)
 
 # header compatibility tests ---------------------------------------------
 
