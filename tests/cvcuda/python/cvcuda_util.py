@@ -13,13 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+import torch
 import numpy as np
 import numbers
-import torch
 import nvcv
 import copy
 import colorsys
-import math
 
 
 IMG_FORMAT_TO_TYPE = {
@@ -96,7 +96,7 @@ def generate_data(shape, dtype, max_random=None, rng=None):
 
 
 class CudaBuffer:
-    __cuda_array_interface = None
+    __cuda_array_interface__ = None
     obj = None
 
 
@@ -165,17 +165,27 @@ def to_cuda_buffer(host_data):
     return buf
 
 
-def to_nvcv_tensor(host_data, layout):
-    """Convert a tensor in host data with layout to nvcv.Tensor
+def to_nvcv_tensor(data, layout):
+    """Convert a tensor in host or CUDA data with layout to nvcv.Tensor
 
     Args:
-        host_data (numpy array): Tensor in host data
+        data (numpy array or CUDA array): Tensor in host data
         layout (string): Tensor layout (e.g. NC, HWC, NHWC)
 
     Returns:
         nvcv.Tensor: The converted tensor
     """
-    return nvcv.as_tensor(to_cuda_buffer(host_data), layout=layout)
+    cuda_data = data
+    if "__cuda_array_interface__" not in dir(cuda_data):
+        cuda_data = to_cuda_buffer(data)
+    shape = cuda_data.__cuda_array_interface__["shape"]
+    if layout is not None:
+        if len(shape) < len(layout):
+            shape = (1,) * (len(layout) - len(shape)) + shape
+        elif len(shape) > len(layout):
+            raise ValueError("Layout smaller than shape of tensor data")
+    cuda_data.__cuda_array_interface__["shape"] = shape
+    return nvcv.as_tensor(cuda_data, layout=layout)
 
 
 def create_tensor(shape, dtype, layout, max_random=None, rng=None, transform_dist=None):

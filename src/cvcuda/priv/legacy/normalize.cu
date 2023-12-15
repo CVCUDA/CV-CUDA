@@ -258,11 +258,6 @@ void Normalize::checkParamShape(DataShape input_shape, DataShape param_shape)
     NVCV_ASSERT(param_shape.W == input_shape.W || param_shape.W == 1);
 }
 
-size_t Normalize::calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type)
-{
-    return 0;
-}
-
 ErrorCode Normalize::infer(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &baseData,
                            const nvcv::TensorDataStridedCuda &scaleData, const nvcv::TensorDataStridedCuda &outData,
                            const float global_scale, const float shift, const float epsilon, const uint32_t flags,

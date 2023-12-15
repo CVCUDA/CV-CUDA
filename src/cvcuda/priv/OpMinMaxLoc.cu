@@ -31,6 +31,8 @@
 
 #include <cub/cub.cuh>
 
+#include <sstream>
+
 namespace {
 
 // Utilities for MinMaxLoc operator --------------------------------------------
@@ -764,11 +766,12 @@ inline void RunMinMaxLocDataIn(cudaStream_t stream, const DataStridedCuda &inDat
 
         if (!DataTypeMatches(inDataType, minValData->dtype()))
         {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "Wrong output minVal data type %s for input tensor data type %s output minVal data "
-                                  "type must be S32/U32/F32/F64: for input data type S8/S16/S32 use S32; for "
-                                  "U8/U16/U32 use U32; for all other data types use same data type as input tensor",
-                                  nvcvDataTypeGetName(minValData->dtype()), nvcvDataTypeGetName(inDataType));
+            std::ostringstream oss;
+            oss << "for minVal=" << nvcvDataTypeGetName(minValData->dtype())
+                << " for input=" << nvcvDataTypeGetName(inDataType)
+                << "; output minVal data type must be S32/U32/F32/F64: for input "
+                << "data type S8/S16 use S32; for U8/U16 use U32; for all other data types use same as input tensor";
+            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Wrong data types: %s", oss.str().c_str());
         }
         if (!((minValData->rank() == 0 && inNumSamples == 1)
               || ((minValData->rank() == 1 || minValData->rank() == 2) && inNumSamples == minValData->shape(0))))
@@ -842,11 +845,12 @@ inline void RunMinMaxLocDataIn(cudaStream_t stream, const DataStridedCuda &inDat
 
         if (!DataTypeMatches(inDataType, maxValData->dtype()))
         {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "Wrong output maxVal data type %s for input tensor data type %s output maxVal data "
-                                  "type must be S32/U32/F32/F64: for input data type S8/S16/S32 use S32; for "
-                                  "U8/U16/U32 use U32; for all other data types use same data type as input tensor",
-                                  nvcvDataTypeGetName(maxValData->dtype()), nvcvDataTypeGetName(inDataType));
+            std::ostringstream oss;
+            oss << "for maxVal=" << nvcvDataTypeGetName(maxValData->dtype())
+                << " for input=" << nvcvDataTypeGetName(inDataType)
+                << "; output maxVal data type must be S32/U32/F32/F64: for input "
+                << "data type S8/S16 use S32; for U8/U16 use U32; for all other data types use same as input tensor";
+            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Wrong data types: %s", oss.str().c_str());
         }
         if (!((maxValData->rank() == 0 && inNumSamples == 1)
               || ((maxValData->rank() == 1 || maxValData->rank() == 2) && inNumSamples == maxValData->shape(0))))

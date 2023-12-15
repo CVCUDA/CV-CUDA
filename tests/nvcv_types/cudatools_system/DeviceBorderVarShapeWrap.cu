@@ -66,8 +66,8 @@ __global__ void FillBorderNHWC(DstWrapper dst, SrcWrapper src, int numSamples, i
     }
     for (int c = 0; c < numChannels; ++c)
     {
-        int4 srcCoord = {dstCoord.x - borderSize.x, dstCoord.y - borderSize.y, dstCoord.z, c};
-        dst[{dstCoord.x, dstCoord.y, dstCoord.z, c}] = src[srcCoord];
+        int4 srcCoord = {dstCoord.z, dstCoord.y - borderSize.y, dstCoord.x - borderSize.x, c};
+        dst[{dstCoord.z, dstCoord.y, dstCoord.x, c}] = src[srcCoord];
     }
 }
 

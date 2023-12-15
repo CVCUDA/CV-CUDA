@@ -131,11 +131,6 @@ constexpr cuda::math::Vector<float, 9> kLaplacianKernel3{
 
 // clang-format on
 
-size_t Laplacian::calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type)
-{
-    return 0;
-}
-
 ErrorCode Laplacian::infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, int ksize,
                            float scale, NVCVBorderType borderMode, cudaStream_t stream)
 {

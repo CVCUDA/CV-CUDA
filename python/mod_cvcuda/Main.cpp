@@ -18,10 +18,14 @@
 #include "AdaptiveThresholdType.hpp"
 #include "BorderType.hpp"
 #include "ColorConversionCode.hpp"
+#include "ConnectivityType.hpp"
 #include "InterpolationType.hpp"
+#include "LabelType.hpp"
 #include "MorphologyType.hpp"
+#include "NormType.hpp"
 #include "Operators.hpp"
 #include "OsdElement.hpp"
+#include "PairwiseMatcherType.hpp"
 #include "RemapMapValueType.hpp"
 #include "SIFTFlagType.hpp"
 #include "ThresholdType.hpp"
@@ -77,14 +81,19 @@ PYBIND11_MODULE(cvcuda, m)
     ExportMorphologyType(m);
     ExportColorConversionCode(m);
     ExportRemapMapValueType(m);
-    ExportBndBox(m);
     ExportBoxBlur(m);
     ExportOSD(m);
     ExportThresholdType(m);
     ExportAdaptiveThresholdType(m);
     ExportSIFTFlagType(m);
+    ExportConnectivityType(m);
+    ExportLabelType(m);
+    ExportNormType(m);
+    ExportPairwiseMatcherType(m);
 
     // CV-CUDA Operators
+    ExportOpPairwiseMatcher(m);
+    ExportOpLabel(m);
     ExportOpFindContours(m);
     ExportOpOSD(m);
     ExportOpHistogramEq(m);
@@ -93,8 +102,8 @@ PYBIND11_MODULE(cvcuda, m)
     ExportOpMinMaxLoc(m);
     ExportOpHistogram(m);
     ExportOpMinAreaRect(m);
-    ExportOpBoxBlur(m);
     ExportOpBndBox(m);
+    ExportOpBoxBlur(m);
     ExportOpBrightnessContrast(m);
     ExportOpColorTwist(m);
     ExportOpRemap(m);
@@ -131,4 +140,6 @@ PYBIND11_MODULE(cvcuda, m)
     ExportOpRandomResizedCrop(m);
     ExportOpGaussianNoise(m);
     ExportOpInpaint(m);
+    ExportOpStack(m);
+    ExportOpFindHomography(m);
 }

@@ -56,12 +56,14 @@ nvcv_python_add_module(
         Tensor.cpp
         Image.cpp
         ImageBatch.cpp
+        TensorBatch.cpp
         ExternalBuffer.cpp
         Rect.cpp
         Object.cpp
         CAPI.cpp
         DLPackUtils.cpp
         ColorSpec.cpp
+        Array.cpp
 )
 
 target_include_directories(nvcv_module_python
@@ -81,6 +83,13 @@ target_link_libraries(nvcv_module_python
         CUDA::cudart_static
         dlpack::dlpack
         -lrt
+)
+
+# use exports file to expose only the symbol dl-loaded by python,
+# and nothing else.
+target_link_options(nvcv_module_python
+    PRIVATE
+        -Wl,--version-script ${CMAKE_CURRENT_SOURCE_DIR}/exports.ldscript
 )
 
 add_library(pynvcv INTERFACE)

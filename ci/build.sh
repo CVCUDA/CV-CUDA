@@ -1,6 +1,6 @@
 #!/bin/bash -e
 
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,7 +37,7 @@ source_dir="$SDIR/.."
 
 if [[ $# -ge 1 ]]; then
     case $1 in
-    debug|release)
+    debug|release|profile)
         build_type=$1
         if [[ $# -ge 2 ]]; then
             build_dir=$2
@@ -77,10 +77,13 @@ else
 fi
 
 if [ "$PYTHON_VERSIONS" ]; then
-    cmake_args="-DPYTHON_VERSIONS=$PYTHON_VERSIONS"
+    cmake_args="$cmake_args -DPYTHON_VERSIONS=$PYTHON_VERSIONS"
 fi
 
 case $build_type in
+    profile)
+        cmake_args="$cmake_args -DCMAKE_BUILD_TYPE=Release -DBUILD_BENCH=1"
+        ;;
     release)
         cmake_args="$cmake_args -DCMAKE_BUILD_TYPE=Release"
         ;;
@@ -132,7 +135,7 @@ cmake -B "$build_dir" "$source_dir"  \
     $user_args
 
 # Build CV-CUDA
-cmake --build "$build_dir" -- $MAKE_OPTS
+cmake --build "$build_dir" --parallel 8 -- $MAKE_OPTS
 
 # Show ccache status, if available!
 if [[ $has_ccache ]]; then

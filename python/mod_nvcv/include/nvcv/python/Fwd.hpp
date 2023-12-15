@@ -30,6 +30,7 @@ class Resource;
 class Image;
 class ImageBatchVarShape;
 class Tensor;
+class Array;
 class Stream;
 class ResourceGuard;
 enum LockMode : uint8_t;

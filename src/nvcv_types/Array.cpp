@@ -264,6 +264,23 @@ NVCV_DEFINE_API(0, 4, NVCVStatus, nvcvArrayGetCapacity, (NVCVArrayHandle handle,
         });
 }
 
+NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvArrayResize, (NVCVArrayHandle handle, int64_t length))
+{
+    return priv::ProtectCall(
+        [&]
+        {
+            auto &array = priv::ToStaticRef<priv::IArray>(handle);
+
+            if (length > array.capacity())
+            {
+                throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT,
+                                      "Cannot resize array to input length because greater than capacity");
+            }
+
+            array.resize(length);
+        });
+}
+
 NVCV_DEFINE_API(0, 4, NVCVStatus, nvcvArrayGetTarget, (NVCVArrayHandle handle, NVCVResourceType *target))
 {
     return priv::ProtectCall(

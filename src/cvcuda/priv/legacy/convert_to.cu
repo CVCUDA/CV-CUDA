@@ -120,11 +120,6 @@ void convertToScale(const nvcv::TensorDataStridedCuda &inData, const nvcv::Tenso
 
 namespace nvcv::legacy::cuda_op {
 
-size_t ConvertTo::calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type)
-{
-    return 0;
-}
-
 ErrorCode ConvertTo::infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                            const double alpha, const double beta, cudaStream_t stream)
 {

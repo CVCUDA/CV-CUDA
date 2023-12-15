@@ -28,19 +28,20 @@ namespace nvcv::priv {
 template<class HandleType>
 class CoreObjManager;
 
-using ImageManager      = CoreObjManager<NVCVImageHandle>;
-using ImageBatchManager = CoreObjManager<NVCVImageBatchHandle>;
-using TensorManager     = CoreObjManager<NVCVTensorHandle>;
-using ArrayManager      = CoreObjManager<NVCVArrayHandle>;
-using AllocatorManager  = CoreObjManager<NVCVAllocatorHandle>;
+using ImageManager       = CoreObjManager<NVCVImageHandle>;
+using ImageBatchManager  = CoreObjManager<NVCVImageBatchHandle>;
+using TensorManager      = CoreObjManager<NVCVTensorHandle>;
+using TensorBatchManager = CoreObjManager<NVCVTensorBatchHandle>;
+using ArrayManager       = CoreObjManager<NVCVArrayHandle>;
+using AllocatorManager   = CoreObjManager<NVCVAllocatorHandle>;
 
 class IAllocator;
 
 class IContext
 {
 public:
-    using Managers
-        = std::tuple<AllocatorManager &, ImageManager &, ImageBatchManager &, TensorManager &, ArrayManager &>;
+    using Managers = std::tuple<AllocatorManager &, ImageManager &, ImageBatchManager &, TensorManager &,
+                                TensorBatchManager &, ArrayManager &>;
 
     template<class HandleType>
     CoreObjManager<HandleType> &manager()

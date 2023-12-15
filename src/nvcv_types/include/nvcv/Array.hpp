@@ -46,6 +46,8 @@ public:
 
     ArrayData exportData() const;
 
+    void resize(int64_t length);
+
     template<typename DerivedArrayData>
     Optional<DerivedArrayData> exportData() const
     {

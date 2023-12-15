@@ -39,6 +39,7 @@ add_executable(nvcv_test_types_system
     TestExceptions.cpp
     TestConfig.cpp
     TestArray.cpp
+    TestTensorBatch.cpp
 )
 
 target_link_libraries(nvcv_test_types_system
@@ -48,7 +49,7 @@ target_link_libraries(nvcv_test_types_system
         nvcv_types
 )
 
-nvcv_add_test(nvcv_test_types_system)
+nvcv_add_test(nvcv_test_types_system nvcv)
 
 # header compatibility tests ---------------------------------------------
 
@@ -89,4 +90,4 @@ target_link_libraries(nvcv_test_types_system_version_commit
         nvcv_types
 )
 
-nvcv_add_test(nvcv_test_types_system_version_commit)
+nvcv_add_test(nvcv_test_types_system_version_commit nvcv)
