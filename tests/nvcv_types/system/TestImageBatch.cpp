@@ -356,6 +356,199 @@ TEST(ImageBatchVarShape, smoke_sync)
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
+TEST(ImageBatchVarShape, push_exceed_capacity)
+{
+    nvcv::ImageBatchVarShape batch(32);
+
+    std::mt19937                  rng(123);
+    std::uniform_int_distribution rnd(1, 4);
+
+    std::list<nvcv::Image>       vec1;
+    std::vector<NVCVImageHandle> vec1Handles;
+    for (int i = 0; i < batch.capacity() + 1; ++i)
+    {
+        vec1.emplace_back(nvcv::Size2D{rnd(rng) * 2, rnd(rng) * 2}, nvcv::FMT_NV12);
+        vec1Handles.push_back(vec1.back().handle());
+    }
+
+    EXPECT_EQ(NVCV_ERROR_OVERFLOW,
+              nvcvImageBatchVarShapePushImages(batch.handle(), vec1Handles.data(), vec1Handles.size()));
+}
+
+TEST(ImageBatchVarShape, push_null_images)
+{
+    nvcv::ImageBatchVarShape batch(32);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageBatchVarShapePushImages(batch.handle(), nullptr, batch.capacity()));
+}
+
+TEST(ImageBatchVarShape, push_callback_exceed_capacity)
+{
+    nvcv::ImageBatchVarShape     batch(32);
+    std::vector<NVCVImageHandle> vec1Handles;
+
+    auto cb = [&]() -> nvcv::Image
+    {
+        int i = batch.numImages();
+        if (i < batch.capacity() + 1)
+        {
+            nvcv::Image img(nvcv::Size2D{320 + i * 2, 122 - i * 2}, nvcv::FMT_NV12);
+            vec1Handles.push_back(img.handle());
+            return img;
+        }
+        else
+        {
+            return {};
+        }
+    };
+    auto *pcb = &cb;
+    auto  ccb = [](void *ctx) -> NVCVImageHandle
+    {
+        return nvcv::detail::GetImageHandleForPushBack((*decltype(pcb)(ctx))());
+    };
+
+    EXPECT_EQ(NVCV_ERROR_OVERFLOW, nvcvImageBatchVarShapePushImagesCallback(batch.handle(), ccb, pcb));
+
+    // clean
+    for (auto imgHandle : vec1Handles)
+    {
+        int newRef = -1;
+        nvcvImageDecRef(imgHandle, &newRef);
+        EXPECT_EQ(0, newRef);
+    }
+}
+
+TEST(ImageBatchVarShape, push_callback_null_cbPushImage)
+{
+    nvcv::ImageBatchVarShape batch(32);
+
+    auto cb = [&]() -> nvcv::Image
+    {
+        int i = batch.numImages();
+        if (i < batch.capacity())
+        {
+            nvcv::Image img(nvcv::Size2D{320 + i * 2, 122 - i * 2}, nvcv::FMT_NV12);
+            return img;
+        }
+        else
+        {
+            return {};
+        }
+    };
+    auto *pcb = &cb;
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageBatchVarShapePushImagesCallback(batch.handle(), nullptr, pcb));
+    batch.clear();
+}
+
+TEST(ImageBatchVarShape, pop_negative_num_iamges)
+{
+    nvcv::ImageBatchVarShape batch(32);
+
+    std::mt19937                  rng(123);
+    std::uniform_int_distribution rnd(1, 4);
+
+    std::list<nvcv::Image>       vec1;
+    std::vector<NVCVImageHandle> vec1Handles;
+    for (int i = 0; i < batch.capacity(); ++i)
+    {
+        vec1.emplace_back(nvcv::Size2D{rnd(rng) * 2, rnd(rng) * 2}, nvcv::FMT_NV12);
+        vec1Handles.push_back(vec1.back().handle());
+    }
+
+    ASSERT_EQ(NVCV_SUCCESS, nvcvImageBatchVarShapePushImages(batch.handle(), vec1Handles.data(), vec1Handles.size()));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageBatchVarShapePopImages(batch.handle(), -1));
+}
+
+TEST(ImageBatchVarShape, pop_exceed_max_images)
+{
+    nvcv::ImageBatchVarShape batch(32);
+
+    std::mt19937                  rng(123);
+    std::uniform_int_distribution rnd(1, 4);
+
+    std::list<nvcv::Image>       vec1;
+    std::vector<NVCVImageHandle> vec1Handles;
+    for (int i = 0; i < batch.capacity(); ++i)
+    {
+        vec1.emplace_back(nvcv::Size2D{rnd(rng) * 2, rnd(rng) * 2}, nvcv::FMT_NV12);
+        vec1Handles.push_back(vec1.back().handle());
+    }
+
+    ASSERT_EQ(NVCV_SUCCESS, nvcvImageBatchVarShapePushImages(batch.handle(), vec1Handles.data(), vec1Handles.size()));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvImageBatchVarShapePopImages(batch.handle(), batch.capacity()));
+    EXPECT_EQ(NVCV_ERROR_UNDERFLOW, nvcvImageBatchVarShapePopImages(batch.handle(), 1));
+}
+
+TEST(ImageBatchVarShape, get_null_images)
+{
+    nvcv::ImageBatchVarShape batch(32);
+
+    std::mt19937                  rng(123);
+    std::uniform_int_distribution rnd(1, 4);
+
+    std::list<nvcv::Image>       vec1;
+    std::vector<NVCVImageHandle> vec1Handles;
+
+    for (int i = 0; i < batch.capacity(); ++i)
+    {
+        vec1.emplace_back(nvcv::Size2D{rnd(rng) * 2, rnd(rng) * 2}, nvcv::FMT_NV12);
+        vec1Handles.push_back(vec1.back().handle());
+    }
+
+    ASSERT_EQ(NVCV_SUCCESS, nvcvImageBatchVarShapePushImages(batch.handle(), vec1Handles.data(), vec1Handles.size()));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvImageBatchVarShapeGetImages(batch.handle(), 0, nullptr, batch.capacity()));
+}
+
+TEST(ImageBatchVarShape, get_negative_index)
+{
+    nvcv::ImageBatchVarShape     batch(32);
+    std::vector<NVCVImageHandle> outputHandles(32);
+
+    std::mt19937                  rng(123);
+    std::uniform_int_distribution rnd(1, 4);
+
+    std::list<nvcv::Image>       vec1;
+    std::vector<NVCVImageHandle> vec1Handles;
+
+    for (int i = 0; i < batch.capacity(); ++i)
+    {
+        vec1.emplace_back(nvcv::Size2D{rnd(rng) * 2, rnd(rng) * 2}, nvcv::FMT_NV12);
+        vec1Handles.push_back(vec1.back().handle());
+    }
+
+    ASSERT_EQ(NVCV_SUCCESS, nvcvImageBatchVarShapePushImages(batch.handle(), vec1Handles.data(), vec1Handles.size()));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvImageBatchVarShapeGetImages(batch.handle(), -1, outputHandles.data(), batch.capacity()));
+}
+
+TEST(ImageBatchVarShape, get_overflow_index_in_handle)
+{
+    nvcv::ImageBatchVarShape     batch(32);
+    std::vector<NVCVImageHandle> outputHandles(32);
+
+    std::mt19937                  rng(123);
+    std::uniform_int_distribution rnd(1, 4);
+
+    std::list<nvcv::Image>       vec1;
+    std::vector<NVCVImageHandle> vec1Handles;
+
+    for (int i = 0; i < batch.capacity(); ++i)
+    {
+        vec1.emplace_back(nvcv::Size2D{rnd(rng) * 2, rnd(rng) * 2}, nvcv::FMT_NV12);
+        vec1Handles.push_back(vec1.back().handle());
+    }
+
+    ASSERT_EQ(NVCV_SUCCESS, nvcvImageBatchVarShapePushImages(batch.handle(), vec1Handles.data(), vec1Handles.size()));
+
+    EXPECT_EQ(NVCV_ERROR_OVERFLOW,
+              nvcvImageBatchVarShapeGetImages(batch.handle(), 0, outputHandles.data(), batch.capacity() + 1));
+    EXPECT_EQ(NVCV_ERROR_OVERFLOW,
+              nvcvImageBatchVarShapeGetImages(batch.handle(), 1, outputHandles.data(), batch.capacity()));
+}
+
 TEST(ImageBatch, smoke_user_pointer)
 {
     nvcv::ImageBatchVarShape batch(3);
@@ -392,4 +585,80 @@ TEST(ImageBatch, smoke_cast)
 
     ref = img.reset();
     EXPECT_EQ(ref, 0);
+}
+
+class ImageBatchNullParamTest : public ::testing::Test
+{
+protected:
+    ImageBatchNullParamTest() {}
+
+    ~ImageBatchNullParamTest() {}
+
+    void SetUp() override
+    {
+        ASSERT_EQ(NVCV_SUCCESS, nvcvImageBatchVarShapeCalcRequirements(5, &reqs));
+        ASSERT_EQ(NVCV_SUCCESS, nvcvImageBatchVarShapeConstruct(&reqs, nullptr, &handle));
+    }
+
+    void TearDown() override
+    {
+        int newRef = 1;
+        ASSERT_EQ(NVCV_SUCCESS, nvcvImageBatchDecRef(handle, &newRef));
+        ASSERT_EQ(newRef, 0);
+        handle = nullptr;
+    }
+
+    NVCVImageBatchHandle               handle;
+    NVCVImageBatchVarShapeRequirements reqs;
+};
+
+TEST(ImageBatch, calc_req_invalid_parameters)
+{
+    NVCVImageBatchVarShapeRequirements reqs;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageBatchVarShapeCalcRequirements(5, nullptr));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageBatchVarShapeCalcRequirements(-1, &reqs));
+}
+
+TEST(ImageBatch, construct_null_parameters)
+{
+    NVCVImageBatchHandle               handle;
+    NVCVImageBatchVarShapeRequirements reqs;
+    ASSERT_EQ(NVCV_SUCCESS, nvcvImageBatchVarShapeCalcRequirements(5, &reqs));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageBatchVarShapeConstruct(nullptr, nullptr, &handle));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageBatchVarShapeConstruct(&reqs, nullptr, nullptr));
+}
+
+TEST_F(ImageBatchNullParamTest, get_user_pointer_null_output)
+{
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageBatchGetUserPointer(handle, nullptr));
+}
+
+TEST_F(ImageBatchNullParamTest, get_num_images_null_output)
+{
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageBatchGetNumImages(handle, nullptr));
+}
+
+TEST_F(ImageBatchNullParamTest, get_batch_capacity_null_output)
+{
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageBatchGetCapacity(handle, nullptr));
+}
+
+TEST_F(ImageBatchNullParamTest, get_unique_format_null_output)
+{
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageBatchVarShapeGetUniqueFormat(handle, nullptr));
+}
+
+TEST_F(ImageBatchNullParamTest, gbatch_get_type_null_output)
+{
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageBatchGetType(handle, nullptr));
+}
+
+TEST_F(ImageBatchNullParamTest, export_data_null_output)
+{
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageBatchExportData(handle, 0, nullptr));
+}
+
+TEST_F(ImageBatchNullParamTest, get_max_size_null_output)
+{
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageBatchVarShapeGetMaxSize(handle, nullptr, nullptr));
 }

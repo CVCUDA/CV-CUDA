@@ -303,19 +303,19 @@ class BoundingBoxUtilsCvcuda:
         #
         # Once this is done, we can convert these lists to two CV-CUDA
         # structures that can be given to the blur and bndbox operators:
-        #   1) cvcuda.BndBoxesI : To store the bounding boxes for the batch
+        #   1) cvcuda.Elements : To store the bounding boxes for the batch
         #   2) cvcuda.BlurBoxesI : To store the bounding boxes as blur boxes for the batch.
         #
         self.cvcuda_perf.push_range("forloop")
-        num_boxes = []
-        bounding_boxes = []
-        blur_boxes = []
+        bounding_boxes_list = []
+        blur_boxes_list = []
 
         # Create an array of bounding boxes with render settings.
         for current_boxes, current_masks in zip(batch_bboxes_pyt, nms_masks_pyt):
             filtered_boxes = current_boxes[current_masks]
             # Save the count of non-zero bounding boxes of this image.
-            num_boxes.append(filtered_boxes.shape[0])
+            bounding_boxes = []
+            blur_boxes = []
 
             for box in filtered_boxes:
                 bounding_boxes.append(
@@ -329,13 +329,11 @@ class BoundingBoxUtilsCvcuda:
                 blur_boxes.append(
                     cvcuda.BlurBoxI(box=tuple(box), kernelSize=self.kernel_size)
                 )
+            bounding_boxes_list.append(bounding_boxes)
+            blur_boxes_list.append(blur_boxes)
 
-        batch_bounding_boxes = cvcuda.BndBoxesI(
-            numBoxes=num_boxes, boxes=tuple(bounding_boxes)
-        )
-        batch_blur_boxes = cvcuda.BlurBoxesI(
-            numBoxes=num_boxes, boxes=tuple(blur_boxes)
-        )
+        batch_bounding_boxes = cvcuda.Elements(elements=bounding_boxes_list)
+        batch_blur_boxes = cvcuda.BlurBoxesI(boxes=blur_boxes_list)
         self.cvcuda_perf.pop_range()  # for loop
 
         # Apply blur first.
@@ -344,8 +342,8 @@ class BoundingBoxUtilsCvcuda:
         self.cvcuda_perf.pop_range()
 
         # Render the bounding boxes.
-        self.cvcuda_perf.push_range("bndbox_into")
-        cvcuda.bndbox_into(frame_nhwc, frame_nhwc, batch_bounding_boxes)
+        self.cvcuda_perf.push_range("osd_into")
+        cvcuda.osd_into(frame_nhwc, frame_nhwc, batch_bounding_boxes)
         self.cvcuda_perf.pop_range()
 
         # docs_tag: end_call_cuosd_bboxes

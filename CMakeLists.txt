@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.20.1)
 
 # We need to check this variable before starting a CUDA project - otherwise it will appear
 # as set, with the default value pointing to the oldest supported architecture (52 as of CUDA 11.8)
@@ -23,7 +23,7 @@ endif()
 
 project(cvcuda
         LANGUAGES C CXX
-        VERSION 0.4.0
+        VERSION 0.5.0
         DESCRIPTION "CUDA-accelerated Computer Vision algorithms"
 )
 
@@ -48,6 +48,7 @@ endif()
 # Options to configure the build tree =======
 option(BUILD_TESTS "Enable testsuite" OFF)
 option(BUILD_PYTHON "Build python bindings" OFF)
+option(BUILD_BENCH "Build benchmark" OFF)
 option(ENABLE_SANITIZER "Enabled sanitized build" OFF)
 
 # Configure build tree ======================
@@ -83,6 +84,10 @@ endif()
 
 if(BUILD_SAMPLES)
     add_subdirectory(samples)
+endif()
+
+if(BUILD_BENCH)
+    add_subdirectory(bench)
 endif()
 
 # Must be done after build tree is defined

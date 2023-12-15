@@ -363,11 +363,6 @@ void median(const nvcv::TensorDataAccessStridedImagePlanar &inData,
 
 namespace nvcv::legacy::cuda_op {
 
-size_t MedianBlur::calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type)
-{
-    return 0;
-}
-
 ErrorCode MedianBlur::infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                             const nvcv::Size2D ksize, cudaStream_t stream)
 {

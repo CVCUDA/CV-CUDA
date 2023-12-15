@@ -209,7 +209,7 @@ public:
     }
 
     // On-purpose public data to allow POD-class direct initialization.
-    T m_data[N] = {};
+    T m_data[N];
 };
 
 /**

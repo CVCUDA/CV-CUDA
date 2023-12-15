@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -82,7 +82,42 @@ TEST_P(ChromaSubsamplingTests, get_name)
     EXPECT_STREQ(gold, nvcvChromaSubsamplingGetName(css));
 }
 
+TEST(ChromaSubsamplingTests, invalidChromaSubsamplingGetNumSamples)
+{
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvChromaSubsamplingGetNumSamples(NVCV_CSS_444, nullptr, nullptr));
+}
+
+TEST(ChromaSubsamplingTests, validChromaSubsampling)
+{
+    NVCVChromaSubsampling test;
+    ASSERT_EQ(NVCV_SUCCESS, nvcvMakeChromaSubsampling(&test, 2, 1));
+    EXPECT_EQ(NVCV_CSS_410R, test);
+
+    ASSERT_EQ(NVCV_SUCCESS, nvcvMakeChromaSubsampling(&test, 1, 2));
+    EXPECT_EQ(NVCV_CSS_410, test);
+
+    ASSERT_EQ(NVCV_SUCCESS, nvcvMakeChromaSubsampling(&test, 1, 1));
+    EXPECT_EQ(NVCV_CSS_444, test);
+}
+
+TEST(ChromaSubsamplingTests, invalidChromaSubsampling)
+{
+    NVCVChromaSubsampling test;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvMakeChromaSubsampling(&test, 5, 5));
+}
+
+TEST(ChromaSubsamplingTests, invalidOut)
+{
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvMakeChromaSubsampling(nullptr, 2, 4));
+}
+
 // Colorspec ===================================================
+TEST(ColorSpecTests, invalidOutputMake)
+{
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvMakeColorSpec(nullptr, NVCV_COLOR_SPACE_DCIP3, NVCV_YCbCr_ENC_BT2020c, NVCV_COLOR_XFER_sYCC,
+                                NVCV_COLOR_RANGE_LIMITED, NVCV_CHROMA_LOC_ODD, NVCV_CHROMA_LOC_CENTER));
+}
 
 TEST(ColorSpecTests, get_name_predefined)
 {
@@ -98,6 +133,15 @@ TEST(ColorSpecTests, get_name_non_predefined)
 
     EXPECT_STREQ("NVCVColorSpec(SPACE_DCIP3,ENC_BT2020c,XFER_sYCC,RANGE_LIMITED,LOC_ODD,LOC_CENTER)",
                  nvcvColorSpecGetName(fmt));
+}
+
+TEST(ColorSpecTests, get_name_invald)
+{
+    /// NVCVColorSpace: 0b111 NVCVYCbCrEncoding: 0b111 NVCVColorTransferFunction: 0b1111 ......
+    EXPECT_STREQ(
+        "NVCVColorSpec(invalid)NVCVColorSpec(NVCVColorSpace(7),NVCVYCbCrEncoding(7),NVCVColorTransferFunction(15),"
+        "RANGE_LIMITED,LOC_ODD,LOC_ODD)",
+        nvcvColorSpecGetName(NVCV_COLOR_SPEC_FORCE32));
 }
 
 TEST(ColorSpecTests, set_encoding_to_undefined)
@@ -202,6 +246,9 @@ NVCV_INSTANTIATE_TEST_SUITE_P(Positive, ColorModelNeedsColorSpecTests,
                                   {NVCV_COLOR_MODEL_UNDEFINED, false},
                                   {      NVCV_COLOR_MODEL_RAW, false},
                                   {      NVCV_COLOR_MODEL_XYZ, false},
+                                  {      NVCV_COLOR_MODEL_HSV, false},
+                                  {     NVCV_COLOR_MODEL_CMYK, false},
+                                  {     NVCV_COLOR_MODEL_YCCK, false},
 } * NVCV_SUCCESS);
 
 #if !NVCV_SANITIZED
@@ -230,6 +277,11 @@ TEST_P(ColorModelNeedsColorSpecTests, run)
     }
 }
 
+TEST_P(ColorModelNeedsColorSpecTests, invalidColorModelNeedsColorspecOut)
+{
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvColorModelNeedsColorspec(NVCV_COLOR_MODEL_RGB, nullptr));
+}
+
 // The tests below explicitly create invalid enums just to test if there's any
 // overflow in bitfield representation. This will trigger -fsanitize=enum. Let's
 // disable them now in sanitized builds.
@@ -249,6 +301,11 @@ TEST(ColorSpecTests, set_color_space)
     }
 }
 
+TEST(ColorSpecTests, invalid_set_color_space)
+{
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvColorSpecSetColorSpace(nullptr, (NVCVColorSpace)0));
+}
+
 TEST(ColorSpecTests, get_color_space)
 {
     for (int cspace = 0; cspace < 1 << 3; cspace ? cspace <<= 1 : ++cspace)
@@ -261,6 +318,15 @@ TEST(ColorSpecTests, get_color_space)
         ASSERT_EQ(NVCV_SUCCESS, nvcvColorSpecGetColorSpace(type, &test));
         EXPECT_EQ(cspace, test);
     }
+}
+
+TEST(ColorSpecTests, invalid_get_color_space)
+{
+    uint64_t mask = UINT64_MAX;
+
+    NVCVColorSpec type = NVCV_MAKE_COLOR_SPEC(mask, mask, mask, mask, mask, mask);
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvColorSpecGetColorSpace(type, nullptr));
 }
 
 TEST(ColorSpecTests, set_encodings)
@@ -284,6 +350,11 @@ TEST(ColorSpecTests, set_encodings)
     }
 }
 
+TEST(ColorSpecTests, invalid_set_encodings)
+{
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvColorSpecSetYCbCrEncoding(nullptr, (NVCVYCbCrEncoding)1));
+}
+
 TEST(ColorSpecTests, get_encodings)
 {
     for (int enc = 0; enc < 1 << 3; enc ? enc <<= 1 : ++enc)
@@ -296,6 +367,15 @@ TEST(ColorSpecTests, get_encodings)
         ASSERT_EQ(NVCV_SUCCESS, nvcvColorSpecGetYCbCrEncoding(type, &test));
         ASSERT_EQ(enc, test);
     }
+}
+
+TEST(ColorSpecTests, invalid_get_encodings)
+{
+    uint64_t mask = UINT64_MAX;
+
+    NVCVColorSpec type = NVCV_MAKE_COLOR_SPEC(mask, 0, mask, mask, mask, mask);
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvColorSpecGetYCbCrEncoding(type, nullptr));
 }
 
 TEST(ColorSpecTests, set_xfer_func)
@@ -313,6 +393,12 @@ TEST(ColorSpecTests, set_xfer_func)
     }
 }
 
+TEST(ColorSpecTests, invalid_set_xfer_func)
+{
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvColorSpecSetColorTransferFunction(nullptr, (NVCVColorTransferFunction)1));
+}
+
 TEST(ColorSpecTests, get_xfer_func)
 {
     for (int xfer = 0; xfer < 1 << 3; xfer ? xfer <<= 1 : ++xfer)
@@ -326,6 +412,15 @@ TEST(ColorSpecTests, get_xfer_func)
         ASSERT_EQ(NVCV_SUCCESS, nvcvColorSpecGetColorTransferFunction(type, &test));
         ASSERT_EQ(xfer, test);
     }
+}
+
+TEST(ColorSpecTests, invalid_get_xfer_func)
+{
+    uint64_t mask = UINT64_MAX;
+
+    NVCVColorSpec type = NVCV_MAKE_COLOR_SPEC(mask, mask, 0, mask, mask, mask);
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvColorSpecGetColorTransferFunction(type, nullptr));
 }
 
 TEST(ColorSpecTests, set_range)
@@ -343,6 +438,11 @@ TEST(ColorSpecTests, set_range)
     }
 }
 
+TEST(ColorSpecTests, invalid_set_range)
+{
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvColorSpecSetRange(nullptr, (NVCVColorRange)0));
+}
+
 TEST(ColorSpecTests, get_range)
 {
     for (int range = 0; range < 1 << 1; range ? range <<= 1 : ++range)
@@ -355,6 +455,15 @@ TEST(ColorSpecTests, get_range)
         ASSERT_EQ(NVCV_SUCCESS, nvcvColorSpecGetRange(type, &test));
         ASSERT_EQ(range, test);
     }
+}
+
+TEST(ColorSpecTests, invalid_get_range)
+{
+    uint64_t mask = UINT64_MAX;
+
+    NVCVColorSpec type = NVCV_MAKE_COLOR_SPEC(mask, mask, mask, mask, mask, mask);
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvColorSpecGetRange(type, nullptr));
 }
 
 TEST(ColorSpecTests, set_chroma_loc_horiz)
@@ -370,6 +479,14 @@ TEST(ColorSpecTests, set_chroma_loc_horiz)
         ASSERT_EQ(NVCV_SUCCESS, nvcvColorSpecSetChromaLoc(&type, (NVCVChromaLocation)loc, (NVCVChromaLocation)mask));
         ASSERT_EQ(gold, type);
     }
+}
+
+TEST(ColorSpecTests, invalid_set_chroma_loc)
+{
+    uint64_t mask = UINT64_MAX;
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvColorSpecSetChromaLoc(nullptr, (NVCVChromaLocation)1, (NVCVChromaLocation)mask));
 }
 
 TEST(ColorSpecTests, get_chroma_loc_horiz)
@@ -445,6 +562,9 @@ TEST(ColorModelTests, undefined_color_model_is_zero)
 TEST(ColorModelTests, get_name)
 {
     EXPECT_STREQ("NVCV_COLOR_MODEL_YCbCr", nvcvColorModelGetName(NVCV_COLOR_MODEL_YCbCr));
+    EXPECT_STREQ("NVCV_COLOR_MODEL_HSV", nvcvColorModelGetName(NVCV_COLOR_MODEL_HSV));
+    EXPECT_STREQ("NVCV_COLOR_MODEL_CMYK", nvcvColorModelGetName(NVCV_COLOR_MODEL_CMYK));
+    EXPECT_STREQ("NVCV_COLOR_MODEL_YCCK", nvcvColorModelGetName(NVCV_COLOR_MODEL_YCCK));
     EXPECT_STREQ("NVCVColorModel(-1)", nvcvColorModelGetName(static_cast<NVCVColorModel>(-1)));
 }
 
@@ -457,7 +577,12 @@ TEST(YCbCrEncodingTests, undefined_ycbcr_encoding_is_zero)
 
 TEST(YCbCrEncodingTests, get_name)
 {
+    EXPECT_STREQ("NVCV_YCbCr_ENC_UNDEFINED", nvcvYCbCrEncodingGetName(NVCV_YCbCr_ENC_UNDEFINED));
     EXPECT_STREQ("NVCV_YCbCr_ENC_BT601", nvcvYCbCrEncodingGetName(NVCV_YCbCr_ENC_BT601));
+    EXPECT_STREQ("NVCV_YCbCr_ENC_BT709", nvcvYCbCrEncodingGetName(NVCV_YCbCr_ENC_BT709));
+    EXPECT_STREQ("NVCV_YCbCr_ENC_BT2020", nvcvYCbCrEncodingGetName(NVCV_YCbCr_ENC_BT2020));
+    EXPECT_STREQ("NVCV_YCbCr_ENC_BT2020c", nvcvYCbCrEncodingGetName(NVCV_YCbCr_ENC_BT2020c));
+    EXPECT_STREQ("NVCV_YCbCr_ENC_SMPTE240M", nvcvYCbCrEncodingGetName(NVCV_YCbCr_ENC_SMPTE240M));
     EXPECT_STREQ("NVCVYCbCrEncoding(-1)", nvcvYCbCrEncodingGetName(static_cast<NVCVYCbCrEncoding>(-1)));
 }
 
@@ -466,6 +591,7 @@ TEST(YCbCrEncodingTests, get_name)
 TEST(ChromaLocationTests, get_name)
 {
     EXPECT_STREQ("NVCV_CHROMA_LOC_EVEN", nvcvChromaLocationGetName(NVCV_CHROMA_LOC_EVEN));
+    EXPECT_STREQ("NVCV_CHROMA_LOC_BOTH", nvcvChromaLocationGetName(NVCV_CHROMA_LOC_BOTH));
     EXPECT_STREQ("NVCVChromaLocation(-1)", nvcvChromaLocationGetName(static_cast<NVCVChromaLocation>(-1)));
 }
 
@@ -474,6 +600,19 @@ TEST(ChromaLocationTests, get_name)
 TEST(RawPatternTests, get_name)
 {
     EXPECT_STREQ("NVCV_RAW_BAYER_RGGB", nvcvRawPatternGetName(NVCV_RAW_BAYER_RGGB));
+    EXPECT_STREQ("NVCV_RAW_BAYER_BGGR", nvcvRawPatternGetName(NVCV_RAW_BAYER_BGGR));
+    EXPECT_STREQ("NVCV_RAW_BAYER_GRBG", nvcvRawPatternGetName(NVCV_RAW_BAYER_GRBG));
+    EXPECT_STREQ("NVCV_RAW_BAYER_GBRG", nvcvRawPatternGetName(NVCV_RAW_BAYER_GBRG));
+    EXPECT_STREQ("NVCV_RAW_BAYER_RCCB", nvcvRawPatternGetName(NVCV_RAW_BAYER_RCCB));
+    EXPECT_STREQ("NVCV_RAW_BAYER_BCCR", nvcvRawPatternGetName(NVCV_RAW_BAYER_BCCR));
+    EXPECT_STREQ("NVCV_RAW_BAYER_CRBC", nvcvRawPatternGetName(NVCV_RAW_BAYER_CRBC));
+    EXPECT_STREQ("NVCV_RAW_BAYER_CBRC", nvcvRawPatternGetName(NVCV_RAW_BAYER_CBRC));
+    EXPECT_STREQ("NVCV_RAW_BAYER_RCCC", nvcvRawPatternGetName(NVCV_RAW_BAYER_RCCC));
+    EXPECT_STREQ("NVCV_RAW_BAYER_CRCC", nvcvRawPatternGetName(NVCV_RAW_BAYER_CRCC));
+    EXPECT_STREQ("NVCV_RAW_BAYER_CCRC", nvcvRawPatternGetName(NVCV_RAW_BAYER_CCRC));
+    EXPECT_STREQ("NVCV_RAW_BAYER_CCCR", nvcvRawPatternGetName(NVCV_RAW_BAYER_CCCR));
+    EXPECT_STREQ("NVCV_RAW_BAYER_CCCC", nvcvRawPatternGetName(NVCV_RAW_BAYER_CCCC));
+    EXPECT_STREQ("NVCVRawPattern(255)", nvcvRawPatternGetName(NVCV_RAW_FORCE8));
     EXPECT_STREQ("NVCVRawPattern(-1)", nvcvRawPatternGetName(static_cast<NVCVRawPattern>(-1)));
 }
 
@@ -481,7 +620,10 @@ TEST(RawPatternTests, get_name)
 
 TEST(ColorSpaceTests, get_name)
 {
+    EXPECT_STREQ("NVCV_COLOR_SPACE_BT601", nvcvColorSpaceGetName(NVCV_COLOR_SPACE_BT601));
     EXPECT_STREQ("NVCV_COLOR_SPACE_BT709", nvcvColorSpaceGetName(NVCV_COLOR_SPACE_BT709));
+    EXPECT_STREQ("NVCV_COLOR_SPACE_BT2020", nvcvColorSpaceGetName(NVCV_COLOR_SPACE_BT2020));
+    EXPECT_STREQ("NVCV_COLOR_SPACE_DCIP3", nvcvColorSpaceGetName(NVCV_COLOR_SPACE_DCIP3));
     EXPECT_STREQ("NVCVColorSpace(-1)", nvcvColorSpaceGetName(static_cast<NVCVColorSpace>(-1)));
 }
 
@@ -490,6 +632,7 @@ TEST(ColorSpaceTests, get_name)
 TEST(WhitePointTests, get_name)
 {
     EXPECT_STREQ("NVCV_WHITE_POINT_D65", nvcvWhitePointGetName(NVCV_WHITE_POINT_D65));
+    EXPECT_STREQ("NVCVWhitePoint(255)", nvcvWhitePointGetName(NVCV_WHITE_POINT_FORCE8));
     EXPECT_STREQ("NVCVWhitePoint(-1)", nvcvWhitePointGetName(static_cast<NVCVWhitePoint>(-1)));
 }
 

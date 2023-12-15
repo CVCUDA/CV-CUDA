@@ -18,6 +18,7 @@
 #include "Image.hpp"
 
 #include "Cache.hpp"
+#include "CastUtils.hpp"
 #include "DataType.hpp"
 #include "ImageFormat.hpp"
 #include "Stream.hpp"
@@ -573,19 +574,12 @@ std::shared_ptr<Image> Image::WrapExternalBuffer(ExternalBuffer &buffer, nvcv::I
 std::shared_ptr<Image> Image::WrapExternalBufferVector(std::vector<py::object> buffers, nvcv::ImageFormat fmt)
 {
     std::vector<std::shared_ptr<ExternalBuffer>> spBuffers;
-    for (size_t i = 0; i < buffers.size(); ++i)
+    for (auto &obj : buffers)
     {
-        // pybind11 2.10.3 can't convert an item from the input list into an ExternalBuffer
-        // automatically. It won't be able to match the call to current method definition.
-        // We have to accept py::objects and try to convert them here.
-        py::detail::type_caster<priv::ExternalBuffer> caster;
-        if (!caster.load(buffers[i], true))
-        {
+        std::shared_ptr<ExternalBuffer> buffer = cast_py_object_as<ExternalBuffer>(obj);
+        if (!buffer)
             throw std::runtime_error("Input buffer doesn't provide cuda_array_interface or DLPack interfaces");
-        }
-
-        std::shared_ptr<ExternalBuffer> spbuf = caster;
-        spBuffers.push_back(spbuf);
+        spBuffers.push_back(std::move(buffer));
     }
 
     std::vector<DLPackTensor> bufinfos;

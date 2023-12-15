@@ -133,3 +133,14 @@ using nvcv::Exception;
     {                                                                                                          \
         ADD_FAILURE() << "Expected an exception of type " #E ", got an unknown exception";                     \
     }
+
+#define NVCV_EXPECT_THROW_STATUS(status, ...)                 \
+    try                                                       \
+    {                                                         \
+        __VA_ARGS__;                                          \
+        FAIL() << "Expected an error with status " << status; \
+    }                                                         \
+    catch (nvcv::Exception & e)                               \
+    {                                                         \
+        EXPECT_EQ(e.code(), nvcv::Status(status));            \
+    }

@@ -25,6 +25,7 @@
 #include "Allocator.h"
 
 #include <cassert>
+#include <cstddef>
 #include <cstring>
 #include <functional>
 

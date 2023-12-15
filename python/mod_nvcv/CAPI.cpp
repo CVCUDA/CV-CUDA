@@ -17,12 +17,14 @@
 
 #include "CAPI.hpp"
 
+#include "Array.hpp"
 #include "Cache.hpp"
 #include "DataType.hpp"
 #include "Image.hpp"
 #include "ImageBatch.hpp"
 #include "Stream.hpp"
 #include "Tensor.hpp"
+#include "TensorBatch.hpp"
 
 #include <common/Assert.hpp>
 #include <nvcv/python/CAPI.hpp>
@@ -71,6 +73,11 @@ extern "C" NVCVImageFormat ImplImageFormat_FromPython(PyObject *obj)
 extern "C" NVCVTensorHandle ImplTensor_GetHandle(PyObject *obj)
 {
     return ToSharedObj<Tensor>(obj)->impl().handle();
+}
+
+extern "C" NVCVArrayHandle ImplArray_GetHandle(PyObject *obj)
+{
+    return ToSharedObj<Array>(obj)->impl().handle();
 }
 
 LockMode ToLockMode(PyObject *_mode)
@@ -156,6 +163,13 @@ extern "C" PyObject *ImplTensor_Create(int32_t ndim, const int64_t *shape, NVCVD
     return py::cast(std::move(tensor)).release().ptr();
 }
 
+extern "C" PyObject *ImplArray_Create(int64_t length, NVCVDataType dtype)
+{
+    std::shared_ptr<Array> array = Array::Create(length, nvcv::DataType{dtype});
+
+    return py::cast(std::move(array)).release().ptr();
+}
+
 extern "C" PyObject *ImplImageBatchVarShape_Create(int32_t capacity)
 {
     std::shared_ptr<ImageBatchVarShape> varshape = ImageBatchVarShape::Create(capacity);
@@ -189,6 +203,33 @@ extern "C" void ImplImageBatchVarShape_PopBack(PyObject *varshape, int32_t cnt)
 extern "C" void ImplImageBatchVarShape_Clear(PyObject *varshape)
 {
     return ToSharedObj<ImageBatchVarShape>(varshape)->clear();
+}
+
+extern "C" PyObject *ImplTensorBatch_Create(int32_t capacity)
+{
+    std::shared_ptr<TensorBatch> tensorBatch = TensorBatch::Create(capacity);
+    return py::cast(std::move(tensorBatch)).release().ptr();
+}
+
+extern "C" NVCVTensorBatchHandle ImplTensorBatch_GetHandle(PyObject *tensorBatch)
+{
+    return ToSharedObj<TensorBatch>(tensorBatch)->impl().handle();
+}
+
+extern "C" void ImplTensorBatch_PushBack(PyObject *tensorBatch, PyObject *tensor)
+{
+    auto ptensor = ToSharedObj<Tensor>(tensor);
+    ToSharedObj<TensorBatch>(tensorBatch)->pushBack(*ptensor);
+}
+
+extern "C" void ImplTensorBatch_PopBack(PyObject *tensorBatch, uint32_t cnt)
+{
+    ToSharedObj<TensorBatch>(tensorBatch)->popBack(cnt);
+}
+
+extern "C" void ImplTensorBatch_Clear(PyObject *tensorBatch)
+{
+    ToSharedObj<TensorBatch>(tensorBatch)->clear();
 }
 
 extern "C" void ImplCache_Add(ICacheItem *extItem)
@@ -260,6 +301,8 @@ void ExportCAPI(py::module &m)
         .Tensor_GetHandle                = &ImplTensor_GetHandle,
         .Tensor_Create                   = &ImplTensor_Create,
         .Tensor_CreateForImageBatch      = &ImplTensor_CreateForImageBatch,
+        .Array_GetHandle                 = &ImplArray_GetHandle,
+        .Array_Create                    = &ImplArray_Create,
         .ImageBatchVarShape_Create       = &ImplImageBatchVarShape_Create,
         .ImageBatchVarShape_GetHandle    = &ImplImageBatchVarShape_GetHandle,
         .ImageBatchVarShape_PushBack     = &ImplImageBatchVarShape_PushBack,
@@ -271,6 +314,11 @@ void ExportCAPI(py::module &m)
         .Image_GetHandle                 = &ImplImage_GetHandle,
         .Container_Create                = &ImplContainer_Create,
         .Cache_RemoveAllNotInUseMatching = &ImplCache_RemoveAllNotInUseMatching,
+        .TensorBatch_Create              = &ImplTensorBatch_Create,
+        .TensorBatch_GetHandle           = &ImplTensorBatch_GetHandle,
+        .TensorBatch_PushBack            = &ImplTensorBatch_PushBack,
+        .TensorBatch_PopBack             = &ImplTensorBatch_PopBack,
+        .TensorBatch_Clear               = &ImplTensorBatch_Clear,
     };
 
     m.add_object("_C_API", py::capsule(&capi, "nvcv._C_API"));

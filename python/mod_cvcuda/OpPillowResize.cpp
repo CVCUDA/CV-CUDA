@@ -16,6 +16,7 @@
  */
 
 #include "Operators.hpp"
+#include "WorkspaceCache.hpp"
 
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
@@ -47,52 +48,82 @@ public:
     {
     public:
         // Arguments of the key constructor should match the corresponding cvcuda operator arguments.
-        Key(const nvcv::Size2D &maxSize, int maxBatchSize, nvcv::ImageFormat fmt)
-            : m_maxSize{maxSize}
-            , m_maxBatchSize{maxBatchSize}
-            , m_format{fmt}
-        {
-        }
+        Key() {}
 
-        // The payload size is an approximate function of the actual size of the payload.
-        // There is no need to be an exact value, it is just provide ordering inside cache.
         size_t payloadSize() const
         {
-            return m_maxSize.w * m_maxSize.h * m_maxBatchSize;
+            return 0;
         }
 
     private:
-        // The hash is based only on the image format used by the operator.
-        // (In addition to the OP type as defined by IKey).
         size_t doGetHash() const override
         {
-            return ComputeHash(m_format);
+            return 0;
         }
 
         // The comparison of keys is based on the payload size, the one in the cache is "that" key.
         bool doIsCompatible(const nvcvpy::IKey &that_) const override
         {
-            const Key &that = static_cast<const Key &>(that_);
-            return this->payloadSize() <= that.payloadSize();
+            return dynamic_cast<const Key *>(&that_) != nullptr;
         }
-
-        nvcv::Size2D      m_maxSize;
-        int               m_maxBatchSize;
-        nvcv::ImageFormat m_format;
     };
 
     // Constructor instantiate the cache key and the operator object.
-    PyOpPillowResize(const nvcv::Size2D &maxSize, int maxBatchSize, nvcv::ImageFormat fmt)
-        : m_key(maxSize, maxBatchSize, fmt)
-        , m_op(maxSize, maxBatchSize, fmt)
+    PyOpPillowResize()
+        : m_key()
+        , m_op()
     {
     }
 
-    // The submit forwards its args to the OP's call operator.
-    template<class... AA>
-    void submit(AA &&...args)
+    inline void submit(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, nvcv::ImageFormat format,
+                       NVCVInterpolationType interpolation)
     {
-        m_op(std::forward<AA>(args)...);
+        int          batch_size = getBatchSize(in);
+        nvcv::Size2D in_size    = imageSize(in);
+        nvcv::Size2D out_size   = imageSize(out);
+
+        auto req = m_op.getWorkspaceRequirements(batch_size, out_size, in_size, format);
+        auto ws  = WorkspaceCache::instance().get(req, stream);
+        m_op(stream, ws.get(), in, out, interpolation);
+    }
+
+    inline int getBatchSize(const nvcv::Tensor &tensor)
+    {
+        auto access = nvcv::TensorDataAccessStridedImagePlanar::Create(tensor.exportData());
+        if (!access)
+            throw std::runtime_error("Incompatible tensor layout");
+
+        return access->numSamples();
+    }
+
+    static nvcv::Size2D imageSize(const nvcv::Tensor &tensor)
+    {
+        auto access = nvcv::TensorDataAccessStridedImagePlanar::Create(tensor.exportData());
+        if (!access)
+            throw std::runtime_error("Incompatible tensor layout");
+
+        return access->size();
+    }
+
+    inline void submit(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
+                       const NVCVInterpolationType interpolation)
+    {
+        assert(in.numImages() == out.numImages());
+        auto in_sizes  = imageSizes(in);
+        auto out_sizes = imageSizes(out);
+        int  N         = in_sizes.size();
+        auto req       = m_op.getWorkspaceRequirements(N, in_sizes.data(), out_sizes.data(), in.uniqueFormat());
+        auto ws        = WorkspaceCache::instance().get(req, stream);
+        m_op(stream, ws.get(), in, out, interpolation);
+    }
+
+    static std::vector<nvcv::Size2D> imageSizes(const nvcv::ImageBatchVarShape &batch)
+    {
+        std::vector<nvcv::Size2D> sizes(batch.numImages());
+
+        for (size_t i = 0; i < sizes.size(); i++) sizes[i] = batch[i].size();
+
+        return sizes;
     }
 
     // Required override to get the py object container.
@@ -158,21 +189,16 @@ Tensor PillowResizeInto(Tensor &output, Tensor &input, nvcv::ImageFormat format,
         throw std::runtime_error("Incompatible input/output tensor layout");
     }
 
-    nvcv::Size2D maxSize{std::max(in_access->numCols(), out_access->numCols()),
-                         std::max(in_access->numRows(), out_access->numRows())};
-
-    int maxBatchSize = static_cast<int>(in_access->numSamples());
-
     // Use CreateOperatorEx to use the extended create operator function passing the specialized PyOperator above
     // as template type, instead of the regular cvcuda::OP class used in the CreateOperator function.
-    auto pillowResize = CreateOperatorEx<PyOpPillowResize>(maxSize, maxBatchSize, format);
+    auto pillowResize = CreateOperatorEx<PyOpPillowResize>();
 
     ResourceGuard guard(*pstream);
     guard.add(LockMode::LOCK_READ, {input});
     guard.add(LockMode::LOCK_WRITE, {output});
     guard.add(LockMode::LOCK_WRITE, {*pillowResize});
 
-    pillowResize->submit(pstream->cudaHandle(), input, output, interp);
+    pillowResize->submit(pstream->cudaHandle(), input, output, format, interp);
 
     return output;
 }
@@ -193,15 +219,8 @@ ImageBatchVarShape VarShapePillowResizeInto(ImageBatchVarShape &output, ImageBat
         pstream = Stream::Current();
     }
 
-    nvcv::Size2D maxSrcSize = input.maxSize();
-    nvcv::Size2D maxDstSize = output.maxSize();
-
-    nvcv::Size2D maxSize{std::max(maxSrcSize.w, maxDstSize.w), std::max(maxSrcSize.h, maxDstSize.h)};
-
-    int maxBatchSize = static_cast<int>(input.capacity());
-
     // The same PyOpPillowResize class and CreateOperatorEx function can be used regardless of Tensors or VarShape.
-    auto pillowResize = CreateOperatorEx<PyOpPillowResize>(maxSize, maxBatchSize, input.uniqueFormat());
+    auto pillowResize = CreateOperatorEx<PyOpPillowResize>();
 
     ResourceGuard guard(*pstream);
     guard.add(LockMode::LOCK_READ, {input});

@@ -86,11 +86,6 @@ void flip(const ImageBatchVarShapeDataStridedCuda &input, const ImageBatchVarSha
 #endif // CUDA_DEBUG_LOG
 }
 
-size_t FlipOrCopyVarShape::calBufferSize(int maxBatchSize)
-{
-    return (sizeof(void *) * 2 + sizeof(int) * 3) * maxBatchSize;
-}
-
 ErrorCode FlipOrCopyVarShape::infer(const ImageBatchVarShapeDataStridedCuda &input,
                                     const ImageBatchVarShapeDataStridedCuda &output,
                                     const TensorDataStridedCuda &flipCode, cudaStream_t stream)

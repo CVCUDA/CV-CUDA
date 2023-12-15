@@ -13,8 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import cvcuda
 import torch
+import cvcuda
 import pytest as t
 import numpy as np
 import cvcuda_util as util

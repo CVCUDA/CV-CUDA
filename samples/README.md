@@ -57,10 +57,10 @@ Setting up the following is only required if you want to setup and run the sampl
 4. Install the CV-CUDA packages. Please note that since the above container comes with Python 3.8.10, we will install nvcv-python3.8-0 package as mentioned below. If you have any other Python distributions, you would need to use the appropriate nvcv-python Debian package below.
 
    ```bash
-   dpkg -i nvcv-lib-0.4.0_beta-cuda11-x86_64-linux.deb
-   dpkg -i nvcv-dev-0.4.0_beta-cuda11-x86_64-linux.deb
-   dpkg -i cvcuda-samples-0.4.0_beta-cuda11-x86_64-linux.deb
-   dpkg -i nvcv-python3.8-0.4.0_beta-cuda11-x86_64-linux.deb
+   dpkg -i nvcv-lib-0.5.0_beta-cuda11-x86_64-linux.deb
+   dpkg -i nvcv-dev-0.5.0_beta-cuda11-x86_64-linux.deb
+   dpkg -i cvcuda-samples-0.5.0_beta-cuda11-x86_64-linux.deb
+   dpkg -i nvcv-python3.8-0.5.0_beta-cuda11-x86_64-linux.deb
    ```
 5. Copy the samples folder to the target directory.
 

@@ -104,6 +104,7 @@ NVCVTensorData FillNVCVTensorData(const DLTensor &tensor, std::optional<nvcv::Te
 
     // rank ------------
     {
+        // TODO: Add 0D support
         int rank = tensor.ndim == 0 ? 1 : tensor.ndim;
         if (rank < 1 || rank > NVCV_TENSOR_MAX_RANK)
         {
@@ -181,6 +182,28 @@ std::shared_ptr<Tensor> Tensor::WrapImage(Image &img)
     return tensor;
 }
 
+std::shared_ptr<Tensor> Tensor::ReshapeTensor(Tensor &tensor, Shape shape, std::optional<nvcv::TensorLayout> layout)
+{
+    Tensor::Key key;
+    Cache::Instance().removeAllNotInUseMatching(key);
+
+    nvcv::Tensor tensor_impl      = tensor.impl();
+    auto         new_tensor_shape = CreateNVCVTensorShape(shape, layout ? *layout : tensor_impl.layout());
+    nvcv::Tensor new_tensor_impl  = tensor_impl.reshape(std::move(new_tensor_shape));
+    auto         new_tensor       = std::shared_ptr<Tensor>(new Tensor(std::move(new_tensor_impl)));
+
+    // Need to add wrappers to cache so that they don't get destroyed by
+    // the cuda stream when they're last used, and python script isn't
+    // holding a reference to them. If we don't do it, things might break.
+    Cache::Instance().add(*new_tensor);
+    return new_tensor;
+}
+
+std::shared_ptr<Tensor> Tensor::Reshape(Shape shape, std::optional<nvcv::TensorLayout> layout)
+{
+    return ReshapeTensor(*this, std::move(shape), std::move(layout));
+}
+
 Tensor::Tensor(const nvcv::Tensor::Requirements &reqs)
     : m_impl{reqs}
     , m_key{reqs}
@@ -198,6 +221,12 @@ Tensor::Tensor(Image &img)
     : m_impl{nvcv::TensorWrapImage(img.impl())}
     , m_key{}
     , m_wrappedObject(py::cast(img))
+{
+}
+
+Tensor::Tensor(nvcv::Tensor &&tensor)
+    : m_impl{std::move(tensor)}
+    , m_key{}
 {
 }
 
@@ -373,12 +402,16 @@ void Tensor::Export(py::module &m)
         // It's not a requirement to be consistent between NVCV Python and C/C++.
         // Each language use whatever is appropriate (and expected) in their environment.
         .def_property_readonly("ndim", &Tensor::rank, "The number of dimensions of the Tensor.")
-        .def("cuda", &Tensor::cuda, "Referance to the Tensor on the CUDA device.")
+        .def("cuda", &Tensor::cuda, "Reference to the Tensor on the CUDA device.")
+        .def("reshape", &Tensor::Reshape, "shape"_a, "layout"_a = std::nullopt,
+             "Produces a tensor pointing to the same data but with a new shape and layout.")
         .def("__repr__", &util::ToString<Tensor>, "Return the string representation of the Tensor object.");
 
     m.def("as_tensor", &Tensor::Wrap, "buffer"_a, "layout"_a = std::nullopt,
           "Wrap an existing buffer into a Tensor object with the given layout.");
     m.def("as_tensor", &Tensor::WrapImage, "image"_a, "Wrap an existing image into a Tensor object.");
+    m.def("reshape", &Tensor::ReshapeTensor, "tensor"_a, "shape"_a, "layout"_a = std::nullopt,
+          "Produces a tensor pointing to the same data but with a new shape and layout.");
 }
 
 } // namespace nvcvpy::priv

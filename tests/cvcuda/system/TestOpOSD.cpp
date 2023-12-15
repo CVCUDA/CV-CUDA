@@ -21,6 +21,7 @@
 
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpOSD.hpp>
+#include <cvcuda/priv/Types.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
@@ -33,6 +34,7 @@
 
 namespace gt   = ::testing;
 namespace test = nvcv::test;
+using namespace cvcuda::priv;
 
 static int randl(int l, int h)
 {
@@ -44,12 +46,12 @@ static int randl(int l, int h)
 #pragma GCC optimize("O1")
 
 static void setGoldBuffer(std::vector<uint8_t> &vect, nvcv::ImageFormat format,
-                          const nvcv::TensorDataAccessStridedImagePlanar &data, nvcv::Byte *inBuf, NVCVElements ctx,
-                          cudaStream_t stream)
+                          const nvcv::TensorDataAccessStridedImagePlanar &data, nvcv::Byte *inBuf,
+                          std::shared_ptr<NVCVElementsImpl> ctx, cudaStream_t stream)
 {
     auto context = cuosd_context_create();
 
-    for (int n = 0; n < ctx.batch; n++)
+    for (int n = 0; n < ctx->batch(); n++)
     {
         test::osd::Image *image = test::osd::create_image(
             data.numCols(), data.numRows(),
@@ -57,16 +59,16 @@ static void setGoldBuffer(std::vector<uint8_t> &vect, nvcv::ImageFormat format,
         int bufSize = data.numCols() * data.numRows() * data.numChannels();
         EXPECT_EQ(cudaSuccess, cudaMemcpy(image->data0, inBuf + n * bufSize, bufSize, cudaMemcpyDeviceToDevice));
 
-        auto numElements = ctx.numElements[n];
+        auto numElements = ctx->numElementsAt(n);
 
         for (int i = 0; i < numElements; i++)
         {
-            auto element = ctx.elements[i];
-            switch (element.type)
+            auto element = ctx->elementAt(n, i);
+            switch (element->type())
             {
             case NVCVOSDType::NVCV_OSD_RECT:
             {
-                auto bbox = *((NVCVBndBoxI *)element.data);
+                auto bbox = *((NVCVBndBoxI *)element->ptr());
 
                 int left   = std::max(std::min(bbox.box.x, data.numCols() - 1), 0);
                 int top    = std::max(std::min(bbox.box.y, data.numRows() - 1), 0);
@@ -86,7 +88,7 @@ static void setGoldBuffer(std::vector<uint8_t> &vect, nvcv::ImageFormat format,
             }
             case NVCVOSDType::NVCV_OSD_TEXT:
             {
-                auto       text      = *((NVCVText *)element.data);
+                auto       text      = *((NVCVText *)element->ptr());
                 cuOSDColor fontColor = *(cuOSDColor *)(&text.fontColor);
                 cuOSDColor bgColor   = *(cuOSDColor *)(&text.bgColor);
                 cuosd_draw_text(context, text.utf8Text, text.fontSize, text.fontName, text.tlPos.x, text.tlPos.y,
@@ -95,35 +97,34 @@ static void setGoldBuffer(std::vector<uint8_t> &vect, nvcv::ImageFormat format,
             }
             case NVCVOSDType::NVCV_OSD_SEGMENT:
             {
-                auto segment = *((NVCVSegment *)element.data);
+                auto segment = (NVCVSegment *)element->ptr();
 
-                int left   = segment.box.x;
-                int top    = segment.box.y;
-                int right  = left + segment.box.width - 1;
-                int bottom = top + segment.box.height - 1;
+                int left   = segment->box.x;
+                int top    = segment->box.y;
+                int right  = left + segment->box.width - 1;
+                int bottom = top + segment->box.height - 1;
 
-                if (left == right || top == bottom || segment.box.width <= 0 || segment.box.height <= 0)
+                if (left == right || top == bottom || segment->box.width <= 0 || segment->box.height <= 0)
                 {
                     continue;
                 }
-
-                cuOSDColor borderColor = *(cuOSDColor *)(&segment.borderColor);
-                cuOSDColor segColor    = *(cuOSDColor *)(&segment.segColor);
-                cuosd_draw_segmentmask(context, left, top, right, bottom, segment.thickness, segment.dSeg,
-                                       segment.segWidth, segment.segHeight, segment.segThreshold, borderColor,
+                cuOSDColor borderColor = *(cuOSDColor *)(&segment->borderColor);
+                cuOSDColor segColor    = *(cuOSDColor *)(&segment->segColor);
+                cuosd_draw_segmentmask(context, left, top, right, bottom, segment->thickness, segment->dSeg,
+                                       segment->segWidth, segment->segHeight, segment->segThreshold, borderColor,
                                        segColor);
                 break;
             }
             case NVCVOSDType::NVCV_OSD_POINT:
             {
-                auto       point = *((NVCVPoint *)element.data);
+                auto       point = *((NVCVPoint *)element->ptr());
                 cuOSDColor color = *(cuOSDColor *)(&point.color);
                 cuosd_draw_point(context, point.centerPos.x, point.centerPos.y, point.radius, color);
                 break;
             }
             case NVCVOSDType::NVCV_OSD_LINE:
             {
-                auto       line  = *((NVCVLine *)element.data);
+                auto       line  = *((NVCVLine *)element->ptr());
                 cuOSDColor color = *(cuOSDColor *)(&line.color);
                 cuosd_draw_line(context, line.pos0.x, line.pos0.y, line.pos1.x, line.pos1.y, line.thickness, color,
                                 line.interpolation);
@@ -131,16 +132,16 @@ static void setGoldBuffer(std::vector<uint8_t> &vect, nvcv::ImageFormat format,
             }
             case NVCVOSDType::NVCV_OSD_POLYLINE:
             {
-                auto       pl          = *((NVCVPolyLine *)element.data);
-                cuOSDColor borderColor = *(cuOSDColor *)(&pl.borderColor);
-                cuOSDColor fill_color  = *(cuOSDColor *)(&pl.fillColor);
-                cuosd_draw_polyline(context, pl.hPoints, pl.dPoints, pl.numPoints, pl.thickness, pl.isClosed,
-                                    borderColor, pl.interpolation, fill_color);
+                auto       pl          = (NVCVPolyLine *)element->ptr();
+                cuOSDColor borderColor = *(cuOSDColor *)(&pl->borderColor);
+                cuOSDColor fill_color  = *(cuOSDColor *)(&pl->fillColor);
+                cuosd_draw_polyline(context, pl->hPoints, pl->dPoints, pl->numPoints, pl->thickness, pl->isClosed,
+                                    borderColor, pl->interpolation, fill_color);
                 break;
             }
             case NVCVOSDType::NVCV_OSD_ROTATED_RECT:
             {
-                auto       rb          = *((NVCVRotatedBox *)element.data);
+                auto       rb          = *((NVCVRotatedBox *)element->ptr());
                 cuOSDColor borderColor = *(cuOSDColor *)(&rb.borderColor);
                 cuOSDColor bgColor     = *(cuOSDColor *)(&rb.bgColor);
                 cuosd_draw_rotationbox(context, rb.centerPos.x, rb.centerPos.y, rb.width, rb.height, rb.yaw,
@@ -149,7 +150,7 @@ static void setGoldBuffer(std::vector<uint8_t> &vect, nvcv::ImageFormat format,
             }
             case NVCVOSDType::NVCV_OSD_CIRCLE:
             {
-                auto       circle      = *((NVCVCircle *)element.data);
+                auto       circle      = *((NVCVCircle *)element->ptr());
                 cuOSDColor borderColor = *(cuOSDColor *)(&circle.borderColor);
                 cuOSDColor bgColor     = *(cuOSDColor *)(&circle.bgColor);
                 cuosd_draw_circle(context, circle.centerPos.x, circle.centerPos.y, circle.radius, circle.thickness,
@@ -158,7 +159,7 @@ static void setGoldBuffer(std::vector<uint8_t> &vect, nvcv::ImageFormat format,
             }
             case NVCVOSDType::NVCV_OSD_ARROW:
             {
-                auto       arrow = *((NVCVArrow *)element.data);
+                auto       arrow = *((NVCVArrow *)element->ptr());
                 cuOSDColor color = *(cuOSDColor *)(&arrow.color);
                 cuosd_draw_arrow(context, arrow.pos0.x, arrow.pos0.y, arrow.pos1.x, arrow.pos1.y, arrow.arrowSize,
                                  arrow.thickness, color, arrow.interpolation);
@@ -166,7 +167,7 @@ static void setGoldBuffer(std::vector<uint8_t> &vect, nvcv::ImageFormat format,
             }
             case NVCVOSDType::NVCV_OSD_CLOCK:
             {
-                auto             clock       = *((NVCVClock *)element.data);
+                auto             clock       = *((NVCVClock *)element->ptr());
                 cuOSDClockFormat clockFormat = (cuOSDClockFormat)(int)(clock.clockFormat);
                 cuOSDColor       fontColor   = *(cuOSDColor *)(&clock.fontColor);
                 cuOSDColor       bgColor     = *(cuOSDColor *)(&clock.bgColor);
@@ -180,7 +181,6 @@ static void setGoldBuffer(std::vector<uint8_t> &vect, nvcv::ImageFormat format,
         }
 
         test::osd::cuosd_apply(context, image, stream);
-        ctx.elements = (NVCVElement *)((unsigned char *)ctx.elements + numElements * sizeof(NVCVElement));
         EXPECT_EQ(cudaSuccess, cudaMemcpy(vect.data() + n * bufSize, image->data0, bufSize, cudaMemcpyDeviceToHost));
         test::osd::free_image(image);
     }
@@ -191,85 +191,11 @@ static void setGoldBuffer(std::vector<uint8_t> &vect, nvcv::ImageFormat format,
 
 #pragma GCC pop_options
 
-static void free_elements(std::vector<NVCVElement> &elementVec)
-{
-    for (auto element : elementVec)
-    {
-        switch (element.type)
-        {
-        case NVCVOSDType::NVCV_OSD_RECT:
-        {
-            NVCVBndBoxI *bndBox = (NVCVBndBoxI *)element.data;
-            delete (bndBox);
-            break;
-        }
-        case NVCVOSDType::NVCV_OSD_TEXT:
-        {
-            NVCVText *label = (NVCVText *)element.data;
-            delete (label);
-            break;
-        }
-        case NVCVOSDType::NVCV_OSD_SEGMENT:
-        {
-            NVCVSegment *segment = (NVCVSegment *)element.data;
-            delete (segment);
-            break;
-        }
-        case NVCVOSDType::NVCV_OSD_POINT:
-        {
-            NVCVPoint *point = (NVCVPoint *)element.data;
-            delete (point);
-            break;
-        }
-        case NVCVOSDType::NVCV_OSD_LINE:
-        {
-            NVCVLine *line = (NVCVLine *)element.data;
-            delete (line);
-            break;
-        }
-        case NVCVOSDType::NVCV_OSD_POLYLINE:
-        {
-            NVCVPolyLine *pl = (NVCVPolyLine *)element.data;
-            delete (pl);
-            break;
-        }
-        case NVCVOSDType::NVCV_OSD_ROTATED_RECT:
-        {
-            NVCVRotatedBox *rb = (NVCVRotatedBox *)element.data;
-            delete (rb);
-            break;
-        }
-        case NVCVOSDType::NVCV_OSD_CIRCLE:
-        {
-            NVCVCircle *circle = (NVCVCircle *)element.data;
-            delete (circle);
-            break;
-        }
-        case NVCVOSDType::NVCV_OSD_ARROW:
-        {
-            NVCVArrow *arrow = (NVCVArrow *)element.data;
-            delete (arrow);
-            break;
-        }
-        case NVCVOSDType::NVCV_OSD_CLOCK:
-        {
-            NVCVClock *clock = (NVCVClock *)element.data;
-            delete (clock);
-            break;
-        }
-        default:
-            break;
-        }
-    }
-}
-
 // run operator
 static void runOp(cudaStream_t &stream, cvcuda::OSD &op, int &inN, int &inW, int &inH, int &num, int &sed,
                   nvcv::ImageFormat &format)
 {
-    NVCVElements             ctx;
-    std::vector<int>         numElementVec;
-    std::vector<NVCVElement> elementVec;
+    std::vector<std::vector<std::shared_ptr<NVCVElement>>> elementVec;
 
     test::osd::Segment  *test_segment  = test::osd::create_segment();
     test::osd::Polyline *test_polyline = test::osd::create_polyline();
@@ -277,176 +203,158 @@ static void runOp(cudaStream_t &stream, cvcuda::OSD &op, int &inN, int &inW, int
     srand(sed);
     for (int n = 0; n < inN; n++)
     {
-        numElementVec.push_back(num);
+        std::vector<std::shared_ptr<NVCVElement>> curVec;
         for (int i = 0; i < num; i++)
         {
-            NVCVElement element;
-            element.type = (NVCVOSDType)randl(int(NVCV_OSD_NONE) + 1, int(NVCV_OSD_MAX) - 1);
-            switch (element.type)
+            NVCVOSDType                  type = (NVCVOSDType)randl(int(NVCV_OSD_NONE) + 1, int(NVCV_OSD_MAX) - 1);
+            std::shared_ptr<NVCVElement> element;
+            switch (type)
             {
             case NVCVOSDType::NVCV_OSD_RECT:
             {
-                NVCVBndBoxI *bndBox = new NVCVBndBoxI();
-                bndBox->box.x       = randl(0, inW - 1);
-                bndBox->box.y       = randl(0, inH - 1);
-                bndBox->box.width   = randl(1, inW);
-                bndBox->box.height  = randl(1, inH);
-                bndBox->thickness   = randl(-1, 30);
-                bndBox->fillColor   = {(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
-                                       (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)};
-                bndBox->borderColor = {(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
-                                       (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)};
-                element.data        = (void *)bndBox;
+                NVCVBndBoxI bndBox;
+                bndBox.box.x       = randl(0, inW - 1);
+                bndBox.box.y       = randl(0, inH - 1);
+                bndBox.box.width   = randl(1, inW);
+                bndBox.box.height  = randl(1, inH);
+                bndBox.thickness   = randl(-1, 30);
+                bndBox.fillColor   = {(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
+                                      (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)};
+                bndBox.borderColor = {(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
+                                      (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)};
+                element            = std::make_shared<NVCVElement>(type, &bndBox);
                 break;
             }
             case NVCVOSDType::NVCV_OSD_TEXT:
             {
-                NVCVText *label  = new NVCVText();
-                label->utf8Text  = "abcdefghijklmnopqrstuvwxyz";
-                label->fontSize  = 5 * randl(1, 10);
-                label->fontName  = DEFAULT_OSD_FONT;
-                label->tlPos.x   = randl(0, inW - 1);
-                label->tlPos.y   = randl(0, inH - 1);
-                label->fontColor = {(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
-                                    (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)};
-                label->bgColor   = {(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
-                                    (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)};
-                element.data     = (void *)label;
+                NVCVText text = NVCVText("abcdefghijklmnopqrstuvwxyz", 5 * randl(1, 10), DEFAULT_OSD_FONT,
+                                         NVCVPointI({randl(0, inW - 1), randl(0, inH - 1)}),
+                                         NVCVColorRGBA({(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
+                                                        (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)}),
+                                         NVCVColorRGBA({(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
+                                                        (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)}));
+                element       = std::make_shared<NVCVElement>(type, &text);
                 break;
             }
             case NVCVOSDType::NVCV_OSD_SEGMENT:
             {
-                NVCVSegment *segment  = new NVCVSegment();
-                segment->box.x        = randl(0, inW - 1);
-                segment->box.y        = randl(0, inH - 1);
-                segment->box.width    = randl(1, inW);
-                segment->box.height   = randl(1, inH);
-                segment->thickness    = randl(-1, 5);
-                segment->dSeg         = test_segment->data;
-                segment->segWidth     = test_segment->width;
-                segment->segHeight    = test_segment->height;
-                segment->segThreshold = 0.1 * randl(1, 5);
-                segment->borderColor  = {(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
-                                         (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)};
-                segment->segColor     = {(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
-                                         (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)};
-                element.data          = (void *)segment;
+                NVCVSegment segment = NVCVSegment(
+                    NVCVBoxI({randl(0, inW - 1), randl(0, inH - 1), randl(1, inW), randl(1, inH)}), randl(-1, 5),
+                    test_segment->data, test_segment->width, test_segment->height, 0.1 * randl(1, 5),
+                    NVCVColorRGBA({(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
+                                   (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)}),
+                    NVCVColorRGBA({(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
+                                   (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)}));
+                element = std::make_shared<NVCVElement>(type, &segment);
                 break;
             }
             case NVCVOSDType::NVCV_OSD_POINT:
             {
-                NVCVPoint *point   = new NVCVPoint();
-                point->centerPos.x = randl(0, inW - 1);
-                point->centerPos.y = randl(0, inH - 1);
-                point->radius      = randl(1, 50);
-                point->color       = {(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
-                                      (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)};
-                element.data       = (void *)point;
+                NVCVPoint point;
+                point.centerPos.x = randl(0, inW - 1);
+                point.centerPos.y = randl(0, inH - 1);
+                point.radius      = randl(1, 50);
+                point.color = {(unsigned char)randl(0, 255), (unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
+                               (unsigned char)randl(0, 255)};
+                element     = std::make_shared<NVCVElement>(type, &point);
                 break;
             }
             case NVCVOSDType::NVCV_OSD_LINE:
             {
-                NVCVLine *line  = new NVCVLine();
-                line->pos0.x    = randl(0, inW - 1);
-                line->pos0.y    = randl(0, inH - 1);
-                line->pos1.x    = randl(0, inW - 1);
-                line->pos1.y    = randl(0, inH - 1);
-                line->thickness = randl(1, 5);
-                line->color = {(unsigned char)randl(0, 255), (unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
-                               (unsigned char)randl(0, 255)};
-                line->interpolation = true;
-                element.data        = (void *)line;
+                NVCVLine line;
+                line.pos0.x    = randl(0, inW - 1);
+                line.pos0.y    = randl(0, inH - 1);
+                line.pos1.x    = randl(0, inW - 1);
+                line.pos1.y    = randl(0, inH - 1);
+                line.thickness = randl(1, 5);
+                line.color = {(unsigned char)randl(0, 255), (unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
+                              (unsigned char)randl(0, 255)};
+                line.interpolation = true;
+                element            = std::make_shared<NVCVElement>(type, &line);
                 break;
             }
             case NVCVOSDType::NVCV_OSD_POLYLINE:
             {
-                NVCVPolyLine *pl  = new NVCVPolyLine();
-                pl->hPoints       = test_polyline->h_pts;
-                pl->dPoints       = test_polyline->d_pts;
-                pl->numPoints     = test_polyline->n_pts;
-                pl->thickness     = randl(1, 5);
-                pl->isClosed      = randl(0, 1);
-                pl->borderColor   = {(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
-                                     (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)};
-                pl->fillColor     = {(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
-                                     (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)};
-                pl->interpolation = true;
-                element.data      = (void *)pl;
+                NVCVPolyLine pl
+                    = NVCVPolyLine(test_polyline->h_pts, test_polyline->n_pts, randl(1, 5), randl(0, 1),
+                                   NVCVColorRGBA({(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
+                                                  (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)}),
+                                   NVCVColorRGBA({(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
+                                                  (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)}),
+                                   true);
+                element = std::make_shared<NVCVElement>(type, &pl);
                 break;
             }
             case NVCVOSDType::NVCV_OSD_ROTATED_RECT:
             {
-                NVCVRotatedBox *rb = new NVCVRotatedBox();
-                rb->centerPos.x    = randl(0, inW - 1);
-                rb->centerPos.y    = randl(0, inH - 1);
-                rb->width          = randl(1, inW);
-                rb->height         = randl(1, inH);
-                rb->yaw            = 0.02 * randl(1, 314);
-                rb->thickness      = randl(1, 5);
-                rb->borderColor    = {(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
-                                      (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)};
-                rb->bgColor = {(unsigned char)randl(0, 255), (unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
-                               (unsigned char)randl(0, 255)};
-                rb->interpolation = false;
-                element.data      = (void *)rb;
+                NVCVRotatedBox rb;
+                rb.centerPos.x = randl(0, inW - 1);
+                rb.centerPos.y = randl(0, inH - 1);
+                rb.width       = randl(1, inW);
+                rb.height      = randl(1, inH);
+                rb.yaw         = 0.02 * randl(1, 314);
+                rb.thickness   = randl(1, 5);
+                rb.borderColor = {(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
+                                  (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)};
+                rb.bgColor = {(unsigned char)randl(0, 255), (unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
+                              (unsigned char)randl(0, 255)};
+                rb.interpolation = false;
+                element          = std::make_shared<NVCVElement>(type, &rb);
                 break;
             }
             case NVCVOSDType::NVCV_OSD_CIRCLE:
             {
-                NVCVCircle *circle  = new NVCVCircle();
-                circle->centerPos.x = randl(0, inW - 1);
-                circle->centerPos.y = randl(0, inH - 1);
-                circle->radius      = randl(1, 50);
-                circle->thickness   = randl(1, 5);
-                circle->borderColor = {(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
-                                       (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)};
-                circle->bgColor     = {(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
-                                       (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)};
-                element.data        = (void *)circle;
+                NVCVCircle circle;
+                circle.centerPos.x = randl(0, inW - 1);
+                circle.centerPos.y = randl(0, inH - 1);
+                circle.radius      = randl(1, 50);
+                circle.thickness   = randl(1, 5);
+                circle.borderColor = {(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
+                                      (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)};
+                circle.bgColor     = {(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
+                                      (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)};
+                element            = std::make_shared<NVCVElement>(type, &circle);
                 break;
             }
             case NVCVOSDType::NVCV_OSD_ARROW:
             {
-                NVCVArrow *arrow     = new NVCVArrow();
-                arrow->pos0.x        = randl(0, inW - 1);
-                arrow->pos0.y        = randl(0, inH - 1);
-                arrow->pos1.x        = randl(0, inW - 1);
-                arrow->pos1.y        = randl(0, inH - 1);
-                arrow->arrowSize     = randl(1, 5);
-                arrow->thickness     = randl(1, 5);
-                arrow->color         = {(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
-                                        (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)};
-                arrow->interpolation = false;
-                element.data         = (void *)arrow;
+                NVCVArrow arrow;
+                arrow.pos0.x    = randl(0, inW - 1);
+                arrow.pos0.y    = randl(0, inH - 1);
+                arrow.pos1.x    = randl(0, inW - 1);
+                arrow.pos1.y    = randl(0, inH - 1);
+                arrow.arrowSize = randl(1, 5);
+                arrow.thickness = randl(1, 5);
+                arrow.color = {(unsigned char)randl(0, 255), (unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
+                               (unsigned char)randl(0, 255)};
+                arrow.interpolation = false;
+                element             = std::make_shared<NVCVElement>(type, &arrow);
                 break;
             }
             case NVCVOSDType::NVCV_OSD_CLOCK:
             {
-                NVCVClock *clock   = new NVCVClock();
-                clock->clockFormat = (NVCVClockFormat)(randl(1, 3));
-                clock->time        = time(0);
-                clock->fontSize    = 5 * randl(1, 10);
-                clock->font        = DEFAULT_OSD_FONT;
-                clock->tlPos.x     = randl(0, inW - 1);
-                clock->tlPos.y     = randl(0, inH - 1);
-                clock->fontColor   = {(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
-                                      (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)};
-                clock->bgColor     = {(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
-                                      (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)};
-                element.data       = (void *)clock;
+                NVCVClock clock
+                    = NVCVClock{(NVCVClockFormat)(randl(1, 3)),
+                                time(0),
+                                5 * randl(1, 10),
+                                DEFAULT_OSD_FONT,
+                                NVCVPointI({randl(0, inW - 1), randl(0, inH - 1)}),
+                                NVCVColorRGBA({(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
+                                               (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)}),
+                                NVCVColorRGBA({(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
+                                               (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)})};
+                element = std::make_shared<NVCVElement>(type, &clock);
                 break;
             }
             default:
                 break;
             }
-
-            elementVec.push_back(element);
+            curVec.push_back(element);
         }
+        elementVec.push_back(curVec);
     }
 
-    ctx.batch       = inN;
-    ctx.numElements = numElementVec.data();
-    ctx.elements    = elementVec.data();
+    std::shared_ptr<NVCVElementsImpl> ctx = std::make_shared<NVCVElementsImpl>(elementVec);
 
     nvcv::Tensor imgIn  = nvcv::util::CreateTensor(inN, inW, inH, format);
     nvcv::Tensor imgOut = nvcv::util::CreateTensor(inN, inW, inH, format);
@@ -472,7 +380,7 @@ static void runOp(cudaStream_t &stream, cvcuda::OSD &op, int &inN, int &inW, int
     EXPECT_EQ(cudaSuccess, cudaMemset(input->basePtr(), 0xFF, inSampleStride * inAccess->numSamples()));
     EXPECT_EQ(cudaSuccess, cudaMemset(output->basePtr(), 0xFF, outSampleStride * outAccess->numSamples()));
 
-    EXPECT_NO_THROW(op(stream, imgIn, imgOut, ctx));
+    EXPECT_NO_THROW(op(stream, imgIn, imgOut, (NVCVElements)ctx.get()));
 
     // check cdata
     std::vector<uint8_t> test(outBufSize);
@@ -487,7 +395,6 @@ static void runOp(cudaStream_t &stream, cvcuda::OSD &op, int &inN, int &inW, int
 
     test::osd::free_segment(test_segment);
     test::osd::free_polyline(test_polyline);
-    free_elements(elementVec);
 
     EXPECT_EQ(gold, test);
 }

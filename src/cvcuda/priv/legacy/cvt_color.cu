@@ -1494,11 +1494,6 @@ inline ErrorCode BGR_to_YUV420xp(const TensorDataStridedCuda &inData, const Tens
     return ErrorCode::SUCCESS;
 }
 
-size_t CvtColor::calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type)
-{
-    return 0;
-}
-
 ErrorCode CvtColor::infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                           NVCVColorConversionCode code, cudaStream_t stream)
 {

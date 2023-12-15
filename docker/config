@@ -22,8 +22,9 @@ IMAGE_URL_BASE=''
 # image versions must be upgraded whenever a breaking
 # change is done, such as removing some package, or updating
 # packaged versions that introduces incompatibilities.
-TAG_IMAGE=5
+TAG_IMAGE=6
 TAG_IMAGE_SAMPLES=5.1
+TAG_IMAGE_TEST=5
 
 VER_CUDA=11.7.1
 VER_UBUNTU=22.04

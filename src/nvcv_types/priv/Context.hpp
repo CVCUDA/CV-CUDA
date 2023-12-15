@@ -24,6 +24,7 @@
 #include "IContext.hpp"
 #include "ImageBatchManager.hpp"
 #include "ImageManager.hpp"
+#include "TensorBatchManager.hpp"
 #include "TensorManager.hpp"
 
 namespace nvcv::priv {
@@ -39,12 +40,13 @@ public:
 
 private:
     // Order is important due to inter-dependencies
-    DefaultAllocator  m_allocDefault;
-    AllocatorManager  m_allocatorManager;
-    ImageManager      m_imageManager;
-    ImageBatchManager m_imageBatchManager;
-    TensorManager     m_tensorManager;
-    ArrayManager      m_arrayManager;
+    DefaultAllocator   m_allocDefault;
+    AllocatorManager   m_allocatorManager;
+    ImageManager       m_imageManager;
+    ImageBatchManager  m_imageBatchManager;
+    TensorManager      m_tensorManager;
+    TensorBatchManager m_tensorBatchManager;
+    ArrayManager       m_arrayManager;
 
     Managers m_managerList;
 };
