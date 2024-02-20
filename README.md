@@ -30,9 +30,9 @@ To get a local copy up and running follow these steps.
   - Ubuntu x86_64 >= 20.04
   - WSL2 with Ubuntu >= 20.04 (tested with 20.04)
 - NVIDIA driver
-    - Linux: Driver version 520.56.06 or higher
+  - Linux: Driver version 520.56.06 or higher
 - CUDA Toolkit
-    - Version 11.7 or above. (12.0 is not yet tested.)
+  - Version 11.7 or above.
 - GCC >= 11.0
 - Python >= 3.8
 - cmake >= 3.20
