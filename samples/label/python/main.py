@@ -38,7 +38,7 @@ from perf_utils import (  # noqa: E402
     parse_validate_default_args,
 )
 
-from torch_utils import ImageBatchDecoderPyTorch, ImageBatchEncoderPyTorch  # noqa: E402
+from nvcodec_utils import ImageBatchDecoder, ImageBatchEncoder  # noqa: E402
 from interop_utils import to_cpu_numpy_buffer, to_cuda_buffer  # noqa: E402
 
 # docs_tag: end_python_imports
@@ -59,7 +59,7 @@ def save_batch(images, label, encoder, batch):
         batch : Batch object to save the images
 
     Returns:
-        nvcv Tensor: RGB color, random for each label
+        n/a
     """
     # Function to modify filenames in the batch
     def modify_filenames(suffix):
@@ -70,13 +70,22 @@ def save_batch(images, label, encoder, batch):
             modified_filenames.append(modified_filename)
         return modified_filenames
 
-    # convert to NCHW
-    imagesNCHW = cvcuda.reformat(images, "NCHW")
+    # Check if the format is what we expect
+    if encoder.input_layout != "NHWC":
+        raise ValueError(
+            "Expected input layout to be 'NHWC', but found '{}'".format(
+                encoder.input_layout
+            )
+        )
+
+    # Convert to RGB if the input is grayscale the encoder expects RGB
+    if images.shape[3] == 1:
+        images = cvcuda.cvtcolor(images, cvcuda.ColorConversion.GRAY2RGB)
 
     # Modify filenames with "_labels" suffix
     oldFileNames = batch.fileinfo
     batch.fileinfo = modify_filenames(label)
-    batch.data = torch.as_tensor(imagesNCHW.cuda())
+    batch.data = torch.as_tensor(images.cuda())
     encoder(batch)
     batch.fileinfo = oldFileNames
 
@@ -158,14 +167,12 @@ def run_sample(
     # Now define the object that will handle pre-processing
     if os.path.splitext(input_path)[1] == ".jpg" or os.path.isdir(input_path):
         # Treat this as data modality of images
-        decoder = ImageBatchDecoderPyTorch(
+        decoder = ImageBatchDecoder(
             input_path, batch_size, device_id, cuda_ctx, cvcuda_perf
         )
-        encoder = ImageBatchEncoderPyTorch(
+        encoder = ImageBatchEncoder(
             output_dir,
-            fps=0,
             device_id=device_id,
-            cuda_ctx=cuda_ctx,
             cvcuda_perf=cvcuda_perf,
         )
     else:
@@ -204,7 +211,9 @@ def run_sample(
             # 1) CVCUDA tensor --> Nothing needs to be done.
             # 2) Numpy Array --> Convert to torch tensor first and then CVCUDA tensor
             # 3) Torch Tensor --> Convert to CVCUDA tensor
-            if isinstance(batch.data, torch.Tensor):
+            if isinstance(batch.data, cvcuda.Tensor):
+                cvcudaTensorNHWC = batch.data
+            elif isinstance(batch.data, torch.Tensor):
                 cvcudaTensorNHWC = cvcuda.as_tensor(batch.data, "NHWC")
             elif isinstance(batch.data, np.ndarray):
                 cvcudaTensorNHWC = cvcuda.as_tensor(
@@ -213,11 +222,12 @@ def run_sample(
                     ),
                     "NHWC",
                 )
+            else:
+                raise ValueError("Unknown input type: %s" % type(batch.data))
             # docs_tag: end_tensor_conversion
 
             # Convert to grayscale
             out = cvcuda.cvtcolor(cvcudaTensorNHWC, cvcuda.ColorConversion.RGB2GRAY)
-
             save_batch(out, "grayscale", encoder, batch)
 
             # Histogram eq the image

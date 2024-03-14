@@ -54,9 +54,9 @@ Tensor NormalizeInto(Tensor &output, Tensor &input, Tensor &base, Tensor &scale,
     auto normalize = CreateOperator<cvcuda::Normalize>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input, base, scale});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*normalize});
+    guard.add(LockMode::LOCK_MODE_READ, {input, base, scale});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*normalize});
 
     normalize->submit(pstream->cudaHandle(), input, base, scale, output, globalScale, globalShift, epsilon, *flags);
 
@@ -88,9 +88,9 @@ ImageBatchVarShape VarShapeNormalizeInto(ImageBatchVarShape &output, ImageBatchV
     auto normalize = CreateOperator<cvcuda::Normalize>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input, base, scale});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*normalize});
+    guard.add(LockMode::LOCK_MODE_READ, {input, base, scale});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*normalize});
 
     normalize->submit(pstream->cudaHandle(), input, base, scale, output, globalScale, globalShift, epsilon, *flags);
 

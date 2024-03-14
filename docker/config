@@ -23,9 +23,9 @@ IMAGE_URL_BASE=''
 # change is done, such as removing some package, or updating
 # packaged versions that introduces incompatibilities.
 TAG_IMAGE=6
-TAG_IMAGE_SAMPLES=5.1
+TAG_IMAGE_SAMPLES=6.1
 TAG_IMAGE_TEST=5
 
 VER_CUDA=11.7.1
 VER_UBUNTU=22.04
-VER_TRT=22.09
+VER_TRT=24.01

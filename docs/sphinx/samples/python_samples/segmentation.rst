@@ -1,5 +1,5 @@
 ..
-   # SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+   # SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
    # SPDX-License-Identifier: Apache-2.0
    #
    # Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,11 +35,11 @@ Writing the Sample App
 
 The segmentation sample app has been designed to be modular in all aspects. It imports and uses various modules such as data decoders, encoders, pipeline pre and post processors and the model inference. Some of these modules are defined in the same folder as the sample whereas the rest are defined in the common scripts folder for a wider re-use.
 
-1. Modules used by this sample app that are defined in the common folder (i.e. not specific just to this sample) are the ``ImageBatchDecoderPyTorch`` and ``ImageBatchEncoderPyTorch`` for PyTorch based image decoding and encoding and ``VideoBatchDecoderVPF`` and ``VideoBatchEncoderVPF`` for VPF based video decoding and encoding.
+1. Modules used by this sample app that are defined in the common folder (i.e. not specific just to this sample) are the ``ImageBatchDecoder`` and ``ImageBatchEncoder`` for nvImageCodec based image decoding and encoding and ``VideoBatchDecoder`` and ``VideoBatchEncoder`` for PyNvVideoCodec based video decoding and encoding.
 
 2. Modules specific to this sample (i.e. defined in the segmentation sample folder) are ``PreprocessorCvcuda`` and ``PostprocessorCvcuda`` for CVCUDA based pre and post processing pipelines and ``SegmentationPyTorch`` and ``SegmentationTensorRT`` for the model inference.
 
-The first stage in our pipeline is importing all necessary python modules. Apart from the modules described above, this also includes modules such as torch and torchvision, torchnvjpeg, vpf and the main package of CVCUDA (i.e. nvcv) among others. Be sure to import ``pycuda.driver`` before importing any other GPU packages like torch or cvcuda to ensure a proper initialization.
+The first stage in our pipeline is importing all necessary python modules. Apart from the modules described above, this also includes modules such as torch and torchvision, torchnvjpeg, vpf and the main package of CVCUDA among others. Be sure to import ``pycuda.driver`` before importing any other GPU packages like torch or cvcuda to ensure a proper initialization.
 
 .. literalinclude:: ../../../../samples/segmentation/python/main.py
    :language: python
@@ -83,10 +83,10 @@ The ``run_sample`` function is the primary function that runs this sample. It se
 Next, we instantiate various classes to help us run the sample. These classes are:
 
 1. ``PreprocessorCvcuda`` : A CVCUDA based pre-processing pipeline for semantic segmentation.
-2. ``ImageBatchDecoderPyTorch`` : A PyTorch based image decoder to read the images.
-3. ``ImageBatchEncoderPyTorch`` : A PyTorch based image encoder to write the images.
-4. ``VideoBatchDecoderVPF`` : A VPF based video decoder to read the video.
-5. ``VideoBatchEncoderVPF`` : A VPF based video encoder to write the video.
+2. ``ImageBatchDecoder`` : A nvImageCodec based image decoder to read the images.
+3. ``ImageBatchEncoder`` : A nvImageCodec based image encoder to write the images.
+4. ``VideoBatchDecoder`` : A PyNvVideoCodec based video decoder to read the video.
+5. ``VideoBatchEncoder`` : A PyNvVideoCodec based video encoder to write the video.
 6. ``PostprocessorCvcuda`` : A CVCUDA based post-processing pipeline for semantic segmentation.
 7. ``SegmentationPyTorch`` : A PyTorch based semantic segmentation model to execute inference.
 8. ``SegmentationTensorRT`` : A TensorRT based semantic segmentation model to execute inference.
@@ -121,10 +121,10 @@ That's it for the semantic segmentation sample. To understand more about how eac
 
     PreprocessorCvcuda <segmentation/preprocessor_cvcuda>
     PostprocessorCvcuda <segmentation/postprocessor_cvcuda>
-    ImageBatchDecoderPyTorch <commons/imagebatchdecoder_pytorch>
-    ImageBatchEncoderPyTorch <commons/imagebatchencoder_pytorch>
-    VideoBatchDecoderVPF <commons/videobatchdecoder_vpf>
-    VideoBatchEncoderVPF <commons/videobatchencoder_vpf>
+    ImageBatchDecoder <commons/imagebatchdecoder_nvcodec>
+    ImageBatchEncoder <commons/imagebatchencoder_nvcodec>
+    VideoBatchDecoder <commons/videobatchdecoder_nvcodec>
+    VideoBatchEncoder <commons/videobatchencoder_nvcodec>
     SegmentationPyTorch <segmentation/segmentation_pytorch>
     SegmentationTensorRT <segmentation/segmentation_tensorrt>
 
@@ -182,7 +182,7 @@ This sample takes as input the one or more images or one video and generates the
 
    user@machine:~/cvcuda/samples$ python3 segmentation/python/main.py -b 5 -c __background__ -o /tmp -i assets/images/
    [perf_utils:85] 2023-07-27 23:17:49 WARNING perf_utils is used without benchmark.py. Benchmarking mode is turned off.
-   [perf_utils:89] 2023-07-27 23:17:49 INFO   Using CV-CUDA version: 0.5.0-beta
+   [perf_utils:89] 2023-07-27 23:17:49 INFO   Using CV-CUDA version: 0.6.0-beta
    [pipelines:35] 2023-07-27 23:17:50 INFO   Using CVCUDA as preprocessor.
    [torch_utils:60] 2023-07-27 23:17:50 INFO   Found a total of 3 JPEG images.
    [torch_utils:77] 2023-07-27 23:17:50 INFO   Using torchnvjpeg as decoder.

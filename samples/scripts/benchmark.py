@@ -127,8 +127,8 @@ def parse_nvtx_pushpop_trace_json(json_path):
         thread_id = row["TID"]
 
         # Process a bit. Conversion from nano to milliseconds.
-        start_ms = round(start_ns / 10**6, 3)
-        end_ms = round(end_ns / 10**6, 3)
+        start_ms = round(start_ns / 10**6, 4)
+        end_ms = round(end_ns / 10**6, 4)
         parent_range_id = None if parent_range_id == "None" else parent_range_id
 
         # Save it in our dictionary at the process id and thread id level.
@@ -212,11 +212,11 @@ def parse_nvtx_gpu_proj_trace_json(json_path):
         thread_id = row["TID"]
 
         # Process a bit. Conversion from nano to milliseconds.
-        cpu_start_ms = round(cpu_start_ns / 10**6, 3)
-        cpu_end_ms = round(cpu_end_ns / 10**6, 3)
+        cpu_start_ms = round(cpu_start_ns / 10**6, 4)
+        cpu_end_ms = round(cpu_end_ns / 10**6, 4)
 
-        gpu_start_ms = round(gpu_start_ns / 10**6, 3)
-        gpu_end_ms = round(gpu_end_ns / 10**6, 3)
+        gpu_start_ms = round(gpu_start_ns / 10**6, 4)
+        gpu_end_ms = round(gpu_end_ns / 10**6, 4)
 
         # Save it in our dictionary at the process id and thread id level.
         if process_id not in range_info:
@@ -385,8 +385,8 @@ def calc_mean_ranges(all_range_info):
             cpu_ranges_list = mean_range_info[range_name][0]
             gpu_ranges_list = mean_range_info[range_name][1]
 
-            avg_cpu_time = round(sum(cpu_ranges_list) / len(cpu_ranges_list), 3)
-            avg_gpu_time = round(sum(gpu_ranges_list) / len(gpu_ranges_list), 3)
+            avg_cpu_time = round(sum(cpu_ranges_list) / len(cpu_ranges_list), 4)
+            avg_gpu_time = round(sum(gpu_ranges_list) / len(gpu_ranges_list), 4)
 
             mean_range_info[range_name] = (avg_cpu_time, avg_gpu_time)
         else:
@@ -481,12 +481,12 @@ def recurse_divide_dict(input_dict, divide_by=None):
 
                 for i in range(len(input_dict[key].value)):
                     input_dict[key].value[i] /= divide_by
-                    input_dict[key].value[i] = round(input_dict[key].value[i], 3)
+                    input_dict[key].value[i] = round(input_dict[key].value[i], 4)
             else:
                 divide_by = divide_by if divide_by else input_dict[key].len
 
                 input_dict[key].value /= divide_by
-                input_dict[key].value = round(input_dict[key].value, 3)
+                input_dict[key].value = round(input_dict[key].value, 4)
 
             # Remove the MeanDictInfo object and store the value directly.
             input_dict[key] = input_dict[key].value
@@ -500,11 +500,11 @@ def recurse_divide_dict(input_dict, divide_by=None):
 
             for i in range(len(input_dict[key].value)):
                 input_dict[key][i] /= divide_by
-                input_dict[key][i] = round(input_dict[key][i], 3)
+                input_dict[key][i] = round(input_dict[key][i], 4)
 
         else:
             input_dict[key] /= divide_by
-            input_dict[key] = round(input_dict[key], 3)
+            input_dict[key] = round(input_dict[key], 4)
 
 
 def unflatten_process_benchmark_dict(benchmark_dict, warmup_batches):
@@ -631,11 +631,11 @@ def unflatten_process_benchmark_dict(benchmark_dict, warmup_batches):
             # Computer per item.
             if batch_size > 0:
                 current_dict[parts[-1]]["cpu_time_per_item"] = round(
-                    current_dict[parts[-1]]["cpu_time"] / batch_size, 3
+                    current_dict[parts[-1]]["cpu_time"] / batch_size, 4
                 )
 
                 current_dict[parts[-1]]["gpu_time_per_item"] = round(
-                    current_dict[parts[-1]]["gpu_time"] / batch_size, 3
+                    current_dict[parts[-1]]["gpu_time"] / batch_size, 4
                 )
 
             # Maintain global counts of various batch level stats
@@ -689,11 +689,11 @@ def unflatten_process_benchmark_dict(benchmark_dict, warmup_batches):
                 if total_items[path] > 0:
                     current_dict[parts[-1]]["cpu_time_per_item"] = round(
                         current_dict[parts[-1]]["cpu_time"] / total_items[path],
-                        3,
+                        4,
                     )
                     current_dict[parts[-1]]["gpu_time_per_item"] = round(
                         current_dict[parts[-1]]["gpu_time"] / total_items[path],
-                        3,
+                        4,
                     )
                 current_dict[parts[-1]]["total_items"] = total_items[path]
 
@@ -709,11 +709,11 @@ def unflatten_process_benchmark_dict(benchmark_dict, warmup_batches):
                 if total_items_above_level > 0:
                     current_dict[parts[-1]]["cpu_time_per_item"] = round(
                         current_dict[parts[-1]]["cpu_time"] / total_items_above_level,
-                        3,
+                        4,
                     )
                     current_dict[parts[-1]]["gpu_time_per_item"] = round(
                         current_dict[parts[-1]]["gpu_time"] / total_items_above_level,
-                        3,
+                        4,
                     )
                 current_dict[parts[-1]]["total_items"] = total_items_above_level
 
@@ -726,10 +726,10 @@ def unflatten_process_benchmark_dict(benchmark_dict, warmup_batches):
         batch_dict = batch_dicts[batch_level_prefix]
 
         batch_dict["cpu_time_minus_warmup"] = round(
-            (batch_dict["cpu_time"] - total_warmup_cpu_time[batch_level_prefix]), 3
+            (batch_dict["cpu_time"] - total_warmup_cpu_time[batch_level_prefix]), 4
         )
         batch_dict["gpu_time_minus_warmup"] = round(
-            (batch_dict["gpu_time"] - total_warmup_gpu_time[batch_level_prefix]), 3
+            (batch_dict["gpu_time"] - total_warmup_gpu_time[batch_level_prefix]), 4
         )
 
         batch_dict["cpu_time_minus_warmup_per_item"] = 0
@@ -739,12 +739,12 @@ def unflatten_process_benchmark_dict(benchmark_dict, warmup_batches):
             batch_dict["cpu_time_minus_warmup_per_item"] = round(
                 batch_dict["cpu_time_minus_warmup"]
                 / total_items_minus_warmup[batch_level_prefix],
-                3,
+                4,
             )
             batch_dict["gpu_time_minus_warmup_per_item"] = round(
                 batch_dict["gpu_time_minus_warmup"]
                 / total_items_minus_warmup[batch_level_prefix],
-                3,
+                4,
             )
 
         batch_dict["total_items_minus_warmup"] = total_items_minus_warmup[
@@ -1117,7 +1117,7 @@ def main():
                     proc_args,
                 ),
             )
-            logger.info("Launched process: %d on gpu: %d" % (process_idx, gpu_idx))
+            logger.info("Launched process: %d. gpu-idx: %d" % (process_idx, gpu_idx))
             results.append(result)
 
     # Close the pool and wait everything to finish.

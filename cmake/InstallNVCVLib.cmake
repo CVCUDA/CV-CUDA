@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,15 +15,14 @@
 
 list(APPEND CPACK_COMPONENTS_ALL lib)
 set(CPACK_COMPONENT_LIB_DISPLAY_NAME "Runtime libraries")
-set(CPACK_COMPONENT_LIB_DESCRIPTION "NVIDIA NVCV library")
+set(CPACK_COMPONENT_LIB_DESCRIPTION "NVIDIA CV-CUDA library")
 set(CPACK_COMPONENT_LIB_REQUIRED true)
 
-set(NVCV_PACKAGE_NAME "nvcv${NVCV_VERSION_MAJOR}")
-set(NVCV_TYPES_PACKAGE_NAME "nvcv_types${NVCV_VERSION_MAJOR}")
 set(CVCUDA_PACKAGE_NAME "cvcuda${NVCV_VERSION_MAJOR}")
+set(NVCV_TYPES_PACKAGE_NAME "nvcv_types${NVCV_VERSION_MAJOR}")
 
 if(UNIX)
-    set(NVCV_LIB_FILE_NAME "nvcv-lib-${NVCV_VERSION_BUILD}")
+    set(NVCV_LIB_FILE_NAME "cvcuda-lib-${NVCV_VERSION_BUILD}")
 
     set(CPACK_DEBIAN_LIB_FILE_NAME "${NVCV_LIB_FILE_NAME}.deb")
     set(CPACK_ARCHIVE_LIB_FILE_NAME "${NVCV_LIB_FILE_NAME}")
@@ -36,7 +35,7 @@ if(UNIX)
         "${CMAKE_CURRENT_BINARY_DIR}/cpack/lib/prerm")
 
     # as per debian convention, use the library file name
-    set(CPACK_DEBIAN_LIB_PACKAGE_NAME "lib${NVCV_PACKAGE_NAME}")
+    set(CPACK_DEBIAN_LIB_PACKAGE_NAME "lib${CVCUDA_PACKAGE_NAME}")
 
     set(CPACK_DEBIAN_LIB_PACKAGE_DEPENDS "libstdc++6, libc6")
 

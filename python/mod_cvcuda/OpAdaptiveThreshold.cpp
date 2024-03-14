@@ -41,9 +41,9 @@ Tensor AdaptiveThresholdInto(Tensor &output, Tensor &input, double max_value, NV
     auto adaptiveThreshold = CreateOperator<cvcuda::AdaptiveThreshold>(block_size, 0);
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_WRITE, {*adaptiveThreshold});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*adaptiveThreshold});
 
     adaptiveThreshold->submit(pstream->cudaHandle(), input, output, max_value, adaptive_method, threshold_type,
                               block_size, c);
@@ -72,9 +72,9 @@ ImageBatchVarShape AdaptiveThresholdVarShapeInto(ImageBatchVarShape &output, Ima
     auto adaptiveThreshold = CreateOperator<cvcuda::AdaptiveThreshold>(max_block_size, input.capacity());
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input, max_value, block_size, c});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_WRITE, {*adaptiveThreshold});
+    guard.add(LockMode::LOCK_MODE_READ, {input, max_value, block_size, c});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*adaptiveThreshold});
 
     adaptiveThreshold->submit(pstream->cudaHandle(), input, output, max_value, adaptive_method, threshold_type,
                               block_size, c);

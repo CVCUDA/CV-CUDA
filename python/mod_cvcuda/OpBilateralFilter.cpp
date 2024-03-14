@@ -42,9 +42,9 @@ Tensor BilateralFilterInto(Tensor &output, Tensor &input, int diameter, float si
     auto bilateral_filter = CreateOperator<cvcuda::BilateralFilter>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*bilateral_filter});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*bilateral_filter});
 
     bilateral_filter->submit(pstream->cudaHandle(), input, output, diameter, sigmaColor, sigmaSpace, borderMode);
 
@@ -71,9 +71,9 @@ ImageBatchVarShape VarShapeBilateralFilterInto(ImageBatchVarShape &output, Image
     auto bilateral_filter = CreateOperator<cvcuda::BilateralFilter>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input, diameter, sigmaColor, sigmaSpace});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*bilateral_filter});
+    guard.add(LockMode::LOCK_MODE_READ, {input, diameter, sigmaColor, sigmaSpace});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*bilateral_filter});
 
     bilateral_filter->submit(pstream->cudaHandle(), input, output, diameter, sigmaColor, sigmaSpace, borderMode);
 

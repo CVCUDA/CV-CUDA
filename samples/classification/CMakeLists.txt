@@ -18,13 +18,13 @@ find_package(CUDA REQUIRED)
 set(CMAKE_CXX_FLAGS "-Wno-deprecated-enum-enum-conversion")
 
 # tag: Build classification sample
-add_executable(nvcv_samples_classification Main.cpp)
-target_link_libraries(nvcv_samples_classification nvcv_types cvcuda CUDA::cudart nvcv_samples_common)
+add_executable(cvcuda_sample_classification Main.cpp)
+target_link_libraries(cvcuda_sample_classification nvcv_types cvcuda CUDA::cudart cvcuda_samples_common)
 
-target_include_directories(nvcv_samples_classification
+target_include_directories(cvcuda_sample_classification
 	PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
-install(TARGETS nvcv_samples_classification
-        EXPORT nvcv_samples_classification
+install(TARGETS cvcuda_sample_classification
+        EXPORT cvcuda_sample_classification
         COMPONENT samples
         DESTINATION samples/bin)

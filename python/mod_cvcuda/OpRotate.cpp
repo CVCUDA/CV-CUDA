@@ -42,9 +42,9 @@ Tensor RotateInto(Tensor &output, Tensor &input, double angleDeg, const std::tup
     auto rotate = CreateOperator<cvcuda::Rotate>(0);
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_WRITE, {*rotate});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*rotate});
 
     double2 shiftArg{std::get<0>(shift), std::get<1>(shift)};
 
@@ -72,9 +72,9 @@ ImageBatchVarShape VarShapeRotateInto(ImageBatchVarShape &output, ImageBatchVarS
     auto rotate = CreateOperator<cvcuda::Rotate>(input.capacity());
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input, angleDeg, shift});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_WRITE, {*rotate});
+    guard.add(LockMode::LOCK_MODE_READ, {input, angleDeg, shift});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*rotate});
 
     rotate->submit(pstream->cudaHandle(), input, output, angleDeg, shift, interpolation);
 

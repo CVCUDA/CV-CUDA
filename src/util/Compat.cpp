@@ -108,7 +108,7 @@ static std::vector<DestructorInfo> *g_ListMainThread = nullptr;
 
 int my_thread_atexit_impl(void (*func)(void *), void *arg, void *d)
 {
-    std::vector<DestructorInfo> *list;
+    std::vector<DestructorInfo> *list = nullptr;
 
     if (IsMainThread())
     {

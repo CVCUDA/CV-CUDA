@@ -45,33 +45,33 @@ TupleTensor3 LabelInto(Tensor &output, std::optional<Tensor> count, std::optiona
     auto op = CreateOperator<cvcuda::Label>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*op});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
     if (count)
     {
-        guard.add(LockMode::LOCK_WRITE, {*count});
+        guard.add(LockMode::LOCK_MODE_WRITE, {*count});
     }
     if (stats)
     {
-        guard.add(LockMode::LOCK_WRITE, {*stats});
+        guard.add(LockMode::LOCK_MODE_WRITE, {*stats});
     }
     if (bgLabel)
     {
-        guard.add(LockMode::LOCK_READ, {*bgLabel});
+        guard.add(LockMode::LOCK_MODE_READ, {*bgLabel});
     }
     if (minThresh)
     {
-        guard.add(LockMode::LOCK_READ, {*minThresh});
+        guard.add(LockMode::LOCK_MODE_READ, {*minThresh});
     }
     if (maxThresh)
     {
-        guard.add(LockMode::LOCK_READ, {*maxThresh});
+        guard.add(LockMode::LOCK_MODE_READ, {*maxThresh});
     }
     if (minSize)
     {
-        guard.add(LockMode::LOCK_READ, {*minSize});
+        guard.add(LockMode::LOCK_MODE_READ, {*minSize});
     }
 
     op->submit(pstream->cudaHandle(), input, output, (bgLabel ? *bgLabel : nvcv::Tensor{nullptr}),

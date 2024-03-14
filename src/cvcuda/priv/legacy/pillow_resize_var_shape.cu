@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -536,7 +536,7 @@ WorkspaceRequirements PillowResizeVarShape::getWorkspaceRequirements(DataShape m
 
     WorkspaceRequirements req{};
 
-    int    max_support = 1; //3
+    int    max_support = 3; // Needed for various filtes Cubic needs 2 and Lanczos needs 3. Just use worst case.
     size_t size        = std::ceil(
                max_output_shape.H
                    * (((1.0 * max_input_shape.H / max_output_shape.H + 1) * max_support * 2 + 1) * sizeof(work_type)

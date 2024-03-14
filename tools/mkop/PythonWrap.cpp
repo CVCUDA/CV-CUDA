@@ -36,9 +36,11 @@ Tensor __OPNAME__Into(Tensor &output, Tensor &input, std::optional<Stream> pstre
     auto op = CreateOperator<cvcuda::__OPNAME__>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*op});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    // TODO if op kernel allocates resources that are accessed by the device change to READWRITE
+    // is set to none it is possible for the operator to be destroyed before the kernel is executed.
+    guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
     op->submit(pstream->cudaHandle(), input, output);
 

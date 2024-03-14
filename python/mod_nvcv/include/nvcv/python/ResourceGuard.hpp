@@ -45,16 +45,16 @@ public:
         py::object pyLockMode;
         switch (mode)
         {
-        case LockMode::LOCK_NONE:
+        case LockMode::LOCK_MODE_NONE:
             pyLockMode = py::str("");
             break;
-        case LockMode::LOCK_READ:
+        case LockMode::LOCK_MODE_READ:
             pyLockMode = py::str("r");
             break;
-        case LockMode::LOCK_WRITE:
+        case LockMode::LOCK_MODE_WRITE:
             pyLockMode = py::str("w");
             break;
-        case LockMode::LOCK_READWRITE:
+        case LockMode::LOCK_MODE_READWRITE:
             pyLockMode = py::str("rw");
             break;
         }

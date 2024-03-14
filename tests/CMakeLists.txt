@@ -16,7 +16,14 @@
 project(cvcuda_tests)
 set(CMAKE_FOLDER tests)
 
-# Tests require C++20
+# Tests require C++20:
+# The goal for the infrastructure written for tests is to make it easy to
+# - add test cases for new parameter ranges,
+# - make the tested parameter set visually match what's defined in the reference doc
+# - ...
+# so that we can quickly check if everything we claim is being tested.
+# In order to achieve this, we created "tests/common/ValueList.hpp" that implements a domain-specific embedded language making it easier to define the above.
+# To make usage easier, we had to use C++20 language features.
 set(CMAKE_CXX_STANDARD 20)
 
 enable_testing()

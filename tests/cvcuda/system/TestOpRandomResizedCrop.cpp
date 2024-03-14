@@ -352,3 +352,71 @@ TEST_P(OpRandomResizedCrop, varshape_correct_output)
         EXPECT_THAT(mae, t::Each(t::Le(maeThreshold)));
     }
 }
+
+TEST(OpRandomResizedCrop_negative, createWithNullHandle)
+{
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaRandomResizedCropCreate(nullptr, 0.2, 1.0, 0.8, 1.3, 2, 0));
+}
+
+TEST(OpRandomResizedCrop_negative, createWithInvalidScale)
+{
+    NVCVOperatorHandle opHandle;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaRandomResizedCropCreate(&opHandle, 1.0, 0.2, 0.8, 1.3, 2, 0));
+}
+
+TEST(OpRandomResizedCrop_negative, createWithInvalidRatio)
+{
+    NVCVOperatorHandle opHandle;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaRandomResizedCropCreate(&opHandle, 0.2, 1.0, 1.3, 0.8, 2, 0));
+}
+
+// clang-format off
+NVCV_TEST_SUITE_P(OpRandomResizedCrop_negative, nvcv::test::ValueList<std::string, nvcv::DataType, std::string, nvcv::DataType, NVCVInterpolationType, NVCVStatus>
+{
+    //   in_layout,        in_data_type,   out_layout,     out_data_type,         interpolation,         expected_return_status
+    {        "CHW",       nvcv::TYPE_U8,        "HWC",     nvcv::TYPE_U8,   NVCV_INTERP_NEAREST,    NVCV_ERROR_INVALID_ARGUMENT},
+    {        "HWC",       nvcv::TYPE_U8,        "CHW",     nvcv::TYPE_U8,   NVCV_INTERP_NEAREST,    NVCV_ERROR_INVALID_ARGUMENT},
+    {        "HWC",      nvcv::TYPE_F64,        "HWC",     nvcv::TYPE_U8,   NVCV_INTERP_NEAREST,    NVCV_ERROR_INVALID_ARGUMENT},
+    {        "HWC",       nvcv::TYPE_U8,        "HWC",    nvcv::TYPE_F64,   NVCV_INTERP_NEAREST,    NVCV_ERROR_INVALID_ARGUMENT},
+    {        "HWC",      nvcv::TYPE_U32,        "HWC",     nvcv::TYPE_U8,   NVCV_INTERP_NEAREST,    NVCV_ERROR_INVALID_ARGUMENT},
+    {        "HWC",       nvcv::TYPE_U8,        "HWC",    nvcv::TYPE_U32,   NVCV_INTERP_NEAREST,    NVCV_ERROR_INVALID_ARGUMENT},
+    {        "HWC",       nvcv::TYPE_U8,        "HWC",     nvcv::TYPE_U8,      NVCV_INTERP_AREA,    NVCV_ERROR_INVALID_ARGUMENT},
+});
+
+// clang-format on
+
+TEST_P(OpRandomResizedCrop_negative, infer_negative_parameter)
+{
+    std::string           in_layout              = GetParamValue<0>();
+    nvcv::DataType        in_data_type           = GetParamValue<1>();
+    std::string           out_layout             = GetParamValue<2>();
+    nvcv::DataType        out_data_type          = GetParamValue<3>();
+    NVCVInterpolationType interpolation          = GetParamValue<4>();
+    NVCVStatus            expected_return_status = GetParamValue<5>();
+
+    double minScale = 0.08;
+    double maxScale = 1.0;
+    double minRatio = 3.0 / 4;
+    double maxRatio = 4.0 / 3;
+
+    nvcv::Tensor imgSrc(
+        {
+            {24, 24, 2},
+            in_layout.c_str()
+    },
+        in_data_type);
+    nvcv::Tensor imgDst(
+        {
+            {24, 24, 2},
+            out_layout.c_str()
+    },
+        out_data_type);
+
+    // Create and Call operator
+    int      numberOfImages = 4;
+    uint32_t seed           = 1;
+
+    cvcuda::RandomResizedCrop randomResizedCropOp(minScale, maxScale, minRatio, maxRatio, numberOfImages, seed);
+    EXPECT_EQ(expected_return_status,
+              nvcv::ProtectCall([&] { randomResizedCropOp(NULL, imgSrc, imgDst, interpolation); }));
+}

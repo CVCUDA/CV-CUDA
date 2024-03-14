@@ -151,9 +151,10 @@ Tensor FindHomographyInto(Tensor &models, Tensor &srcPts, Tensor &dstPts, std::o
     auto findHomography = CreateOperatorEx<PyOpFindHomography>(batchSize, numPoints);
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {srcPts});
-    guard.add(LockMode::LOCK_READ, {dstPts});
-    guard.add(LockMode::LOCK_WRITE, {models});
+    guard.add(LockMode::LOCK_MODE_READ, {srcPts});
+    guard.add(LockMode::LOCK_MODE_READ, {dstPts});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {models});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*findHomography});
 
     findHomography->submit(pstream->cudaHandle(), srcPts, dstPts, models);
 
@@ -194,9 +195,10 @@ TensorBatch VarShapeFindHomographyInto(TensorBatch &models, TensorBatch &srcPts,
     auto findHomography = CreateOperatorEx<PyOpFindHomography>(batchSize, maxNumPoints);
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {srcPts});
-    guard.add(LockMode::LOCK_READ, {dstPts});
-    guard.add(LockMode::LOCK_WRITE, {models});
+    guard.add(LockMode::LOCK_MODE_READ, {srcPts});
+    guard.add(LockMode::LOCK_MODE_READ, {dstPts});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {models});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*findHomography});
 
     findHomography->submit(pstream->cudaHandle(), srcPts, dstPts, models);
 

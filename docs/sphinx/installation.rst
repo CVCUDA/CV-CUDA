@@ -1,5 +1,5 @@
 ..
-  # SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  # SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
   # SPDX-License-Identifier: Apache-2.0
   #
   # Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,7 +22,7 @@ Installation
 Pre-requisites
 --------------
 
-This section describes the recommended dependencies to compile cvcuda
+This section describes the recommended dependencies to install CV-CUDA.
 
 * Ubuntu >= 20.04
 * CUDA driver >= 11.7
@@ -30,65 +30,67 @@ This section describes the recommended dependencies to compile cvcuda
 Setup
 -----
 
-The following steps describe how to install cvcuda. Choose the installation method that meets your environment needs.
-
-Download the cvcuda tar/deb package from `here <https://github.com/CVCUDA/CV-CUDA/releases/tag/v0.5.0-beta>`_
+The following steps describe how to install CV-CUDA. Choose the installation method that meets your environment needs.
+You can download the CV-CUDA tar, deb or wheel packages from `here <https://github.com/CVCUDA/CV-CUDA/releases/tag/v0.6.0-beta>`_
 
 * Tar File Installation
 
-Navigate to your <cvcudapath> directory containing the cvcuda tar file.
+    Unzip the cvcuda runtime package: ::
 
-Unzip the cvcuda runtime package: ::
+        tar -xvf cvcuda-lib-x.x.x-cuda11-x86_64-linux.tar.xz
 
-    tar -xvf nvcv-lib-x.x.x-cuda11-x86_64-linux.tar.xz
+    Unzip the cvcuda developer package: ::
 
-Unzip the cvcuda developer package: ::
+        tar -xvf cvcuda-dev-x.x.x-cuda11-x86_64-linux.tar.xz
 
-    tar -xvf nvcv-dev-x.x.x-cuda11-x86_64-linux.tar.xz
+    Unzip the cvcuda python package: ::
 
-Unzip the cvcuda python package: ::
+        tar -xvf cvcuda-python3.*-x.x.x-cuda11-x86_64-linux.tar.xz
 
-    tar -xvf nvcv-python3.*-x.x.x-cuda11-x86_64-linux.tar.xz
+    [Optional] Unzip the tests. ::
 
-Optionally Unzip the tests. ::
+        tar -xvf cvcuda-tests-cuda11-x86_64-linux.tar.xz
 
-    tar -xvf cvcuda-tests-cuda11-x86_64-linux.tar.xz
 
-Optionally Unzip the tests. ::
+* Debian Installation
 
-    tar -xvf cvcuda-tests-cuda11-x86_64-linux.tar.xz
+    Install the runtime library. ::
 
-* Debian Local Installation
+        dpkg -i cvcuda-lib-x.x.x-cuda11-x86_64-linux.deb
 
-Navigate to your <cvcudapath> directory containing the cvcuda Debian local installer file. ::
+    Install the developer library. ::
 
-Install the runtime library. ::
+        dpkg -i cvcuda-dev-x.x.x-cuda11-x86_64-linux.deb
 
-    sudo dpkg -i nvcv-lib-x.x.x-cuda11-x86_64-linux.deb
+    Install the python bindings ::
 
-Install the developer library. ::
+        dpkg -i cvcuda-python3.*-x.x.x-cuda11-x86_64-linux.deb
 
-    sudo dpkg -i nvcv-dev-x.x.x-cuda11-x86_64-linux.deb
+    [Optional] Install the tests. ::
 
-Install the python bindings ::
+        sudo dpkg -i cvcuda-tests-x.x.x-cuda11-x86_64-linux.deb
 
-    sudo dpkg -i nvcv-python3.*-x.x.x-cuda11-x86_64-linux.deb
 
-Optionally install the tests. ::
+* Python Wheel File Installation
 
-    sudo dpkg -i cvcuda-tests-x.x.x-cuda11-x86_64-linux.deb
+    Download the appropriate .whl file for your computer architecture, Python and CUDA version from `here <https://github.com/CVCUDA/CV-CUDA/releases/tag/v0.6.0-beta>`_
 
-Optionally install the samples. ::
+    Execute the following command to install appropriate CV-CUDA Python wheel ::
 
-    sudo dpkg -i cvcuda-samples-x.x.x-cuda11-x86_64-linux.deb
+        pip install cvcuda_<cu_ver>-0.6.0b0-cp<py_ver>-cp<py_ver>-linux_<arch>.whl
 
-* Verifying the Installation on Linux
+    where <cu_ver> is the desired CUDA version, <py_ver> the desired Python version and <arch> the desired architecture.
 
-To verify that cvcuda is installed and is running properly, run the tests from the install folder for tests.
-Default installation path is /opt/nvidia/cvcuda0/bin. ::
+    Please note that the Python wheels provided are standalone, they include both the C++/CUDA libraries and the Python bindings.
 
-    cd /opt/nvidia/cvcuda0/bin
-    ./run_tests.sh
+
+* Verifying the Debian or TAR installation on Linux
+
+    To verify that CV-CUDA is installed and is running properly, run the tests from the install folder for tests.
+    Default installation path is /opt/nvidia/cvcuda0/bin. ::
+
+        cd /opt/nvidia/cvcuda0/bin
+        ./run_tests.sh
 
 If CV-CUDA is properly installed and running on your Linux system, all tests will pass.
 

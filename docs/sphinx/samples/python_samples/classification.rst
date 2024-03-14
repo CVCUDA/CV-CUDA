@@ -1,5 +1,5 @@
 ..
-  # SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  # SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
   # SPDX-License-Identifier: Apache-2.0
   #
   # Licensed under the Apache License, Version 2.0 (the "License");
@@ -36,11 +36,11 @@ Writing the Sample App
 
 The classification sample app has been designed to be modular in all aspects. It imports and uses various modules such as data decoders, pipeline pre and post processors and the model inference. Some of these modules are defined in the same folder as the sample whereas the rest are defined in the common scripts folder for a wider re-use.
 
-1. Modules used by this sample app that are defined in the common folder (i.e. not specific just to this sample) are the ``ImageBatchDecoderPyTorch`` for PyTorch based image decoding and ``VideoBatchDecoderVPF`` for VPF based video decoding.
+1. Modules used by this sample app that are defined in the common folder (i.e. not specific just to this sample) are the ``ImageBatchDecoder`` for nvImageCodec based image decoding and ``VideoBatchDecoder`` for PyNvVideoCodec based video decoding.
 
 2. Modules specific to this sample (i.e. defined in the classification sample folder) are ``PreprocessorCvcuda`` and ``PostprocessorCvcuda`` for CVCUDA based pre and post processing pipelines and ``ClassificationPyTorch`` and ``ClassificationTensorRT`` for the model inference.
 
-The first stage in our pipeline is importing all necessary python modules. Apart from the modules described above, this also includes modules such as torch and torchvision, torchnvjpeg, vpf and the main package of CVCUDA (i.e. nvcv) among others. Be sure to import ``pycuda.driver`` before importing any other GPU packages like torch or cvcuda to ensure a proper initialization.
+The first stage in our pipeline is importing all necessary python modules. Apart from the modules described above, this also includes modules such as torch and torchvision, torchnvjpeg, vpf and the main package of CVCUDA among others. Be sure to import ``pycuda.driver`` before importing any other GPU packages like torch or cvcuda to ensure a proper initialization.
 
 .. literalinclude:: ../../../../samples/classification/python/main.py
    :language: python
@@ -83,8 +83,8 @@ The ``run_sample`` function is the primary function that runs this sample. It se
 Next, we instantiate various classes to help us run the sample. These classes are:
 
 1. ``PreprocessorCvcuda`` : A CVCUDA based pre-processing pipeline for classification.
-2. ``ImageBatchDecoderPyTorch`` : A PyTorch based image decoder to read the images.
-3. ``VideoBatchDecoderVPF`` : A VPF based video decoder to read the video.
+2. ``ImageBatchDecoder`` : A nvImageCodec based image decoder to read the images.
+3. ``VideoBatchDecoder`` : A PyNvVideoCodec based video decoder to read the video.
 4. ``PostprocessorCvcuda`` : A post-processing pipeline for classification.
 5. ``classificationPyTorch`` : A PyTorch based classification model to execute inference.
 6. ``classificationTensorRT`` : A TensorRT based classification model to execute inference.
@@ -120,8 +120,8 @@ That's it for the classification sample. To understand more about how each stage
 
     PreprocessorCvcuda <classification/preprocessor_cvcuda>
     PostprocessorCvcuda <classification/postprocessor_cvcuda>
-    ImageBatchDecoderPyTorch <commons/imagebatchdecoder_pytorch>
-    VideoBatchDecoderVPF <commons/videobatchdecoder_vpf>
+    ImageBatchDecoder <commons/imagebatchdecoder_nvcodec>
+    VideoBatchDecoder <commons/videobatchdecoder_nvcodec>
     ClassificationPyTorch <classification/classification_pytorch>
     ClassificationTensorRT <classification/classification_tensorrt>
 
@@ -171,7 +171,7 @@ The top 5 classification results for the tabby_cat_tiger.jpg image is as follows
 
    user@machine:~/cvcuda/samples$ python3 classification/python/main.py -b 1
    [perf_utils:85] 2023-07-27 22:27:17 WARNING perf_utils is used without benchmark.py. Benchmarking mode is turned off.
-   [perf_utils:89] 2023-07-27 22:27:17 INFO    Using CV-CUDA version: 0.5.0-beta
+   [perf_utils:89] 2023-07-27 22:27:17 INFO    Using CV-CUDA version: 0.6.0-beta
    [pipelines:35] 2023-07-27 22:27:17 INFO     Using CVCUDA as preprocessor.
    [torch_utils:77] 2023-07-27 22:27:17 INFO   Using torchnvjpeg as decoder.
    [pipelines:122] 2023-07-27 22:27:17 INFO    Using CVCUDA as post-processor.

@@ -26,4 +26,5 @@ FROM nvcr.io/nvidia/tensorrt:$VER_TRT-py3
 # by default. It is copied by the update_samples_image.sh script. Always
 # use update_samples_image.sh script to build any samples docker image.
 COPY install_dependencies.sh /workspace/
+COPY requirements.txt /workspace/
 RUN sh /workspace/install_dependencies.sh

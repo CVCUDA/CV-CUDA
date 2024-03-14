@@ -41,9 +41,9 @@ Tensor ThresholdInto(Tensor &output, Tensor &input, Tensor &thresh, Tensor &maxv
     auto              threshold = CreateOperator<cvcuda::Threshold>(type, (int)shape[0]);
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input, thresh, maxval});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_WRITE, {*threshold});
+    guard.add(LockMode::LOCK_MODE_READ, {input, thresh, maxval});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*threshold});
 
     threshold->submit(pstream->cudaHandle(), input, output, thresh, maxval);
 
@@ -68,9 +68,9 @@ ImageBatchVarShape ThresholdVarShapeInto(ImageBatchVarShape &output, ImageBatchV
     auto threshold = CreateOperator<cvcuda::Threshold>(type, input.numImages());
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input, thresh, maxval});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_WRITE, {*threshold});
+    guard.add(LockMode::LOCK_MODE_READ, {input, thresh, maxval});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*threshold});
 
     threshold->submit(pstream->cudaHandle(), input, output, thresh, maxval);
 

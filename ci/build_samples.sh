@@ -28,4 +28,4 @@ fi
 
 # (warning): Use "$@" (with quotes) to prevent whitespace problems.
 # shellcheck disable=SC2048
- ./ci/build.sh $build_type $build_dir "-DBUILD_SAMPLES=ON -DBUILD_TESTS=OFF -DBUILD_PYTHON=1" $*
+ ./ci/build.sh $build_type $build_dir "-DBUILD_SAMPLES=ON -DBUILD_TESTS=OFF -DBUILD_PYTHON=ON" $*

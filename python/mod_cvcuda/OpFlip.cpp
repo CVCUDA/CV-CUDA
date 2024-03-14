@@ -41,9 +41,9 @@ Tensor FlipInto(Tensor &output, Tensor &input, int32_t flipCode, std::optional<S
     auto Flip = CreateOperator<cvcuda::Flip>(0);
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*Flip});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*Flip});
 
     Flip->submit(pstream->cudaHandle(), input, output, flipCode);
 
@@ -68,9 +68,9 @@ ImageBatchVarShape FlipVarShapeInto(ImageBatchVarShape &output, ImageBatchVarSha
     auto flip = CreateOperator<cvcuda::Flip>(0);
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input, flipCode});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*flip});
+    guard.add(LockMode::LOCK_MODE_READ, {input, flipCode});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*flip});
 
     flip->submit(pstream->cudaHandle(), input, output, flipCode);
 

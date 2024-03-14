@@ -46,9 +46,9 @@ Tensor GaussianInto(Tensor &output, Tensor &input, const std::tuple<int, int> &k
     auto gaussian = CreateOperator<cvcuda::Gaussian>(kernelSizeArg, 0);
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_WRITE, {*gaussian});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*gaussian});
 
     gaussian->submit(pstream->cudaHandle(), input, output, kernelSizeArg, sigmaArg, border);
 
@@ -77,9 +77,9 @@ ImageBatchVarShape VarShapeGaussianInto(ImageBatchVarShape &output, ImageBatchVa
     auto gaussian = CreateOperator<cvcuda::Gaussian>(maxKernelSizeArg, input.capacity());
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input, ksize, sigma});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_WRITE, {*gaussian});
+    guard.add(LockMode::LOCK_MODE_READ, {input, ksize, sigma});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*gaussian});
 
     gaussian->submit(pstream->cudaHandle(), input, output, ksize, sigma, border);
 

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -58,10 +58,10 @@ endif()
 foreach(VER ${PYTHON_VERSIONS})
     set(BASEDIR ${CMAKE_CURRENT_BINARY_DIR}/python${VER})
 
-    ExternalProject_Add(nvcv_python${VER}
+    ExternalProject_Add(cvcuda_python${VER}
         PREFIX ${BASEDIR}
         SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/python
-        CMAKE_ARGS ${PYPROJ_COMMON_ARGS} -DPYTHON_VERSION=${VER}
+        CMAKE_ARGS ${PYPROJ_COMMON_ARGS} -DPYTHON_VERSION=${VER} -DBUILD_ROOT=${CMAKE_BINARY_DIR} -DPYTHON_VERSION_SHORT=${VER}
         BINARY_DIR ${BASEDIR}/build
         TMP_DIR ${BASEDIR}/tmp
         STAMP_DIR ${BASEDIR}/stamp
@@ -70,3 +70,9 @@ foreach(VER ${PYTHON_VERSIONS})
         INSTALL_COMMAND ""
     )
 endforeach()
+
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    foreach(PYTHON_VERSION ${PYTHON_VERSIONS})
+        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/python/setup.py.in" "${CMAKE_BINARY_DIR}/python${PYTHON_VERSION}/setup.py")
+    endforeach()
+endif()

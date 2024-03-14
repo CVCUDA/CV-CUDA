@@ -375,7 +375,7 @@ RandomResizedCrop::RandomResizedCrop(DataShape max_input_shape, DataShape max_ou
     if (min_scale_ > max_scale_ || min_ratio_ > max_ratio_)
     {
         LOG_ERROR("Invalid Parameter: scale and ratio should be of kind (min, max)");
-        throw std::runtime_error("Memory allocation error!");
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Parameter error!");
     }
     if (maxBatchSize > 0)
     {
@@ -488,8 +488,9 @@ ErrorCode RandomResizedCrop::infer(const TensorDataStridedCuda &inData, const Te
     auto inAccess = TensorDataAccessStridedImagePlanar::Create(inData);
     NVCV_ASSERT(inAccess);
 
-    DataType  data_type   = helpers::GetLegacyDataType(inData.dtype());
-    DataShape input_shape = helpers::GetLegacyDataShape(inAccess->infoShape());
+    DataType  in_data_type  = helpers::GetLegacyDataType(inData.dtype());
+    DataType  out_data_type = helpers::GetLegacyDataType(outData.dtype());
+    DataShape input_shape   = helpers::GetLegacyDataShape(inAccess->infoShape());
 
     int channels = input_shape.C;
 
@@ -499,9 +500,15 @@ ErrorCode RandomResizedCrop::infer(const TensorDataStridedCuda &inData, const Te
         return ErrorCode::INVALID_DATA_SHAPE;
     }
 
-    if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32F))
+    if (!(in_data_type == kCV_8U || in_data_type == kCV_16U || in_data_type == kCV_16S || in_data_type == kCV_32F))
     {
-        LOG_ERROR("Invalid DataType " << data_type);
+        LOG_ERROR("Invalid DataType " << in_data_type);
+        return ErrorCode::INVALID_DATA_TYPE;
+    }
+
+    if (in_data_type != out_data_type)
+    {
+        LOG_ERROR("DataType of input and output must be equal, but got " << in_data_type << " and " << out_data_type);
         return ErrorCode::INVALID_DATA_TYPE;
     }
 
@@ -559,7 +566,7 @@ ErrorCode RandomResizedCrop::infer(const TensorDataStridedCuda &inData, const Te
         {      resize<float>,  0 /*resize<float2>*/,      resize<float3>,      resize<float4>}
     };
 
-    const func_t func = funcs[data_type][channels - 1];
+    const func_t func = funcs[in_data_type][channels - 1];
     func(inData, outData, interpolation, stream, tops_gpu, lefts_gpu, scale_x_gpu, scale_y_gpu);
     return SUCCESS;
 }

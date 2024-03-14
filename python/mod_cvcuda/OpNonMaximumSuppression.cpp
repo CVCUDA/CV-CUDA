@@ -42,9 +42,9 @@ Tensor NonMaximumSuppressionInto(Tensor &dst, Tensor &src, Tensor &scores, float
     auto op = CreateOperator<cvcuda::NonMaximumSuppression>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {src, scores});
-    guard.add(LockMode::LOCK_WRITE, {dst});
-    guard.add(LockMode::LOCK_NONE, {*op});
+    guard.add(LockMode::LOCK_MODE_READ, {src, scores});
+    guard.add(LockMode::LOCK_MODE_WRITE, {dst});
+    guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
     op->submit(pstream->cudaHandle(), src, dst, scores, scoreThreshold, iouThreshold);
 

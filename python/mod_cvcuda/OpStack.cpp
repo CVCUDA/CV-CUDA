@@ -86,9 +86,9 @@ Tensor StackIntoInternal(Tensor &output, std::vector<Tensor> &tensorList, std::o
     auto op = CreateOperator<cvcuda::Stack>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {inTensorBatch});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*op});
+    guard.add(LockMode::LOCK_MODE_READ, {inTensorBatch});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*op});
     op->submit(pstream->cudaHandle(), inTensorBatch, output);
     return std::move(output);
 }

@@ -177,7 +177,8 @@ endfunction()
 # without an express license agreement from NVIDIA CORPORATION or
 # its affiliates is strictly prohibited.
 
-# Addition by rlima@nvidia.com
+# Note: The function below is an addition to the original set of functions.
+
 function(git_branch _var)
 	if(NOT GIT_FOUND)
 		find_package(Git QUIET)

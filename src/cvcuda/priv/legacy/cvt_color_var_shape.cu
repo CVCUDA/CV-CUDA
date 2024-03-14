@@ -746,13 +746,20 @@ inline ErrorCode BGR_to_RGB(const ImageBatchVarShapeDataStridedCuda &inData,
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
-    int      channels  = inData.uniqueFormat().numChannels();
-    DataType data_type = helpers::GetLegacyDataType(inData.uniqueFormat());
+    int      channels      = inData.uniqueFormat().numChannels();
+    DataType data_type     = helpers::GetLegacyDataType(inData.uniqueFormat());
+    DataType out_data_type = helpers::GetLegacyDataType(outData.uniqueFormat());
 
     if (channels != sch)
     {
         LOG_ERROR("Invalid input channel number " << channels << " expecting: " << sch);
         return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+    if (data_type != out_data_type)
+    {
+        LOG_ERROR("Unsupported input/output DataType " << data_type << "/" << out_data_type);
+        return ErrorCode::INVALID_DATA_TYPE;
     }
 
     if (!outData.uniqueFormat())
@@ -837,13 +844,20 @@ inline ErrorCode GRAY_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData,
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
-    int      channels  = inData.uniqueFormat().numChannels();
-    DataType data_type = helpers::GetLegacyDataType(inData.uniqueFormat());
+    int      channels      = inData.uniqueFormat().numChannels();
+    DataType data_type     = helpers::GetLegacyDataType(inData.uniqueFormat());
+    DataType out_data_type = helpers::GetLegacyDataType(outData.uniqueFormat());
 
     if (channels != 1)
     {
         LOG_ERROR("Invalid input channel number " << channels << " expecting: 1");
         return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+    if (data_type != out_data_type)
+    {
+        LOG_ERROR("Unsupported input/output DataType " << data_type << "/" << out_data_type);
+        return ErrorCode::INVALID_DATA_TYPE;
     }
 
     if (!outData.uniqueFormat())
@@ -929,13 +943,20 @@ inline ErrorCode BGR_to_GRAY(const ImageBatchVarShapeDataStridedCuda &inData,
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
-    int      channels  = inData.uniqueFormat().numChannels();
-    DataType data_type = helpers::GetLegacyDataType(inData.uniqueFormat());
+    int      channels      = inData.uniqueFormat().numChannels();
+    DataType data_type     = helpers::GetLegacyDataType(inData.uniqueFormat());
+    DataType out_data_type = helpers::GetLegacyDataType(outData.uniqueFormat());
 
     if (channels != sch)
     {
         LOG_ERROR("Invalid input channel number " << channels << " expecting: " << sch);
         return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+    if (data_type != out_data_type)
+    {
+        LOG_ERROR("Unsupported input/output DataType " << data_type << "/" << out_data_type);
+        return ErrorCode::INVALID_DATA_TYPE;
     }
 
     if (!outData.uniqueFormat())
@@ -1004,13 +1025,20 @@ inline ErrorCode BGR_to_YUV(const ImageBatchVarShapeDataStridedCuda &inData,
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
-    int      channels  = inData.uniqueFormat().numChannels();
-    DataType data_type = helpers::GetLegacyDataType(inData.uniqueFormat());
+    int      channels      = inData.uniqueFormat().numChannels();
+    DataType data_type     = helpers::GetLegacyDataType(inData.uniqueFormat());
+    DataType out_data_type = helpers::GetLegacyDataType(outData.uniqueFormat());
 
     if (channels != 3)
     {
         LOG_ERROR("Invalid input channel number " << channels);
         return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+    if (data_type != out_data_type)
+    {
+        LOG_ERROR("Unsupported input/output DataType " << data_type << "/" << out_data_type);
+        return ErrorCode::INVALID_DATA_TYPE;
     }
 
     if (!outData.uniqueFormat())
@@ -1079,13 +1107,20 @@ inline ErrorCode YUV_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData,
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
-    int      channels  = inData.uniqueFormat().numChannels();
-    DataType data_type = helpers::GetLegacyDataType(inData.uniqueFormat());
+    int      channels      = inData.uniqueFormat().numChannels();
+    DataType data_type     = helpers::GetLegacyDataType(inData.uniqueFormat());
+    DataType out_data_type = helpers::GetLegacyDataType(outData.uniqueFormat());
 
     if (channels != 3)
     {
         LOG_ERROR("Invalid input channel number " << channels);
         return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+    if (data_type != out_data_type)
+    {
+        LOG_ERROR("Unsupported input/output DataType " << data_type << "/" << out_data_type);
+        return ErrorCode::INVALID_DATA_TYPE;
     }
 
     if (!outData.uniqueFormat())
@@ -1155,13 +1190,20 @@ inline ErrorCode BGR_to_HSV(const ImageBatchVarShapeDataStridedCuda &inData,
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
-    int      channels  = inData.uniqueFormat().numChannels();
-    DataType data_type = helpers::GetLegacyDataType(inData.uniqueFormat());
+    int      channels      = inData.uniqueFormat().numChannels();
+    DataType data_type     = helpers::GetLegacyDataType(inData.uniqueFormat());
+    DataType out_data_type = helpers::GetLegacyDataType(outData.uniqueFormat());
 
     if (channels != 3)
     {
         LOG_ERROR("Invalid input channel number " << channels);
         return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+    if (data_type != out_data_type)
+    {
+        LOG_ERROR("Unsupported input/output DataType " << data_type << "/" << out_data_type);
+        return ErrorCode::INVALID_DATA_TYPE;
     }
 
     if (!outData.uniqueFormat())
@@ -1223,13 +1265,20 @@ inline ErrorCode HSV_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData,
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
-    int      channels  = inData.uniqueFormat().numChannels();
-    DataType data_type = helpers::GetLegacyDataType(inData.uniqueFormat());
+    int      channels      = inData.uniqueFormat().numChannels();
+    DataType data_type     = helpers::GetLegacyDataType(inData.uniqueFormat());
+    DataType out_data_type = helpers::GetLegacyDataType(outData.uniqueFormat());
 
     if (channels != 3)
     {
         LOG_ERROR("Invalid input channel number " << channels);
         return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+    if (data_type != out_data_type)
+    {
+        LOG_ERROR("Unsupported input/output DataType " << data_type << "/" << out_data_type);
+        return ErrorCode::INVALID_DATA_TYPE;
     }
 
     if (!outData.uniqueFormat())

@@ -37,9 +37,9 @@ Tensor AdvCvtColorInto(Tensor &output, Tensor &input, NVCVColorConversionCode co
 
     auto          op = CreateOperator<cvcuda::AdvCvtColor>();
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*op});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*op});
     op->submit(pstream->cudaHandle(), input, output, code, spec);
     return std::move(output);
 }

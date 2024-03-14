@@ -92,6 +92,12 @@ ErrorCode ChannelReorderVarShape::infer(const ImageBatchVarShapeDataStridedCuda 
         return ErrorCode::INVALID_DATA_SHAPE;
     }
 
+    if (inData.numImages() == 0)
+    {
+        // nothing to do, move above the calling of GetLegacyDataType to avoid error: "All planes must have the same data type"
+        return ErrorCode::SUCCESS;
+    }
+
     DataType data_type;
     int      channels;
     {
@@ -110,6 +116,12 @@ ErrorCode ChannelReorderVarShape::infer(const ImageBatchVarShapeDataStridedCuda 
     if (orderData.rank() != 2)
     {
         LOG_ERROR("order tensor must have 2 dimensions, not " << orderData.rank());
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+    if (helpers::GetLegacyDataType(orderData.dtype()) != kCV_32S)
+    {
+        LOG_ERROR("Invalid Order tensor DataType " << helpers::GetLegacyDataType(orderData.dtype()));
         return ErrorCode::INVALID_DATA_SHAPE;
     }
 
@@ -144,14 +156,14 @@ ErrorCode ChannelReorderVarShape::infer(const ImageBatchVarShapeDataStridedCuda 
 
         if (outFmt.numPlanes() != 1)
         {
-            LOG_ERROR("Format of input image #" << i << " must have only 1 plane");
+            LOG_ERROR("Format of output image #" << i << " must have only 1 plane");
             return ErrorCode::INVALID_DATA_FORMAT;
         }
 
         // Legacy code has this check, let's stick to it.
         if (inFmt.numChannels() != channels)
         {
-            LOG_ERROR("Invalid input");
+            LOG_ERROR("Input channel " << inFmt.numChannels() << " differs from " << channels);
             return ErrorCode::INVALID_DATA_SHAPE;
         }
 
@@ -183,12 +195,6 @@ ErrorCode ChannelReorderVarShape::infer(const ImageBatchVarShapeDataStridedCuda 
             LOG_ERROR("Format of output images must all have the same data type");
             return ErrorCode::INVALID_DATA_TYPE;
         }
-    }
-
-    if (inData.numImages() == 0)
-    {
-        // nothing to do
-        return ErrorCode::SUCCESS;
     }
 
     typedef void (*func_t)(const ImageBatchVarShapeDataStridedCuda &inData,

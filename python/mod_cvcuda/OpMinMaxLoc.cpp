@@ -77,9 +77,9 @@ TupleTensor3 MinLocInto(Tensor &minVal, Tensor &minLoc, Tensor &numMin, InputCon
     auto op = CreateOperator<cvcuda::MinMaxLoc>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {minVal, minLoc, numMin});
-    guard.add(LockMode::LOCK_NONE, {*op});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {minVal, minLoc, numMin});
+    guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
     op->submit(pstream->cudaHandle(), input, minVal, minLoc, numMin, nullptr, nullptr, nullptr);
 
@@ -110,9 +110,9 @@ TupleTensor3 MaxLocInto(Tensor &maxVal, Tensor &maxLoc, Tensor &numMax, InputCon
     auto op = CreateOperator<cvcuda::MinMaxLoc>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {maxVal, maxLoc, numMax});
-    guard.add(LockMode::LOCK_NONE, {*op});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {maxVal, maxLoc, numMax});
+    guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
     op->submit(pstream->cudaHandle(), input, nullptr, nullptr, nullptr, maxVal, maxLoc, numMax);
 
@@ -143,9 +143,9 @@ TupleTensor6 MinMaxLocInto(Tensor &minVal, Tensor &minLoc, Tensor &numMin, Tenso
     auto op = CreateOperator<cvcuda::MinMaxLoc>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {minVal, minLoc, numMin, maxVal, maxLoc, numMax});
-    guard.add(LockMode::LOCK_NONE, {*op});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {minVal, minLoc, numMin, maxVal, maxLoc, numMax});
+    guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
     op->submit(pstream->cudaHandle(), input, minVal, minLoc, numMin, maxVal, maxLoc, numMax);
 

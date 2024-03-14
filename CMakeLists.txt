@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +23,7 @@ endif()
 
 project(cvcuda
         LANGUAGES C CXX
-        VERSION 0.5.0
+        VERSION 0.6.0
         DESCRIPTION "CUDA-accelerated Computer Vision algorithms"
 )
 

@@ -1,14 +1,29 @@
+
+[//]: # "SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved."
+[//]: # "SPDX-License-Identifier: Apache-2.0"
+[//]: # ""
+[//]: # "Licensed under the Apache License, Version 2.0 (the 'License');"
+[//]: # "you may not use this file except in compliance with the License."
+[//]: # "You may obtain a copy of the License at"
+[//]: # "http://www.apache.org/licenses/LICENSE-2.0"
+[//]: # ""
+[//]: # "Unless required by applicable law or agreed to in writing, software"
+[//]: # "distributed under the License is distributed on an 'AS IS' BASIS"
+[//]: # "WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied."
+[//]: # "See the License for the specific language governing permissions and"
+[//]: # "limitations under the License."
+
 # CV-CUDA
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-yellogreen.svg)](https://opensource.org/licenses/Apache-2.0)
 
-![Version](https://img.shields.io/badge/Version-v0.5.0--beta-blue)
+![Version](https://img.shields.io/badge/Version-v0.6.0--beta-blue)
 
-![Platform](https://img.shields.io/badge/Platform-linux--64_%7C_win--64_wsl2-gray)
+![Platform](https://img.shields.io/badge/Platform-linux--64_%7C_win--64_wsl2%7C_aarch64-gray)
 
-[![Cuda](https://img.shields.io/badge/CUDA-v11.7-%2376B900?logo=nvidia)](https://developer.nvidia.com/cuda-toolkit-archive)
+[![CUDA](https://img.shields.io/badge/CUDA-v11.7-%2376B900?logo=nvidia)](https://developer.nvidia.com/cuda-toolkit-archive)
 [![GCC](https://img.shields.io/badge/GCC-v11.0-yellow)](https://gcc.gnu.org/gcc-11/changes.html)
-[![Python](https://img.shields.io/badge/python-v3.8_%7c_v3.10-blue?logo=python)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-v3.7_%7c_v3.8_%7c_v3.9_%7c_v3.10%7c_v3.11-blue?logo=python)](https://www.python.org/)
 [![CMake](https://img.shields.io/badge/CMake-v3.20-%23008FBA?logo=cmake)](https://cmake.org/)
 
 CV-CUDA is an open-source project that enables building efficient cloud-scale
@@ -18,181 +33,248 @@ efficient pre- and post-processing pipelines. CV-CUDA originated as a
 collaborative effort between [NVIDIA][NVIDIA Develop] and [ByteDance][ByteDance].
 
 Refer to our [Developer Guide](DEVELOPER_GUIDE.md) for more information on the
-operators available as of release v0.5.0-beta.
+operators available as of release v0.6.0-beta.
 
 ## Getting Started
 
 To get a local copy up and running follow these steps.
 
-### Pre-requisites
+### Compatibility
 
-- Linux distro:
-  - Ubuntu x86_64 >= 20.04
-  - WSL2 with Ubuntu >= 20.04 (tested with 20.04)
-- NVIDIA driver
-  - Linux: Driver version 520.56.06 or higher
-- CUDA Toolkit
-  - Version 11.7 or above.
-- GCC >= 11.0
-- Python >= 3.8
-- cmake >= 3.20
+|CV-CUDA Build|Platform|CUDA Version|CUDA Compute Capability|Hardware Architectures|Nvidia Driver|Python Versions|Supported Compilers (build from source)|API compatibility with prebuilt binaries|OS/Linux distributions tested with prebuilt packages|
+|-|-|-|-|-|-|-|-|-|-|
+|x86_64_cu11|x86_64|11.7 or later|SM7 and later|Volta, Turing, Amper, Hopper, Ada Lovelace|r520 or later*** |3.8, 3.9, 3.10, 3.11|gcc>=9* <br> gcc>=11**|gcc>=9|Ubuntu>= 20.04<br>WSL2/Ubuntu>=20.04|
+|x86_64_cu12|x86_64|12.2 or later|SM7 and later|Volta, Turing, Amper, Hopper, Ada Lovelace|r520 or later***|3.8, 3.9, 3.10, 3.11|gcc>=9* <br> gcc>=11**|gcc>=9|Ubuntu>= 20.04<br>WSL2/Ubuntu>=20.04|
+|aarch64_cu11 (JetPack 5.1)|aarch64|11.4|SM7 and later|Jetson AGX Orin|JetPack 5.1|3.8|gcc>=9* <br> gcc>=11**|gcc>=9|Jetson Linux 35.x|
+|aarch64_cu12 (JetPack 6.0)|aarch64|12.2|SM7 and later|Jetson AGX Orin|JetPack 6.0 DP|3.10|gcc>=9* <br> gcc>=11**|gcc>=9|Jetson Linux 36.2|
+
+\* partial build, no test module (see Known Limitations) <br>
+\** full build, including test module <br>
+\*** [samples][CV-CUDA Samples] require driver r535 or later to run and are only officially supported with CUDA 12.
+
+### Known limitations
+
+- For GCC versions lower than 11.0, C++17 support needs to be enabled when compiling CV-CUDA.
+- The C++ test module cannot build with gcc<11 (requires specific C++-20 features).  With gcc-9 or gcc-10, please build with option `-DBUILD_TESTS=0`
+- [CV-CUDA Samples] require driver r535 or later to run and are only officially supported with CUDA 12.
+- Only one CUDA version (CUDA 11.x or CUDA 12.x) of CV-CUDA packages (Debian packages, tarballs, Python Wheels) can be installed at a time. Please uninstall all packages from a given CUDA version before installing packages from a different version.
+- Test tarballs (cvcuda-tests-*.tar.xz) need to be unpacked at the root level to find existing tests.
 
 ### Installation
 
-The following steps describe how to install CV-CUDA from pre-built install
-packages. Choose the installation method that meets your environment needs.
+For convenience, we provide pre-built packages for various combinations of CUDA versions, Python versions and architectures [here][CV-CUDA GitHub Releases].
+The following steps describe how to install CV-CUDA from such pre-built packages.
+
+We support two main alternative pathways:
+- DEB or Tar archive installation (C++/CUDA Libraries, Headers, Python bindings)
+- Standalone Python Wheels (containing C++/CUDA Libraries and Python bindings)
+
+Choose the installation method that meets your environment needs.
 
 #### Tar File Installation
 
+- Installation of C++/CUDA libraries (cvcuda-lib*) and development headers (cvcuda-dev*):
 ```shell
-tar -xvf nvcv-lib-0.5.0-cuda11-x86_64-linux.tar.xz
-tar -xvf nvcv-dev-0.5.0-cuda11-x86_64-linux.tar.xz
+tar -xvf cvcuda-lib-0.6.0_beta-<cu_ver>-<arch>-linux.tar.xz
+tar -xvf cvcuda-dev-0.6.0_beta-<cu_ver>-<arch>-linux.tar.xz
 ```
+- Installation of Python bindings (cvcuda-python*)
+```shell
+tar -xvf cvcuda-python<py_ver>-0.6.0_beta-<cu_ver>-<arch>-linux.tar.xz
+```
+with `<cu_ver>` the desired CUDA version,
+`<py_ver>` the desired Python version and
+`<arch>` the desired architecture
 
 #### DEB File Installation
 
+- Installation of C++/CUDA libraries (cvcuda-lib*) and development headers (cvcuda-dev*):
 ```shell
-sudo apt-get install -y ./nvcv-lib-0.5.0-cuda11-x86_64-linux.deb ./nvcv-dev-0.5.0-cuda11-x86_64-linux.deb
+sudo apt-get install -y ./cvcuda-lib-0.6.0_beta-<cu_ver>-<arch>-linux.deb ./cvcuda-dev-0.6.0_beta-<cu_ver>-<arch>-linux.deb
 ```
+- Installation of Python bindings (cvcuda-python*)
+```shell
+sudo apt-get install -y cvcuda-python<py_ver>-0.6.0_beta-<cu_ver>-<arch>-linux.deb
+```
+with `<cu_ver>` the desired CUDA version,
+`<py_ver>` the desired Python version and
+`<arch>` the desired architecture
 
-#### Python WHL File Installation
+#### Python Wheel File Installation
+
+
+Download the appropriate .whl file for your computer architecture, Python and CUDA version from the release assets of current CV-CUDA release. Release information of all CV-CUDA releases can be accessed [here][CV-CUDA GitHub Releases]. Once downloaded, execute the `pip install` command to install the Python wheel. For example:
+
 
 ```shell
-pip install nvcv_python-0.5.0-cp38-cp38-linux_x86_64.whl
+pip install cvcuda_<cu_ver>-0.6.0b0-cp<py_ver>-cp<py_ver>-linux_<arch>.whl
 ```
+with `<cu_ver>` the desired CUDA version,
+`<py_ver>` the desired Python version and
+`<arch>`  the desired architecture
+
+Please note that the Python wheels provided are standalone, they include both the C++/CUDA libraries and the Python bindings.
+
 
 ### Build from Source
 
-Building CV-CUDA from source allows for customization and is essential for contributing to the project. Here are detailed steps to guide you through the process:
+Follow these instruction to build CV-CUDA from source:
 
-#### 1. Repository Setup
+1. Set up your local CV-CUDA repository
 
-   Before you begin, ensure you have cloned the CV-CUDA repository to your local machine. Let's assume you've cloned it into `~/cvcuda`.
+    a. Install prerequisites needed to setup up the repository.
 
-   - **Initialize the Repository**:
-     After cloning, initialize the repository to configure it correctly. This setup is required only once.
+       On Ubuntu >= 20.04, install the following packages:
+       - git-lfs: to retrieve binary files from remote repository
 
-     ```shell
-     cd ~/cvcuda
-     ./init_repo.sh
-     ```
+       ```shell
+       sudo apt-get install -y git git-lfs
+       ```
 
-#### 2. Install Build Dependencies
+    b. After cloning the repository (assuming it was cloned in `~/cvcuda`),
+       it needs to be properly configured by running the `init_repo.sh` script only once.
 
-   CV-CUDA requires several dependencies to build from source. The following steps are based on Ubuntu 22.04, but similar packages can be found for other distributions.
+       ```shell
+       cd ~/cvcuda
+       ./init_repo.sh
+       ```
 
-   - **Install Essential Packages**:
-     These include the compiler, build system, and necessary libraries.
+2. Build CV-CUDA
 
-     ```shell
-     sudo apt-get install -y g++-11 cmake ninja-build python3-dev libssl-dev
-     ```
+    a. Install the dependencies required for building CV-CUDA
 
-   - **CUDA Toolkit**:
-     The CUDA Toolkit is essential for GPU acceleration. Although any 11.x version is compatible, 11.7 is recommended.
+       On Ubuntu >= 20.04, install the following packages:
+       - g++-11: compiler to be used
+       - cmake (>= 3.20), ninja-build (optional): manage build rules
+       - python3-dev: for python bindings
+       - libssl-dev: needed by the testsuite (MD5 hashing utilities)
 
-     ```shell
-     sudo apt-get install -y cuda-minimal-build-11-7
-     ```
+       ```shell
+       sudo apt-get install -y g++-11 cmake ninja-build python3-dev libssl-dev
+       ```
 
-#### 3. Build Process
+       For CUDA Toolkit, any version of the 11.x or 12.x series should work.
+       CV-CUDA was tested with 11.7 and 12.2, thus those should be preferred.
 
-   Once the dependencies are in place, you can proceed to build CV-CUDA.
+       ```shell
+       sudo apt-get install -y cuda-11-7
+       # or
+       sudo apt-get install -y cuda-12-2
+       ```
 
-   - **Run Build Script**:
-     A build script is provided to simplify the compilation process. It creates a build tree and compiles the source code.
+    b. Build the project
 
-     ```shell
-     ci/build.sh
-     ```
+       ```shell
+       ci/build.sh [release|debug] [output build tree path] [-DBUILD_TESTS=1|0] [-DPYTHON_VERSIONS='3.8;3.9;3.10;3.11'] [-DPUBLIC_API_COMPILERS='gcc-9;gcc-11;clang-11;clang-14']
+       ```
 
-     This script creates a release build by default, placing output in `build-rel`. You can specify a debug build or a different output directory:
+       The default build type is 'release'.
 
-     ```shell
-     ci/build.sh [release|debug] [output build tree path]
-     ```
+       If output build tree path isn't specified, it will be `build-rel` for release
+       builds, and `build-deb` for debug.
 
-#### 4. Build Documentation (Optional)
+       The library is in `build-rel/lib` and executables (tests, etc...) are in `build-rel/bin`.
 
-   If you need to build the documentation, additional dependencies are required:
+       The `-DBUILD_TESTS` option can be used to disable/enable building the tests (enabled by default, see Known Limitations).
 
-   - **Install Documentation Dependencies**:
-     These tools are used to generate and format the documentation.
+       The `-DPYTHON_VERSIONS` option can be used to select Python versions to build bindings and Wheels for.
+       By default, only the default system Python3 version will be selected.
 
-     ```shell
-     sudo apt-get install -y doxygen graphviz python3 python3-pip
-     sudo python3 -m pip install sphinx==4.5.0 breathe exhale recommonmark graphviz sphinx-rtd-theme
-     ```
+       The `-DPUBLIC_API_COMPILERS` option can be used to select the compilers used to check public API compatibility.
+       By default, gcc-11, gcc-9, clang-11, and clang-14 is tried to be selected and checked.
 
-   - **Generate Documentation**:
-     Use the provided script to build the documentation.
+3. Build Documentation
 
-     ```shell
-     ci/build_docs.sh [build folder]
-     ```
+    a. Install the dependencies required for building the documentation
 
-     For example:
+       On Ubuntu >= 20.04, install the following packages:
+       - doxygen: parse header files for reference documentation
+       - python3, python3-pip: to install some python packages needed
+       - sphinx, breathe, exhale, recommonmark, graphiviz: to render the documentation
+       - sphinx-rtd-theme: documenation theme used
 
-     ```shell
-     ci/build_docs.sh build_docs
-     ```
+       ```shell
+       sudo apt-get install -y doxygen graphviz python3 python3-pip
+       sudo python3 -m pip install sphinx==4.5.0 breathe exhale recommonmark graphviz sphinx-rtd-theme
+       ```
 
-#### 5. Build and Run Samples (Optional)
+    b. Build the documentation
+       ```shell
+       ci/build_docs.sh [build folder]
+       ```
 
-   CV-CUDA comes with a variety of samples to demonstrate its capabilities.
+       Example:
+       `ci/build_docs.sh build_docs`
 
-   - **See the Samples Documentation**:
-     Detailed instructions for building and running samples are available in the [Samples](samples/README.md) documentation.
+4. Build and run Samples
 
-#### 6. Running Tests
+   For instructions on how to build samples from source and run them, see the [Samples](samples/README.md) documentation.
 
-   To ensure everything is working as expected, you can run CV-CUDA's test suite.
+5. Run Tests
 
-   - **Install Test Dependencies**:
-     These are necessary to run the Python binding tests.
+   a. Install the dependencies required for running the tests
 
-     ```shell
-     sudo apt-get install -y python3 python3-pip
-     sudo python3 -m pip install pytest torch
-     ```
+       On Ubuntu >= 20.04, install the following packages:
+       - python3, python3-pip: to run python bindings tests
+       - torch: dependencies needed by python bindings tests
 
-   - **Execute Tests**:
-     Run the test scripts located in the build tree.
+       ```shell
+       sudo apt-get install -y python3 python3-pip
+       sudo python3 -m pip install pytest torch
+       ```
 
-     ```shell
-     build-rel/bin/run_tests.sh
-     ```
+   b. Run the tests
 
-#### 7. Packaging
+       The tests are in `<buildtree>/bin`. You can run the script below to run all
+       tests at once. Here's an example when build tree is created in `build-rel`
 
-   After a successful build, you can create installers using `cpack`.
+       ```shell
+       build-rel/bin/run_tests.sh
+       ```
 
-   - **Generate Installers**:
-     This step produces Debian packages and tarballs, suitable for distribution or installation on other systems.
+6. Package installers and Python Wheels
 
-     ```shell
-     cd build-rel
-     cpack .
-     ```
+   a. Package installers
 
-     For specific installer types:
+      Installers can be generated using the following cpack command once you have successfully built the project
 
-     ```shell
-     cpack . -G [DEB|TXZ]
-     ```
+      ```shell
+      cd build-rel
+      cpack .
+      ```
 
-     - `DEB` for Debian packages.
-     - `TXZ` for `.tar.xz` tarballs.
+      This will generate in the build directory both Debian installers and tarballs
+      (\*.tar.xz), needed for integration in other distros.
+
+      For a fine-grained choice of what installers to generate, the full syntax is:
+
+      ```shell
+      cpack . -G [DEB|TXZ]
+      ```
+
+      - DEB for Debian packages
+      - TXZ for \*.tar.xz tarballs.
+
+   b. Python Wheels
+
+      By default during the `release` build, Python bindings and wheels are created for the available CUDA version and the specified Python
+      version(s). The wheels are stored in `build-rel/pythonX.Y/wheel` folder, where `build-rel` is the build directory
+      used to build the release build and `X` and `Y` are Python major and minor versions. The built wheels can be installed using pip.
+      For example, to install the Python wheel built for CUDA 12.x, Python 3.10 on Linux x86_64 systems:
+
+      ```shell
+      pip install cvcuda_cu12-0.6.0b0-cp310-cp310-linux_x86_64.whl
+      ```
 
 ## Contributing
 
 CV-CUDA is an open source project. As part of the Open Source Community, we are
 committed to the cycle of learning, improving, and updating that makes this
-community thrive. However, as of release v0.5.0-beta, CV-CUDA is not yet ready
+community thrive. However, as of release v0.6.0-beta, CV-CUDA is not yet ready
 for external contributions.
 
 To understand the process for contributing the CV-CUDA, see our
-[Contributing](CONTRIBUTING.md) page. To understand our committment to the Open
+[Contributing](CONTRIBUTING.md) page. To understand our commitment to the Open
 Source Community, and providing an environment that both supports and respects
 the efforts of all contributors, please read our
 [Code of Conduct](CODE_OF_CONDUCT.md).
@@ -254,3 +336,5 @@ CV-CUDA is developed jointly by NVIDIA and ByteDance.
 
 [NVIDIA Develop]: https://developer.nvidia.com/
 [ByteDance]: https://www.bytedance.com/
+[CV-CUDA GitHub Releases]: https://github.com/CVCUDA/CV-CUDA/releases
+[CV-CUDA Samples]: https://github.com/CVCUDA/CV-CUDA/blob/main/samples/README.md

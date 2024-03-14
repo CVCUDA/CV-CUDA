@@ -13,15 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-project(nvcv_samples_common LANGUAGES CXX)
+project(cvcuda_samples_common LANGUAGES CXX)
 
-add_library(nvcv_samples_common SHARED
+add_library(cvcuda_samples_common SHARED
                                 TRTUtils.cpp
 			        NvDecoder.cpp)
-target_compile_options(nvcv_samples_common PRIVATE -Wno-deprecated-declarations -Wno-missing-declarations)
-target_link_libraries(nvcv_samples_common nvcv_types cvcuda CUDA::cudart TensorRT::nvinfer CUDA::nvjpeg)
+target_compile_options(cvcuda_samples_common PRIVATE -Wno-deprecated-declarations -Wno-missing-declarations)
+target_link_libraries(cvcuda_samples_common nvcv_types cvcuda CUDA::cudart TensorRT::nvinfer CUDA::nvjpeg)
 
-install(TARGETS nvcv_samples_common
-        EXPORT nvcv_samples_common
+install(TARGETS cvcuda_samples_common
+        EXPORT cvcuda_samples_common
         COMPONENT samples
 	DESTINATION samples/lib)

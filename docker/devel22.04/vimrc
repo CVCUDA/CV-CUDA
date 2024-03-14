@@ -1,0 +1,23 @@
+" SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+" SPDX-License-Identifier: Apache-2.0
+"
+" NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+" property and proprietary rights in and to this material, related
+" documentation and any modifications thereto. Any use, reproduction,
+" disclosure or distribution of this material and related documentation
+" without an express license agreement from NVIDIA CORPORATION or
+" its affiliates is strictly prohibited.
+
+set nocompatible
+set backspace=2
+set autoindent
+set softtabstop=4
+set number
+set shiftwidth=4
+set expandtab
+set autowrite
+set ruler
+set makeprg=ninja
+set fileencodings=ucs-bom,utf-8,latin1
+syntax on
+color ron

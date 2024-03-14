@@ -19,18 +19,22 @@
 
 #include "GaussianNoiseUtils.cuh"
 
+#include <common/InterpUtils.hpp>
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpGaussianNoise.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
+#include <nvcv/cuda/MathWrappers.hpp>
+#include <nvcv/cuda/StaticCast.hpp>
 #include <util/TensorDataUtils.hpp>
 
 #include <cmath>
 #include <iostream>
 #include <random>
 
+namespace {
 inline uint8_t cast(float value)
 {
     int v = (int)(value + (value >= 0 ? 0.5 : -0.5));
@@ -39,7 +43,7 @@ inline uint8_t cast(float value)
 
 //test for RGB8
 template<typename T>
-static void GaussianNoise(std::vector<T> &src, std::vector<T> &dst, float mu, float sigma, int batch, bool per_channel)
+void GaussianNoise(std::vector<T> &src, std::vector<T> &dst, float mu, float sigma, int batch, bool per_channel)
 {
     int mem_size = src.size();
     if (!per_channel)
@@ -69,6 +73,39 @@ static void GaussianNoise(std::vector<T> &src, std::vector<T> &dst, float mu, fl
     free(rand_h);
 }
 
+// test for float
+template<>
+void GaussianNoise(std::vector<float> &src, std::vector<float> &dst, float mu, float sigma, int batch, bool per_channel)
+{
+    int mem_size = src.size();
+    if (!per_channel)
+        mem_size /= 3;
+    float *rand_h = (float *)malloc(sizeof(float) * mem_size);
+    get_random(rand_h, per_channel, batch, mem_size);
+
+    int img_size = src.size() / 3;
+    for (int i = 0; i < img_size; i++)
+    {
+        if (per_channel)
+        {
+            for (int ch = 0; ch < 3; ch++)
+            {
+                float delta     = mu + rand_h[i * 3 + ch] * sigma;
+                dst[i * 3 + ch] = nvcv::cuda::clamp(nvcv::cuda::StaticCast<float>(src[i * 3 + ch] + delta), 0.f, 1.f);
+            }
+        }
+        else
+        {
+            float delta    = mu + rand_h[i] * sigma;
+            dst[i * 3]     = nvcv::cuda::clamp(nvcv::cuda::StaticCast<float>(src[i * 3] + delta), 0.f, 1.f);
+            dst[i * 3 + 1] = nvcv::cuda::clamp(nvcv::cuda::StaticCast<float>(src[i * 3 + 1] + delta), 0.f, 1.f);
+            dst[i * 3 + 2] = nvcv::cuda::clamp(nvcv::cuda::StaticCast<float>(src[i * 3 + 2] + delta), 0.f, 1.f);
+        }
+    }
+    free(rand_h);
+}
+} // namespace
+
 // clang-format off
 NVCV_TEST_SUITE_P(OpGaussianNoise, nvcv::test::ValueList<int, int, int, float, float, bool>
 {
@@ -81,22 +118,15 @@ NVCV_TEST_SUITE_P(OpGaussianNoise, nvcv::test::ValueList<int, int, int, float, f
 
 // clang-format on
 
-TEST_P(OpGaussianNoise, tensor_correct_output)
+template<typename datatype>
+static void tensor_correct_output_test(int batch, int height, int width, float mu, float sigma, bool per_channel)
 {
     cudaStream_t stream;
     EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
-    int   batch       = GetParamValue<0>();
-    int   height      = GetParamValue<1>();
-    int   width       = GetParamValue<2>();
-    float mu          = GetParamValue<3>();
-    float sigma       = GetParamValue<4>();
-    bool  per_channel = GetParamValue<5>();
-
-    nvcv::ImageFormat fmt = nvcv::FMT_RGB8;
-    using datatype        = uint8_t;
-    nvcv::Tensor imgIn    = nvcv::util::CreateTensor(batch, width, height, fmt);
-    nvcv::Tensor imgOut   = nvcv::util::CreateTensor(batch, width, height, fmt);
+    nvcv::ImageFormat fmt    = std::is_same<datatype, uint8_t>::value ? nvcv::FMT_RGB8 : nvcv::FMT_RGBf32;
+    nvcv::Tensor      imgIn  = nvcv::util::CreateTensor(batch, width, height, fmt);
+    nvcv::Tensor      imgOut = nvcv::util::CreateTensor(batch, width, height, fmt);
 
     auto inData = imgIn.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_NE(nullptr, inData);
@@ -142,15 +172,24 @@ TEST_P(OpGaussianNoise, tensor_correct_output)
                                            cudaMemcpyHostToDevice, stream));
 
     //Generate input
-    std::vector<std::vector<uint8_t>> srcVec(batch);
-    std::default_random_engine        randEng;
-    int                               rowStride = width * fmt.planePixelStrideBytes(0);
+    std::vector<std::vector<datatype>> srcVec(batch);
+    std::default_random_engine         randEng;
+    int                                rowStride = width * fmt.planePixelStrideBytes(0);
 
     for (int i = 0; i < batch; i++)
     {
-        std::uniform_int_distribution<uint8_t> rand(0, 255);
-        srcVec[i].resize(height * rowStride / sizeof(datatype));
-        std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return rand(randEng); });
+        if constexpr (std::is_same<datatype, uint8_t>::value)
+        {
+            std::uniform_int_distribution<uint8_t> rand(0, 255);
+            srcVec[i].resize(height * rowStride / sizeof(datatype));
+            std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return rand(randEng); });
+        }
+        else
+        {
+            std::uniform_real_distribution<float> rand(0.f, 1.f);
+            srcVec[i].resize(height * rowStride / sizeof(datatype));
+            std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return rand(randEng); });
+        }
         ASSERT_EQ(cudaSuccess, cudaMemcpy2D(inAccess->sampleData(i), inAccess->rowStride(), srcVec[i].data(), rowStride,
                                             rowStride, height, cudaMemcpyHostToDevice));
     }
@@ -180,20 +219,35 @@ TEST_P(OpGaussianNoise, tensor_correct_output)
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
-TEST_P(OpGaussianNoise, varshape_correct_shape)
+TEST_P(OpGaussianNoise, tensor_correct_output)
 {
-    cudaStream_t stream;
-    EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
-
     int   batch       = GetParamValue<0>();
     int   height      = GetParamValue<1>();
     int   width       = GetParamValue<2>();
     float mu          = GetParamValue<3>();
     float sigma       = GetParamValue<4>();
     bool  per_channel = GetParamValue<5>();
+    tensor_correct_output_test<uint8_t>(batch, height, width, mu, sigma, per_channel);
+}
 
-    nvcv::ImageFormat fmt = nvcv::FMT_RGB8;
-    using datatype        = uint8_t;
+TEST_P(OpGaussianNoise, tensor_correct_output_float)
+{
+    int   batch       = GetParamValue<0>();
+    int   height      = GetParamValue<1>();
+    int   width       = GetParamValue<2>();
+    float mu          = GetParamValue<3>();
+    float sigma       = GetParamValue<4>();
+    bool  per_channel = GetParamValue<5>();
+    tensor_correct_output_test<float>(batch, height, width, mu, sigma, per_channel);
+}
+
+template<typename datatype>
+static void varshape_correct_output_test(int batch, int height, int width, float mu, float sigma, bool per_channel)
+{
+    cudaStream_t stream;
+    EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::ImageFormat fmt = std::is_same<datatype, uint8_t>::value ? nvcv::FMT_RGB8 : nvcv::FMT_RGBf32;
 
     // Create input and output
     std::default_random_engine         randEng;
@@ -247,10 +301,18 @@ TEST_P(OpGaussianNoise, varshape_correct_shape)
 
         int srcRowStride = srcWidth * fmt.planePixelStrideBytes(0);
 
-        std::uniform_int_distribution<uint8_t> rand(0, 255);
-
-        srcVec[i].resize(srcHeight * srcRowStride / sizeof(datatype));
-        std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return rand(randEng); });
+        if constexpr (std::is_same<datatype, uint8_t>::value)
+        {
+            std::uniform_int_distribution<uint8_t> rand(0, 255);
+            srcVec[i].resize(srcHeight * srcRowStride / sizeof(datatype));
+            std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return rand(randEng); });
+        }
+        else
+        {
+            std::uniform_real_distribution<float> rand(0.f, 1.f);
+            srcVec[i].resize(srcHeight * srcRowStride / sizeof(datatype));
+            std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return rand(randEng); });
+        }
 
         // Copy input data to the GPU
         ASSERT_EQ(cudaSuccess, cudaMemcpy2D(srcData->plane(0).basePtr, srcData->plane(0).rowStride, srcVec[i].data(),
@@ -291,4 +353,136 @@ TEST_P(OpGaussianNoise, varshape_correct_shape)
     }
 
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST_P(OpGaussianNoise, varshape_correct_shape)
+{
+    int   batch       = GetParamValue<0>();
+    int   height      = GetParamValue<1>();
+    int   width       = GetParamValue<2>();
+    float mu          = GetParamValue<3>();
+    float sigma       = GetParamValue<4>();
+    bool  per_channel = GetParamValue<5>();
+
+    varshape_correct_output_test<uint8_t>(batch, height, width, mu, sigma, per_channel);
+}
+
+TEST_P(OpGaussianNoise, varshape_correct_shape_float)
+{
+    int   batch       = GetParamValue<0>();
+    int   height      = GetParamValue<1>();
+    int   width       = GetParamValue<2>();
+    float mu          = GetParamValue<3>();
+    float sigma       = GetParamValue<4>();
+    bool  per_channel = GetParamValue<5>();
+
+    varshape_correct_output_test<float>(batch, height, width, mu, sigma, per_channel);
+}
+
+TEST(OpGaussianNoise_negative, create_with_null_handle)
+{
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaGaussianNoiseCreate(nullptr, 10));
+}
+
+TEST(OpGaussianNoise_negative, create_with_negative_batch)
+{
+    NVCVOperatorHandle opHandle;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaGaussianNoiseCreate(&opHandle, -1));
+}
+
+TEST(OpGaussianNoise_negative, invalid_mu_sigma_layout)
+{
+    nvcv::Tensor imgIn(
+        {
+            {24, 24, 2},
+            "HWC"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor imgOut(
+        {
+            {24, 24, 2},
+            "HWC"
+    },
+        nvcv::TYPE_U8);
+
+    //parameters
+    nvcv::Tensor muval({{2}, "N"}, nvcv::TYPE_F32);
+    nvcv::Tensor sigmaval({{2}, "N"}, nvcv::TYPE_F32);
+
+    // invalid mu parameters
+    nvcv::Tensor invalidMuval(
+        {
+            {2, 2, 2},
+            "HWC"
+    },
+        nvcv::TYPE_F32);
+    nvcv::Tensor invalidSigmaval(
+        {
+            {2, 2, 2},
+            "HWC"
+    },
+        nvcv::TYPE_F32);
+
+    // Call operator
+    int                   maxBatch = 4;
+    unsigned long long    seed     = 12345;
+    cvcuda::GaussianNoise GaussianNoiseOp(maxBatch);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { GaussianNoiseOp(NULL, imgIn, imgOut, invalidMuval, sigmaval, false, seed); }));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { GaussianNoiseOp(NULL, imgIn, imgOut, muval, invalidSigmaval, false, seed); }));
+}
+
+// clang-format off
+NVCV_TEST_SUITE_P(OpGaussianNoise_negative, nvcv::test::ValueList<std::string, nvcv::DataType, std::string, nvcv::DataType, std::string, nvcv::DataType, std::string, nvcv::DataType, NVCVStatus>
+{
+    //   in_layout,        in_data_type,   out_layout,     out_data_type,     mu_layout,         mu_data_type,    sigma_layout,    sigma_data_type,    expected_return_status
+    {        "CHW",       nvcv::TYPE_U8,        "HWC",     nvcv::TYPE_U8,           "N",       nvcv::TYPE_F32,             "N",     nvcv::TYPE_F32,    NVCV_ERROR_INVALID_ARGUMENT},
+    {        "HWC",       nvcv::TYPE_U8,        "CHW",     nvcv::TYPE_U8,           "N",       nvcv::TYPE_F32,             "N",     nvcv::TYPE_F32,    NVCV_ERROR_INVALID_ARGUMENT},
+    {        "HWC",      nvcv::TYPE_F64,        "HWC",     nvcv::TYPE_U8,           "N",       nvcv::TYPE_F32,             "N",     nvcv::TYPE_F32,    NVCV_ERROR_INVALID_ARGUMENT},
+    {        "HWC",       nvcv::TYPE_U8,        "HWC",    nvcv::TYPE_F64,           "N",       nvcv::TYPE_F32,             "N",     nvcv::TYPE_F32,    NVCV_ERROR_INVALID_ARGUMENT},
+    {        "HWC",      nvcv::TYPE_U32,        "HWC",     nvcv::TYPE_U8,           "N",       nvcv::TYPE_F32,             "N",     nvcv::TYPE_F32,    NVCV_ERROR_INVALID_ARGUMENT},
+    {        "HWC",       nvcv::TYPE_U8,        "HWC",    nvcv::TYPE_U32,           "N",       nvcv::TYPE_F32,             "N",     nvcv::TYPE_F32,    NVCV_ERROR_INVALID_ARGUMENT},
+    {        "HWC",       nvcv::TYPE_U8,        "HWC",    nvcv::TYPE_U16,           "N",       nvcv::TYPE_F32,             "N",     nvcv::TYPE_F32,    NVCV_ERROR_INVALID_ARGUMENT},
+    {        "HWC",       nvcv::TYPE_U8,        "HWC",     nvcv::TYPE_U8,           "N",       nvcv::TYPE_F64,             "N",     nvcv::TYPE_F32,    NVCV_ERROR_INVALID_ARGUMENT},
+    {        "HWC",       nvcv::TYPE_U8,        "HWC",     nvcv::TYPE_U8,           "N",       nvcv::TYPE_F32,             "N",     nvcv::TYPE_F64,    NVCV_ERROR_INVALID_ARGUMENT},
+});
+
+// clang-format on
+
+TEST_P(OpGaussianNoise_negative, infer_negative_parameter)
+{
+    std::string    in_layout              = GetParamValue<0>();
+    nvcv::DataType in_data_type           = GetParamValue<1>();
+    std::string    out_layout             = GetParamValue<2>();
+    nvcv::DataType out_data_type          = GetParamValue<3>();
+    std::string    mu_layout              = GetParamValue<4>();
+    nvcv::DataType mu_data_type           = GetParamValue<5>();
+    std::string    sigma_layout           = GetParamValue<6>();
+    nvcv::DataType sigma_data_type        = GetParamValue<7>();
+    NVCVStatus     expected_return_status = GetParamValue<8>();
+
+    nvcv::Tensor imgIn(
+        {
+            {24, 24, 2},
+            in_layout.c_str()
+    },
+        in_data_type);
+    nvcv::Tensor imgOut(
+        {
+            {24, 24, 2},
+            out_layout.c_str()
+    },
+        out_data_type);
+
+    //parameters
+    nvcv::Tensor muval({{2}, mu_layout.c_str()}, mu_data_type);
+    nvcv::Tensor sigmaval({{2}, sigma_layout.c_str()}, sigma_data_type);
+
+    // Call operator
+    int                   maxBatch = 4;
+    unsigned long long    seed     = 12345;
+    cvcuda::GaussianNoise GaussianNoiseOp(maxBatch);
+    EXPECT_EQ(expected_return_status,
+              nvcv::ProtectCall([&] { GaussianNoiseOp(NULL, imgIn, imgOut, muval, sigmaval, false, seed); }));
 }

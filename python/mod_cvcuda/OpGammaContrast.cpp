@@ -42,9 +42,9 @@ ImageBatchVarShape VarShapeGammaContrastInto(ImageBatchVarShape &output, ImageBa
     auto gamma_contrast = CreateOperator<cvcuda::GammaContrast>(input.capacity(), input.uniqueFormat().numChannels());
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input, gamma});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_WRITE, {*gamma_contrast});
+    guard.add(LockMode::LOCK_MODE_READ, {input, gamma});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*gamma_contrast});
 
     gamma_contrast->submit(pstream->cudaHandle(), input, output, gamma);
 

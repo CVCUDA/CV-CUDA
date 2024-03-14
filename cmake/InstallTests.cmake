@@ -24,7 +24,7 @@ if(UNIX)
     # Depend on current or any future ABI with same major version
     set(CPACK_DEBIAN_TESTS_PACKAGE_DEPENDS "${CPACK_DEBIAN_LIB_PACKAGE_NAME} (>= ${NVCV_VERSION_API})")
     # External dependencies
-    set(CPACK_DEBIAN_TESTS_PACKAGE_DEPENDS "${CPACK_DEBIAN_TESTS_PACKAGE_DEPENDS},libssl3")
+    set(CPACK_DEBIAN_TESTS_PACKAGE_DEPENDS "${CPACK_DEBIAN_TESTS_PACKAGE_DEPENDS},libssl3 | libssl1.1")
 
     set(CPACK_DEBIAN_TESTS_PACKAGE_NAME "cvcuda${PROJECT_VERSION_MAJOR}-tests")
 

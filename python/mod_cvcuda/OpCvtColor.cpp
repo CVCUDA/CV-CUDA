@@ -45,9 +45,9 @@ Tensor CvtColorInto(Tensor &output, Tensor &input, NVCVColorConversionCode code,
     auto cvtColor = CreateOperator<cvcuda::CvtColor>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*cvtColor});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*cvtColor});
 
     cvtColor->submit(pstream->cudaHandle(), input, output, code);
 
@@ -89,9 +89,9 @@ ImageBatchVarShape CvtColorVarShapeInto(ImageBatchVarShape &output, ImageBatchVa
     auto cvtColor = CreateOperator<cvcuda::CvtColor>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*cvtColor});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {input});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*cvtColor});
 
     cvtColor->submit(pstream->cudaHandle(), input, output, code);
 

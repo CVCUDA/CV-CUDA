@@ -24,6 +24,8 @@ ARG VER_CUDA=?
 
 # For testing python bindings ======================================
 
+ARG DEBIAN_FRONTEND=noninteractive
+
 # Add deadsnakes apt repo to fetch older python versions
 ADD deadsnakes-ubuntu-ppa-jammy.list /etc/apt/sources.list.d
 RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys BA6932366A755776
@@ -32,25 +34,26 @@ RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys BA6932366A755776
 RUN ln -sf /usr/share/zoneinfo/US/Pacific /etc/localtime
 
 # For running python tests
-RUN DEBIAN_FRONTEND="noninteractive" apt-get update \
+RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        python3.7 python3.7-distutils \
-        python3.8 python3.8-distutils \
-        python3.9 python3.9-distutils \
-        python3.10 \
-        python3-pip \
+    python3.7 python3.7-distutils \
+    python3.8 python3.8-distutils \
+    python3.9 python3.9-distutils \
+    python3.10 python3.10-distutils \
+    python3.11 python3.11-distutils \
+    python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
 # It needs torch
 RUN set -e \
-    && for ver in 3.7 3.8 3.9 3.10; do \
-           python$ver -m pip install torch numpy torchvision; \
-       done \
+    && for ver in 3.7 3.8 3.9 3.10 3.11; do \
+    python$ver -m pip install torch numpy torchvision; \
+    done \
     && rm -rf /root/.cache/pip
 
 # Other dependencies of python tests
 # binutils: for readelf
-RUN DEBIAN_FRONTEND="noninteractive" apt-get update \
+RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        binutils \
+    binutils \
     && rm -rf /var/lib/apt/lists/*

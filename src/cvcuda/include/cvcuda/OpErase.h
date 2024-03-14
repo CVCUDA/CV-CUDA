@@ -102,25 +102,25 @@ CVCUDA_PUBLIC NVCVStatus cvcudaEraseCreate(NVCVOperatorHandle *handle, int32_t m
  *
  *  anchor Tensor
  *
- *      Must be 'N' (dim = 1) with N = number of eraing area.
+ *      Must be 'N' (dim = 1) with N = number of erasing area.
  *      Data Type must be 32bit Signed.
  *      DataType must be TYPE_2S32.
  *
  *  erasing Tensor
  *
- *      Must be 'N' (dim = 1) with N = number of eraing area.
+ *      Must be 'N' (dim = 1) with N = number of erasing area.
  *      Data Type must be 32bit Signed.
  *      DataType must be TYPE_3S32.
  *
  *  imgIdx Tensor
  *
- *      Must be 'N' (dim = 1) with N = number of eraing area.
+ *      Must be 'N' (dim = 1) with N = number of erasing area.
  *      Data Type must be 32bit Signed.
  *      DataType must be TYPE_S32.
  *
  *  values Tensor
  *
- *      Must be 'N' (dim = 1) with W = number of eraing area * 4.
+ *      Must be 'N' (dim = 1) with W = number of erasing area * 4.
  *      Data Type must be 32bit Float.
  *      DataType must be TYPE_F32.
  *
@@ -133,9 +133,9 @@ CVCUDA_PUBLIC NVCVStatus cvcudaEraseCreate(NVCVOperatorHandle *handle, int32_t m
  *
  * @param [out] out output tensor / image batch.
  *
- * @param [in] anchor an array of size num_erasing_area that gives the x coordinate and y coordinate of the top left point in the eraseing areas.
+ * @param [in] anchor an array of size num_erasing_area that gives the x coordinate and y coordinate of the top left point in the erasing areas.
  *
- * @param [in] eraisng an array of size num_erasing_area that gives the widths of the eraseing areas, the heights of the eraseing areas and
+ * @param [in] erasing an array of size num_erasing_area that gives the widths of the erasing areas, the heights of the erasing areas and
  *              integers in range 0-15, each of whose bits indicates whether or not the corresponding channel need to be erased.
  *
  * @param [in] values an array of size num_erasing_area*4 that gives the filling value for each erase area.

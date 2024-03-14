@@ -21,10 +21,10 @@ list(GET CUDA_VERSION_LIST 2 CUDA_VERSION_PATCH)
 find_package(CUDAToolkit ${CUDA_VERSION_MAJOR}.${CUDA_VERSION_MINOR} REQUIRED)
 
 # CUDA version requirement:
-# - to use gcc-11 (11.7)
+# - to use gcc-9 (11.4)
 
-if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "11.7")
-    message(FATAL_ERROR "Minimum CUDA version supported is 11.7")
+if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "11.4")
+    message(FATAL_ERROR "Minimum CUDA version supported is 11.4")
 endif()
 
 set(CMAKE_CUDA_STANDARD ${CMAKE_CXX_STANDARD})
@@ -38,6 +38,7 @@ if(NOT USE_CMAKE_CUDA_ARCHITECTURES)
     if(ENABLE_TEGRA)
         list(APPEND CMAKE_CUDA_ARCHITECTURES
             72-real # Volta  - gv11b/Tegra (Jetson AGX Xavier)
+            86-real # Ampere - Jetson IGX Orin
             87-real # Ampere - ga10b,ga10c/Tegra (Jetson AGX Orin)
         )
     else()

@@ -52,9 +52,9 @@ Tensor CropFlipNormalizeReformatInto(Tensor &output, ImageBatchVarShape &input, 
     }
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input, cropRect, flipCode, base, scale});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*op});
+    guard.add(LockMode::LOCK_MODE_READ, {input, cropRect, flipCode, base, scale});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*op});
     op->submit(pstream->cudaHandle(), input, output, cropRect, borderMode, borderValue, flipCode, base, scale,
                globalScale, globalShift, epsilon, *flags);
 

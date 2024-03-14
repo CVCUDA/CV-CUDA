@@ -44,9 +44,9 @@ ImageBatchVarShape ChannelReorderVarShapeInto(ImageBatchVarShape &output, ImageB
     auto chReorder = CreateOperator<cvcuda::ChannelReorder>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input, orders});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*chReorder});
+    guard.add(LockMode::LOCK_MODE_READ, {input, orders});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*chReorder});
 
     chReorder->submit(pstream->cudaHandle(), input, output, orders);
 

@@ -21,12 +21,22 @@ import os
 import sys
 import json
 import logging
+from datetime import datetime
 import argparse
 import subprocess
 from collections import deque
 import cvcuda
 import torch
 import nvtx
+import pandas
+
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    format="[%(name)s:%(lineno)d] %(asctime)s %(levelname)-6s %(message)s",
+    level=logging.INFO,
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 
 class CvCudaPerf:
@@ -76,6 +86,7 @@ class CvCudaPerf:
         self.timing_info = {}
         self.batch_info = {}
         self.inside_batch_info = []
+        self.deleted_range_info = []
         self.is_inside_batch = 0
         self.total_batches_processed = {}
         # Check if the benchmark.py script was used to run this. We do so
@@ -116,24 +127,37 @@ class CvCudaPerf:
             self.stack.append((message, batch_idx))
             self.stack_path = os.path.join(self.stack_path, message)
 
-    def pop_range(self, domain=None, total_items=None):
+    def pop_range(self, domain=None, total_items=None, delete_range=False):
         """
         Pops a code range off of the stack for performance benchmarking.
         :param domain: Name of a domain under which the code range is scoped.
         :param total_items: The number of items processed in this range.
+        :param delete_range: Flag specifying whether the range should be completely deleted
+         instead of just popping it out. This will remove all traces of this range from
+         the benchmarks. Useful if the code being benchmarked fails and one wants to
+         remove its range in that case.
         """
         if self.should_benchmark:
             # Grab the message and optional batch index from the stack.
             message, batch_idx = self.stack.pop()
 
-            self.timing_info[self.stack_path] = (
-                0,
-                0,
-            )  # Placeholders for CPU and GPU times respectively.
-            # Actual timing information will be recorded and pulled from NSYS by a
-            # script like benchmark.py.
+            if not delete_range:
+                # Add only if this range was not meant for deletion.
+                self.timing_info[self.stack_path] = (
+                    0,
+                    0,
+                )  # Placeholders for CPU and GPU times respectively.
+                # Actual timing information will be recorded and pulled from NSYS by a
+                # script like benchmark.py.
+            else:
+                # This range was meant for deletion. We did not add it to the timing_info
+                # but all the previously added children of this range must also be deleted.
+                # We will do that later in the finalize to avoid costing us time here.
+                # For that, we will save this stack path so that we can remove all the
+                # orphan nodes later.
+                self.deleted_range_info.append(self.stack_path)
 
-            if self.is_inside_batch > 0:
+            if self.is_inside_batch > 0 and not delete_range:
                 self.inside_batch_info.append(self.stack_path)
 
             # Record the batch information if it was present.
@@ -145,15 +169,19 @@ class CvCudaPerf:
                         "push a batch first by using the batch_idx in the push_range()."
                     )
 
-                self.batch_info[self.stack_path] = (batch_idx, total_items)
-                self.is_inside_batch -= 1
+                self.is_inside_batch -= 1  # Decrement this by one.
 
-                if total_items > 0:
-                    batch_level_prefix = os.path.dirname(self.stack_path)
+                if not delete_range:
+                    # Add to batch info only if this range was not meant for deletion.
+                    self.batch_info[self.stack_path] = (batch_idx, total_items)
 
-                    if batch_level_prefix not in self.total_batches_processed:
-                        self.total_batches_processed[batch_level_prefix] = 0
-                    self.total_batches_processed[batch_level_prefix] += 1
+                    # Maintain a count of the number of items processed in various batches.
+                    if total_items > 0:
+                        batch_level_prefix = os.path.dirname(self.stack_path)
+
+                        if batch_level_prefix not in self.total_batches_processed:
+                            self.total_batches_processed[batch_level_prefix] = 0
+                        self.total_batches_processed[batch_level_prefix] += 1
 
             # Unwind the stack to point to the previous path(i.e. directory like expression)
             # e.g. one level above.
@@ -173,6 +201,15 @@ class CvCudaPerf:
                     "Unable to finalize timing info. The stack was non empty with %d"
                     " item(s) still not popped." % len(self.stack)
                 )
+
+            # Remove the keys from the timing_info which starts with any key in the
+            # deleted_range_info. That makes sure that we not only delete the current
+            # key but also all of its previous children which were added but not deleted.
+            timing_info_keys = list(self.timing_info.keys())
+            for key_delete in self.deleted_range_info:
+                for k in timing_info_keys:
+                    if k.startswith(key_delete):
+                        self.timing_info.pop(k, None)
 
             # Build a dictionary containing the timing information and some metadata
             # about this run.
@@ -711,3 +748,210 @@ def parse_validate_default_args(parser):
             raise ValueError("target_img_width must be a value >=10.")
 
     return args
+
+
+def summarize_runs(
+    baseline_run_root,
+    baseline_run_name="baseline",
+    compare_run_roots=[],
+    compare_run_names=[],
+):
+    """
+    Summarizes one or more benchmark runs and prepares a pandas table showing the run per sample run-time
+     and speed-up numbers.
+    :param baseline_run_root: Folder containing one sub-folder per sample in which the benchmark.py
+     styled JSON of the baseline run is stored.
+    :param baseline_run_name: The display name of the column representing the first run in the table.
+    :param compare_run_roots: Optional. A list of folder containing one sub-folder per sample in which the
+     benchmark.py styled JSON of the other runs are stored. These runs are compared with the baseline run.
+    :param compare_run_names: A list of display names of the column representing the comparison runs
+     in the table. This must be of the same length as the `compare_run_json_paths`.
+    :returns: A pandas table with the sample's name and its run time from the baseline run.
+     If compare runs are given, it also returns their run times and the speed-up
+     compared to the baseline run. The speedup is simply the run time of the sample from the compare run
+     divided by its run time from the baseline run. If an sample's run time or speedup factor is not
+     available, it simply puts "N/A".
+    """
+
+    def _parse_json_for_time(json_data):
+        mean_all_batches = json_data["mean_all_batches"]
+        sample_name_key = list(mean_all_batches.keys())[0]
+
+        cpu_time_minus_warmup_per_item = mean_all_batches[sample_name_key][
+            "run_sample"
+        ]["pipeline"]["cpu_time_minus_warmup_per_item"]
+
+        return cpu_time_minus_warmup_per_item
+
+    baseline_perf = {}
+    if os.path.isdir(baseline_run_root):
+        for path in os.listdir(baseline_run_root):
+            if os.path.isdir(os.path.join(baseline_run_root, path)):
+                json_path = os.path.join(baseline_run_root, path, "benchmark_mean.json")
+                if os.path.isfile(json_path):
+                    with open(json_path, "r") as f:
+                        json_data = json.loads(
+                            f.read()
+                        )  # Storing by the name of the sample
+
+                        baseline_perf[path] = _parse_json_for_time(json_data)
+    else:
+        raise ValueError("baseline_run_root does not exist: %s" % baseline_run_root)
+
+    if len(compare_run_roots) != len(compare_run_names):
+        raise ValueError(
+            "Length mismatch between the number of given paths for comparison and"
+            "their run names. %d v/s %d. Each path must have its corresponding run name."
+            % (len(compare_run_roots), len(compare_run_names))
+        )
+
+    # Read all the comparison related JSON files, one by one, if any.
+    compare_perfs = {}
+    for compare_run_root, compare_run_name in zip(compare_run_roots, compare_run_names):
+        if os.path.isdir(compare_run_root):
+            compare_perfs[compare_run_name] = {}
+
+            for path in os.listdir(compare_run_root):
+                if os.path.isdir(os.path.join(compare_run_root, path)):
+                    compare_perfs[compare_run_name][path] = {}
+
+                    json_path = os.path.join(
+                        compare_run_root, path, "benchmark_mean.json"
+                    )
+                    if os.path.isfile(json_path):
+                        with open(json_path, "r") as f:
+                            json_data = json.loads(
+                                f.read()
+                            )  # Storing by the name of the sample
+
+                            compare_perfs[compare_run_name][
+                                path
+                            ] = _parse_json_for_time(json_data)
+        else:
+            raise ValueError("compare_run_root does not exist: %s" % compare_run_root)
+
+    results = []
+
+    for sample_name in baseline_perf:
+        row_dict = {}
+
+        # Fetch the time and parameters from the JSON for baseline run.
+        baseline_run_time = baseline_perf[sample_name]
+
+        row_dict["sample name"] = sample_name
+        row_dict["%s time (ms)" % baseline_run_name] = baseline_run_time
+
+        if compare_perfs:
+            # Fetch the time from the JSON for all comparison runs.
+            for compare_run_name in compare_perfs:
+                # Check if the sample was present.
+                if sample_name in compare_perfs[compare_run_name]:
+                    compare_run_time = compare_perfs[compare_run_name][sample_name]
+                else:
+                    compare_run_time = None
+
+                row_dict["%s time (ms)" % compare_run_name] = (
+                    compare_run_time if compare_run_time else "N/A"
+                )
+
+                if baseline_run_time and compare_run_time:
+                    speedup = round(compare_run_time / baseline_run_time, 3)
+                else:
+                    speedup = "N/A"
+                row_dict[
+                    "%s v/s %s speed-up" % (compare_run_name, baseline_run_name)
+                ] = speedup
+
+        results.append(row_dict)
+
+    df = pandas.DataFrame.from_dict(results)
+
+    return df
+
+
+def main():
+    """
+    The main function. This will run the comparison function to compare two benchmarking runs.
+    """
+    parser = argparse.ArgumentParser("Summarize and compare benchmarking runs.")
+
+    parser.add_argument(
+        "-o",
+        "--output-dir",
+        type=str,
+        required=True,
+        help="The output directory where you want to store the result summary as a CSV file.",
+    )
+
+    parser.add_argument(
+        "-b",
+        "--baseline-root",
+        type=str,
+        required=True,
+        help="Root folder containing one sub-folder per sample in which benchmark.py styled JSONs"
+        " of the baseline runs of those samples are stored.",
+    )
+    parser.add_argument(
+        "-bn",
+        "--baseline-name",
+        type=str,
+        required=True,
+        help="The name of the column representing the baseline run in the output table.",
+    )
+    parser.add_argument(
+        "-c",
+        "--compare-roots",
+        action="append",
+        required=False,
+        help="Optional. List of folders containing one sub-folder per sample in which benchmark.py"
+        " styled JSONs of the comparison runs of those samples are stored.",
+    )
+    parser.add_argument(
+        "-cn",
+        "--compare-names",
+        action="append",
+        required=False,
+        help="Optional. List of names of the column representing the comparison runs in the "
+        "output table",
+    )
+
+    args = parser.parse_args()
+
+    if not os.path.isdir(args.output_dir):
+        raise ValueError("output-dir does not exist: %s" % args.output_dir)
+
+    if not os.path.isdir(args.baseline_root):
+        raise ValueError("baseline-root does not exist: %s" % args.baseline_json)
+
+    if len(args.compare_roots) != len(args.compare_names):
+        raise ValueError(
+            "Length mismatch between the number of given paths for comparison and"
+            "their run names. %d v/s %d. Each path must have its corresponding run name."
+            % (len(args.compare_roots), len(args.compare_names))
+        )
+
+    logger.info(
+        "Summarizing a total of %d runs. All times are in milliseconds"
+        % (len(args.compare_roots) + 1)
+    )
+
+    df = summarize_runs(
+        baseline_run_root=args.baseline_root,
+        baseline_run_name=args.baseline_name,
+        compare_run_roots=args.compare_roots,
+        compare_run_names=args.compare_names,
+    )
+
+    csv_path = os.path.join(
+        args.output_dir,
+        "summarize_runs.%s.csv" % datetime.now(),
+    )
+    df.to_csv(csv_path)
+
+    logger.info("Wrote comparison CSV to: %s" % csv_path)
+
+
+if __name__ == "__main__":
+    # If this was called on its own, we will run the summarize_runs function to summarize and
+    # compare two runs.
+    main()

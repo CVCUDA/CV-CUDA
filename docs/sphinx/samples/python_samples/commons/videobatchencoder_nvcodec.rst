@@ -1,5 +1,5 @@
 ..
-   # SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+   # SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
    # SPDX-License-Identifier: Apache-2.0
    #
    # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,18 +14,18 @@
    # See the License for the specific language governing permissions and
    # limitations under the License.
 
-.. _videobatchencoder_vpf:
+.. _videobatchencoder_pyvideocodec:
 
-Video Encoding using VPF
+Video Encoding using VpyNvVideoCodecPF
 ====================
 
 
-The video batch encoder is responsible for writing PyTorch tensors as an MP4 video. The actual encoding is done in batches using  NVIDIA's `Video Processing Framework <https://github.com/NVIDIA/VideoProcessingFramework>`_. The video encoder is generic enough to be used across the sample applications. The code associated with this class can be found in the ``samples/common/python/vpf_utils.py`` file.
+The video batch encoder is responsible for writing tensors as an MP4 video. The actual encoding is done in batches using NVIDIA's pyNvVideoCodec. The video encoder is generic enough to be used across the sample applications. The code associated with this class can be found in the ``samples/common/python/nvcodec_utils.py`` file.
 
 There are two classes responsible for the encoding work:
 
-1. ``VideoBatchEncoderVPF`` and
-2. ``nvencoder``
+1. ``VideoBatchEncoder`` and
+2. ``nvVideoEncoder``
 
 The first class acts as a wrapper on the second class which allows us to:
 
@@ -42,72 +42,72 @@ To get started, here is how the class is initialized in its ``__init__`` method.
 **Note**: Due to the nature of NV12, representing it directly as a CVCUDA tensor is a bit challenging. Be sure to read through the explanation in the comments of the code shown below to understand more.
 
 
-.. literalinclude:: ../../../../../samples/common/python/vpf_utils.py
+.. literalinclude:: ../../../../../samples/common/python/nvcodec_utils.py
    :language: python
    :linenos:
-   :start-after: begin_init_videobatchencoder_vpf
-   :end-before: end_init_videobatchencoder_vpf
+   :start-after: begin_init_videobatchencoder_pyvideocodec
+   :end-before: end_init_videobatchencoder_pyvideocodec
    :dedent:
 
 
 Once things are defined and initialized, we would start the decoding when a call to the ``__call__`` function is made. We need to first allocate the encoder instance if it wasn't done so already.
 
-.. literalinclude:: ../../../../../samples/common/python/vpf_utils.py
+.. literalinclude:: ../../../../../samples/common/python/nvcodec_utils.py
    :language: python
    :linenos:
-   :start-after: begin_call_videobatchencoder_vpf
-   :end-before: end_alloc_videobatchdecoder_vpf
+   :start-after: begin_call_videobatchencoder_pyvideocodec
+   :end-before: end_alloc_videobatchdecoder_pyvideocodec
    :dedent:
 
 Next, we use CVCUDA's ``cvtcolor_into`` function to convert the batch data from RGB format to NV12 format. We allocate tensors once to do the color conversion and avoid allocating same tensors on every batch.
 
-.. literalinclude:: ../../../../../samples/common/python/vpf_utils.py
+.. literalinclude:: ../../../../../samples/common/python/nvcodec_utils.py
    :language: python
    :linenos:
-   :start-after: begin_alloc_cvcuda_videobatchdecoder_vpf
-   :end-before: end_alloc_cvcuda_videobatchdecoder_vpf
+   :start-after: begin_alloc_cvcuda_videobatchdecoder_pyvideocodec
+   :end-before: end_alloc_cvcuda_videobatchdecoder_pyvideocodec
    :dedent:
 
 
 Once the tensors are allocated, we use CVCUDA ops to perform the color conversion.
 
-.. literalinclude:: ../../../../../samples/common/python/vpf_utils.py
+.. literalinclude:: ../../../../../samples/common/python/nvcodec_utils.py
    :language: python
    :linenos:
-   :start-after: begin_convert_videobatchencoder_vpf
-   :end-before: end_convert_videobatchencoder_vpf
+   :start-after: begin_convert_videobatchencoder_pyvideocodec
+   :end-before: end_convert_videobatchencoder_pyvideocodec
    :dedent:
 
 
-Finally, we call the ``nvencooder`` instance to actually do the encoding.
+Finally, we call the ``nvVideoEncoder`` instance to actually do the encoding.
 
-.. literalinclude:: ../../../../../samples/common/python/vpf_utils.py
+.. literalinclude:: ../../../../../samples/common/python/nvcodec_utils.py
    :language: python
    :linenos:
-   :start-after: begin_encode_videobatchencoder_vpf
-   :end-before: end_encode_videobatchencoder_vpf
+   :start-after: begin_encode_videobatchencoder_nvvideoencoder
+   :end-before: end_encode_videobatchencoder_nvvideoencoder
    :dedent:
 
 
-nvencoder
+nvVideoEncoder
 ------------------
 
-This is a class offering hardware accelerated video encoding functionality using VPF. It encodes tensors and writes as an MP4 file. Please consult the documentation of the `Video Processing Framework <https://github.com/NVIDIA/VideoProcessingFramework>`_ to learn more about its capabilities and APIs.
+This is a class offering hardware accelerated video encoding functionality using pyNvVideoCodec. It encodes tensors and writes as an MP4 file. Please consult the documentation of the pyNvVideoCodec to learn more about its capabilities and APIs.
 
-For use in CVCUDA, this class defines the following ``tensor_to_surface`` and ``encode_from_tensor`` functions which encode a Torch tensor.
+For use in CVCUDA, this class defines the following ``encode_from_tensor`` functions which encode a Torch tensor.
 
-.. literalinclude:: ../../../../../samples/common/python/vpf_utils.py
+.. literalinclude:: ../../../../../samples/common/python/nvcodec_utils.py
    :language: python
    :linenos:
-   :start-after: begin_imp_nvencoder
-   :end-before: end_imp_nvencoder
+   :start-after: begin_imp_nvvideoencoder
+   :end-before: end_imp_nvvideoencoder
    :dedent:
 
 Finally, we use the ``av`` library to write packets to an MP4 container. We must properly flush (i.e. write any pending packets) at the end.
 
-.. literalinclude:: ../../../../../samples/common/python/vpf_utils.py
+.. literalinclude:: ../../../../../samples/common/python/nvcodec_utils.py
    :language: python
    :linenos:
-   :start-after: begin_writeframe_nvencoder
-   :end-before: end_writeframe_nvencoder
+   :start-after: begin_writeframe_nvvideoencoder
+   :end-before: end_writeframe_nvvideoencoder
    :dedent:

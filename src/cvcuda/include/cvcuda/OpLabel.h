@@ -58,20 +58,20 @@ CVCUDA_PUBLIC NVCVStatus cvcudaLabelCreate(NVCVOperatorHandle *handle);
  * inside the input tensor, yielding labels in the output tensor with same rank and shape.  Labels are numbers
  * uniquely assigned to each connected region, for example:
  *
- * Input   0 0 0 0  Output   0 0 0 0
- * image:  1 1 0 1  labels:  4 4 0 7
- *         0 0 0 1           0 0 0 7
- *         0 1 1 1           0 7 7 7
+ *     Input   0 0 0 0  Output   0 0 0 0
+ *     image:  1 1 0 1  labels:  4 4 0 7
+ *             0 0 0 1           0 0 0 7
+ *             0 1 1 1           0 7 7 7
  *
  * In the above example, three distinct regions were identified and labeled as 0, 4 and 7.  Note that the region
  * labeled with 0 remained with the same value as the input, and label numbers 4 and 7 were assigned in
  * non-consecutive ordering.  Some values in the input may be ignored, i.e. not labeled, using the \ref bgLabel
  * tensor to define those values as background, which usually is set to the value zero.  For example:
  *
- * Input   0 0 1 0  Output   0 0 2 3  Zeros in  0 0 2 0
- * image:  0 1 0 1  labels:  0 5 6 7  bgLabel:  0 5 0 7
- *         0 0 1 1           0 0 7 7            0 0 7 7
- *         0 1 1 1           0 7 7 7            0 7 7 7
+ *     Input   0 0 1 0  Output   0 0 2 3  Zeros in  0 0 2 0
+ *     image:  0 1 0 1  labels:  0 5 6 7  bgLabel:  0 5 0 7
+ *             0 0 1 1           0 0 7 7            0 0 7 7
+ *             0 1 1 1           0 7 7 7            0 7 7 7
  *
  *  Limitations:
  *
@@ -106,7 +106,6 @@ CVCUDA_PUBLIC NVCVStatus cvcudaLabelCreate(NVCVOperatorHandle *handle);
  *       64bit Float    | No
  *
  *  Input/Output dependency
- *
  *       Property      |  Input == Output
  *      -------------- | -------------
  *       Data Layout   | Yes

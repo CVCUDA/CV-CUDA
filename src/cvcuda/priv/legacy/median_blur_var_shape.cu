@@ -91,7 +91,7 @@ __device__ T fetch(T *shared, const cuda::ImageBatchVarShapeWrapNHWC<T> src, int
  */
 template<typename T>
 __global__ void median(const cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
-                       const cuda::Tensor2DWrap<int> ksize)
+                       cuda::Tensor1DWrap<const int2> ksize)
 {
 #define fetch_(gx, gy, block_size) \
     fetch<T>(tails, src, batchIdx, h, w, channel, blockX, blockY, (gx), (gy), (block_size))
@@ -105,8 +105,10 @@ __global__ void median(const cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::Imag
     int channel  = blockIdx.z % dst.numChannels();
     int batchIdx = blockIdx.z / dst.numChannels();
     int h = src.height(batchIdx), w = src.width(batchIdx);
-    int kWidth  = *ksize.ptr(batchIdx, 0); //kWidths[batchIdx];
-    int kHeight = *ksize.ptr(batchIdx, 1); //kHeights[batchIdx];
+
+    int2 kernelSize = ksize[batchIdx];
+    int  kWidth     = kernelSize.x;
+    int  kHeight    = kernelSize.y;
 
     __shared__ T tails[GENERAL_KERNEL_BLOCK * GENERAL_KERNEL_BLOCK];
     if (x < w && y < h)
@@ -277,7 +279,7 @@ __inline__ __device__ T placePivot(T *arr, int length)
 
 template<typename T>
 __global__ void medianForSmallKernel(const cuda::ImageBatchVarShapeWrapNHWC<T> src,
-                                     cuda::ImageBatchVarShapeWrapNHWC<T> dst, const cuda::Tensor2DWrap<int> ksize)
+                                     cuda::ImageBatchVarShapeWrapNHWC<T> dst, cuda::Tensor1DWrap<const int2> ksize)
 {
     int tx = threadIdx.x, ty = threadIdx.y;
     int blockX   = blockIdx.x * blockDim.x;
@@ -287,8 +289,10 @@ __global__ void medianForSmallKernel(const cuda::ImageBatchVarShapeWrapNHWC<T> s
     int channel  = blockIdx.z % dst.numChannels();
     int batchIdx = blockIdx.z / dst.numChannels();
     int h = src.height(batchIdx), w = src.width(batchIdx);
-    int kWidth  = *ksize.ptr(batchIdx, 0); //kWidths[batchIdx];
-    int kHeight = *ksize.ptr(batchIdx, 1); //kHeights[batchIdx];
+
+    int2 kernelSize = ksize[batchIdx];
+    int  kWidth     = kernelSize.x;
+    int  kHeight    = kernelSize.y;
 
     __shared__ T tails[SMALL_KERNEL_BLOCK * SMALL_KERNEL_BLOCK];
     if (x < w && y < h)
@@ -349,8 +353,6 @@ void median(const ImageBatchVarShapeDataStridedCuda &in, const ImageBatchVarShap
 
     cuda::ImageBatchVarShapeWrapNHWC<T> src(in, channels);
     cuda::ImageBatchVarShapeWrapNHWC<T> dst(out, channels);
-
-    cuda::Tensor2DWrap<int> ksizePtr(ksize);
 
 #ifdef CUDA_DEBUG_LOG
     checkCudaErrors(cudaStreamSynchronize(stream));

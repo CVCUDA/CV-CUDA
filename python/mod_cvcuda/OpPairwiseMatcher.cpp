@@ -50,25 +50,25 @@ TupleTensor3 PairwiseMatcherInto(Tensor &matches, std::optional<Tensor> numMatch
     auto op = CreateOperator<cvcuda::PairwiseMatcher>(algoChoice);
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {set1, set2});
-    guard.add(LockMode::LOCK_WRITE, {matches});
-    guard.add(LockMode::LOCK_NONE, {*op});
+    guard.add(LockMode::LOCK_MODE_READ, {set1, set2});
+    guard.add(LockMode::LOCK_MODE_WRITE, {matches});
+    guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
     if (numSet1)
     {
-        guard.add(LockMode::LOCK_READ, {*numSet1});
+        guard.add(LockMode::LOCK_MODE_READ, {*numSet1});
     }
     if (numSet2)
     {
-        guard.add(LockMode::LOCK_READ, {*numSet2});
+        guard.add(LockMode::LOCK_MODE_READ, {*numSet2});
     }
     if (numMatches)
     {
-        guard.add(LockMode::LOCK_WRITE, {*numMatches});
+        guard.add(LockMode::LOCK_MODE_WRITE, {*numMatches});
     }
     if (distances)
     {
-        guard.add(LockMode::LOCK_WRITE, {*distances});
+        guard.add(LockMode::LOCK_MODE_WRITE, {*distances});
     }
 
     op->submit(pstream->cudaHandle(), set1, set2, (numSet1 ? *numSet1 : nvcv::Tensor{nullptr}),

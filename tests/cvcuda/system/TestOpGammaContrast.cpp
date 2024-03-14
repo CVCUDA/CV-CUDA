@@ -24,14 +24,13 @@
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
+#include <nvcv/cuda/MathWrappers.hpp>
 #include <nvcv/cuda/TypeTraits.hpp>
 
 #include <random>
 
 namespace test = nvcv::test;
 namespace cuda = nvcv::cuda;
-
-// clang-format off
 
 #define DBG_GAMMA_CONTRAST 0
 
@@ -55,15 +54,29 @@ static void printVec(std::vector<uint8_t> &vec, int height, int rowPitch, int by
 #endif
 }
 
-static void GammaContrastVarShapeCpuOp(std::vector<uint8_t> &hDst, int dstRowStride, nvcv::Size2D dstSize, const std::vector<uint8_t> &hSrc,
-                   int srcRowStride, nvcv::Size2D srcSize, nvcv::ImageFormat fmt, const std::vector<float> gamma, const int imageIndex, bool perChannel)
+#define VEC_EXPECT_NEAR(vec1, vec2, delta, dtype)                                                                    \
+    ASSERT_EQ(vec1.size(), vec2.size());                                                                             \
+    for (std::size_t idx = 0; idx < vec1.size() / sizeof(dtype); ++idx)                                              \
+    {                                                                                                                \
+        EXPECT_NEAR(reinterpret_cast<dtype *>(vec1.data())[idx], reinterpret_cast<dtype *>(vec2.data())[idx], delta) \
+            << "At index " << idx;                                                                                   \
+    }
+
+namespace {
+
+// uint8 cpu op
+template<typename T>
+void GammaContrastVarShapeCpuOp(std::vector<T> &hDst, int dstRowStride, nvcv::Size2D dstSize,
+                                const std::vector<T> &hSrc, int srcRowStride, nvcv::Size2D srcSize,
+                                nvcv::ImageFormat fmt, const std::vector<float> gamma, const int imageIndex,
+                                bool perChannel)
 {
     assert(fmt.numPlanes() == 1);
 
     int elementsPerPixel = fmt.numChannels();
 
-    uint8_t       *dstPtr = hDst.data();
-    const uint8_t *srcPtr = hSrc.data();
+    T       *dstPtr = hDst.data();
+    const T *srcPtr = hSrc.data();
 
     for (int dst_y = 0; dst_y < dstSize.h; dst_y++)
     {
@@ -71,15 +84,70 @@ static void GammaContrastVarShapeCpuOp(std::vector<uint8_t> &hDst, int dstRowStr
         {
             for (int k = 0; k < elementsPerPixel; k++)
             {
-                int index = dst_y * dstRowStride + dst_x * elementsPerPixel + k;
+                int   index     = dst_y * dstRowStride + dst_x * elementsPerPixel + k;
                 float gamma_tmp = perChannel ? gamma[imageIndex * elementsPerPixel + k] : gamma[imageIndex];
-                float tmp   = (srcPtr[index] + 0.0f) / 255.0f;
-                uint8_t out  = std::rint(pow(tmp, gamma_tmp) * 255.0f);
-                dstPtr[index] = out;
+                float tmp       = (srcPtr[index] + 0.0f) / 255.0f;
+                T     out       = std::rint(pow(tmp, gamma_tmp) * 255.0f);
+                dstPtr[index]   = out;
             }
         }
     }
 }
+
+// float cpu op
+template<>
+void GammaContrastVarShapeCpuOp(std::vector<float> &hDst, int dstRowStride, nvcv::Size2D dstSize,
+                                const std::vector<float> &hSrc, int srcRowStride, nvcv::Size2D srcSize,
+                                nvcv::ImageFormat fmt, const std::vector<float> gamma, const int imageIndex,
+                                bool perChannel)
+{
+    assert(fmt.numPlanes() == 1);
+
+    int elementsPerPixel = fmt.numChannels();
+
+    for (int dst_y = 0; dst_y < dstSize.h; dst_y++)
+    {
+        for (int dst_x = 0; dst_x < dstSize.w; dst_x++)
+        {
+            for (int k = 0; k < elementsPerPixel; k++)
+            {
+                int   index     = dst_y * dstRowStride + dst_x * elementsPerPixel + k;
+                float gamma_tmp = perChannel ? gamma[imageIndex * elementsPerPixel + k] : gamma[imageIndex];
+                float out       = nvcv::cuda::clamp(nvcv::cuda::pow(hSrc[index], gamma_tmp), 0.f, 1.f);
+                hDst[index]     = out;
+            }
+        }
+    }
+}
+
+void GammaContrastVarShapeCpuOpWrapper(std::vector<uint8_t> &hDst, int dstRowStride, nvcv::Size2D dstSize,
+                                       const std::vector<uint8_t> &hSrc, int srcRowStride, nvcv::Size2D srcSize,
+                                       nvcv::ImageFormat fmt, const std::vector<float> gamma, const int imageIndex,
+                                       bool perChannel, NVCVDataType nvcvDataType)
+{
+    if (nvcvDataType == NVCV_DATA_TYPE_F32 || nvcvDataType == NVCV_DATA_TYPE_2F32 || nvcvDataType == NVCV_DATA_TYPE_3F32
+        || nvcvDataType == NVCV_DATA_TYPE_4F32)
+    {
+        std::vector<float> src_tmp(hSrc.size() / sizeof(float));
+        std::vector<float> dst_tmp(hDst.size() / sizeof(float));
+        size_t             copySize = hSrc.size();
+        memcpy(static_cast<void *>(src_tmp.data()), const_cast<void *>(static_cast<const void *>(hSrc.data())),
+               copySize);
+        memcpy(static_cast<void *>(dst_tmp.data()), static_cast<void *>(hDst.data()), copySize);
+        GammaContrastVarShapeCpuOp(dst_tmp, dstRowStride / sizeof(float), dstSize, src_tmp,
+                                   srcRowStride / sizeof(float), srcSize, fmt, gamma, imageIndex, perChannel);
+        memcpy(static_cast<void *>(hDst.data()), static_cast<void *>(dst_tmp.data()), copySize);
+    }
+    else
+    {
+        GammaContrastVarShapeCpuOp(hDst, dstRowStride, dstSize, hSrc, srcRowStride, srcSize, fmt, gamma, imageIndex,
+                                   perChannel);
+    }
+}
+
+} // namespace
+
+// clang-format off
 
 NVCV_TEST_SUITE_P(OpGammaContrast, test::ValueList<int, int, int, NVCVImageFormat, float, bool>
 {
@@ -97,6 +165,20 @@ NVCV_TEST_SUITE_P(OpGammaContrast, test::ValueList<int, int, int, NVCVImageForma
     {   11,    11,       4,   NVCV_IMAGE_FORMAT_RGBA8,        0.4,      false},
     {   7,      8,       3,    NVCV_IMAGE_FORMAT_RGB8,        0.9,      false},
     {   7,      6,       4,   NVCV_IMAGE_FORMAT_RGBA8,        0.8,      false},
+
+    {   5,      5,       1,     NVCV_IMAGE_FORMAT_F32,       0.5,        true},
+    {   9,     11,       2,     NVCV_IMAGE_FORMAT_F32,      0.75,        true},
+    {   12,     7,       3,  NVCV_IMAGE_FORMAT_RGBf32,       1.0,        true},
+    {   11,    11,       4, NVCV_IMAGE_FORMAT_RGBAf32,       0.4,        true},
+    {   7,      8,       3,  NVCV_IMAGE_FORMAT_RGBf32,       0.9,        true},
+    {   7,      6,       4, NVCV_IMAGE_FORMAT_RGBAf32,       0.8,        true},
+
+    {   5,      5,       1,     NVCV_IMAGE_FORMAT_F32,        0.5,      false},
+    {   9,     11,       2,     NVCV_IMAGE_FORMAT_F32,       0.75,      false},
+    {   12,     7,       3,  NVCV_IMAGE_FORMAT_RGBf32,        1.0,      false},
+    {   11,    11,       4, NVCV_IMAGE_FORMAT_RGBAf32,        0.4,      false},
+    {   7,      8,       3,  NVCV_IMAGE_FORMAT_RGBf32,        0.9,      false},
+    {   7,      6,       4, NVCV_IMAGE_FORMAT_RGBAf32,        0.8,      false},
 });
 
 // clang-format on
@@ -112,7 +194,10 @@ TEST_P(OpGammaContrast, varshape_correct_output)
 
     nvcv::ImageFormat format{GetParamValue<3>()};
 
-    float gamma = GetParamValue<4>();
+    NVCVDataType nvcvDataType;
+    ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetPlaneDataType(format, 0, &nvcvDataType));
+    float gamma       = GetParamValue<4>();
+    bool  isFloatTest = false;
 
     bool perChannel = GetParamValue<5>();
 
@@ -135,9 +220,25 @@ TEST_P(OpGammaContrast, varshape_correct_output)
         srcVecRowStride[i] = srcRowStride;
 
         std::uniform_int_distribution<uint8_t> udist(0, 255);
+        std::uniform_real_distribution<float>  udistf(0.f, 1.f);
 
         srcVec[i].resize(imgSrc[i].size().h * srcRowStride);
-        std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return udist(rng); });
+        switch (nvcvDataType)
+        {
+        case NVCV_DATA_TYPE_F32:
+        case NVCV_DATA_TYPE_2F32:
+        case NVCV_DATA_TYPE_3F32:
+        case NVCV_DATA_TYPE_4F32:
+            isFloatTest = true;
+            for (size_t idx = 0; idx < (srcVec[i].size() / sizeof(float)); ++idx)
+            {
+                reinterpret_cast<float *>(srcVec[i].data())[idx] = udistf(rng);
+            }
+            break;
+        default:
+            std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return udist(rng); });
+            break;
+        }
 
         auto imgData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_NE(imgData, nvcv::NullOpt);
@@ -228,13 +329,27 @@ TEST_P(OpGammaContrast, varshape_correct_output)
         std::generate(goldVec.begin(), goldVec.end(), [&]() { return 0; });
 
         // Generate gold result
-        GammaContrastVarShapeCpuOp(goldVec, dstRowStride, {dstWidth, dstHeight}, srcVec[i], srcRowStride,
-                                   {srcWidth, srcHeight}, format, gammaVec, i, perChannel);
+        GammaContrastVarShapeCpuOpWrapper(goldVec, dstRowStride, {dstWidth, dstHeight}, srcVec[i], srcRowStride,
+                                          {srcWidth, srcHeight}, format, gammaVec, i, perChannel, nvcvDataType);
 
         printVec(goldVec, srcHeight, dstRowStride, format.numChannels(), "golden output");
 
         printVec(testVec, srcHeight, dstRowStride, format.numChannels(), "operator output");
 
-        EXPECT_EQ(testVec, goldVec);
+        if (!isFloatTest)
+        {
+            EXPECT_EQ(testVec, goldVec);
+        }
+        else
+        {
+            VEC_EXPECT_NEAR(testVec, goldVec, 1E-6F, float);
+        }
     }
 }
+
+TEST(OpGammaContrast_negative, create_with_null_handle)
+{
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaGammaContrastCreate(nullptr, 4, 4));
+}
+
+#undef VEC_EXPECT_NEAR

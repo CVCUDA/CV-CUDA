@@ -64,9 +64,9 @@ Tensor WarpAffineInto(Tensor &output, Tensor &input, const pyarray &xform, const
     auto warpAffine = CreateOperator<cvcuda::WarpAffine>(0);
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*warpAffine});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*warpAffine});
 
     warpAffine->submit(pstream->cudaHandle(), input, output, xformOutput, flags, borderMode, bValue);
 
@@ -107,9 +107,9 @@ ImageBatchVarShape WarpAffineVarShapeInto(ImageBatchVarShape &output, ImageBatch
     auto warpAffine = CreateOperator<cvcuda::WarpAffine>(input.capacity());
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input, xform});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_WRITE, {*warpAffine});
+    guard.add(LockMode::LOCK_MODE_READ, {input, xform});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*warpAffine});
 
     warpAffine->submit(pstream->cudaHandle(), input, output, xform, flags, borderMode, bValue);
 

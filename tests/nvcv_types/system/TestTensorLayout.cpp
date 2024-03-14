@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -418,4 +418,50 @@ TEST_P(TensorLayoutOStreamExecTests, works)
     ss << layout;
 
     EXPECT_STREQ(gold, ss.str().c_str());
+}
+
+TEST(TensorLayoutTests_Negative, invalid_parameter_TensorLayoutMake)
+{
+    NVCVTensorLayout outLayout;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorLayoutMake("HW", nullptr));
+
+    std::string exceededDescr(NVCV_TENSOR_MAX_RANK + 1, 'Z');
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorLayoutMake(exceededDescr.c_str(), &outLayout)); // exceed range
+}
+
+TEST(TensorLayoutTests_Negative, invalid_parameter_TensorLayoutMakeRange)
+{
+    NVCVTensorLayout outLayout;
+
+    std::string validDescr(NVCV_TENSOR_MAX_RANK - 1, 'Z');
+    std::string exceededDescr(NVCV_TENSOR_MAX_RANK + 1, 'Z');
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvTensorLayoutMakeRange(exceededDescr.c_str(), exceededDescr.c_str() + validDescr.size(),
+                                        nullptr)); // null output
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvTensorLayoutMakeRange(nullptr, exceededDescr.c_str() + validDescr.size(), &outLayout)); // null begin
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvTensorLayoutMakeRange(exceededDescr.c_str(), nullptr, &outLayout)); // null end
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvTensorLayoutMakeRange(exceededDescr.c_str(), exceededDescr.c_str() + exceededDescr.size(),
+                                        &outLayout)); // exceed range
+}
+
+TEST(TensorLayoutTests_Negative, invalid_parameter_TensorLayoutMakeFirst)
+{
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvTensorLayoutMakeFirst(NVCV_TENSOR_LAYOUT_MAKE("ABCD"), 2, nullptr)); // null output
+}
+
+TEST(TensorLayoutTests_Negative, invalid_parameter_TensorLayoutMakeLast)
+{
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvTensorLayoutMakeLast(NVCV_TENSOR_LAYOUT_MAKE("ABCD"), 2, nullptr)); // null output
+}
+
+TEST(TensorLayoutTests_Negative, invalid_parameter_TensorLayoutMakeSubRange)
+{
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvTensorLayoutMakeSubRange(NVCV_TENSOR_LAYOUT_MAKE("ABCD"), 0, 2, nullptr)); // null output
 }

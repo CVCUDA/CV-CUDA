@@ -18,6 +18,7 @@
 #include "Definitions.hpp"
 
 #include <common/TypedTests.hpp>
+#include <nvcv/Array.hpp>
 #include <nvcv/Config.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/ImageBatch.hpp>
@@ -46,6 +47,10 @@ T CreateObj()
     {
         return nvcv::Tensor(nvcv::TensorShape({32, 12, 4}, nvcv::TENSOR_NONE), nvcv::TYPE_U8);
     }
+    else if constexpr (std::is_same_v<nvcv::Array, T>)
+    {
+        return nvcv::Array(1, nvcv::TYPE_U8, 0, NVCV_RESOURCE_MEM_HOST);
+    }
     else
     {
         static_assert(sizeof(T) != 0 && "Invalid core object type");
@@ -71,13 +76,17 @@ void SetMaxCount(int32_t maxCount)
     {
         nvcv::cfg::SetMaxTensorCount(maxCount);
     }
+    else if constexpr (std::is_same_v<nvcv::Array, T>)
+    {
+        nvcv::cfg::SetMaxArrayCount(maxCount);
+    }
     else
     {
         static_assert(sizeof(T) != 0 && "Invalid core object type");
     }
 }
 
-using AllCoreTypes = ttest::Types<nvcv::Image, nvcv::ImageBatch, nvcv::Tensor, nvcv::Allocator>;
+using AllCoreTypes = ttest::Types<nvcv::Image, nvcv::ImageBatch, nvcv::Tensor, nvcv::Allocator, nvcv::Array>;
 
 template<class T>
 class ConfigTests : public ::testing::Test

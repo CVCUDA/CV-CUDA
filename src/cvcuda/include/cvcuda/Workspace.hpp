@@ -64,6 +64,13 @@ inline NVCVWorkspaceRequirements MaxWorkspaceReq(const WorkspaceRequirements &a,
     return ret;
 }
 
+inline void AlignUp(WorkspaceRequirements &ws)
+{
+    ws.hostMem.size   = nvcv::detail::AlignUp(ws.hostMem.size, ws.hostMem.alignment);
+    ws.pinnedMem.size = nvcv::detail::AlignUp(ws.pinnedMem.size, ws.pinnedMem.alignment);
+    ws.cudaMem.size   = nvcv::detail::AlignUp(ws.cudaMem.size, ws.cudaMem.alignment);
+}
+
 /** A helper class that manages the lifetime of resources stored in a Workspace structure.
  *
  * This class works in a way similar to unique_ptr with a custom deleter.

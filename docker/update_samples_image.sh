@@ -32,6 +32,7 @@ cd "$SDIR"
 # Copy install_dependencies script from the samples folder to the samples' docker folder
 # so that it can be added and used inside the image.
 cp $SDIR/../samples/scripts/install_dependencies.sh $SDIR/samples/
+cp $SDIR/../samples/scripts/requirements.txt $SDIR/samples/
 
 # load up configuration variables
 . ./config

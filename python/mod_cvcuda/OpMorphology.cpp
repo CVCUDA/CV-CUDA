@@ -44,9 +44,9 @@ Tensor MorphologyInto(Tensor &output, Tensor &input, NVCVMorphologyType morph_ty
     auto morphology = CreateOperator<cvcuda::Morphology>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*morphology});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*morphology});
 
     nvcv::Size2D maskSizeArg{std::get<0>(maskSize), std::get<1>(maskSize)};
     int2         anchorArg;
@@ -55,7 +55,7 @@ Tensor MorphologyInto(Tensor &output, Tensor &input, NVCVMorphologyType morph_ty
 
     if (workspace)
     {
-        guard.add(LockMode::LOCK_READ, {*workspace});
+        guard.add(LockMode::LOCK_MODE_READ, {*workspace});
         morphology->submit(pstream->cudaHandle(), input, output, *workspace, morph_type, maskSizeArg, anchorArg,
                            iteration, border);
     }
@@ -90,14 +90,13 @@ ImageBatchVarShape MorphologyVarShapeInto(ImageBatchVarShape &output, ImageBatch
     auto morphology = CreateOperator<cvcuda::Morphology>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_READWRITE, {output, masks, anchors});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_WRITE, {*morphology});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {output, masks, anchors});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*morphology});
 
     if (workspace)
     {
-        guard.add(LockMode::LOCK_READ, {*workspace});
+        guard.add(LockMode::LOCK_MODE_READ, {*workspace});
         morphology->submit(pstream->cudaHandle(), input, output, *workspace, morph_type, masks, anchors, iteration,
                            borderMode);
     }

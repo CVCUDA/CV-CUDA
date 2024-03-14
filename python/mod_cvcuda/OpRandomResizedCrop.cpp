@@ -43,9 +43,9 @@ Tensor RandomResizedCropInto(Tensor &output, Tensor &input, double min_scale, do
         = CreateOperator<cvcuda::RandomResizedCrop>(min_scale, max_scale, min_ratio, max_ratio, batchSize, seed);
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*randomResizedCrop});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*randomResizedCrop});
 
     randomResizedCrop->submit(pstream->cudaHandle(), input, output, interp);
 
@@ -74,9 +74,9 @@ ImageBatchVarShape RandomResizedCropVarShapeInto(ImageBatchVarShape &output, Ima
         = CreateOperator<cvcuda::RandomResizedCrop>(min_scale, max_scale, min_ratio, max_ratio, input.capacity(), seed);
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*randomResizedCrop});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*randomResizedCrop});
 
     randomResizedCrop->submit(pstream->cudaHandle(), input, output, interp);
 

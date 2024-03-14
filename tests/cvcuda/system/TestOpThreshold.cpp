@@ -154,9 +154,10 @@ static double getThreshVal_Triangle(std::vector<uint8_t> &src)
     return thresh;
 }
 
+namespace {
 //test for uint8
 template<typename T>
-static void Threshold(std::vector<T> &src, std::vector<T> &dst, double thresh, double maxval, uint32_t type)
+void Threshold(std::vector<T> &src, std::vector<T> &dst, double thresh, double maxval, uint32_t type)
 {
     int automatic_thresh = (type & ~NVCV_THRESH_MASK);
     type &= NVCV_THRESH_MASK;
@@ -214,17 +215,105 @@ static void Threshold(std::vector<T> &src, std::vector<T> &dst, double thresh, d
     }
 }
 
-// clang-format off
-NVCV_TEST_SUITE_P(OpThreshold, nvcv::test::ValueList<int, int, int, uint32_t, double, double>
+// test for double
+template<>
+void Threshold(std::vector<double> &src, std::vector<double> &dst, double thresh, double maxval, uint32_t type)
 {
-    //batch,    height,     width,                                                type,         thresh,       maxval
-    {     1,       480,       360,                                  NVCV_THRESH_BINARY,            100,         255},
-    {     5,       100,       100,                              NVCV_THRESH_BINARY_INV,            100,         255},
-    {     4,       100,       101,                                   NVCV_THRESH_TRUNC,            100,         255},
-    {     3,       360,       480,                                  NVCV_THRESH_TOZERO,            100,         255},
-    {     2,       100,       101,                              NVCV_THRESH_TOZERO_INV,            100,         255},
-    {     1,       800,       600,                 NVCV_THRESH_OTSU|NVCV_THRESH_BINARY,            100,         255},
-    {     3,       600,       1000,        NVCV_THRESH_TRIANGLE|NVCV_THRESH_BINARY_INV,            100,         255},
+    int automatic_thresh = (type & ~NVCV_THRESH_MASK);
+    type &= NVCV_THRESH_MASK;
+
+    if (automatic_thresh == (NVCV_THRESH_OTSU | NVCV_THRESH_TRIANGLE) || automatic_thresh == NVCV_THRESH_OTSU
+        || automatic_thresh == NVCV_THRESH_TRIANGLE)
+        return;
+    dst.assign(src.begin(), src.end());
+
+    int size = src.size();
+    switch (type)
+    {
+    case NVCV_THRESH_BINARY:
+        for (int i = 0; i < size; i++) dst[i] = src[i] > thresh ? maxval : 0;
+        break;
+    case NVCV_THRESH_BINARY_INV:
+        for (int i = 0; i < size; i++) dst[i] = src[i] <= thresh ? maxval : 0;
+        break;
+    case NVCV_THRESH_TRUNC:
+        for (int i = 0; i < size; i++) dst[i] = std::min(static_cast<double>(src[i]), thresh);
+        break;
+    case NVCV_THRESH_TOZERO:
+        for (int i = 0; i < size; i++) dst[i] = src[i] > thresh ? src[i] : 0;
+        break;
+    case NVCV_THRESH_TOZERO_INV:
+        for (int i = 0; i < size; i++) dst[i] = src[i] <= thresh ? src[i] : 0;
+        break;
+    }
+}
+
+void ThresholdWrapper(std::vector<uint8_t> &src, std::vector<uint8_t> &dst, double thresh, double maxval, uint32_t type,
+                      NVCVDataType nvcvDataType)
+{
+    if (nvcvDataType == NVCV_DATA_TYPE_F64)
+    {
+        std::vector<double> src_tmp(src.size() / sizeof(double));
+        std::vector<double> dst_tmp(dst.size() / sizeof(double));
+        size_t              copySize = src.size();
+        memcpy(static_cast<void *>(src_tmp.data()), static_cast<void *>(src.data()), copySize);
+        memcpy(static_cast<void *>(dst_tmp.data()), static_cast<void *>(dst.data()), copySize);
+        Threshold(src_tmp, dst_tmp, thresh, maxval, type);
+        memcpy(static_cast<void *>(dst.data()), static_cast<void *>(dst_tmp.data()), copySize);
+    }
+    else
+    {
+        Threshold(src, dst, thresh, maxval, type);
+    }
+}
+
+template<typename T>
+void myGenerate(T *src, std::size_t size, std::default_random_engine &randEng)
+{
+    std::uniform_int_distribution rand(0u, 255u);
+    for (std::size_t idx = 0; idx < size; ++idx)
+    {
+        src[idx] = rand(randEng);
+    }
+}
+
+template<>
+void myGenerate(double *src, std::size_t size, std::default_random_engine &randEng)
+{
+    std::uniform_real_distribution<double> rand(0., 1.);
+    for (std::size_t idx = 0; idx < size; ++idx)
+    {
+        src[idx] = rand(randEng);
+    }
+}
+} // namespace
+
+// clang-format off
+NVCV_TEST_SUITE_P(OpThreshold, nvcv::test::ValueList<int, int, int, uint32_t, double, double, nvcv::ImageFormat>
+{
+    //batch,    height,     width,                                                type,         thresh,      maxval,      format,
+    {     1,       480,       360,                                  NVCV_THRESH_BINARY,            100,         255, nvcv::FMT_U8},
+    {     1,       480,       360,                                  NVCV_THRESH_BINARY,             -1,         255, nvcv::FMT_U8},
+    {     1,       480,       360,                                  NVCV_THRESH_BINARY,            256,         255, nvcv::FMT_U8},
+    {     1,       480,       360,                                  NVCV_THRESH_BINARY,            0.5,         255, nvcv::FMT_F64},
+    {     5,       100,       100,                              NVCV_THRESH_BINARY_INV,            100,         255, nvcv::FMT_U8},
+    {     5,       100,       100,                              NVCV_THRESH_BINARY_INV,             -1,         255, nvcv::FMT_U8},
+    {     5,       100,       100,                              NVCV_THRESH_BINARY_INV,            256,         255, nvcv::FMT_U8},
+    {     5,       100,       100,                              NVCV_THRESH_BINARY_INV,            0.5,         255, nvcv::FMT_F64},
+    {     4,       100,       101,                                   NVCV_THRESH_TRUNC,            100,         255, nvcv::FMT_U8},
+    {     4,       100,       101,                                   NVCV_THRESH_TRUNC,             -1,         255, nvcv::FMT_U8},
+    {     4,       100,       101,                                   NVCV_THRESH_TRUNC,            256,         255, nvcv::FMT_U8},
+    {     4,       100,       101,                                   NVCV_THRESH_TRUNC,            0.5,         255, nvcv::FMT_F64},
+    {     3,       360,       480,                                  NVCV_THRESH_TOZERO,            100,         255, nvcv::FMT_U8},
+    {     3,       360,       480,                                  NVCV_THRESH_TOZERO,             -1,         255, nvcv::FMT_U8},
+    {     3,       360,       480,                                  NVCV_THRESH_TOZERO,            256,         255, nvcv::FMT_U8},
+    {     3,       360,       480,                                  NVCV_THRESH_TOZERO,            0.5,         255, nvcv::FMT_F64},
+    {     2,       100,       101,                              NVCV_THRESH_TOZERO_INV,            100,         255, nvcv::FMT_U8},
+    {     2,       100,       101,                              NVCV_THRESH_TOZERO_INV,             -1,         255, nvcv::FMT_U8},
+    {     2,       100,       101,                              NVCV_THRESH_TOZERO_INV,            256,         255, nvcv::FMT_U8},
+    {     2,       100,       101,                              NVCV_THRESH_TOZERO_INV,            0.5,         255, nvcv::FMT_F64},
+    {     1,       800,       600,                 NVCV_THRESH_OTSU|NVCV_THRESH_BINARY,            100,         255, nvcv::FMT_U8},
+    {     3,       600,       1000,        NVCV_THRESH_TRIANGLE|NVCV_THRESH_BINARY_INV,            100,         255, nvcv::FMT_U8},
 });
 
 // clang-format on
@@ -234,16 +323,19 @@ TEST_P(OpThreshold, tensor_correct_output)
     cudaStream_t stream;
     EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
-    int      batch  = GetParamValue<0>();
-    int      height = GetParamValue<1>();
-    int      width  = GetParamValue<2>();
-    uint32_t type   = GetParamValue<3>();
-    double   thresh = GetParamValue<4>();
-    double   maxval = GetParamValue<5>();
+    int               batch  = GetParamValue<0>();
+    int               height = GetParamValue<1>();
+    int               width  = GetParamValue<2>();
+    uint32_t          type   = GetParamValue<3>();
+    double            thresh = GetParamValue<4>();
+    double            maxval = GetParamValue<5>();
+    nvcv::ImageFormat fmt    = GetParamValue<6>();
 
-    nvcv::ImageFormat fmt    = nvcv::FMT_U8;
-    nvcv::Tensor      imgIn  = nvcv::util::CreateTensor(batch, width, height, fmt);
-    nvcv::Tensor      imgOut = nvcv::util::CreateTensor(batch, width, height, fmt);
+    NVCVDataType nvcvDataType;
+    ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetPlaneDataType(fmt, 0, &nvcvDataType));
+
+    nvcv::Tensor imgIn  = nvcv::util::CreateTensor(batch, width, height, fmt);
+    nvcv::Tensor imgOut = nvcv::util::CreateTensor(batch, width, height, fmt);
 
     auto inData = imgIn.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_NE(nullptr, inData);
@@ -295,9 +387,16 @@ TEST_P(OpThreshold, tensor_correct_output)
 
     for (int i = 0; i < batch; i++)
     {
-        std::uniform_int_distribution<uint8_t> rand(0, 255);
         srcVec[i].resize(height * rowStride);
-        std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return rand(randEng); });
+        switch (nvcvDataType)
+        {
+        case NVCV_DATA_TYPE_F64:
+            myGenerate(reinterpret_cast<double *>(srcVec[i].data()), srcVec[i].size() / sizeof(double), randEng);
+            break;
+        default:
+            myGenerate(reinterpret_cast<uint8_t *>(srcVec[i].data()), srcVec[i].size(), randEng);
+            break;
+        }
         ASSERT_EQ(cudaSuccess, cudaMemcpy2D(inAccess->sampleData(i), inAccess->rowStride(), srcVec[i].data(), rowStride,
                                             rowStride, height, cudaMemcpyHostToDevice));
     }
@@ -319,7 +418,7 @@ TEST_P(OpThreshold, tensor_correct_output)
                                             rowStride, height, cudaMemcpyDeviceToHost));
 
         std::vector<uint8_t> goldVec(height * rowStride);
-        Threshold(srcVec[i], goldVec, thresh, maxval, type);
+        ThresholdWrapper(srcVec[i], goldVec, thresh, maxval, type, nvcvDataType);
         EXPECT_EQ(goldVec, testVec);
     }
 
@@ -331,14 +430,17 @@ TEST_P(OpThreshold, varshape_correct_shape)
     cudaStream_t stream;
     EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
-    int      batch  = GetParamValue<0>();
-    int      height = GetParamValue<1>();
-    int      width  = GetParamValue<2>();
-    uint32_t type   = GetParamValue<3>();
-    double   thresh = GetParamValue<4>();
-    double   maxval = GetParamValue<5>();
+    int               batch  = GetParamValue<0>();
+    int               height = GetParamValue<1>();
+    int               width  = GetParamValue<2>();
+    uint32_t          type   = GetParamValue<3>();
+    double            thresh = GetParamValue<4>();
+    double            maxval = GetParamValue<5>();
+    nvcv::ImageFormat fmt    = GetParamValue<6>();
 
-    nvcv::ImageFormat                  fmt = nvcv::FMT_U8;
+    NVCVDataType nvcvDataType;
+    ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetPlaneDataType(fmt, 0, &nvcvDataType));
+
     // Create input and output
     std::default_random_engine         randEng;
     std::uniform_int_distribution<int> rndWidth(width * 0.8, width * 1.1);
@@ -391,10 +493,16 @@ TEST_P(OpThreshold, varshape_correct_shape)
 
         int srcRowStride = srcWidth * fmt.planePixelStrideBytes(0);
 
-        std::uniform_int_distribution<uint8_t> rand(0, 255);
-
         srcVec[i].resize(srcHeight * srcRowStride);
-        std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return rand(randEng); });
+        switch (nvcvDataType)
+        {
+        case NVCV_DATA_TYPE_F64:
+            myGenerate(reinterpret_cast<double *>(srcVec[i].data()), srcVec[i].size() / sizeof(double), randEng);
+            break;
+        default:
+            myGenerate(reinterpret_cast<uint8_t *>(srcVec[i].data()), srcVec[i].size(), randEng);
+            break;
+        }
 
         // Copy input data to the GPU
         ASSERT_EQ(cudaSuccess, cudaMemcpy2D(srcData->plane(0).basePtr, srcData->plane(0).rowStride, srcVec[i].data(),
@@ -429,9 +537,148 @@ TEST_P(OpThreshold, varshape_correct_shape)
                                dstHeight, cudaMemcpyDeviceToHost));
 
         std::vector<uint8_t> goldVec(dstHeight * dstRowStride);
-        Threshold(srcVec[i], goldVec, thresh, maxval, type);
+        ThresholdWrapper(srcVec[i], goldVec, thresh, maxval, type, nvcvDataType);
         EXPECT_EQ(goldVec, testVec);
     }
 
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+// clang-format off
+NVCV_TEST_SUITE_P(OpThreshold_Negative, nvcv::test::ValueList<int, int, int, uint32_t, double, double, nvcv::ImageFormat, nvcv::ImageFormat, nvcv::DataType, nvcv::DataType>
+{
+    //batch,    height,     width,                                                     type,         thresh,      maxval,      inFormat,    outFormat,  threshDataType,     maxvalType
+    {     1,       224,       224,                                       NVCV_THRESH_BINARY,            100,         255, nvcv::FMT_F16, nvcv::FMT_F16, nvcv::TYPE_F64, nvcv::TYPE_F64},
+    {     1,       224,       224,                                       NVCV_THRESH_BINARY,            100,         255, nvcv::FMT_U8,  nvcv::FMT_U16, nvcv::TYPE_F64, nvcv::TYPE_F64},
+    {     1,       224,       224,                                       NVCV_THRESH_BINARY,            100,         255, nvcv::FMT_U8,  nvcv::FMT_U8,  nvcv::TYPE_F32, nvcv::TYPE_F64},
+    {     1,       224,       224,                                       NVCV_THRESH_BINARY,            100,         255, nvcv::FMT_U8,  nvcv::FMT_U8,  nvcv::TYPE_F64, nvcv::TYPE_F32},
+    {     1,       224,       224, NVCV_THRESH_TRIANGLE|NVCV_THRESH_OTSU|NVCV_THRESH_BINARY,            100,         255, nvcv::FMT_U8,  nvcv::FMT_U8,  nvcv::TYPE_F64, nvcv::TYPE_F64},
+    {     1,       224,       224,                     NVCV_THRESH_TRUNC|NVCV_THRESH_BINARY,            100,         255, nvcv::FMT_U8,  nvcv::FMT_U8,  nvcv::TYPE_F64, nvcv::TYPE_F64},
+    {     1,       224,       224,                      NVCV_THRESH_OTSU|NVCV_THRESH_BINARY,            100,         255, nvcv::FMT_U16, nvcv::FMT_U16, nvcv::TYPE_F64, nvcv::TYPE_F64},
+    {     1,       224,       224,                      NVCV_THRESH_OTSU|NVCV_THRESH_BINARY,            100,         255, nvcv::FMT_RGB8, nvcv::FMT_RGB8, nvcv::TYPE_F64, nvcv::TYPE_F64},
+    {     1,       224,       224,                  NVCV_THRESH_TRIANGLE|NVCV_THRESH_BINARY,            100,         255, nvcv::FMT_U16, nvcv::FMT_U16, nvcv::TYPE_F64, nvcv::TYPE_F64},
+    {     1,       224,       224,                  NVCV_THRESH_TRIANGLE|NVCV_THRESH_BINARY,            100,         255, nvcv::FMT_RGB8, nvcv::FMT_RGB8, nvcv::TYPE_F64, nvcv::TYPE_F64},
+});
+
+// clang-format on
+
+TEST(OpThreshold_Negative, create_with_null_handle)
+{
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaThresholdCreate(nullptr, NVCV_THRESH_BINARY, 5));
+}
+
+TEST(OpThreshold_Negative, create_with_negative_maxBatchSize)
+{
+    NVCVOperatorHandle thresholdHandle;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaThresholdCreate(&thresholdHandle, NVCV_THRESH_BINARY, -1));
+}
+
+TEST_P(OpThreshold_Negative, invalid_inputs)
+{
+    cudaStream_t stream;
+    EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    int               batch          = GetParamValue<0>();
+    int               height         = GetParamValue<1>();
+    int               width          = GetParamValue<2>();
+    uint32_t          type           = GetParamValue<3>();
+    double            thresh         = GetParamValue<4>();
+    double            maxval         = GetParamValue<5>();
+    nvcv::ImageFormat inFormat       = GetParamValue<6>();
+    nvcv::ImageFormat outFormat      = GetParamValue<7>();
+    nvcv::DataType    threshDataType = GetParamValue<8>();
+    nvcv::DataType    maxvalDataType = GetParamValue<9>();
+
+    nvcv::Tensor imgIn  = nvcv::util::CreateTensor(batch, width, height, inFormat);
+    nvcv::Tensor imgOut = nvcv::util::CreateTensor(batch, width, height, outFormat);
+
+    //parameters
+    nvcv::Tensor threshval({{batch}, "N"}, threshDataType);
+    nvcv::Tensor maxvalval({{batch}, "N"}, maxvalDataType);
+
+    auto threshData = threshval.exportData<nvcv::TensorDataStridedCuda>();
+    auto maxvalData = maxvalval.exportData<nvcv::TensorDataStridedCuda>();
+
+    ASSERT_NE(nullptr, threshData);
+    ASSERT_NE(nullptr, maxvalData);
+
+    std::vector<double> threshVec(batch, thresh);
+    std::vector<double> maxvalVec(batch, maxval);
+
+    // Copy vectors to the GPU
+    ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(threshData->basePtr(), threshVec.data(), threshVec.size() * sizeof(double),
+                                           cudaMemcpyHostToDevice, stream));
+    ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(maxvalData->basePtr(), maxvalVec.data(), maxvalVec.size() * sizeof(double),
+                                           cudaMemcpyHostToDevice, stream));
+
+    // Call operator
+    int               maxBatch = 5;
+    cvcuda::Threshold thresholdOp(type, maxBatch);
+    EXPECT_ANY_THROW(thresholdOp(stream, imgIn, imgOut, threshval, maxvalval));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST_P(OpThreshold_Negative, varshape_invalid_inputs)
+{
+    cudaStream_t stream;
+    EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    int               batch          = GetParamValue<0>();
+    int               height         = GetParamValue<1>();
+    int               width          = GetParamValue<2>();
+    uint32_t          type           = GetParamValue<3>();
+    double            thresh         = GetParamValue<4>();
+    double            maxval         = GetParamValue<5>();
+    nvcv::ImageFormat inFormat       = GetParamValue<6>();
+    nvcv::ImageFormat outFormat      = GetParamValue<7>();
+    nvcv::DataType    threshDataType = GetParamValue<8>();
+    nvcv::DataType    maxvalDataType = GetParamValue<9>();
+
+    // Create input and output
+    std::default_random_engine         randEng;
+    std::uniform_int_distribution<int> rndWidth(width * 0.8, width * 1.1);
+    std::uniform_int_distribution<int> rndHeight(height * 0.8, height * 1.1);
+
+    std::vector<nvcv::Image> imgSrc, imgDst;
+    for (int i = 0; i < batch; ++i)
+    {
+        int rw = rndWidth(randEng);
+        int rh = rndHeight(randEng);
+        imgSrc.emplace_back(nvcv::Size2D{rw, rh}, inFormat);
+        imgDst.emplace_back(nvcv::Size2D{rw, rh}, outFormat);
+    }
+
+    nvcv::ImageBatchVarShape batchSrc(batch);
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+
+    nvcv::ImageBatchVarShape batchDst(batch);
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    //parameters
+    nvcv::Tensor threshval({{batch}, "N"}, threshDataType);
+    nvcv::Tensor maxvalval({{batch}, "N"}, maxvalDataType);
+
+    auto threshData = threshval.exportData<nvcv::TensorDataStridedCuda>();
+    auto maxvalData = maxvalval.exportData<nvcv::TensorDataStridedCuda>();
+
+    ASSERT_NE(nullptr, threshData);
+    ASSERT_NE(nullptr, maxvalData);
+
+    std::vector<double> threshVec(batch, thresh);
+    std::vector<double> maxvalVec(batch, maxval);
+
+    // Copy vectors to the GPU
+    ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(threshData->basePtr(), threshVec.data(), threshVec.size() * sizeof(double),
+                                           cudaMemcpyHostToDevice, stream));
+    ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(maxvalData->basePtr(), maxvalVec.data(), maxvalVec.size() * sizeof(double),
+                                           cudaMemcpyHostToDevice, stream));
+    // Call operator
+    int               maxBatch = 5;
+    cvcuda::Threshold thresholdOp(type, maxBatch);
+    EXPECT_ANY_THROW(thresholdOp(stream, batchSrc, batchDst, threshval, maxvalval));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }

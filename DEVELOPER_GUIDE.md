@@ -1,3 +1,19 @@
+
+[//]: # "SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved."
+[//]: # "SPDX-License-Identifier: Apache-2.0"
+[//]: # ""
+[//]: # "Licensed under the Apache License, Version 2.0 (the 'License');"
+[//]: # "you may not use this file except in compliance with the License."
+[//]: # "You may obtain a copy of the License at"
+[//]: # "http://www.apache.org/licenses/LICENSE-2.0"
+[//]: # ""
+[//]: # "Unless required by applicable law or agreed to in writing, software"
+[//]: # "distributed under the License is distributed on an 'AS IS' BASIS"
+[//]: # "WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied."
+[//]: # "See the License for the specific language governing permissions and"
+[//]: # "limitations under the License."
+
+
 # CV-CUDA Developer Guide
 
 ## What is CV-CUDA?
@@ -35,7 +51,7 @@ CV-CUDA includes:
 | CopyMakeBorder | Creates a border around an image |
 | CustomCrop | Crops an image with a given region-of-interest |
 | CvtColor | Converts an image from one color space to another |
-| DataTypeConvert | Converts an image’s data type with optional scaling |
+| DataTypeConvert | Converts an image’s data type, with optional scaling |
 | Erase | Erases image regions |
 | Find Contours | Extract closed contours from an input binary image |
 | FindHomography | Calculates a perspective transform from four pairs of the corresponding points  |
@@ -45,6 +61,7 @@ CV-CUDA includes:
 | Gaussian Noise | Generates a statistical noise with a normal (Gaussian) distribution |
 | Histogram | Provides a grayscale value distribution showing the frequency of occurrence of each gray value. |
 | Histogram Equalizer | Allows effective spreading out the intensity range of the image typically used to improve contrast |
+| HqResize | Performs advanced resizing supporting 2D and 3D data, tensors, tensor batches, and varshape image batches (2D only). Supports nearest neighbor, linear, cubic, Gaussian and Lanczos interpolation, with optional antialiasing when down-sampling |
 | Inpainting | Performs inpainting by replacing a pixel by normalized weighted sum of all the known pixels in the neighborhood |
 | Joint Bilateral Filter | Reduces image noise while preserving strong edges based on a guidance image |
 | Label | Labels connected regions in an image using 4-way connectivity for foreground and 8-way for background pixels |
@@ -59,7 +76,7 @@ CV-CUDA includes:
 | Normalize | Normalizes an image pixel’s range |
 | OSD (Polyline Line Text Rotated Rect Segmented Mask) | Displays an overlay on the image of different forms including polyline line text rotated rectangle segmented mask |
 | PadStack | Stacks several images into a tensor with border extension |
-| PairwiseMatcher | Matches features computed separately (e.g. via the SIFT operator) in two images using the brute force method |
+| PairwiseMatcher | Matches features computed separately (e.g. via the SIFT operator) in two images, e.g. using the brute force method |
 | PillowResize | Changes the size and scale of an image using python-pillow algorithm |
 | RandomResizedCrop | Crops a random portion of an image and resizes it to a specified size. |
 | Reformat | Converts a planar image into non-planar and vice versa |

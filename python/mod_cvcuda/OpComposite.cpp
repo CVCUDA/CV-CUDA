@@ -42,9 +42,9 @@ Tensor CompositeInto(Tensor &output, Tensor &foreground, Tensor &background, Ten
     auto composite = CreateOperator<cvcuda::Composite>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {foreground, background, fgMask});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*composite});
+    guard.add(LockMode::LOCK_MODE_READ, {foreground, background, fgMask});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*composite});
 
     composite->submit(pstream->cudaHandle(), foreground, background, fgMask, output);
 
@@ -73,9 +73,9 @@ ImageBatchVarShape CompositeVarShapeInto(ImageBatchVarShape &output, ImageBatchV
     auto composite = CreateOperator<cvcuda::Composite>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {foreground, background, fgMask});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*composite});
+    guard.add(LockMode::LOCK_MODE_READ, {foreground, background, fgMask});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*composite});
 
     composite->submit(pstream->cudaHandle(), foreground, background, fgMask, output);
 

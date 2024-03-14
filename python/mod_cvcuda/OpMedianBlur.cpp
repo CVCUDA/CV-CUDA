@@ -42,9 +42,9 @@ Tensor MedianBlurInto(Tensor &output, Tensor &input, const std::tuple<int, int> 
     auto median_blur = CreateOperator<cvcuda::MedianBlur>(0);
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*median_blur});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*median_blur});
 
     nvcv::Size2D ksizeArg{std::get<0>(ksize), std::get<1>(ksize)};
 
@@ -71,9 +71,9 @@ ImageBatchVarShape VarShapeMedianBlurInto(ImageBatchVarShape &output, ImageBatch
     auto median_blur = CreateOperator<cvcuda::MedianBlur>(input.capacity());
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input, ksize});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_WRITE, {*median_blur});
+    guard.add(LockMode::LOCK_MODE_READ, {input, ksize});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*median_blur});
 
     median_blur->submit(pstream->cudaHandle(), input, output, ksize);
 

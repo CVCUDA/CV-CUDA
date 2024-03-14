@@ -46,10 +46,10 @@ TupleTensor2 FindContoursInto(Tensor &points, Tensor &numPoints, Tensor &input, 
     auto         findContours = CreateOperator<cvcuda::FindContours>(size, static_cast<int32_t>(input.shape()[0]));
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {points});
-    guard.add(LockMode::LOCK_WRITE, {numPoints});
-    guard.add(LockMode::LOCK_WRITE, {*findContours});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {points});
+    guard.add(LockMode::LOCK_MODE_WRITE, {numPoints});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*findContours});
 
     findContours->submit(pstream->cudaHandle(), input, points, numPoints);
 

@@ -87,10 +87,10 @@ try
         CPUImage srcVec(shape.y * shape.z, 0);
         for (auto i = 0; i < 10; ++i)
         {
-            auto anchorX = rand() % shape.z;
-            auto anchorY = rand() % shape.y;
-            auto sizeX = rand() % (shape.z - anchorX);
-            auto sizeY = rand() % (shape.y - anchorY);
+            int anchorX = rand() % shape.z;
+            int anchorY = rand() % shape.y;
+            int sizeX = rand() % (shape.z - anchorX);
+            int sizeY = rand() % (shape.y - anchorY);
             generateRectangle(srcVec, {anchorX, anchorY}, {sizeX, sizeY});
         }
 

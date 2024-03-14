@@ -64,7 +64,7 @@ typedef struct NVCVRequirementsRec
  * @param [out] req Requirements to be initialized to zero
  *                  + Must not be NULL
  *
- * @retval NVCV_STATUS_INVALID_ARGUMENTS Some parameter is outside its valid range.
+ * @retval NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside its valid range.
  * @retval NVCV_SUCCESS                  Operation completed successfully.
  */
 NVCV_PUBLIC NVCVStatus nvcvRequirementsInit(NVCVRequirements *req);
@@ -82,7 +82,7 @@ NVCV_PUBLIC NVCVStatus nvcvRequirementsInit(NVCVRequirements *req);
  * @param [in] req Requirements to be added.
  *                 + Must not be NULL
  *
- * @retval NVCV_STATUS_INVALID_ARGUMENTS Some parameter is outside its valid range.
+ * @retval NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside its valid range.
  * @retval NVCV_SUCCESS                  Operation completed successfully.
  */
 NVCV_PUBLIC NVCVStatus nvcvRequirementsAdd(NVCVRequirements *reqSum, const NVCVRequirements *req);
@@ -95,7 +95,7 @@ NVCV_PUBLIC NVCVStatus nvcvRequirementsAdd(NVCVRequirements *reqSum, const NVCVR
  * @param [out] size_t Calculated size in bytes.
  *                 + Must not be NULL
  *
- * @retval NVCV_STATUS_INVALID_ARGUMENTS Some parameter is outside its valid range.
+ * @retval NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside its valid range.
  * @retval NVCV_SUCCESS                  Operation completed successfully.
  */
 NVCV_PUBLIC NVCVStatus nvcvMemRequirementsCalcTotalSizeBytes(const NVCVMemRequirements *memReq, int64_t *sizeBytes);
@@ -115,7 +115,7 @@ NVCV_PUBLIC NVCVStatus nvcvMemRequirementsCalcTotalSizeBytes(const NVCVMemRequir
  *
  * @param [in] bufAlignment Alignment of the memory buffer, in bytes.
  *
- * @retval NVCV_STATUS_INVALID_ARGUMENTS Some parameter is outside its valid range.
+ * @retval NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside its valid range.
  * @retval NVCV_SUCCESS                  Operation completed successfully.
  */
 NVCV_PUBLIC NVCVStatus nvcvMemRequirementsAddBuffer(NVCVMemRequirements *memReq, int64_t bufSize, int64_t bufAlignment);

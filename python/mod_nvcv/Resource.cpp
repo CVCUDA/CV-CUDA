@@ -59,11 +59,11 @@ void Resource::submitSignal(Stream &stream, LockMode mode) const
 {
     doBeforeSubmitSignal(stream, mode);
 
-    if (mode & LOCK_READ)
+    if (mode & LOCK_MODE_READ)
     {
         util::CheckThrow(cudaEventRecord(m_readEvent, stream.handle()));
     }
-    if (mode & LOCK_WRITE)
+    if (mode & LOCK_MODE_WRITE)
     {
         util::CheckThrow(cudaEventRecord(m_writeEvent, stream.handle()));
     }
@@ -78,12 +78,12 @@ void Resource::submitSync(Stream &stream, LockMode mode) const
 
 void Resource::doSubmitSync(Stream &stream, LockMode mode) const
 {
-    if (mode & LOCK_WRITE)
+    if (mode & LOCK_MODE_WRITE)
     {
         util::CheckThrow(cudaStreamWaitEvent(stream.handle(), m_writeEvent));
         util::CheckThrow(cudaStreamWaitEvent(stream.handle(), m_readEvent));
     }
-    else if (mode & LOCK_READ)
+    else if (mode & LOCK_MODE_READ)
     {
         util::CheckThrow(cudaStreamWaitEvent(stream.handle(), m_writeEvent));
     }
@@ -102,12 +102,12 @@ void Resource::doSync(LockMode mode) const
 {
     NVCV_ASSERT(PyGILState_Check() == 0);
 
-    if (mode & LOCK_WRITE)
+    if (mode & LOCK_MODE_WRITE)
     {
         util::CheckThrow(cudaEventSynchronize(m_writeEvent));
         util::CheckThrow(cudaEventSynchronize(m_readEvent));
     }
-    else if (mode & LOCK_READ)
+    else if (mode & LOCK_MODE_READ)
     {
         util::CheckThrow(cudaEventSynchronize(m_writeEvent));
     }

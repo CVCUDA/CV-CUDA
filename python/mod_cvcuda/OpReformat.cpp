@@ -36,9 +36,9 @@ Tensor ReformatInto(Tensor &output, Tensor &input, std::optional<Stream> pstream
     auto reformat = CreateOperator<cvcuda::Reformat>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*reformat});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*reformat});
 
     reformat->submit(pstream->cudaHandle(), input, output);
 

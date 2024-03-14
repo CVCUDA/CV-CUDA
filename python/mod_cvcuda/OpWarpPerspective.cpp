@@ -63,9 +63,9 @@ Tensor WarpPerspectiveInto(Tensor &output, Tensor &input, const pyarray &xform, 
     auto warpPerspective = CreateOperator<cvcuda::WarpPerspective>(0);
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*warpPerspective});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*warpPerspective});
 
     warpPerspective->submit(pstream->cudaHandle(), input, output, xformOutput, flags, borderMode, bValue);
 
@@ -106,9 +106,9 @@ ImageBatchVarShape WarpPerspectiveVarShapeInto(ImageBatchVarShape &output, Image
     auto warpPerspective = CreateOperator<cvcuda::WarpPerspective>(input.capacity());
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input, xform});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_WRITE, {*warpPerspective});
+    guard.add(LockMode::LOCK_MODE_READ, {input, xform});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*warpPerspective});
 
     warpPerspective->submit(pstream->cudaHandle(), input, output, xform, flags, borderMode, bValue);
 

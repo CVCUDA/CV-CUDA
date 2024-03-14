@@ -307,7 +307,7 @@ TEST_P(OpMedianBlur, varshape_correct_output)
     const int               bytesPerPixel = 3;
 
     // Create tensor to store kernel size
-    nvcv::Tensor ksizeTensor(nvcv::TensorShape({numberOfImages, 2}, nvcv::TENSOR_NW), nvcv::TYPE_S32);
+    nvcv::Tensor ksizeTensor(nvcv::TensorShape({numberOfImages}, "N"), nvcv::TYPE_2S32);
     auto         ksizeTensorData = ksizeTensor.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_NE(nullptr, ksizeTensorData);
 

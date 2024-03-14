@@ -22,10 +22,10 @@ namespace nvcvpy {
 
 enum LockMode : uint8_t
 {
-    LOCK_NONE      = 0,
-    LOCK_READ      = 1,
-    LOCK_WRITE     = 2,
-    LOCK_READWRITE = LOCK_READ | LOCK_WRITE
+    LOCK_MODE_NONE      = 0,
+    LOCK_MODE_READ      = 1,
+    LOCK_MODE_WRITE     = 2,
+    LOCK_MODE_READWRITE = LOCK_MODE_READ | LOCK_MODE_WRITE
 };
 
 } // namespace nvcvpy

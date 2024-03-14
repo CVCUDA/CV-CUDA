@@ -36,9 +36,9 @@ Tensor ConvertToInto(Tensor &output, Tensor &input, float scale, float offset, s
     auto cvt = CreateOperator<cvcuda::ConvertTo>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*cvt});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*cvt});
 
     cvt->submit(pstream->cudaHandle(), input, output, scale, offset);
 

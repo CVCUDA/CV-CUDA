@@ -25,9 +25,10 @@ template<typename T>
 inline void Morphology(nvbench::state &state, nvbench::type_list<T>)
 try
 {
-    long3 shape     = benchutils::GetShape<3>(state.get_string("shape"));
-    long  varShape  = state.get_int64("varShape");
-    int   iteration = static_cast<int>(state.get_int64("iteration"));
+    long3 shape      = benchutils::GetShape<3>(state.get_string("shape"));
+    long  varShape   = state.get_int64("varShape");
+    int   iteration  = static_cast<int>(state.get_int64("iteration"));
+    int2  kernelSize = nvcv::cuda::StaticCast<int>(benchutils::GetShape<2>(state.get_string("kernelSize")));
 
     NVCVBorderType borderType = benchutils::GetBorderType(state.get_string("border"));
 
@@ -50,7 +51,7 @@ try
         morphType = NVCV_CLOSE;
     }
 
-    nvcv::Size2D mask{3, 3};
+    nvcv::Size2D mask{kernelSize.x, kernelSize.y};
     int2         anchor{-1, -1};
 
     int bwIteration = (morphType == NVCV_OPEN || morphType == NVCV_CLOSE || iteration > 1) ? 2 * iteration : iteration;
@@ -129,5 +130,6 @@ NVBENCH_BENCH_TYPES(Morphology, NVBENCH_TYPE_AXES(MorphologyTypes))
     .add_string_axis("shape", {"1x1080x1920"})
     .add_int64_axis("varShape", {-1})
     .add_int64_axis("iteration", {1})
+    .add_string_axis("kernelSize", {"3x3"})
     .add_string_axis("morphType", {"ERODE", "DILATE", "OPEN", "CLOSE"})
     .add_string_axis("border", {"REPLICATE"});

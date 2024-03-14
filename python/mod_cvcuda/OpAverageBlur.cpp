@@ -45,9 +45,9 @@ Tensor AverageBlurInto(Tensor &output, Tensor &input, const std::tuple<int, int>
     auto averageBlur = CreateOperator<cvcuda::AverageBlur>(kernelSizeArg, 0);
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_WRITE, {*averageBlur});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_WRITE, {*averageBlur});
 
     averageBlur->submit(pstream->cudaHandle(), input, output, kernelSizeArg, kernelAnchorArg, border);
 
@@ -76,9 +76,9 @@ ImageBatchVarShape AverageBlurVarShapeInto(ImageBatchVarShape &output, ImageBatc
     auto averageBlur = CreateOperator<cvcuda::AverageBlur>(maxKernelSizeArg, input.capacity());
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input, kernel_size, kernel_anchor});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_WRITE, {*averageBlur});
+    guard.add(LockMode::LOCK_MODE_READ, {input, kernel_size, kernel_anchor});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*averageBlur});
 
     averageBlur->submit(pstream->cudaHandle(), input, output, kernel_size, kernel_anchor, border);
 

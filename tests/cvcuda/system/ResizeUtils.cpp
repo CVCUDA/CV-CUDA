@@ -29,7 +29,8 @@
 namespace nvcv::test {
 
 void Resize(std::vector<uint8_t> &hDst, int dstRowStride, nvcv::Size2D dstSize, const std::vector<uint8_t> &hSrc,
-            int srcRowStride, nvcv::Size2D srcSize, nvcv::ImageFormat fmt, NVCVInterpolationType interpolation)
+            int srcRowStride, nvcv::Size2D srcSize, nvcv::ImageFormat fmt, NVCVInterpolationType interpolation,
+            bool isVarshape)
 {
     if (interpolation == NVCV_INTERP_NEAREST || interpolation == NVCV_INTERP_LINEAR
         || interpolation == NVCV_INTERP_CUBIC)
@@ -85,65 +86,107 @@ void Resize(std::vector<uint8_t> &hDst, int dstRowStride, nvcv::Size2D dstSize, 
                     }
                     else
                     {
-                        double invscale
-                            = 1.f / (std::min(jScale, srcSize.w - fsx1) * std::min(iScale, srcSize.h - fsy1));
-
-                        for (int dy = sy1; dy < sy2; ++dy)
+                        if (!isVarshape || (iScale >= 1.0f && jScale >= 1.0f))
                         {
-                            for (int dx = sx1; dx < sx2; ++dx)
-                                if (dy >= 0 && dy < srcSize.h && dx >= 0 && dx < srcSize.w)
-                                    out = out + srcPtr[dy * srcRowStride + dx * elementsPerPixel + k] * invscale;
+                            double invscale
+                                = 1.f / (std::min(jScale, srcSize.w - fsx1) * std::min(iScale, srcSize.h - fsy1));
 
-                            if (sx1 > fsx1)
-                                if (dy >= 0 && dy < srcSize.h && sx1 - 1 >= 0 && sx1 - 1 < srcSize.w)
-                                    out = out
-                                        + srcPtr[dy * srcRowStride + (sx1 - 1) * elementsPerPixel + k]
-                                              * ((sx1 - fsx1) * invscale);
+                            for (int dy = sy1; dy < sy2; ++dy)
+                            {
+                                for (int dx = sx1; dx < sx2; ++dx)
+                                    if (dy >= 0 && dy < srcSize.h && dx >= 0 && dx < srcSize.w)
+                                        out = out + srcPtr[dy * srcRowStride + dx * elementsPerPixel + k] * invscale;
 
-                            if (sx2 < fsx2)
-                                if (dy >= 0 && dy < srcSize.h && sx2 >= 0 && sx2 < srcSize.w)
+                                if (sx1 > fsx1)
+                                    if (dy >= 0 && dy < srcSize.h && sx1 - 1 >= 0 && sx1 - 1 < srcSize.w)
+                                        out = out
+                                            + srcPtr[dy * srcRowStride + (sx1 - 1) * elementsPerPixel + k]
+                                                  * ((sx1 - fsx1) * invscale);
+
+                                if (sx2 < fsx2)
+                                    if (dy >= 0 && dy < srcSize.h && sx2 >= 0 && sx2 < srcSize.w)
+                                        out = out
+                                            + srcPtr[dy * srcRowStride + sx2 * elementsPerPixel + k]
+                                                  * ((fsx2 - sx2) * invscale);
+                            }
+
+                            if (sy1 > fsy1)
+                                for (int dx = sx1; dx < sx2; ++dx)
+                                    if (sy1 - 1 >= 0 && sy1 - 1 < srcSize.h && dx >= 0 && dx < srcSize.w)
+                                        out = out
+                                            + srcPtr[(sy1 - 1) * srcRowStride + dx * elementsPerPixel + k]
+                                                  * ((sy1 - fsy1) * invscale);
+
+                            if (sy2 < fsy2)
+                                for (int dx = sx1; dx < sx2; ++dx)
+                                    if (sy2 >= 0 && sy2 < srcSize.h && dx >= 0 && dx < srcSize.w)
+                                        out = out
+                                            + srcPtr[sy2 * srcRowStride + dx * elementsPerPixel + k]
+                                                  * ((fsy2 - sy2) * invscale);
+
+                            if ((sy1 > fsy1) && (sx1 > fsx1))
+                                if (sy1 - 1 >= 0 && sy1 - 1 < srcSize.h && sx1 - 1 >= 0 && sx1 - 1 < srcSize.w)
                                     out = out
-                                        + srcPtr[dy * srcRowStride + sx2 * elementsPerPixel + k]
-                                              * ((fsx2 - sx2) * invscale);
+                                        + srcPtr[(sy1 - 1) * srcRowStride + (sx1 - 1) * elementsPerPixel + k]
+                                              * ((sy1 - fsy1) * (sx1 - fsx1) * invscale);
+
+                            if ((sy1 > fsy1) && (sx2 < fsx2))
+                                if (sy1 - 1 >= 0 && sy1 - 1 < srcSize.h && sx2 >= 0 && sx2 < srcSize.w)
+                                    out = out
+                                        + srcPtr[(sy1 - 1) * srcRowStride + sx2 * elementsPerPixel + k]
+                                              * ((sy1 - fsy1) * (fsx2 - sx2) * invscale);
+
+                            if ((sy2 < fsy2) && (sx2 < fsx2))
+                                if (sy2 >= 0 && sy2 < srcSize.h && sx2 >= 0 && sx2 < srcSize.w)
+                                    out = out
+                                        + srcPtr[sy2 * srcRowStride + sx2 * elementsPerPixel + k]
+                                              * ((fsy2 - sy2) * (fsx2 - sx2) * invscale);
+
+                            if ((sy2 < fsy2) && (sx1 > fsx1))
+                                if (sy2 >= 0 && sy2 < srcSize.h && sx1 - 1 >= 0 && sx1 - 1 < srcSize.w)
+                                    out = out
+                                        + srcPtr[sy2 * srcRowStride + (sx1 - 1) * elementsPerPixel + k]
+                                              * ((fsy2 - sy2) * (sx1 - fsx1) * invscale);
                         }
+                        else // zoom in for varshape
+                        {
+                            double iScale_inv = 1.0 / iScale;
+                            double jScale_inv = 1.0 / jScale;
 
-                        if (sy1 > fsy1)
-                            for (int dx = sx1; dx < sx2; ++dx)
-                                if (sy1 - 1 >= 0 && sy1 - 1 < srcSize.h && dx >= 0 && dx < srcSize.w)
-                                    out = out
-                                        + srcPtr[(sy1 - 1) * srcRowStride + dx * elementsPerPixel + k]
-                                              * ((sy1 - fsy1) * invscale);
+                            sy1      = cuda::round<cuda::RoundMode::DOWN, int>(fsy1);
+                            sx1      = cuda::round<cuda::RoundMode::DOWN, int>(fsx1);
+                            float fy = (float)(float(di + 1) - float(sy1 + 1) * iScale_inv);
+                            fy       = fy <= 0 ? 0.f : fy - cuda::round<cuda::RoundMode::DOWN, int>(fy);
 
-                        if (sy2 < fsy2)
-                            for (int dx = sx1; dx < sx2; ++dx)
-                                if (sy2 >= 0 && sy2 < srcSize.h && dx >= 0 && dx < srcSize.w)
-                                    out = out
-                                        + srcPtr[sy2 * srcRowStride + dx * elementsPerPixel + k]
-                                              * ((fsy2 - sy2) * invscale);
+                            float cbufy[2];
+                            cbufy[0] = 1.f - fy;
+                            cbufy[1] = fy;
 
-                        if ((sy1 > fsy1) && (sx1 > fsx1))
-                            if (sy1 - 1 >= 0 && sy1 - 1 < srcSize.h && sx1 - 1 >= 0 && sx1 - 1 < srcSize.w)
-                                out = out
-                                    + srcPtr[(sy1 - 1) * srcRowStride + (sx1 - 1) * elementsPerPixel + k]
-                                          * ((sy1 - fsy1) * (sx1 - fsx1) * invscale);
+                            float fx = (float)(float(dj + 1) - float(sx1 + 1) * jScale_inv);
+                            fx       = fx <= 0 ? 0.f : fx - cuda::round<cuda::RoundMode::DOWN, int>(fx);
 
-                        if ((sy1 > fsy1) && (sx2 < fsx2))
-                            if (sy1 - 1 >= 0 && sy1 - 1 < srcSize.h && sx2 >= 0 && sx2 < srcSize.w)
-                                out = out
-                                    + srcPtr[(sy1 - 1) * srcRowStride + sx2 * elementsPerPixel + k]
-                                          * ((sy1 - fsy1) * (fsx2 - sx2) * invscale);
+                            if (sx1 < 0)
+                            {
+                                fx = 0, sx1 = 0;
+                            }
+                            if (sx1 >= srcSize.w - 1)
+                            {
+                                fx = 0, sx1 = srcSize.w - 2;
+                            }
+                            if (sy1 >= srcSize.h - 1)
+                            {
+                                sy1 = srcSize.h - 2;
+                            }
 
-                        if ((sy2 < fsy2) && (sx2 < fsx2))
-                            if (sy2 >= 0 && sy2 < srcSize.h && sx2 >= 0 && sx2 < srcSize.w)
-                                out = out
-                                    + srcPtr[sy2 * srcRowStride + sx2 * elementsPerPixel + k]
-                                          * ((fsy2 - sy2) * (fsx2 - sx2) * invscale);
-
-                        if ((sy2 < fsy2) && (sx1 > fsx1))
-                            if (sy2 >= 0 && sy2 < srcSize.h && sx1 - 1 >= 0 && sx1 - 1 < srcSize.w)
-                                out = out
-                                    + srcPtr[sy2 * srcRowStride + (sx1 - 1) * elementsPerPixel + k]
-                                          * ((fsy2 - sy2) * (sx1 - fsx1) * invscale);
+                            float cbufx[2];
+                            cbufx[0] = 1.f - fx;
+                            cbufx[1] = fx;
+                            out      = srcPtr[sy1 * srcRowStride + sx1 * elementsPerPixel + k] * cbufx[0] * cbufy[0]
+                                + srcPtr[(sy1 + 1) * srcRowStride + sx1 * elementsPerPixel + k] * cbufx[0] * cbufy[1]
+                                + srcPtr[sy1 * srcRowStride + (sx1 + 1) * elementsPerPixel + k] * cbufx[1] * cbufy[0]
+                                + srcPtr[(sy1 + 1) * srcRowStride + (sx1 + 1) * elementsPerPixel + k] * cbufx[1]
+                                      * cbufy[1];
+                        }
                     }
 
                     out = std::rint(std::abs(out));

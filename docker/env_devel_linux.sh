@@ -52,7 +52,7 @@ else
     echo "Git user.name and user.email not set up"
     echo "Please run:"
     echo "  git config --global user.name 'Your Name'"
-    echo "  git config --global user.email 'your_nvlogin@nvidia.com'"
+    echo "  git config --global user.email 'Your Email'"
     exit 1
 fi
 
@@ -70,5 +70,5 @@ docker run --gpus=all --net=host --pull always -ti \
     -v /var/tmp:/var/tmp \
     -v $SDIR/..:$HOME/cvcuda \
     $extra_args \
-    $IMAGE_URL_BASE/devel-linux:$TAG_IMAGE \
+    $IMAGE_URL_BASE/devel-linux:$VER_UBUNTU-$VER_CUDA \
     /usr/bin/bash -c "mkdir -p $HOME && chown $USER:$USER $HOME && su - $USER -c \"$extra_cmds\" && su - $USER"

@@ -36,9 +36,9 @@ Tensor BndBoxInto(Tensor &output, Tensor &input, NVCVBndBoxesI bboxes, std::opti
     auto op = CreateOperator<cvcuda::BndBox>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*op});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
     op->submit(pstream->cudaHandle(), input, output, bboxes);
 

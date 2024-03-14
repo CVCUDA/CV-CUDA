@@ -88,6 +88,7 @@ add_executable(cvcuda_test_system
     GaussianNoiseUtils.cu
     TestOpInpaint.cpp
     TestOpFindHomography.cpp
+    TestOpHQResize.cpp
 )
 
 target_link_libraries(cvcuda_test_system

@@ -38,10 +38,9 @@ from perf_utils import (  # noqa: E402
     parse_validate_default_args,
 )
 
-from torch_utils import ImageBatchDecoderPyTorch  # noqa: E402
-
-from vpf_utils import (  # noqa: E402
-    VideoBatchDecoderVPF,
+from nvcodec_utils import (  # noqa: E402
+    VideoBatchDecoder,
+    ImageBatchDecoder,
 )
 
 from pipelines import (  # noqa: E402
@@ -92,7 +91,7 @@ def run_sample(
 
     if os.path.splitext(input_path)[1] == ".jpg" or os.path.isdir(input_path):
         # Treat this as data modality of images
-        decoder = ImageBatchDecoderPyTorch(
+        decoder = ImageBatchDecoder(
             input_path,
             batch_size,
             device_id,
@@ -102,7 +101,7 @@ def run_sample(
 
     else:
         # Treat this as data modality of videos
-        decoder = VideoBatchDecoderVPF(
+        decoder = VideoBatchDecoder(
             input_path,
             batch_size,
             device_id,

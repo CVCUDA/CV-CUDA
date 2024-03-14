@@ -44,9 +44,9 @@ Tensor CenterCropInto(Tensor &output, Tensor &input, const std::tuple<int, int> 
     auto center_crop = CreateOperator<cvcuda::CenterCrop>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*center_crop});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*center_crop});
 
     nvcv::Size2D cropSizeArg{std::get<0>(cropSize), std::get<1>(cropSize)};
 

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,7 +19,7 @@ set(CPACK_COMPONENT_DEV_DISPLAY_NAME "Development")
 set(CPACK_COMPONENT_DEV_DESCRIPTION "NVIDIA CV-CUDA C/C++ development library and headers")
 
 if(UNIX)
-    set(NVCV_DEV_FILE_NAME "nvcv-dev-${NVCV_VERSION_BUILD}")
+    set(NVCV_DEV_FILE_NAME "cvcuda-dev-${NVCV_VERSION_BUILD}")
 
     set(CPACK_DEBIAN_DEV_FILE_NAME "${NVCV_DEV_FILE_NAME}.deb")
     set(CPACK_ARCHIVE_DEV_FILE_NAME "${NVCV_DEV_FILE_NAME}")
@@ -28,7 +28,7 @@ if(UNIX)
     # is the same
     set(CPACK_DEBIAN_DEV_PACKAGE_DEPENDS "${CPACK_DEBIAN_LIB_PACKAGE_NAME} (>= ${NVCV_VERSION_API})")
 
-    set(CPACK_DEBIAN_DEV_PACKAGE_NAME "${NVCV_PACKAGE_NAME}-dev")
+    set(CPACK_DEBIAN_DEV_PACKAGE_NAME "${CVCUDA_PACKAGE_NAME}-dev")
 
     # We're not adding compiler and cmake as dependencies, users can choose
     # whatever toolchain they want.
