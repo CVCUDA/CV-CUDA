@@ -37,9 +37,9 @@ Tensor HistogramEqInto(Tensor &output, Tensor &input, std::optional<Stream> pstr
     auto              op    = CreateOperator<cvcuda::HistogramEq>((uint32_t)shape[0]);
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*op});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*op});
 
     op->submit(pstream->cudaHandle(), input, output);
 
@@ -64,9 +64,9 @@ ImageBatchVarShape HistogramEqVarShapeInto(ImageBatchVarShape &output, ImageBatc
     auto op = CreateOperator<cvcuda::HistogramEq>((uint32_t)input.numImages());
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*op});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*op});
 
     op->submit(pstream->cudaHandle(), input, output);
 

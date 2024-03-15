@@ -46,9 +46,9 @@ Tensor RemapInto(Tensor &dst, Tensor &src, Tensor &map, NVCVInterpolationType sr
     auto op = CreateOperator<cvcuda::Remap>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {src, map});
-    guard.add(LockMode::LOCK_WRITE, {dst});
-    guard.add(LockMode::LOCK_NONE, {*op});
+    guard.add(LockMode::LOCK_MODE_READ, {src, map});
+    guard.add(LockMode::LOCK_MODE_WRITE, {dst});
+    guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
     op->submit(pstream->cudaHandle(), src, dst, map, srcInterp, mapInterp, mapValueType, alignCorners, borderMode,
                bValue);
@@ -110,9 +110,9 @@ ImageBatchVarShape VarShapeRemapInto(ImageBatchVarShape &dst, ImageBatchVarShape
     auto op = CreateOperator<cvcuda::Remap>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {src, map});
-    guard.add(LockMode::LOCK_WRITE, {dst});
-    guard.add(LockMode::LOCK_NONE, {*op});
+    guard.add(LockMode::LOCK_MODE_READ, {src, map});
+    guard.add(LockMode::LOCK_MODE_WRITE, {dst});
+    guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
     op->submit(pstream->cudaHandle(), src, dst, map, srcInterp, mapInterp, mapValueType, alignCorners, borderMode,
                bValue);

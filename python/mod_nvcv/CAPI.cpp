@@ -85,19 +85,19 @@ LockMode ToLockMode(PyObject *_mode)
     std::string s = ToObj<std::string>(_mode);
     if (s.empty())
     {
-        return LockMode::LOCK_NONE;
+        return LockMode::LOCK_MODE_NONE;
     }
     else if (s == "r")
     {
-        return LockMode::LOCK_READ;
+        return LockMode::LOCK_MODE_READ;
     }
     else if (s == "w")
     {
-        return LockMode::LOCK_WRITE;
+        return LockMode::LOCK_MODE_WRITE;
     }
     else if (s == "rw")
     {
-        return LockMode::LOCK_READWRITE;
+        return LockMode::LOCK_MODE_READWRITE;
     }
     else
     {

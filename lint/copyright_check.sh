@@ -18,17 +18,19 @@
 # Check if input files have valid copyright message
 # Ref: https://confluence.nvidia.com/display/RP/Standardizing+on+SPDX+Identifiers
 
-valid_license='Apache-2.0'
+valid_licenses=('Apache-2.0' 'LicenseRef-NvidiaProprietary')
 
 # Detects that the line is a comment.
-rgx_comment='^[[:space:]]*[[:graph:]]\+[[:space:]]\+'
+# The following line detects comments in source code and mark down files.
+# It can detect c++ style comments, python style comments or markdown style comments.
+rgx_comment='^[[:space:]]*[[:graph:]]\+[[:space:]]\+[[:graph:]]*[[:space:]]*["]*'
 
 function get_tag()
 {
     local tag=$1
     shift
 
-    local rgx="s@^\($rgx_comment\)\?$tag:[[:space:]]*\(.*\)@\2@p"
+    local rgx="s@^\($rgx_comment\)\?$tag:[[:space:]]*\([^\"]*\)\"*@\2@p"
 
     sed -n "$rgx" "$file"
 }
@@ -56,8 +58,9 @@ function check_license()
     fi
 
     # Check if it is valid
-    if [[ "$license" != "$valid_license" ]]; then
-        error "$file" "License '$license' not valid. Must be '$valid_license'." && false
+    if [[ ! " ${valid_licenses[*]} " =~ [[:space:]]${license}[[:space:]] ]]; then
+        valid_licenses_str="${valid_licenses[*]}"
+        error "$file" "License '$license' not valid. Must be a value from '${valid_licenses_str//${IFS:0:1}/, }'." && false
     fi
 }
 

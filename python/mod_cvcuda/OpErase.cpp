@@ -47,9 +47,9 @@ Tensor EraseInto(Tensor &output, Tensor &input, Tensor &anchor, Tensor &erasing,
     auto erase = CreateOperator<cvcuda::Erase>((int)shape[0]);
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input, anchor, erasing, values, imgIdx});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_WRITE, {*erase});
+    guard.add(LockMode::LOCK_MODE_READ, {input, anchor, erasing, values, imgIdx});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*erase});
 
     erase->submit(pstream->cudaHandle(), input, output, anchor, erasing, values, imgIdx, random, seed);
 
@@ -83,9 +83,9 @@ ImageBatchVarShape EraseVarShapeInto(ImageBatchVarShape &output, ImageBatchVarSh
     auto erase = CreateOperator<cvcuda::Erase>((int)shape[0]);
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input, anchor, erasing, values, imgIdx});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_WRITE, {*erase});
+    guard.add(LockMode::LOCK_MODE_READ, {input, anchor, erasing, values, imgIdx});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*erase});
 
     erase->submit(pstream->cudaHandle(), input, output, anchor, erasing, values, imgIdx, random, seed);
 

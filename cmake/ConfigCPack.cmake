@@ -22,8 +22,8 @@ else()
 endif()
 
 set(CPACK_PACKAGE_VENDOR "NVIDIA")
-set(CPACK_PACKAGE_CONTACT "CV-CUDA Support <cv-cuda@exchange.nvidia.com>")
-set(CPACK_PACKAGE_HOMEPAGE_URL "https://confluence.nvidia.com/display/CVCUDA")
+set(CPACK_PACKAGE_CONTACT "https://github.com/CVCUDA/CV-CUDA/issues")
+set(CPACK_PACKAGE_HOMEPAGE_URL "https://cvcuda.github.io")
 
 # ARCHIVE installer doesn't work with absolute install destination
 # we have to error out in this case

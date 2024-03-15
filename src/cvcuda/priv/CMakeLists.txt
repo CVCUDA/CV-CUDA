@@ -32,6 +32,7 @@ set(CV_CUDA_PRIV_OP_FILES
     OpRemap.cu
     OpColorTwist.cu
     OpCropFlipNormalizeReformat.cu
+    OpHQResize.cu
     OpNonMaximumSuppression.cu
     OpReformat.cpp
     OpResize.cpp

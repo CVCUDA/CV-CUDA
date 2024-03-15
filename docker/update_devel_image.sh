@@ -33,13 +33,13 @@ cd "$SDIR"
 # load up configuration variables
 . ./config
 
-cd devel
+cd devel$VER_UBUNTU
 
-image=$IMAGE_URL_BASE/devel-linux:$TAG_IMAGE
+image=$IMAGE_URL_BASE/devel-linux:$VER_UBUNTU-$VER_CUDA
 
 docker build --network=host \
     --build-arg BASE_IMAGE=$IMAGE_URL_BASE/build-linux \
-    --build-arg TAG_IMAGE=$TAG_IMAGE \
+    --build-arg TAG_IMAGE=$VER_UBUNTU-$VER_CUDA \
     . -t $image
 
 if [[ $do_push == 1 ]]; then

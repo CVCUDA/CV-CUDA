@@ -44,9 +44,9 @@ ImageBatchVarShape Conv2DVarShapeInto(ImageBatchVarShape &output, ImageBatchVarS
     auto conv2D = CreateOperator<cvcuda::Conv2D>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input, kernel, kernel_anchor});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*conv2D});
+    guard.add(LockMode::LOCK_MODE_READ, {input, kernel, kernel_anchor});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*conv2D});
 
     conv2D->submit(pstream->cudaHandle(), input, output, kernel, kernel_anchor, border);
 

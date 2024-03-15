@@ -38,9 +38,9 @@ Tensor PadAndStackInto(Tensor &output, ImageBatchVarShape &input, Tensor &top, T
     auto padstack = CreateOperator<cvcuda::PadAndStack>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input, top, left});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*padstack});
+    guard.add(LockMode::LOCK_MODE_READ, {input, top, left});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*padstack});
 
     padstack->submit(pstream->cudaHandle(), input, output, top, left, border, borderValue);
 

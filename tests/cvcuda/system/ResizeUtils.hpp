@@ -30,7 +30,8 @@ namespace nvcv::test {
 
 // support NVCV_INTERP_NEAREST/NVCV_INTERP_LINEAR/NVCV_INTERP_CUBIC/NVCV_INTERP_AREA
 void Resize(std::vector<uint8_t> &hDst, int dstRowStride, nvcv::Size2D dstSize, const std::vector<uint8_t> &hSrc,
-            int srcRowStride, nvcv::Size2D srcSize, nvcv::ImageFormat fmt, NVCVInterpolationType interpolation);
+            int srcRowStride, nvcv::Size2D srcSize, nvcv::ImageFormat fmt, NVCVInterpolationType interpolation,
+            bool isVarshape);
 
 // only support NVCV_INTERP_NEAREST/NVCV_INTERP_LINEAR/NVCV_INTERP_CUBIC
 void ResizedCrop(std::vector<uint8_t> &hDst, int dstRowStride, nvcv::Size2D dstSize, const std::vector<uint8_t> &hSrc,

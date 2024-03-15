@@ -22,27 +22,27 @@ import sys
 import logging
 import cvcuda
 import torch
-from pathlib import Path
 
-# Bring module folders from the samples directory into our path so that
+# Bring the commons folder from the samples directory into our path so that
 # we can import modules from it.
-samples_dir = Path(os.path.abspath(__file__)).parents[2]  # samples/
-sys.path.insert(0, os.path.join(samples_dir, ""))
+common_dir = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "common",
+    "python",
+)
+sys.path.insert(0, common_dir)
 
-from common.python.perf_utils import (  # noqa: E402
+from perf_utils import (  # noqa: E402
     CvCudaPerf,
     get_default_arg_parser,
     parse_validate_default_args,
 )
 
-from common.python.torch_utils import (  # noqa: E402
-    ImageBatchDecoderPyTorch,
-    ImageBatchEncoderPyTorch,
-)
-
-from common.python.vpf_utils import (  # noqa: E402
-    VideoBatchDecoderVPF,
-    VideoBatchEncoderVPF,
+from nvcodec_utils import (  # noqa: E402
+    VideoBatchDecoder,
+    VideoBatchEncoder,
+    ImageBatchDecoder,
+    ImageBatchEncoder,
 )
 
 from pipelines import (  # noqa: E402
@@ -95,7 +95,7 @@ def run_sample(
 
     if os.path.splitext(input_path)[1] == ".jpg" or os.path.isdir(input_path):
         # Treat this as data modality of images
-        decoder = ImageBatchDecoderPyTorch(
+        decoder = ImageBatchDecoder(
             input_path,
             batch_size,
             device_id,
@@ -103,16 +103,14 @@ def run_sample(
             cvcuda_perf,
         )
 
-        encoder = ImageBatchEncoderPyTorch(
+        encoder = ImageBatchEncoder(
             output_dir,
-            fps=0,
             device_id=device_id,
-            cuda_ctx=cuda_ctx,
             cvcuda_perf=cvcuda_perf,
         )
     else:
         # Treat this as data modality of videos
-        decoder = VideoBatchDecoderVPF(
+        decoder = VideoBatchDecoder(
             input_path,
             batch_size,
             device_id,
@@ -120,7 +118,7 @@ def run_sample(
             cvcuda_perf,
         )
 
-        encoder = VideoBatchEncoderVPF(
+        encoder = VideoBatchEncoder(
             output_dir,
             decoder.fps,
             device_id,

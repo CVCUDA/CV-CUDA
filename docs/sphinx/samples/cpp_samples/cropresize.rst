@@ -126,7 +126,7 @@ To run the sample
 
 .. code-block:: bash
 
-   ./build/nvcv_samples_cropandresize -i <image path> -b <batch size>
+   ./build/cvcuda_sample_cropandresize -i <image path> -b <batch size>
 
 Sample Output
 -------------

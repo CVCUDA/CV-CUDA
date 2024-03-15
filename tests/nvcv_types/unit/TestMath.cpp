@@ -290,3 +290,27 @@ TEST_P(MathDivUpPowerOfTwoTests, works)
 
     EXPECT_EQ(gold, util::DivUpPowerOfTwo(num, den));
 }
+
+class MathSincTests : public t::TestWithParam<std::tuple<test::Param<"value", float>, test::Param<"gold", float>>>
+{
+};
+
+// clang-format off
+NVCV_INSTANTIATE_TEST_SUITE_P(_, MathSincTests,
+    test::ValueList<float, float>
+    {
+        {0.f, 1.f},
+        {1.f, 0.f},
+        {0.5f, 2.f / static_cast<float>(M_PI)},
+        {-0.5f, 2.f / static_cast<float>(M_PI)},
+    });
+
+// clang-format on
+
+TEST_P(MathSincTests, works)
+{
+    const float value = std::get<0>(GetParam());
+    const float gold  = std::get<1>(GetParam());
+
+    EXPECT_NEAR(gold, util::sinc(value), 1e-7f);
+}

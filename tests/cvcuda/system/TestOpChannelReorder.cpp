@@ -27,7 +27,43 @@
 
 namespace test = nvcv::test;
 
-TEST(TestOpChannelReorder, smoke_test_works)
+class TestOpChannelReorder : public ::testing::Test
+{
+protected:
+    TestOpChannelReorder() {}
+
+    ~TestOpChannelReorder() {}
+
+    void SetUp() override
+    {
+        // clang-format off
+        inOrders = nvcv::Tensor(
+            {
+                {1, 4},
+                "NC"
+            },
+            nvcv::TYPE_S32);
+        // clang-format on
+    }
+
+    void pushDefaultImages()
+    {
+        in.pushBack(nvcv::Image{
+            nvcv::Size2D{4, 2},
+            nvcv::FMT_RGBA8
+        });
+        out.pushBack(nvcv::Image{
+            nvcv::Size2D{4, 2},
+            nvcv::FMT_RGBA8
+        });
+    }
+
+    nvcv::ImageBatchVarShape in{nvcv::ImageBatchVarShape(2)}, out{nvcv::ImageBatchVarShape(2)};
+    nvcv::Tensor             inOrders;
+    cvcuda::ChannelReorder   chReorder;
+};
+
+TEST_F(TestOpChannelReorder, smoke_test_works)
 {
     // Let's set up input and output images
     nvcv::Image inImages[2] = {
@@ -40,7 +76,8 @@ TEST(TestOpChannelReorder, smoke_test_works)
         nvcv::Image{nvcv::Size2D{4, 2}, nvcv::FMT_RGBA8}
     };
 
-    nvcv::ImageBatchVarShape in(2), out(2);
+    in  = nvcv::ImageBatchVarShape(2);
+    out = nvcv::ImageBatchVarShape(2);
 
     // Create the input and output varshapes
     in.pushBack(inImages[0]);
@@ -66,7 +103,7 @@ TEST(TestOpChannelReorder, smoke_test_works)
 
     // Populate the order tensor
     // clang-format off
-    nvcv::Tensor inOrders(
+    inOrders = nvcv::Tensor(
         {
             {2, 4},
             "NC"
@@ -89,8 +126,6 @@ TEST(TestOpChannelReorder, smoke_test_works)
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
-    cvcuda::ChannelReorder chReorder;
-
     chReorder(stream, in, out, inOrders);
 
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
@@ -109,4 +144,223 @@ TEST(TestOpChannelReorder, smoke_test_works)
     nvcv::util::GetVectorFromTensor<uchar4>(nvcv::TensorWrapImage(outImages[1]).exportData(), 0, outImageValues);
     EXPECT_EQ(make_uchar4(4, 1, 2, 0), outImageValues[0]);
     EXPECT_EQ(make_uchar4(28, 10, 3, 0), outImageValues[1]);
+}
+
+TEST_F(TestOpChannelReorder, create_with_null_handle)
+{
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaChannelReorderCreate(nullptr));
+}
+
+TEST_F(TestOpChannelReorder, infer_different_samples)
+{
+    in.pushBack(nvcv::Image{
+        nvcv::Size2D{4, 2},
+        nvcv::FMT_RGBA8
+    });
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { chReorder(NULL, in, out, inOrders); }));
+}
+
+TEST_F(TestOpChannelReorder, infer_void_samples)
+{
+    EXPECT_EQ(NVCV_SUCCESS, nvcv::ProtectCall([&] { chReorder(NULL, in, out, inOrders); }));
+}
+
+TEST_F(TestOpChannelReorder, infer_invalid_input_dataType)
+{
+    in.pushBack(nvcv::Image{
+        nvcv::Size2D{4, 2},
+        nvcv::FMT_RGBAf16
+    });
+    out.pushBack(nvcv::Image{
+        nvcv::Size2D{4, 2},
+        nvcv::FMT_RGBA8
+    });
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { chReorder(NULL, in, out, inOrders); }));
+}
+
+TEST_F(TestOpChannelReorder, infer_invalid_output_dataType)
+{
+    in.pushBack(nvcv::Image{
+        nvcv::Size2D{4, 2},
+        nvcv::FMT_RGBA8
+    });
+    out.pushBack(nvcv::Image{
+        nvcv::Size2D{4, 2},
+        nvcv::FMT_RGBAf16
+    });
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { chReorder(NULL, in, out, inOrders); }));
+}
+
+TEST_F(TestOpChannelReorder, infer_invalid_order_rank)
+{
+    pushDefaultImages();
+
+    // clang-format off
+    inOrders= nvcv::Tensor(
+        {
+            {1, 4, 4},
+            "NHW"
+        },
+        nvcv::TYPE_S32);
+    // clang-format on
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { chReorder(NULL, in, out, inOrders); }));
+}
+
+TEST_F(TestOpChannelReorder, infer_invalid_order_dataType)
+{
+    pushDefaultImages();
+
+    // clang-format off
+    inOrders= nvcv::Tensor(
+        {
+            {1, 4},
+            "NC"
+        },
+        nvcv::TYPE_F32);
+    // clang-format on
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { chReorder(NULL, in, out, inOrders); }));
+}
+
+TEST_F(TestOpChannelReorder, infer_invalid_order_first_label)
+{
+    pushDefaultImages();
+
+    // clang-format off
+    inOrders= nvcv::Tensor(
+        {
+            {4, 1},
+            "CN"
+        },
+        nvcv::TYPE_S32);
+    // clang-format on
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { chReorder(NULL, in, out, inOrders); }));
+}
+
+TEST_F(TestOpChannelReorder, infer_invalid_order_num_samples)
+{
+    pushDefaultImages();
+
+    // clang-format off
+    inOrders= nvcv::Tensor(
+        {
+            {2, 4},
+            "NC"
+        },
+        nvcv::TYPE_S32);
+    // clang-format on
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { chReorder(NULL, in, out, inOrders); }));
+}
+
+TEST_F(TestOpChannelReorder, infer_invalid_order_num_channels)
+{
+    pushDefaultImages();
+
+    // clang-format off
+    inOrders= nvcv::Tensor(
+        {
+            {1, 5},
+            "NC"
+        },
+        nvcv::TYPE_S32);
+    // clang-format on
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { chReorder(NULL, in, out, inOrders); }));
+}
+
+TEST_F(TestOpChannelReorder, infer_invalid_order_small_num_channels)
+{
+    pushDefaultImages();
+
+    // clang-format off
+    inOrders= nvcv::Tensor(
+        {
+            {1, 3},
+            "NC"
+        },
+        nvcv::TYPE_S32);
+    // clang-format on
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { chReorder(NULL, in, out, inOrders); }));
+}
+
+TEST_F(TestOpChannelReorder, infer_invalid_input_planar)
+{
+    in.pushBack(nvcv::Image{
+        nvcv::Size2D{4, 2},
+        nvcv::FMT_BGRA8p
+    });
+    out.pushBack(nvcv::Image{
+        nvcv::Size2D{4, 2},
+        nvcv::FMT_BGRA8
+    });
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { chReorder(NULL, in, out, inOrders); }));
+}
+
+TEST_F(TestOpChannelReorder, infer_invalid_output_planar)
+{
+    in.pushBack(nvcv::Image{
+        nvcv::Size2D{4, 2},
+        nvcv::FMT_BGRA8
+    });
+    out.pushBack(nvcv::Image{
+        nvcv::Size2D{4, 2},
+        nvcv::FMT_BGRA8p
+    });
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { chReorder(NULL, in, out, inOrders); }));
+}
+
+TEST_F(TestOpChannelReorder, infer_invalid_input_different_channels)
+{
+    pushDefaultImages();
+    in.pushBack(nvcv::Image{
+        nvcv::Size2D{4, 2},
+        nvcv::FMT_BGR8
+    });
+    out.pushBack(nvcv::Image{
+        nvcv::Size2D{4, 2},
+        nvcv::FMT_BGR8
+    });
+
+    // clang-format off
+    inOrders= nvcv::Tensor(
+        {
+            {2, 4},
+            "NC"
+        },
+        nvcv::TYPE_S32);
+    // clang-format on
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { chReorder(NULL, in, out, inOrders); }));
+}
+
+TEST_F(TestOpChannelReorder, infer_invalid_input_different_format)
+{
+    pushDefaultImages();
+    in.pushBack(nvcv::Image{
+        nvcv::Size2D{4, 2},
+        nvcv::FMT_BGRAf32
+    });
+    out.pushBack(nvcv::Image{
+        nvcv::Size2D{4, 2},
+        nvcv::FMT_BGRAf32
+    });
+
+    // clang-format off
+    inOrders= nvcv::Tensor(
+        {
+            {2, 4},
+            "NC"
+        },
+        nvcv::TYPE_S32);
+    // clang-format on
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { chReorder(NULL, in, out, inOrders); }));
 }

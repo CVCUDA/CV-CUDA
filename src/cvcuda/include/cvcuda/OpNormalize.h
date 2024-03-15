@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -82,7 +82,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaNormalizeCreate(NVCVOperatorHandle *handle);
  * Limitations:
  *
  * Input:
- *      Data Layout:    [kNHWC, kHWC, kNCHW, KCHW]
+ *      Data Layout:    [kNHWC, kHWC]
  *      Channels:       [1, 3, 4]
  *
  *      Data Type      | Allowed
@@ -97,7 +97,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaNormalizeCreate(NVCVOperatorHandle *handle);
  *      64bit Float    | No
  *
  * Output:
- *      Data Layout:    [kNHWC, kHWC, kNCHW, KCHW]
+ *      Data Layout:    [kNHWC, kHWC]
  *      Channels:       [1, 3, 4]
  *
  *      Data Type      | Allowed

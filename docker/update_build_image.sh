@@ -35,9 +35,9 @@ cd "$SDIR"
 # load up configuration variables
 . ./config
 
-cd build
+cd build$VER_UBUNTU
 
-image=$IMAGE_URL_BASE/build-linux:$TAG_IMAGE
+image=$IMAGE_URL_BASE/build-linux:$VER_UBUNTU-$VER_CUDA
 
 docker build --network=host \
     --build-arg "VER_CUDA=$VER_CUDA" \

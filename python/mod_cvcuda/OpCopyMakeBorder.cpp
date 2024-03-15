@@ -55,9 +55,9 @@ Tensor CopyMakeBorderInto(Tensor &output, Tensor &input, NVCVBorderType borderMo
     auto copyMakeBorder = CreateOperator<cvcuda::CopyMakeBorder>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*copyMakeBorder});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*copyMakeBorder});
 
     copyMakeBorder->submit(pstream->cudaHandle(), input, output, top, left, borderMode, bValue);
 
@@ -101,9 +101,9 @@ Tensor VarShapeCopyMakeBorderStackInto(Tensor &output, ImageBatchVarShape &input
     auto copyMakeBorder = CreateOperator<cvcuda::CopyMakeBorder>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input, top, left});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*copyMakeBorder});
+    guard.add(LockMode::LOCK_MODE_READ, {input, top, left});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*copyMakeBorder});
 
     copyMakeBorder->submit(pstream->cudaHandle(), input, output, top, left, borderMode, bValue);
 
@@ -149,9 +149,9 @@ ImageBatchVarShape VarShapeCopyMakeBorderInto(ImageBatchVarShape &output, ImageB
     auto copyMakeBorder = CreateOperator<cvcuda::CopyMakeBorder>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input, top, left});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*copyMakeBorder});
+    guard.add(LockMode::LOCK_MODE_READ, {input, top, left});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*copyMakeBorder});
 
     copyMakeBorder->submit(pstream->cudaHandle(), input, output, top, left, borderMode, bValue);
 

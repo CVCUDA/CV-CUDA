@@ -49,6 +49,16 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorCalcRequirementsForImages,
                 throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Pointer to output requirements must not be NULL");
             }
 
+            if (batch < 0)
+            {
+                throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "numImages must >= 0");
+            }
+
+            if (width < 0 || height < 0)
+            {
+                throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "width and height must >= 0");
+            }
+
             priv::ImageFormat fmt{format};
 
             *reqs = priv::Tensor::CalcRequirements(batch, {width, height}, fmt, baseAlign, rowAlign);

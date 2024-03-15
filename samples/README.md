@@ -1,86 +1,107 @@
+
+[//]: # "SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved."
+[//]: # "SPDX-License-Identifier: Apache-2.0"
+[//]: # ""
+[//]: # "Licensed under the Apache License, Version 2.0 (the 'License');"
+[//]: # "you may not use this file except in compliance with the License."
+[//]: # "You may obtain a copy of the License at"
+[//]: # "http://www.apache.org/licenses/LICENSE-2.0"
+[//]: # ""
+[//]: # "Unless required by applicable law or agreed to in writing, software"
+[//]: # "distributed under the License is distributed on an 'AS IS' BASIS"
+[//]: # "WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied."
+[//]: # "See the License for the specific language governing permissions and"
+[//]: # "limitations under the License."
+
 # CV-CUDA Samples
 
 ## Description
 
-These are some sample applications showcasing various CV-CUDA APIs. Sample applications are available in C++ and Python.
+CV-CUDA samples are written to showcase the use of various CV-CUDA APIs to construct fully functional end-to-end deep learning inference pipelines. Sample applications are available in C++ and Python.
 
 ## Pre-requisites
 
-- Recommended linux distros:
+- Recommended Linux distributions:
     - Ubuntu >= 20.04 (tested with 20.04 and 22.04)
     - WSL2 with Ubuntu >= 20.04 (tested with 20.04)
-- NVIDIA driver
-    - Linux: Driver version 520.56.06 or higher
-- TensorRT == 8.5.2.2
-- NVIDIA Video Processing Framework (https://github.com/NVIDIA/VideoProcessingFramework)
-    - Follow the instructions from Github (https://github.com/NVIDIA/VideoProcessingFramework/blob/master/README.md) to install it via pip.
-    - Note: ffmpeg is a VPF dependency. It can be built from source by following these steps (https://docs.nvidia.com/video-technologies/video-codec-sdk/12.0/ffmpeg-with-nvidia-gpu/index.html). The version of ffmpeg that comes/installs via apt-get in Ubuntu 20.04 may not be sufficient for VPF.
-    - Note: When installing VPF in a docker image like TensorRT, there is no need to install `libnvidia-encode` and `libnvidia-decode` as those already come preinstalled. Other docker images may require an installation of these libraries.
-- NVIDIA TAO Converter == 4.0.0
+- NVIDIA driver:
+    - Linux: Driver version >= 535
+- NVIDIA TensorRT >= 8.6.1
+- NVIDIA nvImageCodec (https://github.com/NVIDIA/nvImageCodec)
+- NVIDIA PyNvVideoCodec (https://catalog.ngc.nvidia.com/orgs/nvidia/resources/py_nvvideocodec)
+- NVIDIA Video Processing Framework (only if running the Triton sample) (https://github.com/NVIDIA/VideoProcessingFramework)
+    - Note: When installing VPF in a docker image like TensorRT, there is no need to install `libnvidia-encode` and `libnvidia-decode` as those already come pre-installed. Other docker images may require an installation of these libraries.
+- NVIDIA TAO Converter >= 4.0.0
 - NVIDIA NSIGHT == 2023.2.1 (only if you wish to run the benchmarking code)
-- Python Packages:
-    - torch == 1.13.0
-    - torchvision == 0.14.0
-    - torchnvjpeg (https://github.com/itsliupeng/torchnvjpeg)
-    - av == 10.0.0
-    - pycuda == 2022.1
-    - nvtx == 0.2.5
-
-Setting up the following is only required if you want to setup and run the samples in a docker container:
-- nvidia-docker v2.11.0
-- A working NVIDIA NGC account (visit https://ngc.nvidia.com/setup to get started using NGC) and follow through the NGC documentation here https://docs.nvidia.com/ngc/ngc-catalog-user-guide/index.html#ngc-image-prerequisites
-- docker CLI logged into nvcr.io (NGC's docker registry) to be able to pull docker images.
+- Additional Python packages requirements listed in the `requirements.txt` file under the `samples/scripts/` folder.
 
 
-## Steps to compile the samples from source
 
-1. Get your CUDA and TensorRT installations ready. If you wish to install CUDA and TensorRT on your existing system you may do so by downloading those packages from NVIDIA's website. Or if you wish to work with in a docker container, you can use the TensorRT docker from NVIDIA NGC's catalog. It comes with CUDA and TensorRT pre-installed. Make sure you have setup NGC account properly and that your local docker installation has been logged into nvcr.io domain to be able to pull from that registry. Run the following command to start the container and continue rest of the installation steps in that container. Fill in the local_mount_path and docker_mount_path to reflect any paths on your system which you want to mount inside the container as well. This container comes with Ubuntu 20.04 with Python 3.8.10.
+## Setting up the environment
+
+1. We strongly recommend working in a docker container to set things up. This would greatly simplify the process of installing dependencies, compiling and running the samples. The following is required to work in a docker container with CV-CUDA samples:
+   1. nvidia-docker >= 2.11.0
+   2. A working NVIDIA NGC account (visit https://ngc.nvidia.com/setup to get started using NGC) and follow through the NGC documentation on https://docs.nvidia.com/ngc/ngc-catalog-user-guide/index.html#ngc-image-prerequisites
+   3. docker CLI logged into nvcr.io (NGC's docker registry) to be able to pull docker image. (e.g. using `docker login nvcr.io`)
+
+2. Clone this CV-CUDA git repository. We would call the location where it is stored as `CVCUDA_ROOT`.
+
+3. Make sure your CUDA and TensorRT installations are ready. If you wish to install CUDA and TensorRT on your existing system, you may do so by downloading those packages from NVIDIA's website. If you are using docker, use the TensorRT container from NVIDIA NGC. It comes with CUDA and TensorRT pre-installed:
+   1. Run the following command to start the container and continue rest of the steps in that container. Fill in the `CVCUDA_ROOT` with the location where you have cloned this CV-CUDA repository. This will make the samples available inside the container at the `/workspace/cvcuda_samples` path. Also fill in the `CVCUDA_INSTALL` with the location where CV-CUDA installation packages (.deb or .whl files) are stored. This container comes with Ubuntu v22.04, Python v3.10.12 and TensorRT v8.6.1.
 
       ```bash
-      docker run -it --gpus=all -v <local_mount_path>:<docker_mount_path> nvcr.io/nvidia/tensorrt:22.09-py3
+      docker run -it --gpus=all -v <CVCUDA_ROOT>/samples:/workspace/cvcuda_samples -v <CVCUDA_INSTALL>:/workspace/cvcuda_install nvcr.io/nvidia/tensorrt:24.01-py3
       ```
 
-2. Make sure that the other helper scripts present in the `samples/scripts` folder is executable by executing following chmod commands.
+3. Make sure the scripts present in the `/workspace/cvcuda_samples/scripts` directory is executable by executing following chmod commands:
 
    ```bash
-   cd samples
-   chmod a+x scripts/*.sh
-   chmod a+x scripts/*.py
+   cd /workspace/cvcuda_samples/  # Assuming this is where the samples are
+   chmod a+x ./scripts/*.sh
+   chmod a+x ./scripts/*.py
    ```
 
-3. Install all the dependencies required to run the samples. These are mentioned above in the prerequisites section. A convenient script to install all the dependencies is available at `scripts/install_dependencies.sh`. This script may require sudo privileges depending on your setup.
+4. Install all dependencies required to build and/or run the samples. These are mentioned above in the prerequisites section. A convenient script to install all the dependencies is available at `scripts/install_dependencies.sh`.
 
    ```bash
+   cd /workspace/cvcuda_samples/  # Assuming this is where the samples are
    ./scripts/install_dependencies.sh
    ```
 
-4. Install the CV-CUDA packages. Please note that since the above container comes with Python 3.8.10, we will install nvcv-python3.8-0 package as mentioned below. If you have any other Python distributions, you would need to use the appropriate nvcv-python Debian package below.
+5. Install CV-CUDA packages. If you are only interested in running the Python samples, you would be fine installing just the Python wheel. If you are interested in building the non-Python samples from source, the Debian packages are required. Since our docker container has Ubuntu 22.04, CUDA 12 and Python 3.10.12, we will install the corresponding CV-CUDA package as shown below:
+   1. Using the Python wheel (only works for the Python samples):
+      ```bash
+      cd /workspace/cvcuda_install/  # Assuming this is where the installation files are
+      pip install cvcuda_cu12-0.6.0b0-cp310-cp310-linux_x86_64.whl
+      ```
+
+   2. OR using the Debian packages (required to build the non-Python samples from source, also works for the Python samples):
+
+      ```bash
+      cd /workspace/cvcuda_install/  # Assuming this is where the installation files are
+      dpkg -i cvcuda-lib-0.6.0_beta-cuda12-x86_64-linux.deb
+      dpkg -i cvcuda-dev-0.6.0_beta-cuda12-x86_64-linux.deb
+      dpkg -i cvcuda-python3.10-0.6.0_beta-cuda12-x86_64-linux.deb
+      ```
+
+## Build the samples from source (Not required for Python samples)
+
+1. After following the [Setting up the environment](#setting-up-the-environment) section, execute the following command to compile the samples from source. This only applies to C++ samples. Python samples do not require any compilation.
 
    ```bash
-   dpkg -i nvcv-lib-0.5.0_beta-cuda11-x86_64-linux.deb
-   dpkg -i nvcv-dev-0.5.0_beta-cuda11-x86_64-linux.deb
-   dpkg -i cvcuda-samples-0.5.0_beta-cuda11-x86_64-linux.deb
-   dpkg -i nvcv-python3.8-0.5.0_beta-cuda11-x86_64-linux.deb
+   cd /workspace/cvcuda_samples/  # Assuming this is where the samples are
+   ./scripts/build_samples.sh  # Writes build files in /workspace/cvcuda_samples/build
    ```
-5. Copy the samples folder to the target directory.
+
+## Run the samples
+
+1. After following the [Setting up the environment](#setting-up-the-environment) section and compiling them from source, one can run the samples manually one by one or use the `scripts/run_samples.sh` script to run all samples in one shot. Some samples uses the TensorRT back-end to run the inference and it may require a serialization step to convert a PyTorch model into a TensorRT model. This step should take some time depending on the GPU used but usually it is only done once during the first run of the sample. The `scripts/run_samples.sh` script is supplied to serve only as a basic test case to test the samples under most frequently used command line parameters. It does not cover all the settings and command line parameters a sample may have to offer. Please explore and run the samples individually to explore all the capabilities of the samples.
 
    ```bash
-   cp -rf /opt/nvidia/cvcuda*/samples ~/
-   cd ~/samples
-   ```
-
-6. Build the samples (whichever sample requires a build)
-
-   ```bash
-   ./scripts/build_samples.sh
-   ```
-
-7. Run all the samples on by one. The `run_samples.sh` script conveniently runs all the samples in one shot. Some samples may use the TensorRT backend to run the inference and it may require a serialization step to convert a PyTorch model into a TensorRT model. This step should take some time depending on the GPUs used but usually it is only done once during the first run of the sample. The `run_samples.sh` script is supplied to serve only as a basic test case to test the samples under most frequently used command line parameters. It does not cover all the settings and command line parameters a sample may have to offer. Please explore and run the samples individually to explore all the capabilities of the samples.
-
-   ```bash
+   cd /workspace/cvcuda_samples/  # Assuming this is where the samples are and built samples are in /workspace/cvcuda_samples/build
    ./scripts/run_samples.sh
    ```
 
-## Performance Benchmarking
+## Performance Benchmarking of the samples
 
-See the [Performance Benchmarking](scripts/README.md) documentation.
+See the [Performance Benchmarking](scripts/README.md) documentation to understand how to benchmark the samples.

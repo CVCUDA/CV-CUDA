@@ -199,7 +199,7 @@ GaussianNoise::GaussianNoise(DataShape max_input_shape, DataShape max_output_sha
     if (maxBatchSize < 0)
     {
         LOG_ERROR("Invalid num of max batch size " << maxBatchSize);
-        throw std::runtime_error("Parameter error!");
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Parameter error!");
     }
     cudaError_t err = cudaMalloc((void **)&m_states, sizeof(curandState) * BLOCK * maxBatchSize);
     if (err != cudaSuccess)
@@ -253,7 +253,7 @@ ErrorCode GaussianNoise::infer(const TensorDataStridedCuda &inData, const Tensor
     DataType out_data_type = GetLegacyDataType(outData.dtype());
     if (in_data_type != out_data_type)
     {
-        LOG_ERROR("Invalid DataType " << out_data_type);
+        LOG_ERROR("DataType of input and output must be equal, but got " << in_data_type << " and " << out_data_type);
         return ErrorCode::INVALID_DATA_TYPE;
     }
 

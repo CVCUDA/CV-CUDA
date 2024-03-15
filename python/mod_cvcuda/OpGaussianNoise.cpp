@@ -41,9 +41,9 @@ Tensor GaussianNoiseInto(Tensor &output, Tensor &input, Tensor &mu, Tensor &sigm
     auto              gaussiannoise = CreateOperator<cvcuda::GaussianNoise>((int)shape[0]);
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input, mu, sigma});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_WRITE, {*gaussiannoise});
+    guard.add(LockMode::LOCK_MODE_READ, {input, mu, sigma});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*gaussiannoise});
 
     gaussiannoise->submit(pstream->cudaHandle(), input, output, mu, sigma, per_channel, seed);
 
@@ -70,9 +70,9 @@ ImageBatchVarShape GaussianNoiseVarShapeInto(ImageBatchVarShape &output, ImageBa
     auto gaussiannoise = CreateOperator<cvcuda::GaussianNoise>(input.numImages());
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input, mu, sigma});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_WRITE, {*gaussiannoise});
+    guard.add(LockMode::LOCK_MODE_READ, {input, mu, sigma});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*gaussiannoise});
 
     gaussiannoise->submit(pstream->cudaHandle(), input, output, mu, sigma, per_channel, seed);
 

@@ -28,16 +28,16 @@
 # SDIR is the directory where this script is located
 SDIR=$(dirname "$(readlink -f "$0")")
 
-# Command line parsing ===============================================
-
 # Defaults
 build_type="release"
 build_dir=""
 source_dir="$SDIR/.."
+num_jobs=$(nproc) # Automatically determines the number of CPU cores
 
+# Command line parsing
 if [[ $# -ge 1 ]]; then
     case $1 in
-    debug|release|profile)
+    debug|release)
         build_type=$1
         if [[ $# -ge 2 ]]; then
             build_dir=$2
@@ -55,35 +55,28 @@ fi
 # Store additional cmake args user might have passed
 user_args="$*"
 
-# Create build directory =============================================
-
-# If build dir not explicitely defined,
-if [[ -z "$build_dir" ]]; then
-    # Uses one derived from build type
-    build_dir="build-${build_type:0:3}"
-fi
+# Create build directory
+build_dir=${build_dir:-"build-${build_type:0:3}"}
 mkdir -p "$build_dir"
 
-# Set build configuration depending on build type ====================
-
-# Common config
+# Set build configuration
 cmake_args="-DBUILD_TESTS=1"
 
-if [[ "$ENABLE_PYTHON" = '0' || "$ENABLE_PYTHON" = 'no' ]]; then
+# Python build configuration
+if [[ "$ENABLE_PYTHON" == '0' || "$ENABLE_PYTHON" == 'no' ]]; then
     cmake_args="$cmake_args -DBUILD_PYTHON=0"
 else
-    # enables python by default or when asked
     cmake_args="$cmake_args -DBUILD_PYTHON=1"
+
+    # Additional python versions
+    if [ "$PYTHON_VERSIONS" ]; then
+        cmake_args="$cmake_args -DPYTHON_VERSIONS=$PYTHON_VERSIONS"
+    fi
 fi
 
-if [ "$PYTHON_VERSIONS" ]; then
-    cmake_args="$cmake_args -DPYTHON_VERSIONS=$PYTHON_VERSIONS"
-fi
 
+# Specific configurations for build type
 case $build_type in
-    profile)
-        cmake_args="$cmake_args -DCMAKE_BUILD_TYPE=Release -DBUILD_BENCH=1"
-        ;;
     release)
         cmake_args="$cmake_args -DCMAKE_BUILD_TYPE=Release"
         ;;
@@ -92,33 +85,26 @@ case $build_type in
         ;;
 esac
 
-# Configure build toolchain ===========================================
+# Configure build toolchain
+CC=${CC:-$(find /usr/bin/gcc-11* | sort -rV | head -n 1)}
+CXX=${CXX:-$(find /usr/bin/g++-11* | sort -rV | head -n 1)}
+cmake_args="$cmake_args -DCMAKE_C_COMPILER=$CC -DCMAKE_CXX_COMPILER=$CXX"
 
-# Make sure we use most recent gcc-11.x
-CC=${CC:=$(find /usr/bin/gcc-11* | sort -rV | head -n 1)}
-CXX=${CXX:=$(find /usr/bin/g++-11* | sort -rV | head -n 1)}
-
-cmake_args="${cmake_args} -DCMAKE_C_COMPILER=$CC -DCMAKE_CXX_COMPILER=$CXX"
-
-# Prefer to use ninja if found
+# Use ninja if available
 if which ninja > /dev/null; then
     cmake_args="$cmake_args -G Ninja"
     export NINJA_STATUS="[%f/%t %r %es] "
 fi
 
-# Config ccache
-unset has_ccache
+# Configure ccache
 if which ccache > /dev/null; then
-    has_ccache=1
-fi
-if [[ $has_ccache ]]; then
     ccache_stats=$(pwd)/$build_dir/ccache_stats.log
     rm -rf "$ccache_stats"
-    cmake_args="${cmake_args} -DCCACHE_STATSLOG=${ccache_stats}"
+    cmake_args="$cmake_args -DCCACHE_STATSLOG=${ccache_stats}"
 fi
 
-# config CUDA
-CUDA_MAJOR=11
+# Configure CUDA
+CUDA_MAJOR=${CUDA_MAJOR:-11}
 for nvcc_path in /usr/local/cuda-$CUDA_MAJOR/bin/nvcc /usr/local/cuda/bin/nvcc; do
     if [ -x "$nvcc_path" ]; then
         cmake_args="$cmake_args -DCMAKE_CUDA_COMPILER=$nvcc_path"
@@ -126,19 +112,11 @@ for nvcc_path in /usr/local/cuda-$CUDA_MAJOR/bin/nvcc /usr/local/cuda/bin/nvcc; 
     fi
 done
 
-# Create build tree and build! ===========================================
+# Create build tree and build
+cmake -B "$build_dir" "$source_dir" $cmake_args $user_args
+cmake --build "$build_dir" -- -j$num_jobs
 
-# Create build tree
-cmake -B "$build_dir" "$source_dir"  \
-    -DBUILD_TESTS=1 \
-    $cmake_args \
-    $user_args
-
-# Build CV-CUDA
-cmake --build "$build_dir" --parallel 8 -- $MAKE_OPTS
-
-# Show ccache status, if available!
-if [[ $has_ccache ]]; then
-    # Show build stats
-    CCACHE_STATSLOG=${ccache_stats} ccache --show-stats -V
+# Show ccache status
+if which ccache > /dev/null; then
+    ccache --show-stats -V
 fi

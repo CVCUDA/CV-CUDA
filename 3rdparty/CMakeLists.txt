@@ -15,7 +15,10 @@
 
 set(CMAKE_FOLDER 3rdparty)
 
-# disable all warnings
+# disable all warnings when compiling objects of 3rdparty
+# libraries included here. It *doesn't* affect warnings in public
+# header files that are included by cvcuda code. For that, see
+# solution employed with nvbench.
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -w")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -w")
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -w")
@@ -40,9 +43,18 @@ set(DLPACK_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/dlpack" PARENT_SCOPE)
 set(CUOSD_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/cuOSD" PARENT_SCOPE)
 
 # NVBench --------------------------------
-set(NVBENCH_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/nvbench" PARENT_SCOPE)
-
 if(BUILD_BENCH)
     set(NVBench_ENABLE_CUPTI off)
+    set(BUILD_SHARED_LIBS off)
     add_subdirectory(nvbench)
+    # Because nvbench::main is an object library, cmake<=3.20 doesn't treat it
+    # like regular libraries, and just creating an cvcuda_nvbench interface
+    # library that depends on it doesn't work. We need to create an static
+    # library and pull in the objects created by nvbench::main, as per cmake
+    # docs.
+    add_library(cvcuda_nvbench_main STATIC $<TARGET_OBJECTS:nvbench::main>)
+    target_link_libraries(cvcuda_nvbench_main PUBLIC nvbench::nvbench)
+    target_include_directories(cvcuda_nvbench_main SYSTEM INTERFACE
+        ${CMAKE_CURRENT_SOURCE_DIR}/nvbench)
+    add_library(cvcuda::nvbench::main ALIAS cvcuda_nvbench_main)
 endif()

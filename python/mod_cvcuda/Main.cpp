@@ -106,6 +106,7 @@ PYBIND11_MODULE(cvcuda, m)
     ExportOpBoxBlur(m);
     ExportOpBrightnessContrast(m);
     ExportOpColorTwist(m);
+    ExportOpHQResize(m);
     ExportOpRemap(m);
     ExportOpCropFlipNormalizeReformat(m);
     ExportOpNonMaximumSuppression(m);

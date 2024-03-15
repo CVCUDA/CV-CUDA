@@ -15,25 +15,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
 tests_dir="@PYTHON_TEST_DIR@"
-python_versions="@PYTHON_TEST_VERSIONS@"
+python_versions_tentative="@PYTHON_TEST_VERSIONS@"
+
+python_versions=""
 
 # Verify if correct package dependencies are installed --------
 pip_depends="pytest torch"
 
-declare -a install_commands
-
-for ver in $python_versions; do
+# Collect all python versions that are indeed installed and have proper dependencies installed
+# Two behaviors:
+# - default: skip Python versions that are not installed or don't have pytest and torch installed
+# - if NVCV_FORCE_PYTHON is set: exit with error
+for ver in $python_versions_tentative; do
     if ! python$ver -c "import pytest, torch" > /dev/null 2>&1; then
-        install_commands+=("sudo python$ver -m pip install $pip_depends")
+        echo "WARNING: Python version $ver not installed or missing proper dependencies"
+        echo "Please install Python version $ver and run the following commands before running tests: sudo python$ver -m pip install $pip_depends"
+        if [[ "$NVCV_FORCE_PYTHON" == 1 || "$NVCV_FORCE_PYTHON" == yes ]]; then
+            exit 1 #hard exit
+        fi
+    else
+        echo "Found Python version $ver installed with proper dependencies, adding to tests"
+        python_versions+="$ver "
     fi
 done
 
-if [[ "${install_commands[*]}" ]]; then
-    echo "Please run the following commands before running $(basename $0): "
-    ( IFS=$'\n'; echo -e "${install_commands[*]}" )
-    exit 1
-fi
 
 # Run tests --------
 

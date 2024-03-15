@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,13 +25,13 @@ foreach(VER ${PYTHON_VERSIONS})
 
     set(CPACK_COMPONENT_${PYTHON_MODULE_NAME}_DISABLED true)
     set(CPACK_COMPONENT_${PYTHON_MODULE_NAME}_DISPLAY_NAME "Python ${VER}")
-    set(CPACK_COMPONENT_${PYTHON_MODULE_NAME}_DESCRIPTION "NVIDIA NVCV python ${VER} bindings")
+    set(CPACK_COMPONENT_${PYTHON_MODULE_NAME}_DESCRIPTION "NVIDIA CV-CUDA python ${VER} bindings")
     set(CPACK_COMPONENT_${PYTHON_MODULE_NAME}_GROUP python)
 
     if(UNIX)
         set(CPACK_DEBIAN_${PYTHON_MODULE_NAME}_PACKAGE_NAME python${VER}-${CPACK_PACKAGE_NAME})
 
-        set(NVCV_${PYTHON_MODULE_NAME}_FILE_NAME "nvcv-python${VER}-${NVCV_VERSION_BUILD}")
+        set(NVCV_${PYTHON_MODULE_NAME}_FILE_NAME "cvcuda-python${VER}-${NVCV_VERSION_BUILD}")
         set(CPACK_DEBIAN_${PYTHON_MODULE_NAME}_FILE_NAME "${NVCV_${PYTHON_MODULE_NAME}_FILE_NAME}.deb")
         set(CPACK_ARCHIVE_${PYTHON_MODULE_NAME}_FILE_NAME "${NVCV_${PYTHON_MODULE_NAME}_FILE_NAME}")
 
@@ -49,19 +49,6 @@ foreach(VER ${PYTHON_VERSIONS})
     # Execute module's installer script
     install(CODE "include(\"${CMAKE_BINARY_DIR}/python${VER}/build/cmake_install.cmake\")"
             COMPONENT ${python_module_name})
-
-    if(BUILD_TESTS)
-        set(CPACK_DEBIAN_TESTS_PACKAGE_DEPENDS
-                "${CPACK_DEBIAN_TESTS_PACKAGE_DEPENDS},
-                ${CPACK_DEBIAN_${PYTHON_MODULE_NAME}_PACKAGE_NAME} (>= ${NVCV_VERSION_API})")
-
-        # For some reason these are needed with python-3.7
-        if(VER VERSION_EQUAL "3.7")
-            set(CPACK_DEBIAN_TESTS_PACKAGE_DEPENDS
-                    "${CPACK_DEBIAN_TESTS_PACKAGE_DEPENDS}
-                     , python3-typing-extensions")
-        endif()
-    endif()
 
     list(APPEND CPACK_COMPONENTS_ALL ${python_module_name})
 endforeach()

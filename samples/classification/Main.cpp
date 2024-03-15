@@ -198,7 +198,7 @@ int main(int argc, char *argv[])
     std::string labelPath = "./engines/imagenet-classes.txt";
     uint32_t    batchSize = 1;
 
-    // Parse the command line paramaters to override the default parameters
+    // Parse the command line parameters to override the default parameters
     int retval = ParseArgs(argc, argv, modelPath, imagePath, labelPath, batchSize);
     if (retval != 0)
     {

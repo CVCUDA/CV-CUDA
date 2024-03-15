@@ -56,8 +56,9 @@ NVCV_TEST_SUITE_P(OpResize, test::ValueList<int, int, int, int, NVCVInterpolatio
     {        420,      420,       40,        42,   NVCV_INTERP_CUBIC,           1},
     {       1920,     1080,      640,       320,   NVCV_INTERP_CUBIC,           1},
     {       1920,     1080,      640,       320,   NVCV_INTERP_CUBIC,           2},
-    {         44,       40,       22,        20,    NVCV_INTERP_AREA,           1},
+    {         44,       40,       22,        20,    NVCV_INTERP_AREA,           2},
     {         30,       30,       20,        20,    NVCV_INTERP_AREA,           2},
+    {         30,       30,       60,        60,    NVCV_INTERP_AREA,           4},
 });
 
 // clang-format on
@@ -140,7 +141,7 @@ TEST_P(OpResize, tensor_correct_output)
 
         // Generate gold result
         test::Resize(goldVec, dstVecRowStride, {dstWidth, dstHeight}, srcVec[i], srcVecRowStride, {srcWidth, srcHeight},
-                     fmt, interpolation);
+                     fmt, interpolation, false);
 
         EXPECT_EQ(goldVec, testVec);
     }
@@ -171,7 +172,10 @@ TEST_P(OpResize, varshape_correct_output)
     std::uniform_int_distribution<int> rndDstHeight(dstHeightBase * 0.8, dstHeightBase * 1.1);
 
     std::vector<nvcv::Image> imgSrc, imgDst;
-    for (int i = 0; i < numberOfImages; ++i)
+    // The size of the first image is fixed: to cover area fast code path
+    imgSrc.emplace_back(nvcv::Size2D{srcWidthBase, srcHeightBase}, fmt);
+    imgDst.emplace_back(nvcv::Size2D{dstHeightBase, dstHeightBase}, fmt);
+    for (int i = 0; i < numberOfImages - 1; ++i)
     {
         imgSrc.emplace_back(nvcv::Size2D{rndSrcWidth(randEng), rndSrcHeight(randEng)}, fmt);
         imgDst.emplace_back(nvcv::Size2D{rndDstWidth(randEng), rndDstHeight(randEng)}, fmt);
@@ -249,7 +253,7 @@ TEST_P(OpResize, varshape_correct_output)
 
         // Generate gold result
         test::Resize(goldVec, dstRowStride, {dstWidth, dstHeight}, srcVec[i], srcVecRowStride[i], {srcWidth, srcHeight},
-                     fmt, interpolation);
+                     fmt, interpolation, true);
 
         // maximum absolute error
         std::vector<int> mae(testVec.size());

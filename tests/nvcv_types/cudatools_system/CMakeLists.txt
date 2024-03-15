@@ -45,6 +45,8 @@ add_executable(nvcv_test_cudatools_system
     TestTypeTraits.cpp
     TestMetaprogramming.cpp
     TestArrayWrap.cpp
+    TestTensorBatchWrap.cpp
+    DeviceTensorBatchWrap.cu
 )
 
 target_link_libraries(nvcv_test_cudatools_system

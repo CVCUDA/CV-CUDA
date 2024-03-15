@@ -162,9 +162,9 @@ TupleTensor4 SIFTInto(Tensor &featCoords, Tensor &featMetadata, Tensor &featDesc
     auto op = CreateOperatorEx<PyOpSIFT>(inShape, numOctaveLayers);
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {in});
-    guard.add(LockMode::LOCK_WRITE, {featCoords, featMetadata, featDescriptors, numFeatures});
-    guard.add(LockMode::LOCK_WRITE, {*op});
+    guard.add(LockMode::LOCK_MODE_READ, {in});
+    guard.add(LockMode::LOCK_MODE_WRITE, {featCoords, featMetadata, featDescriptors, numFeatures});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*op});
 
     op->submit(pstream->cudaHandle(), in, featCoords, featMetadata, featDescriptors, numFeatures, numOctaveLayers,
                contrastThreshold, edgeThreshold, initSigma, flags);

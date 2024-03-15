@@ -22,6 +22,7 @@
 #include "Metaprogramming.hpp"
 
 #include <cassert>
+#include <cmath>
 #include <type_traits>
 
 namespace nvcv::util {
@@ -121,6 +122,18 @@ NVCV_CUDA_HOST_DEVICE constexpr auto DivUpPowerOfTwo(T num, TypeIdentity<T> den)
     assert(IsPowerOfTwo(den));
 
     return (num >> ILog2(den)) + !!(num & (den - 1));
+}
+
+/// @brief Calculates normalized sinc i.e. `sin(pi * x) / (pi * x)`
+template<typename T, typename = std::enable_if_t<std::is_floating_point_v<T>>>
+NVCV_CUDA_HOST_DEVICE NVCV_FORCE_INLINE T sinc(T x)
+{
+    static_assert(sizeof(T) >= sizeof(float)); // not analyzed for smaller floats, eps may require adjustment
+    constexpr T eps = sizeof(T) <= sizeof(float) ? 1e-5 : 1e-8;
+    x *= static_cast<T>(M_PI);
+    if (std::abs(x) < eps)
+        return static_cast<T>(1.0) - x * x * (static_cast<T>(1.0) / 6); // remove singularity by using Taylor expansion
+    return std::sin(x) / x;
 }
 
 } // namespace nvcv::util

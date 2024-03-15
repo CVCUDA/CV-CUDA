@@ -30,6 +30,7 @@ set(bench_sources
     BenchFlip.cpp
     BenchRotate.cpp
     BenchPillowResize.cpp
+    BenchHQResize.cpp
     BenchCenterCrop.cpp
     BenchWarpPerspective.cpp
     BenchWarpAffine.cpp
@@ -75,8 +76,7 @@ foreach(bench_source IN LISTS bench_sources)
   string(REPLACE "Bench" "cvcuda_bench_" algo_name ${bench_file_name})
   string(TOLOWER ${algo_name} bench_name)
   add_executable(${bench_name} "${bench_source}")
-  target_include_directories(${bench_name} PRIVATE "${CMAKE_CURRENT_LIST_DIR}")
-  target_link_libraries(${bench_name} PRIVATE nvbench::main PUBLIC cvcuda)
+  target_link_libraries(${bench_name} PRIVATE cvcuda::nvbench::main cvcuda)
   set_target_properties(${bench_name} PROPERTIES COMPILE_FEATURES cuda_std_17)
   add_dependencies(bench_all ${bench_name})
 endforeach()

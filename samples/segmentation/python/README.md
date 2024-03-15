@@ -1,3 +1,18 @@
+
+[//]: # "SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved."
+[//]: # "SPDX-License-Identifier: Apache-2.0"
+[//]: # ""
+[//]: # "Licensed under the Apache License, Version 2.0 (the 'License');"
+[//]: # "you may not use this file except in compliance with the License."
+[//]: # "You may obtain a copy of the License at"
+[//]: # "http://www.apache.org/licenses/LICENSE-2.0"
+[//]: # ""
+[//]: # "Unless required by applicable law or agreed to in writing, software"
+[//]: # "distributed under the License is distributed on an 'AS IS' BASIS"
+[//]: # "WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied."
+[//]: # "See the License for the specific language governing permissions and"
+[//]: # "limitations under the License."
+
 # Semantic Segmentation : Locally and using Triton
 
 ## Pre-requisites
@@ -66,12 +81,12 @@ Triton has different public [Docker images](https://catalog.ngc.nvidia.com/orgs/
       ./samples/scripts/install_dependencies.sh
       pip3 install tensorrt
       ```
-3. Install the CV-CUDA packages. Pre-built packages `.deb`, `.tar.xz`, `.whl` are only available on Github, so need to download from there. Otherwise, please build from source. Please note that since the above container comes with Python 3.8.10, we will install nvcv-python3.8-0 package as mentioned below. If you have any other Python distributions, you would need to use the appropriate nvcv-python packages below.
+3. Install the CV-CUDA packages. Pre-built packages `.deb`, `.tar.xz`, `.whl` are only available on Github, so need to download from there. Otherwise, please build from source. Please note that since the above container comes with Python 3.8.10, we will install cvcuda-python3.8-0 package as mentioned below. If you have any other Python distributions, you would need to use the appropriate cvcuda-python packages below.
 
       ```bash
-      wget https://github.com/CVCUDA/CV-CUDA/releases/download/v0.3.0-beta/nvcv-lib-0.3.0_beta-cuda11-x86_64-linux.deb \
-            https://github.com/CVCUDA/CV-CUDA/releases/download/v0.3.0-beta/nvcv-python3.8-0.3.0_beta-cuda11-x86_64-linux.deb \
-            https://github.com/CVCUDA/CV-CUDA/releases/download/v0.3.0-beta/nvcv_python-0.3.x_beta-cp38-cp38-linux_x86_64.whl \
+      wget https://github.com/CVCUDA/CV-CUDA/releases/download/v0.6.0-beta/cvcuda-lib-0.6.0_beta-cuda11-x86_64-linux.deb \
+            https://github.com/CVCUDA/CV-CUDA/releases/download/v0.6.0-beta/cvcuda-python3.8-0.6.0_beta-cuda11-x86_64-linux.deb \
+            https://github.com/CVCUDA/CV-CUDA/releases/download/v0.6.0-beta/cvcuda_cu11-0.6.0b0-cp310-cp310-linux_x86_64.whl \
             -P /tmp/cvcuda && \
       apt-get install -y /tmp/cvcuda/*.deb && \
       pip3 install /tmp/cvcuda/*.whl

@@ -43,9 +43,9 @@ Tensor LaplacianInto(Tensor &output, Tensor &input, const int &ksize, const floa
     auto laplacian = CreateOperator<cvcuda::Laplacian>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*laplacian});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*laplacian});
 
     laplacian->submit(pstream->cudaHandle(), input, output, ksize, scale, border);
 
@@ -71,9 +71,9 @@ ImageBatchVarShape LaplacianVarShapeInto(ImageBatchVarShape &output, ImageBatchV
     auto laplacian = CreateOperator<cvcuda::Laplacian>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input, ksize, scale});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*laplacian});
+    guard.add(LockMode::LOCK_MODE_READ, {input, ksize, scale});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*laplacian});
 
     laplacian->submit(pstream->cudaHandle(), input, output, ksize, scale, border);
 

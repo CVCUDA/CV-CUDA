@@ -426,6 +426,12 @@ TEST(ImageFormatTests, set_extra_channel_info_image_format_none)
     ASSERT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatSetExtraChannelInfo(&fmt, &exChannelInfo));
 }
 
+TEST(ImageFormatTests, set_extra_channel_info_null_input_ptr)
+{
+    NVCVExtraChannelInfo exChannelInfo = {2, 8, NVCV_DATA_KIND_UNSIGNED, NVCV_EXTRA_CHANNEL_POS3D};
+    ASSERT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatSetExtraChannelInfo(nullptr, &exChannelInfo));
+}
+
 TEST(ImageFormatTests, set_extra_channel_info_max_min_bounds)
 {
     NVCVExtraChannelInfo exChannelInfo = {8, 8, NVCV_DATA_KIND_UNSIGNED, NVCV_EXTRA_CHANNEL_POS3D};
@@ -579,6 +585,8 @@ TEST(ImageFormatTests, check_alpha_type)
     fmt = NVCV_IMAGE_FORMAT_RGBA8;
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetAlphaType(fmt, &alphaType));
     EXPECT_EQ(NVCV_ALPHA_ASSOCIATED, alphaType);
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatGetAlphaType(fmt, nullptr));
 }
 
 TEST_P(ImageFormatTests, check_extra_channel_info)

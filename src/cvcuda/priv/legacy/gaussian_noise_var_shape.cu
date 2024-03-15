@@ -258,7 +258,7 @@ ErrorCode GaussianNoiseVarShape::infer(const ImageBatchVarShapeDataStridedCuda &
     DataType out_data_type = helpers::GetLegacyDataType(outData.uniqueFormat());
     if (in_data_type != out_data_type)
     {
-        LOG_ERROR("Invalid DataType " << out_data_type);
+        LOG_ERROR("DataType of input and output must be equal, but got " << in_data_type << " and " << out_data_type);
         return ErrorCode::INVALID_DATA_TYPE;
     }
 

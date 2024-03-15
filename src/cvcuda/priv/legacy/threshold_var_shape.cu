@@ -1003,7 +1003,7 @@ ThresholdVarShape::ThresholdVarShape(DataShape max_input_shape, DataShape max_ou
     if (maxBatchSize < 0)
     {
         LOG_ERROR("Invalid num of max batch size " << maxBatchSize);
-        throw std::runtime_error("Parameter error!");
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Parameter error!");
     }
     m_automatic_thresh = (m_type & ~NVCV_THRESH_MASK);
     if (m_automatic_thresh != 0)
@@ -1044,7 +1044,7 @@ ErrorCode ThresholdVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inDa
     DataType out_data_type = helpers::GetLegacyDataType(outData.uniqueFormat());
     if (in_data_type != out_data_type)
     {
-        LOG_ERROR("Invalid Data Type " << out_data_type);
+        LOG_ERROR("DataType of input and output must be equal, but got " << in_data_type << " and " << out_data_type);
         return ErrorCode::INVALID_DATA_TYPE;
     }
 

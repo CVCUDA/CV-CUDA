@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,7 @@
 # limitations under the License.
 
 if(ENABLE_SANITIZERS)
-    message(FATAL_ERROR "NVCV python modules don't work on sanitized builds")
+    message(FATAL_ERROR "CV-CUDA python modules don't work on sanitized builds")
 endif()
 
 # Because we python as subproject, we need to create a fake Findnvcv.cmake so

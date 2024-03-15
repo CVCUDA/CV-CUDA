@@ -111,6 +111,23 @@ public:
     }
 
     /**
+     * Constructs a constant TensorWrap by wrapping a const \p data pointer argument
+     * and copying the dyncamic strides from a given buffer.
+     *
+     * @param[in] data Pointer to the data that will be wrapped.
+     * @param[in] strides Pointer to stride data
+     */
+    template<typename DataType, typename StrideType>
+    explicit __host__ __device__ TensorWrap(const DataType *data, StrideType *strides)
+        : m_data(reinterpret_cast<const std::byte *>(data))
+    {
+        for (int i = 0; i < kVariableStrides; ++i)
+        {
+            m_strides[i] = strides[i];
+        }
+    }
+
+    /**
      * Constructs a constant TensorWrap by wrapping an \p image argument.
      *
      * @param[in] image Image reference to the image that will be wrapped.
@@ -279,6 +296,19 @@ public:
     }
 
     /**
+     * Constructs a TensorWrap by wrapping a const \p data pointer argument
+     * and copying the dyncamic strides from a given buffer.
+     *
+     * @param[in] data Pointer to the data that will be wrapped.
+     * @param[in] strides Pointer to stride data
+     */
+    template<typename DataType, typename StrideType>
+    explicit __host__ __device__ TensorWrap(DataType *data, StrideType *strides)
+        : Base(data, strides)
+    {
+    }
+
+    /**
      * Constructs a TensorWrap by wrapping an \p image argument.
      *
      * @param[in] image Image reference to the image that will be wrapped.
@@ -385,11 +415,16 @@ using Tensor3DWrap = TensorWrap<T, -1, -1, sizeof(T)>;
 template<typename T>
 using Tensor4DWrap = TensorWrap<T, -1, -1, -1, sizeof(T)>;
 
+template<typename T>
+using Tensor5DWrap = TensorWrap<T, -1, -1, -1, -1, sizeof(T)>;
+
 template<typename T, int N>
 using TensorNDWrap = std::conditional_t<
     N == 1, Tensor1DWrap<T>,
     std::conditional_t<N == 2, Tensor2DWrap<T>,
-                       std::conditional_t<N == 3, Tensor3DWrap<T>, std::conditional_t<N == 4, Tensor4DWrap<T>, void>>>>;
+                       std::conditional_t<N == 3, Tensor3DWrap<T>,
+                                          std::conditional_t<N == 4, Tensor4DWrap<T>,
+                                                             std::conditional_t<N == 5, Tensor5DWrap<T>, void>>>>>;
 
 /**@}*/
 

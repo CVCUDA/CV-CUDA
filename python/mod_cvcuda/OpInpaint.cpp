@@ -128,9 +128,9 @@ Tensor InpaintInto(Tensor &output, Tensor &input, Tensor &masks, double inpaintR
     auto              inpaint = CreateOperatorEx<PyOpInpaint>((int)shape[0], maxShape);
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input, masks});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_WRITE, {*inpaint});
+    guard.add(LockMode::LOCK_MODE_READ, {input, masks});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*inpaint});
 
     inpaint->submit(pstream->cudaHandle(), input, masks, output, inpaintRadius);
 
@@ -155,9 +155,9 @@ ImageBatchVarShape InpaintVarShapeInto(ImageBatchVarShape &output, ImageBatchVar
     auto         inpaint  = CreateOperatorEx<PyOpInpaint>(input.numImages(), maxShape);
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input, masks});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_WRITE, {*inpaint});
+    guard.add(LockMode::LOCK_MODE_READ, {input, masks});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*inpaint});
 
     inpaint->submit(pstream->cudaHandle(), input, masks, output, inpaintRadius);
 

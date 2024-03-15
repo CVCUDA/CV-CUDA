@@ -1,3 +1,18 @@
+
+[//]: # "SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved."
+[//]: # "SPDX-License-Identifier: Apache-2.0"
+[//]: # ""
+[//]: # "Licensed under the Apache License, Version 2.0 (the 'License');"
+[//]: # "you may not use this file except in compliance with the License."
+[//]: # "You may obtain a copy of the License at"
+[//]: # "http://www.apache.org/licenses/LICENSE-2.0"
+[//]: # ""
+[//]: # "Unless required by applicable law or agreed to in writing, software"
+[//]: # "distributed under the License is distributed on an 'AS IS' BASIS"
+[//]: # "WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied."
+[//]: # "See the License for the specific language governing permissions and"
+[//]: # "limitations under the License."
+
 # Performance Benchmarking
 
 CV-CUDA samples ships with the following scripts that can help track and report the performance of the Python samples.
@@ -31,7 +46,7 @@ This file holds the data structures and functions most commonly used during the 
 
 With these tools, the benchmarking flow involves the following two steps:
 
-1. Annotating the code of the sample using classes and functions from the `perf_utils.py` so that it can be profiled.
+1. Annotating the code of the sample using classes and functions from the `perf_utils.py` so that it can be profiled. This is already done for you in the CV-CUDA Python samples. Here is how you can do it for any Python code:
     1. Import the necessary classes and functions first
         ```python
         from perf_utils import CvCudaPerf, get_default_arg_parser, parse_validate_default_args
@@ -75,7 +90,7 @@ With these tools, the benchmarking flow involves the following two steps:
        # Once everything is done, we must call the finalize().
        cvcuda_perf.finalize()
        ```
-2. Use the sample with the `benchmark.py` to launch the benchmarking. `benchmark.py` can launch any script that uses `perf_utils`'s functionality and benchmark it using NSYS. It can also launch it in a multi-CPU multi-GPU fashion to compute the throughput.
+2. Launch the sample with the `benchmark.py` to do the benchmarking. `benchmark.py` can launch any script that uses `perf_utils`'s functionality and benchmark it using NSYS. It can also launch it in a multi-CPU multi-GPU fashion to compute the throughput.
 
     1. To benchmark the object detection sample, for example, we can use the following command:
 

@@ -73,7 +73,7 @@ void *IAllocator::allocHostPinnedMem(int64_t size, int32_t align)
     if (util::RoundUp(size, align) != size)
     {
         throw Exception(NVCV_ERROR_INVALID_ARGUMENT,
-                        "Host memory allocator size must be an integral multiple of alignment %d, not %ld", align,
+                        "Pinned memory allocator size must be an integral multiple of alignment %d, not %ld", align,
                         size);
     }
 
@@ -101,7 +101,7 @@ void *IAllocator::allocCudaMem(int64_t size, int32_t align)
     if (util::RoundUp(size, align) != size)
     {
         throw Exception(NVCV_ERROR_INVALID_ARGUMENT,
-                        "Host memory allocator size must be an integral multiple of alignment %d, not %ld", align,
+                        "Device memory allocator size must be an integral multiple of alignment %d, not %ld", align,
                         size);
     }
 

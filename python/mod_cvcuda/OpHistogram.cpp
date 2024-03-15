@@ -45,13 +45,13 @@ Tensor HistogramInto(Tensor &histogram, Tensor &input, std::optional<Tensor> mas
     auto op = CreateOperator<cvcuda::Histogram>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {histogram});
-    guard.add(LockMode::LOCK_NONE, {*op});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {histogram});
+    guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
     if (mask)
     {
-        guard.add(LockMode::LOCK_READ, {*mask});
+        guard.add(LockMode::LOCK_MODE_READ, {*mask});
         op->submit(pstream->cudaHandle(), input, *mask, histogram);
     }
     else

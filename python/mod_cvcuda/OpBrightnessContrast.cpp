@@ -58,16 +58,16 @@ auto runGuard(Op &op, Src &src, Dst &dst, std::optional<Tensor> &brightness, std
     }
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {src});
+    guard.add(LockMode::LOCK_MODE_READ, {src});
     for (auto &arg : {brightness, contrast, brightnessShift, contrastCenter})
     {
         if (arg)
         {
-            guard.add(LockMode::LOCK_READ, {*arg});
+            guard.add(LockMode::LOCK_MODE_READ, {*arg});
         }
     }
-    guard.add(LockMode::LOCK_WRITE, {dst});
-    guard.add(LockMode::LOCK_NONE, {*op});
+    guard.add(LockMode::LOCK_MODE_WRITE, {dst});
+    guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
     call(*pstream, brightness ? *brightness : nvcv::Tensor{nullptr}, contrast ? *contrast : nvcv::Tensor{nullptr},
          brightnessShift ? *brightnessShift : nvcv::Tensor{nullptr},

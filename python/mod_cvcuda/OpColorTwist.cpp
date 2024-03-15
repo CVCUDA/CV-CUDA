@@ -56,9 +56,9 @@ auto runGuard(Op &op, Src &src, Dst &dst, const Tensor &twist, std::optional<Str
     }
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {src, twist});
-    guard.add(LockMode::LOCK_WRITE, {dst});
-    guard.add(LockMode::LOCK_NONE, {*op});
+    guard.add(LockMode::LOCK_MODE_READ, {src, twist});
+    guard.add(LockMode::LOCK_MODE_WRITE, {dst});
+    guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
     call(*pstream);
 }

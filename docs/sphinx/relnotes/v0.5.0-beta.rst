@@ -19,47 +19,42 @@
 Beta.3
 ======
 
-CV-CUDA 0.5.0 is a major release of the library providing multiple new operators, features, and fixes to multiple customer-reported issues.
+CV-CUDA 0.5.0 is a comprehensive update introducing new security, compliance, and performance enhancements, alongside bug fixes and new features.
 
 Release Highlights
 ------------------
 
-CV-CUDA v0.5.0 includes the following key changes:
+CV-CUDA v0.5.0 includes significant improvements:
 
 * **New Operators**:
-  * FindHomography: Calculates a perspective transform from four pairs of the corresponding points
-  * Label: Labels connected regions in an image using 4-way connectivity for foreground and 8-way for background pixels
-  * PairwiseMatcher: Matches features computed separately (e.g. via the SIFT operator) in two images using the brute force method
-  * Stack: Concatenates two input tensors into a single output tensor
+  - FindHomography: Calculates a perspective transform from four pairs of the corresponding points
+  - Label: Labels connected regions in an image using 4-way connectivity for foreground and 8-way for background pixels
+  - PairwiseMatcher: Matches features computed separately (e.g. via the SIFT operator) in two images using the brute force method
 
 * **New Features**:
-  * Added `TensorBatch` in C++ and Python, a container type that can hold a list of non-uniformly shaped tensors
-  * Added `Workspace` in C++ and Python, an abstraction of memory and asynchronous resources for CV-CUDA operators
-  * Added better color format support in nvcv_types
-  * New sample application for the `Label` operator
-  * JetPack 5.1.2 support for L4T (Jetson Orin, L4T 35.4.1, CUDA 11.4)
-  * Enhanced documentation
+  - Implemented Python class for `TensorBatch``, a container type that can hold a list of non-uniformly shaped tensors
+  - Added support for RGBD image formats
+  - Enhanced documentation
 
 * **Bug Fixes**:
-  * Resolved memory leak in `NvBlurBoxes`
-  * Fixed segmentation fault issue in Python with certain imports
-  * Corrected `typestr` format issue in `__cuda_array_interface__`
-  * Addressed occasional hanging in `OpBoxBlur` on RGBA images
+  - Resolved memory leak in NvBlurBoxes
+  - Fixed segmentation fault issue in Python with certain imports
+  - Corrected typestr format issue in `__cuda_array_interface__`
+  - Addressed occasional hanging in OpBoxBlur on RGBA images
 
 Compatibility
 -------------
 
-* GPU Compute Capability: 7+.x
-* Ubuntu x86_64: 20.04, 22.04
+* Continues to support GPU Compute Capability: 7+.x
+* Compatible with Ubuntu x86_64: 20.04, 22.04
 * CUDA Toolkit: 11.7+ (11.2+ for library build and run)
-* L4T: 35.4.1, JetPack 5.1.2 aarch64
-* GCC: 11.0+ (9.x and 10.x for APIs with pre-built binary)
-* Python: 3.8, 3.10
+* GCC: 11.0+ (9.0 and 10.0 for APIs, with pre-built binary and run)
+* Python: 3.7, 3.8, 3.10
 
 Known Issues/Limitations
 ------------------------
 
-* For GCC versions lower than 11.0, C++17 support needs to be enabled when compiling CV-CUDA.
+* The release notes do not specify new known issues or limitations for this version.
 
 License
 -------

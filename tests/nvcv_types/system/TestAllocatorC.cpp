@@ -82,6 +82,10 @@ TEST(AllocatorTest, CreateAndUseCustom)
     ASSERT_EQ(nvcvAllocatorConstructCustom(allocators, 2, &halloc), NVCV_SUCCESS);
     ASSERT_NE(halloc, nullptr);
 
+    int refCount = 0;
+    EXPECT_EQ(nvcvAllocatorRefCount(halloc, &refCount), NVCV_SUCCESS);
+    EXPECT_EQ(refCount, 1);
+
     for (int i = 0; i < 2; i++)
     {
         NVCVResourceAllocator  alloc = {};
@@ -215,4 +219,184 @@ TEST(Allocator, smoke_test_custom_functors)
 
     myalloc1.cudaMem().free((void *)1, 7);
     EXPECT_EQ(1, devCounter);
+}
+
+TEST(AllocatorTest, smoke_user_pointer)
+{
+    NVCVResourceAllocator allocators[1] = {};
+
+    int ctx0 = 100;
+
+    allocators[0].resType         = NVCV_RESOURCE_MEM_HOST;
+    allocators[0].ctx             = &ctx0;
+    allocators[0].res.mem.fnAlloc = [](void *ctx, int64_t size, int32_t align)
+    {
+        *(int *)ctx += 1;
+        return memalign(align, size);
+    };
+    allocators[0].res.mem.fnFree = [](void *ctx, void *ptr, int64_t size, int32_t align)
+    {
+        *(int *)ctx += 10;
+        free(ptr);
+    };
+    allocators[0].cleanup = [](void *ctx, NVCVResourceAllocator *alloc)
+    {
+        EXPECT_EQ(ctx, alloc->ctx);
+        int *ctx_int = static_cast<int *>(ctx);
+        *ctx_int     = 0xDEAD;
+    };
+
+    NVCVAllocatorHandle halloc = nullptr;
+    ASSERT_EQ(nvcvAllocatorConstructCustom(allocators, 1, &halloc), NVCV_SUCCESS);
+    ASSERT_NE(halloc, nullptr);
+
+    void *userPtr;
+    ASSERT_EQ(nvcvAllocatorGetUserPointer(halloc, &userPtr), NVCV_SUCCESS);
+    EXPECT_EQ(nullptr, userPtr);
+
+    ASSERT_EQ(nvcvAllocatorSetUserPointer(halloc, (void *)0x123), NVCV_SUCCESS);
+    ASSERT_EQ(nvcvAllocatorGetUserPointer(halloc, &userPtr), NVCV_SUCCESS);
+    EXPECT_EQ((void *)0x123, userPtr);
+
+    ASSERT_EQ(nvcvAllocatorSetUserPointer(halloc, nullptr), NVCV_SUCCESS);
+    ASSERT_EQ(nvcvAllocatorGetUserPointer(halloc, &userPtr), NVCV_SUCCESS);
+    EXPECT_EQ(nullptr, userPtr);
+
+    int newRef = 1;
+    EXPECT_EQ(nvcvAllocatorDecRef(halloc, &newRef), NVCV_SUCCESS);
+    EXPECT_EQ(newRef, 0);
+}
+
+TEST(AllocatorTest, invalid_arguments_api_calls)
+{
+    NVCVResourceAllocator allocators[2] = {};
+
+    allocators[0].resType         = NVCV_RESOURCE_MEM_HOST;
+    allocators[0].res.mem.fnAlloc = [](void *ctx, int64_t size, int32_t align)
+    {
+        return memalign(align, size);
+    };
+    allocators[0].res.mem.fnFree = [](void *ctx, void *ptr, int64_t size, int32_t align)
+    {
+        free(ptr);
+    };
+    allocators[0].cleanup = [](void *ctx, NVCVResourceAllocator *alloc) {
+    };
+
+    allocators[1].resType         = NVCV_RESOURCE_MEM_CUDA;
+    allocators[1].res.mem.fnAlloc = [](void *ctx, int64_t size, int32_t align)
+    {
+        void *mem;
+        EXPECT_EQ(cudaMalloc(&mem, size), cudaSuccess);
+        return mem;
+    };
+    allocators[1].res.mem.fnFree = [](void *ctx, void *ptr, int64_t size, int32_t align)
+    {
+        EXPECT_EQ(cudaFree(ptr), cudaSuccess);
+    };
+    allocators[1].cleanup = [](void *ctx, NVCVResourceAllocator *alloc) {
+    };
+
+    NVCVAllocatorHandle halloc = nullptr;
+    // 1. Pointer to output handle must not be NULL
+    EXPECT_EQ(nvcvAllocatorConstructCustom(allocators, 2, nullptr), NVCV_ERROR_INVALID_ARGUMENT);
+    ASSERT_EQ(nvcvAllocatorConstructCustom(allocators, 2, &halloc), NVCV_SUCCESS);
+    ASSERT_NE(halloc, nullptr);
+
+    // 2. Pointer to output user pointer cannot be NULL
+    EXPECT_EQ(nvcvAllocatorGetUserPointer(halloc, nullptr), NVCV_ERROR_INVALID_ARGUMENT);
+
+    // 3. Pointer to output buffer must not be NULL
+    EXPECT_EQ(nvcvAllocatorAllocHostMemory(halloc, nullptr, (1 << 10), 256), NVCV_ERROR_INVALID_ARGUMENT);
+    EXPECT_EQ(nvcvAllocatorAllocHostPinnedMemory(halloc, nullptr, (1 << 10), 256), NVCV_ERROR_INVALID_ARGUMENT);
+    EXPECT_EQ(nvcvAllocatorAllocCudaMemory(halloc, nullptr, (1 << 10), 256), NVCV_ERROR_INVALID_ARGUMENT);
+
+    // 4. allocHostMem
+    void *p0 = nullptr;
+    EXPECT_EQ(nvcvAllocatorAllocHostMemory(halloc, &p0, -1, 256), NVCV_ERROR_INVALID_ARGUMENT);
+    EXPECT_EQ(nvcvAllocatorAllocHostMemory(halloc, &p0, (1 << 10), 3), NVCV_ERROR_INVALID_ARGUMENT);
+    EXPECT_EQ(nvcvAllocatorAllocHostMemory(halloc, &p0, 128, 256), NVCV_ERROR_INVALID_ARGUMENT);
+
+    // 5. allocHostPinnedMem
+    EXPECT_EQ(nvcvAllocatorAllocHostPinnedMemory(halloc, &p0, -1, 256), NVCV_ERROR_INVALID_ARGUMENT);
+    EXPECT_EQ(nvcvAllocatorAllocHostPinnedMemory(halloc, &p0, (1 << 10), 3), NVCV_ERROR_INVALID_ARGUMENT);
+    EXPECT_EQ(nvcvAllocatorAllocHostPinnedMemory(halloc, &p0, 128, 256), NVCV_ERROR_INVALID_ARGUMENT);
+
+    // 6. allocHostPinnedMem
+    EXPECT_EQ(nvcvAllocatorAllocCudaMemory(halloc, &p0, -1, 256), NVCV_ERROR_INVALID_ARGUMENT);
+    EXPECT_EQ(nvcvAllocatorAllocCudaMemory(halloc, &p0, (1 << 10), 3), NVCV_ERROR_INVALID_ARGUMENT);
+    EXPECT_EQ(nvcvAllocatorAllocCudaMemory(halloc, &p0, 128, 256), NVCV_ERROR_INVALID_ARGUMENT);
+
+    int newRef = 1;
+    EXPECT_EQ(nvcvAllocatorDecRef(halloc, &newRef), NVCV_SUCCESS);
+    EXPECT_EQ(newRef, 0);
+}
+
+TEST(AllocatorTest, customAllocator_constructor_negative)
+{
+    NVCVResourceAllocator invalidFnAllocAllocator[1]         = {};
+    NVCVResourceAllocator invalidFnFreeAllocator[1]          = {};
+    NVCVResourceAllocator duplicatedResourceTypeAllocator[2] = {};
+
+    // 1. allocation function must not be NULL
+    invalidFnAllocAllocator[0].resType        = NVCV_RESOURCE_MEM_HOST;
+    invalidFnAllocAllocator[0].res.mem.fnFree = [](void *ctx, void *ptr, int64_t size, int32_t align)
+    {
+        free(ptr);
+    };
+    invalidFnAllocAllocator[0].cleanup = [](void *ctx, NVCVResourceAllocator *alloc) {
+    };
+
+    NVCVAllocatorHandle halloc = nullptr;
+
+    EXPECT_EQ(nvcvAllocatorConstructCustom(invalidFnAllocAllocator, 1, &halloc), NVCV_ERROR_INVALID_ARGUMENT);
+
+    // 2. deallocation function must not be NULL
+    invalidFnFreeAllocator[0].resType         = NVCV_RESOURCE_MEM_CUDA;
+    invalidFnFreeAllocator[0].res.mem.fnAlloc = [](void *ctx, int64_t size, int32_t align)
+    {
+        void *mem;
+        EXPECT_EQ(cudaMalloc(&mem, size), cudaSuccess);
+        return mem;
+    };
+    invalidFnFreeAllocator[0].cleanup = [](void *ctx, NVCVResourceAllocator *alloc) {
+    };
+
+    EXPECT_EQ(nvcvAllocatorConstructCustom(invalidFnFreeAllocator, 1, &halloc), NVCV_ERROR_INVALID_ARGUMENT);
+
+    // 3. duplicated resource type
+    duplicatedResourceTypeAllocator[0].resType         = NVCV_RESOURCE_MEM_HOST;
+    duplicatedResourceTypeAllocator[0].res.mem.fnAlloc = [](void *ctx, int64_t size, int32_t align)
+    {
+        return memalign(align, size);
+    };
+    duplicatedResourceTypeAllocator[0].res.mem.fnFree = [](void *ctx, void *ptr, int64_t size, int32_t align)
+    {
+        free(ptr);
+    };
+    duplicatedResourceTypeAllocator[0].cleanup = [](void *ctx, NVCVResourceAllocator *alloc) {
+    };
+
+    duplicatedResourceTypeAllocator[1].resType         = NVCV_RESOURCE_MEM_HOST;
+    duplicatedResourceTypeAllocator[1].res.mem.fnAlloc = [](void *ctx, int64_t size, int32_t align)
+    {
+        return memalign(align, size);
+    };
+    duplicatedResourceTypeAllocator[1].res.mem.fnFree = [](void *ctx, void *ptr, int64_t size, int32_t align)
+    {
+        free(ptr);
+    };
+    duplicatedResourceTypeAllocator[1].cleanup = [](void *ctx, NVCVResourceAllocator *alloc) {
+    };
+
+    EXPECT_EQ(nvcvAllocatorConstructCustom(duplicatedResourceTypeAllocator, 2, &halloc), NVCV_ERROR_INVALID_ARGUMENT);
+}
+
+TEST(AllocatorTest, get_name)
+{
+    EXPECT_STREQ("NVCV_RESOURCE_MEM_CUDA", nvcvResourceTypeGetName(NVCV_RESOURCE_MEM_CUDA));
+    EXPECT_STREQ("NVCV_RESOURCE_MEM_HOST", nvcvResourceTypeGetName(NVCV_RESOURCE_MEM_HOST));
+    EXPECT_STREQ("NVCV_RESOURCE_MEM_HOST_PINNED", nvcvResourceTypeGetName(NVCV_RESOURCE_MEM_HOST_PINNED));
+    EXPECT_STREQ("Unexpected error retrieving NVCVResourceType string representation",
+                 nvcvResourceTypeGetName(static_cast<NVCVResourceType>(255)));
 }

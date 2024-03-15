@@ -37,9 +37,9 @@ Tensor MinAreaRectInto(Tensor &output, Tensor &input, Tensor &numPointsInContour
     auto minAreaRect = CreateOperator<cvcuda::MinAreaRect>(totalContours);
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input, numPointsInContour});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*minAreaRect});
+    guard.add(LockMode::LOCK_MODE_READ, {input, numPointsInContour});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*minAreaRect});
 
     minAreaRect->submit(pstream->cudaHandle(), input, output, numPointsInContour, totalContours);
 

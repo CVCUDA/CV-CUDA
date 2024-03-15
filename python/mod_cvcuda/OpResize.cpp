@@ -39,9 +39,9 @@ Tensor ResizeInto(Tensor &output, Tensor &input, NVCVInterpolationType interp, s
     auto resize = CreateOperator<cvcuda::Resize>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*resize});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*resize});
 
     resize->submit(pstream->cudaHandle(), input, output, interp);
 
@@ -66,9 +66,9 @@ ImageBatchVarShape ResizeVarShapeInto(ImageBatchVarShape &output, ImageBatchVarS
     auto resize = CreateOperator<cvcuda::Resize>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*resize});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*resize});
 
     resize->submit(pstream->cudaHandle(), input, output, interp);
 

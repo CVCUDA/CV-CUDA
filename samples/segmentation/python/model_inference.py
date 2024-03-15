@@ -23,14 +23,16 @@ import torch
 from torchvision.models import segmentation as segmentation_models
 import tensorrt as trt
 
-from pathlib import Path
-
-# Bring module folders from the samples directory into our path so that
+# Bring the commons folder from the samples directory into our path so that
 # we can import modules from it.
-samples_dir = Path(os.path.abspath(__file__)).parents[2]  # samples/
-sys.path.insert(0, os.path.join(samples_dir, ""))
+common_dir = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "common",
+    "python",
+)
+sys.path.insert(0, common_dir)
 
-from common.python.trt_utils import (  # noqa: E402
+from trt_utils import (  # noqa: E402
     convert_onnx_to_tensorrt,
     setup_tensort_bindings,
 )

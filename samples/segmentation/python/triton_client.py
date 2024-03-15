@@ -41,14 +41,14 @@ from common.python.perf_utils import (  # noqa: E402
     parse_validate_default_args,
 )
 
-from common.python.torch_utils import (  # noqa: E402
-    ImageBatchDecoderPyTorch,
-    ImageBatchEncoderPyTorch,
+from common.python.nvcodec_utils import (  # noqa: E402
+    VideoBatchDecoder,
+    VideoBatchEncoder,
+    ImageBatchDecoder,
+    ImageBatchEncoder,
 )
 
 from common.python.vpf_utils import (  # noqa: E402
-    VideoBatchDecoderVPF,
-    VideoBatchEncoderVPF,
     VideoBatchStreamingDecoderVPF,
     VideoBatchStreamingEncoderVPF,
 )
@@ -123,7 +123,7 @@ def run_sample(
     # docs_tag: begin_init_dataloader
     if os.path.splitext(input_path)[1] == ".jpg" or os.path.isdir(input_path):
         # Treat this as data modality of images
-        decoder = ImageBatchDecoderPyTorch(
+        decoder = ImageBatchDecoder(
             input_path,
             batch_size,
             device_id,
@@ -131,11 +131,9 @@ def run_sample(
             cvcuda_perf,
         )
 
-        encoder = ImageBatchEncoderPyTorch(
+        encoder = ImageBatchEncoder(
             output_dir,
-            fps=0,
             device_id=device_id,
-            cuda_ctx=cuda_ctx,
             cvcuda_perf=cvcuda_perf,
         )
     else:
@@ -163,7 +161,7 @@ def run_sample(
                 decoder.decoder.fps,
             )
         else:
-            decoder = VideoBatchDecoderVPF(
+            decoder = VideoBatchDecoder(
                 input_path,
                 batch_size,
                 device_id,
@@ -171,7 +169,7 @@ def run_sample(
                 cvcuda_perf,
             )
 
-            encoder = VideoBatchEncoderVPF(
+            encoder = VideoBatchEncoder(
                 output_dir, decoder.fps, device_id, cuda_ctx, cvcuda_perf
             )
 

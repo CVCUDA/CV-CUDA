@@ -38,9 +38,9 @@ Tensor CustomCropInto(Tensor &output, Tensor &input, const NVCVRectI &rcCrop, st
     auto crop = CreateOperator<cvcuda::CustomCrop>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_READ, {input});
-    guard.add(LockMode::LOCK_WRITE, {output});
-    guard.add(LockMode::LOCK_NONE, {*crop});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*crop});
 
     crop->submit(pstream->cudaHandle(), input, output, rcCrop);
 
