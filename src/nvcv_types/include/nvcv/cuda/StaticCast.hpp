@@ -29,6 +29,11 @@
 namespace nvcv::cuda {
 
 /**
+ * @defgroup NVCV_CPP_CUDATOOLS_STATICCAST Static Cast
+ * @{
+ */
+
+/**
  * Metafunction to static cast all values of a compound to a target type.
  *
  * The template parameter \p T defines the base type (regular C type) to cast all components of the CUDA
@@ -37,9 +42,6 @@ namespace nvcv::cuda {
  * by passing it as function argument of StaticCast and the type int as template argument (see example below).  The
  * type \p U is not needed as it is inferred from the argument \u.  It is a requirement of the StaticCast function
  * that the type \p T is of regular C type and the type \p U is of CUDA compound type.
- *
- * @defgroup NVCV_CPP_CUDATOOLS_STATICCAST Static Cast
- * @{
  *
  * @code
  * int3 idx = StaticCast<int>(blockIdx * blockDim + threadIdx);

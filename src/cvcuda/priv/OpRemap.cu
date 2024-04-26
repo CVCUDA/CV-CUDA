@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,6 +26,7 @@
 #include <nvcv/cuda/InterpolationWrap.hpp>
 #include <nvcv/cuda/MathOps.hpp>
 #include <nvcv/cuda/StaticCast.hpp>
+#include <util/Assert.h>
 #include <util/Math.hpp>
 
 namespace cuda = nvcv::cuda;

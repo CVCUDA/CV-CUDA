@@ -62,43 +62,16 @@ public:
         for (const std::reference_wrapper<const Resource> &r : resources)
         {
             py::object pyRes = r.get();
-
-            capi().Resource_SubmitSync(pyRes.ptr(), m_pyStream.ptr(), pyLockMode.ptr());
+            capi().Resource_SubmitSync(pyRes.ptr(), m_pyStream.ptr());
             m_resourcesPerLockMode.append(std::make_pair(pyLockMode, std::move(pyRes)));
         }
+
         return *this;
     }
 
     void commit()
     {
         capi().Stream_HoldResources(m_pyStream.ptr(), m_resourcesPerLockMode.ptr());
-
-        py::list newList;
-
-        auto it = m_resourcesPerLockMode.begin();
-        try
-        {
-            // Try to signal the resources, stop on the first that fails, or
-            // when all resources were signaled
-            for (; it != m_resourcesPerLockMode.end(); ++it)
-            {
-                py::tuple t = it->cast<py::tuple>();
-
-                // resource, stream, lockmode
-                capi().Resource_SubmitSignal(t[1].ptr(), m_pyStream.ptr(), t[0].ptr());
-            }
-        }
-        catch (...)
-        {
-            // Add all resources that weren't signaled to the newList.
-            for (; it != m_resourcesPerLockMode.end(); ++it)
-            {
-                newList.append(std::move(*it));
-            }
-            throw;
-        }
-
-        m_resourcesPerLockMode = std::move(newList);
     }
 
 private:

@@ -84,4 +84,4 @@ using GaussianNoiseTypes = nvbench::type_list<uint8_t, float>;
 NVBENCH_BENCH_TYPES(GaussianNoise, NVBENCH_TYPE_AXES(GaussianNoiseTypes))
     .set_type_axes_names({"InOutDataType"})
     .add_string_axis("shape", {"1x1080x1920"})
-    .add_int64_axis("varShape", {-1});
+    .add_int64_axis("varShape", {-1, 0});

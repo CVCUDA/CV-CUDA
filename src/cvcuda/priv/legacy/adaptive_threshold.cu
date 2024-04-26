@@ -169,11 +169,6 @@ AdaptiveThreshold::~AdaptiveThreshold()
     NVCV_CHECK_LOG(cudaFree(m_kernel));
 }
 
-size_t AdaptiveThreshold::calBufferSize(DataShape maxInputShape, DataShape maxOutputShape, int maxBlockSize)
-{
-    return maxBlockSize * maxBlockSize * sizeof(float);
-}
-
 ErrorCode AdaptiveThreshold::infer(const TensorDataStridedCuda &in, const TensorDataStridedCuda &out,
                                    const double maxValue, const NVCVAdaptiveThresholdType adaptiveMethod,
                                    const NVCVThresholdType thresholdType, const int32_t blockSize, const double c,

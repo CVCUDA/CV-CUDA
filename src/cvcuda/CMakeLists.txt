@@ -22,7 +22,6 @@ set(CV_CUDA_OP_FILES
     OpOSD.cpp
     OpHistogramEq.cpp
     OpAdvCvtColor.cpp
-    OpFindContours.cpp
     OpSIFT.cpp
     OpMinMaxLoc.cpp
     OpHistogram.cpp
@@ -69,6 +68,7 @@ set(CV_CUDA_OP_FILES
     OpLabel.cpp
     OpPairwiseMatcher.cpp
     OpFindHomography.cpp
+    OpStack.cpp
 )
 
 # filter only one that matches the patern (case insensitive), should be set on the global level
@@ -91,7 +91,6 @@ else()
 endif()
 
 add_library(cvcuda SHARED
-    OpStack.cpp
     ${CV_CUDA_LIB_FILES}
 )
 

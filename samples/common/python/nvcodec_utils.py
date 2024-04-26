@@ -68,6 +68,7 @@ class VideoBatchDecoder:
         batch_size,
         device_id,
         cuda_ctx,
+        cuda_stream,
         cvcuda_perf,
     ):
         # docs_tag: begin_init_videobatchdecoder_pyvideocodec
@@ -76,7 +77,7 @@ class VideoBatchDecoder:
         self.batch_size = batch_size
         self.device_id = device_id
         self.cuda_ctx = cuda_ctx
-        self.cuda_stream = cvcuda.Stream().current
+        self.cuda_stream = cuda_stream
         self.cvcuda_perf = cvcuda_perf
         self.total_decoded = 0
         self.batch_idx = 0
@@ -229,6 +230,7 @@ class VideoBatchEncoder:
         fps,
         device_id,
         cuda_ctx,
+        cuda_stream,
         cvcuda_perf,
     ):
         self.logger = logging.getLogger(__name__)
@@ -236,7 +238,7 @@ class VideoBatchEncoder:
         self.fps = fps
         self.device_id = device_id
         self.cuda_ctx = cuda_ctx
-        self.cuda_stream = cvcuda.Stream().current
+        self.cuda_stream = cuda_stream
         self.cvcuda_perf = cvcuda_perf
 
         self.encoder = None
@@ -327,7 +329,7 @@ class VideoBatchEncoder:
         pass
 
     def join(self):
-        self.encoder.flush()
+        # self.encoder.flush()
         self.logger.info("Wrote: %s" % self.output_file_name)
 
 
@@ -482,6 +484,7 @@ class ImageBatchDecoder:
         batch_size,
         device_id,
         cuda_ctx,
+        cuda_stream,
         cvcuda_perf,
     ):
 
@@ -493,7 +496,7 @@ class ImageBatchDecoder:
         self.total_decoded = 0
         self.batch_idx = 0
         self.cuda_ctx = cuda_ctx
-        self.cuda_stream = cvcuda.Stream().current
+        self.cuda_stream = cuda_stream
         self.cvcuda_perf = cvcuda_perf
         self.decoder = nvimgcodec.Decoder(device_id=device_id)
 

@@ -94,7 +94,6 @@ PYBIND11_MODULE(cvcuda, m)
     // CV-CUDA Operators
     ExportOpPairwiseMatcher(m);
     ExportOpLabel(m);
-    ExportOpFindContours(m);
     ExportOpOSD(m);
     ExportOpHistogramEq(m);
     ExportOpAdvCvtColor(m);

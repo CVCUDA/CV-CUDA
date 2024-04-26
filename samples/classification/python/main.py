@@ -81,8 +81,10 @@ def run_sample(
     cuda_device = cuda.Device(device_id)
     cuda_ctx = cuda_device.retain_primary_context()
     cuda_ctx.push()
-    cvcuda_stream = cvcuda.Stream()
-    torch_stream = torch.cuda.ExternalStream(cvcuda_stream.handle)
+    # Use the the default stream for cvcuda and torch
+    # Since we never created a stream current will be the CUDA default stream
+    cvcuda_stream = cvcuda.Stream().current
+    torch_stream = torch.cuda.default_stream(device=cuda_device)
     # docs_tag: end_setup_gpu
 
     # docs_tag: begin_setup_stages
@@ -96,6 +98,7 @@ def run_sample(
             batch_size,
             device_id,
             cuda_ctx,
+            cvcuda_stream,
             cvcuda_perf,
         )
 
@@ -106,6 +109,7 @@ def run_sample(
             batch_size,
             device_id,
             cuda_ctx,
+            cvcuda_stream,
             cvcuda_perf,
         )
 

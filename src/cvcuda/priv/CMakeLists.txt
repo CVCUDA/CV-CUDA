@@ -18,7 +18,6 @@ add_subdirectory(legacy)
 set(CV_CUDA_PRIV_FILES IOperator.cpp)
 
 set(CV_CUDA_PRIV_OP_FILES
-    OpFindContours.cpp
     OpOSD.cpp
     OpHistogramEq.cpp
     OpAdvCvtColor.cu

@@ -16,10 +16,26 @@
 # limitations under the License.
 
 
-tests_dir="@PYTHON_TEST_DIR@"
+tests_dir=${1:-"@PYTHON_TEST_DIR@"}
 python_versions_tentative="@PYTHON_TEST_VERSIONS@"
 
 python_versions=""
+
+# Check if test scripts exist in test_dir
+if [ ! -f "$tests_dir/nvcv_util.py" ]; then
+    # try to find the scripts in relative path
+    echo "Python test scripts (E.g. nvcv_util.py, test_image.py) doesn't exist in $tests_dir"
+    echo "Trying to find python test scripts via relative path"
+    nvcv_test_types_python_tar_dir=$(cd "$(dirname "$0")"; pwd)/../@PYTHON_TEST_INSTDIR@ # relative path in tarball
+    if [ -f "$nvcv_test_types_python_tar_dir/nvcv_util.py" ]; then
+        echo "Found python test scripts at $nvcv_test_types_python_tar_dir via relative path"
+        tests_dir=$nvcv_test_types_python_tar_dir
+    else
+        echo "Cannot find python test scripts in $tests_dir and $nvcv_test_types_python_tar_dir"
+        echo "Please run ./nvcv_test_types_python [python test scripts folder]"
+        exit 1 #hard exit
+    fi
+fi
 
 # Verify if correct package dependencies are installed --------
 pip_depends="pytest torch"
@@ -33,7 +49,10 @@ for ver in $python_versions_tentative; do
         echo "WARNING: Python version $ver not installed or missing proper dependencies"
         echo "Please install Python version $ver and run the following commands before running tests: sudo python$ver -m pip install $pip_depends"
         if [[ "$NVCV_FORCE_PYTHON" == 1 || "$NVCV_FORCE_PYTHON" == yes ]]; then
-            exit 1 #hard exit
+            echo "Exiting with FAILURE, as NVCV_FORCE_PYTHON=$NVCV_FORCE_PYTHON"
+            exit 2 #hard exit
+        else
+            echo "Continue and skipping python version $ver, as NVCV_FORCE_PYTHON=$NVCV_FORCE_PYTHON"
         fi
     else
         echo "Found Python version $ver installed with proper dependencies, adding to tests"
@@ -69,13 +88,13 @@ for ver in $python_versions; do
     pubsyms=$(readelf -sWD $modfile | grep -v ' UND ' | grep ' GLOBAL ')
     if [[ $(echo "$pubsyms" | wc -l) != 1 ]]; then
         echo -e "nvcv python $ver module is exposing too many symbols:\n$pubsyms"
-        exit 1
+        exit 3
     fi
     if ! echo "$pubsyms" | grep PyInit_nvcv > /dev/null; then
         echo -e "nvcv python $ver module must expose symbol PyInit_nvcv, but instead exposes:\n$pubsyms"
-        exit 2
+        exit 4
     fi
 
     # Run python tests
-    NVCV_VERSION="@NVCV_VERSION_FULL@" python$ver -m pytest -o cache_dir="$tmpdir" "$@" "$tests_dir"
+    NVCV_VERSION="@NVCV_VERSION_FULL@" python$ver -m pytest -v --tb=line -o cache_dir="$tmpdir" "$@" "$tests_dir"
 done

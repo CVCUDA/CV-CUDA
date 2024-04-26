@@ -29,6 +29,11 @@
 namespace nvcv::cuda {
 
 /**
+ * @defgroup NVCV_CPP_CUDATOOLS_DROPCAST Drop Cast
+ * @{
+ */
+
+/**
  * Metafunction to drop components of a compound value.
  *
  * The template parameter \p N defines the number of components to cast the CUDA compound type \p T passed
@@ -36,9 +41,6 @@ namespace nvcv::cuda {
  * uint3 can have its z component dropped by passing it as function argument to DropCast and the number 2 as
  * template argument (see example below).  The type \p T is not needed as it is inferred from the argument \p v.
  * It is a requirement of the DropCast function that the type \p T has at least N components.
- *
- * @defgroup NVCV_CPP_CUDATOOLS_DROPCAST Drop Cast
- * @{
  *
  * @code
  * uint2 dstIdx = DropCast<2>(blockIdx * blockDim + threadIdx);

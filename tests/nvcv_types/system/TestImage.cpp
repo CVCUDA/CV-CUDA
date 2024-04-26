@@ -247,6 +247,36 @@ TEST(Image, smoke_operator)
     }
 }
 
+TEST(Image, valid_get_allocator)
+{
+    int                   tmp = 1;
+    NVCVImageHandle       handle;
+    NVCVImageRequirements reqs;
+    NVCVAllocatorHandle   alloc = reinterpret_cast<NVCVAllocatorHandle>(&tmp);
+    EXPECT_NE(alloc, nullptr);
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvImageCalcRequirements(224, 224, NVCV_IMAGE_FORMAT_RGBA8, 0, 0, &reqs));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvImageConstruct(&reqs, nullptr, &handle));
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvImageGetAllocator(handle, &alloc));
+    EXPECT_EQ(alloc, nullptr);
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvImageDecRef(handle, nullptr));
+}
+
+TEST(Image, invalid_out_get_allocator)
+{
+    NVCVImageHandle       handle;
+    NVCVImageRequirements reqs;
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvImageCalcRequirements(224, 224, NVCV_IMAGE_FORMAT_RGBA8, 0, 0, &reqs));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvImageConstruct(&reqs, nullptr, &handle));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageGetAllocator(handle, nullptr));
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvImageDecRef(handle, nullptr));
+}
+
 TEST(ImageWrapData, smoke_cleanup)
 {
     nvcv::ImageDataStridedCuda::Buffer buf;
@@ -298,6 +328,27 @@ TEST(ImageWrapData, smoke_mem_reqs)
                                data->plane(p).width * img.format().planePixelStrideBytes(p), data->plane(p).height))
             << "Plane " << p;
     }
+}
+
+TEST(ImageWrapData, valid_get_allocator)
+{
+    int                   tmp = 1;
+    NVCVImageHandle       handle, warpHandle;
+    NVCVImageData         imageData;
+    NVCVImageRequirements reqs;
+    NVCVAllocatorHandle   alloc = reinterpret_cast<NVCVAllocatorHandle>(&tmp);
+    EXPECT_NE(alloc, nullptr);
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvImageCalcRequirements(224, 224, NVCV_IMAGE_FORMAT_RGBA8, 0, 0, &reqs));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvImageConstruct(&reqs, nullptr, &handle));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvImageExportData(handle, &imageData));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvImageWrapDataConstruct(&imageData, nullptr, nullptr, &warpHandle));
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvImageGetAllocator(warpHandle, &alloc));
+    EXPECT_EQ(alloc, nullptr);
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvImageDecRef(handle, nullptr));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvImageDecRef(warpHandle, nullptr));
 }
 
 // Future API ideas

@@ -19,6 +19,7 @@
 #define NVCV_PYTHON_PRIV_RESOURCE_HPP
 
 #include "Object.hpp"
+#include "Stream.hpp"
 
 #include <nvcv/detail/CudaFwd.h>
 #include <nvcv/python/LockMode.hpp>
@@ -32,42 +33,64 @@ typedef struct CUevent_st *cudaEvent_t;
 namespace nvcvpy::priv {
 namespace py = pybind11;
 
-class Stream;
-
+/**
+ * @brief A class representing a CUDA resource.
+ *
+ * This class encapsulates a CUDA resource and provides methods for synchronization
+ * with CUDA streams.
+ */
 class PYBIND11_EXPORT Resource : public virtual Object
 {
 public:
+    /**
+     * @brief Destructor.
+     */
     ~Resource();
 
+    /**
+     * @brief Export the Resource class to Python.
+     *
+     * @param m The Python module to export the class to.
+     */
     static void Export(py::module &m);
 
+    /**
+     * @brief Get the unique identifier of the resource.
+     *
+     * @return uint64_t The unique identifier of the resource.
+     */
     uint64_t id() const;
 
-    void submitSync(Stream &stream, LockMode mode) const;
-    void submitSignal(Stream &stream, LockMode mode) const;
+    /**
+     * @brief Submit the resource for synchronization with a CUDA stream.
+     *
+     * This method synchronizes the resource with the specified CUDA stream.
+     *
+     * @param stream The CUDA stream to synchronize with.
+     */
+    void submitSync(Stream &stream);
 
-    // Assumes GIL is locked (is in acquired state)
-    void sync(LockMode mode) const;
+    /**
+     * @brief Get a shared pointer to this resource.
+     *
+     * @return std::shared_ptr<Resource> A shared pointer to this resource.
+     */
+    std::shared_ptr<Resource> shared_from_this();
 
-    std::shared_ptr<Resource>       shared_from_this();
+    /**
+     * @brief Get a shared pointer to this const resource.
+     *
+     * @return std::shared_ptr<const Resource> A shared pointer to this const resource.
+     */
     std::shared_ptr<const Resource> shared_from_this() const;
 
 protected:
     Resource();
 
-    void doSubmitSync(Stream &stream, LockMode mode) const;
-
-    // Assumes GIL is not locked (is in released state)
-    void doSync(LockMode mode) const;
-
 private:
-    // To be overriden by children if they have their own requirements
-    virtual void doBeforeSync(LockMode mode) const {};
-    virtual void doBeforeSubmitSync(Stream &stream, LockMode mode) const {};
-    virtual void doBeforeSubmitSignal(Stream &stream, LockMode mode) const {};
-
-    uint64_t    m_id;
-    cudaEvent_t m_readEvent, m_writeEvent;
+    uint64_t                                     m_id;         /**< The unique identifier of the resource. */
+    cudaEvent_t                                  m_event;      /**< The CUDA event used for synchronization. */
+    std::optional<std::shared_ptr<const Stream>> m_lastStream; /**< Cache the last stream used for this resource. */
 };
 
 } // namespace nvcvpy::priv

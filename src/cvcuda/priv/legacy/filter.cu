@@ -237,12 +237,6 @@ Gaussian::~Gaussian()
     NVCV_CHECK_LOG(cudaFree(m_kernel));
 }
 
-size_t Gaussian::calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type,
-                               Size2D maxKernelSize)
-{
-    return maxKernelSize.w * maxKernelSize.h * sizeof(float);
-}
-
 ErrorCode Gaussian::infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, Size2D kernelSize,
                           double2 sigma, NVCVBorderType borderMode, cudaStream_t stream)
 {
@@ -358,12 +352,6 @@ AverageBlur::AverageBlur(DataShape max_input_shape, DataShape max_output_shape, 
 AverageBlur::~AverageBlur()
 {
     NVCV_CHECK_LOG(cudaFree(m_kernel));
-}
-
-size_t AverageBlur::calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type,
-                                  Size2D maxKernelSize)
-{
-    return maxKernelSize.w * maxKernelSize.h * sizeof(float);
 }
 
 ErrorCode AverageBlur::infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,

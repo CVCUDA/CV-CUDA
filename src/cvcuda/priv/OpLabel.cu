@@ -68,6 +68,10 @@ namespace util = nvcv::util;
 
 namespace {
 
+constexpr int REGION_NOT_MARKED  = 0;
+constexpr int REGION_REMOVED     = 1;
+constexpr int REGION_INSIDE_MASK = 2;
+
 // CUDA kernels ----------------------------------------------------------------
 
 template<typename DT>
@@ -432,12 +436,13 @@ __global__ void CountLabels2D(cuda::Tensor1DWrap<DT> count, cuda::Tensor3DWrap<D
         *stats.ptr(gc.z, (int)regionIdx, 3) = 1;
         *stats.ptr(gc.z, (int)regionIdx, 4) = 1;
         *stats.ptr(gc.z, (int)regionIdx, 5) = 1;
+        *stats.ptr(gc.z, (int)regionIdx, 6) = REGION_NOT_MARKED;
     }
 }
 
-template<typename DT, typename ST>
-__global__ void ComputeStats2D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor3DWrap<DT> dst, cuda::Tensor1DWrap<ST> bgLabel,
-                               int2 size, bool relabel)
+template<typename DT, typename ST, typename MT>
+__global__ void ComputeStats2D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor3DWrap<DT> dst, cuda::Tensor3DWrap<MT> mask,
+                               cuda::Tensor1DWrap<ST> bgLabel, int2 size, int maskN, bool relabel)
 {
     int3 gc;
     gc.x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -449,26 +454,45 @@ __global__ void ComputeStats2D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor3DWrap<
         return;
     }
 
+    bool hasMask         = (mask.ptr(0) != nullptr);
+    bool isInsideMask    = false;
     bool hasBgLabel      = (bgLabel.ptr(0) != nullptr);
     ST   backgroundLabel = hasBgLabel ? bgLabel[gc.z] : 0;
     DT   endLabel        = dst.strides()[0] / sizeof(DT);
     DT   label           = dst[gc];
+    DT   regionIdx       = 0;
+
+    if (hasMask)
+    {
+        int3 mc{gc.x, gc.y, maskN == 1 ? 0 : gc.z};
+
+        isInsideMask = mask[mc] == 0 ? false : true; // mask value = 0 means outside the mask
+    }
 
     if (hasBgLabel && label == (DT)backgroundLabel)
     {
         return; // do not compute statistics for background labels
     }
+
     if (label & (DT)(1 << 31))
     {
+        if (isInsideMask)
+        {
+            regionIdx = label & (DT) ~(1 << 31);
+
+            *stats.ptr(gc.z, (int)regionIdx, 6) = REGION_INSIDE_MASK; // region is inside the mask, mark it as such
+        }
+
         return; // label is marked as region index, its statistics is already computed
     }
+
     if (hasBgLabel && label == endLabel)
     {
         // This is a special region marked with one-element-after-the-end label, its label was the backgroundLabel
         label = backgroundLabel;
     }
 
-    DT regionIdx = dst.ptr(gc.z)[label];
+    regionIdx = dst.ptr(gc.z)[label];
 
     if (regionIdx & (DT)(1 << 31))
     {
@@ -493,12 +517,18 @@ __global__ void ComputeStats2D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor3DWrap<
         atomicMax(stats.ptr(gc.z, (int)regionIdx, 3), (DT)bboxArea.x);
         atomicMax(stats.ptr(gc.z, (int)regionIdx, 4), (DT)bboxArea.y);
         atomicAdd(stats.ptr(gc.z, (int)regionIdx, 5), 1);
+
+        if (isInsideMask)
+        {
+            *stats.ptr(gc.z, (int)regionIdx, 6) = REGION_INSIDE_MASK; // region is inside the mask, mark it as such
+        }
     }
 }
 
 template<typename DT, typename ST>
 __global__ void RemoveIslands2D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor3DWrap<DT> dst,
-                                cuda::Tensor1DWrap<ST> bgLabel, cuda::Tensor1DWrap<DT> minSize, int2 size, bool relabel)
+                                cuda::Tensor1DWrap<ST> bgLabel, cuda::Tensor1DWrap<DT> minSize, int2 size, bool relabel,
+                                bool hasMask)
 {
     int3 gc;
     gc.x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -557,7 +587,7 @@ __global__ void RemoveIslands2D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor3DWrap
     }
     else
     {
-        regionIdx = label & (DT) ~(1 << 31);
+        return; // should not remove first region element with 1st bit 1 so other elements are not lost
     }
 
     DT regionSize = *stats.ptr(gc.z, (int)regionIdx, 5);
@@ -565,13 +595,18 @@ __global__ void RemoveIslands2D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor3DWrap
     // If region size is less than minimum size, it is an island and should be removed, i.e. set to background label
     if (regionSize < minSize[gc.z])
     {
-        dst[gc] = backgroundLabel;
+        // If there is no mask or if there is a mask and the region mark is not 2, meaning the region is not
+        // inside the mask, the region should be removed
+        if (!hasMask || *stats.ptr(gc.z, (int)regionIdx, 6) != REGION_INSIDE_MASK)
+        {
+            dst[gc] = backgroundLabel;
+        }
     }
 }
 
 template<typename DT, typename ST>
 __global__ void Relabel2D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor3DWrap<DT> dst, cuda::Tensor1DWrap<ST> bgLabel,
-                          int2 size, bool relabel)
+                          cuda::Tensor1DWrap<DT> minSize, int2 size, bool relabel, bool hasMask)
 {
     int3 gc;
     gc.x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -582,6 +617,8 @@ __global__ void Relabel2D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor3DWrap<DT> d
     {
         return;
     }
+
+    bool removeIsland = minSize.ptr(0) != nullptr;
 
     DT label = dst[gc];
 
@@ -607,6 +644,21 @@ __global__ void Relabel2D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor3DWrap<DT> d
         else
         {
             dst[gc] = *stats.ptr(gc.z, (int)regionIdx, 0);
+        }
+
+        if (removeIsland)
+        {
+            DT regionSize = *stats.ptr(gc.z, (int)regionIdx, 5);
+
+            if (regionSize < minSize[gc.z])
+            {
+                if (!hasMask || *stats.ptr(gc.z, (int)regionIdx, 6) != REGION_INSIDE_MASK)
+                {
+                    dst[gc] = (DT)bgLabel[gc.z];
+
+                    *stats.ptr(gc.z, (int)regionIdx, 6) = REGION_REMOVED;
+                }
+            }
         }
     }
 }
@@ -1104,13 +1156,14 @@ __global__ void CountLabels3D(cuda::Tensor1DWrap<DT> count, cuda::Tensor3DWrap<D
             *stats.ptr(gc.w, (int)regionIdx, 5) = 1;
             *stats.ptr(gc.w, (int)regionIdx, 6) = 1;
             *stats.ptr(gc.w, (int)regionIdx, 7) = 1;
+            *stats.ptr(gc.w, (int)regionIdx, 8) = REGION_NOT_MARKED;
         }
     }
 }
 
-template<typename DT, typename ST>
-__global__ void ComputeStats3D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor4DWrap<DT> dst, cuda::Tensor1DWrap<ST> bgLabel,
-                               int4 shape, bool relabel)
+template<typename DT, typename ST, typename MT>
+__global__ void ComputeStats3D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor4DWrap<DT> dst, cuda::Tensor4DWrap<MT> mask,
+                               cuda::Tensor1DWrap<ST> bgLabel, int4 shape, int maskN, bool relabel)
 {
     int4 gc;
     gc.x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1122,8 +1175,11 @@ __global__ void ComputeStats3D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor4DWrap<
         return;
     }
 
-    bool hasBgLabel = (bgLabel.ptr(0) != nullptr);
-    DT   endLabel   = dst.strides()[0] / sizeof(DT);
+    bool hasMask      = (mask.ptr(0) != nullptr);
+    bool isInsideMask = false;
+    bool hasBgLabel   = (bgLabel.ptr(0) != nullptr);
+    DT   endLabel     = dst.strides()[0] / sizeof(DT);
+    DT   regionIdx    = 0;
 
     for (gc.w = 0; gc.w < shape.w; gc.w++)
     {
@@ -1131,12 +1187,26 @@ __global__ void ComputeStats3D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor4DWrap<
 
         DT label = dst[gc];
 
+        if (hasMask)
+        {
+            int4 mc{gc.x, gc.y, gc.z, maskN == 1 ? 0 : gc.w};
+
+            isInsideMask = mask[mc] == 0 ? false : true; // mask value = 0 means outside the mask
+        }
+
         if (hasBgLabel && label == (DT)backgroundLabel)
         {
             continue; // do not compute statistics for background labels
         }
         if (label & (DT)(1 << 31))
         {
+            if (isInsideMask)
+            {
+                regionIdx = label & (DT) ~(1 << 31);
+
+                *stats.ptr(gc.w, (int)regionIdx, 8) = REGION_INSIDE_MASK; // region is inside the mask, mark it as such
+            }
+
             continue; // label is marked as region index, its statistics is already computed
         }
         if (hasBgLabel && label == endLabel)
@@ -1145,7 +1215,7 @@ __global__ void ComputeStats3D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor4DWrap<
             label = backgroundLabel;
         }
 
-        DT regionIdx = dst.ptr(gc.w)[label];
+        regionIdx = dst.ptr(gc.w)[label];
 
         if (regionIdx & (DT)(1 << 31))
         {
@@ -1172,6 +1242,11 @@ __global__ void ComputeStats3D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor4DWrap<
             atomicMax(stats.ptr(gc.w, (int)regionIdx, 5), (DT)bboxArea.y);
             atomicMax(stats.ptr(gc.w, (int)regionIdx, 6), (DT)bboxArea.z);
             atomicAdd(stats.ptr(gc.w, (int)regionIdx, 7), 1);
+
+            if (isInsideMask)
+            {
+                *stats.ptr(gc.w, (int)regionIdx, 8) = REGION_INSIDE_MASK; // region is inside the mask, mark it as such
+            }
         }
     }
 }
@@ -1179,7 +1254,7 @@ __global__ void ComputeStats3D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor4DWrap<
 template<typename DT, typename ST>
 __global__ void RemoveIslands3D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor4DWrap<DT> dst,
                                 cuda::Tensor1DWrap<ST> bgLabel, cuda::Tensor1DWrap<DT> minSize, int4 shape,
-                                bool relabel)
+                                bool relabel, bool hasMask)
 {
     int4 gc;
     gc.x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1234,13 +1309,13 @@ __global__ void RemoveIslands3D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor4DWrap
                 }
                 else
                 {
-                    return; // invalid region index
+                    continue; // invalid region index
                 }
             }
         }
         else
         {
-            regionIdx = label & (DT) ~(1 << 31);
+            continue; // should not remove first region element with 1st bit 1 so other elements are not lost
         }
 
         DT regionSize = *stats.ptr(gc.w, (int)regionIdx, 7);
@@ -1248,14 +1323,19 @@ __global__ void RemoveIslands3D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor4DWrap
         // If region size is less than minimum size, it is an island and should be removed, i.e. set to background label
         if (regionSize < minSize[gc.w])
         {
-            dst[gc] = backgroundLabel;
+            // If there is no mask or if there is a mask and the region mark is not 2, meaning the region is not
+            // inside the mask, the region should be removed
+            if (!hasMask || *stats.ptr(gc.w, (int)regionIdx, 8) != REGION_INSIDE_MASK)
+            {
+                dst[gc] = backgroundLabel;
+            }
         }
     }
 }
 
 template<typename DT, typename ST>
 __global__ void Relabel3D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor4DWrap<DT> dst, cuda::Tensor1DWrap<ST> bgLabel,
-                          int4 shape, bool relabel)
+                          cuda::Tensor1DWrap<DT> minSize, int4 shape, bool relabel, bool hasMask)
 {
     int4 gc;
     gc.x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1266,6 +1346,8 @@ __global__ void Relabel3D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor4DWrap<DT> d
     {
         return;
     }
+
+    bool removeIsland = minSize.ptr(0) != nullptr;
 
     for (gc.w = 0; gc.w < shape.w; gc.w++)
     {
@@ -1294,26 +1376,85 @@ __global__ void Relabel3D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor4DWrap<DT> d
             {
                 dst[gc] = *stats.ptr(gc.w, (int)regionIdx, 0);
             }
+
+            if (removeIsland)
+            {
+                DT regionSize = *stats.ptr(gc.w, (int)regionIdx, 7);
+
+                if (regionSize < minSize[gc.w])
+                {
+                    if (!hasMask || *stats.ptr(gc.w, (int)regionIdx, 8) != REGION_INSIDE_MASK)
+                    {
+                        dst[gc] = (DT)bgLabel[gc.w];
+
+                        *stats.ptr(gc.w, (int)regionIdx, 8) = REGION_REMOVED;
+                    }
+                }
+            }
         }
     }
 }
 
 // Run functions ---------------------------------------------------------------
 
-template<typename SrcT, typename DstT = uint32_t>
+template<typename SrcT, typename DstT = uint32_t, typename MskT = uint8_t>
 inline void RunLabelForType(cudaStream_t stream, const nvcv::TensorDataStridedCuda &srcData,
                             const nvcv::TensorDataStridedCuda &dstData, const int4 &shapeWHDN,
                             const nvcv::Tensor &bgLabel, const nvcv::Tensor &minThresh, const nvcv::Tensor &maxThresh,
                             const nvcv::Tensor &minSize, const nvcv::Tensor &count, const nvcv::Tensor &stats,
-                            int numDim, bool relabel)
+                            const nvcv::Tensor &mask, int numDim, bool relabel)
 {
     constexpr int BW = 32, BH = 4, BD = 2; // block width, height and depth
 
     int4 idsNDHW{srcData.layout().find('N'), srcData.layout().find('D'), srcData.layout().find('H'),
                  srcData.layout().find('W')};
 
+    // Although output tensors may have S32 or U32 data type, they are always considered U32 (DstT = uint32_t) as
+    // they are used as non-negative offset or position or size or count, or even as a 32-bit mask
+
+    // Although mask tensor may have S8 or U8 data type, it is always considered U8 (MskT = uint8_t) as it is used
+    // as zero (outside mask) or non-zero (inside mask)
+
     NVCV_ASSERT(srcData.stride(idsNDHW.w) == sizeof(SrcT));
     NVCV_ASSERT(dstData.stride(idsNDHW.w) == sizeof(DstT));
+
+    if ((srcData.stride(idsNDHW.z) > nvcv::cuda::TypeTraits<int>::max)
+        || (idsNDHW.y != -1 && srcData.stride(idsNDHW.y) > nvcv::cuda::TypeTraits<int>::max)
+        || (idsNDHW.x != -1 && srcData.stride(idsNDHW.x) > nvcv::cuda::TypeTraits<int>::max))
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Too big in tensor");
+    }
+    if ((dstData.stride(idsNDHW.z) > nvcv::cuda::TypeTraits<int>::max)
+        || (idsNDHW.y != -1 && dstData.stride(idsNDHW.y) > nvcv::cuda::TypeTraits<int>::max)
+        || (idsNDHW.x != -1 && dstData.stride(idsNDHW.x) > nvcv::cuda::TypeTraits<int>::max))
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Too big out tensor");
+    }
+
+    nvcv::Optional<nvcv::TensorDataStridedCuda> mskData;
+    int4                                        mskIdsNDHW = {0, 0, 0, 0};
+    int                                         maskN      = 0;
+    bool                                        hasMask    = (mask) ? true : false;
+
+    if (hasMask)
+    {
+        mskData = mask.exportData<nvcv::TensorDataStridedCuda>(); // export data check already done
+
+        mskIdsNDHW = int4{mskData->layout().find('N'), mskData->layout().find('D'), mskData->layout().find('H'),
+                          mskData->layout().find('W')};
+
+        NVCV_ASSERT(mskData->stride(mskIdsNDHW.w) == sizeof(MskT));
+
+        if ((mskData->stride(mskIdsNDHW.z) > nvcv::cuda::TypeTraits<int>::max)
+            || (mskIdsNDHW.y != -1 && mskData->stride(mskIdsNDHW.y) > nvcv::cuda::TypeTraits<int>::max)
+            || (mskIdsNDHW.x != -1 && mskData->stride(mskIdsNDHW.x) > nvcv::cuda::TypeTraits<int>::max)
+            || (mskIdsNDHW.x != -1 && mskData->shape()[mskIdsNDHW.x] > nvcv::cuda::TypeTraits<int>::max))
+        {
+            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Too big mask tensor");
+        }
+
+        maskN = mskIdsNDHW.x == -1 ? 1 : (int)mskData->shape()[mskIdsNDHW.x];
+    }
 
     cuda::Tensor1DWrap<SrcT> bgLabelWrap, minThreshWrap, maxThreshWrap;
     cuda::Tensor1DWrap<DstT> minSizeWrap, countWrap;
@@ -1380,6 +1521,15 @@ inline void RunLabelForType(cudaStream_t stream, const nvcv::TensorDataStridedCu
 
         cuda::Tensor3DWrap<SrcT> srcWrap(srcData.basePtr(), srcStridesNH.x, srcStridesNH.y);
         cuda::Tensor3DWrap<DstT> dstWrap(dstData.basePtr(), dstStridesNH.x, dstStridesNH.y);
+        cuda::Tensor3DWrap<MskT> mskWrap;
+
+        if (hasMask)
+        {
+            int2 mskStridesNH{0, (int)mskData->stride(mskIdsNDHW.z)};
+            mskStridesNH.x = mskIdsNDHW.x == -1 ? mskStridesNH.y * shapeWHDN.y : (int)mskData->stride(mskIdsNDHW.x);
+
+            mskWrap = cuda::Tensor3DWrap<MskT>(mskData->basePtr(), mskStridesNH.x, mskStridesNH.y);
+        }
 
         BlockLabel2D<BW, BH>
             <<<labBlocks, larThreads, 0, stream>>>(dstWrap, srcWrap, minThreshWrap, maxThreshWrap, sizeWH);
@@ -1404,15 +1554,17 @@ inline void RunLabelForType(cudaStream_t stream, const nvcv::TensorDataStridedCu
 
             if (stats)
             {
-                ComputeStats2D<<<labBlocks, larThreads, 0, stream>>>(statsWrap, dstWrap, bgLabelWrap, sizeWH, relabel);
+                ComputeStats2D<<<labBlocks, larThreads, 0, stream>>>(statsWrap, dstWrap, mskWrap, bgLabelWrap, sizeWH,
+                                                                     maskN, relabel);
 
                 if (minSize)
                 {
                     RemoveIslands2D<<<labBlocks, larThreads, 0, stream>>>(statsWrap, dstWrap, bgLabelWrap, minSizeWrap,
-                                                                          sizeWH, relabel);
+                                                                          sizeWH, relabel, hasMask);
                 }
 
-                Relabel2D<<<labBlocks, larThreads, 0, stream>>>(statsWrap, dstWrap, bgLabelWrap, sizeWH, relabel);
+                Relabel2D<<<labBlocks, larThreads, 0, stream>>>(statsWrap, dstWrap, bgLabelWrap, minSizeWrap, sizeWH,
+                                                                relabel, hasMask);
             }
         }
     }
@@ -1432,6 +1584,15 @@ inline void RunLabelForType(cudaStream_t stream, const nvcv::TensorDataStridedCu
 
         cuda::Tensor4DWrap<SrcT> srcWrap(srcData.basePtr(), srcStridesNDH.x, srcStridesNDH.y, srcStridesNDH.z);
         cuda::Tensor4DWrap<DstT> dstWrap(dstData.basePtr(), dstStridesNDH.x, dstStridesNDH.y, dstStridesNDH.z);
+        cuda::Tensor4DWrap<MskT> mskWrap;
+
+        if (hasMask)
+        {
+            int3 mskStridesNDH{0, (int)mskData->stride(mskIdsNDHW.y), (int)mskData->stride(mskIdsNDHW.z)};
+            mskStridesNDH.x = mskIdsNDHW.x == -1 ? mskStridesNDH.y * shapeWHDN.z : (int)mskData->stride(mskIdsNDHW.x);
+
+            mskWrap = cuda::Tensor4DWrap<MskT>(mskData->basePtr(), mskStridesNDH.x, mskStridesNDH.y, mskStridesNDH.z);
+        }
 
         BlockLabel3D<BW, BH, BD>
             <<<labBlocks, larThreads, 0, stream>>>(dstWrap, srcWrap, minThreshWrap, maxThreshWrap, shapeWHDN);
@@ -1459,16 +1620,17 @@ inline void RunLabelForType(cudaStream_t stream, const nvcv::TensorDataStridedCu
 
             if (stats)
             {
-                ComputeStats3D<<<labBlocks, larThreads, 0, stream>>>(statsWrap, dstWrap, bgLabelWrap, shapeWHDN,
-                                                                     relabel);
+                ComputeStats3D<<<labBlocks, larThreads, 0, stream>>>(statsWrap, dstWrap, mskWrap, bgLabelWrap,
+                                                                     shapeWHDN, maskN, relabel);
 
                 if (minSize)
                 {
                     RemoveIslands3D<<<labBlocks, larThreads, 0, stream>>>(statsWrap, dstWrap, bgLabelWrap, minSizeWrap,
-                                                                          shapeWHDN, relabel);
+                                                                          shapeWHDN, relabel, hasMask);
                 }
 
-                Relabel3D<<<labBlocks, larThreads, 0, stream>>>(statsWrap, dstWrap, bgLabelWrap, shapeWHDN, relabel);
+                Relabel3D<<<labBlocks, larThreads, 0, stream>>>(statsWrap, dstWrap, bgLabelWrap, minSizeWrap, shapeWHDN,
+                                                                relabel, hasMask);
             }
         }
     }
@@ -1477,15 +1639,15 @@ inline void RunLabelForType(cudaStream_t stream, const nvcv::TensorDataStridedCu
 inline void RunLabel(cudaStream_t stream, const nvcv::TensorDataStridedCuda &srcData,
                      const nvcv::TensorDataStridedCuda &dstData, const int4 &srcShape, nvcv::DataType srcDataType,
                      const nvcv::Tensor &bgLabel, const nvcv::Tensor &minThresh, const nvcv::Tensor &maxThresh,
-                     const nvcv::Tensor &minSize, const nvcv::Tensor &count, const nvcv::Tensor &stats, int numDim,
-                     bool relabel)
+                     const nvcv::Tensor &minSize, const nvcv::Tensor &count, const nvcv::Tensor &stats,
+                     const nvcv::Tensor &mask, int numDim, bool relabel)
 {
     switch (srcDataType)
     {
 #define CVCUDA_LABEL_CASE(DT, T)                                                                                     \
     case nvcv::TYPE_##DT:                                                                                            \
         RunLabelForType<T>(stream, srcData, dstData, srcShape, bgLabel, minThresh, maxThresh, minSize, count, stats, \
-                           numDim, relabel);                                                                         \
+                           mask, numDim, relabel);                                                                   \
         break
 
         CVCUDA_LABEL_CASE(U8, uint8_t);
@@ -1515,7 +1677,8 @@ Label::Label() {}
 void Label::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                        const nvcv::Tensor &bgLabel, const nvcv::Tensor &minThresh, const nvcv::Tensor &maxThresh,
                        const nvcv::Tensor &minSize, const nvcv::Tensor &count, const nvcv::Tensor &stats,
-                       NVCVConnectivityType connectivity, NVCVLabelType assignLabels) const
+                       const nvcv::Tensor &mask, NVCVConnectivityType connectivity, NVCVLabelType assignLabels,
+                       NVCVLabelMaskType maskType) const
 {
     if (!(in.shape().layout() == nvcv::TENSOR_HW || in.shape().layout() == nvcv::TENSOR_HWC
           || in.shape().layout() == nvcv::TENSOR_NHW || in.shape().layout() == nvcv::TENSOR_NHWC
@@ -1532,9 +1695,10 @@ void Label::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "Input and output tensors must have the same shape and layout");
     }
-    if (!(out.dtype() == nvcv::TYPE_U32))
+    if (!(out.dtype() == nvcv::TYPE_S32 || out.dtype() == nvcv::TYPE_U32))
     {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Output tensor data type must be U32");
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Output tensor data type (%s) must be S32 or U32",
+                              nvcvDataTypeGetName(out.dtype()));
     }
 
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
@@ -1547,12 +1711,6 @@ void Label::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::
     if (!outData)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Output tensor must be cuda-accessible");
-    }
-
-    if (outData->stride(0) >= cuda::TypeTraits<int>::max
-        || (uint32_t)outData->stride(0) / (uint32_t)sizeof(uint32_t) >= (uint32_t)(1 << 31))
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Too big input and output tensors");
     }
 
     auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*inData);
@@ -1611,6 +1769,16 @@ void Label::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::
             throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                                   "Connectivity 3D not allowed in tensors without depth D dimension");
         }
+    }
+
+    // Various outputs assume the maximum range of values to be representable as int, for this to happen the number
+    // of elements (pixels or voxels) in the input must not be greater than maximum int32_t
+    int64_t numElems = inShape.x * inShape.y * inShape.z;
+    if (numElems > cuda::TypeTraits<int32_t>::max)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "Too big input shape with %ld elements, must be smaller than or equal to %d", numElems,
+                              cuda::TypeTraits<int32_t>::max);
     }
 
     if (bgLabel)
@@ -1681,9 +1849,10 @@ void Label::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::
                                   "Output count must be [N] or [NC] tensor, with N=%d and C=1, got %s", inShape.w,
                                   oss.str().c_str());
         }
-        if (!(count.dtype() == nvcv::TYPE_U32))
+        if (!(count.dtype() == nvcv::TYPE_S32 || count.dtype() == nvcv::TYPE_U32))
         {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Output count (%s) must have U32 data type",
+            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                                  "Output count (%s) must have S32 or U32 data type",
                                   nvcvDataTypeGetName(count.dtype()));
         }
     }
@@ -1694,17 +1863,18 @@ void Label::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::
         {
             throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Output stats requires count tensor");
         }
-        if (!((stats.rank() == 3 && stats.shape()[0] == inShape.w && stats.shape()[2] == 2 + 2 * numDim)))
+        if (!((stats.rank() == 3 && stats.shape()[0] == inShape.w && stats.shape()[2] == 3 + 2 * numDim)))
         {
             std::ostringstream oss;
             oss << stats.shape();
             throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                                   "Output stats must be [NMA] tensor, with rank=3 N=%d A=%d, got %s", inShape.w,
-                                  2 + 2 * numDim, oss.str().c_str());
+                                  3 + 2 * numDim, oss.str().c_str());
         }
-        if (!(stats.dtype() == nvcv::TYPE_U32))
+        if (!(stats.dtype() == nvcv::TYPE_S32 || stats.dtype() == nvcv::TYPE_U32))
         {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Output stats (%s) must have U32 data type",
+            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                                  "Output stats (%s) must have S32 or U32 data type",
                                   nvcvDataTypeGetName(stats.dtype()));
         }
     }
@@ -1731,10 +1901,89 @@ void Label::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::
                                   "Input minSize must be [N] or [NC] tensor, with N=%d and C=1, got %s", inShape.w,
                                   oss.str().c_str());
         }
-        if (!(minSize.dtype() == nvcv::TYPE_U32))
+        if (!(minSize.dtype() == nvcv::TYPE_S32 || minSize.dtype() == nvcv::TYPE_U32))
         {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input minSize (%s) must have U32 data type",
+            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                                  "Input minSize (%s) must have S32 or U32 data type",
                                   nvcvDataTypeGetName(minSize.dtype()));
+        }
+    }
+
+    if (mask)
+    {
+        if (!minSize && maskType == NVCV_REMOVE_ISLANDS_OUTSIDE_MASK_ONLY)
+        {
+            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                                  "Input mask requires minSize tensor "
+                                  "when maskType is NVCV_REMOVE_ISLANDS_OUTSIDE_MASK_ONLY");
+        }
+        if (!(maskType == NVCV_REMOVE_ISLANDS_OUTSIDE_MASK_ONLY))
+        {
+            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                                  "Mask type must be "
+                                  "NVCV_REMOVE_ISLANDS_OUTSIDE_MASK_ONLY");
+        }
+
+        auto maskData = in.exportData<nvcv::TensorDataStridedCuda>();
+        if (!maskData)
+        {
+            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Mask tensor must be cuda-accessible");
+        }
+
+        auto maskAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*maskData);
+        if (!maskAccess)
+        {
+            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Mask tensor must have strided access");
+        }
+        if (!(maskAccess->numChannels() == 1))
+        {
+            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Mask tensor must have a single channel");
+        }
+        if (!(maskAccess->numPlanes() == 1))
+        {
+            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Mask tensor must have a single plane");
+        }
+        if (!(maskAccess->numSamples() == 1 || maskAccess->numSamples() == inShape.w))
+        {
+            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                                  "Mask tensor must have number of samples N=1 "
+                                  "or same N as input and output tensors");
+        }
+        if (!(maskAccess->numCols() == inShape.x))
+        {
+            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                                  "Mask tensor must have the same width W "
+                                  "as input and output tensors");
+        }
+        if (!(maskAccess->numRows() == inShape.y))
+        {
+            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                                  "Mask tensor must have the same height H "
+                                  "as input and output tensors");
+        }
+
+        int maskDepthIdx = mask.shape().layout().find('D');
+        if (maskDepthIdx != -1)
+        {
+            if (mask.shape()[maskDepthIdx] != inShape.z)
+            {
+                throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                                      "Mask tensor must have the same depth D "
+                                      "as input and output tensors");
+            }
+        }
+        else
+        {
+            if (numDim == 3)
+            {
+                throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Tensors in and out are 3D and mask is 2D");
+            }
+        }
+
+        if (!(mask.dtype() == nvcv::TYPE_S8 || mask.dtype() == nvcv::TYPE_U8))
+        {
+            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input mask (%s) must have S8 or U8 data type",
+                                  nvcvDataTypeGetName(mask.dtype()));
         }
     }
 
@@ -1744,7 +1993,7 @@ void Label::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Full neighborhood labeling not supported yet");
     }
 
-    RunLabel(stream, *inData, *outData, inShape, in.dtype(), bgLabel, minThresh, maxThresh, minSize, count, stats,
+    RunLabel(stream, *inData, *outData, inShape, in.dtype(), bgLabel, minThresh, maxThresh, minSize, count, stats, mask,
              numDim, relabel);
 }
 

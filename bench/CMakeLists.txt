@@ -53,7 +53,6 @@ set(bench_sources
     BenchCropFlipNormalizeReformat.cpp
     BenchCustomCrop.cpp
     BenchErase.cpp
-    BenchFindContours.cpp
     BenchGammaContrast.cpp
     BenchGaussianNoise.cpp
     BenchHistogramEq.cpp

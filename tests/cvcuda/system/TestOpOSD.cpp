@@ -298,7 +298,7 @@ static void runOp(cudaStream_t &stream, cvcuda::OSD &op, int &inN, int &inW, int
                                   (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)};
                 rb.bgColor = {(unsigned char)randl(0, 255), (unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
                               (unsigned char)randl(0, 255)};
-                rb.interpolation = false;
+                rb.interpolation = (bool)randl(0, 1);
                 element          = std::make_shared<NVCVElement>(type, &rb);
                 break;
             }

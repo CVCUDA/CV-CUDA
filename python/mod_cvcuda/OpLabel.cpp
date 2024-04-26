@@ -33,9 +33,9 @@ using TupleTensor3 = std::tuple<Tensor, std::optional<Tensor>, std::optional<Ten
 namespace {
 
 TupleTensor3 LabelInto(Tensor &output, std::optional<Tensor> count, std::optional<Tensor> stats, Tensor &input,
-                       NVCVConnectivityType connectivity, NVCVLabelType assignLabels, std::optional<Tensor> bgLabel,
-                       std::optional<Tensor> minThresh, std::optional<Tensor> maxThresh, std::optional<Tensor> minSize,
-                       std::optional<Stream> pstream)
+                       NVCVConnectivityType connectivity, NVCVLabelType assignLabels, NVCVLabelMaskType maskType,
+                       std::optional<Tensor> bgLabel, std::optional<Tensor> minThresh, std::optional<Tensor> maxThresh,
+                       std::optional<Tensor> minSize, std::optional<Tensor> mask, std::optional<Stream> pstream)
 {
     if (!pstream)
     {
@@ -73,20 +73,26 @@ TupleTensor3 LabelInto(Tensor &output, std::optional<Tensor> count, std::optiona
     {
         guard.add(LockMode::LOCK_MODE_READ, {*minSize});
     }
+    if (mask)
+    {
+        guard.add(LockMode::LOCK_MODE_READ, {*mask});
+    }
 
     op->submit(pstream->cudaHandle(), input, output, (bgLabel ? *bgLabel : nvcv::Tensor{nullptr}),
                (minThresh ? *minThresh : nvcv::Tensor{nullptr}), (maxThresh ? *maxThresh : nvcv::Tensor{nullptr}),
                (minSize ? *minSize : nvcv::Tensor{nullptr}), (count ? *count : nvcv::Tensor{nullptr}),
-               (stats ? *stats : nvcv::Tensor{nullptr}), connectivity, assignLabels);
+               (stats ? *stats : nvcv::Tensor{nullptr}), (mask ? *mask : nvcv::Tensor{nullptr}), connectivity,
+               assignLabels, maskType);
 
     return TupleTensor3(std::move(output), count, stats);
 }
 
-TupleTensor3 Label(Tensor &input, NVCVConnectivityType connectivity, NVCVLabelType assignLabels, bool count, bool stats,
-                   int maxLabels, std::optional<Tensor> bgLabel, std::optional<Tensor> minThresh,
-                   std::optional<Tensor> maxThresh, std::optional<Tensor> minSize, std::optional<Stream> pstream)
+TupleTensor3 Label(Tensor &input, NVCVConnectivityType connectivity, NVCVLabelType assignLabels,
+                   NVCVLabelMaskType maskType, bool count, bool stats, int maxLabels, std::optional<Tensor> bgLabel,
+                   std::optional<Tensor> minThresh, std::optional<Tensor> maxThresh, std::optional<Tensor> minSize,
+                   std::optional<Tensor> mask, std::optional<Stream> pstream)
 {
-    constexpr nvcv::DataType outType = nvcv::TYPE_U32;
+    constexpr nvcv::DataType outType = nvcv::TYPE_S32;
 
     auto inputData = input.exportData<nvcv::TensorDataStridedCuda>();
     if (!inputData)
@@ -112,11 +118,11 @@ TupleTensor3 Label(Tensor &input, NVCVConnectivityType connectivity, NVCVLabelTy
         int numStats = 1;
         if (connectivity == NVCV_CONNECTIVITY_4_2D || connectivity == NVCV_CONNECTIVITY_8_2D)
         {
-            numStats = 6;
+            numStats = 7;
         }
         if (connectivity == NVCV_CONNECTIVITY_6_3D || connectivity == NVCV_CONNECTIVITY_26_3D)
         {
-            numStats = 8;
+            numStats = 9;
         }
 
         statsTensor = Tensor::Create(
@@ -127,8 +133,8 @@ TupleTensor3 Label(Tensor &input, NVCVConnectivityType connectivity, NVCVLabelTy
             outType);
     }
 
-    return LabelInto(output, countTensor, statsTensor, input, connectivity, assignLabels, bgLabel, minThresh, maxThresh,
-                     minSize, pstream);
+    return LabelInto(output, countTensor, statsTensor, input, connectivity, assignLabels, maskType, bgLabel, minThresh,
+                     maxThresh, minSize, mask, pstream);
 }
 
 } // namespace
@@ -137,9 +143,14 @@ void ExportOpLabel(py::module &m)
 {
     using namespace pybind11::literals;
 
+    py::enum_<NVCVLabelMaskType>(m, "LabelMaskType", py::arithmetic())
+        .value("REMOVE_ISLANDS_OUTSIDE_MASK_ONLY", NVCV_REMOVE_ISLANDS_OUTSIDE_MASK_ONLY)
+        .export_values();
+
     m.def("label", &Label, "src"_a, "connectivity"_a = NVCV_CONNECTIVITY_4_2D, "assign_labels"_a = NVCV_LABEL_FAST,
-          py::kw_only(), "count"_a = false, "stats"_a = false, "max_labels"_a = 10000, "bg_label"_a = nullptr,
-          "min_thresh"_a = nullptr, "max_thresh"_a = nullptr, "min_size"_a = nullptr, "stream"_a = nullptr, R"pbdoc(
+          "mask_type"_a = NVCV_REMOVE_ISLANDS_OUTSIDE_MASK_ONLY, py::kw_only(), "count"_a = false, "stats"_a = false,
+          "max_labels"_a = 10000, "bg_label"_a = nullptr, "min_thresh"_a = nullptr, "max_thresh"_a = nullptr,
+          "min_size"_a = nullptr, "mask"_a = nullptr, "stream"_a = nullptr, R"pbdoc(
 
         Executes the Label operation on the given cuda stream.
 
@@ -152,6 +163,8 @@ void ExportOpLabel(py::module &m)
                                                               default is cvcuda.CONNECTIVITY_4_2D.
             assign_labels (cvcuda.LABEL, optional): Choice on how labels are assigned,
                                                     default is cvcuda.LABEL.FAST.
+            mask_type (cvcuda.LabelMaskType, optional): Choice on how the mask is used,
+                                                        default is cvcuda.REMOVE_ISLANDS_OUTSIDE_MASK_ONLY.
             count (bool, optional): Use True to return the count of valid labeled regions.
             stats (bool, optional): Use True to return the statistics of valid labeled regions.
             max_labels (Number, optional): Maximum number of labels to compute statistics for, default is 10000.
@@ -161,6 +174,10 @@ void ExportOpLabel(py::module &m)
             max_thresh (Tensor, optional): Maximum threshold tensor to mask input values above it to be 0, and others 1.
             min_size (Tensor, optional): Minimum size tensor to remove islands, i.e. labeled regions with number of
                                          elements less than the minimum size.
+            mask (Tensor, optional): Mask tensor, its behavior is controlled by \ref mask_type.  One choice is to
+                                     control island removal in addition to \ref min_size, i.e. regions with at
+                                     least one element inside the mask (non-zero values) are not removed in case
+                                     mask_type is cvcuda.REMOVE_ISLANDS_OUTSIDE_MASK_ONLY.
             stream (Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
@@ -172,8 +189,9 @@ void ExportOpLabel(py::module &m)
     )pbdoc");
 
     m.def("label_into", &LabelInto, "dst"_a, "count"_a = nullptr, "stats"_a = nullptr, "src"_a,
-          "connectivity"_a = NVCV_CONNECTIVITY_4_2D, "assign_labels"_a = NVCV_LABEL_FAST, py::kw_only(),
-          "bg_label"_a = nullptr, "min_thresh"_a = nullptr, "max_thresh"_a = nullptr, "min_size"_a = nullptr,
+          "connectivity"_a = NVCV_CONNECTIVITY_4_2D, "assign_labels"_a = NVCV_LABEL_FAST,
+          "mask_type"_a = NVCV_REMOVE_ISLANDS_OUTSIDE_MASK_ONLY, py::kw_only(), "bg_label"_a = nullptr,
+          "min_thresh"_a = nullptr, "max_thresh"_a = nullptr, "min_size"_a = nullptr, "mask"_a = nullptr,
           "stream"_a = nullptr, R"pbdoc(
 
         Executes the Label operation on the given cuda stream.
@@ -190,12 +208,18 @@ void ExportOpLabel(py::module &m)
                                                               default is cvcuda.CONNECTIVITY_4_2D.
             assign_labels (cvcuda.LABEL, optional): Choice on how labels are assigned,
                                                     default is cvcuda.LABEL.FAST.
+            mask_type (cvcuda.LabelMaskType, optional): Choice on how the mask is used,
+                                                        default is cvcuda.REMOVE_ISLANDS_OUTSIDE_MASK_ONLY.
             bg_label (Tensor, optional): Background tensor to define input values to be considered background
                                          labels and thus ignored.
             min_thresh (Tensor, optional): Minimum threshold tensor to mask input values below it to be 0, and others 1.
             max_thresh (Tensor, optional): Maximum threshold tensor to mask input values above it to be 0, and others 1.
             min_size (Tensor, optional): Minimum size tensor to remove islands, i.e. labeled regions with number of
                                          elements less than the minimum size.
+            mask (Tensor, optional): Mask tensor, its behavior is controlled by \ref mask_type.  One choice is to
+                                     control island removal in addition to \ref min_size, i.e. regions with at
+                                     least one element inside the mask (non-zero values) are not removed in case
+                                     mask_type is cvcuda.REMOVE_ISLANDS_OUTSIDE_MASK_ONLY.
             stream (Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:

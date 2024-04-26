@@ -30,10 +30,12 @@
 namespace nvcv::cuda {
 
 /**
- * Metafunction to do a generic atomic operation in floating-point types.
- *
  * @defgroup NVCV_CPP_CUDATOOLS_ATOMICS Atomic operations
  * @{
+ */
+
+/**
+ * Metafunction to do a generic atomic operation in floating-point types.
  *
  * @tparam T Type of the values used in the atomic operation.
  * @tparam OP Operation class that defines the operator call to be used as atomics.

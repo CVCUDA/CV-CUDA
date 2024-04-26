@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,9 +29,9 @@
 #include <nvcv/ImageData.hpp>        // for ImageDataStridedCuda, etc.
 #include <nvcv/TensorData.hpp>       // for TensorDataStridedCuda, etc.
 #include <nvcv/TensorDataAccess.hpp> // for TensorDataAccessStridedImagePlanar, etc.
-#include <util/Assert.h>             // for NVCV_ASSERT, etc.
 
-#include <utility>
+#include <cassert> // for assert, etc.
+#include <utility> // for forward, etc.
 
 namespace nvcv::cuda {
 
@@ -150,7 +150,7 @@ public:
     {
         constexpr int kStride[] = {std::forward<int>(Strides)...};
 
-        NVCV_ASSERT(tensor.rank() >= kNumDimensions);
+        assert(tensor.rank() >= kNumDimensions);
 
         m_data = reinterpret_cast<const std::byte *>(tensor.basePtr());
 
@@ -159,11 +159,11 @@ public:
         {
             if (kStride[i] != -1)
             {
-                NVCV_ASSERT(tensor.stride(i) == kStride[i]);
+                assert(tensor.stride(i) == kStride[i]);
             }
             else if (i < kVariableStrides)
             {
-                NVCV_ASSERT(tensor.stride(i) <= TypeTraits<int>::max);
+                assert(tensor.stride(i) <= TypeTraits<int>::max);
 
                 m_strides[i] = tensor.stride(i);
             }
@@ -447,9 +447,9 @@ template<typename T, class = Require<HasTypeTraits<T>>>
 __host__ auto CreateTensorWrapNHW(const TensorDataStridedCuda &tensor)
 {
     auto tensorAccess = TensorDataAccessStridedImagePlanar::Create(tensor);
-    NVCV_ASSERT(tensorAccess);
-    NVCV_ASSERT(tensorAccess->sampleStride() <= TypeTraits<int>::max);
-    NVCV_ASSERT(tensorAccess->rowStride() <= TypeTraits<int>::max);
+    assert(tensorAccess);
+    assert(tensorAccess->sampleStride() <= TypeTraits<int>::max);
+    assert(tensorAccess->rowStride() <= TypeTraits<int>::max);
 
     return Tensor3DWrap<T>(tensor.basePtr(), static_cast<int>(tensorAccess->sampleStride()),
                            static_cast<int>(tensorAccess->rowStride()));
@@ -474,10 +474,10 @@ template<typename T, class = Require<HasTypeTraits<T>>>
 __host__ auto CreateTensorWrapNHWC(const TensorDataStridedCuda &tensor)
 {
     auto tensorAccess = TensorDataAccessStridedImagePlanar::Create(tensor);
-    NVCV_ASSERT(tensorAccess);
-    NVCV_ASSERT(tensorAccess->sampleStride() <= TypeTraits<int>::max);
-    NVCV_ASSERT(tensorAccess->rowStride() <= TypeTraits<int>::max);
-    NVCV_ASSERT(tensorAccess->colStride() <= TypeTraits<int>::max);
+    assert(tensorAccess);
+    assert(tensorAccess->sampleStride() <= TypeTraits<int>::max);
+    assert(tensorAccess->rowStride() <= TypeTraits<int>::max);
+    assert(tensorAccess->colStride() <= TypeTraits<int>::max);
 
     return Tensor4DWrap<T>(tensor.basePtr(), static_cast<int>(tensorAccess->sampleStride()),
                            static_cast<int>(tensorAccess->rowStride()), static_cast<int>(tensorAccess->colStride()));

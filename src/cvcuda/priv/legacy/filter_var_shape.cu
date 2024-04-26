@@ -480,11 +480,6 @@ GaussianVarShape::~GaussianVarShape()
     NVCV_CHECK_LOG(cudaFree(m_kernel));
 }
 
-size_t GaussianVarShape::calBufferSize(Size2D maxKernelSize, int maxBatchSize)
-{
-    return maxKernelSize.w * maxKernelSize.h * maxBatchSize * sizeof(float);
-}
-
 ErrorCode GaussianVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inData,
                                   const ImageBatchVarShapeDataStridedCuda &outData,
                                   const TensorDataStridedCuda &kernelSize, const TensorDataStridedCuda &sigma,
@@ -687,11 +682,6 @@ AverageBlurVarShape::AverageBlurVarShape(DataShape max_input_shape, DataShape ma
 AverageBlurVarShape::~AverageBlurVarShape()
 {
     NVCV_CHECK_LOG(cudaFree(m_kernel));
-}
-
-size_t AverageBlurVarShape::calBufferSize(Size2D maxKernelSize, int maxBatchSize)
-{
-    return maxKernelSize.w * maxKernelSize.h * maxBatchSize * sizeof(float);
 }
 
 ErrorCode AverageBlurVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inData,

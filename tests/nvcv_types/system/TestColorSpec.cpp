@@ -629,7 +629,7 @@ TEST(ColorSpaceTests, get_name)
 
 // White point ===========================
 
-TEST(WhitePointTests, get_name)
+TEST(WhitePointTests, get_name0)
 {
     EXPECT_STREQ("NVCV_WHITE_POINT_D65", nvcvWhitePointGetName(NVCV_WHITE_POINT_D65));
     EXPECT_STREQ("NVCVWhitePoint(255)", nvcvWhitePointGetName(NVCV_WHITE_POINT_FORCE8));

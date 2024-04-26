@@ -87,52 +87,6 @@ inline __device__ T *_cacheAlignedBufferedReadVS(cuda::ImageBatchVarShapeWrap<co
     }
 } //_cacheAlignedBufferedReadVS
 
-template<typename SrcWrapper, typename DstWrapper>
-__global__ void resize_linear_v2(const SrcWrapper src, DstWrapper dst, const int *top_, const int *left_,
-                                 const float *scale_x_, const float *scale_y_)
-{
-    int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
-    int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
-    const int batch_idx = get_batch_idx();
-    int       height = src.height(batch_idx), width = src.width(batch_idx);
-    int       out_height = dst.height(batch_idx), out_width = dst.width(batch_idx);
-    if (dst_x >= out_width || dst_y >= out_height)
-        return;
-
-    const float scale_x = scale_x_[batch_idx];
-    const float scale_y = scale_y_[batch_idx];
-    const int   top     = top_[batch_idx];
-    const int   left    = left_[batch_idx];
-
-    const float src_x = dst_x * scale_x + left;
-    const float src_y = dst_y * scale_y + top;
-
-    using work_type = cuda::ConvertBaseTypeTo<float, typename DstWrapper::ValueType>;
-    work_type out   = cuda::SetAll<work_type>(0);
-
-    const int x1      = __float2int_rd(src_x);
-    const int y1      = __float2int_rd(src_y);
-    const int x2      = x1 + 1;
-    const int y2      = y1 + 1;
-    const int x2_read = min(x2, width - 1);
-    const int y2_read = min(y2, height - 1);
-
-    typename SrcWrapper::ValueType src_reg;
-    src_reg = *src.ptr(batch_idx, y1, x1);
-    out     = out + src_reg * ((x2 - src_x) * (y2 - src_y));
-
-    src_reg = *src.ptr(batch_idx, y1, x2_read);
-    out     = out + src_reg * ((src_x - x1) * (y2 - src_y));
-
-    src_reg = *src.ptr(batch_idx, y2_read, x1);
-    out     = out + src_reg * ((x2 - src_x) * (src_y - y1));
-
-    src_reg = *src.ptr(batch_idx, y2_read, x2_read);
-    out     = out + src_reg * ((src_x - x1) * (src_y - y1));
-
-    *dst.ptr(batch_idx, dst_y, dst_x) = cuda::SaturateCast<typename DstWrapper::ValueType>(out);
-}
-
 template<typename SrcWrapper, typename DstWrapper, typename T = typename DstWrapper::ValueType>
 __global__ void resize_linear_v1(const SrcWrapper src, DstWrapper dst, const int *top_, const int *left_,
                                  const float *scale_x_, const float *scale_y_)
@@ -181,32 +135,6 @@ __global__ void resize_linear_v1(const SrcWrapper src, DstWrapper dst, const int
 }
 
 template<typename SrcWrapper, typename DstWrapper>
-__global__ void resize_nearest_v2(const SrcWrapper src, DstWrapper dst, const int *top_, const int *left_,
-                                  const float *scale_x_, const float *scale_y_)
-{
-    int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
-    int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
-    const int batch_idx = get_batch_idx();
-
-    int out_height = dst.height(batch_idx), out_width = dst.width(batch_idx);
-    if (dst_x >= out_width || dst_y >= out_height)
-        return;
-
-    const float scale_x = scale_x_[batch_idx];
-    const float scale_y = scale_y_[batch_idx];
-    const int   top     = top_[batch_idx];
-    const int   left    = left_[batch_idx];
-
-    const float src_x = dst_x * scale_x + left;
-    const float src_y = dst_y * scale_y + top;
-
-    const int x1 = __float2int_rz(src_x);
-    const int y1 = __float2int_rz(src_y);
-
-    *dst.ptr(batch_idx, dst_y, dst_x) = *src.ptr(batch_idx, y1, x1);
-}
-
-template<typename SrcWrapper, typename DstWrapper>
 __global__ void resize_nearest_v1(const SrcWrapper src, DstWrapper dst, const int *top_, const int *left_,
                                   const float *scale_x_, const float *scale_y_)
 {
@@ -231,29 +159,6 @@ __global__ void resize_nearest_v1(const SrcWrapper src, DstWrapper dst, const in
 
         *dst.ptr(batch_idx, dst_y, dst_x) = *src.ptr(batch_idx, sy, sx);
     }
-}
-
-template<typename SrcWrapper, typename DstWrapper>
-__global__ void resize_cubic_v2(const SrcWrapper src, DstWrapper dst, const int *top_, const int *left_,
-                                const float *scale_x_, const float *scale_y_)
-{
-    int       dst_x      = blockIdx.x * blockDim.x + threadIdx.x;
-    int       dst_y      = blockIdx.y * blockDim.y + threadIdx.y;
-    const int batch_idx  = get_batch_idx();
-    int       out_height = dst.height(batch_idx), out_width = dst.width(batch_idx);
-    if (dst_x >= out_width || dst_y >= out_height)
-        return;
-
-    const float scale_x = scale_x_[batch_idx];
-    const float scale_y = scale_y_[batch_idx];
-    const int   top     = top_[batch_idx];
-    const int   left    = left_[batch_idx];
-
-    const float  src_x = dst_x * scale_x + left;
-    const float  src_y = dst_y * scale_y + top;
-    const float3 srcCoord{src_x, src_y, static_cast<float>(batch_idx)};
-
-    *dst.ptr(batch_idx, dst_y, dst_x) = src[srcCoord];
 }
 
 template<typename SrcWrapper, typename DstWrapper, typename T = typename DstWrapper::ValueType>
@@ -355,9 +260,6 @@ void resize(const ImageBatchVarShapeDataStridedCuda &in, const ImageBatchVarShap
     }
     else
     {
-        // for v2, not used
-        // cuda::InterpolationVarShapeWrap<T, NVCV_BORDER_REPLICATE, NVCV_INTERP_CUBIC> src(in);
-
         resize_cubic_v1<<<gridSize, blockSize, 0, stream>>>(src, dst, top, left, scale_x, scale_y);
         checkKernelErrors();
     }

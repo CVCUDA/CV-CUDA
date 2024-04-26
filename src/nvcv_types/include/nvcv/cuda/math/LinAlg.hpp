@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,14 +25,15 @@
 #define NVCV_CUDA_MATH_LINALG_HPP
 
 #include <nvcv/cuda/MathWrappers.hpp> // for cuda::max, etc.
+#include <nvcv/cuda/TypeTraits.hpp>   // for cuda::Require, etc.
 
-#include <algorithm>   // for std::swap, etc.
-#include <cassert>     // for assert, etc.
-#include <cmath>       // for std::pow, etc.
-#include <cstdlib>     // for std::size_t, etc.
-#include <ostream>     // for std::ostream, etc.
-#include <type_traits> // for std::enable_if_t, etc.
-#include <vector>      // for std::vector, etc.
+#include <algorithm>        // for std::swap, etc.
+#include <cassert>          // for assert, etc.
+#include <cmath>            // for std::pow, etc.
+#include <cstdlib>          // for std::size_t, etc.
+#include <initializer_list> // for std::initializer_list, etc.
+#include <ostream>          // for std::ostream, etc.
+#include <vector>           // for std::vector, etc.
 
 namespace nvcv::cuda::math {
 
@@ -66,6 +67,16 @@ public:
         {
             m_data[i] = inVector[i];
         }
+    }
+
+    /**
+     * Load values from a C++ initiliazer list into this vector.
+     *
+     * @param[in] l Input C++ initializer list to load values from.
+     */
+    constexpr __host__ __device__ void load(std::initializer_list<T> l)
+    {
+        load(std::data(l));
     }
 
     /**
@@ -215,9 +226,12 @@ public:
 /**
  * Matrix class to represent small matrices.
  *
+ * It uses the Vector class to stores each row, storing elements in row-major order, i.e. it has M row vectors
+ * where each vector has N elements.
+ *
  * @tparam T Matrix value type.
  * @tparam M Number of rows.
- * @tparam N Number of columns. Default is M.
+ * @tparam N Number of columns. Default is M (a square matrix).
  */
 template<class T, int M, int N = M>
 class Matrix
@@ -243,6 +257,16 @@ public:
                 m_data[i][j] = inFlattenMatrix[idx++];
             }
         }
+    }
+
+    /**
+     * Load values from a C++ initiliazer list into this matrix.
+     *
+     * @param[in] l Input C++ initializer list to load values from.
+     */
+    constexpr __host__ __device__ void load(std::initializer_list<T> l)
+    {
+        load(std::data(l));
     }
 
     /**
@@ -354,6 +378,21 @@ public:
             c[i] = m_data[i][j];
         }
         return c;
+    }
+
+    /**
+     * Set column j of this matrix.
+     *
+     * @param[in] j Index of column to set.
+     * @param[in] v Value to place in matrix column.
+     */
+    constexpr __host__ __device__ void set_col(int j, T v)
+    {
+#pragma unroll
+        for (int i = 0; i < rows(); ++i)
+        {
+            m_data[i][j] = v;
+        }
     }
 
     /**
@@ -516,7 +555,7 @@ template<class T, int N>
 constexpr __host__ __device__ Vector<T, N> &operator*=(Vector<T, N> &lhs, const T &rhs)
 {
 #pragma unroll
-    for (int j = 0; j < lhs.size(); ++j)
+    for (int j = 0; j < N; ++j)
     {
         lhs[j] *= rhs;
     }
@@ -540,7 +579,7 @@ template<class T, int N>
 constexpr __host__ __device__ Vector<T, N> &operator*=(Vector<T, N> &lhs, const Vector<T, N> &rhs)
 {
 #pragma unroll
-    for (int j = 0; j < lhs.size(); ++j)
+    for (int j = 0; j < N; ++j)
     {
         lhs[j] *= rhs[j];
     }
@@ -606,12 +645,12 @@ template<class T, int N>
 std::ostream &operator<<(std::ostream &out, const Vector<T, N> &v)
 {
     out << '[';
-    for (int i = 0; i < v.size(); ++i)
+    for (int i = 0; i < N; ++i)
     {
         out << v[i];
-        if (i < v.size() - 1)
+        if (i < N - 1)
         {
-            out << ',';
+            out << ' ';
         }
     }
     return out << ']';
@@ -700,12 +739,12 @@ std::ostream &operator<<(std::ostream &out, const Matrix<T, M, N> &m)
             out << m[i][j];
             if (j < m.cols() - 1)
             {
-                out << ',';
+                out << ' ';
             }
         }
         if (i < m.rows() - 1)
         {
-            out << ";";
+            out << "\n";
         }
     }
     return out << ']';
@@ -835,7 +874,7 @@ constexpr __host__ __device__ Vector<T, M> operator*(const Matrix<T, M, N> &m, c
     return r;
 }
 
-template<class T, int M, int N, class = std::enable_if_t<(M == N && N > 1)>>
+template<class T, int M, int N, class = cuda::Require<(M == N && N > 1)>>
 constexpr __host__ __device__ Matrix<T, M, N> operator*(const Matrix<T, M, 1> &m, const Vector<T, N> &v)
 {
     Matrix<T, M, N> r;
@@ -966,107 +1005,79 @@ constexpr Matrix<T, N, M> as_matrix(const T (&values)[N][M])
 template<class T, int N>
 constexpr __host__ __device__ Vector<T, N> zeros()
 {
-    Vector<T, N> v;
-    if constexpr (N > 0)
+    Vector<T, N> v = {};
+#pragma unroll
+    for (int j = 0; j < N; ++j)
     {
-#if __CUDA_ARCH__
-#    pragma unroll
-        for (int j = 0; j < v.size(); ++j)
-        {
-            v[j] = T{0};
-        }
-#else
-        std::fill(&v[0], &v[N - 1] + 1, T{0});
-#endif
+        v[j] = T{0};
     }
-    return v; // I'm hoping that RVO will kick in
+    return v;
 }
 
 template<class T, int M, int N>
 constexpr __host__ __device__ Matrix<T, M, N> zeros()
 {
-    Matrix<T, M, N> mat;
-    if constexpr (M > 0 && N > 0)
+    Matrix<T, M, N> m = {};
+#pragma unroll
+    for (int i = 0; i < M; ++i)
     {
-#if __CUDA_ARCH__
-#    pragma unroll
-        for (int i = 0; i < mat.rows(); ++i)
+#pragma unroll
+        for (int j = 0; j < N; ++j)
         {
-#    pragma unroll
-            for (int j = 0; j < mat.cols(); ++j)
-            {
-                mat[i][j] = T{0};
-            }
+            m[i][j] = T{0};
         }
-#else
-        std::fill(&mat[0][0], &mat[M - 1][N - 1] + 1, T{0});
-#endif
     }
-    return mat; // I'm hoping that RVO will kick in
+    return m;
 }
 
 template<class T, int N>
 constexpr __host__ __device__ Vector<T, N> ones()
 {
-    Vector<T, N> v;
-    if constexpr (N > 0)
+    Vector<T, N> v = {};
+#pragma unroll
+    for (int j = 0; j < N; ++j)
     {
-#if __CUDA_ARCH__
-#    pragma unroll
-        for (int j = 0; j < v.size(); ++j)
-        {
-            v[j] = T{1};
-        }
-#else
-        std::fill(&v[0], &v[N - 1] + 1, T{1});
-#endif
+        v[j] = T{1};
     }
-    return v; // I'm hoping that RVO will kick in
+    return v;
 }
 
 template<class T, int M, int N>
 constexpr __host__ __device__ Matrix<T, M, N> ones()
 {
-    Matrix<T, M, N> mat;
-    if constexpr (M > 0 && N > 0)
+    Matrix<T, M, N> m = {};
+#pragma unroll
+    for (int i = 0; i < M; ++i)
     {
-#if __CUDA_ARCH__
-#    pragma unroll
-        for (int i = 0; i < mat.rows(); ++i)
+#pragma unroll
+        for (int j = 0; j < N; ++j)
         {
-#    pragma unroll
-            for (int j = 0; j < mat.cols(); ++j)
-            {
-                mat[i][j] = T{1};
-            }
+            m[i][j] = T{1};
         }
-#else
-        std::fill(&mat[0][0], &mat[M - 1][N - 1] + 1, T{1});
-#endif
     }
-    return mat; // I'm hoping that RVO will kick in
+    return m;
 }
 
 template<class T, int M, int N>
 constexpr __host__ __device__ Matrix<T, M, N> identity()
 {
-    Matrix<T, M, N> mat;
-
+    Matrix<T, M, N> m = {};
+#pragma unroll
     for (int i = 0; i < M; ++i)
     {
+#pragma unroll
         for (int j = 0; j < N; ++j)
         {
-            mat[i][j] = i == j ? 1 : 0;
+            m[i][j] = i == j ? 1 : 0;
         }
     }
-
-    return mat;
+    return m;
 }
 
 template<class T, int M>
 constexpr __host__ __device__ Matrix<T, M, M> vander(const Vector<T, M> &v)
 {
-    Matrix<T, M, M> m;
+    Matrix<T, M, M> m = {};
     for (int i = 0; i < M; ++i)
     {
         for (int j = 0; j < M; ++j)
@@ -1074,7 +1085,6 @@ constexpr __host__ __device__ Matrix<T, M, M> vander(const Vector<T, M> &v)
             m[i][j] = cuda::pow(v[j], i);
         }
     }
-
     return m;
 }
 
@@ -1102,7 +1112,7 @@ constexpr __host__ __device__ Matrix<T, R, R> compan(const Vector<T, R> &a)
 template<class T, int M>
 constexpr __host__ __device__ Matrix<T, M, M> diag(const Vector<T, M> &v)
 {
-    Matrix<T, M, M> m;
+    Matrix<T, M, M> m = {};
     for (int i = 0; i < M; ++i)
     {
         for (int j = 0; j < M; ++j)
@@ -1120,7 +1130,7 @@ constexpr __host__ __device__ T dot(const Vector<T, N> &a, const Vector<T, N> &b
 {
     T d = a[0] * b[0];
 #pragma unroll
-    for (int j = 1; j < a.size(); ++j)
+    for (int j = 1; j < N; ++j)
     {
         d += a[j] * b[j];
     }
@@ -1130,23 +1140,23 @@ constexpr __host__ __device__ T dot(const Vector<T, N> &a, const Vector<T, N> &b
 template<class T, int N>
 constexpr __host__ __device__ Vector<T, N> reverse(const Vector<T, N> &a)
 {
-    Vector<T, N> r;
+    Vector<T, N> r = {};
 #pragma unroll
-    for (int j = 0; j < r.size(); ++j)
+    for (int j = 0; j < N; ++j)
     {
-        r[j] = a[a.size() - 1 - j];
+        r[j] = a[N - 1 - j];
     }
     return r;
 }
 
-// Transposition ---------------------------------------------------------------
+// Transformations -------------------------------------------------------------
 
 template<class T, int M>
 constexpr __host__ __device__ Matrix<T, M, M> &transp_inplace(Matrix<T, M, M> &m)
 {
-    for (int i = 0; i < m.rows(); ++i)
+    for (int i = 0; i < M; ++i)
     {
-        for (int j = i + 1; j < m.cols(); ++j)
+        for (int j = i + 1; j < M; ++j)
         {
             detail::swap(m[i][j], m[j][i]);
         }
@@ -1157,12 +1167,12 @@ constexpr __host__ __device__ Matrix<T, M, M> &transp_inplace(Matrix<T, M, M> &m
 template<class T, int M, int N>
 constexpr __host__ __device__ Matrix<T, N, M> transp(const Matrix<T, M, N> &m)
 {
-    Matrix<T, N, M> tm;
+    Matrix<T, N, M> tm = {};
 #pragma unroll
-    for (int i = 0; i < m.rows(); ++i)
+    for (int i = 0; i < M; ++i)
     {
 #pragma unroll
-        for (int j = 0; j < m.cols(); ++j)
+        for (int j = 0; j < N; ++j)
         {
             tm[j][i] = m[i][j];
         }
@@ -1173,7 +1183,7 @@ constexpr __host__ __device__ Matrix<T, N, M> transp(const Matrix<T, M, N> &m)
 template<class T, int N>
 constexpr __host__ __device__ Matrix<T, N, 1> transp(const Vector<T, N> &v)
 {
-    Matrix<T, N, 1> tv;
+    Matrix<T, N, 1> tv = {};
     tv.set_col(0, v);
     return tv;
 }
@@ -1181,12 +1191,12 @@ constexpr __host__ __device__ Matrix<T, N, 1> transp(const Vector<T, N> &v)
 template<class T, int M, int N>
 constexpr __host__ __device__ Matrix<T, M, N> flip_rows(const Matrix<T, M, N> &m)
 {
-    Matrix<T, M, N> f;
+    Matrix<T, M, N> f = {};
 #pragma unroll
-    for (int i = 0; i < m.rows(); ++i)
+    for (int i = 0; i < M; ++i)
     {
 #pragma unroll
-        for (int j = 0; j < m.cols(); ++j)
+        for (int j = 0; j < N; ++j)
         {
             f[i][j] = m[M - 1 - i][j];
         }
@@ -1197,12 +1207,12 @@ constexpr __host__ __device__ Matrix<T, M, N> flip_rows(const Matrix<T, M, N> &m
 template<class T, int M, int N>
 constexpr __host__ __device__ Matrix<T, M, N> flip_cols(const Matrix<T, M, N> &m)
 {
-    Matrix<T, M, N> f;
+    Matrix<T, M, N> f = {};
 #pragma unroll
-    for (int i = 0; i < m.rows(); ++i)
+    for (int i = 0; i < M; ++i)
     {
 #pragma unroll
-        for (int j = 0; j < m.cols(); ++j)
+        for (int j = 0; j < N; ++j)
         {
             f[i][j] = m[i][N - 1 - j];
         }
@@ -1213,17 +1223,199 @@ constexpr __host__ __device__ Matrix<T, M, N> flip_cols(const Matrix<T, M, N> &m
 template<class T, int M, int N>
 constexpr __host__ __device__ Matrix<T, M, N> flip(const Matrix<T, M, N> &m)
 {
-    Matrix<T, M, N> f;
+    Matrix<T, M, N> f = {};
 #pragma unroll
-    for (int i = 0; i < m.rows(); ++i)
+    for (int i = 0; i < M; ++i)
     {
 #pragma unroll
-        for (int j = 0; j < m.cols(); ++j)
+        for (int j = 0; j < N; ++j)
         {
             f[i][j] = m[M - 1 - i][N - 1 - j];
         }
     }
     return f;
+}
+
+template<int R, typename T, int M, int N, class = cuda::Require<R <= M>>
+constexpr __host__ __device__ Matrix<T, R, N> head(const Matrix<T, M, N> &m)
+{
+    Matrix<T, R, N> h;
+
+#pragma unroll
+    for (int i = 0; i < R; ++i)
+    {
+#pragma unroll
+        for (int j = 0; j < N; ++j)
+        {
+            h[i][j] = m[i][j];
+        }
+    }
+
+    return h;
+}
+
+template<int R, typename T, int M, int N, class = cuda::Require<R <= M>>
+constexpr __host__ __device__ Matrix<T, R, N> tail(const Matrix<T, M, N> &m)
+{
+    Matrix<T, R, N> t;
+
+#pragma unroll
+    for (int i = 0; i < R; ++i)
+    {
+#pragma unroll
+        for (int j = 0; j < N; ++j)
+        {
+            t[i][j] = m[M - R + i][j];
+        }
+    }
+
+    return t;
+}
+
+// Advanced operations ---------------------------------------------------------
+
+// Linear-time invariant (LTI) filtering is a fundamental operation in signal and image processing.  Many
+// applications use LTI filters that can be expressed as linear, constant-coefficient difference equations.
+
+// Functions below implement a convolution pass, i.e. finite impulse response (FIR), and a causal/anticausal
+// combination of recursive filter passes, i.e. infinite impulse response (IIR), both defined by a set of weights.
+
+// Definitions: input single element x, block b, length N; filter weights w, order R; prologue p; epilogue e.
+// Illustrative example of N=11 and R=3 showing a block b in between previous and next blocks.
+
+//                  |----------------- b -----------------|
+// <previous block> | [ e0 e1 e2 ] x x x x x [ p0 p1 p2 ] | <next block>
+
+// FIR + IIR filtering with causal combination is called forward; with anticausal combination is called reverse.
+
+// Forward (fwd): y = w[0] * x - w[1] * p2 - w[2] * p1 - w[3] * p0
+// The y passed in is considered to be: y = w[0] * x
+
+// Reverse (rev): z = w[0] * y - w[1] * e0 - w[2] * e1 - w[3] * e2
+// The z passed in is considered to be: z = w[0] * y
+
+// Forward pass in a single element, updating prologue accordingly and returning result
+template<typename T, int R>
+constexpr __host__ __device__ T fwd1(Vector<T, R> &p, T y, const Vector<T, R + 1> &w)
+{
+    y = y - p[R - 1] * w[1];
+
+#pragma unroll
+    for (int k = R - 1; k >= 1; --k)
+    {
+        y = y - p[R - 1 - k] * w[k + 1];
+
+        p[R - 1 - k] = p[R - 1 - k + 1];
+    }
+
+    p[R - 1] = y;
+
+    return y;
+}
+
+// Forward pass in a block of N elements, updating prologue accordingly and in-place
+template<typename T, int N, int R>
+constexpr __host__ __device__ void fwdN(Vector<T, R> &p, Vector<T, N> &b, const Vector<T, R + 1> &w)
+{
+#pragma unroll
+    for (int k = 0; k < N; ++k)
+    {
+        b[k] = fwd1(p, w[0] * b[k], w);
+    }
+}
+
+// Forward-transpose pass over rows of a block of MxN elements, updating prologue accordingly and in-place
+template<typename T, int M, int N, int R>
+constexpr __host__ void fwdT(Matrix<T, M, R> &p, Matrix<T, M, N> &b, const Vector<T, R + 1> &w)
+{
+#pragma unroll
+    for (int i = 0; i < M; ++i)
+    {
+        fwdN(p[i], b[i], w);
+    }
+}
+
+// Forward pass over columns of a block of MxN elements, returning result
+template<typename T, int M, int N, int R>
+constexpr __host__ Matrix<T, M, N> fwd(const Matrix<T, R, N> &p, const Matrix<T, M, N> &b, const Vector<T, R + 1> &w)
+{
+    Matrix<T, M, N> bout;
+
+#pragma unroll
+    for (int j = 0; j < N; ++j)
+    {
+        Vector<T, R> pT = p.col(j);
+
+#pragma unroll
+        for (int i = 0; i < M; ++i)
+        {
+            bout[i][j] = fwd1(pT, b[i][j] * w[0], w);
+        }
+    }
+
+    return bout;
+}
+
+// Reverse pass in a single element, updating epilogue accordingly and returning result
+template<class T, int R>
+constexpr __host__ __device__ T rev1(T z, Vector<T, R> &e, const Vector<T, R + 1> &w)
+{
+    z = z - e[0] * w[1];
+
+#pragma unroll
+    for (int k = R - 1; k >= 1; --k)
+    {
+        z = z - e[k] * w[k + 1];
+
+        e[k] = e[k - 1];
+    }
+
+    e[0] = z;
+
+    return z;
+}
+
+// Reverse pass in a block of N elements, updating prologue accordingly and in-place
+template<typename T, int N, int R>
+constexpr __host__ __device__ void revN(Vector<T, N> &b, Vector<T, R> &e, const Vector<T, R + 1> &w)
+{
+#pragma unroll
+    for (int k = N - 1; k >= 0; --k)
+    {
+        b[k] = rev1(w[0] * b[k], e, w);
+    }
+}
+
+// Reverse-transpose pass over rows of a block of MxN elements, updating prologue accordingly and in-place
+template<typename T, int M, int N, int R>
+constexpr __host__ void revT(Matrix<T, M, N> &b, Matrix<T, M, R> &e, const Vector<T, R + 1> &w)
+{
+#pragma unroll
+    for (int i = 0; i < M; ++i)
+    {
+        revN(b[i], e[i], w);
+    }
+}
+
+// Reverse pass over columns of a block of MxN elements, returning result
+template<typename T, int M, int N, int R>
+constexpr __host__ Matrix<T, M, N> rev(const Matrix<T, M, N> &b, const Matrix<T, R, N> &e, const Vector<T, R + 1> &w)
+{
+    Matrix<T, M, N> bout;
+
+#pragma unroll
+    for (int j = 0; j < N; ++j)
+    {
+        Vector<T, R> eT = e.col(j);
+
+#pragma unroll
+        for (int i = M - 1; i >= 0; --i)
+        {
+            bout[i][j] = rev1(b[i][j] * w[0], eT, w);
+        }
+    }
+
+    return bout;
 }
 
 // Determinant -----------------------------------------------------------------
@@ -1265,69 +1457,13 @@ constexpr __host__ __device__ T det(const Matrix<T, M, M> &m)
     return d;
 }
 
-// Matrix Inverse --------------------------------------------------------------
-
-namespace detail {
-
-template<class T>
-constexpr __host__ __device__ void inv_inplace(Matrix<T, 1, 1> &m, const T &d)
-{
-    m[0][0] = T{1} / d;
-}
-
-template<class T>
-constexpr __host__ __device__ void inv_inplace(Matrix<T, 2, 2> &m, const T &d)
-{
-    swap(m[0][0], m[1][1]);
-    m[0][0] /= d;
-    m[1][1] /= d;
-
-    m[0][1] = -m[0][1] / d;
-    m[1][0] = -m[1][0] / d;
-}
-
-template<class T>
-constexpr __host__ __device__ void inv_inplace(Matrix<T, 3, 3> &m, const T &d)
-{
-    Matrix<T, 3, 3> A;
-    A[0][0] = (m[1][1] * m[2][2] - m[1][2] * m[2][1]) / d;
-    A[0][1] = -(m[0][1] * m[2][2] - m[0][2] * m[2][1]) / d;
-    A[0][2] = (m[0][1] * m[1][2] - m[0][2] * m[1][1]) / d;
-    A[1][0] = -(m[1][0] * m[2][2] - m[1][2] * m[2][0]) / d;
-    A[1][1] = (m[0][0] * m[2][2] - m[0][2] * m[2][0]) / d;
-    A[1][2] = -(m[0][0] * m[1][2] - m[0][2] * m[1][0]) / d;
-    A[2][0] = (m[1][0] * m[2][1] - m[1][1] * m[2][0]) / d;
-    A[2][1] = -(m[0][0] * m[2][1] - m[0][1] * m[2][0]) / d;
-    A[2][2] = (m[0][0] * m[1][1] - m[0][1] * m[1][0]) / d;
-
-    m = A;
-}
-
-} // namespace detail
-
-// Do inverse in-place of matrix m returning true if succeeded (m has determinant)
-template<class T, int N, class = std::enable_if_t<(N < 4)>>
-constexpr __host__ __device__ bool inv_inplace(Matrix<T, N, N> &m)
-{
-    T d = det(m);
-
-    if (d == 0)
-    {
-        return false;
-    }
-
-    detail::inv_inplace(m, d);
-
-    return true;
-}
-
 // LU decomposition & solve ----------------------------------------------------
 
 // Do LU decomposition of matrix m using auxiliary pivot vector p and working type F (defaults to float)
 template<class F = float, class T, int N>
 constexpr __host__ __device__ bool lu_inplace(Matrix<T, N, N> &m, Vector<int, N> &p)
 {
-    Vector<F, N> v;
+    Vector<F, N> v = {};
 
 #pragma unroll
     for (int i = 0; i < N; ++i)
@@ -1396,6 +1532,7 @@ constexpr __host__ __device__ bool lu_inplace(Matrix<T, N, N> &m, Vector<int, N>
     return true;
 }
 
+// Solve in-place using given LU decomposition lu and pivot p, the result x is returned in b
 template<class T, int N>
 constexpr __host__ __device__ void solve_inplace(const Matrix<T, N, N> &lu, const Vector<int, N> &p, Vector<T, N> &b)
 {
@@ -1439,10 +1576,11 @@ constexpr __host__ __device__ void solve_inplace(const Matrix<T, N, N> &lu, cons
     }
 }
 
+// Solve in-place m * x = b, where x is returned in b
 template<class T, int N>
 constexpr __host__ __device__ bool solve_inplace(const Matrix<T, N, N> &m, Vector<T, N> &b)
 {
-    Vector<int, N>  p;
+    Vector<int, N>  p  = {};
     Matrix<T, N, N> LU = m;
 
     if (!lu_inplace(LU, p))
@@ -1453,6 +1591,136 @@ constexpr __host__ __device__ bool solve_inplace(const Matrix<T, N, N> &m, Vecto
     solve_inplace(LU, p, b);
 
     return true;
+}
+
+// Matrix Inverse --------------------------------------------------------------
+
+namespace detail {
+
+// In this detail, all inverse (and in-place) functions use determinant d of the input matrix m
+template<class T>
+constexpr __host__ __device__ void inv_inplace(Matrix<T, 1, 1> &m, const T &d)
+{
+    m[0][0] = T{1} / d;
+}
+
+template<class T>
+constexpr __host__ __device__ Matrix<T, 1, 1> inv(const Matrix<T, 1, 1> &m, const T &d)
+{
+    Matrix<T, 1, 1> A;
+    inv_inplace(A, d);
+    return A;
+}
+
+template<class T>
+constexpr __host__ __device__ void inv_inplace(Matrix<T, 2, 2> &m, const T &d)
+{
+    detail::swap(m[0][0], m[1][1]);
+    m[0][0] /= d;
+    m[1][1] /= d;
+
+    m[0][1] = -m[0][1] / d;
+    m[1][0] = -m[1][0] / d;
+}
+
+template<class T>
+constexpr __host__ __device__ Matrix<T, 2, 2> inv(const Matrix<T, 2, 2> &m, const T &d)
+{
+    Matrix<T, 2, 2> A = m;
+    inv_inplace(A, d);
+
+    return A;
+}
+
+template<class T>
+constexpr __host__ __device__ Matrix<T, 3, 3> inv(const Matrix<T, 3, 3> &m, const T &d)
+{
+    Matrix<T, 3, 3> A;
+    A[0][0] = (m[1][1] * m[2][2] - m[1][2] * m[2][1]) / d;
+    A[0][1] = -(m[0][1] * m[2][2] - m[0][2] * m[2][1]) / d;
+    A[0][2] = (m[0][1] * m[1][2] - m[0][2] * m[1][1]) / d;
+    A[1][0] = -(m[1][0] * m[2][2] - m[1][2] * m[2][0]) / d;
+    A[1][1] = (m[0][0] * m[2][2] - m[0][2] * m[2][0]) / d;
+    A[1][2] = -(m[0][0] * m[1][2] - m[0][2] * m[1][0]) / d;
+    A[2][0] = (m[1][0] * m[2][1] - m[1][1] * m[2][0]) / d;
+    A[2][1] = -(m[0][0] * m[2][1] - m[0][1] * m[2][0]) / d;
+    A[2][2] = (m[0][0] * m[1][1] - m[0][1] * m[1][0]) / d;
+
+    return A;
+}
+
+template<class T>
+constexpr __host__ __device__ void inv_inplace(Matrix<T, 3, 3> &m, const T &d)
+{
+    m = inv(m, d);
+}
+
+} // namespace detail
+
+// Do inverse of matrix m asserting its success
+template<class T, int N, class = cuda::Require<(N < 4)>>
+constexpr __host__ __device__ Matrix<T, N, N> inv(const Matrix<T, N, N> &m)
+{
+    T d = det(m);
+    assert(d != 0);
+    return detail::inv(m, d);
+}
+
+// Do inverse in-place of matrix m returning true if succeeded (m has determinant)
+template<class T, int N, class = cuda::Require<(N < 4)>>
+constexpr __host__ __device__ bool inv_inplace(Matrix<T, N, N> &m)
+{
+    T d = det(m);
+
+    if (d == 0)
+    {
+        return false;
+    }
+
+    detail::inv_inplace(m, d);
+
+    return true;
+}
+
+// Do inverse in-place of matrix m returning out using LU decomposition written to m
+template<class T, int M>
+constexpr __host__ __device__ void inv_lu_inplace(Matrix<T, M, M> &out, Matrix<T, M, M> &m)
+{
+    Vector<int, M> p = {};
+
+    bool validResult = lu_inplace(m, p);
+    assert(validResult);
+    if (!validResult)
+    {
+        return;
+    }
+
+    out = identity<T, M, M>();
+
+#pragma unroll
+    for (int i = 0; i < M; ++i)
+    {
+        solve_inplace(m, p, out[i]);
+    }
+
+    transp_inplace(out);
+}
+
+// Do inverse in-place of matrix m using LU decomposition
+template<class T, int M>
+constexpr __host__ __device__ void inv_lu_inplace(Matrix<T, M, M> &m)
+{
+    Matrix<T, M, M> res;
+    inv_lu_inplace(res, m);
+    m = res;
+}
+
+// Do inverse using LU decomposition
+template<class T, int M>
+constexpr __host__ __device__ Matrix<T, M, M> inv_lu(Matrix<T, M, M> m)
+{
+    inv_lu_inplace(m);
+    return m;
 }
 
 /**@}*/

@@ -89,7 +89,7 @@ using WarpPerspectiveTypes = nvbench::type_list<uint8_t, float>;
 NVBENCH_BENCH_TYPES(WarpPerspective, NVBENCH_TYPE_AXES(WarpPerspectiveTypes))
     .set_type_axes_names({"InOutDataType"})
     .add_string_axis("shape", {"1x1080x1920"})
-    .add_int64_axis("varShape", {-1})
+    .add_int64_axis("varShape", {-1, 0})
     .add_string_axis("border", {"REFLECT"})
     .add_string_axis("interpolation", {"CUBIC"})
     .add_string_axis("inverseMap", {"Y"});

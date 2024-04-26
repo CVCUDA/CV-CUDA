@@ -85,8 +85,10 @@ def run_sample(
     cuda_device = cuda.Device(device_id)
     cuda_ctx = cuda_device.retain_primary_context()
     cuda_ctx.push()
-    cvcuda_stream = cvcuda.Stream()
-    torch_stream = torch.cuda.ExternalStream(cvcuda_stream.handle)
+    # Use the the default stream for cvcuda and torch
+    # Since we never created a stream current will be the CUDA default stream
+    cvcuda_stream = cvcuda.Stream().current
+    torch_stream = torch.cuda.default_stream(device=cuda_device)
     # docs_tag: end_setup_gpu
 
     # docs_tag: begin_setup_stages
@@ -96,7 +98,7 @@ def run_sample(
     if os.path.splitext(input_path)[1] == ".jpg" or os.path.isdir(input_path):
         # Treat this as data modality of images
         decoder = ImageBatchDecoder(
-            input_path, batch_size, device_id, cuda_ctx, cvcuda_perf
+            input_path, batch_size, device_id, cuda_ctx, cvcuda_stream, cvcuda_perf
         )
 
         encoder = ImageBatchEncoder(
@@ -107,11 +109,11 @@ def run_sample(
     else:
         # Treat this as data modality of videos
         decoder = VideoBatchDecoder(
-            input_path, batch_size, device_id, cuda_ctx, cvcuda_perf
+            input_path, batch_size, device_id, cuda_ctx, cvcuda_stream, cvcuda_perf
         )
 
         encoder = VideoBatchEncoder(
-            output_dir, decoder.fps, device_id, cuda_ctx, cvcuda_perf
+            output_dir, decoder.fps, device_id, cuda_ctx, cvcuda_stream, cvcuda_perf
         )
 
     # Define the post-processor

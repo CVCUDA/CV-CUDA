@@ -30,24 +30,21 @@ Resource::Resource()
 
     m_id = idnext++;
 
-    m_readEvent = m_writeEvent = nullptr;
+    m_event = nullptr;
     try
     {
-        util::CheckThrow(cudaEventCreateWithFlags(&m_readEvent, cudaEventDisableTiming));
-        util::CheckThrow(cudaEventCreateWithFlags(&m_writeEvent, cudaEventDisableTiming));
+        util::CheckThrow(cudaEventCreateWithFlags(&m_event, cudaEventDisableTiming));
     }
     catch (...)
     {
-        cudaEventDestroy(m_readEvent);
-        cudaEventDestroy(m_writeEvent);
+        cudaEventDestroy(m_event);
         throw;
     }
 }
 
 Resource::~Resource()
 {
-    cudaEventDestroy(m_readEvent);
-    cudaEventDestroy(m_writeEvent);
+    cudaEventDestroy(m_event);
 }
 
 uint64_t Resource::id() const
@@ -55,62 +52,29 @@ uint64_t Resource::id() const
     return m_id;
 }
 
-void Resource::submitSignal(Stream &stream, LockMode mode) const
+void Resource::submitSync(Stream &stream)
 {
-    doBeforeSubmitSignal(stream, mode);
-
-    if (mode & LOCK_MODE_READ)
+    //Check if we have a last stream, if not set it to the current stream
+    if (!m_lastStream.has_value())
     {
-        util::CheckThrow(cudaEventRecord(m_readEvent, stream.handle()));
+        m_lastStream.emplace(stream.shared_from_this()); //store a shared pointer to the stream
     }
-    if (mode & LOCK_MODE_WRITE)
+
+    // if we are on the same stream we dont need to do anything
+    // as streams are sequential and we can assume that the last operation on the stream is done
+    if (m_lastStream.value()->handle() == stream.handle())
     {
-        util::CheckThrow(cudaEventRecord(m_writeEvent, stream.handle()));
+        return;
     }
-}
 
-void Resource::submitSync(Stream &stream, LockMode mode) const
-{
-    doBeforeSubmitSync(stream, mode);
+    // if we are on a different stream we need to wait for that stream to finish
+    // write event on the old stream, the new stream will have to wait for it to be done
+    util::CheckThrow(cudaEventRecord(m_event, m_lastStream.value()->handle()));
+    util::CheckThrow(cudaStreamWaitEvent(stream.handle(), m_event));
 
-    doSubmitSync(stream, mode);
-}
-
-void Resource::doSubmitSync(Stream &stream, LockMode mode) const
-{
-    if (mode & LOCK_MODE_WRITE)
-    {
-        util::CheckThrow(cudaStreamWaitEvent(stream.handle(), m_writeEvent));
-        util::CheckThrow(cudaStreamWaitEvent(stream.handle(), m_readEvent));
-    }
-    else if (mode & LOCK_MODE_READ)
-    {
-        util::CheckThrow(cudaStreamWaitEvent(stream.handle(), m_writeEvent));
-    }
-}
-
-void Resource::sync(LockMode mode) const
-{
-    py::gil_scoped_release release;
-
-    doBeforeSync(mode);
-
-    doSync(mode);
-}
-
-void Resource::doSync(LockMode mode) const
-{
-    NVCV_ASSERT(PyGILState_Check() == 0);
-
-    if (mode & LOCK_MODE_WRITE)
-    {
-        util::CheckThrow(cudaEventSynchronize(m_writeEvent));
-        util::CheckThrow(cudaEventSynchronize(m_readEvent));
-    }
-    else if (mode & LOCK_MODE_READ)
-    {
-        util::CheckThrow(cudaEventSynchronize(m_writeEvent));
-    }
+    // update the last stream since we changed streams
+    m_lastStream.reset();
+    m_lastStream.emplace(stream.shared_from_this());
 }
 
 std::shared_ptr<Resource> Resource::shared_from_this()
@@ -127,8 +91,7 @@ void Resource::Export(py::module &m)
 {
     py::class_<Resource, std::shared_ptr<Resource>>(m, "Resource")
         .def_property_readonly("id", &Resource::id, "Unique resource instance identifier")
-        .def("submitSync", &Resource::submitSync)
-        .def("submitSignal", &Resource::submitSignal);
+        .def("submitStreamSync", &Resource::submitSync, "Syncs object on new Stream");
 }
 
 } // namespace nvcvpy::priv

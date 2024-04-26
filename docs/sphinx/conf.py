@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,7 +33,7 @@ import sphinx_rtd_theme
 import sys
 
 project = "CV-CUDA"
-copyright = "2022-2023, NVIDIA."
+copyright = "2022-2024, NVIDIA."
 author = "NVIDIA"
 version = "Beta"
 release = version

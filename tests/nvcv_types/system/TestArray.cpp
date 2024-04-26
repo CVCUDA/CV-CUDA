@@ -163,9 +163,26 @@ TEST_P(ArrayWrapTests, smoke_create)
     EXPECT_EQ(data->length(), access->length());
     EXPECT_EQ(data->kind(), access->kind());
     EXPECT_EQ(data->stride(), access->stride());
+    EXPECT_EQ(data->rank(), 1);
 
     auto array = nvcv::ArrayWrapData(*data);
     ASSERT_NE(array.handle(), nullptr);
+    EXPECT_EQ(array.rank(), 1);
+    EXPECT_EQ(array.capacity(), capacity);
+    EXPECT_EQ(array.length(), data->length());
+    EXPECT_EQ(array.dtype(), data->dtype());
+    EXPECT_EQ(array.target(), baseArray.target());
+
+    auto arrayData = array.exportData<nvcv::ArrayData>();
+    ASSERT_TRUE(arrayData);
+    auto arrayAccess = nvcv::ArrayDataAccess::Create(*arrayData);
+    ASSERT_TRUE(arrayAccess);
+
+    EXPECT_EQ(arrayData->basePtr(), arrayAccess->ptr());
+    EXPECT_EQ(arrayData->length(), arrayAccess->length());
+    EXPECT_EQ(arrayData->kind(), arrayAccess->kind());
+    EXPECT_EQ(arrayData->stride(), arrayAccess->stride());
+    EXPECT_EQ(arrayData->rank(), 1);
 }
 
 INSTANTIATE_TEST_SUITE_P(_, ArrayWrapTests,
@@ -402,9 +419,11 @@ TEST(ArrayTests, invalid_out_get_data_type)
 
 TEST(ArrayTests, valid_get_allocator)
 {
+    int                   tmp = 1;
     NVCVArrayHandle       arrayHandle;
     NVCVArrayRequirements req;
-    NVCVAllocatorHandle   alloc;
+    NVCVAllocatorHandle   alloc = reinterpret_cast<NVCVAllocatorHandle>(&tmp);
+    EXPECT_NE(alloc, nullptr);
 
     EXPECT_EQ(NVCV_SUCCESS, nvcvArrayCalcRequirements(16, NVCV_DATA_TYPE_U8, 0, &req));
     EXPECT_EQ(NVCV_SUCCESS, nvcvArrayConstruct(&req, nullptr, &arrayHandle));
@@ -472,4 +491,91 @@ TEST(ArrayTests, invalid_out_get_target)
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvArrayGetTarget(arrayHandle, nullptr));
     EXPECT_EQ(NVCV_SUCCESS, nvcvArrayDecRef(arrayHandle, nullptr));
+}
+
+TEST(ArrayTests, validResize)
+{
+    NVCVArrayHandle       arrayHandle;
+    NVCVArrayRequirements req;
+    int64_t               length = 0;
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayCalcRequirements(16, NVCV_DATA_TYPE_U8, 0, &req));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayConstruct(&req, nullptr, &arrayHandle));
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayResize(arrayHandle, 8));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayGetLength(arrayHandle, &length));
+    EXPECT_EQ(length, 8);
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayDecRef(arrayHandle, nullptr));
+}
+
+TEST(ArrayTests, invalidResize)
+{
+    NVCVArrayHandle       arrayHandle;
+    NVCVArrayRequirements req;
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayCalcRequirements(16, NVCV_DATA_TYPE_U8, 0, &req));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayConstruct(&req, nullptr, &arrayHandle));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvArrayResize(arrayHandle, 17));
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayDecRef(arrayHandle, nullptr));
+}
+
+TEST(ArrayWrapTests, validResize)
+{
+    NVCVArrayHandle       arrayHandle, arrayWrapHandle;
+    NVCVArrayData         arrayData;
+    NVCVArrayRequirements req;
+    int64_t               length = 0;
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayCalcRequirements(16, NVCV_DATA_TYPE_U8, 0, &req));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayConstruct(&req, nullptr, &arrayHandle));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayExportData(arrayHandle, &arrayData));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayWrapDataConstruct(&arrayData, nullptr, nullptr, &arrayWrapHandle));
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayResize(arrayWrapHandle, 8));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayGetLength(arrayWrapHandle, &length));
+    EXPECT_EQ(length, 8);
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayDecRef(arrayHandle, nullptr));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayDecRef(arrayWrapHandle, nullptr));
+}
+
+TEST(ArrayWrapTests, invalidResize)
+{
+    NVCVArrayHandle       arrayHandle, arrayWrapHandle;
+    NVCVArrayData         arrayData;
+    NVCVArrayRequirements req;
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayCalcRequirements(16, NVCV_DATA_TYPE_U8, 0, &req));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayConstruct(&req, nullptr, &arrayHandle));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayExportData(arrayHandle, &arrayData));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayWrapDataConstruct(&arrayData, nullptr, nullptr, &arrayWrapHandle));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvArrayResize(arrayHandle, 17));
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayDecRef(arrayHandle, nullptr));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayDecRef(arrayWrapHandle, nullptr));
+}
+
+TEST(ArrayWrapTests, valid_get_allocator)
+{
+    int                   tmp = 1;
+    NVCVArrayHandle       arrayHandle, arrayWrapHandle;
+    NVCVArrayData         arrayData;
+    NVCVArrayRequirements req;
+    NVCVAllocatorHandle   alloc = reinterpret_cast<NVCVAllocatorHandle>(&tmp);
+    EXPECT_NE(alloc, nullptr);
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayCalcRequirements(16, NVCV_DATA_TYPE_U8, 0, &req));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayConstruct(&req, nullptr, &arrayHandle));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayExportData(arrayHandle, &arrayData));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayWrapDataConstruct(&arrayData, nullptr, nullptr, &arrayWrapHandle));
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayGetAllocator(arrayWrapHandle, &alloc));
+    EXPECT_EQ(alloc, nullptr);
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayDecRef(arrayHandle, nullptr));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayDecRef(arrayWrapHandle, nullptr));
 }

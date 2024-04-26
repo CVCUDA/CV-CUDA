@@ -15,10 +15,9 @@
 
 import nvcv
 import cvcuda
+import cvcuda_util
 import pytest as t
 import numpy as np
-
-RNG = np.random.default_rng(0)
 
 
 @t.mark.parametrize(
@@ -36,6 +35,10 @@ def test_op_findhomography(num_samples, num_points):
     out = cvcuda.findhomography(src, dst)
     assert out.shape == (num_samples, 3, 3)
     assert out.dtype == np.float32
+
+    create_tensor_args = ((num_samples, num_points, 2), np.float32, "NWC")
+    src = cvcuda_util.create_tensor(*create_tensor_args)
+    dst = cvcuda_util.create_tensor(*create_tensor_args)
 
     stream = cvcuda.Stream()
     out_tensor_args = ((num_samples, 3, 3), np.float32, "NHW")

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,8 +19,10 @@
 #include <common/ValueTests.hpp>     // for StringLiteral
 #include <nvcv/cuda/math/LinAlg.hpp> // the object of this test
 
+#include <algorithm>   // for std::generate, etc.
 #include <cmath>       // for std::pow, etc.
 #include <numeric>     // for std::iota, etc.
+#include <random>      // for std::random_device, etc.
 #include <sstream>     // for std::stringstream, etc.
 #include <type_traits> // for std::remove_reference_t, etc.
 
@@ -33,6 +35,13 @@ using TStr = typename test::StringLiteral<N>;
 
 using schar = signed char;
 using uchar = unsigned char;
+
+static std::random_device rd;
+static std::mt19937       mt(rd()); // to generate random input
+
+// Maximum absolute error expected given type T as either float or double
+template<typename T>
+constexpr T MaxAbsErr = std::is_same_v<T, float> ? 1e-5 : 1e-8;
 
 #define SCALAR(T, V) ttype::Value<T{V}>
 
@@ -168,6 +177,36 @@ TYPED_TEST(LinAlgVectorTest, load_works)
     std::iota(arr.begin(), arr.end(), 0);
 
     vec.load(arr.data());
+
+    for (int i = 0; i < N; ++i)
+    {
+        EXPECT_EQ(vec[i], i);
+    }
+}
+
+TYPED_TEST(LinAlgVectorTest, load_initializer_list_works)
+{
+    using VectorType = ttype::GetType<TypeParam, 0>;
+    constexpr int N  = ttype::GetValue<TypeParam, 1>;
+
+    math::Vector<VectorType, N> vec;
+
+    std::array<VectorType, N> arr;
+
+    std::iota(arr.begin(), arr.end(), 0);
+
+    if constexpr (N == 1)
+    {
+        vec.load({0});
+    }
+    else if constexpr (N == 3)
+    {
+        vec.load({0, 1, 2});
+    }
+    else if constexpr (N == 5)
+    {
+        vec.load({0, 1, 2, 3, 4});
+    }
 
     for (int i = 0; i < N; ++i)
     {
@@ -364,6 +403,24 @@ TYPED_TEST(LinAlgMatrixTest, set_col_with_pointer_works)
     }
 }
 
+TYPED_TEST(LinAlgMatrixTest, set_col_with_value_works)
+{
+    using MatrixType = ttype::GetType<TypeParam, 0>;
+    constexpr int M  = ttype::GetValue<TypeParam, 1>;
+    constexpr int N  = ttype::GetValue<TypeParam, 2>;
+
+    math::Matrix<MatrixType, M, N> mat{{1}};
+
+    MatrixType val = 1;
+
+    mat.set_col(0, val);
+
+    for (int i = 0; i < M; ++i)
+    {
+        EXPECT_EQ(mat[i][0], val);
+    }
+}
+
 TYPED_TEST(LinAlgMatrixTest, load_works)
 {
     using MatrixType = ttype::GetType<TypeParam, 0>;
@@ -377,6 +434,41 @@ TYPED_TEST(LinAlgMatrixTest, load_works)
     std::iota(arr.begin(), arr.end(), 0);
 
     mat.load(arr.data());
+
+    int val = 0;
+    for (int i = 0; i < M; ++i)
+    {
+        for (int j = 0; j < N; ++j)
+        {
+            EXPECT_EQ(mat[i][j], val++);
+        }
+    }
+}
+
+TYPED_TEST(LinAlgMatrixTest, load_initializer_list_works)
+{
+    using MatrixType = ttype::GetType<TypeParam, 0>;
+    constexpr int M  = ttype::GetValue<TypeParam, 1>;
+    constexpr int N  = ttype::GetValue<TypeParam, 2>;
+
+    math::Matrix<MatrixType, M, N> mat;
+
+    std::array<MatrixType, M * N> arr;
+
+    std::iota(arr.begin(), arr.end(), 0);
+
+    if constexpr (M * N == 1)
+    {
+        mat.load({0});
+    }
+    else if constexpr (M * N == 6)
+    {
+        mat.load({0, 1, 2, 3, 4, 5});
+    }
+    else if constexpr (M * N == 12)
+    {
+        mat.load({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11});
+    }
 
     int val = 0;
     for (int i = 0; i < M; ++i)
@@ -568,8 +660,8 @@ TYPED_TEST(LinAlgOperatorLessTest, correct_output)
 
 // clang-format off
 NVCV_TYPED_TEST_SUITE(LinAlgOutputStreamTest, ttype::Types<
-    ttype::Types<VEC(int, 3, 1, 2, 3), ttype::Value<TStr("[1,2,3]")>>,
-    ttype::Types<MAT(int, 2, 2, {1, 2}, {3, 4}), ttype::Value<TStr("[1,2;3,4]")>>
+    ttype::Types<VEC(int, 3, 1, 2, 3), ttype::Value<TStr("[1 2 3]")>>,
+    ttype::Types<MAT(int, 2, 2, {1, 2}, {3, 4}), ttype::Value<TStr("[1 2\n3 4]")>>
 >);
 
 // clang-format on
@@ -1073,10 +1165,10 @@ TYPED_TEST(LinAlgDotAndReverseVectorTest, correct_content_of_reverse)
     EXPECT_EQ(test, gold);
 }
 
-// -------------------- Testing LinAlg transp* operations ----------------------
+// ------------------- Testing LinAlg matrix transformations -------------------
 
 // clang-format off
-NVCV_TYPED_TEST_SUITE(LinAlgTranspTest, ttype::Zip<
+NVCV_TYPED_TEST_SUITE(LinAlgTransfTest, ttype::Zip<
                       test::Types<int, float>,
                       test::Values<4, 9>,
                       test::Values<8, 13>
@@ -1084,11 +1176,11 @@ NVCV_TYPED_TEST_SUITE(LinAlgTranspTest, ttype::Zip<
 
 // clang-format on
 
-TYPED_TEST(LinAlgTranspTest, correct_content_of_transp)
+TYPED_TEST(LinAlgTransfTest, correct_content_of_transp)
 {
     using Type      = ttype::GetType<TypeParam, 0>;
     constexpr int M = ttype::GetValue<TypeParam, 1>;
-    constexpr int N = ttype::GetValue<TypeParam, 1>;
+    constexpr int N = ttype::GetValue<TypeParam, 2>;
 
     math::Matrix<Type, M, N> mat;
 
@@ -1117,7 +1209,7 @@ TYPED_TEST(LinAlgTranspTest, correct_content_of_transp)
     EXPECT_EQ(test, gold);
 }
 
-TYPED_TEST(LinAlgTranspTest, correct_content_of_transp_inplace)
+TYPED_TEST(LinAlgTransfTest, correct_content_of_transp_inplace)
 {
     using Type      = ttype::GetType<TypeParam, 0>;
     constexpr int M = ttype::GetValue<TypeParam, 1>;
@@ -1152,7 +1244,7 @@ TYPED_TEST(LinAlgTranspTest, correct_content_of_transp_inplace)
     EXPECT_EQ(test1, gold);
 }
 
-TYPED_TEST(LinAlgTranspTest, correct_content_of_transp_vector)
+TYPED_TEST(LinAlgTransfTest, correct_content_of_transp_vector)
 {
     using Type      = ttype::GetType<TypeParam, 0>;
     constexpr int M = ttype::GetValue<TypeParam, 1>;
@@ -1181,22 +1273,11 @@ TYPED_TEST(LinAlgTranspTest, correct_content_of_transp_vector)
     EXPECT_EQ(test, gold);
 }
 
-// ------------------ Testing LinAlg flip* matrix operations -------------------
-
-// clang-format off
-NVCV_TYPED_TEST_SUITE(LinAlgFlipMatrixTest, ttype::Zip<
-                      test::Types<int, float>,
-                      test::Values<4, 9>,
-                      test::Values<8, 13>
->);
-
-// clang-format on
-
-TYPED_TEST(LinAlgFlipMatrixTest, correct_content_of_flip)
+TYPED_TEST(LinAlgTransfTest, correct_content_of_flip)
 {
     using Type      = ttype::GetType<TypeParam, 0>;
     constexpr int M = ttype::GetValue<TypeParam, 1>;
-    constexpr int N = ttype::GetValue<TypeParam, 1>;
+    constexpr int N = ttype::GetValue<TypeParam, 2>;
 
     math::Matrix<Type, M, N> mat;
 
@@ -1212,7 +1293,7 @@ TYPED_TEST(LinAlgFlipMatrixTest, correct_content_of_flip)
     EXPECT_EQ(test.rows(), M);
     EXPECT_EQ(test.cols(), N);
 
-    math::Matrix<Type, N, M> gold;
+    math::Matrix<Type, M, N> gold;
 
     for (int i = 0; i < gold.rows(); ++i)
     {
@@ -1225,11 +1306,11 @@ TYPED_TEST(LinAlgFlipMatrixTest, correct_content_of_flip)
     EXPECT_EQ(test, gold);
 }
 
-TYPED_TEST(LinAlgFlipMatrixTest, correct_content_of_flip_rows)
+TYPED_TEST(LinAlgTransfTest, correct_content_of_flip_rows)
 {
     using Type      = ttype::GetType<TypeParam, 0>;
     constexpr int M = ttype::GetValue<TypeParam, 1>;
-    constexpr int N = ttype::GetValue<TypeParam, 1>;
+    constexpr int N = ttype::GetValue<TypeParam, 2>;
 
     math::Matrix<Type, M, N> mat;
 
@@ -1245,7 +1326,7 @@ TYPED_TEST(LinAlgFlipMatrixTest, correct_content_of_flip_rows)
     EXPECT_EQ(test.rows(), M);
     EXPECT_EQ(test.cols(), N);
 
-    math::Matrix<Type, N, M> gold;
+    math::Matrix<Type, M, N> gold;
 
     for (int i = 0; i < gold.rows(); ++i)
     {
@@ -1258,11 +1339,11 @@ TYPED_TEST(LinAlgFlipMatrixTest, correct_content_of_flip_rows)
     EXPECT_EQ(test, gold);
 }
 
-TYPED_TEST(LinAlgFlipMatrixTest, correct_content_of_flip_cols)
+TYPED_TEST(LinAlgTransfTest, correct_content_of_flip_cols)
 {
     using Type      = ttype::GetType<TypeParam, 0>;
     constexpr int M = ttype::GetValue<TypeParam, 1>;
-    constexpr int N = ttype::GetValue<TypeParam, 1>;
+    constexpr int N = ttype::GetValue<TypeParam, 2>;
 
     math::Matrix<Type, M, N> mat;
 
@@ -1278,7 +1359,7 @@ TYPED_TEST(LinAlgFlipMatrixTest, correct_content_of_flip_cols)
     EXPECT_EQ(test.rows(), M);
     EXPECT_EQ(test.cols(), N);
 
-    math::Matrix<Type, N, M> gold;
+    math::Matrix<Type, M, N> gold;
 
     for (int i = 0; i < gold.rows(); ++i)
     {
@@ -1291,13 +1372,239 @@ TYPED_TEST(LinAlgFlipMatrixTest, correct_content_of_flip_cols)
     EXPECT_EQ(test, gold);
 }
 
+TYPED_TEST(LinAlgTransfTest, correct_content_of_head)
+{
+    using Type      = ttype::GetType<TypeParam, 0>;
+    constexpr int M = ttype::GetValue<TypeParam, 1>;
+    constexpr int N = ttype::GetValue<TypeParam, 2>;
+
+    math::Matrix<Type, M, N> mat;
+
+    for (int i = 0; i < mat.rows(); ++i)
+    {
+        std::iota(mat[i].begin(), mat[i].end(), 0);
+    }
+
+    auto test = math::head<1>(mat);
+
+    EXPECT_TRUE((std::is_same_v<typename decltype(test)::Type, Type>));
+
+    EXPECT_EQ(test.rows(), 1);
+    EXPECT_EQ(test.cols(), N);
+
+    math::Matrix<Type, 1, N> gold;
+
+    for (int i = 0; i < gold.rows(); ++i)
+    {
+        for (int j = 0; j < gold.cols(); ++j)
+        {
+            gold[i][j] = mat[i][j];
+        }
+    }
+
+    EXPECT_EQ(test, gold);
+}
+
+TYPED_TEST(LinAlgTransfTest, correct_content_of_tail)
+{
+    using Type      = ttype::GetType<TypeParam, 0>;
+    constexpr int M = ttype::GetValue<TypeParam, 1>;
+    constexpr int N = ttype::GetValue<TypeParam, 2>;
+
+    math::Matrix<Type, M, N> mat;
+
+    for (int i = 0; i < mat.rows(); ++i)
+    {
+        std::iota(mat[i].begin(), mat[i].end(), 0);
+    }
+
+    auto test = math::tail<1>(mat);
+
+    EXPECT_TRUE((std::is_same_v<typename decltype(test)::Type, Type>));
+
+    EXPECT_EQ(test.rows(), 1);
+    EXPECT_EQ(test.cols(), N);
+
+    math::Matrix<Type, 1, N> gold;
+
+    for (int i = 0; i < gold.rows(); ++i)
+    {
+        for (int j = 0; j < gold.cols(); ++j)
+        {
+            gold[i][j] = mat[M - 1 - i][j];
+        }
+    }
+
+    EXPECT_EQ(test, gold);
+}
+
+// -------------------- Testing LinAlg advanced operations ---------------------
+
+// clang-format off
+NVCV_TYPED_TEST_SUITE(LinAlgLTIFilterTest, ttype::Zip<
+                      test::Types<double, float>,
+                      test::Values<5, 32>,
+                      test::Values<3, 32>,
+                      test::Values<1, 3>
+>);
+
+// clang-format on
+
+TYPED_TEST(LinAlgLTIFilterTest, correct_content_of_fwd)
+{
+    using Type      = ttype::GetType<TypeParam, 0>;
+    constexpr int M = ttype::GetValue<TypeParam, 1>;
+    constexpr int N = ttype::GetValue<TypeParam, 2>;
+    constexpr int R = ttype::GetValue<TypeParam, 3>;
+
+    std::uniform_real_distribution<Type> d(-1, 1);
+
+    math::Vector<Type, R + 1> weights;
+    math::Matrix<Type, R, N>  prologue;
+    math::Matrix<Type, M, N>  block;
+
+    std::generate(weights.begin(), weights.end(), [&]() { return d(mt); });
+    for (int i = 0; i < R; ++i)
+    {
+        std::generate(prologue[i].begin(), prologue[i].end(), [&]() { return d(mt); });
+    }
+    for (int i = 0; i < M; ++i)
+    {
+        std::generate(block[i].begin(), block[i].end(), [&]() { return d(mt); });
+    }
+
+    auto test = math::fwd(prologue, block, weights);
+
+    EXPECT_TRUE((std::is_same_v<typename decltype(test)::Type, Type>));
+
+    EXPECT_EQ(test.rows(), M);
+    EXPECT_EQ(test.cols(), N);
+
+    math::Matrix<Type, M, N> gold;
+
+    for (int j = 0; j < N; ++j)
+    {
+        for (int i = 0; i < M; ++i)
+        {
+            Type y = block[i][j] * weights[0] - prologue[R - 1][j] * weights[1];
+
+            for (int r = R - 1; r >= 1; --r)
+            {
+                y = y - prologue[R - 1 - r][j] * weights[r + 1];
+
+                prologue[R - 1 - r][j] = prologue[R - 1 - r + 1][j];
+            }
+
+            gold[i][j] = prologue[R - 1][j] = y;
+        }
+    }
+
+    for (int i = 0; i < M; ++i)
+    {
+        for (int j = 0; j < N; ++j)
+        {
+            EXPECT_NEAR(test[i][j], gold[i][j], MaxAbsErr<Type>);
+        }
+    }
+}
+
+TYPED_TEST(LinAlgLTIFilterTest, correct_content_of_rev)
+{
+    using Type      = ttype::GetType<TypeParam, 0>;
+    constexpr int M = ttype::GetValue<TypeParam, 1>;
+    constexpr int N = ttype::GetValue<TypeParam, 2>;
+    constexpr int R = ttype::GetValue<TypeParam, 3>;
+
+    std::uniform_real_distribution<Type> d(-1, 1);
+
+    math::Vector<Type, R + 1> weights;
+    math::Matrix<Type, R, N>  epilogue;
+    math::Matrix<Type, M, N>  block;
+
+    std::generate(weights.begin(), weights.end(), [&]() { return d(mt); });
+    for (int i = 0; i < R; ++i)
+    {
+        std::generate(epilogue[i].begin(), epilogue[i].end(), [&]() { return d(mt); });
+    }
+    for (int i = 0; i < M; ++i)
+    {
+        std::generate(block[i].begin(), block[i].end(), [&]() { return d(mt); });
+    }
+
+    auto test = math::rev(block, epilogue, weights);
+
+    EXPECT_TRUE((std::is_same_v<typename decltype(test)::Type, Type>));
+
+    EXPECT_EQ(test.rows(), M);
+    EXPECT_EQ(test.cols(), N);
+
+    math::Matrix<Type, M, N> gold;
+
+    for (int j = 0; j < N; ++j)
+    {
+        for (int i = M - 1; i >= 0; --i)
+        {
+            Type z = block[i][j] * weights[0] - epilogue[0][j] * weights[1];
+
+            for (int r = R - 1; r >= 1; --r)
+            {
+                z = z - epilogue[r][j] * weights[r + 1];
+
+                epilogue[r][j] = epilogue[r - 1][j];
+            }
+
+            gold[i][j] = epilogue[0][j] = z;
+        }
+    }
+
+    for (int i = 0; i < M; ++i)
+    {
+        for (int j = 0; j < N; ++j)
+        {
+            EXPECT_NEAR(test[i][j], gold[i][j], MaxAbsErr<Type>);
+        }
+    }
+}
+
 // ------------------- Testing LinAlg det matrix operations --------------------
 
 // clang-format off
 NVCV_TYPED_TEST_SUITE(LinAlgDetMatrixTest, ttype::Zip<
-                      test::Types<uchar, int, float>,
-                      test::Values<2, 3, 4>
+                      test::Types<double, float, double, float>,
+                      test::Values<1, 2, 3, 4>
 >);
+
+template<typename T, int M>
+void GetTestInput(math::Matrix<T, M, M> &input)
+{
+    if constexpr (M == 1)
+    {
+        input.load({0.999998682});
+    }
+    else if constexpr (M == 2)
+    {
+        input.load(
+            {1.00034897, -0.000357094,
+             0.000348814, 0.999643171});
+    }
+    else if constexpr (M == 3)
+    {
+        input.load(
+            {1.01250394, -0.02495176, 0.01244351,
+             0.01199532,  0.97607735, 0.01192297,
+             0.01149353, -0.02290747, 1.01140953});
+    }
+    else
+    {
+        static_assert(M == 4);
+
+        input.load(
+            {1.,          0.292789199,  0.384852709,  0.200596131,
+             0.,          0.941267619,  0.215589234,  0.344613902,
+             0.,         -0.100899228,  0.808642026,  0.146461019,
+             0.,         -0.042882204, -0.157265148,  0.779262512});
+    }
+}
 
 // clang-format on
 
@@ -1330,7 +1637,9 @@ TYPED_TEST(LinAlgDetMatrixTest, correct_content_of_det)
     using Type      = ttype::GetType<TypeParam, 0>;
     constexpr int M = ttype::GetValue<TypeParam, 1>;
 
-    math::Matrix<Type, M, M> mat = math::identity<Type, M, M>();
+    math::Matrix<Type, M, M> mat;
+
+    GetTestInput(mat);
 
     auto test = math::det(mat);
 
@@ -1340,91 +1649,7 @@ TYPED_TEST(LinAlgDetMatrixTest, correct_content_of_det)
 
     Type gold = goldDet(mat);
 
-    EXPECT_EQ(test, gold);
-}
-
-// --------------- Testing LinAlg inv_inplace matrix operations ----------------
-
-// clang-format off
-NVCV_TYPED_TEST_SUITE(LinAlgInvMatrixTest, ttype::Zip<
-                      test::Types<float, double, float>,
-                      test::Values<1, 2, 3>
->);
-
-// clang-format on
-
-template<typename T, int M>
-struct GoldInv
-{
-    void operator()(math::Matrix<T, M, M> &m) {}
-};
-
-template<typename T>
-struct GoldInv<T, 1>
-{
-    void operator()(math::Matrix<T, 1, 1> &m)
-    {
-        m[0][0] = T{1} / m[0][0];
-    }
-};
-
-template<typename T>
-struct GoldInv<T, 2>
-{
-    void operator()(math::Matrix<T, 2, 2> &m)
-    {
-        GoldDet<T, 2> goldDet;
-        T             d = goldDet(m);
-        std::swap(m[0][0], m[1][1]);
-        m[0][0] /= d;
-        m[1][1] /= d;
-
-        m[0][1] = -m[0][1] / d;
-        m[1][0] = -m[1][0] / d;
-    }
-};
-
-template<typename T>
-struct GoldInv<T, 3>
-{
-    void operator()(math::Matrix<T, 3, 3> &m)
-    {
-        GoldDet<T, 3> goldDet;
-        T             d = goldDet(m);
-
-        math::Matrix<T, 3, 3> A;
-        A[0][0] = (m[1][1] * m[2][2] - m[1][2] * m[2][1]) / d;
-        A[0][1] = -(m[0][1] * m[2][2] - m[0][2] * m[2][1]) / d;
-        A[0][2] = (m[0][1] * m[1][2] - m[0][2] * m[1][1]) / d;
-        A[1][0] = -(m[1][0] * m[2][2] - m[1][2] * m[2][0]) / d;
-        A[1][1] = (m[0][0] * m[2][2] - m[0][2] * m[2][0]) / d;
-        A[1][2] = -(m[0][0] * m[1][2] - m[0][2] * m[1][0]) / d;
-        A[2][0] = (m[1][0] * m[2][1] - m[1][1] * m[2][0]) / d;
-        A[2][1] = -(m[0][0] * m[2][1] - m[0][1] * m[2][0]) / d;
-        A[2][2] = (m[0][0] * m[1][1] - m[0][1] * m[1][0]) / d;
-
-        m = A;
-    }
-};
-
-TYPED_TEST(LinAlgInvMatrixTest, correct_content_of_inv_inplace)
-{
-    using Type      = ttype::GetType<TypeParam, 0>;
-    constexpr int M = ttype::GetValue<TypeParam, 1>;
-
-    math::Matrix<Type, M, M> mat = math::identity<Type, M, M>();
-
-    auto test = mat;
-
-    EXPECT_TRUE(math::inv_inplace(test));
-
-    GoldInv<Type, M> goldInv;
-
-    auto gold = mat;
-
-    goldInv(gold);
-
-    EXPECT_EQ(test, gold);
+    EXPECT_NEAR(test, gold, MaxAbsErr<Type>);
 }
 
 // --------------------- Testing LinAlg solve operations -----------------------
@@ -1445,4 +1670,120 @@ TYPED_TEST(LinAlgSolveTest, correct_solve)
     math::solve_inplace(A, b);
 
     EXPECT_EQ(b, x);
+}
+
+// ------------- Testing LinAlg various inverse matrix operations --------------
+
+// clang-format off
+NVCV_TYPED_TEST_SUITE(LinAlgInvMatrixTest, ttype::Zip<
+                      test::Types<float, double, float>,
+                      test::Values<1, 2, 3>
+>);
+
+template<typename T, int M>
+void GetTestInputAndGoldOutput(math::Matrix<T, M, M> &input, math::Matrix<T, M, M> &output)
+{
+    GetTestInput(input);
+
+    if constexpr (M == 1)
+    {
+        output.load({1.000001318});
+    }
+    else if constexpr (M == 2)
+    {
+        output.load(
+            { 0.999651028, 0.000357097,
+             -0.000348817, 1.000356831});
+    }
+    else
+    {
+        static_assert(M == 3);
+
+        output.load(
+            { 0.98749612, 0.02495163, -0.01244344,
+             -0.01199525, 1.02392251, -0.0119229,
+             -0.01149346, 0.02290733,  0.98859054});
+    }
+}
+
+// clang-format on
+
+TYPED_TEST(LinAlgInvMatrixTest, correct_content_of_inv)
+{
+    using Type      = ttype::GetType<TypeParam, 0>;
+    constexpr int M = ttype::GetValue<TypeParam, 1>;
+
+    math::Matrix<Type, M, M> mat, gold, test;
+
+    GetTestInputAndGoldOutput(mat, gold);
+
+    EXPECT_NO_THROW(test = math::inv(mat));
+
+    for (int i = 0; i < M; ++i)
+    {
+        for (int j = 0; j < M; ++j)
+        {
+            EXPECT_NEAR(test[i][j], gold[i][j], MaxAbsErr<Type>);
+        }
+    }
+}
+
+TYPED_TEST(LinAlgInvMatrixTest, correct_content_of_inv_inplace)
+{
+    using Type      = ttype::GetType<TypeParam, 0>;
+    constexpr int M = ttype::GetValue<TypeParam, 1>;
+
+    math::Matrix<Type, M, M> mat, gold;
+
+    GetTestInputAndGoldOutput(mat, gold);
+
+    EXPECT_TRUE(math::inv_inplace(mat));
+
+    for (int i = 0; i < M; ++i)
+    {
+        for (int j = 0; j < M; ++j)
+        {
+            EXPECT_NEAR(mat[i][j], gold[i][j], MaxAbsErr<Type>);
+        }
+    }
+}
+
+TYPED_TEST(LinAlgInvMatrixTest, correct_content_of_inv_lu)
+{
+    using Type      = ttype::GetType<TypeParam, 0>;
+    constexpr int M = ttype::GetValue<TypeParam, 1>;
+
+    math::Matrix<Type, M, M> mat, gold, test;
+
+    GetTestInputAndGoldOutput(mat, gold);
+
+    EXPECT_NO_THROW(test = math::inv_lu(mat));
+
+    for (int i = 0; i < M; ++i)
+    {
+        for (int j = 0; j < M; ++j)
+        {
+            EXPECT_NEAR(test[i][j], gold[i][j], MaxAbsErr<Type>);
+        }
+    }
+}
+
+TYPED_TEST(LinAlgInvMatrixTest, correct_content_of_inv_lu_inplace)
+{
+    using Type      = ttype::GetType<TypeParam, 0>;
+    constexpr int M = ttype::GetValue<TypeParam, 1>;
+
+    math::Matrix<Type, M, M> mat, gold;
+
+    GetTestInputAndGoldOutput(mat, gold);
+
+    EXPECT_NO_THROW(math::inv_lu_inplace(mat));
+
+    for (int i = 0; i < M; ++i)
+    {
+        for (int j = 0; j < M; ++j)
+        {
+            EXPECT_NEAR(mat[i][j], gold[i][j], MaxAbsErr<Type>);
+        }
+    }
 }

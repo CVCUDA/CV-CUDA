@@ -105,15 +105,15 @@ CVCUDA_PUBLIC NVCVStatus cvcudaFindHomographyCreate(NVCVOperatorHandle *handle, 
  *                from 0 to batch-1, j ranges from 4 to number of coordinates per image, and the data type being
  *                float2 for (x=x, y=y)
  *                + Number of coordinates must be >= 4
- *                + Must have data type 2F32
- *                + Must have rank 2
+ *                + Must have data type 2F32 or F32
+ *                + Must have rank 2 or 3
  *
  * * @param [in] dstPts Input tensor, dstPts[i, j] is the set of coordinates for the destination image where i ranges
  *                from 0 to batch-1, j ranges from 4 to number of coordinates per image, and the data type being
  *                float2 for (x=x, y=y)
  *                + Number of coordinates must be >= 4
- *                + Must have data type 2F32
- *                + Must have rank 2
+ *                + Must have data type 2F32 or F32
+ *                + Must have rank 2 or 3
  *
  * @param [out] out Output tensor, models[i, j, k] is the output model tensor which maps the src points to dst points
  *                  in image i, where i ranges from 0 to batch-1, j ranges from 0 to 2 and k ranges from 0 to 2, and

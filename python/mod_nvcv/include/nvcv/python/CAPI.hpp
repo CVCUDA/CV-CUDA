@@ -44,8 +44,7 @@ struct CAPI
     PyObject *(*ImageFormat_ToPython)(NVCVImageFormat p);
     NVCVImageFormat (*ImageFormat_FromPython)(PyObject *obj);
 
-    void (*Resource_SubmitSync)(PyObject *res, PyObject *stream, PyObject *lockMode);
-    void (*Resource_SubmitSignal)(PyObject *res, PyObject *stream, PyObject *lockMode);
+    void (*Resource_SubmitSync)(PyObject *res, PyObject *stream);
 
     void (*Stream_HoldResources)(PyObject *stream, PyObject *resources);
     PyObject *(*Stream_GetCurrent)();

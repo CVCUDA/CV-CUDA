@@ -105,14 +105,9 @@ LockMode ToLockMode(PyObject *_mode)
     }
 }
 
-extern "C" void ImplResource_SubmitSync(PyObject *res, PyObject *stream, PyObject *lockMode)
+extern "C" void ImplResource_SubmitSync(PyObject *res, PyObject *stream)
 {
-    ToSharedObj<Resource>(res)->submitSync(*ToSharedObj<Stream>(stream), ToLockMode(lockMode));
-}
-
-extern "C" void ImplResource_SubmitSignal(PyObject *res, PyObject *stream, PyObject *lockMode)
-{
-    ToSharedObj<Resource>(res)->submitSignal(*ToSharedObj<Stream>(stream), ToLockMode(lockMode));
+    ToSharedObj<Resource>(res)->submitSync(*ToSharedObj<Stream>(stream));
 }
 
 extern "C" void ImplStream_HoldResources(PyObject *stream, PyObject *resourceList)
@@ -294,7 +289,6 @@ void ExportCAPI(py::module &m)
         .ImageFormat_ToPython            = &ImplImageFormat_ToPython,
         .ImageFormat_FromPython          = &ImplImageFormat_FromPython,
         .Resource_SubmitSync             = &ImplResource_SubmitSync,
-        .Resource_SubmitSignal           = &ImplResource_SubmitSignal,
         .Stream_HoldResources            = &ImplStream_HoldResources,
         .Stream_GetCurrent               = &ImplStream_GetCurrent,
         .Stream_GetCudaHandle            = &ImplStream_GetCudaHandle,

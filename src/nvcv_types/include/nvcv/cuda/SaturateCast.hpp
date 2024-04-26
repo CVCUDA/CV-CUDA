@@ -30,15 +30,17 @@
 namespace nvcv::cuda {
 
 /**
+ * @defgroup NVCV_CPP_CUDATOOLS_SATURATECAST Saturate cast
+ * @{
+ */
+
+/**
  * Metafunction to saturate cast all elements to a target type.
  *
  * This function saturate casts (clamping with potential rounding) all elements to the range defined by
  * the template argument type \p T.  For instance, a float4 with any values (can be below 0 and above 255) can be
  * casted to an uchar4 rounding-then-saturating each value to be in between 0 and 255 (see example below).  It is a
  * requirement of SaturateCast that both types have the same number of components or \p T is a regular C type.
- *
- * @defgroup NVCV_CPP_CUDATOOLS_SATURATECAST Saturate cast
- * @{
  *
  * @code
  * using DataType = MakeType<uchar, 4>;

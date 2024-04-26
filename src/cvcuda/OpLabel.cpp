@@ -38,11 +38,11 @@ CVCUDA_DEFINE_API(0, 5, NVCVStatus, cvcudaLabelCreate, (NVCVOperatorHandle * han
         });
 }
 
-CVCUDA_DEFINE_API(0, 5, NVCVStatus, cvcudaLabelSubmit,
+CVCUDA_DEFINE_API(0, 7, NVCVStatus, cvcudaLabelSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in, NVCVTensorHandle out,
                    NVCVTensorHandle bgLabel, NVCVTensorHandle minThresh, NVCVTensorHandle maxThresh,
-                   NVCVTensorHandle minSize, NVCVTensorHandle count, NVCVTensorHandle stats,
-                   NVCVConnectivityType connectivity, NVCVLabelType assignLabels))
+                   NVCVTensorHandle minSize, NVCVTensorHandle count, NVCVTensorHandle stats, NVCVTensorHandle mask,
+                   NVCVConnectivityType connectivity, NVCVLabelType assignLabels, NVCVLabelMaskType maskType))
 {
     return nvcv::ProtectCall(
         [&]
@@ -50,6 +50,7 @@ CVCUDA_DEFINE_API(0, 5, NVCVStatus, cvcudaLabelSubmit,
             cvcuda::priv::ToDynamicRef<cvcuda::priv::Label>(handle)(
                 stream, nvcv::TensorWrapHandle{in}, nvcv::TensorWrapHandle{out}, nvcv::TensorWrapHandle{bgLabel},
                 nvcv::TensorWrapHandle{minThresh}, nvcv::TensorWrapHandle{maxThresh}, nvcv::TensorWrapHandle{minSize},
-                nvcv::TensorWrapHandle{count}, nvcv::TensorWrapHandle{stats}, connectivity, assignLabels);
+                nvcv::TensorWrapHandle{count}, nvcv::TensorWrapHandle{stats}, nvcv::TensorWrapHandle{mask},
+                connectivity, assignLabels, maskType);
         });
 }

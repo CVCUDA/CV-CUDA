@@ -39,8 +39,8 @@ public:
 
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const nvcv::Tensor &bgLabel,
                     const nvcv::Tensor &minThresh, const nvcv::Tensor &maxThresh, const nvcv::Tensor &minSize,
-                    const nvcv::Tensor &count, const nvcv::Tensor &stats, NVCVConnectivityType connectivity,
-                    NVCVLabelType assignLabels) const;
+                    const nvcv::Tensor &count, const nvcv::Tensor &stats, const nvcv::Tensor &mask,
+                    NVCVConnectivityType connectivity, NVCVLabelType assignLabels, NVCVLabelMaskType maskType) const;
 };
 
 } // namespace cvcuda::priv

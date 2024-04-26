@@ -402,6 +402,12 @@ typedef enum
     NVCV_LABEL_SEQUENTIAL, //!< Assigns consecutive numbers to labels.
 } NVCVLabelType;
 
+// @brief Defines how mask affects label operation
+typedef enum
+{
+    NVCV_REMOVE_ISLANDS_OUTSIDE_MASK_ONLY, //!< Prevent removing islands inside the mask
+} NVCVLabelMaskType;
+
 // @brief Defines pair-wise matcher algorithms of choice
 typedef enum
 {

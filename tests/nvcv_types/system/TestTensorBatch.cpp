@@ -465,3 +465,31 @@ TEST(TensorBatch, set_tensor)
     EXPECT_EQ(tensorA.refCount(), 4);
     EXPECT_EQ(tensorB.refCount(), 3);
 }
+
+TEST(TensorBatch, valid_get_allocator)
+{
+    int                         tmp = 1;
+    NVCVTensorBatchHandle       tensorBatchHandle;
+    NVCVTensorBatchRequirements req;
+    NVCVAllocatorHandle         alloc = reinterpret_cast<NVCVAllocatorHandle>(&tmp);
+    EXPECT_NE(alloc, nullptr);
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchCalcRequirements(16, &req));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchConstruct(&req, nullptr, &tensorBatchHandle));
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchGetAllocator(tensorBatchHandle, &alloc));
+    EXPECT_EQ(alloc, nullptr);
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchDecRef(tensorBatchHandle, nullptr));
+}
+
+TEST(TensorBatch, invalid_out_get_allocator)
+{
+    NVCVTensorBatchHandle       tensorBatchHandle;
+    NVCVTensorBatchRequirements req;
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchCalcRequirements(16, &req));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchConstruct(&req, nullptr, &tensorBatchHandle));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorBatchGetAllocator(tensorBatchHandle, nullptr));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchDecRef(tensorBatchHandle, nullptr));
+}

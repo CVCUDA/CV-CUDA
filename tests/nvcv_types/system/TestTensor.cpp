@@ -274,6 +274,51 @@ TEST(Tensor, smoke_user_pointer)
     ASSERT_EQ(nullptr, userPtr);
 }
 
+TEST(Tensor, valid_get_allocator)
+{
+    int                    tmp = 1;
+    NVCVTensorHandle       tensorHandle;
+    NVCVTensorRequirements reqs;
+    NVCVAllocatorHandle    alloc = reinterpret_cast<NVCVAllocatorHandle>(&tmp);
+    EXPECT_NE(alloc, nullptr);
+
+    ASSERT_EQ(NVCV_SUCCESS, nvcvTensorCalcRequirementsForImages(1, 224, 224, NVCV_IMAGE_FORMAT_RGBA8, 0, 0, &reqs));
+    ASSERT_EQ(NVCV_SUCCESS, nvcvTensorConstruct(&reqs, nullptr, &tensorHandle));
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorGetAllocator(tensorHandle, &alloc));
+    EXPECT_EQ(alloc, nullptr);
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorDecRef(tensorHandle, nullptr));
+}
+
+TEST(Tensor, layout_ne_op)
+{
+    NVCVTensorLayout lLayout = NVCV_TENSOR_NHWC;
+    NVCVTensorLayout rLayout = NVCV_TENSOR_NCHW;
+    EXPECT_TRUE(lLayout != rLayout);
+}
+
+TEST(TensorWrapData, valid_get_allocator)
+{
+    int                    tmp = 1;
+    NVCVTensorHandle       tensorHandle, tensorWrapHandle;
+    NVCVTensorData         tensorData;
+    NVCVTensorRequirements reqs;
+    NVCVAllocatorHandle    alloc = reinterpret_cast<NVCVAllocatorHandle>(&tmp);
+    EXPECT_NE(alloc, nullptr);
+
+    ASSERT_EQ(NVCV_SUCCESS, nvcvTensorCalcRequirementsForImages(1, 224, 224, NVCV_IMAGE_FORMAT_RGBA8, 0, 0, &reqs));
+    ASSERT_EQ(NVCV_SUCCESS, nvcvTensorConstruct(&reqs, nullptr, &tensorHandle));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorExportData(tensorHandle, &tensorData));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorWrapDataConstruct(&tensorData, nullptr, nullptr, &tensorWrapHandle));
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorGetAllocator(tensorWrapHandle, &alloc));
+    EXPECT_EQ(alloc, nullptr);
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorDecRef(tensorHandle, nullptr));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorDecRef(tensorWrapHandle, nullptr));
+}
+
 TEST(TensorWrapData, smoke_create)
 {
     nvcv::ImageFormat fmt
@@ -624,6 +669,11 @@ TEST_F(TensorTests_Negative, invalid_parameter_TensorShapePermute)
               nvcvTensorShapePermute(srcLayout, nullptr, dstLayout, outShape.data())); // null srcShape
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
               nvcvTensorShapePermute(srcLayout, srcShape.data(), dstLayout, nullptr)); // null outShape
+}
+
+TEST_F(TensorTests_Negative, invalid_out_get_allocator)
+{
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorGetAllocator(handle, nullptr));
 }
 
 class TensorPermuteTests

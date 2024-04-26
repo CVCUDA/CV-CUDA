@@ -68,21 +68,24 @@ def run_bench(
     logger = logging.getLogger("run_bench")
     logger.info("Benchmarking started.")
 
+    # Set up various CUDA stuff.
+    cuda_device = cuda.Device(device_id)
+    cuda_ctx = cuda_device.retain_primary_context()
+    cuda_ctx.push()
+    # Use the the default stream for cvcuda and torch
+    # Since we never created a stream current will be the CUDA default stream
+    cvcuda_stream = cvcuda.Stream().current
+    torch_stream = torch.cuda.default_stream(device=cuda_device)
+
     # Create an image batch decoder to supply us the input test data.
     decoder = ImageBatchDecoder(
         input_path,
         batch_size,
         device_id,
-        cuda_ctx=None,
+        cuda_ctx,
+        cvcuda_stream,
         cvcuda_perf=cvcuda_perf,
     )
-
-    # Set up various CUDA stuff.
-    cuda_device = cuda.Device(device_id)
-    cuda_ctx = cuda_device.retain_primary_context()
-    cuda_ctx.push()
-    cvcuda_stream = cvcuda.Stream()
-    torch_stream = torch.cuda.ExternalStream(cvcuda_stream.handle)
 
     # Get a list of (class names, class types) of all the ops that can be profiled.
     ops_info_list = get_benchmark_eligible_ops_info()

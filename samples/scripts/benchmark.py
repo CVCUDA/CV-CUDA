@@ -195,7 +195,7 @@ def parse_nvtx_gpu_proj_trace_json(json_path):
         # Grab the necessary values from the JSON file.
         range_id = row["RangeId"]
 
-        if range_id == "None":
+        if not range_id or range_id == "None":
             continue
 
         flat_name = row["Name"]

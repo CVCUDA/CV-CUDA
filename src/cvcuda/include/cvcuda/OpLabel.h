@@ -101,7 +101,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaLabelCreate(NVCVOperatorHandle *handle);
  *       16bit Unsigned | No
  *       16bit Signed   | No
  *       32bit Unsigned | Yes
- *       32bit Signed   | No
+ *       32bit Signed   | Yes
  *       32bit Float    | No
  *       64bit Float    | No
  *
@@ -115,6 +115,8 @@ CVCUDA_PUBLIC NVCVStatus cvcudaLabelCreate(NVCVOperatorHandle *handle);
  *       Width         | Yes
  *       Height        | Yes
  *       Depth         | Yes
+ *
+ * @note The number of elements (pixels or voxels) in input and output tensors must be at most \f$ 2^31 - 1 \f$.
  *
  * @param [in] handle Handle to the operator.
  *                    + Must not be NULL.
@@ -177,7 +179,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaLabelCreate(NVCVOperatorHandle *handle);
  *                     done before this post-filter step, also known as island-removal step.
  *                     + It must have the same number of samples as input and output tensors.
  *                     + It must have one element per sample, i.e. number of channels must be 1 in a [NC] tensor.
- *                     + It must have U32 data type.
+ *                     + It must have S32 or U32 data type.
  *                     + It may be NULL to not apply minimum size regions removal as a post-filter.
  *                     + If not NULL, the \ref bgLabel and \ref stats tensors must not be NULL as well.
  *
@@ -189,31 +191,49 @@ CVCUDA_PUBLIC NVCVStatus cvcudaLabelCreate(NVCVOperatorHandle *handle);
  *                    of \ref stats tensor, and regions potentially removed by \ref minSize tensor.
  *                    + It must have the same number of samples as input and output tensors.
  *                    + It must have one element per sample, i.e. number of channels must be 1 in a [NC] tensor.
- *                    + It must have U32 data type.
+ *                    + It must have S32 or U32 data type.
  *                    + It may be NULL to disregard counting the number of different labels found.
  *
  * @param [out] stats Statistics tensor.  The expected layout is [NMA], meaning rank-3 tensor with first dimension
  *                    as the number of samples N, matching input and output tensors, second dimension M as maximum
  *                    number of different labels statistics to be computed, and a third dimension A as the amount
- *                    of statistics to be computed per label (fixed as 6 for 2D or 8 for 3D).  If present, this
+ *                    of statistics to be computed per label (fixed as 7 for 2D or 9 for 3D).  If present, this
  *                    tensor is used by the operator to store information per connected-component label.  The
  *                    background label is ignored and thus its statistics is not computed.
  *                    + It must have the same number of samples as input and output tensors.
  *                    + It must have a number of statistics M per sample N equal to the maximum allowed number of
  *                      label statistics that can be computed by the Label operator per sample image (or volume).
  *                      The actual number of labels found is stored in \ref count (see above).
- *                    + For 2D labeling, it must have in the last dimension A=6 elements to store at: (0) the
+ *                    + For 2D labeling, it must have in the last dimension A=7 elements to store at: (0) the
  *                      original label number; (1) leftmost position; (2) topmost position; (3) width size; (4)
- *                      height size; (5) count of pixels (i.e. size of the labeled region).  And for 3D labeling,
- *                      it must have in the last dimension A=8 elements to store at: (0) the original label number;
- *                      (1) leftmost position; (2) topmost position; (3) shallowmost position; (4) width size; (5)
- *                      height size; (6) depth size; (7) count of voxels (i.e. size of the labeled region).
- *                    + It must have U32 data type.
+ *                      height size; (5) count of pixels (i.e. size of the labeled region); (6) region marks (0
+ *                      means no marks, 1 means region was removed, 2 means region inside the \ref mask will not be
+ *                      removed).  And for 3D labeling, it must have in the last dimension A=9 elements to store
+ *                      at: (0) the original label number; (1) leftmost position; (2) topmost position; (3)
+ *                      shallowmost position; (4) width size; (5) height size; (6) depth size; (7) count of voxels
+ *                      (i.e. size of the labeled region); (8) region marks (0 means no marks, 1 means region was
+ *                      removed, 2 means region inside the \ref mask will not be removed).
+ *                    + It must have S32 or U32 data type.
  *                    + It may be NULL to disregard computing statistics information on different labels found.
  *                    + It must not be NULL if \ref assignLabel is NVCV_LABEL_SEQUENTIAL, the index of each label
  *                      statistics is used as the new sequential label replacing the original label in the output,
  *                      the sequential labels are up to the maximum capacity M
  *                    + If not NULL, the \ref count tensor must not be NULL as well.
+ *
+ * @param [in] mask Mask tensor.  The expected layout is [HWC] or [NHWC] for 2D masking or [DHWC] or [NDHWC] for 3D
+ *                  masking, with either explicit C dimension or missing C with channels embedded in the data type.
+ *                  The N dimension is the number of samples, if missing it is considered to be N=1, in case N=1
+ *                  and \ref in and \ref out tensors have N>1 the same mask is to be applied to all images (2D) or
+ *                  volumes (3D).  A value of zero in the mask is considered to be outside the mask and non-zero is
+ *                  inside.  The mask behavior is controlled by \ref maskType.
+ *                  + If number of samples N is present in the layout, it must be either 1 or equal to N in the
+ *                    \ref in \ref out tensors.
+ *                  + It must have the same height H and width W as \ref in and \ref out tensors.
+ *                  + It must have the same depth D as \ref in and \ref out tensors in case of 3D.
+ *                  + If channel C is present in the layout, it must be 1.
+ *                  + It must have S8 or U8 data type.
+ *                  + If not NULL and maskType is NVCV_REMOVE_ISLANDS_OUTSIDE_MASK_ONLY, the \ref minSize tensor
+ *                    must not be NULL as well.
  *
  * @param [in] connectivity Specify connectivity of elements for the operator, see \ref NVCVConnectivityType.
  *                          + It must conform with \ref in and \ref out tensors, i.e. 3D labeling requires [DHWC]
@@ -224,6 +244,10 @@ CVCUDA_PUBLIC NVCVStatus cvcudaLabelCreate(NVCVOperatorHandle *handle);
  *                          NVCV_LABEL_FAST to do fast labeling, i.e. assign non-consecutive label numbers fast.
  *                          Use NCVC_LABEL_SEQUENTIAL to have consecutive label numbers instead.
  *
+ * @param [in] maskType Specify how the mask tensor affects this operator, see \ref NVCVLabelMaskType.  Use
+ *                      NVCV_REMOVE_ISLANDS_OUTSIDE_MASK_ONLY to only remove islands, i.e. regions with less than
+ *                      \ref minSize elements, that are outside the mask (defined by zeros in the mask).
+ *
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
  * @retval #NVCV_ERROR_INTERNAL         Internal error in the operator, invalid types passed in.
  * @retval #NVCV_SUCCESS                Operation executed successfully.
@@ -231,8 +255,9 @@ CVCUDA_PUBLIC NVCVStatus cvcudaLabelCreate(NVCVOperatorHandle *handle);
 CVCUDA_PUBLIC NVCVStatus cvcudaLabelSubmit(NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in,
                                            NVCVTensorHandle out, NVCVTensorHandle bgLabel, NVCVTensorHandle minThresh,
                                            NVCVTensorHandle maxThresh, NVCVTensorHandle minSize, NVCVTensorHandle count,
-                                           NVCVTensorHandle stats, NVCVConnectivityType connectivity,
-                                           NVCVLabelType assignLabels);
+                                           NVCVTensorHandle stats, NVCVTensorHandle mask,
+                                           NVCVConnectivityType connectivity, NVCVLabelType assignLabels,
+                                           NVCVLabelMaskType maskType);
 
 #ifdef __cplusplus
 }

@@ -16,7 +16,7 @@
 
 # Contributing to CV-CUDA
 
-**As of release v0.6.0-beta, CV-CUDA is not accepting outside contribution.**
+**As of release v0.7.0-beta, CV-CUDA is not accepting outside contribution.**
 
 Contributions to CV-CUDA fall into the following categories:
 
@@ -28,7 +28,7 @@ Contributions to CV-CUDA fall into the following categories:
 1. To propose a new feature, please file a new feature request
    [issue](https://github.com/CVCUDA/CV-CUDA/issues/new/choose). Describe the
    intended feature and discuss the design and implementation with the team and
-   community. NOTE: Currently, as of release v0.6.0-beta, CV-CUDA is not accepting
+   community. NOTE: Currently, as of release v0.7.0-beta, CV-CUDA is not accepting
    outside contribution.
 1. To ask a general question, please sumbit a question
    [issue](https://github.com/CVCUDA/CV-CUDA/issues/new/choose). If you need

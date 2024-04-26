@@ -41,7 +41,7 @@ using namespace cvcuda::priv;
 namespace nvcv::legacy::cuda_op {
 
 template<typename _T>
-static __host__ __device__ unsigned char u8cast(_T value)
+static __device__ unsigned char u8cast(_T value)
 {
     return value < 0 ? 0 : (value > 255 ? 255 : value);
 }

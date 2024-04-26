@@ -30,6 +30,11 @@
 namespace nvcv::cuda {
 
 /**
+ * @defgroup NVCV_CPP_CUDATOOLS_RANGECAST Range cast
+ * @{
+ */
+
+/**
  * Metafunction to range cast (scale) all elements to a target range.
  *
  * This function range casts (that is scales) all elements to the range defined by the template argument
@@ -45,9 +50,6 @@ namespace nvcv::cuda {
  * |     short      | unsigned int  | [-32768, 32767] |      [0, 4294967295]      |
  * |    double      |      int      |     [-1, 1]     | [-2147483648, 2147483647] |
  * | unsigned short |     double    |      [0, 65535] |           [0, 1]          |
- *
- * @defgroup NVCV_CPP_CUDATOOLS_RANGECAST Range cast
- * @{
  *
  * @code
  * using DataType = MakeType<uchar, 4>;
