@@ -16,7 +16,6 @@
 set(CV_CUDA_PRIV_LEGACY_FILES CvCudaLegacyHelpers.cpp)
 
 set(CV_CUDA_PRIV_LEGACY_OP_FILES
-    find_contours.cu
     filter_utils.cu
     custom_crop.cu
     reformat.cu

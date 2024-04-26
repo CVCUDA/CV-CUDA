@@ -24,8 +24,10 @@
 #include <cuda_runtime.h>
 #include <nvcv/python/LockMode.hpp>
 
+#include <atomic>
 #include <initializer_list>
 #include <memory>
+#include <mutex>
 #include <unordered_map>
 #include <vector>
 
@@ -51,7 +53,7 @@ public:
 
     static std::shared_ptr<Stream> Create();
 
-    ~Stream();
+    virtual ~Stream();
 
     std::shared_ptr<Stream>       shared_from_this();
     std::shared_ptr<const Stream> shared_from_this() const;
@@ -75,6 +77,8 @@ private:
     Stream(Stream &&) = delete;
     Stream();
 
+    // Singleton access to the auxiliary CUDA stream
+
     class Key final : public IKey
     {
     private:
@@ -88,9 +92,22 @@ private:
         return key;
     }
 
-    bool         m_owns;
-    cudaStream_t m_handle;
+    void destroy();
+
+    bool         m_owns   = false;
+    cudaStream_t m_handle = nullptr;
+    cudaEvent_t  m_event  = nullptr;
     py::object   m_wrappedObj;
+
+    //singleton aux stream and protection. this a a bit overkill
+    //for now as python is single threaded, but it is a good practice
+    static std::mutex       m_auxStreamMutex;
+    static std::atomic<int> m_instanceCount;
+    static cudaStream_t     m_auxStream;
+
+    static void          incrementInstanceCount();
+    static int           decrementInstanceCount();
+    static cudaStream_t &GetAuxStream();
 };
 
 } // namespace nvcvpy::priv

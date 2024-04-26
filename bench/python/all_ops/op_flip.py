@@ -21,9 +21,25 @@ from bench_utils import AbstractOpBase
 import cvcuda
 
 
-class OpFlip(AbstractOpBase):
+class OpFlipX(AbstractOpBase):
     def setup(self, input):
-        self.flip_code = -1  # means flipping around both axes.
+        self.flip_code = 0  # means flipping around x axis.
+
+    def run(self, input):
+        return cvcuda.flip(input, flipCode=self.flip_code)
+
+
+class OpFlipY(AbstractOpBase):
+    def setup(self, input):
+        self.flip_code = 1  # means flipping around y axis.
+
+    def run(self, input):
+        return cvcuda.flip(input, flipCode=self.flip_code)
+
+
+class OpFlipXY(AbstractOpBase):
+    def setup(self, input):
+        self.flip_code = -1  # means flipping around x and y axis.
 
     def run(self, input):
         return cvcuda.flip(input, flipCode=self.flip_code)

@@ -195,12 +195,6 @@ AdaptiveThresholdVarShape::~AdaptiveThresholdVarShape()
     NVCV_CHECK_LOG(cudaFree(m_kernel));
 }
 
-size_t AdaptiveThresholdVarShape::calBufferSize(DataShape maxInputShape, DataShape maxOutputShape, int maxBlockSize,
-                                                int maxBatchSize)
-{
-    return sizeof(float) * maxBatchSize * maxBlockSize * maxBlockSize;
-}
-
 ErrorCode AdaptiveThresholdVarShape::infer(const ImageBatchVarShapeDataStridedCuda &in,
                                            const ImageBatchVarShapeDataStridedCuda &out,
                                            const TensorDataStridedCuda             &maxValue,

@@ -1,5 +1,5 @@
 ..
-  # SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  # SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
   # SPDX-License-Identifier: Apache-2.0
   #
   # Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,10 +38,9 @@ CV-CUDA includes:
 CV-CUDA Pre- and Post-Processing Operators
 ------------------
 
-CV-CUDA offers more than 20 Computer Vision and Image Processing operators. Find the operator that is right for your workflow below.
+CV-CUDA offers a comprehensive collection of Computer Vision and Image Processing operators, listed below.
 
-
-.. csv-table::
+.. csv-table:: List of operators
    :file: content/cvcuda_oplist.csv
    :widths: 30, 70
    :header-rows: 1
@@ -50,12 +49,13 @@ CV-CUDA offers more than 20 Computer Vision and Image Processing operators. Find
 Where Are the Release Notes?
 ------------------
 
-An awesome product requires excellent support.  CV-CUDA release notes can be found `here <https://github.com/CVCUDA/CV-CUDA/releases/tag/v0.6.0-beta>`_.
+CV-CUDA release notes can be found `here <https://github.com/CVCUDA/CV-CUDA/releases/>`_.
 
 
 Where Can I Get Help?
 ------------------
 
+An awesome product requires excellent support.
 File requests for enhancements and bug reports `here <https://github.com/CVCUDA/CV-CUDA/issues/new/choose>`_.
 
 
@@ -97,7 +97,7 @@ NVIDIA, the NVIDIA logo, NVIDIA CV-CUDA, and NVIDIA TensorRT are trademarks and/
 
 Copyright
 --------------------
-© 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+© 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
 
 
@@ -124,6 +124,7 @@ Copyright
     :maxdepth: 1
     :hidden:
 
+    Beta.5 <relnotes/v0.7.0-beta>
     Beta.4 <relnotes/v0.6.0-beta>
     Beta.3 <relnotes/v0.5.0-beta>
     Beta.2 <relnotes/v0.4.0-beta>

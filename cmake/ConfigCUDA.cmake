@@ -38,9 +38,14 @@ if(NOT USE_CMAKE_CUDA_ARCHITECTURES)
     if(ENABLE_TEGRA)
         list(APPEND CMAKE_CUDA_ARCHITECTURES
             72-real # Volta  - gv11b/Tegra (Jetson AGX Xavier)
-            86-real # Ampere - Jetson IGX Orin
+            86-real # Jetson IGX Orin with optional Ampere RTX A6000
             87-real # Ampere - ga10b,ga10c/Tegra (Jetson AGX Orin)
         )
+        if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "11.8")
+            list(APPEND CMAKE_CUDA_ARCHITECTURES
+                89-real # Jetson IGX Orin with optional RTX 6000 Ada
+            )
+        endif()
     else()
         # All architectures we build sass for
         list(APPEND CMAKE_CUDA_ARCHITECTURES

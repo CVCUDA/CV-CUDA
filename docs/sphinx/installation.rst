@@ -24,14 +24,15 @@ Pre-requisites
 
 This section describes the recommended dependencies to install CV-CUDA.
 
-* Ubuntu >= 20.04
-* CUDA driver >= 11.7
+* Ubuntu >= 20.04 (22.04 recommended for building the documentation)
+* CUDA >= 11.7 (cuda 12 required for samples)
+* NVIDIA driver r525 or later (r535 required for samples)
 
 Setup
 -----
 
 The following steps describe how to install CV-CUDA. Choose the installation method that meets your environment needs.
-You can download the CV-CUDA tar, deb or wheel packages from `here <https://github.com/CVCUDA/CV-CUDA/releases/tag/v0.6.0-beta>`_
+You can download the CV-CUDA tar, deb or wheel packages from `the asset section <https://github.com/CVCUDA/CV-CUDA/releases>`_
 
 * Tar File Installation
 
@@ -73,11 +74,11 @@ You can download the CV-CUDA tar, deb or wheel packages from `here <https://gith
 
 * Python Wheel File Installation
 
-    Download the appropriate .whl file for your computer architecture, Python and CUDA version from `here <https://github.com/CVCUDA/CV-CUDA/releases/tag/v0.6.0-beta>`_
+    Download the appropriate .whl file for your computer architecture, Python and CUDA version from `here <https://github.com/CVCUDA/CV-CUDA/releases/tag/v0.7.0-beta>`_
 
     Execute the following command to install appropriate CV-CUDA Python wheel ::
 
-        pip install cvcuda_<cu_ver>-0.6.0b0-cp<py_ver>-cp<py_ver>-linux_<arch>.whl
+        pip install cvcuda_<cu_ver>-0.7.0b0-cp<py_ver>-cp<py_ver>-linux_<arch>.whl
 
     where <cu_ver> is the desired CUDA version, <py_ver> the desired Python version and <arch> the desired architecture.
 

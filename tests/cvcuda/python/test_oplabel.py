@@ -18,12 +18,12 @@ import pytest as t
 import numpy as np
 
 
-DEF_OUT_DTYPE = np.uint32
+DEF_OUT_DTYPE = np.int32
 DEF_MAX_CAPACITY = 10000
 
 
 def defaultNumStats(layout):
-    return 8 if "D" in layout else 6
+    return 9 if "D" in layout else 7
 
 
 @t.mark.parametrize(
@@ -92,7 +92,7 @@ def test_op_label_api(src_args):
     out, count, stats = cvcuda.label(
         src,
         connectivity,
-        cvcuda.LABEL.SEQUENTIAL,
+        assign_labels=cvcuda.LABEL.SEQUENTIAL,
         count=True,
         stats=True,
         bg_label=bg_label,
@@ -102,6 +102,40 @@ def test_op_label_api(src_args):
     assert out.layout == src.layout
     assert out.shape == src.shape
     assert out.dtype == DEF_OUT_DTYPE
+
+    mask_layout = "".join([lc for lc in src_args[2] if lc != "N"])
+    mask_shape = tuple([sv for sv, lc in zip(src_args[0], src_args[2]) if lc != "N"])
+    mask = cvcuda.Tensor(mask_shape, np.int8, mask_layout)
+
+    out, count, stats = cvcuda.label(
+        src,
+        connectivity,
+        cvcuda.LABEL.FAST,
+        mask_type=cvcuda.REMOVE_ISLANDS_OUTSIDE_MASK_ONLY,
+        count=True,
+        stats=True,
+        bg_label=bg_label,
+        min_size=min_size,
+        mask=mask,
+    )
+    assert count is not None and stats is not None
+    assert out.layout == src.layout
+    assert out.shape == src.shape
+    assert out.dtype == DEF_OUT_DTYPE
+
+    mask = cvcuda.Tensor(src.shape, np.uint8, src.layout)
+
+    t_out, _, _ = cvcuda.label_into(
+        out,
+        count,
+        stats,
+        src,
+        connectivity,
+        bg_label=bg_label,
+        min_size=min_size,
+        mask=mask,
+    )
+    assert t_out is out
 
     t_out, t_count, t_stats = cvcuda.label_into(out, count, stats, src, connectivity)
     assert t_out is out and t_count is count and t_stats is stats
@@ -126,6 +160,7 @@ def test_op_label_api(src_args):
     assert out.shape == src.shape
     assert out.dtype == DEF_OUT_DTYPE
 
+    out = cvcuda.Tensor(src.shape, np.uint32, src.layout)
     tmp, _, _ = cvcuda.label_into(
         dst=out, src=src, connectivity=connectivity, stream=stream
     )

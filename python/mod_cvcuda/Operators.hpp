@@ -49,7 +49,6 @@ using nvcvpy::TensorBatch;
 namespace util = nvcvpy::util;
 namespace py   = ::pybind11;
 
-void ExportOpFindContours(py::module &m);
 void ExportOpReformat(py::module &m);
 void ExportOpResize(py::module &m);
 void ExportOpCustomCrop(py::module &m);

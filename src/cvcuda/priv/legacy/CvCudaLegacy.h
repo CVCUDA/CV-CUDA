@@ -442,13 +442,6 @@ public:
      */
     ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                     const TensorDataStridedCuda &numPointsInContour, const int totalContours, cudaStream_t stream);
-    /**
-     * @brief calculate the cpu/gpu buffer size needed by this operator
-     * @param max_input_shape maximum input DataShape that may be used
-     * @param max_output_shape maximum output DataShape that may be used
-     * @param max_data_type DataType with the maximum size that may be used
-     */
-    size_t    calBufferSize(DataShape max_input_shape, DataShape max_output_shape, int maxContourNum);
 
 private:
     int   mMaxContourNum;
@@ -1507,16 +1500,6 @@ public:
     ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, Size2D kernelSize,
                     double2 sigma, NVCVBorderType borderMode, cudaStream_t stream);
 
-    /**
-     * @brief calculate the cpu/gpu buffer size needed by this operator
-     * @param max_input_shape maximum input DataShape that may be used
-     * @param max_output_shape maximum output DataShape that may be used
-     * @param max_data_type DataType with the maximum size that may be used
-     * @param maxKernelSize Maximum Gaussian kernel size that may be used
-     */
-    size_t calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type,
-                         Size2D maxKernelSize);
-
 private:
     Size2D  m_maxKernelSize = {0, 0};
     Size2D  m_curKernelSize = {0, 0};
@@ -1624,16 +1607,6 @@ public:
      */
     ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, Size2D kernelSize,
                     int2 kernelAnchor, NVCVBorderType borderMode, cudaStream_t stream);
-
-    /**
-     * @brief calculate the cpu/gpu buffer size needed by this operator
-     * @param max_input_shape maximum input DataShape that may be used
-     * @param max_output_shape maximum output DataShape that may be used
-     * @param max_data_type DataType with the maximum size that may be used
-     * @param maxKernelSize Maximum average blur kernel size that may be used
-     */
-    size_t calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type,
-                         Size2D maxKernelSize);
 
 private:
     Size2D m_maxKernelSize = {0, 0};
@@ -1924,13 +1897,6 @@ public:
                     const TensorDataStridedCuda &kernelSize, const TensorDataStridedCuda &sigma,
                     NVCVBorderType borderMode, cudaStream_t stream);
 
-    /**
-     * @brief calculate the gpu buffer size needed by this operator
-     * @param maxKernelSize Maximum Gaussian kernel size that may be used
-     * @param maxBatchSize Maximum batch size that may be used
-     */
-    size_t calBufferSize(Size2D maxKernelSize, int maxBatchSize);
-
 private:
     Size2D m_maxKernelSize = {0, 0};
     int    m_maxBatchSize  = 0;
@@ -2004,13 +1970,6 @@ public:
     ErrorCode infer(const ImageBatchVarShapeDataStridedCuda &inData, const ImageBatchVarShapeDataStridedCuda &outData,
                     const TensorDataStridedCuda &kernelSize, const TensorDataStridedCuda &kernelAnchor,
                     NVCVBorderType borderMode, cudaStream_t stream);
-
-    /**
-     * @brief calculate the cpu/gpu buffer size needed by this operator
-     * @param maxKernelSize Maximum Gaussian kernel size that may be used
-     * @param maxBatchSize Maximum batch size that may be used
-     */
-    size_t calBufferSize(Size2D maxKernelSize, int maxBatchSize);
 
 private:
     Size2D m_maxKernelSize = {0, 0};
@@ -2595,13 +2554,6 @@ public:
     ErrorCode infer(const TensorDataStridedCuda &in, const TensorDataStridedCuda &out, const double maxValue,
                     const NVCVAdaptiveThresholdType adaptiveMethod, const NVCVThresholdType thresholdType,
                     const int32_t blockSize, const double c, cudaStream_t stream);
-    /**
-     * @brief calculate the cpu/gpu buffer size needed by this operator
-     * @param maxInputShape maximum input DataShape that may be used
-     * @param maxOutputShape maximum output DataShape that may be used
-     * @param maxBlockSize maximum block size that may be used
-     */
-    size_t    calBufferSize(DataShape maxInputShape, DataShape maxOutputShape, int maxBlockSize);
 
 private:
     int   m_blockSize      = -1;
@@ -2636,15 +2588,6 @@ public:
                     const TensorDataStridedCuda &maxValue, const NVCVAdaptiveThresholdType adaptiveMethod,
                     const NVCVThresholdType thresholdType, const TensorDataStridedCuda &blockSize,
                     const TensorDataStridedCuda &c, cudaStream_t stream);
-
-    /**
-     * @brief calculate the cpu/gpu buffer size needed by this operator
-     * @param maxInputShape maximum input DataShape that may be used
-     * @param maxOutputShape maximum output DataShape that may be used
-     * @param maxBlockSize maximum block size that may be used
-     * @param maxBatchSize maximum batch size that may be used
-     */
-    size_t calBufferSize(DataShape maxInputShape, DataShape maxOutputShape, int maxBlockSize, int maxBatchSize);
 
 private:
     const int m_maxBatchSize;
@@ -2910,77 +2853,6 @@ private:
     int        m_maxChannelCount;
     int        m_sizeOfHisto;
     std::byte *m_histoArray;
-};
-
-class FindContours : public CudaBaseOp
-{
-public:
-    static constexpr int32_t MAX_NUM_CONTOURS   = 256;
-    static constexpr int32_t MAX_CONTOUR_POINTS = 4 * 1024;
-    static constexpr int32_t MAX_TOTAL_POINTS   = MAX_NUM_CONTOURS * MAX_CONTOUR_POINTS;
-
-    FindContours() = delete;
-    FindContours(DataShape max_input_shape, DataShape max_output_shape);
-
-    ~FindContours();
-
-    /**
-     * Limitations:
-     *
-     * Input:
-     *   Data Layout: [kNHWC, kHWC]
-     *   Channels:    [1]
-     *
-     *   | Data Type       | Allowed     |
-     *   |-----------------|-------------|
-     *   | 8bit  Unsigned  | Yes         |
-     *   ... [other types]
-     *
-     * Output:
-     *   Data Layout: [kNCW, CW]
-     *   Width:       [2]
-     *
-     *   | Data Type       | Allowed     |
-     *   |-----------------|-------------|
-     *   | 32bit Signed    | Yes         |
-     *   ... [other types]
-     *
-     * - Input/Output Dependency:
-     *   | Property        | Input == Output |
-     *   |-----------------|-----------------|
-     *   | Data Layout     | Yes             |
-     *   ... [other properties]
-     *
-     * @brief Extracts contours from a binary image.
-     *
-     * @param inData GPU pointer to input data. Represents an 8-bit, unsigned,
-     *     single-channel image. Non-zero pixels are treated as 1's, and zero
-     *     pixels remain as 0's, which makes the image binary.
-     * @param outData GPU pointer to output data. It contains the detected
-     *     contours for the input image. The data is structured as: [x_c0_p0,
-     *     y_c0_p0, ..., x_ci_pj, y_ci_pj, ...], where "ci" denotes a contour's
-     *     index in the output array and "pj" is a point's index within a
-     *     contour.
-     * @param numPoints Holds the number of contour points for each image.
-     *     Specifically, numPoints[i] gives the number of contours for the i-th
-     *     image, while numPoints[i][j] gives the number of points in the j-th
-     *     contour of i-th image.
-     * @param stream CUDA stream for asynchronous execution.
-     */
-    ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
-                    const TensorDataStridedCuda &numPoints, cudaStream_t stream);
-
-    /**
-     * @brief Computes the necessary GPU buffer size for the operation.
-     *
-     * @param max_input_shape The largest possible shape for input data.
-     * @param max_output_shape The largest possible shape for output data.
-     * @param max_data_type The data type of the maximum size that is used.
-     */
-    size_t calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type);
-
-private:
-    void *gpu_workspace{nullptr};
 };
 
 } // namespace nvcv::legacy::cuda_op

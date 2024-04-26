@@ -74,4 +74,4 @@ using HistogramEqTypes = nvbench::type_list<uint8_t, uchar4>;
 NVBENCH_BENCH_TYPES(HistogramEq, NVBENCH_TYPE_AXES(HistogramEqTypes))
     .set_type_axes_names({"InOutDataType"})
     .add_string_axis("shape", {"1x1080x1920"})
-    .add_int64_axis("varShape", {-1});
+    .add_int64_axis("varShape", {-1, 0});

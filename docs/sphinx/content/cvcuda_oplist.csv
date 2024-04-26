@@ -16,15 +16,13 @@ CustomCrop,Crops an image with a given region-of-interest
 CvtColor,Converts an image from one color space to another
 DataTypeConvert,Converts an image’s data type with optional scaling
 Erase,Erases image regions
-Find Contours,Extract closed contours from an input binary image
-FindHomography,Calculates a perspective transform from four pairs of the corresponding points
 Flip,Flips a 2D image around its axis
 GammaContrast,Adjusts image contrast
 Gaussian,Applies a gaussian blur filter to the image
 Gaussian Noise,Generates a statistical noise with a normal (Gaussian) distribution
 Histogram,Provides a grayscale value distribution showing the frequency of occurrence of each gray value.
 Histogram Equalizer,Allows effective spreading out the intensity range of the image typically used to improve contrast
-HqResize,Performs advanced resizing supporting 2D and 3D data, tensors, tensor batches, and varshape image batches (2D only). Supports nearest neighbor, linear, cubic, Gaussian and Lanczos interpolation, with optional antialiasing when down-sampling.
+HqResize, "Performs advanced resizing supporting 2D and 3D data, tensors, tensor batches, and varshape image batches (2D only). Supports nearest neighbor, linear, cubic, Gaussian and Lanczos interpolation, with optional antialiasing when down-sampling."
 Inpainting,Performs inpainting by replacing a pixel by normalized weighted sum of all the known pixels in the neighborhood
 Joint Bilateral Filter,Reduces image noise while preserving strong edges based on a guidance image
 Label,Labels connected regions in an image using 4-way connectivity for foreground and 8-way for background pixels
@@ -35,11 +33,11 @@ MinMaxLoc,Finds the maximum and minimum values in a given array
 Morphology,Performs morphological erode and dilate transformations
 Morphology (close), Performs morphological operation that involves dilation followed by erosion on an image
 Morphology (open), Performs morphological operation that involves erosion followed by dilation on an image
-Non-max Suppression,Enables selecting a single entity out of many overlapping ones typically used for selecting from multiple bounding boxes during object detection
+Non-Maximum Suppression,Enables selecting a single entity out of many overlapping ones typically used for selecting from multiple bounding boxes during object detection
 Normalize,Normalizes an image pixel’s range
 OSD (Polyline Line Text Rotated Rect Segmented Mask),Displays an overlay on the image of of different forms including polyline line text rotated rectangle segmented mask
 PadStack,Stacks several images into a tensor with border extension
-PairwiseMatcher,Matches features computed separately (e.g. via the SIFT operator) in two images, e.g. using the brute force method
+PairwiseMatcher,"Matches features computed separately (e.g. via the SIFT operator) in two images, e.g. using the brute force method"
 PillowResize,Changes the size and scale of an image using python-pillow algorithm
 RandomResizedCrop,Crops a random portion of an image and resizes it to a specified size.
 Reformat,Converts a planar image into non-planar and vice versa
@@ -47,7 +45,6 @@ Remap,Maps pixels in an image with one projection to another projection in a new
 Resize,Changes the size and scale of an image
 Rotate,Rotates a 2D array in multiples of 90 degrees
 SIFT,Identifies and matches features in images that are invariant to scale rotation and affine distortion.
-Stack,Concatenates two input tensors into a single output tensor
 Thresholding,Chooses a global threshold value that is the same for all pixels across the image.
 WarpAffine,Applies an affine transformation to an image
 WarpPerspective,Applies a perspective transformation to an image

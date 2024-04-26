@@ -32,15 +32,16 @@ try
 
     std::string runChoice = state.get_string("runChoice");
 
-    // Use [BG][MIN][MAX][ISLAND][COUNT][STAT] in runChoice to run Label with:
-    // background; minThreshold; maxThreshold; island removal; count; statistics
+    // Use [BG][MIN][MAX][ISLAND][COUNT][STAT][MASK] in runChoice to run Label with:
+    // background; minThreshold; maxThreshold; island removal; count; statistics; mask
 
-    long3 staShape{srcShape.x, 10000, 6}; // using fixed 10K max. cap. and 2D problem
+    long3 staShape{srcShape.x, 10000, 7}; // using fixed 10K max. cap. and 2D problem
 
-    NVCVConnectivityType conn = NVCV_CONNECTIVITY_4_2D;
-    NVCVLabelType        alab = NVCV_LABEL_FAST;
+    NVCVConnectivityType conn  = NVCV_CONNECTIVITY_4_2D;
+    NVCVLabelType        alab  = NVCV_LABEL_FAST;
+    NVCVLabelMaskType    mType = NVCV_REMOVE_ISLANDS_OUTSIDE_MASK_ONLY;
 
-    nvcv::Tensor bgT, minT, maxT, countT, statsT, mszT;
+    nvcv::Tensor bgT, minT, maxT, countT, statsT, mszT, maskT;
 
     cvcuda::Label op;
 
@@ -81,16 +82,20 @@ try
     {
         statsT = nvcv::Tensor({{staShape.x, staShape.y, staShape.z}, "NMA"}, benchutils::GetDataType<DT>());
     }
+    if (runChoice.find("MASK") != std::string::npos)
+    {
+        maskT = nvcv::Tensor({{srcShape.x, srcShape.y, srcShape.z, 1}, "NHWC"}, nvcv::TYPE_U8);
+    }
 
     nvcv::Tensor src({{srcShape.x, srcShape.y, srcShape.z, 1}, "NHWC"}, benchutils::GetDataType<ST>());
     nvcv::Tensor dst({{dstShape.x, dstShape.y, dstShape.z, 1}, "NHWC"}, benchutils::GetDataType<DT>());
 
     benchutils::FillTensor<ST>(src, benchutils::RandomValues<ST>());
 
-    state.exec(nvbench::exec_tag::sync,
-               [&op, &src, &dst, &bgT, &minT, &maxT, &mszT, &countT, &statsT, &conn, &alab](nvbench::launch &launch)
+    state.exec(nvbench::exec_tag::sync, [&op, &src, &dst, &bgT, &minT, &maxT, &mszT, &countT, &statsT, &maskT, &conn,
+                                         &alab, &mType](nvbench::launch &launch)
                {
-                   op(launch.get_stream(), src, dst, bgT, minT, maxT, mszT, countT, statsT, conn, alab);
+                   op(launch.get_stream(), src, dst, bgT, minT, maxT, mszT, countT, statsT, maskT, conn, alab, mType);
                });
 }
 catch (const std::exception &err)

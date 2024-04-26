@@ -82,4 +82,4 @@ using ColorTwistTypes = nvbench::type_list<uchar3, uchar4>;
 NVBENCH_BENCH_TYPES(ColorTwist, NVBENCH_TYPE_AXES(ColorTwistTypes))
     .set_type_axes_names({"InOutDataType"})
     .add_string_axis("shape", {"1x1080x1920"})
-    .add_int64_axis("varShape", {-1});
+    .add_int64_axis("varShape", {-1, 0});

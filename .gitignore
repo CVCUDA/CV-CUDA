@@ -18,6 +18,7 @@
 /build/
 /build-*/
 /install/
+/cvcuda-installer*/
 
 # Visual Studio Code
 # ------------------

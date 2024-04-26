@@ -628,6 +628,36 @@ TEST(ImageBatch, construct_null_parameters)
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageBatchVarShapeConstruct(&reqs, nullptr, nullptr));
 }
 
+TEST(ImageBatch, valid_get_allocator)
+{
+    int                                tmp = 1;
+    NVCVImageBatchHandle               handle;
+    NVCVImageBatchVarShapeRequirements reqs;
+    NVCVAllocatorHandle                alloc = reinterpret_cast<NVCVAllocatorHandle>(&tmp);
+    EXPECT_NE(alloc, nullptr);
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvImageBatchVarShapeCalcRequirements(5, &reqs));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvImageBatchVarShapeConstruct(&reqs, nullptr, &handle));
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvImageBatchGetAllocator(handle, &alloc));
+    EXPECT_EQ(alloc, nullptr);
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvImageBatchDecRef(handle, nullptr));
+}
+
+TEST(ImageBatch, invalid_out_get_allocator)
+{
+    NVCVImageBatchHandle               handle;
+    NVCVImageBatchVarShapeRequirements reqs;
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvImageBatchVarShapeCalcRequirements(5, &reqs));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvImageBatchVarShapeConstruct(&reqs, nullptr, &handle));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageBatchGetAllocator(handle, nullptr));
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvImageBatchDecRef(handle, nullptr));
+}
+
 TEST_F(ImageBatchNullParamTest, get_user_pointer_null_output)
 {
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageBatchGetUserPointer(handle, nullptr));

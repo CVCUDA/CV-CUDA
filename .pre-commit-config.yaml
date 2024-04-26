@@ -72,8 +72,8 @@ repos:
   - id: copyright_check
     name: 'check copyright message'
     language: system
-    types: ['file', 'text']
-    exclude_types: ['markdown', 'xml', 'json', 'csv']
+    types: ['file', 'text', 'markdown']
+    exclude_types: ['xml', 'json', 'csv']
     entry: ./lint/copyright_check.sh
     exclude: 'models/.*'
   - id: lfs_check
@@ -83,7 +83,7 @@ repos:
     require_serial: true
 
 - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook
-  rev: v9.0.0
+  rev: v9.13.0
   hooks:
   - id: commitlint
     stages: [commit-msg]

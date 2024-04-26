@@ -273,11 +273,6 @@ MinAreaRect::~MinAreaRect()
     NVCV_CHECK_LOG(cudaFree(mRotatedPointsDev));
 }
 
-size_t MinAreaRect::calBufferSize(DataShape max_input_shape, DataShape max_output_shape, int maxContourNum)
-{
-    return maxContourNum * (_MAX_ROTATE_DEGREES + 1) * _MIN_AREA_EACH_ANGLE_STRID * sizeof(int);
-}
-
 ErrorCode MinAreaRect::infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                              const TensorDataStridedCuda &numPointsInContour, const int totalContours,
                              cudaStream_t stream)

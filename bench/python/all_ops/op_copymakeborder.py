@@ -24,7 +24,7 @@ import cvcuda
 class OpCopyMakeBorder(AbstractOpBase):
     def setup(self, input):
         self.border_mode = cvcuda.Border.CONSTANT
-        self.border_values = [255, 0, 0]  # Border values for 3 channel input.
+        self.border_values = [255, 0, 0]  # Border values for 3 channel RGB input.
         self.top = 30
         self.left = 40
         self.bottom = 50

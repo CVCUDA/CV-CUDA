@@ -128,7 +128,7 @@ using MorphologyTypes = nvbench::type_list<uint8_t, float>;
 NVBENCH_BENCH_TYPES(Morphology, NVBENCH_TYPE_AXES(MorphologyTypes))
     .set_type_axes_names({"InOutDataType"})
     .add_string_axis("shape", {"1x1080x1920"})
-    .add_int64_axis("varShape", {-1})
+    .add_int64_axis("varShape", {-1, 0})
     .add_int64_axis("iteration", {1})
     .add_string_axis("kernelSize", {"3x3"})
     .add_string_axis("morphType", {"ERODE", "DILATE", "OPEN", "CLOSE"})

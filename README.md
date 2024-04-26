@@ -15,9 +15,10 @@
 
 # CV-CUDA
 
+
 [![License](https://img.shields.io/badge/License-Apache_2.0-yellogreen.svg)](https://opensource.org/licenses/Apache-2.0)
 
-![Version](https://img.shields.io/badge/Version-v0.6.0--beta-blue)
+![Version](https://img.shields.io/badge/Version-v0.7.0--beta-blue)
 
 ![Platform](https://img.shields.io/badge/Platform-linux--64_%7C_win--64_wsl2%7C_aarch64-gray)
 
@@ -33,7 +34,7 @@ efficient pre- and post-processing pipelines. CV-CUDA originated as a
 collaborative effort between [NVIDIA][NVIDIA Develop] and [ByteDance][ByteDance].
 
 Refer to our [Developer Guide](DEVELOPER_GUIDE.md) for more information on the
-operators available as of release v0.6.0-beta.
+operators available.
 
 ## Getting Started
 
@@ -43,10 +44,10 @@ To get a local copy up and running follow these steps.
 
 |CV-CUDA Build|Platform|CUDA Version|CUDA Compute Capability|Hardware Architectures|Nvidia Driver|Python Versions|Supported Compilers (build from source)|API compatibility with prebuilt binaries|OS/Linux distributions tested with prebuilt packages|
 |-|-|-|-|-|-|-|-|-|-|
-|x86_64_cu11|x86_64|11.7 or later|SM7 and later|Volta, Turing, Amper, Hopper, Ada Lovelace|r520 or later*** |3.8, 3.9, 3.10, 3.11|gcc>=9* <br> gcc>=11**|gcc>=9|Ubuntu>= 20.04<br>WSL2/Ubuntu>=20.04|
-|x86_64_cu12|x86_64|12.2 or later|SM7 and later|Volta, Turing, Amper, Hopper, Ada Lovelace|r520 or later***|3.8, 3.9, 3.10, 3.11|gcc>=9* <br> gcc>=11**|gcc>=9|Ubuntu>= 20.04<br>WSL2/Ubuntu>=20.04|
-|aarch64_cu11 (JetPack 5.1)|aarch64|11.4|SM7 and later|Jetson AGX Orin|JetPack 5.1|3.8|gcc>=9* <br> gcc>=11**|gcc>=9|Jetson Linux 35.x|
-|aarch64_cu12 (JetPack 6.0)|aarch64|12.2|SM7 and later|Jetson AGX Orin|JetPack 6.0 DP|3.10|gcc>=9* <br> gcc>=11**|gcc>=9|Jetson Linux 36.2|
+|x86_64_cu11|x86_64|11.7 or later|SM7 and later|Volta, Turing, Ampere, Hopper, Ada Lovelace|r525 or later*** |3.8, 3.9, 3.10, 3.11|gcc>=9* <br> gcc>=11**|gcc>=9|Ubuntu>= 20.04<br>WSL2/Ubuntu>=20.04|
+|x86_64_cu12|x86_64|12.2 or later|SM7 and later|Volta, Turing, Ampere, Hopper, Ada Lovelace|r525 or later***|3.8, 3.9, 3.10, 3.11|gcc>=9* <br> gcc>=11**|gcc>=9|Ubuntu>= 20.04<br>WSL2/Ubuntu>=20.04|
+|aarch64_cu11|aarch64|11.4|SM7 and later|Jetson AGX Orin|JetPack 5.1|3.8|gcc>=9* <br> gcc>=11**|gcc>=9|Jetson Linux 35.x|
+|aarch64_cu12|aarch64|12.2|SM7 and later|Jetson AGX Orin, IGX Orin + Ampere RTX6000, IGX Orin + ADA RTX6000|JetPack 6.0 DP, r535 (IGX OS v0.6)|3.10|gcc>=9* <br> gcc>=11**|gcc>=9|Jetson Linux 36.2<br> IGX OS v0.6|
 
 \* partial build, no test module (see Known Limitations) <br>
 \** full build, including test module <br>
@@ -58,7 +59,7 @@ To get a local copy up and running follow these steps.
 - The C++ test module cannot build with gcc<11 (requires specific C++-20 features).  With gcc-9 or gcc-10, please build with option `-DBUILD_TESTS=0`
 - [CV-CUDA Samples] require driver r535 or later to run and are only officially supported with CUDA 12.
 - Only one CUDA version (CUDA 11.x or CUDA 12.x) of CV-CUDA packages (Debian packages, tarballs, Python Wheels) can be installed at a time. Please uninstall all packages from a given CUDA version before installing packages from a different version.
-- Test tarballs (cvcuda-tests-*.tar.xz) need to be unpacked at the root level to find existing tests.
+- Documentation built with older toolchains (doxygen, sphinx, breathe, exhale) may be incomplete. We recommend using Ubuntu 22.04 or later.
 
 ### Installation
 
@@ -66,211 +67,189 @@ For convenience, we provide pre-built packages for various combinations of CUDA 
 The following steps describe how to install CV-CUDA from such pre-built packages.
 
 We support two main alternative pathways:
-- DEB or Tar archive installation (C++/CUDA Libraries, Headers, Python bindings)
 - Standalone Python Wheels (containing C++/CUDA Libraries and Python bindings)
+- DEB or Tar archive installation (C++/CUDA Libraries, Headers, Python bindings)
 
 Choose the installation method that meets your environment needs.
 
-#### Tar File Installation
+#### Python Wheel File Installation
 
-- Installation of C++/CUDA libraries (cvcuda-lib*) and development headers (cvcuda-dev*):
-```shell
-tar -xvf cvcuda-lib-0.6.0_beta-<cu_ver>-<arch>-linux.tar.xz
-tar -xvf cvcuda-dev-0.6.0_beta-<cu_ver>-<arch>-linux.tar.xz
-```
-- Installation of Python bindings (cvcuda-python*)
-```shell
-tar -xvf cvcuda-python<py_ver>-0.6.0_beta-<cu_ver>-<arch>-linux.tar.xz
-```
-with `<cu_ver>` the desired CUDA version,
-`<py_ver>` the desired Python version and
-`<arch>` the desired architecture
+Download the appropriate .whl file for your computer architecture, Python and CUDA version from the release assets of current CV-CUDA release. Release information of all CV-CUDA releases can be found [here][CV-CUDA GitHub Releases]. Once downloaded, execute the `pip install` command to install the Python wheel. For example:
+   ```shell
+   pip install cvcuda_<cu_ver>-0.7.0b0-cp<py_ver>-cp<py_ver>-linux_<arch>.whl
+   ```
+
+where `<cu_ver>` is the desired CUDA version, `<py_ver>` is the desired Python version and `<arch>` is the desired architecture.
+
+Please note that the Python wheels are standalone, they include both the C++/CUDA libraries and the Python bindings.
 
 #### DEB File Installation
 
-- Installation of C++/CUDA libraries (cvcuda-lib*) and development headers (cvcuda-dev*):
+Install C++/CUDA libraries (cvcuda-lib*) and development headers (cvcuda-dev*) using `apt`:
 ```shell
-sudo apt-get install -y ./cvcuda-lib-0.6.0_beta-<cu_ver>-<arch>-linux.deb ./cvcuda-dev-0.6.0_beta-<cu_ver>-<arch>-linux.deb
+apt install -y ./cvcuda-lib-<x.x.x>-<cu_ver>-<arch>-linux.deb ./cvcuda-dev-<x.x.x>-<cu_ver>-<arch>-linux.deb
 ```
-- Installation of Python bindings (cvcuda-python*)
+
+Install Python bindings (cvcuda-python*) using `apt`:
 ```shell
-sudo apt-get install -y cvcuda-python<py_ver>-0.6.0_beta-<cu_ver>-<arch>-linux.deb
+apt install -y ./cvcuda-python<py_ver>-<x.x.x>-<cu_ver>-<arch>-linux.deb
 ```
-with `<cu_ver>` the desired CUDA version,
-`<py_ver>` the desired Python version and
-`<arch>` the desired architecture
+where `<cu_ver>` is the desired CUDA version, `<py_ver>` is the desired Python version and `<arch>` is the desired architecture.
 
-#### Python Wheel File Installation
+#### Tar File Installation
 
-
-Download the appropriate .whl file for your computer architecture, Python and CUDA version from the release assets of current CV-CUDA release. Release information of all CV-CUDA releases can be accessed [here][CV-CUDA GitHub Releases]. Once downloaded, execute the `pip install` command to install the Python wheel. For example:
-
-
+Install C++/CUDA libraries (cvcuda-lib*) and development headers (cvcuda-dev*):
 ```shell
-pip install cvcuda_<cu_ver>-0.6.0b0-cp<py_ver>-cp<py_ver>-linux_<arch>.whl
+tar -xvf cvcuda-lib-<x.x.x>-<cu_ver>-<arch>-linux.tar.xz
+tar -xvf cvcuda-dev-<x.x.x>-<cu_ver>-<arch>-linux.tar.xz
 ```
-with `<cu_ver>` the desired CUDA version,
-`<py_ver>` the desired Python version and
-`<arch>`  the desired architecture
-
-Please note that the Python wheels provided are standalone, they include both the C++/CUDA libraries and the Python bindings.
+Install Python bindings (cvcuda-python*)
+```shell
+tar -xvf cvcuda-python<py_ver>-<x.x.x>-<cu_ver>-<arch>-linux.tar.xz
+```
+where `<cu_ver>` is the desired CUDA version, `<py_ver>` is the desired Python version and `<arch>` is the desired architecture.
 
 
 ### Build from Source
 
 Follow these instruction to build CV-CUDA from source:
 
-1. Set up your local CV-CUDA repository
+#### 1. Set up your local CV-CUDA repository
 
-    a. Install prerequisites needed to setup up the repository.
+Install the dependencies needed to setup up the repository:
+- git
+- git-lfs: to retrieve binary files from remote repository
 
-       On Ubuntu >= 20.04, install the following packages:
-       - git-lfs: to retrieve binary files from remote repository
+On Ubuntu >= 20.04, install the following packages using `apt`:
+```shell
+apt install -y git git-lfs
+```
 
-       ```shell
-       sudo apt-get install -y git git-lfs
-       ```
+Clone the repository
+```shell
+git clone https://github.com/CVCUDA/CV-CUDA.git
+```
 
-    b. After cloning the repository (assuming it was cloned in `~/cvcuda`),
-       it needs to be properly configured by running the `init_repo.sh` script only once.
+Assuming the repository was cloned in `~/cvcuda`, it needs to be properly configured by running the `init_repo.sh` script only once.
 
-       ```shell
-       cd ~/cvcuda
-       ./init_repo.sh
-       ```
+```shell
+cd ~/cvcuda
+./init_repo.sh
+```
 
-2. Build CV-CUDA
+#### 2. Build CV-CUDA
 
-    a. Install the dependencies required for building CV-CUDA
+Install the dependencies required to build CV-CUDA:
+- g++-11: compiler to be used
+- cmake (>= 3.20), ninja-build (optional): manage build rules
+- python3-dev: for python bindings
+- libssl-dev: needed by the testsuite (MD5 hashing utilities)
+- CUDA toolkit
 
-       On Ubuntu >= 20.04, install the following packages:
-       - g++-11: compiler to be used
-       - cmake (>= 3.20), ninja-build (optional): manage build rules
-       - python3-dev: for python bindings
-       - libssl-dev: needed by the testsuite (MD5 hashing utilities)
+On Ubuntu >= 20.04, install the following packages using `apt`:
+```shell
+apt install -y g++-11 cmake ninja-build python3-dev libssl-dev
+```
 
-       ```shell
-       sudo apt-get install -y g++-11 cmake ninja-build python3-dev libssl-dev
-       ```
+Any version of the 11.x or 12.x CUDA toolkit should work.
+CV-CUDA was tested with 11.7 and 12.2, these versions are thus recommended.
 
-       For CUDA Toolkit, any version of the 11.x or 12.x series should work.
-       CV-CUDA was tested with 11.7 and 12.2, thus those should be preferred.
+```shell
+apt install -y cuda-11-7
+# or
+apt install -y cuda-12-2
+```
 
-       ```shell
-       sudo apt-get install -y cuda-11-7
-       # or
-       sudo apt-get install -y cuda-12-2
-       ```
+Build the project:
+```shell
+ci/build.sh [release|debug] [output build tree path] [-DBUILD_TESTS=1|0] [-DPYTHON_VERSIONS='3.8;3.9;3.10;3.11'] [-DPUBLIC_API_COMPILERS='gcc-9;gcc-11;clang-11;clang-14']
+```
 
-    b. Build the project
+- The default build type is 'release'.
+- If output build tree path isn't specified, it will be `build-rel` for release
+      builds, and `build-deb` for debug.
+- The library is in `build-rel/lib` and executables (tests, etc...) are in `build-rel/bin`.
+- The `-DBUILD_TESTS` option can be used to disable/enable building the tests (enabled by default, see Known Limitations).
+- The `-DPYTHON_VERSIONS` option can be used to select Python versions to build bindings and Wheels for. By default, only the default system Python3 version will be selected.
+- The `-DPUBLIC_API_COMPILERS` option can be used to select the compilers used to check public API compatibility. By default, gcc-11, gcc-9, clang-11, and clang-14 is tried to be selected and checked.
 
-       ```shell
-       ci/build.sh [release|debug] [output build tree path] [-DBUILD_TESTS=1|0] [-DPYTHON_VERSIONS='3.8;3.9;3.10;3.11'] [-DPUBLIC_API_COMPILERS='gcc-9;gcc-11;clang-11;clang-14']
-       ```
+#### 3. Build Documentation
 
-       The default build type is 'release'.
+Known limitation: documentation built with older toolchains (doxygen, sphinx, breathe, exhale) may be incomplete. We recommend using Ubuntu 22.04 or later.
 
-       If output build tree path isn't specified, it will be `build-rel` for release
-       builds, and `build-deb` for debug.
+Install the dependencies required to  build the documentation:
+- doxygen: parse header files for reference documentation
+- python3, python3-pip: to install some python packages needed
+- sphinx, breathe, exhale, recommonmark, graphiviz: to render the documentation
+- sphinx-rtd-theme: documentation theme used
 
-       The library is in `build-rel/lib` and executables (tests, etc...) are in `build-rel/bin`.
+On Ubuntu, install the following packages using `apt` and `pip`:
+```shell
+apt install -y doxygen graphviz python3 python3-pip
+python3 -m pip install sphinx==4.5.0 breathe exhale recommonmark graphviz sphinx-rtd-theme
+```
 
-       The `-DBUILD_TESTS` option can be used to disable/enable building the tests (enabled by default, see Known Limitations).
+Build the documentation:
+```shell
+ci/build_docs.sh [build folder]
+```
+Default build folder is 'build'.
 
-       The `-DPYTHON_VERSIONS` option can be used to select Python versions to build bindings and Wheels for.
-       By default, only the default system Python3 version will be selected.
+#### 4. Build and run Samples
 
-       The `-DPUBLIC_API_COMPILERS` option can be used to select the compilers used to check public API compatibility.
-       By default, gcc-11, gcc-9, clang-11, and clang-14 is tried to be selected and checked.
+For instructions on how to build samples from source and run them, see the [Samples](samples/README.md) documentation.
 
-3. Build Documentation
+#### 5. Run Tests
 
-    a. Install the dependencies required for building the documentation
+Install the dependencies required for running the tests:
+- python3, python3-pip: to run python bindings tests
+- torch: dependencies needed by python bindings tests
 
-       On Ubuntu >= 20.04, install the following packages:
-       - doxygen: parse header files for reference documentation
-       - python3, python3-pip: to install some python packages needed
-       - sphinx, breathe, exhale, recommonmark, graphiviz: to render the documentation
-       - sphinx-rtd-theme: documenation theme used
+On Ubuntu >= 20.04, install the following packages using `apt` and `pip`:
+```shell
+apt install -y python3 python3-pip
+python3 -m pip install pytest torch
+```
 
-       ```shell
-       sudo apt-get install -y doxygen graphviz python3 python3-pip
-       sudo python3 -m pip install sphinx==4.5.0 breathe exhale recommonmark graphviz sphinx-rtd-theme
-       ```
+The tests are in `<buildtree>/bin`. You can run the script below to run all tests at once. Here's an example when build tree is created in `build-rel`:
+```shell
+build-rel/bin/run_tests.sh
+```
 
-    b. Build the documentation
-       ```shell
-       ci/build_docs.sh [build folder]
-       ```
+#### 6. Package installers and Python Wheels
 
-       Example:
-       `ci/build_docs.sh build_docs`
+Package installers
 
-4. Build and run Samples
+Installers can be generated using the following cpack command once you have successfully built the project:
+```shell
+cd build-rel
+cpack .
+```
+This will generate in the build directory both Debian installers and tarballs (\*.tar.xz), needed for integration in other distros.
 
-   For instructions on how to build samples from source and run them, see the [Samples](samples/README.md) documentation.
+For a fine-grained choice of what installers to generate, the full syntax is:
 
-5. Run Tests
+```shell
+cpack . -G [DEB|TXZ]
+```
+- DEB for Debian packages
+- TXZ for \*.tar.xz tarballs.
 
-   a. Install the dependencies required for running the tests
+Python Wheels
 
-       On Ubuntu >= 20.04, install the following packages:
-       - python3, python3-pip: to run python bindings tests
-       - torch: dependencies needed by python bindings tests
+By default during the `release` build, Python bindings and wheels are created for the available CUDA version and the specified Python version(s). The wheels are stored in `build-rel/pythonX.Y/wheel` folder, where `build-rel` is the build directory used to build the release build and `X` and `Y` are Python major and minor versions.
 
-       ```shell
-       sudo apt-get install -y python3 python3-pip
-       sudo python3 -m pip install pytest torch
-       ```
-
-   b. Run the tests
-
-       The tests are in `<buildtree>/bin`. You can run the script below to run all
-       tests at once. Here's an example when build tree is created in `build-rel`
-
-       ```shell
-       build-rel/bin/run_tests.sh
-       ```
-
-6. Package installers and Python Wheels
-
-   a. Package installers
-
-      Installers can be generated using the following cpack command once you have successfully built the project
-
-      ```shell
-      cd build-rel
-      cpack .
-      ```
-
-      This will generate in the build directory both Debian installers and tarballs
-      (\*.tar.xz), needed for integration in other distros.
-
-      For a fine-grained choice of what installers to generate, the full syntax is:
-
-      ```shell
-      cpack . -G [DEB|TXZ]
-      ```
-
-      - DEB for Debian packages
-      - TXZ for \*.tar.xz tarballs.
-
-   b. Python Wheels
-
-      By default during the `release` build, Python bindings and wheels are created for the available CUDA version and the specified Python
-      version(s). The wheels are stored in `build-rel/pythonX.Y/wheel` folder, where `build-rel` is the build directory
-      used to build the release build and `X` and `Y` are Python major and minor versions. The built wheels can be installed using pip.
-      For example, to install the Python wheel built for CUDA 12.x, Python 3.10 on Linux x86_64 systems:
-
-      ```shell
-      pip install cvcuda_cu12-0.6.0b0-cp310-cp310-linux_x86_64.whl
-      ```
+The built wheels can be installed using pip.
+For example, to install the Python wheel built for CUDA 12.x, Python 3.10 on Linux x86_64 systems:
+```shell
+pip install cvcuda_cu12-<x.x.x>-cp310-cp310-linux_x86_64.whl
+```
 
 ## Contributing
 
 CV-CUDA is an open source project. As part of the Open Source Community, we are
 committed to the cycle of learning, improving, and updating that makes this
-community thrive. However, as of release v0.6.0-beta, CV-CUDA is not yet ready
+community thrive. However, as of release v0.7.0-beta, CV-CUDA is not yet ready
 for external contributions.
 
 To understand the process for contributing the CV-CUDA, see our
@@ -287,27 +266,27 @@ The `mkop.sh` script is a powerful tool for creating a scaffold for new operator
 
 1. **Operator Stub Creation**: Generates no-op (no-operation) operator templates, which serve as a starting point for implementing new functionalities.
 
-1. **File Customization**: Modifies template files to include the new operator's name, ensuring consistent naming conventions across the codebase.
+2. **File Customization**: Modifies template files to include the new operator's name, ensuring consistent naming conventions across the codebase.
 
-1. **CMake Integration**: Adds the new operator files to the appropriate CMakeLists, facilitating seamless compilation and integration into the build system.
+3. **CMake Integration**: Adds the new operator files to the appropriate CMakeLists, facilitating seamless compilation and integration into the build system.
 
-1. **Python Bindings**: Creates Python wrapper stubs for the new operator, allowing it to be used within Python environments.
+4. **Python Bindings**: Creates Python wrapper stubs for the new operator, allowing it to be used within Python environments.
 
-1. **Test Setup**: Generates test files for both C++ and Python, enabling immediate development of unit tests for the new operator.
+5. **Test Setup**: Generates test files for both C++ and Python, enabling immediate development of unit tests for the new operator.
 
 #### How to Use `mkop.sh`:
 
-Run the script with the desired operator name. The script assumes it's located in `/cvcuda/tools/mkop`.
+Run the script with the desired operator name. The script assumes it's located in `~/cvcuda/tools/mkop`.
 
-  ```shell
-  ./mkop.sh [Operator Name]
-  ```
+```shell
+./mkop.sh [Operator Name]
+```
 
 If the script is run from a different location, provide the path to the CV-CUDA root directory.
 
-  ```shell
-  ./mkop.sh [Operator Name] [CV-CUDA root]
-  ```
+```shell
+./mkop.sh [Operator Name] [CV-CUDA root]
+```
 
 **NOTE**: The first letter of the new operator name is captitalized where needed to match the rest of the file structures.
 

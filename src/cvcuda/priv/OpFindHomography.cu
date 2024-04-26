@@ -295,12 +295,12 @@ __device__ void calculate_residual_and_jacobian_device(float2 *src, float2 *dst,
     }
 }
 
-__host__ __device__ inline float myfabs(float val)
+__device__ inline float myfabs(float val)
 {
     return fabsf(val);
 }
 
-inline __host__ __device__ float2 myfabs2(float2 val)
+inline __device__ float2 myfabs2(float2 val)
 {
     float2 ret;
     ret.x = fabsf(val.x);
@@ -308,14 +308,14 @@ inline __host__ __device__ float2 myfabs2(float2 val)
     return ret;
 }
 
-__host__ __device__ inline int getNumPoints(cuda::Tensor2DWrap<float2> src, int numPoints, int batch)
+__device__ inline int getNumPoints(cuda::Tensor2DWrap<float2> src, int numPoints, int batch)
 {
     return numPoints;
 }
 
 struct MeanOp
 {
-    __host__ __device__ float2 eval(float2 val, int numPoints, int batch)
+    __device__ float2 eval(float2 val, int numPoints, int batch)
     {
         return val / numPoints;
     }
@@ -323,7 +323,7 @@ struct MeanOp
 
 struct SquareOp
 {
-    __host__ __device__ float eval(float val, int batch)
+    __device__ float eval(float val, int batch)
     {
         return val * val;
     }
@@ -336,11 +336,11 @@ private:
 
 public:
     // Constructor that takes a float* pointer as a parameter
-    __host__ __device__ AbsShiftOp(float2 *data)
+    __host__ AbsShiftOp(float2 *data)
         : _data(data){};
 
     // Method to update the float value pointed to by the pointer
-    __host__ __device__ float2 eval(float2 newVal, int numPoints, int batch)
+    __device__ float2 eval(float2 newVal, int numPoints, int batch)
     {
         _data += batch;
         return myfabs2(newVal - _data[0]);
@@ -353,7 +353,7 @@ private:
     float2 *cm, *cM, *sm, *sM;
 
 public:
-    __host__ __device__ LtLOp(float2 *srcMean, float2 *dstMean, float2 *srcShiftSum, float2 *dstShiftSum)
+    __host__ LtLOp(float2 *srcMean, float2 *dstMean, float2 *srcShiftSum, float2 *dstShiftSum)
     {
         cM = srcMean;
         sM = srcShiftSum;
@@ -361,7 +361,7 @@ public:
         sm = dstShiftSum;
     }
 
-    __host__ __device__ float eval(float2 *src, float2 *dst, int batch, int numPoints, int tid, int j, int k)
+    __device__ float eval(float2 *src, float2 *dst, int batch, int numPoints, int tid, int j, int k)
     {
         cm += batch;
         cM += batch;
@@ -1410,10 +1410,59 @@ void FindHomographyWrapper(SrcDstWrapper srcWrap, SrcDstWrapper dstWrap, ModelTy
                                              calc_buffer, modelWrap, numPoints, batchSize);
 }
 
-template<typename SrcDstType>
-void RunFindHomography(const SrcDstType &src, const SrcDstType &dst, const nvcv::TensorDataStridedCuda &models,
-                       const BufferOffsets *bufferOffset, const cuSolver *cusolverData, cudaStream_t stream)
+inline void RunFindHomography(const nvcv::TensorDataStridedCuda &src, const nvcv::TensorDataStridedCuda &dst,
+                              const nvcv::TensorDataStridedCuda &models, const BufferOffsets *bufferOffset,
+                              const cuSolver *cusolverData, cudaStream_t stream)
 {
+    // validation of input data
+    if ((src.rank() != 2 && src.rank() != 3) || (dst.rank() != 2 && dst.rank() != 3))
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "source and destination points must have rank 2 or 3");
+    }
+
+    if (!(src.shape(0) == dst.shape(0) && src.shape(0) == models.shape(0)))
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "source, destination and model must have same batch size");
+    }
+
+    if (src.shape(1) != dst.shape(1))
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "source and destination array length must be same length to return a valid model");
+    }
+
+    if (src.shape(1) < 4 || dst.shape(1) < 4)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "source and destination array length must be >=4 to return a valid model");
+    }
+
+    if (!(models.rank() == 3 && models.shape(1) == 3 && models.shape(2) == 3 && models.dtype() == nvcv::TYPE_F32))
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "model tensor must be 2D with shape 3x3 and data type F32");
+    }
+
+    if (!((src.rank() == 2 && src.dtype() == nvcv::TYPE_2F32)
+          || (src.rank() == 3 && src.dtype() == nvcv::TYPE_F32 && src.shape(2) == 2)))
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "source tensor must have data type 2F32 or F32 with last shape 2");
+    }
+    if (!((dst.rank() == 2 && dst.dtype() == nvcv::TYPE_2F32)
+          || (dst.rank() == 3 && dst.dtype() == nvcv::TYPE_F32 && dst.shape(2) == 2)))
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "destination tensor must have data type 2F32 or F32 with last shape 2");
+    }
+    if (!(src.stride(1) == sizeof(float2) && dst.stride(1) == sizeof(float2)))
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "source and destination tensors must have last dimensions packed");
+    }
+
     using SrcDstWrapper = cuda::Tensor2DWrap<float2>;
     SrcDstWrapper srcWrap(src);
     SrcDstWrapper dstWrap(dst);
@@ -1498,42 +1547,6 @@ void FindHomography::operator()(cudaStream_t stream, const nvcv::Tensor &srcPoin
                               "Input must be cuda-accessible, pitch-linear tensor");
     }
 
-    // validation of input data
-    if (!((srcData->rank() == dstData->rank()) && (srcData->rank() == 2)))
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "source and destination points must have rank 2");
-    }
-
-    if (!(srcData->shape(0) == dstData->shape(0) && srcData->shape(0) == modelData->shape(0)))
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "source, destination and model must have same batch size");
-    }
-
-    if (srcData->shape(1) != dstData->shape(1))
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "source and destination array length must be same length to return a valid model");
-    }
-
-    if (srcData->shape(1) < 4 || dstData->shape(1) < 4)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "source and destination array length must be >=4 to return a valid model");
-    }
-
-    if (!(modelData->rank() == 3 && modelData->shape(1) == 3 && modelData->shape(2) == 3))
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "model tensor must be 2D with shape 3x3");
-    }
-
-    if (!(srcData->dtype() == nvcv::TYPE_2F32 && dstData->dtype() == nvcv::TYPE_2F32
-          && modelData->dtype() == nvcv::TYPE_F32))
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "source, destination and model tensors must have data type F32");
-    }
-
     RunFindHomography(*srcData, *dstData, *modelData, &bufferOffset, &cusolverData, stream);
 }
 
@@ -1567,45 +1580,6 @@ void FindHomography::operator()(cudaStream_t stream, const nvcv::TensorBatch &sr
         {
             throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                                   "model must be cuda-accessible, pitch-linear tensor");
-        }
-
-        // validation of input data
-        if (!((srcData->shape(0) == dstData->shape(0)) && (srcData->shape(0) == modelData->shape(0))
-              && (srcData->shape(0) == 1)))
-        {
-            throw nvcv::Exception(
-                nvcv::Status::ERROR_INVALID_ARGUMENT,
-                "Invdividual samples (src, dst and model) in the batch must be tensors with batch size 1");
-        }
-
-        if (!((srcData->rank() == dstData->rank()) && (srcData->rank() == 2)))
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "source and destination tensors must have rank 2");
-        }
-
-        if (srcData->shape(1) != dstData->shape(1))
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "source and destination array length must be same length to return a valid model");
-        }
-
-        if (srcData->shape(1) < 4 || dstData->shape(1) < 4)
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "source and destination array length must be >=4 to return a valid model");
-        }
-
-        if (!(modelData->rank() == 3 && modelData->shape(1) == 3 && modelData->shape(2) == 3))
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "model tensor must be 2D with shape 3x3");
-        }
-
-        if (!(srcData->dtype() == nvcv::TYPE_2F32 && dstData->dtype() == nvcv::TYPE_2F32
-              && modelData->dtype() == nvcv::TYPE_F32))
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                                  "source, destination and model tensors must have data type F32");
         }
 
         RunFindHomography(*srcData, *dstData, *modelData, &bufferOffset, &cusolverData, stream);

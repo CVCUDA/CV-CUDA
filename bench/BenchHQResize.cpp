@@ -122,7 +122,7 @@ using HQResizeTypes = nvbench::type_list<uint8_t, float>;
 
 NVBENCH_BENCH_TYPES(HQResize, NVBENCH_TYPE_AXES(HQResizeTypes))
     .set_type_axes_names({"InOutDataType"})
-    .add_int64_axis("batch", {false})
+    .add_int64_axis("batch", {false, true})
     .add_string_axis("shape", {"1x1080x1920"})
     .add_string_axis("interpolation", {"CUBIC"})
     .add_int64_axis("antialias", {false, true})

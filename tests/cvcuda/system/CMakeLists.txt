@@ -34,7 +34,6 @@ add_executable(cvcuda_test_system
     TestOpPairwiseMatcher.cpp
     TestOpStack.cpp
     TestOpLabel.cpp
-    TestOpFindContours.cpp
     TestOpOSD.cpp
     TestOpHistogramEq.cpp
     TestOpAdvCvtColor.cpp

@@ -28,6 +28,11 @@
 
 namespace nvcvpy::priv {
 
+// Static members initialization
+cudaStream_t     Stream::m_auxStream     = nullptr;
+std::atomic<int> Stream::m_instanceCount = 0;
+std::mutex       Stream::m_auxStreamMutex;
+
 // Here we define the representation of external cuda streams.
 // It defines pybind11's type casters from the python object
 // to the corresponding ExternalStream<E>.
@@ -193,7 +198,18 @@ std::shared_ptr<Stream> Stream::Create()
 Stream::Stream()
     : m_owns(true)
 {
-    util::CheckThrow(cudaStreamCreate(&m_handle));
+    try
+    {
+        util::CheckThrow(cudaStreamCreateWithFlags(&m_handle, cudaStreamNonBlocking));
+        incrementInstanceCount();
+        GetAuxStream();
+        util::CheckThrow(cudaEventCreateWithFlags(&m_event, cudaEventDisableTiming));
+    }
+    catch (...)
+    {
+        destroy();
+        throw;
+    }
 }
 
 Stream::Stream(IExternalStream &extStream)
@@ -206,14 +222,72 @@ Stream::Stream(IExternalStream &extStream)
     {
         throw std::runtime_error("Invalid cuda stream");
     }
+
+    try
+    {
+        incrementInstanceCount();
+        GetAuxStream(); // Make sure the singleton aux stream is created
+        util::CheckThrow(cudaEventCreateWithFlags(&m_event, cudaEventDisableTiming));
+    }
+    catch (...)
+    {
+        destroy();
+        throw;
+    }
+}
+
+void Stream::incrementInstanceCount()
+{
+    m_instanceCount.fetch_add(1, std::memory_order_relaxed);
+}
+
+int Stream::decrementInstanceCount()
+{
+    return m_instanceCount.fetch_sub(1, std::memory_order_acq_rel) - 1;
+}
+
+cudaStream_t &Stream::GetAuxStream()
+{
+    if (!m_auxStream)
+    {
+        std::lock_guard<std::mutex> lock(m_auxStreamMutex);
+        if (!m_auxStream)
+        {
+            util::CheckThrow(cudaStreamCreateWithFlags(&m_auxStream, cudaStreamNonBlocking));
+        }
+    }
+    return m_auxStream;
 }
 
 Stream::~Stream()
 {
+    destroy();
+}
+
+void Stream::destroy()
+{
     if (m_owns)
     {
-        util::CheckLog(cudaStreamSynchronize(m_handle));
-        util::CheckLog(cudaStreamDestroy(m_handle));
+        if (m_handle)
+        {
+            util::CheckLog(cudaStreamSynchronize(m_handle));
+            util::CheckLog(cudaStreamDestroy(m_handle));
+            m_handle = nullptr;
+        }
+    }
+    {
+        std::lock_guard<std::mutex> lock(m_auxStreamMutex);
+        if (m_auxStream && decrementInstanceCount() == 0)
+        {
+            util::CheckThrow(cudaStreamSynchronize(m_auxStream));
+            util::CheckThrow(cudaStreamDestroy(m_auxStream));
+            m_auxStream = nullptr;
+        }
+    }
+    if (m_event)
+    {
+        util::CheckThrow(cudaEventDestroy(m_event));
+        m_event = nullptr;
     }
 }
 
@@ -240,7 +314,6 @@ intptr_t Stream::pyhandle() const
 void Stream::sync()
 {
     py::gil_scoped_release release;
-
     util::CheckThrow(cudaStreamSynchronize(m_handle));
 }
 
@@ -283,8 +356,34 @@ void Stream::holdResources(LockResources usedResources)
             delete pclosure;
         };
 
-        util::CheckThrow(cudaStreamAddCallback(m_handle, fn, closure.get(), 0));
+        // If we naively execute the callback in the main stream (m_handle), the GPU will wait until the callback
+        // is executed (on host). For correctness, GPU doesn't need to wait - it's the CPU that needs
+        // to wait for the work already scheduled to complete.
+        //
+        // Naive timeline:
+        //
+        // stream        GPU_kernel1 | Callback | GPU_kernel2
+        // GPU activity  xxxxxxxxxxx              xxxxxxxxxxx
+        // CPU activity                xxxxxxxx
+        //
+        // Optimized timeline
+        //
+        //
+        //                event -----v
+        // stream        GPU_kernel1 | GPU_kernel2
+        // aux_stream     waitEvent >| Callback
+        //
+        // GPU activity  xxxxxxxxxxx   xxxxxxxxxxx
+        // CPU activity                xxxxxxxx
 
+        util::CheckThrow(cudaEventRecord(m_event, m_handle)); // add async record the event in the main stream
+        util::CheckThrow(
+            cudaStreamWaitEvent(GetAuxStream(), m_event)); // add async wait for the event in the aux stream
+        // The callback will be executed in the singleton aux stream there may be contention with other callbacks and waitEvents from
+        // other streams. However the callback is used to release resources from the cache and should not be a performance bottleneck.
+        // This avoids opening a new aux stream for each stream object.
+        util::CheckThrow(
+            cudaStreamAddCallback(GetAuxStream(), fn, closure.get(), 0)); // add async callback in the aux stream
         closure.release();
     }
 }
@@ -321,6 +420,8 @@ void Stream::Export(py::module &m)
     ExportExternalStream<TORCH>(m);
     ExportExternalStream<VOIDP>(m);
     ExportExternalStream<INT>(m);
+
+    fflush(stdout);
 
     stream.def("__enter__", &Stream::activate, "Activate the CUDA stream as the current stream for this thread.")
         .def("__exit__", &Stream::deactivate, "Deactivate the CUDA stream as the current stream for this thread.")

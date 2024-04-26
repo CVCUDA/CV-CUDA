@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,7 +31,6 @@
 #include <nvcv/BorderType.h>         // for NVCVBorderType, etc.
 #include <nvcv/TensorData.hpp>       // for TensorDataStridedCuda, etc.
 #include <nvcv/TensorDataAccess.hpp> // for TensorDataAccessStridedImagePlanar, etc.
-#include <util/Assert.h>             // for NVCV_ASSERT, etc.
 
 namespace nvcv::cuda {
 
@@ -196,7 +195,7 @@ public:
     explicit __host__ BorderWrapImpl(const TensorDataStridedCuda &tensor)
         : m_tensorWrap(tensor)
     {
-        NVCV_ASSERT(tensor.rank() >= kNumDimensions);
+        assert(tensor.rank() >= kNumDimensions);
 
         int j = 0;
 #pragma unroll
@@ -204,7 +203,7 @@ public:
         {
             if (kActiveDimensions[i])
             {
-                NVCV_ASSERT(tensor.shape(i) <= TypeTraits<int>::max);
+                assert(tensor.shape(i) <= TypeTraits<int>::max);
 
                 m_tensorShape[j++] = tensor.shape(i);
             }
@@ -548,9 +547,9 @@ template<typename T, NVCVBorderType B, class = Require<HasTypeTraits<T>>>
 __host__ auto CreateBorderWrapNHW(const TensorDataStridedCuda &tensor, T borderValue = {})
 {
     auto tensorAccess = TensorDataAccessStridedImagePlanar::Create(tensor);
-    NVCV_ASSERT(tensorAccess);
-    NVCV_ASSERT(tensorAccess->numRows() <= TypeTraits<int>::max);
-    NVCV_ASSERT(tensorAccess->numCols() <= TypeTraits<int>::max);
+    assert(tensorAccess);
+    assert(tensorAccess->numRows() <= TypeTraits<int>::max);
+    assert(tensorAccess->numCols() <= TypeTraits<int>::max);
 
     auto tensorWrap = CreateTensorWrapNHW<T>(tensor);
 
@@ -580,9 +579,9 @@ template<typename T, NVCVBorderType B, class = Require<HasTypeTraits<T>>>
 __host__ auto CreateBorderWrapNHWC(const TensorDataStridedCuda &tensor, T borderValue = {})
 {
     auto tensorAccess = TensorDataAccessStridedImagePlanar::Create(tensor);
-    NVCV_ASSERT(tensorAccess);
-    NVCV_ASSERT(tensorAccess->numRows() <= TypeTraits<int>::max);
-    NVCV_ASSERT(tensorAccess->numCols() <= TypeTraits<int>::max);
+    assert(tensorAccess);
+    assert(tensorAccess->numRows() <= TypeTraits<int>::max);
+    assert(tensorAccess->numCols() <= TypeTraits<int>::max);
 
     auto tensorWrap = CreateTensorWrapNHWC<T>(tensor);
 

@@ -29,7 +29,6 @@ nvcv_python_add_module(
         OpLabel.cpp
         LabelType.cpp
         ConnectivityType.cpp
-        OpFindContours.cpp
         OpHistogramEq.cpp
         OpOSD.cpp
         OpAdvCvtColor.cpp

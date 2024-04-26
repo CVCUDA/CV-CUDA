@@ -45,8 +45,8 @@ public:
 
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const nvcv::Tensor &bgLabel,
                     const nvcv::Tensor &minThresh, const nvcv::Tensor &maxThresh, const nvcv::Tensor &minSize,
-                    const nvcv::Tensor &count, const nvcv::Tensor &stats, NVCVConnectivityType connectivity,
-                    NVCVLabelType assignLabels) const;
+                    const nvcv::Tensor &count, const nvcv::Tensor &stats, const nvcv::Tensor &mask,
+                    NVCVConnectivityType connectivity, NVCVLabelType assignLabels, NVCVLabelMaskType maskType) const;
 
     virtual NVCVOperatorHandle handle() const noexcept override;
 
@@ -69,11 +69,12 @@ inline Label::~Label()
 inline void Label::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                               const nvcv::Tensor &bgLabel, const nvcv::Tensor &minThresh, const nvcv::Tensor &maxThresh,
                               const nvcv::Tensor &minSize, const nvcv::Tensor &count, const nvcv::Tensor &stats,
-                              NVCVConnectivityType connectivity, NVCVLabelType assignLabels) const
+                              const nvcv::Tensor &mask, NVCVConnectivityType connectivity, NVCVLabelType assignLabels,
+                              NVCVLabelMaskType maskType) const
 {
     nvcv::detail::CheckThrow(cvcudaLabelSubmit(m_handle, stream, in.handle(), out.handle(), bgLabel.handle(),
                                                minThresh.handle(), maxThresh.handle(), minSize.handle(), count.handle(),
-                                               stats.handle(), connectivity, assignLabels));
+                                               stats.handle(), mask.handle(), connectivity, assignLabels, maskType));
 }
 
 inline NVCVOperatorHandle Label::handle() const noexcept

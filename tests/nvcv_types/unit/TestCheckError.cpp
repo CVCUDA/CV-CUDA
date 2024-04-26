@@ -89,3 +89,12 @@ TEST_P(CheckStatusMacroTests, throw_return_something_else)
                            return a;
                        })
 }
+
+TEST(CheckStatusMacroTests, throw_with_extra_string)
+{
+    const cudaError_t cudaErrCode = cudaErrorTextureFetchFailed;
+    const char       *fmt         = " Extra String: %s";
+    const char       *extraString = "abc\n\0";
+
+    NVCV_EXPECT_STATUS(NVCV_ERROR_INTERNAL, NVCV_CHECK_THROW(cudaErrCode, fmt, extraString));
+}

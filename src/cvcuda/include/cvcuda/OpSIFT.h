@@ -146,8 +146,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaSIFTCreate(NVCVOperatorHandle *handle, int3 maxSh
  *                          + It must have S32 data type to store number of features found.
  *                          + It must have one element per sample, i.e. number of channels must be 1 in a [NC] tensor.
  *
- * @param [in] numOctaveLayers Number of layers in each octave.  Since the minimum number of layers is 3, the
- *                             actual number is 3 + numOctaveLayers.  One suggestion, given by the original
+ * @param [in] numOctaveLayers Number of layers in each octave.  One suggestion, given by the original
  *                             algorithm description, is to use numOctaveLayers = 3.  The number of octaves is
  *                             computed from the input image resolution WxH as \f$ log(min(W, H))/log(2) - 2 \f$.
  *                             + It must be positive.

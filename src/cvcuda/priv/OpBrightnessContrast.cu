@@ -72,8 +72,7 @@ struct BatchArgsWrap
 };
 
 template<typename BT>
-inline __host__ __device__ BT GetArg(const cuda::Tensor1DWrap<const BT> &tensorArg, int argLen, int sampleIdx,
-                                     BT defaultVal)
+inline __device__ BT GetArg(const cuda::Tensor1DWrap<const BT> &tensorArg, int argLen, int sampleIdx, BT defaultVal)
 {
     if (argLen == 0)
     {
@@ -90,7 +89,7 @@ inline __host__ __device__ BT GetArg(const cuda::Tensor1DWrap<const BT> &tensorA
 }
 
 template<typename SrcBT, typename BT>
-inline __host__ __device__ SampleArgs<BT> GetBrightnessContrastArg(const BatchArgsWrap<BT> &args, int sampleIdx)
+inline __device__ SampleArgs<BT> GetBrightnessContrastArg(const BatchArgsWrap<BT> &args, int sampleIdx)
 {
     return {GetArg(args.brightness, args.brightnessLen, sampleIdx, BT{1}),
             GetArg(args.contrast, args.contrastLen, sampleIdx, BT{1}),

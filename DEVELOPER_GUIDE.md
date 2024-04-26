@@ -30,7 +30,7 @@ CV-CUDA includes:
 - C, C++, and Python APIs
 - Batching support, with variable shape images
 - Zero-copy interfaces to PyTorch
-- Sample applications: object classification and image segmentation
+- Sample applications
 
 ## What Pre- and Post-Processing Operators Are Included?
 
@@ -40,7 +40,7 @@ CV-CUDA includes:
 | Advanced Color Format Conversions | Performs color conversion from interleaved RGB/BGR <-> YUV/YVU and semi planar. Supported standards: BT.601. BT.709. BT.2020 |
 | AverageBlur | Reduces image noise using an average filter |
 | BilateralFilter | Reduces image noise while preserving strong edges |
-| Bounding Box | Draws a rectangular border using the X-Y coordinates and dimensions typically to define the location and size of an object in an image |
+| Bounding Box | Draws an rectangular border using the X-Y coordinates and dimensions typically to define the location and size of an object in an image |
 | Box Blurring | Overlays a blurred rectangle using the X-Y coordinates and dimensions that define the location and size of an object in an image |
 | Brightness_Contrast | Adjusts brightness and contrast of an image |
 | CenterCrop | Crops an image at its center |
@@ -53,8 +53,6 @@ CV-CUDA includes:
 | CvtColor | Converts an image from one color space to another |
 | DataTypeConvert | Converts an image’s data type, with optional scaling |
 | Erase | Erases image regions |
-| Find Contours | Extract closed contours from an input binary image |
-| FindHomography | Calculates a perspective transform from four pairs of the corresponding points  |
 | Flip | Flips a 2D image around its axis |
 | GammaContrast | Adjusts image contrast |
 | Gaussian | Applies a gaussian blur filter to the image |
@@ -70,9 +68,9 @@ CV-CUDA includes:
 | MinArea Rect | Finds the minimum area rotated rectangle typically used to draw bounding rectangle with minimum area |
 | MinMaxLoc | Finds the maximum and minimum values in a given array |
 | Morphology | Performs morphological erode and dilate transformations |
-| Morphology (close) | Performs a morphological operation that involves dilation followed by erosion on an image |
-| Morphology (open) | Performs a morphological operation that involves erosion followed by dilation on an image |
-| Non-max Suppression | Enables selecting a single entity out of many overlapping ones typically used for selecting from multiple bounding boxes during object detection |
+| Morphology (close) | Performs morphological operation that involves dilation followed by erosion on an image |
+| Morphology (open) | Performs morphological operation that involves erosion followed by dilation on an image |
+| Non-Maximum Suppression | Enables selecting a single entity out of many overlapping ones typically used for selecting from multiple bounding boxes during object detection |
 | Normalize | Normalizes an image pixel’s range |
 | OSD (Polyline Line Text Rotated Rect Segmented Mask) | Displays an overlay on the image of different forms including polyline line text rotated rectangle segmented mask |
 | PadStack | Stacks several images into a tensor with border extension |
@@ -83,20 +81,19 @@ CV-CUDA includes:
 | Remap | Maps pixels in an image with one projection to another projection in a new image. |
 | Resize | Changes the size and scale of an image |
 | Rotate | Rotates a 2D array in multiples of 90 degrees |
-| SIFT | Identifies and matches features in images that are invariant to scale rotation and affine distortion. |
-| Stack | Concatenates two input tensors into a single output tensor |
+| SIFT | Identifies and describes features in images that are invariant to scale rotation and affine distortion. |
 | Thresholding | Chooses a global threshold value that is the same for all pixels across the image. |
 | WarpAffine | Applies an affine transformation to an image |
 | WarpPerspective | Applies a perspective transformation to an image |
 
 ## Where Are the Release Notes?
 
-An awesome product requires excellent support. CV-CUDA release notes can be
+CV-CUDA release notes can be
 found [here](https://github.com/CVCUDA/CV-CUDA/releases)
 
 ## Where Can I Get Help?
 
-File requests for enhancements and bug reports
+An awesome product requires excellent support. File requests for enhancements and bug reports
 [here](https://github.com/CVCUDA/CV-CUDA/issues/new/choose).
 
 We are providing limited, direct, support to select enterprises using CV-CUDA.
@@ -208,5 +205,5 @@ companies with which they are associated.
 
 <b>Copyright</b>
 
-© 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+© 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 </font>

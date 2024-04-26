@@ -88,5 +88,5 @@ using MinMaxLocTypes = nvbench::type_list<nvbench::uint8_t, nvbench::uint32_t>;
 NVBENCH_BENCH_TYPES(MinMaxLoc, NVBENCH_TYPE_AXES(MinMaxLocTypes))
     .set_type_axes_names({"InOutDataType"})
     .add_string_axis("shape", {"1x1080x1920"})
-    .add_int64_axis("varShape", {-1})
+    .add_int64_axis("varShape", {-1, 0})
     .add_int64_axis("maxLocations", {100000});
