@@ -11,7 +11,7 @@ on:
 jobs:
   analyze:
     name: Analyze
-    runs-on: ubuntu-22.04-64core
+    runs-on: ubuntu-20.04-64core
     timeout-minutes: 360
     permissions:
       actions: write
