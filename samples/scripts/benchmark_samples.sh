@@ -31,7 +31,7 @@ if [ "$#" -lt 1 ]; then
     exit 1
 fi
 
-SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 SAMPLES_ROOT="$(dirname "$SCRIPT_DIR")"  # removes the scripts dir
 OUTPUT_DIR="$1"
 USE_TRT=${2:-True}

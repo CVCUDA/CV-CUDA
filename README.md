@@ -18,7 +18,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-yellogreen.svg)](https://opensource.org/licenses/Apache-2.0)
 
-![Version](https://img.shields.io/badge/Version-v0.7.0--beta-blue)
+![Version](https://img.shields.io/badge/Version-v0.8.0--beta-blue)
 
 ![Platform](https://img.shields.io/badge/Platform-linux--64_%7C_win--64_wsl2%7C_aarch64-gray)
 
@@ -76,10 +76,10 @@ Choose the installation method that meets your environment needs.
 
 Download the appropriate .whl file for your computer architecture, Python and CUDA version from the release assets of current CV-CUDA release. Release information of all CV-CUDA releases can be found [here][CV-CUDA GitHub Releases]. Once downloaded, execute the `pip install` command to install the Python wheel. For example:
    ```shell
-   pip install cvcuda_<cu_ver>-0.7.0b0-cp<py_ver>-cp<py_ver>-linux_<arch>.whl
+   pip install cvcuda_<cu_ver>-<x.x.x>-cp<py_ver>-cp<py_ver>-linux_<arch>.whl
    ```
 
-where `<cu_ver>` is the desired CUDA version, `<py_ver>` is the desired Python version and `<arch>` is the desired architecture.
+where `<cu_ver>` is the desired CUDA version, `<x.x.x>` is the CV-CUDA release version, `<py_ver>` is the desired Python version and `<arch>` is the desired architecture.
 
 Please note that the Python wheels are standalone, they include both the C++/CUDA libraries and the Python bindings.
 
@@ -185,8 +185,8 @@ Install the dependencies required to  build the documentation:
 
 On Ubuntu, install the following packages using `apt` and `pip`:
 ```shell
-apt install -y doxygen graphviz python3 python3-pip
-python3 -m pip install sphinx==4.5.0 breathe exhale recommonmark graphviz sphinx-rtd-theme
+apt install -y doxygen graphviz python3 python3-pip sphinx
+python3 -m pip install breathe exhale recommonmark graphviz sphinx-rtd-theme
 ```
 
 Build the documentation:
@@ -249,7 +249,7 @@ pip install cvcuda_cu12-<x.x.x>-cp310-cp310-linux_x86_64.whl
 
 CV-CUDA is an open source project. As part of the Open Source Community, we are
 committed to the cycle of learning, improving, and updating that makes this
-community thrive. However, as of release v0.7.0-beta, CV-CUDA is not yet ready
+community thrive. However, CV-CUDA is not yet ready
 for external contributions.
 
 To understand the process for contributing the CV-CUDA, see our

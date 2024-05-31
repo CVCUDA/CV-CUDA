@@ -27,11 +27,19 @@
 
 #include <iostream>
 
-NVCV_TEST_SUITE_P(OpErase, nvcv::test::ValueList<int>{{1}, {2}});
+NVCV_TEST_SUITE_P(OpErase, nvcv::test::ValueList<int, bool>{
+                               {1, false},
+                               {2, false},
+                               {1,  true},
+                               {2,  true}
+});
 
 TEST_P(OpErase, correct_output)
 {
-    int N = GetParam();
+    int          N                    = GetParamValue<0>();
+    bool         random               = GetParamValue<1>();
+    int          max_num_erasing_area = 2;
+    unsigned int seed                 = 0;
 
     cudaStream_t stream;
     EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
@@ -115,9 +123,6 @@ TEST_P(OpErase, correct_output)
                                            cudaMemcpyHostToDevice, stream));
 
     // Call operator
-    unsigned int  seed                 = 0;
-    bool          random               = false;
-    int           max_num_erasing_area = 2;
     cvcuda::Erase eraseOp(max_num_erasing_area);
     EXPECT_NO_THROW(eraseOp(stream, imgIn, imgOut, anchor, erasing, values, imgIdx, random, seed));
 
@@ -126,16 +131,20 @@ TEST_P(OpErase, correct_output)
     std::vector<uint8_t> test(outBufferSize, 0xA);
 
     //Check data
-    EXPECT_EQ(cudaSuccess, cudaMemcpy(test.data(), outData->basePtr(), outBufferSize, cudaMemcpyDeviceToHost));
+    if (!random)
+    {
+        EXPECT_EQ(cudaSuccess, cudaMemcpy(test.data(), outData->basePtr(), outBufferSize, cudaMemcpyDeviceToHost));
 
-    EXPECT_EQ(test[0], 1);
-    EXPECT_EQ(test[9], 1);
-    EXPECT_EQ(test[10], 0);
-    EXPECT_EQ(test[9 * 640], 1);
-    EXPECT_EQ(test[9 * 640 + 9], 1);
-    EXPECT_EQ(test[9 * 640 + 10], 0);
-    EXPECT_EQ(test[10 * 640], 0);
-    EXPECT_EQ(test[10 * 640 + 10], 1);
+        EXPECT_EQ(test[0], 1);
+        EXPECT_EQ(test[9], 1);
+        EXPECT_EQ(test[10], 0);
+        EXPECT_EQ(test[9 * 640], 1);
+        EXPECT_EQ(test[9 * 640 + 9], 1);
+        EXPECT_EQ(test[9 * 640 + 10], 0);
+        EXPECT_EQ(test[10 * 640], 0);
+        EXPECT_EQ(test[10 * 640 + 10], 1);
+    }
+    EXPECT_EQ(cudaSuccess, cudaMemcpy(test.data(), outData->basePtr(), outBufferSize, cudaMemcpyDeviceToHost));
 
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
@@ -232,17 +241,21 @@ TEST(OpErase, OpErase_Varshape)
     std::vector<uint8_t> test(dstHeight * dstRowStride, 0xFF);
 
     // Copy output data to Host
-    ASSERT_EQ(cudaSuccess, cudaMemcpy2D(test.data(), dstRowStride, dstData->plane(0).basePtr,
-                                        dstData->plane(0).rowStride, dstRowStride, dstHeight, cudaMemcpyDeviceToHost));
+    if (!random)
+    {
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy2D(test.data(), dstRowStride, dstData->plane(0).basePtr, dstData->plane(0).rowStride,
+                               dstRowStride, dstHeight, cudaMemcpyDeviceToHost));
 
-    EXPECT_EQ(test[0], 1);
-    EXPECT_EQ(test[9], 1);
-    EXPECT_EQ(test[10], 0);
-    EXPECT_EQ(test[9 * 640], 1);
-    EXPECT_EQ(test[9 * 640 + 9], 1);
-    EXPECT_EQ(test[9 * 640 + 10], 0);
-    EXPECT_EQ(test[10 * 640], 0);
-    EXPECT_EQ(test[10 * 640 + 10], 1);
+        EXPECT_EQ(test[0], 1);
+        EXPECT_EQ(test[9], 1);
+        EXPECT_EQ(test[10], 0);
+        EXPECT_EQ(test[9 * 640], 1);
+        EXPECT_EQ(test[9 * 640 + 9], 1);
+        EXPECT_EQ(test[9 * 640 + 10], 0);
+        EXPECT_EQ(test[10 * 640], 0);
+        EXPECT_EQ(test[10 * 640 + 10], 1);
+    }
 
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }

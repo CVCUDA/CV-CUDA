@@ -31,15 +31,6 @@ Resource::Resource()
     m_id = idnext++;
 
     m_event = nullptr;
-    try
-    {
-        util::CheckThrow(cudaEventCreateWithFlags(&m_event, cudaEventDisableTiming));
-    }
-    catch (...)
-    {
-        cudaEventDestroy(m_event);
-        throw;
-    }
 }
 
 Resource::~Resource()
@@ -50,6 +41,15 @@ Resource::~Resource()
 uint64_t Resource::id() const
 {
     return m_id;
+}
+
+cudaEvent_t Resource::event()
+{
+    if (m_event == nullptr)
+    {
+        util::CheckThrow(cudaEventCreateWithFlags(&m_event, cudaEventDisableTiming));
+    }
+    return m_event;
 }
 
 void Resource::submitSync(Stream &stream)
@@ -69,8 +69,8 @@ void Resource::submitSync(Stream &stream)
 
     // if we are on a different stream we need to wait for that stream to finish
     // write event on the old stream, the new stream will have to wait for it to be done
-    util::CheckThrow(cudaEventRecord(m_event, m_lastStream.value()->handle()));
-    util::CheckThrow(cudaStreamWaitEvent(stream.handle(), m_event));
+    util::CheckThrow(cudaEventRecord(event(), m_lastStream.value()->handle()));
+    util::CheckThrow(cudaStreamWaitEvent(stream.handle(), event()));
 
     // update the last stream since we changed streams
     m_lastStream.reset();

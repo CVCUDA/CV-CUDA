@@ -46,7 +46,9 @@ public:
     static std::shared_ptr<Image> CreateHost(py::buffer buffer, nvcv::ImageFormat fmt, int rowAlign);
     static std::shared_ptr<Image> CreateHostVector(std::vector<py::buffer> buffer, nvcv::ImageFormat fmt, int rowAlign);
 
-    static std::shared_ptr<Image> WrapExternalBuffer(ExternalBuffer &buffer, nvcv::ImageFormat fmt);
+    static std::shared_ptr<Image>              WrapExternalBuffer(ExternalBuffer &buffer, nvcv::ImageFormat fmt);
+    static std::vector<std::shared_ptr<Image>> WrapExternalBufferMany(
+        std::vector<std::shared_ptr<ExternalBuffer>> &buffer, nvcv::ImageFormat fmt);
     static std::shared_ptr<Image> WrapExternalBufferVector(std::vector<py::object> buffer, nvcv::ImageFormat fmt);
 
     std::shared_ptr<Image>       shared_from_this();
@@ -105,6 +107,8 @@ private:
     explicit Image(const Size2D &size, nvcv::ImageFormat fmt, int rowAlign);
     explicit Image(std::vector<std::shared_ptr<ExternalBuffer>> buf, const nvcv::ImageDataStridedCuda &imgData);
     explicit Image(std::vector<py::buffer> buf, const nvcv::ImageDataStridedHost &imgData, int rowalign);
+
+    void setWrapData(std::vector<std::shared_ptr<ExternalBuffer>> buf, const nvcv::ImageDataStridedCuda &imgData);
 
     nvcv::Image m_impl; // must come before m_key
     Key         m_key;

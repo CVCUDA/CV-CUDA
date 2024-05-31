@@ -102,9 +102,9 @@ void ExportOpCropFlipNormalizeReformat(py::module &m)
             rect (Tensor): The crop rectangle tensor which has shape of [batch_size, 1, 1, 4] in reference to the input tensor.
                            The crop value of [crop_x, crop_y, crop_width, crop_height] stored in the final dimension of
                            the crop tensor, provided per image.
-            flip_code (Tensor): A tensor flag to specify how to flip the array; 0 means flipping
-                                around the x-axis and positive value (for example, 1) means flipping
-                                around y-axis. Negative value (for example, -1) means flipping around both axes, provided per image.
+            flip_code (Tensor): A tensor flag to specify how to flip the array; 0 means flipping around the x-axis,
+                                1 means flipping around the y-axis, -1 means flipping around both axes,
+                                and any other value will result  in no flip, provided per image.
             base (Tensor): Tensor providing base values for normalization.
             scale (Tensor): Tensor providing scale values for normalization.
             globalscale (float ,optional): Additional scale value to be used in addition to scale
@@ -142,9 +142,9 @@ void ExportOpCropFlipNormalizeReformat(py::module &m)
             rect (Tensor): The crop rectangle tensor which has shape of [batch_size, 1, 1, 4] in reference to the input tensor.
                            The crop value of [crop_x, crop_y, crop_width, crop_height] stored in the final dimension of
                            the crop tensor, provided per image.
-            flip_code (Tensor): A tensor flag to specify how to flip the array; 0 means flipping
-                                around the x-axis and positive value (for example, 1) means flipping
-                                around y-axis. Negative value (for example, -1) means flipping around both axes, provided per image.
+            flip_code (Tensor): A tensor flag to specify how to flip the array; 0 means flipping around the x-axis,
+                                1 means flipping around the y-axis, -1 means flipping around both axes,
+                                and any other value will result  in no flip, provided per image.
             base (Tensor): Tensor providing base values for normalization.
             scale (Tensor): Tensor providing scale values for normalization.
             globalscale (float ,optional): Additional scale value to be used in addition to scale

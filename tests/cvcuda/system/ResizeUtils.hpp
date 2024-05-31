@@ -31,10 +31,18 @@ namespace nvcv::test {
 // support NVCV_INTERP_NEAREST/NVCV_INTERP_LINEAR/NVCV_INTERP_CUBIC/NVCV_INTERP_AREA
 void Resize(std::vector<uint8_t> &hDst, int dstRowStride, nvcv::Size2D dstSize, const std::vector<uint8_t> &hSrc,
             int srcRowStride, nvcv::Size2D srcSize, nvcv::ImageFormat fmt, NVCVInterpolationType interpolation,
-            bool isVarshape);
+            bool isVarShape);
+
+void Resize(std::vector<float> &hDst, int dstRowStride, nvcv::Size2D dstSize, const std::vector<float> &hSrc,
+            int srcRowStride, nvcv::Size2D srcSize, nvcv::ImageFormat fmt, NVCVInterpolationType interpolation,
+            bool isVarShape);
 
 // only support NVCV_INTERP_NEAREST/NVCV_INTERP_LINEAR/NVCV_INTERP_CUBIC
 void ResizedCrop(std::vector<uint8_t> &hDst, int dstRowStride, nvcv::Size2D dstSize, const std::vector<uint8_t> &hSrc,
+                 int srcRowStride, nvcv::Size2D srcSize, int top, int left, int crop_rows, int crop_cols,
+                 nvcv::ImageFormat fmt, NVCVInterpolationType interpolation);
+
+void ResizedCrop(std::vector<float> &hDst, int dstRowStride, nvcv::Size2D dstSize, const std::vector<float> &hSrc,
                  int srcRowStride, nvcv::Size2D srcSize, int top, int left, int crop_rows, int crop_cols,
                  nvcv::ImageFormat fmt, NVCVInterpolationType interpolation);
 

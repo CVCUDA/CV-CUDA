@@ -463,28 +463,7 @@ Image::Image(std::vector<std::shared_ptr<ExternalBuffer>> bufs, const nvcv::Imag
 {
     m_wrapData.emplace();
 
-    NVCV_ASSERT(bufs.size() >= 1);
-    m_wrapData->devType = bufs[0]->dlTensor().device.device_type;
-
-    if (bufs.size() == 1)
-    {
-        m_wrapData->obj = py::cast(bufs[0]);
-    }
-    else
-    {
-        for (size_t i = 1; i < bufs.size(); ++i)
-        {
-            if (bufs[i]->dlTensor().device.device_type != bufs[0]->dlTensor().device.device_type
-                || bufs[i]->dlTensor().device.device_id != bufs[0]->dlTensor().device.device_id)
-            {
-                throw std::runtime_error("All buffers must belong to the same device, but some don't.");
-            }
-        }
-
-        m_wrapData->obj = py::cast(std::move(bufs));
-    }
-
-    m_impl = nvcv::ImageWrapData(imgData);
+    this->setWrapData(std::move(bufs), imgData);
 }
 
 Image::Image(std::vector<py::buffer> bufs, const nvcv::ImageDataStridedHost &hostData, int rowAlign)
@@ -571,6 +550,52 @@ std::shared_ptr<Image> Image::WrapExternalBuffer(ExternalBuffer &buffer, nvcv::I
     return WrapExternalBufferVector({obj}, fmt);
 }
 
+std::vector<std::shared_ptr<Image>> Image::WrapExternalBufferMany(std::vector<std::shared_ptr<ExternalBuffer>> &buffers,
+                                                                  nvcv::ImageFormat                             fmt)
+{
+    // This is the key of an image wrapper.
+    // All image wrappers have the same key.
+    Image::Key key;
+
+    std::vector<std::shared_ptr<CacheItem>> items = Cache::Instance().fetch(key);
+
+    std::vector<std::shared_ptr<Image>> out;
+    out.reserve(buffers.size());
+
+    for (size_t i = 0; i < buffers.size(); ++i)
+    {
+        std::vector<std::shared_ptr<ExternalBuffer>> spBuffers;
+        spBuffers.push_back(buffers[i]);
+
+        if (!spBuffers.back())
+            throw std::runtime_error("Input buffer doesn't provide cuda_array_interface or DLPack interfaces");
+
+        std::vector<DLPackTensor> bufinfos;
+        bufinfos.emplace_back(spBuffers[0]->dlTensor());
+        nvcv::ImageDataStridedCuda imgData = CreateNVCVImageDataCuda(bufinfos, fmt);
+
+        // None found?
+        if (items.empty())
+        {
+            // Need to add wrappers into cache so that they don't get destroyed by
+            // the cuda stream when they're last used, and python script isn't
+            // holding a reference to them. If we don't do it, things might break.
+            std::shared_ptr<Image> img(new Image(std::move(spBuffers), imgData));
+            Cache::Instance().add(*img);
+            out.push_back(img);
+        }
+        else
+        {
+            std::shared_ptr<Image> img = std::static_pointer_cast<Image>(items.back());
+            items.pop_back();
+            img->setWrapData(std::move(spBuffers), imgData);
+            out.push_back(img);
+        }
+    }
+
+    return out;
+}
+
 std::shared_ptr<Image> Image::WrapExternalBufferVector(std::vector<py::object> buffers, nvcv::ImageFormat fmt)
 {
     std::vector<std::shared_ptr<ExternalBuffer>> spBuffers;
@@ -594,16 +619,55 @@ std::shared_ptr<Image> Image::WrapExternalBufferVector(std::vector<py::object> b
     // This is the key of an image wrapper.
     // All image wrappers have the same key.
     Image::Key key;
-    // We take this opportunity to remove from cache all wrappers that aren't
-    // being used. They aren't reusable anyway.
-    Cache::Instance().removeAllNotInUseMatching(key);
 
-    // Need to add wrappers to cache so that they don't get destroyed by
-    // the cuda stream when they're last used, and python script isn't
-    // holding a reference to them. If we don't do it, things might break.
-    std::shared_ptr<Image> img(new Image(std::move(spBuffers), imgData));
-    Cache::Instance().add(*img);
-    return img;
+    std::shared_ptr<CacheItem> item = Cache::Instance().fetchOne(key);
+
+    // None found?
+    if (!item)
+    {
+        // Need to add wrappers into cache so that they don't get destroyed by
+        // the cuda stream when they're last used, and python script isn't
+        // holding a reference to them. If we don't do it, things might break.
+        std::shared_ptr<Image> img(new Image(std::move(spBuffers), imgData));
+        Cache::Instance().add(*img);
+        return img;
+    }
+    else
+    {
+        std::shared_ptr<Image> img = std::static_pointer_cast<Image>(item);
+        img->setWrapData(std::move(spBuffers), imgData);
+        return img;
+    }
+}
+
+void Image::setWrapData(std::vector<std::shared_ptr<ExternalBuffer>> bufs, const nvcv::ImageDataStridedCuda &imgData)
+{
+    NVCV_ASSERT(m_wrapData);
+
+    NVCV_ASSERT(bufs.size() >= 1);
+    m_wrapData->devType = bufs[0]->dlTensor().device.device_type;
+
+    if (bufs.size() == 1)
+    {
+        m_wrapData->obj = py::cast(bufs[0]);
+    }
+    else
+    {
+        for (size_t i = 1; i < bufs.size(); ++i)
+        {
+            if (bufs[i]->dlTensor().device.device_type != bufs[0]->dlTensor().device.device_type
+                || bufs[i]->dlTensor().device.device_id != bufs[0]->dlTensor().device.device_id)
+            {
+                throw std::runtime_error("All buffers must belong to the same device, but some don't.");
+            }
+        }
+
+        m_wrapData->obj = py::cast(std::move(bufs));
+    }
+
+    //We recreate the nvcv::Image wrapper (m_impl) because it's cheap.
+    //It's not cheap to create nvcvpy::Image as it might have allocated expensive resources (cudaEvent_t in Resource parent).
+    m_impl = nvcv::ImageWrapData(imgData);
 }
 
 std::shared_ptr<Image> Image::CreateHost(py::buffer buffer, nvcv::ImageFormat fmt, int rowAlign)

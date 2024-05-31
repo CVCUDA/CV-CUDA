@@ -58,6 +58,16 @@ typedef enum
     NVCV_CLOSE  = 3,
 } NVCVMorphologyType;
 
+// clang-format off
+// @brief Select how channel data is manipulated--both interleaved (NHWC) and planar (NCHW)
+typedef enum
+{
+    NVCV_CHANNEL_NO_OP = 0,        //!< do not manipulate channel data
+    NVCV_CHANNEL_REVERSE = 1,      //!< reverse channel order (e.g., RGB to BGR, BGR to RGB, RGBA to ABGR, etc.)
+} NVCVChannelManip;
+
+// clang-format on
+
 // @brief Flag to choose the color conversion to be used
 typedef enum
 {

@@ -23,7 +23,7 @@ IMAGE_URL_BASE=''
 # change is done, such as removing some package, or updating
 # packaged versions that introduces incompatibilities.
 TAG_IMAGE=6
-TAG_IMAGE_SAMPLES=6.1
+TAG_IMAGE_SAMPLES=7
 TAG_IMAGE_TEST=5
 
 VER_CUDA=11.7.1

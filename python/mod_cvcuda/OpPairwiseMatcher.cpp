@@ -44,7 +44,7 @@ TupleTensor3 PairwiseMatcherInto(Tensor &matches, std::optional<Tensor> numMatch
 
     if (!normType)
     {
-        normType = set1.dtype() == nvcv::TYPE_F32 ? NVCV_NORM_L2 : NVCV_NORM_HAMMING;
+        normType = NVCV_NORM_L2;
     }
 
     auto op = CreateOperator<cvcuda::PairwiseMatcher>(algoChoice);
@@ -149,8 +149,7 @@ void ExportOpPairwiseMatcher(py::module &m)
             cross_check (bool, optional): Use True to cross check best matches, a best match is only returned if it is
                                           the best match (minimum distance) from 1st set to 2nd set and vice versa.
             matches_per_point (Number, optional): Number of best matches to return per point.
-            norm_type (cvcuda.Norm, optional): Choice on how distances are normalized.  Defaults to cvcuda.Norm.L2
-                                               for float input and cvcuda.Norm.HAMMING for other input data types.
+            norm_type (cvcuda.Norm, optional): Choice on how distances are normalized.  Defaults to cvcuda.Norm.L2.
             algo_choice (cvcuda.Matcher, optional): Choice of the algorithm to perform the match.
             stream (Stream, optional): CUDA Stream on which to perform the operation.
 
@@ -186,8 +185,7 @@ void ExportOpPairwiseMatcher(py::module &m)
             cross_check (bool, optional): Use True to cross check best matches, a best match is only returned if it is
                                           the best match (minimum distance) from 1st set to 2nd set and vice versa.
             matches_per_point (Number, optional): Number of best matches to return per point.
-            norm_type (cvcuda.Norm, optional): Choice on how distances are normalized.  Defaults to cvcuda.Norm.L2
-                                               for float input and cvcuda.Norm.HAMMING for other input data types.
+            norm_type (cvcuda.Norm, optional): Choice on how distances are normalized.  Defaults to cvcuda.Norm.L2.
             algo_choice (cvcuda.Matcher, optional): Choice of the algorithm to perform the match.
             stream (Stream, optional): CUDA Stream on which to perform the operation.
 

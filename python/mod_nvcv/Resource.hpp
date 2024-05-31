@@ -91,6 +91,8 @@ private:
     uint64_t                                     m_id;         /**< The unique identifier of the resource. */
     cudaEvent_t                                  m_event;      /**< The CUDA event used for synchronization. */
     std::optional<std::shared_ptr<const Stream>> m_lastStream; /**< Cache the last stream used for this resource. */
+
+    cudaEvent_t event();
 };
 
 } // namespace nvcvpy::priv

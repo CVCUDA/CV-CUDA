@@ -436,24 +436,32 @@ void Stream::Export(py::module &m)
     util::RegisterCleanup(m,
                           [globalStream]()
                           {
-                              for (std::shared_ptr<Stream> stream : Cache::Instance().fetchAll<Stream>())
+                              try
                               {
-                                  stream->sync();
-                              }
-                              globalStream->sync();
+                                  for (std::shared_ptr<Stream> stream : Cache::Instance().fetchAll<Stream>())
+                                  {
+                                      stream->sync();
+                                  }
+                                  globalStream->sync();
 
-                              // There should only be 1 stream in the stack, namely the
-                              // global stream.
-                              auto s = StreamStack::Instance().top();
-                              if (s != globalStream)
-                              {
-                                  std::cerr << "Stream stack leak detected" << std::endl;
-                              }
+                                  // There should only be 1 stream in the stack, namely the
+                                  // global stream.
+                                  auto s = StreamStack::Instance().top();
+                                  if (s != globalStream)
+                                  {
+                                      std::cerr << "Stream stack leak detected" << std::endl;
+                                  }
 
-                              // Make sure stream stack is empty
-                              while (auto s = StreamStack::Instance().top())
+                                  // Make sure stream stack is empty
+                                  while (auto s = StreamStack::Instance().top())
+                                  {
+                                      StreamStack::Instance().pop();
+                                  }
+                              }
+                              catch (const std::exception &e)
                               {
-                                  StreamStack::Instance().pop();
+                                  //Do nothing here this can happen if someone closes the cuda context prior to exit.
+                                  std::cerr << "Warning CVCUDA cleanup may be incomplete due to: " << e.what() << "\n";
                               }
                           });
 }

@@ -31,6 +31,7 @@ endif()
 
 # system core -------------------------------------------------
 add_executable(cvcuda_test_system
+    TestOpResizeCropConvertReformat.cpp
     TestOpPairwiseMatcher.cpp
     TestOpStack.cpp
     TestOpLabel.cpp

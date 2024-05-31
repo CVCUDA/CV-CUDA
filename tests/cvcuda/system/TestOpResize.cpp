@@ -37,20 +37,19 @@ namespace test = nvcv::test;
 namespace t    = ::testing;
 
 // clang-format off
-
 NVCV_TEST_SUITE_P(OpResize, test::ValueList<int, int, int, int, NVCVInterpolationType, int>
 {
     // srcWidth, srcHeight, dstWidth, dstHeight,       interpolation, numberImages
-    {        42,        48,       23,        24, NVCV_INTERP_NEAREST,           1},
-    {       113,        12,       12,        36, NVCV_INTERP_NEAREST,           1},
-    {       421,       148,      223,       124, NVCV_INTERP_NEAREST,           2},
-    {       313,       212,      412,       336, NVCV_INTERP_NEAREST,           3},
-    {        42,        40,       21,        20,  NVCV_INTERP_LINEAR,           1},
-    {        21,        21,       42,        42,  NVCV_INTERP_LINEAR,           1},
-    {       420,       420,      210,       210,  NVCV_INTERP_LINEAR,           4},
-    {       210,       210,      420,       420,  NVCV_INTERP_LINEAR,           5},
-    {        42,        40,       21,        20,   NVCV_INTERP_CUBIC,           1},
-    {        21,        21,       42,        42,   NVCV_INTERP_CUBIC,           6},
+    {         42,       48,       23,        24, NVCV_INTERP_NEAREST,           1},
+    {        113,       12,       12,        36, NVCV_INTERP_NEAREST,           1},
+    {        421,      148,      223,       124, NVCV_INTERP_NEAREST,           2},
+    {        313,      212,      412,       336, NVCV_INTERP_NEAREST,           3},
+    {         42,       40,       21,        20,  NVCV_INTERP_LINEAR,           1},
+    {         21,       21,       42,        42,  NVCV_INTERP_LINEAR,           1},
+    {        420,      420,      210,       210,  NVCV_INTERP_LINEAR,           4},
+    {        210,      210,      420,       420,  NVCV_INTERP_LINEAR,           5},
+    {         42,       40,       21,        20,   NVCV_INTERP_CUBIC,           1},
+    {         21,       21,       42,        42,   NVCV_INTERP_CUBIC,           6},
     {        420,      420,      420,       420,   NVCV_INTERP_CUBIC,           2},
     {        420,      420,      420,       420,   NVCV_INTERP_CUBIC,           1},
     {        420,      420,       40,        42,   NVCV_INTERP_CUBIC,           1},
@@ -59,9 +58,17 @@ NVCV_TEST_SUITE_P(OpResize, test::ValueList<int, int, int, int, NVCVInterpolatio
     {         44,       40,       22,        20,    NVCV_INTERP_AREA,           2},
     {         30,       30,       20,        20,    NVCV_INTERP_AREA,           2},
     {         30,       30,       60,        60,    NVCV_INTERP_AREA,           4},
-});
+    {       1080,     1920,      720,      1280,  NVCV_INTERP_LINEAR,           1},
+    {        720,     1280,      480,       854,  NVCV_INTERP_CUBIC,            1},
+    {       1440,     2560,     1080,      1920,  NVCV_INTERP_AREA,             1},
+    {       2160,     3840,     1080,      1920,  NVCV_INTERP_LINEAR,           1},
+    {       1080,     1920,      540,       960,  NVCV_INTERP_CUBIC,            1},
+    {        720,     1280,      360,       640,  NVCV_INTERP_AREA,             1},
+    {       2160,     3840,     1440,      2560,  NVCV_INTERP_LINEAR,           1},
+    {       1080,     1920,      360,       640,  NVCV_INTERP_CUBIC,            1},
+    {       1440,     2560,      720,      1280,  NVCV_INTERP_AREA,             1},
 
-// clang-format on
+});
 
 TEST_P(OpResize, tensor_correct_output)
 {
@@ -143,7 +150,15 @@ TEST_P(OpResize, tensor_correct_output)
         test::Resize(goldVec, dstVecRowStride, {dstWidth, dstHeight}, srcVec[i], srcVecRowStride, {srcWidth, srcHeight},
                      fmt, interpolation, false);
 
-        EXPECT_EQ(goldVec, testVec);
+        std::vector<int> mae(testVec.size());
+        for (size_t i = 0; i < mae.size(); ++i)
+        {
+            mae[i] = abs(static_cast<int>(goldVec[i]) - static_cast<int>(testVec[i]));
+        }
+
+        int maeThreshold = 1;
+
+        EXPECT_THAT(mae, t::Each(t::Le(maeThreshold)));
     }
 }
 

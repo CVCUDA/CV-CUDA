@@ -218,9 +218,12 @@ class CvCudaPerf:
             #   "data" : {
             #       ...
             #   }
-            #   "mean_data" : {
+            #   "data_stats_minus_warmup" : {
             #       ...
             #   }
+            #   "gpu_metrics" : {
+            #       ...
+            #   },
             #   "batch_info" : {
             #       ...
             #   }
@@ -234,8 +237,9 @@ class CvCudaPerf:
             #
             # The data field stores timing info of all batches keyed with raw flattened
             # names of the NVTX push/pop ranges.
-            # The mean_data stores the mean timing info for NVTX ranges across
-            # all the batches.
+            # The data_stats_minus_warmup stores various stats (e.g. mean, median) for
+            # NVTX ranges across all the batches.
+            # The gpu_metrics field stores various GPU metrics (e.g. power and utilization)
             # The batch_info stores the batch index and batch size of each batch.
             # The inside batch info is list of NVTX range names which executed inside
             # a batch.
@@ -248,7 +252,8 @@ class CvCudaPerf:
             #
             benchmark_dict = {
                 "data": self.timing_info,
-                "mean_data": {},
+                "data_stats_minus_warmup": {},
+                "gpu_metrics": {},
                 "batch_info": self.batch_info,
                 "inside_batch_info": self.inside_batch_info,
                 "meta": {},
@@ -296,12 +301,13 @@ class CvCudaPerf:
             return {}
 
 
-def maximize_clocks(logger):
+def maximize_clocks(logger, device_id=0):
     """
     Maximizes the GPU clocks. Useful to do it before any type of performance
     benchmarking.
+    :param device_id: The GPU device ID whose clocks should be maximized.
     """
-    logger.info("Trying to maximize the GPU clocks...")
+    logger.info("Trying to maximize the GPU clocks for device: %d" % device_id)
 
     gpu_available = torch.cuda.device_count() > 0
 
@@ -353,6 +359,7 @@ def maximize_clocks(logger):
             "nvidia-smi",
             "--query-gpu=power.limit",
             "--format=csv,nounits,noheader",
+            "-i=%d" % device_id,
         ],
         stdout=subprocess.PIPE,
     )
@@ -365,6 +372,7 @@ def maximize_clocks(logger):
         proc_ret = subprocess.run(
             [
                 "nvidia-smi",
+                "-i=%d" % device_id,
                 "--query-gpu=power.max_limit",
                 "--format=csv,nounits,noheader",
             ],
@@ -378,6 +386,7 @@ def maximize_clocks(logger):
             proc_ret = subprocess.run(
                 [
                     "nvidia-smi",
+                    "-i=%d" % device_id,
                     "--power-limit=%f" % max_power_limit,
                 ],
                 stdout=subprocess.PIPE,
@@ -392,6 +401,7 @@ def maximize_clocks(logger):
     proc_ret = subprocess.run(
         [
             "nvidia-smi",
+            "-i=%d" % device_id,
             "--query-gpu=clocks.max.graphics",
             "--format=csv,nounits,noheader",
         ],
@@ -407,6 +417,7 @@ def maximize_clocks(logger):
         proc_ret = subprocess.run(
             [
                 "nvidia-smi",
+                "-i=%d" % device_id,
                 "--lock-gpu-clocks=%d,%d" % (max_graphics_clock, max_graphics_clock),
             ],
             stdout=subprocess.PIPE,
@@ -421,6 +432,7 @@ def maximize_clocks(logger):
     proc_ret = subprocess.run(
         [
             "nvidia-smi",
+            "-i=%d" % device_id,
             "--query-gpu=clocks.max.memory",
             "--format=csv,nounits,noheader",
         ],
@@ -436,6 +448,7 @@ def maximize_clocks(logger):
         proc_ret = subprocess.run(
             [
                 "nvidia-smi",
+                "-i=%d" % device_id,
                 "--lock-memory-clocks=%d,%d" % (max_memory_clock, max_memory_clock),
             ],
             stdout=subprocess.PIPE,
@@ -451,6 +464,7 @@ def maximize_clocks(logger):
     proc_ret = subprocess.run(
         [
             "nvidia-smi",
+            "-i=%d" % device_id,
             "--applications-clocks=%d,%d" % (max_memory_clock, max_graphics_clock),
         ],
         stdout=subprocess.PIPE,
@@ -465,7 +479,12 @@ def maximize_clocks(logger):
 
     # 7. Get the GPU Performance State. P0 state means the most performance.
     proc_ret = subprocess.run(
-        ["nvidia-smi", "--query-gpu=pstate", "--format=csv,nounits,noheader"],
+        [
+            "nvidia-smi",
+            "-i=%d" % device_id,
+            "--query-gpu=pstate",
+            "--format=csv,nounits,noheader",
+        ],
         stdout=subprocess.PIPE,
     )
     if proc_ret.returncode:
@@ -477,22 +496,26 @@ def maximize_clocks(logger):
         logger.info("Current GPU performance state is %s." % gpu_perf_state)
 
         if gpu_perf_state == "P0":
-            logger.info("Clocks are now maximized.")
+            logger.info("Clocks for device %d are now maximized." % device_id)
             return True, was_persistence_mode_on, current_power_limit
         else:
-            logger.info("Unable to maximize all GPU clocks to reach the P0 state.")
+            logger.info(
+                "Unable to maximize GPU clocks of device %d to reach the P0 state."
+                % device_id
+            )
             return False, was_persistence_mode_on, current_power_limit
 
 
 def reset_clocks(
     logger,
+    device_id=0,
     was_persistence_mode_on=False,
     current_power_limit=None,
 ):
     """
     Resets the GPU clocks.
     """
-    logger.info("Trying to reset the GPU clocks...")
+    logger.info("Trying to reset the GPU clocks for device: %d" % device_id)
 
     gpu_available = torch.cuda.device_count() > 0
 
@@ -501,7 +524,8 @@ def reset_clocks(
 
     # 1. Reset the memory clock.
     proc_ret = subprocess.run(
-        ["nvidia-smi", "--reset-memory-clocks"], stdout=subprocess.PIPE
+        ["nvidia-smi", "-i=%d" % device_id, "--reset-memory-clocks"],
+        stdout=subprocess.PIPE,
     )
     if proc_ret.returncode:
         logger.warning("Unable to reset the memory clock back to normal.")
@@ -510,7 +534,8 @@ def reset_clocks(
 
     # 2. Reset GPU clock.
     proc_ret = subprocess.run(
-        ["nvidia-smi", "--reset-gpu-clocks"], stdout=subprocess.PIPE
+        ["nvidia-smi", "-i=%d" % device_id, "--reset-gpu-clocks"],
+        stdout=subprocess.PIPE,
     )
     if proc_ret.returncode:
         logger.warning("Unable to reset the GPU clock back to normal.")
@@ -519,7 +544,8 @@ def reset_clocks(
 
     # 3. Reset application clocks.
     proc_ret = subprocess.run(
-        ["nvidia-smi", "--reset-applications-clocks"], stdout=subprocess.PIPE
+        ["nvidia-smi", "-i=%d" % device_id, "--reset-applications-clocks"],
+        stdout=subprocess.PIPE,
     )
     if proc_ret.returncode:
         logger.warning("Unable to reset the application clocks back to normal.")
@@ -531,6 +557,7 @@ def reset_clocks(
         proc_ret = subprocess.run(
             [
                 "nvidia-smi",
+                "-i=%d" % device_id,
                 "--power-limit=%f" % current_power_limit,
             ],
             stdout=subprocess.PIPE,
@@ -562,7 +589,12 @@ def reset_clocks(
 
     # 7. Get GPU Performance State
     proc_ret = subprocess.run(
-        ["nvidia-smi", "--query-gpu=pstate", "--format=csv,nounits,noheader"],
+        [
+            "nvidia-smi",
+            "-i=%d" % device_id,
+            "--query-gpu=pstate",
+            "--format=csv,nounits,noheader",
+        ],
         stdout=subprocess.PIPE,
     )
     if proc_ret.returncode:
@@ -774,12 +806,12 @@ def summarize_runs(
     """
 
     def _parse_json_for_time(json_data):
-        mean_all_batches = json_data["mean_all_batches"]
-        sample_name_key = list(mean_all_batches.keys())[0]
+        mean_all_procs = json_data["data_mean_all_procs"]
+        sample_name_key = list(mean_all_procs.keys())[0]
 
-        cpu_time_minus_warmup_per_item = mean_all_batches[sample_name_key][
-            "run_sample"
-        ]["pipeline"]["cpu_time_minus_warmup_per_item"]
+        cpu_time_minus_warmup_per_item = mean_all_procs[sample_name_key]["run_sample"][
+            "pipeline"
+        ]["cpu_time_minus_warmup_per_item"]["mean"]
 
         return cpu_time_minus_warmup_per_item
 

@@ -266,19 +266,21 @@ def summarize_runs(
 
     results = []
 
-    for op in baseline_perf["mean_all_batches"]["run_bench"]:
+    for op in baseline_perf["data_mean_all_procs"]["run_bench"]:
         if op.startswith("Op"):
             op_name = op[2:]
 
             row_dict = {}
 
             # Fetch the time and parameters from the JSON for baseline run.
-            baseline_run_time = baseline_perf["mean_all_batches"]["run_bench"][op][
+            baseline_run_time = baseline_perf["data_mean_all_procs"]["run_bench"][op][
                 "run_op"
-            ]["cpu_time_minus_warmup_per_item"]
+            ]["cpu_time_minus_warmup_per_item"]["mean"]
 
             op_params = list(
-                baseline_perf["mean_all_batches"]["run_bench"][op]["op_params"].keys()
+                baseline_perf["data_mean_all_procs"]["run_bench"][op][
+                    "op_params"
+                ].keys()
             )[0]
 
             row_dict["operator name"] = op_name
@@ -290,13 +292,15 @@ def summarize_runs(
                     # Check if the OP was present.
                     if (
                         op
-                        in compare_perfs[compare_run_name]["mean_all_batches"][
+                        in compare_perfs[compare_run_name]["data_mean_all_procs"][
                             "run_bench"
                         ]
                     ):
                         compare_run_time = compare_perfs[compare_run_name][
-                            "mean_all_batches"
-                        ]["run_bench"][op]["run_op"]["cpu_time_minus_warmup_per_item"]
+                            "data_mean_all_procs"
+                        ]["run_bench"][op]["run_op"]["cpu_time_minus_warmup_per_item"][
+                            "mean"
+                        ]
                     else:
                         compare_run_time = None
 

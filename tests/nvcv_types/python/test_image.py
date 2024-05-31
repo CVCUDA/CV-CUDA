@@ -13,11 +13,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
 import numpy as np
-import pytest as t
 import nvcv
 import nvcv_util as util
+import pytest as t
+import torch
+
+import cvcuda
+
+
+def test_image_is_cached():
+    created_ids = set()
+
+    pt_img = torch.rand((1, 1), dtype=torch.float32, device="cuda")
+    img = cvcuda.as_image(pt_img)
+    created_ids.add(img.id)
+    del img  # delete img such that only cache has a reference to it
+
+    for i in range(50):
+        pt_img = torch.rand((1 + i, i + 2), dtype=torch.float32, device="cuda")
+        img = cvcuda.as_image(pt_img)
+        assert img.id in created_ids
+        del img
 
 
 def test_image_creation_works():
@@ -110,10 +127,7 @@ def test_wrap_host_buffer_infer_imgformat_multiple_planes(buffers, format):
     assert img.format == format
 
     img = nvcv.as_image(
-        [
-            torch.zeros(size=buf[0], dtype=buf[2], device="cuda").cuda()
-            for buf in buffers
-        ]
+        [torch.zeros(size=buf[0], dtype=buf[2], device="cuda") for buf in buffers]
     )
     assert img.width == 8
     assert img.height == 6
@@ -128,10 +142,7 @@ def test_wrap_host_buffer_explicit_format2(buffers, format):
     assert img.format == format
 
     img = nvcv.as_image(
-        [
-            torch.zeros(size=buf[0], dtype=buf[2], device="cuda").cuda()
-            for buf in buffers
-        ],
+        [torch.zeros(size=buf[0], dtype=buf[2], device="cuda") for buf in buffers],
         format,
     )
     assert img.width == 8
@@ -447,7 +458,7 @@ def test_image_is_kept_alive_by_cuda_array_interface():
 
     del img2
     # remove img2 from cache, but not img1, as it's being
-    # held by iface
+    # held by iface1
     nvcv.clear_cache()
 
     # now img1 is free for reuse
@@ -455,3 +466,21 @@ def test_image_is_kept_alive_by_cuda_array_interface():
 
     img3 = nvcv.Image((640, 480), nvcv.Format.U8)
     assert img3.cuda().__cuda_array_interface__["data"][0] == data_buffer1
+
+
+def test_image_wrapper_nodeletion():
+    """
+    Check if image wrappers deletes memory that's not ours.
+    """
+    # run twice, first run is without cache re-usage, second is with cache re-usage
+    for i in range(2):
+        np_img = np.random.rand(1 + i, 2 + i).astype(np.float32)
+        pt_img = torch.from_numpy(np_img).cuda()
+
+        nv_img = cvcuda.as_image(pt_img)
+        del nv_img
+
+        try:
+            assert (pt_img.cpu().numpy() == np_img).all()
+        except RuntimeError:
+            assert False, "Invalid memory"

@@ -123,7 +123,7 @@ ErrorCode CustomCrop::infer(const TensorDataStridedCuda &inData, const TensorDat
 
     if (start_x < 0 || start_y < 0 || end_x >= cols || end_y >= rows)
     {
-        LOG_ERROR("Invliad Roi range x " << roi.x << " y " << roi.y << " width " << roi.width << " height "
+        LOG_ERROR("Invalid Roi range x " << roi.x << " y " << roi.y << " width " << roi.width << " height "
                                          << roi.height);
         return ErrorCode::INVALID_PARAMETER;
     }

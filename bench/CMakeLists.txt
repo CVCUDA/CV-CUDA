@@ -51,6 +51,7 @@ set(bench_sources
     BenchConvertTo.cpp
     BenchCopyMakeBorder.cpp
     BenchCropFlipNormalizeReformat.cpp
+    BenchResizeCropConvertReformat.cpp
     BenchCustomCrop.cpp
     BenchErase.cpp
     BenchGammaContrast.cpp

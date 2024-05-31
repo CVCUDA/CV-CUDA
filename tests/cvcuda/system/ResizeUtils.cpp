@@ -28,50 +28,42 @@
 
 namespace nvcv::test {
 
-void Resize(std::vector<uint8_t> &hDst, int dstRowStride, nvcv::Size2D dstSize, const std::vector<uint8_t> &hSrc,
-            int srcRowStride, nvcv::Size2D srcSize, nvcv::ImageFormat fmt, NVCVInterpolationType interpolation,
-            bool isVarshape)
+template<typename T, T MinVal, T MaxVal>
+void _Resize(std::vector<T> &hDst, int dstStep, nvcv::Size2D dstSize, const std::vector<T> &hSrc, int srcStep,
+             nvcv::Size2D srcSize, nvcv::ImageFormat fmt, NVCVInterpolationType interp, bool isVarshape)
 {
-    if (interpolation == NVCV_INTERP_NEAREST || interpolation == NVCV_INTERP_LINEAR
-        || interpolation == NVCV_INTERP_CUBIC)
-    {
-        ResizedCrop(hDst, dstRowStride, dstSize, hSrc, srcRowStride, srcSize, 0, 0, srcSize.h, srcSize.w, fmt,
-                    interpolation);
-        return;
-    }
-
-    double iScale = static_cast<double>(srcSize.h) / dstSize.h;
-    double jScale = static_cast<double>(srcSize.w) / dstSize.w;
+    double scaleH = static_cast<double>(srcSize.h) / dstSize.h;
+    double scaleW = static_cast<double>(srcSize.w) / dstSize.w;
 
     assert(fmt.numPlanes() == 1);
 
-    int elementsPerPixel = fmt.numChannels();
+    int channels = fmt.numChannels();
 
-    uint8_t       *dstPtr = hDst.data();
-    const uint8_t *srcPtr = hSrc.data();
+    T       *dstPtr = hDst.data();
+    const T *srcPtr = hSrc.data();
 
-    for (int di = 0; di < dstSize.h; di++)
+    for (int dy = 0; dy < dstSize.h; dy++)
     {
-        for (int dj = 0; dj < dstSize.w; dj++)
+        for (int dx = 0; dx < dstSize.w; dx++)
         {
-            if (interpolation == NVCV_INTERP_AREA)
+            if (interp == NVCV_INTERP_AREA)
             {
-                double fsx1 = dj * jScale;
-                double fsx2 = fsx1 + jScale;
-                double fsy1 = di * iScale;
-                double fsy2 = fsy1 + iScale;
+                double fsx1 = dx * scaleW;
+                double fsx2 = fsx1 + scaleW;
+                double fsy1 = dy * scaleH;
+                double fsy2 = fsy1 + scaleH;
                 int    sx1  = cuda::round<cuda::RoundMode::UP, int>(fsx1);
                 int    sx2  = cuda::round<cuda::RoundMode::DOWN, int>(fsx2);
                 int    sy1  = cuda::round<cuda::RoundMode::UP, int>(fsy1);
                 int    sy2  = cuda::round<cuda::RoundMode::DOWN, int>(fsy2);
 
-                for (int k = 0; k < elementsPerPixel; k++)
+                for (int c = 0; c < channels; c++)
                 {
                     double out = 0.0;
 
-                    if (std::ceil(jScale) == jScale && std::ceil(iScale) == iScale)
+                    if (std::ceil(scaleW) == scaleW && std::ceil(scaleH) == scaleH)
                     {
-                        double invscale = 1.f / (jScale * iScale);
+                        double invscale = 1.f / (scaleW * scaleH);
 
                         for (int dy = sy1; dy < sy2; ++dy)
                         {
@@ -79,90 +71,88 @@ void Resize(std::vector<uint8_t> &hDst, int dstRowStride, nvcv::Size2D dstSize, 
                             {
                                 if (dy >= 0 && dy < srcSize.h && dx >= 0 && dx < srcSize.w)
                                 {
-                                    out = out + srcPtr[dy * srcRowStride + dx * elementsPerPixel + k] * invscale;
+                                    out = out + srcPtr[dy * srcStep + dx * channels + c] * invscale;
                                 }
                             }
                         }
                     }
                     else
                     {
-                        if (!isVarshape || (iScale >= 1.0f && jScale >= 1.0f))
+                        if (!isVarshape || (scaleH >= 1.0f && scaleW >= 1.0f))
                         {
                             double invscale
-                                = 1.f / (std::min(jScale, srcSize.w - fsx1) * std::min(iScale, srcSize.h - fsy1));
+                                = 1.f / (std::min(scaleW, srcSize.w - fsx1) * std::min(scaleH, srcSize.h - fsy1));
 
                             for (int dy = sy1; dy < sy2; ++dy)
                             {
                                 for (int dx = sx1; dx < sx2; ++dx)
                                     if (dy >= 0 && dy < srcSize.h && dx >= 0 && dx < srcSize.w)
-                                        out = out + srcPtr[dy * srcRowStride + dx * elementsPerPixel + k] * invscale;
+                                        out = out + srcPtr[dy * srcStep + dx * channels + c] * invscale;
 
                                 if (sx1 > fsx1)
                                     if (dy >= 0 && dy < srcSize.h && sx1 - 1 >= 0 && sx1 - 1 < srcSize.w)
                                         out = out
-                                            + srcPtr[dy * srcRowStride + (sx1 - 1) * elementsPerPixel + k]
+                                            + srcPtr[dy * srcStep + (sx1 - 1) * channels + c]
                                                   * ((sx1 - fsx1) * invscale);
 
                                 if (sx2 < fsx2)
                                     if (dy >= 0 && dy < srcSize.h && sx2 >= 0 && sx2 < srcSize.w)
                                         out = out
-                                            + srcPtr[dy * srcRowStride + sx2 * elementsPerPixel + k]
-                                                  * ((fsx2 - sx2) * invscale);
+                                            + srcPtr[dy * srcStep + sx2 * channels + c] * ((fsx2 - sx2) * invscale);
                             }
 
                             if (sy1 > fsy1)
                                 for (int dx = sx1; dx < sx2; ++dx)
                                     if (sy1 - 1 >= 0 && sy1 - 1 < srcSize.h && dx >= 0 && dx < srcSize.w)
                                         out = out
-                                            + srcPtr[(sy1 - 1) * srcRowStride + dx * elementsPerPixel + k]
+                                            + srcPtr[(sy1 - 1) * srcStep + dx * channels + c]
                                                   * ((sy1 - fsy1) * invscale);
 
                             if (sy2 < fsy2)
                                 for (int dx = sx1; dx < sx2; ++dx)
                                     if (sy2 >= 0 && sy2 < srcSize.h && dx >= 0 && dx < srcSize.w)
                                         out = out
-                                            + srcPtr[sy2 * srcRowStride + dx * elementsPerPixel + k]
-                                                  * ((fsy2 - sy2) * invscale);
+                                            + srcPtr[sy2 * srcStep + dx * channels + c] * ((fsy2 - sy2) * invscale);
 
                             if ((sy1 > fsy1) && (sx1 > fsx1))
                                 if (sy1 - 1 >= 0 && sy1 - 1 < srcSize.h && sx1 - 1 >= 0 && sx1 - 1 < srcSize.w)
                                     out = out
-                                        + srcPtr[(sy1 - 1) * srcRowStride + (sx1 - 1) * elementsPerPixel + k]
+                                        + srcPtr[(sy1 - 1) * srcStep + (sx1 - 1) * channels + c]
                                               * ((sy1 - fsy1) * (sx1 - fsx1) * invscale);
 
                             if ((sy1 > fsy1) && (sx2 < fsx2))
                                 if (sy1 - 1 >= 0 && sy1 - 1 < srcSize.h && sx2 >= 0 && sx2 < srcSize.w)
                                     out = out
-                                        + srcPtr[(sy1 - 1) * srcRowStride + sx2 * elementsPerPixel + k]
+                                        + srcPtr[(sy1 - 1) * srcStep + sx2 * channels + c]
                                               * ((sy1 - fsy1) * (fsx2 - sx2) * invscale);
 
                             if ((sy2 < fsy2) && (sx2 < fsx2))
                                 if (sy2 >= 0 && sy2 < srcSize.h && sx2 >= 0 && sx2 < srcSize.w)
                                     out = out
-                                        + srcPtr[sy2 * srcRowStride + sx2 * elementsPerPixel + k]
+                                        + srcPtr[sy2 * srcStep + sx2 * channels + c]
                                               * ((fsy2 - sy2) * (fsx2 - sx2) * invscale);
 
                             if ((sy2 < fsy2) && (sx1 > fsx1))
                                 if (sy2 >= 0 && sy2 < srcSize.h && sx1 - 1 >= 0 && sx1 - 1 < srcSize.w)
                                     out = out
-                                        + srcPtr[sy2 * srcRowStride + (sx1 - 1) * elementsPerPixel + k]
+                                        + srcPtr[sy2 * srcStep + (sx1 - 1) * channels + c]
                                               * ((fsy2 - sy2) * (sx1 - fsx1) * invscale);
                         }
                         else // zoom in for varshape
                         {
-                            double iScale_inv = 1.0 / iScale;
-                            double jScale_inv = 1.0 / jScale;
+                            double scaleH_inv = 1.0 / scaleH;
+                            double scaleW_inv = 1.0 / scaleW;
 
                             sy1      = cuda::round<cuda::RoundMode::DOWN, int>(fsy1);
                             sx1      = cuda::round<cuda::RoundMode::DOWN, int>(fsx1);
-                            float fy = (float)(float(di + 1) - float(sy1 + 1) * iScale_inv);
+                            float fy = (float)(float(dy + 1) - float(sy1 + 1) * scaleH_inv);
                             fy       = fy <= 0 ? 0.f : fy - cuda::round<cuda::RoundMode::DOWN, int>(fy);
 
                             float cbufy[2];
                             cbufy[0] = 1.f - fy;
                             cbufy[1] = fy;
 
-                            float fx = (float)(float(dj + 1) - float(sx1 + 1) * jScale_inv);
+                            float fx = (float)(float(dx + 1) - float(sx1 + 1) * scaleW_inv);
                             fx       = fx <= 0 ? 0.f : fx - cuda::round<cuda::RoundMode::DOWN, int>(fx);
 
                             if (sx1 < 0)
@@ -181,143 +171,204 @@ void Resize(std::vector<uint8_t> &hDst, int dstRowStride, nvcv::Size2D dstSize, 
                             float cbufx[2];
                             cbufx[0] = 1.f - fx;
                             cbufx[1] = fx;
-                            out      = srcPtr[sy1 * srcRowStride + sx1 * elementsPerPixel + k] * cbufx[0] * cbufy[0]
-                                + srcPtr[(sy1 + 1) * srcRowStride + sx1 * elementsPerPixel + k] * cbufx[0] * cbufy[1]
-                                + srcPtr[sy1 * srcRowStride + (sx1 + 1) * elementsPerPixel + k] * cbufx[1] * cbufy[0]
-                                + srcPtr[(sy1 + 1) * srcRowStride + (sx1 + 1) * elementsPerPixel + k] * cbufx[1]
-                                      * cbufy[1];
+                            out      = srcPtr[sy1 * srcStep + sx1 * channels + c] * cbufx[0] * cbufy[0]
+                                + srcPtr[(sy1 + 1) * srcStep + sx1 * channels + c] * cbufx[0] * cbufy[1]
+                                + srcPtr[sy1 * srcStep + (sx1 + 1) * channels + c] * cbufx[1] * cbufy[0]
+                                + srcPtr[(sy1 + 1) * srcStep + (sx1 + 1) * channels + c] * cbufx[1] * cbufy[1];
                         }
                     }
 
                     out = std::rint(std::abs(out));
 
-                    dstPtr[di * dstRowStride + dj * elementsPerPixel + k] = out < 0 ? 0 : (out > 255 ? 255 : out);
+                    dstPtr[dy * dstStep + dx * channels + c] = out < MinVal ? MinVal : (out > MaxVal ? MaxVal : out);
                 }
             }
         }
     }
 }
 
-void ResizedCrop(std::vector<uint8_t> &hDst, int dstRowStride, nvcv::Size2D dstSize, const std::vector<uint8_t> &hSrc,
-                 int srcRowStride, nvcv::Size2D srcSize, int top, int left, int crop_rows, int crop_cols,
-                 nvcv::ImageFormat fmt, NVCVInterpolationType interpolation)
+template<typename T, T MinVal, T MaxVal>
+void _ResizedCrop(std::vector<T> &hDst, int dstStep, nvcv::Size2D dstSize, const std::vector<T> &hSrc, int srcStep,
+                  nvcv::Size2D srcSize, int top, int left, int crop_rows, int crop_cols, nvcv::ImageFormat fmt,
+                  NVCVInterpolationType interp)
 {
-    double iScale = static_cast<double>(crop_rows) / dstSize.h;
-    double jScale = static_cast<double>(crop_cols) / dstSize.w;
+    double scaleH = static_cast<double>(crop_rows) / dstSize.h;
+    double scaleW = static_cast<double>(crop_cols) / dstSize.w;
 
     assert(fmt.numPlanes() == 1);
 
-    int elementsPerPixel = fmt.numChannels();
+    int channels = fmt.numChannels();
 
-    uint8_t       *dstPtr = hDst.data();
-    const uint8_t *srcPtr = hSrc.data();
+    T       *dstPtr = hDst.data();
+    const T *srcPtr = hSrc.data();
 
-    for (int di = 0; di < dstSize.h; di++)
+    for (int dy = 0; dy < dstSize.h; dy++)
     {
-        for (int dj = 0; dj < dstSize.w; dj++)
+        for (int dx = 0; dx < dstSize.w; dx++)
         {
-            if (interpolation == NVCV_INTERP_NEAREST)
+            if (interp == NVCV_INTERP_NEAREST)
             {
-                double fi = iScale * di + top;
-                double fj = jScale * dj + left;
+                double fy = scaleH * dy + top;
+                double fx = scaleW * dx + left;
 
-                int si = std::floor(fi);
-                int sj = std::floor(fj);
+                int sy = std::floor(fy);
+                int sx = std::floor(fx);
 
-                si = std::min(si, srcSize.h - 1);
-                sj = std::min(sj, srcSize.w - 1);
+                sy = std::min(sy, srcSize.h - 1);
+                sx = std::min(sx, srcSize.w - 1);
 
-                for (int k = 0; k < elementsPerPixel; k++)
+                for (int c = 0; c < channels; c++)
                 {
-                    dstPtr[di * dstRowStride + dj * elementsPerPixel + k]
-                        = srcPtr[si * srcRowStride + sj * elementsPerPixel + k];
+                    dstPtr[dy * dstStep + dx * channels + c] = srcPtr[sy * srcStep + sx * channels + c];
                 }
             }
-            else if (interpolation == NVCV_INTERP_LINEAR)
+            else if (interp == NVCV_INTERP_LINEAR)
             {
-                double fi = iScale * (di + 0.5) - 0.5 + top;
-                double fj = jScale * (dj + 0.5) - 0.5 + left;
+                double fy = scaleH * (dy + 0.5) - 0.5 + top;
+                double fx = scaleW * (dx + 0.5) - 0.5 + left;
 
-                int si = std::floor(fi);
-                int sj = std::floor(fj);
+                int sy = std::floor(fy);
+                int sx = std::floor(fx);
 
-                fi -= si;
-                fj -= sj;
+                fy -= sy;
+                fx -= sx;
 
-                fj = (sj < 0 || sj >= srcSize.w - 1) ? 0 : fj;
+                fx = (sx < 0 || sx >= srcSize.w - 1) ? 0 : fx;
 
-                si = std::max(0, std::min(si, srcSize.h - 2));
-                sj = std::max(0, std::min(sj, srcSize.w - 2));
+                sy = std::max(0, std::min(sy, srcSize.h - 2));
+                sx = std::max(0, std::min(sx, srcSize.w - 2));
 
-                double iWeights[2] = {1 - fi, fi};
-                double jWeights[2] = {1 - fj, fj};
+                double wghtY[2] = {1 - fy, fy};
+                double wghtX[2] = {1 - fx, fx};
 
-                for (int k = 0; k < elementsPerPixel; k++)
+                for (int c = 0; c < channels; c++)
                 {
-                    double res = std::rint(std::abs(
-                        srcPtr[(si + 0) * srcRowStride + (sj + 0) * elementsPerPixel + k] * iWeights[0] * jWeights[0]
-                        + srcPtr[(si + 1) * srcRowStride + (sj + 0) * elementsPerPixel + k] * iWeights[1] * jWeights[0]
-                        + srcPtr[(si + 0) * srcRowStride + (sj + 1) * elementsPerPixel + k] * iWeights[0] * jWeights[1]
-                        + srcPtr[(si + 1) * srcRowStride + (sj + 1) * elementsPerPixel + k] * iWeights[1]
-                              * jWeights[1]));
+                    double res = std::rint(
+                        std::abs(srcPtr[(sy + 0) * srcStep + (sx + 0) * channels + c] * wghtY[0] * wghtX[0]
+                                 + srcPtr[(sy + 1) * srcStep + (sx + 0) * channels + c] * wghtY[1] * wghtX[0]
+                                 + srcPtr[(sy + 0) * srcStep + (sx + 1) * channels + c] * wghtY[0] * wghtX[1]
+                                 + srcPtr[(sy + 1) * srcStep + (sx + 1) * channels + c] * wghtY[1] * wghtX[1]));
 
-                    dstPtr[di * dstRowStride + dj * elementsPerPixel + k] = res < 0 ? 0 : (res > 255 ? 255 : res);
+                    dstPtr[dy * dstStep + dx * channels + c] = res < MinVal ? MinVal : (res > MaxVal ? MaxVal : res);
                 }
             }
-            else if (interpolation == NVCV_INTERP_CUBIC)
+            else if (interp == NVCV_INTERP_CUBIC)
             {
-                double fi = iScale * (di + 0.5) - 0.5 + top;
-                double fj = jScale * (dj + 0.5) - 0.5 + left;
+                double fy = scaleH * (dy + 0.5) - 0.5 + top;
+                double fx = scaleW * (dx + 0.5) - 0.5 + left;
 
-                int si = std::floor(fi);
-                int sj = std::floor(fj);
+                int sy = std::floor(fy);
+                int sx = std::floor(fx);
 
-                fi -= si;
-                fj -= sj;
+                fy -= sy;
+                fx -= sx;
 
-                fj = (sj < 1 || sj >= srcSize.w - 3) ? 0 : fj;
+                fx = (sx < 1 || sx >= srcSize.w - 3) ? 0 : fx;
 
-                si = std::max(1, std::min(si, srcSize.h - 3));
-                sj = std::max(1, std::min(sj, srcSize.w - 3));
+                sy = std::max(1, std::min(sy, srcSize.h - 3));
+                sx = std::max(1, std::min(sx, srcSize.w - 3));
 
                 const double A = -0.75;
-                double       iWeights[4];
-                iWeights[0] = ((A * (fi + 1) - 5 * A) * (fi + 1) + 8 * A) * (fi + 1) - 4 * A;
-                iWeights[1] = ((A + 2) * fi - (A + 3)) * fi * fi + 1;
-                iWeights[2] = ((A + 2) * (1 - fi) - (A + 3)) * (1 - fi) * (1 - fi) + 1;
-                iWeights[3] = 1 - iWeights[0] - iWeights[1] - iWeights[2];
+                double       wghtY[4];
+                wghtY[0] = ((A * (fy + 1) - 5 * A) * (fy + 1) + 8 * A) * (fy + 1) - 4 * A;
+                wghtY[1] = ((A + 2) * fy - (A + 3)) * fy * fy + 1;
+                wghtY[2] = ((A + 2) * (1 - fy) - (A + 3)) * (1 - fy) * (1 - fy) + 1;
+                wghtY[3] = 1 - wghtY[0] - wghtY[1] - wghtY[2];
 
-                double jWeights[4];
-                jWeights[0] = ((A * (fj + 1) - 5 * A) * (fj + 1) + 8 * A) * (fj + 1) - 4 * A;
-                jWeights[1] = ((A + 2) * fj - (A + 3)) * fj * fj + 1;
-                jWeights[2] = ((A + 2) * (1 - fj) - (A + 3)) * (1 - fj) * (1 - fj) + 1;
-                jWeights[3] = 1 - jWeights[0] - jWeights[1] - jWeights[2];
+                double wghtX[4];
+                wghtX[0] = ((A * (fx + 1) - 5 * A) * (fx + 1) + 8 * A) * (fx + 1) - 4 * A;
+                wghtX[1] = ((A + 2) * fx - (A + 3)) * fx * fx + 1;
+                wghtX[2] = ((A + 2) * (1 - fx) - (A + 3)) * (1 - fx) * (1 - fx) + 1;
+                wghtX[3] = 1 - wghtX[0] - wghtX[1] - wghtX[2];
 
-                for (int k = 0; k < elementsPerPixel; k++)
+                for (int c = 0; c < channels; c++)
                 {
-                    double res = std::rint(std::abs(
-                        srcPtr[(si - 1) * srcRowStride + (sj - 1) * elementsPerPixel + k] * jWeights[0] * iWeights[0]
-                        + srcPtr[(si + 0) * srcRowStride + (sj - 1) * elementsPerPixel + k] * jWeights[0] * iWeights[1]
-                        + srcPtr[(si + 1) * srcRowStride + (sj - 1) * elementsPerPixel + k] * jWeights[0] * iWeights[2]
-                        + srcPtr[(si + 2) * srcRowStride + (sj - 1) * elementsPerPixel + k] * jWeights[0] * iWeights[3]
-                        + srcPtr[(si - 1) * srcRowStride + (sj + 0) * elementsPerPixel + k] * jWeights[1] * iWeights[0]
-                        + srcPtr[(si + 0) * srcRowStride + (sj + 0) * elementsPerPixel + k] * jWeights[1] * iWeights[1]
-                        + srcPtr[(si + 1) * srcRowStride + (sj + 0) * elementsPerPixel + k] * jWeights[1] * iWeights[2]
-                        + srcPtr[(si + 2) * srcRowStride + (sj + 0) * elementsPerPixel + k] * jWeights[1] * iWeights[3]
-                        + srcPtr[(si - 1) * srcRowStride + (sj + 1) * elementsPerPixel + k] * jWeights[2] * iWeights[0]
-                        + srcPtr[(si + 0) * srcRowStride + (sj + 1) * elementsPerPixel + k] * jWeights[2] * iWeights[1]
-                        + srcPtr[(si + 1) * srcRowStride + (sj + 1) * elementsPerPixel + k] * jWeights[2] * iWeights[2]
-                        + srcPtr[(si + 2) * srcRowStride + (sj + 1) * elementsPerPixel + k] * jWeights[2] * iWeights[3]
-                        + srcPtr[(si - 1) * srcRowStride + (sj + 2) * elementsPerPixel + k] * jWeights[3] * iWeights[0]
-                        + srcPtr[(si + 0) * srcRowStride + (sj + 2) * elementsPerPixel + k] * jWeights[3] * iWeights[1]
-                        + srcPtr[(si + 1) * srcRowStride + (sj + 2) * elementsPerPixel + k] * jWeights[3] * iWeights[2]
-                        + srcPtr[(si + 2) * srcRowStride + (sj + 2) * elementsPerPixel + k] * jWeights[3]
-                              * iWeights[3]));
+                    double res = std::rint(
+                        std::abs(srcPtr[(sy - 1) * srcStep + (sx - 1) * channels + c] * wghtX[0] * wghtY[0]
+                                 + srcPtr[(sy + 0) * srcStep + (sx - 1) * channels + c] * wghtX[0] * wghtY[1]
+                                 + srcPtr[(sy + 1) * srcStep + (sx - 1) * channels + c] * wghtX[0] * wghtY[2]
+                                 + srcPtr[(sy + 2) * srcStep + (sx - 1) * channels + c] * wghtX[0] * wghtY[3]
+                                 + srcPtr[(sy - 1) * srcStep + (sx + 0) * channels + c] * wghtX[1] * wghtY[0]
+                                 + srcPtr[(sy + 0) * srcStep + (sx + 0) * channels + c] * wghtX[1] * wghtY[1]
+                                 + srcPtr[(sy + 1) * srcStep + (sx + 0) * channels + c] * wghtX[1] * wghtY[2]
+                                 + srcPtr[(sy + 2) * srcStep + (sx + 0) * channels + c] * wghtX[1] * wghtY[3]
+                                 + srcPtr[(sy - 1) * srcStep + (sx + 1) * channels + c] * wghtX[2] * wghtY[0]
+                                 + srcPtr[(sy + 0) * srcStep + (sx + 1) * channels + c] * wghtX[2] * wghtY[1]
+                                 + srcPtr[(sy + 1) * srcStep + (sx + 1) * channels + c] * wghtX[2] * wghtY[2]
+                                 + srcPtr[(sy + 2) * srcStep + (sx + 1) * channels + c] * wghtX[2] * wghtY[3]
+                                 + srcPtr[(sy - 1) * srcStep + (sx + 2) * channels + c] * wghtX[3] * wghtY[0]
+                                 + srcPtr[(sy + 0) * srcStep + (sx + 2) * channels + c] * wghtX[3] * wghtY[1]
+                                 + srcPtr[(sy + 1) * srcStep + (sx + 2) * channels + c] * wghtX[3] * wghtY[2]
+                                 + srcPtr[(sy + 2) * srcStep + (sx + 2) * channels + c] * wghtX[3] * wghtY[3]));
 
-                    dstPtr[di * dstRowStride + dj * elementsPerPixel + k] = res < 0 ? 0 : (res > 255 ? 255 : res);
+                    dstPtr[dy * dstStep + dx * channels + c] = res < MinVal ? MinVal : (res > MaxVal ? MaxVal : res);
                 }
             }
         }
+    }
+}
+
+void Resize(std::vector<uint8_t> &hDst, int dstRowStride, nvcv::Size2D dstSize, const std::vector<uint8_t> &hSrc,
+            int srcRowStride, nvcv::Size2D srcSize, nvcv::ImageFormat fmt, NVCVInterpolationType interp,
+            bool isVarShape)
+{
+    int dstStep = dstRowStride / sizeof(uint8_t);
+    int srcStep = srcRowStride / sizeof(uint8_t);
+
+    if (interp == NVCV_INTERP_NEAREST || interp == NVCV_INTERP_LINEAR || interp == NVCV_INTERP_CUBIC)
+    {
+        _ResizedCrop<uint8_t, 0, 255>(hDst, dstStep, dstSize, hSrc, srcStep, srcSize, 0, 0, srcSize.h, srcSize.w, fmt,
+                                      interp);
+    }
+    else if (interp == NVCV_INTERP_AREA)
+    {
+        _Resize<uint8_t, 0, 255>(hDst, dstStep, dstSize, hSrc, srcStep, srcSize, fmt, interp, isVarShape);
+    }
+}
+
+void ResizedCrop(std::vector<uint8_t> &hDst, int dstRowStride, nvcv::Size2D dstSize, const std::vector<uint8_t> &hSrc,
+                 int srcRowStride, nvcv::Size2D srcSize, int top, int left, int crop_rows, int crop_cols,
+                 nvcv::ImageFormat fmt, NVCVInterpolationType interp)
+{
+    int dstStep = dstRowStride / sizeof(uint8_t);
+    int srcStep = srcRowStride / sizeof(uint8_t);
+
+    if (interp == NVCV_INTERP_NEAREST || interp == NVCV_INTERP_LINEAR || interp == NVCV_INTERP_CUBIC)
+    {
+        _ResizedCrop<uint8_t, 0, 255>(hDst, dstStep, dstSize, hSrc, srcStep, srcSize, top, left, crop_rows, crop_cols,
+                                      fmt, interp);
+    }
+}
+
+void Resize(std::vector<float> &hDst, int dstRowStride, nvcv::Size2D dstSize, const std::vector<float> &hSrc,
+            int srcRowStride, nvcv::Size2D srcSize, nvcv::ImageFormat fmt, NVCVInterpolationType interp,
+            bool isVarShape)
+{
+    int dstStep = dstRowStride / sizeof(float);
+    int srcStep = srcRowStride / sizeof(float);
+
+    if (interp == NVCV_INTERP_NEAREST || interp == NVCV_INTERP_LINEAR || interp == NVCV_INTERP_CUBIC)
+    {
+        _ResizedCrop<float, 0.0f, 255.0f>(hDst, dstStep, dstSize, hSrc, srcStep, srcSize, 0, 0, srcSize.h, srcSize.w,
+                                          fmt, interp);
+    }
+    else if (interp == NVCV_INTERP_AREA)
+    {
+        _Resize<float, 0.0f, 255.0f>(hDst, dstStep, dstSize, hSrc, srcStep, srcSize, fmt, interp, isVarShape);
+    }
+}
+
+void ResizedCrop(std::vector<float> &hDst, int dstRowStride, nvcv::Size2D dstSize, const std::vector<float> &hSrc,
+                 int srcRowStride, nvcv::Size2D srcSize, int top, int left, int crop_rows, int crop_cols,
+                 nvcv::ImageFormat fmt, NVCVInterpolationType interp)
+{
+    int dstStep = dstRowStride / sizeof(float);
+    int srcStep = srcRowStride / sizeof(float);
+
+    if (interp == NVCV_INTERP_NEAREST || interp == NVCV_INTERP_LINEAR || interp == NVCV_INTERP_CUBIC)
+    {
+        _ResizedCrop<float, 0.0f, 255.0f>(hDst, dstStep, dstSize, hSrc, srcStep, srcSize, top, left, crop_rows,
+                                          crop_cols, fmt, interp);
     }
 }
 

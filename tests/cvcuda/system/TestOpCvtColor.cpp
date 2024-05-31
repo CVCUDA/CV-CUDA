@@ -171,7 +171,7 @@ test::ValueList<int, int, int, NVCVImageFormat, NVCVImageFormat, NVCVColorConver
     //     Codes 109, 110, 113, 114 dealing with VYUY format are not implemented
     //     Codes 125, 126 dealing alpha premultiplication are not implemented
     //     Codes 135 to 139 dealing edge-aware demosaicing are not implemented
-/*
+
     // NV12, ... makes tensors raise an error:
     // "NVCV_ERROR_NOT_IMPLEMENTED: Batch image format must not have subsampled planes, but it is: X"
     { 120,  20,  2,    NVCV_IMAGE_FORMAT_NV12,   NVCV_IMAGE_FORMAT_RGB8,  NVCV_COLOR_YUV2RGB_NV12,  NVCV_COLOR_RGB2YUV_NV12, 128.0},
@@ -182,9 +182,11 @@ test::ValueList<int, int, int, NVCVImageFormat, NVCVImageFormat, NVCVColorConver
     { 160,  60,  5,    NVCV_IMAGE_FORMAT_NV21,   NVCV_IMAGE_FORMAT_BGR8,  NVCV_COLOR_YUV2BGR_NV21,  NVCV_COLOR_BGR2YUV_NV21, 128.0},
     {  60, 100,  4,    NVCV_IMAGE_FORMAT_NV21,  NVCV_IMAGE_FORMAT_RGBA8, NVCV_COLOR_YUV2RGBA_NV21, NVCV_COLOR_RGBA2YUV_NV21, 128.0},
     {  80,  80,  3,    NVCV_IMAGE_FORMAT_NV21,  NVCV_IMAGE_FORMAT_BGRA8, NVCV_COLOR_YUV2BGRA_NV21, NVCV_COLOR_BGRA2YUV_NV21, 128.0},
+/*
     { 120,  40,  2,    NVCV_IMAGE_FORMAT_UYVY,   NVCV_IMAGE_FORMAT_RGB8,  NVCV_COLOR_YUV2RGB_UYVY,       NVCV_COLOR_RGB2YUV, 128.0},
     { 120,  40,  2,    NVCV_IMAGE_FORMAT_YUYV,   NVCV_IMAGE_FORMAT_RGB8,  NVCV_COLOR_YUV2RGB_YUYV,       NVCV_COLOR_RGB2YUV, 128.0},
 */
+
     // Code 148 is not implemented
 });
 
@@ -322,6 +324,13 @@ TEST_P(OpCvtColor, varshape_correct_output)
 
     nvcv::ImageFormat srcFormat{GetParamValue<3>()};
     nvcv::ImageFormat dstFormat{GetParamValue<4>()};
+
+    // Waive the formats that have subsampled planes
+    if (srcFormat.chromaSubsampling() != nvcv::ChromaSubsampling::CSS_444
+        || dstFormat.chromaSubsampling() != nvcv::ChromaSubsampling::CSS_444)
+    {
+        GTEST_SKIP() << "Waived the formats that have subsampled planes for OpCvtColor varshape test";
+    }
 
     NVCVDataType nvcvDataType;
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetPlaneDataType(srcFormat, 0, &nvcvDataType));

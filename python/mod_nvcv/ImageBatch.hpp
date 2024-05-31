@@ -55,7 +55,7 @@ public:
     Size2D     maxSize() const;
 
     void pushBack(Image &img);
-    void pushBackMany(std::vector<std::shared_ptr<Image>> &imgList);
+    void pushBackMany(const std::vector<std::shared_ptr<Image>> &imgList);
     void popBack(int imgCount);
     void clear();
 

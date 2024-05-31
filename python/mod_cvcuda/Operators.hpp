@@ -99,6 +99,7 @@ void ExportOpLabel(py::module &m);
 void ExportOpPairwiseMatcher(py::module &m);
 void ExportOpStack(py::module &m);
 void ExportOpFindHomography(py::module &m);
+void ExportOpResizeCropConvertReformat(py::module &m);
 
 // Helper class that serves as generic python-side operator class.
 // OP: native operator class

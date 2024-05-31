@@ -19,7 +19,7 @@
 # Usage: build_docs.sh [build folder]
 
 build_type="release"
-build_dir="build"
+build_dir="build-rel"
 
 if [[ $# -ge 1 ]]; then
    build_dir=$1

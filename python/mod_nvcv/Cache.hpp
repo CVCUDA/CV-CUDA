@@ -76,6 +76,12 @@ public:
     void removeAllNotInUseMatching(const IKey &key);
 
     std::vector<std::shared_ptr<CacheItem>> fetch(const IKey &key) const;
+    std::shared_ptr<CacheItem>              fetchOne(const IKey &key) const;
+
+#ifndef NDEBUG
+    // Make this function available only in Debug builds
+    void dbgPrintCacheForKey(const IKey &key, const std::string &prefix = "");
+#endif
 
     template<class T>
     std::vector<std::shared_ptr<T>> fetchAll() const

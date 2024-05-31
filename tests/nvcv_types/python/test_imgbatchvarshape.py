@@ -13,10 +13,44 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import nvcv
-import pytest as t
 import numpy as np
+import nvcv
 import nvcv_util as util
+import pytest as t
+import torch
+
+import cvcuda
+
+
+def test_imgbatchvarshape_are_cached():
+    created_ids = set()
+
+    # Create first VarShape
+    pt_imgs = []
+    for n in range(2):
+        pt_img = torch.rand((1 + n, 2 + n), dtype=torch.float32, device="cuda")
+        pt_imgs.append(pt_img)
+
+    batch = cvcuda.as_images(pt_imgs)
+
+    for img in batch:
+        created_ids.add(img.id)
+    del img
+    del batch
+
+    # Create more VarShapes, that reuse cache
+    for i in range(50):
+        pt_imgs = []
+        for _ in range(2):
+            pt_img = torch.rand((1 + i, 2 + i), dtype=torch.float32, device="cuda")
+            pt_imgs.append(pt_img)
+
+        batch = cvcuda.as_images(pt_imgs)
+
+        for img in batch:
+            assert img.id in created_ids
+        del img
+        del batch
 
 
 def test_imgbatchvarshape_creation_works():
@@ -151,3 +185,22 @@ def test_wrap_buffer_list(base_shape, dt, format):
         assert images[i].width == sh[1]
         assert images[i].height == sh[0]
         assert images[i].format == format
+
+
+def test_imgbatchvarshape_wrapper_nodeletion():
+    """
+    Check if imgbatchvarshape wrappers deletes memory that's not ours.
+    """
+
+    # run twice, first run is without cache re-usage, second is with cache re-usage
+    for i in range(2):
+        np_img = np.random.rand(1 + i, 2 + i).astype(np.float32)
+        pt_img = torch.from_numpy(np_img).cuda()
+
+        batch = cvcuda.as_images([pt_img])
+        del batch
+
+        try:
+            assert (pt_img.cpu().numpy() == np_img).all()
+        except RuntimeError:
+            assert False, "Invalid memory"

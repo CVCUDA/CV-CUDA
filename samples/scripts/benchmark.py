@@ -20,10 +20,14 @@ import pycuda.driver as cuda  # noqa: F401
 import os
 import sys
 import json
+import time
 import logging
 import argparse
 import subprocess
+import numpy as np
+import pandas as pd
 import multiprocessing as mp
+import matplotlib.pyplot as plt
 
 common_dir = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -37,7 +41,7 @@ from perf_utils import maximize_clocks, reset_clocks  # noqa: E402
 
 class NvtxRangeTimeInfo:
     """
-    A class encapsulating the time information associated with an NVTX range.
+    A data class to hold the time information of an NVTX range.
     """
 
     def __init__(self, start_ms, end_ms):
@@ -58,7 +62,7 @@ class NvtxRangeTimeInfo:
 
 class NvtxRange:
     """
-    A class representing an NVTX range with its timing information.
+    A data class representing an NVTX range with its CPU and GPU time information.
     """
 
     def __init__(
@@ -395,116 +399,156 @@ def calc_mean_ranges(all_range_info):
     return mean_range_info
 
 
-class MeanDictInfo:
+class NumpyValuesEncoder(json.JSONEncoder):
     """
-    A small data structure to help track various stats over multiple dictionaries.
-    For example, we can use to create one dictionary that represents the sum of
-    many dictionaries. In that, this data structure can track the total value
-    (i.e the sum) and how many items were added into making that sum (i.e len).
+    Helps encode various Numpy data-types correctly in the JSON encoder.
     """
 
-    def __init__(self, value):
-        self.value = value
-        self.len = 0
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super(NumpyValuesEncoder, self).default(obj)
 
 
-def recurse_sum_dict(input_dict, target_dict):
+def recurse_gather_dict(input_dict, target_dict):
     """
-    Recursively sums up value of all keys of input_dict in another dictionary.
-    This is useful for computing the total (or the mean eventually) of all the
-    keys in a dictionary.
-    This function uses and inserts a special object `MeanDictInfo` as values of
-    the leaf nodes. That object is useful to track not just the sum total values
-    but also how many items were summed up in there.
+    Recursively gathers values of all keys of input_dict in another dictionary.
+    This is useful for computing various stats on the data such as mean, median or
+    std-dev of all the keys in a dictionary.
+    This function collects data in a list.
     :param input_dict: The dictionary that should be used as input.
     :param target_dict: The single dictionary in which all the sums should be gathered.
     """
+    assert type(input_dict) is type(target_dict)
+    assert isinstance(input_dict, dict)
     # Loop over all the keys in the input dictionary.
     for key in input_dict:
+        if key in ["total_items", "total_items_warmup", "total_items_minus_warmup"]:
+            continue  # We skip these key.
+
         # Check if the value is another dictionary.
-        if isinstance(input_dict[key], dict):
+        elif isinstance(input_dict[key], dict):
             # Create this if our target_dict did not already have it.
             if key not in target_dict:
                 target_dict[key] = {}
 
             # Recurse the same function again.
-            recurse_sum_dict(input_dict[key], target_dict[key])
+            recurse_gather_dict(input_dict[key], target_dict[key])
 
-        # Check if the value is a list or tuple.
+        # Check if the value is a list or tuple. We will store inside a list of lists.
         elif isinstance(input_dict[key], list) or isinstance(input_dict[key], tuple):
-
-            # Create this if our target_dict did not already have it. Instead
-            # of saving just the sums, we will save both, the sum and the len
-            # telling us how many numbers were summed up. We use the MeanDictInfo
-            # object for this.
+            # Create this if our target_dict did not already have it.
             if key not in target_dict:
-                target_dict[key] = MeanDictInfo(value=[])
+                target_dict[key] = []
                 for _ in range(len(input_dict[key])):
-                    target_dict[key].value.append(0)
+                    target_dict[key].append([])  # This creates list of lists.
 
             for i in range(len(input_dict[key])):
-                target_dict[key].value[i] += input_dict[key][i]
+                target_dict[key][i].append(input_dict[key][i])
 
-            # Increment the length.
-            target_dict[key].len += 1
-
-        # For anything else, we assume it was a number.
+        # For anything else, we assume it was a number. We will store inside a list.
         else:
             if key not in target_dict:
-                target_dict[key] = MeanDictInfo(value=0)
+                target_dict[key] = []
 
-            target_dict[key].value += input_dict[key]
-            target_dict[key].len += 1
+            target_dict[key].append(input_dict[key])
 
 
-def recurse_divide_dict(input_dict, divide_by=None):
+def recurse_calc_stats_dict(
+    input_dict,
+    compute_mean_only=False,
+    compute_throughput=False,
+    throughput_multiplier=1,
+):
     """
-    Recursively divides the value of all keys of input_dict.
-    The denominator can be a fixed value `divide_by` or it can be dynamically
-    inferred from the length attributes of the MeanDictInfo object.
+    Recursively calculates various stats on the value of all keys of input_dict.
     :param input_dict: The dictionary that should be used as input.
-    :param divide_by: Optional value to use in the denominator.
+    :param compute_mean_only: A flag indicating whether only the mean should be computed or not.
+     Computes a lot of other stats (e.g. median, min, max...) if set to False.
+    :param compute_throughput: A flag indicating whether throughput should be computed or not.
+     Only set to True when running in parallel with all resources maximized otherwise throughput
+     calculation may give incorrect results.
+    :param throughput_multiplier: A number with which the throughput is multiplied to calculate the
+     total throughput. Usually set to the number of parallel processes or threads executing in parallel.
     """
     # Loop over all the keys in the input dictionary.
-    for key in input_dict:
+    for key in list(input_dict.keys()):
         # Check if the value is another dictionary.
         if isinstance(input_dict[key], dict):
-            recurse_divide_dict(input_dict[key], divide_by)
-
-        # Check if the value is a MeanDictInfo object.
-        elif isinstance(input_dict[key], MeanDictInfo):
-            if isinstance(input_dict[key].value, list) or isinstance(
-                input_dict[key].value, tuple
-            ):
-                # Use the user given divide by if supplied or else use the len
-                divide_by = divide_by if divide_by else input_dict[key].len
-
-                for i in range(len(input_dict[key].value)):
-                    input_dict[key].value[i] /= divide_by
-                    input_dict[key].value[i] = round(input_dict[key].value[i], 4)
-            else:
-                divide_by = divide_by if divide_by else input_dict[key].len
-
-                input_dict[key].value /= divide_by
-                input_dict[key].value = round(input_dict[key].value, 4)
-
-            # Remove the MeanDictInfo object and store the value directly.
-            input_dict[key] = input_dict[key].value
-
-        elif isinstance(input_dict[key], list) or isinstance(input_dict[key], tuple):
-            if divide_by is None:
-                raise ValueError(
-                    "divide_by must not be None when the values of the dictionary are "
-                    "not MeanDictInfo objects."
-                )
-
-            for i in range(len(input_dict[key].value)):
-                input_dict[key][i] /= divide_by
-                input_dict[key][i] = round(input_dict[key][i], 4)
+            recurse_calc_stats_dict(
+                input_dict[key],
+                compute_mean_only,
+                compute_throughput,
+                throughput_multiplier,
+            )
 
         else:
-            input_dict[key] /= divide_by
-            input_dict[key] = round(input_dict[key], 4)
+            assert isinstance(input_dict[key], list)
+
+            # Compute all stats.
+            if compute_mean_only:
+                stats_dict = {
+                    "total_items": len(input_dict[key]),
+                    "mean": round(np.mean(input_dict[key], axis=-1), 4),
+                }
+            else:
+                stats_dict = {
+                    "total_items": len(input_dict[key]),
+                    "min": round(np.min(input_dict[key], axis=-1), 4),
+                    "max": round(np.max(input_dict[key], axis=-1), 4),
+                    "mean": round(np.mean(input_dict[key], axis=-1), 4),
+                    "std": round(np.std(input_dict[key], axis=-1), 4),
+                    "median": round(np.median(input_dict[key], axis=-1), 4),
+                    "percentile_95": round(
+                        np.percentile(input_dict[key], 95, axis=-1), 4
+                    ),
+                }
+
+                if compute_throughput:
+                    throughput_unit = (
+                        "frames_per_second"
+                        if "_per_item" in key
+                        else "batches_per_second"
+                    )
+                    stats_dict["throughput"] = {
+                        "multiplier": throughput_multiplier,
+                        "unit": throughput_unit,
+                        # NOTE: Minimum throughput corresponds to maximum latency.
+                        "min": round(
+                            1000 * throughput_multiplier / stats_dict["max"], 2
+                        )
+                        if stats_dict["max"] > 0
+                        else 0,
+                        # NOTE: Maximum throughput corresponds to minimum latency.
+                        "max": round(
+                            1000 * throughput_multiplier / stats_dict["min"], 2
+                        )
+                        if stats_dict["min"] > 0
+                        else 0,
+                        "mean": round(
+                            1000 * throughput_multiplier / stats_dict["mean"], 2
+                        )
+                        if stats_dict["mean"] > 0
+                        else 0,
+                        "median": round(
+                            1000 * throughput_multiplier / stats_dict["median"], 2
+                        )
+                        if stats_dict["median"] > 0
+                        else 0,
+                        "percentile_95": round(
+                            1000 * throughput_multiplier / stats_dict["percentile_95"],
+                            2,
+                        )
+                        if stats_dict["percentile_95"] > 0
+                        else 0,
+                    }
+
+            # Assign in-place.
+            input_dict[key] = stats_dict
 
 
 def unflatten_process_benchmark_dict(benchmark_dict, warmup_batches):
@@ -556,7 +600,7 @@ def unflatten_process_benchmark_dict(benchmark_dict, warmup_batches):
     #           }
     #       }
     #
-    # 4. Finally, it computes what we call as the mean values of the timings from all
+    # 4. Finally, it computes various stats (e.g mean, median) of the timings from all
     #    the batches. In other words, it computes how much range X would take on an
     #    average when it is averaged across all the batches. To do this, we again use
     #    the information present inside benchmark.json and apply basic recursion math.
@@ -638,6 +682,29 @@ def unflatten_process_benchmark_dict(benchmark_dict, warmup_batches):
                     current_dict[parts[-1]]["gpu_time"] / batch_size, 4
                 )
 
+            # Pass the total_items information to all the children of this batch
+            # i.e. keys which were present in inside_batch_info
+            # unless they already had it before (i.e. very weird case where someone
+            # inserted a batch in a batch with different inner batch size).
+            def _recurse_update_children_total_items(in_dict):
+                for k in list(in_dict.keys()):
+                    if isinstance(in_dict[k], dict):
+                        _recurse_update_children_total_items(in_dict[k])
+                    else:
+                        # Add total items if not already present.
+                        if "total_items" not in in_dict:
+                            in_dict["total_items"] = batch_size
+                            in_dict["cpu_time_per_item"] = round(
+                                in_dict["cpu_time"] / batch_size, 4
+                            )
+                            in_dict["gpu_time_per_item"] = round(
+                                in_dict["gpu_time"] / batch_size, 4
+                            )
+
+            # Apply it.
+            if batch_size > 0:
+                _recurse_update_children_total_items(current_dict[parts[-1]])
+
             # Maintain global counts of various batch level stats
             # for example, counting the total items seen at this
             # batch level.
@@ -673,7 +740,7 @@ def unflatten_process_benchmark_dict(benchmark_dict, warmup_batches):
 
         elif path in benchmark_dict["inside_batch_info"]:
             # We could be inside a batch. Nothing to do here. We won't have the total_items yet
-            # at this level
+            # at this level. We will update it when we come on a parent level.
             pass
         else:
             # We are one or more levels outside/above the batch level.
@@ -725,6 +792,14 @@ def unflatten_process_benchmark_dict(benchmark_dict, warmup_batches):
     for batch_level_prefix in batch_dicts:
         batch_dict = batch_dicts[batch_level_prefix]
 
+        batch_dict["total_items_warmup"] = (
+            batch_dict["total_items"] - total_items_minus_warmup[batch_level_prefix]
+        )
+
+        batch_dict["total_items_minus_warmup"] = total_items_minus_warmup[
+            batch_level_prefix
+        ]
+
         batch_dict["cpu_time_minus_warmup"] = round(
             (batch_dict["cpu_time"] - total_warmup_cpu_time[batch_level_prefix]), 4
         )
@@ -747,15 +822,11 @@ def unflatten_process_benchmark_dict(benchmark_dict, warmup_batches):
                 4,
             )
 
-        batch_dict["total_items_minus_warmup"] = total_items_minus_warmup[
-            batch_level_prefix
-        ]
-
     # The processing is over. So we assign the expanded version of data into the
     # original benchmark dictionary.
     benchmark_dict["data"] = unfltten_data_dict
 
-    # Finally, process the batches to find out the mean batch timings.
+    # Finally, process the batches to calculate various stats on the batch timings.
     # i.e. how much did range X took on an average across all the batches.
     # Again, we will not use any batches that are warm-up batches in this calculation.
     # For this to happen, we need to rely on the batch_info keys. Those are the
@@ -772,8 +843,7 @@ def unflatten_process_benchmark_dict(benchmark_dict, warmup_batches):
     #            during all the batches. Our division logic takes care of properly
     #            dividing with the current count anyway.
     #
-    mean_data = {}
-    total_batches_used = 0
+    data_stats = {}
     for batch_range_name in benchmark_dict["batch_info"]:
         batch_idx, batch_size = benchmark_dict["batch_info"][batch_range_name]
         # Next, we find out the batch level prefix. This is the key in which
@@ -801,28 +871,26 @@ def unflatten_process_benchmark_dict(benchmark_dict, warmup_batches):
             and (batch_idx + 1 + warmup_batches)
             <= benchmark_dict["meta"]["total_batches"][batch_level_prefix]
         ):
-            # Keep on updating the mean_data dictionary. This will
-            # create a dictionary that is union of all the dicts of the batch level.
+            # Keep on updating the data_stats dictionary. This will
+            # create a dictionary that is union of all the dictionaries of the batch level.
             nested_keys = batch_range_name.split("/")
-            target_dict = benchmark_dict["data"]
+            source_dict = benchmark_dict["data"]
             for k in nested_keys:
-                target_dict = target_dict[k]
+                source_dict = source_dict[k]
 
-            # Need to recursively update the mean_data based on
-            # the target_dict. We will sum the values up.
-            if batch_level_prefix not in mean_data:
-                mean_data[batch_level_prefix] = {}
+            # Need to recursively update the data_stats based on
+            # the source_dict. We will sum the values up.
+            if batch_level_prefix not in data_stats:
+                data_stats[batch_level_prefix] = {}
 
-            recurse_sum_dict(target_dict, mean_data[batch_level_prefix])
-            total_batches_used += 1
+            recurse_gather_dict(source_dict, target_dict=data_stats[batch_level_prefix])
 
-    # Once all the sums are calculated, we need to divide by the length to figure
+    # Once all the numbers are gathered, we need to divide by the length to figure
     # out the mean values.
-    recurse_divide_dict(mean_data)
-    benchmark_dict["mean_data"] = mean_data
+    recurse_calc_stats_dict(data_stats)
+    benchmark_dict["data_stats_minus_warmup"] = data_stats
 
     # Remove the batch_info and inside_batch_info keys as they are no longer needed.
-    del benchmark_dict["batch_info"]
     del benchmark_dict["inside_batch_info"]
 
 
@@ -862,7 +930,7 @@ def benchmark_script(
 
     # Setup the command that will launch nsys and ask it to benchmark the script
     # that we were interested in.
-    nsys_root_path = "/opt/nvidia/nsight-systems/2023.2.1/"
+    nsys_root_path = "/opt/nvidia/nsight-systems/2024.2.1/"
     nsys_binary_path = os.path.join(nsys_root_path, "bin/nsys")
     nsys_reports_path = os.path.join(nsys_root_path, "target-linux-x64/reports")
     nsys_gpu_proj_trace_report_path = os.path.join(
@@ -874,7 +942,7 @@ def benchmark_script(
 
     if not os.path.isfile(nsys_binary_path):
         raise ValueError(
-            "Unable to locate nsys binary at %s. Make sure you have nsight-systems 2023.2.1 installed."
+            "Unable to locate nsys binary at %s. Make sure you have nsight-systems 2024.2.1 installed."
             % nsys_binary_path
         )
 
@@ -953,9 +1021,6 @@ def benchmark_script(
     all_range_info = merge_cpu_and_gpu_ranges(cpu_range_info, gpu_range_info)
     # Calculate averages across processes/threads
     mean_ranges_info = calc_mean_ranges(all_range_info)
-    # and save it.
-    with open(os.path.join(output_dir, "perf_report_nvtx_mean.json"), "w") as f:
-        f.write(json.dumps(mean_ranges_info, indent=4))
 
     # Final step is to pull the data from the all_range_info we generated above and fill
     # it in the benchmark_dict.
@@ -974,14 +1039,98 @@ def benchmark_script(
 
     # Write the updated benchmark dictionary.
     with open(benchmark_json_path, "w") as f:
-        f.write(json.dumps(benchmark_dict, indent=4))
+        f.write(json.dumps(benchmark_dict, indent=4, cls=NumpyValuesEncoder))
+
+    # Delete the temporary files.
+    os.remove(os.path.join(output_dir, "perf_report_nvtx_pushpop_trace.json"))
+    os.remove(os.path.join(output_dir, "perf_report_nvtx_gpu_proj_trace.json"))
+    os.remove(os.path.join(output_dir, "perf_report.sqlite"))
 
     return 0, output_dir
 
 
+def monitor_gpu_metrics(list_of_device_ids, terminate_event, gpu_metrics_info):
+    """
+    Monitors various GPU metrics directly from NVIDIA-smi. These metrics are not accessible
+    from NSYS as of now. The monitoring stays on until an event is received.
+    :param list_of_device_ids: A list of string values of the GPU-ids that are being used in this
+    benchmark run.
+    :param terminate_event: An event that can mark an end of the monitoring process.
+    :param gpu_metrics_info: A multiprocessing share dictionary to store the results of monitoring.
+    """
+    # Initialize the gpu_metrics_info dictionary for the first time. We will save the
+    # following pieces of information per GPU.
+    # 1) The total GPU power drawn in Watts
+    # 2) The GPU utilization in %.
+
+    # We will work in a local dictionary first. Only when we are done that we would
+    # transfer its contents to the mp managed dictionary. Because otherwise the mp
+    # managed dictionary has no way of knowing when a nested key-value changes and it
+    # won't update/save it.
+    gpu_metrics_info_local = {"power.draw.watts": {}, "utilization.gpu": {}}
+    for device_id in list_of_device_ids:
+        gpu_metrics_info_local["power.draw.watts"]["GPU: %s" % device_id] = []
+        gpu_metrics_info_local["utilization.gpu"]["GPU: %s" % device_id] = []
+
+    # Begin the monitoring loop. Continue till we are asked to stopped by the event.
+    while not terminate_event.is_set():
+        # Use nvidia-smi to get power draw and GPU utilization numbers for all GPUs.
+        proc_ret = subprocess.run(
+            [
+                "nvidia-smi",
+                "-i=%s" % ",".join(list_of_device_ids),
+                "--query-gpu=power.draw,utilization.gpu",
+                "--format=csv,nounits,noheader",
+            ],
+            stdout=subprocess.PIPE,
+        )
+        if proc_ret.returncode == 0:
+            outputs = proc_ret.stdout.decode().strip().split("\n")
+            for idx, device_id in enumerate(list_of_device_ids):
+                power_draw, gpu_util = outputs[idx].split(",")
+                power_draw = float(power_draw)
+                gpu_util = float(gpu_util)
+
+                gpu_metrics_info_local["power.draw.watts"][
+                    "GPU: %s" % device_id
+                ].append(power_draw)
+                gpu_metrics_info_local["utilization.gpu"]["GPU: %s" % device_id].append(
+                    gpu_util
+                )
+        else:
+            for device_id in list_of_device_ids:
+                gpu_metrics_info_local["power.draw.watts"][
+                    "GPU: %s" % device_id
+                ].append(0.0)
+                gpu_metrics_info_local["utilization.gpu"]["GPU: %s" % device_id].append(
+                    0.0
+                )
+
+        # Sleep a bit
+        time.sleep(0.5)  # 500 milliseconds
+
+    # Update the mp managed dictionary
+    gpu_metrics_info.update(gpu_metrics_info_local)
+
+
+def plot_gpu_metrics(gpu_metrics_info, output_dir):
+    """
+    Plots GPU metrics as a matplotlib plot.
+    """
+    for metric_name in gpu_metrics_info:
+        # Create pandas data frame.
+        df = pd.DataFrame(gpu_metrics_info[metric_name])
+        ax = df.plot(title=metric_name)
+        ax.set_xlabel("Execution time")
+        ax.set_ylabel(metric_name)
+        fig = ax.get_figure()
+        fig.savefig(os.path.join(output_dir, "plot.%s.jpg" % metric_name))
+        plt.close(fig)
+
+
 def main():
     parser = argparse.ArgumentParser(
-        "Performance benchmarking script for CV-CUDA samples.",
+        "Performance benchmarking script for CV-CUDA.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
@@ -1072,17 +1221,38 @@ def main():
         )
 
     # Maximize the clocks.
-    if args.maximize_clocks:
-        (
-            did_maximize_clocks,
-            was_persistence_mode_on,
-            current_power_limit,
-        ) = maximize_clocks(logger)
+    clocks_info = []
+    all_device_ids = []
+    for gpu_idx in range(args.num_gpus):
+        device_id = args.gpu_offset_id + gpu_idx
 
-    # Start multiple processes, per num_processes per num_gpus.
+        all_device_ids.append(str(device_id))
+        if args.maximize_clocks:
+            (
+                did_maximize_clocks,
+                was_persistence_mode_on,
+                current_power_limit,
+            ) = maximize_clocks(logger, device_id)
+            clocks_info.append((was_persistence_mode_on, current_power_limit))
+
+    # We will start multiple processes, per num_processes per num_gpus in Pool to run the benchmarks.
     pool = mp.Pool()
+    # Create an event to signal other processes (e.g. monitor_gpu_metrics to stop when main pool has stopped)
+    pool_terminate_event = mp.Event()
+    # Create a shared dict to retrieve the results of monitor_gpu_metrics
+    mp_manager = mp.Manager()
+    gpu_metrics_info = mp_manager.dict()
+    # Finally allocate a list to store the Pool's process's results.
     results = []
 
+    # Begin by starting one process to keep on monitoring various GPU metrics that are not available via NSYS.
+    gpu_metric_monitor_proc = mp.Process(
+        target=monitor_gpu_metrics,
+        args=(all_device_ids, pool_terminate_event, gpu_metrics_info),
+    )
+    gpu_metric_monitor_proc.start()
+
+    # Then we start the multiprocessing Pool.
     for gpu_idx in range(args.num_gpus):
         for process_idx in range(args.num_processes):
             # Since each the output of each process needs to be stored in a different directory,
@@ -1124,58 +1294,162 @@ def main():
     pool.close()
     pool.join()
 
+    # Set the terminate event so other processes know that the Pool has finished.
+    pool_terminate_event.set()
+    # Wait for the gpu_metric_monitor process to finish.
+    gpu_metric_monitor_proc.join()
+
     # Reset the clocks.
     if args.maximize_clocks:
-        reset_clocks(
-            logger,
-            was_persistence_mode_on,
-            current_power_limit,
-        )
+        for gpu_idx in range(args.num_gpus):
+            device_id = args.gpu_offset_id + gpu_idx
+
+            was_persistence_mode_on, current_power_limit = clocks_info[gpu_idx]
+
+            reset_clocks(
+                logger,
+                device_id,
+                was_persistence_mode_on,
+                current_power_limit,
+            )
     else:
         logger.warning("Clocks were not maximized during this run.")
 
-    # Now we need to calculate the average of all the perf-numbers.
-    # This means average across all the processes that we had launched.
-    # This can only be done if all processes finished without error.
-    # So we will check that first and if that is the case, we will
-    # read their benchmark.json data in a list to later calculate
-    # the average.
-    all_benchmark_data_dicts = []
-    all_benchmark_mean_batch_dicts = []
+    # We must create a copy of gpu_metrics_info to detach it from multiprocessing.
+    gpu_metrics_info = gpu_metrics_info.copy()
+
+    # Plot the GPU metrics.
+    plot_gpu_metrics(gpu_metrics_info, args.output_dir)
+
+    # Now we need to :
+    # 1) Write the gpu_metrics_info in to the benchmark.json files stored per
+    #    process and
+    # 2) Calculate various stats at the all processes level.
+    #    e.g. If we ran 1 or more processes, there will be a benchmark_mean.json
+    #    created in the output root folder with mean and other stats computed from
+    #    all benchmark.json files of all the processes.
+    #    This can only be done if all processes finished without error.
+    #    So we will check that first and if that is the case, we will
+    #    read their benchmark.json data in a list to later calculate various stats.
+    all_data_dicts = []
     for r in results:
         # Grab the return result from the pool.
         proc_ret_code, proc_output_dir = r.get()
         if proc_ret_code:
             # Any non-zero return code mean the process failed.
             raise Exception(
-                "Failed to execute process: %d on gpu: %d" % (process_idx, gpu_idx)
+                "Process: %d on gpu: %d exited with a non-zero return code: %d"
+                % (process_idx, gpu_idx, proc_ret_code)
             )
         else:
             # Zero return code means success. Read the benchmark.json.
             with open(os.path.join(proc_output_dir, "benchmark.json"), "r") as f:
                 benchmark_dict = json.loads(f.read())
 
-            # Append to our list of data dict and mean_batch data dict
-            all_benchmark_data_dicts.append(benchmark_dict["data"])
-            all_benchmark_mean_batch_dicts.append(benchmark_dict["mean_data"])
+            # Update this benchmark dict with GPU metrics for this GPU id.
+            for metric_name in gpu_metrics_info:
+                device_id_of_this_proc = benchmark_dict["meta"]["device"]["id"]
+                benchmark_dict["gpu_metrics"][metric_name] = gpu_metrics_info[
+                    metric_name
+                ]["GPU: %d" % device_id_of_this_proc]
 
-    mean_all_batch_data = {}
-    mean_data = {}
+            with open(os.path.join(proc_output_dir, "benchmark.json"), "w") as f:
+                f.write(json.dumps(benchmark_dict, indent=4, cls=NumpyValuesEncoder))
 
-    # First recursively sum up all values from all dictionaries.
-    for data_dict in all_benchmark_data_dicts:
-        recurse_sum_dict(data_dict, mean_all_batch_data)
-    # And then divide by the length to get the mean values.
-    recurse_divide_dict(mean_all_batch_data)
+            # Append to our list of data dict.
+            all_data_dicts.append(benchmark_dict["data"])
 
-    for mean_batch_dict in all_benchmark_mean_batch_dicts:
-        recurse_sum_dict(mean_batch_dict, mean_data)
-    # And then divide by the length to get the mean values.
-    recurse_divide_dict(mean_data)
+    # 1) Compute mean of the data field from all processes...
+    data_mean_all_procs = {}
+    # First recursively collect all values from all the data dictionaries of all processes.
+    for data_dict in all_data_dicts:
+        recurse_gather_dict(data_dict, data_mean_all_procs)
+    # And then compute just the mean over this.
+    recurse_calc_stats_dict(data_mean_all_procs, compute_mean_only=True)
+
+    # 2) Compute various stats of the data_stats_minus_warmup field from all processes...
+    # Now compute all the stats (such as mean, median etc) for all processes from all numbers.
+    # NOTE: We have already computed these stats per process in the benchmark.json's
+    # data_stats_minus_warmup field. This time, we want to do it over all the processes. Instead
+    # of taking mean of those numbers, we will calculate the freshly, combining all data points.
+    # This results in much accurate statistics.
+    # We will use last process's benchmark_dict to use query some important fields such as
+    # batch_info and total_batches etc. This assumes that all processes ran the same code.
+    data_stats_all_procs = {}
+    for batch_range_name in benchmark_dict["batch_info"]:
+        batch_idx, batch_size = benchmark_dict["batch_info"][batch_range_name]
+        # Next, we find out the batch level prefix. This is the key in which
+        # the batches are nested. One profiling session can have multiple levels
+        # at which batches may be used.
+        # e.g.
+        # program_X:
+        #   method_A:
+        #       batch_1
+        #       batch_2
+        #   method_B:
+        #       batch_1
+        #       batch_2
+        #
+        # We need to find mean at these two levels (i.e. method_A and method_B)
+        # in this case.
+        # programA/method_A and program_A/method_B are the batch level prefix here.
+        # We can easily get those by using the dirname method since those are like
+        # the directory names in a path.
+        batch_level_prefix = os.path.dirname(batch_range_name)
+
+        if (
+            batch_size > 0
+            and batch_idx + 1 > args.warmup_batches
+            and (batch_idx + 1 + args.warmup_batches)
+            <= benchmark_dict["meta"]["total_batches"][batch_level_prefix]
+        ):
+            # Keep on updating the data_stats dictionary. This will create a dictionary
+            # that is union of all the dictionaries at the batch level for all processes.
+            nested_keys = batch_range_name.split("/")
+
+            for data_dict in all_data_dicts:
+                source_dict = data_dict
+
+                # Go deep down the nested key path from the root.
+                for k in nested_keys:
+                    source_dict = source_dict[k]
+
+                # Need to recursively update the data_stats_all_procs based on
+                # the source_dict. We will sum the values up.
+                if batch_level_prefix not in data_stats_all_procs:
+                    data_stats_all_procs[batch_level_prefix] = {}
+
+                recurse_gather_dict(
+                    source_dict, target_dict=data_stats_all_procs[batch_level_prefix]
+                )
+
+    # Once all the data points are gathered, we need to divide by the length to figure
+    # out the mean values.
+    recurse_calc_stats_dict(
+        data_stats_all_procs,
+        compute_throughput=True,
+        throughput_multiplier=args.num_gpus * args.num_processes,
+    )
+
+    # 3). Compute stats of of all GPU metrics for all GPUs involved.
+    gpu_metrics_all_procs = {}
+    for metric_name in gpu_metrics_info:
+        gpu_metrics_all_procs[metric_name] = []
+        for device_id in gpu_metrics_info[metric_name]:
+            # Gather all
+            gpu_metrics_all_procs[metric_name].extend(
+                gpu_metrics_info[metric_name][device_id]
+            )
+
+    # Compute stats.
+    recurse_calc_stats_dict(
+        gpu_metrics_all_procs,
+    )
 
     mean_benchmark_data = {
-        "mean_all_batches": mean_all_batch_data,
-        "mean_data": mean_data,
+        "data_mean_all_procs": data_mean_all_procs,
+        "data_stats_minus_warmup_all_procs": data_stats_all_procs,
+        "gpu_metrics_all_procs": gpu_metrics_all_procs,
         "meta": {"args": {}},
     }
     for arg in vars(args):
@@ -1184,7 +1458,7 @@ def main():
     # Write it in a file.
     mean_benchmark_json_path = os.path.join(args.output_dir, "benchmark_mean.json")
     with open(mean_benchmark_json_path, "w") as f:
-        f.write(json.dumps(mean_benchmark_data, indent=4))
+        f.write(json.dumps(mean_benchmark_data, indent=4, cls=NumpyValuesEncoder))
         logger.info(
             "Benchmarking completed successfully. Results saved at: %s"
             % mean_benchmark_json_path
