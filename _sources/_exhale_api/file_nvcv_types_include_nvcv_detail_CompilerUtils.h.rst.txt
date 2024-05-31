@@ -22,9 +22,9 @@ Included By
 -----------
 
 
-- :ref:`file_nvcv_types_include_nvcv_alloc_Allocator.hpp`
-
 - :ref:`file_nvcv_types_include_nvcv_HandleWrapper.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_alloc_Allocator.hpp`
 
 - :ref:`file_nvcv_types_include_nvcv_TensorLayout.h`
 

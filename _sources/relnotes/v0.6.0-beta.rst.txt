@@ -16,7 +16,7 @@
 
 .. _v0.6.0-beta:
 
-Beta.4
+v0.6.0-beta
 ======
 
 CV-CUDA 0.6.0 is a comprehensive update introducing new packaging and documentation enhancements, along with bug fixes and new features.

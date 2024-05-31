@@ -12,7 +12,7 @@ Inheritance Relationships
 Base Type
 *********
 
-- ``public decltypeIsInvocableRF< R, Args... >AddPointer_t``
+- ``public decltypeIsInvocableRFAddPointer_t< Callable >``
 
 
 Struct Documentation

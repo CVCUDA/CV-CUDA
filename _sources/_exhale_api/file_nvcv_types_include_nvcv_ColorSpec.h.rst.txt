@@ -75,19 +75,19 @@ Functions
 ---------
 
 
-- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga694d6157c9929a1f2014793e274a6d1e`
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1gaa51b5f2b207c67e45287f424a253428d`
 
-- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1gafbcbbb5205cd3869087ea97a7d668119`
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga6563f7eed9a6321bcb3ce32fe3ac5823`
 
 - :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga753f84a83d57639776ff8aa4dce6003f`
 
-- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga1391738605d2abe1f125c15c2541cee3`
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga4d928202ff8e533be298b808c4dc64af`
 
 - :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga55487db286283d60dfff32daddb1c042`
 
-- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1gac06d90594ea587776990267dc4b48fb6`
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1gae162f3e90f1ff7a61844bfe568764823`
 
-- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga9a199f79c398ccea154c2288555ffb97`
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1gaa74b234bd3025524d1e06b488abdcbbb`
 
 - :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga10f7eb806c010645c0ef0b55176425b3`
 
@@ -95,7 +95,7 @@ Functions
 
 - :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1gac5846da6b38d638d50cfaa5cfb147273`
 
-- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1gad41cbbcda2847960cf2d16fde5a3bf18`
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1gae7821579da2e01aba50fec36ceb0aed1`
 
 - :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1gada79864a4778fe682c7c569a2047b75c`
 
@@ -111,17 +111,17 @@ Functions
 
 - :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga0fc2dd21cc6872122d44c9ea2e052911`
 
-- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga4e5df541f5b5a9c868f08a6e5b796280`
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1gaa5a4a71f7d3a8365be77d581082e806e`
 
 - :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1gad0e47a619dfacccfb79dabc42415929d`
 
 - :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga23cdb3fc462eb486739041d6d6fd77f2`
 
-- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1gab06dbe8408d5424eed51f924a55fe5bb`
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga77076c77cc3b5ae2033bf269d271e4bb`
 
-- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1gaaf52fa542b346114352e1a66af081749`
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga04bd7df1020506f146f6eaf4bbea3a02`
 
-- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1gab601dc0fd00d9253e8c41c61cab79211`
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga727340c050da26330a398549cd606a69`
 
 
 Defines

@@ -1,0 +1,14 @@
+.. _exhale_variable_namespacenvcv_1ab72ccc902acc97a3dcfb7d148ca2e7eb:
+
+Variable nvcv::TENSOR_NONE
+==========================
+
+.. did not find file this was defined in
+
+
+Variable Documentation
+----------------------
+
+
+.. doxygenvariable:: nvcv::TENSOR_NONE
+   :project: cvcuda

@@ -1,0 +1,66 @@
+
+.. _file_cvcuda_include_cvcuda_OpResizeCropConvertReformat.h:
+
+File OpResizeCropConvertReformat.h
+==================================
+
+
+Defines functions that fuses resize, crop, data type conversion, channel manipulation, and layout reformat operations to optimize pipelines. 
+
+
+Definition (``cvcuda/include/cvcuda/OpResizeCropConvertReformat.h``)
+--------------------------------------------------------------------
+
+
+.. toctree::
+   :maxdepth: 1
+
+   program_listing_file_cvcuda_include_cvcuda_OpResizeCropConvertReformat.h.rst
+
+
+
+
+
+Includes
+--------
+
+
+- ``Operator.h`` (:ref:`file_cvcuda_include_cvcuda_IOperator.hpp`)
+
+- ``Types.h`` (:ref:`file_cvcuda_include_cvcuda_Types.h`)
+
+- ``cuda_runtime.h``
+
+- ``detail/Export.h`` (:ref:`file_cvcuda_include_cvcuda_detail_Export.h`)
+
+- ``nvcv/ImageBatch.h`` (:ref:`file_nvcv_types_include_nvcv_ImageBatch.h`)
+
+- ``nvcv/Rect.h`` (:ref:`file_nvcv_types_include_nvcv_Rect.h`)
+
+- ``nvcv/Size.h`` (:ref:`file_nvcv_types_include_nvcv_Size.h`)
+
+- ``nvcv/Status.h`` (:ref:`file_nvcv_types_include_nvcv_Status.h`)
+
+- ``nvcv/Tensor.h`` (:ref:`file_nvcv_types_include_nvcv_Tensor.h`)
+
+
+
+Included By
+-----------
+
+
+- :ref:`file_cvcuda_include_cvcuda_OpResizeCropConvertReformat.hpp`
+
+
+
+
+Functions
+---------
+
+
+- :ref:`exhale_function_group__NVCV__C__ALGORITHM____RESIZE__CROP_1gacecc5bdbf421ec016cd2ee390d864773`
+
+- :ref:`exhale_function_group__NVCV__C__ALGORITHM____RESIZE__CROP_1ga432fb114aa5750a679dacbb903226106`
+
+- :ref:`exhale_function_group__NVCV__C__ALGORITHM____RESIZE__CROP_1gaffc77a0bebafbd7734acb65d27ef5aa3`
+

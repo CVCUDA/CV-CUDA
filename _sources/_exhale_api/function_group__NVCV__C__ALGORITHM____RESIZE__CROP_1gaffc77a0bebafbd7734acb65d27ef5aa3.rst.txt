@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM____RESIZE__CROP_1gaffc77a0bebafbd7734acb65d27ef5aa3:
+
+Function cvcudaResizeCropConvertReformatVarShapeSubmit
+======================================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpResizeCropConvertReformat.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaResizeCropConvertReformatVarShapeSubmit()
+   :project: cvcuda

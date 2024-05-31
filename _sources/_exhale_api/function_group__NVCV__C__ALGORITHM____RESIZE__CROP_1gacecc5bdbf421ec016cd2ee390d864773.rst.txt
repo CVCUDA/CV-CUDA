@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM____RESIZE__CROP_1gacecc5bdbf421ec016cd2ee390d864773:
+
+Function cvcudaResizeCropConvertReformatCreate
+==============================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpResizeCropConvertReformat.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaResizeCropConvertReformatCreate(NVCVOperatorHandle *)
+   :project: cvcuda

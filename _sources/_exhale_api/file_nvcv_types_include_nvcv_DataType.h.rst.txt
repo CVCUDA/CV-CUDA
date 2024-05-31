@@ -67,7 +67,7 @@ Functions
 
 - :ref:`exhale_function_group__NVCV__C__CORE__DATATYPE_1ga48d3bcc37264345dee3534a463572589`
 
-- :ref:`exhale_function_group__NVCV__C__CORE__DATATYPE_1ga50dcfdfffd3916f59d3d15502676e90a`
+- :ref:`exhale_function_group__NVCV__C__CORE__DATATYPE_1ga0d4612ecd79614ba9829be37ee8f5276`
 
 - :ref:`exhale_function_group__NVCV__C__CORE__DATATYPE_1gacb2f7a3cd7455e2d1c3b4de7b5afdca8`
 

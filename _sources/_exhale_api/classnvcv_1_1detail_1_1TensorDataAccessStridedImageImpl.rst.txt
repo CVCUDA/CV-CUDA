@@ -15,10 +15,9 @@ Base Type
 - ``public nvcv::detail::TensorDataAccessStridedImpl< ShapeInfo >`` (:ref:`exhale_class_classnvcv_1_1detail_1_1TensorDataAccessStridedImpl`)
 
 
-Derived Types
-*************
+Derived Type
+************
 
-- ``public nvcv::detail::TensorDataAccessStridedImagePlanarImpl< TensorShapeInfoImagePlanar >`` (:ref:`exhale_class_classnvcv_1_1detail_1_1TensorDataAccessStridedImagePlanarImpl`)
 - ``public nvcv::detail::TensorDataAccessStridedImagePlanarImpl< ShapeInfo >`` (:ref:`exhale_class_classnvcv_1_1detail_1_1TensorDataAccessStridedImagePlanarImpl`)
 
 

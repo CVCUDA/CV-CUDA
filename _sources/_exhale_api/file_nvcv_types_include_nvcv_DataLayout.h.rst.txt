@@ -80,17 +80,17 @@ Functions
 ---------
 
 
-- :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1ga1899dbfcb7df1e13296a743351a374ee`
+- :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1ga8e1a834b86d96f3ebcc8339ed2327155`
 
-- :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1gae64b3c46d52bf6e3b94fd15f166bb4c6`
+- :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1ga3b8482eecafcbd852a8d068c98370ed8`
 
-- :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1gaddf5db327f262ae83e91809c87687b3c`
+- :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1ga0eaaec777693c7a561a282ebc728c83e`
 
 - :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1ga59cf1b42b124d1609e0a92580b6680ee`
 
 - :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1gafafbe1a554d577a0f6e4dc25a2be224d`
 
-- :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1ga7460e0ccbb6ae87bb60121c94b5fab6f`
+- :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1ga8916485d614491e50e8ed9e46d4f6781`
 
 - :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1ga072a476b4048d3e441b82c08992e06c2`
 
@@ -98,7 +98,7 @@ Functions
 
 - :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1ga9c291974261de0dff88d48f700a67482`
 
-- :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1gad5105dfc06036e4fd6bbcd119c8b9d8e`
+- :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1ga0376845724acb6aee02ae869ab8d1e52`
 
 - :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1ga289eb4bc2407de26ff75bbb325c9cd31`
 
@@ -106,7 +106,7 @@ Functions
 
 - :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1gab2fafb7000f5b319e1989ee59d66b27a`
 
-- :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1gad1f2edc59c04e06de2d8e8f5fa70ba37`
+- :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1gaeb01ea73616947d1aaf74183c17ad436`
 
 - :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1ga71484164072b9661e8ffe3d8646f8630`
 

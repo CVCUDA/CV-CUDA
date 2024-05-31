@@ -39,19 +39,19 @@ Included By
 
 - :ref:`file_nvcv_types_include_nvcv_alloc_Allocator.h`
 
+- :ref:`file_nvcv_types_include_nvcv_detail_CheckError.hpp`
+
 - :ref:`file_nvcv_types_include_nvcv_alloc_Requirements.h`
 
 - :ref:`file_nvcv_types_include_nvcv_Array.h`
+
+- :ref:`file_nvcv_types_include_nvcv_detail_CastsImpl.hpp`
 
 - :ref:`file_nvcv_types_include_nvcv_ColorSpec.h`
 
 - :ref:`file_nvcv_types_include_nvcv_Config.h`
 
 - :ref:`file_nvcv_types_include_nvcv_DataLayout.h`
-
-- :ref:`file_nvcv_types_include_nvcv_detail_CastsImpl.hpp`
-
-- :ref:`file_nvcv_types_include_nvcv_detail_CheckError.hpp`
 
 - :ref:`file_nvcv_types_include_nvcv_Image.h`
 
@@ -61,9 +61,9 @@ Included By
 
 - :ref:`file_nvcv_types_include_nvcv_Tensor.h`
 
-- :ref:`file_nvcv_types_include_nvcv_TensorBatch.h`
-
 - :ref:`file_nvcv_types_include_nvcv_TensorLayout.h`
+
+- :ref:`file_nvcv_types_include_nvcv_TensorBatch.h`
 
 - :ref:`file_cvcuda_include_cvcuda_OpAdaptiveThreshold.h`
 
@@ -152,6 +152,8 @@ Included By
 - :ref:`file_cvcuda_include_cvcuda_OpRemap.h`
 
 - :ref:`file_cvcuda_include_cvcuda_OpResize.h`
+
+- :ref:`file_cvcuda_include_cvcuda_OpResizeCropConvertReformat.h`
 
 - :ref:`file_cvcuda_include_cvcuda_OpRotate.h`
 

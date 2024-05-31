@@ -37,24 +37,24 @@ NVCV currently support three resource types:
 By default, the following functions are used to allocate and deallocate resourcees for these types.
 
 
-Resource type   
-Malloc   
-Free    
+Resource type 
+Malloc 
+Free  
 
 
-host memory   
-malloc   
-free    
+host memory 
+malloc 
+free  
 
 
-cuda memory   
-cudaMalloc   
-cudaFree    
+cuda memory 
+cudaMalloc 
+cudaFree  
 
 
-host pinned memory   
-cudaHostAlloc   
-cudaHostFree   
+host pinned memory 
+cudaHostAlloc 
+cudaHostFree  
 
 
 

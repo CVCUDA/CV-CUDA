@@ -97,6 +97,8 @@ Included By
 
 - :ref:`file_cvcuda_include_cvcuda_OpResize.h`
 
+- :ref:`file_cvcuda_include_cvcuda_OpResizeCropConvertReformat.h`
+
 - :ref:`file_cvcuda_include_cvcuda_OpRotate.h`
 
 - :ref:`file_cvcuda_include_cvcuda_OpThreshold.h`

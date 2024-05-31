@@ -36,9 +36,9 @@ Included By
 
 - :ref:`file_nvcv_types_include_nvcv_Image.h`
 
-- :ref:`file_nvcv_types_include_nvcv_ImageBatchData.h`
-
 - :ref:`file_nvcv_types_include_nvcv_ImageData.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_ImageBatchData.h`
 
 
 

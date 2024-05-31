@@ -32,17 +32,17 @@ Included By
 -----------
 
 
+- :ref:`file_nvcv_types_include_nvcv_HandleWrapper.hpp`
+
 - :ref:`file_nvcv_types_include_nvcv_alloc_Requirements.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_detail_CastsImpl.hpp`
 
 - :ref:`file_nvcv_types_include_nvcv_ColorSpec.hpp`
 
 - :ref:`file_nvcv_types_include_nvcv_Config.hpp`
 
 - :ref:`file_nvcv_types_include_nvcv_DataLayout.hpp`
-
-- :ref:`file_nvcv_types_include_nvcv_detail_CastsImpl.hpp`
-
-- :ref:`file_nvcv_types_include_nvcv_HandleWrapper.hpp`
 
 - :ref:`file_nvcv_types_include_nvcv_TensorLayout.hpp`
 

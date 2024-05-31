@@ -22,7 +22,7 @@ Inheritance Relationships
 Base Type
 *********
 
-- ``public std::exception``
+- ``public exception``
 
 
 Class Documentation

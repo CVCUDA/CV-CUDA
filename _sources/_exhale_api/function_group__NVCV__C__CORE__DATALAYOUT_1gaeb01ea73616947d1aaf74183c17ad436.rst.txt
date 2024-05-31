@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__DATALAYOUT_1gaeb01ea73616947d1aaf74183c17ad436:
+
+Function nvcvSwizzleGetName
+===========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_DataLayout.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvSwizzleGetName(NVCVSwizzle)
+   :project: cvcuda

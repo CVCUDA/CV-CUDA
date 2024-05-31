@@ -30,9 +30,9 @@ Included By
 -----------
 
 
-- :ref:`file_nvcv_types_include_nvcv_alloc_Allocator.hpp`
-
 - :ref:`file_nvcv_types_include_nvcv_detail_Callback.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_alloc_Allocator.hpp`
 
 - :ref:`file_nvcv_types_include_nvcv_Optional.hpp`
 
@@ -56,6 +56,8 @@ Classes
 
 - :ref:`exhale_struct_structnvcv_1_1detail_1_1Conjunction_3_01T_00_01Ts_8_8_8_01_4`
 
+- :ref:`exhale_struct_structnvcv_1_1detail_1_1ConjunctionImpl`
+
 - :ref:`exhale_struct_structnvcv_1_1detail_1_1ConjunctionImpl_3_01false_00_01Ts_8_8_8_01_4`
 
 - :ref:`exhale_struct_structnvcv_1_1detail_1_1ConjunctionImpl_3_01true_00_01Ts_8_8_8_01_4`
@@ -63,6 +65,8 @@ Classes
 - :ref:`exhale_struct_structnvcv_1_1detail_1_1Disjunction`
 
 - :ref:`exhale_struct_structnvcv_1_1detail_1_1Disjunction_3_01T_00_01Ts_8_8_8_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1detail_1_1DisjunctionImpl`
 
 - :ref:`exhale_struct_structnvcv_1_1detail_1_1DisjunctionImpl_3_01false_00_01Ts_8_8_8_01_4`
 

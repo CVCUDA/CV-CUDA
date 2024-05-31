@@ -3,7 +3,7 @@
 Template Struct DisjunctionImpl
 ===============================
 
-.. did not find file this was defined in
+- Defined in :ref:`file_nvcv_types_include_nvcv_detail_TypeTraits.hpp`
 
 
 Struct Documentation

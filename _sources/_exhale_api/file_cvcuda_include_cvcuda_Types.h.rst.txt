@@ -101,6 +101,8 @@ Included By
 
 - :ref:`file_cvcuda_include_cvcuda_OpResize.h`
 
+- :ref:`file_cvcuda_include_cvcuda_OpResizeCropConvertReformat.h`
+
 - :ref:`file_cvcuda_include_cvcuda_OpRotate.h`
 
 - :ref:`file_cvcuda_include_cvcuda_OpSIFT.h`
@@ -148,6 +150,8 @@ Enums
 
 
 - :ref:`exhale_enum_group__NVCV__C__TYPES_1gab5fd5eb713bb7ab84ba02107cd311a21`
+
+- :ref:`exhale_enum_group__NVCV__C__TYPES_1ga400856bc25dfbcdaa16303ad9406c221`
 
 - :ref:`exhale_enum_group__NVCV__C__TYPES_1ga28fdf651b7c4ba680c25ba092331321b`
 

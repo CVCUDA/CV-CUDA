@@ -42,17 +42,17 @@ Included By
 
 - :ref:`file_nvcv_types_include_nvcv_ArrayData.hpp`
 
-- :ref:`file_nvcv_types_include_nvcv_ImageBatch.hpp`
+- :ref:`file_nvcv_types_include_nvcv_ImageData.hpp`
 
 - :ref:`file_nvcv_types_include_nvcv_ImageBatchData.hpp`
 
-- :ref:`file_nvcv_types_include_nvcv_ImageData.hpp`
+- :ref:`file_nvcv_types_include_nvcv_ImageBatch.hpp`
 
 - :ref:`file_nvcv_types_include_nvcv_Tensor.hpp`
 
-- :ref:`file_nvcv_types_include_nvcv_TensorBatchData.hpp`
-
 - :ref:`file_nvcv_types_include_nvcv_TensorData.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_TensorBatchData.hpp`
 
 - :ref:`file_nvcv_types_include_nvcv_TensorLayoutInfo.hpp`
 

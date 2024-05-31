@@ -313,6 +313,8 @@ Functions
 
 - :ref:`exhale_function_namespacenvcv_1a988b6827a1d0fb1c1e128df2199335f9`
 
+- :ref:`exhale_function_namespacenvcv_1aee055d6e69a66715e9517a4d33522156`
+
 - :ref:`exhale_function_namespacenvcv_1adfe7fb628d5bf8f0cbf69c6caeb85f03`
 
 - :ref:`exhale_function_namespacenvcv_1a269a3665d6ab14883b57b88b21a29686`
@@ -323,11 +325,11 @@ Functions
 
 - :ref:`exhale_function_namespacenvcv_1a7287be07a21b89f9f8aeadd615ebff80`
 
-- :ref:`exhale_function_namespacenvcv_1aee055d6e69a66715e9517a4d33522156`
-
 - :ref:`exhale_function_namespacenvcv_1ad0b10330cf7df321cb76eefc93c99067`
 
 - :ref:`exhale_function_namespacenvcv_1a30daa8004f7b1e15b52502c44467bfc1`
+
+- :ref:`exhale_function_namespacenvcv_1aec5b13c9a9a6faca09598d4865e7c450`
 
 - :ref:`exhale_function_namespacenvcv_1a585f9379b49365c9cb0070a8a4632935`
 
@@ -357,13 +359,13 @@ Functions
 
 - :ref:`exhale_function_group__NVCV__CPP__CORE__DATALAYOUT_1ga0dd654a9c1c7f8169651168b2bebe7af`
 
+- :ref:`exhale_function_group__NVCV__CPP__CORE__DATALAYOUT_1gae1fac6c2807849613f695f0b6fc473e3`
+
 - :ref:`exhale_function_group__NVCV__CPP__CORE__DATALAYOUT_1gad6555517721099a61b1e1a760f2bba3e`
 
 - :ref:`exhale_function_group__NVCV__CPP__CORE__DATATYPE_1ga7541e9da66f5f631260f06bcf35ba9cf`
 
 - :ref:`exhale_function_group__NVCV__CPP__CORE__IMAGETYPE_1ga56f4de7779b881c0bc5169ececf5d141`
-
-- :ref:`exhale_function_group__NVCV__CPP__CORE__DATALAYOUT_1gae1fac6c2807849613f695f0b6fc473e3`
 
 - :ref:`exhale_function_namespacenvcv_1a9da346e617827c30247d7097aed25a84`
 
@@ -373,7 +375,7 @@ Functions
 
 - :ref:`exhale_function_group__NVCV__CPP__UTIL__STATUS_1gaa951fbd3cb3abd6561b237fe58b92c1c`
 
-- :ref:`exhale_function_namespacenvcv_1aec5b13c9a9a6faca09598d4865e7c450`
+- :ref:`exhale_function_namespacenvcv_1acaa8be839a795a043ffab6c006ad3709`
 
 - :ref:`exhale_function_namespacenvcv_1a85671fb4daf54e513f458b2407fbd747`
 
@@ -390,8 +392,6 @@ Functions
 - :ref:`exhale_function_namespacenvcv_1aa8597b738290ef0ba0c6beafe6dc0c78`
 
 - :ref:`exhale_function_namespacenvcv_1a115831c728891c3d1ed3d3c322a57454`
-
-- :ref:`exhale_function_namespacenvcv_1acaa8be839a795a043ffab6c006ad3709`
 
 - :ref:`exhale_function_namespacenvcv_1a4cd49732c014df74730d6e2c29c57dfb`
 
@@ -461,4 +461,4 @@ Variables
 
 - :ref:`exhale_variable_namespacenvcv_1ab067f036d5d745d9807fa4c1861148f4`
 
-- :ref:`exhale_variable_namespacenvcv_1a6c5ef48d93c8da8875c83ef4b85ffb49`
+- :ref:`exhale_variable_namespacenvcv_1ab72ccc902acc97a3dcfb7d148ca2e7eb`

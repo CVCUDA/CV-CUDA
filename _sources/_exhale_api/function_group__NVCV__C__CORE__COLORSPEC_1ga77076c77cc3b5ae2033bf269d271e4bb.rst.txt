@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga77076c77cc3b5ae2033bf269d271e4bb:
+
+Function nvcvRawPatternGetName
+==============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ColorSpec.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvRawPatternGetName(NVCVRawPattern)
+   :project: cvcuda

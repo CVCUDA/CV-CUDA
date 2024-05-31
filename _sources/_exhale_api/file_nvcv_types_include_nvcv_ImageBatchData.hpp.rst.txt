@@ -38,9 +38,9 @@ Included By
 -----------
 
 
-- :ref:`file_nvcv_types_include_nvcv_cuda_BorderVarShapeWrap.hpp`
-
 - :ref:`file_nvcv_types_include_nvcv_cuda_ImageBatchVarShapeWrap.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_BorderVarShapeWrap.hpp`
 
 - :ref:`file_nvcv_types_include_nvcv_cuda_InterpolationVarShapeWrap.hpp`
 

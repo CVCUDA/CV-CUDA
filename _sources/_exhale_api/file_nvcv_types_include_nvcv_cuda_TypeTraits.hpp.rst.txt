@@ -39,33 +39,33 @@ Included By
 
 - :ref:`file_nvcv_types_include_nvcv_cuda_ArrayWrap.hpp`
 
+- :ref:`file_nvcv_types_include_nvcv_cuda_StaticCast.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_MathWrappers.hpp`
+
 - :ref:`file_nvcv_types_include_nvcv_cuda_Atomics.hpp`
-
-- :ref:`file_nvcv_types_include_nvcv_cuda_BorderVarShapeWrap.hpp`
-
-- :ref:`file_nvcv_types_include_nvcv_cuda_BorderWrap.hpp`
-
-- :ref:`file_nvcv_types_include_nvcv_cuda_DropCast.hpp`
 
 - :ref:`file_nvcv_types_include_nvcv_cuda_FullTensorWrap.hpp`
 
+- :ref:`file_nvcv_types_include_nvcv_cuda_TensorWrap.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_BorderWrap.hpp`
+
 - :ref:`file_nvcv_types_include_nvcv_cuda_ImageBatchVarShapeWrap.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_BorderVarShapeWrap.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_DropCast.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_SaturateCast.hpp`
 
 - :ref:`file_nvcv_types_include_nvcv_cuda_math_LinAlg.hpp`
 
 - :ref:`file_nvcv_types_include_nvcv_cuda_MathOps.hpp`
 
-- :ref:`file_nvcv_types_include_nvcv_cuda_MathWrappers.hpp`
-
 - :ref:`file_nvcv_types_include_nvcv_cuda_RangeCast.hpp`
 
-- :ref:`file_nvcv_types_include_nvcv_cuda_SaturateCast.hpp`
-
-- :ref:`file_nvcv_types_include_nvcv_cuda_StaticCast.hpp`
-
 - :ref:`file_nvcv_types_include_nvcv_cuda_TensorBatchWrap.hpp`
-
-- :ref:`file_nvcv_types_include_nvcv_cuda_TensorWrap.hpp`
 
 
 

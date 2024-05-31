@@ -6,20 +6,6 @@ Template Class SharedHandle
 - Defined in :ref:`file_nvcv_types_include_nvcv_HandleWrapper.hpp`
 
 
-Inheritance Relationships
--------------------------
-
-Derived Types
-*************
-
-- ``private nvcv::CoreResource< NVCVImageHandle, Image >`` (:ref:`exhale_class_classnvcv_1_1CoreResource`)
-- ``private nvcv::CoreResource< NVCVTensorHandle, Tensor >`` (:ref:`exhale_class_classnvcv_1_1CoreResource`)
-- ``private nvcv::CoreResource< NVCVImageBatchHandle, ImageBatch >`` (:ref:`exhale_class_classnvcv_1_1CoreResource`)
-- ``private nvcv::CoreResource< NVCVTensorBatchHandle, TensorBatch >`` (:ref:`exhale_class_classnvcv_1_1CoreResource`)
-- ``private nvcv::CoreResource< NVCVArrayHandle, Array >`` (:ref:`exhale_class_classnvcv_1_1CoreResource`)
-- ``private nvcv::CoreResource< NVCVAllocatorHandle, Allocator >`` (:ref:`exhale_class_classnvcv_1_1CoreResource`)
-
-
 Class Documentation
 -------------------
 

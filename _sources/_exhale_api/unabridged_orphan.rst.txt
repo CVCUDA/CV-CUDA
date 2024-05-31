@@ -870,6 +870,16 @@ Files
 .. toctree::
    :maxdepth: 1
 
+   file_cvcuda_include_cvcuda_OpResizeCropConvertReformat.h.rst
+
+.. toctree::
+   :maxdepth: 1
+
+   file_cvcuda_include_cvcuda_OpResizeCropConvertReformat.hpp.rst
+
+.. toctree::
+   :maxdepth: 1
+
    file_cvcuda_include_cvcuda_OpRotate.h.rst
 
 .. toctree::

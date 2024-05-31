@@ -32,9 +32,9 @@ Included By
 
 - :ref:`file_nvcv_types_include_nvcv_Tensor.h`
 
-- :ref:`file_nvcv_types_include_nvcv_TensorBatchData.h`
-
 - :ref:`file_nvcv_types_include_nvcv_TensorData.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_TensorBatchData.h`
 
 
 

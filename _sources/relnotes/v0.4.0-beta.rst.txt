@@ -16,7 +16,7 @@
 
 .. _v0.4.0-beta:
 
-Beta.2
+v0.4.0-beta
 ======
 
 CV-CUDA 0.4.0 is a major release of the library providing multiple new operators, Jetson Orin support, and updated API documentation.

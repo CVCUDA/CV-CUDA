@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__COLORSPEC_1gaa5a4a71f7d3a8365be77d581082e806e:
+
+Function nvcvColorTransferFunctionGetName
+=========================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ColorSpec.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvColorTransferFunctionGetName(NVCVColorTransferFunction)
+   :project: cvcuda

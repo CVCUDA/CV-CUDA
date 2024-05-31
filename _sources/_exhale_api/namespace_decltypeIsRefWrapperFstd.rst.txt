@@ -1,6 +1,0 @@
-
-.. _namespace_decltypeIsRefWrapperFstd:
-
-Namespace decltypeIsRefWrapperFstd
-==================================
-

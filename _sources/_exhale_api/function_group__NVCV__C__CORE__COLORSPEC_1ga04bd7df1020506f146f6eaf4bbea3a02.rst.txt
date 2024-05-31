@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga04bd7df1020506f146f6eaf4bbea3a02:
+
+Function nvcvWhitePointGetName
+==============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ColorSpec.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvWhitePointGetName(NVCVWhitePoint)
+   :project: cvcuda

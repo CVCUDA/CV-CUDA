@@ -38,15 +38,15 @@ Included By
 -----------
 
 
-- :ref:`file_nvcv_types_include_nvcv_TensorBatch.h`
-
-- :ref:`file_nvcv_types_include_nvcv_TensorBatchData.h`
-
 - :ref:`file_nvcv_types_include_nvcv_TensorData.h`
 
 - :ref:`file_nvcv_types_include_nvcv_TensorLayout.hpp`
 
 - :ref:`file_nvcv_types_include_nvcv_TensorShape.h`
+
+- :ref:`file_nvcv_types_include_nvcv_TensorBatchData.h`
+
+- :ref:`file_nvcv_types_include_nvcv_TensorBatch.h`
 
 
 

@@ -124,12 +124,13 @@ Copyright
     :maxdepth: 1
     :hidden:
 
-    Beta.5 <relnotes/v0.7.0-beta>
-    Beta.4 <relnotes/v0.6.0-beta>
-    Beta.3 <relnotes/v0.5.0-beta>
-    Beta.2 <relnotes/v0.4.0-beta>
-    Beta.1 <relnotes/v0.3.1-beta>
-    Beta <relnotes/v0.3.0-beta>
-    Alpha.1 <relnotes/v0.2.1-alpha>
-    Alpha <relnotes/v0.2.0-alpha>
-    Pre-Alpha <relnotes/v0.1.0-prealpha>
+    v0.8.0-beta <relnotes/v0.8.0-beta>
+    v0.7.0-beta <relnotes/v0.7.0-beta>
+    v0.6.0-beta <relnotes/v0.6.0-beta>
+    v0.5.0-beta <relnotes/v0.5.0-beta>
+    v0.4.0-beta <relnotes/v0.4.0-beta>
+    v0.3.1-beta <relnotes/v0.3.1-beta>
+    v0.3.0-beta <relnotes/v0.3.0-beta>
+    v0.2.1-alpha <relnotes/v0.2.1-alpha>
+    v0.2.0-alpha <relnotes/v0.2.0-alpha>
+    v0.1.0-prealpha <relnotes/v0.1.0-prealpha>

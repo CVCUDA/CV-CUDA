@@ -64,6 +64,8 @@ Classes
 
 - :ref:`exhale_struct_structnvcv_1_1Callback_3_01Ret_07Args_8_8_8_08_00_01CRet_07CtxArg_00_01CArgs_8_8_8_08_00_01Transb7b914e11bb6d38fbd5e59f4add41c3d`
 
+- :ref:`exhale_struct_structnvcv_1_1detail_1_1AddContext`
+
 - :ref:`exhale_struct_structnvcv_1_1detail_1_1AddContext_3_01Ret_07Args_8_8_8_08_4`
 
 - :ref:`exhale_struct_structnvcv_1_1detail_1_1IsCallback`
@@ -71,6 +73,8 @@ Classes
 - :ref:`exhale_struct_structnvcv_1_1detail_1_1IsCallback_3_01Callback_3_01Cpp_00_01C_00_01Tr_00_01SingleUse_01_4_01_4`
 
 - :ref:`exhale_struct_structnvcv_1_1detail_1_1NoTranslation`
+
+- :ref:`exhale_class_classnvcv_1_1Callback`
 
 - :ref:`exhale_class_classnvcv_1_1Callback_3_01Ret_07Args_8_8_8_08_00_01CRet_07CtxArg_00_01CArgs_8_8_8_08_00_01TranslateCall_00_01SingleUse_01_4`
 

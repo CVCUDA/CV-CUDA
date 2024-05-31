@@ -100,6 +100,8 @@ Classes
 
 - :ref:`exhale_class_classcvcuda_1_1Resize`
 
+- :ref:`exhale_class_classcvcuda_1_1ResizeCropConvertReformat`
+
 - :ref:`exhale_class_classcvcuda_1_1Rotate`
 
 - :ref:`exhale_class_classcvcuda_1_1SIFT`

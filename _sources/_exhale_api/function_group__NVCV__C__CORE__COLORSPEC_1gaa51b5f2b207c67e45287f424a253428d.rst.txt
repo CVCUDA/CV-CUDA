@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__COLORSPEC_1gaa51b5f2b207c67e45287f424a253428d:
+
+Function nvcvChromaLocationGetName
+==================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ColorSpec.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvChromaLocationGetName(NVCVChromaLocation)
+   :project: cvcuda

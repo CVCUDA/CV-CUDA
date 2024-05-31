@@ -32,9 +32,9 @@ Included By
 -----------
 
 
-- :ref:`file_nvcv_types_include_nvcv_cuda_BorderWrap.hpp`
-
 - :ref:`file_nvcv_types_include_nvcv_cuda_TensorWrap.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_BorderWrap.hpp`
 
 
 

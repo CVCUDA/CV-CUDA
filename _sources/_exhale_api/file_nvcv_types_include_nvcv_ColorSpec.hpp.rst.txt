@@ -60,23 +60,23 @@ Functions
 ---------
 
 
-- :ref:`exhale_function_group__NVCV__CPP__CORE__COLORSPEC_1ga671987a9dbf20c913c6170f8a0890c1c`
-
-- :ref:`exhale_function_group__NVCV__CPP__CORE__COLORSPEC_1ga8fd8f5dc70182c1e55e2577d847bc702`
-
-- :ref:`exhale_function_group__NVCV__CPP__CORE__COLORSPEC_1ga808f819deea99450a503fcab23a073bf`
-
-- :ref:`exhale_function_group__NVCV__CPP__CORE__COLORSPEC_1gaacd6eac4a04f9e49141d2bf78ae4de27`
+- :ref:`exhale_function_group__NVCV__CPP__CORE__COLORSPEC_1ga406a5e3f0a057751d6ac5b2c493312a8`
 
 - :ref:`exhale_function_group__NVCV__CPP__CORE__COLORSPEC_1ga4f80ee1a920804418aaa5e46d7c4cd6c`
 
-- :ref:`exhale_function_group__NVCV__CPP__CORE__COLORSPEC_1ga406a5e3f0a057751d6ac5b2c493312a8`
-
 - :ref:`exhale_function_group__NVCV__CPP__CORE__COLORSPEC_1gad48fc8d90187b80e042d848cdc39d7fa`
-
-- :ref:`exhale_function_group__NVCV__CPP__CORE__COLORSPEC_1gab5d522d308cd14dc76cacd688054f22e`
 
 - :ref:`exhale_function_group__NVCV__CPP__CORE__COLORSPEC_1ga3b0f8995b92fdc760ec5065a1eb7a553`
 
+- :ref:`exhale_function_group__NVCV__CPP__CORE__COLORSPEC_1ga8fd8f5dc70182c1e55e2577d847bc702`
+
 - :ref:`exhale_function_group__NVCV__CPP__CORE__COLORSPEC_1ga27756ef265d4d05c91465279c9af4e2c`
+
+- :ref:`exhale_function_group__NVCV__CPP__CORE__COLORSPEC_1ga671987a9dbf20c913c6170f8a0890c1c`
+
+- :ref:`exhale_function_group__NVCV__CPP__CORE__COLORSPEC_1ga808f819deea99450a503fcab23a073bf`
+
+- :ref:`exhale_function_group__NVCV__CPP__CORE__COLORSPEC_1gab5d522d308cd14dc76cacd688054f22e`
+
+- :ref:`exhale_function_group__NVCV__CPP__CORE__COLORSPEC_1gaacd6eac4a04f9e49141d2bf78ae4de27`
 

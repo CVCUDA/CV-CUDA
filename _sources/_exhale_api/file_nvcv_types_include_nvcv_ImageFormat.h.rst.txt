@@ -41,19 +41,19 @@ Included By
 
 - :ref:`file_nvcv_types_include_nvcv_ArrayData.h`
 
-- :ref:`file_nvcv_types_include_nvcv_Image.h`
-
-- :ref:`file_nvcv_types_include_nvcv_ImageBatch.h`
-
-- :ref:`file_nvcv_types_include_nvcv_ImageBatchData.h`
-
 - :ref:`file_nvcv_types_include_nvcv_ImageData.h`
+
+- :ref:`file_nvcv_types_include_nvcv_Image.h`
 
 - :ref:`file_nvcv_types_include_nvcv_ImageFormat.hpp`
 
-- :ref:`file_nvcv_types_include_nvcv_Tensor.h`
+- :ref:`file_nvcv_types_include_nvcv_ImageBatchData.h`
+
+- :ref:`file_nvcv_types_include_nvcv_ImageBatch.h`
 
 - :ref:`file_nvcv_types_include_nvcv_TensorData.h`
+
+- :ref:`file_nvcv_types_include_nvcv_Tensor.h`
 
 
 
@@ -78,7 +78,7 @@ Functions
 
 - :ref:`exhale_function_group__NVCV__C__CORE__IMAGETYPE_1gab40334b9659950c8e6b1b0b575727eca`
 
-- :ref:`exhale_function_group__NVCV__C__CORE__IMAGETYPE_1gae8f70d4130019a18f862f3988863c47a`
+- :ref:`exhale_function_group__NVCV__C__CORE__IMAGETYPE_1ga74a4ad33bbb2b05a5b4f86ee9a5ecf1c`
 
 - :ref:`exhale_function_group__NVCV__C__CORE__IMAGETYPE_1gad8275fa2a716354db3e2f5b117067104`
 

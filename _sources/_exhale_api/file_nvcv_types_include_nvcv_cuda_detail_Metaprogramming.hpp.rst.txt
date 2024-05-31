@@ -34,11 +34,11 @@ Included By
 -----------
 
 
+- :ref:`file_nvcv_types_include_nvcv_cuda_TypeTraits.hpp`
+
 - :ref:`file_nvcv_types_include_nvcv_cuda_detail_RangeCastImpl.hpp`
 
 - :ref:`file_nvcv_types_include_nvcv_cuda_detail_SaturateCastImpl.hpp`
-
-- :ref:`file_nvcv_types_include_nvcv_cuda_TypeTraits.hpp`
 
 
 
@@ -73,6 +73,8 @@ Classes
 - :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1HasTypeTraits__t`
 
 - :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1HasTypeTraits__t_3_01T_00_01std_1_1void__t_3_01typename_01TypeTr38136be32c8f7597b2a2ee1b2684d748`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType`
 
 - :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01char_00_010_01_4`
 
@@ -209,6 +211,8 @@ Classes
 - :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01unsigned_01short_00_014_01_4`
 
 - :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01volatile_01T_00_01C_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits`
 
 - :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01char_01_4`
 

@@ -3,7 +3,7 @@
 Template Function nvcv::cuda::math::operator==(const Vector<T, N>&, const Vector<T, N>&)
 ========================================================================================
 
-- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_math_LinAlg.hpp`
+.. did not find file this was defined in
 
 
 Function Documentation

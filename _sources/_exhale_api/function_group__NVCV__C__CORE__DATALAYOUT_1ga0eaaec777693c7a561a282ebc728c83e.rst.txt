@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__DATALAYOUT_1ga0eaaec777693c7a561a282ebc728c83e:
+
+Function nvcvDataKindGetName
+============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_DataLayout.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvDataKindGetName(NVCVDataKind)
+   :project: cvcuda

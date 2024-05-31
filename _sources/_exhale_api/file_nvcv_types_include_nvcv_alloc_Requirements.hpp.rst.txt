@@ -123,6 +123,8 @@ Included By
 
 - :ref:`file_cvcuda_include_cvcuda_OpResize.hpp`
 
+- :ref:`file_cvcuda_include_cvcuda_OpResizeCropConvertReformat.hpp`
+
 - :ref:`file_cvcuda_include_cvcuda_OpRotate.hpp`
 
 - :ref:`file_cvcuda_include_cvcuda_OpSIFT.hpp`

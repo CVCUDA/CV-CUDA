@@ -3,7 +3,7 @@
 Template Function nvcv::operator<<(std::ostream&, const Shape<T, N>&)
 =====================================================================
 
-.. did not find file this was defined in
+- Defined in :ref:`file_nvcv_types_include_nvcv_Shape.hpp`
 
 
 Function Documentation

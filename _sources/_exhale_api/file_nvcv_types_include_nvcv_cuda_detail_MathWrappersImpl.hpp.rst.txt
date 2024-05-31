@@ -30,11 +30,11 @@ Included By
 -----------
 
 
+- :ref:`file_nvcv_types_include_nvcv_cuda_MathWrappers.hpp`
+
 - :ref:`file_nvcv_types_include_nvcv_cuda_detail_RangeCastImpl.hpp`
 
 - :ref:`file_nvcv_types_include_nvcv_cuda_detail_SaturateCastImpl.hpp`
-
-- :ref:`file_nvcv_types_include_nvcv_cuda_MathWrappers.hpp`
 
 
 

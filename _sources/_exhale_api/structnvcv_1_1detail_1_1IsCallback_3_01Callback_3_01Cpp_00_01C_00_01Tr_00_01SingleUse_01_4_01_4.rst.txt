@@ -12,7 +12,7 @@ Inheritance Relationships
 Base Type
 *********
 
-- ``public std::true_type``
+- ``public true_type``
 
 
 Struct Documentation

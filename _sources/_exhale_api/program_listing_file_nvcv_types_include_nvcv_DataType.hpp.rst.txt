@@ -79,6 +79,7 @@ Program Listing for File DataType.hpp
    }
    
    #ifndef DOXYGEN_SHOULD_SKIP_THIS
+   
    constexpr DataType TYPE_U8{NVCV_DATA_TYPE_U8};
    constexpr DataType TYPE_2U8{NVCV_DATA_TYPE_2U8};
    constexpr DataType TYPE_3U8{NVCV_DATA_TYPE_3U8};

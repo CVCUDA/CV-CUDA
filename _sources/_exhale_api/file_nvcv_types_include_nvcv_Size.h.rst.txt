@@ -32,6 +32,8 @@ Included By
 
 - :ref:`file_cvcuda_include_cvcuda_OpPillowResize.h`
 
+- :ref:`file_cvcuda_include_cvcuda_OpResizeCropConvertReformat.h`
+
 
 
 

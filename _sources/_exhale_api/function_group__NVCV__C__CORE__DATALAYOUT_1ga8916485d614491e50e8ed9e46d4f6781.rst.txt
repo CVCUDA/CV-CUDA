@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__DATALAYOUT_1ga8916485d614491e50e8ed9e46d4f6781:
+
+Function nvcvMemLayoutGetName
+=============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_DataLayout.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvMemLayoutGetName(NVCVMemLayout)
+   :project: cvcuda

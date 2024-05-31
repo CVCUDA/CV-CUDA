@@ -66,15 +66,15 @@ Functions
 ---------
 
 
-- :ref:`exhale_function_DataLayout_8hpp_1aad3e11daafa1a1bdaa14ac7fed88c1ac`
+- :ref:`exhale_function_DataLayout_8hpp_1a357986f61c3b3ae765fd6af53729307e`
 
 - :ref:`exhale_function_DataLayout_8hpp_1a13143acdf438680ae5f567ad1fe5e277`
 
 - :ref:`exhale_function_DataLayout_8hpp_1a54970df3f09f88375720f7c24df633a2`
 
-- :ref:`exhale_function_DataLayout_8hpp_1ac4e5cda4ebe623de4a40d47f98c01f4c`
-
 - :ref:`exhale_function_DataLayout_8hpp_1a1fee8c82a09be684f22886227dff3d99`
 
-- :ref:`exhale_function_DataLayout_8hpp_1a357986f61c3b3ae765fd6af53729307e`
+- :ref:`exhale_function_DataLayout_8hpp_1aad3e11daafa1a1bdaa14ac7fed88c1ac`
+
+- :ref:`exhale_function_DataLayout_8hpp_1ac4e5cda4ebe623de4a40d47f98c01f4c`
 

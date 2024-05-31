@@ -3,7 +3,7 @@
 Typedef nvcv::ArrayDataCleanupCallback
 ======================================
 
-.. did not find file this was defined in
+- Defined in :ref:`file_nvcv_types_include_nvcv_Array.hpp`
 
 
 Typedef Documentation

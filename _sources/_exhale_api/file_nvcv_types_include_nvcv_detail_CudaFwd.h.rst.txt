@@ -24,13 +24,13 @@ Included By
 
 - :ref:`file_nvcv_types_include_nvcv_Array.h`
 
+- :ref:`file_nvcv_types_include_nvcv_ImageData.h`
+
 - :ref:`file_nvcv_types_include_nvcv_Image.h`
 
 - :ref:`file_nvcv_types_include_nvcv_ImageBatch.h`
 
 - :ref:`file_nvcv_types_include_nvcv_ImageBatchData.hpp`
-
-- :ref:`file_nvcv_types_include_nvcv_ImageData.h`
 
 - :ref:`file_nvcv_types_include_nvcv_Tensor.h`
 

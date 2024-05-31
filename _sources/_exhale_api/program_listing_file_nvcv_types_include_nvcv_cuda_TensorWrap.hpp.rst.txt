@@ -110,7 +110,7 @@ Program Listing for File TensorWrap.hpp
            }
        }
    
-       __host__ __device__ const int *strides() const
+       const __host__ __device__ int *strides() const
        {
            return m_strides;
        }
@@ -309,6 +309,19 @@ Program Listing for File TensorWrap.hpp
    
        return Tensor4DWrap<T>(tensor.basePtr(), static_cast<int>(tensorAccess->sampleStride()),
                               static_cast<int>(tensorAccess->rowStride()), static_cast<int>(tensorAccess->colStride()));
+   }
+   
+   template<typename T, class = Require<HasTypeTraits<T>>>
+   __host__ auto CreateTensorWrapNCHW(const TensorDataStridedCuda &tensor)
+   {
+       auto tensorAccess = TensorDataAccessStridedImagePlanar::Create(tensor);
+       assert(tensorAccess);
+       assert(tensorAccess->sampleStride() <= TypeTraits<int>::max);
+       assert(tensorAccess->chStride() <= TypeTraits<int>::max);
+       assert(tensorAccess->rowStride() <= TypeTraits<int>::max);
+   
+       return Tensor4DWrap<T>(tensor.basePtr(), static_cast<int>(tensorAccess->sampleStride()),
+                              static_cast<int>(tensorAccess->chStride()), static_cast<int>(tensorAccess->rowStride()));
    }
    
    } // namespace nvcv::cuda

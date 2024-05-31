@@ -33,9 +33,9 @@ Included By
 -----------
 
 
-- :ref:`file_nvcv_types_include_nvcv_cuda_MathOps.hpp`
-
 - :ref:`file_nvcv_types_include_nvcv_cuda_MathWrappers.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_MathOps.hpp`
 
 
 

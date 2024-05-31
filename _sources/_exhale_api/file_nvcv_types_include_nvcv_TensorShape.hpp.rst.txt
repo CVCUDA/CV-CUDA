@@ -36,9 +36,9 @@ Included By
 -----------
 
 
-- :ref:`file_nvcv_types_include_nvcv_TensorBatchData.hpp`
-
 - :ref:`file_nvcv_types_include_nvcv_TensorData.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_TensorBatchData.hpp`
 
 - :ref:`file_nvcv_types_include_nvcv_TensorShapeInfo.hpp`
 
