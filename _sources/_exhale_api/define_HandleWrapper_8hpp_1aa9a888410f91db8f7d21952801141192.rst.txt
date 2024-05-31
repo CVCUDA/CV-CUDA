@@ -1,0 +1,14 @@
+.. _exhale_define_HandleWrapper_8hpp_1aa9a888410f91db8f7d21952801141192:
+
+Define NVCV_IMPL_REF_COUNT
+==========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_HandleWrapper.hpp`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_IMPL_REF_COUNT
+   :project: cvcuda

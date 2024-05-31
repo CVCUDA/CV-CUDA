@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__SIFT_1gafdaad2c2de0966ce5fa2479a6737b3de:
+
+Function cvcudaSIFTSubmit
+=========================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpSIFT.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaSIFTSubmit(NVCVOperatorHandle, cudaStream_t, NVCVTensorHandle, NVCVTensorHandle, NVCVTensorHandle, NVCVTensorHandle, NVCVTensorHandle, int, float, float, float, NVCVSIFTFlagType)
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_define_group__NVCV__CPP__CUDATOOLS__MATHOPERATORS_1ga6a7d6708444d9fbb456eadc25ddd943c:
+
+Define NVCV_CUDA_BINARY_OPERATOR
+================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_MathOps.hpp`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_CUDA_BINARY_OPERATOR
+   :project: cvcuda

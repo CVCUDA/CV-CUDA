@@ -1,0 +1,14 @@
+.. _exhale_typedef_Tensor_8h_1aa2e51bc6885025924b8d8e3d6faa3e83:
+
+Typedef NVCVTensorRequirements
+==============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Tensor.h`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: NVCVTensorRequirements
+   :project: cvcuda

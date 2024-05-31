@@ -1,0 +1,14 @@
+.. _exhale_function_Array_8h_1a2ceca8c8f0124635b566df88a8e9386a:
+
+Function nvcvArrayGetCapacity
+=============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Array.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvArrayGetCapacity(NVCVArrayHandle, int64_t *)
+   :project: cvcuda

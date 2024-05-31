@@ -1,0 +1,14 @@
+.. _exhale_define_HandleWrapper_8hpp_1a9f75e4cd7a5b07de2e5a8e688581202e:
+
+Define NVCV_IMPL_DESTROY
+========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_HandleWrapper.hpp`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_IMPL_DESTROY
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_typedef_namespacenvcv_1_1cuda_1_1detail_1acf404fc0757abb5dee97f078c3773dbc:
+
+Typedef nvcv::cuda::detail::BorderVarShapeWrapImpl
+==================================================
+
+.. did not find file this was defined in
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: nvcv::cuda::detail::BorderVarShapeWrapImpl
+   :project: cvcuda

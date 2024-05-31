@@ -1,0 +1,158 @@
+
+.. _program_listing_file_cvcuda_include_cvcuda_OpHQResize.hpp:
+
+Program Listing for File OpHQResize.hpp
+=======================================
+
+|exhale_lsh| :ref:`Return to documentation for file <file_cvcuda_include_cvcuda_OpHQResize.hpp>` (``cvcuda/include/cvcuda/OpHQResize.hpp``)
+
+.. |exhale_lsh| unicode:: U+021B0 .. UPWARDS ARROW WITH TIP LEFTWARDS
+
+.. code-block:: cpp
+
+   /*
+    * SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+    * SPDX-License-Identifier: Apache-2.0
+    *
+    * Licensed under the Apache License, Version 2.0 (the "License");
+    * you may not use this file except in compliance with the License.
+    * You may obtain a copy of the License at
+    *
+    * http://www.apache.org/licenses/LICENSE-2.0
+    *
+    * Unless required by applicable law or agreed to in writing, software
+    * distributed under the License is distributed on an "AS IS" BASIS,
+    * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    * See the License for the specific language governing permissions and
+    * limitations under the License.
+    */
+   
+   #ifndef CVCUDA_HQ_RESIZE_HPP
+   #define CVCUDA_HQ_RESIZE_HPP
+   
+   #include "IOperator.hpp"
+   #include "OpHQResize.h"
+   #include "Workspace.hpp"
+   
+   #include <cuda_runtime.h>
+   #include <nvcv/ImageBatch.hpp>
+   #include <nvcv/ImageFormat.hpp>
+   #include <nvcv/Rect.h>
+   #include <nvcv/Tensor.hpp>
+   #include <nvcv/TensorBatch.hpp>
+   
+   namespace cvcuda {
+   
+   class HQResize final : public IOperator
+   {
+   public:
+       explicit HQResize();
+   
+       ~HQResize();
+   
+       WorkspaceRequirements getWorkspaceRequirements(int batchSize, const HQResizeTensorShapeI inputShape,
+                                                      const HQResizeTensorShapeI  outputShape,
+                                                      const NVCVInterpolationType minInterpolation,
+                                                      const NVCVInterpolationType magInterpolation, bool antialias,
+                                                      const HQResizeRoiF *roi = nullptr);
+   
+       WorkspaceRequirements getWorkspaceRequirements(int batchSize, HQResizeTensorShapesI inputShapes,
+                                                      const HQResizeTensorShapesI outputShapes,
+                                                      const NVCVInterpolationType minInterpolation,
+                                                      const NVCVInterpolationType magInterpolation, bool antialias,
+                                                      const HQResizeRoisF roi = {});
+   
+       WorkspaceRequirements getWorkspaceRequirements(int maxBatchSize, const HQResizeTensorShapeI maxShape);
+   
+       void operator()(cudaStream_t stream, const Workspace &ws, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                       const NVCVInterpolationType minInterpolation, const NVCVInterpolationType magInterpolation,
+                       bool antialias = false, const HQResizeRoiF *roi = nullptr);
+   
+       void operator()(cudaStream_t stream, const Workspace &ws, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
+                       const NVCVInterpolationType minInterpolation, const NVCVInterpolationType magInterpolation,
+                       bool antialias = false, const HQResizeRoisF roi = {});
+   
+       void operator()(cudaStream_t stream, const Workspace &ws, const nvcv::TensorBatch &in, const nvcv::TensorBatch &out,
+                       const NVCVInterpolationType minInterpolation, const NVCVInterpolationType magInterpolation,
+                       bool antialias = false, const HQResizeRoisF roi = {});
+   
+       virtual NVCVOperatorHandle handle() const noexcept override;
+   
+   private:
+       NVCVOperatorHandle m_handle;
+   };
+   
+   inline HQResize::HQResize()
+   {
+       nvcv::detail::CheckThrow(cvcudaHQResizeCreate(&m_handle));
+       assert(m_handle);
+   }
+   
+   inline HQResize::~HQResize()
+   {
+       nvcvOperatorDestroy(m_handle);
+   }
+   
+   inline WorkspaceRequirements HQResize::getWorkspaceRequirements(int batchSize, const HQResizeTensorShapeI inputShape,
+                                                                   const HQResizeTensorShapeI  outputShape,
+                                                                   const NVCVInterpolationType minInterpolation,
+                                                                   const NVCVInterpolationType magInterpolation,
+                                                                   bool antialias, const HQResizeRoiF *roi)
+   {
+       WorkspaceRequirements req{};
+       nvcv::detail::CheckThrow(cvcudaHQResizeTensorGetWorkspaceRequirements(
+           m_handle, batchSize, inputShape, outputShape, minInterpolation, magInterpolation, antialias, roi, &req));
+       return req;
+   }
+   
+   inline WorkspaceRequirements HQResize::getWorkspaceRequirements(int batchSize, const HQResizeTensorShapesI inputShapes,
+                                                                   const HQResizeTensorShapesI outputShapes,
+                                                                   const NVCVInterpolationType minInterpolation,
+                                                                   const NVCVInterpolationType magInterpolation,
+                                                                   bool antialias, const HQResizeRoisF roi)
+   {
+       WorkspaceRequirements req{};
+       nvcv::detail::CheckThrow(cvcudaHQResizeTensorBatchGetWorkspaceRequirements(
+           m_handle, batchSize, inputShapes, outputShapes, minInterpolation, magInterpolation, antialias, roi, &req));
+       return req;
+   }
+   
+   inline WorkspaceRequirements HQResize::getWorkspaceRequirements(int maxBatchSize, const HQResizeTensorShapeI maxShape)
+   {
+       WorkspaceRequirements req{};
+       nvcv::detail::CheckThrow(cvcudaHQResizeGetMaxWorkspaceRequirements(m_handle, maxBatchSize, maxShape, &req));
+       return req;
+   }
+   
+   inline void HQResize::operator()(cudaStream_t stream, const Workspace &ws, const nvcv::Tensor &in,
+                                    const nvcv::Tensor &out, const NVCVInterpolationType minInterpolation,
+                                    const NVCVInterpolationType magInterpolation, bool antialias, const HQResizeRoiF *roi)
+   {
+       nvcv::detail::CheckThrow(cvcudaHQResizeSubmit(m_handle, stream, &ws, in.handle(), out.handle(), minInterpolation,
+                                                     magInterpolation, antialias, roi));
+   }
+   
+   inline void HQResize::operator()(cudaStream_t stream, const Workspace &ws, const nvcv::ImageBatch &in,
+                                    const nvcv::ImageBatch &out, const NVCVInterpolationType minInterpolation,
+                                    const NVCVInterpolationType magInterpolation, bool antialias, const HQResizeRoisF roi)
+   {
+       nvcv::detail::CheckThrow(cvcudaHQResizeImageBatchSubmit(m_handle, stream, &ws, in.handle(), out.handle(),
+                                                               minInterpolation, magInterpolation, antialias, roi));
+   }
+   
+   inline void HQResize::operator()(cudaStream_t stream, const Workspace &ws, const nvcv::TensorBatch &in,
+                                    const nvcv::TensorBatch &out, const NVCVInterpolationType minInterpolation,
+                                    const NVCVInterpolationType magInterpolation, bool antialias, const HQResizeRoisF roi)
+   {
+       nvcv::detail::CheckThrow(cvcudaHQResizeTensorBatchSubmit(m_handle, stream, &ws, in.handle(), out.handle(),
+                                                                minInterpolation, magInterpolation, antialias, roi));
+   }
+   
+   inline NVCVOperatorHandle HQResize::handle() const noexcept
+   {
+       return m_handle;
+   }
+   
+   } // namespace cvcuda
+   
+   #endif // CVCUDA_HQ_RESIZE_HPP

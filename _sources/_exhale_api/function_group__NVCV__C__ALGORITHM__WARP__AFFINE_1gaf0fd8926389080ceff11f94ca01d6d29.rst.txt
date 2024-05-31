@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__WARP__AFFINE_1gaf0fd8926389080ceff11f94ca01d6d29:
+
+Function cvcudaWarpAffineVarShapeSubmit
+=======================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpWarpAffine.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaWarpAffineVarShapeSubmit(NVCVOperatorHandle, cudaStream_t, NVCVImageBatchHandle, NVCVImageBatchHandle, NVCVTensorHandle, const int32_t, const NVCVBorderType, const float4)
+   :project: cvcuda

@@ -1,0 +1,17 @@
+.. _exhale_class_classnvcv_1_1TensorShape:
+
+Class TensorShape
+=================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorShape.hpp`
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nvcv::TensorShape
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

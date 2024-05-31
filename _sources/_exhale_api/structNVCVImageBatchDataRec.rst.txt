@@ -1,0 +1,17 @@
+.. _exhale_struct_structNVCVImageBatchDataRec:
+
+Struct NVCVImageBatchDataRec
+============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageBatchData.h`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: NVCVImageBatchDataRec
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

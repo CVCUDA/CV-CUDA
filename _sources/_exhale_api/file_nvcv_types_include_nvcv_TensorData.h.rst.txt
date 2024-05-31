@@ -1,0 +1,74 @@
+
+.. _file_nvcv_types_include_nvcv_TensorData.h:
+
+File TensorData.h
+=================
+Definition (``nvcv_types/include/nvcv/TensorData.h``)
+-----------------------------------------------------
+
+
+.. toctree::
+   :maxdepth: 1
+
+   program_listing_file_nvcv_types_include_nvcv_TensorData.h.rst
+
+
+
+
+
+Includes
+--------
+
+
+- ``TensorLayout.h`` (:ref:`file_nvcv_types_include_nvcv_TensorLayout.h`)
+
+- ``nvcv/ImageFormat.h`` (:ref:`file_nvcv_types_include_nvcv_ImageFormat.h`)
+
+
+
+Included By
+-----------
+
+
+- :ref:`file_nvcv_types_include_nvcv_Tensor.h`
+
+- :ref:`file_nvcv_types_include_nvcv_TensorBatchData.h`
+
+- :ref:`file_nvcv_types_include_nvcv_TensorData.hpp`
+
+
+
+
+Classes
+-------
+
+
+- :ref:`exhale_struct_structNVCVTensorBufferStridedRec`
+
+- :ref:`exhale_struct_structNVCVTensorDataRec`
+
+
+Enums
+-----
+
+
+- :ref:`exhale_enum_TensorData_8h_1a4eda79143b6617eb965cffd1047e0734`
+
+
+Typedefs
+--------
+
+
+- :ref:`exhale_typedef_TensorData_8h_1a3218cc0c8b0fae024dd757dafd82d86f`
+
+- :ref:`exhale_typedef_TensorData_8h_1af9abcf4ef27d9025ff9abb87b9b90892`
+
+- :ref:`exhale_typedef_TensorData_8h_1a04132e8b172affa5e4a83ec1982dd238`
+
+
+Unions
+------
+
+
+- :ref:`exhale_union_unionNVCVTensorBufferRec`
+

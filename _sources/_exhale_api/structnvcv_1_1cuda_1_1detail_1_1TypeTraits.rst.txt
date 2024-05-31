@@ -1,0 +1,28 @@
+.. _exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits:
+
+Template Struct TypeTraits
+==========================
+
+.. did not find file this was defined in
+
+
+Inheritance Relationships
+-------------------------
+
+Derived Types
+*************
+
+- ``public nvcv::cuda::detail::TypeTraits< const T >`` (:ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01const_01T_01_4`)
+- ``public nvcv::cuda::detail::TypeTraits< const volatile T >`` (:ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01const_01volatile_01T_01_4`)
+- ``public nvcv::cuda::detail::TypeTraits< volatile T >`` (:ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01volatile_01T_01_4`)
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: nvcv::cuda::detail::TypeTraits
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

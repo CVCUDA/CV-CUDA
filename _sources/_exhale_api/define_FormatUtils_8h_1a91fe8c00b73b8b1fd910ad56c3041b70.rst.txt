@@ -1,0 +1,14 @@
+.. _exhale_define_FormatUtils_8h_1a91fe8c00b73b8b1fd910ad56c3041b70:
+
+Define NVCV_DETAIL_MAKE_PIX_TYPE
+================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_detail_FormatUtils.h`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_DETAIL_MAKE_PIX_TYPE
+   :project: cvcuda

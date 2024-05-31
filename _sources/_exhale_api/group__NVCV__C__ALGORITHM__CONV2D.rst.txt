@@ -1,0 +1,7 @@
+:orphan:
+
+2D Convolution
+==============
+
+.. doxygengroup:: NVCV_C_ALGORITHM_CONV2D
+   :project: cvcuda

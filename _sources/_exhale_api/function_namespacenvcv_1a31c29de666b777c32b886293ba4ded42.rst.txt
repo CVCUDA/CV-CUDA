@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1a31c29de666b777c32b886293ba4ded42:
+
+Function nvcv::operator<<(std::ostream&, RawPattern)
+====================================================
+
+.. did not find file this was defined in
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::operator<<(std::ostream&, RawPattern)
+   :project: cvcuda

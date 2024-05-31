@@ -1,0 +1,17 @@
+.. _exhale_class_classnvcv_1_1detail_1_1BaseFromMember_3_01T_01_6_00_01ID_01_4:
+
+Template Class BaseFromMember< T &, ID >
+========================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_detail_BaseFromMember.hpp`
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nvcv::detail::BaseFromMember< T &, ID >
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

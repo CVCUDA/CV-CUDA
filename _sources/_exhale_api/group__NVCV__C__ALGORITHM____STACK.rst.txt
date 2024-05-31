@@ -1,0 +1,7 @@
+:orphan:
+
+Stack
+=====
+
+.. doxygengroup:: NVCV_C_ALGORITHM__STACK
+   :project: cvcuda

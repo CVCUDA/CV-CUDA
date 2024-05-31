@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__COLORSPEC_1gab601dc0fd00d9253e8c41c61cab79211:
+
+Function nvcvYCbCrEncodingGetName
+=================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ColorSpec.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvYCbCrEncodingGetName(NVCVYCbCrEncoding)
+   :project: cvcuda

@@ -1,0 +1,57 @@
+
+.. _file_cvcuda_include_cvcuda_OpBrightnessContrast.hpp:
+
+File OpBrightnessContrast.hpp
+=============================
+
+
+Defines the public C++ Class for the BrightnessContrast operation. 
+
+
+Definition (``cvcuda/include/cvcuda/OpBrightnessContrast.hpp``)
+---------------------------------------------------------------
+
+
+.. toctree::
+   :maxdepth: 1
+
+   program_listing_file_cvcuda_include_cvcuda_OpBrightnessContrast.hpp.rst
+
+
+
+
+
+Includes
+--------
+
+
+- ``IOperator.hpp`` (:ref:`file_cvcuda_include_cvcuda_IOperator.hpp`)
+
+- ``OpBrightnessContrast.h`` (:ref:`file_cvcuda_include_cvcuda_OpBrightnessContrast.h`)
+
+- ``cuda_runtime.h``
+
+- ``nvcv/ImageBatch.hpp`` (:ref:`file_nvcv_types_include_nvcv_ImageBatch.hpp`)
+
+- ``nvcv/ImageFormat.hpp`` (:ref:`file_nvcv_types_include_nvcv_ImageFormat.hpp`)
+
+- ``nvcv/Tensor.hpp`` (:ref:`file_nvcv_types_include_nvcv_Tensor.hpp`)
+
+
+
+
+
+
+Namespaces
+----------
+
+
+- :ref:`namespace_cvcuda`
+
+
+Classes
+-------
+
+
+- :ref:`exhale_class_classcvcuda_1_1BrightnessContrast`
+

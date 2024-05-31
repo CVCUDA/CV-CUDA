@@ -1,0 +1,14 @@
+.. _exhale_function_TensorLayout_8hpp_1a30c25946621b96579e3e5cadd50dd2c0:
+
+Function operator==(const NVCVTensorLayout&, const NVCVTensorLayout&)
+=====================================================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorLayout.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: operator==(const NVCVTensorLayout&, const NVCVTensorLayout&)
+   :project: cvcuda

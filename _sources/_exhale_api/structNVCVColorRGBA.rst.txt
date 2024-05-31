@@ -1,0 +1,17 @@
+.. _exhale_struct_structNVCVColorRGBA:
+
+Struct NVCVColorRGBA
+====================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_Types.h`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: NVCVColorRGBA
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

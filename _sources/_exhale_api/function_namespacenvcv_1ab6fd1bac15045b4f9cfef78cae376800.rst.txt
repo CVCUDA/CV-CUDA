@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1ab6fd1bac15045b4f9cfef78cae376800:
+
+Template Function nvcv::StaticCast
+==================================
+
+.. did not find file this was defined in
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::StaticCast(HandleTypeOf<T>)
+   :project: cvcuda

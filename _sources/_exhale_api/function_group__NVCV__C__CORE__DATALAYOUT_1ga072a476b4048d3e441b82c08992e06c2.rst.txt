@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__DATALAYOUT_1ga072a476b4048d3e441b82c08992e06c2:
+
+Function nvcvPackingGetAlignment
+================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_DataLayout.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvPackingGetAlignment(NVCVPacking, int32_t *)
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_function_Image_8h_1a1c66b4de4263ed67bad8b8080c56dfe7:
+
+Function nvcvImageGetSize
+=========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Image.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvImageGetSize(NVCVImageHandle, int32_t *, int32_t *)
+   :project: cvcuda

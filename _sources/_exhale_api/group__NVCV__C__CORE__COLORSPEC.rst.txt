@@ -1,0 +1,7 @@
+:orphan:
+
+Color Models
+============
+
+.. doxygengroup:: NVCV_C_CORE_COLORSPEC
+   :project: cvcuda

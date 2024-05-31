@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__IMAGETYPE_1gaeeb25c987510242b0ab64e7b656d6d7a:
+
+Function nvcvImageFormatGetPlanePacking
+=======================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageFormat.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvImageFormatGetPlanePacking(NVCVImageFormat, int32_t, NVCVPacking *)
+   :project: cvcuda

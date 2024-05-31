@@ -1,0 +1,17 @@
+.. _exhale_class_classnvcv_1_1cuda_1_1FullTensorWrap_3_01const_01T_00_01N_01_4:
+
+Template Class FullTensorWrap< const T, N >
+===========================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_FullTensorWrap.hpp`
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nvcv::cuda::FullTensorWrap< const T, N >
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

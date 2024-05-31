@@ -1,0 +1,7 @@
+:orphan:
+
+Types
+=====
+
+.. doxygengroup:: NVCV_C_TYPES
+   :project: cvcuda

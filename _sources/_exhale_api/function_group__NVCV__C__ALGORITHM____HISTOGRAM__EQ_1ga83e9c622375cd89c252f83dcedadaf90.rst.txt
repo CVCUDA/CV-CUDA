@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM____HISTOGRAM__EQ_1ga83e9c622375cd89c252f83dcedadaf90:
+
+Function cvcudaHistogramEqVarShapeSubmit
+========================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpHistogramEq.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaHistogramEqVarShapeSubmit(NVCVOperatorHandle, cudaStream_t, NVCVImageBatchHandle, NVCVImageBatchHandle)
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1a795f595476831fcfea3412c05178798f:
+
+Function nvcv::GetImplicitTensorLayout
+======================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorLayout.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::GetImplicitTensorLayout(int)
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_enum_ArrayData_8h_1a6c2f0d6eff4fbd202d93d0f98801439a:
+
+Enum NVCVArrayBufferType
+========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ArrayData.h`
+
+
+Enum Documentation
+------------------
+
+
+.. doxygenenum:: NVCVArrayBufferType
+   :project: cvcuda

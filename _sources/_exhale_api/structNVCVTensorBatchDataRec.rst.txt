@@ -1,0 +1,17 @@
+.. _exhale_struct_structNVCVTensorBatchDataRec:
+
+Struct NVCVTensorBatchDataRec
+=============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorBatchData.h`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: NVCVTensorBatchDataRec
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

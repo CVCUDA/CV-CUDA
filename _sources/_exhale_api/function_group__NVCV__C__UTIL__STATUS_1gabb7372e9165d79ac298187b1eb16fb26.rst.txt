@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__UTIL__STATUS_1gabb7372e9165d79ac298187b1eb16fb26:
+
+Function nvcvSetThreadStatus
+============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Status.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvSetThreadStatus(NVCVStatus, const char *, ...)
+   :project: cvcuda

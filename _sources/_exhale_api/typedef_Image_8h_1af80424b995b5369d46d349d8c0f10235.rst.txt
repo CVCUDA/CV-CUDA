@@ -1,0 +1,14 @@
+.. _exhale_typedef_Image_8h_1af80424b995b5369d46d349d8c0f10235:
+
+Typedef NVCVImageRequirements
+=============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Image.h`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: NVCVImageRequirements
+   :project: cvcuda

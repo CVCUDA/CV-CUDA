@@ -1,0 +1,14 @@
+.. _exhale_function_Allocator_8h_1a0ad268b73bbd46c2486c967d606c9981:
+
+Function nvcvResourceTypeGetName
+================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_alloc_Allocator.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvResourceTypeGetName(NVCVResourceType)
+   :project: cvcuda

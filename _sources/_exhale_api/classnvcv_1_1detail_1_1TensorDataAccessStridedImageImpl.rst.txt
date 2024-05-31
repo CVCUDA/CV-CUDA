@@ -1,0 +1,33 @@
+.. _exhale_class_classnvcv_1_1detail_1_1TensorDataAccessStridedImageImpl:
+
+Template Class TensorDataAccessStridedImageImpl
+===============================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorDataAccess.hpp`
+
+
+Inheritance Relationships
+-------------------------
+
+Base Type
+*********
+
+- ``public nvcv::detail::TensorDataAccessStridedImpl< ShapeInfo >`` (:ref:`exhale_class_classnvcv_1_1detail_1_1TensorDataAccessStridedImpl`)
+
+
+Derived Types
+*************
+
+- ``public nvcv::detail::TensorDataAccessStridedImagePlanarImpl< TensorShapeInfoImagePlanar >`` (:ref:`exhale_class_classnvcv_1_1detail_1_1TensorDataAccessStridedImagePlanarImpl`)
+- ``public nvcv::detail::TensorDataAccessStridedImagePlanarImpl< ShapeInfo >`` (:ref:`exhale_class_classnvcv_1_1detail_1_1TensorDataAccessStridedImagePlanarImpl`)
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nvcv::detail::TensorDataAccessStridedImageImpl
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

@@ -1,0 +1,14 @@
+.. _exhale_function_TensorShape_8h_1a9fc849f5e2d5ecc20f271ec3bdfdd917:
+
+Function nvcvTensorShapePermute
+===============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorShape.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvTensorShapePermute(NVCVTensorLayout, const int64_t *, NVCVTensorLayout, int64_t *)
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__COPYMAKEBORDER_1gaee35d3d029bd28d8ae60f222bbb0f1cf:
+
+Function cvcudaCopyMakeBorderVarShapeSubmit
+===========================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpCopyMakeBorder.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaCopyMakeBorderVarShapeSubmit(NVCVOperatorHandle, cudaStream_t, NVCVImageBatchHandle, NVCVImageBatchHandle, NVCVTensorHandle, NVCVTensorHandle, NVCVBorderType, const float4)
+   :project: cvcuda

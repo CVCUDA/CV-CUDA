@@ -1,0 +1,50 @@
+
+.. _file_nvcv_types_include_nvcv_cuda_StaticCast.hpp:
+
+File StaticCast.hpp
+===================
+
+
+Defines static cast functionality. 
+
+
+Definition (``nvcv_types/include/nvcv/cuda/StaticCast.hpp``)
+------------------------------------------------------------
+
+
+.. toctree::
+   :maxdepth: 1
+
+   program_listing_file_nvcv_types_include_nvcv_cuda_StaticCast.hpp.rst
+
+
+
+
+
+Includes
+--------
+
+
+- ``TypeTraits.hpp`` (:ref:`file_nvcv_types_include_nvcv_cuda_TypeTraits.hpp`)
+
+
+
+Included By
+-----------
+
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_MathOps.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_MathWrappers.hpp`
+
+
+
+
+Namespaces
+----------
+
+
+- :ref:`namespace_nvcv`
+
+- :ref:`namespace_nvcv__cuda`
+

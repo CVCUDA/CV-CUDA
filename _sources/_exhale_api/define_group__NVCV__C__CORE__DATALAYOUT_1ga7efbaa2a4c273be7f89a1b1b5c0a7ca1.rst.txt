@@ -1,0 +1,14 @@
+.. _exhale_define_group__NVCV__C__CORE__DATALAYOUT_1ga7efbaa2a4c273be7f89a1b1b5c0a7ca1:
+
+Define NVCV_MAX_EXTRA_CHANNEL_COUNT
+===================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_DataLayout.h`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_MAX_EXTRA_CHANNEL_COUNT
+   :project: cvcuda

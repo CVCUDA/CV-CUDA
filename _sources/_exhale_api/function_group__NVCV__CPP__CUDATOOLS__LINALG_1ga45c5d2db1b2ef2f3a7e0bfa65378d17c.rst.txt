@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__CPP__CUDATOOLS__LINALG_1ga45c5d2db1b2ef2f3a7e0bfa65378d17c:
+
+Template Function nvcv::cuda::math::flip_cols
+=============================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_math_LinAlg.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::cuda::math::flip_cols(const Matrix<T, M, N>&)
+   :project: cvcuda

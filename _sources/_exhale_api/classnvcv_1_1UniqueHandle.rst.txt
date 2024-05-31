@@ -1,0 +1,17 @@
+.. _exhale_class_classnvcv_1_1UniqueHandle:
+
+Template Class UniqueHandle
+===========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_HandleWrapper.hpp`
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nvcv::UniqueHandle
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

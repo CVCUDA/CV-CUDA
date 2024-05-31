@@ -1,0 +1,7 @@
+:orphan:
+
+BndBox
+======
+
+.. doxygengroup:: NVCV_C_ALGORITHM__BND_BOX
+   :project: cvcuda

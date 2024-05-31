@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__MORPHOLOGY_1gaf063ed00623a471c122be9d0c37a453c:
+
+Function cvcudaMorphologyVarShapeSubmit
+=======================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpMorphology.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaMorphologyVarShapeSubmit(NVCVOperatorHandle, cudaStream_t, NVCVImageBatchHandle, NVCVImageBatchHandle, NVCVImageBatchHandle, NVCVMorphologyType, NVCVTensorHandle, NVCVTensorHandle, int32_t, const NVCVBorderType)
+   :project: cvcuda

@@ -1,0 +1,16 @@
+.. _dir__home_runner_work_CV-CUDA_CV-CUDA_src_nvcv_types_include_nvcv_cuda_detail:
+
+
+Directory detail
+================
+
+
+|exhale_lsh| :ref:`Parent directory <dir__home_runner_work_CV-CUDA_CV-CUDA_src_nvcv_types_include_nvcv_cuda>` (``/home/runner/work/CV-CUDA/CV-CUDA/src/nvcv_types/include/nvcv/cuda``)
+
+.. |exhale_lsh| unicode:: U+021B0 .. UPWARDS ARROW WITH TIP LEFTWARDS
+
+
+*Directory path:* ``/home/runner/work/CV-CUDA/CV-CUDA/src/nvcv_types/include/nvcv/cuda/detail``
+
+
+

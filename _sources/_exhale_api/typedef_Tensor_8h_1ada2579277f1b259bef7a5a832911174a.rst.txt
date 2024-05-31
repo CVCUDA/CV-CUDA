@@ -1,0 +1,14 @@
+.. _exhale_typedef_Tensor_8h_1ada2579277f1b259bef7a5a832911174a:
+
+Typedef NVCVTensorDataCleanupFunc
+=================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Tensor.h`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: NVCVTensorDataCleanupFunc
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__IMAGETYPE_1gacf77ecef0b87f17bc3e41f34dfd55398:
+
+Function nvcvImageFormatHasSameDataLayout
+=========================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageFormat.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvImageFormatHasSameDataLayout(NVCVImageFormat, NVCVImageFormat, int8_t *)
+   :project: cvcuda

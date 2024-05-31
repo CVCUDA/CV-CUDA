@@ -1,0 +1,53 @@
+
+.. _file_cvcuda_include_cvcuda_OpPairwiseMatcher.h:
+
+File OpPairwiseMatcher.h
+========================
+Definition (``cvcuda/include/cvcuda/OpPairwiseMatcher.h``)
+----------------------------------------------------------
+
+
+.. toctree::
+   :maxdepth: 1
+
+   program_listing_file_cvcuda_include_cvcuda_OpPairwiseMatcher.h.rst
+
+
+
+
+
+Includes
+--------
+
+
+- ``Operator.h`` (:ref:`file_cvcuda_include_cvcuda_IOperator.hpp`)
+
+- ``Types.h`` (:ref:`file_cvcuda_include_cvcuda_Types.h`)
+
+- ``cuda_runtime.h``
+
+- ``detail/Export.h`` (:ref:`file_cvcuda_include_cvcuda_detail_Export.h`)
+
+- ``nvcv/Status.h`` (:ref:`file_nvcv_types_include_nvcv_Status.h`)
+
+- ``nvcv/Tensor.h`` (:ref:`file_nvcv_types_include_nvcv_Tensor.h`)
+
+
+
+Included By
+-----------
+
+
+- :ref:`file_cvcuda_include_cvcuda_OpPairwiseMatcher.hpp`
+
+
+
+
+Functions
+---------
+
+
+- :ref:`exhale_function_group__NVCV__C__ALGORITHM__PAIRWISE__MATCHER_1ga7c9911dcff3032c058ebcaa0e45d1622`
+
+- :ref:`exhale_function_group__NVCV__C__ALGORITHM__PAIRWISE__MATCHER_1ga308b8d30091cd0544ccc2faa7ab90e4c`
+

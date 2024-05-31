@@ -1,0 +1,14 @@
+.. _exhale_enum_ImageData_8h_1a07cd24d7767b40dbd90eb228824cb72f:
+
+Enum NVCVImageBufferType
+========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageData.h`
+
+
+Enum Documentation
+------------------
+
+
+.. doxygenenum:: NVCVImageBufferType
+   :project: cvcuda

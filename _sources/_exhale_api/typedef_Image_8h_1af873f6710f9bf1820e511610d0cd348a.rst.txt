@@ -1,0 +1,14 @@
+.. _exhale_typedef_Image_8h_1af873f6710f9bf1820e511610d0cd348a:
+
+Typedef NVCVImageHandle
+=======================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Image.h`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: NVCVImageHandle
+   :project: cvcuda

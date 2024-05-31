@@ -1,0 +1,26 @@
+.. _exhale_struct_structNVCVSize2D:
+
+Struct NVCVSize2D
+=================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Size.h`
+
+
+Inheritance Relationships
+-------------------------
+
+Derived Type
+************
+
+- ``public nvcv::Size2D`` (:ref:`exhale_struct_structnvcv_1_1Size2D`)
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: NVCVSize2D
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

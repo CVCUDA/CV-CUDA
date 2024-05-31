@@ -1,0 +1,14 @@
+.. _exhale_typedef_group__NVCV__C__ALGORITHM__WARP__PERSPECTIVE_1ga88ab0a0ebd4df13023cfe5368c0220b8:
+
+Typedef NVCVPerspectiveTransform
+================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpWarpPerspective.h`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: NVCVPerspectiveTransform
+   :project: cvcuda

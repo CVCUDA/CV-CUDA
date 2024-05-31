@@ -1,0 +1,14 @@
+.. _exhale_enum_group__NVCV__C__CORE__DATALAYOUT_1gac94002ce78dca7def215cef7747cdd49:
+
+Enum NVCVAlphaType
+==================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_DataLayout.h`
+
+
+Enum Documentation
+------------------
+
+
+.. doxygenenum:: NVCVAlphaType
+   :project: cvcuda

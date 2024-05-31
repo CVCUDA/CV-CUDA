@@ -1,0 +1,58 @@
+
+.. _file_cvcuda_include_cvcuda_OpOSD.h:
+
+File OpOSD.h
+============
+
+
+Defines types and functions to handle the OSD operation. 
+
+
+Definition (``cvcuda/include/cvcuda/OpOSD.h``)
+----------------------------------------------
+
+
+.. toctree::
+   :maxdepth: 1
+
+   program_listing_file_cvcuda_include_cvcuda_OpOSD.h.rst
+
+
+
+
+
+Includes
+--------
+
+
+- ``Operator.h`` (:ref:`file_cvcuda_include_cvcuda_IOperator.hpp`)
+
+- ``Types.h`` (:ref:`file_cvcuda_include_cvcuda_Types.h`)
+
+- ``cuda_runtime.h``
+
+- ``detail/Export.h`` (:ref:`file_cvcuda_include_cvcuda_detail_Export.h`)
+
+- ``nvcv/Status.h`` (:ref:`file_nvcv_types_include_nvcv_Status.h`)
+
+- ``nvcv/Tensor.h`` (:ref:`file_nvcv_types_include_nvcv_Tensor.h`)
+
+
+
+Included By
+-----------
+
+
+- :ref:`file_cvcuda_include_cvcuda_OpOSD.hpp`
+
+
+
+
+Functions
+---------
+
+
+- :ref:`exhale_function_group__NVCV__C__ALGORITHM____O__S__D_1ga1583ac67b315b9a1d897c0f996395544`
+
+- :ref:`exhale_function_group__NVCV__C__ALGORITHM____O__S__D_1gaeed724ac50f9157469e70d9279bc51f3`
+

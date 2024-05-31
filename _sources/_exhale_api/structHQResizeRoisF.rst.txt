@@ -1,0 +1,17 @@
+.. _exhale_struct_structHQResizeRoisF:
+
+Struct HQResizeRoisF
+====================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpHQResize.h`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: HQResizeRoisF
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

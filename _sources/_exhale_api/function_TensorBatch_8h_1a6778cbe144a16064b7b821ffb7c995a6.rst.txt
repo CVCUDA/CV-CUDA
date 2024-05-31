@@ -1,0 +1,14 @@
+.. _exhale_function_TensorBatch_8h_1a6778cbe144a16064b7b821ffb7c995a6:
+
+Function nvcvTensorBatchGetLayout
+=================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorBatch.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvTensorBatchGetLayout(NVCVTensorBatchHandle, NVCVTensorLayout *)
+   :project: cvcuda

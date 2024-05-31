@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1a0b875a958f42984c57bb245a5a048873:
+
+Specialized Template Function nvcv::HandleRefCount< NVCVArrayHandle >
+=====================================================================
+
+.. did not find file this was defined in
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::HandleRefCount< NVCVArrayHandle >(NVCVArrayHandle)
+   :project: cvcuda

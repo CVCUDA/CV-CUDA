@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM____BOX__BLUR_1ga69bb4f10ecdd88e1a0cf91ce5dedb207:
+
+Function cvcudaBoxBlurCreate
+============================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpBoxBlur.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaBoxBlurCreate(NVCVOperatorHandle *)
+   :project: cvcuda

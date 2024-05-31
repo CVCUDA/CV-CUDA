@@ -1,0 +1,14 @@
+.. _exhale_variable_group__NVCV__CPP__CUDATOOLS__TYPETRAITS_1gac25f5fd046d016269f588794b8d227e2:
+
+Variable nvcv::cuda::IsCompound
+===============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_MathOps.hpp`
+
+
+Variable Documentation
+----------------------
+
+
+.. doxygenvariable:: nvcv::cuda::IsCompound
+   :project: cvcuda

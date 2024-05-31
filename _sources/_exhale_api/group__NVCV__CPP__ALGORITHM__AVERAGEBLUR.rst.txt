@@ -1,0 +1,7 @@
+:orphan:
+
+Average Blur
+============
+
+.. doxygengroup:: NVCV_CPP_ALGORITHM_AVERAGEBLUR
+   :project: cvcuda

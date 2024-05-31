@@ -1,0 +1,137 @@
+
+.. _file_nvcv_types_include_nvcv_ImageBatch.hpp:
+
+File ImageBatch.hpp
+===================
+Definition (``nvcv_types/include/nvcv/ImageBatch.hpp``)
+-------------------------------------------------------
+
+
+.. toctree::
+   :maxdepth: 1
+
+   program_listing_file_nvcv_types_include_nvcv_ImageBatch.hpp.rst
+
+
+
+
+
+Includes
+--------
+
+
+- ``CoreResource.hpp`` (:ref:`file_nvcv_types_include_nvcv_CoreResource.hpp`)
+
+- ``Image.hpp`` (:ref:`file_nvcv_types_include_nvcv_Image.hpp`)
+
+- ``ImageBatch.h`` (:ref:`file_nvcv_types_include_nvcv_ImageBatch.h`)
+
+- ``ImageBatchData.hpp`` (:ref:`file_nvcv_types_include_nvcv_ImageBatchData.hpp`)
+
+- ``Optional.hpp`` (:ref:`file_nvcv_types_include_nvcv_Optional.hpp`)
+
+- ``detail/ImageBatchImpl.hpp`` (:ref:`file_nvcv_types_include_nvcv_detail_ImageBatchImpl.hpp`)
+
+
+
+Included By
+-----------
+
+
+- :ref:`file_cvcuda_include_cvcuda_OpAdaptiveThreshold.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpAverageBlur.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpBilateralFilter.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpBrightnessContrast.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpChannelReorder.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpColorTwist.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpComposite.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpConv2D.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpCopyMakeBorder.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpCropFlipNormalizeReformat.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpCvtColor.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpErase.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpFlip.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpGammaContrast.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpGaussian.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpGaussianNoise.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpHistogramEq.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpHQResize.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpInpaint.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpJointBilateralFilter.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpLaplacian.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpMedianBlur.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpMinMaxLoc.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpMorphology.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpNormalize.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpPadAndStack.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpPillowResize.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpRandomResizedCrop.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpRemap.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpResize.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpRotate.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpThreshold.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpWarpAffine.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpWarpPerspective.hpp`
+
+
+
+
+Namespaces
+----------
+
+
+- :ref:`namespace_nvcv`
+
+
+Classes
+-------
+
+
+- :ref:`exhale_struct_structnvcv_1_1TranslateImageToHandle`
+
+- :ref:`exhale_class_classnvcv_1_1ImageBatch`
+
+- :ref:`exhale_class_classnvcv_1_1ImageBatchVarShape`
+
+- :ref:`exhale_class_classnvcv_1_1ImageBatchVarShape_1_1Iterator`
+
+
+Defines
+-------
+
+
+- :ref:`exhale_define_ImageBatch_8hpp_1a366f385bffd0273a8359c63222350fe9`
+

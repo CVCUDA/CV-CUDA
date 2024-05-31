@@ -1,0 +1,14 @@
+.. _exhale_function_TensorBatch_8h_1a9860443494992d0ad5805f9216e15a9d:
+
+Function nvcvTensorBatchGetType
+===============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorBatch.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvTensorBatchGetType(NVCVTensorBatchHandle, NVCVTensorBufferType *)
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1a936bfff28e431091a2991b2b4c86b6e6:
+
+Template Function nvcv::DynamicCast
+===================================
+
+.. did not find file this was defined in
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::DynamicCast(HandleTypeOf<T>)
+   :project: cvcuda

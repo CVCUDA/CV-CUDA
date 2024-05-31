@@ -1,0 +1,14 @@
+.. _exhale_define_FormatUtils_8h_1a5a7881e1394cc8722400092c34a2e105:
+
+Define NVCV_DETAIL_MAKE_CSPC
+============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_detail_FormatUtils.h`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_DETAIL_MAKE_CSPC
+   :project: cvcuda

@@ -1,0 +1,7 @@
+:orphan:
+
+Inpaint
+=======
+
+.. doxygengroup:: NVCV_CPP_ALGORITHM_INPAINT
+   :project: cvcuda

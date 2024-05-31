@@ -1,0 +1,14 @@
+.. _exhale_function_Operator_8h_1a6efe29c40be484edbe3693a52fb31152:
+
+Function nvcvOperatorDestroy
+============================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_Operator.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvOperatorDestroy(NVCVOperatorHandle)
+   :project: cvcuda

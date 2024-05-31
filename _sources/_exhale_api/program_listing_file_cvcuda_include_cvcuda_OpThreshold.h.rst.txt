@@ -1,0 +1,182 @@
+
+.. _program_listing_file_cvcuda_include_cvcuda_OpThreshold.h:
+
+Program Listing for File OpThreshold.h
+======================================
+
+|exhale_lsh| :ref:`Return to documentation for file <file_cvcuda_include_cvcuda_OpThreshold.h>` (``cvcuda/include/cvcuda/OpThreshold.h``)
+
+.. |exhale_lsh| unicode:: U+021B0 .. UPWARDS ARROW WITH TIP LEFTWARDS
+
+.. code-block:: cpp
+
+   /*
+    * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+    * SPDX-License-Identifier: Apache-2.0
+    *
+    * Licensed under the Apache License, Version 2.0 (the "License");
+    * you may not use this file except in compliance with the License.
+    * You may obtain a copy of the License at
+    *
+    * http://www.apache.org/licenses/LICENSE-2.0
+    *
+    * Unless required by applicable law or agreed to in writing, software
+    * distributed under the License is distributed on an "AS IS" BASIS,
+    * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    * See the License for the specific language governing permissions and
+    * limitations under the License.
+    */
+   
+   #ifndef CVCUDA_THRESHOLD_H
+   #define CVCUDA_THRESHOLD_H
+   
+   #include "Operator.h"
+   #include "Types.h"
+   #include "detail/Export.h"
+   
+   #include <cuda_runtime.h>
+   #include <nvcv/ImageBatch.h>
+   #include <nvcv/Status.h>
+   #include <nvcv/Tensor.h>
+   
+   #ifdef __cplusplus
+   extern "C"
+   {
+   #endif
+   
+   /* Constructs and an instance of the threshold operator.
+    *
+    * @param [out] handle Where the image instance handle will be written to.
+    *                     + Must not be NULL.
+    *
+    * @param [in] type a bit flag for the thresholding type, see NVCVThresholdType.
+    *                  The special values NVCV_THRESH_OTSU or NVCV_THRESH_TRIANGLE may be combined with one of the other values.
+    *                  The possible types are NVCV_THRESH_BINARY, NVCV_THRESH_BINARY_INV, NVCV_THRESH_TRUNC, NVCV_THRESH_TOZERO, NVCV_THRESH_TOZERO_INV,
+    *                  NVCV_THRESH_OTSU|NVCV_THRESH_BINARY, NVCV_THRESH_OTSU|NVCV_THRESH_BINARY_INV, NVCV_THRESH_OTSU|NVCV_THRESH_TRUNC,
+    *                  NVCV_THRESH_OTSU|NVCV_THRESH_TOZERO, NVCV_THRESH_OTSU|NVCV_THRESH_TOZERO_INV,
+    *                  NVCV_THRESH_TRIANGLE|NVCV_THRESH_BINARY, NVCV_THRESH_TRIANGLE|NVCV_THRESH_BINARY_INV, NVCV_THRESH_TRIANGLE|NVCV_THRESH_TRUNC,
+    *                  NVCV_THRESH_TRIANGLE|NVCV_THRESH_TOZERO, NVCV_THRESH_TRIANGLE|NVCV_THRESH_TOZERO_INV.
+    *
+    * @param [in] maxBatchSize the maximum batch size.
+    *
+    * @retval #NVCV_ERROR_INVALID_ARGUMENT Handle is null.
+    * @retval #NVCV_ERROR_OUT_OF_MEMORY    Not enough memory to create the operator.
+    * @retval #NVCV_SUCCESS                Operation executed successfully.
+   */
+   
+   CVCUDA_PUBLIC NVCVStatus cvcudaThresholdCreate(NVCVOperatorHandle *handle, uint32_t type, int32_t maxBatchSize);
+   
+   /* Executes the threshold operation on the given cuda stream. This operation does not
+    *  wait for completion.
+    *
+    *  Limitations:
+    *
+    *  Input:
+    *       Data Layout:    [kNHWC, kHWC, kNCHW, KCHW]
+    *       Channels:       [1, 2, 3, 4] for the thresholding type NVCV_THRESH_BINARY, NVCV_THRESH_BINARY_INV,
+    *                                      NVCV_THRESH_TRUNC, NVCV_THRESH_TOZERO and NVCV_THRESH_TOZERO_INV.
+    *                       [1] for the thresholding type NVCV_THRESH_OTSU and NVCV_THRESH_TRIANGLE.
+    *
+    *       Data Type      | Allowed
+    *       -------------- | -------------   for the thresholding type NVCV_THRESH_BINARY, NVCV_THRESH_BINARY_INV,
+    *                                          NVCV_THRESH_TRUNC, NVCV_THRESH_TOZERO and NVCV_THRESH_TOZERO_INV.
+    *       8bit  Unsigned | Yes
+    *       8bit  Signed   | No
+    *       16bit Unsigned | Yes
+    *       16bit Signed   | Yes
+    *       32bit Unsigned | No
+    *       32bit Signed   | No
+    *       32bit Float    | Yes
+    *       64bit Float    | Yes
+    *       -------------- | -------------   for the thresholding type NVCV_THRESH_OTSU and NVCV_THRESH_TRIANGLE.
+    *       8bit  Unsigned | Yes
+    *       8bit  Signed   | No
+    *       16bit Unsigned | No
+    *       16bit Signed   | No
+    *       32bit Unsigned | No
+    *       32bit Signed   | No
+    *       32bit Float    | No
+    *       64bit Float    | No
+    *
+    *
+    *  Output:
+    *       Data Layout:    [kNHWC, kHWC, kNCHW, KCHW]
+    *       Channels:       [1, 2, 3, 4] for the thresholding type NVCV_THRESH_BINARY, NVCV_THRESH_BINARY_INV,
+    *                                      NVCV_THRESH_TRUNC, NVCV_THRESH_TOZERO and NVCV_THRESH_TOZERO_INV.
+    *                       [1] for the thresholding type NVCV_THRESH_OTSU and NVCV_THRESH_TRIANGLE.
+    *
+    *
+    *       Data Type      | Allowed
+    *       -------------- | -------------   for the thresholding type NVCV_THRESH_BINARY, NVCV_THRESH_BINARY_INV,
+    *                                          NVCV_THRESH_TRUNC, NVCV_THRESH_TOZERO and NVCV_THRESH_TOZERO_INV.
+    *       8bit  Unsigned | Yes
+    *       8bit  Signed   | No
+    *       16bit Unsigned | Yes
+    *       16bit Signed   | Yes
+    *       32bit Unsigned | No
+    *       32bit Signed   | No
+    *       32bit Float    | Yes
+    *       64bit Float    | Yes
+    *       -------------- | -------------   for the thresholding type NVCV_THRESH_OTSU and NVCV_THRESH_TRIANGLE.
+    *       8bit  Unsigned | Yes
+    *       8bit  Signed   | No
+    *       16bit Unsigned | No
+    *       16bit Signed   | No
+    *       32bit Unsigned | No
+    *       32bit Signed   | No
+    *       32bit Float    | No
+    *       64bit Float    | No
+    *
+    *  Input/Output dependency
+    *
+    *       Property      |  Input == Output
+    *      -------------- | -------------
+    *       Data Layout   | Yes
+    *       Data Type     | Yes
+    *       Number        | Yes
+    *       Channels      | Yes
+    *       Width         | Yes
+    *       Height        | Yes
+    *
+    *  threshold Tensor
+    *
+    *      Must be 'N' (dim = 1) with N = batch size.
+    *      Data Type must be 64bit Float.
+    *      DataType must be TYPE_F64.
+    *
+    *  maxval Tensor
+    *
+    *      Must be 'N' (dim = 1) with N = batch size.
+    *      Data Type must be 64bit Float.
+    *      DataType must be TYPE_F64.
+    *
+    *
+    * @param [in] handle Handle to the operator.
+    *                    + Must not be NULL.
+    * @param [in] stream Handle to a valid CUDA stream.
+    *
+    * @param [in] in input tensor / image batch.
+    *
+    * @param [out] out output tensor / image batch.
+    *
+    * @param [in] thresh an array of size batch that gives the threshold value of each image.
+    *
+    * @param [in] maxval an array of size batch that gives the maxval value of each image,
+    *              using with the NVCV_THRESH_BINARY and NVCV_THRESH_BINARY_INV thresholding types.
+    *
+    * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
+    * @retval #NVCV_ERROR_INTERNAL         Internal error in the operator, invalid types passed in.
+    * @retval #NVCV_SUCCESS                Operation executed successfully.
+   */
+   CVCUDA_PUBLIC NVCVStatus cvcudaThresholdSubmit(NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in,
+                                                  NVCVTensorHandle out, NVCVTensorHandle thresh, NVCVTensorHandle maxval);
+   
+   CVCUDA_PUBLIC NVCVStatus cvcudaThresholdVarShapeSubmit(NVCVOperatorHandle handle, cudaStream_t stream,
+                                                          NVCVImageBatchHandle in, NVCVImageBatchHandle out,
+                                                          NVCVTensorHandle thresh, NVCVTensorHandle maxval);
+   
+   #ifdef __cplusplus
+   }
+   #endif
+   
+   #endif /* CVCUDA_THRESHOLD_H */

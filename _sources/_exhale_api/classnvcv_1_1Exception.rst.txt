@@ -1,0 +1,36 @@
+.. _exhale_class_classnvcv_1_1Exception:
+
+Class Exception
+===============
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Exception.hpp`
+
+
+Nested Relationships
+--------------------
+
+
+Nested Types
+************
+
+- :ref:`exhale_struct_structnvcv_1_1Exception_1_1InternalCtorTag`
+
+
+Inheritance Relationships
+-------------------------
+
+Base Type
+*********
+
+- ``public std::exception``
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nvcv::Exception
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__NORMALIZE_1ga9914adee7fd3f5f8f635080abfaf82d8:
+
+Function cvcudaNormalizeCreate
+==============================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpNormalize.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaNormalizeCreate(NVCVOperatorHandle *)
+   :project: cvcuda

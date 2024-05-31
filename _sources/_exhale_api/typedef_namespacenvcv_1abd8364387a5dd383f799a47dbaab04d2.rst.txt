@@ -1,0 +1,14 @@
+.. _exhale_typedef_namespacenvcv_1abd8364387a5dd383f799a47dbaab04d2:
+
+Typedef nvcv::ImageBatchWrapHandle
+==================================
+
+.. did not find file this was defined in
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: nvcv::ImageBatchWrapHandle
+   :project: cvcuda

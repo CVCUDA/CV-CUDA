@@ -1,0 +1,14 @@
+.. _exhale_define_group__NVCV__C__CORE__DATATYPE_1ga66813530e1a4df5c1fffe9f4ac18e3d1:
+
+Define NVCV_DATA_TYPE_NONE
+==========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_DataType.h`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_DATA_TYPE_NONE
+   :project: cvcuda

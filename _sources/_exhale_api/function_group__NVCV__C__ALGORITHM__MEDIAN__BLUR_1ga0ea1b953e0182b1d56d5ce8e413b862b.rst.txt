@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__MEDIAN__BLUR_1ga0ea1b953e0182b1d56d5ce8e413b862b:
+
+Function cvcudaMedianBlurCreate
+===============================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpMedianBlur.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaMedianBlurCreate(NVCVOperatorHandle *, const int32_t)
+   :project: cvcuda

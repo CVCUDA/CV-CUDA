@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__IMAGETYPE_1gae8f70d4130019a18f862f3988863c47a:
+
+Function nvcvImageFormatGetName
+===============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageFormat.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvImageFormatGetName(NVCVImageFormat)
+   :project: cvcuda

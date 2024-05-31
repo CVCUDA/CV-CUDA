@@ -1,0 +1,26 @@
+.. _exhale_class_classcvcuda_1_1Normalize:
+
+Class Normalize
+===============
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpNormalize.hpp`
+
+
+Inheritance Relationships
+-------------------------
+
+Base Type
+*********
+
+- ``public cvcuda::IOperator`` (:ref:`exhale_class_classcvcuda_1_1IOperator`)
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: cvcuda::Normalize
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

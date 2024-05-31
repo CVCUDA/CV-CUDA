@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__AVERAGEBLUR_1gaa23d937c1f7ae314bfe700ac459f5454:
+
+Function cvcudaAverageBlurCreate
+================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpAverageBlur.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaAverageBlurCreate(NVCVOperatorHandle *, int32_t, int32_t, int32_t)
+   :project: cvcuda

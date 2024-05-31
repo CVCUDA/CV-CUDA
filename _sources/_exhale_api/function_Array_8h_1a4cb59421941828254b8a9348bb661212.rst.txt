@@ -1,0 +1,14 @@
+.. _exhale_function_Array_8h_1a4cb59421941828254b8a9348bb661212:
+
+Function nvcvArrayCalcRequirementsWithTarget
+============================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Array.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvArrayCalcRequirementsWithTarget(int64_t, NVCVDataType, int32_t, NVCVResourceType, NVCVArrayRequirements *)
+   :project: cvcuda

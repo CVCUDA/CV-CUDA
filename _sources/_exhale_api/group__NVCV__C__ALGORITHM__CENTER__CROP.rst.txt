@@ -1,0 +1,7 @@
+:orphan:
+
+Center Crop
+===========
+
+.. doxygengroup:: NVCV_C_ALGORITHM_CENTER_CROP
+   :project: cvcuda

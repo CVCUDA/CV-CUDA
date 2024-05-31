@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__CPP__CUDATOOLS__INTERPOLATION_1ga89954a7b5f3b9a956b95df14ae886479:
+
+Function nvcv::cuda::GetCubicCoeff
+==================================
+
+.. did not find file this was defined in
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::cuda::GetCubicCoeff(float)
+   :project: cvcuda

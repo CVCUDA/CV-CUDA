@@ -1,0 +1,41 @@
+
+.. _file_nvcv_types_include_nvcv_detail_TensorDataImpl.hpp:
+
+File TensorDataImpl.hpp
+=======================
+Definition (``nvcv_types/include/nvcv/detail/TensorDataImpl.hpp``)
+------------------------------------------------------------------
+
+
+.. toctree::
+   :maxdepth: 1
+
+   program_listing_file_nvcv_types_include_nvcv_detail_TensorDataImpl.hpp.rst
+
+
+
+
+
+Includes
+--------
+
+
+- ``algorithm``
+
+
+
+Included By
+-----------
+
+
+- :ref:`file_nvcv_types_include_nvcv_TensorData.hpp`
+
+
+
+
+Namespaces
+----------
+
+
+- :ref:`namespace_nvcv`
+

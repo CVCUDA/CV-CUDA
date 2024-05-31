@@ -1,0 +1,14 @@
+.. _exhale_function_Allocator_8h_1abf6bf3f96488f5aedc974081ca9b9f2a:
+
+Function nvcvAllocatorFreeCudaMemory
+====================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_alloc_Allocator.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvAllocatorFreeCudaMemory(NVCVAllocatorHandle, void *, int64_t, int32_t)
+   :project: cvcuda

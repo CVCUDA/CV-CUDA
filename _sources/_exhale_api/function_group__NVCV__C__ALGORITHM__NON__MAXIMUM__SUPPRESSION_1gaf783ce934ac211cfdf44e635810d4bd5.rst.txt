@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__NON__MAXIMUM__SUPPRESSION_1gaf783ce934ac211cfdf44e635810d4bd5:
+
+Function cvcudaNonMaximumSuppressionSubmit
+==========================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpNonMaximumSuppression.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaNonMaximumSuppressionSubmit()
+   :project: cvcuda

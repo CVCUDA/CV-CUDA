@@ -1,0 +1,14 @@
+.. _exhale_typedef_TensorBatchData_8h_1aadeb7fa5879ac6ce77b852d37d78c743:
+
+Typedef NVCVTensorBatchElementStrided
+=====================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorBatchData.h`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: NVCVTensorBatchElementStrided
+   :project: cvcuda

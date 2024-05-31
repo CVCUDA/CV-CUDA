@@ -1,0 +1,14 @@
+.. _exhale_typedef_group__NVCV__C__CORE__DATATYPE_1gab7d8dd5e0d686295410883ab5d61d649:
+
+Typedef NVCVDataType
+====================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_DataType.h`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: NVCVDataType
+   :project: cvcuda

@@ -1,0 +1,31 @@
+
+.. _program_listing_file_nvcv_types_include_nvcv_detail_CudaFwd.h:
+
+Program Listing for File CudaFwd.h
+==================================
+
+|exhale_lsh| :ref:`Return to documentation for file <file_nvcv_types_include_nvcv_detail_CudaFwd.h>` (``nvcv_types/include/nvcv/detail/CudaFwd.h``)
+
+.. |exhale_lsh| unicode:: U+021B0 .. UPWARDS ARROW WITH TIP LEFTWARDS
+
+.. code-block:: cpp
+
+   /*
+    * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+    * SPDX-License-Identifier: Apache-2.0
+    *
+    * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+    * property and proprietary rights in and to this material, related
+    * documentation and any modifications thereto. Any use, reproduction,
+    * disclosure or distribution of this material and related documentation
+    * without an express license agreement from NVIDIA CORPORATION or
+    * its affiliates is strictly prohibited.
+    */
+   
+   #ifndef NVCV_DETAIL_FWD_CUDA_H
+   #define NVCV_DETAIL_FWD_CUDA_H
+   
+   typedef struct CUstream_st *CUstream;
+   typedef struct cudaArray   *cudaArray_t;
+   
+   #endif // NVCV_DETAIL_FWD_CUDA_H

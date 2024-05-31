@@ -1,0 +1,14 @@
+.. _exhale_function_Tensor_8h_1aa9061cc8ba118efdbb51af35a420bdd9:
+
+Function nvcvTensorExportData
+=============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Tensor.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvTensorExportData(NVCVTensorHandle, NVCVTensorData *)
+   :project: cvcuda

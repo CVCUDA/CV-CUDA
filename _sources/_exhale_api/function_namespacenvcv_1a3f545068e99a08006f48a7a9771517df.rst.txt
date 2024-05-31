@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1a3f545068e99a08006f48a7a9771517df:
+
+Specialized Template Function nvcv::HandleDecRef< NVCVTensorHandle >
+====================================================================
+
+.. did not find file this was defined in
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::HandleDecRef< NVCVTensorHandle >(NVCVTensorHandle)
+   :project: cvcuda

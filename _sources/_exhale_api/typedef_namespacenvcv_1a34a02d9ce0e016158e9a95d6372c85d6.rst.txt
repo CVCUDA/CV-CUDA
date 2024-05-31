@@ -1,0 +1,14 @@
+.. _exhale_typedef_namespacenvcv_1a34a02d9ce0e016158e9a95d6372c85d6:
+
+Typedef nvcv::ImagePlaneStrided
+===============================
+
+.. did not find file this was defined in
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: nvcv::ImagePlaneStrided
+   :project: cvcuda

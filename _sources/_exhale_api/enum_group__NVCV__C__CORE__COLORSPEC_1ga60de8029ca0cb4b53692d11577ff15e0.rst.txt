@@ -1,0 +1,14 @@
+.. _exhale_enum_group__NVCV__C__CORE__COLORSPEC_1ga60de8029ca0cb4b53692d11577ff15e0:
+
+Enum NVCVYCbCrEncoding
+======================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ColorSpec.h`
+
+
+Enum Documentation
+------------------
+
+
+.. doxygenenum:: NVCVYCbCrEncoding
+   :project: cvcuda

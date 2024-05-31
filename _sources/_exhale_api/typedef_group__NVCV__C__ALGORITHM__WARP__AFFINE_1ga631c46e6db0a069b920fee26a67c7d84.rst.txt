@@ -1,0 +1,14 @@
+.. _exhale_typedef_group__NVCV__C__ALGORITHM__WARP__AFFINE_1ga631c46e6db0a069b920fee26a67c7d84:
+
+Typedef NVCVAffineTransform
+===========================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpWarpAffine.h`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: NVCVAffineTransform
+   :project: cvcuda

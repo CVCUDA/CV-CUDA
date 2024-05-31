@@ -1,0 +1,14 @@
+.. _exhale_enum_group__NVCV__C__TYPES_1gad78f2ecd22f5a4390dc142289a89bf0e:
+
+Enum NVCVConnectivityType
+=========================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_Types.h`
+
+
+Enum Documentation
+------------------
+
+
+.. doxygenenum:: NVCVConnectivityType
+   :project: cvcuda

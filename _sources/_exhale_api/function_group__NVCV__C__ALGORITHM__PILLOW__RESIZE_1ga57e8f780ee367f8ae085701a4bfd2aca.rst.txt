@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__PILLOW__RESIZE_1ga57e8f780ee367f8ae085701a4bfd2aca:
+
+Function cvcudaPillowResizeGetWorkspaceRequirements
+===================================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpPillowResize.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaPillowResizeGetWorkspaceRequirements(NVCVOperatorHandle, int, int32_t, int32_t, int32_t, int32_t, NVCVImageFormat, NVCVWorkspaceRequirements *)
+   :project: cvcuda

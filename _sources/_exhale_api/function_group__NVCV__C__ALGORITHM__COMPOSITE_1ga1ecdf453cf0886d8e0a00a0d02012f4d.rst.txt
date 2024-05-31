@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__COMPOSITE_1ga1ecdf453cf0886d8e0a00a0d02012f4d:
+
+Function cvcudaCompositeVarShapeSubmit
+======================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpComposite.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaCompositeVarShapeSubmit()
+   :project: cvcuda

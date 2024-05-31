@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__PADANDSTACK_1ga8018536ae1a44a4035f1861ea7e34d8c:
+
+Function cvcudaPadAndStackCreate
+================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpPadAndStack.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaPadAndStackCreate(NVCVOperatorHandle *)
+   :project: cvcuda

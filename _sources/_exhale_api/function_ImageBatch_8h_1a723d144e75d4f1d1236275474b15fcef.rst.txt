@@ -1,0 +1,14 @@
+.. _exhale_function_ImageBatch_8h_1a723d144e75d4f1d1236275474b15fcef:
+
+Function nvcvImageBatchRefCount
+===============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageBatch.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvImageBatchRefCount(NVCVImageBatchHandle, int *)
+   :project: cvcuda

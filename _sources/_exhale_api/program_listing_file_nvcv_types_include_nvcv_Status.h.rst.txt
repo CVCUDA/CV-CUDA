@@ -1,0 +1,83 @@
+
+.. _program_listing_file_nvcv_types_include_nvcv_Status.h:
+
+Program Listing for File Status.h
+=================================
+
+|exhale_lsh| :ref:`Return to documentation for file <file_nvcv_types_include_nvcv_Status.h>` (``nvcv_types/include/nvcv/Status.h``)
+
+.. |exhale_lsh| unicode:: U+021B0 .. UPWARDS ARROW WITH TIP LEFTWARDS
+
+.. code-block:: cpp
+
+   /*
+    * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+    * SPDX-License-Identifier: Apache-2.0
+    *
+    * Licensed under the Apache License, Version 2.0 (the "License");
+    * you may not use this file except in compliance with the License.
+    * You may obtain a copy of the License at
+    *
+    * http://www.apache.org/licenses/LICENSE-2.0
+    *
+    * Unless required by applicable law or agreed to in writing, software
+    * distributed under the License is distributed on an "AS IS" BASIS,
+    * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    * See the License for the specific language governing permissions and
+    * limitations under the License.
+    */
+   
+   #ifndef NVCV_STATUS_H
+   #define NVCV_STATUS_H
+   
+   #include "Export.h"
+   
+   #include <stdarg.h>
+   #include <stdint.h>
+   
+   #ifdef __cplusplus
+   extern "C"
+   {
+   #endif
+   
+   typedef enum
+   {
+       NVCV_SUCCESS = 0,                
+       NVCV_ERROR_NOT_IMPLEMENTED,      
+       NVCV_ERROR_INVALID_ARGUMENT,     
+       NVCV_ERROR_INVALID_IMAGE_FORMAT, 
+       NVCV_ERROR_INVALID_OPERATION,    
+       NVCV_ERROR_DEVICE,               
+       NVCV_ERROR_NOT_READY,            
+       NVCV_ERROR_OUT_OF_MEMORY,        
+       NVCV_ERROR_INTERNAL,             
+       NVCV_ERROR_NOT_COMPATIBLE,       
+       NVCV_ERROR_OVERFLOW,             
+       NVCV_ERROR_UNDERFLOW,            
+   } NVCVStatus;
+   
+   #define NVCV_MAX_STATUS_MESSAGE_LENGTH (256)
+   
+   NVCV_PUBLIC const char *nvcvStatusGetName(NVCVStatus code);
+   
+   NVCV_PUBLIC NVCVStatus nvcvGetLastError();
+   
+   NVCV_PUBLIC NVCVStatus nvcvGetLastErrorMessage(char *msgBuffer, int32_t lenBuffer);
+   
+   NVCV_PUBLIC NVCVStatus nvcvPeekAtLastError();
+   
+   NVCV_PUBLIC NVCVStatus nvcvPeekAtLastErrorMessage(char *msgBuffer, int32_t lenBuffer);
+   
+   NVCV_PUBLIC void nvcvSetThreadStatus(NVCVStatus status, const char *fmt, ...)
+   #if __GNUC__
+       __attribute__((format(printf, 2, 3)))
+   #endif
+       ;
+   
+   NVCV_PUBLIC void nvcvSetThreadStatusVarArgList(NVCVStatus status, const char *fmt, va_list va);
+   
+   #ifdef __cplusplus
+   }
+   #endif
+   
+   #endif // NVCV_STATUS_H

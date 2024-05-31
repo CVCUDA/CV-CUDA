@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__CPP__CUDATOOLS__SATURATECAST_1ga4acebb213025a928fb944ce6726f6874:
+
+Template Function nvcv::cuda::SaturateCast
+==========================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_SaturateCast.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::cuda::SaturateCast(U)
+   :project: cvcuda

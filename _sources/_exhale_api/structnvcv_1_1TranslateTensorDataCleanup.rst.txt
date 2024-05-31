@@ -1,0 +1,17 @@
+.. _exhale_struct_structnvcv_1_1TranslateTensorDataCleanup:
+
+Struct TranslateTensorDataCleanup
+=================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Tensor.hpp`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: nvcv::TranslateTensorDataCleanup
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

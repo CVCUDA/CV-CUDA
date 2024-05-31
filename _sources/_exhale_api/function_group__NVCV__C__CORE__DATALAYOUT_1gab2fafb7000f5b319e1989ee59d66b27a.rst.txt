@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__DATALAYOUT_1gab2fafb7000f5b319e1989ee59d66b27a:
+
+Function nvcvSwizzleGetChannels
+===============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_DataLayout.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvSwizzleGetChannels(NVCVSwizzle, NVCVChannel *)
+   :project: cvcuda

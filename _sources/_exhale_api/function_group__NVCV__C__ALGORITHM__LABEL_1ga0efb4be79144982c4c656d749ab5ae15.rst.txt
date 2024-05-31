@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__LABEL_1ga0efb4be79144982c4c656d749ab5ae15:
+
+Function cvcudaLabelCreate
+==========================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpLabel.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaLabelCreate(NVCVOperatorHandle *)
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__AVERAGEBLUR_1gae9271f84cc64febe88dd79fc11de70f8:
+
+Function cvcudaAverageBlurVarShapeSubmit
+========================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpAverageBlur.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaAverageBlurVarShapeSubmit(NVCVOperatorHandle, cudaStream_t, NVCVImageBatchHandle, NVCVImageBatchHandle, NVCVTensorHandle, NVCVTensorHandle, NVCVBorderType)
+   :project: cvcuda

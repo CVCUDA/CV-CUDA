@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga07ad28cce5431d150f9d972163b42e03:
+
+Function nvcvColorSpecSetColorTransferFunction
+==============================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ColorSpec.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvColorSpecSetColorTransferFunction(NVCVColorSpec *, NVCVColorTransferFunction)
+   :project: cvcuda

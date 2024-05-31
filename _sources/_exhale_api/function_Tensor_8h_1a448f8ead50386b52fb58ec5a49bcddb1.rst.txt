@@ -1,0 +1,14 @@
+.. _exhale_function_Tensor_8h_1a448f8ead50386b52fb58ec5a49bcddb1:
+
+Function nvcvTensorConstruct
+============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Tensor.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvTensorConstruct(const NVCVTensorRequirements *, NVCVAllocatorHandle, NVCVTensorHandle *)
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_define_group__NVCV__C__CORE__IMAGETYPE_1ga1c8a2c3688c6b3df74ac69a2314e22aa:
+
+Define NVCV_IMAGE_FORMAT_RGBA8_UNASSOCIATED_ALPHA
+=================================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageFormat.h`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_IMAGE_FORMAT_RGBA8_UNASSOCIATED_ALPHA
+   :project: cvcuda

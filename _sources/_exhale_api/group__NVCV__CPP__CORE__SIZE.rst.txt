@@ -1,0 +1,7 @@
+:orphan:
+
+Size Operator
+=============
+
+.. doxygengroup:: NVCV_CPP_CORE_SIZE
+   :project: cvcuda

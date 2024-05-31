@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__DATATYPE_1ga0ef7f2f7c44e6b21d53209ef7253d864:
+
+Function nvcvDataTypeGetBitsPerChannel
+======================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_DataType.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvDataTypeGetBitsPerChannel(NVCVDataType, int32_t *)
+   :project: cvcuda

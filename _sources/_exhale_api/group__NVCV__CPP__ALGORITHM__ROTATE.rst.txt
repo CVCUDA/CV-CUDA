@@ -1,0 +1,7 @@
+:orphan:
+
+Rotate
+======
+
+.. doxygengroup:: NVCV_CPP_ALGORITHM_ROTATE
+   :project: cvcuda

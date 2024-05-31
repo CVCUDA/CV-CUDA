@@ -1,0 +1,35 @@
+.. _exhale_class_classnvcv_1_1MemAllocator:
+
+Class MemAllocator
+==================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_alloc_Allocator.hpp`
+
+
+Inheritance Relationships
+-------------------------
+
+Base Type
+*********
+
+- ``public nvcv::ResourceAllocator`` (:ref:`exhale_class_classnvcv_1_1ResourceAllocator`)
+
+
+Derived Types
+*************
+
+- ``public nvcv::detail::MemAllocatorWithKind< NVCV_RESOURCE_MEM_HOST >`` (:ref:`exhale_class_classnvcv_1_1detail_1_1MemAllocatorWithKind`)
+- ``public nvcv::detail::MemAllocatorWithKind< NVCV_RESOURCE_MEM_HOST_PINNED >`` (:ref:`exhale_class_classnvcv_1_1detail_1_1MemAllocatorWithKind`)
+- ``public nvcv::detail::MemAllocatorWithKind< NVCV_RESOURCE_MEM_CUDA >`` (:ref:`exhale_class_classnvcv_1_1detail_1_1MemAllocatorWithKind`)
+- ``public nvcv::detail::MemAllocatorWithKind< KIND >`` (:ref:`exhale_class_classnvcv_1_1detail_1_1MemAllocatorWithKind`)
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nvcv::MemAllocator
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

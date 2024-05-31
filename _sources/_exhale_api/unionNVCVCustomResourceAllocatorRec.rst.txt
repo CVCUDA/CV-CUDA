@@ -1,0 +1,14 @@
+.. _exhale_union_unionNVCVCustomResourceAllocatorRec:
+
+Union NVCVCustomResourceAllocatorRec
+====================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_alloc_Allocator.h`
+
+
+Union Documentation
+-------------------
+
+
+.. doxygenunion:: NVCVCustomResourceAllocatorRec
+   :project: cvcuda

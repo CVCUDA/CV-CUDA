@@ -1,0 +1,14 @@
+.. _exhale_typedef_Fwd_8h_1a06e34fc1dcef513d36b0ee3b9e78b6b6:
+
+Typedef NVCVTensorHandle
+========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Fwd.h`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: NVCVTensorHandle
+   :project: cvcuda

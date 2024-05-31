@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM____HISTOGRAM_1gac9326cef5c15cdd7b354a90c578c5281:
+
+Function cvcudaHistogramCreate
+==============================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpHistogram.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaHistogramCreate(NVCVOperatorHandle *)
+   :project: cvcuda

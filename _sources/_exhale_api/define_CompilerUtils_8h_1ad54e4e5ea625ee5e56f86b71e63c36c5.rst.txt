@@ -1,0 +1,14 @@
+.. _exhale_define_CompilerUtils_8h_1ad54e4e5ea625ee5e56f86b71e63c36c5:
+
+Define NVCV_IF_CONSTEXPR
+========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_detail_CompilerUtils.h`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_IF_CONSTEXPR
+   :project: cvcuda

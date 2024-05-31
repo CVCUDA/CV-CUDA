@@ -1,0 +1,17 @@
+.. _exhale_struct_structNVCVExtraChannelInfo:
+
+Struct NVCVExtraChannelInfo
+===========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_DataLayout.h`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: NVCVExtraChannelInfo
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

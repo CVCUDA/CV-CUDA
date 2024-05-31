@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__CPP__CORE__COLORSPEC_1gab5d522d308cd14dc76cacd688054f22e:
+
+Function operator<<(std::ostream&, NVCVColorSpec)
+=================================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ColorSpec.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: operator<<(std::ostream&, NVCVColorSpec)
+   :project: cvcuda

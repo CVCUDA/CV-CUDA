@@ -1,0 +1,14 @@
+.. _exhale_enum_group__NVCV__C__CORE__COLORSPEC_1ga4ac3950880d46016a86fa92e78c7fa46:
+
+Enum NVCVColorSpace
+===================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ColorSpec.h`
+
+
+Enum Documentation
+------------------
+
+
+.. doxygenenum:: NVCVColorSpace
+   :project: cvcuda

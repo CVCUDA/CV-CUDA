@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__CPP__CORE__DATALAYOUT_1ga822463bf76c5383c52b88ae7155b53d5:
+
+Function nvcv::GetBitsPerPixel
+==============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_DataLayout.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::GetBitsPerPixel(Packing)
+   :project: cvcuda

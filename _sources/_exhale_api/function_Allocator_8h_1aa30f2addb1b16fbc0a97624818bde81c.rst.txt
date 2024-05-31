@@ -1,0 +1,14 @@
+.. _exhale_function_Allocator_8h_1aa30f2addb1b16fbc0a97624818bde81c:
+
+Function nvcvAllocatorDecRef
+============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_alloc_Allocator.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvAllocatorDecRef(NVCVAllocatorHandle, int *)
+   :project: cvcuda

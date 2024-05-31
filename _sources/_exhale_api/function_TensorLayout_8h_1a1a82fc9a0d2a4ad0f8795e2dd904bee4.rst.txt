@@ -1,0 +1,14 @@
+.. _exhale_function_TensorLayout_8h_1a1a82fc9a0d2a4ad0f8795e2dd904bee4:
+
+Function nvcvTensorLayoutCompare
+================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorLayout.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvTensorLayoutCompare(NVCVTensorLayout, NVCVTensorLayout)
+   :project: cvcuda

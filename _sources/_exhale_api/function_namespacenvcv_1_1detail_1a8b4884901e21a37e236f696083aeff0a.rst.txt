@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1_1detail_1a8b4884901e21a37e236f696083aeff0a:
+
+Function nvcv::detail::IsRefWrapperF(...)
+=========================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_detail_TypeTraits.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::detail::IsRefWrapperF(...)
+   :project: cvcuda

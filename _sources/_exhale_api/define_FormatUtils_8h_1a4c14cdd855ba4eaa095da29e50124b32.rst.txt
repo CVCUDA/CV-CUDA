@@ -1,0 +1,14 @@
+.. _exhale_define_FormatUtils_8h_1a4c14cdd855ba4eaa095da29e50124b32:
+
+Define NVCV_DETAIL_MAKE_YCbCr_EXTRA_CHANNELS_FORMAT
+===================================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_detail_FormatUtils.h`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_DETAIL_MAKE_YCbCr_EXTRA_CHANNELS_FORMAT
+   :project: cvcuda

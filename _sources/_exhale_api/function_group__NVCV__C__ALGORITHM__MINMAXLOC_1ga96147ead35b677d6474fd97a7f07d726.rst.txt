@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__MINMAXLOC_1ga96147ead35b677d6474fd97a7f07d726:
+
+Function cvcudaMinMaxLocCreate
+==============================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpMinMaxLoc.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaMinMaxLocCreate(NVCVOperatorHandle *)
+   :project: cvcuda

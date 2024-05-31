@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__PAIRWISE__MATCHER_1ga7c9911dcff3032c058ebcaa0e45d1622:
+
+Function cvcudaPairwiseMatcherCreate
+====================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpPairwiseMatcher.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaPairwiseMatcherCreate(NVCVOperatorHandle *, NVCVPairwiseMatcherType)
+   :project: cvcuda

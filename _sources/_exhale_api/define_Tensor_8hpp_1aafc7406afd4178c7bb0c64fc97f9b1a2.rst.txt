@@ -1,0 +1,14 @@
+.. _exhale_define_Tensor_8hpp_1aafc7406afd4178c7bb0c64fc97f9b1a2:
+
+Define NVCV_TENSOR_HANDLE_TO_OPTIONAL
+=====================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Tensor.hpp`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_TENSOR_HANDLE_TO_OPTIONAL
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__CPP__CUDATOOLS__STATICCAST_1ga034f897914cd4d0d9fa564e68767c2fb:
+
+Template Function nvcv::cuda::StaticCast
+========================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_StaticCast.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::cuda::StaticCast(U)
+   :project: cvcuda

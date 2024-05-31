@@ -1,0 +1,7 @@
+:orphan:
+
+Pairwise Matcher
+================
+
+.. doxygengroup:: NVCV_C_ALGORITHM_PAIRWISE_MATCHER
+   :project: cvcuda

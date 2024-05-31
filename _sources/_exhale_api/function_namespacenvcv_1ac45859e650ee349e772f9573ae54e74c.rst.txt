@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1ac45859e650ee349e772f9573ae54e74c:
+
+Template Function nvcv::HandleIsNull
+====================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_HandleWrapper.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::HandleIsNull(HandleType)
+   :project: cvcuda

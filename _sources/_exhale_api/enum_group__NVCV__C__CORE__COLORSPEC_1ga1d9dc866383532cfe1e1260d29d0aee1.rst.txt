@@ -1,0 +1,14 @@
+.. _exhale_enum_group__NVCV__C__CORE__COLORSPEC_1ga1d9dc866383532cfe1e1260d29d0aee1:
+
+Enum NVCVRawPattern
+===================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ColorSpec.h`
+
+
+Enum Documentation
+------------------
+
+
+.. doxygenenum:: NVCVRawPattern
+   :project: cvcuda

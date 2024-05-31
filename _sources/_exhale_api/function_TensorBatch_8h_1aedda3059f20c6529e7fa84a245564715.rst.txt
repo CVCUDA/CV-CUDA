@@ -1,0 +1,14 @@
+.. _exhale_function_TensorBatch_8h_1aedda3059f20c6529e7fa84a245564715:
+
+Function nvcvTensorBatchConstruct
+=================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorBatch.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvTensorBatchConstruct(const NVCVTensorBatchRequirements *, NVCVAllocatorHandle, NVCVTensorBatchHandle *)
+   :project: cvcuda

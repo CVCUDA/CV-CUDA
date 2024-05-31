@@ -1,0 +1,14 @@
+.. _exhale_define_group__NVCV__C__CORE__IMAGETYPE_1gaa03157498244f3ea587d60ce48fa6548:
+
+Define NVCV_IMAGE_FORMAT_CMYK8
+==============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageFormat.h`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_IMAGE_FORMAT_CMYK8
+   :project: cvcuda

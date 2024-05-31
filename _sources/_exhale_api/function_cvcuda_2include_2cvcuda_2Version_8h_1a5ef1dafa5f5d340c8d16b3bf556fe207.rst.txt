@@ -1,0 +1,14 @@
+.. _exhale_function_cvcuda_2include_2cvcuda_2Version_8h_1a5ef1dafa5f5d340c8d16b3bf556fe207:
+
+Function cvcudaGetVersion
+=========================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_Version.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaGetVersion(void)
+   :project: cvcuda

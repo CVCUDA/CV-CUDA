@@ -1,0 +1,27 @@
+.. _exhale_class_classnvcv_1_1ImageData:
+
+Class ImageData
+===============
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageData.hpp`
+
+
+Inheritance Relationships
+-------------------------
+
+Derived Types
+*************
+
+- ``public nvcv::ImageDataCudaArray`` (:ref:`exhale_class_classnvcv_1_1ImageDataCudaArray`)
+- ``public nvcv::ImageDataStrided`` (:ref:`exhale_class_classnvcv_1_1ImageDataStrided`)
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nvcv::ImageData
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

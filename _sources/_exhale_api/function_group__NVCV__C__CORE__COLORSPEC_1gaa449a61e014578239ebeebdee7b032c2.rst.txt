@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__COLORSPEC_1gaa449a61e014578239ebeebdee7b032c2:
+
+Function nvcvColorSpecSetRange
+==============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ColorSpec.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvColorSpecSetRange(NVCVColorSpec *, NVCVColorRange)
+   :project: cvcuda

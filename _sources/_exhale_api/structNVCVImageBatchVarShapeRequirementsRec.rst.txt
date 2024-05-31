@@ -1,0 +1,17 @@
+.. _exhale_struct_structNVCVImageBatchVarShapeRequirementsRec:
+
+Struct NVCVImageBatchVarShapeRequirementsRec
+============================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageBatch.h`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: NVCVImageBatchVarShapeRequirementsRec
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

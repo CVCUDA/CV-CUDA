@@ -1,0 +1,17 @@
+.. _exhale_class_classnvcv_1_1ColorSpec:
+
+Class ColorSpec
+===============
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ColorSpec.hpp`
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nvcv::ColorSpec
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

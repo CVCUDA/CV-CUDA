@@ -1,0 +1,26 @@
+.. _exhale_struct_structnvcv_1_1detail_1_1Disjunction_3_01T_00_01Ts_8_8_8_01_4:
+
+Template Struct Disjunction< T, Ts... >
+=======================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_detail_TypeTraits.hpp`
+
+
+Inheritance Relationships
+-------------------------
+
+Base Type
+*********
+
+- ``public nvcv::detail::DisjunctionImpl< T::value, Ts... >`` (:ref:`exhale_struct_structnvcv_1_1detail_1_1DisjunctionImpl`)
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: nvcv::detail::Disjunction< T, Ts... >
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

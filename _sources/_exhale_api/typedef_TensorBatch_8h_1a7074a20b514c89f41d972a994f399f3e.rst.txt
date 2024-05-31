@@ -1,0 +1,14 @@
+.. _exhale_typedef_TensorBatch_8h_1a7074a20b514c89f41d972a994f399f3e:
+
+Typedef NVCVTensorBatchRequirements
+===================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorBatch.h`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: NVCVTensorBatchRequirements
+   :project: cvcuda

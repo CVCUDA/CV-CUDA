@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM____BND__BOX_1gaa619985c2589ffec1056f949b270a881:
+
+Function cvcudaBndBoxCreate
+===========================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpBndBox.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaBndBoxCreate(NVCVOperatorHandle *)
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_variable_namespacenvcv_1_1cuda_1_1detail_1a30a096c8d293c2fa169748efe7593e54:
+
+Variable nvcv::cuda::detail::IsIntegral
+=======================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_MathOps.hpp`
+
+
+Variable Documentation
+----------------------
+
+
+.. doxygenvariable:: nvcv::cuda::detail::IsIntegral
+   :project: cvcuda

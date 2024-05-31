@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga23cdb3fc462eb486739041d6d6fd77f2:
+
+Function nvcvMakeColorSpec
+==========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ColorSpec.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvMakeColorSpec(NVCVColorSpec *, NVCVColorSpace, NVCVYCbCrEncoding, NVCVColorTransferFunction, NVCVColorRange, NVCVChromaLocation, NVCVChromaLocation)
+   :project: cvcuda

@@ -1,0 +1,26 @@
+.. _exhale_class_classcvcuda_1_1Flip:
+
+Class Flip
+==========
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpFlip.hpp`
+
+
+Inheritance Relationships
+-------------------------
+
+Base Type
+*********
+
+- ``public cvcuda::IOperator`` (:ref:`exhale_class_classcvcuda_1_1IOperator`)
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: cvcuda::Flip
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

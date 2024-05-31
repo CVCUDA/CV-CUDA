@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1_1cuda_1_1detail_1aa5c474cce2ca9ae5d0474b5182dbefaa:
+
+Template Function nvcv::cuda::detail::ExpImpl
+=============================================
+
+.. did not find file this was defined in
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::cuda::detail::ExpImpl(U)
+   :project: cvcuda

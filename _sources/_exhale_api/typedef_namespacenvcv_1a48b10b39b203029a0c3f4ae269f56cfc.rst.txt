@@ -1,0 +1,14 @@
+.. _exhale_typedef_namespacenvcv_1a48b10b39b203029a0c3f4ae269f56cfc:
+
+Typedef nvcv::ImageDataCleanupCallback
+======================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageBatch.hpp`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: nvcv::ImageDataCleanupCallback
+   :project: cvcuda

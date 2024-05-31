@@ -1,0 +1,87 @@
+
+.. _file_nvcv_types_include_nvcv_cuda_TypeTraits.hpp:
+
+File TypeTraits.hpp
+===================
+
+
+Defines type traits to handle regular C and CUDA compound types. 
+
+
+Definition (``nvcv_types/include/nvcv/cuda/TypeTraits.hpp``)
+------------------------------------------------------------
+
+
+.. toctree::
+   :maxdepth: 1
+
+   program_listing_file_nvcv_types_include_nvcv_cuda_TypeTraits.hpp.rst
+
+
+
+
+
+Includes
+--------
+
+
+- ``cassert``
+
+- ``detail/Metaprogramming.hpp`` (:ref:`file_nvcv_types_include_nvcv_cuda_detail_Metaprogramming.hpp`)
+
+- ``ostream``
+
+
+
+Included By
+-----------
+
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_ArrayWrap.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_Atomics.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_BorderVarShapeWrap.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_BorderWrap.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_DropCast.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_FullTensorWrap.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_ImageBatchVarShapeWrap.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_math_LinAlg.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_MathOps.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_MathWrappers.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_RangeCast.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_SaturateCast.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_StaticCast.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_TensorBatchWrap.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_TensorWrap.hpp`
+
+
+
+
+Namespaces
+----------
+
+
+- :ref:`namespace_nvcv`
+
+- :ref:`namespace_nvcv__cuda`
+
+
+Functions
+---------
+
+
+- :ref:`exhale_function_cuda_2TypeTraits_8hpp_1a4becfa7a27df01f5fbf43aca94985c59`
+

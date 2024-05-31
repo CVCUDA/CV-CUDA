@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__CPP__CUDATOOLS__MATHWRAPPERS_1ga188abd89ee4acaace4604db852f98593:
+
+Template Function nvcv::cuda::pow
+=================================
+
+.. did not find file this was defined in
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::cuda::pow(U, S)
+   :project: cvcuda

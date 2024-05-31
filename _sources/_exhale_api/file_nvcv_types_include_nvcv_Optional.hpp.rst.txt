@@ -1,0 +1,78 @@
+
+.. _file_nvcv_types_include_nvcv_Optional.hpp:
+
+File Optional.hpp
+=================
+Definition (``nvcv_types/include/nvcv/Optional.hpp``)
+-----------------------------------------------------
+
+
+.. toctree::
+   :maxdepth: 1
+
+   program_listing_file_nvcv_types_include_nvcv_Optional.hpp.rst
+
+
+
+
+
+Includes
+--------
+
+
+- ``cassert``
+
+- ``cstddef``
+
+- ``detail/InPlace.hpp`` (:ref:`file_nvcv_types_include_nvcv_detail_InPlace.hpp`)
+
+- ``detail/TypeTraits.hpp`` (:ref:`file_nvcv_types_include_nvcv_detail_TypeTraits.hpp`)
+
+- ``stdexcept``
+
+- ``type_traits``
+
+- ``utility``
+
+
+
+Included By
+-----------
+
+
+- :ref:`file_nvcv_types_include_nvcv_ArrayData.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_ImageBatch.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_ImageBatchData.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_ImageData.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_Tensor.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_TensorBatchData.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_TensorData.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_TensorLayoutInfo.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpMinMaxLoc.hpp`
+
+
+
+
+Namespaces
+----------
+
+
+- :ref:`namespace_nvcv`
+
+
+Classes
+-------
+
+
+- :ref:`exhale_struct_structnvcv_1_1NullOptT`
+
+- :ref:`exhale_class_classnvcv_1_1Optional`
+

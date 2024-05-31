@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1a8f297910650d206508f32fffd3553975:
+
+Function nvcv::operator<<(std::ostream&, ColorSpec)
+===================================================
+
+.. did not find file this was defined in
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::operator<<(std::ostream&, ColorSpec)
+   :project: cvcuda

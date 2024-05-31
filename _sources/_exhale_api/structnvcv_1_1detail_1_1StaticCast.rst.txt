@@ -1,0 +1,17 @@
+.. _exhale_struct_structnvcv_1_1detail_1_1StaticCast:
+
+Template Struct StaticCast
+==========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_detail_CastsImpl.hpp`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: nvcv::detail::StaticCast
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

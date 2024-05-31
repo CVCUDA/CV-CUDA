@@ -1,0 +1,14 @@
+.. _exhale_enum_group__NVCV__CPP__CORE__DATALAYOUT_1ga04947d15146c6dec36b41161fc48444d:
+
+Enum Channel
+============
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_DataLayout.hpp`
+
+
+Enum Documentation
+------------------
+
+
+.. doxygenenum:: nvcv::Channel
+   :project: cvcuda

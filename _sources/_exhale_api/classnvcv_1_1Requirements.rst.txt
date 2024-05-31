@@ -1,0 +1,28 @@
+.. _exhale_class_classnvcv_1_1Requirements:
+
+Class Requirements
+==================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_alloc_Requirements.hpp`
+
+
+Nested Relationships
+--------------------
+
+
+Nested Types
+************
+
+- :ref:`exhale_class_classnvcv_1_1Requirements_1_1ConstMemory`
+- :ref:`exhale_class_classnvcv_1_1Requirements_1_1Memory`
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nvcv::Requirements
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

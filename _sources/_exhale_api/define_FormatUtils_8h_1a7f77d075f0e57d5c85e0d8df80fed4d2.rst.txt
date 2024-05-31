@@ -1,0 +1,14 @@
+.. _exhale_define_FormatUtils_8h_1a7f77d075f0e57d5c85e0d8df80fed4d2:
+
+Define NVCV_DETAIL_MAKE_NONCOLOR_FORMAT
+=======================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_detail_FormatUtils.h`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_DETAIL_MAKE_NONCOLOR_FORMAT
+   :project: cvcuda

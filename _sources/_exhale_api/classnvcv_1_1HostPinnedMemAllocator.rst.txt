@@ -1,0 +1,26 @@
+.. _exhale_class_classnvcv_1_1HostPinnedMemAllocator:
+
+Class HostPinnedMemAllocator
+============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_alloc_Allocator.hpp`
+
+
+Inheritance Relationships
+-------------------------
+
+Base Type
+*********
+
+- ``public nvcv::detail::MemAllocatorWithKind< NVCV_RESOURCE_MEM_HOST_PINNED >`` (:ref:`exhale_class_classnvcv_1_1detail_1_1MemAllocatorWithKind`)
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nvcv::HostPinnedMemAllocator
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

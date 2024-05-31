@@ -1,0 +1,14 @@
+.. _exhale_enum_namespacenvcv_1a858bcb07a88426579e24b98979078573:
+
+Enum YCbCrEncoding
+==================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ColorSpec.hpp`
+
+
+Enum Documentation
+------------------
+
+
+.. doxygenenum:: nvcv::YCbCrEncoding
+   :project: cvcuda

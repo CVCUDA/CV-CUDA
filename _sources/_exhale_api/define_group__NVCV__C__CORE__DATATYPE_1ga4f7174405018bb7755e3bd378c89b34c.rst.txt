@@ -1,0 +1,14 @@
+.. _exhale_define_group__NVCV__C__CORE__DATATYPE_1ga4f7174405018bb7755e3bd378c89b34c:
+
+Define NVCV_DATA_TYPE_3U8
+=========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_DataType.h`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_DATA_TYPE_3U8
+   :project: cvcuda

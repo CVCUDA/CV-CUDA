@@ -1,0 +1,14 @@
+.. _exhale_union_unionNVCVImageBufferRec:
+
+Union NVCVImageBufferRec
+========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageData.h`
+
+
+Union Documentation
+-------------------
+
+
+.. doxygenunion:: NVCVImageBufferRec
+   :project: cvcuda

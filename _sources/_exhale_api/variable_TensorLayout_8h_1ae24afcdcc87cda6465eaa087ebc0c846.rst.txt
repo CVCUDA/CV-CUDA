@@ -1,0 +1,14 @@
+.. _exhale_variable_TensorLayout_8h_1ae24afcdcc87cda6465eaa087ebc0c846:
+
+Variable NVCV_TENSOR_NONE
+=========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorLayout.h`
+
+
+Variable Documentation
+----------------------
+
+
+.. doxygenvariable:: NVCV_TENSOR_NONE
+   :project: cvcuda

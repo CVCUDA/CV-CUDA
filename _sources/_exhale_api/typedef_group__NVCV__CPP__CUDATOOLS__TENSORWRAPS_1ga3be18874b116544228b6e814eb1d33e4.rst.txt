@@ -1,0 +1,14 @@
+.. _exhale_typedef_group__NVCV__CPP__CUDATOOLS__TENSORWRAPS_1ga3be18874b116544228b6e814eb1d33e4:
+
+Typedef nvcv::cuda::TensorNDWrap
+================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_TensorWrap.hpp`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: nvcv::cuda::TensorNDWrap
+   :project: cvcuda

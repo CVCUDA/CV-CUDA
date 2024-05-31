@@ -1,0 +1,14 @@
+.. _exhale_define_Metaprogramming_8hpp_1ac705c454ccffd2bcf088e091aa33e621:
+
+Define NVCV_CUDA_TYPE_TRAITS
+============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_detail_Metaprogramming.hpp`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_CUDA_TYPE_TRAITS
+   :project: cvcuda

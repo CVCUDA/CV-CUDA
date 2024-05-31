@@ -1,0 +1,61 @@
+
+.. _file_nvcv_types_include_nvcv_cuda_FullTensorWrap.hpp:
+
+File FullTensorWrap.hpp
+=======================
+
+
+Defines N-D tensor wrapper with full information on strides and shapes. 
+
+
+Definition (``nvcv_types/include/nvcv/cuda/FullTensorWrap.hpp``)
+----------------------------------------------------------------
+
+
+.. toctree::
+   :maxdepth: 1
+
+   program_listing_file_nvcv_types_include_nvcv_cuda_FullTensorWrap.hpp.rst
+
+
+
+
+
+Includes
+--------
+
+
+- ``TypeTraits.hpp`` (:ref:`file_nvcv_types_include_nvcv_cuda_TypeTraits.hpp`)
+
+- ``nvcv/TensorData.hpp`` (:ref:`file_nvcv_types_include_nvcv_TensorData.hpp`)
+
+- ``type_traits``
+
+
+
+Included By
+-----------
+
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_BorderWrap.hpp`
+
+
+
+
+Namespaces
+----------
+
+
+- :ref:`namespace_nvcv`
+
+- :ref:`namespace_nvcv__cuda`
+
+
+Classes
+-------
+
+
+- :ref:`exhale_class_classnvcv_1_1cuda_1_1FullTensorWrap`
+
+- :ref:`exhale_class_classnvcv_1_1cuda_1_1FullTensorWrap_3_01const_01T_00_01N_01_4`
+

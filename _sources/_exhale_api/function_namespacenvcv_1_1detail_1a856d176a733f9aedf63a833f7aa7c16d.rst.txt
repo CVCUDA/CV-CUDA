@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1_1detail_1a856d176a733f9aedf63a833f7aa7c16d:
+
+Template Function nvcv::detail::IsAligned(T, T)
+===============================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_detail_Align.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::detail::IsAligned(T, T)
+   :project: cvcuda

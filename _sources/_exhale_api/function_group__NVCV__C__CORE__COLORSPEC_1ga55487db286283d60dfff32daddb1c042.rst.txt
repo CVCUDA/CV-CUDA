@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga55487db286283d60dfff32daddb1c042:
+
+Function nvcvColorModelNeedsColorspec
+=====================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ColorSpec.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvColorModelNeedsColorspec(NVCVColorModel, int8_t *)
+   :project: cvcuda

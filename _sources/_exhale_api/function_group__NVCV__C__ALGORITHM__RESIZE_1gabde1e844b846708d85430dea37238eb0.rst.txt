@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__RESIZE_1gabde1e844b846708d85430dea37238eb0:
+
+Function cvcudaResizeSubmit
+===========================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpResize.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaResizeSubmit()
+   :project: cvcuda

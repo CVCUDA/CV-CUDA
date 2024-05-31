@@ -1,0 +1,14 @@
+.. _exhale_typedef_ArrayData_8h_1a55e6b562bfa3f04e7d1401ffc8175a4e:
+
+Typedef NVCVArrayData
+=====================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ArrayData.h`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: NVCVArrayData
+   :project: cvcuda

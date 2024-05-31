@@ -1,0 +1,14 @@
+.. _exhale_function_Config_8h_1aaefa0f804562e4d03bd61175bed25e1a:
+
+Function nvcvConfigSetMaxAllocatorCount
+=======================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Config.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvConfigSetMaxAllocatorCount(int32_t)
+   :project: cvcuda

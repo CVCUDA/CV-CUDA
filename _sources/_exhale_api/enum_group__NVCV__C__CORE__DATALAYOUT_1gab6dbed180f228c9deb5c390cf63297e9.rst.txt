@@ -1,0 +1,14 @@
+.. _exhale_enum_group__NVCV__C__CORE__DATALAYOUT_1gab6dbed180f228c9deb5c390cf63297e9:
+
+Enum NVCVExtraChannel
+=====================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_DataLayout.h`
+
+
+Enum Documentation
+------------------
+
+
+.. doxygenenum:: NVCVExtraChannel
+   :project: cvcuda

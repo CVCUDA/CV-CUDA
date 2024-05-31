@@ -1,0 +1,57 @@
+
+.. _file_cvcuda_include_cvcuda_OpHistogram.hpp:
+
+File OpHistogram.hpp
+====================
+
+
+Defines the public C++ Class for the Histogram operation. 
+
+
+Definition (``cvcuda/include/cvcuda/OpHistogram.hpp``)
+------------------------------------------------------
+
+
+.. toctree::
+   :maxdepth: 1
+
+   program_listing_file_cvcuda_include_cvcuda_OpHistogram.hpp.rst
+
+
+
+
+
+Includes
+--------
+
+
+- ``IOperator.hpp`` (:ref:`file_cvcuda_include_cvcuda_IOperator.hpp`)
+
+- ``OpHistogram.h`` (:ref:`file_cvcuda_include_cvcuda_OpHistogram.h`)
+
+- ``cuda_runtime.h``
+
+- ``nvcv/ImageFormat.hpp`` (:ref:`file_nvcv_types_include_nvcv_ImageFormat.hpp`)
+
+- ``nvcv/Tensor.hpp`` (:ref:`file_nvcv_types_include_nvcv_Tensor.hpp`)
+
+- ``nvcv/alloc/Requirements.hpp`` (:ref:`file_nvcv_types_include_nvcv_alloc_Requirements.hpp`)
+
+
+
+
+
+
+Namespaces
+----------
+
+
+- :ref:`namespace_cvcuda`
+
+
+Classes
+-------
+
+
+- :ref:`exhale_class_classcvcuda_1_1Histogram`
+

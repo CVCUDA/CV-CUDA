@@ -1,0 +1,7 @@
+:orphan:
+
+Reformat
+========
+
+.. doxygengroup:: NVCV_C_ALGORITHM_REFORMAT
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__CPP__CUDATOOLS__LINALG_1ga4641b8acd8201cefc83ae7038c84a54b:
+
+Template Function nvcv::cuda::math::operator\*(const Matrix<T, M, 1>&, const Vector<T, N>&)
+===========================================================================================
+
+.. did not find file this was defined in
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::cuda::math::operator*(const Matrix<T, M, 1>&, const Vector<T, N>&)
+   :project: cvcuda

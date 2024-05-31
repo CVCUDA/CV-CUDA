@@ -1,0 +1,14 @@
+.. _exhale_function_ImageBatch_8h_1af8b8ca1a181888ad7bd6b1b431b42c25:
+
+Function nvcvImageBatchVarShapeGetUniqueFormat
+==============================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageBatch.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvImageBatchVarShapeGetUniqueFormat(NVCVImageBatchHandle, NVCVImageFormat *)
+   :project: cvcuda

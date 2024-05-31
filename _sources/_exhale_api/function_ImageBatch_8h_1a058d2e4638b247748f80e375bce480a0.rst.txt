@@ -1,0 +1,14 @@
+.. _exhale_function_ImageBatch_8h_1a058d2e4638b247748f80e375bce480a0:
+
+Function nvcvImageBatchGetType
+==============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageBatch.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvImageBatchGetType(NVCVImageBatchHandle, NVCVTypeImageBatch *)
+   :project: cvcuda

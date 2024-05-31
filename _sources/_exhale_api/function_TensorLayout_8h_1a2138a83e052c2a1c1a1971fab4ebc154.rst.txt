@@ -1,0 +1,14 @@
+.. _exhale_function_TensorLayout_8h_1a2138a83e052c2a1c1a1971fab4ebc154:
+
+Function nvcvTensorLayoutStartsWith
+===================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorLayout.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvTensorLayoutStartsWith(NVCVTensorLayout, NVCVTensorLayout)
+   :project: cvcuda

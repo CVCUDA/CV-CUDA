@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__IMAGETYPE_1gac4515a9014f778f4056a2a62636b150f:
+
+Function nvcvImageFormatSetChromaSubsampling
+============================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageFormat.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvImageFormatSetChromaSubsampling(NVCVImageFormat *, NVCVChromaSubsampling)
+   :project: cvcuda

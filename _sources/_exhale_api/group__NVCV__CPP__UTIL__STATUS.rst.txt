@@ -1,0 +1,7 @@
+:orphan:
+
+Status Codes
+============
+
+.. doxygengroup:: NVCV_CPP_UTIL_STATUS
+   :project: cvcuda

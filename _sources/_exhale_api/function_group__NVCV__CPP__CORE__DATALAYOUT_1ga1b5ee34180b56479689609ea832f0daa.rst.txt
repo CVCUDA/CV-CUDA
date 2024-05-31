@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__CPP__CORE__DATALAYOUT_1ga1b5ee34180b56479689609ea832f0daa:
+
+Function nvcv::GetParams
+========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_DataLayout.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::GetParams(Packing)
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_function_Array_8h_1a702f6f585b1da0bd5e64549143180e6d:
+
+Function nvcvArrayGetLength
+===========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Array.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvArrayGetLength(NVCVArrayHandle, int64_t *)
+   :project: cvcuda

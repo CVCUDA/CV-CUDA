@@ -1,0 +1,14 @@
+.. _exhale_enum_group__NVCV__C__TYPES_1ga0dd853096644bdd240132736a88cdac0:
+
+Enum NVCVMorphologyType
+=======================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_Types.h`
+
+
+Enum Documentation
+------------------
+
+
+.. doxygenenum:: NVCVMorphologyType
+   :project: cvcuda

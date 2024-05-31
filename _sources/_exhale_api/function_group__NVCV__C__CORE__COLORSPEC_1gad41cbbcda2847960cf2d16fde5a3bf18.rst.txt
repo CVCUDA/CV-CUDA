@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__COLORSPEC_1gad41cbbcda2847960cf2d16fde5a3bf18:
+
+Function nvcvColorSpecGetName
+=============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ColorSpec.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvColorSpecGetName(NVCVColorSpec)
+   :project: cvcuda

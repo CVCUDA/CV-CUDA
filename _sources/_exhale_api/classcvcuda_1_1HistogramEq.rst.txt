@@ -1,0 +1,26 @@
+.. _exhale_class_classcvcuda_1_1HistogramEq:
+
+Class HistogramEq
+=================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpHistogramEq.hpp`
+
+
+Inheritance Relationships
+-------------------------
+
+Base Type
+*********
+
+- ``public cvcuda::IOperator`` (:ref:`exhale_class_classcvcuda_1_1IOperator`)
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: cvcuda::HistogramEq
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

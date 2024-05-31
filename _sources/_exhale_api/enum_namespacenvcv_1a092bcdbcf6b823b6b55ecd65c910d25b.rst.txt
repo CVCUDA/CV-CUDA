@@ -1,0 +1,14 @@
+.. _exhale_enum_namespacenvcv_1a092bcdbcf6b823b6b55ecd65c910d25b:
+
+Enum ChromaSubsampling
+======================
+
+.. did not find file this was defined in
+
+
+Enum Documentation
+------------------
+
+
+.. doxygenenum:: nvcv::ChromaSubsampling
+   :project: cvcuda

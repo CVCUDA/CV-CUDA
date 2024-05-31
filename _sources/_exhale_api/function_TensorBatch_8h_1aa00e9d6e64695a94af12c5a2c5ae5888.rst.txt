@@ -1,0 +1,14 @@
+.. _exhale_function_TensorBatch_8h_1aa00e9d6e64695a94af12c5a2c5ae5888:
+
+Function nvcvTensorBatchGetRank
+===============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorBatch.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvTensorBatchGetRank(NVCVTensorBatchHandle, int32_t *)
+   :project: cvcuda

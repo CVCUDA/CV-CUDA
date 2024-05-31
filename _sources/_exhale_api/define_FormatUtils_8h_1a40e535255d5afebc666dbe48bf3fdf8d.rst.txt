@@ -1,0 +1,14 @@
+.. _exhale_define_FormatUtils_8h_1a40e535255d5afebc666dbe48bf3fdf8d:
+
+Define NVCV_DETAIL_SET_EXTRA_CHANNEL_INFO
+=========================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_detail_FormatUtils.h`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_DETAIL_SET_EXTRA_CHANNEL_INFO
+   :project: cvcuda

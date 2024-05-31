@@ -1,0 +1,14 @@
+.. _exhale_define_FormatUtils_8h_1a691251414302393167bb97cdd61d95c7:
+
+Define NVCV_DETAIL_BPP_NCH
+==========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_detail_FormatUtils.h`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_DETAIL_BPP_NCH
+   :project: cvcuda

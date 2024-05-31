@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__BILATERAL__FILTER_1gafb86107c75cea7342407f14288dfb0c8:
+
+Function cvcudaBilateralFilterVarShapeSubmit
+============================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpBilateralFilter.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaBilateralFilterVarShapeSubmit(NVCVOperatorHandle, cudaStream_t, NVCVImageBatchHandle, NVCVImageBatchHandle, NVCVTensorHandle, NVCVTensorHandle, NVCVTensorHandle, NVCVBorderType)
+   :project: cvcuda

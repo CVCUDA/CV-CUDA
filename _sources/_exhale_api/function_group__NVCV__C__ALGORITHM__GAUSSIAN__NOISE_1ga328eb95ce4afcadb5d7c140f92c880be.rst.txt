@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__GAUSSIAN__NOISE_1ga328eb95ce4afcadb5d7c140f92c880be:
+
+Function cvcudaGaussianNoiseSubmit
+==================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpGaussianNoise.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaGaussianNoiseSubmit()
+   :project: cvcuda

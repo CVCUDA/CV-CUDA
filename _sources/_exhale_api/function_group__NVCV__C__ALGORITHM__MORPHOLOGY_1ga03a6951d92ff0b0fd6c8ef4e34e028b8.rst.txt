@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__MORPHOLOGY_1ga03a6951d92ff0b0fd6c8ef4e34e028b8:
+
+Function cvcudaMorphologyCreate
+===============================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpMorphology.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaMorphologyCreate(NVCVOperatorHandle *)
+   :project: cvcuda

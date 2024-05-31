@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1_1cfg_1a0fe364684de5e17cdfc187c30f161567:
+
+Function nvcv::cfg::SetMaxImageCount
+====================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Config.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::cfg::SetMaxImageCount(int32_t)
+   :project: cvcuda

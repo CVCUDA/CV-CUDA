@@ -1,0 +1,14 @@
+.. _exhale_enum_group__NVCV__C__CORE__COLORSPEC_1gaef682281101838767e95875bed5efdb8:
+
+Enum NVCVColorModel
+===================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ColorSpec.h`
+
+
+Enum Documentation
+------------------
+
+
+.. doxygenenum:: NVCVColorModel
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_function_Allocator_8h_1a8b5aaebb57cb303913d9e68918352ab7:
+
+Function nvcvAllocatorAllocHostPinnedMemory
+===========================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_alloc_Allocator.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvAllocatorAllocHostPinnedMemory(NVCVAllocatorHandle, void **, int64_t, int32_t)
+   :project: cvcuda

@@ -1,0 +1,17 @@
+.. _exhale_struct_structNVCVTensorBufferStridedRec:
+
+Struct NVCVTensorBufferStridedRec
+=================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorData.h`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: NVCVTensorBufferStridedRec
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

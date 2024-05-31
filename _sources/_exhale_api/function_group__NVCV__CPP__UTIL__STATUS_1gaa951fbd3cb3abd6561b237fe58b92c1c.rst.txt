@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__CPP__UTIL__STATUS_1gaa951fbd3cb3abd6561b237fe58b92c1c:
+
+Function nvcv::operator<<(std::ostream&, NVCVStatus)
+====================================================
+
+.. did not find file this was defined in
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::operator<<(std::ostream&, NVCVStatus)
+   :project: cvcuda

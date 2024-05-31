@@ -1,0 +1,14 @@
+.. _exhale_typedef_group__NVCV__C__CORE__IMAGETYPE_1ga393e68647f24f886473b8efbdfb7b90b:
+
+Typedef NVCVImageFormat
+=======================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageFormat.h`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: NVCVImageFormat
+   :project: cvcuda

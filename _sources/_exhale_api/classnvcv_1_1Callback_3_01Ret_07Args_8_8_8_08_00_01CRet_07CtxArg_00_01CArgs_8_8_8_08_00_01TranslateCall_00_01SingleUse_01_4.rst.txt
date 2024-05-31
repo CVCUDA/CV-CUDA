@@ -1,0 +1,27 @@
+.. _exhale_class_classnvcv_1_1Callback_3_01Ret_07Args_8_8_8_08_00_01CRet_07CtxArg_00_01CArgs_8_8_8_08_00_01TranslateCall_00_01SingleUse_01_4:
+
+Template Class Callback< Ret(Args...), CRet(CtxArg, CArgs...), TranslateCall, SingleUse >
+=========================================================================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_detail_Callback.hpp`
+
+
+Nested Relationships
+--------------------
+
+
+Nested Types
+************
+
+- :ref:`exhale_struct_structnvcv_1_1Callback_3_01Ret_07Args_8_8_8_08_00_01CRet_07CtxArg_00_01CArgs_8_8_8_08_00_01Transb7b914e11bb6d38fbd5e59f4add41c3d`
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nvcv::Callback< Ret(Args...), CRet(CtxArg, CArgs...), TranslateCall, SingleUse >
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

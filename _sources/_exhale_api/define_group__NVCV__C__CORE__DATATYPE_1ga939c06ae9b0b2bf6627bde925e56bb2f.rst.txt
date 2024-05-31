@@ -1,0 +1,14 @@
+.. _exhale_define_group__NVCV__C__CORE__DATATYPE_1ga939c06ae9b0b2bf6627bde925e56bb2f:
+
+Define NVCV_DATA_TYPE_4S16
+==========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_DataType.h`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_DATA_TYPE_4S16
+   :project: cvcuda

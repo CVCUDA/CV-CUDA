@@ -1,0 +1,14 @@
+.. _exhale_enum_namespacenvcv_1a9f6434a1e2242912aab5fbfd2cfdc4a0:
+
+Enum RawPattern
+===============
+
+.. did not find file this was defined in
+
+
+Enum Documentation
+------------------
+
+
+.. doxygenenum:: nvcv::RawPattern
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1af6ceb5009e457d4ab8cab3830f5fc9ce:
+
+Function nvcv::operator<<(std::ostream&, ColorTransferFunction)
+===============================================================
+
+.. did not find file this was defined in
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::operator<<(std::ostream&, ColorTransferFunction)
+   :project: cvcuda

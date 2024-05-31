@@ -1,0 +1,14 @@
+.. _exhale_typedef_Fwd_8h_1abe7066d4b604e453aff818758d0753cd:
+
+Typedef NVCVImageBatchHandle
+============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Fwd.h`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: NVCVImageBatchHandle
+   :project: cvcuda

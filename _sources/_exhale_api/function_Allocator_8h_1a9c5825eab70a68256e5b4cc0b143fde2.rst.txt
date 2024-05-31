@@ -1,0 +1,14 @@
+.. _exhale_function_Allocator_8h_1a9c5825eab70a68256e5b4cc0b143fde2:
+
+Function nvcvAllocatorSetUserPointer
+====================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_alloc_Allocator.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvAllocatorSetUserPointer(NVCVAllocatorHandle, void *)
+   :project: cvcuda

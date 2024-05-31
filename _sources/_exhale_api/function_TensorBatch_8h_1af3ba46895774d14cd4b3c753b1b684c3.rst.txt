@@ -1,0 +1,14 @@
+.. _exhale_function_TensorBatch_8h_1af3ba46895774d14cd4b3c753b1b684c3:
+
+Function nvcvTensorBatchClear
+=============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorBatch.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvTensorBatchClear(NVCVTensorBatchHandle)
+   :project: cvcuda

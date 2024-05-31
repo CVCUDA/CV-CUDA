@@ -1,0 +1,14 @@
+.. _exhale_typedef_ImageData_8h_1aee3e0eaef3c824514d1bb4f8712d861c:
+
+Typedef NVCVImageData
+=====================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageData.h`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: NVCVImageData
+   :project: cvcuda

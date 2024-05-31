@@ -1,0 +1,14 @@
+.. _exhale_function_Image_8h_1a2eefb4c5bb6cef90405257362f2b6787:
+
+Function nvcvImageGetUserPointer
+================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Image.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvImageGetUserPointer(NVCVImageHandle, void **)
+   :project: cvcuda

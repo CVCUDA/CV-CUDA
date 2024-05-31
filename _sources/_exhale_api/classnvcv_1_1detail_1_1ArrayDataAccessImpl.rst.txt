@@ -1,0 +1,17 @@
+.. _exhale_class_classnvcv_1_1detail_1_1ArrayDataAccessImpl:
+
+Template Class ArrayDataAccessImpl
+==================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ArrayDataAccess.hpp`
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nvcv::detail::ArrayDataAccessImpl
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

@@ -1,0 +1,17 @@
+.. _exhale_struct_structNVCVBlurBoxI:
+
+Struct NVCVBlurBoxI
+===================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_Types.h`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: NVCVBlurBoxI
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

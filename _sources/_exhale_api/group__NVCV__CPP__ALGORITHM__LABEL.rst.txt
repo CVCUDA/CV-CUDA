@@ -1,0 +1,7 @@
+:orphan:
+
+Label
+=====
+
+.. doxygengroup:: NVCV_CPP_ALGORITHM_LABEL
+   :project: cvcuda

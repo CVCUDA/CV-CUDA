@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__HQ__RESIZE_1ga72d85de75c9cc22827a6cecfbc6b8105:
+
+Function cvcudaHQResizeTensorGetWorkspaceRequirements
+=====================================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpHQResize.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaHQResizeTensorGetWorkspaceRequirements(NVCVOperatorHandle, int, const HQResizeTensorShapeI, const HQResizeTensorShapeI, const NVCVInterpolationType, const NVCVInterpolationType, bool, const HQResizeRoiF *, NVCVWorkspaceRequirements *)
+   :project: cvcuda

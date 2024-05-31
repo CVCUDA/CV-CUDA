@@ -1,0 +1,355 @@
+
+.. _file_nvcv_types_include_nvcv_cuda_detail_Metaprogramming.hpp:
+
+File Metaprogramming.hpp
+========================
+Definition (``nvcv_types/include/nvcv/cuda/detail/Metaprogramming.hpp``)
+------------------------------------------------------------------------
+
+
+.. toctree::
+   :maxdepth: 1
+
+   program_listing_file_nvcv_types_include_nvcv_cuda_detail_Metaprogramming.hpp.rst
+
+
+
+
+
+Includes
+--------
+
+
+- ``cfloat``
+
+- ``climits``
+
+- ``cuda_runtime.h``
+
+- ``type_traits``
+
+
+
+Included By
+-----------
+
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_detail_RangeCastImpl.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_detail_SaturateCastImpl.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_TypeTraits.hpp`
+
+
+
+
+Namespaces
+----------
+
+
+- :ref:`namespace_nvcv`
+
+- :ref:`namespace_nvcv__cuda`
+
+- :ref:`namespace_nvcv__cuda__detail`
+
+
+Classes
+-------
+
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1ConvertBaseTypeTo`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1ConvertBaseTypeTo_3_01BT_00_01const_01T_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1ConvertBaseTypeTo_3_01BT_00_01const_01volatile_01T_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1ConvertBaseTypeTo_3_01BT_00_01volatile_01T_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1CopyConstness`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1CopyConstness_3_01const_01FROM_00_01TO_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1HasTypeTraits__t`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1HasTypeTraits__t_3_01T_00_01std_1_1void__t_3_01typename_01TypeTr38136be32c8f7597b2a2ee1b2684d748`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01char_00_010_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01char_00_011_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01char_00_012_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01char_00_013_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01char_00_014_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01const_01T_00_01C_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01const_01volatile_01T_00_01C_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01double_00_010_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01double_00_011_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01double_00_012_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01double_00_013_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01double_00_014_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01float_00_010_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01float_00_011_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01float_00_012_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01float_00_013_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01float_00_014_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01int_00_010_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01int_00_011_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01int_00_012_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01int_00_013_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01int_00_014_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01long_01long_00_010_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01long_01long_00_011_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01long_01long_00_012_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01long_01long_00_013_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01long_01long_00_014_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01long_00_010_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01long_00_011_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01long_00_012_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01long_00_013_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01long_00_014_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01short_00_010_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01short_00_011_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01short_00_012_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01short_00_013_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01short_00_014_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01signed_01char_00_010_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01signed_01char_00_011_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01signed_01char_00_012_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01signed_01char_00_013_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01signed_01char_00_014_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01unsigned_01char_00_010_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01unsigned_01char_00_011_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01unsigned_01char_00_012_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01unsigned_01char_00_013_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01unsigned_01char_00_014_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01unsigned_01int_00_010_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01unsigned_01int_00_011_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01unsigned_01int_00_012_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01unsigned_01int_00_013_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01unsigned_01int_00_014_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01unsigned_01long_01long_00_010_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01unsigned_01long_01long_00_011_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01unsigned_01long_01long_00_012_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01unsigned_01long_01long_00_013_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01unsigned_01long_01long_00_014_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01unsigned_01long_00_010_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01unsigned_01long_00_011_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01unsigned_01long_00_012_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01unsigned_01long_00_013_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01unsigned_01long_00_014_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01unsigned_01short_00_010_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01unsigned_01short_00_011_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01unsigned_01short_00_012_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01unsigned_01short_00_013_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01unsigned_01short_00_014_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01volatile_01T_00_01C_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01char_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01char1_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01char2_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01char3_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01char4_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01const_01T_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01const_01volatile_01T_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01dim3_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01double_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01double1_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01double2_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01double3_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01double4_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01float_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01float1_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01float2_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01float3_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01float4_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01int_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01int1_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01int2_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01int3_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01int4_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01long_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01long_01long_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01long1_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01long2_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01long3_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01long4_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01longlong1_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01longlong2_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01longlong3_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01longlong4_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01short_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01short1_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01short2_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01short3_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01short4_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01signed_01char_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01uchar1_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01uchar2_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01uchar3_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01uchar4_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01uint1_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01uint2_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01uint3_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01uint4_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01ulong1_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01ulong2_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01ulong3_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01ulong4_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01ulonglong1_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01ulonglong2_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01ulonglong3_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01ulonglong4_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01unsigned_01char_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01unsigned_01int_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01unsigned_01long_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01unsigned_01long_01long_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01unsigned_01short_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01ushort1_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01ushort2_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01ushort3_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01ushort4_01_4`
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1TypeTraits_3_01volatile_01T_01_4`
+
+
+Defines
+-------
+
+
+- :ref:`exhale_define_Metaprogramming_8hpp_1a5476cfd675d99b5a44108aaac1e7bbee`
+
+- :ref:`exhale_define_Metaprogramming_8hpp_1a56a7435db72f96538ebc7f836be592dc`
+
+- :ref:`exhale_define_Metaprogramming_8hpp_1ac705c454ccffd2bcf088e091aa33e621`
+
+- :ref:`exhale_define_Metaprogramming_8hpp_1a9e2eddb6bd190063bb233f9ae8629c6d`
+

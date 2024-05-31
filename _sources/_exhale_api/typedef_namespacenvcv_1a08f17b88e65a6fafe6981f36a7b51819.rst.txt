@@ -1,0 +1,14 @@
+.. _exhale_typedef_namespacenvcv_1a08f17b88e65a6fafe6981f36a7b51819:
+
+Typedef nvcv::ArrayDataCleanupCallback
+======================================
+
+.. did not find file this was defined in
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: nvcv::ArrayDataCleanupCallback
+   :project: cvcuda

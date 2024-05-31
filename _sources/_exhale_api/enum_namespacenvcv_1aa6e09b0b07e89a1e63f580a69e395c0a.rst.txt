@@ -1,0 +1,14 @@
+.. _exhale_enum_namespacenvcv_1aa6e09b0b07e89a1e63f580a69e395c0a:
+
+Enum TensorLabel
+================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorLayout.hpp`
+
+
+Enum Documentation
+------------------
+
+
+.. doxygenenum:: nvcv::TensorLabel
+   :project: cvcuda

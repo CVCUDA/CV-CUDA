@@ -1,0 +1,17 @@
+.. _exhale_struct_structNVCVImagePlaneStridedRec:
+
+Struct NVCVImagePlaneStridedRec
+===============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageData.h`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: NVCVImagePlaneStridedRec
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

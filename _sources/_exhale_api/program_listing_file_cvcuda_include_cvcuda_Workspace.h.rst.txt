@@ -1,0 +1,76 @@
+
+.. _program_listing_file_cvcuda_include_cvcuda_Workspace.h:
+
+Program Listing for File Workspace.h
+====================================
+
+|exhale_lsh| :ref:`Return to documentation for file <file_cvcuda_include_cvcuda_Workspace.h>` (``cvcuda/include/cvcuda/Workspace.h``)
+
+.. |exhale_lsh| unicode:: U+021B0 .. UPWARDS ARROW WITH TIP LEFTWARDS
+
+.. code-block:: cpp
+
+   /*
+    * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+    * SPDX-License-Identifier: Apache-2.0
+    *
+    * Licensed under the Apache License, Version 2.0 (the "License");
+    * you may not use this file except in compliance with the License.
+    * You may obtain a copy of the License at
+    *
+    * http://www.apache.org/licenses/LICENSE-2.0
+    *
+    * Unless required by applicable law or agreed to in writing, software
+    * distributed under the License is distributed on an "AS IS" BASIS,
+    * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    * See the License for the specific language governing permissions and
+    * limitations under the License.
+    */
+   
+   #ifndef CVCUDAERATORS_WORKSPACE_H
+   #define CVCUDAERATORS_WORKSPACE_H
+   
+   #include <cuda_runtime_api.h>
+   #include <stddef.h>
+   
+   #ifdef __cplusplus
+   extern "C"
+   {
+   #endif
+   
+   typedef struct NVCVWorkspaceMemRequirementsRec
+   {
+       size_t size;
+       size_t alignment;
+   } NVCVWorkspaceMemRequirements;
+   
+   typedef struct NVCVWorkspaceRequirementsRec
+   {
+       NVCVWorkspaceMemRequirements hostMem;
+       NVCVWorkspaceMemRequirements pinnedMem;
+       NVCVWorkspaceMemRequirements cudaMem;
+   } NVCVWorkspaceRequirements;
+   
+   typedef struct NVCVWorkspaceMemRec
+   {
+       NVCVWorkspaceMemRequirements req;
+   
+       void *data;
+   
+       cudaEvent_t ready;
+   } NVCVWorkspaceMem;
+   
+   typedef struct NVCVWorkspaceRec
+   {
+       NVCVWorkspaceMem hostMem;
+   
+       NVCVWorkspaceMem pinnedMem;
+   
+       NVCVWorkspaceMem cudaMem;
+   } NVCVWorkspace;
+   
+   #ifdef __cplusplus
+   }
+   #endif
+   
+   #endif /* CVCUDAERATORS_WORKSPACE_H */

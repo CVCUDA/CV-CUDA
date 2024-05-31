@@ -1,0 +1,17 @@
+.. _exhale_struct_structNVCVWorkspaceMemRequirementsRec:
+
+Struct NVCVWorkspaceMemRequirementsRec
+======================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_Workspace.h`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: NVCVWorkspaceMemRequirementsRec
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

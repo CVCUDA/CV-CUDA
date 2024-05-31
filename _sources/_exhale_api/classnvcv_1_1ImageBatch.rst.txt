@@ -1,0 +1,32 @@
+.. _exhale_class_classnvcv_1_1ImageBatch:
+
+Class ImageBatch
+================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageBatch.hpp`
+
+
+Inheritance Relationships
+-------------------------
+
+Base Type
+*********
+
+- ``public nvcv::CoreResource< NVCVImageBatchHandle, ImageBatch >`` (:ref:`exhale_class_classnvcv_1_1CoreResource`)
+
+
+Derived Type
+************
+
+- ``public nvcv::ImageBatchVarShape`` (:ref:`exhale_class_classnvcv_1_1ImageBatchVarShape`)
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nvcv::ImageBatch
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

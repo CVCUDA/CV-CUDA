@@ -1,0 +1,14 @@
+.. _exhale_function_Array_8h_1a91d5070e2c665585eed08f01359b0782:
+
+Function nvcvArrayExportData
+============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Array.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvArrayExportData(NVCVArrayHandle, NVCVArrayData *)
+   :project: cvcuda

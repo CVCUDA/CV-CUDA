@@ -1,0 +1,14 @@
+.. _exhale_define_FormatUtils_8h_1a92180dcf02ae12991ef194a4e98b2e5a:
+
+Define NVCV_DETAIL_SET_BITFIELD
+===============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_detail_FormatUtils.h`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_DETAIL_SET_BITFIELD
+   :project: cvcuda

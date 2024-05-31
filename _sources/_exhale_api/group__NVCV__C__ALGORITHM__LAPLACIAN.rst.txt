@@ -1,0 +1,7 @@
+:orphan:
+
+Laplacian
+=========
+
+.. doxygengroup:: NVCV_C_ALGORITHM_LAPLACIAN
+   :project: cvcuda

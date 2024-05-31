@@ -1,0 +1,17 @@
+.. _exhale_struct_structNVCVRotatedBox:
+
+Struct NVCVRotatedBox
+=====================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_Types.h`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: NVCVRotatedBox
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

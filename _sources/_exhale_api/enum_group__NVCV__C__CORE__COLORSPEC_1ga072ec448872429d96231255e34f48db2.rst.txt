@@ -1,0 +1,14 @@
+.. _exhale_enum_group__NVCV__C__CORE__COLORSPEC_1ga072ec448872429d96231255e34f48db2:
+
+Enum NVCVWhitePoint
+===================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ColorSpec.h`
+
+
+Enum Documentation
+------------------
+
+
+.. doxygenenum:: NVCVWhitePoint
+   :project: cvcuda

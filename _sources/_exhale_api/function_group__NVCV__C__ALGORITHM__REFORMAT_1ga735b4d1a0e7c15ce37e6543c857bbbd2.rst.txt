@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__REFORMAT_1ga735b4d1a0e7c15ce37e6543c857bbbd2:
+
+Function cvcudaReformatSubmit
+=============================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpReformat.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaReformatSubmit(NVCVOperatorHandle, cudaStream_t, NVCVTensorHandle, NVCVTensorHandle)
+   :project: cvcuda

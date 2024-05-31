@@ -1,0 +1,14 @@
+.. _exhale_function_Array_8h_1a5c2a7c419434c0af2333dd30d17f9424:
+
+Function nvcvArrayDecRef
+========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Array.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvArrayDecRef(NVCVArrayHandle, int *)
+   :project: cvcuda

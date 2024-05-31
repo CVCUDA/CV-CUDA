@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__MINMAXLOC_1ga6a076fb2e8147ab37e0006ba2724d347:
+
+Function cvcudaMinMaxLocVarShapeSubmit
+======================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpMinMaxLoc.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaMinMaxLocVarShapeSubmit(NVCVOperatorHandle, cudaStream_t, NVCVImageBatchHandle, NVCVTensorHandle, NVCVTensorHandle, NVCVTensorHandle, NVCVTensorHandle, NVCVTensorHandle, NVCVTensorHandle)
+   :project: cvcuda

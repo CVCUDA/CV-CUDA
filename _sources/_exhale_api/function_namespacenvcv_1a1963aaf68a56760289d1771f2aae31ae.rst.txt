@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1a1963aaf68a56760289d1771f2aae31ae:
+
+Specialized Template Function nvcv::HandleIncRef< NVCVImageHandle >
+===================================================================
+
+.. did not find file this was defined in
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::HandleIncRef< NVCVImageHandle >(NVCVImageHandle)
+   :project: cvcuda

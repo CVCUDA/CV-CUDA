@@ -1,0 +1,14 @@
+.. _exhale_function_Image_8h_1a99c252a2add41451dea3b15f8b704247:
+
+Function nvcvImageRefCount
+==========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Image.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvImageRefCount(NVCVImageHandle, int *)
+   :project: cvcuda

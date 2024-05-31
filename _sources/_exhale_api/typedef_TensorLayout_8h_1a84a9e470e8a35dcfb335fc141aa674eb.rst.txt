@@ -1,0 +1,14 @@
+.. _exhale_typedef_TensorLayout_8h_1a84a9e470e8a35dcfb335fc141aa674eb:
+
+Typedef NVCVTensorLayout
+========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorLayout.h`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: NVCVTensorLayout
+   :project: cvcuda

@@ -1,0 +1,17 @@
+.. _exhale_class_classnvcv_1_1cuda_1_1math_1_1Matrix:
+
+Template Class Matrix
+=====================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_math_LinAlg.hpp`
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nvcv::cuda::math::Matrix
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

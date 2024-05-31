@@ -1,0 +1,14 @@
+.. _exhale_typedef_namespacecvcuda_1a299b4e7e15e80b5e4b850cfda4d5fc39:
+
+Typedef cvcuda::WorkspaceRequirements
+=====================================
+
+.. did not find file this was defined in
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: cvcuda::WorkspaceRequirements
+   :project: cvcuda

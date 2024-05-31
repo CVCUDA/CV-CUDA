@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__WARP__PERSPECTIVE_1ga2b04d96043f46b99f7f4c7d8aae3df75:
+
+Function cvcudaWarpPerspectiveSubmit
+====================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpWarpPerspective.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaWarpPerspectiveSubmit(NVCVOperatorHandle, cudaStream_t, NVCVTensorHandle, NVCVTensorHandle, const NVCVPerspectiveTransform, const int32_t, const NVCVBorderType, const float4)
+   :project: cvcuda

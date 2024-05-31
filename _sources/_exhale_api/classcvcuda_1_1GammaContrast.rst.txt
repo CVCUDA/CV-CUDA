@@ -1,0 +1,26 @@
+.. _exhale_class_classcvcuda_1_1GammaContrast:
+
+Class GammaContrast
+===================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpGammaContrast.hpp`
+
+
+Inheritance Relationships
+-------------------------
+
+Base Type
+*********
+
+- ``public cvcuda::IOperator`` (:ref:`exhale_class_classcvcuda_1_1IOperator`)
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: cvcuda::GammaContrast
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

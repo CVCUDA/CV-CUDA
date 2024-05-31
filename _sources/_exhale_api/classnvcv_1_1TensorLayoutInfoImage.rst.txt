@@ -1,0 +1,26 @@
+.. _exhale_class_classnvcv_1_1TensorLayoutInfoImage:
+
+Class TensorLayoutInfoImage
+===========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorLayoutInfo.hpp`
+
+
+Inheritance Relationships
+-------------------------
+
+Base Type
+*********
+
+- ``public nvcv::TensorLayoutInfo`` (:ref:`exhale_class_classnvcv_1_1TensorLayoutInfo`)
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nvcv::TensorLayoutInfoImage
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

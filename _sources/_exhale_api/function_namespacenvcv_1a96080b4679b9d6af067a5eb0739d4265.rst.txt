@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1a96080b4679b9d6af067a5eb0739d4265:
+
+Specialized Template Function nvcv::HandleRefCount< NVCVImageBatchHandle >
+==========================================================================
+
+.. did not find file this was defined in
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::HandleRefCount< NVCVImageBatchHandle >(NVCVImageBatchHandle)
+   :project: cvcuda

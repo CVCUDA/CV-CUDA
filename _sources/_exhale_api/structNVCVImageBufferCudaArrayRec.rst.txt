@@ -1,0 +1,17 @@
+.. _exhale_struct_structNVCVImageBufferCudaArrayRec:
+
+Struct NVCVImageBufferCudaArrayRec
+==================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageData.h`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: NVCVImageBufferCudaArrayRec
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__DATATYPE_1ga8f2d437ddc45e021f9a0c671dc3ec484:
+
+Function nvcvDataTypeGetAlignment
+=================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_DataType.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvDataTypeGetAlignment(NVCVDataType, int32_t *)
+   :project: cvcuda

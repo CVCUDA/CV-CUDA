@@ -1,0 +1,132 @@
+
+.. _file_nvcv_types_include_nvcv_ColorSpec.h:
+
+File ColorSpec.h
+================
+
+
+Defines types and functions to handle color specs. 
+
+
+Definition (``nvcv_types/include/nvcv/ColorSpec.h``)
+----------------------------------------------------
+
+
+.. toctree::
+   :maxdepth: 1
+
+   program_listing_file_nvcv_types_include_nvcv_ColorSpec.h.rst
+
+
+
+
+
+Includes
+--------
+
+
+- ``detail/FormatUtils.h`` (:ref:`file_nvcv_types_include_nvcv_detail_FormatUtils.h`)
+
+- ``nvcv/Export.h`` (:ref:`file_nvcv_types_include_nvcv_Export.h`)
+
+- ``nvcv/Status.h`` (:ref:`file_nvcv_types_include_nvcv_Status.h`)
+
+
+
+Included By
+-----------
+
+
+- :ref:`file_nvcv_types_include_nvcv_ColorSpec.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_DataType.h`
+
+- :ref:`file_nvcv_types_include_nvcv_ImageFormat.h`
+
+
+
+
+Enums
+-----
+
+
+- :ref:`exhale_enum_group__NVCV__C__CORE__COLORSPEC_1gab29dd5e17c57e72cad31c8288d9e2288`
+
+- :ref:`exhale_enum_group__NVCV__C__CORE__COLORSPEC_1ga6c7a7299cc6b132bf528ef975d4a2f90`
+
+- :ref:`exhale_enum_group__NVCV__C__CORE__COLORSPEC_1gaef682281101838767e95875bed5efdb8`
+
+- :ref:`exhale_enum_group__NVCV__C__CORE__COLORSPEC_1gac86c1e195efb7af3bea2ff040aae8d25`
+
+- :ref:`exhale_enum_group__NVCV__C__CORE__COLORSPEC_1ga4ac3950880d46016a86fa92e78c7fa46`
+
+- :ref:`exhale_enum_group__NVCV__C__CORE__COLORSPEC_1ga1b475019946b97bd2e531806bc112f70`
+
+- :ref:`exhale_enum_group__NVCV__C__CORE__COLORSPEC_1ga5cf5fd9eebbc3ad1f3f3d55e9ebf207c`
+
+- :ref:`exhale_enum_group__NVCV__C__CORE__COLORSPEC_1ga1d9dc866383532cfe1e1260d29d0aee1`
+
+- :ref:`exhale_enum_group__NVCV__C__CORE__COLORSPEC_1ga072ec448872429d96231255e34f48db2`
+
+- :ref:`exhale_enum_group__NVCV__C__CORE__COLORSPEC_1ga60de8029ca0cb4b53692d11577ff15e0`
+
+
+Functions
+---------
+
+
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga694d6157c9929a1f2014793e274a6d1e`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1gafbcbbb5205cd3869087ea97a7d668119`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga753f84a83d57639776ff8aa4dce6003f`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga1391738605d2abe1f125c15c2541cee3`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga55487db286283d60dfff32daddb1c042`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1gac06d90594ea587776990267dc4b48fb6`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga9a199f79c398ccea154c2288555ffb97`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga10f7eb806c010645c0ef0b55176425b3`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga91abf1b0f54a09cbab18c6dcb211143c`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1gac5846da6b38d638d50cfaa5cfb147273`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1gad41cbbcda2847960cf2d16fde5a3bf18`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1gada79864a4778fe682c7c569a2047b75c`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga8aa2d9a9c24121cfc1ba8b3732b293d4`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1gae4a68db724ff0e8fec126ce913b461fe`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga436aedf591c8c04d932667ac912bb8da`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga07ad28cce5431d150f9d972163b42e03`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1gaa449a61e014578239ebeebdee7b032c2`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga0fc2dd21cc6872122d44c9ea2e052911`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga4e5df541f5b5a9c868f08a6e5b796280`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1gad0e47a619dfacccfb79dabc42415929d`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga23cdb3fc462eb486739041d6d6fd77f2`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1gab06dbe8408d5424eed51f924a55fe5bb`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1gaaf52fa542b346114352e1a66af081749`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__COLORSPEC_1gab601dc0fd00d9253e8c41c61cab79211`
+
+
+Defines
+-------
+
+
+- :ref:`exhale_define_group__NVCV__C__CORE__COLORSPEC_1ga76459db0f2c08b9bce47f7bc63974ab6`
+

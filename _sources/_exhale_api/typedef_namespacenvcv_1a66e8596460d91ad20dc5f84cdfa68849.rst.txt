@@ -1,0 +1,14 @@
+.. _exhale_typedef_namespacenvcv_1a66e8596460d91ad20dc5f84cdfa68849:
+
+Typedef nvcv::ImageBufferStrided
+================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageData.hpp`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: nvcv::ImageBufferStrided
+   :project: cvcuda

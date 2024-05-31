@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__ERASE_1gad3e16371c7cc41f14c42ec4d3cd976e0:
+
+Function cvcudaEraseCreate
+==========================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpErase.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaEraseCreate(NVCVOperatorHandle *, int32_t)
+   :project: cvcuda

@@ -1,0 +1,61 @@
+
+.. _program_listing_file_cvcuda_include_cvcuda_OpRotate.h:
+
+Program Listing for File OpRotate.h
+===================================
+
+|exhale_lsh| :ref:`Return to documentation for file <file_cvcuda_include_cvcuda_OpRotate.h>` (``cvcuda/include/cvcuda/OpRotate.h``)
+
+.. |exhale_lsh| unicode:: U+021B0 .. UPWARDS ARROW WITH TIP LEFTWARDS
+
+.. code-block:: cpp
+
+   /*
+    * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+    * SPDX-License-Identifier: Apache-2.0
+    *
+    * Licensed under the Apache License, Version 2.0 (the "License");
+    * you may not use this file except in compliance with the License.
+    * You may obtain a copy of the License at
+    *
+    * http://www.apache.org/licenses/LICENSE-2.0
+    *
+    * Unless required by applicable law or agreed to in writing, software
+    * distributed under the License is distributed on an "AS IS" BASIS,
+    * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    * See the License for the specific language governing permissions and
+    * limitations under the License.
+    */
+   
+   #ifndef CVCUDA_ROTATE_H
+   #define CVCUDA_ROTATE_H
+   
+   #include "Operator.h"
+   #include "Types.h"
+   #include "detail/Export.h"
+   
+   #include <cuda_runtime.h>
+   #include <nvcv/ImageBatch.h>
+   #include <nvcv/Status.h>
+   #include <nvcv/Tensor.h>
+   
+   #ifdef __cplusplus
+   extern "C"
+   {
+   #endif
+   
+   CVCUDA_PUBLIC NVCVStatus cvcudaRotateCreate(NVCVOperatorHandle *handle, const int32_t maxVarShapeBatchSize);
+   
+   CVCUDA_PUBLIC NVCVStatus cvcudaRotateSubmit(NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in,
+                                               NVCVTensorHandle out, const double angleDeg, const double2 shift,
+                                               const NVCVInterpolationType interpolation);
+   
+   CVCUDA_PUBLIC NVCVStatus cvcudaRotateVarShapeSubmit(NVCVOperatorHandle handle, cudaStream_t stream,
+                                                       NVCVImageBatchHandle in, NVCVImageBatchHandle out,
+                                                       NVCVTensorHandle angleDeg, NVCVTensorHandle shift,
+                                                       const NVCVInterpolationType interpolation);
+   #ifdef __cplusplus
+   }
+   #endif
+   
+   #endif /* CVCUDA_ROTATE_H */

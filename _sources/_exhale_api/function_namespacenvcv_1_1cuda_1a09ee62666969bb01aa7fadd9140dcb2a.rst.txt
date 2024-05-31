@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1_1cuda_1a09ee62666969bb01aa7fadd9140dcb2a:
+
+Template Function nvcv::cuda::CreateTensorWrapNHWC
+==================================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_TensorWrap.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::cuda::CreateTensorWrapNHWC(const TensorDataStridedCuda&)
+   :project: cvcuda

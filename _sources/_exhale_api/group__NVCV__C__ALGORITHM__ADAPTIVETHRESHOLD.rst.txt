@@ -1,0 +1,7 @@
+:orphan:
+
+Adaptive Threshold
+==================
+
+.. doxygengroup:: NVCV_C_ALGORITHM_ADAPTIVETHRESHOLD
+   :project: cvcuda

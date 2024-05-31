@@ -1,0 +1,17 @@
+.. _exhale_class_classnvcv_1_1cuda_1_1TensorBatchWrap:
+
+Template Class TensorBatchWrap
+==============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_TensorBatchWrap.hpp`
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nvcv::cuda::TensorBatchWrap
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

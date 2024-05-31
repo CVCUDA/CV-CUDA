@@ -1,0 +1,14 @@
+.. _exhale_typedef_namespacenvcv_1a9d6e867ce019b36fec6e4b0cbc78a7b0:
+
+Typedef nvcv::TensorDataCleanupCallback
+=======================================
+
+.. did not find file this was defined in
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: nvcv::TensorDataCleanupCallback
+   :project: cvcuda

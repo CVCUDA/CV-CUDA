@@ -1,0 +1,14 @@
+.. _exhale_define_group__NVCV__C__CORE__IMAGETYPE_1ga89ff40d48d2e528171ef009cddd22ca6:
+
+Define NVCV_IMAGE_FORMAT_S32
+============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageFormat.h`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_IMAGE_FORMAT_S32
+   :project: cvcuda

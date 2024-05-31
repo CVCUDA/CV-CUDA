@@ -1,0 +1,14 @@
+.. _exhale_enum_group__NVCV__C__CORE__COLORSPEC_1ga6c7a7299cc6b132bf528ef975d4a2f90:
+
+Enum NVCVChromaSubsampling
+==========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ColorSpec.h`
+
+
+Enum Documentation
+------------------
+
+
+.. doxygenenum:: NVCVChromaSubsampling
+   :project: cvcuda

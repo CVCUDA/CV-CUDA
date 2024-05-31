@@ -1,0 +1,14 @@
+.. _exhale_enum_group__NVCV__C__TYPES_1ga73fc84787a3b5c7adf092dee158e8345:
+
+Enum NVCVLabelType
+==================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_Types.h`
+
+
+Enum Documentation
+------------------
+
+
+.. doxygenenum:: NVCVLabelType
+   :project: cvcuda

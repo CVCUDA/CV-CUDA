@@ -1,0 +1,62 @@
+
+.. _file_nvcv_types_include_nvcv_ArrayDataAccess.hpp:
+
+File ArrayDataAccess.hpp
+========================
+Definition (``nvcv_types/include/nvcv/ArrayDataAccess.hpp``)
+------------------------------------------------------------
+
+
+.. toctree::
+   :maxdepth: 1
+
+   program_listing_file_nvcv_types_include_nvcv_ArrayDataAccess.hpp.rst
+
+
+
+
+
+Includes
+--------
+
+
+- ``ArrayData.hpp`` (:ref:`file_nvcv_types_include_nvcv_ArrayData.hpp`)
+
+- ``type_traits``
+
+
+
+Included By
+-----------
+
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_ArrayWrap.hpp`
+
+
+
+
+Namespaces
+----------
+
+
+- :ref:`namespace_nvcv`
+
+- :ref:`namespace_nvcv__detail`
+
+
+Classes
+-------
+
+
+- :ref:`exhale_struct_structnvcv_1_1detail_1_1invoke__result`
+
+- :ref:`exhale_class_classnvcv_1_1ArrayDataAccess`
+
+- :ref:`exhale_class_classnvcv_1_1ArrayDataAccessCuda`
+
+- :ref:`exhale_class_classnvcv_1_1ArrayDataAccessHost`
+
+- :ref:`exhale_class_classnvcv_1_1ArrayDataAccessHostPinned`
+
+- :ref:`exhale_class_classnvcv_1_1detail_1_1ArrayDataAccessImpl`
+

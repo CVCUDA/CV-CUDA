@@ -1,0 +1,7 @@
+:orphan:
+
+Threshold
+=========
+
+.. doxygengroup:: NVCV_C_ALGORITHM_THRESHOLD
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_typedef_Image_8h_1a7fdba59b347904372bb48e2724b207d9:
+
+Typedef NVCVImageDataCleanupFunc
+================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Image.h`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: NVCVImageDataCleanupFunc
+   :project: cvcuda

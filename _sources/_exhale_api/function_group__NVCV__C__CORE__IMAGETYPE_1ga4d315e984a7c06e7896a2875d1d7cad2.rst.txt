@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__IMAGETYPE_1ga4d315e984a7c06e7896a2875d1d7cad2:
+
+Function nvcvMakeImageFormatFromFourCC
+======================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageFormat.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvMakeImageFormatFromFourCC(NVCVImageFormat *, uint32_t, NVCVColorSpec, NVCVMemLayout)
+   :project: cvcuda

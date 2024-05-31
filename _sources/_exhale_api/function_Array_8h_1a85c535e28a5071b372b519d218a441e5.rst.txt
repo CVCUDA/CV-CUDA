@@ -1,0 +1,14 @@
+.. _exhale_function_Array_8h_1a85c535e28a5071b372b519d218a441e5:
+
+Function nvcvArrayWrapDataConstruct
+===================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Array.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvArrayWrapDataConstruct(const NVCVArrayData *, NVCVArrayDataCleanupFunc, void *, NVCVArrayHandle *)
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_function_Image_8h_1a3e891e5f5ec252ecf37ea488a999931f:
+
+Function nvcvImageGetFormat
+===========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Image.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvImageGetFormat(NVCVImageHandle, NVCVImageFormat *)
+   :project: cvcuda

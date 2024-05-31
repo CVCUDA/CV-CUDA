@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__CPP__CUDATOOLS__MATHWRAPPERS_1gad21f9a695a73c8f814a7e2bcdd42a05d:
+
+Template Function nvcv::cuda::exp
+=================================
+
+.. did not find file this was defined in
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::cuda::exp(U)
+   :project: cvcuda

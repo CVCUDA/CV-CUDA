@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__DATATYPE_1ga50dcfdfffd3916f59d3d15502676e90a:
+
+Function nvcvDataTypeGetName
+============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_DataType.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvDataTypeGetName(NVCVDataType)
+   :project: cvcuda

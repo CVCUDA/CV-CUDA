@@ -1,0 +1,14 @@
+.. _exhale_function_Tensor_8h_1a3d5e175b37614cfe848abe5ef26ebc2f:
+
+Function nvcvTensorGetLayout
+============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Tensor.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvTensorGetLayout(NVCVTensorHandle, NVCVTensorLayout *)
+   :project: cvcuda

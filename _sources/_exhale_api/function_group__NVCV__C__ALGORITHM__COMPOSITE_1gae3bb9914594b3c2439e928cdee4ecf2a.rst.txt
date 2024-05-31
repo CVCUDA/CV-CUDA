@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__COMPOSITE_1gae3bb9914594b3c2439e928cdee4ecf2a:
+
+Function cvcudaCompositeSubmit
+==============================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpComposite.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaCompositeSubmit()
+   :project: cvcuda

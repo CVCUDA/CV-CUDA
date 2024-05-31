@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__CPP__CUDATOOLS__LINALG_1gad8503401b026728b852f622069278ae9:
+
+Template Function nvcv::cuda::math::operator-(const Vector<T, N>&, T)
+=====================================================================
+
+.. did not find file this was defined in
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::cuda::math::operator-(const Vector<T, N>&, T)
+   :project: cvcuda

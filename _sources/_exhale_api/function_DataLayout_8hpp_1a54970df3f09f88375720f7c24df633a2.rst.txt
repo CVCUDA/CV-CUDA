@@ -1,0 +1,14 @@
+.. _exhale_function_DataLayout_8hpp_1a54970df3f09f88375720f7c24df633a2:
+
+Function operator<<(std::ostream&, NVCVSwizzle)
+===============================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_DataLayout.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: operator<<(std::ostream&, NVCVSwizzle)
+   :project: cvcuda

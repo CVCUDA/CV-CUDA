@@ -1,0 +1,14 @@
+.. _exhale_typedef_TensorData_8h_1a3218cc0c8b0fae024dd757dafd82d86f:
+
+Typedef NVCVTensorBuffer
+========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorData.h`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: NVCVTensorBuffer
+   :project: cvcuda

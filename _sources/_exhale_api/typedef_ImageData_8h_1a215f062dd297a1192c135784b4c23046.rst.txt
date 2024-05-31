@@ -1,0 +1,14 @@
+.. _exhale_typedef_ImageData_8h_1a215f062dd297a1192c135784b4c23046:
+
+Typedef NVCVImageBufferCudaArray
+================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageData.h`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: NVCVImageBufferCudaArray
+   :project: cvcuda

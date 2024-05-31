@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM____ADV__CVT__COLOR_1gaec952cdcb974c6c943538525f3c8747f:
+
+Function cvcudaAdvCvtColorSubmit
+================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpAdvCvtColor.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaAdvCvtColorSubmit(NVCVOperatorHandle, cudaStream_t, NVCVTensorHandle, NVCVTensorHandle, NVCVColorConversionCode, NVCVColorSpec)
+   :project: cvcuda

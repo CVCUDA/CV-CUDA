@@ -1,0 +1,14 @@
+.. _exhale_enum_group__NVCV__CPP__CORE__DATALAYOUT_1ga08e808a08be98700d81947cc1b0eefc3:
+
+Enum DataKind
+=============
+
+.. did not find file this was defined in
+
+
+Enum Documentation
+------------------
+
+
+.. doxygenenum:: nvcv::DataKind
+   :project: cvcuda

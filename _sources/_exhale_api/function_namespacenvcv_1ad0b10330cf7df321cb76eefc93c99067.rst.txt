@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1ad0b10330cf7df321cb76eefc93c99067:
+
+Function nvcv::operator+
+========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_detail_ImageBatchImpl.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::operator+(ImageBatchVarShape::Iterator::difference_type, const ImageBatchVarShape::Iterator&)
+   :project: cvcuda

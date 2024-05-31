@@ -1,0 +1,14 @@
+.. _exhale_typedef_group__NVCV__CPP__CORE__DATALAYOUT_1ga1086bbbc779f68c5eb0bd43c20b078ce:
+
+Typedef nvcv::ExtraChannelInfo
+==============================
+
+.. did not find file this was defined in
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: nvcv::ExtraChannelInfo
+   :project: cvcuda

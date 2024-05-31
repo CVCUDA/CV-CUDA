@@ -1,0 +1,14 @@
+.. _exhale_function_TensorLayout_8h_1a7ee171fd98249bc4c1af754957c24ced:
+
+Function nvcvTensorLayoutGetName
+================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorLayout.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvTensorLayoutGetName(const NVCVTensorLayout *)
+   :project: cvcuda

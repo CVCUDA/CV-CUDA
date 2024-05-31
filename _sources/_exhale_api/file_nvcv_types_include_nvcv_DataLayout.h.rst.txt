@@ -1,0 +1,123 @@
+
+.. _file_nvcv_types_include_nvcv_DataLayout.h:
+
+File DataLayout.h
+=================
+
+
+Defines types and functions to handle data layouts. 
+
+
+Definition (``nvcv_types/include/nvcv/DataLayout.h``)
+-----------------------------------------------------
+
+
+.. toctree::
+   :maxdepth: 1
+
+   program_listing_file_nvcv_types_include_nvcv_DataLayout.h.rst
+
+
+
+
+
+Includes
+--------
+
+
+- ``detail/FormatUtils.h`` (:ref:`file_nvcv_types_include_nvcv_detail_FormatUtils.h`)
+
+- ``nvcv/Export.h`` (:ref:`file_nvcv_types_include_nvcv_Export.h`)
+
+- ``nvcv/Status.h`` (:ref:`file_nvcv_types_include_nvcv_Status.h`)
+
+
+
+Included By
+-----------
+
+
+- :ref:`file_nvcv_types_include_nvcv_DataLayout.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_DataType.h`
+
+- :ref:`file_nvcv_types_include_nvcv_ImageFormat.h`
+
+
+
+
+Classes
+-------
+
+
+- :ref:`exhale_struct_structNVCVExtraChannelInfo`
+
+- :ref:`exhale_struct_structNVCVPackingParams`
+
+
+Enums
+-----
+
+
+- :ref:`exhale_enum_group__NVCV__C__CORE__DATALAYOUT_1gac94002ce78dca7def215cef7747cdd49`
+
+- :ref:`exhale_enum_group__NVCV__C__CORE__DATALAYOUT_1ga7331c5b8dadde7c924309ea200bb564f`
+
+- :ref:`exhale_enum_group__NVCV__C__CORE__DATALAYOUT_1ga989019c1cdc301ea91c0b86e558387c3`
+
+- :ref:`exhale_enum_group__NVCV__C__CORE__DATALAYOUT_1ga696bcdf0c9bdfa1b064dfdad0f9e6740`
+
+- :ref:`exhale_enum_group__NVCV__C__CORE__DATALAYOUT_1gab6dbed180f228c9deb5c390cf63297e9`
+
+- :ref:`exhale_enum_group__NVCV__C__CORE__DATALAYOUT_1ga289e93b9fc00b0721c38603814dedae5`
+
+- :ref:`exhale_enum_group__NVCV__C__CORE__DATALAYOUT_1ga5ec157e0ddcbfb0a4bf9114b4c6b6a69`
+
+- :ref:`exhale_enum_group__NVCV__C__CORE__DATALAYOUT_1gaccee7cd4be64729311f604ab86212878`
+
+
+Functions
+---------
+
+
+- :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1ga1899dbfcb7df1e13296a743351a374ee`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1gae64b3c46d52bf6e3b94fd15f166bb4c6`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1gaddf5db327f262ae83e91809c87687b3c`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1ga59cf1b42b124d1609e0a92580b6680ee`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1gafafbe1a554d577a0f6e4dc25a2be224d`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1ga7460e0ccbb6ae87bb60121c94b5fab6f`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1ga072a476b4048d3e441b82c08992e06c2`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1ga29dfd223f07bfc948e05047447da9b1b`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1ga9c291974261de0dff88d48f700a67482`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1gad5105dfc06036e4fd6bbcd119c8b9d8e`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1ga289eb4bc2407de26ff75bbb325c9cd31`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1ga4d8479dffe71c3b5f3b06ae6bbff1abc`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1gab2fafb7000f5b319e1989ee59d66b27a`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1gad1f2edc59c04e06de2d8e8f5fa70ba37`
+
+- :ref:`exhale_function_group__NVCV__C__CORE__DATALAYOUT_1ga71484164072b9661e8ffe3d8646f8630`
+
+
+Defines
+-------
+
+
+- :ref:`exhale_define_group__NVCV__C__CORE__DATALAYOUT_1ga499463885c15471a0941539049535143`
+
+- :ref:`exhale_define_group__NVCV__C__CORE__DATALAYOUT_1ga7efbaa2a4c273be7f89a1b1b5c0a7ca1`
+
+- :ref:`exhale_define_group__NVCV__C__CORE__DATALAYOUT_1ga11505772b73ec43934a2d3a3f5cd708b`
+

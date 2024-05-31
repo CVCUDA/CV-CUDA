@@ -1,0 +1,7 @@
+:orphan:
+
+Gaussian
+========
+
+.. doxygengroup:: NVCV_CPP_ALGORITHM_GAUSSIAN
+   :project: cvcuda

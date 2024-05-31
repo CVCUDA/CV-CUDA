@@ -1,0 +1,17 @@
+.. _exhale_struct_structNVCVArrow:
+
+Struct NVCVArrow
+================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_Types.h`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: NVCVArrow
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

@@ -1,0 +1,177 @@
+
+.. _file_nvcv_types_include_nvcv_Tensor.hpp:
+
+File Tensor.hpp
+===============
+Definition (``nvcv_types/include/nvcv/Tensor.hpp``)
+---------------------------------------------------
+
+
+.. toctree::
+   :maxdepth: 1
+
+   program_listing_file_nvcv_types_include_nvcv_Tensor.hpp.rst
+
+
+
+
+
+Includes
+--------
+
+
+- ``CoreResource.hpp`` (:ref:`file_nvcv_types_include_nvcv_CoreResource.hpp`)
+
+- ``Image.hpp`` (:ref:`file_nvcv_types_include_nvcv_Image.hpp`)
+
+- ``ImageFormat.hpp`` (:ref:`file_nvcv_types_include_nvcv_ImageFormat.hpp`)
+
+- ``Optional.hpp`` (:ref:`file_nvcv_types_include_nvcv_Optional.hpp`)
+
+- ``Size.hpp`` (:ref:`file_nvcv_types_include_nvcv_Size.hpp`)
+
+- ``Tensor.h`` (:ref:`file_nvcv_types_include_nvcv_Tensor.h`)
+
+- ``TensorData.hpp`` (:ref:`file_nvcv_types_include_nvcv_TensorData.hpp`)
+
+- ``alloc/Allocator.hpp`` (:ref:`file_nvcv_types_include_nvcv_alloc_Allocator.hpp`)
+
+- ``detail/Callback.hpp`` (:ref:`file_nvcv_types_include_nvcv_detail_Callback.hpp`)
+
+- ``detail/TensorImpl.hpp`` (:ref:`file_nvcv_types_include_nvcv_detail_TensorImpl.hpp`)
+
+
+
+Included By
+-----------
+
+
+- :ref:`file_nvcv_types_include_nvcv_TensorBatch.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpAdaptiveThreshold.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpAdvCvtColor.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpAverageBlur.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpBilateralFilter.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpBndBox.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpBoxBlur.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpBrightnessContrast.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpCenterCrop.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpChannelReorder.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpColorTwist.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpComposite.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpConv2D.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpConvertTo.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpCopyMakeBorder.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpCropFlipNormalizeReformat.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpCustomCrop.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpCvtColor.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpErase.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpFindHomography.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpFlip.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpGammaContrast.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpGaussian.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpGaussianNoise.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpHistogram.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpHistogramEq.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpHQResize.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpInpaint.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpJointBilateralFilter.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpLabel.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpLaplacian.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpMedianBlur.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpMinAreaRect.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpMinMaxLoc.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpMorphology.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpNonMaximumSuppression.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpNormalize.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpOSD.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpPadAndStack.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpPairwiseMatcher.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpPillowResize.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpRandomResizedCrop.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpReformat.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpRemap.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpResize.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpRotate.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpSIFT.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpStack.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpThreshold.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpWarpAffine.hpp`
+
+- :ref:`file_cvcuda_include_cvcuda_OpWarpPerspective.hpp`
+
+
+
+
+Namespaces
+----------
+
+
+- :ref:`namespace_nvcv`
+
+
+Classes
+-------
+
+
+- :ref:`exhale_struct_structnvcv_1_1TranslateTensorDataCleanup`
+
+- :ref:`exhale_class_classnvcv_1_1Tensor`
+
+
+Defines
+-------
+
+
+- :ref:`exhale_define_Tensor_8hpp_1af41e379f2b01381ce15eeeac448860b7`
+
+- :ref:`exhale_define_Tensor_8hpp_1aafc7406afd4178c7bb0c64fc97f9b1a2`
+

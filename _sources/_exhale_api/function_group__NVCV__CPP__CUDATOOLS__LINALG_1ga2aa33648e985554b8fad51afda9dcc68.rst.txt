@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__CPP__CUDATOOLS__LINALG_1ga2aa33648e985554b8fad51afda9dcc68:
+
+Template Function nvcv::cuda::math::compan
+==========================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_math_LinAlg.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::cuda::math::compan(const Vector<T, R>&)
+   :project: cvcuda

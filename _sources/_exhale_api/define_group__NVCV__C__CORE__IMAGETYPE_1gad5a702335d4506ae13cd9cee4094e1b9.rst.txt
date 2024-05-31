@@ -1,0 +1,14 @@
+.. _exhale_define_group__NVCV__C__CORE__IMAGETYPE_1gad5a702335d4506ae13cd9cee4094e1b9:
+
+Define NVCV_IMAGE_FORMAT_BGRf32
+===============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageFormat.h`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_IMAGE_FORMAT_BGRf32
+   :project: cvcuda

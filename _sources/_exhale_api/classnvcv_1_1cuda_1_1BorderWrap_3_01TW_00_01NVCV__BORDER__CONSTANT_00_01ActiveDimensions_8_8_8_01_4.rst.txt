@@ -1,0 +1,26 @@
+.. _exhale_class_classnvcv_1_1cuda_1_1BorderWrap_3_01TW_00_01NVCV__BORDER__CONSTANT_00_01ActiveDimensions_8_8_8_01_4:
+
+Template Class BorderWrap< TW, NVCV_BORDER_CONSTANT, ActiveDimensions... >
+==========================================================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_BorderWrap.hpp`
+
+
+Inheritance Relationships
+-------------------------
+
+Base Type
+*********
+
+- ``public nvcv::cuda::detail::BorderWrapImpl< TW, NVCV_BORDER_CONSTANT, ActiveDimensions... >`` (:ref:`exhale_class_classnvcv_1_1cuda_1_1detail_1_1BorderWrapImpl`)
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nvcv::cuda::BorderWrap< TW, NVCV_BORDER_CONSTANT, ActiveDimensions... >
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

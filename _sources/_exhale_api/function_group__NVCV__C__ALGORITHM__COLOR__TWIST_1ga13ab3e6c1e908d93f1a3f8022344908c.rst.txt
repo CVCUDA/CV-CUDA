@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__COLOR__TWIST_1ga13ab3e6c1e908d93f1a3f8022344908c:
+
+Function cvcudaColorTwistVarShapeSubmit
+=======================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpColorTwist.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaColorTwistVarShapeSubmit(NVCVOperatorHandle, cudaStream_t, NVCVImageBatchHandle, NVCVImageBatchHandle, NVCVTensorHandle)
+   :project: cvcuda

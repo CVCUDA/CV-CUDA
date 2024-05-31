@@ -1,0 +1,17 @@
+.. _exhale_struct_structNVCVBoxI:
+
+Struct NVCVBoxI
+===============
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_Types.h`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: NVCVBoxI
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

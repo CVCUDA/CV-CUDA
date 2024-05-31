@@ -1,0 +1,17 @@
+.. _exhale_struct_structNVCVByte:
+
+Struct NVCVByte
+===============
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_DataType.h`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: NVCVByte
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

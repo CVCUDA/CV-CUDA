@@ -1,0 +1,14 @@
+.. _exhale_typedef_Allocator_8h_1a57b8b22fc98e640fdade0590321e34a8:
+
+Typedef NVCVAllocatorHandle
+===========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_alloc_Allocator.h`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: NVCVAllocatorHandle
+   :project: cvcuda

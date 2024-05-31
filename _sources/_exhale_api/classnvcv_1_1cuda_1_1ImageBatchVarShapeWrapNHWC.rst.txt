@@ -1,0 +1,26 @@
+.. _exhale_class_classnvcv_1_1cuda_1_1ImageBatchVarShapeWrapNHWC:
+
+Template Class ImageBatchVarShapeWrapNHWC
+=========================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_ImageBatchVarShapeWrap.hpp`
+
+
+Inheritance Relationships
+-------------------------
+
+Base Type
+*********
+
+- ``private nvcv::cuda::ImageBatchVarShapeWrap< T >`` (:ref:`exhale_class_classnvcv_1_1cuda_1_1ImageBatchVarShapeWrap`)
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nvcv::cuda::ImageBatchVarShapeWrapNHWC
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

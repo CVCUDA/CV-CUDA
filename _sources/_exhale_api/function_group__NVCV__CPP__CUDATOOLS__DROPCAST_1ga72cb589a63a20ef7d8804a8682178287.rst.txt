@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__CPP__CUDATOOLS__DROPCAST_1ga72cb589a63a20ef7d8804a8682178287:
+
+Template Function nvcv::cuda::DropCast
+======================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_DropCast.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::cuda::DropCast(T)
+   :project: cvcuda

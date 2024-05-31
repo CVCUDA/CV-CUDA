@@ -1,0 +1,14 @@
+.. _exhale_function_TensorBatch_8h_1a601da0a8e290cbca0f8fc7f20fc5f90a:
+
+Function nvcvTensorBatchPushTensors
+===================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorBatch.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvTensorBatchPushTensors(NVCVTensorBatchHandle, const NVCVTensorHandle *, int32_t)
+   :project: cvcuda

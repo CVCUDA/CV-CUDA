@@ -1,0 +1,23 @@
+.. _exhale_struct_structnvcv_1_1cuda_1_1detail_1_1InterpolationWrapImpl_1_1ActiveCoordMap:
+
+Struct InterpolationWrapImpl::ActiveCoordMap
+============================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_InterpolationWrap.hpp`
+
+
+Nested Relationships
+--------------------
+
+This struct is a nested type of :ref:`exhale_class_classnvcv_1_1cuda_1_1detail_1_1InterpolationWrapImpl`.
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: nvcv::cuda::detail::InterpolationWrapImpl::ActiveCoordMap
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

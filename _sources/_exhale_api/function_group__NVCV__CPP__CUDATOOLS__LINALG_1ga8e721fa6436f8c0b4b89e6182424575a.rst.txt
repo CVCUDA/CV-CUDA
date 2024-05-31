@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__CPP__CUDATOOLS__LINALG_1ga8e721fa6436f8c0b4b89e6182424575a:
+
+Template Function nvcv::cuda::math::dot
+=======================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_math_LinAlg.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::cuda::math::dot(const Vector<T, N>&, const Vector<T, N>&)
+   :project: cvcuda

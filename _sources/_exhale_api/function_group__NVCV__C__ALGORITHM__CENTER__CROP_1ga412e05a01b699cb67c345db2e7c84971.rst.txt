@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__CENTER__CROP_1ga412e05a01b699cb67c345db2e7c84971:
+
+Function cvcudaCenterCropSubmit
+===============================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpCenterCrop.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaCenterCropSubmit(NVCVOperatorHandle, cudaStream_t, NVCVTensorHandle, NVCVTensorHandle, int32_t, int32_t)
+   :project: cvcuda

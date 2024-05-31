@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__ROTATE_1gafc6153c1566e9c76f08082afefb4179b:
+
+Function cvcudaRotateCreate
+===========================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpRotate.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaRotateCreate(NVCVOperatorHandle *, const int32_t)
+   :project: cvcuda

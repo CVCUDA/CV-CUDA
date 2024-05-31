@@ -1,0 +1,26 @@
+.. _exhale_class_classnvcv_1_1TensorShapeInfoImagePlanar:
+
+Class TensorShapeInfoImagePlanar
+================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorShapeInfo.hpp`
+
+
+Inheritance Relationships
+-------------------------
+
+Base Type
+*********
+
+- ``public nvcv::TensorShapeInfoImage`` (:ref:`exhale_class_classnvcv_1_1TensorShapeInfoImage`)
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nvcv::TensorShapeInfoImagePlanar
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1_1detail_1a3abeba6abfa82a1abe862ceea1a86610:
+
+Template Function nvcv::detail::IsInvocableF(F \*)
+==================================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_detail_TypeTraits.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::detail::IsInvocableF(F *)
+   :project: cvcuda

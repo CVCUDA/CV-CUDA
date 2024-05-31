@@ -1,0 +1,7 @@
+:orphan:
+
+Data Layout
+===========
+
+.. doxygengroup:: NVCV_C_CORE_DATALAYOUT
+   :project: cvcuda

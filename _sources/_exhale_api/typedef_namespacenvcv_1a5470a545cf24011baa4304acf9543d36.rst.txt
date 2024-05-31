@@ -1,0 +1,14 @@
+.. _exhale_typedef_namespacenvcv_1a5470a545cf24011baa4304acf9543d36:
+
+Typedef nvcv::CustomCudaMemAllocator
+====================================
+
+.. did not find file this was defined in
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: nvcv::CustomCudaMemAllocator
+   :project: cvcuda

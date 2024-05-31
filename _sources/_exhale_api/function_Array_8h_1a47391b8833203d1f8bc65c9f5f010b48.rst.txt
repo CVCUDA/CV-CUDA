@@ -1,0 +1,14 @@
+.. _exhale_function_Array_8h_1a47391b8833203d1f8bc65c9f5f010b48:
+
+Function nvcvArrayConstructWithTarget
+=====================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Array.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvArrayConstructWithTarget(const NVCVArrayRequirements *, NVCVAllocatorHandle, NVCVResourceType, NVCVArrayHandle *)
+   :project: cvcuda

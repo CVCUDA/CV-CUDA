@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__DATATYPE_1ga396db01eee52950be6a22d07905d0236:
+
+Function nvcvDataTypeGetChannelType
+===================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_DataType.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvDataTypeGetChannelType(NVCVDataType, int32_t, NVCVDataType *)
+   :project: cvcuda

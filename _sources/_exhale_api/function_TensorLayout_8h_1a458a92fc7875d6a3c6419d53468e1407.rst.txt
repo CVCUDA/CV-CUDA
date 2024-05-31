@@ -1,0 +1,14 @@
+.. _exhale_function_TensorLayout_8h_1a458a92fc7875d6a3c6419d53468e1407:
+
+Function nvcvTensorLayoutFindDimIndex
+=====================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorLayout.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvTensorLayoutFindDimIndex(NVCVTensorLayout, char, int)
+   :project: cvcuda

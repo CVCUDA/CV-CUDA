@@ -1,0 +1,7 @@
+:orphan:
+
+Non-Maximum Suppression
+=======================
+
+.. doxygengroup:: NVCV_C_ALGORITHM_NON_MAXIMUM_SUPPRESSION
+   :project: cvcuda

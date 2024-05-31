@@ -1,0 +1,14 @@
+.. _exhale_typedef_namespacenvcv_1a232540df9587d635a3d46ab405dcca88:
+
+Typedef nvcv::ArrayDataCleanupFunc
+==================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Array.hpp`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: nvcv::ArrayDataCleanupFunc
+   :project: cvcuda

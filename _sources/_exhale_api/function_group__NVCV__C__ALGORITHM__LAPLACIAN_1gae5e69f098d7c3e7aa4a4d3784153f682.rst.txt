@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__LAPLACIAN_1gae5e69f098d7c3e7aa4a4d3784153f682:
+
+Function cvcudaLaplacianVarShapeSubmit
+======================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpLaplacian.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaLaplacianVarShapeSubmit(NVCVOperatorHandle, cudaStream_t, NVCVImageBatchHandle, NVCVImageBatchHandle, NVCVTensorHandle, NVCVTensorHandle, NVCVBorderType)
+   :project: cvcuda

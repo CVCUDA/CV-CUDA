@@ -1,0 +1,72 @@
+
+.. _file_nvcv_types_include_nvcv_TensorData.hpp:
+
+File TensorData.hpp
+===================
+Definition (``nvcv_types/include/nvcv/TensorData.hpp``)
+-------------------------------------------------------
+
+
+.. toctree::
+   :maxdepth: 1
+
+   program_listing_file_nvcv_types_include_nvcv_TensorData.hpp.rst
+
+
+
+
+
+Includes
+--------
+
+
+- ``Optional.hpp`` (:ref:`file_nvcv_types_include_nvcv_Optional.hpp`)
+
+- ``TensorData.h`` (:ref:`file_nvcv_types_include_nvcv_TensorData.h`)
+
+- ``TensorShape.hpp`` (:ref:`file_nvcv_types_include_nvcv_TensorShape.hpp`)
+
+- ``detail/TensorDataImpl.hpp`` (:ref:`file_nvcv_types_include_nvcv_detail_TensorDataImpl.hpp`)
+
+- ``nvcv/DataType.hpp`` (:ref:`file_nvcv_types_include_nvcv_DataType.hpp`)
+
+
+
+Included By
+-----------
+
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_BorderWrap.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_FullTensorWrap.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_InterpolationWrap.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_TensorWrap.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_Tensor.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_TensorBatchData.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_TensorDataAccess.hpp`
+
+
+
+
+Namespaces
+----------
+
+
+- :ref:`namespace_nvcv`
+
+
+Classes
+-------
+
+
+- :ref:`exhale_class_classnvcv_1_1TensorData`
+
+- :ref:`exhale_class_classnvcv_1_1TensorDataStrided`
+
+- :ref:`exhale_class_classnvcv_1_1TensorDataStridedCuda`
+

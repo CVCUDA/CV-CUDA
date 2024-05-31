@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1ade0cd5cf760a413963179edafcaabe57:
+
+Specialized Template Function nvcv::HandleIncRef< NVCVTensorBatchHandle >
+=========================================================================
+
+.. did not find file this was defined in
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::HandleIncRef< NVCVTensorBatchHandle >(NVCVTensorBatchHandle)
+   :project: cvcuda

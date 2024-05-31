@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1_1detail_1a3760b13dfd84aced3da22b998d319d99:
+
+Template Function nvcv::detail::IsRefWrapperF(const std::reference_wrapper<T> \*)
+=================================================================================
+
+.. did not find file this was defined in
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::detail::IsRefWrapperF(const std::reference_wrapper<T> *)
+   :project: cvcuda

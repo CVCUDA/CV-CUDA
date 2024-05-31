@@ -1,0 +1,27 @@
+.. _exhale_class_classnvcv_1_1cuda_1_1detail_1_1BorderWrapImpl:
+
+Template Class BorderWrapImpl
+=============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_BorderWrap.hpp`
+
+
+Nested Relationships
+--------------------
+
+
+Nested Types
+************
+
+- :ref:`exhale_struct_structnvcv_1_1cuda_1_1detail_1_1BorderWrapImpl_1_1ActiveMap`
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nvcv::cuda::detail::BorderWrapImpl
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

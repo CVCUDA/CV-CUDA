@@ -1,0 +1,14 @@
+.. _exhale_define_group__NVCV__C__CORE__IMAGETYPE_1gaf34632f059a26b7715ec867fb813611e:
+
+Define NVCV_IMAGE_FORMAT_RGBAf16p
+=================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageFormat.h`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_IMAGE_FORMAT_RGBAf16p
+   :project: cvcuda

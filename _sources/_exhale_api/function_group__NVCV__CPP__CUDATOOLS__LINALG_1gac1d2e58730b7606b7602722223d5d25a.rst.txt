@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__CPP__CUDATOOLS__LINALG_1gac1d2e58730b7606b7602722223d5d25a:
+
+Template Function nvcv::cuda::math::transp_inplace
+==================================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_math_LinAlg.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::cuda::math::transp_inplace(Matrix<T, M, M>&)
+   :project: cvcuda

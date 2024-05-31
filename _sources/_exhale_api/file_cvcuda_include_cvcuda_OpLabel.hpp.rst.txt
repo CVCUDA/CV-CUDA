@@ -1,0 +1,57 @@
+
+.. _file_cvcuda_include_cvcuda_OpLabel.hpp:
+
+File OpLabel.hpp
+================
+
+
+Defines the public C++ Class for the Label operation. 
+
+
+Definition (``cvcuda/include/cvcuda/OpLabel.hpp``)
+--------------------------------------------------
+
+
+.. toctree::
+   :maxdepth: 1
+
+   program_listing_file_cvcuda_include_cvcuda_OpLabel.hpp.rst
+
+
+
+
+
+Includes
+--------
+
+
+- ``IOperator.hpp`` (:ref:`file_cvcuda_include_cvcuda_IOperator.hpp`)
+
+- ``OpLabel.h`` (:ref:`file_cvcuda_include_cvcuda_OpLabel.h`)
+
+- ``cuda_runtime.h``
+
+- ``nvcv/ImageFormat.hpp`` (:ref:`file_nvcv_types_include_nvcv_ImageFormat.hpp`)
+
+- ``nvcv/Tensor.hpp`` (:ref:`file_nvcv_types_include_nvcv_Tensor.hpp`)
+
+- ``nvcv/alloc/Requirements.hpp`` (:ref:`file_nvcv_types_include_nvcv_alloc_Requirements.hpp`)
+
+
+
+
+
+
+Namespaces
+----------
+
+
+- :ref:`namespace_cvcuda`
+
+
+Classes
+-------
+
+
+- :ref:`exhale_class_classcvcuda_1_1Label`
+

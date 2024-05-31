@@ -1,0 +1,14 @@
+.. _exhale_define_group__NVCV__C__CORE__IMAGETYPE_1ga773505e5f83a0bc35040a5d0e82255be:
+
+Define NVCV_IMAGE_FORMAT_NV24
+=============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageFormat.h`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_IMAGE_FORMAT_NV24
+   :project: cvcuda

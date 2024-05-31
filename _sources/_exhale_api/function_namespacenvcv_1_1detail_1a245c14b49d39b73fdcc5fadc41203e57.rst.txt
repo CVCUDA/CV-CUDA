@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1_1detail_1a245c14b49d39b73fdcc5fadc41203e57:
+
+Function nvcv::detail::IsStdFunctionF(...)
+==========================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_detail_TypeTraits.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::detail::IsStdFunctionF(...)
+   :project: cvcuda

@@ -1,0 +1,26 @@
+.. _exhale_class_classnvcv_1_1cuda_1_1InterpolationWrap_3_01BW_00_01NVCV__INTERP__NEAREST_01_4:
+
+Template Class InterpolationWrap< BW, NVCV_INTERP_NEAREST >
+===========================================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_InterpolationWrap.hpp`
+
+
+Inheritance Relationships
+-------------------------
+
+Base Type
+*********
+
+- ``public nvcv::cuda::detail::InterpolationWrapImpl< BW, NVCV_INTERP_NEAREST >`` (:ref:`exhale_class_classnvcv_1_1cuda_1_1detail_1_1InterpolationWrapImpl`)
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nvcv::cuda::InterpolationWrap< BW, NVCV_INTERP_NEAREST >
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

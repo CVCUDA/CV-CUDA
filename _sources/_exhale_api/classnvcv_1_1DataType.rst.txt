@@ -1,0 +1,17 @@
+.. _exhale_class_classnvcv_1_1DataType:
+
+Class DataType
+==============
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_DataType.hpp`
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nvcv::DataType
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

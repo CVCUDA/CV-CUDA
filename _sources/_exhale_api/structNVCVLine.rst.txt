@@ -1,0 +1,17 @@
+.. _exhale_struct_structNVCVLine:
+
+Struct NVCVLine
+===============
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_Types.h`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: NVCVLine
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

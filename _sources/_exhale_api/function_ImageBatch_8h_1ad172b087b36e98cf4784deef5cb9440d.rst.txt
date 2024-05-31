@@ -1,0 +1,14 @@
+.. _exhale_function_ImageBatch_8h_1ad172b087b36e98cf4784deef5cb9440d:
+
+Function nvcvImageBatchVarShapeGetMaxSize
+=========================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageBatch.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvImageBatchVarShapeGetMaxSize(NVCVImageBatchHandle, int32_t *, int32_t *)
+   :project: cvcuda

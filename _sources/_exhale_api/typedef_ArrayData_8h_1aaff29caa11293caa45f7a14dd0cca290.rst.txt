@@ -1,0 +1,14 @@
+.. _exhale_typedef_ArrayData_8h_1aaff29caa11293caa45f7a14dd0cca290:
+
+Typedef NVCVArrayBuffer
+=======================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ArrayData.h`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: NVCVArrayBuffer
+   :project: cvcuda

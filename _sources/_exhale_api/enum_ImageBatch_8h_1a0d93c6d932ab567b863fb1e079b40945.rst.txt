@@ -1,0 +1,14 @@
+.. _exhale_enum_ImageBatch_8h_1a0d93c6d932ab567b863fb1e079b40945:
+
+Enum NVCVTypeImageBatch
+=======================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageBatch.h`
+
+
+Enum Documentation
+------------------
+
+
+.. doxygenenum:: NVCVTypeImageBatch
+   :project: cvcuda

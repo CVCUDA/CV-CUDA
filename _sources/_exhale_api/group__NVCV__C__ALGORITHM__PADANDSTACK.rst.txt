@@ -1,0 +1,7 @@
+:orphan:
+
+Pad and Stack
+=============
+
+.. doxygengroup:: NVCV_C_ALGORITHM_PADANDSTACK
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM____MIN__AREA__RECT_1ga67bef60e30b156eb9dd67f17201f3876:
+
+Function cvcudaMinAreaRectCreate
+================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpMinAreaRect.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaMinAreaRectCreate(NVCVOperatorHandle *, int)
+   :project: cvcuda

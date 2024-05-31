@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__IMAGETYPE_1gac36b131886db6171db97035f7baeb1c5:
+
+Function nvcvImageFormatGetPlaneSize
+====================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageFormat.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvImageFormatGetPlaneSize(NVCVImageFormat, int32_t, int32_t, int32_t, int32_t *, int32_t *)
+   :project: cvcuda

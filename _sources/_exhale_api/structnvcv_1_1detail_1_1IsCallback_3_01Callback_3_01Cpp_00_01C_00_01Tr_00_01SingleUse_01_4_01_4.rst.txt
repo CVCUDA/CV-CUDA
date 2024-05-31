@@ -1,0 +1,26 @@
+.. _exhale_struct_structnvcv_1_1detail_1_1IsCallback_3_01Callback_3_01Cpp_00_01C_00_01Tr_00_01SingleUse_01_4_01_4:
+
+Template Struct IsCallback< Callback< Cpp, C, Tr, SingleUse > >
+===============================================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_detail_Callback.hpp`
+
+
+Inheritance Relationships
+-------------------------
+
+Base Type
+*********
+
+- ``public std::true_type``
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: nvcv::detail::IsCallback< Callback< Cpp, C, Tr, SingleUse > >
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

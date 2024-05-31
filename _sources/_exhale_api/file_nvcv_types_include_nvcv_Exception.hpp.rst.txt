@@ -1,0 +1,63 @@
+
+.. _file_nvcv_types_include_nvcv_Exception.hpp:
+
+File Exception.hpp
+==================
+
+
+Declaration of NVCV C++ exception classes. 
+
+
+Definition (``nvcv_types/include/nvcv/Exception.hpp``)
+------------------------------------------------------
+
+
+.. toctree::
+   :maxdepth: 1
+
+   program_listing_file_nvcv_types_include_nvcv_Exception.hpp.rst
+
+
+
+
+
+Includes
+--------
+
+
+- ``cassert``
+
+- ``cstring``
+
+- ``nvcv/Status.hpp`` (:ref:`file_nvcv_types_include_nvcv_Status.hpp`)
+
+
+
+Included By
+-----------
+
+
+- :ref:`file_nvcv_types_include_nvcv_detail_CheckError.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_Shape.hpp`
+
+
+
+
+Namespaces
+----------
+
+
+- :ref:`namespace_nvcv`
+
+- :ref:`namespace_nvcv__detail`
+
+
+Classes
+-------
+
+
+- :ref:`exhale_struct_structnvcv_1_1Exception_1_1InternalCtorTag`
+
+- :ref:`exhale_class_classnvcv_1_1Exception`
+

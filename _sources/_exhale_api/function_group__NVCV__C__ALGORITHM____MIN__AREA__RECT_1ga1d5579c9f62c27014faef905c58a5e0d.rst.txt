@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM____MIN__AREA__RECT_1ga1d5579c9f62c27014faef905c58a5e0d:
+
+Function cvcudaMinAreaRectSubmit
+================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpMinAreaRect.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaMinAreaRectSubmit(NVCVOperatorHandle, cudaStream_t, NVCVTensorHandle, NVCVTensorHandle, NVCVTensorHandle, const int)
+   :project: cvcuda

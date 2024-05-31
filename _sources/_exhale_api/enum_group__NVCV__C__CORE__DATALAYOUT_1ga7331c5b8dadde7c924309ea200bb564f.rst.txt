@@ -1,0 +1,14 @@
+.. _exhale_enum_group__NVCV__C__CORE__DATALAYOUT_1ga7331c5b8dadde7c924309ea200bb564f:
+
+Enum NVCVByteOrder
+==================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_DataLayout.h`
+
+
+Enum Documentation
+------------------
+
+
+.. doxygenenum:: NVCVByteOrder
+   :project: cvcuda

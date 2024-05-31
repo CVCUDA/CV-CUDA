@@ -1,0 +1,14 @@
+.. _exhale_enum_namespacenvcv_1a893bda0840fe00a793808f37822e6966:
+
+Enum ColorTransferFunction
+==========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ColorSpec.hpp`
+
+
+Enum Documentation
+------------------
+
+
+.. doxygenenum:: nvcv::ColorTransferFunction
+   :project: cvcuda

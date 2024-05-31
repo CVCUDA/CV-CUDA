@@ -1,0 +1,14 @@
+.. _exhale_enum_Allocator_8h_1a2388b046ddf6a685519cc3432a4be189:
+
+Enum NVCVResourceType
+=====================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_alloc_Allocator.h`
+
+
+Enum Documentation
+------------------
+
+
+.. doxygenenum:: NVCVResourceType
+   :project: cvcuda

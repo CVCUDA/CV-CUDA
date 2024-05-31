@@ -1,0 +1,14 @@
+.. _exhale_typedef_Fwd_8h_1a78fe67a4152df1b6bb04f0d364ed4fc9:
+
+Typedef NVCVTensorBatchHandle
+=============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Fwd.h`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: NVCVTensorBatchHandle
+   :project: cvcuda

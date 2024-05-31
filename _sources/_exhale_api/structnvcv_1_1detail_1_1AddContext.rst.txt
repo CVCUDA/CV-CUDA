@@ -1,0 +1,17 @@
+.. _exhale_struct_structnvcv_1_1detail_1_1AddContext:
+
+Template Struct AddContext
+==========================
+
+.. did not find file this was defined in
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: nvcv::detail::AddContext
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

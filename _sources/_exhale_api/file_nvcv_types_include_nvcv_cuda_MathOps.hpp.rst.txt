@@ -1,0 +1,112 @@
+
+.. _file_nvcv_types_include_nvcv_cuda_MathOps.hpp:
+
+File MathOps.hpp
+================
+
+
+Defines math operations. 
+
+
+Definition (``nvcv_types/include/nvcv/cuda/MathOps.hpp``)
+---------------------------------------------------------
+
+
+.. toctree::
+   :maxdepth: 1
+
+   program_listing_file_nvcv_types_include_nvcv_cuda_MathOps.hpp.rst
+
+
+
+
+
+Includes
+--------
+
+
+- ``StaticCast.hpp`` (:ref:`file_nvcv_types_include_nvcv_cuda_StaticCast.hpp`)
+
+- ``TypeTraits.hpp`` (:ref:`file_nvcv_types_include_nvcv_cuda_TypeTraits.hpp`)
+
+- ``utility``
+
+
+
+
+
+
+Namespaces
+----------
+
+
+- :ref:`namespace_nvcv`
+
+- :ref:`namespace_nvcv__cuda`
+
+- :ref:`namespace_nvcv__cuda__detail`
+
+
+Functions
+---------
+
+
+- :ref:`exhale_function_group__NVCV__CPP__CUDATOOLS__MATHOPERATORS_1ga929cdc8cbda04c64866e4f81177ea145`
+
+- :ref:`exhale_function_group__NVCV__CPP__CUDATOOLS__MATHOPERATORS_1gab34af8441bd695572823927f3e678003`
+
+- :ref:`exhale_function_group__NVCV__CPP__CUDATOOLS__MATHOPERATORS_1ga99958d0fa68526dd82889ffb15da8ba2`
+
+- :ref:`exhale_function_group__NVCV__CPP__CUDATOOLS__MATHOPERATORS_1ga32aa00c918a71092e3e89a89c3963581`
+
+- :ref:`exhale_function_group__NVCV__CPP__CUDATOOLS__MATHOPERATORS_1ga4033a6915a9861d7c9189f88adecd712`
+
+- :ref:`exhale_function_group__NVCV__CPP__CUDATOOLS__MATHOPERATORS_1gada1cd8498238b2e44b78ba7bf3aea96b`
+
+- :ref:`exhale_function_group__NVCV__CPP__CUDATOOLS__MATHOPERATORS_1ga21d6d327e7c9a70c954b13bedd98271e`
+
+- :ref:`exhale_function_group__NVCV__CPP__CUDATOOLS__MATHOPERATORS_1gae290876212f05ca58c8196eb788193a8`
+
+- :ref:`exhale_function_group__NVCV__CPP__CUDATOOLS__MATHOPERATORS_1gad491053713f081995473a4e4801cd21d`
+
+- :ref:`exhale_function_group__NVCV__CPP__CUDATOOLS__MATHOPERATORS_1gae1b69d898a2c0f7736402b8a3c47a4e2`
+
+- :ref:`exhale_function_group__NVCV__CPP__CUDATOOLS__MATHOPERATORS_1ga2ee87e7c4831ab5209ea9a56c2d08c6f`
+
+- :ref:`exhale_function_group__NVCV__CPP__CUDATOOLS__MATHOPERATORS_1gaa312f05e96b106ce365abee4d8e48d83`
+
+- :ref:`exhale_function_group__NVCV__CPP__CUDATOOLS__MATHOPERATORS_1gad4a460c4ca8b9068f8e8e53a39709bc6`
+
+- :ref:`exhale_function_group__NVCV__CPP__CUDATOOLS__MATHOPERATORS_1ga1dc71999b52f50fae649677e94893fb6`
+
+- :ref:`exhale_function_group__NVCV__CPP__CUDATOOLS__MATHOPERATORS_1ga9d0bc1b5e603a0ad6fb236335a022a9d`
+
+- :ref:`exhale_function_group__NVCV__CPP__CUDATOOLS__MATHOPERATORS_1ga2304a760e7e923113ade56a434ea1ae1`
+
+- :ref:`exhale_function_group__NVCV__CPP__CUDATOOLS__MATHOPERATORS_1gadd72334685d3f14d3f953a5010792cac`
+
+- :ref:`exhale_function_group__NVCV__CPP__CUDATOOLS__MATHOPERATORS_1gaf9a0067bab1b9bb9edbbc1026cd504f3`
+
+- :ref:`exhale_function_group__NVCV__CPP__CUDATOOLS__MATHOPERATORS_1ga29b280af0a4f606d83aed1fd3537cbf6`
+
+- :ref:`exhale_function_group__NVCV__CPP__CUDATOOLS__MATHOPERATORS_1gab63c48b13c2df36341fec50a3517bed6`
+
+- :ref:`exhale_function_group__NVCV__CPP__CUDATOOLS__MATHOPERATORS_1ga5a01f071ee6978c3805a9b6fb7ec1198`
+
+- :ref:`exhale_function_group__NVCV__CPP__CUDATOOLS__MATHOPERATORS_1ga4ed42b994c55dc44efd4537bd6ccc07c`
+
+- :ref:`exhale_function_group__NVCV__CPP__CUDATOOLS__MATHOPERATORS_1ga5e38e4a65924fa7fcbab139a1031668d`
+
+- :ref:`exhale_function_group__NVCV__CPP__CUDATOOLS__MATHOPERATORS_1ga945900b7165dbfeb1d57a54721aad6bf`
+
+- :ref:`exhale_function_group__NVCV__CPP__CUDATOOLS__MATHOPERATORS_1ga78ff02e632f8814010d82b438d222ef1`
+
+
+Defines
+-------
+
+
+- :ref:`exhale_define_group__NVCV__CPP__CUDATOOLS__MATHOPERATORS_1ga6a7d6708444d9fbb456eadc25ddd943c`
+
+- :ref:`exhale_define_group__NVCV__CPP__CUDATOOLS__MATHOPERATORS_1ga1e8c4f559f77f2e8d3b770ad07aa4dc7`
+

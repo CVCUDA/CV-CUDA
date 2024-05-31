@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__DATALAYOUT_1gae64b3c46d52bf6e3b94fd15f166bb4c6:
+
+Function nvcvChannelGetName
+===========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_DataLayout.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvChannelGetName(NVCVChannel)
+   :project: cvcuda

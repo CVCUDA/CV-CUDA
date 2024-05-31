@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__COLORSPEC_1gafbcbbb5205cd3869087ea97a7d668119:
+
+Function nvcvChromaSubsamplingGetName
+=====================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ColorSpec.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvChromaSubsamplingGetName(NVCVChromaSubsampling)
+   :project: cvcuda

@@ -1,0 +1,7 @@
+:orphan:
+
+Adv Cvt Color
+=============
+
+.. doxygengroup:: NVCV_C_ALGORITHM__ADV_CVT_COLOR
+   :project: cvcuda

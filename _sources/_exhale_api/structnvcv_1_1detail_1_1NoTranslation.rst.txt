@@ -1,0 +1,17 @@
+.. _exhale_struct_structnvcv_1_1detail_1_1NoTranslation:
+
+Struct NoTranslation
+====================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_detail_Callback.hpp`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: nvcv::detail::NoTranslation
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

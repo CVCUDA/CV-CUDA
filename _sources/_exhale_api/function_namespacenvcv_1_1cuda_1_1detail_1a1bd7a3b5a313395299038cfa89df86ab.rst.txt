@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1_1cuda_1_1detail_1a1bd7a3b5a313395299038cfa89df86ab:
+
+Template Function nvcv::cuda::detail::MaxImpl
+=============================================
+
+.. did not find file this was defined in
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::cuda::detail::MaxImpl(U, U)
+   :project: cvcuda

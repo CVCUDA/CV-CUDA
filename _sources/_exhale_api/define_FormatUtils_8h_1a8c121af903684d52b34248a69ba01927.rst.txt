@@ -1,0 +1,14 @@
+.. _exhale_define_FormatUtils_8h_1a8c121af903684d52b34248a69ba01927:
+
+Define NVCV_DETAIL_MAKE_RAW_FORMAT1
+===================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_detail_FormatUtils.h`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_DETAIL_MAKE_RAW_FORMAT1
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__HQ__RESIZE_1ga0da8809825f2b52f8b4fe398911de2cb:
+
+Function cvcudaHQResizeSubmit
+=============================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpHQResize.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaHQResizeSubmit(NVCVOperatorHandle, cudaStream_t, const NVCVWorkspace *, NVCVTensorHandle, NVCVTensorHandle, const NVCVInterpolationType, const NVCVInterpolationType, bool, const HQResizeRoiF *)
+   :project: cvcuda

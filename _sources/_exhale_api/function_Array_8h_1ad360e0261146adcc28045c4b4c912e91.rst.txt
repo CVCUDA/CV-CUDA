@@ -1,0 +1,14 @@
+.. _exhale_function_Array_8h_1ad360e0261146adcc28045c4b4c912e91:
+
+Function nvcvArraySetUserPointer
+================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Array.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvArraySetUserPointer(NVCVArrayHandle, void *)
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_define_FormatUtils_8h_1ac08f354a62ca39c19c75a3975d08bbdd:
+
+Define NVCV_DETAIL_ADJUST_BPP_ENCODING
+======================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_detail_FormatUtils.h`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_DETAIL_ADJUST_BPP_ENCODING
+   :project: cvcuda

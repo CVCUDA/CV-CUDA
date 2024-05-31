@@ -1,0 +1,14 @@
+.. _exhale_function_ImageBatch_8h_1afd9fa2523c9256823fc1c381e4d21c27:
+
+Function nvcvImageBatchVarShapePushImages
+=========================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageBatch.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvImageBatchVarShapePushImages(NVCVImageBatchHandle, const NVCVImageHandle *, int32_t)
+   :project: cvcuda

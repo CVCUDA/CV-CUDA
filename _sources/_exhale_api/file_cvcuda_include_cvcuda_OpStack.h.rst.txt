@@ -1,0 +1,56 @@
+
+.. _file_cvcuda_include_cvcuda_OpStack.h:
+
+File OpStack.h
+==============
+
+
+Defines types and functions to handle the Stack operation. 
+
+
+Definition (``cvcuda/include/cvcuda/OpStack.h``)
+------------------------------------------------
+
+
+.. toctree::
+   :maxdepth: 1
+
+   program_listing_file_cvcuda_include_cvcuda_OpStack.h.rst
+
+
+
+
+
+Includes
+--------
+
+
+- ``Operator.h`` (:ref:`file_cvcuda_include_cvcuda_IOperator.hpp`)
+
+- ``cuda_runtime.h``
+
+- ``detail/Export.h`` (:ref:`file_cvcuda_include_cvcuda_detail_Export.h`)
+
+- ``nvcv/Status.h`` (:ref:`file_nvcv_types_include_nvcv_Status.h`)
+
+- ``nvcv/Tensor.h`` (:ref:`file_nvcv_types_include_nvcv_Tensor.h`)
+
+
+
+Included By
+-----------
+
+
+- :ref:`file_cvcuda_include_cvcuda_OpStack.hpp`
+
+
+
+
+Functions
+---------
+
+
+- :ref:`exhale_function_group__NVCV__C__ALGORITHM____STACK_1ga7e54bf3d3a0c0c17a220ac6685d4bb57`
+
+- :ref:`exhale_function_group__NVCV__C__ALGORITHM____STACK_1ga96aee219baca6334de8c0e217f3b6a4b`
+

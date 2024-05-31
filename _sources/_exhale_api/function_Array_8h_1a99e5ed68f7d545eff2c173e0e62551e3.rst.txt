@@ -1,0 +1,14 @@
+.. _exhale_function_Array_8h_1a99e5ed68f7d545eff2c173e0e62551e3:
+
+Function nvcvArrayGetAllocator
+==============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Array.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvArrayGetAllocator(NVCVArrayHandle, NVCVAllocatorHandle *)
+   :project: cvcuda

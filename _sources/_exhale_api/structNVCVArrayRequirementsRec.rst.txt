@@ -1,0 +1,17 @@
+.. _exhale_struct_structNVCVArrayRequirementsRec:
+
+Struct NVCVArrayRequirementsRec
+===============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Array.h`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: NVCVArrayRequirementsRec
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

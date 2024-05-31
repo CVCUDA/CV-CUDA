@@ -1,0 +1,14 @@
+.. _exhale_function_namespacecvcuda_1aa784addbd30224bbefc91a66ef21c71f:
+
+Function cvcuda::MaxWorkspaceReq(const WorkspaceRequirements&, const WorkspaceRequirements&)
+============================================================================================
+
+.. did not find file this was defined in
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcuda::MaxWorkspaceReq(const WorkspaceRequirements&, const WorkspaceRequirements&)
+   :project: cvcuda

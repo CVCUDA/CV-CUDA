@@ -1,0 +1,14 @@
+.. _exhale_define_FormatUtils_8h_1a230b8ee80ddf8e6dc501a3f892c9d024:
+
+Define NVCV_DETAIL_MAKE_SWIZZLE
+===============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_detail_FormatUtils.h`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_DETAIL_MAKE_SWIZZLE
+   :project: cvcuda

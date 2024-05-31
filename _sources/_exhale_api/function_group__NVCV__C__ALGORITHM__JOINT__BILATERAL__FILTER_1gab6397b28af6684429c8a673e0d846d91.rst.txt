@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__JOINT__BILATERAL__FILTER_1gab6397b28af6684429c8a673e0d846d91:
+
+Function cvcudaJointBilateralFilterCreate
+=========================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpJointBilateralFilter.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaJointBilateralFilterCreate(NVCVOperatorHandle *)
+   :project: cvcuda

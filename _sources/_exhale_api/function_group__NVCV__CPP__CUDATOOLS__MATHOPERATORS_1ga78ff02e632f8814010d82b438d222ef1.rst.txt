@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__CPP__CUDATOOLS__MATHOPERATORS_1ga78ff02e632f8814010d82b438d222ef1:
+
+Template Function operator~
+===========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_MathOps.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: operator~(T)
+   :project: cvcuda

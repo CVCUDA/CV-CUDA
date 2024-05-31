@@ -1,0 +1,14 @@
+.. _exhale_typedef_alloc_2Fwd_8h_1a4d54055acd355354e61f71441fbdfbb0:
+
+Typedef NVCVResourceAllocator
+=============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_alloc_Fwd.h`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: NVCVResourceAllocator
+   :project: cvcuda

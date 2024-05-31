@@ -1,0 +1,14 @@
+.. _exhale_function_TensorLayout_8h_1a49e1831e12a6df7472a9b6099f184e98:
+
+Function nvcvTensorLayoutGetNumDim
+==================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorLayout.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvTensorLayoutGetNumDim(NVCVTensorLayout)
+   :project: cvcuda

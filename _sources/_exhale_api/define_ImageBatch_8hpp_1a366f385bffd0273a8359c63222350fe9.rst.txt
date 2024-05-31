@@ -1,0 +1,14 @@
+.. _exhale_define_ImageBatch_8hpp_1a366f385bffd0273a8359c63222350fe9:
+
+Define NVCV_IMAGE_BATCH_VAR_SHAPE_HANDLE_TO_OPTIONAL
+====================================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageBatch.hpp`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_IMAGE_BATCH_VAR_SHAPE_HANDLE_TO_OPTIONAL
+   :project: cvcuda

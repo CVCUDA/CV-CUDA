@@ -1,0 +1,26 @@
+.. _exhale_class_classnvcv_1_1Array:
+
+Class Array
+===========
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Array.hpp`
+
+
+Inheritance Relationships
+-------------------------
+
+Base Type
+*********
+
+- ``public nvcv::CoreResource< NVCVArrayHandle, Array >`` (:ref:`exhale_class_classnvcv_1_1CoreResource`)
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nvcv::Array
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

@@ -1,0 +1,14 @@
+.. _exhale_variable_namespacenvcv_1_1cuda_1_1detail_1ae347c7c9b775680aaef665168fabcd95:
+
+Variable nvcv::cuda::detail::OneIsCompound
+==========================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_MathOps.hpp`
+
+
+Variable Documentation
+----------------------
+
+
+.. doxygenvariable:: nvcv::cuda::detail::OneIsCompound
+   :project: cvcuda

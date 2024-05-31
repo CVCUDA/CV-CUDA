@@ -1,0 +1,32 @@
+.. _exhale_struct_structnvcv_1_1CustomMemAllocator_1_1has__trivial__copy__and__destruction:
+
+Template Struct CustomMemAllocator::has_trivial_copy_and_destruction
+====================================================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_alloc_Allocator.hpp`
+
+
+Nested Relationships
+--------------------
+
+This struct is a nested type of :ref:`exhale_class_classnvcv_1_1CustomMemAllocator`.
+
+
+Inheritance Relationships
+-------------------------
+
+Base Type
+*********
+
+- ``public std::integral_constant< bool, std::is_trivially_copyable< Callable >::value &&std::is_trivially_destructible< Callable >::value >``
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: nvcv::CustomMemAllocator::has_trivial_copy_and_destruction
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

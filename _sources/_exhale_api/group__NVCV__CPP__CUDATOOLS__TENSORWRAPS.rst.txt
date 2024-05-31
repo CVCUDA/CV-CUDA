@@ -1,0 +1,7 @@
+:orphan:
+
+TensorWrap shortcuts
+====================
+
+.. doxygengroup:: NVCV_CPP_CUDATOOLS_TENSORWRAPS
+   :project: cvcuda

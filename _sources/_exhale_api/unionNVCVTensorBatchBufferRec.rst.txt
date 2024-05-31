@@ -1,0 +1,14 @@
+.. _exhale_union_unionNVCVTensorBatchBufferRec:
+
+Union NVCVTensorBatchBufferRec
+==============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorBatchData.h`
+
+
+Union Documentation
+-------------------
+
+
+.. doxygenunion:: NVCVTensorBatchBufferRec
+   :project: cvcuda

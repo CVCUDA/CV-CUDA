@@ -1,0 +1,17 @@
+.. _exhale_class_classcvcuda_1_1UniqueWorkspace:
+
+Class UniqueWorkspace
+=====================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_Workspace.hpp`
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: cvcuda::UniqueWorkspace
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

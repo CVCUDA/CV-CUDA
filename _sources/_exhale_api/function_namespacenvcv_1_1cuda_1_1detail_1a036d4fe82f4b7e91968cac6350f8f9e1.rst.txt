@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1_1cuda_1_1detail_1a036d4fe82f4b7e91968cac6350f8f9e1:
+
+Specialized Template Function nvcv::cuda::detail::SaturateCastImpl< int, double >
+=================================================================================
+
+.. did not find file this was defined in
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::cuda::detail::SaturateCastImpl< int, double >(double)
+   :project: cvcuda

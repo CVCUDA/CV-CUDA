@@ -1,0 +1,94 @@
+
+.. _file_cvcuda_include_cvcuda_OpHQResize.h:
+
+File OpHQResize.h
+=================
+
+
+Defines types and functions to handle the HQResize operation. 
+
+
+Definition (``cvcuda/include/cvcuda/OpHQResize.h``)
+---------------------------------------------------
+
+
+.. toctree::
+   :maxdepth: 1
+
+   program_listing_file_cvcuda_include_cvcuda_OpHQResize.h.rst
+
+
+
+
+
+Includes
+--------
+
+
+- ``Operator.h`` (:ref:`file_cvcuda_include_cvcuda_IOperator.hpp`)
+
+- ``Types.h`` (:ref:`file_cvcuda_include_cvcuda_Types.h`)
+
+- ``Workspace.h`` (:ref:`file_cvcuda_include_cvcuda_Workspace.h`)
+
+- ``cuda_runtime.h``
+
+- ``detail/Export.h`` (:ref:`file_cvcuda_include_cvcuda_detail_Export.h`)
+
+- ``nvcv/ImageBatch.h`` (:ref:`file_nvcv_types_include_nvcv_ImageBatch.h`)
+
+- ``nvcv/Rect.h`` (:ref:`file_nvcv_types_include_nvcv_Rect.h`)
+
+- ``nvcv/Status.h`` (:ref:`file_nvcv_types_include_nvcv_Status.h`)
+
+- ``nvcv/Tensor.h`` (:ref:`file_nvcv_types_include_nvcv_Tensor.h`)
+
+
+
+Included By
+-----------
+
+
+- :ref:`file_cvcuda_include_cvcuda_OpHQResize.hpp`
+
+
+
+
+Classes
+-------
+
+
+- :ref:`exhale_struct_structHQResizeRoiF`
+
+- :ref:`exhale_struct_structHQResizeRoisF`
+
+- :ref:`exhale_struct_structHQResizeTensorShapeI`
+
+- :ref:`exhale_struct_structHQResizeTensorShapesI`
+
+
+Functions
+---------
+
+
+- :ref:`exhale_function_group__NVCV__C__ALGORITHM__HQ__RESIZE_1ga0726d2f0bcad43d71cff1730c35cafbc`
+
+- :ref:`exhale_function_group__NVCV__C__ALGORITHM__HQ__RESIZE_1gaa01850dcfb983815c9676729a453f6a9`
+
+- :ref:`exhale_function_group__NVCV__C__ALGORITHM__HQ__RESIZE_1ga6fa5715947ed04eb747374f3270c4f7f`
+
+- :ref:`exhale_function_group__NVCV__C__ALGORITHM__HQ__RESIZE_1ga0da8809825f2b52f8b4fe398911de2cb`
+
+- :ref:`exhale_function_group__NVCV__C__ALGORITHM__HQ__RESIZE_1ga828ed7ef2dc3cc1b16213e06d5878e3d`
+
+- :ref:`exhale_function_group__NVCV__C__ALGORITHM__HQ__RESIZE_1gae2b084f8df61c05c481eef0ef7a98efa`
+
+- :ref:`exhale_function_group__NVCV__C__ALGORITHM__HQ__RESIZE_1ga72d85de75c9cc22827a6cecfbc6b8105`
+
+
+Defines
+-------
+
+
+- :ref:`exhale_define_group__NVCV__C__ALGORITHM__HQ__RESIZE_1ga966ed1566c383f75cae82857c6eb3a5b`
+

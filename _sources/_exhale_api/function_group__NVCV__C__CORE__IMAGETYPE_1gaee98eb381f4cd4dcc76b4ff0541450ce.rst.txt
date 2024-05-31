@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__IMAGETYPE_1gaee98eb381f4cd4dcc76b4ff0541450ce:
+
+Function nvcvImageFormatGetPlaneDataType
+========================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageFormat.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvImageFormatGetPlaneDataType(NVCVImageFormat, int32_t, NVCVDataType *)
+   :project: cvcuda

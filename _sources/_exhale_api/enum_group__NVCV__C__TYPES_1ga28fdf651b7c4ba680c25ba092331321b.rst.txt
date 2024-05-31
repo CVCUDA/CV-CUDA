@@ -1,0 +1,14 @@
+.. _exhale_enum_group__NVCV__C__TYPES_1ga28fdf651b7c4ba680c25ba092331321b:
+
+Enum NVCVClockFormat
+====================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_Types.h`
+
+
+Enum Documentation
+------------------
+
+
+.. doxygenenum:: NVCVClockFormat
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_define_group__NVCV__C__CORE__IMAGETYPE_1ga55a676c198bac480573c14305ef1fbf9:
+
+Define NVCV_IMAGE_FORMAT_U8
+===========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageFormat.h`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_IMAGE_FORMAT_U8
+   :project: cvcuda

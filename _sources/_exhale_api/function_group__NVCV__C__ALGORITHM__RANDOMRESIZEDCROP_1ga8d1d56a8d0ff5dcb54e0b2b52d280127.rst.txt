@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__RANDOMRESIZEDCROP_1ga8d1d56a8d0ff5dcb54e0b2b52d280127:
+
+Function cvcudaRandomResizedCropCreate
+======================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpRandomResizedCrop.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaRandomResizedCropCreate(NVCVOperatorHandle *, double, double, double, double, int32_t, uint32_t)
+   :project: cvcuda

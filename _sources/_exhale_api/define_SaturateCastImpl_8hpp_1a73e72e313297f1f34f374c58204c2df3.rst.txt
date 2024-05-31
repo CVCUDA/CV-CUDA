@@ -1,0 +1,14 @@
+.. _exhale_define_SaturateCastImpl_8hpp_1a73e72e313297f1f34f374c58204c2df3:
+
+Define NVCV_CUDA_SAT_DEF
+========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_detail_SaturateCastImpl.hpp`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_CUDA_SAT_DEF
+   :project: cvcuda

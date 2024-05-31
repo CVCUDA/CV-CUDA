@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__GAUSSIAN__NOISE_1ga5580f8ccecab8bb60e455e740394ab98:
+
+Function cvcudaGaussianNoiseCreate
+==================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpGaussianNoise.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaGaussianNoiseCreate(NVCVOperatorHandle *, int)
+   :project: cvcuda

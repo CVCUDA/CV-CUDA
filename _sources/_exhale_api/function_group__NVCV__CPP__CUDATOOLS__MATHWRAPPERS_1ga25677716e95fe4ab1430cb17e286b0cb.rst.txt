@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__CPP__CUDATOOLS__MATHWRAPPERS_1ga25677716e95fe4ab1430cb17e286b0cb:
+
+Template Function nvcv::cuda::sqrt
+==================================
+
+.. did not find file this was defined in
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::cuda::sqrt(U)
+   :project: cvcuda

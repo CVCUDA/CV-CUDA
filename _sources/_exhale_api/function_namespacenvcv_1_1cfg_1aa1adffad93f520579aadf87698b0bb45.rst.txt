@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1_1cfg_1aa1adffad93f520579aadf87698b0bb45:
+
+Function nvcv::cfg::SetMaxArrayCount
+====================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Config.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::cfg::SetMaxArrayCount(int32_t)
+   :project: cvcuda

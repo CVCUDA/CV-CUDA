@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__CPP__CUDATOOLS__LINALG_1gab077bb53fc3027baa5549a412b131a0b:
+
+Template Function nvcv::cuda::math::operator+=(Vector<T, N>&, T)
+================================================================
+
+.. did not find file this was defined in
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::cuda::math::operator+=(Vector<T, N>&, T)
+   :project: cvcuda

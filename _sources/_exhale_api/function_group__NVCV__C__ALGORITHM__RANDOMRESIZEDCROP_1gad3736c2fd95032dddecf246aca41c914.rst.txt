@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__RANDOMRESIZEDCROP_1gad3736c2fd95032dddecf246aca41c914:
+
+Function cvcudaRandomResizedCropSubmit
+======================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpRandomResizedCrop.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaRandomResizedCropSubmit()
+   :project: cvcuda

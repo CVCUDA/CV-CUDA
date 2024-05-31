@@ -1,0 +1,26 @@
+.. _exhale_class_classnvcv_1_1TensorBatchDataStridedCuda:
+
+Class TensorBatchDataStridedCuda
+================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorBatchData.hpp`
+
+
+Inheritance Relationships
+-------------------------
+
+Base Type
+*********
+
+- ``public nvcv::TensorBatchDataStrided`` (:ref:`exhale_class_classnvcv_1_1TensorBatchDataStrided`)
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nvcv::TensorBatchDataStridedCuda
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

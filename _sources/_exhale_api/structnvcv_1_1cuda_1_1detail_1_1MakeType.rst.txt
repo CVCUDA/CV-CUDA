@@ -1,0 +1,17 @@
+.. _exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType:
+
+Template Struct MakeType
+========================
+
+.. did not find file this was defined in
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: nvcv::cuda::detail::MakeType
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

@@ -1,0 +1,32 @@
+.. _exhale_class_classnvcv_1_1TensorDataStrided:
+
+Class TensorDataStrided
+=======================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorData.hpp`
+
+
+Inheritance Relationships
+-------------------------
+
+Base Type
+*********
+
+- ``public nvcv::TensorData`` (:ref:`exhale_class_classnvcv_1_1TensorData`)
+
+
+Derived Type
+************
+
+- ``public nvcv::TensorDataStridedCuda`` (:ref:`exhale_class_classnvcv_1_1TensorDataStridedCuda`)
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nvcv::TensorDataStrided
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga436aedf591c8c04d932667ac912bb8da:
+
+Function nvcvColorSpecSetColorSpace
+===================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ColorSpec.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvColorSpecSetColorSpace(NVCVColorSpec *, NVCVColorSpace)
+   :project: cvcuda

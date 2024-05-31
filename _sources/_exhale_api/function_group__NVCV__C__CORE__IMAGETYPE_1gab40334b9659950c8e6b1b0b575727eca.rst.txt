@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__IMAGETYPE_1gab40334b9659950c8e6b1b0b575727eca:
+
+Function nvcvImageFormatGetMemLayout
+====================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageFormat.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvImageFormatGetMemLayout(NVCVImageFormat, NVCVMemLayout *)
+   :project: cvcuda

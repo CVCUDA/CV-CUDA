@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1a282132e4ccf00038c66957cf0478ed58:
+
+Function nvcv::CalcTotalSizeBytes
+=================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_alloc_Requirements.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::CalcTotalSizeBytes(const Requirements::ConstMemory&)
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_define_FormatUtils_8h_1a133a5cbd661ff33d3c8f0af39a28ee5d:
+
+Define NVCV_DETAIL_MAKE_NONCOLOR_EXTRA_CHANNELS_FMT2
+====================================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_detail_FormatUtils.h`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_DETAIL_MAKE_NONCOLOR_EXTRA_CHANNELS_FMT2
+   :project: cvcuda

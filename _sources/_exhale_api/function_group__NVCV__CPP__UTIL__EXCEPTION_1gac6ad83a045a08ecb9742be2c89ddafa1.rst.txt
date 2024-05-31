@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__CPP__UTIL__EXCEPTION_1gac6ad83a045a08ecb9742be2c89ddafa1:
+
+Template Function nvcv::ProtectCall
+===================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Exception.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::ProtectCall(F&&)
+   :project: cvcuda

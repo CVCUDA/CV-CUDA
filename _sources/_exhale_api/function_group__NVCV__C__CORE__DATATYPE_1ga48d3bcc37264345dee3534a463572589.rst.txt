@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__DATATYPE_1ga48d3bcc37264345dee3534a463572589:
+
+Function nvcvDataTypeGetDataKind
+================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_DataType.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvDataTypeGetDataKind(NVCVDataType, NVCVDataKind *)
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__COLORSPEC_1ga753f84a83d57639776ff8aa4dce6003f:
+
+Function nvcvChromaSubsamplingGetNumSamples
+===========================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ColorSpec.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvChromaSubsamplingGetNumSamples(NVCVChromaSubsampling, int32_t *, int32_t *)
+   :project: cvcuda

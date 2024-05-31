@@ -1,0 +1,178 @@
+
+.. _file_nvcv_types_include_nvcv_alloc_Allocator.h:
+
+File Allocator.h
+================
+
+
+Defines the public C interface to NVCV resource allocators. 
+
+
+Definition (``nvcv_types/include/nvcv/alloc/Allocator.h``)
+----------------------------------------------------------
+
+
+.. toctree::
+   :maxdepth: 1
+
+   program_listing_file_nvcv_types_include_nvcv_alloc_Allocator.h.rst
+
+
+
+Detailed Description
+--------------------
+
+Allocators objects allow users to override the resource allocation strategy used by several NVCV entities, such as images, operators, etc.
+
+NVCV currently support three resource types:
+
+- host memory: memory directly accessible by CPU.
+
+- cuda memory : memory directly accessible by cuda-enabled GPU.
+
+- host pinned memory: memory directly accessible by both CPU and cuda-enabled GPU.
+
+
+
+By default, the following functions are used to allocate and deallocate resourcees for these types.
+
+
+Resource type   
+Malloc   
+Free    
+
+
+host memory   
+malloc   
+free    
+
+
+cuda memory   
+cudaMalloc   
+cudaFree    
+
+
+host pinned memory   
+cudaHostAlloc   
+cudaHostFree   
+
+
+
+
+By using defining custom resource allocators, user can override the allocation and deallocation functions used for each resource type. When overriding, they can pass a pointer to some user-defined context. It'll be passed unchanged to the corresponding malloc and free function. This allows passing, for instance, a pointer to an object whose methods will be called from inside the overriden functions. 
+
+
+
+
+Includes
+--------
+
+
+- ``../Export.h``
+
+- ``../Status.h``
+
+- ``Fwd.h`` (:ref:`file_nvcv_types_include_nvcv_detail_CudaFwd.h`)
+
+- ``stdalign.h``
+
+
+
+Included By
+-----------
+
+
+- :ref:`file_nvcv_types_include_nvcv_alloc_Allocator.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_Array.h`
+
+- :ref:`file_nvcv_types_include_nvcv_Image.h`
+
+- :ref:`file_nvcv_types_include_nvcv_ImageBatch.h`
+
+- :ref:`file_nvcv_types_include_nvcv_Tensor.h`
+
+
+
+
+Classes
+-------
+
+
+- :ref:`exhale_struct_structNVCVCustomMemAllocatorRec`
+
+- :ref:`exhale_struct_structNVCVResourceAllocatorRec`
+
+
+Enums
+-----
+
+
+- :ref:`exhale_enum_Allocator_8h_1a2388b046ddf6a685519cc3432a4be189`
+
+
+Functions
+---------
+
+
+- :ref:`exhale_function_Allocator_8h_1a1599b5b0eba6e5a81ef0dd1b97c65e3f`
+
+- :ref:`exhale_function_Allocator_8h_1a1ac2c70ec7110c279bcbe26da16ef26e`
+
+- :ref:`exhale_function_Allocator_8h_1a8b5aaebb57cb303913d9e68918352ab7`
+
+- :ref:`exhale_function_Allocator_8h_1a011cea5e977cca0861c7be88b8f84353`
+
+- :ref:`exhale_function_Allocator_8h_1aa30f2addb1b16fbc0a97624818bde81c`
+
+- :ref:`exhale_function_Allocator_8h_1abf6bf3f96488f5aedc974081ca9b9f2a`
+
+- :ref:`exhale_function_Allocator_8h_1a2027f13101d05498c82aa5c3665e96a4`
+
+- :ref:`exhale_function_Allocator_8h_1aca074da96abd27babcd3015f2c40f646`
+
+- :ref:`exhale_function_Allocator_8h_1a6b1607bff628f143b45e59aaa20342ce`
+
+- :ref:`exhale_function_Allocator_8h_1a724da405daeb164f61727537e68fa296`
+
+- :ref:`exhale_function_Allocator_8h_1a47cf27f569f1f19df63470416cc60b0c`
+
+- :ref:`exhale_function_Allocator_8h_1ada049089438e2b0e74dfba12419e8997`
+
+- :ref:`exhale_function_Allocator_8h_1a9c5825eab70a68256e5b4cc0b143fde2`
+
+- :ref:`exhale_function_Allocator_8h_1a0ad268b73bbd46c2486c967d606c9981`
+
+
+Defines
+-------
+
+
+- :ref:`exhale_define_Allocator_8h_1a9cf181e9a48422249fe737e0e2df34d6`
+
+
+Typedefs
+--------
+
+
+- :ref:`exhale_typedef_Allocator_8h_1a57b8b22fc98e640fdade0590321e34a8`
+
+- :ref:`exhale_typedef_Allocator_8h_1a5d49da625353a3eabdba893c7f38e0da`
+
+- :ref:`exhale_typedef_Allocator_8h_1a3298d0fd002d2864d7e23c4d2e40f0b9`
+
+- :ref:`exhale_typedef_Allocator_8h_1aa9957db3c6333d59e2c6fe7213e6bec7`
+
+- :ref:`exhale_typedef_Allocator_8h_1a8f735ce55e166fc54a6fef6fd0843636`
+
+- :ref:`exhale_typedef_Allocator_8h_1a4d54055acd355354e61f71441fbdfbb0`
+
+- :ref:`exhale_typedef_Allocator_8h_1a6c70c60d21855ef2b1f35a487858f519`
+
+
+Unions
+------
+
+
+- :ref:`exhale_union_unionNVCVCustomResourceAllocatorRec`
+

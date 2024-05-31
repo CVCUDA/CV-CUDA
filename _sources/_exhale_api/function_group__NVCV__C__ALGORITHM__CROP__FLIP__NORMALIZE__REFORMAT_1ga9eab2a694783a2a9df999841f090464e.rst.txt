@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT_1ga9eab2a694783a2a9df999841f090464e:
+
+Function cvcudaCropFlipNormalizeReformatCreate
+==============================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpCropFlipNormalizeReformat.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaCropFlipNormalizeReformatCreate(NVCVOperatorHandle *)
+   :project: cvcuda

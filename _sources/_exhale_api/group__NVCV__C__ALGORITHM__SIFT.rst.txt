@@ -1,0 +1,7 @@
+:orphan:
+
+SIFT
+====
+
+.. doxygengroup:: NVCV_C_ALGORITHM_SIFT
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_typedef_Array_8h_1adcf4c79e0815dec725fbff6b0ce836fc:
+
+Typedef NVCVArrayRequirements
+=============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Array.h`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: NVCVArrayRequirements
+   :project: cvcuda

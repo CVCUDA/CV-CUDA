@@ -1,0 +1,17 @@
+.. _exhale_struct_structNVCVCustomMemAllocatorRec:
+
+Struct NVCVCustomMemAllocatorRec
+================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_alloc_Allocator.h`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: NVCVCustomMemAllocatorRec
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

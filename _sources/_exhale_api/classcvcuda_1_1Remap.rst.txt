@@ -1,0 +1,26 @@
+.. _exhale_class_classcvcuda_1_1Remap:
+
+Class Remap
+===========
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpRemap.hpp`
+
+
+Inheritance Relationships
+-------------------------
+
+Base Type
+*********
+
+- ``public cvcuda::IOperator`` (:ref:`exhale_class_classcvcuda_1_1IOperator`)
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: cvcuda::Remap
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

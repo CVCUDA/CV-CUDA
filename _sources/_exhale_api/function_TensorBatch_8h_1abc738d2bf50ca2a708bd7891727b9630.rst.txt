@@ -1,0 +1,14 @@
+.. _exhale_function_TensorBatch_8h_1abc738d2bf50ca2a708bd7891727b9630:
+
+Function nvcvTensorBatchIncRef
+==============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorBatch.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvTensorBatchIncRef(NVCVTensorBatchHandle, int32_t *)
+   :project: cvcuda

@@ -1,0 +1,17 @@
+.. _exhale_struct_structnvcv_1_1TranslateArrayDataCleanup:
+
+Struct TranslateArrayDataCleanup
+================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Array.hpp`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: nvcv::TranslateArrayDataCleanup
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

@@ -1,0 +1,14 @@
+.. _exhale_union_unionNVCVImageBatchBufferRec:
+
+Union NVCVImageBatchBufferRec
+=============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageBatchData.h`
+
+
+Union Documentation
+-------------------
+
+
+.. doxygenunion:: NVCVImageBatchBufferRec
+   :project: cvcuda

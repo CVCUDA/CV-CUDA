@@ -1,0 +1,14 @@
+.. _exhale_define_group__NVCV__C__CORE__IMAGETYPE_1ga6639b044a0d62b626b992fe0e9d188b3:
+
+Define NVCV_IMAGE_FORMAT_Y16
+============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ImageFormat.h`
+
+
+Define Documentation
+--------------------
+
+
+.. doxygendefine:: NVCV_IMAGE_FORMAT_Y16
+   :project: cvcuda

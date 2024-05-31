@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__MEDIAN__BLUR_1gabc8ddabcb539f63ac05e6a97625fcd83:
+
+Function cvcudaMedianBlurSubmit
+===============================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpMedianBlur.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaMedianBlurSubmit()
+   :project: cvcuda

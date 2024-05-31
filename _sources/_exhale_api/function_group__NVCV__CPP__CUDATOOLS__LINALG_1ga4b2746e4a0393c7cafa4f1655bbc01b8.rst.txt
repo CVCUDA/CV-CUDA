@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__CPP__CUDATOOLS__LINALG_1ga4b2746e4a0393c7cafa4f1655bbc01b8:
+
+Template Function nvcv::cuda::math::operator<<(std::ostream&, const Matrix<T, M, N>&)
+=====================================================================================
+
+.. did not find file this was defined in
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::cuda::math::operator<<(std::ostream&, const Matrix<T, M, N>&)
+   :project: cvcuda

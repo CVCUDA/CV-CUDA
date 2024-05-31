@@ -1,0 +1,7 @@
+:orphan:
+
+Data types
+==========
+
+.. doxygengroup:: NVCV_C_CORE_DATATYPE
+   :project: cvcuda

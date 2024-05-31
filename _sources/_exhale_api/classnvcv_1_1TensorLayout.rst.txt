@@ -1,0 +1,17 @@
+.. _exhale_class_classnvcv_1_1TensorLayout:
+
+Class TensorLayout
+==================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorLayout.hpp`
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nvcv::TensorLayout
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

@@ -1,0 +1,26 @@
+.. _exhale_class_classnvcv_1_1cuda_1_1InterpolationVarShapeWrap_3_01T_00_01B_00_01NVCV__INTERP__LINEAR_01_4:
+
+Template Class InterpolationVarShapeWrap< T, B, NVCV_INTERP_LINEAR >
+====================================================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_InterpolationVarShapeWrap.hpp`
+
+
+Inheritance Relationships
+-------------------------
+
+Base Type
+*********
+
+- ``public nvcv::cuda::detail::InterpolationVarShapeWrapImpl< T, B, NVCV_INTERP_LINEAR >`` (:ref:`exhale_class_classnvcv_1_1cuda_1_1detail_1_1InterpolationVarShapeWrapImpl`)
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nvcv::cuda::InterpolationVarShapeWrap< T, B, NVCV_INTERP_LINEAR >
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

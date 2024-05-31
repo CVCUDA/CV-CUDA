@@ -1,0 +1,14 @@
+.. _exhale_enum_TensorData_8h_1a4eda79143b6617eb965cffd1047e0734:
+
+Enum NVCVTensorBufferType
+=========================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_TensorData.h`
+
+
+Enum Documentation
+------------------
+
+
+.. doxygenenum:: NVCVTensorBufferType
+   :project: cvcuda

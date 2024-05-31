@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1_1cuda_1a75007ace64bc83043cb49b9789f149c1:
+
+Template Function nvcv::cuda::CreateInterpolationWrapNHWC
+=========================================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_InterpolationWrap.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::cuda::CreateInterpolationWrapNHWC(const TensorDataStridedCuda&, T, float, float)
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_function_Tensor_8h_1a8b5f3fda75a83144ef3f4c44198e2626:
+
+Function nvcvTensorGetAllocator
+===============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Tensor.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvTensorGetAllocator(NVCVTensorHandle, NVCVAllocatorHandle *)
+   :project: cvcuda

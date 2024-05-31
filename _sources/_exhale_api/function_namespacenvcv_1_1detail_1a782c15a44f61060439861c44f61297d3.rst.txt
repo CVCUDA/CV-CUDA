@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1_1detail_1a782c15a44f61060439861c44f61297d3:
+
+Function nvcv::detail::GetImageHandleForPushBack(Image)
+=======================================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_detail_ImageBatchImpl.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::detail::GetImageHandleForPushBack(Image)
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1_1cfg_1a9831d67cdcf4e26bcf83f8355f860643:
+
+Function nvcv::cfg::SetMaxTensorCount
+=====================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Config.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::cfg::SetMaxTensorCount(int32_t)
+   :project: cvcuda

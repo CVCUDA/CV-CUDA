@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1a9da346e617827c30247d7097aed25a84:
+
+Template Function nvcv::operator<<(std::ostream&, const Shape<T, N>&)
+=====================================================================
+
+.. did not find file this was defined in
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::operator<<(std::ostream&, const Shape<T, N>&)
+   :project: cvcuda

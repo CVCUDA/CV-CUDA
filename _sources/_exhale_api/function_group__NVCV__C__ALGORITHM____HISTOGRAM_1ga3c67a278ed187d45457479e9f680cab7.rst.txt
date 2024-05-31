@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM____HISTOGRAM_1ga3c67a278ed187d45457479e9f680cab7:
+
+Function cvcudaHistogramSubmit
+==============================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpHistogram.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaHistogramSubmit(NVCVOperatorHandle, cudaStream_t, NVCVTensorHandle, NVCVTensorHandle, NVCVTensorHandle)
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1_1detail_1a37f00bd2b7c4ddfa7dbb75b8f5e76ac1:
+
+Template Function nvcv::detail::AlignDown
+=========================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_detail_Align.hpp`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::detail::AlignDown(T, T)
+   :project: cvcuda

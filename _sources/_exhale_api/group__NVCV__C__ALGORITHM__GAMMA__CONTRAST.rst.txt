@@ -1,0 +1,7 @@
+:orphan:
+
+Gamma Contrast
+==============
+
+.. doxygengroup:: NVCV_C_ALGORITHM_GAMMA_CONTRAST
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__CPP__CORE__DATALAYOUT_1ga02f23422c57c483dbadc47814520a709:
+
+Function nvcv::operator<<(std::ostream&, MemLayout)
+===================================================
+
+.. did not find file this was defined in
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::operator<<(std::ostream&, MemLayout)
+   :project: cvcuda

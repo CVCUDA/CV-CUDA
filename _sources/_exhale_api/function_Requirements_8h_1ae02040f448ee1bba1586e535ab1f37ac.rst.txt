@@ -1,0 +1,14 @@
+.. _exhale_function_Requirements_8h_1ae02040f448ee1bba1586e535ab1f37ac:
+
+Function nvcvMemRequirementsCalcTotalSizeBytes
+==============================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_alloc_Requirements.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvMemRequirementsCalcTotalSizeBytes(const NVCVMemRequirements *, int64_t *)
+   :project: cvcuda

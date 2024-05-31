@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__HQ__RESIZE_1gae2b084f8df61c05c481eef0ef7a98efa:
+
+Function cvcudaHQResizeTensorBatchSubmit
+========================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpHQResize.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaHQResizeTensorBatchSubmit(NVCVOperatorHandle, cudaStream_t, const NVCVWorkspace *, NVCVTensorBatchHandle, NVCVTensorBatchHandle, const NVCVInterpolationType, const NVCVInterpolationType, bool, const HQResizeRoisF)
+   :project: cvcuda

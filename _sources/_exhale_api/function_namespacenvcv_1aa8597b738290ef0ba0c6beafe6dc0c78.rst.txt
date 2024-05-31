@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1aa8597b738290ef0ba0c6beafe6dc0c78:
+
+Template Function nvcv::operator==(const T&, const Optional<T>&)
+================================================================
+
+.. did not find file this was defined in
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::operator==(const T&, const Optional<T>&)
+   :project: cvcuda

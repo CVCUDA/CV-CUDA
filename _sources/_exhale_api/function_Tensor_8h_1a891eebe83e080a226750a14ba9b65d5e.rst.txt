@@ -1,0 +1,14 @@
+.. _exhale_function_Tensor_8h_1a891eebe83e080a226750a14ba9b65d5e:
+
+Function nvcvTensorWrapDataConstruct
+====================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Tensor.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvTensorWrapDataConstruct(const NVCVTensorData *, NVCVTensorDataCleanupFunc, void *, NVCVTensorHandle *)
+   :project: cvcuda

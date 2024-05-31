@@ -1,0 +1,17 @@
+.. _exhale_struct_structNVCVRectI:
+
+Struct NVCVRectI
+================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_Rect.h`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: NVCVRectI
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

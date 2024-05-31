@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__CORE__DATATYPE_1ga63002d9cc241a265bb470067bc33da3e:
+
+Function nvcvDataTypeGetPacking
+===============================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_DataType.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcvDataTypeGetPacking(NVCVDataType, NVCVPacking *)
+   :project: cvcuda

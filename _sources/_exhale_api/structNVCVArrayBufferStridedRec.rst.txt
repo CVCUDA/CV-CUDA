@@ -1,0 +1,17 @@
+.. _exhale_struct_structNVCVArrayBufferStridedRec:
+
+Struct NVCVArrayBufferStridedRec
+================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_ArrayData.h`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: NVCVArrayBufferStridedRec
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

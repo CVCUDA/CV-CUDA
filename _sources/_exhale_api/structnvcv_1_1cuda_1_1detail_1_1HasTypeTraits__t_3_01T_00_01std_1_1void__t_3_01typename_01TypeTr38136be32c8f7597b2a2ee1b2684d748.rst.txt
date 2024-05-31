@@ -1,0 +1,26 @@
+.. _exhale_struct_structnvcv_1_1cuda_1_1detail_1_1HasTypeTraits__t_3_01T_00_01std_1_1void__t_3_01typename_01TypeTr38136be32c8f7597b2a2ee1b2684d748:
+
+Template Struct HasTypeTraits_t< T, std::void_t< typename TypeTraits< T >::base_type > >
+========================================================================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_detail_Metaprogramming.hpp`
+
+
+Inheritance Relationships
+-------------------------
+
+Base Type
+*********
+
+- ``public std::true_type``
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: nvcv::cuda::detail::HasTypeTraits_t< T, std::void_t< typename TypeTraits< T >::base_type > >
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

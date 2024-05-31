@@ -1,0 +1,14 @@
+.. _exhale_typedef_Workspace_8h_1a0e96d8963716c50195b1622f989cc934:
+
+Typedef NVCVWorkspace
+=====================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_Workspace.h`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: NVCVWorkspace
+   :project: cvcuda

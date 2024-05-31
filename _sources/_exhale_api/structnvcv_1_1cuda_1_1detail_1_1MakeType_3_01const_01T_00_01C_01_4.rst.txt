@@ -1,0 +1,17 @@
+.. _exhale_struct_structnvcv_1_1cuda_1_1detail_1_1MakeType_3_01const_01T_00_01C_01_4:
+
+Template Struct MakeType< const T, C >
+======================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_detail_Metaprogramming.hpp`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: nvcv::cuda::detail::MakeType< const T, C >
+   :project: cvcuda
+   :members:
+   :protected-members:
+   :undoc-members:

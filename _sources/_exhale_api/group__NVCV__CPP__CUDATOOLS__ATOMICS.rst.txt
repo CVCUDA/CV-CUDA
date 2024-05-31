@@ -1,0 +1,7 @@
+:orphan:
+
+Atomic operations
+=================
+
+.. doxygengroup:: NVCV_CPP_CUDATOOLS_ATOMICS
+   :project: cvcuda

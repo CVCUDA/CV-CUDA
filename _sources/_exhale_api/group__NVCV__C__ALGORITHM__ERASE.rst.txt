@@ -1,0 +1,7 @@
+:orphan:
+
+Erase
+=====
+
+.. doxygengroup:: NVCV_C_ALGORITHM_ERASE
+   :project: cvcuda

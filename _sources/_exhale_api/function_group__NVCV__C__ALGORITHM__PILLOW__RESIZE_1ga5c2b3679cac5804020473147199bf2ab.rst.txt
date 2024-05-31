@@ -1,0 +1,14 @@
+.. _exhale_function_group__NVCV__C__ALGORITHM__PILLOW__RESIZE_1ga5c2b3679cac5804020473147199bf2ab:
+
+Function cvcudaPillowResizeCreate
+=================================
+
+- Defined in :ref:`file_cvcuda_include_cvcuda_OpPillowResize.h`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: cvcudaPillowResizeCreate(NVCVOperatorHandle *)
+   :project: cvcuda

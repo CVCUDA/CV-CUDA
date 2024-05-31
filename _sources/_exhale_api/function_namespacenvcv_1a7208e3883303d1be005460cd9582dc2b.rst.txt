@@ -1,0 +1,14 @@
+.. _exhale_function_namespacenvcv_1a7208e3883303d1be005460cd9582dc2b:
+
+Template Function nvcv::operator==(std::nullptr_t, const Optional<T>&)
+======================================================================
+
+.. did not find file this was defined in
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nvcv::operator==(std::nullptr_t, const Optional<T>&)
+   :project: cvcuda

@@ -1,0 +1,14 @@
+.. _exhale_typedef_namespacenvcv_1a5c25b36997885faf274b2589e7b49d42:
+
+Typedef nvcv::OptionalTensorConstRef
+====================================
+
+.. did not find file this was defined in
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: nvcv::OptionalTensorConstRef
+   :project: cvcuda

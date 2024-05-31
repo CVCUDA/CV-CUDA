@@ -1,0 +1,14 @@
+.. _exhale_typedef_group__NVCV__CPP__CUDATOOLS__TENSORBATCHWRAPS_1ga7ff737987f66ba391bab1bd3007c51e7:
+
+Typedef nvcv::cuda::TensorBatchNDWrap
+=====================================
+
+- Defined in :ref:`file_nvcv_types_include_nvcv_cuda_TensorBatchWrap.hpp`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: nvcv::cuda::TensorBatchNDWrap
+   :project: cvcuda

@@ -1,0 +1,66 @@
+
+.. _file_nvcv_types_include_nvcv_TensorDataAccess.hpp:
+
+File TensorDataAccess.hpp
+=========================
+Definition (``nvcv_types/include/nvcv/TensorDataAccess.hpp``)
+-------------------------------------------------------------
+
+
+.. toctree::
+   :maxdepth: 1
+
+   program_listing_file_nvcv_types_include_nvcv_TensorDataAccess.hpp.rst
+
+
+
+
+
+Includes
+--------
+
+
+- ``TensorData.hpp`` (:ref:`file_nvcv_types_include_nvcv_TensorData.hpp`)
+
+- ``TensorShapeInfo.hpp`` (:ref:`file_nvcv_types_include_nvcv_TensorShapeInfo.hpp`)
+
+- ``cstddef``
+
+
+
+Included By
+-----------
+
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_BorderWrap.hpp`
+
+- :ref:`file_nvcv_types_include_nvcv_cuda_TensorWrap.hpp`
+
+
+
+
+Namespaces
+----------
+
+
+- :ref:`namespace_nvcv`
+
+- :ref:`namespace_nvcv__detail`
+
+
+Classes
+-------
+
+
+- :ref:`exhale_class_classnvcv_1_1detail_1_1TensorDataAccessStridedImageImpl`
+
+- :ref:`exhale_class_classnvcv_1_1detail_1_1TensorDataAccessStridedImagePlanarImpl`
+
+- :ref:`exhale_class_classnvcv_1_1detail_1_1TensorDataAccessStridedImpl`
+
+- :ref:`exhale_class_classnvcv_1_1TensorDataAccessStrided`
+
+- :ref:`exhale_class_classnvcv_1_1TensorDataAccessStridedImage`
+
+- :ref:`exhale_class_classnvcv_1_1TensorDataAccessStridedImagePlanar`
+
