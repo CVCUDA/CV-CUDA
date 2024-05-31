@@ -14,35 +14,32 @@
   # See the License for the specific language governing permissions and
   # limitations under the License.
 
-.. _v0.7.0-beta:
+.. _v0.8.0-beta:
 
-v0.7.0-beta
+v0.8.0-beta
 ======
-
-CV-CUDA v0.7.0 introduces performance and support enhancements, along with bug fixes and new features.
 
 Release Highlights
 ------------------
 
-CV-CUDA v0.7.0 includes the following improvements:
+CV-CUDA v0.8.0 includes the following changes:
+
+* **New Operator**:
+
+  * Introduced fused 'ResizeCropConvertReformat' operator
 
 * **New Features**:
 
-  * Optimized Python bindings: near-zero overhead compared to C++ calls​
-
-  * Added masking option to Label operator: conditional island removal
-
-  * Added IGX Orin support (with dGPU, Ampere or Ada RTX6000)​
-
-  * Added support of signed 32bits output datatype for Label operator​
-
-* **Removed Operator**:​
-
-  * Removed Find Contours operator for troubleshooting of major limitations
+  * Improved initialization of Image and ImageBatchVarShape: enabled efficient cache reuse
+  * Improved benchmarking utilities: added throughput computation and power/clock monitoring
+  * Added tests to Resize, BilateralFilter, CvtColor, Erase, JointBilateralFilter, PillowResize
 
 * **Bug Fixes**:
 
-  * Fixed constraint on installation directory for Python tests​: tar test packages can now be used from any directory​
+  * Fixed potential crash when using custom streams
+  * Switched PairwiseMatcher to use L2-norm as default
+  * Fixed documentation of CropFlipNormalizeReformat
+
 
 
 Compatibility and Known Limitations

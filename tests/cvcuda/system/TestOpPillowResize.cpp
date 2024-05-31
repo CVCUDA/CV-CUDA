@@ -1091,11 +1091,14 @@ void StartVarShapeTest(int srcWidthBase, int srcHeightBase, int dstWidthBase, in
     std::uniform_int_distribution<int> rndDstWidth(dstWidthBase * 0.8, dstWidthBase * 1.1);
     std::uniform_int_distribution<int> rndDstHeight(dstHeightBase * 0.8, dstHeightBase * 1.1);
 
-    std::vector<nvcv::Image> imgSrc, imgDst;
+    std::vector<nvcv::Image>  imgSrc, imgDst;
+    std::vector<nvcv::Size2D> srcSizes, dstSizes;
     for (int i = 0; i < numberOfImages; ++i)
     {
         imgSrc.emplace_back(nvcv::Size2D{rndSrcWidth(randEng), rndSrcHeight(randEng)}, fmt);
         imgDst.emplace_back(nvcv::Size2D{rndDstWidth(randEng), rndDstHeight(randEng)}, fmt);
+        srcSizes.emplace_back(imgSrc.back().size());
+        dstSizes.emplace_back(imgDst.back().size());
     }
 
     nvcv::ImageBatchVarShape batchSrc(numberOfImages);
@@ -1142,14 +1145,11 @@ void StartVarShapeTest(int srcWidthBase, int srcHeightBase, int dstWidthBase, in
                                srcHeight, cudaMemcpyHostToDevice));
     }
 
-    nvcv::Size2D maxSrcSize = batchSrc.maxSize();
-    nvcv::Size2D maxDstSize = batchDst.maxSize();
-
     // Generate test result
     cvcuda::PillowResize pillowResizeOp;
 
     cvcuda::UniqueWorkspace ws = cvcuda::AllocateWorkspace(
-        pillowResizeOp.getWorkspaceRequirements(numberOfImages, maxSrcSize, maxDstSize, fmt));
+        pillowResizeOp.getWorkspaceRequirements(numberOfImages, srcSizes.data(), dstSizes.data(), fmt));
     EXPECT_NO_THROW(pillowResizeOp(stream, ws.get(), batchSrc, batchDst, interpolation));
 
     // Get test data back
@@ -1217,4 +1217,19 @@ TEST_P(OpPillowResize, varshape_correct_output)
         StartVarShapeTest<uint8_t>(srcWidth, srcHeight, dstWidth, dstHeight, interpolation, numberOfImages, fmt);
     else if (nvcv::FMT_RGBf32 == fmt || nvcv::FMT_RGBAf32 == fmt)
         StartVarShapeTest<float>(srcWidth, srcHeight, dstWidth, dstHeight, interpolation, numberOfImages, fmt);
+}
+
+TEST(OpPillowResize, invalidGetWorkSpace)
+{
+    NVCVOperatorHandle pillowResizeHandle;
+    ASSERT_EQ(NVCV_SUCCESS, cvcudaPillowResizeCreate(&pillowResizeHandle));
+    NVCVSize2D inputSizesWH[1] = {
+        {224, 224}
+    };
+    NVCVSize2D outputSizesWH[1] = {
+        {112, 112}
+    };
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              cvcudaPillowResizeVarShapeGetWorkspaceRequirements(pillowResizeHandle, 1, inputSizesWH, outputSizesWH,
+                                                                 NVCV_IMAGE_FORMAT_U8, nullptr));
 }

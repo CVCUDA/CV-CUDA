@@ -17,6 +17,7 @@
 
 #include "AdaptiveThresholdType.hpp"
 #include "BorderType.hpp"
+#include "ChannelManipType.hpp"
 #include "ColorConversionCode.hpp"
 #include "ConnectivityType.hpp"
 #include "InterpolationType.hpp"
@@ -77,6 +78,7 @@ PYBIND11_MODULE(cvcuda, m)
 
     // Operators' auxiliary entities
     ExportInterpolationType(m);
+    ExportChannelManipType(m);
     ExportBorderType(m);
     ExportMorphologyType(m);
     ExportColorConversionCode(m);
@@ -92,6 +94,7 @@ PYBIND11_MODULE(cvcuda, m)
     ExportPairwiseMatcherType(m);
 
     // CV-CUDA Operators
+    ExportOpResizeCropConvertReformat(m);
     ExportOpPairwiseMatcher(m);
     ExportOpLabel(m);
     ExportOpOSD(m);

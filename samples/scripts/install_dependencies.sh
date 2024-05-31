@@ -1,6 +1,6 @@
 #!/bin/bash -e
 
-# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -99,7 +99,7 @@ chmod a+x /usr/local/bin/tao-converter
 
 # Install NVIDIA NSIGHT 2023.2.1
 cd /tmp
-wget https://developer.download.nvidia.com/devtools/nsight-systems/nsight-systems-2023.2.1_2023.2.1.122-1_amd64.deb
+wget https://developer.download.nvidia.com/devtools/nsight-systems/nsight-systems-2024.2.1_2024.2.1.106-1_amd64.deb
 apt-get update && apt-get install -y \
     libsm6 \
     libxrender1 \
@@ -107,7 +107,7 @@ apt-get update && apt-get install -y \
     libxext6 \
     libx11-dev \
     libxkbfile-dev \
-    /tmp/nsight-systems-2023.2.1_2023.2.1.122-1_amd64.deb \
+    /tmp/nsight-systems-2024.2.1_2024.2.1.106-1_amd64.deb \
     && rm -rf /var/lib/apt/lists/*
 
 echo "export PATH=$PATH:/opt/tensorrt/bin" >> ~/.bashrc

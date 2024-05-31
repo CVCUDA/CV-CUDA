@@ -151,6 +151,37 @@ std::vector<std::shared_ptr<CacheItem>> Cache::fetch(const IKey &key) const
     return v;
 }
 
+#ifndef NDEBUG
+void Cache::dbgPrintCacheForKey(const IKey &key, const std::string &prefix)
+{
+    std::vector<std::shared_ptr<CacheItem>> v;
+    std::unique_lock<std::mutex>            lk(pimpl->mtx);
+    auto                                    itrange = pimpl->items.equal_range(&key);
+
+    for (auto it = itrange.first; it != itrange.second; ++it)
+    {
+        std::cerr << prefix << typeid(*(it->second)).name() << " - " << it->second.use_count() << std::endl;
+    }
+}
+#endif
+
+std::shared_ptr<CacheItem> Cache::fetchOne(const IKey &key) const
+{
+    std::unique_lock<std::mutex> lk(pimpl->mtx);
+
+    auto itrange = pimpl->items.equal_range(&key);
+
+    for (auto it = itrange.first; it != itrange.second; ++it)
+    {
+        if (!it->second->isInUse())
+        {
+            return it->second;
+        }
+    }
+
+    return {};
+}
+
 void Cache::clear()
 {
     std::unique_lock<std::mutex> lk(pimpl->mtx);

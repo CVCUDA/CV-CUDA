@@ -175,7 +175,7 @@ public:
      *
      * @return The const array (as a pointer) containing run-time pitches in bytes.
      */
-    __host__ __device__ const int *strides() const
+    const __host__ __device__ int *strides() const
     {
         return m_strides;
     }
@@ -481,6 +481,34 @@ __host__ auto CreateTensorWrapNHWC(const TensorDataStridedCuda &tensor)
 
     return Tensor4DWrap<T>(tensor.basePtr(), static_cast<int>(tensorAccess->sampleStride()),
                            static_cast<int>(tensorAccess->rowStride()), static_cast<int>(tensorAccess->colStride()));
+}
+
+/**
+ * Factory function to create an NCHW tensor wrap given a tensor data.
+ *
+ * The output \ref TensorWrap is an NCHW 4D tensor allowing to access data per batch (N), per channel (C), per row (H), and per column
+ * (W) of the input tensor.  The input tensor data must have either NCHW or CHW layout, where
+ * the channel C is of type \p T, e.g. T=uchar for each channel of either RGB8 or RGBA8.
+ *
+ * @sa NVCV_CPP_CUDATOOLS_TENSORWRAP
+ *
+ * @tparam T Type of the values to be accessed in the tensor wrap.
+ *
+ * @param[in] tensor Reference to the tensor that will be wrapped.
+ *
+ * @return Tensor wrap useful to access tensor data in CUDA kernels.
+ */
+template<typename T, class = Require<HasTypeTraits<T>>>
+__host__ auto CreateTensorWrapNCHW(const TensorDataStridedCuda &tensor)
+{
+    auto tensorAccess = TensorDataAccessStridedImagePlanar::Create(tensor);
+    assert(tensorAccess);
+    assert(tensorAccess->sampleStride() <= TypeTraits<int>::max);
+    assert(tensorAccess->chStride() <= TypeTraits<int>::max);
+    assert(tensorAccess->rowStride() <= TypeTraits<int>::max);
+
+    return Tensor4DWrap<T>(tensor.basePtr(), static_cast<int>(tensorAccess->sampleStride()),
+                           static_cast<int>(tensorAccess->chStride()), static_cast<int>(tensorAccess->rowStride()));
 }
 
 } // namespace nvcv::cuda

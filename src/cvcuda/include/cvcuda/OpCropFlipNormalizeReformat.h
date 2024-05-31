@@ -105,7 +105,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaCropFlipNormalizeReformatCreate(NVCVOperatorHandl
  *      64bit Float    | No
  *
  * Output:
- *      Data Layout:    [kNHWC, kHWC, kNCHW, KCHW]
+ *      Data Layout:    [kNHWC, kNCHW]
  *      Channels:       [1, 3, 4]
  *
  *      Data Type      | Allowed
@@ -145,10 +145,9 @@ CVCUDA_PUBLIC NVCVStatus cvcudaCropFlipNormalizeReformatCreate(NVCVOperatorHandl
  *
  * @param [in] borderValue Border value to be used for constant border mode \p NVCV_BORDER_CONSTANT.
  *
- * @param [in] flipCode a tensor flag to specify how to flip the array; 0 means flipping
- *      around the x-axis and positive value (for example, 1) means flipping
- *      around y-axis. Negative value (for example, -1) means flipping around
- *      both axes.
+ * @param [in] flipCode a tensor flag to specify how to flip the array; 0 means flipping around the x-axis,
+ *      1 means flipping around the y-axis, -1 means flipping around both axes, and any other value will result
+ *      in no flip.
  *
  * @param [in] base Tensor providing base values for normalization.
  *

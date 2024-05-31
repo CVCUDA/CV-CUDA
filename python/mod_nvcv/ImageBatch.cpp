@@ -51,7 +51,8 @@ std::shared_ptr<ImageBatchVarShape> ImageBatchVarShape::Create(int capacity)
     else
     {
         // Get the first one
-        auto batch = std::static_pointer_cast<ImageBatchVarShape>(vcont[0]);
+        auto       batch = std::static_pointer_cast<ImageBatchVarShape>(vcont[0]);
+        Image::Key key;
         batch->clear(); // make sure it's in pristine state
         return batch;
     }
@@ -60,17 +61,22 @@ std::shared_ptr<ImageBatchVarShape> ImageBatchVarShape::Create(int capacity)
 std::shared_ptr<ImageBatchVarShape> ImageBatchVarShape::WrapExternalBufferVector(std::vector<py::object> buffers,
                                                                                  nvcv::ImageFormat       fmt)
 {
-    auto batch = Create(buffers.size());
-    for (auto &obj : buffers)
+    std::vector<std::shared_ptr<ExternalBuffer>> buflist;
+    buflist.reserve(buffers.size());
+
+    for (py::object &obj : buffers)
     {
         std::shared_ptr<ExternalBuffer> buffer = cast_py_object_as<ExternalBuffer>(obj);
         if (!buffer)
         {
             throw std::runtime_error("Input buffer doesn't provide cuda_array_interface or DLPack interfaces");
         }
-        auto image = Image::WrapExternalBuffer(*buffer, fmt);
-        batch->pushBack(*image);
+        buflist.push_back(buffer);
     }
+
+    std::shared_ptr<ImageBatchVarShape> batch = Create(buffers.size());
+    batch->pushBackMany(Image::WrapExternalBufferMany(buflist, fmt));
+
     return batch;
 }
 
@@ -127,16 +133,24 @@ void ImageBatchVarShape::pushBack(Image &img)
     m_list.push_back(img.shared_from_this());
 }
 
-void ImageBatchVarShape::pushBackMany(std::vector<std::shared_ptr<Image>> &imgList)
+void ImageBatchVarShape::pushBackMany(const std::vector<std::shared_ptr<Image>> &imgList)
 {
-    for (auto &img : imgList)
+    std::vector<NVCVImageHandle> handlelist;
+    handlelist.reserve(imgList.size());
+    for (size_t i = 0; i < imgList.size(); ++i)
     {
-        m_list.push_back(img);
-        if (img)
-            m_impl.pushBack(img->impl());
+        if (imgList[i])
+        {
+            handlelist.push_back(imgList[i]->impl().handle());
+        }
         else
-            m_impl.pushBack(nvcv::Image());
+        {
+            handlelist.push_back(nullptr);
+        }
+        m_list.push_back(imgList[i]);
     }
+
+    nvcv::detail::CheckThrow(nvcvImageBatchVarShapePushImages(m_impl.handle(), handlelist.data(), handlelist.size()));
 }
 
 void ImageBatchVarShape::popBack(int imgCount)

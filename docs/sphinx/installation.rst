@@ -74,13 +74,13 @@ You can download the CV-CUDA tar, deb or wheel packages from `the asset section 
 
 * Python Wheel File Installation
 
-    Download the appropriate .whl file for your computer architecture, Python and CUDA version from `here <https://github.com/CVCUDA/CV-CUDA/releases/tag/v0.7.0-beta>`_
+    Download the appropriate .whl file for your computer architecture, Python and CUDA version from `the asset section of the latest release <https://github.com/CVCUDA/CV-CUDA/releases>`_
 
     Execute the following command to install appropriate CV-CUDA Python wheel ::
 
-        pip install cvcuda_<cu_ver>-0.7.0b0-cp<py_ver>-cp<py_ver>-linux_<arch>.whl
+        pip install cvcuda_<cu_ver>-<x.x.x>-cp<py_ver>-cp<py_ver>-linux_<arch>.whl
 
-    where <cu_ver> is the desired CUDA version, <py_ver> the desired Python version and <arch> the desired architecture.
+    where <cu_ver> is the desired CUDA version, <x.x.x> the CV-CUDA release version, <py_ver> the desired Python version and <arch> the desired architecture.
 
     Please note that the Python wheels provided are standalone, they include both the C++/CUDA libraries and the Python bindings.
 

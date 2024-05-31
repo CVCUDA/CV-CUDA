@@ -80,6 +80,7 @@ CV-CUDA includes:
 | Reformat | Converts a planar image into non-planar and vice versa |
 | Remap | Maps pixels in an image with one projection to another projection in a new image. |
 | Resize | Changes the size and scale of an image |
+| ResizeCropConvertReformat | Performs fused Resize-Crop-Convert-Reformat sequence with optional channel reordering |
 | Rotate | Rotates a 2D array in multiples of 90 degrees |
 | SIFT | Identifies and describes features in images that are invariant to scale rotation and affine distortion. |
 | Thresholding | Chooses a global threshold value that is the same for all pixels across the image. |

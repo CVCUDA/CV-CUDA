@@ -68,6 +68,7 @@ set(CV_CUDA_PRIV_OP_FILES
     OpPairwiseMatcher.cu
     OpStack.cpp
     OpFindHomography.cu
+    OpResizeCropConvertReformat.cu
 )
 
 # filter only one that matches the patern (case insensitive), should be set on the global level

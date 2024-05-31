@@ -21,6 +21,8 @@ nvcv_python_add_module(
     OUTPUT_NAME cvcuda
     SOURCES
         Main.cpp
+        ChannelManipType.cpp
+        OpResizeCropConvertReformat.cpp
         OpPairwiseMatcher.cpp
         PairwiseMatcherType.cpp
         NormType.cpp

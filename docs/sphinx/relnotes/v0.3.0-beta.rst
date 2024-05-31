@@ -16,7 +16,7 @@
 
 .. _v0.3.0-beta:
 
-Beta
+v0.3.0-beta
 ====
 
 CV-CUDA 0.3.0 is the next open-source release of the project.

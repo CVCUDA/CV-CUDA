@@ -48,24 +48,32 @@ PYBIND11_MODULE(nvcv, m)
 
     using namespace nvcvpy::priv;
 
+    // These will be destroyed in the reverse order here
+    // Since everything is ref counted the order should not matter
+    // but it is safer to ini them in order
+
     // Core entities
-    Cache::Export(m);
-
-    {
-        py::module_ cuda = m.def_submodule("cuda");
-        Stream::Export(cuda);
-    }
-
+    ExportCAPI(m);
+    Resource::Export(m);
+    Container::Export(m);
     ExternalBuffer::Export(m);
+
+    // Supporting objects
     ExportImageFormat(m);
     ExportDataType(m);
     ExportRect(m);
-    Resource::Export(m);
-    Container::Export(m);
+    ExportColorSpec(m);
+
+    // Objects
     Tensor::Export(m);
     TensorBatch::Export(m);
     Image::Export(m);
     ImageBatchVarShape::Export(m);
-    ExportCAPI(m);
-    ExportColorSpec(m);
+
+    // Cache and Streams
+    Cache::Export(m);
+    {
+        py::module_ cuda = m.def_submodule("cuda");
+        Stream::Export(cuda);
+    }
 }

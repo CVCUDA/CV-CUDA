@@ -18,10 +18,11 @@
 # Builds samples
 # Usage: build_samples.sh [build folder]
 
+SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 build_dir="build"
 
 mkdir -p $build_dir
 
 cd $build_dir
 
-cmake .. && make
+cmake "$SCRIPT_DIR/.." && make
