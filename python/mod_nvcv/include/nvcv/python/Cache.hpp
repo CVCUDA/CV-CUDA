@@ -72,6 +72,7 @@ public:
     static void add(ICacheItem &item)
     {
         capi().Cache_Add(&item);
+        CheckCAPIError();
     }
 
     static std::vector<std::shared_ptr<ICacheItem>> fetch(const IKey &key)
@@ -80,6 +81,7 @@ public:
         {
             capi().Cache_Fetch(&key)
         };
+        CheckCAPIError();
 
         std::vector<std::shared_ptr<ICacheItem>> out;
         for (int i = 0; list[i]; ++i)
@@ -92,6 +94,7 @@ public:
     static void removeAllNotInUseMatching(const IKey &key)
     {
         capi().Cache_RemoveAllNotInUseMatching(&key);
+        CheckCAPIError();
     }
 };
 

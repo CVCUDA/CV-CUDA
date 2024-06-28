@@ -59,11 +59,14 @@ __global__ void convertFormat(SrcWrapper src, DstWrapper dst, UnOp op, int2 size
 }
 
 template<typename DT_SOURCE, typename DT_DEST, int NC>
-void convertToScaleCN(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,
-                      const double alpha, const double beta, cudaStream_t stream)
+ErrorCode convertToScaleCN(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,
+                           const double alpha, const double beta, cudaStream_t stream)
 {
     auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(inData);
     NVCV_ASSERT(inAccess);
+
+    auto outAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(outData);
+    NVCV_ASSERT(outAccess);
 
     const int2 size       = {inAccess->numCols(), inAccess->numRows()};
     const int  batch_size = inAccess->numSamples();
@@ -77,39 +80,47 @@ void convertToScaleCN(const nvcv::TensorDataStridedCuda &inData, const nvcv::Ten
 
     Convertor<SRC_DATA_TYPE, DST_DATA_TYPE, DT_AB> op;
 
-    auto src = nvcv::cuda::CreateTensorWrapNHW<SRC_DATA_TYPE>(inData);
-    auto dst = nvcv::cuda::CreateTensorWrapNHW<DST_DATA_TYPE>(outData);
-
     op.alpha = nvcv::cuda::SaturateCast<DT_AB>(alpha);
     op.beta  = nvcv::cuda::SaturateCast<DT_AB>(beta);
-    convertFormat<<<grid, block, 0, stream>>>(src, dst, op, size);
+
+    auto outMaxStride = outAccess->sampleStride() * outAccess->numSamples();
+    auto inMaxStride  = inAccess->sampleStride() * inAccess->numSamples();
+    if (std::max(outMaxStride, inMaxStride) <= nvcv::cuda::TypeTraits<int32_t>::max)
+    {
+        auto src = nvcv::cuda::CreateTensorWrapNHW<SRC_DATA_TYPE, int32_t>(inData);
+        auto dst = nvcv::cuda::CreateTensorWrapNHW<DST_DATA_TYPE, int32_t>(outData);
+
+        convertFormat<<<grid, block, 0, stream>>>(src, dst, op, size);
+    }
+    else
+    {
+        LOG_ERROR("Input or output size exceeds " << nvcv::cuda::TypeTraits<int32_t>::max << ". Tensor is too large.");
+        return ErrorCode::INVALID_PARAMETER;
+    }
+    return ErrorCode::SUCCESS;
 }
 
 template<typename DT_SOURCE, typename DT_DEST> // <uchar, float> <float double>
-void convertToScale(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,
-                    int numChannels, const double alpha, const double beta, cudaStream_t stream)
+ErrorCode convertToScale(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,
+                         int numChannels, const double alpha, const double beta, cudaStream_t stream)
 {
     switch (numChannels)
     {
     case 1:
-        convertToScaleCN<DT_SOURCE, DT_DEST, 1>(inData, outData, alpha, beta, stream);
-        break;
+        return convertToScaleCN<DT_SOURCE, DT_DEST, 1>(inData, outData, alpha, beta, stream);
 
     case 2:
-        convertToScaleCN<DT_SOURCE, DT_DEST, 2>(inData, outData, alpha, beta, stream);
-        break;
+        return convertToScaleCN<DT_SOURCE, DT_DEST, 2>(inData, outData, alpha, beta, stream);
 
     case 3:
-        convertToScaleCN<DT_SOURCE, DT_DEST, 3>(inData, outData, alpha, beta, stream);
-        break;
+        return convertToScaleCN<DT_SOURCE, DT_DEST, 3>(inData, outData, alpha, beta, stream);
 
     case 4:
-        convertToScaleCN<DT_SOURCE, DT_DEST, 4>(inData, outData, alpha, beta, stream);
-        break;
+        return convertToScaleCN<DT_SOURCE, DT_DEST, 4>(inData, outData, alpha, beta, stream);
 
     default:
         LOG_ERROR("Unknown number of channels");
-        return;
+        return ErrorCode::INVALID_PARAMETER;
     }
 
 #ifdef CUDA_DEBUG_LOG
@@ -163,8 +174,8 @@ ErrorCode ConvertTo::infer(const TensorDataStridedCuda &inData, const TensorData
         return ErrorCode::INVALID_DATA_TYPE;
     }
 
-    typedef void (*func_t)(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,
-                           int numChannels, const double alpha, const double beta, cudaStream_t stream);
+    typedef ErrorCode (*func_t)(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,
+                                int numChannels, const double alpha, const double beta, cudaStream_t stream);
 
     // clang-format off
     static const func_t funcs[7][7] = {
@@ -179,9 +190,7 @@ ErrorCode ConvertTo::infer(const TensorDataStridedCuda &inData, const TensorData
 
     // clang-format on
     const func_t func = funcs[input_datatype][output_datatype];
-    func(inData, outData, channels, alpha, beta, stream);
-
-    return ErrorCode::SUCCESS;
+    return func(inData, outData, channels, alpha, beta, stream);
 }
 
 } // namespace nvcv::legacy::cuda_op

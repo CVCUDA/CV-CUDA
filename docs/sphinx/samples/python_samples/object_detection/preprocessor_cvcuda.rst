@@ -14,7 +14,7 @@
    # See the License for the specific language governing permissions and
    # limitations under the License.
 
-.. _preprocessor_cvcuda:
+.. _preprocessor_cvcuda_object_detection:
 
 Object Detection Pre-processing Pipeline using CVCUDA
 =====================================================

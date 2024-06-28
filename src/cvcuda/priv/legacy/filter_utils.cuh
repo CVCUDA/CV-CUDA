@@ -26,16 +26,19 @@ __global__ void computeMeanKernel(float *kernel_ptr, int k_size);
 
 __global__ void computeGaussianKernel(float *kernel, Size2D kernelSize, double2 sigma);
 
-__global__ void computeMeanKernelVarShape(cuda::Tensor3DWrap<float> kernel, cuda::Tensor1DWrap<int2> kernelSizeArr,
-                                          cuda::Tensor1DWrap<int2> kernelAnchorArr);
+__global__ void computeMeanKernelVarShape(cuda::Tensor3DWrap<float, int32_t> kernel,
+                                          cuda::Tensor1DWrap<int2, int32_t>  kernelSizeArr,
+                                          cuda::Tensor1DWrap<int2, int32_t>  kernelAnchorArr);
 
-__global__ void computeGaussianKernelVarShape(cuda::Tensor3DWrap<float> kernel, int dataKernelSize,
-                                              Size2D maxKernelSize, cuda::Tensor1DWrap<int2> kernelSizeArr,
-                                              cuda::Tensor1DWrap<double2> sigmaArr);
+__global__ void computeGaussianKernelVarShape(cuda::Tensor3DWrap<float, int32_t> kernel, int dataKernelSize,
+                                              Size2D maxKernelSize, cuda::Tensor1DWrap<int2, int32_t> kernelSizeArr,
+                                              cuda::Tensor1DWrap<double2, int32_t> sigmaArr);
 
-__global__ void computeMeanKernelVarShape(cuda::Tensor3DWrap<float> kernel, cuda::Tensor1DWrap<int> blockSizeArr);
+__global__ void computeMeanKernelVarShape(cuda::Tensor3DWrap<float, int32_t> kernel,
+                                          cuda::Tensor1DWrap<int, int32_t>   blockSizeArr);
 
-__global__ void computeGaussianKernelVarShape(cuda::Tensor3DWrap<float> kernel, cuda::Tensor1DWrap<int> blockSizeArr);
+__global__ void computeGaussianKernelVarShape(cuda::Tensor3DWrap<float, int32_t> kernel,
+                                              cuda::Tensor1DWrap<int, int32_t>   blockSizeArr);
 
 } // namespace nvcv::legacy::cuda_op
 

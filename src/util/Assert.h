@@ -43,7 +43,7 @@ NVCV_ASSERT_NORETURN void NvCVAssert(const char *file, int line, const char *con
 #    define NVCV_SOURCE_FILE_LINENO    __LINE__
 #    define NVCV_OPTIONAL_STRINGIFY(X) #    X
 #else
-#    define NVCV_SOURCE_FILE_NAME      NULL
+#    define NVCV_SOURCE_FILE_NAME      ""
 #    define NVCV_SOURCE_FILE_LINENO    0
 #    define NVCV_OPTIONAL_STRINGIFY(X) ""
 #endif

@@ -62,7 +62,7 @@ The Tensor Buffer is then wrapped to create a Tensor Object for which we will ca
 
 We will use NvJpeg library to decode the images into the required color format and create a buffer on the device.
 
-.. literalinclude:: ../../../samples/cropandresize/Main.cpp
+.. literalinclude:: ../../../../samples/cropandresize/Main.cpp
    :language: cpp
    :start-after: Image Loading
    :end-before: The input buffer is now ready to be used

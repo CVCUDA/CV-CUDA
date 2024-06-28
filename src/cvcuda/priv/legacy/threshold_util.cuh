@@ -24,6 +24,6 @@
 #include "CvCudaUtils.cuh"
 #include "cub/cub.cuh"
 
-__global__ void triangle_cal(int *histogram, nvcv::cuda::Tensor1DWrap<double> thresh);
+__global__ void triangle_cal(int *histogram, nvcv::cuda::Tensor1DWrap<double, int32_t> thresh);
 
 #endif // THRESHOLD_UTILS_CUH

@@ -46,7 +46,9 @@ public:
                     const NVCVInterpolationType interpolation) const;
 
 private:
-    std::unique_ptr<nvcv::legacy::cuda_op::Resize>         m_legacyOp;
+    void RunResize(cudaStream_t stream, const nvcv::TensorDataStridedCuda &srcData,
+                   const nvcv::TensorDataStridedCuda &dstData, const NVCVInterpolationType interpolation) const;
+
     std::unique_ptr<nvcv::legacy::cuda_op::ResizeVarShape> m_legacyOpVarShape;
 };
 

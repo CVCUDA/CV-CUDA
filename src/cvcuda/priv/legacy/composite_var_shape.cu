@@ -120,7 +120,7 @@ ErrorCode CompositeVarShape::infer(const ImageBatchVarShapeDataStridedCuda &fore
 
     if (!(format == kNHWC || format == kHWC))
     {
-        LOG_ERROR("Invalid DataFormat " << format);
+        LOG_ERROR("Invalid foreground DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 

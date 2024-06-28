@@ -35,5 +35,5 @@ Python Samples' Dependencies:
 * Torchvision
 * torchnvjpeg (https://github.com/itsliupeng/torchnvjpeg)
 
-Refer to the :ref:`Installation` docs for the sample installation guide using *.deb or .tar installers.
+Refer to the :ref:`Installation` docs for the sample installation guide using \*.deb or .tar installers.
 Refer to the sample README for instructions to compile samples from the source.

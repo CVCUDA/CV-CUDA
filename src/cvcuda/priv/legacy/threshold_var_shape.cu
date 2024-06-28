@@ -33,7 +33,8 @@ using namespace nvcv::cuda;
 
 template<typename T, typename P = MakeType<T, sizeof(T) == 8 ? 2 : 4>>
 __global__ void Binary_overflow(ImageBatchVarShapeWrapNHWC<T> src, ImageBatchVarShapeWrapNHWC<T> dst,
-                                Tensor1DWrap<double> _thresh, Tensor1DWrap<double> _maxval, int channel)
+                                Tensor1DWrap<double, int32_t> _thresh, Tensor1DWrap<double, int32_t> _maxval,
+                                int channel)
 {
     int cn        = NumElements<P>;
     int globalid  = blockIdx.x * blockDim.x + threadIdx.x;
@@ -112,7 +113,8 @@ __global__ void Binary_overflow(ImageBatchVarShapeWrapNHWC<T> src, ImageBatchVar
 
 template<typename T, typename P = MakeType<T, sizeof(T) == 8 ? 2 : 4>>
 __global__ void Binary_Generic(ImageBatchVarShapeWrapNHWC<T> src, ImageBatchVarShapeWrapNHWC<T> dst,
-                               Tensor1DWrap<double> _thresh, Tensor1DWrap<double> _maxval, int channel)
+                               Tensor1DWrap<double, int32_t> _thresh, Tensor1DWrap<double, int32_t> _maxval,
+                               int channel)
 {
     int cn        = NumElements<P>;
     int globalid  = blockIdx.x * blockDim.x + threadIdx.x;
@@ -158,7 +160,8 @@ __global__ void Binary_Generic(ImageBatchVarShapeWrapNHWC<T> src, ImageBatchVarS
 
 template<typename T, typename P = MakeType<T, sizeof(T) == 8 ? 2 : 4>>
 __global__ void BinaryInv_overflow(ImageBatchVarShapeWrapNHWC<T> src, ImageBatchVarShapeWrapNHWC<T> dst,
-                                   Tensor1DWrap<double> _thresh, Tensor1DWrap<double> _maxval, int channel)
+                                   Tensor1DWrap<double, int32_t> _thresh, Tensor1DWrap<double, int32_t> _maxval,
+                                   int channel)
 {
     int cn        = NumElements<P>;
     int globalid  = blockIdx.x * blockDim.x + threadIdx.x;
@@ -234,7 +237,8 @@ __global__ void BinaryInv_overflow(ImageBatchVarShapeWrapNHWC<T> src, ImageBatch
 
 template<typename T, typename P = MakeType<T, sizeof(T) == 8 ? 2 : 4>>
 __global__ void BinaryInv_Generic(ImageBatchVarShapeWrapNHWC<T> src, ImageBatchVarShapeWrapNHWC<T> dst,
-                                  Tensor1DWrap<double> _thresh, Tensor1DWrap<double> _maxval, int channel)
+                                  Tensor1DWrap<double, int32_t> _thresh, Tensor1DWrap<double, int32_t> _maxval,
+                                  int channel)
 {
     int cn        = NumElements<P>;
     int globalid  = blockIdx.x * blockDim.x + threadIdx.x;
@@ -280,7 +284,7 @@ __global__ void BinaryInv_Generic(ImageBatchVarShapeWrapNHWC<T> src, ImageBatchV
 
 template<typename T, typename P = MakeType<T, sizeof(T) == 8 ? 2 : 4>>
 __global__ void Trunc_overflow(ImageBatchVarShapeWrapNHWC<T> src, ImageBatchVarShapeWrapNHWC<T> dst,
-                               Tensor1DWrap<double> _thresh, int channel)
+                               Tensor1DWrap<double, int32_t> _thresh, int channel)
 {
     int cn        = NumElements<P>;
     int globalid  = blockIdx.x * blockDim.x + threadIdx.x;
@@ -355,7 +359,7 @@ __global__ void Trunc_overflow(ImageBatchVarShapeWrapNHWC<T> src, ImageBatchVarS
 
 template<typename T, typename P = MakeType<T, sizeof(T) == 8 ? 2 : 4>>
 __global__ void Trunc_Generic(ImageBatchVarShapeWrapNHWC<T> src, ImageBatchVarShapeWrapNHWC<T> dst,
-                              Tensor1DWrap<double> _thresh, int channel)
+                              Tensor1DWrap<double, int32_t> _thresh, int channel)
 {
     int cn        = NumElements<P>;
     int globalid  = blockIdx.x * blockDim.x + threadIdx.x;
@@ -400,7 +404,7 @@ __global__ void Trunc_Generic(ImageBatchVarShapeWrapNHWC<T> src, ImageBatchVarSh
 
 template<typename T, typename P = MakeType<T, sizeof(T) == 8 ? 2 : 4>>
 __global__ void Tozero_overflow(ImageBatchVarShapeWrapNHWC<T> src, ImageBatchVarShapeWrapNHWC<T> dst,
-                                Tensor1DWrap<double> _thresh, int channel)
+                                Tensor1DWrap<double, int32_t> _thresh, int channel)
 {
     int cn        = NumElements<P>;
     int globalid  = blockIdx.x * blockDim.x + threadIdx.x;
@@ -475,7 +479,7 @@ __global__ void Tozero_overflow(ImageBatchVarShapeWrapNHWC<T> src, ImageBatchVar
 
 template<typename T, typename P = MakeType<T, sizeof(T) == 8 ? 2 : 4>>
 __global__ void Tozero_Generic(ImageBatchVarShapeWrapNHWC<T> src, ImageBatchVarShapeWrapNHWC<T> dst,
-                               Tensor1DWrap<double> _thresh, int channel)
+                               Tensor1DWrap<double, int32_t> _thresh, int channel)
 {
     int cn        = NumElements<P>;
     int globalid  = blockIdx.x * blockDim.x + threadIdx.x;
@@ -520,7 +524,7 @@ __global__ void Tozero_Generic(ImageBatchVarShapeWrapNHWC<T> src, ImageBatchVarS
 
 template<typename T, typename P = MakeType<T, sizeof(T) == 8 ? 2 : 4>>
 __global__ void TozeroInv_overflow(ImageBatchVarShapeWrapNHWC<T> src, ImageBatchVarShapeWrapNHWC<T> dst,
-                                   Tensor1DWrap<double> _thresh, int channel)
+                                   Tensor1DWrap<double, int32_t> _thresh, int channel)
 {
     int cn        = NumElements<P>;
     int globalid  = blockIdx.x * blockDim.x + threadIdx.x;
@@ -595,7 +599,7 @@ __global__ void TozeroInv_overflow(ImageBatchVarShapeWrapNHWC<T> src, ImageBatch
 
 template<typename T, typename P = MakeType<T, sizeof(T) == 8 ? 2 : 4>>
 __global__ void TozeroInv_Generic(ImageBatchVarShapeWrapNHWC<T> src, ImageBatchVarShapeWrapNHWC<T> dst,
-                                  Tensor1DWrap<double> _thresh, int channel)
+                                  Tensor1DWrap<double, int32_t> _thresh, int channel)
 {
     int cn        = NumElements<P>;
     int globalid  = blockIdx.x * blockDim.x + threadIdx.x;
@@ -673,7 +677,8 @@ __global__ void hist_kernel(ImageBatchVarShapeWrapNHWC<uchar> img, int *histogra
         atomicAdd(&histogram[blockIdx.z * 256 + localid], val);
 }
 
-__global__ void otsu_cal_varshape(int *histogram, Tensor1DWrap<double> thresh, ImageBatchVarShapeWrapNHWC<uchar> img)
+__global__ void otsu_cal_varshape(int *histogram, Tensor1DWrap<double, int32_t> thresh,
+                                  ImageBatchVarShapeWrapNHWC<uchar> img)
 {
     int            localid = threadIdx.y * blockDim.x + threadIdx.x;
     int            size    = img.width((int)blockIdx.z) * img.height((int)blockIdx.z);
@@ -900,8 +905,8 @@ void thresholdDispatch(const nvcv::ImageBatchVarShapeDataStridedCuda &input,
                        const nvcv::TensorDataStridedCuda &_thresh, const nvcv::TensorDataStridedCuda &_maxval,
                        NVCVThresholdType type, DataType data_type, cudaStream_t stream)
 {
-    Tensor1DWrap<double> thresh(_thresh);
-    Tensor1DWrap<double> maxval(_maxval);
+    Tensor1DWrap<double, int32_t> thresh(_thresh);
+    Tensor1DWrap<double, int32_t> maxval(_maxval);
 
     nvcv::Size2D maxsize = input.maxSize();
     int          batch   = input.numImages();
@@ -959,7 +964,7 @@ static void getThreshVal_Triangle(const nvcv::ImageBatchVarShapeDataStridedCuda 
     checkCudaErrors(cudaMemsetAsync(histogram, 0, sizeof(int) * 256 * batch, stream));
 
     ImageBatchVarShapeWrapNHWC<uchar> wrap(inData, inData.uniqueFormat().numChannels());
-    Tensor1DWrap<double>              thresh(threshold);
+    Tensor1DWrap<double, int32_t>     thresh(threshold);
     nvcv::Size2D                      maxsize = inData.maxSize();
 
     dim3 block(256);
@@ -979,7 +984,7 @@ static void getThreshVal_Otsu(const nvcv::ImageBatchVarShapeDataStridedCuda &inD
     checkCudaErrors(cudaMemsetAsync(histogram, 0, sizeof(int) * 256 * batch, stream));
 
     ImageBatchVarShapeWrapNHWC<uchar> wrap(inData, inData.uniqueFormat().numChannels());
-    Tensor1DWrap<double>              thresh(threshold);
+    Tensor1DWrap<double, int32_t>     thresh(threshold);
     nvcv::Size2D                      maxsize = inData.maxSize();
 
     dim3 block(256);

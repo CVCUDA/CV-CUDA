@@ -42,33 +42,50 @@ __global__ void copyMakeBorderKernel(SrcWrapper src, DstWrapper dst, int2 dstSiz
 template<typename T, NVCVBorderType B>
 struct copyMakeBorderDispatcher
 {
-    static void call(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, const T &borderValue,
-                     const int left, const int top, cudaStream_t stream)
+    static ErrorCode call(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                          const T &borderValue, const int left, const int top, cudaStream_t stream)
     {
-        auto src = cuda::CreateBorderWrapNHW<const T, B>(inData, borderValue);
-        auto dst = cuda::CreateTensorWrapNHW<T>(outData);
-
         auto outAccess = TensorDataAccessStridedImagePlanar::Create(outData);
         NVCV_ASSERT(outAccess);
+
+        auto inAccess = TensorDataAccessStridedImagePlanar::Create(inData);
+        NVCV_ASSERT(inAccess);
 
         int2 dstSize{outAccess->numCols(), outAccess->numRows()};
 
         dim3 blockSize(BLOCK, BLOCK / 4, 1);
         dim3 gridSize(divUp(dstSize.x, blockSize.x), divUp(dstSize.y, blockSize.y), outAccess->numSamples());
 
-        copyMakeBorderKernel<<<gridSize, blockSize, 0, stream>>>(src, dst, dstSize, left, top);
+        int64_t srcMaxStride = inAccess->sampleStride() * inAccess->numSamples();
+        int64_t dstMaxStride = outAccess->sampleStride() * outAccess->numSamples();
+
+        if (std::max(srcMaxStride, dstMaxStride) <= cuda::TypeTraits<int32_t>::max)
+        {
+            auto src = cuda::CreateBorderWrapNHW<const T, B, int32_t>(inData, borderValue);
+            auto dst = cuda::CreateTensorWrapNHW<T, int32_t>(outData);
+
+            copyMakeBorderKernel<<<gridSize, blockSize, 0, stream>>>(src, dst, dstSize, left, top);
+        }
+        else
+        {
+            LOG_ERROR("Input or output size exceeds " << cuda::TypeTraits<int32_t>::max << ". Tensor is too large.");
+            return ErrorCode::INVALID_PARAMETER;
+        }
+
         checkKernelErrors();
+        return ErrorCode::SUCCESS;
     }
 };
 
 template<typename T> // uchar3 float3 uchar float
-void copyMakeBorder(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, const int top,
-                    const int left, const NVCVBorderType border_type, const float4 &borderValue, cudaStream_t stream)
+ErrorCode copyMakeBorder(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, const int top,
+                         const int left, const NVCVBorderType border_type, const float4 &borderValue,
+                         cudaStream_t stream)
 {
     const T bvalue = cuda::DropCast<cuda::NumElements<T>>(cuda::StaticCast<cuda::BaseType<T>>(borderValue));
 
-    typedef void (*func_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
-                           const T &borderValue, const int left, const int top, cudaStream_t stream);
+    typedef ErrorCode (*func_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                                const T &borderValue, const int left, const int top, cudaStream_t stream);
 
     static const func_t funcs[]
         = {copyMakeBorderDispatcher<T, NVCV_BORDER_CONSTANT>::call,
@@ -76,7 +93,7 @@ void copyMakeBorder(const TensorDataStridedCuda &inData, const TensorDataStrided
            copyMakeBorderDispatcher<T, NVCV_BORDER_REFLECT>::call, copyMakeBorderDispatcher<T, NVCV_BORDER_WRAP>::call,
            copyMakeBorderDispatcher<T, NVCV_BORDER_REFLECT101>::call};
 
-    funcs[border_type](inData, outData, bvalue, left, top, stream);
+    return funcs[border_type](inData, outData, bvalue, left, top, stream);
 }
 
 ErrorCode CopyMakeBorder::infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
@@ -94,7 +111,7 @@ ErrorCode CopyMakeBorder::infer(const TensorDataStridedCuda &inData, const Tenso
 
     if (!(input_format == kNHWC || input_format == kHWC))
     {
-        LOG_ERROR("Invalid DataFormat " << input_format);
+        LOG_ERROR("Invalid input DataFormat " << input_format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
@@ -148,9 +165,9 @@ ErrorCode CopyMakeBorder::infer(const TensorDataStridedCuda &inData, const Tenso
         return ErrorCode::INVALID_PARAMETER;
     }
 
-    typedef void (*func_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, const int top,
-                           const int left, const NVCVBorderType border_type, const float4 &borderValue,
-                           cudaStream_t stream);
+    typedef ErrorCode (*func_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                                const int top, const int left, const NVCVBorderType border_type,
+                                const float4 &borderValue, cudaStream_t stream);
 
     // clang-format off
     static const func_t funcs[6][4] = {
@@ -166,9 +183,7 @@ ErrorCode CopyMakeBorder::infer(const TensorDataStridedCuda &inData, const Tenso
     const func_t func = funcs[data_type][channels - 1];
     NVCV_ASSERT(func != 0);
 
-    func(inData, outData, top, left, border_type, borderValue, stream);
-
-    return SUCCESS;
+    return func(inData, outData, top, left, border_type, borderValue, stream);
 }
 
 } // namespace nvcv::legacy::cuda_op

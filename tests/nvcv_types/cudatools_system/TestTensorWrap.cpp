@@ -630,7 +630,8 @@ TEST(Tensor3DWrapBigPitchDeathTest, it_dies)
     auto dev = tensor.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_NE(dev, nullptr);
 
-    EXPECT_DEATH({ cuda::Tensor3DWrap<DataType> wrap(*dev); }, "");
+    using TensorWrap = cuda::Tensor3DWrap<DataType, int32_t>;
+    EXPECT_DEATH({ TensorWrap wrap(*dev); }, "");
 }
 
 #endif

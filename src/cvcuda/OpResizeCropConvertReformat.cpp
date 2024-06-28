@@ -44,21 +44,21 @@ CVCUDA_DEFINE_API(0, 8, NVCVStatus, cvcudaResizeCropConvertReformatCreate, (NVCV
 CVCUDA_DEFINE_API(0, 8, NVCVStatus, cvcudaResizeCropConvertReformatSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in, NVCVTensorHandle out,
                    const NVCVSize2D resizeDim, const NVCVInterpolationType interpolation, const int2 cropPos,
-                   const NVCVChannelManip manip))
+                   const NVCVChannelManip manip, const float scale, const float offset))
 {
     return nvcv::ProtectCall(
         [&]
         {
             nvcv::TensorWrapHandle input(in), output(out);
             priv::ToDynamicRef<priv::ResizeCropConvertReformat>(handle)(stream, input, output, resizeDim, interpolation,
-                                                                        cropPos, manip);
+                                                                        cropPos, manip, scale, offset);
         });
 }
 
 CVCUDA_DEFINE_API(0, 8, NVCVStatus, cvcudaResizeCropConvertReformatVarShapeSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVImageBatchHandle in, NVCVTensorHandle out,
                    const NVCVSize2D resizeDim, const NVCVInterpolationType interpolation, const int2 cropPos,
-                   const NVCVChannelManip manip))
+                   const NVCVChannelManip manip, const float scale, const float offset))
 {
     return nvcv::ProtectCall(
         [&]
@@ -66,6 +66,6 @@ CVCUDA_DEFINE_API(0, 8, NVCVStatus, cvcudaResizeCropConvertReformatVarShapeSubmi
             nvcv::ImageBatchVarShapeWrapHandle input(in);
             nvcv::TensorWrapHandle             output(out);
             priv::ToDynamicRef<priv::ResizeCropConvertReformat>(handle)(stream, input, output, resizeDim, interpolation,
-                                                                        cropPos, manip);
+                                                                        cropPos, manip, scale, offset);
         });
 }

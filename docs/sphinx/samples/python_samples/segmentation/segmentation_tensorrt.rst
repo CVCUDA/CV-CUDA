@@ -17,7 +17,7 @@
 .. _segmentation_tensorrt:
 
 Semantic Segmentation Inference Using TensorRT
-====================
+==============================================
 
 The semantic segmentation sample in CVCUDA uses the ``fcn_resnet101`` deep learning model from the ``torchvision`` library. Since the model does not come with the softmax layer at the end, we are going to add one. The following code snippet shows how the model is setup for inference use case with TensorRT.
 

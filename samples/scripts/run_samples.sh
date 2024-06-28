@@ -28,13 +28,13 @@ SAMPLES_DIR="$(dirname "$SCRIPT_DIR")"
 CLASSIFICATION_OUT_DIR=/tmp/classification
 SEGMENTATION_OUT_DIR="/tmp/segmentation"
 DETECTION_OUT_DIR="/tmp/object_detection"
-DISTANCE_LABEL_OUT_DIR="/tmp/distance_label"
+LABEL_OUT_DIR="/tmp/label"
 
 echo "SAMPLES_DIR: $SAMPLES_DIR"
 echo "CLASSIFICATION_OUT_DIR: $CLASSIFICATION_OUT_DIR"
 echo "SEGMENTATION_OUT_DIR: $SEGMENTATION_OUT_DIR"
 echo "DETECTION_OUT_DIR: $DETECTION_OUT_DIR"
-echo "DISTANCE_LABEL_OUT_DIR: $DISTANCE_LABEL_OUT_DIR"
+echo "LABEL_OUT_DIR: $LABEL_OUT_DIR"
 
 create_output_dir() {
     local base_dir=$1
@@ -128,11 +128,11 @@ python3 $SAMPLES_DIR/object_detection/python/main.py -i $SAMPLES_DIR/assets/imag
 DETECTION_RUN_DIR=$(create_output_dir "$DETECTION_OUT_DIR")
 python3 $SAMPLES_DIR/object_detection/python/main.py -i $SAMPLES_DIR/assets/videos/pexels-chiel-slotman-4423925-1920x1080-25fps.mp4 -b 4 -bk tensorflow -o "$DETECTION_RUN_DIR"
 
-# Run the distance label Python sample with default settings, without any command-line args.
-rm -rf "$DISTANCE_LABEL_OUT_DIR"
-mkdir "$DISTANCE_LABEL_OUT_DIR"
-DISTANCE_LABEL_RUN_DIR=$(create_output_dir "$DISTANCE_LABEL_OUT_DIR")
-python3 $SAMPLES_DIR/label/python/main.py -o "$DISTANCE_LABEL_RUN_DIR"
+# Run the label Python sample with default settings, without any command-line args.
+rm -rf "$LABEL_OUT_DIR"
+mkdir "$LABEL_OUT_DIR"
+LABEL_RUN_DIR=$(create_output_dir "$LABEL_OUT_DIR")
+python3 $SAMPLES_DIR/label/python/main.py -o "$LABEL_RUN_DIR"
 # Run it with batch size 1 on a single image
-DISTANCE_LABEL_RUN_DIR=$(create_output_dir "$DISTANCE_LABEL_OUT_DIR")
-python3 $SAMPLES_DIR/label/python/main.py -i $SAMPLES_DIR/assets/images/peoplenet.jpg  -b 1 -o "$DISTANCE_LABEL_RUN_DIR"
+LABEL_RUN_DIR=$(create_output_dir "$LABEL_OUT_DIR")
+python3 $SAMPLES_DIR/label/python/main.py -i $SAMPLES_DIR/assets/images/peoplenet.jpg  -b 1 -o "$LABEL_RUN_DIR"

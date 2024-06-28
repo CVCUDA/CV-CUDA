@@ -18,13 +18,13 @@
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-yellogreen.svg)](https://opensource.org/licenses/Apache-2.0)
 
-![Version](https://img.shields.io/badge/Version-v0.8.0--beta-blue)
+![Version](https://img.shields.io/badge/Version-v0.9.0--beta-blue)
 
 ![Platform](https://img.shields.io/badge/Platform-linux--64_%7C_win--64_wsl2%7C_aarch64-gray)
 
 [![CUDA](https://img.shields.io/badge/CUDA-v11.7-%2376B900?logo=nvidia)](https://developer.nvidia.com/cuda-toolkit-archive)
 [![GCC](https://img.shields.io/badge/GCC-v11.0-yellow)](https://gcc.gnu.org/gcc-11/changes.html)
-[![Python](https://img.shields.io/badge/python-v3.7_%7c_v3.8_%7c_v3.9_%7c_v3.10%7c_v3.11-blue?logo=python)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-v3.8_%7c_v3.9_%7c_v3.10%7c_v3.11-blue?logo=python)](https://www.python.org/)
 [![CMake](https://img.shields.io/badge/CMake-v3.20-%23008FBA?logo=cmake)](https://cmake.org/)
 
 CV-CUDA is an open-source project that enables building efficient cloud-scale
@@ -53,13 +53,15 @@ To get a local copy up and running follow these steps.
 \** full build, including test module <br>
 \*** [samples][CV-CUDA Samples] require driver r535 or later to run and are only officially supported with CUDA 12.
 
-### Known limitations
+### Known limitations and issues
 
 - For GCC versions lower than 11.0, C++17 support needs to be enabled when compiling CV-CUDA.
 - The C++ test module cannot build with gcc<11 (requires specific C++-20 features).  With gcc-9 or gcc-10, please build with option `-DBUILD_TESTS=0`
 - [CV-CUDA Samples] require driver r535 or later to run and are only officially supported with CUDA 12.
 - Only one CUDA version (CUDA 11.x or CUDA 12.x) of CV-CUDA packages (Debian packages, tarballs, Python Wheels) can be installed at a time. Please uninstall all packages from a given CUDA version before installing packages from a different version.
-- Documentation built with older toolchains (doxygen, sphinx, breathe, exhale) may be incomplete. We recommend using Ubuntu 22.04 or later.
+- Documentation built on Ubuntu 20.04 needs an up-to-date version of sphinx (`pip install --upgrade sphinx`) as well as explicitly parsing the system's default python version ` ./ci/build_docs path/to/build -DPYTHON_VERSIONS="<py_ver>"`.
+- Python bindings installed via Debian packages and Python tests fail with Numpy 2.0. We recommend using an older version of Numpy (e.g. 1.26) until we have implemented a fix.
+- The Resize and RandomResizedCrop operators incorrectly interpolate pixel values near the boundary of an image or tensor when using linear and cubic interpolation. This will be fixed in an upcoming release.
 
 ### Installation
 
@@ -87,12 +89,12 @@ Please note that the Python wheels are standalone, they include both the C++/CUD
 
 Install C++/CUDA libraries (cvcuda-lib*) and development headers (cvcuda-dev*) using `apt`:
 ```shell
-apt install -y ./cvcuda-lib-<x.x.x>-<cu_ver>-<arch>-linux.deb ./cvcuda-dev-<x.x.x>-<cu_ver>-<arch>-linux.deb
+sudo apt install -y ./cvcuda-lib-<x.x.x>-<cu_ver>-<arch>-linux.deb ./cvcuda-dev-<x.x.x>-<cu_ver>-<arch>-linux.deb
 ```
 
 Install Python bindings (cvcuda-python*) using `apt`:
 ```shell
-apt install -y ./cvcuda-python<py_ver>-<x.x.x>-<cu_ver>-<arch>-linux.deb
+sudo apt install -y ./cvcuda-python<py_ver>-<x.x.x>-<cu_ver>-<arch>-linux.deb
 ```
 where `<cu_ver>` is the desired CUDA version, `<py_ver>` is the desired Python version and `<arch>` is the desired architecture.
 
@@ -122,7 +124,7 @@ Install the dependencies needed to setup up the repository:
 
 On Ubuntu >= 20.04, install the following packages using `apt`:
 ```shell
-apt install -y git git-lfs
+sudo apt install -y git git-lfs
 ```
 
 Clone the repository
@@ -145,19 +147,20 @@ Install the dependencies required to build CV-CUDA:
 - python3-dev: for python bindings
 - libssl-dev: needed by the testsuite (MD5 hashing utilities)
 - CUDA toolkit
+- patchelf
 
 On Ubuntu >= 20.04, install the following packages using `apt`:
 ```shell
-apt install -y g++-11 cmake ninja-build python3-dev libssl-dev
+sudo apt install -y g++-11 cmake ninja-build python3-dev libssl-dev patchelf
 ```
 
 Any version of the 11.x or 12.x CUDA toolkit should work.
 CV-CUDA was tested with 11.7 and 12.2, these versions are thus recommended.
 
 ```shell
-apt install -y cuda-11-7
+sudo apt install -y cuda-11-7
 # or
-apt install -y cuda-12-2
+sudo apt install -y cuda-12-2
 ```
 
 Build the project:
@@ -175,18 +178,18 @@ ci/build.sh [release|debug] [output build tree path] [-DBUILD_TESTS=1|0] [-DPYTH
 
 #### 3. Build Documentation
 
-Known limitation: documentation built with older toolchains (doxygen, sphinx, breathe, exhale) may be incomplete. We recommend using Ubuntu 22.04 or later.
+Known limitation: Documentation built on Ubuntu 20.04 needs an up-to-date version of sphinx (`pip install --upgrade sphinx`) as well as explicitly parsing the system's default python version ` ./ci/build_docs path/to/build -DPYTHON_VERSIONS="<py_ver>"`.
 
 Install the dependencies required to  build the documentation:
 - doxygen: parse header files for reference documentation
 - python3, python3-pip: to install some python packages needed
-- sphinx, breathe, exhale, recommonmark, graphiviz: to render the documentation
+- sphinx, breathe, recommonmark, graphiviz: to render the documentation
 - sphinx-rtd-theme: documentation theme used
 
 On Ubuntu, install the following packages using `apt` and `pip`:
 ```shell
-apt install -y doxygen graphviz python3 python3-pip sphinx
-python3 -m pip install breathe exhale recommonmark graphviz sphinx-rtd-theme
+sudo apt install -y doxygen graphviz python3 python3-pip sphinx
+python3 -m pip install breathe recommonmark graphviz sphinx-rtd-theme
 ```
 
 Build the documentation:
@@ -204,11 +207,12 @@ For instructions on how to build samples from source and run them, see the [Samp
 Install the dependencies required for running the tests:
 - python3, python3-pip: to run python bindings tests
 - torch: dependencies needed by python bindings tests
+- numpy: known limitation: Python tests fail with numpy 2.0. We recommend using an older version (eg 1.26) until we have implemented a fix.
 
 On Ubuntu >= 20.04, install the following packages using `apt` and `pip`:
 ```shell
-apt install -y python3 python3-pip
-python3 -m pip install pytest torch
+sudo apt install -y python3 python3-pip
+python3 -m pip install pytest torch numpy==1.26
 ```
 
 The tests are in `<buildtree>/bin`. You can run the script below to run all tests at once. Here's an example when build tree is created in `build-rel`:

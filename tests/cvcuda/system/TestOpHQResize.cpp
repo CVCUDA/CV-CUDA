@@ -117,12 +117,12 @@ struct CpuSample
     }
 
 private:
-    int offset(int sampleIdx, int2 idx)
+    int64_t offset(int sampleIdx, int2 idx)
     {
         return sampleIdx * m_strides.z + idx.y * m_strides.y + idx.x * m_strides.x;
     }
 
-    int offset(int sampleIdx, int3 idx)
+    int64_t offset(int sampleIdx, int3 idx)
     {
         return sampleIdx * m_strides.w + idx.z * m_strides.z + idx.y * m_strides.y + idx.x * m_strides.x;
     }
@@ -643,7 +643,8 @@ NVCV_TYPED_TEST_SUITE(
         NVCV_TEST_ROW(4, NVCV_SHAPE2D(1024, 101), NVCV_SHAPE2D(105, 512), 2, float, float, NVCV_INTERP_LINEAR),
         NVCV_TEST_ROW(3, NVCV_SHAPE2D(31, 244), NVCV_SHAPE2D(311, 122), 3, float, float, NVCV_INTERP_CUBIC),
         NVCV_TEST_ROW(4, NVCV_SHAPE2D(41, 41), NVCV_SHAPE2D(244, 244), 4, float, float, NVCV_INTERP_GAUSSIAN),
-        NVCV_TEST_ROW(3, NVCV_SHAPE2D(769, 211), NVCV_SHAPE2D(40, 40), 7, float, float, NVCV_INTERP_LANCZOS)>);
+        NVCV_TEST_ROW(3, NVCV_SHAPE2D(769, 211), NVCV_SHAPE2D(40, 40), 7, float, float, NVCV_INTERP_LANCZOS),
+        NVCV_TEST_ROW(1, NVCV_SHAPE2D(1 << 14, 1 << 13), NVCV_SHAPE2D(512, 256), 7, float, float, NVCV_INTERP_LINEAR)>);
 
 template<typename TypeParam>
 void TestTensor(bool antialias)
@@ -750,7 +751,9 @@ NVCV_TYPED_TEST_SUITE(
         NVCV_TEST_ROW(4, NVCV_SHAPE3D(100, 100, 100), NVCV_SHAPE3D(100, 50, 100), 4, ushort, float, NVCV_INTERP_LINEAR),
         NVCV_TEST_ROW(3, NVCV_SHAPE3D(100, 100, 100), NVCV_SHAPE3D(100, 100, 50), 3, float, float, NVCV_INTERP_CUBIC),
         NVCV_TEST_ROW(4, NVCV_SHAPE3D(40, 40, 40), NVCV_SHAPE3D(100, 40, 40), 5, uchar, float, NVCV_INTERP_LANCZOS),
-        NVCV_TEST_ROW(7, NVCV_SHAPE3D(40, 40, 40), NVCV_SHAPE3D(50, 150, 100), 3, uchar, uchar, NVCV_INTERP_CUBIC)>);
+        NVCV_TEST_ROW(7, NVCV_SHAPE3D(40, 40, 40), NVCV_SHAPE3D(50, 150, 100), 3, uchar, uchar, NVCV_INTERP_CUBIC),
+        NVCV_TEST_ROW(3, NVCV_SHAPE3D(1 << 10, 1 << 9, 1 << 9), NVCV_SHAPE3D(50, 150, 100), 3, uchar, uchar,
+                      NVCV_INTERP_CUBIC)>);
 
 TYPED_TEST(OpHQResizeTensor3D, correct_output_with_antialias)
 {
@@ -843,20 +846,22 @@ TYPED_TEST(OpHQResizeTensor3D, correct_output_with_antialias)
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
-#define NVCV_TEST_ROW_TB(NumChannels, InT, OutT, Antialias, MinInterpolation, MagInterpolation)                 \
+#define NVCV_TEST_ROW_TB(NumChannels, InT, OutT, Antialias, MinInterpolation, MagInterpolation, LargeSample)    \
     ttype::Types<ttype::Value<NumChannels>, InT, OutT, ttype::Value<Antialias>, ttype::Value<MinInterpolation>, \
-                 ttype::Value<MagInterpolation>>
+                 ttype::Value<MagInterpolation>, ttype::Value<LargeSample>>
 
-NVCV_TYPED_TEST_SUITE(OpHQResizeBatch,
-                      ttype::Types<NVCV_TEST_ROW_TB(1, uchar, float, false, NVCV_INTERP_LANCZOS, NVCV_INTERP_LANCZOS),
-                                   NVCV_TEST_ROW_TB(2, uchar, uchar, true, NVCV_INTERP_LANCZOS, NVCV_INTERP_CUBIC),
-                                   NVCV_TEST_ROW_TB(3, uchar, float, false, NVCV_INTERP_LINEAR, NVCV_INTERP_CUBIC),
-                                   NVCV_TEST_ROW_TB(4, uchar, uchar, true, NVCV_INTERP_LINEAR, NVCV_INTERP_LINEAR),
-                                   NVCV_TEST_ROW_TB(-1, uchar, uchar, false, NVCV_INTERP_CUBIC, NVCV_INTERP_NEAREST),
-                                   NVCV_TEST_ROW_TB(1, ushort, ushort, false, NVCV_INTERP_CUBIC, NVCV_INTERP_CUBIC),
-                                   NVCV_TEST_ROW_TB(2, short, float, false, NVCV_INTERP_LANCZOS, NVCV_INTERP_LINEAR),
-                                   NVCV_TEST_ROW_TB(3, float, float, true, NVCV_INTERP_LINEAR, NVCV_INTERP_GAUSSIAN),
-                                   NVCV_TEST_ROW_TB(-1, float, float, true, NVCV_INTERP_LINEAR, NVCV_INTERP_NEAREST)>);
+NVCV_TYPED_TEST_SUITE(
+    OpHQResizeBatch,
+    ttype::Types<NVCV_TEST_ROW_TB(1, uchar, float, false, NVCV_INTERP_LANCZOS, NVCV_INTERP_LANCZOS, false),
+                 NVCV_TEST_ROW_TB(2, uchar, uchar, true, NVCV_INTERP_LANCZOS, NVCV_INTERP_CUBIC, false),
+                 NVCV_TEST_ROW_TB(3, uchar, float, false, NVCV_INTERP_LINEAR, NVCV_INTERP_CUBIC, false),
+                 NVCV_TEST_ROW_TB(4, uchar, uchar, true, NVCV_INTERP_LINEAR, NVCV_INTERP_LINEAR, true),
+                 NVCV_TEST_ROW_TB(-1, uchar, uchar, false, NVCV_INTERP_CUBIC, NVCV_INTERP_NEAREST, false),
+                 NVCV_TEST_ROW_TB(1, ushort, ushort, false, NVCV_INTERP_CUBIC, NVCV_INTERP_CUBIC, false),
+                 NVCV_TEST_ROW_TB(2, short, float, false, NVCV_INTERP_LANCZOS, NVCV_INTERP_LINEAR, false),
+                 NVCV_TEST_ROW_TB(3, float, float, true, NVCV_INTERP_LINEAR, NVCV_INTERP_GAUSSIAN, false),
+                 NVCV_TEST_ROW_TB(-1, float, float, true, NVCV_INTERP_LINEAR, NVCV_INTERP_NEAREST, false),
+                 NVCV_TEST_ROW_TB(-1, float, float, true, NVCV_INTERP_LINEAR, NVCV_INTERP_NEAREST, true)>);
 
 TYPED_TEST(OpHQResizeBatch, tensor_batch_2d_correct_output)
 {
@@ -867,20 +872,34 @@ TYPED_TEST(OpHQResizeBatch, tensor_batch_2d_correct_output)
     const nvcv::DataType        outDtype         = TypeAsFormat<OutBT>();
     const bool                  antialias        = ttype::GetValue<TypeParam, 3>;
     const NVCVInterpolationType minInterpolation = ttype::GetValue<TypeParam, 4>;
-    const NVCVInterpolationType magInterpolation = ttype::GetValue<TypeParam, 4>;
+    const NVCVInterpolationType magInterpolation = ttype::GetValue<TypeParam, 5>;
+    const bool                  largeSample      = ttype::GetValue<TypeParam, 6>;
 
     constexpr int numSamples              = 5;
     const int     varChannels[numSamples] = {4, 1, 7, 3, 5};
 
+    int inShape1[] = {1 << 14, 1 << 13};
+    if (sizeof(InBT) == 1)
+    {
+        inShape1[0] *= 2;
+        inShape1[1] *= 2;
+    }
+
+    auto sample1
+        = largeSample
+            ? HQResizeTensorShapeI({inShape1[0], inShape1[1]}, 2, numChannels > 0 ? numChannels : varChannels[0])
+            : HQResizeTensorShapeI({728, 1024, 0}, 2, numChannels > 0 ? numChannels : varChannels[0]);
+
     std::vector<HQResizeTensorShapeI> inShapes = {
-        {{728, 1024}, 2, numChannels > 0 ? numChannels : varChannels[0]},
-        { {512, 512}, 2, numChannels > 0 ? numChannels : varChannels[1]},
-        { {128, 256}, 2, numChannels > 0 ? numChannels : varChannels[2]},
-        { {256, 128}, 2, numChannels > 0 ? numChannels : varChannels[3]},
-        {   {40, 40}, 2, numChannels > 0 ? numChannels : varChannels[4]}
+        sample1,
+        {{512, 512}, 2, numChannels > 0 ? numChannels : varChannels[1]},
+        {{128, 256}, 2, numChannels > 0 ? numChannels : varChannels[2]},
+        {{256, 128}, 2, numChannels > 0 ? numChannels : varChannels[3]},
+        {  {40, 40}, 2, numChannels > 0 ? numChannels : varChannels[4]}
     };
+
     std::vector<HQResizeTensorShapeI> outShapes = {
-        {{245, 245}, 2, inShapes[0].numChannels},
+        {{512, 245}, 2, inShapes[0].numChannels},
         { {250, 51}, 2, inShapes[1].numChannels},
         {{243, 128}, 2, inShapes[2].numChannels},
         {{128, 256}, 2, inShapes[3].numChannels},

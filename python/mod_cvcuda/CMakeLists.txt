@@ -88,6 +88,7 @@ nvcv_python_add_module(
         OpInpaint.cpp
         CvtColorUtil.cpp
         OpFindHomography.cpp
+        NormType.cpp
 )
 
 target_link_libraries(cvcuda_module_python

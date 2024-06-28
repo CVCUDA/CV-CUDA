@@ -61,7 +61,8 @@ class FullTensorWrap<const T, N>
 
 public:
     // The type provided as template parameter is the value type, i.e. the type of each element inside this wrapper.
-    using ValueType = const T;
+    using ValueType  = const T;
+    using StrideType = int32_t;
 
     // The number of dimensions is provided as a template parameter.
     static constexpr int kNumDimensions = N;
@@ -220,6 +221,7 @@ class FullTensorWrap : public FullTensorWrap<const T, N>
 
 public:
     using ValueType = T;
+    using typename Base::StrideType;
 
     using Base::kConstantStrides;
     using Base::kNumDimensions;

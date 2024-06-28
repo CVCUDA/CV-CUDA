@@ -136,6 +136,7 @@ class BorderWrapImpl
 public:
     using TensorWrapper = TW;
     using ValueType     = typename TensorWrapper::ValueType;
+    using StrideType    = typename TensorWrapper::StrideType;
 
     static constexpr int            kNumDimensions = TensorWrapper::kNumDimensions;
     static constexpr NVCVBorderType kBorderType    = B;
@@ -170,7 +171,7 @@ public:
     template<typename... Args>
     explicit __host__ __device__ BorderWrapImpl(TensorWrapper tensorWrap, Args... tensorShape)
         : m_tensorWrap(tensorWrap)
-        , m_tensorShape{std::forward<int>(tensorShape)...}
+        , m_tensorShape{std::forward<StrideType>(tensorShape)...}
     {
         if constexpr (sizeof...(Args) == 0)
         {
@@ -187,7 +188,7 @@ public:
         }
         else
         {
-            static_assert(std::conjunction_v<std::is_same<int, Args>...>);
+            static_assert((IsIndexType<Args, StrideType> && ...));
             static_assert(sizeof...(Args) == kNumActiveDimensions);
         }
     }
@@ -215,7 +216,7 @@ public:
         return m_tensorWrap;
     }
 
-    inline __host__ __device__ const int *tensorShape() const
+    inline const __host__ __device__ StrideType *tensorShape() const
     {
         return m_tensorShape;
     }
@@ -227,7 +228,7 @@ public:
 
 protected:
     const TensorWrapper m_tensorWrap                        = {};
-    int                 m_tensorShape[kNumActiveDimensions] = {0};
+    StrideType          m_tensorShape[kNumActiveDimensions] = {0};
 };
 
 } // namespace detail
@@ -270,6 +271,7 @@ class BorderWrap : public detail::BorderWrapImpl<TW, B, ActiveDimensions...>
     using Base = detail::BorderWrapImpl<TW, B, ActiveDimensions...>;
 
 public:
+    using typename Base::StrideType;
     using typename Base::TensorWrapper;
     using typename Base::ValueType;
 
@@ -372,8 +374,8 @@ private:
     template<typename... Args, std::size_t... Is>
     inline __host__ __device__ ValueType *doGetPtr(std::index_sequence<Is...>, Args... c) const
     {
-        return Base::m_tensorWrap.ptr(
-            GetIndexWithBorder<kBorderType, kActiveDimensions[Is]>(c, Base::m_tensorShape[kMap.from[Is]])...);
+        return Base::m_tensorWrap.ptr(GetIndexWithBorder<kBorderType, kActiveDimensions[Is]>(
+            static_cast<StrideType>(c), Base::m_tensorShape[kMap.from[Is]])...);
     }
 };
 
@@ -390,6 +392,7 @@ class BorderWrap<TW, NVCV_BORDER_CONSTANT, ActiveDimensions...>
     using Base = detail::BorderWrapImpl<TW, NVCV_BORDER_CONSTANT, ActiveDimensions...>;
 
 public:
+    using typename Base::StrideType;
     using typename Base::TensorWrapper;
     using typename Base::ValueType;
 
@@ -513,7 +516,7 @@ private:
     template<typename... Args, std::size_t... Is>
     inline __host__ __device__ ValueType *doGetPtr(std::index_sequence<Is...>, Args... c) const
     {
-        if ((IsOutside<kActiveDimensions[Is]>(c, Base::m_tensorShape[kMap.from[Is]]) || ...))
+        if ((IsOutside<kActiveDimensions[Is]>(static_cast<StrideType>(c), Base::m_tensorShape[kMap.from[Is]]) || ...))
         {
             return nullptr;
         }
@@ -537,24 +540,26 @@ private:
  *
  * @tparam T Type of the values to be accessed in the border wrap.
  * @tparam B Border extension to be used when accessing H and W, one of \ref NVCVBorderType
+ * @tparam StrideType Type of the strdies used in the underlying TensorWrap.
  *
  * @param[in] tensor Reference to the tensor that will be wrapped.
  * @param[in] borderValue Border value to be used when accessing outside elements in constant border type
  *
  * @return Border wrap useful to access tensor data border aware in H and W in CUDA kernels.
  */
-template<typename T, NVCVBorderType B, class = Require<HasTypeTraits<T>>>
+template<typename T, NVCVBorderType B, typename StrideType = int64_t, class = Require<HasTypeTraits<T>>>
 __host__ auto CreateBorderWrapNHW(const TensorDataStridedCuda &tensor, T borderValue = {})
 {
     auto tensorAccess = TensorDataAccessStridedImagePlanar::Create(tensor);
     assert(tensorAccess);
-    assert(tensorAccess->numRows() <= TypeTraits<int>::max);
-    assert(tensorAccess->numCols() <= TypeTraits<int>::max);
+    assert(tensorAccess->numRows() <= TypeTraits<StrideType>::max);
+    assert(tensorAccess->numCols() <= TypeTraits<StrideType>::max);
 
-    auto tensorWrap = CreateTensorWrapNHW<T>(tensor);
+    auto tensorWrap = CreateTensorWrapNHW<T, StrideType>(tensor);
 
-    return BorderWrap<decltype(tensorWrap), B, false, true, true>(
-        tensorWrap, borderValue, static_cast<int>(tensorAccess->numRows()), static_cast<int>(tensorAccess->numCols()));
+    return BorderWrap<decltype(tensorWrap), B, false, true, true>(tensorWrap, borderValue,
+                                                                  static_cast<StrideType>(tensorAccess->numRows()),
+                                                                  static_cast<StrideType>(tensorAccess->numCols()));
 }
 
 /**
@@ -569,24 +574,26 @@ __host__ auto CreateBorderWrapNHW(const TensorDataStridedCuda &tensor, T borderV
  *
  * @tparam T Type of the values to be accessed in the border wrap.
  * @tparam B Border extension to be used when accessing H and W, one of \ref NVCVBorderType
+ * @tparam StrideType Type of the strdies used in the underlying TensorWrap.
  *
  * @param[in] tensor Reference to the tensor that will be wrapped.
  * @param[in] borderValue Border value to be used when accessing outside elements in constant border type
  *
  * @return Border wrap useful to access tensor data border aware in H and W in CUDA kernels.
  */
-template<typename T, NVCVBorderType B, class = Require<HasTypeTraits<T>>>
+template<typename T, NVCVBorderType B, typename StrideType = int64_t, class = Require<HasTypeTraits<T>>>
 __host__ auto CreateBorderWrapNHWC(const TensorDataStridedCuda &tensor, T borderValue = {})
 {
     auto tensorAccess = TensorDataAccessStridedImagePlanar::Create(tensor);
     assert(tensorAccess);
-    assert(tensorAccess->numRows() <= TypeTraits<int>::max);
-    assert(tensorAccess->numCols() <= TypeTraits<int>::max);
+    assert(tensorAccess->numRows() <= TypeTraits<StrideType>::max);
+    assert(tensorAccess->numCols() <= TypeTraits<StrideType>::max);
 
-    auto tensorWrap = CreateTensorWrapNHWC<T>(tensor);
+    auto tensorWrap = CreateTensorWrapNHWC<T, StrideType>(tensor);
 
     return BorderWrap<decltype(tensorWrap), B, false, true, true, false>(
-        tensorWrap, borderValue, static_cast<int>(tensorAccess->numRows()), static_cast<int>(tensorAccess->numCols()));
+        tensorWrap, borderValue, static_cast<StrideType>(tensorAccess->numRows()),
+        static_cast<StrideType>(tensorAccess->numCols()));
 }
 
 } // namespace nvcv::cuda

@@ -73,31 +73,33 @@ namespace nvcv::cuda {
  * @tparam T Type (it can be const) of each element inside the tensor wrapper.
  * @tparam Strides Each compile-time (use -1 for run-time) pitch in bytes from first to last dimension.
  */
-template<typename T, int... Strides>
-class TensorBatchWrap;
+template<typename T, typename StrideT, StrideT... Strides>
+class TensorBatchWrapT;
 
-template<typename T, int... Strides>
-class TensorBatchWrap<const T, Strides...>
+template<typename T, typename StrideT, StrideT... Strides>
+class TensorBatchWrapT<const T, StrideT, Strides...>
 {
     static_assert(HasTypeTraits<T>, "TensorBatchWrap<T> can only be used if T has type traits");
+    static_assert(IsStrideType<StrideT>, "StrideT must be a 64 or 32 bit signed integer type");
 
 public:
     // The type provided as template parameter is the value type, i.e. the type of each element inside this wrapper.
-    using ValueType = const T;
+    using ValueType  = const T;
+    using StrideType = StrideT;
 
     static constexpr int kNumDimensions   = sizeof...(Strides);
     static constexpr int kVariableStrides = ((Strides == -1) + ...);
     static constexpr int kConstantStrides = kNumDimensions - kVariableStrides;
 
-    TensorBatchWrap() = default;
+    TensorBatchWrapT() = default;
 
     /**
      * Constructs a constant TensorBatchWrap by wrapping a \p data argument.
      *
      * @param[in] data Tensor batch data to wrap.
      */
-    __host__ TensorBatchWrap(const TensorBatchDataStridedCuda &data)
-        : TensorBatchWrap(data.cdata())
+    __host__ TensorBatchWrapT(const TensorBatchDataStridedCuda &data)
+        : TensorBatchWrapT(data.cdata())
     {
     }
 
@@ -106,7 +108,7 @@ public:
      *
      * @param[in] data Tensor batch data to wrap.
      */
-    __host__ __device__ TensorBatchWrap(const NVCVTensorBatchData &data)
+    __host__ __device__ TensorBatchWrapT(const NVCVTensorBatchData &data)
         : m_numTensors(data.numTensors)
         , m_tensors(data.buffer.strided.tensors)
     {
@@ -135,7 +137,7 @@ public:
      *
      * @return Accessed reference.
      */
-    template<typename DimType, class = Require<std::is_same_v<int, BaseType<DimType>>>>
+    template<typename DimType, class = Require<IsIndexType<BaseType<DimType>, StrideType>>>
     inline const __host__ __device__ T &operator[](DimType c) const
     {
         static_assert(NumElements<DimType> == kNumDimensions + 1,
@@ -169,7 +171,7 @@ public:
      */
     inline const __host__ __device__ auto tensor(int t) const
     {
-        return TensorWrap<ValueType, Strides...>(doGetPtr(t), strides(t));
+        return TensorWrapT<ValueType, StrideType, Strides...>(doGetPtr(t), strides(t));
     }
 
     /**
@@ -206,19 +208,19 @@ protected:
     template<typename... Args>
     inline __host__ __device__ T *doGetPtr(int t, Args... c) const
     {
-        static_assert(std::conjunction_v<std::is_same<int, Args>...>);
+        static_assert((IsIndexType<Args, StrideType> && ...));
         static_assert(sizeof...(Args) <= kNumDimensions);
 
-        constexpr int kArgSize  = sizeof...(Args);
-        constexpr int kVarSize  = kArgSize < kVariableStrides ? kArgSize : kVariableStrides;
-        constexpr int kDimSize  = kArgSize < kNumDimensions ? kArgSize : kNumDimensions;
-        constexpr int kStride[] = {std::forward<int>(Strides)...};
+        constexpr int     kArgSize  = sizeof...(Args);
+        constexpr int     kVarSize  = kArgSize < kVariableStrides ? kArgSize : kVariableStrides;
+        constexpr int     kDimSize  = kArgSize < kNumDimensions ? kArgSize : kNumDimensions;
+        constexpr StrideT kStride[] = {std::forward<StrideT>(Strides)...};
 
         // Computing offset first potentially postpones or avoids 64-bit math during addressing
-        int offset = 0;
+        StrideType offset = 0;
         if constexpr (kArgSize > 0)
         {
-            int            coords[] = {std::forward<int>(c)...};
+            StrideType     coords[] = {std::forward<StrideType>(c)...};
             const int64_t *strides  = m_tensors[t].stride;
 
 #pragma unroll
@@ -247,10 +249,10 @@ protected:
  * @tparam T Type (non-const) of each element inside the tensor batch wrapper.
  * @tparam Strides Each compile-time (use -1 for run-time) pitch in bytes from first to last dimension.
  */
-template<typename T, int... Strides>
-class TensorBatchWrap : public TensorBatchWrap<const T, Strides...>
+template<typename T, typename StrideT, StrideT... Strides>
+class TensorBatchWrapT : public TensorBatchWrapT<const T, StrideT, Strides...>
 {
-    using Base = TensorBatchWrap<const T, Strides...>;
+    using Base = TensorBatchWrapT<const T, StrideT, Strides...>;
 
 public:
     using ValueType = T;
@@ -258,13 +260,14 @@ public:
     using Base::kNumDimensions;
     using Base::m_tensors;
     using Base::strides;
+    using typename Base::StrideType;
 
     /**
      * Constructs a TensorBatchWrap by wrapping a \p data argument.
      *
      * @param[in] data Tensor batch data to wrap.
      */
-    __host__ TensorBatchWrap(const TensorBatchDataStridedCuda &data)
+    __host__ TensorBatchWrapT(const TensorBatchDataStridedCuda &data)
         : Base(data)
     {
     }
@@ -274,7 +277,7 @@ public:
      *
      * @param[in] data Tensor batch data to wrap.
      */
-    __host__ __device__ TensorBatchWrap(NVCVTensorBatchData &data)
+    __host__ __device__ TensorBatchWrapT(NVCVTensorBatchData &data)
         : Base(data)
     {
     }
@@ -303,7 +306,7 @@ public:
      */
     inline __host__ __device__ auto tensor(int t) const
     {
-        return TensorWrap<ValueType, Strides...>(doGetPtr(t), strides(t));
+        return TensorWrapT<ValueType, StrideT, Strides...>(doGetPtr(t), strides(t));
     }
 
     /**
@@ -315,7 +318,7 @@ public:
      *
      * @return Accessed reference.
      */
-    template<typename DimType, class = Require<std::is_same_v<int, BaseType<DimType>>>>
+    template<typename DimType, class = Require<IsIndexType<BaseType<DimType>, StrideType>>>
     inline __host__ __device__ T &operator[](DimType c) const
     {
         static_assert(NumElements<DimType> == kNumDimensions + 1,
@@ -340,6 +343,12 @@ public:
     }
 };
 
+template<typename T, int64_t... Strides>
+using TensorBatchWrap = TensorBatchWrapT<T, int64_t, Strides...>;
+
+template<typename T, int32_t... Strides>
+using TensorBatchWrap32 = TensorBatchWrapT<T, int32_t, Strides...>;
+
 /**@}*/
 
 /**
@@ -357,28 +366,29 @@ public:
  *  @{
  */
 
-template<typename T>
-using TensorBatch1DWrap = TensorBatchWrap<T, sizeof(T)>;
+template<typename T, typename StrideType = int64_t>
+using TensorBatch1DWrap = TensorBatchWrapT<T, StrideType, sizeof(T)>;
 
-template<typename T>
-using TensorBatch2DWrap = TensorBatchWrap<T, -1, sizeof(T)>;
+template<typename T, typename StrideType = int64_t>
+using TensorBatch2DWrap = TensorBatchWrapT<T, StrideType, -1, sizeof(T)>;
 
-template<typename T>
-using TensorBatch3DWrap = TensorBatchWrap<T, -1, -1, sizeof(T)>;
+template<typename T, typename StrideType = int64_t>
+using TensorBatch3DWrap = TensorBatchWrapT<T, StrideType, -1, -1, sizeof(T)>;
 
-template<typename T>
-using TensorBatch4DWrap = TensorBatchWrap<T, -1, -1, -1, sizeof(T)>;
+template<typename T, typename StrideType = int64_t>
+using TensorBatch4DWrap = TensorBatchWrapT<T, StrideType, -1, -1, -1, sizeof(T)>;
 
-template<typename T>
-using TensorBatch5DWrap = TensorBatchWrap<T, -1, -1, -1, -1, sizeof(T)>;
+template<typename T, typename StrideType = int64_t>
+using TensorBatch5DWrap = TensorBatchWrapT<T, StrideType, -1, -1, -1, -1, sizeof(T)>;
 
-template<typename T, int N>
+template<typename T, int N, typename StrideType = int64_t>
 using TensorBatchNDWrap = std::conditional_t<
-    N == 1, TensorBatch1DWrap<T>,
-    std::conditional_t<N == 2, TensorBatch2DWrap<T>,
-                       std::conditional_t<N == 3, TensorBatch3DWrap<T>,
-                                          std::conditional_t<N == 4, TensorBatch4DWrap<T>,
-                                                             std::conditional_t<N == 5, TensorBatch5DWrap<T>, void>>>>>;
+    N == 1, TensorBatch1DWrap<T, StrideType>,
+    std::conditional_t<
+        N == 2, TensorBatch2DWrap<T, StrideType>,
+        std::conditional_t<N == 3, TensorBatch3DWrap<T, StrideType>,
+                           std::conditional_t<N == 4, TensorBatch4DWrap<T, StrideType>,
+                                              std::conditional_t<N == 5, TensorBatch5DWrap<T, StrideType>, void>>>>>;
 /**@}*/
 
 } // namespace nvcv::cuda

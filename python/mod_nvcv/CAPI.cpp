@@ -36,6 +36,19 @@ namespace nvcvpy::priv {
 
 namespace {
 
+// We need to catch any exceptions and set the appropriate PyError prior to crossing any C API boundry
+#define CATCH_RETURN_DEFAULT(return_value, error_message)                                          \
+    catch (const std::exception &e)                                                                \
+    {                                                                                              \
+        PyErr_SetString(PyExc_ValueError, (std::string(error_message) + ": " + e.what()).c_str()); \
+        return return_value;                                                                       \
+    }                                                                                              \
+    catch (...)                                                                                    \
+    {                                                                                              \
+        PyErr_SetString(PyExc_ValueError, error_message);                                          \
+        return return_value;                                                                       \
+    }
+
 template<class T>
 std::shared_ptr<T> ToSharedObj(PyObject *obj)
 {
@@ -50,34 +63,58 @@ T ToObj(PyObject *obj)
 
 extern "C" PyObject *ImplDataType_ToPython(NVCVDataType p)
 {
-    py::object obj = py::cast(nvcv::DataType(p));
-    return obj.ptr();
+    try
+    {
+        py::object obj = py::cast(nvcv::DataType(p));
+        return obj.ptr();
+    }
+    CATCH_RETURN_DEFAULT(nullptr, "Casting PyObject from NVCVDataType failed")
 }
 
 extern "C" NVCVDataType ImplDataType_FromPython(PyObject *obj)
 {
-    return ToObj<nvcv::DataType>(obj);
+    try
+    {
+        return ToObj<nvcv::DataType>(obj);
+    }
+    CATCH_RETURN_DEFAULT(0, "Casting nvcv::DataType from PyObject failed")
 }
 
 extern "C" PyObject *ImplImageFormat_ToPython(NVCVImageFormat p)
 {
-    py::object obj = py::cast(nvcv::ImageFormat(p));
-    return obj.ptr();
+    try
+    {
+        py::object obj = py::cast(nvcv::ImageFormat(p));
+        return obj.ptr();
+    }
+    CATCH_RETURN_DEFAULT(nullptr, "Casting PyObject from NVCVImageFormat failed")
 }
 
 extern "C" NVCVImageFormat ImplImageFormat_FromPython(PyObject *obj)
 {
-    return ToObj<nvcv::ImageFormat>(obj);
+    try
+    {
+        return ToObj<nvcv::ImageFormat>(obj);
+    }
+    CATCH_RETURN_DEFAULT(0, "Casting nvcv::ImageFormat from PyObject failed")
 }
 
 extern "C" NVCVTensorHandle ImplTensor_GetHandle(PyObject *obj)
 {
-    return ToSharedObj<Tensor>(obj)->impl().handle();
+    try
+    {
+        return ToSharedObj<Tensor>(obj)->impl().handle();
+    }
+    CATCH_RETURN_DEFAULT(0, "Getting Tensor handle from PyObject failed")
 }
 
 extern "C" NVCVArrayHandle ImplArray_GetHandle(PyObject *obj)
 {
-    return ToSharedObj<Array>(obj)->impl().handle();
+    try
+    {
+        return ToSharedObj<Array>(obj)->impl().handle();
+    }
+    CATCH_RETURN_DEFAULT(0, "Getting Array handle from PyObject failed")
 }
 
 LockMode ToLockMode(PyObject *_mode)
@@ -107,180 +144,273 @@ LockMode ToLockMode(PyObject *_mode)
 
 extern "C" void ImplResource_SubmitSync(PyObject *res, PyObject *stream)
 {
-    ToSharedObj<Resource>(res)->submitSync(*ToSharedObj<Stream>(stream));
+    try
+    {
+        ToSharedObj<Resource>(res)->submitSync(*ToSharedObj<Stream>(stream));
+    }
+    CATCH_RETURN_DEFAULT(, "Submit sync failed")
 }
 
 extern "C" void ImplStream_HoldResources(PyObject *stream, PyObject *resourceList)
 {
-    py::list resList = ToObj<py::list>(resourceList);
-
-    LockResources resVector;
-
-    for (py::handle h : resList)
+    try
     {
-        py::tuple t = h.cast<py::tuple>();
-        if (t.size() != 2)
+        py::list resList = ToObj<py::list>(resourceList);
+
+        LockResources resVector;
+
+        for (py::handle h : resList)
         {
-            throw std::runtime_error("ResourcePerMode tuple must have two elements");
+            py::tuple t = h.cast<py::tuple>();
+            if (t.size() != 2)
+            {
+                throw std::runtime_error("ResourcePerMode tuple must have two elements");
+            }
+
+            auto lockMode = ToLockMode(t[0].ptr());
+            auto res      = ToSharedObj<const Resource>(t[1].ptr());
+
+            resVector.emplace(lockMode, res);
         }
 
-        auto lockMode = ToLockMode(t[0].ptr());
-        auto res      = ToSharedObj<const Resource>(t[1].ptr());
-
-        resVector.emplace(lockMode, res);
+        ToSharedObj<Stream>(stream)->holdResources(std::move(resVector));
     }
-
-    ToSharedObj<Stream>(stream)->holdResources(std::move(resVector));
+    CATCH_RETURN_DEFAULT(, "Hold resources failed")
 }
 
 extern "C" PyObject *ImplStream_GetCurrent()
 {
-    return py::cast(Stream::Current().shared_from_this()).ptr();
+    try
+    {
+        return py::cast(Stream::Current().shared_from_this()).ptr();
+    }
+    CATCH_RETURN_DEFAULT(nullptr, "Get current stream failed")
 }
 
 extern "C" cudaStream_t ImplStream_GetCudaHandle(PyObject *stream)
 {
-    return ToSharedObj<Stream>(stream)->handle();
+    try
+    {
+        return ToSharedObj<Stream>(stream)->handle();
+    }
+    CATCH_RETURN_DEFAULT(0, "Get cuda handle failed")
 }
 
 extern "C" PyObject *ImplTensor_Create(int32_t ndim, const int64_t *shape, NVCVDataType dtype, NVCVTensorLayout layout,
                                        int32_t rowalign)
 {
-    std::optional<nvcv::TensorLayout> cxxLayout;
-    if (layout != NVCV_TENSOR_NONE)
+    try
     {
-        cxxLayout = nvcv::TensorLayout(layout);
+        std::optional<nvcv::TensorLayout> cxxLayout;
+        if (layout != NVCV_TENSOR_NONE)
+        {
+            cxxLayout = nvcv::TensorLayout(layout);
+        }
+
+        std::shared_ptr<Tensor> tensor = Tensor::Create(CreateShape(nvcv::TensorShape(shape, ndim, layout)),
+                                                        nvcv::DataType{dtype}, std::move(layout), rowalign);
+        return py::cast(std::move(tensor)).release().ptr();
     }
-
-    std::shared_ptr<Tensor> tensor = Tensor::Create(CreateShape(nvcv::TensorShape(shape, ndim, layout)),
-                                                    nvcv::DataType{dtype}, std::move(layout), rowalign);
-
-    return py::cast(std::move(tensor)).release().ptr();
+    CATCH_RETURN_DEFAULT(nullptr, "Tensor create failed")
 }
 
 extern "C" PyObject *ImplArray_Create(int64_t length, NVCVDataType dtype)
 {
-    std::shared_ptr<Array> array = Array::Create(length, nvcv::DataType{dtype});
+    try
+    {
+        std::shared_ptr<Array> array = Array::Create(length, nvcv::DataType{dtype});
 
-    return py::cast(std::move(array)).release().ptr();
+        return py::cast(std::move(array)).release().ptr();
+    }
+    CATCH_RETURN_DEFAULT(nullptr, "Array create failed")
 }
 
 extern "C" PyObject *ImplImageBatchVarShape_Create(int32_t capacity)
 {
-    std::shared_ptr<ImageBatchVarShape> varshape = ImageBatchVarShape::Create(capacity);
-    return py::cast(std::move(varshape)).release().ptr();
+    try
+    {
+        std::shared_ptr<ImageBatchVarShape> varshape = ImageBatchVarShape::Create(capacity);
+        return py::cast(std::move(varshape)).release().ptr();
+    }
+    CATCH_RETURN_DEFAULT(nullptr, "ImageBatchVarShape create failed")
 }
 
 extern "C" NVCVImageBatchHandle ImplImageBatchVarShape_GetHandle(PyObject *varshape)
 {
-    return ToSharedObj<ImageBatchVarShape>(varshape)->impl().handle();
+    try
+    {
+        return ToSharedObj<ImageBatchVarShape>(varshape)->impl().handle();
+    }
+    CATCH_RETURN_DEFAULT(0, "ImageBatchVarShape get handle failed")
 }
 
 extern "C" PyObject *ImplTensor_CreateForImageBatch(int32_t numImages, int32_t width, int32_t height,
                                                     NVCVImageFormat fmt, int32_t rowalign)
 {
-    std::shared_ptr<Tensor> tensor
-        = Tensor::CreateForImageBatch(numImages, {width, height}, nvcv::ImageFormat(fmt), rowalign);
-    return py::cast(std::move(tensor)).release().ptr();
+    try
+    {
+        std::shared_ptr<Tensor> tensor
+            = Tensor::CreateForImageBatch(numImages, {width, height}, nvcv::ImageFormat(fmt), rowalign);
+        return py::cast(std::move(tensor)).release().ptr();
+    }
+    CATCH_RETURN_DEFAULT(nullptr, "Tensor for ImageBatch create failed")
 }
 
 extern "C" void ImplImageBatchVarShape_PushBack(PyObject *varshape, PyObject *image)
 {
-    auto pimage = ToSharedObj<Image>(image);
-    return ToSharedObj<ImageBatchVarShape>(varshape)->pushBack(*pimage);
+    try
+    {
+        auto pimage = ToSharedObj<Image>(image);
+        return ToSharedObj<ImageBatchVarShape>(varshape)->pushBack(*pimage);
+    }
+    CATCH_RETURN_DEFAULT(, "ImageBatchVarShape push back failed")
 }
 
 extern "C" void ImplImageBatchVarShape_PopBack(PyObject *varshape, int32_t cnt)
 {
-    return ToSharedObj<ImageBatchVarShape>(varshape)->popBack(cnt);
+    try
+    {
+        return ToSharedObj<ImageBatchVarShape>(varshape)->popBack(cnt);
+    }
+    CATCH_RETURN_DEFAULT(, "ImageBatchVarShape pop back failed")
 }
 
 extern "C" void ImplImageBatchVarShape_Clear(PyObject *varshape)
 {
-    return ToSharedObj<ImageBatchVarShape>(varshape)->clear();
+    try
+    {
+        return ToSharedObj<ImageBatchVarShape>(varshape)->clear();
+    }
+    CATCH_RETURN_DEFAULT(, "ImageBatchVarShape clear failed")
 }
 
 extern "C" PyObject *ImplTensorBatch_Create(int32_t capacity)
 {
-    std::shared_ptr<TensorBatch> tensorBatch = TensorBatch::Create(capacity);
-    return py::cast(std::move(tensorBatch)).release().ptr();
+    try
+    {
+        std::shared_ptr<TensorBatch> tensorBatch = TensorBatch::Create(capacity);
+        return py::cast(std::move(tensorBatch)).release().ptr();
+    }
+    CATCH_RETURN_DEFAULT(nullptr, "TensorBatch create failed")
 }
 
 extern "C" NVCVTensorBatchHandle ImplTensorBatch_GetHandle(PyObject *tensorBatch)
 {
-    return ToSharedObj<TensorBatch>(tensorBatch)->impl().handle();
+    try
+    {
+        return ToSharedObj<TensorBatch>(tensorBatch)->impl().handle();
+    }
+    CATCH_RETURN_DEFAULT(0, "TensorBatch get handle failed")
 }
 
 extern "C" void ImplTensorBatch_PushBack(PyObject *tensorBatch, PyObject *tensor)
 {
-    auto ptensor = ToSharedObj<Tensor>(tensor);
-    ToSharedObj<TensorBatch>(tensorBatch)->pushBack(*ptensor);
+    try
+    {
+        auto ptensor = ToSharedObj<Tensor>(tensor);
+        ToSharedObj<TensorBatch>(tensorBatch)->pushBack(*ptensor);
+    }
+    CATCH_RETURN_DEFAULT(, "TensorBatch push back failed")
 }
 
 extern "C" void ImplTensorBatch_PopBack(PyObject *tensorBatch, uint32_t cnt)
 {
-    ToSharedObj<TensorBatch>(tensorBatch)->popBack(cnt);
+    try
+    {
+        ToSharedObj<TensorBatch>(tensorBatch)->popBack(cnt);
+    }
+    CATCH_RETURN_DEFAULT(, "TensorBatch pop back failed")
 }
 
 extern "C" void ImplTensorBatch_Clear(PyObject *tensorBatch)
 {
-    ToSharedObj<TensorBatch>(tensorBatch)->clear();
+    try
+    {
+        ToSharedObj<TensorBatch>(tensorBatch)->clear();
+    }
+    CATCH_RETURN_DEFAULT(, "TensorBatch clear failed")
 }
 
 extern "C" void ImplCache_Add(ICacheItem *extItem)
 {
-    auto item = std::make_shared<ExternalCacheItem>(extItem->shared_from_this());
-    Cache::Instance().add(*item);
+    try
+    {
+        auto item = std::make_shared<ExternalCacheItem>(extItem->shared_from_this());
+        Cache::Instance().add(*item);
+    }
+    CATCH_RETURN_DEFAULT(, "Cache add item failed")
 }
 
 extern "C" ICacheItem **ImplCache_Fetch(const IKey *pkey)
 {
-    NVCV_ASSERT(pkey != nullptr);
-
-    std::vector<std::shared_ptr<priv::CacheItem>> vcont = Cache::Instance().fetch(*pkey);
-
-    std::unique_ptr<nvcvpy::ICacheItem *[]> out(new ICacheItem *[vcont.size() + 1]);
-    for (size_t i = 0; i < vcont.size(); ++i)
+    try
     {
-        ExternalCacheItem *extItem = dynamic_cast<ExternalCacheItem *>(vcont[i].get());
-        NVCV_ASSERT(extItem != nullptr);
+        NVCV_ASSERT(pkey != nullptr);
 
-        out[i] = extItem->obj.get();
+        std::vector<std::shared_ptr<priv::CacheItem>> vcont = Cache::Instance().fetch(*pkey);
+
+        std::unique_ptr<nvcvpy::ICacheItem *[]> out(new ICacheItem *[vcont.size() + 1]);
+        for (size_t i = 0; i < vcont.size(); ++i)
+        {
+            ExternalCacheItem *extItem = dynamic_cast<ExternalCacheItem *>(vcont[i].get());
+            NVCV_ASSERT(extItem != nullptr);
+
+            out[i] = extItem->obj.get();
+        }
+        out[vcont.size()] = nullptr; // end of list
+
+        return out.release();
     }
-    out[vcont.size()] = nullptr; // end of list
-
-    return out.release();
+    CATCH_RETURN_DEFAULT(nullptr, "Cache add fetch failed")
 }
 
 extern "C" PyObject *ImplImage_Create(int32_t width, int32_t height, NVCVImageFormat fmt, int32_t rowAlign)
 {
-    std::shared_ptr<Image> img = Image::Create({width, height}, nvcv::ImageFormat{fmt}, rowAlign);
-    return py::cast(std::move(img)).release().ptr();
+    try
+    {
+        std::shared_ptr<Image> img = Image::Create({width, height}, nvcv::ImageFormat{fmt}, rowAlign);
+        return py::cast(std::move(img)).release().ptr();
+    }
+    CATCH_RETURN_DEFAULT(nullptr, "Image create failed")
 }
 
 extern "C" NVCVImageHandle ImplImage_GetHandle(PyObject *img)
 {
-    return ToSharedObj<Image>(img)->impl().handle();
+    try
+    {
+        return ToSharedObj<Image>(img)->impl().handle();
+    }
+    CATCH_RETURN_DEFAULT(0, "Image get handle failed")
 }
 
 extern "C" PyObject *ImplContainer_Create(nvcvpy::Container *pcont)
 {
-    NVCV_ASSERT(pcont != nullptr);
-    auto cont = std::make_shared<ExternalContainer>(*pcont);
+    try
+    {
+        NVCV_ASSERT(pcont != nullptr);
+        auto cont = std::make_shared<ExternalContainer>(*pcont);
 
-    py::object ocont = py::cast(cont);
-    return ocont.release().ptr();
+        py::object ocont = py::cast(cont);
+        return ocont.release().ptr();
+    }
+    CATCH_RETURN_DEFAULT(nullptr, "Container create failed")
 }
 
 extern "C" void ImplCache_RemoveAllNotInUseMatching(const IKey *pkey)
 {
-    NVCV_ASSERT(pkey != nullptr);
+    try
+    {
+        NVCV_ASSERT(pkey != nullptr);
 
-    Cache::Instance().removeAllNotInUseMatching(*pkey);
+        Cache::Instance().removeAllNotInUseMatching(*pkey);
+    }
+    CATCH_RETURN_DEFAULT(, "Cache cleanup failed when removing all not in use matching")
 }
 
 } // namespace
 
+// Note these functions will set a PyError if an exception is thrown, this must be then checked by calling
+// CheckCAPIError() before returning to Python.
 void ExportCAPI(py::module &m)
 {
     static CAPI capi = {

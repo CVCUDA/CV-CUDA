@@ -17,7 +17,7 @@
 .. _imagebatchdecoder_nvcodec:
 
 Image Decoding using nvImageCodec
-====================
+=================================
 
 
 The image batch decoder is responsible for parsing the input expression, reading and decoding image data. The actual decoding is done in batches using the library `nvImageCodec <https://github.com/NVIDIA/nvImageCodec>`_. Although used in the semantic segmentation sample, this image decoder is generic enough to be used in other applications. The code associated with this class can be found in the ``samples/common/python/nvcodec_utils.py`` file.

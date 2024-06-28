@@ -51,11 +51,14 @@ __global__ void warp(SrcWrapper src, DstWrapper dst, int2 dstSize, Transform tra
 template<class Transform, typename T, NVCVBorderType B, NVCVInterpolationType I>
 struct WarpDispatcher
 {
-    static void call(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, Transform transform,
-                     const float4 &borderValue, cudaStream_t stream)
+    static ErrorCode call(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                          Transform transform, const float4 &borderValue, cudaStream_t stream)
     {
         auto outAccess = TensorDataAccessStridedImagePlanar::Create(outData);
         NVCV_ASSERT(outAccess);
+
+        auto inAccess = TensorDataAccessStridedImagePlanar::Create(outData);
+        NVCV_ASSERT(inAccess);
 
         const int2 dstSize{outAccess->numCols(), outAccess->numRows()};
         const int  batchSize{static_cast<int>(outAccess->numSamples())};
@@ -65,22 +68,34 @@ struct WarpDispatcher
 
         auto bVal = cuda::StaticCast<cuda::BaseType<T>>(cuda::DropCast<cuda::NumElements<T>>(borderValue));
 
-        auto src = cuda::CreateInterpolationWrapNHW<const T, B, I>(inData, bVal);
-        auto dst = cuda::CreateTensorWrapNHW<T>(outData);
-
         int smem_size = 9 * sizeof(float);
 
-        warp<Transform><<<grid, block, smem_size, stream>>>(src, dst, dstSize, transform);
+        int64_t srcMaxStride = inAccess->sampleStride() * batchSize;
+        int64_t dstMaxStride = outAccess->sampleStride() * batchSize;
+
+        if (std::max(srcMaxStride, dstMaxStride) <= cuda::TypeTraits<int32_t>::max)
+        {
+            auto src = cuda::CreateInterpolationWrapNHW<const T, B, I, int32_t>(inData, bVal);
+            auto dst = cuda::CreateTensorWrapNHW<T, int32_t>(outData);
+
+            warp<Transform><<<grid, block, smem_size, stream>>>(src, dst, dstSize, transform);
+        }
+        else
+        {
+            LOG_ERROR("Input or output size exceeds " << cuda::TypeTraits<int32_t>::max << ". Tensor is too large.");
+            return ErrorCode::INVALID_PARAMETER;
+        }
         checkKernelErrors();
+        return ErrorCode::SUCCESS;
     }
 };
 
 template<class Transform, typename T>
-void warp_caller(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, Transform transform,
-                 int interpolation, int borderMode, const float4 &borderValue, cudaStream_t stream)
+ErrorCode warp_caller(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, Transform transform,
+                      int interpolation, int borderMode, const float4 &borderValue, cudaStream_t stream)
 {
-    typedef void (*func_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
-                           Transform transform, const float4 &borderValue, cudaStream_t stream);
+    typedef ErrorCode (*func_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                                Transform transform, const float4 &borderValue, cudaStream_t stream);
 
     static const func_t funcs[3][5] = {
         {WarpDispatcher<Transform, T, NVCV_BORDER_CONSTANT, NVCV_INTERP_NEAREST>::call,
@@ -100,23 +115,25 @@ void warp_caller(const TensorDataStridedCuda &inData, const TensorDataStridedCud
          WarpDispatcher<Transform, T, NVCV_BORDER_REFLECT101,   NVCV_INTERP_CUBIC>::call},
     };
 
-    funcs[interpolation][borderMode](inData, outData, transform, borderValue, stream);
+    return funcs[interpolation][borderMode](inData, outData, transform, borderValue, stream);
 }
 
 template<typename T>
-void warpAffine(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
-                WarpAffineTransform transform, const int interpolation, int borderMode, const float4 &borderValue,
-                cudaStream_t stream)
-{
-    warp_caller<WarpAffineTransform, T>(inData, outData, transform, interpolation, borderMode, borderValue, stream);
-}
-
-template<typename T>
-void warpPerspective(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
-                     PerspectiveTransform transform, const int interpolation, int borderMode, const float4 &borderValue,
+ErrorCode warpAffine(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                     WarpAffineTransform transform, const int interpolation, int borderMode, const float4 &borderValue,
                      cudaStream_t stream)
 {
-    warp_caller<PerspectiveTransform, T>(inData, outData, transform, interpolation, borderMode, borderValue, stream);
+    return warp_caller<WarpAffineTransform, T>(inData, outData, transform, interpolation, borderMode, borderValue,
+                                               stream);
+}
+
+template<typename T>
+ErrorCode warpPerspective(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                          PerspectiveTransform transform, const int interpolation, int borderMode,
+                          const float4 &borderValue, cudaStream_t stream)
+{
+    return warp_caller<PerspectiveTransform, T>(inData, outData, transform, interpolation, borderMode, borderValue,
+                                                stream);
 }
 
 static void invertMat(const float *M, float *h_aCoeffs)
@@ -149,7 +166,7 @@ ErrorCode WarpAffine::infer(const TensorDataStridedCuda &inData, const TensorDat
 
     if (!(format == kNHWC || format == kHWC))
     {
-        LOG_ERROR("Invalid DataFormat " << format);
+        LOG_ERROR("Invalid input DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
@@ -181,9 +198,9 @@ ErrorCode WarpAffine::infer(const TensorDataStridedCuda &inData, const TensorDat
                 || borderMode == NVCV_BORDER_CONSTANT || borderMode == NVCV_BORDER_REFLECT
                 || borderMode == NVCV_BORDER_WRAP);
 
-    typedef void (*func_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
-                           WarpAffineTransform transform, const int interpolation, int borderMode,
-                           const float4 &borderValue, cudaStream_t stream);
+    typedef ErrorCode (*func_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                                WarpAffineTransform transform, const int interpolation, int borderMode,
+                                const float4 &borderValue, cudaStream_t stream);
 
     static const func_t funcs[6][4] = {
         { warpAffine<uchar1>, 0,  warpAffine<uchar3>,  warpAffine<uchar4>},
@@ -211,9 +228,7 @@ ErrorCode WarpAffine::infer(const TensorDataStridedCuda &inData, const TensorDat
         invertMat(xform, transform.xform);
     }
 
-    func(inData, outData, transform, interpolation, borderMode, borderValue, stream);
-
-    return ErrorCode::SUCCESS;
+    return func(inData, outData, transform, interpolation, borderMode, borderValue, stream);
 }
 
 ErrorCode WarpPerspective::infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
@@ -233,7 +248,7 @@ ErrorCode WarpPerspective::infer(const TensorDataStridedCuda &inData, const Tens
 
     if (!(format == kNHWC || format == kHWC))
     {
-        LOG_ERROR("Invalid DataFormat " << format);
+        LOG_ERROR("Invalid input DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
@@ -265,9 +280,9 @@ ErrorCode WarpPerspective::infer(const TensorDataStridedCuda &inData, const Tens
                 || borderMode == NVCV_BORDER_CONSTANT || borderMode == NVCV_BORDER_REFLECT
                 || borderMode == NVCV_BORDER_WRAP);
 
-    typedef void (*func_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
-                           PerspectiveTransform transform, const int interpolation, int borderMode,
-                           const float4 &borderValue, cudaStream_t stream);
+    typedef ErrorCode (*func_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                                PerspectiveTransform transform, const int interpolation, int borderMode,
+                                const float4 &borderValue, cudaStream_t stream);
 
     static const func_t funcs[6][4] = {
         {      warpPerspective<uchar1>,  0 /*warpPerspective<uchar2>*/,      warpPerspective<uchar3>,warpPerspective<uchar4>                                                                                                     },
@@ -296,9 +311,7 @@ ErrorCode WarpPerspective::infer(const TensorDataStridedCuda &inData, const Tens
         tempMatrixForInverse.store(transform.xform);
     }
 
-    func(inData, outData, transform, interpolation, borderMode, borderValue, stream);
-
-    return ErrorCode::SUCCESS;
+    return func(inData, outData, transform, interpolation, borderMode, borderValue, stream);
 }
 
 } // namespace nvcv::legacy::cuda_op

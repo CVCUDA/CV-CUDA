@@ -20,6 +20,7 @@ shopt -s extglob
 # Defaults
 test_set="all"
 curdir=$(dirname "$(readlink -f "$0")")
+failure_sets=""
 
 if [[ $# -ge 1 ]]; then
     test_set=$1
@@ -30,6 +31,10 @@ IFS="," read -r -a test_set <<< "$test_set"
 function on_exit()
 {
     set +e
+    if [ -n "$failure_sets" ]; then
+        echo Tests FAILED: ${failure_sets:1}
+        exit 1
+    fi
 }
 
 function on_error()
@@ -57,7 +62,12 @@ function run()
     do
         if [ "$testgroup" == "$test" ] || [ "$test" == "all" ];then
             echo "Running $testexec test suite..."
+            set +e
             NVCV_LEAK_DETECTION=abort "$curdir/$testexec"
+            if [ $? -ne 0 ]; then
+                failure_sets=$failure_sets,$testexec
+            fi
+            set -e
             return
         fi
     done

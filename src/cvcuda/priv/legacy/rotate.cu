@@ -54,7 +54,7 @@ __global__ void rotate(SrcWrapper src, DstWrapper dst, int2 dstSize, const doubl
                           static_cast<float>(dst_x_shift * (-d_aCoeffs[3]) + dst_y_shift * d_aCoeffs[4]),
                           static_cast<float>(dstCoord.z)};
 
-    const int2 srcSize{src.borderWrap().tensorShape()[1], src.borderWrap().tensorShape()[0]};
+    const long2 srcSize{src.borderWrap().tensorShape()[1], src.borderWrap().tensorShape()[0]};
 
     if (srcCoord.x > -0.5 && srcCoord.x < srcSize.x && srcCoord.y > -0.5 && srcCoord.y < srcSize.y)
     {
@@ -63,11 +63,14 @@ __global__ void rotate(SrcWrapper src, DstWrapper dst, int2 dstSize, const doubl
 }
 
 template<typename T, NVCVInterpolationType I>
-void rotate(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, double *d_aCoeffs,
-            const double angleDeg, const double2 shift, cudaStream_t stream)
+ErrorCode rotate(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, double *d_aCoeffs,
+                 const double angleDeg, const double2 shift, cudaStream_t stream)
 {
     auto outAccess = TensorDataAccessStridedImagePlanar::Create(outData);
     NVCV_ASSERT(outAccess);
+
+    auto inAccess = TensorDataAccessStridedImagePlanar::Create(inData);
+    NVCV_ASSERT(inAccess);
 
     const int2 dstSize{outAccess->numCols(), outAccess->numRows()};
     const int  batchSize{static_cast<int>(outAccess->numSamples())};
@@ -78,40 +81,48 @@ void rotate(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &ou
     dim3 blockSize(BLOCK, BLOCK / 4, 1);
     dim3 gridSize(divUp(dstSize.x, blockSize.x), divUp(dstSize.y, blockSize.y), batchSize);
 
-    auto src = cuda::CreateInterpolationWrapNHW<const T, NVCV_BORDER_REPLICATE, I>(inData);
-    auto dst = cuda::CreateTensorWrapNHW<T>(outData);
+    int64_t inMaxStride  = inAccess->sampleStride() * inAccess->numSamples();
+    int64_t outMaxStride = outAccess->sampleStride() * outAccess->numSamples();
+    if (std::max(inMaxStride, outMaxStride) <= cuda::TypeTraits<int32_t>::max)
+    {
+        auto src = cuda::CreateInterpolationWrapNHW<const T, NVCV_BORDER_REPLICATE, I, int32_t>(inData);
+        auto dst = cuda::CreateTensorWrapNHW<T, int32_t>(outData);
 
-    rotate<<<gridSize, blockSize, 0, stream>>>(src, dst, dstSize, d_aCoeffs);
-
+        rotate<<<gridSize, blockSize, 0, stream>>>(src, dst, dstSize, d_aCoeffs);
+    }
+    else
+    {
+        LOG_ERROR("Input or output size exceeds " << cuda::TypeTraits<int32_t>::max << ". Tensor is too large.");
+        return ErrorCode::INVALID_PARAMETER;
+    }
     checkKernelErrors();
 
 #ifdef CUDA_DEBUG_LOG
     checkCudaErrors(cudaStreamSynchronize(stream));
     checkCudaErrors(cudaGetLastError());
 #endif
+    return ErrorCode::SUCCESS;
 }
 
 template<typename T> // uchar3 float3 uchar1 float3
-void rotate(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, double *d_aCoeffs,
-            const double angleDeg, const double2 shift, const NVCVInterpolationType interpolation, cudaStream_t stream)
+ErrorCode rotate(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, double *d_aCoeffs,
+                 const double angleDeg, const double2 shift, const NVCVInterpolationType interpolation,
+                 cudaStream_t stream)
 {
     switch (interpolation)
     {
     case NVCV_INTERP_NEAREST:
-        rotate<T, NVCV_INTERP_NEAREST>(inData, outData, d_aCoeffs, angleDeg, shift, stream);
-        break;
+        return rotate<T, NVCV_INTERP_NEAREST>(inData, outData, d_aCoeffs, angleDeg, shift, stream);
 
     case NVCV_INTERP_LINEAR:
-        rotate<T, NVCV_INTERP_LINEAR>(inData, outData, d_aCoeffs, angleDeg, shift, stream);
-        break;
+        return rotate<T, NVCV_INTERP_LINEAR>(inData, outData, d_aCoeffs, angleDeg, shift, stream);
 
     case NVCV_INTERP_CUBIC:
-        rotate<T, NVCV_INTERP_CUBIC>(inData, outData, d_aCoeffs, angleDeg, shift, stream);
-        break;
+        return rotate<T, NVCV_INTERP_CUBIC>(inData, outData, d_aCoeffs, angleDeg, shift, stream);
 
     default:
         LOG_ERROR("Invalid rotate interpolation " << interpolation);
-        break;
+        return ErrorCode::INVALID_PARAMETER;
     }
 }
 
@@ -163,7 +174,7 @@ ErrorCode Rotate::infer(const TensorDataStridedCuda &inData, const TensorDataStr
 
     if (!(format == kNHWC || format == kHWC))
     {
-        LOG_ERROR("Invalid DataFormat " << format);
+        LOG_ERROR("Invalid input DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
@@ -194,9 +205,9 @@ ErrorCode Rotate::infer(const TensorDataStridedCuda &inData, const TensorDataStr
         return ErrorCode::INVALID_PARAMETER;
     }
 
-    typedef void (*func_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, double *d_aCoeffs,
-                           const double angleDeg, const double2 shift, const NVCVInterpolationType interpolation,
-                           cudaStream_t stream);
+    typedef ErrorCode (*func_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                                double *d_aCoeffs, const double angleDeg, const double2 shift,
+                                const NVCVInterpolationType interpolation, cudaStream_t stream);
 
     static const func_t funcs[6][4] = {
         {      rotate<uchar>,  0 /*rotate<uchar2>*/,      rotate<uchar3>,      rotate<uchar4>},
@@ -210,9 +221,7 @@ ErrorCode Rotate::infer(const TensorDataStridedCuda &inData, const TensorDataStr
     const func_t func = funcs[data_type][channels - 1];
     NVCV_ASSERT(func != 0);
 
-    func(inData, outData, d_aCoeffs, angleDeg, shift, interpolation, stream);
-
-    return SUCCESS;
+    return func(inData, outData, d_aCoeffs, angleDeg, shift, interpolation, stream);
 }
 
 } // namespace nvcv::legacy::cuda_op

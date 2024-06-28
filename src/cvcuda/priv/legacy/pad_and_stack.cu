@@ -42,13 +42,11 @@ __global__ void padAndStack(SrcWrapper src, DstWrapper dst, VecWrapper topVec, V
 }
 
 template<typename T, NVCVBorderType B>
-void padAndStackCaller(const ImageBatchVarShapeDataStridedCuda &inData, const TensorDataStridedCuda &outData,
-                       const TensorDataStridedCuda &top, const TensorDataStridedCuda &left, const float borderValue,
-                       cudaStream_t stream)
+ErrorCode padAndStackCaller(const ImageBatchVarShapeDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                            const TensorDataStridedCuda &top, const TensorDataStridedCuda &left,
+                            const float borderValue, cudaStream_t stream)
 {
     cuda::BorderVarShapeWrap<const T, B> src(inData, cuda::SetAll<T>(borderValue));
-
-    auto dst = cuda::CreateTensorWrapNHW<T>(outData);
 
     auto topVec  = cuda::CreateTensorWrapNHW<const int>(top);
     auto leftVec = cuda::CreateTensorWrapNHW<const int>(left);
@@ -61,24 +59,35 @@ void padAndStackCaller(const ImageBatchVarShapeDataStridedCuda &inData, const Te
     dim3 block(16, 16);
     dim3 grid(divUp(dstSize.x, block.x), divUp(dstSize.y, block.y), outAccess->numSamples());
 
-    padAndStack<<<grid, block, 0, stream>>>(src, dst, topVec, leftVec, dstSize);
+    if (outAccess->sampleStride() * outAccess->numSamples() <= cuda::TypeTraits<int32_t>::max)
+    {
+        auto dst = cuda::CreateTensorWrapNHW<T, int32_t>(outData);
+        padAndStack<<<grid, block, 0, stream>>>(src, dst, topVec, leftVec, dstSize);
+    }
+    else
+    {
+        LOG_ERROR("Output size exceeds " << cuda::TypeTraits<int32_t>::max << ". Tensor is too large.");
+        return ErrorCode::INVALID_PARAMETER;
+    }
+    return ErrorCode::SUCCESS;
 }
 
 template<typename T>
-void padAndStack(const ImageBatchVarShapeDataStridedCuda &inData, const TensorDataStridedCuda &outData,
-                 const TensorDataStridedCuda &top, const TensorDataStridedCuda &left, const NVCVBorderType borderMode,
-                 const float borderValue, cudaStream_t stream)
+ErrorCode padAndStack(const ImageBatchVarShapeDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                      const TensorDataStridedCuda &top, const TensorDataStridedCuda &left,
+                      const NVCVBorderType borderMode, const float borderValue, cudaStream_t stream)
 {
-    typedef void (*padAndStack_caller)(const ImageBatchVarShapeDataStridedCuda &inData,
-                                       const TensorDataStridedCuda &outData, const TensorDataStridedCuda &top,
-                                       const TensorDataStridedCuda &left, const float borderValue, cudaStream_t stream);
+    typedef ErrorCode (*padAndStack_caller)(const ImageBatchVarShapeDataStridedCuda &inData,
+                                            const TensorDataStridedCuda &outData, const TensorDataStridedCuda &top,
+                                            const TensorDataStridedCuda &left, const float borderValue,
+                                            cudaStream_t stream);
 
     static const padAndStack_caller funcs[]
         = {padAndStackCaller<T, NVCV_BORDER_CONSTANT>, padAndStackCaller<T, NVCV_BORDER_REPLICATE>,
            padAndStackCaller<T, NVCV_BORDER_REFLECT>, padAndStackCaller<T, NVCV_BORDER_WRAP>,
            padAndStackCaller<T, NVCV_BORDER_REFLECT101>};
 
-    funcs[borderMode](inData, outData, top, left, borderValue, stream);
+    return funcs[borderMode](inData, outData, top, left, borderValue, stream);
 }
 
 ErrorCode PadAndStack::infer(const ImageBatchVarShapeDataStridedCuda &inData, const TensorDataStridedCuda &outData,
@@ -90,7 +99,7 @@ ErrorCode PadAndStack::infer(const ImageBatchVarShapeDataStridedCuda &inData, co
 
     if (!(format == kNHWC || format == kHWC))
     {
-        LOG_ERROR("Invalid DataFormat " << format);
+        LOG_ERROR("Invalid input DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
@@ -156,9 +165,9 @@ ErrorCode PadAndStack::infer(const ImageBatchVarShapeDataStridedCuda &inData, co
         return ErrorCode::INVALID_DATA_SHAPE;
     }
 
-    typedef void (*func_t)(const ImageBatchVarShapeDataStridedCuda &inData, const TensorDataStridedCuda &outData,
-                           const TensorDataStridedCuda &top, const TensorDataStridedCuda &left,
-                           const NVCVBorderType borderMode, const float borderValue, cudaStream_t stream);
+    typedef ErrorCode (*func_t)(const ImageBatchVarShapeDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                                const TensorDataStridedCuda &top, const TensorDataStridedCuda &left,
+                                const NVCVBorderType borderMode, const float borderValue, cudaStream_t stream);
 
     static const func_t funcs[6][4] = {
         { padAndStack<uchar1>, padAndStack<uchar2>,  padAndStack<uchar3>,  padAndStack<uchar4>},
@@ -172,9 +181,7 @@ ErrorCode PadAndStack::infer(const ImageBatchVarShapeDataStridedCuda &inData, co
     const func_t func = funcs[data_type][channels - 1];
     NVCV_ASSERT(func != 0);
 
-    func(inData, outData, top, left, borderMode, borderValue, stream);
-
-    return SUCCESS;
+    return func(inData, outData, top, left, borderMode, borderValue, stream);
 }
 
 } // namespace nvcv::legacy::cuda_op

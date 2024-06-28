@@ -42,11 +42,13 @@ public:
 
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const NVCVSize2D resizeDim,
                     const NVCVInterpolationType interpolation, const int2 cropPos,
-                    const NVCVChannelManip manip = NVCV_CHANNEL_NO_OP) const;
+                    const NVCVChannelManip manip = NVCV_CHANNEL_NO_OP, const float scale = 1, const float offset = 0,
+                    const bool srcCast = true) const;
 
     void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::Tensor &out,
                     const NVCVSize2D resizeDim, const NVCVInterpolationType interpolation, const int2 cropPos,
-                    const NVCVChannelManip manip = NVCV_CHANNEL_NO_OP) const;
+                    const NVCVChannelManip manip = NVCV_CHANNEL_NO_OP, const float scale = 1, const float offset = 0,
+                    const bool srcCast = true) const;
 };
 
 } // namespace cvcuda::priv

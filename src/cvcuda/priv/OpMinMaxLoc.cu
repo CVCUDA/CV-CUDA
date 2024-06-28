@@ -571,15 +571,15 @@ inline void RunMinMaxLocForType(cudaStream_t stream, const DataStridedCuda &inDa
 
     if (minValData && maxValData)
     {
-        cuda::Tensor1DWrap<OutputType<T>> minWrap(minValData->get().basePtr());
-        cuda::Tensor1DWrap<OutputType<T>> maxWrap(maxValData->get().basePtr());
+        cuda::Tensor1DWrap<OutputType<T>, int32_t> minWrap(minValData->get().basePtr());
+        cuda::Tensor1DWrap<OutputType<T>, int32_t> maxWrap(maxValData->get().basePtr());
 
         auto outWrap = OutputWrapper(minWrap, maxWrap);
 
-        cuda::Tensor2DWrap<int2> minLocWrap(minLocData->get().basePtr(), (int)minLocData->get().stride(0));
-        cuda::Tensor2DWrap<int2> maxLocWrap(maxLocData->get().basePtr(), (int)maxLocData->get().stride(0));
-        cuda::Tensor1DWrap<int1> numMinWrap(numMinData->get().basePtr());
-        cuda::Tensor1DWrap<int1> numMaxWrap(numMaxData->get().basePtr());
+        cuda::Tensor2DWrap<int2, int32_t> minLocWrap(minLocData->get().basePtr(), (int)minLocData->get().stride(0));
+        cuda::Tensor2DWrap<int2, int32_t> maxLocWrap(maxLocData->get().basePtr(), (int)maxLocData->get().stride(0));
+        cuda::Tensor1DWrap<int1, int32_t> numMinWrap(numMinData->get().basePtr());
+        cuda::Tensor1DWrap<int1, int32_t> numMaxWrap(numMaxData->get().basePtr());
 
         int minLocCapacity = minLocData->get().shape(GetCapacityIdx(minLocData->get().rank()));
         int maxLocCapacity = maxLocData->get().shape(GetCapacityIdx(maxLocData->get().rank()));
@@ -597,12 +597,12 @@ inline void RunMinMaxLocForType(cudaStream_t stream, const DataStridedCuda &inDa
     }
     else if (minValData)
     {
-        cuda::Tensor1DWrap<OutputType<T>> minWrap(minValData->get().basePtr());
+        cuda::Tensor1DWrap<OutputType<T>, int32_t> minWrap(minValData->get().basePtr());
 
         auto outWrap = OutputWrapper(minWrap);
 
-        cuda::Tensor2DWrap<int2> minLocWrap(minLocData->get().basePtr(), (int)minLocData->get().stride(0));
-        cuda::Tensor1DWrap<int1> numMinWrap(numMinData->get().basePtr());
+        cuda::Tensor2DWrap<int2, int32_t> minLocWrap(minLocData->get().basePtr(), (int)minLocData->get().stride(0));
+        cuda::Tensor1DWrap<int1, int32_t> numMinWrap(numMinData->get().basePtr());
 
         int minLocCapacity = minLocData->get().shape(GetCapacityIdx(minLocData->get().rank()));
 
@@ -618,12 +618,12 @@ inline void RunMinMaxLocForType(cudaStream_t stream, const DataStridedCuda &inDa
     }
     else if (maxValData)
     {
-        cuda::Tensor1DWrap<OutputType<T>> maxWrap(maxValData->get().basePtr());
+        cuda::Tensor1DWrap<OutputType<T>, int32_t> maxWrap(maxValData->get().basePtr());
 
         auto outWrap = OutputWrapper(maxWrap);
 
-        cuda::Tensor2DWrap<int2> maxLocWrap(maxLocData->get().basePtr(), (int)maxLocData->get().stride(0));
-        cuda::Tensor1DWrap<int1> numMaxWrap(numMaxData->get().basePtr());
+        cuda::Tensor2DWrap<int2, int32_t> maxLocWrap(maxLocData->get().basePtr(), (int)maxLocData->get().stride(0));
+        cuda::Tensor1DWrap<int1, int32_t> numMaxWrap(numMaxData->get().basePtr());
 
         int maxLocCapacity = maxLocData->get().shape(GetCapacityIdx(maxLocData->get().rank()));
 

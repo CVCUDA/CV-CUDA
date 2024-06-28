@@ -46,11 +46,13 @@ public:
 
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const NVCVSize2D resizeDim,
                     const NVCVInterpolationType interpolation, const int2 cropPos,
-                    const NVCVChannelManip manip = NVCV_CHANNEL_NO_OP);
+                    const NVCVChannelManip manip = NVCV_CHANNEL_NO_OP, const float scale = 1, const float offset = 0,
+                    const bool srcCast = true);
 
     void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::Tensor &out,
                     const NVCVSize2D resizeDim, const NVCVInterpolationType interpolation, const int2 cropPos,
-                    const NVCVChannelManip manip = NVCV_CHANNEL_NO_OP);
+                    const NVCVChannelManip manip = NVCV_CHANNEL_NO_OP, const float scale = 1, const float offset = 0,
+                    const bool srcCast = true);
 
     virtual NVCVOperatorHandle handle() const noexcept override;
 
@@ -72,19 +74,21 @@ inline ResizeCropConvertReformat::~ResizeCropConvertReformat()
 
 inline void ResizeCropConvertReformat::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                                                   const NVCVSize2D resizeDim, const NVCVInterpolationType interpolation,
-                                                  const int2 cropPos, const NVCVChannelManip manip)
+                                                  const int2 cropPos, const NVCVChannelManip manip, const float scale,
+                                                  const float offset, const bool srcCast)
 {
-    nvcv::detail::CheckThrow(cvcudaResizeCropConvertReformatSubmit(m_handle, stream, in.handle(), out.handle(),
-                                                                   resizeDim, interpolation, cropPos, manip));
+    nvcv::detail::CheckThrow(cvcudaResizeCropConvertReformatSubmit(
+        m_handle, stream, in.handle(), out.handle(), resizeDim, interpolation, cropPos, manip, scale, offset, srcCast));
 }
 
 inline void ResizeCropConvertReformat::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
                                                   const nvcv::Tensor &out, const NVCVSize2D resizeDim,
                                                   const NVCVInterpolationType interpolation, const int2 cropPos,
-                                                  const NVCVChannelManip manip)
+                                                  const NVCVChannelManip manip, const float scale, const float offset,
+                                                  const bool srcCast)
 {
-    nvcv::detail::CheckThrow(cvcudaResizeCropConvertReformatVarShapeSubmit(m_handle, stream, in.handle(), out.handle(),
-                                                                           resizeDim, interpolation, cropPos, manip));
+    nvcv::detail::CheckThrow(cvcudaResizeCropConvertReformatVarShapeSubmit(
+        m_handle, stream, in.handle(), out.handle(), resizeDim, interpolation, cropPos, manip, scale, offset, srcCast));
 }
 
 inline NVCVOperatorHandle ResizeCropConvertReformat::handle() const noexcept

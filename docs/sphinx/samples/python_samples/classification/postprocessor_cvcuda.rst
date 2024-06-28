@@ -14,10 +14,10 @@
    # See the License for the specific language governing permissions and
    # limitations under the License.
 
-.. _preprocessor_cvcuda:
+.. _postprocessor_cvcuda_classification:
 
 Classification Post-processing Pipeline
-====================
+=======================================
 
 The classification post processing pipeline is a relatively lightweight one with sorting being the only operation happening in it.
 

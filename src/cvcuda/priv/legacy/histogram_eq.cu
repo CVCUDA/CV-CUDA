@@ -178,7 +178,7 @@ HistogramEq::HistogramEq(int maxBatchSize)
     if (maxBatchSize < 0)
     {
         LOG_ERROR("Invalid num of max batch size " << maxBatchSize);
-        throw std::runtime_error("Parameter error!");
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "maxBatchSize must be >= 0");
     }
 
     m_maxBatchSize    = maxBatchSize;
@@ -199,6 +199,63 @@ HistogramEq::~HistogramEq()
         cudaFree(m_histoArray);
         m_histoArray = nullptr;
     }
+}
+
+template<typename SrcWrap, typename DstWrap, typename HistWrap>
+ErrorCode infer_histogram(SrcWrap src, DstWrap dst, HistWrap histo, int batch, nvcv::Size2D dstSize, int channels,
+                          cudaStream_t stream)
+{
+    {
+        //compute the histogram for each image in the batch into m_histoArray
+        int bsX = 32; //1024 ( 4 ch of 256 bins)
+        int bsY = 32;
+
+        switch (channels)
+        {
+        case 1:
+            bsX = 16; // 256 (1 ch)
+            bsY = 16;
+            break;
+        case 2:
+            bsX = 32; // 512 (2 ch)
+            bsY = 16;
+            break;
+        case 3:
+            bsX = 32; // 768 (3 ch)
+            bsY = 24;
+            break;
+        default:
+            break;
+        }
+
+        // each block is going to be 256bins * channels = threads
+        dim3   histBlockSize(bsX, bsY, 1);
+        dim3   histGridSize(divUp(dstSize.w, histBlockSize.x), divUp(dstSize.h, histBlockSize.y), batch);
+        size_t sharedMemSize = 256 * channels * sizeof(int);
+        hist_kernel<<<histGridSize, histBlockSize, sharedMemSize, stream>>>(src, histo, channels, dstSize);
+        checkKernelErrors();
+    }
+
+    //compute cfd
+    {
+        int  bsX = 256;
+        int  bsY = 1;
+        int  bsZ = 1;
+        dim3 prefixSumBlockSize(bsX, bsY, bsZ);
+        dim3 prefixSumGridSize(channels, 1, batch);
+        prefix_sum_with_norm_kernel<<<prefixSumGridSize, prefixSumBlockSize, 0, stream>>>(histo, dstSize);
+        checkKernelErrors();
+    }
+
+    {
+        dim3 lookupBlockSize(32, 32, 1);
+        dim3 lookupGridSize(divUp(dstSize.w, lookupBlockSize.x), divUp(dstSize.h, lookupBlockSize.y), batch);
+        lookup<<<lookupGridSize, lookupBlockSize, 256 * channels * sizeof(int), stream>>>(src, dst, histo, channels,
+                                                                                          dstSize);
+        checkKernelErrors();
+    }
+
+    return ErrorCode::SUCCESS;
 }
 
 ErrorCode HistogramEq::infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
@@ -261,62 +318,24 @@ ErrorCode HistogramEq::infer(const TensorDataStridedCuda &inData, const TensorDa
     //clear the histogram.
     checkCudaErrors(cudaMemsetAsync(m_histoArray, 0, m_sizeOfHisto, stream));
 
-    auto src = nvcv::cuda::CreateTensorWrapNHWC<uchar>(inData);
-    auto dst = nvcv::cuda::CreateTensorWrapNHWC<uchar>(outData);
     // 2d wrap since its an array of [256 * channels] = width, height = samples
-    auto histo = nvcv::cuda::Tensor2DWrap<int>(m_histoArray, (int)(256 * channels * sizeof(int)));
+    auto histo = nvcv::cuda::Tensor2DWrap<int, int32_t>(m_histoArray, (int)(256 * channels * sizeof(int)));
 
+    int64_t srcMaxStride = inAccess->sampleStride() * inAccess->numSamples();
+    int64_t dstMaxStride = outAccess->sampleStride() * outAccess->numSamples();
+
+    if (std::max(srcMaxStride, dstMaxStride) <= cuda::TypeTraits<int32_t>::max)
     {
-        //compute the histogram for each image in the batch into m_histoArray
-        int bsX = 32; //1024 ( 4 ch of 256 bins)
-        int bsY = 32;
+        auto src = nvcv::cuda::CreateTensorWrapNHWC<uchar, int32_t>(inData);
+        auto dst = nvcv::cuda::CreateTensorWrapNHWC<uchar, int32_t>(outData);
 
-        switch (channels)
-        {
-        case 1:
-            bsX = 16; // 256 (1 ch)
-            bsY = 16;
-            break;
-        case 2:
-            bsX = 32; // 512 (2 ch)
-            bsY = 16;
-            break;
-        case 3:
-            bsX = 32; // 768 (3 ch)
-            bsY = 24;
-            break;
-        default:
-            break;
-        }
-
-        // each block is going to be 256bins * channels = threads
-        dim3   histBlockSize(bsX, bsY, 1);
-        dim3   histGridSize(divUp(width, histBlockSize.x), divUp(height, histBlockSize.y), batch);
-        size_t sharedMemSize = 256 * channels * sizeof(int);
-        hist_kernel<<<histGridSize, histBlockSize, sharedMemSize, stream>>>(src, histo, channels, dstSize);
-        checkKernelErrors();
+        return infer_histogram(src, dst, histo, batch, dstSize, channels, stream);
     }
-
-    //compute cfd
+    else
     {
-        int  bsX = 256;
-        int  bsY = 1;
-        int  bsZ = 1;
-        dim3 prefixSumBlockSize(bsX, bsY, bsZ);
-        dim3 prefixSumGridSize(channels, 1, batch);
-        prefix_sum_with_norm_kernel<<<prefixSumGridSize, prefixSumBlockSize, 0, stream>>>(histo, dstSize);
-        checkKernelErrors();
+        LOG_ERROR("Input or output size exceeds " << cuda::TypeTraits<int32_t>::max << ". Tensor is too large.");
+        return ErrorCode::INVALID_PARAMETER;
     }
-
-    {
-        dim3 lookupBlockSize(32, 32, 1);
-        dim3 lookupGridSize(divUp(width, lookupBlockSize.x), divUp(height, lookupBlockSize.y), batch);
-        lookup<<<lookupGridSize, lookupBlockSize, 256 * channels * sizeof(int), stream>>>(src, dst, histo, channels,
-                                                                                          dstSize);
-        checkKernelErrors();
-    }
-
-    return ErrorCode::SUCCESS;
 }
 
 } // namespace nvcv::legacy::cuda_op

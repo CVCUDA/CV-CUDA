@@ -21,6 +21,7 @@
 #include "CAPI.hpp"
 #include "Resource.hpp"
 
+#include <common/Assert.hpp>
 #include <nvcv/TensorBatch.hpp>
 #include <nvcv/python/Tensor.hpp>
 
@@ -38,7 +39,8 @@ public:
     static TensorBatch Create(int capacity)
     {
         PyObject *tensorBatch = capi().TensorBatch_Create(capacity);
-
+        CheckCAPIError();
+        NVCV_ASSERT(tensorBatch != nullptr);
         py::object pytensorBatch = py::reinterpret_steal<py::object>(tensorBatch);
 
         return TensorBatch(pytensorBatch);
@@ -47,16 +49,19 @@ public:
     void pushBack(Tensor tensor)
     {
         capi().TensorBatch_PushBack(this->ptr(), tensor.ptr());
+        CheckCAPIError();
     }
 
     void popBack(int cnt)
     {
         capi().TensorBatch_PopBack(this->ptr(), cnt);
+        CheckCAPIError();
     }
 
     void clear()
     {
         capi().TensorBatch_Clear(this->ptr());
+        CheckCAPIError();
     }
 
     using nvcv::TensorBatch::operator[];
@@ -70,7 +75,7 @@ private:
 
     explicit TensorBatch(py::object obj)
         : Resource(obj)
-        , nvcv::TensorBatch(FromHandle(capi().TensorBatch_GetHandle(this->ptr()), true))
+        , nvcv::TensorBatch(FromHandle(CheckCAPIError(capi().TensorBatch_GetHandle(this->ptr())), true))
     {
     }
 };

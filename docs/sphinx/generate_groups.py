@@ -13,15 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from pathlib import Path
-import xml.etree.ElementTree as ET
 import os
 import sys
+import xml.etree.ElementTree as ET
+from pathlib import Path
 
 outdir = Path(sys.argv[1])
 
-if not os.path.exists(outdir):
-    os.makedirs(outdir)
+os.makedirs(outdir, exist_ok=True)
 
 xmlRoot = sys.argv[2]
 

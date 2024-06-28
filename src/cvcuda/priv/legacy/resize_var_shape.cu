@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -104,8 +104,8 @@ __global__ void resize_NN(cuda::ImageBatchVarShapeWrap<const T> src, cuda::Image
 
         const float scale_x = static_cast<float>(width) / dstWidth;
         const float scale_y = static_cast<float>(height) / dstHeight;
-        const int   sx      = cuda::min(cuda::round<cuda::RoundMode::DOWN, int>(dst_x * scale_x), width - 1);
-        const int   sy      = cuda::min(cuda::round<cuda::RoundMode::DOWN, int>(dst_y * scale_y), height - 1);
+        const int   sx      = cuda::min(__float2int_rd((dst_x + 0.5f) * scale_x), width - 1);
+        const int   sy      = cuda::min(__float2int_rd((dst_y + 0.5f) * scale_y), height - 1);
 
         *dst.ptr(batch_idx, dst_y, dst_x) = *src.ptr(batch_idx, sy, sx);
     }
@@ -494,7 +494,7 @@ ErrorCode ResizeVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inData,
 
     if (!(format == kNHWC || format == kHWC))
     {
-        LOG_ERROR("Invalid DataFormat " << format);
+        LOG_ERROR("Invalid input DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 

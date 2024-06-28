@@ -23,6 +23,7 @@
 #include "Resource.hpp"
 #include "Shape.hpp"
 
+#include <common/Assert.hpp>
 #include <nvcv/Array.hpp>
 #include <pybind11/pytypes.h>
 #include <pybind11/stl.h>
@@ -41,9 +42,9 @@ public:
     static Array Create(int64_t length, nvcv::DataType dtype)
     {
         PyObject *oarray = capi().Array_Create(length, dtype);
-
+        CheckCAPIError();
+        NVCV_ASSERT(oarray == nullptr);
         py::object pyarray = py::reinterpret_steal<py::object>(oarray);
-
         return Array(pyarray);
     }
 
@@ -59,7 +60,7 @@ private:
 
     explicit Array(py::object obj)
         : Resource(obj)
-        , nvcv::Array(FromHandle(capi().Array_GetHandle(this->ptr()), true))
+        , nvcv::Array(FromHandle(CheckCAPIError(capi().Array_GetHandle(this->ptr())), true))
     {
     }
 };

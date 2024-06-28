@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,7 +27,7 @@
 #include "detail/Metaprogramming.hpp" // for detail::TypeTraits, etc.
 
 #include <cassert> // for assert, etc.
-#include <ostream> // for std::ostream, etc.
+#include <cstdint> // for int32_t, int64_t, etc.
 
 namespace nvcv::cuda {
 
@@ -72,6 +72,12 @@ constexpr bool IsCompound = TypeTraits<T>::components >= 1;
 // Metavariable to check if a CUDA compound type T has N or more components.
 template<typename T, int N, class = Require<HasTypeTraits<T>>>
 constexpr bool HasEnoughComponents = N <= TypeTraits<T>::components;
+
+template<typename T>
+constexpr bool IsStrideType = std::is_same_v<T, int32_t> || std::is_same_v<T, int64_t>;
+
+template<typename T, typename StrideType>
+constexpr bool IsIndexType = std::is_integral_v<T> && (TypeTraits<T>::max <= TypeTraits<StrideType>::max);
 
 /**
  * Metatype to get the base type of a CUDA compound types.
@@ -195,6 +201,29 @@ __host__ __device__ RT &GetElement(T &v, int eidx)
     }
 }
 
+template<int EIDX, typename T,
+         typename RT = detail::CopyConstness_t<T, std::conditional_t<IsCompound<T>, BaseType<T>, T>>,
+         class       = Require<HasTypeTraits<T>>>
+__host__ __device__ RT &GetElement(T &v)
+{
+    if constexpr (IsCompound<T>)
+    {
+        static_assert(EIDX < NumElements<T>);
+        if constexpr (EIDX == 0)
+            return v.x;
+        else if constexpr (EIDX == 1)
+            return v.y;
+        else if constexpr (EIDX == 2)
+            return v.z;
+        else if constexpr (EIDX == 3)
+            return v.w;
+    }
+    else
+    {
+        return v;
+    }
+}
+
 /**
  * Metafunction to set all elements to the same value.
  *
@@ -221,11 +250,13 @@ __host__ __device__ T SetAll(BaseType<T> x)
 {
     T out{};
 
-#pragma unroll
-    for (int e = 0; e < NumElements<T>; ++e)
-    {
-        GetElement(out, e) = x;
-    }
+    GetElement<0>(out) = x;
+    if constexpr (nvcv::cuda::NumElements<T> >= 2)
+        GetElement<1>(out) = x;
+    if constexpr (nvcv::cuda::NumElements<T> >= 3)
+        GetElement<2>(out) = x;
+    if constexpr (nvcv::cuda::NumElements<T> == 4)
+        GetElement<3>(out) = x;
 
     return out;
 }
@@ -259,47 +290,5 @@ __host__ const char *GetTypeName()
 /**@}*/
 
 } // namespace nvcv::cuda
-
-/**
- * Metaoperator to insert a pixel into an output stream.
- *
- * The pixel may be a CUDA compound type with 1 to 4 components.  This operator returns the output stream
- * changed by an additional string with the name of the type followed by each component value in between
- * parentheses.
- *
- * @code
- * DataType pix = ...;
- * std::cout << pix;
- * @endcode
- *
- * @tparam T Type of the pixel to be inserted in the output stream.
- *
- * @param[in, out] out Output stream to be changed and returned.
- * @param[in] v Pixel value to be inserted formatted in the output stream.
- *
- * @return Output stream with the data type and values.
- */
-template<class T, class = nvcv::cuda::Require<nvcv::cuda::IsCompound<T>>>
-__host__ std::ostream &operator<<(std::ostream &out, const T &v)
-{
-    using BT         = nvcv::cuda::BaseType<T>;
-    using OutType    = std::conditional_t<sizeof(BT) == 1, int, BT>;
-    constexpr int NC = nvcv::cuda::NumComponents<T>;
-
-    out << nvcv::cuda::GetTypeName<T>() << "(";
-
-    for (int c = 0; c < NC; ++c)
-    {
-        if (c > 0)
-        {
-            out << ", ";
-        }
-        out << static_cast<OutType>(nvcv::cuda::GetElement(v, c));
-    }
-
-    out << ")";
-
-    return out;
-}
 
 #endif // NVCV_CUDA_TYPE_TRAITS_HPP

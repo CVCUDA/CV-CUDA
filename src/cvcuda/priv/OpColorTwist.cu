@@ -167,13 +167,26 @@ inline void RunColorTwist(cudaStream_t stream, const SrcData &srcData, const Dst
     dim3 block(32, 4, 1);
     if constexpr (std::is_same_v<SrcData, nvcv::TensorDataStridedCuda>)
     {
-        auto srcAccess = nvcv::TensorDataAccessStridedImage::Create(srcData);
-        int2 size      = cuda::StaticCast<int>(long2{srcAccess->numCols(), srcAccess->numRows()});
-        dim3 grid(util::DivUp(size.x, block.x), util::DivUp(size.y, block.y), srcAccess->numSamples());
+        auto inAccess = nvcv::TensorDataAccessStridedImage::Create(srcData);
+        NVCV_ASSERT(inAccess);
+        auto outAccess = nvcv::TensorDataAccessStridedImage::Create(dstData);
+        NVCV_ASSERT(outAccess);
+        int2 size = cuda::StaticCast<int>(long2{inAccess->numCols(), inAccess->numRows()});
+        dim3 grid(util::DivUp(size.x, block.x), util::DivUp(size.y, block.y), inAccess->numSamples());
 
-        auto src = cuda::CreateTensorWrapNHW<const T>(srcData);
-        auto dst = cuda::CreateTensorWrapNHW<T>(dstData);
-        ColorTwist<<<grid, block, 0, stream>>>(src, dst, size, param);
+        int64_t inMaxStride  = inAccess->sampleStride() * inAccess->numSamples();
+        int64_t outMaxStride = outAccess->sampleStride() * outAccess->numSamples();
+        if (std::max(inMaxStride, outMaxStride) <= cuda::TypeTraits<int32_t>::max)
+        {
+            auto src = cuda::CreateTensorWrapNHW<const T, int32_t>(srcData);
+            auto dst = cuda::CreateTensorWrapNHW<T, int32_t>(dstData);
+            ColorTwist<<<grid, block, 0, stream>>>(src, dst, size, param);
+        }
+        else
+        {
+            throw nvcv::Exception(nvcv::Status::ERROR_OVERFLOW, "Input or output size exceeds %d. Tensor is too large.",
+                                  cuda::TypeTraits<int32_t>::max);
+        }
         NVCV_CHECK_THROW(cudaGetLastError());
     }
     else

@@ -23,10 +23,12 @@
 
 #include "CvCudaUtils.cuh"
 
-#include <cvcuda/OpNormalize.h> // for CVCUDA_NORMALIZE_SCALE_IS_STDDEV, etc.
+#include <cvcuda/OpNormalize.h>     // for CVCUDA_NORMALIZE_SCALE_IS_STDDEV, etc.
+#include <nvcv/cuda/TypeTraits.hpp> // for TypeTraits
 
 using namespace nvcv::legacy::cuda_op;
 using namespace nvcv::legacy::helpers;
+namespace cuda = nvcv::cuda;
 
 // (float3 - float3) * float3 / (float3 - float) * float3 / (float3 - float3) * float / (float3 - float) * float
 template<typename input_type, typename base_type, typename scale_type>
@@ -98,8 +100,8 @@ void normalizeWrap(WrapInput srcWrap, WrapOutput dstWrap, DataShape input_shape,
     dim3 block(32, 8);
     dim3 grid(divUp(input_shape.W, block.x), divUp(input_shape.H, block.y), input_shape.N);
 
-    auto baseWrap  = nvcv::cuda::CreateTensorWrapNHW<base_type>(baseData);
-    auto scaleWrap = nvcv::cuda::CreateTensorWrapNHW<scale_type>(scaleData);
+    auto baseWrap  = nvcv::cuda::CreateTensorWrapNHW<base_type, int32_t>(baseData);
+    auto scaleWrap = nvcv::cuda::CreateTensorWrapNHW<scale_type, int32_t>(scaleData);
 
     auto baseAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(baseData);
     NVCV_ASSERT(baseAccess);
@@ -126,8 +128,8 @@ void normalizeInvStdDevWrap(WrapInput srcWrap, WrapOutput dstWrap, DataShape inp
     dim3 block(32, 8);
     dim3 grid(divUp(input_shape.W, block.x), divUp(input_shape.H, block.y), input_shape.N);
 
-    auto baseWrap  = nvcv::cuda::CreateTensorWrapNHW<base_type>(baseData);
-    auto scaleWrap = nvcv::cuda::CreateTensorWrapNHW<scale_type>(scaleData);
+    auto baseWrap  = nvcv::cuda::CreateTensorWrapNHW<base_type, int32_t>(baseData);
+    auto scaleWrap = nvcv::cuda::CreateTensorWrapNHW<scale_type, int32_t>(scaleData);
 
     auto baseAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(baseData);
     NVCV_ASSERT(baseAccess);
@@ -146,106 +148,152 @@ void normalizeInvStdDevWrap(WrapInput srcWrap, WrapOutput dstWrap, DataShape inp
     checkKernelErrors();
 }
 
-template<typename input_type>
-void normalize(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &baseData,
-               const nvcv::TensorDataStridedCuda &scaleData, const nvcv::TensorDataStridedCuda &outData,
-               float global_scale, float shift, cudaStream_t stream)
+template<typename input_wrapper, typename output_wrapper>
+void callNormalizeWrap(const input_wrapper &input, const DataShape &inputShape,
+                       const nvcv::TensorDataStridedCuda &baseData, const nvcv::TensorDataStridedCuda &scaleData,
+                       const output_wrapper &output, float global_scale, float shift, cudaStream_t stream)
 {
-    auto srcWrap = nvcv::cuda::CreateTensorWrapNHW<input_type>(inData);
-    auto dstWrap = nvcv::cuda::CreateTensorWrapNHW<input_type>(outData);
-
-    auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(inData);
-    NVCV_ASSERT(inAccess);
-
     auto baseAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(baseData);
     NVCV_ASSERT(baseAccess);
 
     auto scaleAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(scaleData);
     NVCV_ASSERT(scaleAccess);
 
-    DataShape input_shape = GetLegacyDataShape(inAccess->infoShape());
-
-    using work_type = nvcv::cuda::ConvertBaseTypeTo<float, input_type>;
+    using input_type = typename input_wrapper::ValueType;
+    using work_type  = nvcv::cuda::ConvertBaseTypeTo<float, input_type>;
 
     if (baseAccess->numChannels() != 1 && scaleAccess->numChannels() != 1)
     {
         using base_type  = work_type;
         using scale_type = work_type;
-        normalizeWrap<base_type, scale_type>(srcWrap, dstWrap, input_shape, baseData, scaleData, global_scale, shift,
+        normalizeWrap<base_type, scale_type>(input, output, inputShape, baseData, scaleData, global_scale, shift,
                                              stream);
     }
     else if (baseAccess->numChannels() != 1)
     {
         using base_type  = work_type;
         using scale_type = float;
-        normalizeWrap<base_type, scale_type>(srcWrap, dstWrap, input_shape, baseData, scaleData, global_scale, shift,
+        normalizeWrap<base_type, scale_type>(input, output, inputShape, baseData, scaleData, global_scale, shift,
                                              stream);
     }
     else if (scaleAccess->numChannels() != 1)
     {
         using base_type  = float;
         using scale_type = work_type;
-        normalizeWrap<base_type, scale_type>(srcWrap, dstWrap, input_shape, baseData, scaleData, global_scale, shift,
+        normalizeWrap<base_type, scale_type>(input, output, inputShape, baseData, scaleData, global_scale, shift,
                                              stream);
     }
     else
     {
         using base_type  = float;
         using scale_type = float;
-        normalizeWrap<base_type, scale_type>(srcWrap, dstWrap, input_shape, baseData, scaleData, global_scale, shift,
+        normalizeWrap<base_type, scale_type>(input, output, inputShape, baseData, scaleData, global_scale, shift,
                                              stream);
     }
 }
 
 template<typename input_type>
-void normalizeInvStdDev(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &baseData,
-                        const nvcv::TensorDataStridedCuda &scaleData, const nvcv::TensorDataStridedCuda &outData,
-                        float global_scale, float shift, float epsilon, cudaStream_t stream)
+ErrorCode normalize(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &baseData,
+                    const nvcv::TensorDataStridedCuda &scaleData, const nvcv::TensorDataStridedCuda &outData,
+                    float global_scale, float shift, cudaStream_t stream)
 {
-    auto srcWrap = nvcv::cuda::CreateTensorWrapNHW<input_type>(inData);
-    auto dstWrap = nvcv::cuda::CreateTensorWrapNHW<input_type>(outData);
-
     auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(inData);
     NVCV_ASSERT(inAccess);
 
+    auto outAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(outData);
+    NVCV_ASSERT(outAccess);
+
+    DataShape inputShape = GetLegacyDataShape(inAccess->infoShape());
+
+    auto inMaxStride  = inAccess->sampleStride() * inAccess->numSamples();
+    auto outMaxStride = outAccess->sampleStride() * outAccess->numSamples();
+    if (std::max(inMaxStride, outMaxStride) <= cuda::TypeTraits<int32_t>::max)
+    {
+        auto srcWrap = nvcv::cuda::CreateTensorWrapNHW<input_type, int32_t>(inData);
+        auto dstWrap = nvcv::cuda::CreateTensorWrapNHW<input_type, int32_t>(outData);
+        callNormalizeWrap(srcWrap, inputShape, baseData, scaleData, dstWrap, global_scale, shift, stream);
+    }
+    else
+    {
+        LOG_ERROR("Input or output size exceeds " << cuda::TypeTraits<int32_t>::max << ". Tensor is too large.");
+        return ErrorCode::INVALID_PARAMETER;
+    }
+    return ErrorCode::SUCCESS;
+}
+
+template<typename input_wrapper, typename output_wrapper>
+void callNormalizeInvStdDevWrap(const input_wrapper &input, const DataShape &inputShape,
+                                const nvcv::TensorDataStridedCuda &baseData,
+                                const nvcv::TensorDataStridedCuda &scaleData, const output_wrapper &output,
+                                float global_scale, float shift, float epsilon, cudaStream_t stream)
+{
     auto baseAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(baseData);
     NVCV_ASSERT(baseAccess);
 
     auto scaleAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(scaleData);
     NVCV_ASSERT(scaleAccess);
 
-    DataShape input_shape = GetLegacyDataShape(inAccess->infoShape());
-
-    using work_type = nvcv::cuda::ConvertBaseTypeTo<float, input_type>;
+    using input_type = typename input_wrapper::ValueType;
+    using work_type  = nvcv::cuda::ConvertBaseTypeTo<float, input_type>;
 
     if (baseAccess->numChannels() != 1 && scaleAccess->numChannels() != 1)
     {
         using base_type  = work_type;
         using scale_type = work_type;
-        normalizeInvStdDevWrap<base_type, scale_type>(srcWrap, dstWrap, input_shape, baseData, scaleData, global_scale,
+        normalizeInvStdDevWrap<base_type, scale_type>(input, output, inputShape, baseData, scaleData, global_scale,
                                                       shift, epsilon, stream);
     }
     else if (baseAccess->numChannels() != 1)
     {
         using base_type  = work_type;
         using scale_type = float;
-        normalizeInvStdDevWrap<base_type, scale_type>(srcWrap, dstWrap, input_shape, baseData, scaleData, global_scale,
+        normalizeInvStdDevWrap<base_type, scale_type>(input, output, inputShape, baseData, scaleData, global_scale,
                                                       shift, epsilon, stream);
     }
     else if (scaleAccess->numChannels() != 1)
     {
         using base_type  = float;
         using scale_type = work_type;
-        normalizeInvStdDevWrap<base_type, scale_type>(srcWrap, dstWrap, input_shape, baseData, scaleData, global_scale,
+        normalizeInvStdDevWrap<base_type, scale_type>(input, output, inputShape, baseData, scaleData, global_scale,
                                                       shift, epsilon, stream);
     }
     else
     {
         using base_type  = float;
         using scale_type = float;
-        normalizeInvStdDevWrap<base_type, scale_type>(srcWrap, dstWrap, input_shape, baseData, scaleData, global_scale,
+        normalizeInvStdDevWrap<base_type, scale_type>(input, output, inputShape, baseData, scaleData, global_scale,
                                                       shift, epsilon, stream);
     }
+}
+
+template<typename input_type>
+ErrorCode normalizeInvStdDev(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &baseData,
+                             const nvcv::TensorDataStridedCuda &scaleData, const nvcv::TensorDataStridedCuda &outData,
+                             float global_scale, float shift, float epsilon, cudaStream_t stream)
+{
+    auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(inData);
+    NVCV_ASSERT(inAccess);
+
+    auto outAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(outData);
+    NVCV_ASSERT(outAccess);
+
+    DataShape inputShape = GetLegacyDataShape(inAccess->infoShape());
+
+    auto inMaxStride  = inAccess->sampleStride() * inAccess->numSamples();
+    auto outMaxStride = outAccess->sampleStride() * outAccess->numSamples();
+    if (std::max(inMaxStride, outMaxStride) <= cuda::TypeTraits<int32_t>::max)
+    {
+        auto srcWrap = nvcv::cuda::CreateTensorWrapNHW<input_type, int32_t>(inData);
+        auto dstWrap = nvcv::cuda::CreateTensorWrapNHW<input_type, int32_t>(outData);
+        callNormalizeInvStdDevWrap(srcWrap, inputShape, baseData, scaleData, dstWrap, global_scale, shift, epsilon,
+                                   stream);
+    }
+    else
+    {
+        LOG_ERROR("Input or output size exceeds " << cuda::TypeTraits<int32_t>::max << ". Tensor is too large.");
+        return ErrorCode::INVALID_PARAMETER;
+    }
+    return ErrorCode::SUCCESS;
 }
 
 namespace nvcv::legacy::cuda_op {
@@ -267,7 +315,7 @@ ErrorCode Normalize::infer(const nvcv::TensorDataStridedCuda &inData, const nvcv
 
     if (!(format == kNHWC || format == kHWC))
     {
-        LOG_ERROR("Invalid DataFormat " << format);
+        LOG_ERROR("Invalid input DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
@@ -322,13 +370,14 @@ ErrorCode Normalize::infer(const nvcv::TensorDataStridedCuda &inData, const nvcv
     checkParamShape(input_shape, base_param_shape);
     checkParamShape(input_shape, scale_param_shape);
 
-    typedef void (*normalize_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &baseData,
-                                const TensorDataStridedCuda &scaleData, const TensorDataStridedCuda &outData,
-                                float global_scale, float shift, cudaStream_t stream);
+    typedef ErrorCode (*normalize_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &baseData,
+                                     const TensorDataStridedCuda &scaleData, const TensorDataStridedCuda &outData,
+                                     float global_scale, float shift, cudaStream_t stream);
 
-    typedef void (*normalizeInvStdDev_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &baseData,
-                                         const TensorDataStridedCuda &scaleData, const TensorDataStridedCuda &outData,
-                                         float global_scale, float shift, float epsilon, cudaStream_t stream);
+    typedef ErrorCode (*normalizeInvStdDev_t)(
+        const TensorDataStridedCuda &inData, const TensorDataStridedCuda &baseData,
+        const TensorDataStridedCuda &scaleData, const TensorDataStridedCuda &outData, float global_scale, float shift,
+        float epsilon, cudaStream_t stream);
 
     static const normalize_t funcs_normalize[6][4] = {
         { normalize<uchar>,  0 /*normalize<uchar2>*/,  normalize<uchar3>,  normalize<uchar4>},
@@ -355,15 +404,14 @@ ErrorCode Normalize::infer(const nvcv::TensorDataStridedCuda &inData, const nvcv
 
     if (flags & CVCUDA_NORMALIZE_SCALE_IS_STDDEV)
     {
-        funcs_normalize_stddev[data_type][channels - 1](inData, baseData, scaleData, outData, global_scale, shift,
-                                                        epsilon, stream);
+        return funcs_normalize_stddev[data_type][channels - 1](inData, baseData, scaleData, outData, global_scale,
+                                                               shift, epsilon, stream);
     }
     else
     {
-        funcs_normalize[data_type][channels - 1](inData, baseData, scaleData, outData, global_scale, shift, stream);
+        return funcs_normalize[data_type][channels - 1](inData, baseData, scaleData, outData, global_scale, shift,
+                                                        stream);
     }
-
-    return SUCCESS;
 }
 
 } // namespace nvcv::legacy::cuda_op

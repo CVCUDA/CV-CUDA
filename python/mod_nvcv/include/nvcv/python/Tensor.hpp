@@ -23,6 +23,7 @@
 #include "Resource.hpp"
 #include "Shape.hpp"
 
+#include <common/Assert.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorLayout.hpp>
 #include <pybind11/pytypes.h>
@@ -43,7 +44,8 @@ public:
     {
         PyObject *otensor = capi().Tensor_Create(tshape.size(), &tshape[0], static_cast<NVCVDataType>(dtype),
                                                  static_cast<NVCVTensorLayout>(tshape.layout()), rowalign);
-
+        CheckCAPIError();
+        NVCV_ASSERT(otensor != nullptr);
         py::object pytensor = py::reinterpret_steal<py::object>(otensor);
 
         return Tensor(pytensor);
@@ -59,7 +61,8 @@ public:
     {
         PyObject *otensor
             = capi().Tensor_CreateForImageBatch(numImages, size.w, size.h, static_cast<NVCVImageFormat>(fmt), rowalign);
-
+        CheckCAPIError();
+        NVCV_ASSERT(otensor != nullptr);
         py::object pytensor = py::reinterpret_steal<py::object>(otensor);
 
         return Tensor(pytensor);
@@ -72,7 +75,7 @@ private:
 
     explicit Tensor(py::object obj)
         : Resource(obj)
-        , nvcv::Tensor(FromHandle(capi().Tensor_GetHandle(this->ptr()), true))
+        , nvcv::Tensor(FromHandle(CheckCAPIError(capi().Tensor_GetHandle(this->ptr())), true))
     {
     }
 };

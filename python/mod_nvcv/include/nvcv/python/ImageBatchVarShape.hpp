@@ -21,6 +21,7 @@
 #include "CAPI.hpp"
 #include "Resource.hpp"
 
+#include <common/Assert.hpp>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/python/Image.hpp>
 
@@ -38,7 +39,8 @@ public:
     static ImageBatchVarShape Create(int capacity)
     {
         PyObject *ovarshape = capi().ImageBatchVarShape_Create(capacity);
-
+        CheckCAPIError();
+        NVCV_ASSERT(ovarshape != nullptr);
         py::object pyvarshape = py::reinterpret_steal<py::object>(ovarshape);
 
         return ImageBatchVarShape(pyvarshape);
@@ -55,16 +57,19 @@ public:
     void pushBack(Image img)
     {
         capi().ImageBatchVarShape_PushBack(this->ptr(), img.ptr());
+        CheckCAPIError();
     }
 
     void popBack(int cnt)
     {
         capi().ImageBatchVarShape_PopBack(this->ptr(), cnt);
+        CheckCAPIError();
     }
 
     void clear()
     {
         capi().ImageBatchVarShape_Clear(this->ptr());
+        CheckCAPIError();
     }
 
     // By default we use the varshape interface.
@@ -81,7 +86,7 @@ private:
 
     explicit ImageBatchVarShape(py::object obj)
         : Resource(obj)
-        , nvcv::ImageBatchVarShape(FromHandle(capi().ImageBatchVarShape_GetHandle(this->ptr()), true))
+        , nvcv::ImageBatchVarShape(FromHandle(CheckCAPIError(capi().ImageBatchVarShape_GetHandle(this->ptr())), true))
     {
     }
 };

@@ -52,6 +52,9 @@ inline constexpr bool RequiresDouble = std::is_integral_v<T> && sizeof(T) >= 4;
 template<typename SrcBT, typename DstBT>
 using GetArgType = std::conditional_t<RequiresDouble<SrcBT> || RequiresDouble<DstBT>, double, float>;
 
+template<typename ArgT>
+using ArgWrapper = cuda::Tensor1DWrap<const ArgT, int32_t>;
+
 template<typename BT>
 struct SampleArgs
 {
@@ -64,15 +67,15 @@ struct SampleArgs
 template<typename BT>
 struct BatchArgsWrap
 {
-    int                                brightnessLen, contrastLen, brightnessShiftLen, contrastCenterLen;
-    const cuda::Tensor1DWrap<const BT> brightness;
-    const cuda::Tensor1DWrap<const BT> contrast;
-    const cuda::Tensor1DWrap<const BT> brightnessShift;
-    const cuda::Tensor1DWrap<const BT> contrastCenter;
+    int                  brightnessLen, contrastLen, brightnessShiftLen, contrastCenterLen;
+    const ArgWrapper<BT> brightness;
+    const ArgWrapper<BT> contrast;
+    const ArgWrapper<BT> brightnessShift;
+    const ArgWrapper<BT> contrastCenter;
 };
 
 template<typename BT>
-inline __device__ BT GetArg(const cuda::Tensor1DWrap<const BT> &tensorArg, int argLen, int sampleIdx, BT defaultVal)
+inline __device__ BT GetArg(const ArgWrapper<BT> &tensorArg, int argLen, int sampleIdx, BT defaultVal)
 {
     if (argLen == 0)
     {
@@ -198,23 +201,32 @@ inline void RunBrightnessContrast(cudaStream_t stream, const SrcData &srcData, c
         auto srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(srcData);
         int2 size      = cuda::StaticCast<int>(long2{srcAccess->numCols(), srcAccess->numRows()});
         dim3 grid(util::DivUp(size.x, block.x), util::DivUp(size.y, block.y), srcAccess->numSamples());
+        auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(dstData);
+
+        int64_t inMaxStride  = srcAccess->sampleStride() * srcAccess->numSamples();
+        int64_t outMaxStride = dstAccess->sampleStride() * dstAccess->numSamples();
+        if (std::max(inMaxStride, outMaxStride) > cuda::TypeTraits<int32_t>::max)
+        {
+            throw nvcv::Exception(nvcv::Status::ERROR_OVERFLOW, "Input or output size exceeds %d. Tensor is too large.",
+                                  cuda::TypeTraits<int32_t>::max);
+        }
+        using StrideType = int32_t;
 
         if constexpr (!isPlanar)
         {
-            auto src = cuda::CreateTensorWrapNHW<const SrcValueT>(srcData);
-            auto dst = cuda::CreateTensorWrapNHW<DstValueT>(dstData);
+            auto src = cuda::CreateTensorWrapNHW<const SrcValueT, StrideType>(srcData);
+            auto dst = cuda::CreateTensorWrapNHW<DstValueT, StrideType>(dstData);
             BrightnessContrast<isPlanar><<<grid, block, 0, stream>>>(src, dst, batchArgs, size, 1);
         }
         else
         {
-            auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(dstData);
-            auto src       = cuda::Tensor4DWrap<const SrcValueT>(
+            auto src = cuda::Tensor4DWrap<const SrcValueT, StrideType>(
                 srcData.basePtr(), static_cast<int>(srcAccess->sampleStride()),
                 static_cast<int>(srcAccess->planeStride()), static_cast<int>(srcAccess->rowStride()));
-            auto dst = cuda::Tensor4DWrap<DstValueT>(dstData.basePtr(), static_cast<int>(dstAccess->sampleStride()),
-                                                     static_cast<int>(dstAccess->planeStride()),
-                                                     static_cast<int>(dstAccess->rowStride()));
-            int  numPlanes = srcAccess->numPlanes();
+            auto dst = cuda::Tensor4DWrap<DstValueT, StrideType>(
+                dstData.basePtr(), static_cast<int>(dstAccess->sampleStride()),
+                static_cast<int>(dstAccess->planeStride()), static_cast<int>(dstAccess->rowStride()));
+            int numPlanes = srcAccess->numPlanes();
             BrightnessContrast<isPlanar><<<grid, block, 0, stream>>>(src, dst, batchArgs, size, numPlanes);
         }
         NVCV_CHECK_THROW(cudaGetLastError());
@@ -419,12 +431,10 @@ inline BatchArgsWrap<ArgT> GetBatchArgsWrap(nvcv::Optional<nvcv::TensorDataStrid
             contrastLen,
             brightnessShiftLen,
             constrastCenterLen,
-            brightnessLen == 0 ? cuda::Tensor1DWrap<const ArgT>{} : cuda::Tensor1DWrap<const ArgT>(*brightnessData),
-            contrastLen == 0 ? cuda::Tensor1DWrap<const ArgT>{} : cuda::Tensor1DWrap<const ArgT>(*contrastData),
-            brightnessShiftLen == 0 ? cuda::Tensor1DWrap<const ArgT>{}
-                                    : cuda::Tensor1DWrap<const ArgT>(*brightnessShiftData),
-            constrastCenterLen == 0 ? cuda::Tensor1DWrap<const ArgT>{}
-                                    : cuda::Tensor1DWrap<const ArgT>(*contrastCenterData)};
+            brightnessLen == 0 ? ArgWrapper<ArgT>{} : ArgWrapper<ArgT>(*brightnessData),
+            contrastLen == 0 ? ArgWrapper<ArgT>{} : ArgWrapper<ArgT>(*contrastData),
+            brightnessShiftLen == 0 ? ArgWrapper<ArgT>{} : ArgWrapper<ArgT>(*brightnessShiftData),
+            constrastCenterLen == 0 ? ArgWrapper<ArgT>{} : ArgWrapper<ArgT>(*contrastCenterData)};
 }
 
 inline auto validateSrcDstVarBatch(int &numSamples, int &numInterleavedChannels, int &numPlanes,

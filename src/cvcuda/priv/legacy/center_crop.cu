@@ -50,17 +50,20 @@ template<typename T>
 void center_crop(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData, int crop_rows,
                  int crop_columns, const int batch_size, const int rows, const int columns, cudaStream_t stream)
 {
+    using StrideType = int32_t;
+
     int top_indices  = (rows - crop_rows) / 2;
     int left_indices = (columns - crop_columns) / 2;
 
     dim3 blockSize(BLOCK, BLOCK / 4, 1);
     dim3 gridSize(divUp(crop_columns, (int)blockSize.x), divUp(crop_rows, (int)blockSize.y), batch_size);
 
-    auto src = nvcv::cuda::CreateTensorWrapNHW<const T>(inData);
-    auto dst = nvcv::cuda::CreateTensorWrapNHW<T>(outData);
+    auto src = nvcv::cuda::CreateTensorWrapNHW<const T, StrideType>(inData);
+    auto dst = nvcv::cuda::CreateTensorWrapNHW<T, StrideType>(outData);
 
     center_crop_kernel_nhwc<<<gridSize, blockSize, 0, stream>>>(src, dst, left_indices, top_indices, crop_rows,
                                                                 crop_columns);
+
     checkKernelErrors();
 #ifdef CUDA_DEBUG_LOG
     checkCudaErrors(cudaDeviceSynchronize());
@@ -113,6 +116,14 @@ ErrorCode CenterCrop::infer(const TensorDataStridedCuda &inData, const TensorDat
         || (crop_columns > outAccess->numCols()))
     {
         return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+    int64_t inMaxStride  = inAccess->sampleStride() * inAccess->numSamples();
+    int64_t outMaxStride = outAccess->sampleStride() * outAccess->numSamples();
+    if (std::max(inMaxStride, outMaxStride) > nvcv::cuda::TypeTraits<int32_t>::max)
+    {
+        LOG_ERROR("Input or output size exceeds " << nvcv::cuda::TypeTraits<int32_t>::max << ". Tensor is too large.");
+        return ErrorCode::INVALID_PARAMETER;
     }
 
     typedef void (*func_t)(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,

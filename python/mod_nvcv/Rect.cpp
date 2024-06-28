@@ -31,7 +31,7 @@ void ExportRect(py::module &m)
 {
     using namespace py::literals;
 
-    py::class_<NVCVRectI>(m, "RectI")
+    py::class_<NVCVRectI>(m, "RectI", "RectI")
         .def(py::init([]() { return NVCVRectI{}; }), "Default constructor")
         .def(py::init(
                  [](int x, int y, int w, int h)

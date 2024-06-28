@@ -22,6 +22,7 @@
 #include "Cache.hpp"
 #include "Resource.hpp"
 
+#include <common/Assert.hpp>
 #include <pybind11/pybind11.h>
 
 namespace nvcvpy {
@@ -39,8 +40,12 @@ public:
     }
 
     explicit Container()
-        : Resource(py::reinterpret_steal<py::object>(capi().Container_Create(this)))
     {
+        PyObject *raw_obj = capi().Container_Create(this);
+        CheckCAPIError();
+        NVCV_ASSERT(raw_obj != nullptr);
+        py::object temp = py::reinterpret_steal<py::object>(raw_obj);
+        new (static_cast<Resource *>(this)) Resource(temp);
     }
 };
 

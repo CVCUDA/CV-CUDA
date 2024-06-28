@@ -1,0 +1,68 @@
+..
+  # SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  # SPDX-License-Identifier: Apache-2.0
+  #
+  # Licensed under the Apache License, Version 2.0 (the "License");
+  # you may not use this file except in compliance with the License.
+  # You may obtain a copy of the License at
+  #
+  # http://www.apache.org/licenses/LICENSE-2.0
+  #
+  # Unless required by applicable law or agreed to in writing, software
+  # distributed under the License is distributed on an "AS IS" BASIS,
+  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  # See the License for the specific language governing permissions and
+  # limitations under the License.
+
+.. _v0.9.0-beta:
+
+v0.9.0-beta
+===========
+
+Release Highlights
+------------------
+
+CV-CUDA v0.9.0 includes the following changes:
+
+* **New Features**:
+
+  * Improved Resize performance (up to 4x for u8 inputs, up to 3x for RGB8)
+  * Improved performance of cubic interpolation, eg in Rotate, WarpAffine and WarpPerspective (up to 2x faster)
+  * Added optional scaling to ResizeCropConvertReformat fused operator
+  * Improved structure of Python documentation and optimized its generation (>5min to <30s) by removing the Exhale index
+  * Added 64bit stride support to various operators
+
+    * limited to 32bit strides to avoid performance regressions: AdaptiveThreshold, AdvCvtColor, AverageBlur, BilateralFilter, BrightnessContrast, ColorTwist, BoxBlur, CenterCrop, ConvertTo, CopyMakeBorder, CustomCrop, GaussianNoise, Gaussian, Flip, HistogramEq, JointBilateralFilter, Laplacian, Morphology, Normalize, RandomResizedCrop, Reformat, Remap, Resize, Rotate, SIFT, WarpAffine, WarpPerspective
+
+* **Bug Fixes**:
+
+  * Added exception handling on CApi in Python: now forward C/C++exceptions to Python
+  * Fixed coordinate rounding bug in Resize operator with nearest neighbor interpolation
+
+Compatibility and Known Limitations
+-----------------------------------
+
+  * Documentation built on Ubuntu 20.04 needs an up-to-date version of sphinx (`pip install --upgrade sphinx`) as well as explicitly parsing the system's default python version `./ci/build_docs path/to/build -DPYTHON_VERSIONS="<py_ver>"`.
+  * Python bindings installed via Debian packages and Python tests fail with Numpy 2.0. We recommend using an older version of Numpy (e.g. 1.26) until we have implemented a fix.
+  * The Resize and RandomResizedCrop operators incorrectly interpolate pixel values near the boundary of an image or tensor when using linear and cubic interpolation. This will be fixed in an upcoming release.
+
+
+See main README on `CV-CUDA GitHub <https://github.com/CVCUDA/CV-CUDA>`_.
+
+License
+-------
+
+CV-CUDA is licensed under the `Apache 2.0 <https://github.com/CVCUDA/CV-CUDA/blob/main/LICENSE.md>`_ license.
+
+Resources
+---------
+
+1. `CV-CUDA GitHub <https://github.com/CVCUDA/CV-CUDA>`_
+2. `CV-CUDA Increasing Throughput and Reducing Costs for AI-Based Computer Vision with CV-CUDA <https://developer.nvidia.com/blog/increasing-throughput-and-reducing-costs-for-computer-vision-with-cv-cuda/>`_
+3. `NVIDIA Announces Microsoft, Tencent, Baidu Adopting CV-CUDA for Computer Vision AI <https://blogs.nvidia.com/blog/2023/03/21/cv-cuda-ai-computer-vision/>`_
+4. `CV-CUDA helps Tencent Cloud audio and video PaaS platform achieve full-process GPU acceleration for video enhancement AI <https://developer.nvidia.com/zh-cn/blog/cv-cuda-high-performance-image-processing/>`_
+
+Acknowledgements
+----------------
+
+CV-CUDA is developed jointly by NVIDIA and the ByteDance Machine Learning team.

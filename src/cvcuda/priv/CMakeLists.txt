@@ -35,6 +35,7 @@ set(CV_CUDA_PRIV_OP_FILES
     OpNonMaximumSuppression.cu
     OpReformat.cpp
     OpResize.cpp
+    OpResize.cu
     OpCustomCrop.cpp
     OpNormalize.cpp
     OpPadAndStack.cpp

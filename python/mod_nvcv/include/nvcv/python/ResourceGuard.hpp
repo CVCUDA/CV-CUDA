@@ -63,6 +63,7 @@ public:
         {
             py::object pyRes = r.get();
             capi().Resource_SubmitSync(pyRes.ptr(), m_pyStream.ptr());
+            CheckCAPIError();
             m_resourcesPerLockMode.append(std::make_pair(pyLockMode, std::move(pyRes)));
         }
 
@@ -72,6 +73,7 @@ public:
     void commit()
     {
         capi().Stream_HoldResources(m_pyStream.ptr(), m_resourcesPerLockMode.ptr());
+        CheckCAPIError();
     }
 
 private:

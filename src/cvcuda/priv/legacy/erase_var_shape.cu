@@ -118,7 +118,7 @@ EraseVarShape::EraseVarShape(DataShape max_input_shape, DataShape max_output_sha
     {
         cudaFree(d_max_values);
         LOG_ERROR("Invalid num of erasing area" << max_num_erasing_area);
-        throw std::runtime_error("Parameter error!");
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "max_num_erasing_area must be >= 0");
     }
     temp_storage  = NULL;
     storage_bytes = 0;
@@ -164,10 +164,16 @@ ErrorCode EraseVarShape::infer(const nvcv::ImageBatchVarShape &inbatch, const nv
         LOG_ERROR("Output must be varshape image batch");
     }
 
-    DataFormat format = helpers::GetLegacyDataFormat(*inData);
+    DataFormat format     = helpers::GetLegacyDataFormat(*inData);
+    DataFormat out_format = helpers::GetLegacyDataFormat(*outData);
     if (!(format == kNHWC || format == kHWC))
     {
-        LOG_ERROR("Invalid DataFormat " << format);
+        LOG_ERROR("Invalid input DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
+    if (!(out_format == kNHWC || out_format == kHWC))
+    {
+        LOG_ERROR("Invalid input DataFormat " << out_format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
@@ -176,12 +182,23 @@ ErrorCode EraseVarShape::infer(const nvcv::ImageBatchVarShape &inbatch, const nv
         LOG_ERROR("Images in input batch must all have the same format ");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
+    if (!outData->uniqueFormat())
+    {
+        LOG_ERROR("Images in output batch must all have the same format ");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
 
-    DataType data_type = helpers::GetLegacyDataType(inData->uniqueFormat());
+    DataType data_type     = helpers::GetLegacyDataType(inData->uniqueFormat());
+    DataType out_data_type = GetLegacyDataType(outData->uniqueFormat());
     if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32S
           || data_type == kCV_32F))
     {
         LOG_ERROR("Invalid DataType " << data_type);
+        return ErrorCode::INVALID_DATA_TYPE;
+    }
+    if (data_type != out_data_type)
+    {
+        LOG_ERROR("DataType of input and output must be equal, but got " << data_type << " and " << out_data_type);
         return ErrorCode::INVALID_DATA_TYPE;
     }
 

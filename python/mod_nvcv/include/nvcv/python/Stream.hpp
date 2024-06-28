@@ -20,6 +20,7 @@
 
 #include "CAPI.hpp"
 
+#include <common/Assert.hpp>
 #include <cuda_runtime.h>
 
 namespace nvcvpy {
@@ -33,12 +34,17 @@ public:
 
     static Stream Current()
     {
-        return Stream(py::reinterpret_borrow<py::object>(capi().Stream_GetCurrent()));
+        py::object temp = py::reinterpret_borrow<py::object>(capi().Stream_GetCurrent());
+        CheckCAPIError();
+        NVCV_ASSERT(temp.is_none() == false);
+        return Stream(temp);
     }
 
     cudaStream_t cudaHandle() const
     {
-        return capi().Stream_GetCudaHandle(this->ptr());
+        cudaStream_t out = capi().Stream_GetCudaHandle(this->ptr());
+        CheckCAPIError();
+        return out;
     }
 
 private:

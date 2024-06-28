@@ -34,13 +34,16 @@ struct type_caster<nvcv::ImageFormat>
     bool load(handle src, bool)
     {
         NVCVImageFormat p = cvpy::capi().ImageFormat_FromPython(src.ptr());
-        value             = nvcv::ImageFormat(p);
+        cvpy::CheckCAPIError();
+        value = nvcv::ImageFormat(p);
         return true;
     }
 
     static handle cast(nvcv::ImageFormat type, return_value_policy /* policy */, handle /*parent */)
     {
-        return cvpy::capi().ImageFormat_ToPython(static_cast<NVCVImageFormat>(type));
+        handle out = cvpy::capi().ImageFormat_ToPython(static_cast<NVCVImageFormat>(type));
+        cvpy::CheckCAPIError();
+        return out;
     }
 };
 

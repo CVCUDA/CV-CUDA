@@ -21,7 +21,7 @@
 #include "CvCudaUtils.cuh"
 #include "cub/cub.cuh"
 
-__global__ void triangle_cal(int *histogram, nvcv::cuda::Tensor1DWrap<double> thresh)
+__global__ void triangle_cal(int *histogram, nvcv::cuda::Tensor1DWrap<double, int32_t> thresh)
 {
     int                     localid = threadIdx.y * blockDim.x + threadIdx.x;
     __shared__ int          hist[256];

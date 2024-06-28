@@ -76,22 +76,13 @@ __global__ void flipHorizontalVertical(SrcWrapper src, DstWrapper dst, Size2D ds
     }
 }
 
-template<typename T>
-void flip(const TensorDataStridedCuda &input, const TensorDataStridedCuda &output, const int32_t flipCode,
-          cudaStream_t stream)
+template<typename SrcWrap, typename DstWrap>
+void runFlipKernel(SrcWrap src, DstWrap dst, Size2D dstSize, int numSamples, int32_t flipCode, cudaStream_t stream)
 {
     constexpr uint32_t BLOCK = 32;
 
-    auto outputWrapper = TensorDataAccessStridedImagePlanar::Create(output);
-    NVCV_ASSERT(outputWrapper);
-
-    Size2D dstSize{outputWrapper->numCols(), outputWrapper->numRows()};
-
-    auto src = cuda::CreateTensorWrapNHW<const T>(input);
-    auto dst = cuda::CreateTensorWrapNHW<T>(output);
-
     dim3 blockSize(BLOCK, BLOCK / 4, 1);
-    dim3 gridSize(divUp(dstSize.w, blockSize.x), divUp(dstSize.h, blockSize.y), outputWrapper->numSamples());
+    dim3 gridSize(divUp(dstSize.w, blockSize.x), divUp(dstSize.h, blockSize.y), numSamples);
 
     if (flipCode > 0)
     {
@@ -108,11 +99,41 @@ void flip(const TensorDataStridedCuda &input, const TensorDataStridedCuda &outpu
         flipHorizontalVertical<<<gridSize, blockSize, 0, stream>>>(src, dst, dstSize);
         checkKernelErrors();
     }
+}
+
+template<typename T>
+ErrorCode flip(const TensorDataStridedCuda &input, const TensorDataStridedCuda &output, const int32_t flipCode,
+               cudaStream_t stream)
+{
+    auto outAccess = TensorDataAccessStridedImagePlanar::Create(output);
+    NVCV_ASSERT(outAccess);
+
+    auto inAccess = TensorDataAccessStridedImagePlanar::Create(input);
+    NVCV_ASSERT(inAccess);
+
+    Size2D dstSize{outAccess->numCols(), outAccess->numRows()};
+
+    int64_t inMaxStride  = inAccess->sampleStride() * inAccess->numSamples();
+    int64_t outMaxStride = outAccess->sampleStride() * outAccess->numSamples();
+    if (std::max(inMaxStride, outMaxStride) <= cuda::TypeTraits<int32_t>::max)
+    {
+        auto src = cuda::CreateTensorWrapNHW<const T, int32_t>(input);
+        auto dst = cuda::CreateTensorWrapNHW<T, int32_t>(output);
+
+        runFlipKernel(src, dst, dstSize, outAccess->numSamples(), flipCode, stream);
+    }
+    else
+    {
+        LOG_ERROR("Input or output size exceeds " << cuda::TypeTraits<int32_t>::max << ". Tensor is too large.");
+        return ErrorCode::INVALID_PARAMETER;
+    }
 
 #ifdef CUDA_DEBUG_LOG
     checkCudaErrors(cudaStreamSynchronize(stream));
     checkCudaErrors(cudaGetLastError());
 #endif // CUDA_DEBUG_LOG
+
+    return ErrorCode::SUCCESS;
 }
 
 ErrorCode Flip::infer(const TensorDataStridedCuda &input, const TensorDataStridedCuda &output, const int32_t flipCode,
@@ -135,7 +156,7 @@ ErrorCode Flip::infer(const TensorDataStridedCuda &input, const TensorDataStride
     DataFormat format = inputFormat;
     if (!(format == kNHWC || format == kHWC))
     {
-        LOG_ERROR("Invalid DataFormat " << format);
+        LOG_ERROR("Invalid input DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
@@ -159,8 +180,8 @@ ErrorCode Flip::infer(const TensorDataStridedCuda &input, const TensorDataStride
     // using flip_t = void(const TensorDataStridedCuda & input,
     //                     const TensorDataStridedCuda & output,
     //                     const int32_t flipCode, cudaStream_t stream);
-    typedef void (*flip_t)(const TensorDataStridedCuda &input, const TensorDataStridedCuda &output,
-                           const int32_t flipCode, cudaStream_t stream);
+    typedef ErrorCode (*flip_t)(const TensorDataStridedCuda &input, const TensorDataStridedCuda &output,
+                                const int32_t flipCode, cudaStream_t stream);
 
     static const flip_t funcs[6][4] = {
         {  flip<uchar>, 0,  flip<uchar3>,  flip<uchar4>},
@@ -172,9 +193,7 @@ ErrorCode Flip::infer(const TensorDataStridedCuda &input, const TensorDataStride
     };
 
     const int32_t channels = inputShape.C;
-    funcs[dataType][channels - 1](input, output, flipCode, stream);
-
-    return ErrorCode::SUCCESS;
+    return funcs[dataType][channels - 1](input, output, flipCode, stream);
 }
 
 } // namespace nvcv::legacy::cuda_op

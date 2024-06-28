@@ -167,29 +167,42 @@ __global__ void JointBilateralFilterKernel(SrcWrapper src, SrcWrapper srcColor, 
 }
 
 template<typename T, NVCVBorderType B>
-void JointBilateralFilterCaller(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &inColorData,
-                                const TensorDataStridedCuda &outData, const int batch, int rows, int columns,
-                                int radius, float sigmaColor, float sigmaSpace, float borderValue, cudaStream_t stream)
+ErrorCode JointBilateralFilterCaller(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &inColorData,
+                                     const TensorDataStridedCuda &outData, const int batch, int rows, int columns,
+                                     int radius, float sigmaColor, float sigmaSpace, float borderValue,
+                                     cudaStream_t stream)
 {
     dim3 block(8, 8);
     dim3 grid(divUp(columns, block.x * 2), divUp(rows, block.y * 2), batch);
 
-    auto src      = cuda::CreateBorderWrapNHW<const T, B>(inData, cuda::SetAll<T>(borderValue));
-    auto srcColor = cuda::CreateBorderWrapNHW<const T, B>(inColorData, cuda::SetAll<T>(borderValue));
-    auto dst      = cuda::CreateTensorWrapNHW<T>(outData);
+    auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(inData);
+    NVCV_ASSERT(inAccess);
 
 #ifdef CUDA_DEBUG_LOG
     checkCudaErrors(cudaStreamSynchronize(stream));
     checkCudaErrors(cudaGetLastError());
 #endif
 
-    JointBilateralFilterKernel<<<grid, block, 0, stream>>>(src, srcColor, dst, radius, sigmaColor, sigmaSpace, rows,
-                                                           columns);
+    if (inAccess->sampleStride() * inAccess->numSamples() <= cuda::TypeTraits<int32_t>::max)
+    {
+        auto src      = cuda::CreateBorderWrapNHW<const T, B, int32_t>(inData, cuda::SetAll<T>(borderValue));
+        auto srcColor = cuda::CreateBorderWrapNHW<const T, B, int32_t>(inColorData, cuda::SetAll<T>(borderValue));
+        auto dst      = cuda::CreateTensorWrapNHW<T, int32_t>(outData);
+
+        JointBilateralFilterKernel<<<grid, block, 0, stream>>>(src, srcColor, dst, radius, sigmaColor, sigmaSpace, rows,
+                                                               columns);
+    }
+    else
+    {
+        LOG_ERROR("Input size exceeds " << cuda::TypeTraits<int32_t>::max << ". Tensor is too large.");
+        return ErrorCode::INVALID_PARAMETER;
+    }
 
 #ifdef CUDA_DEBUG_LOG
     checkCudaErrors(cudaStreamSynchronize(stream));
     checkCudaErrors(cudaGetLastError());
 #endif
+    return ErrorCode::SUCCESS;
 }
 
 ErrorCode JointBilateralFilter::infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &inColorData,
@@ -296,7 +309,7 @@ ErrorCode JointBilateralFilter::infer(const TensorDataStridedCuda &inData, const
 
     float borderValue = .0f;
 
-    typedef void (*joint_bilateral_filter_t)(
+    typedef ErrorCode (*joint_bilateral_filter_t)(
         const TensorDataStridedCuda &inData, const TensorDataStridedCuda &inColorData,
         const TensorDataStridedCuda &outData, int batch, int rows, int columns, int radius, float sigmaColor,
         float sigmaSpace, float borderValue, cudaStream_t stream);
@@ -428,9 +441,8 @@ ErrorCode JointBilateralFilter::infer(const TensorDataStridedCuda &inData, const
          JointBilateralFilterCaller<float4, NVCV_BORDER_REFLECT101>},
          },
     };
-    funcs[borderMode][data_type][channels - 1](inData, inColorData, outData, batch, rows, columns, radius, sigmaColor,
-                                               sigmaSpace, borderValue, stream);
-    return ErrorCode::SUCCESS;
+    return funcs[borderMode][data_type][channels - 1](inData, inColorData, outData, batch, rows, columns, radius,
+                                                      sigmaColor, sigmaSpace, borderValue, stream);
 }
 
 } // namespace nvcv::legacy::cuda_op

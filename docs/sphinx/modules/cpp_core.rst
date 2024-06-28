@@ -22,4 +22,4 @@ Core components and related functions.
 .. toctree::
    :glob:
 
-   ../_exhale_api/group__NVCV__CPP__CORE_*
+   ../_c_cpp_api/group__NVCV__CPP__CORE_*

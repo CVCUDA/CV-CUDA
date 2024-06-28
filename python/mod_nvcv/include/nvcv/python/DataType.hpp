@@ -34,13 +34,16 @@ struct type_caster<nvcv::DataType>
     bool load(handle src, bool)
     {
         NVCVDataType p = cvpy::capi().DataType_FromPython(src.ptr());
-        value          = nvcv::DataType(p);
+        cvpy::CheckCAPIError();
+        value = nvcv::DataType(p);
         return true;
     }
 
     static handle cast(nvcv::DataType type, return_value_policy /* policy */, handle /*parent */)
     {
-        return cvpy::capi().DataType_ToPython(static_cast<NVCVDataType>(type));
+        handle out = cvpy::capi().DataType_ToPython(static_cast<NVCVDataType>(type));
+        cvpy::CheckCAPIError();
+        return out;
     }
 };
 

@@ -26,6 +26,8 @@
 #include "CvCudaUtils.cuh"
 #include "filter_utils.cuh"
 
+#include <nvcv/cuda/TypeTraits.hpp>
+
 using namespace nvcv::legacy::cuda_op;
 using namespace nvcv::legacy::helpers;
 
@@ -65,39 +67,53 @@ __global__ void filter2D(SrcWrapper src, DstWrapper dst, Size2D dstSize, KernelW
 }
 
 template<typename T, NVCVBorderType B, class KernelWrapper>
-void Filter2DCaller(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, KernelWrapper kernel,
-                    Size2D kernelSize, int2 kernelAnchor, float borderValue, cudaStream_t stream)
+ErrorCode Filter2DCaller(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                         KernelWrapper kernel, Size2D kernelSize, int2 kernelAnchor, float borderValue,
+                         cudaStream_t stream)
 {
     auto outAccess = TensorDataAccessStridedImagePlanar::Create(outData);
     NVCV_ASSERT(outAccess);
 
-    Size2D dstSize{outAccess->numCols(), outAccess->numRows()};
+    auto inAccess = TensorDataAccessStridedImagePlanar::Create(inData);
+    NVCV_ASSERT(inAccess);
 
-    auto src = cuda::CreateBorderWrapNHW<const T, B>(inData, cuda::SetAll<T>(borderValue));
-    auto dst = cuda::CreateTensorWrapNHW<T>(outData);
+    Size2D dstSize{outAccess->numCols(), outAccess->numRows()};
 
     dim3 block(16, 16);
     dim3 grid(divUp(dstSize.w, block.x), divUp(dstSize.h, block.y), outAccess->numSamples());
 
-    filter2D<<<grid, block, 0, stream>>>(src, dst, dstSize, kernel, kernelSize, kernelAnchor);
+    auto outMaxStride = outAccess->sampleStride() * outAccess->numSamples();
+    auto inMaxStride  = inAccess->sampleStride() * inAccess->numSamples();
+    if (std::max(outMaxStride, inMaxStride) <= cuda::TypeTraits<int32_t>::max)
+    {
+        auto src = cuda::CreateBorderWrapNHW<const T, B, int32_t>(inData, cuda::SetAll<T>(borderValue));
+        auto dst = cuda::CreateTensorWrapNHW<T, int32_t>(outData);
+        filter2D<<<grid, block, 0, stream>>>(src, dst, dstSize, kernel, kernelSize, kernelAnchor);
+    }
+    else
+    {
+        LOG_ERROR("Input or output size exceeds " << cuda::TypeTraits<int32_t>::max << ". Tensor is too large.");
+        return ErrorCode::INVALID_PARAMETER;
+    }
 
     checkKernelErrors();
 #ifdef CUDA_DEBUG_LOG
     checkCudaErrors(cudaStreamSynchronize(stream));
     checkCudaErrors(cudaGetLastError());
 #endif
+    return ErrorCode::SUCCESS;
 }
 
 template<typename T, class KernelWrapper>
-void Filter2D(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, KernelWrapper kernel,
-              Size2D kernelSize, int2 kernelAnchor, NVCVBorderType borderMode, float borderValue, cudaStream_t stream)
+ErrorCode Filter2D(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, KernelWrapper kernel,
+                   Size2D kernelSize, int2 kernelAnchor, NVCVBorderType borderMode, float borderValue,
+                   cudaStream_t stream)
 {
     switch (borderMode)
     {
-#define NVCV_FILTER_CASE(BORDERTYPE)                                                                           \
-    case BORDERTYPE:                                                                                           \
-        Filter2DCaller<T, BORDERTYPE>(inData, outData, kernel, kernelSize, kernelAnchor, borderValue, stream); \
-        break
+#define NVCV_FILTER_CASE(BORDERTYPE) \
+    case BORDERTYPE:                 \
+        return Filter2DCaller<T, BORDERTYPE>(inData, outData, kernel, kernelSize, kernelAnchor, borderValue, stream);
 
         NVCV_FILTER_CASE(NVCV_BORDER_CONSTANT);
         NVCV_FILTER_CASE(NVCV_BORDER_REPLICATE);
@@ -109,6 +125,7 @@ void Filter2D(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &
     default:
         break;
     }
+    return ErrorCode::SUCCESS;
 }
 
 // Laplacian -------------------------------------------------------------------
@@ -159,7 +176,7 @@ ErrorCode Laplacian::infer(const TensorDataStridedCuda &inData, const TensorData
 
     if (!(format == kNHWC || format == kHWC))
     {
-        LOG_ERROR("Invalid DataFormat " << format);
+        LOG_ERROR("Invalid input DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
@@ -188,9 +205,9 @@ ErrorCode Laplacian::infer(const TensorDataStridedCuda &inData, const TensorData
     normalizeAnchor(kernelAnchor, kLaplacianKernelSize);
     float borderValue = .0f;
 
-    typedef void (*filter2D_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
-                               cuda::math::Vector<float, 9> kernel, Size2D kernelSize, int2 kernelAnchor,
-                               NVCVBorderType borderMode, float borderValue, cudaStream_t stream);
+    typedef ErrorCode (*filter2D_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                                    cuda::math::Vector<float, 9> kernel, Size2D kernelSize, int2 kernelAnchor,
+                                    NVCVBorderType borderMode, float borderValue, cudaStream_t stream);
 
     static const filter2D_t funcs[6][4] = {
         { Filter2D<uchar>, 0,  Filter2D<uchar3>,  Filter2D<uchar4>},
@@ -217,10 +234,8 @@ ErrorCode Laplacian::infer(const TensorDataStridedCuda &inData, const TensorData
         kernel *= scale;
     }
 
-    funcs[data_type][channels - 1](inData, outData, kernel, kLaplacianKernelSize, kernelAnchor, borderMode, borderValue,
-                                   stream);
-
-    return ErrorCode::SUCCESS;
+    return funcs[data_type][channels - 1](inData, outData, kernel, kLaplacianKernelSize, kernelAnchor, borderMode,
+                                          borderValue, stream);
 }
 
 // Gaussian --------------------------------------------------------------------
@@ -259,7 +274,7 @@ ErrorCode Gaussian::infer(const TensorDataStridedCuda &inData, const TensorDataS
 
     if (!(format == kNHWC || format == kHWC))
     {
-        LOG_ERROR("Invalid DataFormat " << format);
+        LOG_ERROR("Invalid input DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
@@ -321,9 +336,9 @@ ErrorCode Gaussian::infer(const TensorDataStridedCuda &inData, const TensorDataS
     normalizeAnchor(kernelAnchor, kernelSize);
     float borderValue = .0f;
 
-    typedef void (*filter2D_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, float *kernel,
-                               Size2D kernelSize, int2 kernelAnchor, NVCVBorderType borderMode, float borderValue,
-                               cudaStream_t stream);
+    typedef ErrorCode (*filter2D_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                                    float *kernel, Size2D kernelSize, int2 kernelAnchor, NVCVBorderType borderMode,
+                                    float borderValue, cudaStream_t stream);
 
     static const filter2D_t funcs[6][4] = {
         { Filter2D<uchar>, 0,  Filter2D<uchar3>,  Filter2D<uchar4>},
@@ -334,10 +349,8 @@ ErrorCode Gaussian::infer(const TensorDataStridedCuda &inData, const TensorDataS
         { Filter2D<float>, 0,  Filter2D<float3>,  Filter2D<float4>},
     };
 
-    funcs[data_type][channels - 1](inData, outData, m_kernel, kernelSize, kernelAnchor, borderMode, borderValue,
-                                   stream);
-
-    return ErrorCode::SUCCESS;
+    return funcs[data_type][channels - 1](inData, outData, m_kernel, kernelSize, kernelAnchor, borderMode, borderValue,
+                                          stream);
 }
 
 // Average Blur ----------------------------------------------------------------
@@ -376,7 +389,7 @@ ErrorCode AverageBlur::infer(const TensorDataStridedCuda &inData, const TensorDa
 
     if (!(format == kNHWC || format == kHWC))
     {
-        LOG_ERROR("Invalid DataFormat " << format);
+        LOG_ERROR("Invalid input DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
@@ -424,9 +437,9 @@ ErrorCode AverageBlur::infer(const TensorDataStridedCuda &inData, const TensorDa
     normalizeAnchor(kernelAnchor, kernelSize);
     float borderValue = .0f;
 
-    typedef void (*filter2D_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, float *kernel,
-                               Size2D kernelSize, int2 kernelAnchor, NVCVBorderType borderMode, float borderValue,
-                               cudaStream_t stream);
+    typedef ErrorCode (*filter2D_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                                    float *kernel, Size2D kernelSize, int2 kernelAnchor, NVCVBorderType borderMode,
+                                    float borderValue, cudaStream_t stream);
 
     static const filter2D_t funcs[6][4] = {
         { Filter2D<uchar>, 0,  Filter2D<uchar3>,  Filter2D<uchar4>},
@@ -448,10 +461,8 @@ ErrorCode AverageBlur::infer(const TensorDataStridedCuda &inData, const TensorDa
         m_curKernelSize = kernelSize;
     }
 
-    funcs[data_type][channels - 1](inData, outData, m_kernel, kernelSize, kernelAnchor, borderMode, borderValue,
-                                   stream);
-
-    return ErrorCode::SUCCESS;
+    return funcs[data_type][channels - 1](inData, outData, m_kernel, kernelSize, kernelAnchor, borderMode, borderValue,
+                                          stream);
 }
 
 } // namespace nvcv::legacy::cuda_op

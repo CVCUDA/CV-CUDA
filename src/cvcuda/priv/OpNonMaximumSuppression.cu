@@ -63,9 +63,10 @@ inline __device__ float ComputeIoU(const T &box1, const T &box2)
 }
 
 template<typename T, typename U>
-__global__ void NonMaximumSuppression(cuda::Tensor2DWrap<const T> inBBoxes, cuda::Tensor2DWrap<U> outMask,
-                                      cuda::Tensor2DWrap<const float> inScores, int numBBoxes, float scoreThreshold,
-                                      float iouThreshold)
+__global__ void NonMaximumSuppression(cuda::Tensor2DWrap<const T, int32_t>     inBBoxes,
+                                      cuda::Tensor2DWrap<U, int32_t>           outMask,
+                                      cuda::Tensor2DWrap<const float, int32_t> inScores, int numBBoxes,
+                                      float scoreThreshold, float iouThreshold)
 {
     const int bboxX = blockDim.x * blockIdx.x + threadIdx.x;
     if (bboxX >= numBBoxes)
@@ -118,9 +119,9 @@ inline __host__ void RunNonMaximumSuppresion(const nvcv::TensorDataStridedCuda &
                                              const nvcv::TensorDataStridedCuda &scores, float scThresh, float iouThresh,
                                              cudaStream_t stream)
 {
-    cuda::Tensor2DWrap<const short4> inWrap(in);
-    cuda::Tensor2DWrap<uint8_t>      outWrap(out);
-    cuda::Tensor2DWrap<const float>  scoresWrap(scores);
+    cuda::Tensor2DWrap<const short4, int32_t> inWrap(in);
+    cuda::Tensor2DWrap<uint8_t, int32_t>      outWrap(out);
+    cuda::Tensor2DWrap<const float, int32_t>  scoresWrap(scores);
 
     int numSamples = in.shape(0);
     int numBBoxes  = in.shape(1);

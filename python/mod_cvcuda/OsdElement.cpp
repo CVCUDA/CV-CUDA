@@ -97,7 +97,7 @@ void ExportBoxBlur(py::module &m)
     using namespace py::literals;
     using namespace cvcuda::priv;
 
-    py::class_<NVCVBlurBoxI>(m, "BlurBoxI")
+    py::class_<NVCVBlurBoxI>(m, "BlurBoxI", "BlurBoxI")
         .def(py::init(
                  [](py::tuple box, int kernelSize)
                  {
@@ -121,7 +121,7 @@ void ExportOSD(py::module &m)
     using namespace py::literals;
     using namespace cvcuda::priv;
 
-    py::class_<NVCVBndBoxI>(m, "BndBoxI")
+    py::class_<NVCVBndBoxI>(m, "BndBoxI", "BndBoxI")
         .def(py::init(
                  [](py::tuple box, int thickness, py::tuple borderColor, py::tuple fillColor)
                  {
@@ -168,7 +168,7 @@ void ExportOSD(py::module &m)
                  }),
              "box"_a, "thickness"_a, "segArray"_a, "segThreshold"_a, "borderColor"_a, "segColor"_a);
 
-    py::class_<NVCVPoint>(m, "Point")
+    py::class_<NVCVPoint>(m, "Point", "Point")
         .def(py::init(
                  [](py::tuple centerPos, int32_t radius, py::tuple color)
                  {
@@ -183,7 +183,7 @@ void ExportOSD(py::module &m)
         .def_readonly("radius", &NVCVPoint::radius, "Point size.")
         .def_readonly("color", &NVCVPoint::color, "Point color.");
 
-    py::class_<NVCVLine>(m, "Line")
+    py::class_<NVCVLine>(m, "Line", "Line")
         .def(py::init(
                  [](py::tuple pos0, py::tuple pos1, int32_t thickness, py::tuple color, bool interpolation)
                  {
@@ -218,7 +218,7 @@ void ExportOSD(py::module &m)
                  }),
              "points"_a, "thickness"_a, "isClosed"_a, "borderColor"_a, "fillColor"_a, py::arg("interpolation") = true);
 
-    py::class_<NVCVRotatedBox>(m, "RotatedBox")
+    py::class_<NVCVRotatedBox>(m, "RotatedBox", "RotatedBox")
         .def(py::init(
                  [](py::tuple centerPos, int32_t width, int32_t height, float yaw, int32_t thickness,
                     py::tuple borderColor, py::tuple bgColor, bool interpolation)
@@ -245,7 +245,7 @@ void ExportOSD(py::module &m)
         .def_readonly("bgColor", &NVCVRotatedBox::bgColor, "Circle filled color.")
         .def_readonly("interpolation", &NVCVRotatedBox::interpolation, "Default: false.");
 
-    py::class_<NVCVCircle>(m, "Circle")
+    py::class_<NVCVCircle>(m, "Circle", "Circle")
         .def(py::init(
                  [](py::tuple centerPos, int32_t radius, int32_t thickness, py::tuple borderColor, py::tuple bgColor)
                  {
@@ -264,7 +264,7 @@ void ExportOSD(py::module &m)
         .def_readonly("borderColor", &NVCVCircle::borderColor, "Circle border color.")
         .def_readonly("bgColor", &NVCVCircle::bgColor, "Circle filled color.");
 
-    py::class_<NVCVArrow>(m, "Arrow")
+    py::class_<NVCVArrow>(m, "Arrow", "Arrow")
         .def(py::init(
                  [](py::tuple pos0, py::tuple pos1, int32_t arrowSize, int32_t thickness, py::tuple color,
                     bool interpolation)

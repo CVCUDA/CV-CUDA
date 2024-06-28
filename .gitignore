@@ -17,6 +17,7 @@
 # ----------------
 /build/
 /build-*/
+/build_*/
 /install/
 /cvcuda-installer*/
 
@@ -47,7 +48,8 @@ ipython_config.py
 
 # Documentation
 # -------------
-_exhale_api
+_c_cpp_api
+_cvcuda_api
 
 # Samples
 # -------------

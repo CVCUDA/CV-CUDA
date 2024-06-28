@@ -33,8 +33,8 @@ namespace nvcv::legacy::cuda_op {
 namespace {
 
 template<class SrcWrapper, class DstWrapper>
-__global__ void copyMakeBorderKernel(const SrcWrapper src, DstWrapper dst, const cuda::Tensor3DWrap<int> left_,
-                                     const cuda::Tensor3DWrap<int> top_, int out_height, int out_width)
+__global__ void copyMakeBorderKernel(const SrcWrapper src, DstWrapper dst, const cuda::Tensor3DWrap<int, int32_t> left_,
+                                     const cuda::Tensor3DWrap<int, int32_t> top_, int out_height, int out_width)
 {
     const int x         = blockIdx.x * blockDim.x + threadIdx.x;
     const int y         = blockIdx.y * blockDim.y + threadIdx.y;
@@ -53,8 +53,8 @@ __global__ void copyMakeBorderKernel(const SrcWrapper src, DstWrapper dst, const
 }
 
 template<class SrcWrapper, class DstWrapper>
-__global__ void copyMakeBorderKernel(const SrcWrapper src, DstWrapper dst, const cuda::Tensor3DWrap<int> left_,
-                                     const cuda::Tensor3DWrap<int> top_)
+__global__ void copyMakeBorderKernel(const SrcWrapper src, DstWrapper dst, const cuda::Tensor3DWrap<int, int32_t> left_,
+                                     const cuda::Tensor3DWrap<int, int32_t> top_)
 {
     const int x         = blockIdx.x * blockDim.x + threadIdx.x;
     const int y         = blockIdx.y * blockDim.y + threadIdx.y;
@@ -78,8 +78,8 @@ template<NVCVBorderType B, typename T>
 struct copyMakeBorderDispatcher
 {
     static void call(const ImageBatchVarShapeDataStridedCuda &src, cuda::Tensor3DWrap<T> dst, const T &borderValue,
-                     const cuda::Tensor3DWrap<int> &left, const cuda::Tensor3DWrap<int> &top, int max_height,
-                     int max_width, cudaStream_t stream)
+                     const cuda::Tensor3DWrap<int, int32_t> &left, const cuda::Tensor3DWrap<int, int32_t> &top,
+                     int max_height, int max_width, cudaStream_t stream)
     {
         dim3 blockSize(BLOCK, BLOCK / 4, 1);
         dim3 gridSize(divUp(max_width, blockSize.x), divUp(max_height, blockSize.y), src.numImages());
@@ -96,8 +96,8 @@ struct copyMakeBorderDispatcher
     }
 
     static void call(const ImageBatchVarShapeDataStridedCuda &src, cuda::ImageBatchVarShapeWrap<T> dst,
-                     const T &borderValue, const cuda::Tensor3DWrap<int> &left, const cuda::Tensor3DWrap<int> &top,
-                     int max_height, int max_width, cudaStream_t stream)
+                     const T &borderValue, const cuda::Tensor3DWrap<int, int32_t> &left,
+                     const cuda::Tensor3DWrap<int, int32_t> &top, int max_height, int max_width, cudaStream_t stream)
     {
         dim3 blockSize(BLOCK, BLOCK / 4, 1);
         dim3 gridSize(divUp(max_width, blockSize.x), divUp(max_height, blockSize.y), src.numImages());
@@ -124,8 +124,8 @@ void copyMakeBorder(const ImageBatchVarShapeDataStridedCuda &inData, const OutTy
 #pragma unroll
     for (int i = 0; i < cn; i++) cuda::GetElement(brdVal, i) = cuda::GetElement(value, i);
 
-    cuda::Tensor3DWrap<int> topVec(top);
-    cuda::Tensor3DWrap<int> leftVec(left);
+    cuda::Tensor3DWrap<int, int32_t> topVec(top);
+    cuda::Tensor3DWrap<int, int32_t> leftVec(left);
 
     auto outSize = GetMaxImageSize(outData);
 
@@ -136,8 +136,8 @@ void copyMakeBorder(const ImageBatchVarShapeDataStridedCuda &inData, const OutTy
     out_type dstWrap(outData);
 
     typedef void (*func_t)(const ImageBatchVarShapeDataStridedCuda &src, out_type dst, const src_type &borderValue,
-                           const cuda::Tensor3DWrap<int> &left, const cuda::Tensor3DWrap<int> &top, int max_height,
-                           int max_width, cudaStream_t stream);
+                           const cuda::Tensor3DWrap<int, int32_t> &left, const cuda::Tensor3DWrap<int, int32_t> &top,
+                           int max_height, int max_width, cudaStream_t stream);
 
     static const func_t funcs[] = {copyMakeBorderDispatcher<NVCV_BORDER_CONSTANT, src_type>::call,
                                    copyMakeBorderDispatcher<NVCV_BORDER_REPLICATE, src_type>::call,
@@ -168,7 +168,7 @@ ErrorCode CopyMakeBorderVarShape::inferWarp(const ImageBatchVarShapeDataStridedC
     auto format = input_format;
     if (!(format == kNHWC || format == kHWC))
     {
-        LOG_ERROR("Invalid DataFormat " << format);
+        LOG_ERROR("Invalid input DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 

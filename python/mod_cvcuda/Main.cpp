@@ -38,13 +38,6 @@ namespace py = pybind11;
 
 PYBIND11_MODULE(cvcuda, m)
 {
-    m.doc() = R"pbdoc(
-        CV-CUDA Python API reference
-        ========================
-
-        This is the Python API reference for the NVIDIA® CV-CUDA library.
-    )pbdoc";
-
     m.attr("__version__") = CVCUDA_VERSION_STRING;
 
     // Import all public names from nvcv
@@ -76,23 +69,25 @@ PYBIND11_MODULE(cvcuda, m)
 
     using namespace cvcudapy;
 
+    // doctag: Non-Operators
     // Operators' auxiliary entities
-    ExportInterpolationType(m);
-    ExportChannelManipType(m);
-    ExportBorderType(m);
-    ExportMorphologyType(m);
-    ExportColorConversionCode(m);
-    ExportRemapMapValueType(m);
-    ExportBoxBlur(m);
-    ExportOSD(m);
-    ExportThresholdType(m);
     ExportAdaptiveThresholdType(m);
-    ExportSIFTFlagType(m);
+    ExportBorderType(m);
+    ExportBoxBlur(m);
+    ExportChannelManipType(m);
+    ExportOSD(m);
+    ExportColorConversionCode(m);
     ExportConnectivityType(m);
+    ExportInterpolationType(m);
     ExportLabelType(m);
-    ExportNormType(m);
     ExportPairwiseMatcherType(m);
+    ExportMorphologyType(m);
+    ExportNormType(m);
+    ExportRemapMapValueType(m);
+    ExportSIFTFlagType(m);
+    ExportThresholdType(m);
 
+    // doctag: Operators
     // CV-CUDA Operators
     ExportOpResizeCropConvertReformat(m);
     ExportOpPairwiseMatcher(m);

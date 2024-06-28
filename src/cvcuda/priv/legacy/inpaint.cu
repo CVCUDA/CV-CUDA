@@ -26,6 +26,8 @@
 #include "inpaint_utils.cuh"
 #include "reduce_kernel_utils.cuh"
 
+#include <nvcv/cuda/TypeTraits.hpp>
+
 using namespace nvcv::legacy::helpers;
 
 using namespace nvcv::legacy::cuda_op;
@@ -41,9 +43,8 @@ using namespace nvcv::cuda;
 #define BLOCK_S          16
 #define REDUCE_GRID_SIZE 64
 
-template<typename T>
-__global__ void copy_mask_data(Tensor4DWrap<T> src, Ptr2dNHWC<T> dst, int row_offset, int col_offset, int value,
-                               int2 size)
+template<typename MaskWrapper, typename T>
+__global__ void copy_mask_data(MaskWrapper src, Ptr2dNHWC<T> dst, int row_offset, int col_offset, int value, int2 size)
 {
     int src_x = blockIdx.x * blockDim.x + threadIdx.x;
     int src_y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -61,9 +62,8 @@ __global__ void copy_mask_data(Tensor4DWrap<T> src, Ptr2dNHWC<T> dst, int row_of
     }
 }
 
-template<typename T>
-__device__ void inpaint(Ptr2dNHWC<unsigned char> f, Ptr2dNHWC<float> t, Tensor4DWrap<T> out, int i, int j, int range,
-                        int ch)
+template<typename OutWrapper>
+__device__ void inpaint(Ptr2dNHWC<unsigned char> f, Ptr2dNHWC<float> t, OutWrapper out, int i, int j, int range, int ch)
 {
     const int batch_idx = get_batch_idx();
 
@@ -206,8 +206,8 @@ __device__ void inpaint(Ptr2dNHWC<unsigned char> f, Ptr2dNHWC<float> t, Tensor4D
     }
 }
 
-template<typename T>
-__global__ void TeleaInpaintFMM(Ptr2dNHWC<unsigned char> f, Ptr2dNHWC<float> t, Tensor4DWrap<T> out, int range,
+template<typename OutWrapper>
+__global__ void TeleaInpaintFMM(Ptr2dNHWC<unsigned char> f, Ptr2dNHWC<float> t, OutWrapper out, int range,
                                 Ptr2dNHWC<unsigned char> band, int ch)
 {
     int       i = 0, j = 0;
@@ -446,17 +446,13 @@ inline int finish_flag_reduce(Ptr2dNHWC<unsigned char> src_ptr, int *d_out, int 
 }
 
 template<typename T>
-void inpaint_helper(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &mask,
-                    const nvcv::TensorDataStridedCuda &outData, void *workspace, unsigned char *kernel_ptr, int range,
-                    bool &init_flag, int batch, int height, int width, int channel, int maxBatchSize,
-                    cudaStream_t stream)
+ErrorCode inpaint_helper(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &mask,
+                         const nvcv::TensorDataStridedCuda &outData, void *workspace, unsigned char *kernel_ptr,
+                         int range, bool &init_flag, int batch, int height, int width, int channel, int maxBatchSize,
+                         cudaStream_t stream)
 {
     dim3 blockSize(BLOCK, BLOCK / 4, 1);
     dim3 gridSize(divUp(width + 2, blockSize.x), divUp(height + 2, blockSize.y), batch);
-
-    auto dst = CreateTensorWrapNHWC<T>(outData);
-    // data type for mask is 8UC1
-    auto org_mask = CreateTensorWrapNHWC<unsigned char>(mask);
 
     // create t and f pointer
     int ecols = width + 2;
@@ -499,8 +495,20 @@ void inpaint_helper(const nvcv::TensorDataStridedCuda &inData, const nvcv::Tenso
                                     stream)); // cvSet(mask,cvScalar(KNOWN,0,0,0));
     // copy !=0 value to mask
     int2 size = {width, height};
-    copy_mask_data<unsigned char><<<gridSize, blockSize, 0, stream>>>(
-        org_mask, inpaint_mask, 1, 1, INSIDE, size); // COPY_MASK_BORDER1_C1(inpaint_mask,mask,uchar);
+
+    auto maskAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(mask);
+    NVCV_ASSERT(maskAccess);
+    if (maskAccess->sampleStride() * batch <= nvcv::cuda::TypeTraits<int32_t>::max)
+    {
+        auto org_mask = CreateTensorWrapNHWC<unsigned char, int32_t>(mask);
+        copy_mask_data<<<gridSize, blockSize, 0, stream>>>(org_mask, inpaint_mask, 1, 1, INSIDE,
+                                                           size); // COPY_MASK_BORDER1_C1(inpaint_mask,mask,uchar);
+    }
+    else
+    {
+        LOG_ERROR("Mask size exceeds " << nvcv::cuda::TypeTraits<int32_t>::max << ". Tensor is too large.");
+        return ErrorCode::INVALID_PARAMETER;
+    }
     checkKernelErrors();
 
     // set border to 0
@@ -545,17 +553,27 @@ void inpaint_helper(const nvcv::TensorDataStridedCuda &inData, const nvcv::Tenso
     dim3 grid(divUp(f.rows, block.x), divUp(f.cols, block.y), f.batches);
     int  flag = 1;
 
-    while (flag)
+    if (outAccess->sampleStride() * batch <= nvcv::cuda::TypeTraits<int32_t>::max)
     {
-        for (int i = 0; i < iteration; i++)
+        auto dst = CreateTensorWrapNHWC<T, int32_t>(outData);
+        while (flag)
         {
-            TeleaInpaintFMM<T><<<grid, block, 0, stream>>>(
-                inpaint_mask, t, dst, range, band, channel); // icvTeleaInpaintFMM<uchar>(mask,t,output_img,range,Heap);
+            for (int i = 0; i < iteration; i++)
+            {
+                TeleaInpaintFMM<<<grid, block, 0, stream>>>(inpaint_mask, t, dst, range, band, channel);
+                /* icvTeleaInpaintFMM<uchar>(mask,t,output_img,range,Heap); */
+            }
+            flag = finish_flag_reduce(band, block_reduce_buffer1, block_reduce_buffer2, stream);
         }
-        flag = finish_flag_reduce(band, block_reduce_buffer1, block_reduce_buffer2, stream);
+    }
+    else
+    {
+        LOG_ERROR("Output size exceeds " << nvcv::cuda::TypeTraits<int32_t>::max << ". Tensor is too large.");
+        return ErrorCode::INVALID_PARAMETER;
     }
 
     checkKernelErrors();
+    return ErrorCode::SUCCESS;
 }
 
 namespace nvcv::legacy::cuda_op {
@@ -604,7 +622,7 @@ ErrorCode Inpaint::infer(const TensorDataStridedCuda &inData, const TensorDataSt
     DataType   in_data_type = GetLegacyDataType(inData.dtype());
     if (!(in_format == kNHWC || in_format == kHWC))
     {
-        LOG_ERROR("Invalid DataFormat " << in_format);
+        LOG_ERROR("Invalid input DataFormat " << in_format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
@@ -628,7 +646,7 @@ ErrorCode Inpaint::infer(const TensorDataStridedCuda &inData, const TensorDataSt
     DataType   out_data_type = GetLegacyDataType(outData.dtype());
     if (!(out_format == kNHWC || out_format == kHWC))
     {
-        LOG_ERROR("Invalid DataFormat " << out_format);
+        LOG_ERROR("Invalid output DataFormat " << out_format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
@@ -663,10 +681,10 @@ ErrorCode Inpaint::infer(const TensorDataStridedCuda &inData, const TensorDataSt
         return ErrorCode::INVALID_DATA_SHAPE;
     }
 
-    typedef void (*inpaint_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &mask,
-                              const TensorDataStridedCuda &outData, void *workspace, unsigned char *kernel_ptr,
-                              int range, bool &init_flag, int batch, int height, int width, int channel,
-                              int maxBatchSize, cudaStream_t stream);
+    typedef ErrorCode (*inpaint_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &mask,
+                                   const TensorDataStridedCuda &outData, void *workspace, unsigned char *kernel_ptr,
+                                   int range, bool &init_flag, int batch, int height, int width, int channel,
+                                   int maxBatchSize, cudaStream_t stream);
 
     static const inpaint_t funcs[6] = {
         inpaint_helper<unsigned char>, inpaint_helper<char>, 0, 0, inpaint_helper<int>, inpaint_helper<float>,
@@ -675,9 +693,9 @@ ErrorCode Inpaint::infer(const TensorDataStridedCuda &inData, const TensorDataSt
     int range = (int)std::round(inpaintRadius);
     range     = std::max(range, 1);
     range     = std::min(range, 100);
-    funcs[in_data_type](inData, masks, outData, m_workspace, m_kernel_ptr, range, m_init_dilate, inAccess->numSamples(),
-                        inAccess->numRows(), inAccess->numCols(), in_channels, m_maxBatchSize, stream);
-    return SUCCESS;
+    return funcs[in_data_type](inData, masks, outData, m_workspace, m_kernel_ptr, range, m_init_dilate,
+                               inAccess->numSamples(), inAccess->numRows(), inAccess->numCols(), in_channels,
+                               m_maxBatchSize, stream);
 }
 
 } // namespace nvcv::legacy::cuda_op

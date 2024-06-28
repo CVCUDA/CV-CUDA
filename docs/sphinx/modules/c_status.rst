@@ -20,4 +20,4 @@ Status
 .. toctree::
    :glob:
 
-   ../_exhale_api/group__NVCV__C__API_STATUS*
+   ../_c_cpp_api/group__NVCV__C__API_STATUS*

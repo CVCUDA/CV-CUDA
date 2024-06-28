@@ -19,7 +19,6 @@ set(CV_CUDA_PRIV_LEGACY_OP_FILES
     filter_utils.cu
     custom_crop.cu
     reformat.cu
-    resize.cu
     resize_var_shape.cu
     convert_to.cu
     normalize.cu
@@ -53,7 +52,6 @@ set(CV_CUDA_PRIV_LEGACY_OP_FILES
     composite_var_shape.cu
     custom_crop.cu
     reformat.cu
-    resize.cu
     resize_var_shape.cu
     convert_to.cu
     normalize.cu

@@ -218,7 +218,7 @@ ErrorCode MorphologyVarShape::infer(const nvcv::ImageBatchVarShape &inBatch, con
     DataFormat format = input_format;
     if (!(format == kNHWC || format == kHWC))
     {
-        LOG_ERROR("Invalid DataFormat " << format);
+        LOG_ERROR("Invalid input DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 

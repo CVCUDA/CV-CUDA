@@ -619,7 +619,7 @@ ErrorCode InpaintVarShape::infer(const nvcv::ImageBatchVarShape          &inBatc
     DataType   in_data_type = helpers::GetLegacyDataType(inData->uniqueFormat());
     if (!(in_format == kNHWC || in_format == kHWC))
     {
-        LOG_ERROR("Invalid DataFormat " << in_format);
+        LOG_ERROR("Invalid input DataFormat " << in_format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
@@ -641,7 +641,7 @@ ErrorCode InpaintVarShape::infer(const nvcv::ImageBatchVarShape          &inBatc
     DataType   out_data_type = helpers::GetLegacyDataType(outData->uniqueFormat());
     if (out_format != in_format)
     {
-        LOG_ERROR("Invalid DataFormat " << out_format);
+        LOG_ERROR("Invalid DataFormat between input (" << in_format << ") and output (" << out_format << ")");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 

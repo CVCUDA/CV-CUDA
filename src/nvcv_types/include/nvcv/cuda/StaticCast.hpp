@@ -65,11 +65,13 @@ __host__ __device__ auto StaticCast(U u)
     {
         RT out{};
 
-#pragma unroll
-        for (int e = 0; e < NumElements<RT>; ++e)
-        {
-            GetElement(out, e) = static_cast<T>(GetElement(u, e));
-        }
+        GetElement<0>(out) = static_cast<T>(GetElement<0>(u));
+        if constexpr (nvcv::cuda::NumElements<RT> >= 2)
+            GetElement<1>(out) = static_cast<T>(GetElement<1>(u));
+        if constexpr (nvcv::cuda::NumElements<RT> >= 3)
+            GetElement<2>(out) = static_cast<T>(GetElement<2>(u));
+        if constexpr (nvcv::cuda::NumElements<RT> == 4)
+            GetElement<3>(out) = static_cast<T>(GetElement<3>(u));
 
         return out;
     }

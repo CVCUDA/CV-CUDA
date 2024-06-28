@@ -38,38 +38,38 @@ You can download the CV-CUDA tar, deb or wheel packages from `the asset section 
 
     Unzip the cvcuda runtime package: ::
 
-        tar -xvf cvcuda-lib-x.x.x-cuda11-x86_64-linux.tar.xz
+        tar -xvf cvcuda-lib-<x.x.x>-<cu_ver>-<arch>-linux.tar.xz
 
     Unzip the cvcuda developer package: ::
 
-        tar -xvf cvcuda-dev-x.x.x-cuda11-x86_64-linux.tar.xz
+        tar -xvf cvcuda-dev-<x.x.x>-<cu_ver>-<arch>-linux.tar.xz
 
     Unzip the cvcuda python package: ::
 
-        tar -xvf cvcuda-python3.*-x.x.x-cuda11-x86_64-linux.tar.xz
+        tar -xvf cvcuda-python<py_ver>-<x.x.x>-<cu_ver>-<arch>-linux.tar.xz
 
     [Optional] Unzip the tests. ::
 
-        tar -xvf cvcuda-tests-cuda11-x86_64-linux.tar.xz
+        tar -xvf cvcuda-tests-<x.x.x>-<cu_ver>-<arch>-linux.tar.xz
 
 
 * Debian Installation
 
     Install the runtime library. ::
 
-        dpkg -i cvcuda-lib-x.x.x-cuda11-x86_64-linux.deb
+        sudo apt install -y ./cvcuda-lib-<x.x.x>-<cu_ver>-<arch>-linux.deb
 
     Install the developer library. ::
 
-        dpkg -i cvcuda-dev-x.x.x-cuda11-x86_64-linux.deb
+        sudo apt install -y ./cvcuda-dev-<x.x.x>-<cu_ver>-<arch>-linux.deb
 
     Install the python bindings ::
 
-        dpkg -i cvcuda-python3.*-x.x.x-cuda11-x86_64-linux.deb
+        sudo apt install -y ./cvcuda-python<py_ver>-<x.x.x>-<cu_ver>-<arch>-linux.deb
 
     [Optional] Install the tests. ::
 
-        sudo dpkg -i cvcuda-tests-x.x.x-cuda11-x86_64-linux.deb
+        sudo apt install -y ./cvcuda-tests-<x.x.x>-<cu_ver>-<arch>-linux.deb
 
 
 * Python Wheel File Installation
