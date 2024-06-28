@@ -118,7 +118,7 @@ Erase::Erase(DataShape max_input_shape, DataShape max_output_shape, int num_eras
     {
         cudaFree(d_max_values);
         LOG_ERROR("Invalid num of erasing area" << max_num_erasing_area);
-        throw std::runtime_error("Parameter error!");
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "max_num_erasing_area must be >= 0");
     }
     temp_storage  = NULL;
     storage_bytes = 0;
@@ -153,12 +153,19 @@ ErrorCode Erase::infer(const TensorDataStridedCuda &inData, const TensorDataStri
                        const TensorDataStridedCuda &values, const TensorDataStridedCuda &imgIdx, bool random,
                        unsigned int seed, bool inplace, cudaStream_t stream)
 {
-    DataFormat format    = GetLegacyDataFormat(inData.layout());
-    DataType   data_type = GetLegacyDataType(inData.dtype());
+    DataFormat format        = GetLegacyDataFormat(inData.layout());
+    DataFormat out_format    = GetLegacyDataFormat(outData.layout());
+    DataType   data_type     = GetLegacyDataType(inData.dtype());
+    DataType   out_data_type = GetLegacyDataType(outData.dtype());
 
     if (!(format == kNHWC || format == kHWC))
     {
-        LOG_ERROR("Invalid DataFormat " << format);
+        LOG_ERROR("Invalid input DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
+    if (!(out_format == kNHWC || out_format == kHWC))
+    {
+        LOG_ERROR("Invalid output DataFormat " << out_format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
@@ -166,6 +173,11 @@ ErrorCode Erase::infer(const TensorDataStridedCuda &inData, const TensorDataStri
           || data_type == kCV_32F))
     {
         LOG_ERROR("Invalid DataType " << data_type);
+        return ErrorCode::INVALID_DATA_TYPE;
+    }
+    if (data_type != out_data_type)
+    {
+        LOG_ERROR("DataType of input and output must be equal, but got " << data_type << " and " << out_data_type);
         return ErrorCode::INVALID_DATA_TYPE;
     }
 

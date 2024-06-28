@@ -99,21 +99,24 @@ inline RT GetCoord(int x, int y, int z = 0, int k = 0)
         return RT{k, x, y, z};
 }
 
-inline float GetBicubicCoeff(float c)
+inline void GetBicubicCoeffs(float delta, float &w0, float &w1, float &w2, float &w3)
 {
-    c = std::fabs(c);
-    if (c <= 1.0f)
-    {
-        return c * c * (1.5f * c - 2.5f) + 1.0f;
-    }
-    else if (c < 2.0f)
-    {
-        return c * (c * (-0.5f * c + 2.5f) - 4.0f) + 2.0f;
-    }
-    else
-    {
-        return 0.0f;
-    }
+    w0 = -.5f;
+    w0 = w0 * delta + 1.f;
+    w0 = w0 * delta - .5f;
+    w0 = w0 * delta;
+
+    w1 = 1.5f;
+    w1 = w1 * delta - 2.5f;
+    w1 = w1 * delta;
+    w1 = w1 * delta + 1.f;
+
+    w2 = -1.5f;
+    w2 = w2 * delta + 2.f;
+    w2 = w2 * delta + .5f;
+    w2 = w2 * delta;
+
+    w3 = 1 - w0 - w1 - w2;
 }
 
 template<NVCVInterpolationType I, NVCVBorderType B, typename StridesType, typename ValueType>
@@ -149,27 +152,25 @@ inline ValueType GoldInterp(const std::vector<uint8_t> &vec, const StridesType &
     }
     else if constexpr (I == NVCV_INTERP_CUBIC)
     {
-        int xmin = cuda::round<cuda::RoundMode::UP, int>(coord.x - 2.f);
-        int ymin = cuda::round<cuda::RoundMode::UP, int>(coord.y - 2.f);
-        int xmax = cuda::round<cuda::RoundMode::DOWN, int>(coord.x + 2.f);
-        int ymax = cuda::round<cuda::RoundMode::DOWN, int>(coord.y + 2.f);
+        int ix = cuda::round<cuda::RoundMode::DOWN, int>(coord.x);
+        int iy = cuda::round<cuda::RoundMode::DOWN, int>(coord.y);
 
         using FT = cuda::ConvertBaseTypeTo<float, ValueType>;
         auto sum = cuda::SetAll<FT>(0);
 
-        float w, wsum = 0.f;
+        float wx[4];
+        test::GetBicubicCoeffs(coord.x - ix, wx[0], wx[1], wx[2], wx[3]);
+        float wy[4];
+        test::GetBicubicCoeffs(coord.y - iy, wy[0], wy[1], wy[2], wy[3]);
 
-        for (int cy = ymin; cy <= ymax; cy++)
+        for (int cy = -1; cy <= 2; cy++)
         {
-            for (int cx = xmin; cx <= xmax; cx++)
+            for (int cx = -1; cx <= 2; cx++)
             {
-                w = GetBicubicCoeff(coord.x - cx) * GetBicubicCoeff(coord.y - cy);
-                sum += w * ValueAt<B>(vec, strides, size, bValue, GetCoord<N>(cx, cy, z, k));
-                wsum += w;
+                sum += (wx[cx + 1] * wy[cy + 1])
+                     * ValueAt<B>(vec, strides, size, bValue, GetCoord<N>(ix + cx, iy + cy, z, k));
             }
         }
-
-        sum = (wsum == 0.f) ? cuda::SetAll<FT>(0) : sum / wsum;
 
         return cuda::SaturateCast<ValueType>(sum);
     }

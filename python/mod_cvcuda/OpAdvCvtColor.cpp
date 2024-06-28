@@ -103,8 +103,8 @@ Tensor AdvCvtColor(Tensor &input, NVCVColorConversionCode code, NVCVColorSpec sp
 void ExportOpAdvCvtColor(py::module &m)
 {
     using namespace pybind11::literals;
-
-    m.def("advcvtcolor", &AdvCvtColor, "src"_a, "code"_a, "spec"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+    m.def("advcvtcolor", &AdvCvtColor, "src"_a, "code"_a, "spec"_a, py::kw_only(), "stream"_a = nullptr,
+          R"pbdoc(
 
         Executes the Adv Cvt Color operation on the given cuda stream.
 

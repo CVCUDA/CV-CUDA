@@ -98,6 +98,26 @@ inline const CAPI &capi()
     return *capi;
 }
 
+/* Check for an error inside the CAPI, since exceptions cannot cross the C api
+ * boundary, this must be called to make sure en exception was not converted to
+ * a PyErr
+ */
+inline void CheckCAPIError()
+{
+    if (PyErr_Occurred())
+    {
+        // Propagate the exception to Python
+        throw pybind11::error_already_set();
+    }
+};
+
+template<class T>
+decltype(auto) CheckCAPIError(T &&arg)
+{
+    CheckCAPIError();
+    return std::forward<T>(arg);
+}
+
 } // namespace nvcvpy
 
 #endif // NVCV_PYTHON_CAPI_HPP

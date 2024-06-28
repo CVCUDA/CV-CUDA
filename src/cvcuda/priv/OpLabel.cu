@@ -72,6 +72,9 @@ constexpr int REGION_NOT_MARKED  = 0;
 constexpr int REGION_REMOVED     = 1;
 constexpr int REGION_INSIDE_MASK = 2;
 
+template<typename T>
+using ArgWrap = cuda::Tensor1DWrap<T, int32_t>;
+
 // CUDA kernels ----------------------------------------------------------------
 
 template<typename DT>
@@ -126,10 +129,10 @@ __device__ DT Reduction(DT *labels, DT label1, DT label2)
 
 // -- 2D kernels --
 
-template<int BW, int BH, typename ST, typename DT>
-__global__ void BlockLabel2D(cuda::Tensor3DWrap<DT> dst, cuda::Tensor3DWrap<ST> src, cuda::Tensor1DWrap<ST> minThresh,
-                             cuda::Tensor1DWrap<ST> maxThresh, int2 size)
+template<int BW, int BH, typename DstWrap, typename SrcWrap, typename ST = typename SrcWrap::ValueType>
+__global__ void BlockLabel2D(DstWrap dst, SrcWrap src, ArgWrap<ST> minThresh, ArgWrap<ST> maxThresh, int2 size)
 {
+    using DT = typename DstWrap::ValueType;
     __shared__ DT labels[BW * BH];
 
     int2 tc = cuda::StaticCast<int>(cuda::DropCast<2>(threadIdx));
@@ -211,10 +214,10 @@ __global__ void BlockLabel2D(cuda::Tensor3DWrap<DT> dst, cuda::Tensor3DWrap<ST> 
     }
 }
 
-template<typename ST, typename DT>
-__global__ void YLabelReduction2D(cuda::Tensor3DWrap<DT> dst, cuda::Tensor3DWrap<ST> src,
-                                  cuda::Tensor1DWrap<ST> minThresh, cuda::Tensor1DWrap<ST> maxThresh, int2 size)
+template<typename SrcWrap, typename DstWrap, typename ST = typename SrcWrap::ValueType>
+__global__ void YLabelReduction2D(DstWrap dst, SrcWrap src, ArgWrap<ST> minThresh, ArgWrap<ST> maxThresh, int2 size)
 {
+    using DT = typename DstWrap::ValueType;
     int3 gc;
     gc.x = blockIdx.x * blockDim.x + threadIdx.x;
     gc.y = (blockIdx.y * blockDim.y + threadIdx.y) * blockDim.y + blockDim.y;
@@ -261,10 +264,11 @@ __global__ void YLabelReduction2D(cuda::Tensor3DWrap<DT> dst, cuda::Tensor3DWrap
     }
 }
 
-template<typename ST, typename DT>
-__global__ void XLabelReduction2D(cuda::Tensor3DWrap<DT> dst, cuda::Tensor3DWrap<ST> src,
-                                  cuda::Tensor1DWrap<ST> minThresh, cuda::Tensor1DWrap<ST> maxThresh, int2 size)
+template<typename SrcWrap, typename DstWrap, typename ST = typename SrcWrap::ValueType>
+__global__ void XLabelReduction2D(DstWrap dst, SrcWrap src, ArgWrap<ST> minThresh, ArgWrap<ST> maxThresh, int2 size)
 {
+    using DT = typename DstWrap::ValueType;
+
     int3 gc;
     gc.x = (blockIdx.y * blockDim.y + threadIdx.y) * blockDim.x + blockDim.x;
     gc.y = blockIdx.x * blockDim.x + threadIdx.x;
@@ -313,8 +317,8 @@ __global__ void XLabelReduction2D(cuda::Tensor3DWrap<DT> dst, cuda::Tensor3DWrap
     }
 }
 
-template<typename DT>
-__global__ void ResolveLabels2D(cuda::Tensor3DWrap<DT> dst, int2 size)
+template<typename DstWrap>
+__global__ void ResolveLabels2D(DstWrap dst, int2 size)
 {
     int3 gc;
     gc.x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -329,11 +333,12 @@ __global__ void ResolveLabels2D(cuda::Tensor3DWrap<DT> dst, int2 size)
     dst[gc] = FindRoot(dst.ptr(gc.z), dst[gc]);
 }
 
-template<typename DT, typename ST>
-__global__ void ReplaceBgLabels2D(cuda::Tensor3DWrap<DT> dst, cuda::Tensor3DWrap<ST> src,
-                                  cuda::Tensor1DWrap<ST> bgLabel, cuda::Tensor1DWrap<ST> minThresh,
-                                  cuda::Tensor1DWrap<ST> maxThresh, int2 size)
+template<typename DstWrap, typename SrcWrap, typename ST = typename SrcWrap::ValueType>
+__global__ void ReplaceBgLabels2D(DstWrap dst, SrcWrap src, ArgWrap<ST> bgLabel, ArgWrap<ST> minThresh,
+                                  ArgWrap<ST> maxThresh, int2 size)
 {
+    using DT = typename DstWrap::ValueType;
+
     int3 gc;
     gc.x = blockIdx.x * blockDim.x + threadIdx.x;
     gc.y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -379,9 +384,9 @@ __global__ void ReplaceBgLabels2D(cuda::Tensor3DWrap<DT> dst, cuda::Tensor3DWrap
     }
 }
 
-template<typename DT, typename ST>
-__global__ void CountLabels2D(cuda::Tensor1DWrap<DT> count, cuda::Tensor3DWrap<DT> stats, cuda::Tensor3DWrap<DT> dst,
-                              cuda::Tensor1DWrap<ST> bgLabel, int2 size, int maxCapacity)
+template<typename DstWrap, typename StatsWrap, typename ST, typename DT = typename DstWrap::ValueType>
+__global__ void CountLabels2D(ArgWrap<DT> count, StatsWrap stats, DstWrap dst, ArgWrap<ST> bgLabel, int2 size,
+                              int maxCapacity)
 {
     int3 gc;
     gc.x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -440,10 +445,11 @@ __global__ void CountLabels2D(cuda::Tensor1DWrap<DT> count, cuda::Tensor3DWrap<D
     }
 }
 
-template<typename DT, typename ST, typename MT>
-__global__ void ComputeStats2D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor3DWrap<DT> dst, cuda::Tensor3DWrap<MT> mask,
-                               cuda::Tensor1DWrap<ST> bgLabel, int2 size, int maskN, bool relabel)
+template<typename StatsWrap, typename DstWrap, typename ST, typename MaskWrap>
+__global__ void ComputeStats2D(StatsWrap stats, DstWrap dst, MaskWrap mask, ArgWrap<ST> bgLabel, int2 size, int maskN,
+                               bool relabel)
 {
+    using DT = typename DstWrap::ValueType;
     int3 gc;
     gc.x = blockIdx.x * blockDim.x + threadIdx.x;
     gc.y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -525,11 +531,11 @@ __global__ void ComputeStats2D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor3DWrap<
     }
 }
 
-template<typename DT, typename ST>
-__global__ void RemoveIslands2D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor3DWrap<DT> dst,
-                                cuda::Tensor1DWrap<ST> bgLabel, cuda::Tensor1DWrap<DT> minSize, int2 size, bool relabel,
-                                bool hasMask)
+template<typename StatsWrap, typename DstWrap, typename ST, typename DT = typename DstWrap::ValueType>
+__global__ void RemoveIslands2D(StatsWrap stats, DstWrap dst, ArgWrap<ST> bgLabel, ArgWrap<DT> minSize, int2 size,
+                                bool relabel, bool hasMask)
 {
+    static_assert(std::is_same_v<DT, typename StatsWrap::ValueType>);
     int3 gc;
     gc.x = blockIdx.x * blockDim.x + threadIdx.x;
     gc.y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -604,10 +610,11 @@ __global__ void RemoveIslands2D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor3DWrap
     }
 }
 
-template<typename DT, typename ST>
-__global__ void Relabel2D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor3DWrap<DT> dst, cuda::Tensor1DWrap<ST> bgLabel,
-                          cuda::Tensor1DWrap<DT> minSize, int2 size, bool relabel, bool hasMask)
+template<typename StatsWrap, typename DstWrap, typename ST, typename DT = typename DstWrap::ValueType>
+__global__ void Relabel2D(StatsWrap stats, DstWrap dst, ArgWrap<ST> bgLabel, ArgWrap<DT> minSize, int2 size,
+                          bool relabel, bool hasMask)
 {
+    static_assert(std::is_same_v<DT, typename StatsWrap::ValueType>);
     int3 gc;
     gc.x = blockIdx.x * blockDim.x + threadIdx.x;
     gc.y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -665,10 +672,11 @@ __global__ void Relabel2D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor3DWrap<DT> d
 
 // -- 3D kernels --
 
-template<int BW, int BH, int BD, typename ST, typename DT>
-__global__ void BlockLabel3D(cuda::Tensor4DWrap<DT> dst, cuda::Tensor4DWrap<ST> src, cuda::Tensor1DWrap<ST> minThresh,
-                             cuda::Tensor1DWrap<ST> maxThresh, int4 shape)
+template<int BW, int BH, int BD, typename DstWrap, typename SrcWrap, typename ST = typename SrcWrap::ValueType>
+__global__ void BlockLabel3D(DstWrap dst, SrcWrap src, ArgWrap<ST> minThresh, ArgWrap<ST> maxThresh, int4 shape)
 {
+    using DT = typename DstWrap::ValueType;
+
     __shared__ DT labels[BW * BH * BD];
 
     int3 tc = cuda::StaticCast<int>(threadIdx);
@@ -775,10 +783,10 @@ __global__ void BlockLabel3D(cuda::Tensor4DWrap<DT> dst, cuda::Tensor4DWrap<ST> 
     }
 }
 
-template<typename ST, typename DT>
-__global__ void ZLabelReduction3D(cuda::Tensor4DWrap<DT> dst, cuda::Tensor4DWrap<ST> src,
-                                  cuda::Tensor1DWrap<ST> minThresh, cuda::Tensor1DWrap<ST> maxThresh, int4 shape)
+template<typename DstWrap, typename SrcWrap, typename ST = typename SrcWrap::ValueType>
+__global__ void ZLabelReduction3D(DstWrap dst, SrcWrap src, ArgWrap<ST> minThresh, ArgWrap<ST> maxThresh, int4 shape)
 {
+    using DT = typename DstWrap::ValueType;
     int4 gc;
     gc.x = ((blockIdx.x * blockDim.x) + threadIdx.x);
     gc.y = ((blockIdx.y * blockDim.y) + threadIdx.y);
@@ -857,10 +865,11 @@ __global__ void ZLabelReduction3D(cuda::Tensor4DWrap<DT> dst, cuda::Tensor4DWrap
     }
 }
 
-template<typename ST, typename DT>
-__global__ void YLabelReduction3D(cuda::Tensor4DWrap<DT> dst, cuda::Tensor4DWrap<ST> src,
-                                  cuda::Tensor1DWrap<ST> minThresh, cuda::Tensor1DWrap<ST> maxThresh, int4 shape)
+template<typename DstWrap, typename SrcWrap, typename ST = typename SrcWrap::ValueType>
+__global__ void YLabelReduction3D(DstWrap dst, SrcWrap src, ArgWrap<ST> minThresh, ArgWrap<ST> maxThresh, int4 shape)
 {
+    using DT = typename DstWrap::ValueType;
+
     int4 gc;
     gc.x = ((blockIdx.x * blockDim.x) + threadIdx.x);
     gc.y = ((blockIdx.z * blockDim.z) + threadIdx.z) * blockDim.y + blockDim.y;
@@ -939,10 +948,11 @@ __global__ void YLabelReduction3D(cuda::Tensor4DWrap<DT> dst, cuda::Tensor4DWrap
     }
 }
 
-template<typename ST, typename DT>
-__global__ void XLabelReduction3D(cuda::Tensor4DWrap<DT> dst, cuda::Tensor4DWrap<ST> src,
-                                  cuda::Tensor1DWrap<ST> minThresh, cuda::Tensor1DWrap<ST> maxThresh, int4 shape)
+template<typename DstWrap, typename SrcWrap, typename ST = typename SrcWrap::ValueType>
+__global__ void XLabelReduction3D(DstWrap dst, SrcWrap src, ArgWrap<ST> minThresh, ArgWrap<ST> maxThresh, int4 shape)
 {
+    using DT = typename DstWrap::ValueType;
+
     int4 gc;
     gc.x = ((blockIdx.z * blockDim.z) + threadIdx.z) * blockDim.x + blockDim.x;
     gc.y = ((blockIdx.y * blockDim.y) + threadIdx.y);
@@ -1021,8 +1031,8 @@ __global__ void XLabelReduction3D(cuda::Tensor4DWrap<DT> dst, cuda::Tensor4DWrap
     }
 }
 
-template<typename DT>
-__global__ void ResolveLabels3D(cuda::Tensor4DWrap<DT> dst, int4 shape)
+template<typename DstWrap>
+__global__ void ResolveLabels3D(DstWrap dst, int4 shape)
 {
     int4 gc;
     gc.x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1040,11 +1050,12 @@ __global__ void ResolveLabels3D(cuda::Tensor4DWrap<DT> dst, int4 shape)
     }
 }
 
-template<typename DT, typename ST>
-__global__ void ReplaceBgLabels3D(cuda::Tensor4DWrap<DT> dst, cuda::Tensor4DWrap<ST> src,
-                                  cuda::Tensor1DWrap<ST> bgLabel, cuda::Tensor1DWrap<ST> minThresh,
-                                  cuda::Tensor1DWrap<ST> maxThresh, int4 shape)
+template<typename DstWrap, typename SrcWrap, typename ST = typename SrcWrap::ValueType>
+__global__ void ReplaceBgLabels3D(DstWrap dst, SrcWrap src, ArgWrap<ST> bgLabel, ArgWrap<ST> minThresh,
+                                  ArgWrap<ST> maxThresh, int4 shape)
 {
+    using DT = typename DstWrap::ValueType;
+
     int4 gc;
     gc.x = blockIdx.x * blockDim.x + threadIdx.x;
     gc.y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -1094,10 +1105,11 @@ __global__ void ReplaceBgLabels3D(cuda::Tensor4DWrap<DT> dst, cuda::Tensor4DWrap
     }
 }
 
-template<typename DT, typename ST>
-__global__ void CountLabels3D(cuda::Tensor1DWrap<DT> count, cuda::Tensor3DWrap<DT> stats, cuda::Tensor4DWrap<DT> dst,
-                              cuda::Tensor1DWrap<ST> bgLabel, int4 shape, int maxCapacity)
+template<typename StatsWrap, typename DstWrap, typename ST, typename DT = typename DstWrap::ValueType>
+__global__ void CountLabels3D(ArgWrap<DT> count, StatsWrap stats, DstWrap dst, ArgWrap<ST> bgLabel, int4 shape,
+                              int maxCapacity)
 {
+    static_assert(std::is_same_v<typename StatsWrap::ValueType, DT>);
     int4 gc;
     gc.x = blockIdx.x * blockDim.x + threadIdx.x;
     gc.y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -1161,10 +1173,14 @@ __global__ void CountLabels3D(cuda::Tensor1DWrap<DT> count, cuda::Tensor3DWrap<D
     }
 }
 
-template<typename DT, typename ST, typename MT>
-__global__ void ComputeStats3D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor4DWrap<DT> dst, cuda::Tensor4DWrap<MT> mask,
-                               cuda::Tensor1DWrap<ST> bgLabel, int4 shape, int maskN, bool relabel)
+template<typename StatsWrap, typename DstWrap, typename ST, typename MaskWrap>
+__global__ void ComputeStats3D(StatsWrap stats, DstWrap dst, MaskWrap mask, ArgWrap<ST> bgLabel, int4 shape, int maskN,
+                               bool relabel)
 {
+    using DT = typename DstWrap::ValueType;
+    using MT = typename MaskWrap::ValueType;
+    static_assert(std::is_same_v<DT, typename StatsWrap::ValueType>);
+
     int4 gc;
     gc.x = blockIdx.x * blockDim.x + threadIdx.x;
     gc.y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -1251,11 +1267,11 @@ __global__ void ComputeStats3D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor4DWrap<
     }
 }
 
-template<typename DT, typename ST>
-__global__ void RemoveIslands3D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor4DWrap<DT> dst,
-                                cuda::Tensor1DWrap<ST> bgLabel, cuda::Tensor1DWrap<DT> minSize, int4 shape,
+template<typename StatsWrap, typename DstWrap, typename ST, typename DT = typename DstWrap::ValueType>
+__global__ void RemoveIslands3D(StatsWrap stats, DstWrap dst, ArgWrap<ST> bgLabel, ArgWrap<DT> minSize, int4 shape,
                                 bool relabel, bool hasMask)
 {
+    static_assert(std::is_same_v<DT, typename StatsWrap::ValueType>);
     int4 gc;
     gc.x = blockIdx.x * blockDim.x + threadIdx.x;
     gc.y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -1333,10 +1349,11 @@ __global__ void RemoveIslands3D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor4DWrap
     }
 }
 
-template<typename DT, typename ST>
-__global__ void Relabel3D(cuda::Tensor3DWrap<DT> stats, cuda::Tensor4DWrap<DT> dst, cuda::Tensor1DWrap<ST> bgLabel,
-                          cuda::Tensor1DWrap<DT> minSize, int4 shape, bool relabel, bool hasMask)
+template<typename StatsWrap, typename DstWrap, typename ST, typename DT = typename DstWrap::ValueType>
+__global__ void Relabel3D(StatsWrap stats, DstWrap dst, ArgWrap<ST> bgLabel, ArgWrap<DT> minSize, int4 shape,
+                          bool relabel, bool hasMask)
 {
+    static_assert(std::is_same_v<DT, typename StatsWrap::ValueType>);
     int4 gc;
     gc.x = blockIdx.x * blockDim.x + threadIdx.x;
     gc.y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -1431,6 +1448,8 @@ inline void RunLabelForType(cudaStream_t stream, const nvcv::TensorDataStridedCu
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Too big out tensor");
     }
 
+    using SType = int32_t;
+
     nvcv::Optional<nvcv::TensorDataStridedCuda> mskData;
     int4                                        mskIdsNDHW = {0, 0, 0, 0};
     int                                         maskN      = 0;
@@ -1456,9 +1475,9 @@ inline void RunLabelForType(cudaStream_t stream, const nvcv::TensorDataStridedCu
         maskN = mskIdsNDHW.x == -1 ? 1 : (int)mskData->shape()[mskIdsNDHW.x];
     }
 
-    cuda::Tensor1DWrap<SrcT> bgLabelWrap, minThreshWrap, maxThreshWrap;
-    cuda::Tensor1DWrap<DstT> minSizeWrap, countWrap;
-    cuda::Tensor3DWrap<DstT> statsWrap;
+    ArgWrap<SrcT>                   bgLabelWrap, minThreshWrap, maxThreshWrap;
+    ArgWrap<DstT>                   minSizeWrap, countWrap;
+    cuda::Tensor3DWrap<DstT, SType> statsWrap;
 
     int maxCapacity = 0;
 
@@ -1473,10 +1492,10 @@ inline void RunLabelForType(cudaStream_t stream, const nvcv::TensorDataStridedCu
         TENSORWRAP = WRAPPER(data->basePtr());                                                                      \
     }
 
-    CVCUDA_LABEL_WRAP(bgLabel, cuda::Tensor1DWrap<SrcT>, bgLabelWrap);
-    CVCUDA_LABEL_WRAP(minThresh, cuda::Tensor1DWrap<SrcT>, minThreshWrap);
-    CVCUDA_LABEL_WRAP(maxThresh, cuda::Tensor1DWrap<SrcT>, maxThreshWrap);
-    CVCUDA_LABEL_WRAP(minSize, cuda::Tensor1DWrap<DstT>, minSizeWrap);
+    CVCUDA_LABEL_WRAP(bgLabel, ArgWrap<SrcT>, bgLabelWrap);
+    CVCUDA_LABEL_WRAP(minThresh, ArgWrap<SrcT>, minThreshWrap);
+    CVCUDA_LABEL_WRAP(maxThresh, ArgWrap<SrcT>, maxThreshWrap);
+    CVCUDA_LABEL_WRAP(minSize, ArgWrap<DstT>, minSizeWrap);
 
 #undef CVCUDA_LABEL_WRAP
 
@@ -1488,7 +1507,7 @@ inline void RunLabelForType(cudaStream_t stream, const nvcv::TensorDataStridedCu
             throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "count tensor must be cuda-accessible");
         }
 
-        countWrap = cuda::Tensor1DWrap<DstT>(data->basePtr());
+        countWrap = ArgWrap<DstT>(data->basePtr());
 
         NVCV_CHECK_THROW(cudaMemsetAsync(data->basePtr(), 0, sizeof(DstT) * shapeWHDN.w, stream));
     }
@@ -1500,7 +1519,7 @@ inline void RunLabelForType(cudaStream_t stream, const nvcv::TensorDataStridedCu
             throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "stats tensor must be cuda-accessible");
         }
 
-        statsWrap = cuda::Tensor3DWrap<DstT>(data->basePtr(), (int)data->stride(0), (int)data->stride(1));
+        statsWrap = cuda::Tensor3DWrap<DstT, SType>(data->basePtr(), (int)data->stride(0), (int)data->stride(1));
 
         maxCapacity = data->shape(1);
     }
@@ -1519,16 +1538,16 @@ inline void RunLabelForType(cudaStream_t stream, const nvcv::TensorDataStridedCu
         dim3 redBlocksX(util::DivUp(sizeWH.y, BW), util::DivUp((int)labBlocks.x, BH), shapeWHDN.w);
         dim3 redBlocksY(util::DivUp(sizeWH.x, BW), util::DivUp((int)labBlocks.y, BH), shapeWHDN.w);
 
-        cuda::Tensor3DWrap<SrcT> srcWrap(srcData.basePtr(), srcStridesNH.x, srcStridesNH.y);
-        cuda::Tensor3DWrap<DstT> dstWrap(dstData.basePtr(), dstStridesNH.x, dstStridesNH.y);
-        cuda::Tensor3DWrap<MskT> mskWrap;
+        cuda::Tensor3DWrap<SrcT, SType> srcWrap(srcData.basePtr(), srcStridesNH.x, srcStridesNH.y);
+        cuda::Tensor3DWrap<DstT, SType> dstWrap(dstData.basePtr(), dstStridesNH.x, dstStridesNH.y);
+        cuda::Tensor3DWrap<MskT, SType> mskWrap;
 
         if (hasMask)
         {
             int2 mskStridesNH{0, (int)mskData->stride(mskIdsNDHW.z)};
             mskStridesNH.x = mskIdsNDHW.x == -1 ? mskStridesNH.y * shapeWHDN.y : (int)mskData->stride(mskIdsNDHW.x);
 
-            mskWrap = cuda::Tensor3DWrap<MskT>(mskData->basePtr(), mskStridesNH.x, mskStridesNH.y);
+            mskWrap = cuda::Tensor3DWrap<MskT, SType>(mskData->basePtr(), mskStridesNH.x, mskStridesNH.y);
         }
 
         BlockLabel2D<BW, BH>
@@ -1582,16 +1601,17 @@ inline void RunLabelForType(cudaStream_t stream, const nvcv::TensorDataStridedCu
         dim3 redBlocksY(util::DivUp(shapeWHDN.x, BW), util::DivUp(shapeWHDN.z, BH), util::DivUp((int)labBlocks.y, BD));
         dim3 redBlocksZ(util::DivUp(shapeWHDN.x, BW), util::DivUp(shapeWHDN.y, BH), util::DivUp((int)labBlocks.z, BD));
 
-        cuda::Tensor4DWrap<SrcT> srcWrap(srcData.basePtr(), srcStridesNDH.x, srcStridesNDH.y, srcStridesNDH.z);
-        cuda::Tensor4DWrap<DstT> dstWrap(dstData.basePtr(), dstStridesNDH.x, dstStridesNDH.y, dstStridesNDH.z);
-        cuda::Tensor4DWrap<MskT> mskWrap;
+        cuda::Tensor4DWrap<SrcT, SType> srcWrap(srcData.basePtr(), srcStridesNDH.x, srcStridesNDH.y, srcStridesNDH.z);
+        cuda::Tensor4DWrap<DstT, SType> dstWrap(dstData.basePtr(), dstStridesNDH.x, dstStridesNDH.y, dstStridesNDH.z);
+        cuda::Tensor4DWrap<MskT, SType> mskWrap;
 
         if (hasMask)
         {
             int3 mskStridesNDH{0, (int)mskData->stride(mskIdsNDHW.y), (int)mskData->stride(mskIdsNDHW.z)};
             mskStridesNDH.x = mskIdsNDHW.x == -1 ? mskStridesNDH.y * shapeWHDN.z : (int)mskData->stride(mskIdsNDHW.x);
 
-            mskWrap = cuda::Tensor4DWrap<MskT>(mskData->basePtr(), mskStridesNDH.x, mskStridesNDH.y, mskStridesNDH.z);
+            mskWrap = cuda::Tensor4DWrap<MskT, SType>(mskData->basePtr(), mskStridesNDH.x, mskStridesNDH.y,
+                                                      mskStridesNDH.z);
         }
 
         BlockLabel3D<BW, BH, BD>

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,18 +29,18 @@
 namespace nvcv::test {
 
 template<typename T, T MinVal, T MaxVal>
-void _Resize(std::vector<T> &hDst, int dstStep, nvcv::Size2D dstSize, const std::vector<T> &hSrc, int srcStep,
-             nvcv::Size2D srcSize, nvcv::ImageFormat fmt, NVCVInterpolationType interp, bool isVarshape)
+void resize(std::vector<T> &dst, int dstStep, nvcv::Size2D dstSize, const std::vector<T> &src, int srcStep,
+            nvcv::Size2D srcSize, nvcv::ImageFormat frmt, NVCVInterpolationType interp, bool isVarshape)
 {
     double scaleH = static_cast<double>(srcSize.h) / dstSize.h;
     double scaleW = static_cast<double>(srcSize.w) / dstSize.w;
 
-    assert(fmt.numPlanes() == 1);
+    assert(frmt.numPlanes() == 1);
 
-    int channels = fmt.numChannels();
+    int channels = frmt.numChannels();
 
-    T       *dstPtr = hDst.data();
-    const T *srcPtr = hSrc.data();
+    T       *dstPtr = dst.data();
+    const T *srcPtr = src.data();
 
     for (int dy = 0; dy < dstSize.h; dy++)
     {
@@ -178,7 +178,10 @@ void _Resize(std::vector<T> &hDst, int dstStep, nvcv::Size2D dstSize, const std:
                         }
                     }
 
-                    out = std::rint(std::abs(out));
+                    if (std::numeric_limits<T>::is_integer)
+                    {
+                        out = std::rint(std::numeric_limits<T>::is_signed ? out : std::abs(out));
+                    }
 
                     dstPtr[dy * dstStep + dx * channels + c] = out < MinVal ? MinVal : (out > MaxVal ? MaxVal : out);
                 }
@@ -188,19 +191,19 @@ void _Resize(std::vector<T> &hDst, int dstStep, nvcv::Size2D dstSize, const std:
 }
 
 template<typename T, T MinVal, T MaxVal>
-void _ResizedCrop(std::vector<T> &hDst, int dstStep, nvcv::Size2D dstSize, const std::vector<T> &hSrc, int srcStep,
-                  nvcv::Size2D srcSize, int top, int left, int crop_rows, int crop_cols, nvcv::ImageFormat fmt,
-                  NVCVInterpolationType interp)
+void resizedCrop(std::vector<T> &dst, int dstStep, nvcv::Size2D dstSize, const std::vector<T> &src, int srcStep,
+                 nvcv::Size2D srcSize, int top, int left, int crop_rows, int crop_cols, nvcv::ImageFormat frmt,
+                 NVCVInterpolationType interp)
 {
-    double scaleH = static_cast<double>(crop_rows) / dstSize.h;
-    double scaleW = static_cast<double>(crop_cols) / dstSize.w;
+    float scaleH = static_cast<float>(crop_rows) / dstSize.h;
+    float scaleW = static_cast<float>(crop_cols) / dstSize.w;
 
-    assert(fmt.numPlanes() == 1);
+    assert(frmt.numPlanes() == 1);
 
-    int channels = fmt.numChannels();
+    int channels = frmt.numChannels();
 
-    T       *dstPtr = hDst.data();
-    const T *srcPtr = hSrc.data();
+    T       *dstPtr = dst.data();
+    const T *srcPtr = src.data();
 
     for (int dy = 0; dy < dstSize.h; dy++)
     {
@@ -208,8 +211,8 @@ void _ResizedCrop(std::vector<T> &hDst, int dstStep, nvcv::Size2D dstSize, const
         {
             if (interp == NVCV_INTERP_NEAREST)
             {
-                double fy = scaleH * dy + top;
-                double fx = scaleW * dx + left;
+                float fy = scaleH * (dy + 0.5f) + top;
+                float fx = scaleW * (dx + 0.5f) + left;
 
                 int sy = std::floor(fy);
                 int sx = std::floor(fx);
@@ -308,68 +311,63 @@ void _ResizedCrop(std::vector<T> &hDst, int dstStep, nvcv::Size2D dstSize, const
     }
 }
 
-void Resize(std::vector<uint8_t> &hDst, int dstRowStride, nvcv::Size2D dstSize, const std::vector<uint8_t> &hSrc,
-            int srcRowStride, nvcv::Size2D srcSize, nvcv::ImageFormat fmt, NVCVInterpolationType interp,
-            bool isVarShape)
+template<typename T>
+void _Resize(std::vector<T> &dst, int dstStride, nvcv::Size2D dstSize, const std::vector<T> &src, int srcStride,
+             nvcv::Size2D srcSize, nvcv::ImageFormat frmt, NVCVInterpolationType interp, bool isVarShape)
 {
-    int dstStep = dstRowStride / sizeof(uint8_t);
-    int srcStep = srcRowStride / sizeof(uint8_t);
+    int dstStep = dstStride / sizeof(T);
+    int srcStep = srcStride / sizeof(T);
 
     if (interp == NVCV_INTERP_NEAREST || interp == NVCV_INTERP_LINEAR || interp == NVCV_INTERP_CUBIC)
     {
-        _ResizedCrop<uint8_t, 0, 255>(hDst, dstStep, dstSize, hSrc, srcStep, srcSize, 0, 0, srcSize.h, srcSize.w, fmt,
-                                      interp);
+        resizedCrop<T, (T)0, (T)255>(dst, dstStep, dstSize, src, srcStep, srcSize, 0, 0, srcSize.h, srcSize.w, frmt,
+                                     interp);
     }
     else if (interp == NVCV_INTERP_AREA)
     {
-        _Resize<uint8_t, 0, 255>(hDst, dstStep, dstSize, hSrc, srcStep, srcSize, fmt, interp, isVarShape);
+        resize<T, (T)0, (T)255>(dst, dstStep, dstSize, src, srcStep, srcSize, frmt, interp, isVarShape);
     }
 }
 
-void ResizedCrop(std::vector<uint8_t> &hDst, int dstRowStride, nvcv::Size2D dstSize, const std::vector<uint8_t> &hSrc,
-                 int srcRowStride, nvcv::Size2D srcSize, int top, int left, int crop_rows, int crop_cols,
-                 nvcv::ImageFormat fmt, NVCVInterpolationType interp)
+void Resize(std::vector<uint8_t> &dst, int dstStride, nvcv::Size2D dstSize, const std::vector<uint8_t> &src,
+            int srcStride, nvcv::Size2D srcSize, nvcv::ImageFormat frmt, NVCVInterpolationType interp, bool isVarShape)
 {
-    int dstStep = dstRowStride / sizeof(uint8_t);
-    int srcStep = srcRowStride / sizeof(uint8_t);
+    _Resize(dst, dstStride, dstSize, src, srcStride, srcSize, frmt, interp, isVarShape);
+}
+
+void Resize(std::vector<float> &dst, int dstStride, nvcv::Size2D dstSize, const std::vector<float> &src, int srcStride,
+            nvcv::Size2D srcSize, nvcv::ImageFormat frmt, NVCVInterpolationType interp, bool isVarShape)
+{
+    _Resize(dst, dstStride, dstSize, src, srcStride, srcSize, frmt, interp, isVarShape);
+}
+
+template<typename T>
+void _ResizedCrop(std::vector<T> &dst, int dstStride, nvcv::Size2D dstSize, const std::vector<T> &src, int srcStride,
+                  nvcv::Size2D srcSize, int top, int left, int crop_rows, int crop_cols, nvcv::ImageFormat frmt,
+                  NVCVInterpolationType interp)
+{
+    int dstStep = dstStride / sizeof(T);
+    int srcStep = srcStride / sizeof(T);
 
     if (interp == NVCV_INTERP_NEAREST || interp == NVCV_INTERP_LINEAR || interp == NVCV_INTERP_CUBIC)
     {
-        _ResizedCrop<uint8_t, 0, 255>(hDst, dstStep, dstSize, hSrc, srcStep, srcSize, top, left, crop_rows, crop_cols,
-                                      fmt, interp);
+        resizedCrop<T, (T)0, (T)255>(dst, dstStep, dstSize, src, srcStep, srcSize, top, left, crop_rows, crop_cols,
+                                     frmt, interp);
     }
 }
 
-void Resize(std::vector<float> &hDst, int dstRowStride, nvcv::Size2D dstSize, const std::vector<float> &hSrc,
-            int srcRowStride, nvcv::Size2D srcSize, nvcv::ImageFormat fmt, NVCVInterpolationType interp,
-            bool isVarShape)
+void ResizedCrop(std::vector<uint8_t> &dst, int dstStride, nvcv::Size2D dstSize, const std::vector<uint8_t> &src,
+                 int srcStride, nvcv::Size2D srcSize, int top, int left, int crop_rows, int crop_cols,
+                 nvcv::ImageFormat frmt, NVCVInterpolationType interp)
 {
-    int dstStep = dstRowStride / sizeof(float);
-    int srcStep = srcRowStride / sizeof(float);
-
-    if (interp == NVCV_INTERP_NEAREST || interp == NVCV_INTERP_LINEAR || interp == NVCV_INTERP_CUBIC)
-    {
-        _ResizedCrop<float, 0.0f, 255.0f>(hDst, dstStep, dstSize, hSrc, srcStep, srcSize, 0, 0, srcSize.h, srcSize.w,
-                                          fmt, interp);
-    }
-    else if (interp == NVCV_INTERP_AREA)
-    {
-        _Resize<float, 0.0f, 255.0f>(hDst, dstStep, dstSize, hSrc, srcStep, srcSize, fmt, interp, isVarShape);
-    }
+    _ResizedCrop(dst, dstStride, dstSize, src, srcStride, srcSize, top, left, crop_rows, crop_cols, frmt, interp);
 }
 
-void ResizedCrop(std::vector<float> &hDst, int dstRowStride, nvcv::Size2D dstSize, const std::vector<float> &hSrc,
-                 int srcRowStride, nvcv::Size2D srcSize, int top, int left, int crop_rows, int crop_cols,
-                 nvcv::ImageFormat fmt, NVCVInterpolationType interp)
+void ResizedCrop(std::vector<float> &dst, int dstStride, nvcv::Size2D dstSize, const std::vector<float> &src,
+                 int srcStride, nvcv::Size2D srcSize, int top, int left, int crop_rows, int crop_cols,
+                 nvcv::ImageFormat frmt, NVCVInterpolationType interp)
 {
-    int dstStep = dstRowStride / sizeof(float);
-    int srcStep = srcRowStride / sizeof(float);
-
-    if (interp == NVCV_INTERP_NEAREST || interp == NVCV_INTERP_LINEAR || interp == NVCV_INTERP_CUBIC)
-    {
-        _ResizedCrop<float, 0.0f, 255.0f>(hDst, dstStep, dstSize, hSrc, srcStep, srcSize, top, left, crop_rows,
-                                          crop_cols, fmt, interp);
-    }
+    _ResizedCrop(dst, dstStride, dstSize, src, srcStride, srcSize, top, left, crop_rows, crop_cols, frmt, interp);
 }
 
 } // namespace nvcv::test

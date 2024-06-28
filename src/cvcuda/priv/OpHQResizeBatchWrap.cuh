@@ -77,127 +77,134 @@ auto ComputeDenseStrides(VecI<3> shape, Channels... channels)
 }
 
 namespace tensor {
-template<typename T, int kNStrides>
+template<typename T, typename StrideT, int kNStrides>
 auto CreateDenseWrap(cuda::BaseType<T> *base, const std::array<int64_t, kNStrides> strides)
 {
     constexpr int N = kNStrides + 1;
     for (auto stride : strides)
     {
-        NVCV_ASSERT(stride <= cuda::TypeTraits<int>::max);
+        NVCV_ASSERT(stride <= cuda::TypeTraits<StrideT>::max);
     }
     static_assert(2 <= N && N <= 5);
     if constexpr (N == 5)
     {
-        return cuda::TensorNDWrap<T, N>(base, static_cast<int>(strides[3]), static_cast<int>(strides[2]),
-                                        static_cast<int>(strides[1]), static_cast<int>(strides[0]));
+        return cuda::TensorNDWrap<T, N, StrideT>(base, static_cast<StrideT>(strides[3]),
+                                                 static_cast<StrideT>(strides[2]), static_cast<StrideT>(strides[1]),
+                                                 static_cast<StrideT>(strides[0]));
     }
     else if constexpr (N == 4)
     {
-        return cuda::TensorNDWrap<T, N>(base, static_cast<int>(strides[2]), static_cast<int>(strides[1]),
-                                        static_cast<int>(strides[0]));
+        return cuda::TensorNDWrap<T, N, StrideT>(base, static_cast<StrideT>(strides[2]),
+                                                 static_cast<StrideT>(strides[1]), static_cast<StrideT>(strides[0]));
     }
     else if constexpr (N == 3)
     {
-        return cuda::TensorNDWrap<T, N>(base, static_cast<int>(strides[1]), static_cast<int>(strides[0]));
+        return cuda::TensorNDWrap<T, N, StrideT>(base, static_cast<StrideT>(strides[1]),
+                                                 static_cast<StrideT>(strides[0]));
     }
     else if constexpr (N == 2)
     {
-        return cuda::TensorNDWrap<T, N>(base, static_cast<int>(strides[0]));
+        return cuda::TensorNDWrap<T, N, StrideT>(base, static_cast<StrideT>(strides[0]));
     }
 }
 
-template<bool kHasDynamicChannels, typename T, typename ShapeT>
+template<bool kHasDynamicChannels, typename T, typename StrideT, typename ShapeT>
 auto CreateDenseWrap(cuda::BaseType<T> *base, int numChannels, ShapeT shape)
 {
     static constexpr int kNStrides = cuda::NumElements<ShapeT> + kHasDynamicChannels;
     if constexpr (kHasDynamicChannels)
     {
         auto strides = ComputeDenseStrides<T>(shape, numChannels);
-        return CreateDenseWrap<T, kNStrides>(base, strides);
+        return CreateDenseWrap<T, StrideT, kNStrides>(base, strides);
     }
     else if constexpr (!kHasDynamicChannels)
     {
         auto strides = ComputeDenseStrides<T>(shape);
-        return CreateDenseWrap<T, kNStrides>(base, strides);
+        return CreateDenseWrap<T, StrideT, kNStrides>(base, strides);
     }
 }
 
-template<bool kHasDynamicChannels, int kSpatialNDim, typename T, int N = 1 + kSpatialNDim + kHasDynamicChannels>
-std::enable_if_t<kSpatialNDim == 2, cuda::TensorNDWrap<T, N>> WrapTensor(
+template<bool kHasDynamicChannels, int kSpatialNDim, typename T, typename StrideT,
+         int N = 1 + kSpatialNDim + kHasDynamicChannels>
+std::enable_if_t<kSpatialNDim == 2, cuda::TensorNDWrap<T, N, StrideT>> WrapTensor(
     const nvcv::TensorDataAccessStridedImagePlanar &tensorAccess, const ptrdiff_t roiOffset = 0)
 {
-    NVCV_ASSERT(tensorAccess.sampleStride() <= cuda::TypeTraits<int>::max);
-    NVCV_ASSERT(tensorAccess.rowStride() <= cuda::TypeTraits<int>::max);
-    NVCV_ASSERT(tensorAccess.colStride() <= cuda::TypeTraits<int>::max);
+    NVCV_ASSERT(tensorAccess.sampleStride() <= cuda::TypeTraits<StrideT>::max);
+    NVCV_ASSERT(tensorAccess.rowStride() <= cuda::TypeTraits<StrideT>::max);
+    NVCV_ASSERT(tensorAccess.colStride() <= cuda::TypeTraits<StrideT>::max);
 
     if constexpr (kHasDynamicChannels)
     {
-        return cuda::TensorNDWrap<T, N>(
-            tensorAccess.sampleData(0) + roiOffset, static_cast<int>(tensorAccess.sampleStride()),
-            static_cast<int>(tensorAccess.rowStride()), static_cast<int>(tensorAccess.colStride()));
+        return cuda::TensorNDWrap<T, N, StrideT>(
+            tensorAccess.sampleData(0) + roiOffset, static_cast<StrideT>(tensorAccess.sampleStride()),
+            static_cast<int>(tensorAccess.rowStride()), static_cast<StrideT>(tensorAccess.colStride()));
     }
     else
     {
-        return cuda::TensorNDWrap<T, N>(tensorAccess.sampleData(0) + roiOffset,
-                                        static_cast<int>(tensorAccess.sampleStride()),
-                                        static_cast<int>(tensorAccess.rowStride()));
+        return cuda::TensorNDWrap<T, N, StrideT>(tensorAccess.sampleData(0) + roiOffset,
+                                                 static_cast<StrideT>(tensorAccess.sampleStride()),
+                                                 static_cast<StrideT>(tensorAccess.rowStride()));
     }
 }
 
-template<bool kHasDynamicChannels, int kSpatialNDim, typename T, int N = 1 + kSpatialNDim + kHasDynamicChannels>
-std::enable_if_t<kSpatialNDim == 3, cuda::TensorNDWrap<T, N>> WrapTensor(
+template<bool kHasDynamicChannels, int kSpatialNDim, typename T, typename StrideT,
+         int N = 1 + kSpatialNDim + kHasDynamicChannels>
+std::enable_if_t<kSpatialNDim == 3, cuda::TensorNDWrap<T, N, StrideT>> WrapTensor(
     const nvcv::TensorDataAccessStridedImagePlanar &tensorAccess, const ptrdiff_t roiOffset = 0)
 {
-    NVCV_ASSERT(tensorAccess.sampleStride() <= cuda::TypeTraits<int>::max);
-    NVCV_ASSERT(tensorAccess.depthStride() <= cuda::TypeTraits<int>::max);
-    NVCV_ASSERT(tensorAccess.rowStride() <= cuda::TypeTraits<int>::max);
-    NVCV_ASSERT(tensorAccess.colStride() <= cuda::TypeTraits<int>::max);
+    NVCV_ASSERT(tensorAccess.sampleStride() <= cuda::TypeTraits<StrideT>::max);
+    NVCV_ASSERT(tensorAccess.depthStride() <= cuda::TypeTraits<StrideT>::max);
+    NVCV_ASSERT(tensorAccess.rowStride() <= cuda::TypeTraits<StrideT>::max);
+    NVCV_ASSERT(tensorAccess.colStride() <= cuda::TypeTraits<StrideT>::max);
 
     if constexpr (kHasDynamicChannels)
     {
-        return cuda::TensorNDWrap<T, N>(
-            tensorAccess.sampleData(0) + roiOffset, static_cast<int>(tensorAccess.sampleStride()),
-            static_cast<int>(tensorAccess.depthStride()), static_cast<int>(tensorAccess.rowStride()),
-            static_cast<int>(tensorAccess.colStride()));
+        return cuda::TensorNDWrap<T, N, StrideT>(
+            tensorAccess.sampleData(0) + roiOffset, static_cast<StrideT>(tensorAccess.sampleStride()),
+            static_cast<StrideT>(tensorAccess.depthStride()), static_cast<StrideT>(tensorAccess.rowStride()),
+            static_cast<StrideT>(tensorAccess.colStride()));
     }
     else
     {
-        return cuda::TensorNDWrap<T, N>(
-            tensorAccess.sampleData(0) + roiOffset, static_cast<int>(tensorAccess.sampleStride()),
-            static_cast<int>(tensorAccess.depthStride()), static_cast<int>(tensorAccess.rowStride()));
+        return cuda::TensorNDWrap<T, N, StrideT>(
+            tensorAccess.sampleData(0) + roiOffset, static_cast<StrideT>(tensorAccess.sampleStride()),
+            static_cast<StrideT>(tensorAccess.depthStride()), static_cast<StrideT>(tensorAccess.rowStride()));
     }
 }
 
-template<bool kHasDynamicChannels, int kSpatialNDim, typename T, int N = 1 + kSpatialNDim + kHasDynamicChannels>
-std::enable_if_t<kSpatialNDim == 2, cuda::TensorNDWrap<T, N>> WrapTensor(
+template<bool kHasDynamicChannels, int kSpatialNDim, typename T, typename StrideT,
+         int N = 1 + kSpatialNDim + kHasDynamicChannels>
+std::enable_if_t<kSpatialNDim == 2, cuda::TensorNDWrap<T, N, StrideT>> WrapTensor(
     const nvcv::TensorDataAccessStridedImagePlanar &tensorAccess, const VecI<2> &roiOffset)
 {
     ptrdiff_t offset = tensorAccess.rowStride() * roiOffset.y + tensorAccess.colStride() * roiOffset.x;
-    return WrapTensor<kHasDynamicChannels, kSpatialNDim, T>(tensorAccess, offset);
+    return WrapTensor<kHasDynamicChannels, kSpatialNDim, T, StrideT>(tensorAccess, offset);
 }
 
-template<bool kHasDynamicChannels, int kSpatialNDim, typename T, int N = 1 + kSpatialNDim + kHasDynamicChannels>
-std::enable_if_t<kSpatialNDim == 3, cuda::TensorNDWrap<T, N>> WrapTensor(
+template<bool kHasDynamicChannels, int kSpatialNDim, typename T, typename StrideT,
+         int N = 1 + kSpatialNDim + kHasDynamicChannels>
+std::enable_if_t<kSpatialNDim == 3, cuda::TensorNDWrap<T, N, StrideT>> WrapTensor(
     const nvcv::TensorDataAccessStridedImagePlanar &tensorAccess, const VecI<3> &roiOffset)
 {
     ptrdiff_t offset = tensorAccess.depthStride() * roiOffset.z + tensorAccess.rowStride() * roiOffset.y
                      + tensorAccess.colStride() * roiOffset.x;
-    return WrapTensor<kHasDynamicChannels, kSpatialNDim, T>(tensorAccess, offset);
+    return WrapTensor<kHasDynamicChannels, kSpatialNDim, T, StrideT>(tensorAccess, offset);
 }
 
 template<typename TensorWrap>
 auto __device__ GetSampleView(const TensorWrap &batchTensorWrap, const int sampleIdx)
 {
     using T                               = typename TensorWrap::ValueType;
+    using StrideType                      = typename TensorWrap::StrideType;
     static constexpr int kNumDimensions   = TensorWrap::kNumDimensions;
     static constexpr int kNumSampleDim    = kNumDimensions - 1; // not including sample (N) dim
     static constexpr int kVariableStrides = kNumSampleDim - 1;  // the innermost stride is static - sizeof type
-    using TensorWrapT                     = cuda::TensorNDWrap<T, kNumSampleDim>;
+    using TensorWrapT                     = cuda::TensorNDWrap<T, kNumSampleDim, StrideType>;
     static_assert(kVariableStrides == TensorWrapT::kVariableStrides);
     static_assert(kVariableStrides + 1 == TensorWrap::kVariableStrides);
     static_assert(1 <= kVariableStrides && kVariableStrides <= 3);
-    auto      *basePtr = batchTensorWrap.ptr(sampleIdx);
-    const int *strides = batchTensorWrap.strides();
+    auto       *basePtr = batchTensorWrap.ptr(sampleIdx);
+    const auto *strides = batchTensorWrap.strides();
     if constexpr (kVariableStrides == 1)
     {
         return TensorWrapT{basePtr, strides[1]};
@@ -215,25 +222,30 @@ auto __device__ GetSampleView(const TensorWrap &batchTensorWrap, const int sampl
 } // namespace tensor
 
 namespace dynamic {
-struct TensorAccessDesc
-{
-    static constexpr int kMaxNStrides = 3;
 
+struct TensorAccessDescBase
+{
     unsigned char *basePtr;
-    int            strides[kMaxNStrides];
 };
 
-template<int kNStrides>
-void SetupTensorAccessStrides(TensorAccessDesc &tensorAccessDesc, const std::array<int64_t, kNStrides> strides)
+template<typename StrideT>
+struct TensorAccessDesc : public TensorAccessDescBase
+{
+    static constexpr int kMaxNStrides = 3;
+    StrideT              strides[kMaxNStrides];
+};
+
+template<int kNStrides, typename StrideT>
+void SetupTensorAccessStrides(TensorAccessDesc<StrideT> *tensorAccessDesc, const std::array<int64_t, kNStrides> strides)
 {
     // we ignore the last stride (sample stride), it's not needed for a single sample
     // as the samples are not assumed to be uniform
     static constexpr int kNSampleStrides = kNStrides - 1;
-    static_assert(kNSampleStrides <= TensorAccessDesc::kMaxNStrides);
+    static_assert(kNSampleStrides <= TensorAccessDesc<StrideT>::kMaxNStrides);
     for (int d = 0; d < kNSampleStrides; d++)
     {
-        NVCV_ASSERT(strides[d] <= cuda::TypeTraits<int>::max);
-        tensorAccessDesc.strides[kNSampleStrides - 1 - d] = strides[d];
+        NVCV_ASSERT(strides[d] <= cuda::TypeTraits<StrideT>::max);
+        tensorAccessDesc->strides[kNSampleStrides - 1 - d] = strides[d];
     }
 }
 
@@ -241,18 +253,19 @@ void SetupTensorAccessStrides(TensorAccessDesc &tensorAccessDesc, const std::arr
  * @brief Wrapper for batch of dynamically created samples
  *  (here, batch of intermediate samples between resampling passes)
  */
-template<typename T, int N>
+template<typename T, int N, typename StrideT>
 struct DynamicBatchWrap
 {
     using ValueType                       = T;
+    using StrideType                      = StrideT;
     static constexpr int kNumDimensions   = N;
     static constexpr int kNumSampleDim    = kNumDimensions - 1; // not including sample (N) dim
     static constexpr int kVariableStrides = kNumSampleDim - 1;  // the innermost stride is static - sizeof type
-    using TensorWrapT                     = cuda::TensorNDWrap<T, kNumSampleDim>;
+    using TensorWrapT                     = cuda::TensorNDWrap<T, kNumSampleDim, StrideT>;
     static_assert(kVariableStrides == TensorWrapT::kVariableStrides);
-    static_assert(kVariableStrides >= 1 && kVariableStrides <= TensorAccessDesc::kMaxNStrides);
+    static_assert(kVariableStrides >= 1 && kVariableStrides <= TensorAccessDesc<StrideT>::kMaxNStrides);
 
-    DynamicBatchWrap(TensorAccessDesc *samples)
+    DynamicBatchWrap(TensorAccessDesc<StrideT> *samples)
         : m_samples{samples}
     {
     }
@@ -279,34 +292,43 @@ struct DynamicBatchWrap
     }
 
 private:
-    TensorAccessDesc *m_samples;
+    TensorAccessDesc<StrideT> *m_samples;
 };
 
 struct DynamicBatchWrapMeta
 {
-    TensorAccessDesc *cpu;
-    TensorAccessDesc *gpu;
+    TensorAccessDescBase *cpu;
+    TensorAccessDescBase *gpu;
 };
 
 inline void AddDynamicBatchWrapMeta(WorkspaceEstimator &est, int numSamples)
 {
-    est.addPinned<TensorAccessDesc>(numSamples);
-    est.addCuda<TensorAccessDesc>(numSamples);
+    est.addPinned<TensorAccessDesc<int64_t>>(numSamples);
+    est.addCuda<TensorAccessDesc<int64_t>>(numSamples);
 }
 
-inline DynamicBatchWrapMeta AllocateDynamicBatchWrapMeta(WorkspaceAllocator &allocator, int numSamples)
+inline DynamicBatchWrapMeta AllocateDynamicBatchWrapMeta(WorkspaceAllocator &allocator, int numSamples, bool wideStride)
 {
     DynamicBatchWrapMeta meta;
-    meta.cpu = allocator.getPinned<TensorAccessDesc>(numSamples);
-    meta.gpu = allocator.getCuda<TensorAccessDesc>(numSamples);
+    if (wideStride)
+    {
+        meta.cpu = allocator.getPinned<TensorAccessDesc<int64_t>>(numSamples);
+        meta.gpu = allocator.getCuda<TensorAccessDesc<int64_t>>(numSamples);
+    }
+    else
+    {
+        meta.cpu = allocator.getPinned<TensorAccessDesc<int32_t>>(numSamples);
+        meta.gpu = allocator.getCuda<TensorAccessDesc<int32_t>>(numSamples);
+    }
     return meta;
 }
 
-template<bool kHasDynamicChannels, typename T, typename SampleDescT,
+template<bool kHasDynamicChannels, typename T, typename StrideT, typename SampleDescT,
          int  N = 1 + SampleDescT::kSpatialNDim + kHasDynamicChannels>
-DynamicBatchWrap<T, N> CreateDynamicBatchWrap(int pass, cuda::BaseType<T> *intermediate,
-                                              const DynamicBatchWrapMeta tensorBatchMeta,
-                                              const SampleDescT *sampleDescsCpu, int numSamples, cudaStream_t stream)
+DynamicBatchWrap<T, N, StrideT> CreateDynamicBatchWrap(int pass, cuda::BaseType<T> *intermediate,
+                                                       const DynamicBatchWrapMeta tensorBatchMeta,
+                                                       const SampleDescT *sampleDescsCpu, int numSamples,
+                                                       cudaStream_t stream)
 {
     static constexpr int kSpatialNDim = SampleDescT::kSpatialNDim;
     static_assert(N == 1 + kSpatialNDim + kHasDynamicChannels);
@@ -316,8 +338,9 @@ DynamicBatchWrap<T, N> CreateDynamicBatchWrap(int pass, cuda::BaseType<T> *inter
     {
         const SampleDescT &sampleDesc   = sampleDescsCpu[sampleIdx];
         VecI<kSpatialNDim> outputShape  = sampleDesc.shapes[pass + 1];
-        TensorAccessDesc  &tensorAccess = tensorBatchMeta.cpu[sampleIdx];
-        tensorAccess.basePtr            = reinterpret_cast<unsigned char *>(intermediate) + sampleOffset;
+        auto              *cpuMeta      = reinterpret_cast<TensorAccessDesc<StrideT> *>(tensorBatchMeta.cpu);
+        auto              *tensorAccess = &cpuMeta[sampleIdx];
+        tensorAccess->basePtr           = reinterpret_cast<unsigned char *>(intermediate) + sampleOffset;
         if constexpr (kHasDynamicChannels)
         {
             constexpr int kNStrides = kSpatialNDim + 1;
@@ -333,21 +356,22 @@ DynamicBatchWrap<T, N> CreateDynamicBatchWrap(int pass, cuda::BaseType<T> *inter
             sampleOffset += strides[kNStrides - 1];
         }
     }
-    NVCV_CHECK_THROW(cudaMemcpyAsync(tensorBatchMeta.gpu, tensorBatchMeta.cpu, numSamples * sizeof(TensorAccessDesc),
-                                     cudaMemcpyHostToDevice, stream));
+    NVCV_CHECK_THROW(cudaMemcpyAsync(tensorBatchMeta.gpu, tensorBatchMeta.cpu,
+                                     numSamples * sizeof(TensorAccessDesc<StrideT>), cudaMemcpyHostToDevice, stream));
 
-    return {tensorBatchMeta.gpu};
+    return {reinterpret_cast<TensorAccessDesc<StrideT> *>(tensorBatchMeta.gpu)};
 }
 } // namespace dynamic
 
-template<typename T>
+template<typename T, typename StrideT>
 struct ImageBatchVarShapeWrapAdapter
 {
     using ValueType                       = T;
+    using StrideType                      = StrideT;
     static constexpr int kNumDimensions   = 3; // NHW
     static constexpr int kNumSampleDim    = 2; // HW
     static constexpr int kVariableStrides = 1; // the innermost stride is static - sizeof type
-    using TensorWrapT                     = cuda::TensorNDWrap<T, kNumSampleDim>;
+    using TensorWrapT                     = cuda::TensorNDWrap<T, kNumSampleDim, StrideT>;
     static_assert(kVariableStrides == TensorWrapT::kVariableStrides);
 
     ImageBatchVarShapeWrapAdapter(const nvcv::ImageBatchVarShapeDataStridedCuda &batchData)
@@ -369,15 +393,16 @@ private:
     cuda::ImageBatchVarShapeWrap<T> m_batch;
 };
 
-template<typename T, int N>
+template<typename T, int N, typename StrideT>
 struct TensorBatchWrapAdapter
 {
     using ValueType                       = T;
+    using StrideType                      = StrideT;
     static constexpr int kNumDimensions   = N;
     static constexpr int kNumSampleDim    = kNumDimensions - 1; // not including sample (N) dim
     static constexpr int kVariableStrides = kNumSampleDim - 1;
-    using TensorWrapT                     = cuda::TensorNDWrap<T, kNumSampleDim>;
-    using TensorBatchWrapT                = cuda::TensorBatchNDWrap<T, kNumSampleDim>;
+    using TensorWrapT                     = cuda::TensorNDWrap<T, kNumSampleDim, StrideT>;
+    using TensorBatchWrapT                = cuda::TensorBatchNDWrap<T, kNumSampleDim, StrideT>;
     static_assert(kVariableStrides == TensorWrapT::kVariableStrides);
     static_assert(kVariableStrides == TensorBatchWrapT::kVariableStrides);
 

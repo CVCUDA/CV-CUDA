@@ -21,6 +21,7 @@
 #include "CAPI.hpp"
 #include "Resource.hpp"
 
+#include <common/Assert.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/ImageFormat.hpp>
 #include <pybind11/stl.h>
@@ -48,7 +49,8 @@ public:
     static Image Create(nvcv::Size2D size, nvcv::ImageFormat fmt, int rowAlign = 0)
     {
         PyObject *oimg = capi().Image_Create(size.w, size.h, static_cast<NVCVImageFormat>(fmt), rowAlign);
-
+        CheckCAPIError();
+        NVCV_ASSERT(oimg != nullptr);
         py::object pyimg = py::reinterpret_steal<py::object>(oimg);
 
         return Image(pyimg);
@@ -62,7 +64,7 @@ private:
 
     explicit Image(py::object obj)
         : Resource(obj)
-        , nvcv::Image(FromHandle(capi().Image_GetHandle(this->ptr()), true))
+        , nvcv::Image(FromHandle(CheckCAPIError(capi().Image_GetHandle(this->ptr())), true))
     {
     }
 };

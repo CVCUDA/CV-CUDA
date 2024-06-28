@@ -1069,7 +1069,7 @@ void Image::Export(py::module &m)
 {
     using namespace py::literals;
 
-    py::class_<Image, std::shared_ptr<Image>, Container>(m, "Image")
+    py::class_<Image, std::shared_ptr<Image>, Container>(m, "Image", "Image")
         .def(py::init(&Image::Create), "size"_a, "format"_a, "rowalign"_a = 0,
              "Constructor that takes a size, format and optional row align of the image")
         .def(py::init(&Image::CreateHost), "buffer"_a, "format"_a = nvcv::FMT_NONE, "rowalign"_a = 0,

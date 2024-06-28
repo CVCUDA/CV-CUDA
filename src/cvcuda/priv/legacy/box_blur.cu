@@ -216,6 +216,33 @@ static void cuosd_apply(cuOSDContext_t context, cudaStream_t stream)
     }
 }
 
+template<typename SrcWrap, typename DstWrap>
+inline void RenderBlur_RGB(SrcWrap src, DstWrap dst, const cuda_op::DataShape &inputShape, cuOSDContext_t context,
+                           cudaStream_t stream)
+{
+    if (src.ptr(0) != dst.ptr(0))
+    {
+        dim3 blockSize(32, 32);
+        dim3 gridSize(divUp(int(inputShape.W + 1), (int)blockSize.x), divUp(int(inputShape.H + 1), (int)blockSize.y),
+                      inputShape.N);
+
+        render_p2p_kernel<<<gridSize, blockSize, 0, stream>>>(src, dst, inputShape.N, inputShape.H, inputShape.W,
+                                                              inputShape.C);
+        checkKernelErrors();
+    }
+
+    if (context->blur_commands.size() > 0)
+    {
+        dim3 blockSize(32, 32);
+        dim3 gridSize(context->blur_commands.size(), 1);
+
+        render_blur_rgb_kernel<<<gridSize, blockSize, 0, stream>>>(
+            src, dst, context->gpu_blur_commands ? context->gpu_blur_commands->device() : nullptr,
+            context->blur_commands.size(), inputShape.N, inputShape.W, inputShape.H);
+        checkKernelErrors();
+    }
+}
+
 inline ErrorCode ApplyBoxBlur_RGB(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,
                                   cuOSDContext_t context, cudaStream_t stream)
 {
@@ -245,10 +272,29 @@ inline ErrorCode ApplyBoxBlur_RGB(const nvcv::TensorDataStridedCuda &inData, con
 
     cuosd_apply(context, stream);
 
-    auto src = nvcv::cuda::CreateTensorWrapNHWC<uint8_t>(inData);
-    auto dst = nvcv::cuda::CreateTensorWrapNHWC<uint8_t>(outData);
+    int64_t srcMaxStride = inAccess->sampleStride() * inAccess->numSamples();
+    int64_t dstMaxStride = outAccess->sampleStride() * outAccess->numSamples();
 
-    if (inData.basePtr() != outData.basePtr())
+    if (std::max(srcMaxStride, dstMaxStride) <= cuda::TypeTraits<int32_t>::max)
+    {
+        auto src = nvcv::cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(inData);
+        auto dst = nvcv::cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(outData);
+
+        RenderBlur_RGB(src, dst, inputShape, context, stream);
+        return ErrorCode::SUCCESS;
+    }
+    else
+    {
+        LOG_ERROR("Input or output size exceeds " << cuda::TypeTraits<int32_t>::max << ". Tensor is too large.");
+        return ErrorCode::INVALID_PARAMETER;
+    }
+}
+
+template<typename SrcWrap, typename DstWrap>
+inline void RenderBlur_RGBA(SrcWrap src, DstWrap dst, const cuda_op::DataShape &inputShape, cuOSDContext_t context,
+                            cudaStream_t stream)
+{
+    if (src.ptr(0) != dst.ptr(0))
     {
         dim3 blockSize(32, 32);
         dim3 gridSize(divUp(int(inputShape.W + 1), (int)blockSize.x), divUp(int(inputShape.H + 1), (int)blockSize.y),
@@ -264,12 +310,11 @@ inline ErrorCode ApplyBoxBlur_RGB(const nvcv::TensorDataStridedCuda &inData, con
         dim3 blockSize(32, 32);
         dim3 gridSize(context->blur_commands.size(), 1);
 
-        render_blur_rgb_kernel<<<gridSize, blockSize, 0, stream>>>(
+        render_blur_rgba_kernel<<<gridSize, blockSize, 0, stream>>>(
             src, dst, context->gpu_blur_commands ? context->gpu_blur_commands->device() : nullptr,
             context->blur_commands.size(), inputShape.N, inputShape.W, inputShape.H);
         checkKernelErrors();
     }
-    return ErrorCode::SUCCESS;
 }
 
 inline ErrorCode ApplyBoxBlur_RGBA(const nvcv::TensorDataStridedCuda &inData,
@@ -302,31 +347,22 @@ inline ErrorCode ApplyBoxBlur_RGBA(const nvcv::TensorDataStridedCuda &inData,
 
     cuosd_apply(context, stream);
 
-    auto src = nvcv::cuda::CreateTensorWrapNHWC<uint8_t>(inData);
-    auto dst = nvcv::cuda::CreateTensorWrapNHWC<uint8_t>(outData);
+    int64_t srcMaxStride = inAccess->sampleStride() * inAccess->numSamples();
+    int64_t dstMaxStride = outAccess->sampleStride() * outAccess->numSamples();
 
-    if (inData.basePtr() != outData.basePtr())
+    if (std::max(srcMaxStride, dstMaxStride) <= cuda::TypeTraits<int32_t>::max)
     {
-        dim3 blockSize(32, 32);
-        dim3 gridSize(divUp(int(inputShape.W + 1), (int)blockSize.x), divUp(int(inputShape.H + 1), (int)blockSize.y),
-                      inputShape.N);
+        auto src = nvcv::cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(inData);
+        auto dst = nvcv::cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(outData);
 
-        render_p2p_kernel<<<gridSize, blockSize, 0, stream>>>(src, dst, inputShape.N, inputShape.H, inputShape.W,
-                                                              inputShape.C);
-        checkKernelErrors();
+        RenderBlur_RGBA(src, dst, inputShape, context, stream);
+        return ErrorCode::SUCCESS;
     }
-
-    if (context->blur_commands.size() > 0)
+    else
     {
-        dim3 blockSize(32, 32);
-        dim3 gridSize(context->blur_commands.size(), 1);
-
-        render_blur_rgba_kernel<<<gridSize, blockSize, 0, stream>>>(
-            src, dst, context->gpu_blur_commands ? context->gpu_blur_commands->device() : nullptr,
-            context->blur_commands.size(), inputShape.N, inputShape.W, inputShape.H);
-        checkKernelErrors();
+        LOG_ERROR("Input or output size exceeds " << cuda::TypeTraits<int32_t>::max << ". Tensor is too large.");
+        return ErrorCode::INVALID_PARAMETER;
     }
-    return ErrorCode::SUCCESS;
 }
 
 static ErrorCode cuosd_draw_boxblur(cuOSDContext_t context, int width, int height, NVCVBlurBoxesImpl *bboxes)

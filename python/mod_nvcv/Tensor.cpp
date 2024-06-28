@@ -390,7 +390,7 @@ void Tensor::Export(py::module &m)
 
     py::implicitly_convertible<py::str, nvcv::TensorLayout>();
 
-    py::class_<Tensor, std::shared_ptr<Tensor>, Container>(m, "Tensor")
+    py::class_<Tensor, std::shared_ptr<Tensor>, Container>(m, "Tensor", "Tensor")
         .def(py::init(&Tensor::CreateForImageBatch), "nimages"_a, "imgsize"_a, "format"_a, "rowalign"_a = 0,
              "Create a Tensor object for an ImageBatch.")
         .def(py::init(&Tensor::Create), "shape"_a, "dtype"_a, "layout"_a = std::nullopt, "rowalign"_a = 0,

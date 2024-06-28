@@ -26,11 +26,12 @@
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
 
+import os
+import sys
+
+import sphinx_rtd_theme
 
 # -- Project information -----------------------------------------------------
-import os
-import sphinx_rtd_theme
-import sys
 
 project = "CV-CUDA"
 copyright = "2022-2024, NVIDIA."
@@ -41,7 +42,6 @@ release = version
 # set python docstring source path
 lib_path = os.getenv("SPHINX_PYTHON_SRC", default=".")
 sys.path.insert(0, os.path.abspath(lib_path))
-doxygen_strip_path = os.getenv("DOXYGEN_STRIP_PATH", default=".")
 
 # -- General configuration ---------------------------------------------------
 
@@ -58,12 +58,17 @@ templates_path = ["templates"]
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "docs/manuals/py/**"]
 
-# source_parsers = { '.md': 'recommonmark.parser.CommonMarkParser',}
-
 extensions = ["recommonmark"]
 
-
 source_suffix = {".rst": "restructuredtext", ".md": "markdown"}
+
+# Tell sphinx what the primary language being documented is.
+primary_domain = "cpp"
+
+# Tell sphinx what the pygments highlight language should be.
+highlight_language = "cpp"
+
+autodoc_inherit_docstrings = False
 
 # -- Options for HTML output -------------------------------------------------
 
@@ -91,7 +96,6 @@ html_theme_options = {
     "titles_only": False,
 }
 
-
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
@@ -114,19 +118,6 @@ def setup(app):
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = "sphinx"
 
-# -- Options for breathe --------------------------------------------------
-
-# Enable the breathe extension
-extensions.append("breathe")
-extensions.append("exhale")
-extensions.append("sphinx.ext.autodoc")
-extensions.append("sphinx.ext.viewcode")
-extensions.append("sphinx.ext.napoleon")
-
-# Set up the default project for breathe extension
-breathe_default_project = "cvcuda"
-
-
 # -- Options for sphinx_rtd_theme -----------------------------------------
 
 # Enable the sphinx_rtd_theme extension
@@ -135,63 +126,22 @@ extensions.append("sphinx_rtd_theme")
 # Enable the sphinx.ext.todo extension
 extensions.append("sphinx.ext.todo")
 
+# -- Extensions --------------------------------------------------
+
+# Enable extensions
+extensions.append("breathe")
+extensions.append("sphinx.ext.autodoc")
+extensions.append("sphinx.ext.viewcode")
+extensions.append("sphinx.ext.napoleon")
+
 # -- Extension configuration -------------------------------------------------
-
-doxygen_config = """
-EXCLUDE_PATTERNS     = *.md *.txt
-ENABLE_PREPROCESSING = YES
-WARN_IF_UNDOCUMENTED = NO
-USE_M
-"""
-
-doxygen_conf_extra = """
-INLINE_SIMPLE_STRUCTS = YES
-TYPEDEF_HIDES_STRUCT = YES
-EXPAND_ONLY_PREDEF = YES
-"""
-
-doxygen_predefined = [
-    "NVCV_PUBLIC=",
-    "NVCV_API_VERSION_IS(x,y)=0",
-    "NVCV_API_VERSION_AT_LEAST(x,y)=1",
-    "NVCV_API_VERSION_AT_MOST(x,y)=0",
-]
-
-doxygen_input_config = """
-"""
-
-doxygen_config = (
-    doxygen_input_config
-    + """
-EXCLUDE_PATTERNS     = *.md *.txt
-ENABLE_PREPROCESSING = YES
-WARN_IF_UNDOCUMENTED = NO
-USE_M
-"""
-)
-
-# Setup the exhale extension
-exhale_args = {
-    # These arguments are required
-    "containmentFolder": "_exhale_api",
-    "rootFileName": "cvcuda_api.rst",
-    # Heavily encouraged optional argument (see docs)
-    "rootFileTitle": "Library API",
-    # Suggested optional arguments
-    "createTreeView": True,
-    # TIP: if using the sphinx-bootstrap-theme, you need
-    # "treeViewIsBootstrap": True,
-    "exhaleExecutesDoxygen": False,
-    "fullToctreeMaxDepth": 1,
-    "minifyTreeView": False,
-    "contentsDirectives": False,
-    "doxygenStripFromPath": doxygen_strip_path,
+# Set up the default project for breathe extension
+breathe_default_project = "cvcuda"
+breathe_doxygen_config_options = {
+    "QUIET": "NO",
+    "WARNINGS": "NO",
+    "WARN_IF_UNDOCUMENTED": "NO",
+    "WARN_IF_DOC_ERROR": "NO",
+    "WARN_NO_PARAMDOC": "NO",
+    "WARN_AS_ERROR": "NO",
 }
-
-# Tell sphinx what the primary language being documented is.
-primary_domain = "cpp"
-
-# Tell sphinx what the pygments highlight language should be.
-highlight_language = "cpp"
-
-autodoc_inherit_docstrings = False

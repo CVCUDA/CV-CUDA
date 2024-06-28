@@ -17,7 +17,7 @@
 .. _imagebatchencoder_nvcodec:
 
 Image Encoding using nvImageCodec
-====================
+=================================
 
 
 The image batch encoder is responsible for saving image tensors to the disk as JPG images. The actual encoding is done in batches using the `nvImageCodec <https://github.com/NVIDIA/nvImageCodec>`_ library. The image encoder is generic enough to be across the sample applications. The code associated with this class can be found in the ``samples/common/python/nvcodec_utils.py`` file.

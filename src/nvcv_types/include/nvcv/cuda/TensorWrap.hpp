@@ -51,6 +51,7 @@ namespace nvcv::cuda {
  *
  * Template arguments:
  * - T type of the values inside the tensor
+ * - StrideT type of the stride used in the byte offset calculation
  * - Strides sequence of compile- or run-time pitches (-1 indicates run-time)
  *   - Y compile-time pitches
  *   - X run-time pitches
@@ -78,22 +79,24 @@ namespace nvcv::cuda {
  * @tparam T Type (it can be const) of each element inside the tensor wrapper.
  * @tparam Strides Each compile-time (use -1 for run-time) pitch in bytes from first to last dimension.
  */
-template<typename T, int... Strides>
-class TensorWrap;
+template<typename T, typename StrideT, StrideT... Strides>
+class TensorWrapT;
 
-template<typename T, int... Strides>
-class TensorWrap<const T, Strides...>
+template<typename T, typename StrideT, StrideT... Strides>
+class TensorWrapT<const T, StrideT, Strides...>
 {
     static_assert(HasTypeTraits<T>, "TensorWrap<T> can only be used if T has type traits");
+    static_assert(IsStrideType<StrideT>, "StrideT must be a 64 or 32 bit signed integer type");
 
 public:
-    using ValueType = const T;
+    using ValueType  = const T;
+    using StrideType = StrideT;
 
     static constexpr int kNumDimensions   = sizeof...(Strides);
     static constexpr int kVariableStrides = ((Strides == -1) + ...);
     static constexpr int kConstantStrides = kNumDimensions - kVariableStrides;
 
-    TensorWrap() = default;
+    TensorWrapT() = default;
 
     /**
      * Constructs a constant TensorWrap by wrapping a const \p data pointer argument.
@@ -102,11 +105,11 @@ public:
      * @param[in] strides0..D Each run-time pitch in bytes from first to last dimension.
      */
     template<typename DataType, typename... Args>
-    explicit __host__ __device__ TensorWrap(const DataType *data, Args... strides)
+    explicit __host__ __device__ TensorWrapT(const DataType *data, Args... strides)
         : m_data(reinterpret_cast<const std::byte *>(data))
-        , m_strides{std::forward<int>(strides)...}
+        , m_strides{std::forward<StrideT>(strides)...}
     {
-        static_assert(std::conjunction_v<std::is_same<int, Args>...>);
+        static_assert((IsIndexType<Args, StrideType> && ...));
         static_assert(sizeof...(Args) == kVariableStrides);
     }
 
@@ -118,7 +121,7 @@ public:
      * @param[in] strides Pointer to stride data
      */
     template<typename DataType, typename StrideType>
-    explicit __host__ __device__ TensorWrap(const DataType *data, StrideType *strides)
+    explicit __host__ __device__ TensorWrapT(const DataType *data, StrideType *strides)
         : m_data(reinterpret_cast<const std::byte *>(data))
     {
         for (int i = 0; i < kVariableStrides; ++i)
@@ -132,7 +135,7 @@ public:
      *
      * @param[in] image Image reference to the image that will be wrapped.
      */
-    __host__ TensorWrap(const ImageDataStridedCuda &image)
+    __host__ TensorWrapT(const ImageDataStridedCuda &image)
     {
         static_assert(kVariableStrides == 1 && kNumDimensions == 2);
 
@@ -146,9 +149,9 @@ public:
      *
      * @param[in] tensor Tensor reference to the tensor that will be wrapped.
      */
-    __host__ TensorWrap(const TensorDataStridedCuda &tensor)
+    __host__ TensorWrapT(const TensorDataStridedCuda &tensor)
     {
-        constexpr int kStride[] = {std::forward<int>(Strides)...};
+        constexpr StrideT kStride[] = {std::forward<StrideT>(Strides)...};
 
         assert(tensor.rank() >= kNumDimensions);
 
@@ -163,7 +166,7 @@ public:
             }
             else if (i < kVariableStrides)
             {
-                assert(tensor.stride(i) <= TypeTraits<int>::max);
+                assert(tensor.stride(i) <= TypeTraits<StrideType>::max);
 
                 m_strides[i] = tensor.stride(i);
             }
@@ -175,7 +178,7 @@ public:
      *
      * @return The const array (as a pointer) containing run-time pitches in bytes.
      */
-    const __host__ __device__ int *strides() const
+    const __host__ __device__ StrideT *strides() const
     {
         return m_strides;
     }
@@ -232,18 +235,18 @@ protected:
     template<typename... Args>
     inline const __host__ __device__ T *doGetPtr(Args... c) const
     {
-        static_assert(std::conjunction_v<std::is_same<int, Args>...>);
+        static_assert((IsIndexType<Args, StrideType> && ...));
         static_assert(sizeof...(Args) <= kNumDimensions);
 
-        constexpr int kArgSize  = sizeof...(Args);
-        constexpr int kVarSize  = kArgSize < kVariableStrides ? kArgSize : kVariableStrides;
-        constexpr int kDimSize  = kArgSize < kNumDimensions ? kArgSize : kNumDimensions;
-        constexpr int kStride[] = {std::forward<int>(Strides)...};
+        constexpr int     kArgSize  = sizeof...(Args);
+        constexpr int     kVarSize  = kArgSize < kVariableStrides ? kArgSize : kVariableStrides;
+        constexpr int     kDimSize  = kArgSize < kNumDimensions ? kArgSize : kNumDimensions;
+        constexpr StrideT kStride[] = {std::forward<StrideT>(Strides)...};
 
-        int coords[] = {std::forward<int>(c)...};
+        StrideType coords[] = {std::forward<StrideType>(c)...};
 
         // Computing offset first potentially postpones or avoids 64-bit math during addressing
-        int offset = 0;
+        StrideT offset = 0;
 #pragma unroll
         for (int i = 0; i < kVarSize; ++i)
         {
@@ -260,7 +263,7 @@ protected:
 
 private:
     const std::byte *m_data                      = nullptr;
-    int              m_strides[kVariableStrides] = {};
+    StrideT          m_strides[kVariableStrides] = {};
 };
 
 /**
@@ -269,19 +272,20 @@ private:
  * @tparam T Type (non-const) of each element inside the tensor wrapper.
  * @tparam Strides Each compile-time (use -1 for run-time) pitch in bytes from first to last dimension.
  */
-template<typename T, int... Strides>
-class TensorWrap : public TensorWrap<const T, Strides...>
+template<typename T, typename StrideT, StrideT... Strides>
+class TensorWrapT : public TensorWrapT<const T, StrideT, Strides...>
 {
-    using Base = TensorWrap<const T, Strides...>;
+    using Base = TensorWrapT<const T, StrideT, Strides...>;
 
 public:
-    using ValueType = T;
+    using ValueType  = T;
+    using StrideType = StrideT;
 
     using Base::kConstantStrides;
     using Base::kNumDimensions;
     using Base::kVariableStrides;
 
-    TensorWrap() = default;
+    TensorWrapT() = default;
 
     /**
      * Constructs a TensorWrap by wrapping a \p data pointer argument.
@@ -290,7 +294,7 @@ public:
      * @param[in] strides0..N Each run-time pitch in bytes from first to last dimension.
      */
     template<typename DataType, typename... Args>
-    explicit __host__ __device__ TensorWrap(DataType *data, Args... strides)
+    explicit __host__ __device__ TensorWrapT(DataType *data, Args... strides)
         : Base(data, strides...)
     {
     }
@@ -303,7 +307,7 @@ public:
      * @param[in] strides Pointer to stride data
      */
     template<typename DataType, typename StrideType>
-    explicit __host__ __device__ TensorWrap(DataType *data, StrideType *strides)
+    explicit __host__ __device__ TensorWrapT(DataType *data, StrideType *strides)
         : Base(data, strides)
     {
     }
@@ -313,7 +317,7 @@ public:
      *
      * @param[in] image Image reference to the image that will be wrapped.
      */
-    __host__ TensorWrap(const ImageDataStridedCuda &image)
+    __host__ TensorWrapT(const ImageDataStridedCuda &image)
         : Base(image)
     {
     }
@@ -323,7 +327,7 @@ public:
      *
      * @param[in] tensor Tensor reference to the tensor that will be wrapped.
      */
-    __host__ TensorWrap(const TensorDataStridedCuda &tensor)
+    __host__ TensorWrapT(const TensorDataStridedCuda &tensor)
         : Base(tensor)
     {
     }
@@ -385,6 +389,12 @@ protected:
     }
 };
 
+template<typename T, int64_t... Strides>
+using TensorWrap = TensorWrapT<T, int64_t, Strides...>;
+
+template<typename T, int32_t... Strides>
+using TensorWrap32 = TensorWrapT<T, int32_t, Strides...>;
+
 /**@}*/
 
 /**
@@ -395,6 +405,7 @@ protected:
  *
  *  Template arguments:
  *  - T data type of each element in \ref TensorWrap
+ *  - StrideType stride type used in the TensorWrap
  *  - N (optional) number of dimensions
  *
  *  @sa NVCV_CPP_CUDATOOLS_TENSORWRAP
@@ -403,28 +414,29 @@ protected:
  *  @{
  */
 
-template<typename T>
-using Tensor1DWrap = TensorWrap<T, sizeof(T)>;
+template<typename T, typename StrideType = int64_t>
+using Tensor1DWrap = TensorWrapT<T, StrideType, sizeof(T)>;
 
-template<typename T>
-using Tensor2DWrap = TensorWrap<T, -1, sizeof(T)>;
+template<typename T, typename StrideType = int64_t>
+using Tensor2DWrap = TensorWrapT<T, StrideType, -1, sizeof(T)>;
 
-template<typename T>
-using Tensor3DWrap = TensorWrap<T, -1, -1, sizeof(T)>;
+template<typename T, typename StrideType = int64_t>
+using Tensor3DWrap = TensorWrapT<T, StrideType, -1, -1, sizeof(T)>;
 
-template<typename T>
-using Tensor4DWrap = TensorWrap<T, -1, -1, -1, sizeof(T)>;
+template<typename T, typename StrideType = int64_t>
+using Tensor4DWrap = TensorWrapT<T, StrideType, -1, -1, -1, sizeof(T)>;
 
-template<typename T>
-using Tensor5DWrap = TensorWrap<T, -1, -1, -1, -1, sizeof(T)>;
+template<typename T, typename StrideType = int64_t>
+using Tensor5DWrap = TensorWrapT<T, StrideType, -1, -1, -1, -1, sizeof(T)>;
 
-template<typename T, int N>
+template<typename T, int N, typename StrideType = int64_t>
 using TensorNDWrap = std::conditional_t<
-    N == 1, Tensor1DWrap<T>,
-    std::conditional_t<N == 2, Tensor2DWrap<T>,
-                       std::conditional_t<N == 3, Tensor3DWrap<T>,
-                                          std::conditional_t<N == 4, Tensor4DWrap<T>,
-                                                             std::conditional_t<N == 5, Tensor5DWrap<T>, void>>>>>;
+    N == 1, Tensor1DWrap<T, StrideType>,
+    std::conditional_t<
+        N == 2, Tensor2DWrap<T, StrideType>,
+        std::conditional_t<N == 3, Tensor3DWrap<T, StrideType>,
+                           std::conditional_t<N == 4, Tensor4DWrap<T, StrideType>,
+                                              std::conditional_t<N == 5, Tensor5DWrap<T, StrideType>, void>>>>>;
 
 /**@}*/
 
@@ -438,21 +450,23 @@ using TensorNDWrap = std::conditional_t<
  * @sa NVCV_CPP_CUDATOOLS_TENSORWRAP
  *
  * @tparam T Type of the values to be accessed in the tensor wrap.
+ * @tparam StrideType Type of the stride used in the tensor wrap.
  *
  * @param[in] tensor Reference to the tensor that will be wrapped.
  *
  * @return Tensor wrap useful to access tensor data in CUDA kernels.
  */
-template<typename T, class = Require<HasTypeTraits<T>>>
+
+template<typename T, typename StrideType = int64_t, class = Require<HasTypeTraits<T> && IsStrideType<StrideType>>>
 __host__ auto CreateTensorWrapNHW(const TensorDataStridedCuda &tensor)
 {
     auto tensorAccess = TensorDataAccessStridedImagePlanar::Create(tensor);
     assert(tensorAccess);
-    assert(tensorAccess->sampleStride() <= TypeTraits<int>::max);
-    assert(tensorAccess->rowStride() <= TypeTraits<int>::max);
+    assert(tensorAccess->sampleStride() <= TypeTraits<StrideType>::max);
+    assert(tensorAccess->rowStride() <= TypeTraits<StrideType>::max);
 
-    return Tensor3DWrap<T>(tensor.basePtr(), static_cast<int>(tensorAccess->sampleStride()),
-                           static_cast<int>(tensorAccess->rowStride()));
+    return Tensor3DWrap<T, StrideType>(tensor.basePtr(), static_cast<StrideType>(tensorAccess->sampleStride()),
+                                       static_cast<StrideType>(tensorAccess->rowStride()));
 }
 
 /**
@@ -465,22 +479,24 @@ __host__ auto CreateTensorWrapNHW(const TensorDataStridedCuda &tensor)
  * @sa NVCV_CPP_CUDATOOLS_TENSORWRAP
  *
  * @tparam T Type of the values to be accessed in the tensor wrap.
+ * @tparam StrideType Type of the stride used in the tensor wrap.
  *
  * @param[in] tensor Reference to the tensor that will be wrapped.
  *
  * @return Tensor wrap useful to access tensor data in CUDA kernels.
  */
-template<typename T, class = Require<HasTypeTraits<T>>>
+template<typename T, typename StrideType = int64_t, class = Require<HasTypeTraits<T> && IsStrideType<StrideType>>>
 __host__ auto CreateTensorWrapNHWC(const TensorDataStridedCuda &tensor)
 {
     auto tensorAccess = TensorDataAccessStridedImagePlanar::Create(tensor);
     assert(tensorAccess);
-    assert(tensorAccess->sampleStride() <= TypeTraits<int>::max);
-    assert(tensorAccess->rowStride() <= TypeTraits<int>::max);
-    assert(tensorAccess->colStride() <= TypeTraits<int>::max);
+    assert(tensorAccess->sampleStride() <= TypeTraits<StrideType>::max);
+    assert(tensorAccess->rowStride() <= TypeTraits<StrideType>::max);
+    assert(tensorAccess->colStride() <= TypeTraits<StrideType>::max);
 
-    return Tensor4DWrap<T>(tensor.basePtr(), static_cast<int>(tensorAccess->sampleStride()),
-                           static_cast<int>(tensorAccess->rowStride()), static_cast<int>(tensorAccess->colStride()));
+    return Tensor4DWrap<T, StrideType>(tensor.basePtr(), static_cast<StrideType>(tensorAccess->sampleStride()),
+                                       static_cast<StrideType>(tensorAccess->rowStride()),
+                                       static_cast<StrideType>(tensorAccess->colStride()));
 }
 
 /**
@@ -498,17 +514,18 @@ __host__ auto CreateTensorWrapNHWC(const TensorDataStridedCuda &tensor)
  *
  * @return Tensor wrap useful to access tensor data in CUDA kernels.
  */
-template<typename T, class = Require<HasTypeTraits<T>>>
+template<typename T, typename StrideType = int64_t, class = Require<HasTypeTraits<T> && IsStrideType<StrideType>>>
 __host__ auto CreateTensorWrapNCHW(const TensorDataStridedCuda &tensor)
 {
     auto tensorAccess = TensorDataAccessStridedImagePlanar::Create(tensor);
     assert(tensorAccess);
-    assert(tensorAccess->sampleStride() <= TypeTraits<int>::max);
-    assert(tensorAccess->chStride() <= TypeTraits<int>::max);
-    assert(tensorAccess->rowStride() <= TypeTraits<int>::max);
+    assert(tensorAccess->sampleStride() <= TypeTraits<StrideType>::max);
+    assert(tensorAccess->chStride() <= TypeTraits<StrideType>::max);
+    assert(tensorAccess->rowStride() <= TypeTraits<StrideType>::max);
 
-    return Tensor4DWrap<T>(tensor.basePtr(), static_cast<int>(tensorAccess->sampleStride()),
-                           static_cast<int>(tensorAccess->chStride()), static_cast<int>(tensorAccess->rowStride()));
+    return Tensor4DWrap<T, StrideType>(tensor.basePtr(), static_cast<StrideType>(tensorAccess->sampleStride()),
+                                       static_cast<StrideType>(tensorAccess->chStride()),
+                                       static_cast<StrideType>(tensorAccess->rowStride()));
 }
 
 } // namespace nvcv::cuda

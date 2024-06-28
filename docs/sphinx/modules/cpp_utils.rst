@@ -22,4 +22,4 @@ Utility components for CV-CUDA.
 .. toctree::
    :glob:
 
-   ../_exhale_api/group__NVCV__CPP__UTIL_*
+   ../_c_cpp_api/group__NVCV__CPP__UTIL_*

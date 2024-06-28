@@ -28,12 +28,15 @@ Refer to the Segmentation sample documentation to understand the details of the 
 Terminologies
 -------------
 * Triton Server
+
 Manages and deploys model at scale. Refer the Triton documentation to review all the features Triton has to offer.
 
 * Triton model repository
+
 Triton model represents a inference workload that needs to be deployed. The triton server loads the model repository when started.
 
 * Triton Client
+
 Triton client libraries facilitates communication with Triton using Python or C++ API.
 In this example we will demonstrate how to to the Python API to communicate with Triton using GRPC requests.
 
@@ -63,22 +66,26 @@ Tutorial
 
   The model repository paths needs to conform to a layout specified below:
 
-  <model-repository-path>/
-      <model-name>/
-        <version>/
-          <model-definition-file>
-        config.pbtxt
+  .. code-block:: bash
+
+      <model-repository-path>/
+         <model-name>/
+            <version>/
+               <model-definition-file>
+            config.pbtxt
 
   For the segmentation sample, we will create a model.py which creates a TritonPythonModel
   that runs the preprocess, inference and post process workloads.
   We will copy the necessary files and modules from the segmentation sample for preprocess,
   inference and postprocess stages and create the following folder structure:
 
-  triton_models/
-     fcn_resnet101/
-        1/
-           model.py
-        config.pbtxt
+  .. code-block:: bash
+
+      triton_models/
+         fcn_resnet101/
+            1/
+               model.py
+            config.pbtxt
 
   Each model in the model repository must include a model configuration that provides the required
   and optional information about the model. Typically, this configuration is provided in a config.pbtxt

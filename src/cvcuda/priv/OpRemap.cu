@@ -26,6 +26,7 @@
 #include <nvcv/cuda/InterpolationWrap.hpp>
 #include <nvcv/cuda/MathOps.hpp>
 #include <nvcv/cuda/StaticCast.hpp>
+#include <nvcv/cuda/TypeTraits.hpp>
 #include <util/Assert.h>
 #include <util/Math.hpp>
 
@@ -147,19 +148,12 @@ __global__ void Remap(SrcWrapper src, DstWrapper dst, MapWrapper map, int2 mapSi
 
 // Host run remap functions ----------------------------------------------------
 
-template<typename T, NVCVBorderType B, NVCVInterpolationType MI, NVCVInterpolationType SI, class DataStridedCuda>
+template<typename T, NVCVBorderType B, NVCVInterpolationType SI, class DataStridedCuda, typename MapWrapper>
 void RunRemap(cudaStream_t stream, const DataStridedCuda &srcData, const DataStridedCuda &dstData,
-              const nvcv::TensorDataStridedCuda &mapData, NVCVRemapMapValueType mapValueType, bool alignCorners,
-              const T &borderValue)
+              const MapWrapper &mapWrap, NVCVRemapMapValueType mapValueType, bool alignCorners, const T &borderValue,
+              int2 mapSize, int mapNumSamples)
 {
-    auto mapAccess     = nvcv::TensorDataAccessStridedImagePlanar::Create(mapData);
-    int2 mapSize       = cuda::StaticCast<int>(long2{mapAccess->numCols(), mapAccess->numRows()});
-    int  mapNumSamples = mapAccess->numSamples();
-
     dim3 block(32, 4, 1);
-
-    auto map = cuda::CreateInterpolationWrapNHW<const float2, kMapBorderType, MI>(mapData);
-
     if constexpr (std::is_same_v<DataStridedCuda, nvcv::TensorDataStridedCuda>)
     {
         auto srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(srcData);
@@ -172,10 +166,20 @@ void RunRemap(cudaStream_t stream, const DataStridedCuda &srcData, const DataStr
 
         dim3 grid(util::DivUp(dstSize.x, block.x), util::DivUp(dstSize.y, block.y), dstAccess->numSamples());
 
-        auto src = cuda::CreateInterpolationWrapNHW<const T, B, SI>(srcData, borderValue);
-        auto dst = cuda::CreateTensorWrapNHW<T>(dstData);
+        int64_t srcMaxStride = srcAccess->sampleStride() * srcAccess->numSamples();
+        int64_t dstMaxStride = dstAccess->sampleStride() * dstAccess->numSamples();
+        if (std::max(srcMaxStride, dstMaxStride) <= cuda::TypeTraits<int32_t>::max)
+        {
+            auto src = cuda::CreateInterpolationWrapNHW<const T, B, SI, int32_t>(srcData, borderValue);
+            auto dst = cuda::CreateTensorWrapNHW<T, int32_t>(dstData);
 
-        Remap<<<grid, block, 0, stream>>>(src, dst, map, dstSize, mapNumSamples, params);
+            Remap<<<grid, block, 0, stream>>>(src, dst, mapWrap, dstSize, mapNumSamples, params);
+        }
+        else
+        {
+            throw nvcv::Exception(nvcv::Status::ERROR_OVERFLOW, "Input or output size exceeds %d. Tensor is too large.",
+                                  cuda::TypeTraits<int32_t>::max);
+        }
     }
     else
     {
@@ -188,7 +192,29 @@ void RunRemap(cudaStream_t stream, const DataStridedCuda &srcData, const DataStr
         cuda::InterpolationVarShapeWrap<const T, B, SI> src(srcData, borderValue);
         cuda::ImageBatchVarShapeWrap<T>                 dst(dstData);
 
-        Remap<<<grid, block, 0, stream>>>(src, dst, map, mapSize, mapNumSamples, alignCorners, mapValueType);
+        Remap<<<grid, block, 0, stream>>>(src, dst, mapWrap, mapSize, mapNumSamples, alignCorners, mapValueType);
+    }
+}
+
+template<typename T, NVCVBorderType B, NVCVInterpolationType MI, NVCVInterpolationType SI, class DataStridedCuda>
+void RunRemap(cudaStream_t stream, const DataStridedCuda &srcData, const DataStridedCuda &dstData,
+              const nvcv::TensorDataStridedCuda &mapData, NVCVRemapMapValueType mapValueType, bool alignCorners,
+              const T &borderValue)
+{
+    auto mapAccess     = nvcv::TensorDataAccessStridedImagePlanar::Create(mapData);
+    int2 mapSize       = cuda::StaticCast<int>(long2{mapAccess->numCols(), mapAccess->numRows()});
+    int  mapNumSamples = mapAccess->numSamples();
+
+    if (mapAccess->sampleStride() * mapAccess->numSamples() <= cuda::TypeTraits<int32_t>::max)
+    {
+        auto map = cuda::CreateInterpolationWrapNHW<const float2, kMapBorderType, MI, int32_t>(mapData);
+        RunRemap<T, B, SI>(stream, srcData, dstData, map, mapValueType, alignCorners, borderValue, mapSize,
+                           mapNumSamples);
+    }
+    else
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_OVERFLOW, "Map size exceeds %d. Tensor is too large.",
+                              cuda::TypeTraits<int32_t>::max);
     }
 }
 

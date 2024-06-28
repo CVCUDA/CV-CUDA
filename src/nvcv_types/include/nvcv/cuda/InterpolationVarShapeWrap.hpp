@@ -421,27 +421,26 @@ public:
                  std::is_same_v<BaseType<DimType>, float> && (NumElements<DimType> == 3 || NumElements<DimType> == 4)>>
     inline __host__ __device__ ValueType operator[](DimType c) const
     {
-        const int xmin = GetIndexForInterpolation<kInterpolationType, 1>(c.x - 2.f);
-        const int xmax = GetIndexForInterpolation<kInterpolationType, 2>(c.x + 2.f);
-        const int ymin = GetIndexForInterpolation<kInterpolationType, 1>(c.y - 2.f);
-        const int ymax = GetIndexForInterpolation<kInterpolationType, 2>(c.y + 2.f);
+        const int ix = GetIndexForInterpolation<kInterpolationType, 1>(c.x);
+        const int iy = GetIndexForInterpolation<kInterpolationType, 1>(c.y);
 
         using FT = ConvertBaseTypeTo<float, std::remove_cv_t<ValueType>>;
         auto sum = SetAll<FT>(0);
 
-        float w, wsum = 0.f;
+        float wx[4];
+        GetCubicCoeffs(c.x - ix, wx[0], wx[1], wx[2], wx[3]);
+        float wy[4];
+        GetCubicCoeffs(c.y - iy, wy[0], wy[1], wy[2], wy[3]);
 
-        for (int cy = ymin; cy <= ymax; cy++)
+#pragma unroll
+        for (int cy = -1; cy <= 2; cy++)
         {
-            for (int cx = xmin; cx <= xmax; cx++)
+#pragma unroll
+            for (int cx = -1; cx <= 2; cx++)
             {
-                w = GetCubicCoeff(c.x - cx) * GetCubicCoeff(c.y - cy);
-                sum += w * Base::doGetValue(c, cx, cy);
-                wsum += w;
+                sum += Base::doGetValue(c, ix + cx, iy + cy) * (wx[cx + 1] * wy[cy + 1]);
             }
         }
-
-        sum = (wsum == 0.f) ? SetAll<FT>(0) : sum / wsum;
 
         return SaturateCast<ValueType>(sum);
     }

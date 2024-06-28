@@ -38,39 +38,44 @@ file(MAKE_DIRECTORY ${DOXYGEN_OUTPUT_DIR})
 list(GET PYTHON_VERSIONS -1 VER)
 
 add_custom_command(OUTPUT ${DOXYGEN_INDEX_FILE}
-                   COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYFILE_OUT}
-                   MAIN_DEPENDENCY ${DOXYFILE_OUT} ${DOXYFILE_IN}
-                   COMMENT "Generating doxygen xml"
-	   	   DEPENDS cvcuda_python${VER})
+                    COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYFILE_OUT}
+                    MAIN_DEPENDENCY ${DOXYFILE_OUT} ${DOXYFILE_IN}
+                    COMMENT "Generating doxygen xml"
+	   	    DEPENDS cvcuda_python${VER})
 
 add_custom_target(cvcuda_doxygen ALL DEPENDS ${DOXYGEN_INDEX_FILE})
 
 set(SPHINX_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/sphinx)
-set(EXHALE_SOURCE ${SPHINX_SOURCE}/_exhale_api)
 set(SPHINX_BUILD ${CMAKE_CURRENT_BINARY_DIR}/sphinx)
 set(SPHINX_INDEX_FILE ${SPHINX_BUILD}/index.html)
-set(SPHINX_GROUP_INDEX_FILE ${SPHINX_BUILD}/groupindex.html)
+set(C_CPP_API_RST ${SPHINX_SOURCE}/_c_cpp_api)
+set(PY_CVCUDA_API_RST ${SPHINX_SOURCE}/_python_api/_cvcuda_api)
+
+# Start from clean directory for rst files, otherwise build could be affected due to old files
+file(REMOVE_RECURSE ${C_CPP_API_RST}/*)
+file(REMOVE_RECURSE ${PY_CVCUDA_API_RST}/*)
 
 # Generate rst files for groups from doxygen index.xml
-add_custom_target(cvcuda_groups ALL
-	COMMAND python3 ${SPHINX_SOURCE}/generate_groups.py ${EXHALE_SOURCE} ${DOXYGEN_OUTPUT_DIR}/xml
-		  DEPENDS ${DOXYGEN_INDEX_FILE})
+add_custom_target(cvcuda_groups ALL python3 ${SPHINX_SOURCE}/generate_groups.py ${C_CPP_API_RST} ${DOXYGEN_OUTPUT_DIR}/xml
+		            DEPENDS cvcuda_doxygen)
+
+# Generate rst files for python documentation
+add_custom_target(cvcuda_python_docs ALL python3 ${SPHINX_SOURCE}/gen_py_doc_rsts.py ${PY_CVCUDA_API_RST} ${CMAKE_SOURCE_DIR}
+                        DEPENDS cvcuda_python${VER})
 
 # Generate Sphinx
 add_custom_command(OUTPUT ${SPHINX_INDEX_FILE}
-                   COMMAND
-		   ${CMAKE_COMMAND} -E env "SPHINX_PYTHON_SRC=${CMAKE_BINARY_DIR}/lib/python" "DOXYGEN_STRIP_PATH=${CMAKE_CURRENT_SOURCE_DIR}/../src"
-                   ${SPHINX_EXECUTABLE} -j auto -b html
-                   # Tell Breathe where to find the Doxygen output
-                   -Dbreathe_projects.cvcuda=${DOXYGEN_OUTPUT_DIR}/xml
-                   ${SPHINX_SOURCE} ${SPHINX_BUILD}
-                   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-                   DEPENDS
-		   ${SPHINX_SOURCE}/index.rst
-                   ${DOXYGEN_INDEX_FILE}
-		   cvcuda_groups
-                   MAIN_DEPENDENCY ${SPHINX_SOURCE}/conf.py
-                   COMMENT "Generating documentation with Sphinx")
+                    COMMAND ${CMAKE_COMMAND} -E env "SPHINX_PYTHON_SRC=${CMAKE_BINARY_DIR}/lib/python"
+                            ${SPHINX_EXECUTABLE} -j auto -b html
+                            # Tell Breathe where to find the Doxygen's xml output. Needed to have c/cpp documentation.
+                            -Dbreathe_projects.cvcuda=${DOXYGEN_OUTPUT_DIR}/xml
+                            ${SPHINX_SOURCE} ${SPHINX_BUILD}
+                    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+                    DEPENDS ${SPHINX_SOURCE}/index.rst
+                            cvcuda_doxygen
+		            cvcuda_groups
+                    MAIN_DEPENDENCY ${SPHINX_SOURCE}/conf.py
+                    COMMENT "Generating documentation with Sphinx")
 
 add_custom_target(cvcuda_sphinx ALL DEPENDS ${SPHINX_INDEX_FILE})
 

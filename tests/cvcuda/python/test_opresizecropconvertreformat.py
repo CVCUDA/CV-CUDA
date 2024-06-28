@@ -27,7 +27,8 @@ import torch
 
 @t.mark.parametrize(
     "tensor_params, resize_dim, resize_interpolation, crop_rect_params, "
-    "out_layout, out_dtype, manip, out_expected_shape, is_positive_test",
+    "out_layout, out_dtype, manip, out_expected_shape, scale_norm, offset_norm, "
+    "is_positive_test",
     [
         (
             ((4, 512, 512, 3), np.uint8, "NHWC"),  # Basic test
@@ -38,6 +39,8 @@ import torch
             nvcv.Type.F32,
             cvcuda.ChannelManip.REVERSE,
             (4, 3, 224, 224),
+            1,
+            0,
             True,
         ),
         (
@@ -49,6 +52,8 @@ import torch
             nvcv.Type.F32,
             cvcuda.ChannelManip.REVERSE,
             (4, 3, 224, 224),
+            1,
+            0,
             True,
         ),
         (
@@ -60,6 +65,8 @@ import torch
             nvcv.Type.F32,
             cvcuda.ChannelManip.REVERSE,
             (4, 224, 224, 3),
+            1,
+            0,
             True,
         ),
         (
@@ -71,6 +78,8 @@ import torch
             0,  # Zero means keep the same dtype as input
             cvcuda.ChannelManip.REVERSE,
             (4, 224, 224, 3),
+            1,
+            0,
             True,
         ),
         (
@@ -82,6 +91,8 @@ import torch
             nvcv.Type.F32,
             cvcuda.ChannelManip.REVERSE,
             (17, 3, 22, 200),
+            1,
+            0,
             True,
         ),
         (
@@ -93,6 +104,8 @@ import torch
             nvcv.Type.F32,
             cvcuda.ChannelManip.REVERSE,
             (17, 22, 200, 3),
+            1,
+            0,
             True,
         ),
         (
@@ -104,6 +117,8 @@ import torch
             nvcv.Type.U8,  # Same dtype as the input tensor
             cvcuda.ChannelManip.NO_OP,  # No op here
             (3, 3, 35, 20),
+            1,
+            0,
             True,
         ),
         (
@@ -115,6 +130,8 @@ import torch
             nvcv.Type.F32,
             cvcuda.ChannelManip.REVERSE,
             (3, 224, 224),
+            1,
+            0,
             True,
         ),
         (
@@ -126,6 +143,8 @@ import torch
             nvcv.Type.F32,
             cvcuda.ChannelManip.REVERSE,
             (3, 224, 224),
+            1,
+            0,
             False,  # Negative test
         ),
         (
@@ -137,6 +156,21 @@ import torch
             nvcv.Type.F32,
             cvcuda.ChannelManip.NO_OP,
             (3, 224, 1024),
+            1,
+            0,
+            True,
+        ),
+        (
+            ((4, 678, 1027, 3), np.uint8, "NHWC"),
+            (251, 256),
+            cvcuda.Interp.LINEAR,
+            (0, 0, 200, 22),
+            "NCHW",
+            nvcv.Type.F32,
+            cvcuda.ChannelManip.REVERSE,
+            (4, 3, 22, 200),
+            127.5,  # Normalize output to [-1:1]
+            -1,
             True,
         ),
         (
@@ -148,6 +182,8 @@ import torch
             nvcv.Type.F32,
             cvcuda.ChannelManip.REVERSE,
             (3, 224, 1024),
+            1,
+            0,
             False,  # Negative test
         ),
         (
@@ -159,6 +195,8 @@ import torch
             nvcv.Type.F32,
             cvcuda.ChannelManip.REVERSE,
             (3, 5, 59),
+            1,
+            0,
             True,
         ),
         (
@@ -170,6 +208,8 @@ import torch
             nvcv.Type.F32,
             cvcuda.ChannelManip.REVERSE,
             (3, 5, 59),
+            1,
+            0,
             False,  # Negative test
         ),
         (
@@ -181,6 +221,8 @@ import torch
             nvcv.Type.F32,
             cvcuda.ChannelManip.REVERSE,
             (4, 3, 224, 224),
+            1,
+            0,
             False,  # Negative test
         ),
     ],
@@ -194,6 +236,8 @@ def test_op_resize_crop_convert_reformat(
     out_dtype,
     manip,
     out_expected_shape,
+    scale_norm,
+    offset_norm,
     is_positive_test,
 ):
 
@@ -210,6 +254,8 @@ def test_op_resize_crop_convert_reformat(
             layout=out_layout,
             data_type=out_dtype,
             manip=manip,
+            scale=scale_norm,
+            offset=offset_norm,
         )
     except Exception as e:
         if is_positive_test:
@@ -233,6 +279,8 @@ def test_op_resize_crop_convert_reformat(
             resize_interpolation,
             [crop_rect_params[1], crop_rect_params[0]],
             manip=manip,
+            scale=scale_norm,
+            offset=offset_norm,
         )
     except Exception as e:
         if is_positive_test:
@@ -256,7 +304,7 @@ def test_op_resize_crop_convert_reformat(
 
 @t.mark.parametrize(
     "num_images, min_size, max_size, resize_dim, resize_interpolation, crop_rect_params, "
-    "out_layout, out_dtype, manip, out_expected_shape, is_positive_test",
+    "out_layout, out_dtype, manip, out_expected_shape, scale_norm, offset_norm, is_positive_test",
     [
         (
             10,  # Basic test
@@ -269,6 +317,8 @@ def test_op_resize_crop_convert_reformat(
             nvcv.Type.F32,
             cvcuda.ChannelManip.REVERSE,
             (10, 3, 224, 224),
+            1,
+            0,
             True,
         ),
         (
@@ -282,6 +332,8 @@ def test_op_resize_crop_convert_reformat(
             nvcv.Type.F32,
             cvcuda.ChannelManip.REVERSE,
             (1, 190, 224, 3),
+            1,
+            0,
             True,
         ),
         (
@@ -295,6 +347,8 @@ def test_op_resize_crop_convert_reformat(
             nvcv.Type.F32,
             cvcuda.ChannelManip.NO_OP,  # No channels swapping
             (50, 190, 224, 3),
+            1,
+            0,
             True,
         ),
         (
@@ -308,6 +362,8 @@ def test_op_resize_crop_convert_reformat(
             nvcv.Type.U8,  # Same uint8 dtype as the input
             cvcuda.ChannelManip.REVERSE,
             (50, 3, 190, 224),
+            1,
+            0,
             True,
         ),
         (
@@ -321,6 +377,8 @@ def test_op_resize_crop_convert_reformat(
             nvcv.Type.U8,
             cvcuda.ChannelManip.NO_OP,  # NO_OP
             (50, 3, 190, 224),
+            1,
+            0,
             True,
         ),
         (
@@ -334,6 +392,8 @@ def test_op_resize_crop_convert_reformat(
             0,  # Same uint8 dtype as the input
             cvcuda.ChannelManip.REVERSE,
             (50, 190, 224, 3),
+            1,
+            0,
             True,
         ),
     ],
@@ -349,6 +409,8 @@ def test_op_resize_crop_convert_reformat_varshape(
     out_dtype,
     manip,
     out_expected_shape,
+    scale_norm,
+    offset_norm,
     is_positive_test,
 ):
 
@@ -378,6 +440,8 @@ def test_op_resize_crop_convert_reformat_varshape(
             layout=out_layout,
             data_type=out_dtype,
             manip=manip,
+            scale=scale_norm,
+            offset=offset_norm,
         )
     except Exception as e:
         if is_positive_test:

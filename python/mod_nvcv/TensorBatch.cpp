@@ -229,8 +229,7 @@ void TensorBatch::Export(py::module &m)
         "The capacity of the container must be specified upfront in the batch initialization.\n"
         "The tensors in the batch may differ in shapes but they must have "
         "a uniform dimensionality, data type and layout.")
-        .def(py::init(&TensorBatch::Create),
-             "capacity"_a
+        .def(py::init(&TensorBatch::Create), "capacity"_a,
              "Create a new TensorBatch object with the specified capacity.")
         .def_property_readonly("layout", &TensorBatch::layout,
                                "Layout of the tensors in the tensor batch."

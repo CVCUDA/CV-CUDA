@@ -14,10 +14,10 @@
    # See the License for the specific language governing permissions and
    # limitations under the License.
 
-.. _preprocessor_cvcuda:
+.. _postprocessor_cvcuda_segmentation:
 
 Semantic Segmentation Post-processing Pipeline using CVCUDA
-====================
+===========================================================
 
 
 CVCUDA helps accelerate the post-processing pipeline of the semantic segmentation sample tremendously. Easy interoperability with PyTorch tensors also makes it easy to integrate with PyTorch and other data loaders that supports the tensor layout.

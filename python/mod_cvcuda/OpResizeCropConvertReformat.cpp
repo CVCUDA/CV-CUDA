@@ -32,7 +32,8 @@ namespace cvcudapy {
 namespace {
 Tensor ResizeCropConvertReformatInto(Tensor &dst, Tensor &src, const std::tuple<int, int> resizeDim,
                                      NVCVInterpolationType interp, const std::tuple<int, int> cropPos,
-                                     const NVCVChannelManip manip, std::optional<Stream> pstream)
+                                     const NVCVChannelManip manip, const float scale, const float offset,
+                                     const bool srcCast, std::optional<Stream> pstream)
 {
     if (!pstream)
     {
@@ -49,14 +50,15 @@ Tensor ResizeCropConvertReformatInto(Tensor &dst, Tensor &src, const std::tuple<
     nvcv::Size2D size_wh{std::get<0>(resizeDim), std::get<1>(resizeDim)};
     int2         crop_xy{std::get<0>(cropPos), std::get<1>(cropPos)};
 
-    resize->submit(pstream->cudaHandle(), src, dst, size_wh, interp, crop_xy, manip);
+    resize->submit(pstream->cudaHandle(), src, dst, size_wh, interp, crop_xy, manip, scale, offset, srcCast);
 
     return std::move(dst);
 }
 
 Tensor ResizeCropConvertReformat(Tensor &src, const std::tuple<int, int> resizeDim, NVCVInterpolationType interp,
                                  const NVCVRectI cropRect, const char *layout, nvcv::DataType dataType,
-                                 const NVCVChannelManip manip, std::optional<Stream> pstream)
+                                 const NVCVChannelManip manip, const float scale, const float offset,
+                                 const bool srcCast, std::optional<Stream> pstream)
 {
     nvcv::TensorLayout srcLayout = src.layout();
 
@@ -98,12 +100,13 @@ Tensor ResizeCropConvertReformat(Tensor &src, const std::tuple<int, int> resizeD
 
     const std::tuple<int, int> cropPos = std::make_tuple((int)cropRect.x, (int)cropRect.y);
 
-    return ResizeCropConvertReformatInto(dst, src, resizeDim, interp, cropPos, manip, pstream);
+    return ResizeCropConvertReformatInto(dst, src, resizeDim, interp, cropPos, manip, scale, offset, srcCast, pstream);
 }
 
 Tensor ResizeCropConvertReformatVarShapeInto(Tensor &dst, ImageBatchVarShape &src, const std::tuple<int, int> resizeDim,
                                              NVCVInterpolationType interp, const std::tuple<int, int> cropPos,
-                                             const NVCVChannelManip manip, std::optional<Stream> pstream)
+                                             const NVCVChannelManip manip, const float scale, const float offset,
+                                             const bool srcCast, std::optional<Stream> pstream)
 {
     if (!pstream)
     {
@@ -120,15 +123,15 @@ Tensor ResizeCropConvertReformatVarShapeInto(Tensor &dst, ImageBatchVarShape &sr
     nvcv::Size2D size_wh(std::get<0>(resizeDim), std::get<1>(resizeDim));
     int2         crop_xy{std::get<0>(cropPos), std::get<1>(cropPos)};
 
-    resize->submit(pstream->cudaHandle(), src, dst, size_wh, interp, crop_xy, manip);
+    resize->submit(pstream->cudaHandle(), src, dst, size_wh, interp, crop_xy, manip, scale, offset, srcCast);
 
     return std::move(dst);
 }
 
 Tensor ResizeCropConvertReformatVarShape(ImageBatchVarShape &src, const std::tuple<int, int> resizeDim,
                                          NVCVInterpolationType interp, const NVCVRectI cropRect, const char *layout,
-                                         nvcv::DataType dataType, const NVCVChannelManip manip,
-                                         std::optional<Stream> pstream)
+                                         nvcv::DataType dataType, const NVCVChannelManip manip, const float scale,
+                                         const float offset, const bool srcCast, std::optional<Stream> pstream)
 {
     const nvcv::ImageFormat srcFrmt = src.uniqueFormat();
     if (!srcFrmt)
@@ -188,7 +191,8 @@ Tensor ResizeCropConvertReformatVarShape(ImageBatchVarShape &src, const std::tup
 
     const std::tuple<int, int> cropPos = std::make_tuple((int)cropRect.x, (int)cropRect.y);
 
-    return ResizeCropConvertReformatVarShapeInto(dst, src, resizeDim, interp, cropPos, manip, pstream);
+    return ResizeCropConvertReformatVarShapeInto(dst, src, resizeDim, interp, cropPos, manip, scale, offset, srcCast,
+                                                 pstream);
 }
 
 } // namespace
@@ -202,7 +206,8 @@ void ExportOpResizeCropConvertReformat(py::module &m)
 
     m.def("resize_crop_convert_reformat", &ResizeCropConvertReformat, "src"_a, "resize_dim"_a, "interp"_a,
           "crop_rect"_a, py::kw_only(), "layout"_a = "", "data_type"_a = NVCV_DATA_TYPE_NONE,
-          "manip"_a = NVCV_CHANNEL_NO_OP, "stream"_a = nullptr, R"pbdoc(
+          "manip"_a = NVCV_CHANNEL_NO_OP, "scale"_a = 1.0, "offset"_a = 0.0, "srcCast"_a = true, "stream"_a = nullptr,
+          R"pbdoc(
 
 	cvcuda.resize_crop_convert_reformat(src: nvcv.Tensor,
                                         resize_dim: tuple[int,int],
@@ -212,6 +217,9 @@ void ExportOpResizeCropConvertReformat(py::module &m)
                                         layout: str = "",
                                         data_type: nvcv.Type = 0,
                                         manip: cvcuda.ChannelManip = cvcuda.ChannelManip.NO_OP,
+                                        scale: float = 1.0,
+                                        offset: float = 0.0,
+                                        srcCast: bool = True,
                                         stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the ResizeCropConvertReformat operation on the given cuda stream.
@@ -233,6 +241,15 @@ void ExportOpResizeCropConvertReformat(py::module &m)
                                            indicates output tensor data type copies input.
             manip(cvcuda.ChannelManip, optional): Channel manipulation (e.g., shuffle RGB to BGR). NO_OP (default)
                                                   indicates output tensor channels are unchanged.
+            scale(float, optional): Scale (i.e., multiply) the output values by this amount. 1.0 (default) results
+                                    in no scaling of the output values.
+            offset(float, optional): Offset (i.e., add to) the output values by this amount. This is applied after
+                                     scaling. Let v be a resized and cropped value, then v * scale + offset is final
+                                     output value. 0.0 (default) results in no offset being added to the output.
+            srcCast(bool, optional): Boolean indicating whether or not the resize interpolation results are re-cast
+                                     back to the input (or source) data type. Refer to the C API reference for more
+                                     information. True (default) re-cast resize interpolation results back to the
+                                     source data type.
             stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
@@ -244,7 +261,8 @@ void ExportOpResizeCropConvertReformat(py::module &m)
     )pbdoc");
 
     m.def("resize_crop_convert_reformat_into", &ResizeCropConvertReformatInto, "dst"_a, "src"_a, "resize_dim"_a,
-          "interp"_a, "cropPos"_a, py::kw_only(), "manip"_a = NVCV_CHANNEL_NO_OP, "stream"_a = nullptr, R"pbdoc(
+          "interp"_a, "cropPos"_a, py::kw_only(), "manip"_a = NVCV_CHANNEL_NO_OP, "scale"_a = 1.0, "offset"_a = 0.0,
+          "srcCast"_a = true, "stream"_a = nullptr, R"pbdoc(
 
 	cvcuda.resize_crop_convert_reformat_into(dst: nvcv.Tensor,
                                              src: nvcv.Tensor,
@@ -253,6 +271,9 @@ void ExportOpResizeCropConvertReformat(py::module &m)
                                              cropPos: tuple[int,int],
                                              *,
                                              manip: cvcuda.ChannelManip = cvcuda.ChannelManip.NO_OP,
+                                             scale: float = 1.0,
+                                             offset: float = 0.0,
+                                             srcCast: bool = True,
                                              stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the ResizeCropConvertReformat operation on the given cuda stream.
@@ -274,6 +295,15 @@ void ExportOpResizeCropConvertReformat(py::module &m)
                                       output tensor's width & height.
             manip(cvcuda.ChannelManip, optional): Channel manipulation (e.g., shuffle RGB to BGR). NO_OP (default)
                                                   indicates output tensor channels are unchanged.
+            scale(float, optional): Scale (i.e., multiply) the output values by this amount. 1.0 (default) results
+                                    in no scaling of the output values.
+            offset(float, optional): Offset (i.e., add to) the output values by this amount. This is applied after
+                                     scaling. Let v be a resized and cropped value, then v * scale + offset is final
+                                     output value. 0.0 (default) results in no offset being added to the output.
+            srcCast(bool, optional): Boolean indicating whether or not the resize interpolation results are re-cast
+                                     back to the input (or source) data type. Refer to the C API reference for more
+                                     information. True (default) re-cast resize interpolation results back to the
+                                     source data type.
             stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
@@ -286,7 +316,8 @@ void ExportOpResizeCropConvertReformat(py::module &m)
 
     m.def("resize_crop_convert_reformat", &ResizeCropConvertReformatVarShape, "src"_a, "resize_dim"_a, "interp"_a,
           "crop_rect"_a, py::kw_only(), "layout"_a = "", "data_type"_a = NVCV_DATA_TYPE_NONE,
-          "manip"_a = NVCV_CHANNEL_NO_OP, "stream"_a = nullptr, R"pbdoc(
+          "manip"_a = NVCV_CHANNEL_NO_OP, "scale"_a = 1.0, "offset"_a = 0.0, "srcCast"_a = true, "stream"_a = nullptr,
+          R"pbdoc(
 
 	cvcuda.resizeCropConvertReformat(src: nvcv.ImageBatchVarShape,
                                      resize_dim: tuple[int,int],
@@ -296,6 +327,9 @@ void ExportOpResizeCropConvertReformat(py::module &m)
                       layout: str = "",
                       data_type: nvcv.Type = 0,
                       manip: cvcuda.ChannelManip = cvcuda.ChannelManip.NO_OP,
+                      scale: float = 1.0,
+                      offset: float = 0.0,
+                      srcCast: bool = True,
                       stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the ResizeCropConvertReformat operation on the given cuda stream.
@@ -318,6 +352,15 @@ void ExportOpResizeCropConvertReformat(py::module &m)
                                            indicates output tensor data type copies input.
             manip(cvcuda.ChannelManip, optional): Channel manipulation (e.g., shuffle RGB to BGR). NO_OP (default)
                                                   indicates output tensor channels are unchanged.
+            scale(float, optional): Scale (i.e., multiply) the output values by this amount. 1.0 (default) results
+                                    in no scaling of the output values.
+            offset(float, optional): Offset (i.e., add to) the output values by this amount. This is applied after
+                                     scaling. Let v be a resized and cropped value, then v * scale + offset is final
+                                     output value. 0.0 (default) results in no offset being added to the output.
+            srcCast(bool, optional): Boolean indicating whether or not the resize interpolation results are re-cast
+                                     back to the input (or source) data type. Refer to the C API reference for more
+                                     information. True (default) re-cast resize interpolation results back to the
+                                     source data type.
             stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
@@ -329,7 +372,8 @@ void ExportOpResizeCropConvertReformat(py::module &m)
     )pbdoc");
 
     m.def("resize_crop_convert_reformat_into", &ResizeCropConvertReformatVarShapeInto, "dst"_a, "src"_a, "resize_dim"_a,
-          "interp"_a, "cropPos"_a, py::kw_only(), "manip"_a = NVCV_CHANNEL_NO_OP, "stream"_a = nullptr, R"pbdoc(
+          "interp"_a, "cropPos"_a, py::kw_only(), "manip"_a = NVCV_CHANNEL_NO_OP, "scale"_a = 1.0, "offset"_a = 0.0,
+          "srcCast"_a = true, "stream"_a = nullptr, R"pbdoc(
 
 	cvcuda.resize_crop_convert_reformat_into(dst: nvcv.Tensor,
                                              src: nvcv.ImageBatchVarShape,
@@ -338,6 +382,9 @@ void ExportOpResizeCropConvertReformat(py::module &m)
                                              cropPos: tuple[int,int],
                                              *,
                                              manip: cvcuda.ChannelManip = cvcuda.ChannelManip.NO_OP,
+                                             scale: float = 1.0,
+                                             offset: float = 0.0,
+                                             srcCast: bool = True,
                                              stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the ResizeCropConvertReformat operation on the given cuda stream.
@@ -360,6 +407,15 @@ void ExportOpResizeCropConvertReformat(py::module &m)
                                       the output tensor's width & height.
             manip(cvcuda.ChannelManip, optional): Channel manipulation (e.g., shuffle RGB to BGR). NO_OP (default)
                                                   indicates output tensor channels are unchanged.
+            scale(float, optional): Scale (i.e., multiply) the output values by this amount. 1.0 (default) results
+                                    in no scaling of the output values.
+            offset(float, optional): Offset (i.e., add to) the output values by this amount. This is applied after
+                                     scaling. Let v be a resized and cropped value, then v * scale + offset is final
+                                     output value. 0.0 (default) results in no offset being added to the output.
+            srcCast(bool, optional): Boolean indicating whether or not the resize interpolation results are re-cast
+                                     back to the input (or source) data type. Refer to the C API reference for more
+                                     information. True (default) re-cast resize interpolation results back to the
+                                     source data type.
             stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:

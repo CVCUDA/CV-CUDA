@@ -22,4 +22,4 @@ CV-CUDA Algorithms
 .. toctree::
    :glob:
 
-   ../_exhale_api/group__NVCV__C__ALGORITHM__*
+   ../_c_cpp_api/group__NVCV__C__ALGORITHM__*

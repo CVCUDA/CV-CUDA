@@ -29,9 +29,8 @@ namespace legacy = nvcv::legacy::cuda_op;
 
 Resize::Resize()
 {
-    legacy::DataShape maxIn, maxOut;
-    // maxIn/maxOut not used by op.
-    m_legacyOp         = std::make_unique<legacy::Resize>(maxIn, maxOut);
+    legacy::DataShape maxIn, maxOut; // maxIn/maxOut not used by op.
+
     m_legacyOpVarShape = std::make_unique<legacy::ResizeVarShape>(maxIn, maxOut);
 }
 
@@ -52,7 +51,7 @@ void Resize::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv:
                               "Output must be cuda-accessible, pitch-linear tensor");
     }
 
-    NVCV_CHECK_THROW(m_legacyOp->infer(*inData, *outData, interpolation, stream));
+    RunResize(stream, *inData, *outData, interpolation);
 }
 
 void Resize::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,

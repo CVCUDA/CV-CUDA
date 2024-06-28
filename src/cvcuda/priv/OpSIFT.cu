@@ -80,14 +80,14 @@ constexpr int kDescHistTotalBins = (kDescWidth + 2) * (kDescWidth + 2) * (kDescH
 
 // Tensor wrap for LNHWC tensors with C inside its type
 template<typename T>
-using TensorWrapLNHW = cuda::TensorWrap<T, -1, -1, -1, sizeof(T)>;
+using TensorWrapLNHW = cuda::TensorWrap32<T, -1, -1, -1, sizeof(T)>;
 
 // Border wrap for LNHWC tensors using the corresponding tensor wrap
 template<typename T>
 using BorderWrapLNHW = cuda::BorderWrap<TensorWrapLNHW<T>, kBorderGauss, false, false, true, true>;
 
 // Tensor wrap for descriptor has 2 compile-time strides: per 128B descriptor and per 1B within descriptor
-using TensorWrapForDescriptor = cuda::TensorWrap<uint8_t, -1, kDescSize * sizeof(uint8_t), sizeof(uint8_t)>;
+using TensorWrapForDescriptor = cuda::TensorWrap32<uint8_t, -1, kDescSize * sizeof(uint8_t), sizeof(uint8_t)>;
 
 // CPU functions ---------------------------------------------------------------
 
@@ -189,8 +189,8 @@ __global__ void DoComputePyramids(BorderWrapLNHW<float> prevGauss, TensorWrapLNH
     __shared__ float gaussOutData[SH * BW]; // plain 1D Gaussian output (intermediary) data in SMEM
 
     // Using TensorWrap with compile-time strides for easy multi-dimensional access of Gaussian data in SMEM
-    cuda::TensorWrap<float, SW * sizeof(float), sizeof(float)> gaussIn(&gaussInData[0]);
-    cuda::TensorWrap<float, BW * sizeof(float), sizeof(float)> gaussOut(&gaussOutData[0]);
+    cuda::TensorWrap32<float, SW * sizeof(float), sizeof(float)> gaussIn(&gaussInData[0]);
+    cuda::TensorWrap32<float, BW * sizeof(float), sizeof(float)> gaussOut(&gaussOutData[0]);
 
     int half = currKernelSize / 2; // i.e. the halo or support data outside block to compute Gaussian filter
 
@@ -316,8 +316,10 @@ __forceinline__ __device__ int4 adj(const int4 &center, int dLayer, int dRow, in
 }
 
 // Compute descriptors, using the Gaussian pyramid, the previously computed angle and feature radius and coordinates
-__global__ void DoComputeDescriptors(TensorWrapForDescriptor featDescriptors, cuda::Tensor2DWrap<float4> featCoords,
-                                     cuda::Tensor2DWrap<float3> featMetadata, cuda::Tensor1DWrap<int> numFeatures,
+__global__ void DoComputeDescriptors(TensorWrapForDescriptor             featDescriptors,
+                                     cuda::Tensor2DWrap<float4, int32_t> featCoords,
+                                     cuda::Tensor2DWrap<float3, int32_t> featMetadata,
+                                     cuda::Tensor1DWrap<int, int32_t>    numFeatures,
                                      TensorWrapLNHW<const float> currGauss, int3 currShape, int featOctave,
                                      float unscaleOctave)
 {
@@ -334,7 +336,7 @@ __global__ void DoComputeDescriptors(TensorWrapForDescriptor featDescriptors, cu
     __shared__ float histogram[kDescHistTotalBins]; // Histogram with intermediary output for descriptors
 
     // Using TensorWrap with compile-time strides for easy multi-dimensional access of Gaussian data in SMEM
-    cuda::TensorWrap<float, BW * sizeof(float), sizeof(float)> gaussIn(&gaussInData[0]);
+    cuda::TensorWrap32<float, BW * sizeof(float), sizeof(float)> gaussIn(&gaussInData[0]);
 
     int featIdx   = blockIdx.x; // each block thru x computes one feature descriptor
     int sampleIdx = blockIdx.z; // each block thru z computes one image sample
@@ -556,11 +558,12 @@ __global__ void DoComputeDescriptors(TensorWrapForDescriptor featDescriptors, cu
 
 // Find extrema (feature coordinates + metadata) using Gaussian + DoG (Difference of Gaussians) pyramids
 template<int BW, int BH, typename DT>
-__global__ void DoFindExtrema(cuda::Tensor2DWrap<float4> featCoords, cuda::Tensor2DWrap<float3> featMetadata,
-                              int maxCapacity, cuda::Tensor1DWrap<int> numFeatures,
-                              TensorWrapLNHW<const float> currGauss, TensorWrapLNHW<const float> currDoG,
-                              int3 currShape, int featOctave, float scaleOctave, int numOctaveLayers, int thr,
-                              float contrastThreshold, float edgeThreshold, float initSigma)
+__global__ void DoFindExtrema(cuda::Tensor2DWrap<float4, int32_t> featCoords,
+                              cuda::Tensor2DWrap<float3, int32_t> featMetadata, int maxCapacity,
+                              cuda::Tensor1DWrap<int, int32_t> numFeatures, TensorWrapLNHW<const float> currGauss,
+                              TensorWrapLNHW<const float> currDoG, int3 currShape, int featOctave, float scaleOctave,
+                              int numOctaveLayers, int thr, float contrastThreshold, float edgeThreshold,
+                              float initSigma)
 {
     constexpr float kImageScale = 1.f / cuda::TypeTraits<DT>::max; // source images data type scale
     constexpr float kDScale1    = kImageScale * .5f;               // first derivative scale
@@ -884,10 +887,10 @@ void SIFT::FindExtrema(const nvcv::TensorDataStridedCuda &featCoordsData,
     dim3 compBlocks1;
     dim3 compBlocks2(maxCapacity, 1, currShape.z);
 
-    cuda::Tensor2DWrap<float4> featCoordsWrap(featCoordsData.basePtr(), (int)featCoordsData.stride(0));
-    cuda::Tensor2DWrap<float3> featMetadataWrap(featMetadataData.basePtr(), (int)featMetadataData.stride(0));
-    cuda::Tensor1DWrap<int>    numFeaturesWrap(numFeaturesData.basePtr());
-    TensorWrapForDescriptor    featDescriptorsWrap(featDescriptorsData.basePtr(), (int)featDescriptorsData.stride(0));
+    cuda::Tensor2DWrap<float4, int32_t> featCoordsWrap(featCoordsData.basePtr(), (int)featCoordsData.stride(0));
+    cuda::Tensor2DWrap<float3, int32_t> featMetadataWrap(featMetadataData.basePtr(), (int)featMetadataData.stride(0));
+    cuda::Tensor1DWrap<int, int32_t>    numFeaturesWrap(numFeaturesData.basePtr());
+    TensorWrapForDescriptor featDescriptorsWrap(featDescriptorsData.basePtr(), (int)featDescriptorsData.stride(0));
 
     // Initially set to zero the number of features for each image within source tensor, currShape.z = # of images
     NVCV_CHECK_THROW(cudaMemsetAsync(numFeaturesData.basePtr(), 0, sizeof(int) * currShape.z, stream));
@@ -958,13 +961,13 @@ void SIFT::ComputePyramids(const nvcv::TensorDataStridedCuda &inData, int3 currS
 
     if (expandInput)
     {
-        auto srcBaseWrap = cuda::CreateInterpolationWrapNHW<const DT, kBorderInterp, kInterpUp>(inData);
+        auto srcBaseWrap = cuda::CreateInterpolationWrapNHW<const DT, kBorderInterp, kInterpUp, int32_t>(inData);
 
         UpCopy<<<copyBlocks, copyThreads, 0, stream>>>(dstBaseWrap, srcBaseWrap, currShape); // upscale copy
     }
     else
     {
-        auto srcBaseWrap = cuda::CreateTensorWrapNHW<const DT>(inData);
+        auto srcBaseWrap = cuda::CreateTensorWrapNHW<const DT, int32_t>(inData);
 
         Copy<<<copyBlocks, copyThreads, 0, stream>>>(dstBaseWrap, srcBaseWrap, currShape); // direct copy
     }
@@ -1208,6 +1211,12 @@ void SIFT::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::T
     if (inAccess->numChannels() > 1 || inAccess->numPlanes() > 1)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input tensor must have 1 channel and 1 plane");
+    }
+
+    if (inAccess->sampleStride() * inAccess->numSamples() > cuda::TypeTraits<int32_t>::max)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_OVERFLOW, "Input size exceeds %d. Tensor is too large.",
+                              cuda::TypeTraits<int32_t>::max);
     }
 
     int3 inShape{(int)inAccess->numCols(), (int)inAccess->numRows(), (int)inAccess->numSamples()};

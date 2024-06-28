@@ -17,7 +17,7 @@
 .. _cvcuda_doc_system:
 
 CV-CUDA
-============================
+=======
 
 NVIDIA CV-CUDA™ is an open-source project for building cloud-scale `Artificial Intelligence (AI) imaging and Computer Vision (CV) <https://developer.nvidia.com/computer-vision>`_ applications. It uses graphics processing unit (GPU) acceleration to help developers build highly efficient pre- and post-processing pipelines. It can improve throughput by more than 10x while lowering cloud computing costs.
 
@@ -36,7 +36,7 @@ CV-CUDA includes:
 
 
 CV-CUDA Pre- and Post-Processing Operators
-------------------
+------------------------------------------
 
 CV-CUDA offers a comprehensive collection of Computer Vision and Image Processing operators, listed below.
 
@@ -47,20 +47,20 @@ CV-CUDA offers a comprehensive collection of Computer Vision and Image Processin
 
 
 Where Are the Release Notes?
-------------------
+----------------------------
 
 CV-CUDA release notes can be found `here <https://github.com/CVCUDA/CV-CUDA/releases/>`_.
 
 
 Where Can I Get Help?
-------------------
+---------------------
 
 An awesome product requires excellent support.
 File requests for enhancements and bug reports `here <https://github.com/CVCUDA/CV-CUDA/issues/new/choose>`_.
 
 
 What Other Computer Vision Products Does NVIDIA Offer?
-------------------
+------------------------------------------------------
 
 NVIDIA offers a number of products for accelerating computer vision and image processing applications. In addition to CV-CUDA, some of the others include:
 
@@ -73,7 +73,7 @@ If you want to learn more about what computer vision solutions are available, re
 
 
 Notice
---------------------
+------
 The information provided in this specification is believed to be accurate and reliable as of the date provided. However, NVIDIA Corporation (“NVIDIA”) does not give any representations or warranties, expressed or implied, as to the accuracy or completeness of such information. NVIDIA shall have no liability for the consequences or use of such information or for any infringement of patents or other rights of third parties that may result from its use. This publication supersedes and replaces all other specifications for the product that may have been previously supplied.
 
 NVIDIA reserves the right to make corrections, modifications, enhancements, improvements, and other changes to this specification, at any time and/or to discontinue any product or service without notice. Customer should obtain the latest relevant specification before placing orders and should verify that such information is current and complete.
@@ -90,13 +90,13 @@ ALL NVIDIA DESIGN SPECIFICATIONS, REFERENCE BOARDS, FILES, DRAWINGS, DIAGNOSTICS
 
 
 Trademarks
---------------------
+----------
 
 NVIDIA, the NVIDIA logo, NVIDIA CV-CUDA, and NVIDIA TensorRT are trademarks and/or registered trademarks of NVIDIA Corporation in the U.S. and other countries. Other company and product names may be trademarks of the respective companies with which they are associated.
 
 
 Copyright
---------------------
+---------
 © 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
 
@@ -117,13 +117,13 @@ Copyright
     C Modules <modules/c_modules>
     C++ Modules <modules/cpp_modules>
     Python Modules <modules/python_modules>
-    Index <_exhale_api/cvcuda_api>
 
 .. toctree::
     :caption: Release Notes
     :maxdepth: 1
     :hidden:
 
+    v0.9.0-beta <relnotes/v0.9.0-beta>
     v0.8.0-beta <relnotes/v0.8.0-beta>
     v0.7.0-beta <relnotes/v0.7.0-beta>
     v0.6.0-beta <relnotes/v0.6.0-beta>

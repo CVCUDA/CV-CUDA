@@ -54,7 +54,7 @@ NVCV_TYPED_TEST_SUITE(
     ttype::Types<
         NVCV_TEST_ROW(NVCV_INTERP_NEAREST, 1, 1234.567f, 1234), NVCV_TEST_ROW(NVCV_INTERP_NEAREST, 2, 1234.567f, 1234),
         NVCV_TEST_ROW(NVCV_INTERP_NEAREST, 1, -3.6f, -4), NVCV_TEST_ROW(NVCV_INTERP_LINEAR, 1, 5.678f, 5),
-        NVCV_TEST_ROW(NVCV_INTERP_LINEAR, 2, 5.678f, 5), NVCV_TEST_ROW(NVCV_INTERP_CUBIC, 1, -1234.567f, -1234),
+        NVCV_TEST_ROW(NVCV_INTERP_LINEAR, 2, 5.678f, 5), NVCV_TEST_ROW(NVCV_INTERP_CUBIC, 1, -1234.567f, -1235),
         NVCV_TEST_ROW(NVCV_INTERP_CUBIC, 2, -1234.567f, -1235), NVCV_TEST_ROW(NVCV_INTERP_AREA, 1, 4.567f, 5),
         NVCV_TEST_ROW(NVCV_INTERP_AREA, 2, 4.567f, 4)>);
 
@@ -233,26 +233,24 @@ TYPED_TEST(InterpolationWrap2DTest, correct_grid_unaligned_values_in_host)
             }
             else if (kInterpType == NVCV_INTERP_CUBIC)
             {
-                int xmin = cuda::round<cuda::RoundMode::UP, int>(floatCoord.x - 2.f);
-                int ymin = cuda::round<cuda::RoundMode::UP, int>(floatCoord.y - 2.f);
-                int xmax = cuda::round<cuda::RoundMode::DOWN, int>(floatCoord.x + 2.f);
-                int ymax = cuda::round<cuda::RoundMode::DOWN, int>(floatCoord.y + 2.f);
+                int ix = cuda::round<cuda::RoundMode::DOWN, int>(floatCoord.x);
+                int iy = cuda::round<cuda::RoundMode::DOWN, int>(floatCoord.y);
+
                 using FT = cuda::ConvertBaseTypeTo<float, ValueType>;
                 auto sum = cuda::SetAll<FT>(0);
 
-                float w, wsum = 0.f;
+                float wx[4];
+                test::GetBicubicCoeffs(floatCoord.x - ix, wx[0], wx[1], wx[2], wx[3]);
+                float wy[4];
+                test::GetBicubicCoeffs(floatCoord.y - iy, wy[0], wy[1], wy[2], wy[3]);
 
-                for (int cy = ymin; cy <= ymax; cy++)
+                for (int cy = -1; cy <= 2; cy++)
                 {
-                    for (int cx = xmin; cx <= xmax; cx++)
+                    for (int cx = -1; cx <= 2; cx++)
                     {
-                        w = test::GetBicubicCoeff(floatCoord.x - cx) * test::GetBicubicCoeff(floatCoord.y - cy);
-                        sum += w * borderWrap[int2{cx, cy}];
-                        wsum += w;
+                        sum += borderWrap[int2{ix + cx, iy + cy}] * (wx[cx + 1] * wy[cy + 1]);
                     }
                 }
-
-                sum = (wsum == 0.f) ? cuda::SetAll<FT>(0) : sum / wsum;
 
                 gold = cuda::SaturateCast<ValueType>(sum);
             }
@@ -583,26 +581,24 @@ TYPED_TEST(InterpolationWrap3DTest, correct_grid_unaligned_values_in_host)
                 }
                 else if (kInterpType == NVCV_INTERP_CUBIC)
                 {
-                    int xmin = cuda::round<cuda::RoundMode::UP, int>(floatCoord.x - 2.f);
-                    int ymin = cuda::round<cuda::RoundMode::UP, int>(floatCoord.y - 2.f);
-                    int xmax = cuda::round<cuda::RoundMode::DOWN, int>(floatCoord.x + 2.f);
-                    int ymax = cuda::round<cuda::RoundMode::DOWN, int>(floatCoord.y + 2.f);
+                    int ix = cuda::round<cuda::RoundMode::DOWN, int>(floatCoord.x);
+                    int iy = cuda::round<cuda::RoundMode::DOWN, int>(floatCoord.y);
+
                     using FT = cuda::ConvertBaseTypeTo<float, ValueType>;
                     auto sum = cuda::SetAll<FT>(0);
 
-                    float w, wsum = 0.f;
+                    float wx[4];
+                    test::GetBicubicCoeffs(floatCoord.x - ix, wx[0], wx[1], wx[2], wx[3]);
+                    float wy[4];
+                    test::GetBicubicCoeffs(floatCoord.y - iy, wy[0], wy[1], wy[2], wy[3]);
 
-                    for (int cy = ymin; cy <= ymax; cy++)
+                    for (int cy = -1; cy <= 2; cy++)
                     {
-                        for (int cx = xmin; cx <= xmax; cx++)
+                        for (int cx = -1; cx <= 2; cx++)
                         {
-                            w = test::GetBicubicCoeff(floatCoord.x - cx) * test::GetBicubicCoeff(floatCoord.y - cy);
-                            sum += w * borderWrap[int3{cx, cy, z}];
-                            wsum += w;
+                            sum += borderWrap[int3{ix + cx, iy + cy, z}] * (wx[cx + 1] * wy[cy + 1]);
                         }
                     }
-
-                    sum = (wsum == 0.f) ? cuda::SetAll<FT>(0) : sum / wsum;
 
                     gold = cuda::SaturateCast<ValueType>(sum);
                 }
@@ -938,26 +934,24 @@ TYPED_TEST(InterpolationWrap4DTest, correct_grid_unaligned_values_in_host)
                     }
                     else if (kInterpType == NVCV_INTERP_CUBIC)
                     {
-                        int xmin = cuda::round<cuda::RoundMode::UP, int>(floatCoord.x - 2.f);
-                        int ymin = cuda::round<cuda::RoundMode::UP, int>(floatCoord.y - 2.f);
-                        int xmax = cuda::round<cuda::RoundMode::DOWN, int>(floatCoord.x + 2.f);
-                        int ymax = cuda::round<cuda::RoundMode::DOWN, int>(floatCoord.y + 2.f);
+                        int ix = cuda::round<cuda::RoundMode::DOWN, int>(floatCoord.x);
+                        int iy = cuda::round<cuda::RoundMode::DOWN, int>(floatCoord.y);
+
                         using FT = cuda::ConvertBaseTypeTo<float, ValueType>;
                         auto sum = cuda::SetAll<FT>(0);
 
-                        float w, wsum = 0.f;
+                        float wx[4];
+                        test::GetBicubicCoeffs(floatCoord.x - ix, wx[0], wx[1], wx[2], wx[3]);
+                        float wy[4];
+                        test::GetBicubicCoeffs(floatCoord.y - iy, wy[0], wy[1], wy[2], wy[3]);
 
-                        for (int cy = ymin; cy <= ymax; cy++)
+                        for (int cy = -1; cy <= 2; cy++)
                         {
-                            for (int cx = xmin; cx <= xmax; cx++)
+                            for (int cx = -1; cx <= 2; cx++)
                             {
-                                w = test::GetBicubicCoeff(floatCoord.x - cx) * test::GetBicubicCoeff(floatCoord.y - cy);
-                                sum += w * borderWrap[int4{k, cx, cy, z}];
-                                wsum += w;
+                                sum += borderWrap[int4{k, ix + cx, iy + cy, z}] * (wx[cx + 1] * wy[cy + 1]);
                             }
                         }
-
-                        sum = (wsum == 0.f) ? cuda::SetAll<FT>(0) : sum / wsum;
 
                         gold = cuda::SaturateCast<ValueType>(sum);
                     }

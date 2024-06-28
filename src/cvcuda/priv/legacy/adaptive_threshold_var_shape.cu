@@ -53,9 +53,10 @@ struct MyLessEqual
 };
 
 template<typename CMP, cuda::RoundMode RM, typename SrcWrapper, typename DstWrapper>
-__global__ void adaptive_threshold(const SrcWrapper src, DstWrapper dst, cuda::Tensor1DWrap<double> maxValueArr,
-                                   cuda::Tensor1DWrap<int> blockSizeArr, cuda::Tensor1DWrap<double> cArr,
-                                   cuda::Tensor3DWrap<float> kernel)
+__global__ void adaptive_threshold(const SrcWrapper src, DstWrapper dst,
+                                   cuda::Tensor1DWrap<double, int32_t> maxValueArr,
+                                   cuda::Tensor1DWrap<int, int32_t>    blockSizeArr,
+                                   cuda::Tensor1DWrap<double, int32_t> cArr, cuda::Tensor3DWrap<float, int32_t> kernel)
 {
     const int batch_idx  = get_batch_idx();
     int       out_x      = blockIdx.x * BLOCK_DIM_X * X_STEPS;
@@ -138,10 +139,11 @@ __global__ void adaptive_threshold(const SrcWrapper src, DstWrapper dst, cuda::T
 
 template<typename D, NVCVBorderType B, typename CMP>
 void adaptive_threshold_caller(const ImageBatchVarShapeDataStridedCuda &in,
-                               const ImageBatchVarShapeDataStridedCuda &out, cuda::Tensor1DWrap<double> maxValueArr,
+                               const ImageBatchVarShapeDataStridedCuda &out,
+                               cuda::Tensor1DWrap<double, int32_t>      maxValueArr,
                                NVCVAdaptiveThresholdType adaptiveMethod, NVCVThresholdType thresholdType,
-                               cuda::Tensor1DWrap<int> blockSizeArr, cuda::Tensor1DWrap<double> cArr,
-                               cuda::Tensor3DWrap<float> kernel, int maxBlockSize, cudaStream_t stream)
+                               cuda::Tensor1DWrap<int, int32_t> blockSizeArr, cuda::Tensor1DWrap<double, int32_t> cArr,
+                               cuda::Tensor3DWrap<float, int32_t> kernel, int maxBlockSize, cudaStream_t stream)
 {
     float                                borderValue = .0f;
     cuda::BorderVarShapeWrap<const D, B> src(in, cuda::SetAll<D>(borderValue));
@@ -181,7 +183,7 @@ AdaptiveThresholdVarShape::AdaptiveThresholdVarShape(DataShape maxInputShape, Da
     if (maxBlockSize <= 0)
     {
         LOG_ERROR("Invalid num of max block size " << maxBlockSize);
-        throw std::runtime_error("Parameter error!");
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "maxBlockSize must be >= 0");
     }
     if (maxVarShapeBatchSize > 0)
     {
@@ -221,7 +223,7 @@ ErrorCode AdaptiveThresholdVarShape::infer(const ImageBatchVarShapeDataStridedCu
 
     if (!(format == kNHWC || format == kHWC))
     {
-        LOG_ERROR("Invalid DataFormat " << format);
+        LOG_ERROR("Invalid input DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
@@ -265,15 +267,15 @@ ErrorCode AdaptiveThresholdVarShape::infer(const ImageBatchVarShapeDataStridedCu
         return ErrorCode::INVALID_PARAMETER;
     }
 
-    cuda::Tensor1DWrap<double> maxValueArr(maxValue);
-    cuda::Tensor1DWrap<int>    blockSizeArr(blockSize);
-    cuda::Tensor1DWrap<double> cArr(c);
+    cuda::Tensor1DWrap<double, int32_t> maxValueArr(maxValue);
+    cuda::Tensor1DWrap<int, int32_t>    blockSizeArr(blockSize);
+    cuda::Tensor1DWrap<double, int32_t> cArr(c);
 
     int kernelPitch2 = static_cast<int>(m_maxBlockSize * sizeof(float));
     int kernelPitch1 = m_maxBlockSize * kernelPitch2;
 
-    float                    *kernelPtr = (float *)m_kernel;
-    cuda::Tensor3DWrap<float> kernelTensor(kernelPtr, kernelPitch1, kernelPitch2);
+    float                             *kernelPtr = (float *)m_kernel;
+    cuda::Tensor3DWrap<float, int32_t> kernelTensor(kernelPtr, kernelPitch1, kernelPitch2);
 
     dim3 block(32, 4);
     dim3 grid(divUp(m_maxBlockSize, block.x), divUp(m_maxBlockSize, block.y), out.numImages());

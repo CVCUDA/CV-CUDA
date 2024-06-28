@@ -17,7 +17,7 @@
 .. _v0.3.1-beta:
 
 0.3.1-beta
-======
+==========
 
 The v0.3.1 release provides several bug fixes along with documentation updates and performance improvements.
 

@@ -141,7 +141,7 @@ void ExportOpAdaptiveThreshold(py::module &m)
         cvcuda.adaptivethreshold_into(dst: nvcv.Tensor, src: nvcv.Tensor, max_value: double, adaptive_method: NVCVAdaptiveThresholdType = < NVCV_ADAPTIVE_TH
 RESH_MEAN_C >, threshold_type: NVCVThresholdType = < NVCV_THRESH_BINARY >, block_size: int, c: double, stream: Optional[nvcv.cuda.Stream] = None)
 
-	Executes the adaptive threshold operation on the given cuda stream.
+	    Executes the adaptive threshold operation on the given cuda stream.
 
         See also:
             Refer to the CV-CUDA C API reference for the Composite operator
@@ -169,6 +169,7 @@ RESH_MEAN_C >, threshold_type: NVCVThresholdType = < NVCV_THRESH_BINARY >, block
           "adaptive_method"_a = NVCV_ADAPTIVE_THRESH_MEAN_C, "threshold_type"_a = NVCV_THRESH_BINARY,
           "max_block_size"_a, "block_size"_a, "c"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         cvcuda.adaptivethreshold(src: nvcv.ImageBatchVarShape, max_value: nvcv.Tensor, adaptive_method: NVCVAdaptiveThresholdType = < NVCV_ADAPTIVE_THRESH_MEAN_C >, threshold_type: NVCVThresholdType = < NVCV_THRESH_BINARY > , block_size: int, c: double, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+
         Executes the adaptive threshold operation on the given cuda stream.
 
         See also:

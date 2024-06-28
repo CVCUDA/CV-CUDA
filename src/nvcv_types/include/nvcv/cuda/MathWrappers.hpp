@@ -60,11 +60,13 @@ inline __host__ __device__ RT RoundImpl(U u)
     {
         RT out{};
 
-#pragma unroll
-        for (int e = 0; e < nvcv::cuda::NumElements<RT>; ++e)
-        {
-            GetElement(out, e) = RoundImpl<T, BaseType<U>, static_cast<int>(RM)>(GetElement(u, e));
-        }
+        GetElement<0>(out) = RoundImpl<T, BaseType<U>, static_cast<int>(RM)>(GetElement<0>(u));
+        if constexpr (nvcv::cuda::NumElements<RT> >= 2)
+            GetElement<1>(out) = RoundImpl<T, BaseType<U>, static_cast<int>(RM)>(GetElement<1>(u));
+        if constexpr (nvcv::cuda::NumElements<RT> >= 3)
+            GetElement<2>(out) = RoundImpl<T, BaseType<U>, static_cast<int>(RM)>(GetElement<2>(u));
+        if constexpr (nvcv::cuda::NumElements<RT> == 4)
+            GetElement<3>(out) = RoundImpl<T, BaseType<U>, static_cast<int>(RM)>(GetElement<3>(u));
 
         return out;
     }
@@ -184,11 +186,15 @@ inline __host__ __device__ U min(U a, U b)
 #endif
     {
         U out{};
-#pragma unroll
-        for (int e = 0; e < nvcv::cuda::NumElements<U>; ++e)
-        {
-            GetElement(out, e) = detail::MinImpl(GetElement(a, e), GetElement(b, e));
-        }
+
+        GetElement<0>(out) = detail::MinImpl(GetElement<0>(a), GetElement<0>(b));
+        if constexpr (nvcv::cuda::NumElements<U> >= 2)
+            GetElement<1>(out) = detail::MinImpl(GetElement<1>(a), GetElement<1>(b));
+        if constexpr (nvcv::cuda::NumElements<U> >= 3)
+            GetElement<2>(out) = detail::MinImpl(GetElement<2>(a), GetElement<2>(b));
+        if constexpr (nvcv::cuda::NumElements<U> == 4)
+            GetElement<3>(out) = detail::MinImpl(GetElement<3>(a), GetElement<3>(b));
+
         return out;
     }
     // clang-format on
@@ -227,11 +233,15 @@ inline __host__ __device__ U max(U a, U b)
 #endif
     {
         U out{};
-#pragma unroll
-        for (int e = 0; e < nvcv::cuda::NumElements<U>; ++e)
-        {
-            GetElement(out, e) = detail::MaxImpl(GetElement(a, e), GetElement(b, e));
-        }
+
+        GetElement<0>(out) = detail::MaxImpl(GetElement<0>(a), GetElement<0>(b));
+        if constexpr (nvcv::cuda::NumElements<U> >= 2)
+            GetElement<1>(out) = detail::MaxImpl(GetElement<1>(a), GetElement<1>(b));
+        if constexpr (nvcv::cuda::NumElements<U> >= 3)
+            GetElement<2>(out) = detail::MaxImpl(GetElement<2>(a), GetElement<2>(b));
+        if constexpr (nvcv::cuda::NumElements<U> == 4)
+            GetElement<3>(out) = detail::MaxImpl(GetElement<3>(a), GetElement<3>(b));
+
         return out;
     }
     // clang-format on
@@ -260,11 +270,13 @@ inline __host__ __device__ U pow(U x, S y)
 {
     U out{};
 
-#pragma unroll
-    for (int e = 0; e < nvcv::cuda::NumElements<U>; ++e)
-    {
-        GetElement(out, e) = detail::PowImpl(GetElement(x, e), GetElement(y, e));
-    }
+    GetElement<0>(out) = detail::PowImpl(GetElement<0>(x), GetElement<0>(y));
+    if constexpr (nvcv::cuda::NumElements<U> >= 2)
+        GetElement<1>(out) = detail::PowImpl(GetElement<1>(x), GetElement<1>(y));
+    if constexpr (nvcv::cuda::NumElements<U> >= 3)
+        GetElement<2>(out) = detail::PowImpl(GetElement<2>(x), GetElement<2>(y));
+    if constexpr (nvcv::cuda::NumElements<U> == 4)
+        GetElement<3>(out) = detail::PowImpl(GetElement<3>(x), GetElement<3>(y));
 
     return out;
 }
@@ -286,11 +298,13 @@ inline __host__ __device__ U exp(U u)
 {
     U out{};
 
-#pragma unroll
-    for (int e = 0; e < nvcv::cuda::NumElements<U>; ++e)
-    {
-        GetElement(out, e) = detail::ExpImpl(GetElement(u, e));
-    }
+    GetElement<0>(out) = detail::ExpImpl(GetElement<0>(u));
+    if constexpr (nvcv::cuda::NumElements<U> >= 2)
+        GetElement<1>(out) = detail::ExpImpl(GetElement<1>(u));
+    if constexpr (nvcv::cuda::NumElements<U> >= 3)
+        GetElement<2>(out) = detail::ExpImpl(GetElement<2>(u));
+    if constexpr (nvcv::cuda::NumElements<U> == 4)
+        GetElement<3>(out) = detail::ExpImpl(GetElement<3>(u));
 
     return out;
 }
@@ -312,11 +326,13 @@ inline __host__ __device__ U sqrt(U u)
 {
     U out{};
 
-#pragma unroll
-    for (int e = 0; e < nvcv::cuda::NumElements<U>; ++e)
-    {
-        GetElement(out, e) = detail::SqrtImpl(GetElement(u, e));
-    }
+    GetElement<0>(out) = detail::SqrtImpl(GetElement<0>(u));
+    if constexpr (nvcv::cuda::NumElements<U> >= 2)
+        GetElement<1>(out) = detail::SqrtImpl(GetElement<1>(u));
+    if constexpr (nvcv::cuda::NumElements<U> >= 3)
+        GetElement<2>(out) = detail::SqrtImpl(GetElement<2>(u));
+    if constexpr (nvcv::cuda::NumElements<U> == 4)
+        GetElement<3>(out) = detail::SqrtImpl(GetElement<3>(u));
 
     return out;
 }
@@ -359,11 +375,15 @@ inline __host__ __device__ U abs(U u)
 #endif
     {
         U out{};
-#pragma unroll
-        for (int e = 0; e < nvcv::cuda::NumElements<U>; ++e)
-        {
-            GetElement(out, e) = detail::AbsImpl(GetElement(u, e));
-        }
+
+        GetElement<0>(out) = detail::AbsImpl(GetElement<0>(u));
+        if constexpr (nvcv::cuda::NumElements<U> >= 2)
+            GetElement<1>(out) = detail::AbsImpl(GetElement<1>(u));
+        if constexpr (nvcv::cuda::NumElements<U> >= 3)
+            GetElement<2>(out) = detail::AbsImpl(GetElement<2>(u));
+        if constexpr (nvcv::cuda::NumElements<U> == 4)
+            GetElement<3>(out) = detail::AbsImpl(GetElement<3>(u));
+
         return out;
     }
     // clang-format on
@@ -393,11 +413,13 @@ inline __host__ __device__ U clamp(U u, S lo, S hi)
 {
     U out{};
 
-#pragma unroll
-    for (int e = 0; e < nvcv::cuda::NumElements<U>; ++e)
-    {
-        GetElement(out, e) = detail::ClampImpl(GetElement(u, e), GetElement(lo, e), GetElement(hi, e));
-    }
+    GetElement<0>(out) = detail::ClampImpl(GetElement<0>(u), GetElement<0>(lo), GetElement<0>(hi));
+    if constexpr (nvcv::cuda::NumElements<U> >= 2)
+        GetElement<1>(out) = detail::ClampImpl(GetElement<1>(u), GetElement<1>(lo), GetElement<1>(hi));
+    if constexpr (nvcv::cuda::NumElements<U> >= 3)
+        GetElement<2>(out) = detail::ClampImpl(GetElement<2>(u), GetElement<2>(lo), GetElement<2>(hi));
+    if constexpr (nvcv::cuda::NumElements<U> == 4)
+        GetElement<3>(out) = detail::ClampImpl(GetElement<3>(u), GetElement<3>(lo), GetElement<3>(hi));
 
     return out;
 }

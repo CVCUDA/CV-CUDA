@@ -17,7 +17,7 @@
 .. _objectdetection_tensorflow:
 
 Object Detection Inference Using TensorFlow
-==========================================
+===========================================
 
 The object detection sample in CVCUDA uses the `Peoplenet Model <https://catalog.ngc.nvidia.com/orgs/nvidia/teams/tao/models/peoplenet>`_ from NGC. The HDF5 model file is downloaded from NGC. We use appropriate GPU device with Keras to load the model.
 

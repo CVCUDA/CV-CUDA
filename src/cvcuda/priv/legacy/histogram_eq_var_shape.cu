@@ -174,7 +174,7 @@ HistogramEqVarShape::HistogramEqVarShape(int maxBatchSize)
     if (maxBatchSize < 0)
     {
         LOG_ERROR("Invalid num of max batch size " << maxBatchSize);
-        throw std::runtime_error("Parameter error!");
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "maxBatchSize must be >= 0");
     }
 
     m_maxBatchSize    = maxBatchSize;
@@ -259,7 +259,7 @@ ErrorCode HistogramEqVarShape::infer(const nvcv::ImageBatchVarShapeDataStridedCu
 
     cuda::ImageBatchVarShapeWrapNHWC<uchar> dst(outData, channels);
     cuda::ImageBatchVarShapeWrapNHWC<uchar> src(inData, channels);
-    auto histo = nvcv::cuda::Tensor2DWrap<int>(m_histoArray, (int)(256 * channels * sizeof(int)));
+    auto histo = nvcv::cuda::Tensor2DWrap<int, int32_t>(m_histoArray, (int)(256 * channels * sizeof(int)));
 
     {
         //compute the histogram for each image in the batch into m_histoArray

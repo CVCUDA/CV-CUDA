@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -146,8 +146,9 @@ __global__ void resize_nearest_v1(const SrcWrapper src, DstWrapper dst, int2 src
         const int   top     = top_[batch_idx];
         const int   left    = left_[batch_idx];
 
-        const int sx = cuda::min(cuda::round<cuda::RoundMode::DOWN, int>(dst_x * scale_x + left), srcSize.x - 1);
-        const int sy = cuda::min(cuda::round<cuda::RoundMode::DOWN, int>(dst_y * scale_y + top), srcSize.y - 1);
+        const int sx = cuda::min(__float2int_rd((dst_x + 0.5f) * scale_x) + left, srcSize.x - 1);
+        const int sy = cuda::min(__float2int_rd((dst_y + 0.5f) * scale_y) + top, srcSize.y - 1);
+
         *dst.ptr(batch_idx, dst_y, dst_x) = *src.ptr(batch_idx, sy, sx);
     }
 }
@@ -221,26 +222,13 @@ __global__ void resize_cubic_v1(const SrcWrapper src, DstWrapper dst, int2 srcSi
     }
 }
 
-template<typename T>
-void resize(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
-            const NVCVInterpolationType interpolation, cudaStream_t stream, const int *top, const int *left,
-            const float *scale_x, const float *scale_y)
+template<typename SrcWrapper, typename DstWrapper>
+void resize(const SrcWrapper &src, const DstWrapper &dst, const NVCVInterpolationType interpolation,
+            cudaStream_t stream, const int *top, const int *left, const float *scale_x, const float *scale_y,
+            int2 srcSize, int2 dstSize, int batchSize)
 {
-    auto inAccess = TensorDataAccessStridedImagePlanar::Create(inData);
-    NVCV_ASSERT(inAccess);
-
-    auto outAccess = TensorDataAccessStridedImagePlanar::Create(outData);
-    NVCV_ASSERT(outAccess);
-
-    const int2 srcSize{inAccess->numCols(), inAccess->numRows()};
-    const int2 dstSize{outAccess->numCols(), outAccess->numRows()};
-    const int  batchSize{static_cast<int>(outAccess->numSamples())};
-
     dim3 blockSize(BLOCK, BLOCK / 4, 1);
     dim3 gridSize(divUp(dstSize.x, blockSize.x), divUp(dstSize.y, blockSize.y), batchSize);
-
-    auto src = cuda::CreateTensorWrapNHW<T>(inData);
-    auto dst = cuda::CreateTensorWrapNHW<T>(outData);
 
     if (interpolation == NVCV_INTERP_LINEAR)
     {
@@ -262,6 +250,38 @@ void resize(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &ou
     checkCudaErrors(cudaStreamSynchronize(stream));
     checkCudaErrors(cudaGetLastError());
 #endif
+}
+
+template<typename T>
+ErrorCode resize(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                 const NVCVInterpolationType interpolation, cudaStream_t stream, const int *top, const int *left,
+                 const float *scale_x, const float *scale_y)
+{
+    auto inAccess = TensorDataAccessStridedImagePlanar::Create(inData);
+    NVCV_ASSERT(inAccess);
+
+    auto outAccess = TensorDataAccessStridedImagePlanar::Create(outData);
+    NVCV_ASSERT(outAccess);
+
+    const int2 srcSize{inAccess->numCols(), inAccess->numRows()};
+    const int2 dstSize{outAccess->numCols(), outAccess->numRows()};
+    const int  batchSize{static_cast<int>(outAccess->numSamples())};
+
+    int64_t srcMaxStride = inAccess->sampleStride() * inAccess->numSamples();
+    int64_t dstMaxStride = outAccess->sampleStride() * outAccess->numSamples();
+
+    if (std::max(srcMaxStride, dstMaxStride) <= cuda::TypeTraits<int32_t>::max)
+    {
+        auto src = cuda::CreateTensorWrapNHW<T, int32_t>(inData);
+        auto dst = cuda::CreateTensorWrapNHW<T, int32_t>(outData);
+        resize(src, dst, interpolation, stream, top, left, scale_x, scale_y, srcSize, dstSize, batchSize);
+    }
+    else
+    {
+        LOG_ERROR("Input or output size exceeds " << cuda::TypeTraits<int32_t>::max << ". Tensor is too large.");
+        return ErrorCode::INVALID_PARAMETER;
+    }
+    return ErrorCode::SUCCESS;
 }
 
 RandomResizedCrop::RandomResizedCrop(DataShape max_input_shape, DataShape max_output_shape, const double min_scale,
@@ -383,7 +403,7 @@ ErrorCode RandomResizedCrop::infer(const TensorDataStridedCuda &inData, const Te
 
     if (!(format == kNHWC || format == kHWC))
     {
-        LOG_ERROR("Invalid DataFormat " << format);
+        LOG_ERROR("Invalid input DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
@@ -455,9 +475,9 @@ ErrorCode RandomResizedCrop::infer(const TensorDataStridedCuda &inData, const Te
     checkCudaErrors(
         cudaMemcpyAsync((void *)m_gpuCropParams, (void *)m_cpuCropParams, buffer_size, cudaMemcpyHostToDevice, stream));
 
-    typedef void (*func_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
-                           const NVCVInterpolationType interpolation, cudaStream_t stream, const int *top,
-                           const int *left, const float *scale_x, const float *scale_y);
+    typedef ErrorCode (*func_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                                const NVCVInterpolationType interpolation, cudaStream_t stream, const int *top,
+                                const int *left, const float *scale_x, const float *scale_y);
 
     static const func_t funcs[6][4] = {
         {      resize<uchar>,  0 /*resize<uchar2>*/,      resize<uchar3>,      resize<uchar4>},
@@ -469,8 +489,7 @@ ErrorCode RandomResizedCrop::infer(const TensorDataStridedCuda &inData, const Te
     };
 
     const func_t func = funcs[in_data_type][channels - 1];
-    func(inData, outData, interpolation, stream, tops_gpu, lefts_gpu, scale_x_gpu, scale_y_gpu);
-    return SUCCESS;
+    return func(inData, outData, interpolation, stream, tops_gpu, lefts_gpu, scale_x_gpu, scale_y_gpu);
 }
 
 } // namespace nvcv::legacy::cuda_op

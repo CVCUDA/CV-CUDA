@@ -64,11 +64,13 @@ __host__ __device__ auto DropCast(T v)
     {
         RT out{};
 
-#pragma unroll
-        for (int e = 0; e < NumElements<RT>; ++e)
-        {
-            GetElement(out, e) = GetElement(v, e);
-        }
+        GetElement<0>(out) = GetElement<0>(v);
+        if constexpr (nvcv::cuda::NumElements<RT> >= 2)
+            GetElement<1>(out) = GetElement<1>(v);
+        if constexpr (nvcv::cuda::NumElements<RT> >= 3)
+            GetElement<2>(out) = GetElement<2>(v);
+        if constexpr (nvcv::cuda::NumElements<RT> == 4)
+            GetElement<3>(out) = GetElement<3>(v);
 
         return out;
     }

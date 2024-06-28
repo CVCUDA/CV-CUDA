@@ -77,11 +77,13 @@ __host__ __device__ auto RangeCast(U u)
     {
         RT out{};
 
-#pragma unroll
-        for (int e = 0; e < NumElements<RT>; ++e)
-        {
-            GetElement(out, e) = detail::RangeCastImpl<T, BaseType<U>>(GetElement(u, e));
-        }
+        GetElement<0>(out) = detail::RangeCastImpl<T, BaseType<U>>(GetElement<0>(u));
+        if constexpr (nvcv::cuda::NumElements<RT> >= 2)
+            GetElement<1>(out) = detail::RangeCastImpl<T, BaseType<U>>(GetElement<1>(u));
+        if constexpr (nvcv::cuda::NumElements<RT> >= 3)
+            GetElement<2>(out) = detail::RangeCastImpl<T, BaseType<U>>(GetElement<2>(u));
+        if constexpr (nvcv::cuda::NumElements<RT> == 4)
+            GetElement<3>(out) = detail::RangeCastImpl<T, BaseType<U>>(GetElement<3>(u));
 
         return out;
     }

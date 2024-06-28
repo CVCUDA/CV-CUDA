@@ -322,7 +322,7 @@ void Array::Export(py::module &m)
     using ResizeArrayLengthPtr = std::shared_ptr<Array> (*)(Array &, int64_t DataType);
     using ResizeArrayShapePtr  = std::shared_ptr<Array> (*)(Array &, Shape);
 
-    py::class_<Array, std::shared_ptr<Array>, Container>(m, "Array")
+    py::class_<Array, std::shared_ptr<Array>, Container>(m, "Array", "Array")
         .def(py::init(static_cast<CreateFromLengthPtr>(&Array::Create)), "length"_a, "dtype"_a,
              "Create a Array object with the given length and data type.")
         .def(py::init(static_cast<CreateFromShapePtr>(&Array::Create)), "shape"_a, "dtype"_a,

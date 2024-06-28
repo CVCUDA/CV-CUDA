@@ -205,7 +205,7 @@ GaussianNoiseVarShape::GaussianNoiseVarShape(DataShape max_input_shape, DataShap
     if (maxBatchSize < 0)
     {
         LOG_ERROR("Invalid num of max batch size " << maxBatchSize);
-        throw std::runtime_error("Parameter error!");
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "maxBatchSize must be >= 0");
     }
     cudaError_t err = cudaMalloc((void **)&m_states, sizeof(curandState) * BLOCK * maxBatchSize);
     if (err != cudaSuccess)
@@ -231,12 +231,12 @@ ErrorCode GaussianNoiseVarShape::infer(const ImageBatchVarShapeDataStridedCuda &
     DataFormat out_format = helpers::GetLegacyDataFormat(outData);
     if (!(in_format == kNHWC || in_format == kHWC))
     {
-        LOG_ERROR("Invalid DataFormat " << in_format);
+        LOG_ERROR("Invalid input DataFormat " << in_format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
     if (!(out_format == kNHWC || out_format == kHWC))
     {
-        LOG_ERROR("Invalid DataFormat " << out_format);
+        LOG_ERROR("Invalid output DataFormat " << out_format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 

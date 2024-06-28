@@ -18,9 +18,8 @@ Python API
 ==========
 
 .. toctree::
-    :caption: Python API
-    :maxdepth: 2
-    :hidden:
+  :caption: Python API
+  :maxdepth: 3
 
-.. automodule:: cvcuda
-    :members:
+  Core <python_core>
+  Algorithms <python_algos>

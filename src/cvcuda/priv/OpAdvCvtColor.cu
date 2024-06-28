@@ -537,10 +537,20 @@ void AdvCvtColor::Yuv2Bgr(cudaStream_t stream, const nvcv::TensorDataStridedCuda
     {
     case legacy::kCV_8U:
     {
-        auto                    srcWrap = cuda::CreateTensorWrapNHWC<uint8_t>(in);
-        auto                    dstWrap = cuda::CreateTensorWrapNHWC<uint8_t>(out);
-        const YUV2RGBConstants &cooef   = getYUV2RGBCooef(spec);
-        yuv_to_bgr_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx, cooef);
+        const YUV2RGBConstants &cooef        = getYUV2RGBCooef(spec);
+        auto                    outMaxStride = outAccess->sampleStride() * outAccess->numSamples();
+        auto                    inMaxStride  = inAccess->sampleStride() * inAccess->numSamples();
+        if (std::max(outMaxStride, inMaxStride) <= cuda::TypeTraits<int32_t>::max)
+        {
+            auto srcWrap = cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(in);
+            auto dstWrap = cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(out);
+            yuv_to_bgr_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx, cooef);
+        }
+        else
+        {
+            throw nvcv::Exception(nvcv::Status::ERROR_OVERFLOW, "Input or output size exceeds %d. Tensor is too large.",
+                                  cuda::TypeTraits<int32_t>::max);
+        }
         checkKernelErrors();
     }
     break;
@@ -574,10 +584,20 @@ void AdvCvtColor::Bgr2Yuv(cudaStream_t stream, const nvcv::TensorDataStridedCuda
     {
     case legacy::kCV_8U:
     {
-        auto                    srcWrap = cuda::CreateTensorWrapNHWC<uint8_t>(in);
-        auto                    dstWrap = cuda::CreateTensorWrapNHWC<uint8_t>(out);
-        const RGB2YUVConstants &cooef   = getRGB2YUVCooef(spec);
-        bgr_to_yuv_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx, cooef);
+        const RGB2YUVConstants &cooef        = getRGB2YUVCooef(spec);
+        auto                    outMaxStride = outAccess->sampleStride() * outAccess->numSamples();
+        auto                    inMaxStride  = inAccess->sampleStride() * inAccess->numSamples();
+        if (std::max(outMaxStride, inMaxStride) <= cuda::TypeTraits<int32_t>::max)
+        {
+            auto srcWrap = cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(in);
+            auto dstWrap = cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(out);
+            bgr_to_yuv_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx, cooef);
+        }
+        else
+        {
+            throw nvcv::Exception(nvcv::Status::ERROR_OVERFLOW, "Input or output size exceeds %d. Tensor is too large.",
+                                  cuda::TypeTraits<int32_t>::max);
+        }
         checkKernelErrors();
     }
     break;
@@ -636,11 +656,21 @@ void AdvCvtColor::NvYuv2Bgr(cudaStream_t stream, const nvcv::TensorDataStridedCu
     {
     case legacy::kCV_8U:
     {
-        auto                    srcWrap = cuda::CreateTensorWrapNHWC<uint8_t>(in);
-        auto                    dstWrap = cuda::CreateTensorWrapNHWC<uint8_t>(out);
-        const YUV2RGBConstants &cooef   = getYUV2RGBCooef(spec);
-        yuv420sp_to_bgr_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, dcn, bidx, uidx,
-                                                                      cooef);
+        const YUV2RGBConstants &cooef        = getYUV2RGBCooef(spec);
+        auto                    outMaxStride = outAccess->sampleStride() * outAccess->numSamples();
+        auto                    inMaxStride  = inAccess->sampleStride() * inAccess->numSamples();
+        if (std::max(outMaxStride, inMaxStride) <= cuda::TypeTraits<int32_t>::max)
+        {
+            auto srcWrap = cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(in);
+            auto dstWrap = cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(out);
+            yuv420sp_to_bgr_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, dcn, bidx, uidx,
+                                                                          cooef);
+        }
+        else
+        {
+            throw nvcv::Exception(nvcv::Status::ERROR_OVERFLOW, "Input or output size exceeds %d. Tensor is too large.",
+                                  cuda::TypeTraits<int32_t>::max);
+        }
         checkKernelErrors();
     }
     break;
@@ -694,11 +724,21 @@ void AdvCvtColor::Bgr2NvYuv(cudaStream_t stream, const nvcv::TensorDataStridedCu
     {
     case legacy::kCV_8U:
     {
-        auto                    srcWrap = cuda::CreateTensorWrapNHWC<uint8_t>(in);
-        auto                    dstWrap = cuda::CreateTensorWrapNHWC<uint8_t>(out);
-        const RGB2YUVConstants &cooef   = getRGB2YUVCooef(spec);
-        bgr_to_yuv420sp_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, srcSize, inputShape.C, bidx,
-                                                                      uidx, cooef);
+        const RGB2YUVConstants &cooef        = getRGB2YUVCooef(spec);
+        auto                    outMaxStride = outAccess->sampleStride() * outAccess->numSamples();
+        auto                    inMaxStride  = inAccess->sampleStride() * inAccess->numSamples();
+        if (std::max(outMaxStride, inMaxStride) <= cuda::TypeTraits<int32_t>::max)
+        {
+            auto srcWrap = cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(in);
+            auto dstWrap = cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(out);
+            bgr_to_yuv420sp_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, srcSize, inputShape.C, bidx,
+                                                                          uidx, cooef);
+        }
+        else
+        {
+            throw nvcv::Exception(nvcv::Status::ERROR_OVERFLOW, "Input or output size exceeds %d. Tensor is too large.",
+                                  cuda::TypeTraits<int32_t>::max);
+        }
         checkKernelErrors();
     }
     break;

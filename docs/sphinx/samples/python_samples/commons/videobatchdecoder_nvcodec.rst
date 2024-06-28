@@ -17,7 +17,7 @@
 .. _videobatchdecoder_pyvideocodec:
 
 Video Decoding using pyNvVideoCodec
-====================
+===================================
 
 
 The video batch decoder is responsible for reading an MP4 video as tensors. The actual decoding is done per frame using NVIDIA's PyNvVideoCodec API. The video decoder is generic enough to be used across the sample applications. The code associated with this class can be found in the ``samples/common/python/nvcodec_utils.py`` file.

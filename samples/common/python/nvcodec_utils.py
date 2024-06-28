@@ -614,12 +614,12 @@ class ImageBatchEncoder:
 
         assert isinstance(batch.data, torch.Tensor)
 
-        image_tensors_nchw = batch.data
+        image_tensors_nhwc = batch.data
         # Create an empty list to store filenames
         filenames = []
-        chwtensor_list = []
+        hwctensor_list = []
         # Iterate through each image to prepare the filenames
-        for img_idx in range(image_tensors_nchw.shape[0]):
+        for img_idx in range(image_tensors_nhwc.shape[0]):
             img_name = os.path.splitext(os.path.basename(batch.fileinfo[img_idx]))[0]
             results_path = os.path.join(self.output_path, f"out_{img_name}.jpg")
             self.logger.info(f"Preparing to save the image to: {results_path}")
@@ -627,10 +627,10 @@ class ImageBatchEncoder:
             filenames.append(results_path)
             # Add the image tensor CAI to a CAI list from an NCHW tensor
             # (this was a stacked tensor if N images)
-            chwtensor_list.append(image_tensors_nchw[img_idx].cuda())
+            hwctensor_list.append(image_tensors_nhwc[img_idx].cuda())
 
         # Pass the image tensors and filenames to the encoder.
-        self.encoder.write(filenames, chwtensor_list)
+        self.encoder.write(filenames, hwctensor_list)
         self.cvcuda_perf.pop_range()
         # docs_tag: end_call_imagebatchencoder_nvimagecodec
 

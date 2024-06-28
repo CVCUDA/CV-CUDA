@@ -221,7 +221,8 @@ py::dtype SelectDType(std::tuple<TT...>, const nvcv::DataType &dtype)
 }
 
 } // namespace
-  //
+
+//
 
 std::optional<nvcv::DataType> ToNVCVDataType(const py::dtype &dt)
 {

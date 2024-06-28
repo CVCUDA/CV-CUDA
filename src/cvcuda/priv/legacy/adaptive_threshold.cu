@@ -126,30 +126,46 @@ __global__ void adaptive_threshold(SrcWrapper src, DstWrapper dst, Size2D dstSiz
 }
 
 template<typename T, NVCVBorderType B, typename CMP, class KernelWrapper>
-void adaptive_threshold_caller(const TensorDataStridedCuda &in, const TensorDataStridedCuda &out, const uchar maxValue,
-                               KernelWrapper kernel, const int blockSize, const int idelta, cudaStream_t stream)
+ErrorCode adaptive_threshold_caller(const TensorDataStridedCuda &in, const TensorDataStridedCuda &out,
+                                    const uchar maxValue, KernelWrapper kernel, const int blockSize, const int idelta,
+                                    cudaStream_t stream)
 {
     auto outAccess = TensorDataAccessStridedImagePlanar::Create(out);
     NVCV_ASSERT(outAccess);
 
-    Size2D dstSize{outAccess->numCols(), outAccess->numRows()};
+    auto inAccess = TensorDataAccessStridedImagePlanar::Create(in);
+    NVCV_ASSERT(inAccess);
 
-    auto src = cuda::CreateBorderWrapNHW<const T, B>(in, cuda::SetAll<T>(0.f));
-    auto dst = cuda::CreateTensorWrapNHW<T>(out);
+    Size2D dstSize{outAccess->numCols(), outAccess->numRows()};
 
     dim3 block(BLOCK_DIM_X, BLOCK_DIM_Y);
     dim3 grid(divUp(dstSize.w, BLOCK_DIM_X * X_STEPS), divUp(dstSize.h, block.y), outAccess->numSamples());
 
     int s_mem_size = (blockSize - 1 + BLOCK_DIM_X * X_STEPS) * (blockSize - 1 + BLOCK_DIM_Y)
                    + blockSize * blockSize * sizeof(float);
-    adaptive_threshold<CMP>
-        <<<grid, block, s_mem_size, stream>>>(src, dst, dstSize, maxValue, kernel, blockSize, idelta);
+
+    int64_t inMaxStride  = inAccess->sampleStride() * inAccess->numSamples();
+    int64_t outMaxStride = outAccess->sampleStride() * outAccess->numSamples();
+    if (std::max(inMaxStride, outMaxStride) <= cuda::TypeTraits<int32_t>::max)
+    {
+        auto src = cuda::CreateBorderWrapNHW<const T, B, int32_t>(in, cuda::SetAll<T>(0.f));
+        auto dst = cuda::CreateTensorWrapNHW<T, int32_t>(out);
+
+        adaptive_threshold<CMP>
+            <<<grid, block, s_mem_size, stream>>>(src, dst, dstSize, maxValue, kernel, blockSize, idelta);
+    }
+    else
+    {
+        LOG_ERROR("Input or output size exceeds " << cuda::TypeTraits<int32_t>::max << ". Tensor is too large.");
+        return ErrorCode::INVALID_PARAMETER;
+    }
 
     checkKernelErrors();
 #ifdef CUDA_DEBUG_LOG
     checkCudaErrors(cudaStreamSynchronize(stream));
     checkCudaErrors(cudaGetLastError());
 #endif
+    return ErrorCode::SUCCESS;
 }
 
 AdaptiveThreshold::AdaptiveThreshold(DataShape maxInputShape, DataShape maxOutputShape, int32_t maxBlockSize)
@@ -158,7 +174,7 @@ AdaptiveThreshold::AdaptiveThreshold(DataShape maxInputShape, DataShape maxOutpu
     if (maxBlockSize <= 0)
     {
         LOG_ERROR("Invalid num of max block size " << maxBlockSize);
-        throw std::runtime_error("Parameter error!");
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "maxBlockSize must be >= 0");
     }
     size_t bufferSize = maxBlockSize * maxBlockSize * sizeof(float);
     NVCV_CHECK_THROW(cudaMalloc(&m_kernel, bufferSize));
@@ -265,16 +281,14 @@ ErrorCode AdaptiveThreshold::infer(const TensorDataStridedCuda &in, const Tensor
     int   idelta  = thresholdType == NVCV_THRESH_BINARY ? (int)std::ceil(c) : (int)std::floor(c);
     if (thresholdType == NVCV_THRESH_BINARY)
     {
-        adaptive_threshold_caller<uchar, NVCV_BORDER_REPLICATE, MyGreater<int>>(in, out, imaxval, kernelPtr, blockSize,
-                                                                                idelta, stream);
+        return adaptive_threshold_caller<uchar, NVCV_BORDER_REPLICATE, MyGreater<int>>(in, out, imaxval, kernelPtr,
+                                                                                       blockSize, idelta, stream);
     }
     else
     {
-        adaptive_threshold_caller<uchar, NVCV_BORDER_REPLICATE, MyLessEqual<int>>(in, out, imaxval, kernelPtr,
-                                                                                  blockSize, idelta, stream);
+        return adaptive_threshold_caller<uchar, NVCV_BORDER_REPLICATE, MyLessEqual<int>>(in, out, imaxval, kernelPtr,
+                                                                                         blockSize, idelta, stream);
     }
-
-    return ErrorCode::SUCCESS;
 }
 
 } // namespace nvcv::legacy::cuda_op

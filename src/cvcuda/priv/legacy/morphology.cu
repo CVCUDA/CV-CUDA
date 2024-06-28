@@ -85,24 +85,12 @@ __global__ void erode(SrcWrapper src, DstWrapper dst, Size2D dstSize, Size2D ker
     *dst.ptr(batch_idx, y, x) = cuda::SaturateCast<T>(res);
 }
 
-template<typename D, NVCVBorderType B>
-void MorphFilter2DCaller(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
-                         NVCVMorphologyType morph_type, Size2D kernelSize, int2 kernelAnchor, cudaStream_t stream)
+template<typename BT, typename SrcWrapper, typename DstWrapper>
+void MorphFilter2DCaller(const SrcWrapper &src, const DstWrapper &dst, NVCVMorphologyType morph_type, Size2D kernelSize,
+                         int2 kernelAnchor, BT maxmin, Size2D dstSize, int numSamples, cudaStream_t stream)
 {
-    using BT = cuda::BaseType<D>;
-
-    BT val = (morph_type == NVCVMorphologyType::NVCV_DILATE) ? std::numeric_limits<BT>::min()
-                                                             : std::numeric_limits<BT>::max();
-
-    auto src = cuda::CreateBorderWrapNHW<const D, B>(inData, cuda::SetAll<D>(val));
-    auto dst = cuda::CreateTensorWrapNHW<D>(outData);
-
-    auto outAccess = TensorDataAccessStridedImagePlanar::Create(outData);
-    NVCV_ASSERT(outAccess);
-    Size2D dstSize{outAccess->numCols(), outAccess->numRows()};
-    dim3   block(16, 16);
-    dim3   grid(divUp(dstSize.w, block.x), divUp(dstSize.h, block.y), outAccess->numSamples());
-
+    dim3 block(16, 16);
+    dim3 grid(divUp(dstSize.w, block.x), divUp(dstSize.h, block.y), numSamples);
 #ifdef CUDA_DEBUG_LOG
     checkCudaErrors(cudaStreamSynchronize(stream));
     checkCudaErrors(cudaGetLastError());
@@ -110,12 +98,12 @@ void MorphFilter2DCaller(const TensorDataStridedCuda &inData, const TensorDataSt
 
     if (morph_type == NVCVMorphologyType::NVCV_ERODE)
     {
-        erode<BT><<<grid, block, 0, stream>>>(src, dst, dstSize, kernelSize, kernelAnchor, val);
+        erode<BT><<<grid, block, 0, stream>>>(src, dst, dstSize, kernelSize, kernelAnchor, maxmin);
         checkKernelErrors();
     }
     else if (morph_type == NVCVMorphologyType::NVCV_DILATE)
     {
-        dilate<BT><<<grid, block, 0, stream>>>(src, dst, dstSize, kernelSize, kernelAnchor, val);
+        dilate<BT><<<grid, block, 0, stream>>>(src, dst, dstSize, kernelSize, kernelAnchor, maxmin);
         checkKernelErrors();
     }
 
@@ -125,17 +113,50 @@ void MorphFilter2DCaller(const TensorDataStridedCuda &inData, const TensorDataSt
 #endif
 }
 
+template<typename D, NVCVBorderType B>
+ErrorCode MorphFilter2DCaller(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                              NVCVMorphologyType morph_type, Size2D kernelSize, int2 kernelAnchor, cudaStream_t stream)
+{
+    using BT = cuda::BaseType<D>;
+
+    BT val = (morph_type == NVCVMorphologyType::NVCV_DILATE) ? std::numeric_limits<BT>::min()
+                                                             : std::numeric_limits<BT>::max();
+
+    auto outAccess = TensorDataAccessStridedImagePlanar::Create(outData);
+    NVCV_ASSERT(outAccess);
+
+    auto inAccess = TensorDataAccessStridedImagePlanar::Create(inData);
+    NVCV_ASSERT(inAccess);
+    Size2D dstSize{outAccess->numCols(), outAccess->numRows()};
+    int    numSamples = outAccess->numSamples();
+
+    auto outMaxStride = outAccess->sampleStride() * numSamples;
+    auto inMaxStride  = inAccess->sampleStride() * numSamples;
+    if (std::max(inMaxStride, outMaxStride) <= cuda::TypeTraits<int32_t>::max)
+    {
+        auto src = cuda::CreateBorderWrapNHW<const D, B, int32_t>(inData, cuda::SetAll<D>(val));
+        auto dst = cuda::CreateTensorWrapNHW<D, int32_t>(outData);
+
+        MorphFilter2DCaller(src, dst, morph_type, kernelSize, kernelAnchor, val, dstSize, numSamples, stream);
+    }
+    else
+    {
+        LOG_ERROR("Input or output size exceeds " << cuda::TypeTraits<int32_t>::max << ". Tensor is too large.");
+        return ErrorCode::INVALID_PARAMETER;
+    }
+    return ErrorCode::SUCCESS;
+}
+
 template<typename D>
-void MorphFilter2D(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
-                   NVCVMorphologyType morph_type, Size2D kernelSize, int2 kernelAnchor, NVCVBorderType borderMode,
-                   cudaStream_t stream)
+ErrorCode MorphFilter2D(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                        NVCVMorphologyType morph_type, Size2D kernelSize, int2 kernelAnchor, NVCVBorderType borderMode,
+                        cudaStream_t stream)
 {
     switch (borderMode)
     {
-#define NVCV_MORPH_CASE(BORDERTYPE)                                                                        \
-    case BORDERTYPE:                                                                                       \
-        MorphFilter2DCaller<D, BORDERTYPE>(inData, outData, morph_type, kernelSize, kernelAnchor, stream); \
-        break
+#define NVCV_MORPH_CASE(BORDERTYPE) \
+    case BORDERTYPE:                \
+        return MorphFilter2DCaller<D, BORDERTYPE>(inData, outData, morph_type, kernelSize, kernelAnchor, stream);
 
         NVCV_MORPH_CASE(NVCV_BORDER_CONSTANT);
         NVCV_MORPH_CASE(NVCV_BORDER_REPLICATE);
@@ -148,6 +169,7 @@ void MorphFilter2D(const TensorDataStridedCuda &inData, const TensorDataStridedC
         NVCV_ASSERT("Unknown bortertype");
         break;
     }
+    return ErrorCode::SUCCESS;
 }
 
 ErrorCode Morphology::infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
@@ -176,7 +198,7 @@ ErrorCode Morphology::infer(const TensorDataStridedCuda &inData, const TensorDat
     DataFormat format = input_format;
     if (!(format == kNHWC || format == kHWC))
     {
-        LOG_ERROR("Invalid DataFormat " << format);
+        LOG_ERROR("Invalid input DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
@@ -233,9 +255,9 @@ ErrorCode Morphology::infer(const TensorDataStridedCuda &inData, const TensorDat
         return SUCCESS;
     }
 
-    typedef void (*filter2D_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
-                               NVCVMorphologyType morph_type, Size2D kernelSize, int2 kernelAnchor,
-                               NVCVBorderType borderMode, cudaStream_t stream);
+    typedef ErrorCode (*filter2D_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                                    NVCVMorphologyType morph_type, Size2D kernelSize, int2 kernelAnchor,
+                                    NVCVBorderType borderMode, cudaStream_t stream);
 
     static const filter2D_t funcs[6][4] = {
         { MorphFilter2D<uchar>, 0,  MorphFilter2D<uchar3>,  MorphFilter2D<uchar4>},
@@ -246,9 +268,7 @@ ErrorCode Morphology::infer(const TensorDataStridedCuda &inData, const TensorDat
         { MorphFilter2D<float>, 0,  MorphFilter2D<float3>,  MorphFilter2D<float4>},
     };
 
-    funcs[data_type][channels - 1](inData, outData, morph_type, mask_size_, anchor_, borderMode, stream);
-
-    return SUCCESS;
+    return funcs[data_type][channels - 1](inData, outData, morph_type, mask_size_, anchor_, borderMode, stream);
 }
 
 } // namespace nvcv::legacy::cuda_op

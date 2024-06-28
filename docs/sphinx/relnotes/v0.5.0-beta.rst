@@ -17,7 +17,7 @@
 .. _v0.5.0-beta:
 
 v0.5.0-beta
-======
+===========
 
 CV-CUDA 0.5.0 is a comprehensive update introducing new security, compliance, and performance enhancements, alongside bug fixes and new features.
 

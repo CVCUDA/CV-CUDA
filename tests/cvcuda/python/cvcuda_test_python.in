@@ -37,16 +37,16 @@ if [ ! -f "$tests_dir/cvcuda_util.py" ]; then
 fi
 
 # Verify if correct package dependencies are installed --------
-pip_depends="pytest torch"
+pip_depends="pytest torch numpy==1.26"
 
 # Collect all python versions that are indeed installed and have proper dependencies installed
 # Two behaviors:
 # - default: skip Python versions that are not installed or don't have pytest and torch installed
 # - if NVCV_FORCE_PYTHON is set: exit with error
 for ver in $python_versions_tentative; do
-    if ! python$ver -c "import pytest, torch" > /dev/null 2>&1; then
+    if ! python$ver -c "import pytest, torch, numpy" > /dev/null 2>&1; then
         echo "WARNING: Python version $ver not installed or missing proper dependencies"
-        echo "Please install Python version $ver and run the following commands before running tests: sudo python$ver -m pip install $pip_depends"
+        echo "Please install Python version $ver and run the following commands before running tests: python$ver -m pip install $pip_depends"
         if [[ "$NVCV_FORCE_PYTHON" == 1 || "$NVCV_FORCE_PYTHON" == yes ]]; then
             echo "Exiting with FAILURE, as NVCV_FORCE_PYTHON=$NVCV_FORCE_PYTHON"
             exit 2 #hard exit

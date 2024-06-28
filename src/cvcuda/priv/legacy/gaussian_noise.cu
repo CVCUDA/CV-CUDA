@@ -33,9 +33,10 @@ using namespace nvcv::cuda;
 
 #define BLOCK 512
 
-template<typename T>
-__global__ void gaussian_noise_kernel(const Tensor3DWrap<T> src, Tensor3DWrap<T> dst, curandState *state,
-                                      Tensor1DWrap<float> mu, Tensor1DWrap<float> sigma, int rows, int cols)
+template<typename T, typename StrideType>
+__global__ void gaussian_noise_kernel(const Tensor3DWrap<T, StrideType> src, Tensor3DWrap<T, StrideType> dst,
+                                      curandState *state, Tensor1DWrap<float, int32_t> mu,
+                                      Tensor1DWrap<float, int32_t> sigma, int rows, int cols)
 {
     int         offset     = threadIdx.x;
     int         batch_idx  = blockIdx.x;
@@ -54,10 +55,11 @@ __global__ void gaussian_noise_kernel(const Tensor3DWrap<T> src, Tensor3DWrap<T>
     state[id] = localState;
 }
 
-template<typename T>
-__global__ void gaussian_noise_per_channel_kernel(const Tensor4DWrap<T> src, Tensor4DWrap<T> dst, curandState *state,
-                                                  Tensor1DWrap<float> mu, Tensor1DWrap<float> sigma, int rows, int cols,
-                                                  int channel)
+template<typename T, typename StrideType>
+__global__ void gaussian_noise_per_channel_kernel(const Tensor4DWrap<T, StrideType> src,
+                                                  Tensor4DWrap<T, StrideType> dst, curandState *state,
+                                                  Tensor1DWrap<float, int32_t> mu, Tensor1DWrap<float, int32_t> sigma,
+                                                  int rows, int cols, int channel)
 {
     int         offset     = threadIdx.x;
     int         batch_idx  = blockIdx.x;
@@ -79,9 +81,10 @@ __global__ void gaussian_noise_per_channel_kernel(const Tensor4DWrap<T> src, Ten
     state[id] = localState;
 }
 
-template<typename T>
-__global__ void gaussian_noise_float_kernel(const Tensor3DWrap<T> src, Tensor3DWrap<T> dst, curandState *state,
-                                            Tensor1DWrap<float> mu, Tensor1DWrap<float> sigma, int rows, int cols)
+template<typename T, typename StrideType>
+__global__ void gaussian_noise_float_kernel(const Tensor3DWrap<T, StrideType> src, Tensor3DWrap<T, StrideType> dst,
+                                            curandState *state, Tensor1DWrap<float, int32_t> mu,
+                                            Tensor1DWrap<float, int32_t> sigma, int rows, int cols)
 {
     int         offset     = threadIdx.x;
     int         batch_idx  = blockIdx.x;
@@ -101,10 +104,12 @@ __global__ void gaussian_noise_float_kernel(const Tensor3DWrap<T> src, Tensor3DW
     state[id] = localState;
 }
 
-template<typename T>
-__global__ void gaussian_noise_float_per_channel_kernel(const Tensor4DWrap<T> src, Tensor4DWrap<T> dst,
-                                                        curandState *state, Tensor1DWrap<float> mu,
-                                                        Tensor1DWrap<float> sigma, int rows, int cols, int channel)
+template<typename T, typename StrideType>
+__global__ void gaussian_noise_float_per_channel_kernel(const Tensor4DWrap<T, StrideType> src,
+                                                        Tensor4DWrap<T, StrideType> dst, curandState *state,
+                                                        Tensor1DWrap<float, int32_t> mu,
+                                                        Tensor1DWrap<float, int32_t> sigma, int rows, int cols,
+                                                        int channel)
 {
     int         offset     = threadIdx.x;
     int         batch_idx  = blockIdx.x;
@@ -127,60 +132,60 @@ __global__ void gaussian_noise_float_per_channel_kernel(const Tensor4DWrap<T> sr
     state[id] = localState;
 }
 
-template<typename T>
+template<typename T, typename StrideType = int32_t>
 void gaussian_noise(const nvcv::TensorDataStridedCuda &d_in, const nvcv::TensorDataStridedCuda &d_out, int batch,
                     int rows, int cols, curandState *m_states, const nvcv::TensorDataStridedCuda &_mu,
                     const nvcv::TensorDataStridedCuda &_sigma, cudaStream_t stream)
 {
-    auto                src_ptr = CreateTensorWrapNHW<T>(d_in);
-    auto                dst_ptr = CreateTensorWrapNHW<T>(d_out);
-    Tensor1DWrap<float> mu(_mu);
-    Tensor1DWrap<float> sigma(_sigma);
+    auto                         src_ptr = CreateTensorWrapNHW<T, StrideType>(d_in);
+    auto                         dst_ptr = CreateTensorWrapNHW<T, StrideType>(d_out);
+    Tensor1DWrap<float, int32_t> mu(_mu);
+    Tensor1DWrap<float, int32_t> sigma(_sigma);
 
     gaussian_noise_kernel<T><<<batch, BLOCK, 0, stream>>>(src_ptr, dst_ptr, m_states, mu, sigma, rows, cols);
     checkKernelErrors();
 }
 
-template<typename T>
+template<typename T, typename StrideType = int32_t>
 void gaussian_noise_per_channel(const nvcv::TensorDataStridedCuda &d_in, const nvcv::TensorDataStridedCuda &d_out,
                                 int batch, int channels, int rows, int cols, curandState *m_states,
                                 const nvcv::TensorDataStridedCuda &_mu, const nvcv::TensorDataStridedCuda &_sigma,
                                 cudaStream_t stream)
 {
-    auto                src_ptr = CreateTensorWrapNHWC<T>(d_in);
-    auto                dst_ptr = CreateTensorWrapNHWC<T>(d_out);
-    Tensor1DWrap<float> mu(_mu);
-    Tensor1DWrap<float> sigma(_sigma);
+    auto                         src_ptr = CreateTensorWrapNHWC<T, StrideType>(d_in);
+    auto                         dst_ptr = CreateTensorWrapNHWC<T, StrideType>(d_out);
+    Tensor1DWrap<float, int32_t> mu(_mu);
+    Tensor1DWrap<float, int32_t> sigma(_sigma);
 
     gaussian_noise_per_channel_kernel<T>
         <<<batch, BLOCK, 0, stream>>>(src_ptr, dst_ptr, m_states, mu, sigma, rows, cols, channels);
     checkKernelErrors();
 }
 
-template<typename T>
+template<typename T, typename StrideType = int32_t>
 void gaussian_noise_float(const nvcv::TensorDataStridedCuda &d_in, const nvcv::TensorDataStridedCuda &d_out, int batch,
                           int rows, int cols, curandState *m_states, const nvcv::TensorDataStridedCuda &_mu,
                           const nvcv::TensorDataStridedCuda &_sigma, cudaStream_t stream)
 {
-    auto                src_ptr = CreateTensorWrapNHW<T>(d_in);
-    auto                dst_ptr = CreateTensorWrapNHW<T>(d_out);
-    Tensor1DWrap<float> mu(_mu);
-    Tensor1DWrap<float> sigma(_sigma);
+    auto                         src_ptr = CreateTensorWrapNHW<T, StrideType>(d_in);
+    auto                         dst_ptr = CreateTensorWrapNHW<T, StrideType>(d_out);
+    Tensor1DWrap<float, int32_t> mu(_mu);
+    Tensor1DWrap<float, int32_t> sigma(_sigma);
 
     gaussian_noise_float_kernel<T><<<batch, BLOCK, 0, stream>>>(src_ptr, dst_ptr, m_states, mu, sigma, rows, cols);
     checkKernelErrors();
 }
 
-template<typename T>
+template<typename T, typename StrideType = int32_t>
 void gaussian_noise_float_per_channel(const nvcv::TensorDataStridedCuda &d_in, const nvcv::TensorDataStridedCuda &d_out,
                                       int batch, int channels, int rows, int cols, curandState *m_states,
                                       const nvcv::TensorDataStridedCuda &_mu, const nvcv::TensorDataStridedCuda &_sigma,
                                       cudaStream_t stream)
 {
-    auto                src_ptr = CreateTensorWrapNHWC<T>(d_in);
-    auto                dst_ptr = CreateTensorWrapNHWC<T>(d_out);
-    Tensor1DWrap<float> mu(_mu);
-    Tensor1DWrap<float> sigma(_sigma);
+    auto                         src_ptr = CreateTensorWrapNHWC<T, StrideType>(d_in);
+    auto                         dst_ptr = CreateTensorWrapNHWC<T, StrideType>(d_out);
+    Tensor1DWrap<float, int32_t> mu(_mu);
+    Tensor1DWrap<float, int32_t> sigma(_sigma);
 
     gaussian_noise_float_per_channel_kernel<T>
         <<<batch, BLOCK, 0, stream>>>(src_ptr, dst_ptr, m_states, mu, sigma, rows, cols, channels);
@@ -224,12 +229,12 @@ ErrorCode GaussianNoise::infer(const TensorDataStridedCuda &inData, const Tensor
     DataFormat out_format = GetLegacyDataFormat(outData.layout());
     if (!(in_format == kNHWC || in_format == kHWC))
     {
-        LOG_ERROR("Invalid DataFormat " << in_format);
+        LOG_ERROR("Invalid input DataFormat " << in_format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
     if (!(out_format == kNHWC || out_format == kHWC))
     {
-        LOG_ERROR("Invalid DataFormat " << out_format);
+        LOG_ERROR("Invalid output DataFormat " << out_format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
@@ -240,6 +245,23 @@ ErrorCode GaussianNoise::infer(const TensorDataStridedCuda &inData, const Tensor
     {
         LOG_ERROR("Invalid channel number " << channels);
         return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+    auto inMaxStride = inAccess->sampleStride() * inAccess->numSamples();
+    if (inMaxStride > cuda::TypeTraits<int32_t>::max)
+    {
+        LOG_ERROR("Input size exceeds " << nvcv::cuda::TypeTraits<int32_t>::max << ". Tensor is too large.");
+        return ErrorCode::INVALID_PARAMETER;
+    }
+
+    auto outAccess = TensorDataAccessStridedImagePlanar::Create(outData);
+    NVCV_ASSERT(outAccess);
+
+    auto outMaxStride = outAccess->sampleStride() * outAccess->numSamples();
+    if (outMaxStride > cuda::TypeTraits<int32_t>::max)
+    {
+        LOG_ERROR("Output size exceeds " << nvcv::cuda::TypeTraits<int32_t>::max << ". Tensor is too large.");
+        return ErrorCode::INVALID_PARAMETER;
     }
 
     DataType in_data_type = GetLegacyDataType(inData.dtype());

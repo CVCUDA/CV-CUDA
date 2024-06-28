@@ -1618,6 +1618,21 @@ inline int TensorNumChannels(const nvcv::Tensor &tensor)
     return shape[channelAxis];
 }
 
+inline int64_t TensorByteSize(const nvcv::Tensor &tensor)
+{
+    auto data = tensor.exportData().cast<nvcv::TensorDataStrided>();
+    assert(data);
+    return data->stride(0) * data->shape(0);
+}
+
+inline int64_t ImageByteSize(const nvcv::Image &image)
+{
+    auto data = image.exportData<nvcv::ImageDataStrided>();
+    assert(data);
+    auto plane = data->plane(0); // only single-plane images are supported
+    return plane.rowStride * plane.height;
+}
+
 inline int SampleNumChannels(const nvcv::TensorBatch &src, const nvcv::TensorBatch &dst, int sampleIdx)
 {
     const auto &srcSample   = src[sampleIdx];
@@ -1957,6 +1972,10 @@ public:
                                                                    kIntermediateAlignment);
         }
 
+        auto inMaxStride  = shape::TensorByteSize(src);
+        auto outMaxStride = shape::TensorByteSize(dst);
+        bool wideStride   = std::max(inMaxStride, outMaxStride) > cuda::TypeTraits<int32_t>::max;
+
         RunTypedSwitch<IntermediateBaseT>(
             srcDtype, dstDtype, numChannels,
             [&](auto dummySrcVal, auto intermediateVal, auto dummyDstVal, auto numChannelsVal)
@@ -1970,8 +1989,16 @@ public:
                 static_assert(cuda::NumElements<OutT> == cuda::NumElements<IntermediateT>);
 
                 auto &[srcAccess, dstAccess, numSamples, numChannels, srcDtype, dstDtype] = tensorAccess;
-                RunPasses<OutT, IntermediateT, InT, numStaticChannels>(sampleDesc, *dstAccess, *srcAccess, intermediate,
-                                                                       numSamples, ws, stream);
+                if (wideStride)
+                {
+                    RunPasses<OutT, IntermediateT, InT, int64_t, numStaticChannels>(
+                        sampleDesc, *dstAccess, *srcAccess, intermediate, numSamples, ws, stream);
+                }
+                else
+                {
+                    RunPasses<OutT, IntermediateT, InT, int32_t, numStaticChannels>(
+                        sampleDesc, *dstAccess, *srcAccess, intermediate, numSamples, ws, stream);
+                }
             });
     }
 
@@ -1999,6 +2026,9 @@ public:
         SampleDescT *sampleDescsCpu = allocator.getPinned<SampleDescT>(numSamples);
         SampleDescT *sampleDescsGpu = allocator.getCuda<SampleDescT>(numSamples);
         size_t       intermediateSizes[kNumTmpBuffers]{};
+
+        int64_t inMaxStride  = 0;
+        int64_t outMaxStride = 0;
         for (int sampleIdx = 0; sampleIdx < numSamples; sampleIdx++)
         {
             const VecI<kSpatialNDim> srcShape  = shape::SampleShape<kSpatialNDim>(src, sampleIdx);
@@ -2007,12 +2037,16 @@ public:
             int                      numChannels;
             if constexpr (std::is_same_v<BatchContainer, nvcv::ImageBatchVarShape>)
             {
-                numChannels = uniqueNumChannels;
+                numChannels  = uniqueNumChannels;
+                inMaxStride  = std::max(inMaxStride, shape::ImageByteSize(src[sampleIdx]));
+                outMaxStride = std::max(outMaxStride, shape::ImageByteSize(dst[sampleIdx]));
             }
-            else if constexpr (!std::is_same_v<BatchContainer, nvcv::ImageBatchVarShape>)
+            else
             {
                 static_assert(std::is_same_v<BatchContainer, nvcv::TensorBatch>);
-                numChannels = shape::SampleNumChannels(src, dst, sampleIdx);
+                numChannels  = shape::SampleNumChannels(src, dst, sampleIdx);
+                inMaxStride  = std::max(inMaxStride, shape::TensorByteSize(src[sampleIdx]));
+                outMaxStride = std::max(outMaxStride, shape::TensorByteSize(dst[sampleIdx]));
             }
             SampleDescT &sampleDesc = sampleDescsCpu[sampleIdx];
             SetupSampleDesc(sampleDesc, srcShape, dstShape, numChannels, sampleRoi, minFilter, magFilter);
@@ -2021,6 +2055,8 @@ public:
                 intermediateSizes[t] += GetPassOutputVolume(sampleDesc, t);
             }
         }
+        bool wideStride = std::max(inMaxStride, outMaxStride) > cuda::TypeTraits<int32_t>::max;
+
         NVCV_CHECK_THROW(cudaMemcpyAsync(sampleDescsGpu, sampleDescsCpu, numSamples * sizeof(SampleDescT),
                                          cudaMemcpyHostToDevice, stream));
 
@@ -2029,7 +2065,8 @@ public:
         IntermediateBaseT   *intermediate[kNumTmpBuffers];
         for (int t = 0; t < kNumTmpBuffers; t++)
         {
-            intermediateMeta[t] = batch_wrapper::dynamic::AllocateDynamicBatchWrapMeta(allocator, numSamples);
+            intermediateMeta[t]
+                = batch_wrapper::dynamic::AllocateDynamicBatchWrapMeta(allocator, numSamples, wideStride);
         }
         // allocate space for intermediate data
         for (int t = 0; t < kNumTmpBuffers; t++)
@@ -2037,17 +2074,16 @@ public:
             intermediate[t] = allocator.getCuda<IntermediateBaseT>(intermediateSizes[t], kIntermediateAlignment);
         }
 
-        RunTyped(sampleDescsCpu, sampleDescsGpu, src, dst, intermediate, intermediateMeta, numSamples, srcDtype,
-                 dstDtype, uniqueNumChannels, ws, stream);
+        Run(sampleDescsCpu, sampleDescsGpu, src, dst, intermediate, intermediateMeta, numSamples, srcDtype, dstDtype,
+            uniqueNumChannels, wideStride, ws, stream);
     }
 
 private:
-    void RunTyped(const SampleDescT *sampleDescsCpu, const SampleDescT *sampleDescsGpu,
-                  const nvcv::ImageBatchVarShape &src, const nvcv::ImageBatchVarShape &dst,
-                  IntermediateBaseT         *intermediate[kNumTmpBuffers],
-                  const DynamicBatchWrapMeta intermediateMeta[kNumTmpBuffers], int numSamples,
-                  const nvcv::DataType srcDtype, const nvcv::DataType dstDtype, int uniqueNumChannels,
-                  const cvcuda::Workspace &ws, cudaStream_t stream) const
+    void Run(const SampleDescT *sampleDescsCpu, const SampleDescT *sampleDescsGpu, const nvcv::ImageBatchVarShape &src,
+             const nvcv::ImageBatchVarShape &dst, IntermediateBaseT *intermediate[kNumTmpBuffers],
+             const DynamicBatchWrapMeta intermediateMeta[kNumTmpBuffers], int numSamples, const nvcv::DataType srcDtype,
+             const nvcv::DataType dstDtype, int uniqueNumChannels, bool wideStride, const cvcuda::Workspace &ws,
+             cudaStream_t stream) const
     {
         static_assert(kSpatialNDim == 2, "ImageBatchVarShape does not support 3D spatial resampling");
 
@@ -2083,18 +2119,27 @@ private:
                     static_assert(numStaticChannels == cuda::NumElements<InT>);
                     static_assert(cuda::NumElements<IntermediateT> == cuda::NumElements<InT>);
                     static_assert(cuda::NumElements<OutT> == cuda::NumElements<IntermediateT>);
-                    RunPasses<OutT, IntermediateT, InT, numStaticChannels>(sampleDescsCpu, sampleDescsGpu, *dstData,
-                                                                           *srcData, intermediate, intermediateMeta,
-                                                                           numSamples, ws, stream);
+                    if (wideStride)
+                    {
+                        RunPasses<OutT, IntermediateT, InT, int64_t, numStaticChannels>(
+                            sampleDescsCpu, sampleDescsGpu, *dstData, *srcData, intermediate, intermediateMeta,
+                            numSamples, ws, stream);
+                    }
+                    else
+                    {
+                        RunPasses<OutT, IntermediateT, InT, int32_t, numStaticChannels>(
+                            sampleDescsCpu, sampleDescsGpu, *dstData, *srcData, intermediate, intermediateMeta,
+                            numSamples, ws, stream);
+                    }
                 }
             });
     }
 
-    void RunTyped(const SampleDescT *sampleDescsCpu, const SampleDescT *sampleDescsGpu, const nvcv::TensorBatch &src,
-                  const nvcv::TensorBatch &dst, IntermediateBaseT *intermediate[kNumTmpBuffers],
-                  const DynamicBatchWrapMeta intermediateMeta[kNumTmpBuffers], int numSamples,
-                  const nvcv::DataType srcDtype, const nvcv::DataType dstDtype, int uniqueNumChannels,
-                  const cvcuda::Workspace &ws, cudaStream_t stream) const
+    void Run(const SampleDescT *sampleDescsCpu, const SampleDescT *sampleDescsGpu, const nvcv::TensorBatch &src,
+             const nvcv::TensorBatch &dst, IntermediateBaseT *intermediate[kNumTmpBuffers],
+             const DynamicBatchWrapMeta intermediateMeta[kNumTmpBuffers], int numSamples, const nvcv::DataType srcDtype,
+             const nvcv::DataType dstDtype, int uniqueNumChannels, bool wideStride, const cvcuda::Workspace &ws,
+             cudaStream_t stream) const
     {
         // Other cointainer allow exporting data with const qualifiers
         const auto srcData
@@ -2140,13 +2185,23 @@ private:
                 static_assert(cuda::NumElements<IntermediateT> == cuda::NumElements<InT>);
                 static_assert(cuda::NumElements<OutT> == cuda::NumElements<IntermediateT>);
 
-                RunPasses<OutT, IntermediateT, InT, numStaticChannels>(sampleDescsCpu, sampleDescsGpu, *dstData,
-                                                                       *srcData, intermediate, intermediateMeta,
-                                                                       numSamples, ws, stream);
+                if (wideStride)
+                {
+                    RunPasses<OutT, IntermediateT, InT, int64_t, numStaticChannels>(
+                        sampleDescsCpu, sampleDescsGpu, *dstData, *srcData, intermediate, intermediateMeta, numSamples,
+                        ws, stream);
+                }
+                else
+                {
+                    RunPasses<OutT, IntermediateT, InT, int32_t, numStaticChannels>(
+                        sampleDescsCpu, sampleDescsGpu, *dstData, *srcData, intermediate, intermediateMeta, numSamples,
+                        ws, stream);
+                }
             });
     }
 
-    template<typename OutT, typename IntermediateT, typename InT, int kNumStaticChannels, int ndim = kSpatialNDim>
+    template<typename OutT, typename IntermediateT, typename InT, typename StrideT, int kNumStaticChannels,
+             int ndim = kSpatialNDim>
     std::enable_if_t<ndim == 2> RunPasses(const SampleDescT                              &sampleDesc,
                                           const nvcv::TensorDataAccessStridedImagePlanar &dstAccess,
                                           const nvcv::TensorDataAccessStridedImagePlanar &srcAccess,
@@ -2157,16 +2212,17 @@ private:
         constexpr bool kHasDynamicChannels = kNumStaticChannels == -1;
         // sample extent, spatial extents, optional dynamic channel extent
         constexpr int  kWrapNDim = 1 + kSpatialNDim + kHasDynamicChannels;
-        using OutWrap            = cuda::TensorNDWrap<OutT, kWrapNDim>;
-        using InWrap             = cuda::TensorNDWrap<const InT, kWrapNDim>;
-        using InterWrap          = cuda::TensorNDWrap<IntermediateT, kWrapNDim>;
+        using OutWrap            = cuda::TensorNDWrap<OutT, kWrapNDim, StrideT>;
+        using InWrap             = cuda::TensorNDWrap<const InT, kWrapNDim, StrideT>;
+        using InterWrap          = cuda::TensorNDWrap<IntermediateT, kWrapNDim, StrideT>;
         static_assert(std::is_trivially_copyable_v<OutWrap>);
         static_assert(std::is_trivially_copyable_v<InWrap>);
         static_assert(std::is_trivially_copyable_v<InterWrap>);
-        const OutWrap outWrap = batch_wrapper::tensor::WrapTensor<kHasDynamicChannels, kSpatialNDim, OutT>(dstAccess);
-        const InWrap  inWrap  = batch_wrapper::tensor::WrapTensor<kHasDynamicChannels, kSpatialNDim, InT>(
+        const OutWrap outWrap
+            = batch_wrapper::tensor::WrapTensor<kHasDynamicChannels, kSpatialNDim, OutT, StrideT>(dstAccess);
+        const InWrap inWrap = batch_wrapper::tensor::WrapTensor<kHasDynamicChannels, kSpatialNDim, InT, StrideT>(
             srcAccess, sampleDesc.inRoiOffset);
-        const InterWrap interWrap = batch_wrapper::tensor::CreateDenseWrap<kHasDynamicChannels, IntermediateT>(
+        const InterWrap interWrap = batch_wrapper::tensor::CreateDenseWrap<kHasDynamicChannels, IntermediateT, StrideT>(
             intermediate[0], sampleDesc.channels, sampleDesc.shapes[1]);
         RunPass<kNumStaticChannels, 0>(sampleDesc, interWrap, inWrap, numSamples, stream);
         RunPass<kNumStaticChannels, 1>(sampleDesc, outWrap, interWrap, numSamples, stream);
@@ -2176,7 +2232,8 @@ private:
         }
     }
 
-    template<typename OutT, typename IntermediateT, typename InT, int kNumStaticChannels, int ndim = kSpatialNDim>
+    template<typename OutT, typename IntermediateT, typename InT, typename StrideT, int kNumStaticChannels,
+             int ndim = kSpatialNDim>
     std::enable_if_t<ndim == 3> RunPasses(const SampleDescT                              &sampleDesc,
                                           const nvcv::TensorDataAccessStridedImagePlanar &dstAccess,
                                           const nvcv::TensorDataAccessStridedImagePlanar &srcAccess,
@@ -2187,19 +2244,22 @@ private:
         constexpr bool kHasDynamicChannels = kNumStaticChannels == -1;
         // sample extent, spatial extents, optional dynamic channel extent
         constexpr int  kWrapNDim = 1 + kSpatialNDim + kHasDynamicChannels;
-        using OutWrap            = cuda::TensorNDWrap<OutT, kWrapNDim>;
-        using InWrap             = cuda::TensorNDWrap<const InT, kWrapNDim>;
-        using InterWrap          = cuda::TensorNDWrap<IntermediateT, kWrapNDim>;
+        using OutWrap            = cuda::TensorNDWrap<OutT, kWrapNDim, StrideT>;
+        using InWrap             = cuda::TensorNDWrap<const InT, kWrapNDim, StrideT>;
+        using InterWrap          = cuda::TensorNDWrap<IntermediateT, kWrapNDim, StrideT>;
         static_assert(std::is_trivially_copyable_v<OutWrap>);
         static_assert(std::is_trivially_copyable_v<InWrap>);
         static_assert(std::is_trivially_copyable_v<InterWrap>);
-        const OutWrap outWrap = batch_wrapper::tensor::WrapTensor<kHasDynamicChannels, kSpatialNDim, OutT>(dstAccess);
-        const InWrap  inWrap  = batch_wrapper::tensor::WrapTensor<kHasDynamicChannels, kSpatialNDim, InT>(
+        const OutWrap outWrap
+            = batch_wrapper::tensor::WrapTensor<kHasDynamicChannels, kSpatialNDim, OutT, StrideT>(dstAccess);
+        const InWrap inWrap = batch_wrapper::tensor::WrapTensor<kHasDynamicChannels, kSpatialNDim, InT, StrideT>(
             srcAccess, sampleDesc.inRoiOffset);
-        const InterWrap interWrap0 = batch_wrapper::tensor::CreateDenseWrap<kHasDynamicChannels, IntermediateT>(
-            intermediate[0], sampleDesc.channels, sampleDesc.shapes[1]);
-        const InterWrap interWrap1 = batch_wrapper::tensor::CreateDenseWrap<kHasDynamicChannels, IntermediateT>(
-            intermediate[1], sampleDesc.channels, sampleDesc.shapes[2]);
+        const InterWrap interWrap0
+            = batch_wrapper::tensor::CreateDenseWrap<kHasDynamicChannels, IntermediateT, StrideT>(
+                intermediate[0], sampleDesc.channels, sampleDesc.shapes[1]);
+        const InterWrap interWrap1
+            = batch_wrapper::tensor::CreateDenseWrap<kHasDynamicChannels, IntermediateT, StrideT>(
+                intermediate[1], sampleDesc.channels, sampleDesc.shapes[2]);
         RunPass<kNumStaticChannels, 0>(sampleDesc, interWrap0, inWrap, numSamples, stream);
         RunPass<kNumStaticChannels, 1>(sampleDesc, interWrap1, interWrap0, numSamples, stream);
         RunPass<kNumStaticChannels, 2>(sampleDesc, outWrap, interWrap1, numSamples, stream);
@@ -2209,8 +2269,8 @@ private:
         }
     }
 
-    template<typename OutT, typename IntermediateT, typename InT, int kNumStaticChannels, typename BatchDataStridedCuda,
-             int ndim = kSpatialNDim>
+    template<typename OutT, typename IntermediateT, typename InT, typename StrideT, int kNumStaticChannels,
+             typename BatchDataStridedCuda, int ndim = kSpatialNDim>
     std::enable_if_t<ndim == 2> RunPasses(const SampleDescT *sampleDescsCpu, const SampleDescT *sampleDescsGpu,
                                           const BatchDataStridedCuda &dstData, const BatchDataStridedCuda &srcData,
                                           IntermediateBaseT         *intermediate[kNumTmpBuffers],
@@ -2223,20 +2283,20 @@ private:
         constexpr int  kWrapNDim = 1 + kSpatialNDim + kHasDynamicChannels;
         using BatchWrapOutT
             = std::conditional_t<std::is_same_v<BatchDataStridedCuda, nvcv::ImageBatchVarShapeDataStridedCuda>,
-                                 batch_wrapper::ImageBatchVarShapeWrapAdapter<OutT>,
-                                 batch_wrapper::TensorBatchWrapAdapter<OutT, kWrapNDim>>;
+                                 batch_wrapper::ImageBatchVarShapeWrapAdapter<OutT, StrideT>,
+                                 batch_wrapper::TensorBatchWrapAdapter<OutT, kWrapNDim, StrideT>>;
         using BatchWrapInT
             = std::conditional_t<std::is_same_v<BatchDataStridedCuda, nvcv::ImageBatchVarShapeDataStridedCuda>,
-                                 batch_wrapper::ImageBatchVarShapeWrapAdapter<const InT>,
-                                 batch_wrapper::TensorBatchWrapAdapter<const InT, kWrapNDim>>;
-        using DynamicBatchWrap = batch_wrapper::dynamic::DynamicBatchWrap<IntermediateT, kWrapNDim>;
+                                 batch_wrapper::ImageBatchVarShapeWrapAdapter<const InT, StrideT>,
+                                 batch_wrapper::TensorBatchWrapAdapter<const InT, kWrapNDim, StrideT>>;
+        using DynamicBatchWrap = batch_wrapper::dynamic::DynamicBatchWrap<IntermediateT, kWrapNDim, StrideT>;
         static_assert(std::is_trivially_copyable_v<BatchWrapOutT>);
         static_assert(std::is_trivially_copyable_v<BatchWrapInT>);
         static_assert(std::is_trivially_copyable_v<DynamicBatchWrap>);
         const BatchWrapOutT    outWrap(dstData);
         const BatchWrapInT     inWrap(srcData);
         const DynamicBatchWrap intermediateWrap
-            = batch_wrapper::dynamic::CreateDynamicBatchWrap<kHasDynamicChannels, IntermediateT>(
+            = batch_wrapper::dynamic::CreateDynamicBatchWrap<kHasDynamicChannels, IntermediateT, StrideT>(
                 0, intermediate[0], intermediateMeta[0], sampleDescsCpu, numSamples, stream);
         if (ws.pinnedMem.ready != nullptr)
         {
@@ -2250,7 +2310,8 @@ private:
         }
     }
 
-    template<typename OutT, typename IntermediateT, typename InT, int kNumStaticChannels, int ndim = kSpatialNDim>
+    template<typename OutT, typename IntermediateT, typename InT, typename StrideT, int kNumStaticChannels,
+             int ndim = kSpatialNDim>
     std::enable_if_t<ndim == 3> RunPasses(const SampleDescT *sampleDescsCpu, const SampleDescT *sampleDescsGpu,
                                           const nvcv::TensorBatchDataStridedCuda &dstData,
                                           const nvcv::TensorBatchDataStridedCuda &srcData,
@@ -2262,19 +2323,19 @@ private:
         constexpr bool kHasDynamicChannels = kNumStaticChannels == -1;
         // sample extent, spatial extents, optional dynamic channel extent
         constexpr int  kWrapNDim  = 1 + kSpatialNDim + kHasDynamicChannels;
-        using TensorBatchWrapOutT = batch_wrapper::TensorBatchWrapAdapter<OutT, kWrapNDim>;
-        using TensorBatchWrapInT  = batch_wrapper::TensorBatchWrapAdapter<const InT, kWrapNDim>;
-        using DynamicBatchWrap    = batch_wrapper::dynamic::DynamicBatchWrap<IntermediateT, kWrapNDim>;
+        using TensorBatchWrapOutT = batch_wrapper::TensorBatchWrapAdapter<OutT, kWrapNDim, StrideT>;
+        using TensorBatchWrapInT  = batch_wrapper::TensorBatchWrapAdapter<const InT, kWrapNDim, StrideT>;
+        using DynamicBatchWrap    = batch_wrapper::dynamic::DynamicBatchWrap<IntermediateT, kWrapNDim, StrideT>;
         static_assert(std::is_trivially_copyable_v<TensorBatchWrapOutT>);
         static_assert(std::is_trivially_copyable_v<TensorBatchWrapInT>);
         static_assert(std::is_trivially_copyable_v<DynamicBatchWrap>);
         const TensorBatchWrapOutT outWrap(dstData);
         const TensorBatchWrapInT  inWrap(srcData);
         const DynamicBatchWrap    intermediateWrap0
-            = batch_wrapper::dynamic::CreateDynamicBatchWrap<kHasDynamicChannels, IntermediateT>(
+            = batch_wrapper::dynamic::CreateDynamicBatchWrap<kHasDynamicChannels, IntermediateT, StrideT>(
                 0, intermediate[0], intermediateMeta[0], sampleDescsCpu, numSamples, stream);
         const DynamicBatchWrap intermediateWrap1
-            = batch_wrapper::dynamic::CreateDynamicBatchWrap<kHasDynamicChannels, IntermediateT>(
+            = batch_wrapper::dynamic::CreateDynamicBatchWrap<kHasDynamicChannels, IntermediateT, StrideT>(
                 1, intermediate[1], intermediateMeta[1], sampleDescsCpu, numSamples, stream);
         if (ws.pinnedMem.ready != nullptr)
         {

@@ -31,10 +31,13 @@ using namespace nvcv::legacy::cuda_op;
 
 using namespace nvcv::cuda;
 
-template<typename T, typename P>
-__global__ void Binary_overflow(Tensor4DWrap<T> src, Tensor4DWrap<T> dst, Tensor1DWrap<double> _thresh,
-                                Tensor1DWrap<double> _maxval, int height, int width, int channel)
+template<typename P, typename SrcWrap, typename DstWrap>
+__global__ void Binary_overflow(SrcWrap src, DstWrap dst, Tensor1DWrap<double, int32_t> _thresh,
+                                Tensor1DWrap<double, int32_t> _maxval, int height, int width, int channel)
 {
+    static_assert(std::is_same_v<SrcWrap, DstWrap>);
+    using T = typename SrcWrap::ValueType;
+
     int cn       = NumElements<P>;
     int globalid = blockIdx.x * blockDim.x + threadIdx.x;
     if (globalid * cn >= height * width * channel)
@@ -80,10 +83,12 @@ __global__ void Binary_overflow(Tensor4DWrap<T> src, Tensor4DWrap<T> dst, Tensor
     *((P *)dst.ptr(batch, h, w, c)) = out;
 }
 
-template<typename T, typename P>
-__global__ void Binary_Generic(Tensor4DWrap<T> src, Tensor4DWrap<T> dst, Tensor1DWrap<double> _thresh,
-                               Tensor1DWrap<double> _maxval, int height, int width, int channel)
+template<typename P, typename SrcWrap, typename DstWrap>
+__global__ void Binary_Generic(SrcWrap src, DstWrap dst, Tensor1DWrap<double, int32_t> _thresh,
+                               Tensor1DWrap<double, int32_t> _maxval, int height, int width, int channel)
 {
+    static_assert(std::is_same_v<SrcWrap, DstWrap>);
+    using T      = typename SrcWrap::ValueType;
     int cn       = NumElements<P>;
     int globalid = blockIdx.x * blockDim.x + threadIdx.x;
     if (globalid * cn >= height * width * channel)
@@ -111,10 +116,13 @@ __global__ void Binary_Generic(Tensor4DWrap<T> src, Tensor4DWrap<T> dst, Tensor1
     return;
 }
 
-template<typename T, typename P>
-__global__ void BinaryInv_overflow(Tensor4DWrap<T> src, Tensor4DWrap<T> dst, Tensor1DWrap<double> _thresh,
-                                   Tensor1DWrap<double> _maxval, int height, int width, int channel)
+template<typename P, typename SrcWrap, typename DstWrap>
+__global__ void BinaryInv_overflow(SrcWrap src, DstWrap dst, Tensor1DWrap<double, int32_t> _thresh,
+                                   Tensor1DWrap<double, int32_t> _maxval, int height, int width, int channel)
 {
+    static_assert(std::is_same_v<SrcWrap, DstWrap>);
+    using T = typename SrcWrap::ValueType;
+
     int cn       = NumElements<P>;
     int globalid = blockIdx.x * blockDim.x + threadIdx.x;
     if (globalid * cn >= height * width * channel)
@@ -159,10 +167,13 @@ __global__ void BinaryInv_overflow(Tensor4DWrap<T> src, Tensor4DWrap<T> dst, Ten
     *((P *)dst.ptr(batch, h, w, c)) = out;
 }
 
-template<typename T, typename P>
-__global__ void BinaryInv_Generic(Tensor4DWrap<T> src, Tensor4DWrap<T> dst, Tensor1DWrap<double> _thresh,
-                                  Tensor1DWrap<double> _maxval, int height, int width, int channel)
+template<typename P, typename SrcWrap, typename DstWrap>
+__global__ void BinaryInv_Generic(SrcWrap src, DstWrap dst, Tensor1DWrap<double, int32_t> _thresh,
+                                  Tensor1DWrap<double, int32_t> _maxval, int height, int width, int channel)
 {
+    static_assert(std::is_same_v<SrcWrap, DstWrap>);
+    using T = typename SrcWrap::ValueType;
+
     int cn       = NumElements<P>;
     int globalid = blockIdx.x * blockDim.x + threadIdx.x;
     if (globalid * cn >= height * width * channel)
@@ -190,10 +201,13 @@ __global__ void BinaryInv_Generic(Tensor4DWrap<T> src, Tensor4DWrap<T> dst, Tens
     return;
 }
 
-template<typename T, typename P>
-__global__ void Trunc_overflow(Tensor4DWrap<T> src, Tensor4DWrap<T> dst, Tensor1DWrap<double> _thresh, int height,
-                               int width, int channel)
+template<typename P, typename SrcWrap, typename DstWrap>
+__global__ void Trunc_overflow(SrcWrap src, DstWrap dst, Tensor1DWrap<double, int32_t> _thresh, int height, int width,
+                               int channel)
 {
+    static_assert(std::is_same_v<SrcWrap, DstWrap>);
+    using T = typename SrcWrap::ValueType;
+
     int cn       = NumElements<P>;
     int globalid = blockIdx.x * blockDim.x + threadIdx.x;
     if (globalid * cn >= height * width * channel)
@@ -234,10 +248,13 @@ __global__ void Trunc_overflow(Tensor4DWrap<T> src, Tensor4DWrap<T> dst, Tensor1
     *((P *)dst.ptr(batch, h, w, c)) = *((P *)src.ptr(batch, h, w, c));
 }
 
-template<typename T, typename P>
-__global__ void Trunc_Generic(Tensor4DWrap<T> src, Tensor4DWrap<T> dst, Tensor1DWrap<double> _thresh, int height,
-                              int width, int channel)
+template<typename P, typename SrcWrap, typename DstWrap>
+__global__ void Trunc_Generic(SrcWrap src, DstWrap dst, Tensor1DWrap<double, int32_t> _thresh, int height, int width,
+                              int channel)
 {
+    static_assert(std::is_same_v<SrcWrap, DstWrap>);
+    using T = typename SrcWrap::ValueType;
+
     int cn       = NumElements<P>;
     int globalid = blockIdx.x * blockDim.x + threadIdx.x;
     if (globalid * cn >= height * width * channel)
@@ -263,10 +280,13 @@ __global__ void Trunc_Generic(Tensor4DWrap<T> src, Tensor4DWrap<T> dst, Tensor1D
     return;
 }
 
-template<typename T, typename P>
-__global__ void Tozero_overflow(Tensor4DWrap<T> src, Tensor4DWrap<T> dst, Tensor1DWrap<double> _thresh, int height,
-                                int width, int channel)
+template<typename P, typename SrcWrap, typename DstWrap>
+__global__ void Tozero_overflow(SrcWrap src, DstWrap dst, Tensor1DWrap<double, int32_t> _thresh, int height, int width,
+                                int channel)
 {
+    static_assert(std::is_same_v<SrcWrap, DstWrap>);
+    using T = typename SrcWrap::ValueType;
+
     int cn       = NumElements<P>;
     int globalid = blockIdx.x * blockDim.x + threadIdx.x;
     if (globalid * cn >= height * width * channel)
@@ -307,10 +327,13 @@ __global__ void Tozero_overflow(Tensor4DWrap<T> src, Tensor4DWrap<T> dst, Tensor
     *((P *)dst.ptr(batch, h, w, c)) = out;
 }
 
-template<typename T, typename P>
-__global__ void Tozero_Generic(Tensor4DWrap<T> src, Tensor4DWrap<T> dst, Tensor1DWrap<double> _thresh, int height,
-                               int width, int channel)
+template<typename P, typename SrcWrap, typename DstWrap>
+__global__ void Tozero_Generic(SrcWrap src, DstWrap dst, Tensor1DWrap<double, int32_t> _thresh, int height, int width,
+                               int channel)
 {
+    static_assert(std::is_same_v<SrcWrap, DstWrap>);
+    using T = typename SrcWrap::ValueType;
+
     int cn       = NumElements<P>;
     int globalid = blockIdx.x * blockDim.x + threadIdx.x;
     if (globalid * cn >= height * width * channel)
@@ -337,10 +360,13 @@ __global__ void Tozero_Generic(Tensor4DWrap<T> src, Tensor4DWrap<T> dst, Tensor1
     return;
 }
 
-template<typename T, typename P>
-__global__ void TozeroInv_overflow(Tensor4DWrap<T> src, Tensor4DWrap<T> dst, Tensor1DWrap<double> _thresh, int height,
+template<typename P, typename SrcWrap, typename DstWrap>
+__global__ void TozeroInv_overflow(SrcWrap src, DstWrap dst, Tensor1DWrap<double, int32_t> _thresh, int height,
                                    int width, int channel)
 {
+    static_assert(std::is_same_v<SrcWrap, DstWrap>);
+    using T = typename SrcWrap::ValueType;
+
     int cn       = NumElements<P>;
     int globalid = blockIdx.x * blockDim.x + threadIdx.x;
     if (globalid * cn >= height * width * channel)
@@ -381,10 +407,13 @@ __global__ void TozeroInv_overflow(Tensor4DWrap<T> src, Tensor4DWrap<T> dst, Ten
     *((P *)dst.ptr(batch, h, w, c)) = *((P *)src.ptr(batch, h, w, c));
 }
 
-template<typename T, typename P>
-__global__ void TozeroInv_Generic(Tensor4DWrap<T> src, Tensor4DWrap<T> dst, Tensor1DWrap<double> _thresh, int height,
+template<typename P, typename SrcWrap, typename DstWrap>
+__global__ void TozeroInv_Generic(SrcWrap src, DstWrap dst, Tensor1DWrap<double, int32_t> _thresh, int height,
                                   int width, int channel)
 {
+    static_assert(std::is_same_v<SrcWrap, DstWrap>);
+    using T = typename SrcWrap::ValueType;
+
     int cn       = NumElements<P>;
     int globalid = blockIdx.x * blockDim.x + threadIdx.x;
     if (globalid * cn >= height * width * channel)
@@ -411,7 +440,7 @@ __global__ void TozeroInv_Generic(Tensor4DWrap<T> src, Tensor4DWrap<T> dst, Tens
     return;
 }
 
-__global__ void hist_kernel(Tensor3DWrap<uchar> img, int *histogram, int rows, int cols)
+__global__ void hist_kernel(Tensor3DWrap<uchar, int32_t> img, int *histogram, int rows, int cols)
 {
     __shared__ int hist[256];
     int            localid = threadIdx.x;
@@ -444,7 +473,7 @@ __global__ void hist_kernel(Tensor3DWrap<uchar> img, int *histogram, int rows, i
         atomicAdd(&histogram[blockIdx.z * 256 + localid], val);
 }
 
-__global__ void otsu_cal(int *histogram, Tensor1DWrap<double> thresh, int size)
+__global__ void otsu_cal(int *histogram, Tensor1DWrap<double, int32_t> thresh, int size)
 {
     int            localid = threadIdx.y * blockDim.x + threadIdx.x;
     __shared__ int hist[256];
@@ -665,20 +694,30 @@ __global__ void otsu_cal(int *histogram, Tensor1DWrap<double> thresh, int size)
 }
 
 template<typename T, int N>
-void thresholdDispatch(const nvcv::TensorDataStridedCuda &input, const nvcv::TensorDataStridedCuda &output,
-                       const nvcv::TensorDataStridedCuda &_thresh, const nvcv::TensorDataStridedCuda &_maxval,
-                       int batch, int rows, int cols, int channel, NVCVThresholdType type, DataType data_type,
-                       cudaStream_t stream)
+ErrorCode thresholdDispatch(const nvcv::TensorDataStridedCuda &input, const nvcv::TensorDataStridedCuda &output,
+                            const nvcv::TensorDataStridedCuda &_thresh, const nvcv::TensorDataStridedCuda &_maxval,
+                            int batch, int rows, int cols, int channel, NVCVThresholdType type, DataType data_type,
+                            cudaStream_t stream)
 {
-    int                  size = rows * cols * channel;
-    Tensor1DWrap<double> thresh(_thresh);
-    Tensor1DWrap<double> maxval(_maxval);
+    int                           size = rows * cols * channel;
+    Tensor1DWrap<double, int32_t> thresh(_thresh);
+    Tensor1DWrap<double, int32_t> maxval(_maxval);
 
-    using vectype  = nvcv::cuda::MakeType<T, N>;
-    auto src_ptr   = CreateTensorWrapNHWC<T>(input);
-    auto dst_ptr   = CreateTensorWrapNHWC<T>(output);
     auto inAccess  = nvcv::TensorDataAccessStridedImagePlanar::Create(input);
     auto outAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(output);
+
+    auto outMaxStride = outAccess->sampleStride() * outAccess->numSamples();
+    auto inMaxStride  = inAccess->sampleStride() * inAccess->numSamples();
+    if (std::max(outMaxStride, inMaxStride) > TypeTraits<int32_t>::max)
+    {
+        LOG_ERROR("Input or output size exceeds " << TypeTraits<int32_t>::max << ". Tensor is too large.");
+        return ErrorCode::INVALID_PARAMETER;
+    }
+
+    using vectype    = nvcv::cuda::MakeType<T, N>;
+    using StrideType = int32_t;
+    auto src_ptr     = CreateTensorWrapNHWC<T, int32_t>(input);
+    auto dst_ptr     = CreateTensorWrapNHWC<T, int32_t>(output);
     dim3 block(256);
     dim3 grid(divUp(size, block.x * N), 1, batch);
 
@@ -686,63 +725,65 @@ void thresholdDispatch(const nvcv::TensorDataStridedCuda &input, const nvcv::Ten
     {
     case NVCV_THRESH_BINARY:
         if (data_type == kCV_32F || data_type == kCV_64F)
-            Binary_Generic<T, vectype>
-                <<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, maxval, rows, cols, channel);
+            Binary_Generic<vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, maxval, rows, cols, channel);
         else
-            Binary_overflow<T, vectype>
-                <<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, maxval, rows, cols, channel);
+            Binary_overflow<vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, maxval, rows, cols, channel);
         break;
     case NVCV_THRESH_BINARY_INV:
         if (data_type == kCV_32F || data_type == kCV_64F)
-            BinaryInv_Generic<T, vectype>
+            BinaryInv_Generic<vectype>
                 <<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, maxval, rows, cols, channel);
         else
-            BinaryInv_overflow<T, vectype>
+            BinaryInv_overflow<vectype>
                 <<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, maxval, rows, cols, channel);
         break;
     case NVCV_THRESH_TRUNC:
         if (data_type == kCV_32F || data_type == kCV_64F)
-            Trunc_Generic<T, vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, rows, cols, channel);
+            Trunc_Generic<vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, rows, cols, channel);
         else
-            Trunc_overflow<T, vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, rows, cols, channel);
+            Trunc_overflow<vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, rows, cols, channel);
         break;
     case NVCV_THRESH_TOZERO:
         if (data_type == kCV_32F || data_type == kCV_64F)
-            Tozero_Generic<T, vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, rows, cols, channel);
+            Tozero_Generic<vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, rows, cols, channel);
         else
-            Tozero_overflow<T, vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, rows, cols, channel);
+            Tozero_overflow<vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, rows, cols, channel);
         break;
     default: //NVCV_THRESH_TOZERO_INV
         if (data_type == kCV_32F || data_type == kCV_64F)
-            TozeroInv_Generic<T, vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, rows, cols, channel);
+            TozeroInv_Generic<vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, rows, cols, channel);
         else
-            TozeroInv_overflow<T, vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, rows, cols, channel);
+            TozeroInv_overflow<vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, rows, cols, channel);
         break;
     }
 
     checkKernelErrors();
+    return ErrorCode::SUCCESS;
 }
 
 template<typename T>
-void thresholdScale(const nvcv::TensorDataStridedCuda &input, const nvcv::TensorDataStridedCuda &output,
-                    const nvcv::TensorDataStridedCuda &threshold, const nvcv::TensorDataStridedCuda &maxval, int batch,
-                    int rows, int cols, int channel, NVCVThresholdType type, DataType data_type, cudaStream_t stream)
+ErrorCode thresholdScale(const nvcv::TensorDataStridedCuda &input, const nvcv::TensorDataStridedCuda &output,
+                         const nvcv::TensorDataStridedCuda &threshold, const nvcv::TensorDataStridedCuda &maxval,
+                         int batch, int rows, int cols, int channel, NVCVThresholdType type, DataType data_type,
+                         cudaStream_t stream)
 {
     int stride = cols * channel;
 
     if (stride % 4 == 0)
     {
         if (std::is_same<T, double>::value)
-            thresholdDispatch<T, 2>(input, output, threshold, maxval, batch, rows, cols, channel, type, data_type,
-                                    stream);
+            return thresholdDispatch<T, 2>(input, output, threshold, maxval, batch, rows, cols, channel, type,
+                                           data_type, stream);
         else
-            thresholdDispatch<T, 4>(input, output, threshold, maxval, batch, rows, cols, channel, type, data_type,
-                                    stream);
+            return thresholdDispatch<T, 4>(input, output, threshold, maxval, batch, rows, cols, channel, type,
+                                           data_type, stream);
     }
     else if (stride % 2 == 0)
-        thresholdDispatch<T, 2>(input, output, threshold, maxval, batch, rows, cols, channel, type, data_type, stream);
+        return thresholdDispatch<T, 2>(input, output, threshold, maxval, batch, rows, cols, channel, type, data_type,
+                                       stream);
     else
-        thresholdDispatch<T, 1>(input, output, threshold, maxval, batch, rows, cols, channel, type, data_type, stream);
+        return thresholdDispatch<T, 1>(input, output, threshold, maxval, batch, rows, cols, channel, type, data_type,
+                                       stream);
 }
 
 static void getThreshVal_Triangle(const nvcv::TensorDataStridedCuda &inData,
@@ -751,8 +792,8 @@ static void getThreshVal_Triangle(const nvcv::TensorDataStridedCuda &inData,
 {
     checkCudaErrors(cudaMemsetAsync(histogram, 0, sizeof(int) * 256 * batch, stream));
 
-    auto                 wrap = CreateTensorWrapNHW<uchar>(inData);
-    Tensor1DWrap<double> thresh(threshold);
+    auto                          wrap = CreateTensorWrapNHW<uchar, int32_t>(inData);
+    Tensor1DWrap<double, int32_t> thresh(threshold);
 
     dim3 block(256);
     int  td = divUp(cols, 16) * rows;
@@ -770,8 +811,8 @@ static void getThreshVal_Otsu(const nvcv::TensorDataStridedCuda &inData, const n
     int size = rows * cols;
     checkCudaErrors(cudaMemsetAsync(histogram, 0, sizeof(int) * 256 * batch, stream));
 
-    auto                 wrap = CreateTensorWrapNHW<uchar>(inData);
-    Tensor1DWrap<double> thresh(threshold);
+    auto                          wrap = CreateTensorWrapNHW<uchar, int32_t>(inData);
+    Tensor1DWrap<double, int32_t> thresh(threshold);
 
     dim3 block(256);
     int  td = divUp(cols, 16) * rows;
@@ -891,6 +932,11 @@ ErrorCode Threshold::infer(const TensorDataStridedCuda &inData, const TensorData
             LOG_ERROR("Only support 1 channel");
             return ErrorCode::INVALID_DATA_FORMAT;
         }
+        if (inAccess->sampleStride() * inAccess->numSamples() > TypeTraits<int32_t>::max)
+        {
+            LOG_ERROR("Input size exceeds " << TypeTraits<int32_t>::max << ". Tensor is too large.");
+            return ErrorCode::INVALID_PARAMETER;
+        }
         getThreshVal_Otsu(inData, thresh, m_histogram, inAccess->numRows(), inAccess->numCols(), inAccess->numSamples(),
                           stream);
     }
@@ -906,24 +952,27 @@ ErrorCode Threshold::infer(const TensorDataStridedCuda &inData, const TensorData
             LOG_ERROR("Only support 1 channel");
             return ErrorCode::INVALID_DATA_FORMAT;
         }
+        if (inAccess->sampleStride() * inAccess->numSamples() > TypeTraits<int32_t>::max)
+        {
+            LOG_ERROR("Input size exceeds " << TypeTraits<int32_t>::max << ". Tensor is too large.");
+            return ErrorCode::INVALID_PARAMETER;
+        }
         getThreshVal_Triangle(inData, thresh, m_histogram, inAccess->numRows(), inAccess->numCols(),
                               inAccess->numSamples(), stream);
     }
 
-    typedef void (*threshold_t)(const TensorDataStridedCuda &input, const TensorDataStridedCuda &output,
-                                const TensorDataStridedCuda &threshold, const TensorDataStridedCuda &maxval, int batch,
-                                int rows, int cols, int channel, NVCVThresholdType type, DataType data_type,
-                                cudaStream_t stream);
+    typedef ErrorCode (*threshold_t)(const TensorDataStridedCuda &input, const TensorDataStridedCuda &output,
+                                     const TensorDataStridedCuda &threshold, const TensorDataStridedCuda &maxval,
+                                     int batch, int rows, int cols, int channel, NVCVThresholdType type,
+                                     DataType data_type, cudaStream_t stream);
     static const threshold_t funcs[7]
         = {thresholdScale<uchar>, 0, thresholdScale<ushort>, thresholdScale<short>, 0, thresholdScale<float>,
            thresholdScale<double>};
 
     threshold_t       func    = funcs[in_data_type];
     NVCVThresholdType th_type = NVCVThresholdType(m_type);
-    func(inData, outData, thresh, maxval, inAccess->numSamples(), inAccess->numRows(), inAccess->numCols(),
-         inAccess->numChannels(), th_type, in_data_type, stream);
-
-    return SUCCESS;
+    return func(inData, outData, thresh, maxval, inAccess->numSamples(), inAccess->numRows(), inAccess->numCols(),
+                inAccess->numChannels(), th_type, in_data_type, stream);
 }
 
 } // namespace nvcv::legacy::cuda_op

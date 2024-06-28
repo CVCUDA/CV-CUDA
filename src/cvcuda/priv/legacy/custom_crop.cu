@@ -46,20 +46,34 @@ __global__ void custom_crop_kernel(const SrcWrapper src, DstWrapper dst, int sta
 }
 
 template<typename T>
-void customCrop(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData, NVCVRectI roi,
-                cudaStream_t stream)
+ErrorCode customCrop(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,
+                     NVCVRectI roi, cudaStream_t stream)
 {
     auto outAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(outData);
     NVCV_ASSERT(outAccess);
 
-    auto src = nvcv::cuda::CreateTensorWrapNHW<const T>(inData);
-    auto dst = nvcv::cuda::CreateTensorWrapNHW<T>(outData);
+    auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(inData);
+    NVCV_ASSERT(inAccess);
 
     dim3 block(16, 16);
     dim3 grid(divUp(roi.width, block.x), divUp(roi.height, block.y), outAccess->numSamples());
 
-    custom_crop_kernel<<<grid, block, 0, stream>>>(src, dst, roi.x, roi.y, roi.width, roi.height);
+    auto outMaxStride = outAccess->sampleStride() * outAccess->numSamples();
+    auto inMaxStride  = inAccess->sampleStride() * inAccess->numSamples();
+    if (std::max(outMaxStride, inMaxStride) <= nvcv::cuda::TypeTraits<int32_t>::max)
+    {
+        auto src = nvcv::cuda::CreateTensorWrapNHW<const T, int32_t>(inData);
+        auto dst = nvcv::cuda::CreateTensorWrapNHW<T, int32_t>(outData);
+
+        custom_crop_kernel<<<grid, block, 0, stream>>>(src, dst, roi.x, roi.y, roi.width, roi.height);
+    }
+    else
+    {
+        LOG_ERROR("Input or output size exceeds " << nvcv::cuda::TypeTraits<int32_t>::max << ". Tensor is too large.");
+        return ErrorCode::INVALID_PARAMETER;
+    }
     checkKernelErrors();
+    return ErrorCode::SUCCESS;
 }
 
 namespace nvcv::legacy::cuda_op {
@@ -128,8 +142,8 @@ ErrorCode CustomCrop::infer(const TensorDataStridedCuda &inData, const TensorDat
         return ErrorCode::INVALID_PARAMETER;
     }
 
-    typedef void (*func_t)(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,
-                           NVCVRectI roi, cudaStream_t stream);
+    typedef ErrorCode (*func_t)(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,
+                                NVCVRectI roi, cudaStream_t stream);
 
     static const func_t funcs[6][4] = {
         {customCrop<uchar1>,  customCrop<uchar2>,  customCrop<uchar3>,  customCrop<uchar4>},
@@ -139,9 +153,7 @@ ErrorCode CustomCrop::infer(const TensorDataStridedCuda &inData, const TensorDat
         {customCrop<double>, customCrop<double2>, customCrop<double3>, customCrop<double4>}
     };
 
-    funcs[data_size / 2][channels - 1](inData, outData, roi, stream);
-
-    return ErrorCode::SUCCESS;
+    return funcs[data_size / 2][channels - 1](inData, outData, roi, stream);
 }
 
 } // namespace nvcv::legacy::cuda_op

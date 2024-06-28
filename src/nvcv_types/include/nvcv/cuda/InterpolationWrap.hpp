@@ -43,13 +43,14 @@ namespace nvcv::cuda {
  *
  * @tparam I Interpolation type, one of \ref NVCVInterpolationType.
  * @tparam Position Interpolation position, 1 for the first index and 2 for the second index.
+ * @tparam IndexType Type of the returned value
  *
  * @param[in] c Coordinate in floating-point to convert to index in integer.
  *
  * @return Index in integer suitable for interpolation computation.
  */
-template<NVCVInterpolationType I, int Position = 1>
-constexpr inline int __host__ __device__ GetIndexForInterpolation(float c)
+template<NVCVInterpolationType I, int Position = 1, typename IndexType = int64_t>
+constexpr inline IndexType __host__ __device__ GetIndexForInterpolation(float c)
 {
     static_assert(
         I == NVCV_INTERP_NEAREST || I == NVCV_INTERP_LINEAR || I == NVCV_INTERP_CUBIC || I == NVCV_INTERP_AREA,
@@ -58,38 +59,45 @@ constexpr inline int __host__ __device__ GetIndexForInterpolation(float c)
 
     if constexpr (I == NVCV_INTERP_NEAREST)
     {
-        return cuda::round<RoundMode::DOWN, int>(c);
+        return cuda::round<RoundMode::DOWN, IndexType>(c);
     }
     else if constexpr (I == NVCV_INTERP_LINEAR)
     {
-        return cuda::round<RoundMode::DOWN, int>(c);
+        return cuda::round<RoundMode::DOWN, IndexType>(c);
     }
-    else if constexpr (I == NVCV_INTERP_CUBIC || I == NVCV_INTERP_AREA)
+    else if constexpr (I == NVCV_INTERP_CUBIC)
+    {
+        return cuda::round<RoundMode::DOWN, IndexType>(c);
+    }
+    else if constexpr (I == NVCV_INTERP_AREA)
     {
         if constexpr (Position == 1)
-            return cuda::round<RoundMode::UP, int>(c);
+            return cuda::round<RoundMode::UP, IndexType>(c);
         else if constexpr (Position == 2)
-            return cuda::round<RoundMode::DOWN, int>(c);
+            return cuda::round<RoundMode::DOWN, IndexType>(c);
     }
 
-    return static_cast<int>(c);
+    return static_cast<IndexType>(c);
 }
 
-inline float __host__ __device__ GetCubicCoeff(float c)
+inline void __host__ __device__ GetCubicCoeffs(float delta, float &w0, float &w1, float &w2, float &w3)
 {
-    c = cuda::abs(c);
-    if (c <= 1.0f)
-    {
-        return c * c * (1.5f * c - 2.5f) + 1.0f;
-    }
-    else if (c < 2.0f)
-    {
-        return c * (c * (-0.5f * c + 2.5f) - 4.0f) + 2.0f;
-    }
-    else
-    {
-        return 0.0f;
-    }
+    w0 = -.5f;
+    w0 = w0 * delta + 1.f;
+    w0 = w0 * delta - .5f;
+    w0 = w0 * delta;
+
+    w1 = 1.5f;
+    w1 = w1 * delta - 2.5f;
+    w1 = w1 * delta;
+    w1 = w1 * delta + 1.f;
+
+    w2 = -1.5f;
+    w2 = w2 * delta + 2.f;
+    w2 = w2 * delta + .5f;
+    w2 = w2 * delta;
+
+    w3 = 1 - w0 - w1 - w2;
 }
 
 /**@}*/
@@ -103,6 +111,7 @@ public:
     using BorderWrapper = BW;
     using TensorWrapper = typename BorderWrapper::TensorWrapper;
     using ValueType     = typename BorderWrapper::ValueType;
+    using StrideType    = typename BorderWrapper::StrideType;
 
     static constexpr int                   kNumDimensions     = BorderWrapper::kNumDimensions;
     static constexpr NVCVInterpolationType kInterpolationType = I;
@@ -180,15 +189,15 @@ public:
 
 protected:
     template<typename DimType>
-    inline const __host__ __device__ ValueType &doGetValue(DimType c, int x, int y) const
+    inline const __host__ __device__ ValueType &doGetValue(DimType c, StrideType x, StrideType y) const
     {
         cuda::ConvertBaseTypeTo<int, DimType> ic;
-        GetElement(ic, kCoordMap.id[0]) = x;
-        GetElement(ic, kCoordMap.id[1]) = y;
+        GetElement<kCoordMap.id[0]>(ic) = x;
+        GetElement<kCoordMap.id[1]>(ic) = y;
         if constexpr (NumElements<DimType> >= 3)
-            GetElement(ic, kCoordMap.id[2]) = static_cast<int>(GetElement(c, kCoordMap.id[2]));
+            GetElement<kCoordMap.id[2]>(ic) = static_cast<int>(GetElement<kCoordMap.id[2]>(c));
         if constexpr (NumElements<DimType> == 4)
-            GetElement(ic, kCoordMap.id[3]) = static_cast<int>(GetElement(c, kCoordMap.id[3]));
+            GetElement<kCoordMap.id[3]>(ic) = static_cast<int>(GetElement<kCoordMap.id[3]>(c));
 
         return m_borderWrap[ic];
     }
@@ -246,6 +255,7 @@ class InterpolationWrap<BW, NVCV_INTERP_NEAREST> : public detail::InterpolationW
 
 public:
     using typename Base::BorderWrapper;
+    using typename Base::StrideType;
     using typename Base::TensorWrapper;
     using typename Base::ValueType;
 
@@ -321,8 +331,10 @@ public:
                                        float> && 2 <= NumElements<DimType> && NumElements<DimType> <= kNumDimensions>>
     inline __host__ __device__ ValueType operator[](DimType c) const
     {
-        const int x = GetIndexForInterpolation<kInterpolationType>(GetElement(c, kCoordMap.id[0]) + .5f);
-        const int y = GetIndexForInterpolation<kInterpolationType>(GetElement(c, kCoordMap.id[1]) + .5f);
+        const StrideType x
+            = GetIndexForInterpolation<kInterpolationType, 1, StrideType>(GetElement<kCoordMap.id[0]>(c) + .5f);
+        const StrideType y
+            = GetIndexForInterpolation<kInterpolationType, 1, StrideType>(GetElement<kCoordMap.id[1]>(c) + .5f);
 
         return Base::doGetValue(c, x, y);
     }
@@ -340,6 +352,7 @@ class InterpolationWrap<BW, NVCV_INTERP_LINEAR> : public detail::InterpolationWr
 
 public:
     using typename Base::BorderWrapper;
+    using typename Base::StrideType;
     using typename Base::TensorWrapper;
     using typename Base::ValueType;
 
@@ -415,12 +428,12 @@ public:
                                        float> && 2 <= NumElements<DimType> && NumElements<DimType> <= kNumDimensions>>
     inline __host__ __device__ ValueType operator[](DimType c) const
     {
-        const float x  = GetElement(c, kCoordMap.id[0]);
-        const float y  = GetElement(c, kCoordMap.id[1]);
-        const int   x1 = GetIndexForInterpolation<kInterpolationType>(x);
-        const int   x2 = x1 + 1;
-        const int   y1 = GetIndexForInterpolation<kInterpolationType>(y);
-        const int   y2 = y1 + 1;
+        const float      x  = GetElement<kCoordMap.id[0]>(c);
+        const float      y  = GetElement<kCoordMap.id[1]>(c);
+        const StrideType x1 = GetIndexForInterpolation<kInterpolationType, 1, StrideType>(x);
+        const StrideType x2 = x1 + 1;
+        const StrideType y1 = GetIndexForInterpolation<kInterpolationType, 1, StrideType>(y);
+        const StrideType y2 = y1 + 1;
 
         auto out = SetAll<ConvertBaseTypeTo<float, std::remove_cv_t<ValueType>>>(0);
 
@@ -445,6 +458,7 @@ class InterpolationWrap<BW, NVCV_INTERP_CUBIC> : public detail::InterpolationWra
 
 public:
     using typename Base::BorderWrapper;
+    using typename Base::StrideType;
     using typename Base::TensorWrapper;
     using typename Base::ValueType;
 
@@ -520,29 +534,28 @@ public:
                                        float> && 2 <= NumElements<DimType> && NumElements<DimType> <= kNumDimensions>>
     inline __host__ __device__ ValueType operator[](DimType c) const
     {
-        const float x    = GetElement(c, kCoordMap.id[0]);
-        const float y    = GetElement(c, kCoordMap.id[1]);
-        const int   xmin = GetIndexForInterpolation<kInterpolationType, 1>(x - 2.f);
-        const int   xmax = GetIndexForInterpolation<kInterpolationType, 2>(x + 2.f);
-        const int   ymin = GetIndexForInterpolation<kInterpolationType, 1>(y - 2.f);
-        const int   ymax = GetIndexForInterpolation<kInterpolationType, 2>(y + 2.f);
+        const float      x  = GetElement<kCoordMap.id[0]>(c);
+        const float      y  = GetElement<kCoordMap.id[1]>(c);
+        const StrideType ix = GetIndexForInterpolation<kInterpolationType, 1, StrideType>(x);
+        const StrideType iy = GetIndexForInterpolation<kInterpolationType, 1, StrideType>(y);
+
+        float wx[4];
+        GetCubicCoeffs(x - ix, wx[0], wx[1], wx[2], wx[3]);
+        float wy[4];
+        GetCubicCoeffs(y - iy, wy[0], wy[1], wy[2], wy[3]);
 
         using FT = ConvertBaseTypeTo<float, std::remove_cv_t<ValueType>>;
         auto sum = SetAll<FT>(0);
 
-        float w, wsum = 0.f;
-
-        for (int cy = ymin; cy <= ymax; cy++)
+#pragma unroll
+        for (StrideType cy = -1; cy <= 2; cy++)
         {
-            for (int cx = xmin; cx <= xmax; cx++)
+#pragma unroll
+            for (StrideType cx = -1; cx <= 2; cx++)
             {
-                w = GetCubicCoeff(x - cx) * GetCubicCoeff(y - cy);
-                sum += w * Base::doGetValue(c, cx, cy);
-                wsum += w;
+                sum += Base::doGetValue(c, ix + cx, iy + cy) * (wx[cx + 1] * wy[cy + 1]);
             }
         }
-
-        sum = (wsum == 0.f) ? SetAll<FT>(0) : sum / wsum;
 
         return SaturateCast<ValueType>(sum);
     }
@@ -560,6 +573,7 @@ class InterpolationWrap<BW, NVCV_INTERP_AREA> : public detail::InterpolationWrap
 
 public:
     using typename Base::BorderWrapper;
+    using typename Base::StrideType;
     using typename Base::TensorWrapper;
     using typename Base::ValueType;
 
@@ -653,14 +667,14 @@ public:
                                        float> && 2 <= NumElements<DimType> && NumElements<DimType> <= kNumDimensions>>
     inline __host__ __device__ ValueType operator[](DimType c) const
     {
-        const float fsx1 = GetElement(c, kCoordMap.id[0]) * m_scaleX;
-        const float fsy1 = GetElement(c, kCoordMap.id[1]) * m_scaleY;
-        const float fsx2 = fsx1 + m_scaleX;
-        const float fsy2 = fsy1 + m_scaleY;
-        const int   xmin = GetIndexForInterpolation<kInterpolationType, 1>(fsx1);
-        const int   xmax = GetIndexForInterpolation<kInterpolationType, 2>(fsx2);
-        const int   ymin = GetIndexForInterpolation<kInterpolationType, 1>(fsy1);
-        const int   ymax = GetIndexForInterpolation<kInterpolationType, 2>(fsy2);
+        const float      fsx1 = GetElement<kCoordMap.id[0]>(c) * m_scaleX;
+        const float      fsy1 = GetElement<kCoordMap.id[1]>(c) * m_scaleY;
+        const float      fsx2 = fsx1 + m_scaleX;
+        const float      fsy2 = fsy1 + m_scaleY;
+        const StrideType xmin = GetIndexForInterpolation<kInterpolationType, 1, StrideType>(fsx1);
+        const StrideType xmax = GetIndexForInterpolation<kInterpolationType, 2, StrideType>(fsx2);
+        const StrideType ymin = GetIndexForInterpolation<kInterpolationType, 1, StrideType>(fsy1);
+        const StrideType ymax = GetIndexForInterpolation<kInterpolationType, 2, StrideType>(fsy2);
 
         auto out = SetAll<ConvertBaseTypeTo<float, std::remove_cv_t<ValueType>>>(0);
 
@@ -668,9 +682,9 @@ public:
         {
             const float scale = 1.f / (m_scaleX * m_scaleY);
 
-            for (int cy = ymin; cy < ymax; ++cy)
+            for (StrideType cy = ymin; cy < ymax; ++cy)
             {
-                for (int cx = xmin; cx < xmax; ++cx)
+                for (StrideType cx = xmin; cx < xmax; ++cx)
                 {
                     out += Base::doGetValue(c, cx, cy) * scale;
                 }
@@ -680,14 +694,14 @@ public:
         {
             // There are 2 active dimensions (0, 1) and the coordinates are inverted (y, x)
             // so y corresponds to dimension 0 and x corresponds to dimension 1
-            const int w = Base::m_borderWrap.tensorShape()[1];
-            const int h = Base::m_borderWrap.tensorShape()[0];
+            const StrideType w = Base::m_borderWrap.tensorShape()[1];
+            const StrideType h = Base::m_borderWrap.tensorShape()[0];
 
             const float scale = 1.f / (min(m_scaleX, w - fsx1) * min(m_scaleY, h - fsy1));
 
-            for (int cy = ymin; cy < ymax; ++cy)
+            for (StrideType cy = ymin; cy < ymax; ++cy)
             {
-                for (int cx = xmin; cx < xmax; ++cx)
+                for (StrideType cx = xmin; cx < xmax; ++cx)
                 {
                     out += Base::doGetValue(c, cx, cy) * scale;
                 }
@@ -705,7 +719,7 @@ public:
 
             if (ymin > fsy1)
             {
-                for (int cx = xmin; cx < xmax; ++cx)
+                for (StrideType cx = xmin; cx < xmax; ++cx)
                 {
                     out += Base::doGetValue(c, cx, (ymin - 1)) * ((ymin - fsy1) * scale);
                 }
@@ -723,7 +737,7 @@ public:
 
             if (ymax < fsy2)
             {
-                for (int cx = xmin; cx < xmax; ++cx)
+                for (StrideType cx = xmin; cx < xmax; ++cx)
                 {
                     out += Base::doGetValue(c, cx, ymax) * ((fsy2 - ymax) * scale);
                 }
@@ -769,6 +783,7 @@ private:
  * @tparam T Type of the values to be accessed in the interpolation wrap.
  * @tparam B Border extension to be used when accessing H and W, one of \ref NVCVBorderType
  * @tparam I Interpolation to be used when accessing H and W, one of \ref NVCVInterpolationType
+ * @tparam StrideType Stride type used when accessing underlying tensor data
  *
  * @param[in] tensor Reference to the tensor that will be wrapped.
  * @param[in] borderValue Border value to be used when accessing outside elements in constant border type
@@ -777,11 +792,12 @@ private:
  *
  * @return Interpolation wrap useful to access tensor data interpolation-border aware in H and W in CUDA kernels.
  */
-template<typename T, NVCVBorderType B, NVCVInterpolationType I, class = Require<HasTypeTraits<T>>>
+template<typename T, NVCVBorderType B, NVCVInterpolationType I, typename StrideType = int64_t,
+         class = Require<HasTypeTraits<T>>>
 __host__ auto CreateInterpolationWrapNHW(const TensorDataStridedCuda &tensor, T borderValue = {}, float scaleX = {},
                                          float scaleY = {})
 {
-    auto borderWrap = CreateBorderWrapNHW<T, B>(tensor, borderValue);
+    auto borderWrap = CreateBorderWrapNHW<T, B, StrideType>(tensor, borderValue);
 
     return InterpolationWrap<decltype(borderWrap), I>(borderWrap, scaleX, scaleY);
 }
@@ -800,6 +816,7 @@ __host__ auto CreateInterpolationWrapNHW(const TensorDataStridedCuda &tensor, T 
  * @tparam T Type of the values to be accessed in the interpolation wrap.
  * @tparam B Border extension to be used when accessing H and W, one of \ref NVCVBorderType
  * @tparam I Interpolation to be used when accessing H and W, one of \ref NVCVInterpolationType
+ * @tparam StrideType Stride type used when accessing underlying tensor data
  *
  * @param[in] tensor Reference to the tensor that will be wrapped.
  * @param[in] borderValue Border value to be used when accessing outside elements in constant border type
@@ -808,11 +825,12 @@ __host__ auto CreateInterpolationWrapNHW(const TensorDataStridedCuda &tensor, T 
  *
  * @return Interpolation wrap useful to access tensor data interpolation-border aware in H and W in CUDA kernels.
  */
-template<typename T, NVCVBorderType B, NVCVInterpolationType I, class = Require<HasTypeTraits<T>>>
+template<typename T, NVCVBorderType B, NVCVInterpolationType I, typename StrideType = int64_t,
+         class = Require<HasTypeTraits<T>>>
 __host__ auto CreateInterpolationWrapNHWC(const TensorDataStridedCuda &tensor, T borderValue = {}, float scaleX = {},
                                           float scaleY = {})
 {
-    auto borderWrap = CreateBorderWrapNHWC<T, B>(tensor, borderValue);
+    auto borderWrap = CreateBorderWrapNHWC<T, B, StrideType>(tensor, borderValue);
 
     return InterpolationWrap<decltype(borderWrap), I>(borderWrap, scaleX, scaleY);
 }

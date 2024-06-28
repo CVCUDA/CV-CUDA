@@ -59,11 +59,11 @@ __device__ float get_scale_value(TensorWrapper data, int ch, int numChannels, fl
     }
 }
 
-template<class T1, NVCVBorderType B, class T2, class TensorWrapper>
-__device__ void transfer_data(cuda::BorderVarShapeWrap<const T1, B> srcWrap, cuda::Tensor4DWrap<T2> dstWrap,
-                              int2 src_idx, int2 dst_idx, int batchidx, int ch, TensorWrapper baseWrap,
-                              TensorWrapper scaleWrap, float global_scale, float global_shift, float epsilon,
-                              uint32_t flags, int base_channels, int scale_channels, bool dst_planar)
+template<class T1, NVCVBorderType B, class DstWrapper, class TensorWrapper>
+__device__ void transfer_data(cuda::BorderVarShapeWrap<const T1, B> srcWrap, DstWrapper dstWrap, int2 src_idx,
+                              int2 dst_idx, int batchidx, int ch, TensorWrapper baseWrap, TensorWrapper scaleWrap,
+                              float global_scale, float global_shift, float epsilon, uint32_t flags, int base_channels,
+                              int scale_channels, bool dst_planar)
 {
     if (dst_planar)
     {
@@ -71,7 +71,7 @@ __device__ void transfer_data(cuda::BorderVarShapeWrap<const T1, B> srcWrap, cud
         {
             float base  = get_base_value(baseWrap, c, base_channels);
             float scale = get_scale_value(scaleWrap, c, scale_channels, epsilon, flags);
-            dstWrap[(int4){dst_idx.x, dst_idx.y, c, batchidx}] = cuda::SaturateCast<T2>(
+            dstWrap[(int4){dst_idx.x, dst_idx.y, c, batchidx}] = cuda::SaturateCast<DstWrapper::ValueType>(
                 (srcWrap[(int4){src_idx.x, src_idx.y, c, batchidx}] - base) * scale * global_scale + global_shift);
         }
     }
@@ -81,17 +81,17 @@ __device__ void transfer_data(cuda::BorderVarShapeWrap<const T1, B> srcWrap, cud
         {
             float base  = get_base_value(baseWrap, c, base_channels);
             float scale = get_scale_value(scaleWrap, c, scale_channels, epsilon, flags);
-            dstWrap[(int4){c, dst_idx.x, dst_idx.y, batchidx}] = cuda::SaturateCast<T2>(
+            dstWrap[(int4){c, dst_idx.x, dst_idx.y, batchidx}] = cuda::SaturateCast<DstWrapper::ValueType>(
                 (srcWrap[(int4){src_idx.x, src_idx.y, c, batchidx}] - base) * scale * global_scale + global_shift);
         }
     }
 }
 
-template<class T1, NVCVBorderType B, class T2, class TensorWrapper>
-__device__ void transfer_data(cuda::BorderVarShapeWrapNHWC<const T1, B> srcWrap, cuda::Tensor4DWrap<T2> dstWrap,
-                              int2 src_idx, int2 dst_idx, int batchidx, int ch, TensorWrapper baseWrap,
-                              TensorWrapper scaleWrap, float global_scale, float global_shift, float epsilon,
-                              uint32_t flags, int base_channels, int scale_channels, bool dst_planar)
+template<class T1, NVCVBorderType B, class DstWrapper, class TensorWrapper>
+__device__ void transfer_data(cuda::BorderVarShapeWrapNHWC<const T1, B> srcWrap, DstWrapper dstWrap, int2 src_idx,
+                              int2 dst_idx, int batchidx, int ch, TensorWrapper baseWrap, TensorWrapper scaleWrap,
+                              float global_scale, float global_shift, float epsilon, uint32_t flags, int base_channels,
+                              int scale_channels, bool dst_planar)
 {
     if (dst_planar)
     {
@@ -99,7 +99,7 @@ __device__ void transfer_data(cuda::BorderVarShapeWrapNHWC<const T1, B> srcWrap,
         {
             float base  = get_base_value(baseWrap, c, base_channels);
             float scale = get_scale_value(scaleWrap, c, scale_channels, epsilon, flags);
-            dstWrap[(int4){dst_idx.x, dst_idx.y, c, batchidx}] = cuda::SaturateCast<T2>(
+            dstWrap[(int4){dst_idx.x, dst_idx.y, c, batchidx}] = cuda::SaturateCast<DstWrapper::ValueType>(
                 (srcWrap[(int4){batchidx, src_idx.y, src_idx.x, c}] - base) * scale * global_scale + global_shift);
         }
     }
@@ -109,27 +109,27 @@ __device__ void transfer_data(cuda::BorderVarShapeWrapNHWC<const T1, B> srcWrap,
         {
             float base  = get_base_value(baseWrap, c, base_channels);
             float scale = get_scale_value(scaleWrap, c, scale_channels, epsilon, flags);
-            dstWrap[(int4){c, dst_idx.x, dst_idx.y, batchidx}] = cuda::SaturateCast<T2>(
+            dstWrap[(int4){c, dst_idx.x, dst_idx.y, batchidx}] = cuda::SaturateCast<DstWrapper::ValueType>(
                 (srcWrap[(int4){batchidx, src_idx.y, src_idx.x, c}] - base) * scale * global_scale + global_shift);
         }
     }
 }
 
-template<class T, class T2>
-__device__ void set_data(cuda::Tensor4DWrap<T> dstWrap, int2 dst_idx, int batchidx, int ch, T2 val, bool dst_planar)
+template<class DstWrapper, class T>
+__device__ void set_data(DstWrapper dstWrap, int2 dst_idx, int batchidx, int ch, T val, bool dst_planar)
 {
     if (dst_planar)
     {
         for (int c = 0; c < ch; c++)
         {
-            dstWrap[(int4){dst_idx.x, dst_idx.y, c, batchidx}] = cuda::StaticCast<T>(val);
+            dstWrap[(int4){dst_idx.x, dst_idx.y, c, batchidx}] = cuda::StaticCast<DstWrapper::ValueType>(val);
         }
     }
     else
     {
         for (int c = 0; c < ch; c++)
         {
-            dstWrap[(int4){c, dst_idx.x, dst_idx.y, batchidx}] = cuda::StaticCast<T>(val);
+            dstWrap[(int4){c, dst_idx.x, dst_idx.y, batchidx}] = cuda::StaticCast<DstWrapper::ValueType>(val);
         }
     }
 }
@@ -185,6 +185,73 @@ __global__ void slice_flip_normalize(SrcWrapper srcWrap, DstWrapper dstWrap, Fli
                   global_scale, global_shift, epsilon, flags, base_ch, scale_ch, dst_planar);
 }
 
+template<class T_Src, class T_Dst, NVCVBorderType B, class StrideType>
+void RunCropFlipNormalizeReformatS(cudaStream_t stream, const nvcv::ImageBatchVarShapeDataStridedCuda &srcData,
+                                   const nvcv::TensorDataStridedCuda &dstData,
+                                   const nvcv::TensorDataStridedCuda &flipCodeData,
+                                   const nvcv::TensorDataStridedCuda &baseData,
+                                   const nvcv::TensorDataStridedCuda &scaleData, const float borderValue,
+                                   const nvcv::TensorDataStridedCuda &cropRect, float global_scale, float shift,
+                                   float epsilon, uint32_t flags, int channel, int3 out_size, dim3 block, dim3 grid)
+{
+    nvcv::TensorLayout dst_layout = dstData.layout();
+    if (!(dst_layout == nvcv::TENSOR_NHWC || dst_layout == nvcv::TENSOR_NCHW))
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid tensor layout in output");
+    }
+
+    bool src_planar = srcData.uniqueFormat().numPlanes() > 1;
+    bool dst_planar = dst_layout == nvcv::TENSOR_NCHW;
+
+    auto baseAccess  = nvcv::TensorDataAccessStridedImagePlanar::Create(baseData);
+    auto scaleAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(scaleData);
+
+    int scale_channels = scaleAccess->numChannels();
+    int base_channels  = baseAccess->numChannels();
+
+    auto                             cropRectWrap = cuda::CreateTensorWrapNHWC<int, int32_t>(cropRect);
+    cuda::Tensor1DWrap<int, int32_t> flipCodeWrap(flipCodeData);
+    auto                             baseWrap  = cuda::CreateTensorWrapNHWC<float, int32_t>(baseData);
+    auto                             scaleWrap = cuda::CreateTensorWrapNHWC<float, int32_t>(scaleData);
+
+    if (src_planar && dst_planar)
+    {
+        cuda::ImageBatchVarShapeWrap<const T_Src> srcWrap(srcData); // planar
+        cuda::BorderVarShapeWrap<const T_Src, B>  srcBorderWrap(srcWrap, static_cast<T_Src>(borderValue));
+        cuda::Tensor4DWrap<T_Dst, StrideType>     dstWrap(dstData); // planar
+        slice_flip_normalize<<<grid, block, 0, stream>>>(srcBorderWrap, dstWrap, flipCodeWrap, baseWrap, scaleWrap,
+                                                         cropRectWrap, global_scale, shift, epsilon, flags, channel,
+                                                         base_channels, scale_channels, out_size, dst_planar);
+    }
+    else if (src_planar)
+    {
+        cuda::ImageBatchVarShapeWrap<const T_Src> srcWrap(srcData); // planar
+        cuda::BorderVarShapeWrap<const T_Src, B>  srcBorderWrap(srcWrap, static_cast<T_Src>(borderValue));
+        auto dstWrap = cuda::CreateTensorWrapNHWC<T_Dst, StrideType>(dstData); // interleaved
+        slice_flip_normalize<<<grid, block, 0, stream>>>(srcBorderWrap, dstWrap, flipCodeWrap, baseWrap, scaleWrap,
+                                                         cropRectWrap, global_scale, shift, epsilon, flags, channel,
+                                                         base_channels, scale_channels, out_size, dst_planar);
+    }
+    else if (dst_planar)
+    {
+        cuda::ImageBatchVarShapeWrapNHWC<const T_Src> srcWrap(srcData, channel); // interleaved
+        cuda::BorderVarShapeWrapNHWC<const T_Src, B>  srcBorderWrap(srcWrap, static_cast<T_Src>(borderValue));
+        cuda::Tensor4DWrap<T_Dst, StrideType>         dstWrap(dstData); // planar
+        slice_flip_normalize<<<grid, block, 0, stream>>>(srcBorderWrap, dstWrap, flipCodeWrap, baseWrap, scaleWrap,
+                                                         cropRectWrap, global_scale, shift, epsilon, flags, channel,
+                                                         base_channels, scale_channels, out_size, dst_planar);
+    }
+    else
+    {
+        cuda::ImageBatchVarShapeWrapNHWC<const T_Src> srcWrap(srcData, channel); // interleaved
+        cuda::BorderVarShapeWrapNHWC<const T_Src, B>  srcBorderWrap(srcWrap, static_cast<T_Src>(borderValue));
+        auto dstWrap = cuda::CreateTensorWrapNHWC<T_Dst, StrideType>(dstData); // interleaved
+        slice_flip_normalize<<<grid, block, 0, stream>>>(srcBorderWrap, dstWrap, flipCodeWrap, baseWrap, scaleWrap,
+                                                         cropRectWrap, global_scale, shift, epsilon, flags, channel,
+                                                         base_channels, scale_channels, out_size, dst_planar);
+    }
+}
+
 template<class T_Src, class T_Dst, NVCVBorderType B>
 void RunCropFlipNormalizeReformat(cudaStream_t stream, const nvcv::ImageBatchVarShapeDataStridedCuda &srcData,
                                   const nvcv::TensorDataStridedCuda &dstData,
@@ -199,67 +266,23 @@ void RunCropFlipNormalizeReformat(cudaStream_t stream, const nvcv::ImageBatchVar
     NVCV_ASSERT(outAccess);
     const int3 out_size = {outAccess->numCols(), outAccess->numRows(), num_channels};
 
-    nvcv::TensorLayout dst_layout = dstData.layout();
-    if (!(dst_layout == nvcv::TENSOR_NHWC || dst_layout == nvcv::TENSOR_NCHW))
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid tensor layout in output");
-    }
-
-    bool src_planar = srcData.uniqueFormat().numPlanes() > 1;
-    bool dst_planar = dst_layout == nvcv::TENSOR_NCHW;
-
     nvcv::Size2D maxSize   = {outAccess->numCols(), outAccess->numRows()};
     int32_t      batchSize = srcData.numImages();
     dim3         block(32, 32, 1);
     dim3 grid(std::ceil(maxSize.w / static_cast<float>(block.x)), std::ceil(maxSize.h / static_cast<float>(block.y)),
               batchSize);
 
-    auto baseAccess  = nvcv::TensorDataAccessStridedImagePlanar::Create(baseData);
-    auto scaleAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(scaleData);
-
-    int scale_channels = scaleAccess->numChannels();
-    int base_channels  = baseAccess->numChannels();
-
-    auto                    cropRectWrap = cuda::CreateTensorWrapNHWC<int>(cropRect);
-    cuda::Tensor1DWrap<int> flipCodeWrap(flipCodeData);
-    auto                    baseWrap  = cuda::CreateTensorWrapNHWC<float>(baseData);
-    auto                    scaleWrap = cuda::CreateTensorWrapNHWC<float>(scaleData);
-
-    if (src_planar && dst_planar)
+    auto outMaxStride = outAccess->sampleStride() * outAccess->numSamples();
+    if (outMaxStride <= cuda::TypeTraits<int32_t>::max)
     {
-        cuda::ImageBatchVarShapeWrap<const T_Src> srcWrap(srcData); // planar
-        cuda::BorderVarShapeWrap<const T_Src, B>  srcBorderWrap(srcWrap, static_cast<T_Src>(borderValue));
-        cuda::Tensor4DWrap<T_Dst>                 dstWrap(dstData); // planar
-        slice_flip_normalize<<<grid, block, 0, stream>>>(srcBorderWrap, dstWrap, flipCodeWrap, baseWrap, scaleWrap,
-                                                         cropRectWrap, global_scale, shift, epsilon, flags, channel,
-                                                         base_channels, scale_channels, out_size, dst_planar);
-    }
-    else if (src_planar)
-    {
-        cuda::ImageBatchVarShapeWrap<const T_Src> srcWrap(srcData); // planar
-        cuda::BorderVarShapeWrap<const T_Src, B>  srcBorderWrap(srcWrap, static_cast<T_Src>(borderValue));
-        auto                                      dstWrap = cuda::CreateTensorWrapNHWC<T_Dst>(dstData); // interleaved
-        slice_flip_normalize<<<grid, block, 0, stream>>>(srcBorderWrap, dstWrap, flipCodeWrap, baseWrap, scaleWrap,
-                                                         cropRectWrap, global_scale, shift, epsilon, flags, channel,
-                                                         base_channels, scale_channels, out_size, dst_planar);
-    }
-    else if (dst_planar)
-    {
-        cuda::ImageBatchVarShapeWrapNHWC<const T_Src> srcWrap(srcData, channel); // interleaved
-        cuda::BorderVarShapeWrapNHWC<const T_Src, B>  srcBorderWrap(srcWrap, static_cast<T_Src>(borderValue));
-        cuda::Tensor4DWrap<T_Dst>                     dstWrap(dstData); // planar
-        slice_flip_normalize<<<grid, block, 0, stream>>>(srcBorderWrap, dstWrap, flipCodeWrap, baseWrap, scaleWrap,
-                                                         cropRectWrap, global_scale, shift, epsilon, flags, channel,
-                                                         base_channels, scale_channels, out_size, dst_planar);
+        RunCropFlipNormalizeReformatS<T_Src, T_Dst, B, int32_t>(stream, srcData, dstData, flipCodeData, baseData,
+                                                                scaleData, borderValue, cropRect, global_scale, shift,
+                                                                epsilon, flags, channel, out_size, block, grid);
     }
     else
     {
-        cuda::ImageBatchVarShapeWrapNHWC<const T_Src> srcWrap(srcData, channel); // interleaved
-        cuda::BorderVarShapeWrapNHWC<const T_Src, B>  srcBorderWrap(srcWrap, static_cast<T_Src>(borderValue));
-        auto dstWrap = cuda::CreateTensorWrapNHWC<T_Dst>(dstData); // interleaved
-        slice_flip_normalize<<<grid, block, 0, stream>>>(srcBorderWrap, dstWrap, flipCodeWrap, baseWrap, scaleWrap,
-                                                         cropRectWrap, global_scale, shift, epsilon, flags, channel,
-                                                         base_channels, scale_channels, out_size, dst_planar);
+        throw nvcv::Exception(nvcv::Status::ERROR_OVERFLOW, "Output size exceeds %d. Tensor is too large.",
+                              cuda::TypeTraits<int32_t>::max);
     }
 }
 

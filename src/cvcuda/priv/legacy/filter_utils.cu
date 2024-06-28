@@ -72,8 +72,9 @@ __global__ void computeGaussianKernel(float *kernel, Size2D kernelSize, double2 
     kernel[coord.y * kernelSize.w + coord.x] = computeSingleGaussianValue(coord, half, sigma);
 }
 
-__global__ void computeMeanKernelVarShape(cuda::Tensor3DWrap<float> kernel, cuda::Tensor1DWrap<int2> kernelSizeArr,
-                                          cuda::Tensor1DWrap<int2> kernelAnchorArr)
+__global__ void computeMeanKernelVarShape(cuda::Tensor3DWrap<float, int32_t> kernel,
+                                          cuda::Tensor1DWrap<int2, int32_t>  kernelSizeArr,
+                                          cuda::Tensor1DWrap<int2, int32_t>  kernelAnchorArr)
 {
     int3 coord = cuda::StaticCast<int>(blockIdx * blockDim + threadIdx);
 
@@ -107,9 +108,9 @@ __global__ void computeMeanKernelVarShape(cuda::Tensor3DWrap<float> kernel, cuda
     kernel[coord] = 1.f / (kernelSize.x * kernelSize.y);
 }
 
-__global__ void computeGaussianKernelVarShape(cuda::Tensor3DWrap<float> kernel, int dataKernelSize,
-                                              Size2D maxKernelSize, cuda::Tensor1DWrap<int2> kernelSizeArr,
-                                              cuda::Tensor1DWrap<double2> sigmaArr)
+__global__ void computeGaussianKernelVarShape(cuda::Tensor3DWrap<float, int32_t> kernel, int dataKernelSize,
+                                              Size2D maxKernelSize, cuda::Tensor1DWrap<int2, int32_t> kernelSizeArr,
+                                              cuda::Tensor1DWrap<double2, int32_t> sigmaArr)
 {
     int3 coord = cuda::StaticCast<int>(blockIdx * blockDim + threadIdx);
 
@@ -144,7 +145,8 @@ __global__ void computeGaussianKernelVarShape(cuda::Tensor3DWrap<float> kernel, 
     kernel[coord] = computeSingleGaussianValue(coord, half, sigma);
 }
 
-__global__ void computeMeanKernelVarShape(cuda::Tensor3DWrap<float> kernel, cuda::Tensor1DWrap<int> blockSizeArr)
+__global__ void computeMeanKernelVarShape(cuda::Tensor3DWrap<float, int32_t> kernel,
+                                          cuda::Tensor1DWrap<int, int32_t>   blockSizeArr)
 {
     int3 coord = cuda::StaticCast<int>(blockIdx * blockDim + threadIdx);
 
@@ -158,7 +160,8 @@ __global__ void computeMeanKernelVarShape(cuda::Tensor3DWrap<float> kernel, cuda
     kernel[coord] = 1.f / (blockSize * blockSize);
 }
 
-__global__ void computeGaussianKernelVarShape(cuda::Tensor3DWrap<float> kernel, cuda::Tensor1DWrap<int> blockSizeArr)
+__global__ void computeGaussianKernelVarShape(cuda::Tensor3DWrap<float, int32_t> kernel,
+                                              cuda::Tensor1DWrap<int, int32_t>   blockSizeArr)
 {
     int3 coord = cuda::StaticCast<int>(blockIdx * blockDim + threadIdx);
 

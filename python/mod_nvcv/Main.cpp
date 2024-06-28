@@ -37,13 +37,6 @@ namespace py = pybind11;
 
 PYBIND11_MODULE(nvcv, m)
 {
-    m.doc() = R"pbdoc(
-        NVCV Python API reference
-        ========================
-
-        This is the Python API reference for the NVIDIA® NVCV library.
-    )pbdoc";
-
     m.attr("__version__") = NVCV_VERSION_STRING;
 
     using namespace nvcvpy::priv;
@@ -59,10 +52,10 @@ PYBIND11_MODULE(nvcv, m)
     ExternalBuffer::Export(m);
 
     // Supporting objects
+    ExportColorSpec(m);
     ExportImageFormat(m);
     ExportDataType(m);
     ExportRect(m);
-    ExportColorSpec(m);
 
     // Objects
     Tensor::Export(m);
