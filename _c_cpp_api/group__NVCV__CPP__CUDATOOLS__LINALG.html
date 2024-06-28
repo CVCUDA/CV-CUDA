@@ -1,0 +1,1227 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Linear algebra &mdash; CV-CUDA Beta documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=19f00094" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=76b435a8" />
+
+  
+    <link rel="shortcut icon" href="../_static/nv_icon.png"/>
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../_static/jquery.js?v=5d32c60e"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js?v=bd46b8a5"></script>
+        <script src="../_static/doctools.js?v=888ff710"></script>
+        <script src="../_static/sphinx_highlight.js?v=4825356b"></script>
+        <script src="../_static/pk_scripts.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Math operators" href="group__NVCV__CPP__CUDATOOLS__MATHOPERATORS.html" />
+    <link rel="prev" title="InterpolationWrap classes" href="group__NVCV__CPP__CUDATOOLS__INTERPOLATIONWRAP.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #000000" >
+
+          
+          
+          <a href="../index.html">
+            
+              <img src="../_static/nv_logo.png" class="logo" alt="Logo"/>
+          </a>
+              <div class="version">
+                Beta
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Beginner's Guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#pre-requisites">Pre-requisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#setup">Setup</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started.html">Getting Started</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../prerequisites.html">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../samples.html">Samples</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../samples/cpp_samples.html">C++</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../samples/cpp_samples/cropresize.html">Crop and Resize</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../samples/python_samples.html">Python</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/classification.html">Classification</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/segmentation.html">Semantic Segmentation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/segmentation_triton.html">Semantic Segmentation using Triton</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/object_detection.html">Object Detection</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../modules/c_modules.html">C Modules</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../modules/c_core.html">Core</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__COLORSPEC.html">Color Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__DATALAYOUT.html">Data Layout</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__DATATYPE.html">Data types</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__IMAGETYPE.html">Image Formats</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/c_utils.html">Utilities</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__UTIL__STATUS.html">Status Codes</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/c_algos.html">Algorithms</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ADAPTIVETHRESHOLD.html">Adaptive Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__AVERAGEBLUR.html">Average Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BILATERAL__FILTER.html">Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BRIGHTNESS__CONTRAST.html">Brightness Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CENTER__CROP.html">Center Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CHANNEL__REORDER.html">Channel Reorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COLOR__TWIST.html">Color Twist</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COMPOSITE.html">Composite</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONV2D.html">2D Convolution</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONVERT__TO.html">Convert To</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COPYMAKEBORDER.html">Copy Make Border</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAMMA__CONTRAST.html">Gamma Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN.html">Gaussian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN__NOISE.html">GaussianNoise</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__HQ__RESIZE.html">HQ Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__INPAINT.html">Inpaint</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__JOINT__BILATERAL__FILTER.html">Joint Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LABEL.html">Label</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LAPLACIAN.html">Laplacian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MEDIAN__BLUR.html">Median Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MINMAXLOC.html">MinMaxLoc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MORPHOLOGY.html">Morphology</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NON__MAXIMUM__SUPPRESSION.html">Non-Maximum Suppression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NORMALIZE.html">Normalize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PADANDSTACK.html">Pad and Stack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PAIRWISE__MATCHER.html">Pairwise Matcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PILLOW__RESIZE.html">Pillow Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RANDOMRESIZEDCROP.html">Random Resized Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REFORMAT.html">Reformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REMAP.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RESIZE.html">Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ROTATE.html">Rotate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__SIFT.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__THRESHOLD.html">Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__AFFINE.html">Warp Affine</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__PERSPECTIVE.html">Warp Perspective</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____ADV__CVT__COLOR.html">Adv Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BND__BOX.html">BndBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BOX__BLUR.html">BoxBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM.html">Histogram</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM__EQ.html">Histogram Eq</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____MIN__AREA__RECT.html">Min Area Rect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____O__S__D.html">OSD</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____RESIZE__CROP.html">Resize Crop Convert</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____STACK.html">Stack</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1 current"><a class="reference internal" href="../modules/cpp_modules.html">C++ Modules</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_core.html">Core</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__COLORSPEC.html">Color Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html">Data Layout</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__DATATYPE.html">Data types</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__IMAGETYPE.html">Image Formats</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__SIZE.html">Size Operator</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_utils.html">Utilities</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__UTIL__EXCEPTION.html">Exception</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__UTIL__STATUS.html">Status Codes</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_algos.html">Algorithms</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ADAPTIVETHRESHOLD.html">Adaptive Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__AVERAGEBLUR.html">Average Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BILATERAL__FILTER.html">Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BRIGHTNESS__CONTRAST.html">Brightness Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CENTER__CROP.html">Center Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CHANNEL__REORDER.html">Channel Reorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COLOR__TWIST.html">Color Twist</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COMPOSITE.html">Composite</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONV2D.html">2D Convolution</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONVERT__TO.html">Convert To</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COPYMAKEBORDER.html">Copy Make Border</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAMMA__CONTRAST.html">Gamma Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN.html">Gaussian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN__NOISE.html">GaussianNoise</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__HQ__RESIZE.html">HQ Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__INPAINT.html">Inpaint</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__JOINT__BILATERAL__FILTER.html">Joint Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LABEL.html">Label</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LAPLACIAN.html">Laplacian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MEDIAN__BLUR.html">Median Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MINMAXLOC.html">MinMaxLoc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MORPHOLOGY.html">Morphology</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NON__MAXIMUM__SUPPRESSION.html">Non-Maximum Suppression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NORMALIZE.html">Normalize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PADANDSTACK.html">Pad and Stack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PAIRWISE__MATCHER.html">Pairwise Matcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PILLOW__RESIZE.html">Pillow Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RANDOMRESIZEDCROP.html">Random Resized Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REFORMAT.html">Reformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REMAP.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RESIZE.html">Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ROTATE.html">Rotate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__SIFT.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__THRESHOLD.html">Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__AFFINE.html">Warp Affine</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__PERSPECTIVE.html">Warp Perspective</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____ADV__CVT__COLOR.html">Adv Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BND__BOX.html">BndBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BOX__BLUR.html">BoxBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM.html">Histogram</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM__EQ.html">Histogram Eq</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____MIN__AREA__RECT.html">Min Area Rect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____O__S__D.html">OSD</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____RESIZE__CROP.html">Resize Crop Convert</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____STACK.html">Stack</a></li>
+</ul>
+</li>
+<li class="toctree-l2 current"><a class="reference internal" href="../modules/cpp_cudatools.html">CUDA Tools</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__ATOMICS.html">Atomic operations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__BORDER.html">Border functions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__BORDERVARSHAPEWRAP.html">BorderVarShapeWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__BORDERWRAP.html">BorderWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__DROPCAST.html">Drop Cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__FULLTENSORWRAP.html">FullTensorWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__IMAGEWRAP.html">Image Wrapper classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__INTERPOLATION.html">Interpolation functions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__INTERPOLATIONVARSHAPEWRAP.html">InterpolationVarShapeWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__INTERPOLATIONWRAP.html">InterpolationWrap classes</a></li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">Linear algebra</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHOPERATORS.html">Math operators</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHWRAPPERS.html">Math wrappers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__RANGECAST.html">Range cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__SATURATECAST.html">Saturate cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__STATICCAST.html">Static Cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORBATCHWRAP.html">TensorBatchWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORBATCHWRAPS.html">TensorBatchWrap shortcuts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORWRAP.html">TensorWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORWRAPS.html">TensorWrap shortcuts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TYPETRAITS.html">Type Traits</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../modules/python_modules.html">Python Modules</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../modules/python_core.html">Core</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/cache.html">Cache</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/colorspec.html">Color Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/format.html">Image Formats</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/recti.html">Rect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/image.html">Image</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/imagebatch.html">ImageBatchVarShape</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/tensor.html">Tensor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/tensorbatch.html">TensorBatchVarShape</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/python_algos.html">Algorithms</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_adaptivethreshold.html">AdaptiveThreshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_advcvtcolor.html">AdvCvtColor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_averageblur.html">AverageBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_bilateralfilter.html">BilateralFilter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_bndbox.html">BndBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_boxblur.html">BoxBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_brightnesscontrast.html">BrightnessContrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_centercrop.html">CenterCrop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_channelreorder.html">ChannelReorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_colortwist.html">ColorTwist</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_composite.html">Composite</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_conv2d.html">Conv2D</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_convertto.html">ConvertTo</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_copymakeborder.html">CopyMakeBorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_cropflipnormalizereformat.html">CropFlipNormalizeReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_customcrop.html">CustomCrop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_cvtcolor.html">CvtColor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_erase.html">Erase</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_findhomography.html">FindHomography</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_flip.html">Flip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_gammacontrast.html">GammaContrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_gaussian.html">Gaussian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_gaussiannoise.html">GaussianNoise</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_histogram.html">Histogram</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_histogrameq.html">HistogramEq</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_hqresize.html">HQResize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_inpaint.html">Inpaint</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_jointbilateralfilter.html">JointBilateralFilter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_label.html">Label</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_laplacian.html">Laplacian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_medianblur.html">MedianBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_minarearect.html">MinAreaRect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_minmaxloc.html">MinMaxLoc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_morphology.html">Morphology</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_nonmaximumsuppression.html">NonMaximumSuppression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_normalize.html">Normalize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_osd.html">OSD</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_padandstack.html">PadAndStack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_pairwisematcher.html">PairwiseMatcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_pillowresize.html">PillowResize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_randomresizedcrop.html">RandomResizedCrop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_reformat.html">Reformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_remap.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_resize.html">Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_resizecropconvertreformat.html">ResizeCropConvertReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_rotate.html">Rotate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_sift.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_stack.html">Stack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_threshold.html">Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_warpaffine.html">WarpAffine</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_warpperspective.html">WarpPerspective</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_adaptivethresholdtype.html">AdaptiveThresholdType</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_arrow.html">Arrow</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_blurboxi.html">BlurBoxI</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_bndboxi.html">BndBoxI</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_border.html">Border</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_channelmanip.html">ChannelManip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_circle.html">Circle</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_clockformat.html">ClockFormat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_colorconversion.html">ColorConversion</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_connectivitytype.html">ConnectivityType</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_interp.html">Interp</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_label.html">LABEL</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_line.html">Line</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_matcher.html">Matcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_morphologytype.html">MorphologyType</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_norm.html">Norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_point.html">Point</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_remap.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_rotatedbox.html">RotatedBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_sift.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_thresholdtype.html">ThresholdType</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Release Notes</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.9.0-beta.html">v0.9.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.8.0-beta.html">v0.8.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.7.0-beta.html">v0.7.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.6.0-beta.html">v0.6.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.5.0-beta.html">v0.5.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.4.0-beta.html">v0.4.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.3.1-beta.html">v0.3.1-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#bug-fixes">Bug Fixes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#known-issues">Known Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.3.0-beta.html">v0.3.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html">v0.2.1-alpha</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#general">General</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#new-operators">New Operators</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#improved-testing">Improved Testing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#bug-fixes">Bug Fixes</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html">v0.2.0-alpha</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html">v0.1.0-prealpha</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#known-issues">Known Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#license">License</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #000000" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">CV-CUDA</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../modules/cpp_modules.html">C++ API</a></li>
+          <li class="breadcrumb-item"><a href="../modules/cpp_cudatools.html">CUDA Tools</a></li>
+      <li class="breadcrumb-item active">Linear algebra</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/_c_cpp_api/group__NVCV__CPP__CUDATOOLS__LINALG.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="linear-algebra">
+<h1>Linear algebra<a class="headerlink" href="#linear-algebra" title="Permalink to this heading"></a></h1>
+<dl>
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG"></span><em><span class="pre">group</span></em> <span class="sig-name descname"><span class="pre">NVCV_CPP_CUDATOOLS_LINALG</span></span></dt>
+<dd><div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-typedefs">Typedefs</p>
+<dl class="cpp type">
+<dt class="sig sig-object cpp" id="_CPPv44Type">
+<span id="_CPPv34Type"></span><span id="_CPPv24Type"></span><span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga286c0c2df93cd728a246f055b19c0048"></span><span class="k"><span class="pre">using</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Type</span></span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="n"><span class="pre">T</span></span><a class="headerlink" href="#_CPPv44Type" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp type">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga6963159c6cdb9d14e3416ad842033d73"></span><span class="k"><span class="pre">using</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Type</span></span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="n"><span class="pre">T</span></span><br /></dt>
+<dd></dd></dl>
+
+</div>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-functions">Functions</p>
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gae07ba3ed57a09c253e7e0d57e4a621bd"></span><span class="sig-name descname"><span class="pre">inline</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">void</span> <span class="pre">load</span> <span class="pre">(const</span> <span class="pre">T</span> <span class="pre">*inVector)</span></span></dt>
+<dd><p>Load values from a C-array into this vector.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>inVector</strong> – <strong>[in]</strong> Input C-array vector to load values from. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gabc9e7e06a7d2e2b50cd277d075846720"></span><span class="sig-name descname"><span class="pre">inline</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">void</span> <span class="pre">load</span> <span class="pre">(std::initializer_list&lt;</span> <span class="pre">T</span> <span class="pre">&gt;</span> <span class="pre">l)</span></span></dt>
+<dd><p>Load values from a C++ initiliazer list into this vector.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>l</strong> – <strong>[in]</strong> Input C++ initializer list to load values from. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gadf5fe80896b9d47b3ec05fea5810e45f"></span><span class="sig-name descname"><span class="pre">inline</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">void</span> <span class="pre">store</span> <span class="pre">(T</span> <span class="pre">*outVector)</span> <span class="pre">const</span></span></dt>
+<dd><p>Store values to a C-array from this vector.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>outVector</strong> – <strong>[out]</strong> Output C-array vector to store values to. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gaf3ce00dde26a1d07869d710a79e4b041"></span><span class="sig-name descname"><span class="pre">inline</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">int</span> <span class="pre">size</span> <span class="pre">()</span> <span class="pre">const</span></span></dt>
+<dd><p>Get size (number of elements) of this vector. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#classnvcv_1_1cuda_1_1math_1_1Vector"><span class="std std-ref">Vector</span></a> size. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga0c083a9776926a5d95977f3cc25ebd24"></span><span class="sig-name descname"><span class="pre">inline</span> <span class="pre">constexpr</span> <span class="pre">const</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">T</span> <span class="pre">&amp;</span> <span class="pre">operator[]</span> <span class="pre">(int</span> <span class="pre">i)</span> <span class="pre">const</span></span></dt>
+<dd><p>Subscript operator for read-only access.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>i</strong> – <strong>[in]</strong> Position to access.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Value (constant reference) at given position. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga3a0d3d691b674cd8b21aac50ff7557e5"></span><span class="sig-name descname"><span class="pre">inline</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">T</span> <span class="pre">&amp;</span> <span class="pre">operator[]</span> <span class="pre">(int</span> <span class="pre">i)</span></span></dt>
+<dd><p>Subscript operator for read-and-write access.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>i</strong> – <strong>[in]</strong> Position to access.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Value (reference) at given position. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga2f89a76c61374bdbe8d8183265c347fc"></span><span class="sig-name descname"><span class="pre">inline</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">operator</span> <span class="pre">const</span> <span class="pre">T</span> <span class="pre">*</span> <span class="pre">()</span> <span class="pre">const</span></span></dt>
+<dd><p>Pointer-access operator (constant).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Pointer to the first element of this vector. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga001be00a0db7337f6af1f7c5d4f71fe2"></span><span class="sig-name descname"><span class="pre">inline</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">operator</span> <span class="pre">T*</span> <span class="pre">()</span></span></dt>
+<dd><p>Pointer-access operator.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Pointer to the first element of this vector. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gab65584cbb9e042c22602fe2bab885289"></span><span class="sig-name descname"><span class="pre">inline</span> <span class="pre">constexpr</span> <span class="pre">const</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">T</span> <span class="pre">*</span> <span class="pre">cbegin</span> <span class="pre">()</span> <span class="pre">const</span></span></dt>
+<dd><p>Begin (constant) pointer access.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Pointer to the first element of this vector. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gac2d921fcaab10247a4c52358a94c6e28"></span><span class="sig-name descname"><span class="pre">inline</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">T</span> <span class="pre">*</span> <span class="pre">begin</span> <span class="pre">()</span></span></dt>
+<dd><p>Begin pointer access.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Pointer to the first element of this vector. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gaab12bfa61c031d19738899659768b232"></span><span class="sig-name descname"><span class="pre">inline</span> <span class="pre">constexpr</span> <span class="pre">const</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">T</span> <span class="pre">*</span> <span class="pre">cend</span> <span class="pre">()</span> <span class="pre">const</span></span></dt>
+<dd><p>End (constant) pointer access.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Pointer to the one-past-last element of this vector. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga30025867993c2d117da69bfcd3f071b6"></span><span class="sig-name descname"><span class="pre">inline</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">T</span> <span class="pre">*</span> <span class="pre">end</span> <span class="pre">()</span></span></dt>
+<dd><p>End pointer access.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Pointer to the one-past-last element of this vector. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK9to_vectorEv">
+<span id="_CPPv3NK9to_vectorEv"></span><span id="_CPPv2NK9to_vectorEv"></span><span id="to_vectorC"></span><span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gac898406e21ceb35143fac890184bf4f5"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">T</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">to_vector</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK9to_vectorEv" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Convert a vector of this class to an stl vector.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>STL std::vector. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gaef62d1e5b01913418b5b6f1fefa97ca9"></span><span class="sig-name descname"><span class="pre">template&lt;int</span> <span class="pre">R&gt;</span> <span class="pre">inline</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">R</span> <span class="pre">&gt;</span> <span class="pre">subv</span> <span class="pre">(int</span> <span class="pre">beg)</span> <span class="pre">const</span></span></dt>
+<dd><p>Get a sub-vector of this vector.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>beg</strong> – <strong>[in]</strong> Position to start getting values from this vector.</p>
+</dd>
+<dt class="field-even">Template Parameters<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>R</strong> – Size of the sub-vector to be returned. </p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#classnvcv_1_1cuda_1_1math_1_1Vector"><span class="std std-ref">Vector</span></a> of value from given index to the end.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga5ec1e7f396e10580cf392b1b0780a49a"></span><span class="sig-name descname"><span class="pre">inline</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">void</span> <span class="pre">load</span> <span class="pre">(const</span> <span class="pre">T</span> <span class="pre">*inFlattenMatrix)</span></span></dt>
+<dd><p>Load values from a flatten array into this matrix.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>inFlattenMatrix</strong> – <strong>[in]</strong> Input flatten matrix to load values from. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga8bcdb6bea5a1f185ce83c2245ec4805f"></span><span class="sig-name descname"><span class="pre">inline</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">void</span> <span class="pre">load</span> <span class="pre">(std::initializer_list&lt;</span> <span class="pre">T</span> <span class="pre">&gt;</span> <span class="pre">l)</span></span></dt>
+<dd><p>Load values from a C++ initiliazer list into this matrix.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>l</strong> – <strong>[in]</strong> Input C++ initializer list to load values from. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gabeb14879a77a67d210ea63c377c99625"></span><span class="sig-name descname"><span class="pre">inline</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">void</span> <span class="pre">store</span> <span class="pre">(T</span> <span class="pre">*outFlattenMatrix)</span> <span class="pre">const</span></span></dt>
+<dd><p>Store values to a flatten array from this matrix.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>outFlattenMatrix</strong> – <strong>[out]</strong> Output flatten matrix to store values to. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga1087e134b53efdea59b2147cf67be19d"></span><span class="sig-name descname"><span class="pre">inline</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">int</span> <span class="pre">rows</span> <span class="pre">()</span> <span class="pre">const</span></span></dt>
+<dd><p>Get number of rows of this matrix. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Number of rows. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga591a2d9f7970791afc2cb16f85752000"></span><span class="sig-name descname"><span class="pre">inline</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">int</span> <span class="pre">cols</span> <span class="pre">()</span> <span class="pre">const</span></span></dt>
+<dd><p>Get number of columns of this matrix.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Number of columns. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gae66b3c3f579159832c968d114291a373"></span><span class="sig-name descname"><span class="pre">inline</span> <span class="pre">constexpr</span> <span class="pre">const</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;</span> <span class="pre">operator[]</span> <span class="pre">(int</span> <span class="pre">i)</span> <span class="pre">const</span></span></dt>
+<dd><p>Subscript operator for read-only access.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>i</strong> – <strong>[in]</strong> Row of the matrix to access.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#classnvcv_1_1cuda_1_1math_1_1Vector"><span class="std std-ref">Vector</span></a> (constant reference) of the corresponding row. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga513179bda302db7ae48b01fafc1ec58b"></span><span class="sig-name descname"><span class="pre">inline</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;</span> <span class="pre">operator[]</span> <span class="pre">(int</span> <span class="pre">i)</span></span></dt>
+<dd><p>Subscript operator for read-and-write access.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>i</strong> – <strong>[in]</strong> Row of the matrix to access.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#classnvcv_1_1cuda_1_1math_1_1Vector"><span class="std std-ref">Vector</span></a> (reference) of the corresponding row. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga7e8183d43615ddd25119b3778dd81aea"></span><span class="sig-name descname"><span class="pre">inline</span> <span class="pre">constexpr</span> <span class="pre">const</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">T</span> <span class="pre">&amp;</span> <span class="pre">operator[]</span> <span class="pre">(int2</span> <span class="pre">c)</span> <span class="pre">const</span></span></dt>
+<dd><p>Subscript operator for read-only access of matrix elements.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>c</strong> – <strong>[in]</strong> Coordinates (y row and x column) of the matrix element to access.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Element (constant reference) of the corresponding row and column. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga02eb93097b81efbdeba284c5c115a0ce"></span><span class="sig-name descname"><span class="pre">inline</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">T</span> <span class="pre">&amp;</span> <span class="pre">operator[]</span> <span class="pre">(int2</span> <span class="pre">c)</span></span></dt>
+<dd><p>Subscript operator for read-and-write access of matrix elements.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>c</strong> – <strong>[in]</strong> Coordinates (y row and x column) of the matrix element to access.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Element (reference) of the corresponding row and column. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga6eca7d862ba4a40886bc1530c618c29b"></span><span class="sig-name descname"><span class="pre">inline</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">M</span> <span class="pre">&gt;</span> <span class="pre">col</span> <span class="pre">(int</span> <span class="pre">j)</span> <span class="pre">const</span></span></dt>
+<dd><p>Get column j of this matrix.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>j</strong> – <strong>[in]</strong> Index of column to get.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Column j (copied) as a vector. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga6d420c4d40bee487d6d7177dcb089cb3"></span><span class="sig-name descname"><span class="pre">inline</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">void</span> <span class="pre">set_col</span> <span class="pre">(int</span> <span class="pre">j,</span> <span class="pre">T</span> <span class="pre">v)</span></span></dt>
+<dd><p>Set column j of this matrix.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>j</strong> – <strong>[in]</strong> Index of column to set. </p></li>
+<li><p><strong>v</strong> – <strong>[in]</strong> Value to place in matrix column. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga9a7819b4c28a03277f99cfaf7b10705d"></span><span class="sig-name descname"><span class="pre">inline</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">void</span> <span class="pre">set_col</span> <span class="pre">(int</span> <span class="pre">j,</span> <span class="pre">const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">M</span> <span class="pre">&gt;</span> <span class="pre">&amp;c)</span></span></dt>
+<dd><p>Set column j of this matrix.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>j</strong> – <strong>[in]</strong> Index of column to set. </p></li>
+<li><p><strong>c</strong> – <strong>[in]</strong> <a class="reference internal" href="#classnvcv_1_1cuda_1_1math_1_1Vector"><span class="std std-ref">Vector</span></a> to place in matrix column. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gaa0723caf5306e2533e3e19debdd7ea48"></span><span class="sig-name descname"><span class="pre">inline</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">void</span> <span class="pre">set_col</span> <span class="pre">(int</span> <span class="pre">j,</span> <span class="pre">const</span> <span class="pre">T</span> <span class="pre">*c)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga85149cc2843e01cd48668924e6c504c7"></span><span class="sig-name descname"><span class="pre">inline</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M</span> <span class="pre">-</span> <span class="pre">1,</span> <span class="pre">N</span> <span class="pre">-</span> <span class="pre">1</span> <span class="pre">&gt;</span> <span class="pre">subm</span> <span class="pre">(int</span> <span class="pre">skip_i,</span> <span class="pre">int</span> <span class="pre">skip_j)</span> <span class="pre">const</span></span></dt>
+<dd><p>Get a sub-matrix of this matrix.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>skip_i</strong> – <strong>[in]</strong> Row to skip when getting values from this matrix. </p></li>
+<li><p><strong>skip_j</strong> – <strong>[in]</strong> Column to skip when getting values from this matrix.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#classnvcv_1_1cuda_1_1math_1_1Matrix"><span class="std std-ref">Matrix</span></a> with one less row and one less column. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gaa43c22e54cc163f14af8dfe331ba8db4"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">void</span> <span class="pre">swap</span> <span class="pre">(T</span> <span class="pre">&amp;a,</span> <span class="pre">T</span> <span class="pre">&amp;b)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga75f929ac9e57341cb9efed933131c007"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;</span> <span class="pre">operator+=</span> <span class="pre">(Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;lhs,</span> <span class="pre">const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;rhs)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga2a20d2ed19f2c2c0eb4ae57eeb21ec0d"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">operator+</span> <span class="pre">(const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;a,</span> <span class="pre">const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;b)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gab077bb53fc3027baa5549a412b131a0b"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;</span> <span class="pre">operator+=</span> <span class="pre">(Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;lhs,</span> <span class="pre">T</span> <span class="pre">rhs)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga0b58a61d5e74d699e7f74d4e747c6fe5"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">operator+</span> <span class="pre">(const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;a,</span> <span class="pre">T</span> <span class="pre">b)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga9e5581f1b932a9b97c306b315e8d02ec"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">operator+</span> <span class="pre">(T</span> <span class="pre">a,</span> <span class="pre">const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;b)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga9459dd4a569f35a7715964993abc3180"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;</span> <span class="pre">operator-=</span> <span class="pre">(Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;lhs,</span> <span class="pre">const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;rhs)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga2dbfa09a6d13318bdc670e84e189b43f"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">operator-</span> <span class="pre">(const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;a,</span> <span class="pre">const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;b)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gad2a8d2e2d12d47bdcf320180b48eb15e"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;</span> <span class="pre">operator-=</span> <span class="pre">(Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;lhs,</span> <span class="pre">T</span> <span class="pre">rhs)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gad8503401b026728b852f622069278ae9"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">operator-</span> <span class="pre">(const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;a,</span> <span class="pre">T</span> <span class="pre">b)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga7c697cee8a23d28799bcd19f5855fe29"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">operator-</span> <span class="pre">(T</span> <span class="pre">a,</span> <span class="pre">const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;b)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gaf1a0ef986e5a5346f4a76940c03ec552"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;</span> <span class="pre">operator*=</span> <span class="pre">(Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;lhs,</span> <span class="pre">const</span> <span class="pre">T</span> <span class="pre">&amp;rhs)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga55442e9aec2c9a22d976c29aabcaee06"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">operator*</span> <span class="pre">(const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;a,</span> <span class="pre">const</span> <span class="pre">T</span> <span class="pre">&amp;b)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga3cb55f0045235cd1862d5a511237b447"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">operator*</span> <span class="pre">(const</span> <span class="pre">T</span> <span class="pre">&amp;a,</span> <span class="pre">const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;b)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga2f4ce1a36a88ea5918cc66fbce666c25"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;</span> <span class="pre">operator*=</span> <span class="pre">(Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;lhs,</span> <span class="pre">const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;rhs)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gacadd151ab6431c0157dbf9e9cc12c86f"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">operator*</span> <span class="pre">(const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;a,</span> <span class="pre">const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;b)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga9185f7cd6987f7afffd42fbf853bad1d"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;</span> <span class="pre">operator/=</span> <span class="pre">(Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;lhs,</span> <span class="pre">const</span> <span class="pre">T</span> <span class="pre">&amp;rhs)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga8b48b04de8ebbbe9bd075125e115e5e3"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">operator/</span> <span class="pre">(const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;a,</span> <span class="pre">const</span> <span class="pre">T</span> <span class="pre">&amp;b)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga8775e9b2c95b52671bba4980dba04a99"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">operator/</span> <span class="pre">(T</span> <span class="pre">a,</span> <span class="pre">const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;b)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga212c976f9e98e4dd92e5cdfba6170a98"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;</span> <span class="pre">operator/=</span> <span class="pre">(Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;lhs,</span> <span class="pre">const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;rhs)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gac7272aed89473e9916c5736b6e1f0a97"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">operator/</span> <span class="pre">(const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;a,</span> <span class="pre">const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;b)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4I0_iElsRNSt7ostreamERNSt7ostreamERK6VectorI1T1NE">
+<span id="_CPPv3I0_iElsRNSt7ostreamERK6VectorI1T1NE"></span><span id="_CPPv2I0_iElsRNSt7ostreamERK6VectorI1T1NE"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">T</span></span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="kt"><span class="pre">int</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">N</span></span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga2a769438e079c168d503e98e928ee942"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">ostream</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="sig-name descname"><span class="k"><span class="pre">operator</span></span><span class="o"><span class="pre">&lt;&lt;</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">ostream</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">out</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="n"><span class="pre">Vector</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I0_iElsRNSt7ostreamERNSt7ostreamERK6VectorI1T1NE" title="operator&lt;&lt;::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_iElsRNSt7ostreamERNSt7ostreamERK6VectorI1T1NE" title="operator&lt;&lt;::N"><span class="n"><span class="pre">N</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">v</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4I0_iElsRNSt7ostreamERNSt7ostreamERK6VectorI1T1NE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gafe35bb6bd1855d3d2c8cf481b3ad8a25"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">operator-</span> <span class="pre">(const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;v)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga7218ebffed48c176678641503955b6d7"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">bool</span> <span class="pre">operator==</span> <span class="pre">(const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;a,</span> <span class="pre">const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;b)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga6553cc745b5ddfdff17d2b4da9331398"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">bool</span> <span class="pre">operator==</span> <span class="pre">(const</span> <span class="pre">T</span> <span class="pre">&amp;a,</span> <span class="pre">const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;b)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga133ae1033097c26c509e6576fbe91cba"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">bool</span> <span class="pre">operator==</span> <span class="pre">(const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;a,</span> <span class="pre">const</span> <span class="pre">T</span> <span class="pre">&amp;b)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga46b5e7ad6144ea10f839edc6193b4fdd"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">bool</span> <span class="pre">operator&lt;</span> <span class="pre">(const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;a,</span> <span class="pre">const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;b)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga042fd248743c9b39f78d5a7292a40ad2"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">M,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">operator*</span> <span class="pre">(const</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;m,</span> <span class="pre">T</span> <span class="pre">val)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4I0_i_iElsRNSt7ostreamERNSt7ostreamERK6MatrixI1T1M1NE">
+<span id="_CPPv3I0_i_iElsRNSt7ostreamERK6MatrixI1T1M1NE"></span><span id="_CPPv2I0_i_iElsRNSt7ostreamERK6MatrixI1T1M1NE"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">T</span></span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="kt"><span class="pre">int</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">M</span></span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="kt"><span class="pre">int</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">N</span></span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga4b2746e4a0393c7cafa4f1655bbc01b8"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">ostream</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="sig-name descname"><span class="k"><span class="pre">operator</span></span><span class="o"><span class="pre">&lt;&lt;</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">ostream</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">out</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="n"><span class="pre">Matrix</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I0_i_iElsRNSt7ostreamERNSt7ostreamERK6MatrixI1T1M1NE" title="operator&lt;&lt;::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_i_iElsRNSt7ostreamERNSt7ostreamERK6MatrixI1T1M1NE" title="operator&lt;&lt;::M"><span class="n"><span class="pre">M</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_i_iElsRNSt7ostreamERNSt7ostreamERK6MatrixI1T1M1NE" title="operator&lt;&lt;::N"><span class="n"><span class="pre">N</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">m</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4I0_i_iElsRNSt7ostreamERNSt7ostreamERK6MatrixI1T1M1NE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga3c5a79d235c82efb1aea5ced0f33298e"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">M,</span> <span class="pre">int</span> <span class="pre">N,</span> <span class="pre">int</span> <span class="pre">P&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">P</span> <span class="pre">&gt;</span> <span class="pre">operator*</span> <span class="pre">(const</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;a,</span> <span class="pre">const</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">N,</span> <span class="pre">P</span> <span class="pre">&gt;</span> <span class="pre">&amp;b)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga68c527c4c40c95827a168599c74cdde9"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">M,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;</span> <span class="pre">operator*=</span> <span class="pre">(Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;lhs,</span> <span class="pre">T</span> <span class="pre">rhs)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga54bdb93a35d8a6949e1249552b85e157"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">M,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">operator*</span> <span class="pre">(T</span> <span class="pre">val,</span> <span class="pre">const</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;m)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga0e1164149e7074ccaa525b1419df5a21"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">M,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;</span> <span class="pre">operator+=</span> <span class="pre">(Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;lhs,</span> <span class="pre">const</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;rhs)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gaeb473950151e9756134932bb894171fe"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">M,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">operator+</span> <span class="pre">(const</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;lhs,</span> <span class="pre">const</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;rhs)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga25c574c898d89cc6a81a5c205bd7db7b"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">M,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;</span> <span class="pre">operator-=</span> <span class="pre">(Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;lhs,</span> <span class="pre">const</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;rhs)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga2bdfa7b84376c2324a83efe89a319c95"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">M,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">operator-</span> <span class="pre">(const</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;a,</span> <span class="pre">const</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;b)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga7a5fb6c4be0ec6cc42e71aba548d791c"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">M,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">operator*</span> <span class="pre">(const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">M</span> <span class="pre">&gt;</span> <span class="pre">&amp;v,</span> <span class="pre">const</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;m)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gacbfca4bec140b21976fde0124fb0bd64"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">M,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">M</span> <span class="pre">&gt;</span> <span class="pre">operator*</span> <span class="pre">(const</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;m,</span> <span class="pre">const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;v)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga4641b8acd8201cefc83ae7038c84a54b"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">M,</span> <span class="pre">int</span> <span class="pre">N,</span> <span class="pre">class</span> <span class="pre">=</span> <span class="pre">cuda::Require&lt;(M</span> <span class="pre">==</span> <span class="pre">N</span> <span class="pre">&amp;&amp;</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">1)&gt;&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">operator*</span> <span class="pre">(const</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">1</span> <span class="pre">&gt;</span> <span class="pre">&amp;m,</span> <span class="pre">const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;v)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gae866187ff6bfe2b7ffd92df2e8d4e158"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">M,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;</span> <span class="pre">operator*=</span> <span class="pre">(Vector&lt;</span> <span class="pre">T,</span> <span class="pre">M</span> <span class="pre">&gt;</span> <span class="pre">&amp;v,</span> <span class="pre">const</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">M</span> <span class="pre">&gt;</span> <span class="pre">&amp;m)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gab5237ee7bd1f9837d21305b088be5e4d"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">M,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;</span> <span class="pre">operator*=</span> <span class="pre">(Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;lhs,</span> <span class="pre">const</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">N,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;rhs)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gacd7517409494f4b12c1e95f48971e748"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">M,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">operator-</span> <span class="pre">(const</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;m)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga3f64f3c07d87221cfe945a6be42d5be9"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">M,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">bool</span> <span class="pre">operator==</span> <span class="pre">(const</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;a,</span> <span class="pre">const</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;b)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gaeacfae5e702055d2d2934cdb484d245d"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">M,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">bool</span> <span class="pre">operator==</span> <span class="pre">(const</span> <span class="pre">T</span> <span class="pre">&amp;a,</span> <span class="pre">const</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;b)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gaafaa76c476d8db32ded0c7eb474160c4"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">M,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">bool</span> <span class="pre">operator==</span> <span class="pre">(const</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;a,</span> <span class="pre">const</span> <span class="pre">T</span> <span class="pre">&amp;b)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga7dd2ac34921108fe21f8a1b3898f8e36"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">M,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">bool</span> <span class="pre">operator&lt;</span> <span class="pre">(const</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;a,</span> <span class="pre">const</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;b)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4I0_i_iE9as_matrix6MatrixI1T1N1MERA1N_A1M_K1T">
+<span id="_CPPv3I0_i_iE9as_matrixRA1N_A1M_K1T"></span><span id="_CPPv2I0_i_iE9as_matrixRAN_AM_K1T"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">typename</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">T</span></span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="kt"><span class="pre">int</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">N</span></span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="kt"><span class="pre">int</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">M</span></span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gac83300d56aa8ef6a5059799cef510126"></span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="n"><span class="pre">Matrix</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I0_i_iE9as_matrix6MatrixI1T1N1MERA1N_A1M_K1T" title="as_matrix::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_i_iE9as_matrix6MatrixI1T1N1MERA1N_A1M_K1T" title="as_matrix::N"><span class="n"><span class="pre">N</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_i_iE9as_matrix6MatrixI1T1N1MERA1N_A1M_K1T" title="as_matrix::M"><span class="n"><span class="pre">M</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">as_matrix</span></span></span><span class="sig-paren">(</span><span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_i_iE9as_matrix6MatrixI1T1N1MERA1N_A1M_K1T" title="as_matrix::T"><span class="n"><span class="pre">T</span></span></a><span class="w"> </span><span class="p"><span class="pre">(</span></span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">values</span></span><span class="p"><span class="pre">)</span></span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#_CPPv4I0_i_iE9as_matrix6MatrixI1T1N1MERA1N_A1M_K1T" title="as_matrix::N"><span class="n"><span class="pre">N</span></span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#_CPPv4I0_i_iE9as_matrix6MatrixI1T1N1MERA1N_A1M_K1T" title="as_matrix::M"><span class="n"><span class="pre">M</span></span></a><span class="p"><span class="pre">]</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4I0_i_iE9as_matrix6MatrixI1T1N1MERA1N_A1M_K1T" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga90e51bbb2a8b79a3919a3d1a06d6cf73"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">zeros</span> <span class="pre">()</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga76dc1d10cc06f995dff624a9f68390e6"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">M,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">zeros</span> <span class="pre">()</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga3f0edfd57fe5a46c2887b78cb8b73646"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">ones</span> <span class="pre">()</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gafdc5277fb6b5a7a85621e9cb870dbe09"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">M,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">ones</span> <span class="pre">()</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gad44ff4ea7791a2fdc107bb99c4ff7e4b"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">M,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">identity</span> <span class="pre">()</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga344ce4806f847fc4bec63a0f328169c0"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">M&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">M</span> <span class="pre">&gt;</span> <span class="pre">vander</span> <span class="pre">(const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">M</span> <span class="pre">&gt;</span> <span class="pre">&amp;v)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga2aa33648e985554b8fad51afda9dcc68"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">R&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">R,</span> <span class="pre">R</span> <span class="pre">&gt;</span> <span class="pre">compan</span> <span class="pre">(const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">R</span> <span class="pre">&gt;</span> <span class="pre">&amp;a)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga39cf53de5355ffdea179ff3408ce336d"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">M&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">M</span> <span class="pre">&gt;</span> <span class="pre">diag</span> <span class="pre">(const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">M</span> <span class="pre">&gt;</span> <span class="pre">&amp;v)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga8e721fa6436f8c0b4b89e6182424575a"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">T</span> <span class="pre">dot</span> <span class="pre">(const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;a,</span> <span class="pre">const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;b)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga89fdf516cdf7508bb361a9b0c0324074"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">reverse</span> <span class="pre">(const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;a)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gac1d2e58730b7606b7602722223d5d25a"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">M&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">M</span> <span class="pre">&gt;</span> <span class="pre">&amp;</span> <span class="pre">transp_inplace</span> <span class="pre">(Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">M</span> <span class="pre">&gt;</span> <span class="pre">&amp;m)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga0e0b7fc169f6501fe0edaec3fc3c7d6f"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">M,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">N,</span> <span class="pre">M</span> <span class="pre">&gt;</span> <span class="pre">transp</span> <span class="pre">(const</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;m)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga6f0d2da8763c05010aa1ac2dae20936c"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">N,</span> <span class="pre">1</span> <span class="pre">&gt;</span> <span class="pre">transp</span> <span class="pre">(const</span> <span class="pre">Vector&lt;</span> <span class="pre">T,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;v)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gae4738fa852f211f9b524bcd1ffbb3abe"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">M,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">flip_rows</span> <span class="pre">(const</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;m)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga45c5d2db1b2ef2f3a7e0bfa65378d17c"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">M,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">flip_cols</span> <span class="pre">(const</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;m)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga09e28e1a38b415910a1406cf82d8933c"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">int</span> <span class="pre">M,</span> <span class="pre">int</span> <span class="pre">N&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">flip</span> <span class="pre">(const</span> <span class="pre">Matrix&lt;</span> <span class="pre">T,</span> <span class="pre">M,</span> <span class="pre">N</span> <span class="pre">&gt;</span> <span class="pre">&amp;m)</span></span></dt>
+<dd></dd></dl>
+
+</div>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-variables">Variables</p>
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv46m_data">
+<span id="_CPPv36m_data"></span><span id="_CPPv26m_data"></span><span id="m_data__TA"></span><span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gadb762ec185e8552427a3f4db9fad5b72"></span><span class="n"><span class="pre">T</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">m_data</span></span></span><span class="p"><span class="pre">[</span></span><span class="n"><span class="pre">N</span></span><span class="p"><span class="pre">]</span></span><a class="headerlink" href="#_CPPv46m_data" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1ga0c5f5c6c4b00be016bd3b1d77a8fca98"></span><span class="n"><span class="pre">Vector</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">T</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="n"><span class="pre">N</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">m_data</span></span></span><span class="p"><span class="pre">[</span></span><span class="n"><span class="pre">M</span></span><span class="p"><span class="pre">]</span></span><br /></dt>
+<dd></dd></dl>
+
+</div>
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4I0_iEN4nvcv4cuda4math6VectorE">
+<span id="_CPPv3I0_iEN4nvcv4cuda4math6VectorE"></span><span id="_CPPv2I0_iEN4nvcv4cuda4math6VectorE"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">T</span></span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="kt"><span class="pre">int</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">N</span></span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="classnvcv_1_1cuda_1_1math_1_1Vector"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Vector</span></span></span><a class="headerlink" href="#_CPPv4I0_iEN4nvcv4cuda4math6VectorE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;LinAlg.hpp&gt;</em></div>
+<p><a class="reference internal" href="#classnvcv_1_1cuda_1_1math_1_1Vector"><span class="std std-ref">Vector</span></a> class to represent small vectors.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Template Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>T</strong> – <a class="reference internal" href="#classnvcv_1_1cuda_1_1math_1_1Vector"><span class="std std-ref">Vector</span></a> value type. </p></li>
+<li><p><strong>N</strong> – Number of elements. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4I0_i_iEN4nvcv4cuda4math6MatrixE">
+<span id="_CPPv3I0_i_iEN4nvcv4cuda4math6MatrixE"></span><span id="_CPPv2I0_i_iEN4nvcv4cuda4math6MatrixE"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">T</span></span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="kt"><span class="pre">int</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">M</span></span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="kt"><span class="pre">int</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">N</span></span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__COLORSPEC.html#_CPPv4I0_i_iEN4nvcv4cuda4math6MatrixE" title="nvcv::cuda::math::Matrix::M"><span class="n"><span class="pre">M</span></span></a><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="classnvcv_1_1cuda_1_1math_1_1Matrix"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Matrix</span></span></span><a class="headerlink" href="#_CPPv4I0_i_iEN4nvcv4cuda4math6MatrixE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;LinAlg.hpp&gt;</em></div>
+<p><a class="reference internal" href="#classnvcv_1_1cuda_1_1math_1_1Matrix"><span class="std std-ref">Matrix</span></a> class to represent small matrices.</p>
+<p>It uses the <a class="reference internal" href="#classnvcv_1_1cuda_1_1math_1_1Vector"><span class="std std-ref">Vector</span></a> class to stores each row, storing elements in row-major order, i.e. it has M row vectors where each vector has N elements.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Template Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>T</strong> – <a class="reference internal" href="#classnvcv_1_1cuda_1_1math_1_1Matrix"><span class="std std-ref">Matrix</span></a> value type. </p></li>
+<li><p><strong>M</strong> – Number of rows. </p></li>
+<li><p><strong>N</strong> – Number of columns. Default is M (a square matrix). </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp type">
+<dt class="sig sig-object cpp" id="_CPPv4N4nvcv4cuda4math6detailE">
+<span id="_CPPv3N4nvcv4cuda4math6detailE"></span><span id="_CPPv2N4nvcv4cuda4math6detailE"></span><span id="nvcv::cuda::math::detail"></span><span class="target" id="namespacenvcv_1_1cuda_1_1math_1_1detail"></span><span class="k"><span class="pre">namespace</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">detail</span></span></span><a class="headerlink" href="#_CPPv4N4nvcv4cuda4math6detailE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-functions">Functions</p>
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__LINALG_1gaa43c22e54cc163f14af8dfe331ba8db4"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T&gt;</span> <span class="pre">constexpr</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">void</span> <span class="pre">swap</span> <span class="pre">(T</span> <span class="pre">&amp;a,</span> <span class="pre">T</span> <span class="pre">&amp;b)</span></span></dt>
+<dd></dd></dl>
+
+</div>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="group__NVCV__CPP__CUDATOOLS__INTERPOLATIONWRAP.html" class="btn btn-neutral float-left" title="InterpolationWrap classes" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="group__NVCV__CPP__CUDATOOLS__MATHOPERATORS.html" class="btn btn-neutral float-right" title="Math operators" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022-2024, NVIDIA..
+      <span class="lastupdated">Last updated on Jun 28, 2024.
+      </span></p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(false);
+      });
+  </script> 
+
+</body>
+</html>

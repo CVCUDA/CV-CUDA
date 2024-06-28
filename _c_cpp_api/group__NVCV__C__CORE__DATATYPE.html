@@ -1,0 +1,1080 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Data types &mdash; CV-CUDA Beta documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=19f00094" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=76b435a8" />
+
+  
+    <link rel="shortcut icon" href="../_static/nv_icon.png"/>
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../_static/jquery.js?v=5d32c60e"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js?v=bd46b8a5"></script>
+        <script src="../_static/doctools.js?v=888ff710"></script>
+        <script src="../_static/sphinx_highlight.js?v=4825356b"></script>
+        <script src="../_static/pk_scripts.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Image Formats" href="group__NVCV__C__CORE__IMAGETYPE.html" />
+    <link rel="prev" title="Data Layout" href="group__NVCV__C__CORE__DATALAYOUT.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #000000" >
+
+          
+          
+          <a href="../index.html">
+            
+              <img src="../_static/nv_logo.png" class="logo" alt="Logo"/>
+          </a>
+              <div class="version">
+                Beta
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Beginner's Guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#pre-requisites">Pre-requisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#setup">Setup</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started.html">Getting Started</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../prerequisites.html">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../samples.html">Samples</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../samples/cpp_samples.html">C++</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../samples/cpp_samples/cropresize.html">Crop and Resize</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../samples/python_samples.html">Python</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/classification.html">Classification</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/segmentation.html">Semantic Segmentation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/segmentation_triton.html">Semantic Segmentation using Triton</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/object_detection.html">Object Detection</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../modules/c_modules.html">C Modules</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../modules/c_core.html">Core</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__COLORSPEC.html">Color Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__DATALAYOUT.html">Data Layout</a></li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">Data types</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__IMAGETYPE.html">Image Formats</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/c_utils.html">Utilities</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__UTIL__STATUS.html">Status Codes</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/c_algos.html">Algorithms</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ADAPTIVETHRESHOLD.html">Adaptive Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__AVERAGEBLUR.html">Average Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BILATERAL__FILTER.html">Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BRIGHTNESS__CONTRAST.html">Brightness Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CENTER__CROP.html">Center Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CHANNEL__REORDER.html">Channel Reorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COLOR__TWIST.html">Color Twist</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COMPOSITE.html">Composite</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONV2D.html">2D Convolution</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONVERT__TO.html">Convert To</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COPYMAKEBORDER.html">Copy Make Border</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAMMA__CONTRAST.html">Gamma Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN.html">Gaussian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN__NOISE.html">GaussianNoise</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__HQ__RESIZE.html">HQ Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__INPAINT.html">Inpaint</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__JOINT__BILATERAL__FILTER.html">Joint Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LABEL.html">Label</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LAPLACIAN.html">Laplacian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MEDIAN__BLUR.html">Median Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MINMAXLOC.html">MinMaxLoc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MORPHOLOGY.html">Morphology</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NON__MAXIMUM__SUPPRESSION.html">Non-Maximum Suppression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NORMALIZE.html">Normalize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PADANDSTACK.html">Pad and Stack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PAIRWISE__MATCHER.html">Pairwise Matcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PILLOW__RESIZE.html">Pillow Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RANDOMRESIZEDCROP.html">Random Resized Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REFORMAT.html">Reformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REMAP.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RESIZE.html">Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ROTATE.html">Rotate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__SIFT.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__THRESHOLD.html">Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__AFFINE.html">Warp Affine</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__PERSPECTIVE.html">Warp Perspective</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____ADV__CVT__COLOR.html">Adv Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BND__BOX.html">BndBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BOX__BLUR.html">BoxBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM.html">Histogram</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM__EQ.html">Histogram Eq</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____MIN__AREA__RECT.html">Min Area Rect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____O__S__D.html">OSD</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____RESIZE__CROP.html">Resize Crop Convert</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____STACK.html">Stack</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../modules/cpp_modules.html">C++ Modules</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_core.html">Core</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__COLORSPEC.html">Color Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html">Data Layout</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__DATATYPE.html">Data types</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__IMAGETYPE.html">Image Formats</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__SIZE.html">Size Operator</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_utils.html">Utilities</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__UTIL__EXCEPTION.html">Exception</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__UTIL__STATUS.html">Status Codes</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_algos.html">Algorithms</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ADAPTIVETHRESHOLD.html">Adaptive Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__AVERAGEBLUR.html">Average Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BILATERAL__FILTER.html">Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BRIGHTNESS__CONTRAST.html">Brightness Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CENTER__CROP.html">Center Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CHANNEL__REORDER.html">Channel Reorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COLOR__TWIST.html">Color Twist</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COMPOSITE.html">Composite</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONV2D.html">2D Convolution</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONVERT__TO.html">Convert To</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COPYMAKEBORDER.html">Copy Make Border</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAMMA__CONTRAST.html">Gamma Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN.html">Gaussian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN__NOISE.html">GaussianNoise</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__HQ__RESIZE.html">HQ Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__INPAINT.html">Inpaint</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__JOINT__BILATERAL__FILTER.html">Joint Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LABEL.html">Label</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LAPLACIAN.html">Laplacian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MEDIAN__BLUR.html">Median Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MINMAXLOC.html">MinMaxLoc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MORPHOLOGY.html">Morphology</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NON__MAXIMUM__SUPPRESSION.html">Non-Maximum Suppression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NORMALIZE.html">Normalize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PADANDSTACK.html">Pad and Stack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PAIRWISE__MATCHER.html">Pairwise Matcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PILLOW__RESIZE.html">Pillow Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RANDOMRESIZEDCROP.html">Random Resized Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REFORMAT.html">Reformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REMAP.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RESIZE.html">Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ROTATE.html">Rotate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__SIFT.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__THRESHOLD.html">Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__AFFINE.html">Warp Affine</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__PERSPECTIVE.html">Warp Perspective</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____ADV__CVT__COLOR.html">Adv Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BND__BOX.html">BndBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BOX__BLUR.html">BoxBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM.html">Histogram</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM__EQ.html">Histogram Eq</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____MIN__AREA__RECT.html">Min Area Rect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____O__S__D.html">OSD</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____RESIZE__CROP.html">Resize Crop Convert</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____STACK.html">Stack</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_cudatools.html">CUDA Tools</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__ATOMICS.html">Atomic operations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__BORDER.html">Border functions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__BORDERVARSHAPEWRAP.html">BorderVarShapeWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__BORDERWRAP.html">BorderWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__DROPCAST.html">Drop Cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__FULLTENSORWRAP.html">FullTensorWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__IMAGEWRAP.html">Image Wrapper classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__INTERPOLATION.html">Interpolation functions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__INTERPOLATIONVARSHAPEWRAP.html">InterpolationVarShapeWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__INTERPOLATIONWRAP.html">InterpolationWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__LINALG.html">Linear algebra</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHOPERATORS.html">Math operators</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHWRAPPERS.html">Math wrappers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__RANGECAST.html">Range cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__SATURATECAST.html">Saturate cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__STATICCAST.html">Static Cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORBATCHWRAP.html">TensorBatchWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORBATCHWRAPS.html">TensorBatchWrap shortcuts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORWRAP.html">TensorWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORWRAPS.html">TensorWrap shortcuts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TYPETRAITS.html">Type Traits</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../modules/python_modules.html">Python Modules</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../modules/python_core.html">Core</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/cache.html">Cache</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/colorspec.html">Color Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/format.html">Image Formats</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/recti.html">Rect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/image.html">Image</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/imagebatch.html">ImageBatchVarShape</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/tensor.html">Tensor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/tensorbatch.html">TensorBatchVarShape</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/python_algos.html">Algorithms</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_adaptivethreshold.html">AdaptiveThreshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_advcvtcolor.html">AdvCvtColor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_averageblur.html">AverageBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_bilateralfilter.html">BilateralFilter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_bndbox.html">BndBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_boxblur.html">BoxBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_brightnesscontrast.html">BrightnessContrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_centercrop.html">CenterCrop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_channelreorder.html">ChannelReorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_colortwist.html">ColorTwist</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_composite.html">Composite</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_conv2d.html">Conv2D</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_convertto.html">ConvertTo</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_copymakeborder.html">CopyMakeBorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_cropflipnormalizereformat.html">CropFlipNormalizeReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_customcrop.html">CustomCrop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_cvtcolor.html">CvtColor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_erase.html">Erase</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_findhomography.html">FindHomography</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_flip.html">Flip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_gammacontrast.html">GammaContrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_gaussian.html">Gaussian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_gaussiannoise.html">GaussianNoise</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_histogram.html">Histogram</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_histogrameq.html">HistogramEq</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_hqresize.html">HQResize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_inpaint.html">Inpaint</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_jointbilateralfilter.html">JointBilateralFilter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_label.html">Label</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_laplacian.html">Laplacian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_medianblur.html">MedianBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_minarearect.html">MinAreaRect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_minmaxloc.html">MinMaxLoc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_morphology.html">Morphology</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_nonmaximumsuppression.html">NonMaximumSuppression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_normalize.html">Normalize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_osd.html">OSD</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_padandstack.html">PadAndStack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_pairwisematcher.html">PairwiseMatcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_pillowresize.html">PillowResize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_randomresizedcrop.html">RandomResizedCrop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_reformat.html">Reformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_remap.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_resize.html">Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_resizecropconvertreformat.html">ResizeCropConvertReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_rotate.html">Rotate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_sift.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_stack.html">Stack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_threshold.html">Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_warpaffine.html">WarpAffine</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_warpperspective.html">WarpPerspective</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_adaptivethresholdtype.html">AdaptiveThresholdType</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_arrow.html">Arrow</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_blurboxi.html">BlurBoxI</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_bndboxi.html">BndBoxI</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_border.html">Border</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_channelmanip.html">ChannelManip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_circle.html">Circle</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_clockformat.html">ClockFormat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_colorconversion.html">ColorConversion</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_connectivitytype.html">ConnectivityType</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_interp.html">Interp</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_label.html">LABEL</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_line.html">Line</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_matcher.html">Matcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_morphologytype.html">MorphologyType</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_norm.html">Norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_point.html">Point</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_remap.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_rotatedbox.html">RotatedBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_sift.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_thresholdtype.html">ThresholdType</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Release Notes</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.9.0-beta.html">v0.9.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.8.0-beta.html">v0.8.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.7.0-beta.html">v0.7.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.6.0-beta.html">v0.6.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.5.0-beta.html">v0.5.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.4.0-beta.html">v0.4.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.3.1-beta.html">v0.3.1-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#bug-fixes">Bug Fixes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#known-issues">Known Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.3.0-beta.html">v0.3.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html">v0.2.1-alpha</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#general">General</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#new-operators">New Operators</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#improved-testing">Improved Testing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#bug-fixes">Bug Fixes</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html">v0.2.0-alpha</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html">v0.1.0-prealpha</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#known-issues">Known Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#license">License</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #000000" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">CV-CUDA</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../modules/c_modules.html">C API</a></li>
+          <li class="breadcrumb-item"><a href="../modules/c_core.html">Core</a></li>
+      <li class="breadcrumb-item active">Data types</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/_c_cpp_api/group__NVCV__C__CORE__DATATYPE.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="data-types">
+<h1>Data types<a class="headerlink" href="#data-types" title="Permalink to this heading"></a></h1>
+<dl>
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE"></span><em><span class="pre">group</span></em> <span class="sig-name descname"><span class="pre">NVCV_C_CORE_DATATYPE</span></span></dt>
+<dd><p>Pre-defined data types. Data types defines the geometry of value elements, i.e., pixels in a image plane without taking into account what the value represents. For example, a <a class="reference internal" href="group__NVCV__C__CORE__IMAGETYPE.html#group__NVCV__C__CORE__IMAGETYPE_1ga5f510db09cb50ac025ce03fb674dfcf1"><span class="std std-ref">NVCV_IMAGE_FORMAT_NV12</span></a> is composed of 2 planes, each one with the following data types:<ul class="simple">
+<li><p><a class="reference internal" href="#group__NVCV__C__CORE__DATATYPE_1ga147493288f20d9e2f74695b85311aecd"><span class="std std-ref">NVCV_DATA_TYPE_U8</span></a> representing pixels as 8-bit unsigned values.</p></li>
+<li><p><a class="reference internal" href="#group__NVCV__C__CORE__DATATYPE_1ga421c23b4b7c829d686ede9e4358f5fb1"><span class="std std-ref">NVCV_DATA_TYPE_2U8</span></a> representing pixels as two interleaved 32-bit floating-point values. </p></li>
+</ul>
+</p>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-defines">Defines</p>
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_NONE">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga66813530e1a4df5c1fffe9f4ac18e3d1"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_NONE</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_NONE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Denotes a special image format that doesn’t represent any particular type (like void). </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_U8">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga147493288f20d9e2f74695b85311aecd"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_U8</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_U8" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One channel of unsigned 8-bit value. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_2U8">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga421c23b4b7c829d686ede9e4358f5fb1"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_2U8</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_2U8" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Two interleaved channels of unsigned 8-bit values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_3U8">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga4f7174405018bb7755e3bd378c89b34c"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_3U8</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_3U8" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Three interleaved channels of unsigned 8-bit values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_4U8">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga440530dddbe5f3f4331538a6bc3cdb47"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_4U8</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_4U8" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Four interleaved channels of unsigned 8-bit values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_S8">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1gae3ae1f1c6e7269ba1fad518186653849"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_S8</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_S8" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One channel of signed 8-bit value. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_2S8">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga2b9d6d0042fda8327f7950e5f796cadf"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_2S8</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_2S8" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Two interleaved channels of signed 8-bit values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_3S8">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1gacbb6edcde5a05553d2d2430adf58ed04"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_3S8</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_3S8" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Three interleaved channels of signed 8-bit values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_4S8">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1gaf8322265b7b1db8e6daa1c25cfaf4cbd"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_4S8</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_4S8" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Four interleaved channels of signed 8-bit values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_U16">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga9194577ac91090a014257121a502f934"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_U16</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_U16" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One channel of unsigned 16-bit value. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_2U16">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga9af7848f41c21cb556a64f0c924aec32"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_2U16</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_2U16" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Two interleaved channels of unsigned 16-bit values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_3U16">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1gaaa6b09778f5de8908a91a6fe630aad8a"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_3U16</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_3U16" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Three interleaved channels of unsigned 16-bit values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_4U16">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga6ca0a1fa18298173b1274a12ccf5e61a"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_4U16</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_4U16" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Four interleaved channels of unsigned 16-bit values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_S16">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga7cd4af8dcd2f64460393adee469fe6b7"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_S16</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_S16" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One channel of signed 16-bit value. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_2S16">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga3113138f14745017763a19e74dfcc2f1"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_2S16</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_2S16" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Two interleaved channels of signed 16-bit values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_3S16">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga06355d2936532be4ec7274151fb604ba"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_3S16</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_3S16" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Three interleaved channels of signed 16-bit values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_4S16">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga939c06ae9b0b2bf6627bde925e56bb2f"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_4S16</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_4S16" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Four interleaved channels of signed 16-bit values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_U32">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga44e338e5729c976a3f3c0a350381282f"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_U32</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_U32" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One channel of unsigned 32-bit value. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_2U32">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga8b787acceaab394ca792cf3164555ae7"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_2U32</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_2U32" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Two interleaved channels of unsigned 32-bit values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_3U32">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1gaa5de1e5cf8c07172918e1ae982ec9054"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_3U32</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_3U32" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Three interleaved channels of unsigned 32-bit values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_4U32">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga1e21fc2afad4f617ce24d5af06c31675"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_4U32</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_4U32" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Four interleaved channels of unsigned 32-bit values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_S32">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga72f1fca936fea75122c0579368006eec"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_S32</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_S32" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One channel of signed 32-bit value. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_2S32">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga07708b0fdd59b61f763dee3c560b4f3d"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_2S32</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_2S32" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Two interleaved channels of signed 32-bit values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_3S32">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga728e95f5136c4043a4232b8c4e8abe02"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_3S32</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_3S32" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Three interleaved channels of signed 32-bit values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_4S32">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga6a32805d194ec73205d50be8eb0341c1"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_4S32</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_4S32" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Four interleaved channels of signed 32-bit values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_F16">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1gafd88ad5511d517198b21acd52499544c"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_F16</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_F16" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One channel of 16-bit IEEE 754 floating-point value. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_2F16">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga3443328ac75f28db8e42fe013f4c1a1f"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_2F16</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_2F16" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Two interleaved channels of 16-bit IEEE 754 floating-point values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_3F16">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga3903ec37020805d20ba13793200a26c7"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_3F16</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_3F16" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Three interleaved channels of 16-bit IEEE 754 floating-point values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_4F16">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1gae718e0d8c111c79ace517245082df5d8"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_4F16</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_4F16" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Four interleaved channels of 16-bit IEEE 754 floating-point values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_F32">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga683b6af6cef8c8af93113c485679c1a4"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_F32</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_F32" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One channel of 32-bit IEEE 754 floating-point value. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_2F32">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga2a5a2446bf59c2ba2c17ee3199767b31"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_2F32</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_2F32" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Two interleaved channels of 32-bit IEEE 754 floating-point values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_3F32">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1gad935c7f81436a0b2f72be00df233d853"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_3F32</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_3F32" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Three interleaved channels of 32-bit IEEE 754 floating-point values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_4F32">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga139b54d9082afb98c2bb050e7c1cd82e"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_4F32</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_4F32" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Four interleaved channels of 32-bit IEEE 754 floating-point values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_U64">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1gae3cb2306ce5e9c2d1e06c42c1a804988"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_U64</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_U64" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One channel of unsigned 64-bit value. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_2U64">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1gae848be89957fbdf0fe318240bb41d626"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_2U64</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_2U64" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Two interleaved channels of unsigned 64-bit values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_3U64">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga8bc270e7ae01bee400f7047ab3b5184f"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_3U64</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_3U64" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Three interleaved channels of unsigned 64-bit values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_4U64">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga99d0eff3215b6277734d0344d2b4869d"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_4U64</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_4U64" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Four interleaved channels of unsigned 64-bit values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_S64">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga40aa779a89164c8bb7f6d7b78e33e5d0"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_S64</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_S64" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One channel of signed 64-bit value. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_2S64">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1gaf1063d8d174a9584964f68658b89a734"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_2S64</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_2S64" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Two interleaved channels of signed 64-bit values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_3S64">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1gac6926a3255f54bb6ad004ba8a28ab854"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_3S64</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_3S64" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Three interleaved channels of signed 64-bit values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_4S64">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1gac0635d3470fb413e778124e5fe37e06d"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_4S64</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_4S64" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Four interleaved channels of signed 64-bit values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_F64">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga55c027eb1d84c52914b2b7809a960ff0"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_F64</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_F64" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One channel of 64-bit IEEE 754 floating-point value. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_2F64">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga3f3a78530b1419a9d2457a733c8d600a"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_2F64</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_2F64" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Two interleaved channels of 64-bit IEEE 754 floating-point values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_3F64">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1gaf7e7d3d3cdb493b41deff9bb1db5c0c7"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_3F64</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_3F64" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Three interleaved channels of 64-bit IEEE 754 floating-point values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_4F64">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga0baf3fb0d82527de7d1489e129e107e6"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_4F64</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_4F64" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Four interleaved channels of 64-bit IEEE 754 floating-point values. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_C64">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1gac279dbe67bcb94548635426ff877e426"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_C64</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_C64" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One channel of 64-bit IEEE 754 complex floating-point value (2 32-bit floats). </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_2C64">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1gad6ba71e4e459c09d98dd0b3fc1189ebf"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_2C64</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_2C64" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Two interleaved channels of 64-bit IEEE 754 complex floating-point values (4 32-bit floats). </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_3C64">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1gabaf09d8a2b301f013bc2df5b2a0dc31d"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_3C64</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_3C64" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Three interleaved channels of 64-bit IEEE 754 complex floating-point values (6 32-bit floats). </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_4C64">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga007307a040ba78c02628946382aeefac"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_4C64</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_4C64" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Four interleaved channels of 64-bit IEEE 754 complex floating-point values (8 32-bit floats). </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_C128">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga610953d045ea26f66aa283b1543c5ad5"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_C128</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_C128" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One channel of 128-bit IEEE 754 complex floating-point value (2 64-bit floats). </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_DATA_TYPE_2C128">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1gaf929c6c57b854868e67c93c9d8054666"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_DATA_TYPE_2C128</span></span></span><a class="headerlink" href="#c.NVCV_DATA_TYPE_2C128" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Two interleaved channels of 128-bit IEEE 754 complex floating-point values (4 64-bit floats). </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_MAKE_DATA_TYPE">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1gaaa41629fb7477e5fa3c86685f475bed4"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_MAKE_DATA_TYPE</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">dataKind</span></span>, <span class="n"><span class="pre">packing</span></span><span class="sig-paren">)</span><a class="headerlink" href="#c.NVCV_MAKE_DATA_TYPE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Creates a user-defined data type constant.</p>
+<p>Example to create a block-linear format two interleaved 32-bit floating point channels: <div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="n">NVCVDataType</span><span class="w"> </span><span class="n">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">NVCV_MAKE_DATA_TYPE</span><span class="p">(</span><span class="n">NVCV_DATA_KIND_FLOAT</span><span class="p">,</span><span class="w"> </span><span class="n">NVCV_PACKING_X32_Y32</span><span class="p">);</span>
+</pre></div>
+</div>
+</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dataKind</strong> – <strong>[in]</strong> <a class="reference internal" href="group__NVCV__C__CORE__DATALAYOUT.html#group__NVCV__C__CORE__DATALAYOUT_1ga696bcdf0c9bdfa1b064dfdad0f9e6740"><span class="std std-ref">NVCVDataKind</span></a> to be used. </p></li>
+<li><p><strong>packing</strong> – <strong>[in]</strong> Format packing used, which also defines the number of channels.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The user-defined data type. </p>
+</dd>
+</dl>
+</dd></dl>
+
+</div>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-typedefs">Typedefs</p>
+<dl class="cpp type">
+<dt class="sig sig-object cpp" id="_CPPv412NVCVDataType">
+<span id="_CPPv312NVCVDataType"></span><span id="_CPPv212NVCVDataType"></span><span id="NVCVDataType"></span><span class="target" id="group__NVCV__C__CORE__DATATYPE_1gab7d8dd5e0d686295410883ab5d61d649"></span><span class="k"><span class="pre">typedef</span></span><span class="w"> </span><span class="n"><span class="pre">uint64_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCVDataType</span></span></span><a class="headerlink" href="#_CPPv412NVCVDataType" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+</div>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-functions">Functions</p>
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga5324fe9a20e4c6180334552a473fefaa"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">NVCVStatus</span> <span class="pre">nvcvMakeDataType</span> <span class="pre">(NVCVDataType</span> <span class="pre">*outPixType,</span> <span class="pre">NVCVDataKind</span> <span class="pre">dataKind,</span> <span class="pre">NVCVPacking</span> <span class="pre">packing)</span></span></dt>
+<dd><p>Creates a user-defined data type. When the pre-defined data types aren’t enough, user-defined formats can be created.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>outPixType</strong> – <strong>[out]</strong> The user-defined data type.<ul>
+<li><p>Cannot be NULL.</p></li>
+</ul>
+</p></li>
+<li><p><strong>dataKind</strong> – <strong>[in]</strong> <a class="reference internal" href="group__NVCV__C__CORE__DATALAYOUT.html#group__NVCV__C__CORE__DATALAYOUT_1ga696bcdf0c9bdfa1b064dfdad0f9e6740"><span class="std std-ref">NVCVDataKind</span></a> to be used. </p></li>
+<li><p><strong>packing</strong> – <strong>[in]</strong> Format packing used, which also defines the number of channels.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return values<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NVCV_ERROR_INVALID_ARGUMENT</strong> – Some argument is outside its valid range. </p></li>
+<li><p><strong>NVCV_SUCCESS</strong> – Operation executed successfully. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga63002d9cc241a265bb470067bc33da3e"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">NVCVStatus</span> <span class="pre">nvcvDataTypeGetPacking</span> <span class="pre">(NVCVDataType</span> <span class="pre">type,</span> <span class="pre">NVCVPacking</span> <span class="pre">*outPacking)</span></span></dt>
+<dd><p>Get the packing of a data type.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>type</strong> – <strong>[in]</strong> Data type to be queried.</p></li>
+<li><p><strong>outPacking</strong> – <strong>[out]</strong> The format’s packing.<ul>
+<li><p>Cannot be NULL.</p></li>
+</ul>
+</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return values<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NVCV_ERROR_INVALID_ARGUMENT</strong> – Some argument is outside its valid range. </p></li>
+<li><p><strong>NVCV_SUCCESS</strong> – Operation executed successfully. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1gabd5a7dda38e5348a702a1e8108e22851"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">NVCVStatus</span> <span class="pre">nvcvDataTypeGetBitsPerPixel</span> <span class="pre">(NVCVDataType</span> <span class="pre">type,</span> <span class="pre">int32_t</span> <span class="pre">*outBPP)</span></span></dt>
+<dd><p>Get the number of bits per pixel of a data type.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>type</strong> – <strong>[in]</strong> Data type to be queried.</p></li>
+<li><p><strong>outBPP</strong> – <strong>[out]</strong> The number of bits per pixel.<ul>
+<li><p>Cannot be NULL.</p></li>
+</ul>
+</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return values<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NVCV_ERROR_INVALID_ARGUMENT</strong> – Some argument is outside its valid range. </p></li>
+<li><p><strong>NVCV_SUCCESS</strong> – Operation executed successfully. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga0ef7f2f7c44e6b21d53209ef7253d864"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">NVCVStatus</span> <span class="pre">nvcvDataTypeGetBitsPerChannel</span> <span class="pre">(NVCVDataType</span> <span class="pre">type,</span> <span class="pre">int32_t</span> <span class="pre">*outBits)</span></span></dt>
+<dd><p>Get the number of bits per channel of a data type.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>type</strong> – <strong>[in]</strong> Data type to be queried.</p></li>
+<li><p><strong>outBits</strong> – <strong>[out]</strong> Pointer to an int32_t array with 4 elements where output will be stored.<ul>
+<li><p>Cannot be NULL.</p></li>
+</ul>
+</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return values<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NVCV_ERROR_INVALID_ARGUMENT</strong> – Some argument is outside its valid range. </p></li>
+<li><p><strong>NVCV_SUCCESS</strong> – Operation executed successfully. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga8f2d437ddc45e021f9a0c671dc3ec484"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">NVCVStatus</span> <span class="pre">nvcvDataTypeGetAlignment</span> <span class="pre">(NVCVDataType</span> <span class="pre">type,</span> <span class="pre">int32_t</span> <span class="pre">*outAlignment)</span></span></dt>
+<dd><p>Get the required address alignment for each data element.</p>
+<p>The returned alignment is guaranteed to be a power-of-two.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>type</strong> – <strong>[in]</strong> Data type to be queried.</p></li>
+<li><p><strong>outAlignment</strong> – <strong>[out]</strong> Pointer to an int32_t where the required alignment is to be stored.<ul>
+<li><p>Cannot be NULL.</p></li>
+</ul>
+</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return values<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NVCV_ERROR_INVALID_ARGUMENT</strong> – Some argument is outside its valid range. </p></li>
+<li><p><strong>NVCV_SUCCESS</strong> – Operation executed successfully. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga48d3bcc37264345dee3534a463572589"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">NVCVStatus</span> <span class="pre">nvcvDataTypeGetDataKind</span> <span class="pre">(NVCVDataType</span> <span class="pre">type,</span> <span class="pre">NVCVDataKind</span> <span class="pre">*outDataKind)</span></span></dt>
+<dd><p>Get the data type of a data type.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>type</strong> – <strong>[in]</strong> Data type to be queried.</p></li>
+<li><p><strong>outDataKind</strong> – <strong>[out]</strong> The data type of the data type.<ul>
+<li><p>Cannot be NULL.</p></li>
+</ul>
+</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return values<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NVCV_ERROR_INVALID_ARGUMENT</strong> – Some argument is outside its valid range. </p></li>
+<li><p><strong>NVCV_SUCCESS</strong> – Operation executed successfully. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1gacb2f7a3cd7455e2d1c3b4de7b5afdca8"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">NVCVStatus</span> <span class="pre">nvcvDataTypeGetNumChannels</span> <span class="pre">(NVCVDataType</span> <span class="pre">type,</span> <span class="pre">int32_t</span> <span class="pre">*outNumChannels)</span></span></dt>
+<dd><p>Get the number of channels of a data type.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>type</strong> – <strong>[in]</strong> Data type to be queried.</p></li>
+<li><p><strong>outNumChannels</strong> – <strong>[out]</strong> The number of channels of the data type.<ul>
+<li><p>Must not be NULL.</p></li>
+</ul>
+</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return values<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NVCV_ERROR_INVALID_ARGUMENT</strong> – Some argument is outside its valid range. </p></li>
+<li><p><strong>NVCV_SUCCESS</strong> – Operation executed successfully. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga0d4612ecd79614ba9829be37ee8f5276"></span><span class="sig-name descname"><span class="pre">const</span> <span class="pre">NVCV_PUBLIC</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvDataTypeGetName</span> <span class="pre">(NVCVDataType</span> <span class="pre">type)</span></span></dt>
+<dd><p>Returns a string representation of the data type.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>type</strong> – <strong>[in]</strong> Data type to be returned.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The string representation of the data type. Returned string is valid until next call of this function from the same calling thread. Returned pointer must not be freed. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga396db01eee52950be6a22d07905d0236"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">NVCVStatus</span> <span class="pre">nvcvDataTypeGetChannelType</span> <span class="pre">(NVCVDataType</span> <span class="pre">type,</span> <span class="pre">int32_t</span> <span class="pre">channel,</span> <span class="pre">NVCVDataType</span> <span class="pre">*outChannelTpe)</span></span></dt>
+<dd><p>Get the data type for a given channel index.</p>
+<p>It returns a single-channel data type that corresponds to the given channel of the input data type.</p>
+<p>For instance: The channel #2 of <a class="reference internal" href="#group__NVCV__C__CORE__DATATYPE_1ga4f7174405018bb7755e3bd378c89b34c"><span class="std std-ref">NVCV_DATA_TYPE_3U8</span></a> is <a class="reference internal" href="#group__NVCV__C__CORE__DATATYPE_1ga147493288f20d9e2f74695b85311aecd"><span class="std std-ref">NVCV_DATA_TYPE_U8</span></a>.</p>
+<p><ul class="simple">
+<li><p>The requested channel must have a type whose packing is one of the following:<ul>
+<li><p><a class="reference internal" href="group__NVCV__C__CORE__DATALAYOUT.html#group__NVCV__C__CORE__DATALAYOUT_1gga5ec157e0ddcbfb0a4bf9114b4c6b6a69a93260fa108e4c395b1e23d8b15c1668f"><span class="std std-ref">NVCV_PACKING_X1</span></a></p></li>
+<li><p><a class="reference internal" href="group__NVCV__C__CORE__DATALAYOUT.html#group__NVCV__C__CORE__DATALAYOUT_1gga5ec157e0ddcbfb0a4bf9114b4c6b6a69a3de427842df0474137c3fac2957c8fd1"><span class="std std-ref">NVCV_PACKING_X2</span></a></p></li>
+<li><p><a class="reference internal" href="group__NVCV__C__CORE__DATALAYOUT.html#group__NVCV__C__CORE__DATALAYOUT_1gga5ec157e0ddcbfb0a4bf9114b4c6b6a69ae52f9ccb2987dfb36aeaaf4e23a50d89"><span class="std std-ref">NVCV_PACKING_X4</span></a></p></li>
+<li><p><a class="reference internal" href="group__NVCV__C__CORE__DATALAYOUT.html#group__NVCV__C__CORE__DATALAYOUT_1gga5ec157e0ddcbfb0a4bf9114b4c6b6a69a5f0d4cf1f62d32c8f6f1bf94dd1fecfb"><span class="std std-ref">NVCV_PACKING_X8</span></a></p></li>
+<li><p><a class="reference internal" href="group__NVCV__C__CORE__DATALAYOUT.html#group__NVCV__C__CORE__DATALAYOUT_1gga5ec157e0ddcbfb0a4bf9114b4c6b6a69ae47379422806b9542568c8c9523cdb27"><span class="std std-ref">NVCV_PACKING_X16</span></a></p></li>
+<li><p><a class="reference internal" href="group__NVCV__C__CORE__DATALAYOUT.html#group__NVCV__C__CORE__DATALAYOUT_1gga5ec157e0ddcbfb0a4bf9114b4c6b6a69af666a40d44187880aaf82ae989de7c55"><span class="std std-ref">NVCV_PACKING_X24</span></a></p></li>
+<li><p><a class="reference internal" href="group__NVCV__C__CORE__DATALAYOUT.html#group__NVCV__C__CORE__DATALAYOUT_1gga5ec157e0ddcbfb0a4bf9114b4c6b6a69ac6343bcea6650ba4d3fd8d3db20df104"><span class="std std-ref">NVCV_PACKING_X32</span></a></p></li>
+<li><p><a class="reference internal" href="group__NVCV__C__CORE__DATALAYOUT.html#group__NVCV__C__CORE__DATALAYOUT_1gga5ec157e0ddcbfb0a4bf9114b4c6b6a69aa381e12c22231e083e512e97c3703c4f"><span class="std std-ref">NVCV_PACKING_X48</span></a></p></li>
+<li><p><a class="reference internal" href="group__NVCV__C__CORE__DATALAYOUT.html#group__NVCV__C__CORE__DATALAYOUT_1gga5ec157e0ddcbfb0a4bf9114b4c6b6a69ad72528d2ba40c67b50f27fe33efd6bd2"><span class="std std-ref">NVCV_PACKING_X64</span></a></p></li>
+<li><p><a class="reference internal" href="group__NVCV__C__CORE__DATALAYOUT.html#group__NVCV__C__CORE__DATALAYOUT_1gga5ec157e0ddcbfb0a4bf9114b4c6b6a69aa5449f2d67ccf4f504624d43c23eb269"><span class="std std-ref">NVCV_PACKING_X96</span></a></p></li>
+<li><p><a class="reference internal" href="group__NVCV__C__CORE__DATALAYOUT.html#group__NVCV__C__CORE__DATALAYOUT_1gga5ec157e0ddcbfb0a4bf9114b4c6b6a69a50057b73604be4f67fb46f01e972b7ae"><span class="std std-ref">NVCV_PACKING_X128</span></a></p></li>
+<li><p><a class="reference internal" href="group__NVCV__C__CORE__DATALAYOUT.html#group__NVCV__C__CORE__DATALAYOUT_1gga5ec157e0ddcbfb0a4bf9114b4c6b6a69a45ad4e43232fe54ded6950e8a408e366"><span class="std std-ref">NVCV_PACKING_X192</span></a></p></li>
+<li><p><a class="reference internal" href="group__NVCV__C__CORE__DATALAYOUT.html#group__NVCV__C__CORE__DATALAYOUT_1gga5ec157e0ddcbfb0a4bf9114b4c6b6a69af81b964ca19d8a8fcfb158ba57a74340"><span class="std std-ref">NVCV_PACKING_X256</span></a></p></li>
+</ul>
+</p></li>
+</ul>
+</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>type</strong> – <strong>[in]</strong> Data type to be queried.</p></li>
+<li><p><strong>channel</strong> – <strong>[in]</strong> Channel whose data type is to be returned.<ul>
+<li><p>Must be between 0 and the maximum number of channels in <code class="docutils literal notranslate"><span class="pre">type</span></code>.</p></li>
+</ul>
+</p></li>
+<li><p><strong>outChannelType</strong> – <strong>[out]</strong> The data type of the given channel. The memory layout and data type are the same as <code class="docutils literal notranslate"><span class="pre">type</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return values<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NVCV_ERROR_INVALID_ARGUMENT</strong> – Some argument is outside its valid range. </p></li>
+<li><p><strong>NVCV_SUCCESS</strong> – Operation executed successfully. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga8f617ea0cb2d4bb27f5d5917bda02847"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">NVCVStatus</span> <span class="pre">nvcvDataTypeGetStrideBytes</span> <span class="pre">(NVCVDataType</span> <span class="pre">type,</span> <span class="pre">int32_t</span> <span class="pre">*pixStrideBytes)</span></span></dt>
+<dd><p>Returns the stride/size in bytes of the pixel in memory.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>type</strong> – <strong>[in]</strong> Data type to be queried.</p></li>
+<li><p><strong>pixStrideBytes</strong> – <strong>[out]</strong> The size in bytes of the pixel<ul>
+<li><p>Must not be NULL. </p></li>
+</ul>
+</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</div>
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="group__NVCV__C__CORE__DATALAYOUT.html" class="btn btn-neutral float-left" title="Data Layout" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="group__NVCV__C__CORE__IMAGETYPE.html" class="btn btn-neutral float-right" title="Image Formats" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022-2024, NVIDIA..
+      <span class="lastupdated">Last updated on Jun 28, 2024.
+      </span></p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(false);
+      });
+  </script> 
+
+</body>
+</html>

@@ -17,7 +17,7 @@
 .. _v0.7.0-beta:
 
 v0.7.0-beta
-======
+===========
 
 CV-CUDA v0.7.0 introduces performance and support enhancements, along with bug fixes and new features.
 

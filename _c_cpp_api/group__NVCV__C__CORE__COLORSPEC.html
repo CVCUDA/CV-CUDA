@@ -1,0 +1,1644 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Color Models &mdash; CV-CUDA Beta documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=19f00094" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=76b435a8" />
+
+  
+    <link rel="shortcut icon" href="../_static/nv_icon.png"/>
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../_static/jquery.js?v=5d32c60e"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js?v=bd46b8a5"></script>
+        <script src="../_static/doctools.js?v=888ff710"></script>
+        <script src="../_static/sphinx_highlight.js?v=4825356b"></script>
+        <script src="../_static/pk_scripts.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Data Layout" href="group__NVCV__C__CORE__DATALAYOUT.html" />
+    <link rel="prev" title="Core" href="../modules/c_core.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #000000" >
+
+          
+          
+          <a href="../index.html">
+            
+              <img src="../_static/nv_logo.png" class="logo" alt="Logo"/>
+          </a>
+              <div class="version">
+                Beta
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Beginner's Guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#pre-requisites">Pre-requisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#setup">Setup</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started.html">Getting Started</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../prerequisites.html">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../samples.html">Samples</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../samples/cpp_samples.html">C++</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../samples/cpp_samples/cropresize.html">Crop and Resize</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../samples/python_samples.html">Python</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/classification.html">Classification</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/segmentation.html">Semantic Segmentation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/segmentation_triton.html">Semantic Segmentation using Triton</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/object_detection.html">Object Detection</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../modules/c_modules.html">C Modules</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../modules/c_core.html">Core</a><ul class="current">
+<li class="toctree-l3 current"><a class="current reference internal" href="#">Color Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__DATALAYOUT.html">Data Layout</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__DATATYPE.html">Data types</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__IMAGETYPE.html">Image Formats</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/c_utils.html">Utilities</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__UTIL__STATUS.html">Status Codes</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/c_algos.html">Algorithms</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ADAPTIVETHRESHOLD.html">Adaptive Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__AVERAGEBLUR.html">Average Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BILATERAL__FILTER.html">Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BRIGHTNESS__CONTRAST.html">Brightness Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CENTER__CROP.html">Center Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CHANNEL__REORDER.html">Channel Reorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COLOR__TWIST.html">Color Twist</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COMPOSITE.html">Composite</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONV2D.html">2D Convolution</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONVERT__TO.html">Convert To</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COPYMAKEBORDER.html">Copy Make Border</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAMMA__CONTRAST.html">Gamma Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN.html">Gaussian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN__NOISE.html">GaussianNoise</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__HQ__RESIZE.html">HQ Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__INPAINT.html">Inpaint</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__JOINT__BILATERAL__FILTER.html">Joint Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LABEL.html">Label</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LAPLACIAN.html">Laplacian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MEDIAN__BLUR.html">Median Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MINMAXLOC.html">MinMaxLoc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MORPHOLOGY.html">Morphology</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NON__MAXIMUM__SUPPRESSION.html">Non-Maximum Suppression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NORMALIZE.html">Normalize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PADANDSTACK.html">Pad and Stack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PAIRWISE__MATCHER.html">Pairwise Matcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PILLOW__RESIZE.html">Pillow Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RANDOMRESIZEDCROP.html">Random Resized Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REFORMAT.html">Reformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REMAP.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RESIZE.html">Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ROTATE.html">Rotate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__SIFT.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__THRESHOLD.html">Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__AFFINE.html">Warp Affine</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__PERSPECTIVE.html">Warp Perspective</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____ADV__CVT__COLOR.html">Adv Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BND__BOX.html">BndBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BOX__BLUR.html">BoxBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM.html">Histogram</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM__EQ.html">Histogram Eq</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____MIN__AREA__RECT.html">Min Area Rect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____O__S__D.html">OSD</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____RESIZE__CROP.html">Resize Crop Convert</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____STACK.html">Stack</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../modules/cpp_modules.html">C++ Modules</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_core.html">Core</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__COLORSPEC.html">Color Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html">Data Layout</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__DATATYPE.html">Data types</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__IMAGETYPE.html">Image Formats</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__SIZE.html">Size Operator</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_utils.html">Utilities</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__UTIL__EXCEPTION.html">Exception</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__UTIL__STATUS.html">Status Codes</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_algos.html">Algorithms</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ADAPTIVETHRESHOLD.html">Adaptive Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__AVERAGEBLUR.html">Average Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BILATERAL__FILTER.html">Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BRIGHTNESS__CONTRAST.html">Brightness Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CENTER__CROP.html">Center Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CHANNEL__REORDER.html">Channel Reorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COLOR__TWIST.html">Color Twist</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COMPOSITE.html">Composite</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONV2D.html">2D Convolution</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONVERT__TO.html">Convert To</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COPYMAKEBORDER.html">Copy Make Border</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAMMA__CONTRAST.html">Gamma Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN.html">Gaussian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN__NOISE.html">GaussianNoise</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__HQ__RESIZE.html">HQ Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__INPAINT.html">Inpaint</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__JOINT__BILATERAL__FILTER.html">Joint Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LABEL.html">Label</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LAPLACIAN.html">Laplacian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MEDIAN__BLUR.html">Median Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MINMAXLOC.html">MinMaxLoc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MORPHOLOGY.html">Morphology</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NON__MAXIMUM__SUPPRESSION.html">Non-Maximum Suppression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NORMALIZE.html">Normalize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PADANDSTACK.html">Pad and Stack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PAIRWISE__MATCHER.html">Pairwise Matcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PILLOW__RESIZE.html">Pillow Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RANDOMRESIZEDCROP.html">Random Resized Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REFORMAT.html">Reformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REMAP.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RESIZE.html">Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ROTATE.html">Rotate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__SIFT.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__THRESHOLD.html">Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__AFFINE.html">Warp Affine</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__PERSPECTIVE.html">Warp Perspective</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____ADV__CVT__COLOR.html">Adv Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BND__BOX.html">BndBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BOX__BLUR.html">BoxBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM.html">Histogram</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM__EQ.html">Histogram Eq</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____MIN__AREA__RECT.html">Min Area Rect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____O__S__D.html">OSD</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____RESIZE__CROP.html">Resize Crop Convert</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____STACK.html">Stack</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_cudatools.html">CUDA Tools</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__ATOMICS.html">Atomic operations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__BORDER.html">Border functions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__BORDERVARSHAPEWRAP.html">BorderVarShapeWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__BORDERWRAP.html">BorderWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__DROPCAST.html">Drop Cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__FULLTENSORWRAP.html">FullTensorWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__IMAGEWRAP.html">Image Wrapper classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__INTERPOLATION.html">Interpolation functions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__INTERPOLATIONVARSHAPEWRAP.html">InterpolationVarShapeWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__INTERPOLATIONWRAP.html">InterpolationWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__LINALG.html">Linear algebra</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHOPERATORS.html">Math operators</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHWRAPPERS.html">Math wrappers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__RANGECAST.html">Range cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__SATURATECAST.html">Saturate cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__STATICCAST.html">Static Cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORBATCHWRAP.html">TensorBatchWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORBATCHWRAPS.html">TensorBatchWrap shortcuts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORWRAP.html">TensorWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORWRAPS.html">TensorWrap shortcuts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TYPETRAITS.html">Type Traits</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../modules/python_modules.html">Python Modules</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../modules/python_core.html">Core</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/cache.html">Cache</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/colorspec.html">Color Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/format.html">Image Formats</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/recti.html">Rect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/image.html">Image</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/imagebatch.html">ImageBatchVarShape</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/tensor.html">Tensor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/tensorbatch.html">TensorBatchVarShape</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/python_algos.html">Algorithms</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_adaptivethreshold.html">AdaptiveThreshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_advcvtcolor.html">AdvCvtColor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_averageblur.html">AverageBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_bilateralfilter.html">BilateralFilter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_bndbox.html">BndBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_boxblur.html">BoxBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_brightnesscontrast.html">BrightnessContrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_centercrop.html">CenterCrop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_channelreorder.html">ChannelReorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_colortwist.html">ColorTwist</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_composite.html">Composite</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_conv2d.html">Conv2D</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_convertto.html">ConvertTo</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_copymakeborder.html">CopyMakeBorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_cropflipnormalizereformat.html">CropFlipNormalizeReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_customcrop.html">CustomCrop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_cvtcolor.html">CvtColor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_erase.html">Erase</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_findhomography.html">FindHomography</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_flip.html">Flip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_gammacontrast.html">GammaContrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_gaussian.html">Gaussian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_gaussiannoise.html">GaussianNoise</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_histogram.html">Histogram</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_histogrameq.html">HistogramEq</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_hqresize.html">HQResize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_inpaint.html">Inpaint</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_jointbilateralfilter.html">JointBilateralFilter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_label.html">Label</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_laplacian.html">Laplacian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_medianblur.html">MedianBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_minarearect.html">MinAreaRect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_minmaxloc.html">MinMaxLoc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_morphology.html">Morphology</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_nonmaximumsuppression.html">NonMaximumSuppression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_normalize.html">Normalize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_osd.html">OSD</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_padandstack.html">PadAndStack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_pairwisematcher.html">PairwiseMatcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_pillowresize.html">PillowResize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_randomresizedcrop.html">RandomResizedCrop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_reformat.html">Reformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_remap.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_resize.html">Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_resizecropconvertreformat.html">ResizeCropConvertReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_rotate.html">Rotate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_sift.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_stack.html">Stack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_threshold.html">Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_warpaffine.html">WarpAffine</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_warpperspective.html">WarpPerspective</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_adaptivethresholdtype.html">AdaptiveThresholdType</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_arrow.html">Arrow</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_blurboxi.html">BlurBoxI</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_bndboxi.html">BndBoxI</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_border.html">Border</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_channelmanip.html">ChannelManip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_circle.html">Circle</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_clockformat.html">ClockFormat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_colorconversion.html">ColorConversion</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_connectivitytype.html">ConnectivityType</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_interp.html">Interp</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_label.html">LABEL</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_line.html">Line</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_matcher.html">Matcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_morphologytype.html">MorphologyType</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_norm.html">Norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_point.html">Point</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_remap.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_rotatedbox.html">RotatedBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_sift.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_thresholdtype.html">ThresholdType</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Release Notes</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.9.0-beta.html">v0.9.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.8.0-beta.html">v0.8.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.7.0-beta.html">v0.7.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.6.0-beta.html">v0.6.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.5.0-beta.html">v0.5.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.4.0-beta.html">v0.4.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.3.1-beta.html">v0.3.1-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#bug-fixes">Bug Fixes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#known-issues">Known Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.3.0-beta.html">v0.3.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html">v0.2.1-alpha</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#general">General</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#new-operators">New Operators</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#improved-testing">Improved Testing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#bug-fixes">Bug Fixes</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html">v0.2.0-alpha</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html">v0.1.0-prealpha</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#known-issues">Known Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#license">License</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #000000" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">CV-CUDA</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../modules/c_modules.html">C API</a></li>
+          <li class="breadcrumb-item"><a href="../modules/c_core.html">Core</a></li>
+      <li class="breadcrumb-item active">Color Models</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/_c_cpp_api/group__NVCV__C__CORE__COLORSPEC.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="color-models">
+<h1>Color Models<a class="headerlink" href="#color-models" title="Permalink to this heading"></a></h1>
+<dl>
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC"></span><em><span class="pre">group</span></em> <span class="sig-name descname"><span class="pre">NVCV_C_CORE_COLORSPEC</span></span></dt>
+<dd><p>Defines color models. A color model gives meaning to each channel of an image format. They are specified in a canonical XYZW ordering that can then be swizzled to the desired ordering. </p>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-defines">Defines</p>
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_MAKE_COLOR_SPEC">
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga76459db0f2c08b9bce47f7bc63974ab6"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_MAKE_COLOR_SPEC</span></span></span><a class="headerlink" href="#c.NVCV_MAKE_COLOR_SPEC" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Creates a user-defined color spec constant.</p>
+<p>Example: <div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span class="n">NVCVColorSpec</span><span class="w"> </span><span class="n">cspec</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">NVCV_MAKE_COLOR_SPEC</span><span class="p">(</span><span class="n">NVCV_COLOR_SPACE_BT709</span><span class="p">,</span>
+<span class="w">                                           </span><span class="n">NVCV_YCbCr_ENC_sRGB</span><span class="p">,</span>
+<span class="w">                                           </span><span class="n">NVCV_COLOR_XFER_sYCC</span><span class="p">,</span>
+<span class="w">                                           </span><span class="n">NVCV_COLOR_RANGE_FULL</span><span class="p">,</span>
+<span class="w">                                           </span><span class="n">NVCV_CHROMA_LOC_ODD</span><span class="p">,</span>
+<span class="w">                                           </span><span class="n">NVCV_CHROMA_LOC_EVEN</span><span class="p">);</span>
+</pre></div>
+</div>
+</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>cspace</strong> – <strong>[in]</strong> Color Space. </p></li>
+<li><p><strong>encoding</strong> – <strong>[in]</strong> R’G’B’ &lt;-&gt; Y’CbCr encoding. </p></li>
+<li><p><strong>xferFunc</strong> – <strong>[in]</strong> Color transfer function. </p></li>
+<li><p><strong>range</strong> – <strong>[in]</strong> Color quantization range. </p></li>
+<li><p><strong>locHoriz</strong> – <strong>[in]</strong> Horizontal chroma location. </p></li>
+<li><p><strong>locVert</strong> – <strong>[in]</strong> Vertical chroma location.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The user-defined <a class="reference internal" href="#group__NVCV__C__CORE__COLORSPEC_1ga1b475019946b97bd2e531806bc112f70"><span class="std std-ref">NVCVColorSpec</span></a> constant. </p>
+</dd>
+</dl>
+</dd></dl>
+
+</div>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-enums">Enums</p>
+<dl class="cpp enum">
+<dt class="sig sig-object cpp" id="_CPPv414NVCVColorModel">
+<span id="_CPPv314NVCVColorModel"></span><span id="_CPPv214NVCVColorModel"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gaef682281101838767e95875bed5efdb8"></span><span class="k"><span class="pre">enum</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCVColorModel</span></span></span><a class="headerlink" href="#_CPPv414NVCVColorModel" title="Permalink to this definition"></a><br /></dt>
+<dd><p><em>Values:</em></p>
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14NVCVColorModel26NVCV_COLOR_MODEL_UNDEFINEDE">
+<span id="_CPPv3N14NVCVColorModel26NVCV_COLOR_MODEL_UNDEFINEDE"></span><span id="_CPPv2N14NVCVColorModel26NVCV_COLOR_MODEL_UNDEFINEDE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ggaef682281101838767e95875bed5efdb8a9b5ff857cee9e87f07360a0d4fb3b555"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_MODEL_UNDEFINED</span></span></span><a class="headerlink" href="#_CPPv4N14NVCVColorModel26NVCV_COLOR_MODEL_UNDEFINEDE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color model is undefined. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14NVCVColorModel22NVCV_COLOR_MODEL_YCbCrE">
+<span id="_CPPv3N14NVCVColorModel22NVCV_COLOR_MODEL_YCbCrE"></span><span id="_CPPv2N14NVCVColorModel22NVCV_COLOR_MODEL_YCbCrE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ggaef682281101838767e95875bed5efdb8a24053374e5da1ac98c6728c089ebc60b"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_MODEL_YCbCr</span></span></span><a class="headerlink" href="#_CPPv4N14NVCVColorModel22NVCV_COLOR_MODEL_YCbCrE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Luma + chroma (blue-luma, red-luma). </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14NVCVColorModel20NVCV_COLOR_MODEL_RGBE">
+<span id="_CPPv3N14NVCVColorModel20NVCV_COLOR_MODEL_RGBE"></span><span id="_CPPv2N14NVCVColorModel20NVCV_COLOR_MODEL_RGBE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ggaef682281101838767e95875bed5efdb8a5691d46663216c08fab637eba7bf2793"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_MODEL_RGB</span></span></span><a class="headerlink" href="#_CPPv4N14NVCVColorModel20NVCV_COLOR_MODEL_RGBE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>red, green, blue components. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14NVCVColorModel20NVCV_COLOR_MODEL_RAWE">
+<span id="_CPPv3N14NVCVColorModel20NVCV_COLOR_MODEL_RAWE"></span><span id="_CPPv2N14NVCVColorModel20NVCV_COLOR_MODEL_RAWE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ggaef682281101838767e95875bed5efdb8a045dfcb007f5eef46285a1c6be17da88"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_MODEL_RAW</span></span></span><a class="headerlink" href="#_CPPv4N14NVCVColorModel20NVCV_COLOR_MODEL_RAWE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>RAW color model, used for Bayer image formats. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14NVCVColorModel20NVCV_COLOR_MODEL_XYZE">
+<span id="_CPPv3N14NVCVColorModel20NVCV_COLOR_MODEL_XYZE"></span><span id="_CPPv2N14NVCVColorModel20NVCV_COLOR_MODEL_XYZE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ggaef682281101838767e95875bed5efdb8af7d6d52081e151f845fc0ae06e4bb503"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_MODEL_XYZ</span></span></span><a class="headerlink" href="#_CPPv4N14NVCVColorModel20NVCV_COLOR_MODEL_XYZE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>CIE XYZ tristimulus color spec. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14NVCVColorModel20NVCV_COLOR_MODEL_HSVE">
+<span id="_CPPv3N14NVCVColorModel20NVCV_COLOR_MODEL_HSVE"></span><span id="_CPPv2N14NVCVColorModel20NVCV_COLOR_MODEL_HSVE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ggaef682281101838767e95875bed5efdb8a38a614610c30dee299a715929d0a6580"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_MODEL_HSV</span></span></span><a class="headerlink" href="#_CPPv4N14NVCVColorModel20NVCV_COLOR_MODEL_HSVE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>hue, saturation, value components. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14NVCVColorModel21NVCV_COLOR_MODEL_CMYKE">
+<span id="_CPPv3N14NVCVColorModel21NVCV_COLOR_MODEL_CMYKE"></span><span id="_CPPv2N14NVCVColorModel21NVCV_COLOR_MODEL_CMYKE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ggaef682281101838767e95875bed5efdb8a3a3c16c4223c50a00bd9ea2546f70d5f"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_MODEL_CMYK</span></span></span><a class="headerlink" href="#_CPPv4N14NVCVColorModel21NVCV_COLOR_MODEL_CMYKE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>cyan, magenta, yellow, black components. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14NVCVColorModel21NVCV_COLOR_MODEL_YCCKE">
+<span id="_CPPv3N14NVCVColorModel21NVCV_COLOR_MODEL_YCCKE"></span><span id="_CPPv2N14NVCVColorModel21NVCV_COLOR_MODEL_YCCKE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ggaef682281101838767e95875bed5efdb8a535971f3ad40c12cfcb38dd935190643"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_MODEL_YCCK</span></span></span><a class="headerlink" href="#_CPPv4N14NVCVColorModel21NVCV_COLOR_MODEL_YCCKE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Luma + chroma (blue-luma, red-luma) and black components. </p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="cpp enum">
+<dt class="sig sig-object cpp" id="_CPPv414NVCVColorSpace">
+<span id="_CPPv314NVCVColorSpace"></span><span id="_CPPv214NVCVColorSpace"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga4ac3950880d46016a86fa92e78c7fa46"></span><span class="k"><span class="pre">enum</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCVColorSpace</span></span></span><a class="headerlink" href="#_CPPv414NVCVColorSpace" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Defines the color primaries and the white point of a <a class="reference internal" href="#group__NVCV__C__CORE__COLORSPEC_1ga1b475019946b97bd2e531806bc112f70"><span class="std std-ref">NVCVColorSpec</span></a>. </p>
+<p><em>Values:</em></p>
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14NVCVColorSpace22NVCV_COLOR_SPACE_BT601E">
+<span id="_CPPv3N14NVCVColorSpace22NVCV_COLOR_SPACE_BT601E"></span><span id="_CPPv2N14NVCVColorSpace22NVCV_COLOR_SPACE_BT601E"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga4ac3950880d46016a86fa92e78c7fa46abef673858836f5820da7da96baa1575f"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_SPACE_BT601</span></span></span><a class="headerlink" href="#_CPPv4N14NVCVColorSpace22NVCV_COLOR_SPACE_BT601E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color primaries from ITU-R BT.601/625 lines standard, also known as EBU 3213-E. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14NVCVColorSpace22NVCV_COLOR_SPACE_BT709E">
+<span id="_CPPv3N14NVCVColorSpace22NVCV_COLOR_SPACE_BT709E"></span><span id="_CPPv2N14NVCVColorSpace22NVCV_COLOR_SPACE_BT709E"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga4ac3950880d46016a86fa92e78c7fa46a846387e19f5e493df49e52f318313ff6"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_SPACE_BT709</span></span></span><a class="headerlink" href="#_CPPv4N14NVCVColorSpace22NVCV_COLOR_SPACE_BT709E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color primaries from ITU-R BT.709 standard, D65 white point. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14NVCVColorSpace23NVCV_COLOR_SPACE_BT2020E">
+<span id="_CPPv3N14NVCVColorSpace23NVCV_COLOR_SPACE_BT2020E"></span><span id="_CPPv2N14NVCVColorSpace23NVCV_COLOR_SPACE_BT2020E"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga4ac3950880d46016a86fa92e78c7fa46af14007d79ae55158618696444237ff53"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_SPACE_BT2020</span></span></span><a class="headerlink" href="#_CPPv4N14NVCVColorSpace23NVCV_COLOR_SPACE_BT2020E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color primaries from ITU-R BT.2020 standard, D65 white point. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14NVCVColorSpace22NVCV_COLOR_SPACE_DCIP3E">
+<span id="_CPPv3N14NVCVColorSpace22NVCV_COLOR_SPACE_DCIP3E"></span><span id="_CPPv2N14NVCVColorSpace22NVCV_COLOR_SPACE_DCIP3E"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga4ac3950880d46016a86fa92e78c7fa46aa80febb855725da70f0304a334490ad5"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_SPACE_DCIP3</span></span></span><a class="headerlink" href="#_CPPv4N14NVCVColorSpace22NVCV_COLOR_SPACE_DCIP3E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color primaries from DCI-P3 standard, D65 white point. </p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="cpp enum">
+<dt class="sig sig-object cpp" id="_CPPv414NVCVWhitePoint">
+<span id="_CPPv314NVCVWhitePoint"></span><span id="_CPPv214NVCVWhitePoint"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga072ec448872429d96231255e34f48db2"></span><span class="k"><span class="pre">enum</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCVWhitePoint</span></span></span><a class="headerlink" href="#_CPPv414NVCVWhitePoint" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Defines the white point associated with a <a class="reference internal" href="#group__NVCV__C__CORE__COLORSPEC_1ga4ac3950880d46016a86fa92e78c7fa46"><span class="std std-ref">NVCVColorSpace</span></a>. </p>
+<p><em>Values:</em></p>
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14NVCVWhitePoint20NVCV_WHITE_POINT_D65E">
+<span id="_CPPv3N14NVCVWhitePoint20NVCV_WHITE_POINT_D65E"></span><span id="_CPPv2N14NVCVWhitePoint20NVCV_WHITE_POINT_D65E"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga072ec448872429d96231255e34f48db2ac7fbed1d34f8782d1f48ece72a3a35ca"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_WHITE_POINT_D65</span></span></span><a class="headerlink" href="#_CPPv4N14NVCVWhitePoint20NVCV_WHITE_POINT_D65E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>D65 white point, K = 6504. </p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="cpp enum">
+<dt class="sig sig-object cpp" id="_CPPv417NVCVYCbCrEncoding">
+<span id="_CPPv317NVCVYCbCrEncoding"></span><span id="_CPPv217NVCVYCbCrEncoding"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga60de8029ca0cb4b53692d11577ff15e0"></span><span class="k"><span class="pre">enum</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCVYCbCrEncoding</span></span></span><a class="headerlink" href="#_CPPv417NVCVYCbCrEncoding" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Defines the YCbCr encoding used in a particular <a class="reference internal" href="#group__NVCV__C__CORE__COLORSPEC_1ga1b475019946b97bd2e531806bc112f70"><span class="std std-ref">NVCVColorSpec</span></a>. </p>
+<p><em>Values:</em></p>
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N17NVCVYCbCrEncoding24NVCV_YCbCr_ENC_UNDEFINEDE">
+<span id="_CPPv3N17NVCVYCbCrEncoding24NVCV_YCbCr_ENC_UNDEFINEDE"></span><span id="_CPPv2N17NVCVYCbCrEncoding24NVCV_YCbCr_ENC_UNDEFINEDE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga60de8029ca0cb4b53692d11577ff15e0a68176457d8b98259b7164e0154b5f64c"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_YCbCr_ENC_UNDEFINED</span></span></span><a class="headerlink" href="#_CPPv4N17NVCVYCbCrEncoding24NVCV_YCbCr_ENC_UNDEFINEDE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Encoding not defined. Usually used by non-YCbCr color specs. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N17NVCVYCbCrEncoding20NVCV_YCbCr_ENC_BT601E">
+<span id="_CPPv3N17NVCVYCbCrEncoding20NVCV_YCbCr_ENC_BT601E"></span><span id="_CPPv2N17NVCVYCbCrEncoding20NVCV_YCbCr_ENC_BT601E"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga60de8029ca0cb4b53692d11577ff15e0a6039867ba93530c99f69d0867ff7d499"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_YCbCr_ENC_BT601</span></span></span><a class="headerlink" href="#_CPPv4N17NVCVYCbCrEncoding20NVCV_YCbCr_ENC_BT601E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Encoding specified by ITU-R BT.601 standard. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N17NVCVYCbCrEncoding20NVCV_YCbCr_ENC_BT709E">
+<span id="_CPPv3N17NVCVYCbCrEncoding20NVCV_YCbCr_ENC_BT709E"></span><span id="_CPPv2N17NVCVYCbCrEncoding20NVCV_YCbCr_ENC_BT709E"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga60de8029ca0cb4b53692d11577ff15e0ae7145d993ccbf173dd0e51945c3611bf"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_YCbCr_ENC_BT709</span></span></span><a class="headerlink" href="#_CPPv4N17NVCVYCbCrEncoding20NVCV_YCbCr_ENC_BT709E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Encoding specified by ITU-R BT.709 standard. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N17NVCVYCbCrEncoding21NVCV_YCbCr_ENC_BT2020E">
+<span id="_CPPv3N17NVCVYCbCrEncoding21NVCV_YCbCr_ENC_BT2020E"></span><span id="_CPPv2N17NVCVYCbCrEncoding21NVCV_YCbCr_ENC_BT2020E"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga60de8029ca0cb4b53692d11577ff15e0a9cc553995dba089333ae42d1c486d0b1"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_YCbCr_ENC_BT2020</span></span></span><a class="headerlink" href="#_CPPv4N17NVCVYCbCrEncoding21NVCV_YCbCr_ENC_BT2020E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Encoding specified by ITU-R BT.2020 standard. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N17NVCVYCbCrEncoding22NVCV_YCbCr_ENC_BT2020cE">
+<span id="_CPPv3N17NVCVYCbCrEncoding22NVCV_YCbCr_ENC_BT2020cE"></span><span id="_CPPv2N17NVCVYCbCrEncoding22NVCV_YCbCr_ENC_BT2020cE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga60de8029ca0cb4b53692d11577ff15e0a5df4a79bd9942ea517b236752042a298"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_YCbCr_ENC_BT2020c</span></span></span><a class="headerlink" href="#_CPPv4N17NVCVYCbCrEncoding22NVCV_YCbCr_ENC_BT2020cE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Encoding specified by ITU-R BT.2020 with constant luminance. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N17NVCVYCbCrEncoding24NVCV_YCbCr_ENC_SMPTE240ME">
+<span id="_CPPv3N17NVCVYCbCrEncoding24NVCV_YCbCr_ENC_SMPTE240ME"></span><span id="_CPPv2N17NVCVYCbCrEncoding24NVCV_YCbCr_ENC_SMPTE240ME"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga60de8029ca0cb4b53692d11577ff15e0ae05f11cdba587eb3e241bc30ce897027"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_YCbCr_ENC_SMPTE240M</span></span></span><a class="headerlink" href="#_CPPv4N17NVCVYCbCrEncoding24NVCV_YCbCr_ENC_SMPTE240ME" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Encoding specified by SMPTE 240M standard. </p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="cpp enum">
+<dt class="sig sig-object cpp" id="_CPPv425NVCVColorTransferFunction">
+<span id="_CPPv325NVCVColorTransferFunction"></span><span id="_CPPv225NVCVColorTransferFunction"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga5cf5fd9eebbc3ad1f3f3d55e9ebf207c"></span><span class="k"><span class="pre">enum</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCVColorTransferFunction</span></span></span><a class="headerlink" href="#_CPPv425NVCVColorTransferFunction" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Defines the color transfer function in a particular <a class="reference internal" href="#group__NVCV__C__CORE__COLORSPEC_1ga1b475019946b97bd2e531806bc112f70"><span class="std std-ref">NVCVColorSpec</span></a>. </p>
+<p><em>Values:</em></p>
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N25NVCVColorTransferFunction22NVCV_COLOR_XFER_LINEARE">
+<span id="_CPPv3N25NVCVColorTransferFunction22NVCV_COLOR_XFER_LINEARE"></span><span id="_CPPv2N25NVCVColorTransferFunction22NVCV_COLOR_XFER_LINEARE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga5cf5fd9eebbc3ad1f3f3d55e9ebf207cac7e7f8e3b72757133f2da5b06cde3f4f"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_XFER_LINEAR</span></span></span><a class="headerlink" href="#_CPPv4N25NVCVColorTransferFunction22NVCV_COLOR_XFER_LINEARE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Linear color transfer function. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N25NVCVColorTransferFunction20NVCV_COLOR_XFER_sRGBE">
+<span id="_CPPv3N25NVCVColorTransferFunction20NVCV_COLOR_XFER_sRGBE"></span><span id="_CPPv2N25NVCVColorTransferFunction20NVCV_COLOR_XFER_sRGBE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga5cf5fd9eebbc3ad1f3f3d55e9ebf207cab9bcf032106f05aba9e16f8df641dead"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_XFER_sRGB</span></span></span><a class="headerlink" href="#_CPPv4N25NVCVColorTransferFunction20NVCV_COLOR_XFER_sRGBE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color transfer function specified by sRGB standard. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N25NVCVColorTransferFunction20NVCV_COLOR_XFER_sYCCE">
+<span id="_CPPv3N25NVCVColorTransferFunction20NVCV_COLOR_XFER_sYCCE"></span><span id="_CPPv2N25NVCVColorTransferFunction20NVCV_COLOR_XFER_sYCCE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga5cf5fd9eebbc3ad1f3f3d55e9ebf207ca7ed37bc86381f930b8238ef07aeb1729"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_XFER_sYCC</span></span></span><a class="headerlink" href="#_CPPv4N25NVCVColorTransferFunction20NVCV_COLOR_XFER_sYCCE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color transfer function specified by sYCC standard. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N25NVCVColorTransferFunction18NVCV_COLOR_XFER_PQE">
+<span id="_CPPv3N25NVCVColorTransferFunction18NVCV_COLOR_XFER_PQE"></span><span id="_CPPv2N25NVCVColorTransferFunction18NVCV_COLOR_XFER_PQE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga5cf5fd9eebbc3ad1f3f3d55e9ebf207ca771a71d37d246699016c73f3a239f2a0"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_XFER_PQ</span></span></span><a class="headerlink" href="#_CPPv4N25NVCVColorTransferFunction18NVCV_COLOR_XFER_PQE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Perceptual quantizer color transfer function. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N25NVCVColorTransferFunction21NVCV_COLOR_XFER_BT709E">
+<span id="_CPPv3N25NVCVColorTransferFunction21NVCV_COLOR_XFER_BT709E"></span><span id="_CPPv2N25NVCVColorTransferFunction21NVCV_COLOR_XFER_BT709E"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga5cf5fd9eebbc3ad1f3f3d55e9ebf207ca361fc67d40e9d6f68ce57bb8d19cdc8a"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_XFER_BT709</span></span></span><a class="headerlink" href="#_CPPv4N25NVCVColorTransferFunction21NVCV_COLOR_XFER_BT709E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color transfer function specified by ITU-R BT.709 standard. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N25NVCVColorTransferFunction22NVCV_COLOR_XFER_BT2020E">
+<span id="_CPPv3N25NVCVColorTransferFunction22NVCV_COLOR_XFER_BT2020E"></span><span id="_CPPv2N25NVCVColorTransferFunction22NVCV_COLOR_XFER_BT2020E"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga5cf5fd9eebbc3ad1f3f3d55e9ebf207ca2ab73a0edb787c414d58c618c4123d12"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_XFER_BT2020</span></span></span><a class="headerlink" href="#_CPPv4N25NVCVColorTransferFunction22NVCV_COLOR_XFER_BT2020E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color transfer function specified by ITU-R BT.2020 standard. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N25NVCVColorTransferFunction25NVCV_COLOR_XFER_SMPTE240ME">
+<span id="_CPPv3N25NVCVColorTransferFunction25NVCV_COLOR_XFER_SMPTE240ME"></span><span id="_CPPv2N25NVCVColorTransferFunction25NVCV_COLOR_XFER_SMPTE240ME"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga5cf5fd9eebbc3ad1f3f3d55e9ebf207caa5669104def39f994074aac3e17e86ae"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_XFER_SMPTE240M</span></span></span><a class="headerlink" href="#_CPPv4N25NVCVColorTransferFunction25NVCV_COLOR_XFER_SMPTE240ME" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color transfer function specified by SMPTE 240M standard. </p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="cpp enum">
+<dt class="sig sig-object cpp" id="_CPPv414NVCVColorRange">
+<span id="_CPPv314NVCVColorRange"></span><span id="_CPPv214NVCVColorRange"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gac86c1e195efb7af3bea2ff040aae8d25"></span><span class="k"><span class="pre">enum</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCVColorRange</span></span></span><a class="headerlink" href="#_CPPv414NVCVColorRange" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Defines the color range of a particular <a class="reference internal" href="#group__NVCV__C__CORE__COLORSPEC_1ga1b475019946b97bd2e531806bc112f70"><span class="std std-ref">NVCVColorSpec</span></a>. </p>
+<p><em>Values:</em></p>
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14NVCVColorRange21NVCV_COLOR_RANGE_FULLE">
+<span id="_CPPv3N14NVCVColorRange21NVCV_COLOR_RANGE_FULLE"></span><span id="_CPPv2N14NVCVColorRange21NVCV_COLOR_RANGE_FULLE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ggac86c1e195efb7af3bea2ff040aae8d25a4ef28d074133a8b341ca5e55000d1958"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_RANGE_FULL</span></span></span><a class="headerlink" href="#_CPPv4N14NVCVColorRange21NVCV_COLOR_RANGE_FULLE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Values cover the full underlying type range. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14NVCVColorRange24NVCV_COLOR_RANGE_LIMITEDE">
+<span id="_CPPv3N14NVCVColorRange24NVCV_COLOR_RANGE_LIMITEDE"></span><span id="_CPPv2N14NVCVColorRange24NVCV_COLOR_RANGE_LIMITEDE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ggac86c1e195efb7af3bea2ff040aae8d25ae6e37ac7f552f46d4390f50942a38dcc"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_RANGE_LIMITED</span></span></span><a class="headerlink" href="#_CPPv4N14NVCVColorRange24NVCV_COLOR_RANGE_LIMITEDE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Values cover a limited range of the underlying type. </p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="cpp enum">
+<dt class="sig sig-object cpp" id="_CPPv418NVCVChromaLocation">
+<span id="_CPPv318NVCVChromaLocation"></span><span id="_CPPv218NVCVChromaLocation"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gab29dd5e17c57e72cad31c8288d9e2288"></span><span class="k"><span class="pre">enum</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCVChromaLocation</span></span></span><a class="headerlink" href="#_CPPv418NVCVChromaLocation" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Chroma sampling location. </p>
+<p><em>Values:</em></p>
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N18NVCVChromaLocation20NVCV_CHROMA_LOC_BOTHE">
+<span id="_CPPv3N18NVCVChromaLocation20NVCV_CHROMA_LOC_BOTHE"></span><span id="_CPPv2N18NVCVChromaLocation20NVCV_CHROMA_LOC_BOTHE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ggab29dd5e17c57e72cad31c8288d9e2288a67fb138139a78b7fb214b98743779f65"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_CHROMA_LOC_BOTH</span></span></span><a class="headerlink" href="#_CPPv4N18NVCVChromaLocation20NVCV_CHROMA_LOC_BOTHE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Sample chroma from even and odd coordinates. This is used when no sub-sampling is taking place. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N18NVCVChromaLocation20NVCV_CHROMA_LOC_EVENE">
+<span id="_CPPv3N18NVCVChromaLocation20NVCV_CHROMA_LOC_EVENE"></span><span id="_CPPv2N18NVCVChromaLocation20NVCV_CHROMA_LOC_EVENE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ggab29dd5e17c57e72cad31c8288d9e2288acd2af3e9b583b081d068646150334289"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_CHROMA_LOC_EVEN</span></span></span><a class="headerlink" href="#_CPPv4N18NVCVChromaLocation20NVCV_CHROMA_LOC_EVENE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Sample the chroma with even coordinate. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N18NVCVChromaLocation22NVCV_CHROMA_LOC_CENTERE">
+<span id="_CPPv3N18NVCVChromaLocation22NVCV_CHROMA_LOC_CENTERE"></span><span id="_CPPv2N18NVCVChromaLocation22NVCV_CHROMA_LOC_CENTERE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ggab29dd5e17c57e72cad31c8288d9e2288adddd85e67c7782d0eff4a4f68bcef03d"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_CHROMA_LOC_CENTER</span></span></span><a class="headerlink" href="#_CPPv4N18NVCVChromaLocation22NVCV_CHROMA_LOC_CENTERE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Sample the chroma exactly between the even and odd coordinate. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N18NVCVChromaLocation19NVCV_CHROMA_LOC_ODDE">
+<span id="_CPPv3N18NVCVChromaLocation19NVCV_CHROMA_LOC_ODDE"></span><span id="_CPPv2N18NVCVChromaLocation19NVCV_CHROMA_LOC_ODDE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ggab29dd5e17c57e72cad31c8288d9e2288ad7fb6cd260c26a181879ec4436f43dfd"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_CHROMA_LOC_ODD</span></span></span><a class="headerlink" href="#_CPPv4N18NVCVChromaLocation19NVCV_CHROMA_LOC_ODDE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Sample the chroma with odd coordinate. </p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="cpp enum">
+<dt class="sig sig-object cpp" id="_CPPv413NVCVColorSpec">
+<span id="_CPPv313NVCVColorSpec"></span><span id="_CPPv213NVCVColorSpec"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga1b475019946b97bd2e531806bc112f70"></span><span class="k"><span class="pre">enum</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCVColorSpec</span></span></span><a class="headerlink" href="#_CPPv413NVCVColorSpec" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color spec definitions. These color specs define how color information is to be interpreted. It is defined by several parameters:<ul class="simple">
+<li><p><a class="reference internal" href="#group__NVCV__C__CORE__COLORSPEC_1gaef682281101838767e95875bed5efdb8"><span class="std std-ref">NVCVColorModel</span></a></p></li>
+<li><p><a class="reference internal" href="#group__NVCV__C__CORE__COLORSPEC_1ga4ac3950880d46016a86fa92e78c7fa46"><span class="std std-ref">NVCVColorSpace</span></a></p></li>
+<li><p><a class="reference internal" href="#group__NVCV__C__CORE__COLORSPEC_1ga072ec448872429d96231255e34f48db2"><span class="std std-ref">NVCVWhitePoint</span></a></p></li>
+<li><p><a class="reference internal" href="#group__NVCV__C__CORE__COLORSPEC_1ga60de8029ca0cb4b53692d11577ff15e0"><span class="std std-ref">NVCVYCbCrEncoding</span></a></p></li>
+<li><p><a class="reference internal" href="#group__NVCV__C__CORE__COLORSPEC_1ga5cf5fd9eebbc3ad1f3f3d55e9ebf207c"><span class="std std-ref">NVCVColorTransferFunction</span></a></p></li>
+<li><p><a class="reference internal" href="#group__NVCV__C__CORE__COLORSPEC_1gac86c1e195efb7af3bea2ff040aae8d25"><span class="std std-ref">NVCVColorRange</span></a></p></li>
+<li><p><a class="reference internal" href="#group__NVCV__C__CORE__COLORSPEC_1gab29dd5e17c57e72cad31c8288d9e2288"><span class="std std-ref">NVCVChromaLocation</span></a></p></li>
+</ul>
+</p>
+<p>These parameters together defines how the color representation maps to its corresponding absolute color in a chromacity diagram. </p>
+<p><em>Values:</em></p>
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13NVCVColorSpec25NVCV_COLOR_SPEC_UNDEFINEDE">
+<span id="_CPPv3N13NVCVColorSpec25NVCV_COLOR_SPEC_UNDEFINEDE"></span><span id="_CPPv2N13NVCVColorSpec25NVCV_COLOR_SPEC_UNDEFINEDE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1b475019946b97bd2e531806bc112f70a7d1d7a6d30d3cd546f4a52f26f4e38ad"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_SPEC_UNDEFINED</span></span></span><a class="headerlink" href="#_CPPv4N13NVCVColorSpec25NVCV_COLOR_SPEC_UNDEFINEDE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>No color spec defined. Used when color spec isn’t relevant or is not defined. The color spec may be inferred from the context. If this isn’t possible, the values for each color spec component defined below will be used. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13NVCVColorSpec21NVCV_COLOR_SPEC_BT601E">
+<span id="_CPPv3N13NVCVColorSpec21NVCV_COLOR_SPEC_BT601E"></span><span id="_CPPv2N13NVCVColorSpec21NVCV_COLOR_SPEC_BT601E"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1b475019946b97bd2e531806bc112f70a05d92598168dd87f7640c7a234452ba0"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_SPEC_BT601</span></span></span><a class="headerlink" href="#_CPPv4N13NVCVColorSpec21NVCV_COLOR_SPEC_BT601E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color spec defining ITU-R BT.601 standard, limited range, with BT.709 chrominancies and transfer function. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13NVCVColorSpec24NVCV_COLOR_SPEC_BT601_ERE">
+<span id="_CPPv3N13NVCVColorSpec24NVCV_COLOR_SPEC_BT601_ERE"></span><span id="_CPPv2N13NVCVColorSpec24NVCV_COLOR_SPEC_BT601_ERE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1b475019946b97bd2e531806bc112f70aea309575b2d2cd07820ca5d12e4f576e"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_SPEC_BT601_ER</span></span></span><a class="headerlink" href="#_CPPv4N13NVCVColorSpec24NVCV_COLOR_SPEC_BT601_ERE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color spec defining ITU-R BT.601 standard, full range, with BT.709 chrominancies and transfer function. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13NVCVColorSpec21NVCV_COLOR_SPEC_BT709E">
+<span id="_CPPv3N13NVCVColorSpec21NVCV_COLOR_SPEC_BT709E"></span><span id="_CPPv2N13NVCVColorSpec21NVCV_COLOR_SPEC_BT709E"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1b475019946b97bd2e531806bc112f70a6a903df252e4ff93e3439e98bb022c64"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_SPEC_BT709</span></span></span><a class="headerlink" href="#_CPPv4N13NVCVColorSpec21NVCV_COLOR_SPEC_BT709E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color spec defining ITU-R BT.709 standard, limited range. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13NVCVColorSpec24NVCV_COLOR_SPEC_BT709_ERE">
+<span id="_CPPv3N13NVCVColorSpec24NVCV_COLOR_SPEC_BT709_ERE"></span><span id="_CPPv2N13NVCVColorSpec24NVCV_COLOR_SPEC_BT709_ERE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1b475019946b97bd2e531806bc112f70a45e07632b5ab6f844cdf34da33327a77"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_SPEC_BT709_ER</span></span></span><a class="headerlink" href="#_CPPv4N13NVCVColorSpec24NVCV_COLOR_SPEC_BT709_ERE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color spec defining ITU-R BT.709 standard, full range. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13NVCVColorSpec28NVCV_COLOR_SPEC_BT709_LINEARE">
+<span id="_CPPv3N13NVCVColorSpec28NVCV_COLOR_SPEC_BT709_LINEARE"></span><span id="_CPPv2N13NVCVColorSpec28NVCV_COLOR_SPEC_BT709_LINEARE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1b475019946b97bd2e531806bc112f70aa424d897489c56f1624614a7f74e131c"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_SPEC_BT709_LINEAR</span></span></span><a class="headerlink" href="#_CPPv4N13NVCVColorSpec28NVCV_COLOR_SPEC_BT709_LINEARE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color spec defining ITU-R BT.709 standard, limited range and linear transfer function. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13NVCVColorSpec22NVCV_COLOR_SPEC_BT2020E">
+<span id="_CPPv3N13NVCVColorSpec22NVCV_COLOR_SPEC_BT2020E"></span><span id="_CPPv2N13NVCVColorSpec22NVCV_COLOR_SPEC_BT2020E"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1b475019946b97bd2e531806bc112f70a94bc311cb617c484b08b46d6ba9edde9"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_SPEC_BT2020</span></span></span><a class="headerlink" href="#_CPPv4N13NVCVColorSpec22NVCV_COLOR_SPEC_BT2020E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color spec defining ITU-R BT.2020 standard, limited range. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13NVCVColorSpec25NVCV_COLOR_SPEC_BT2020_ERE">
+<span id="_CPPv3N13NVCVColorSpec25NVCV_COLOR_SPEC_BT2020_ERE"></span><span id="_CPPv2N13NVCVColorSpec25NVCV_COLOR_SPEC_BT2020_ERE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1b475019946b97bd2e531806bc112f70a892b7fca3ef3427b0c3f4da8be428c82"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_SPEC_BT2020_ER</span></span></span><a class="headerlink" href="#_CPPv4N13NVCVColorSpec25NVCV_COLOR_SPEC_BT2020_ERE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color spec defining ITU-R BT.2020 standard, full range. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13NVCVColorSpec29NVCV_COLOR_SPEC_BT2020_LINEARE">
+<span id="_CPPv3N13NVCVColorSpec29NVCV_COLOR_SPEC_BT2020_LINEARE"></span><span id="_CPPv2N13NVCVColorSpec29NVCV_COLOR_SPEC_BT2020_LINEARE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1b475019946b97bd2e531806bc112f70a92cbeafee93e46ad9ec26e764cc48202"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_SPEC_BT2020_LINEAR</span></span></span><a class="headerlink" href="#_CPPv4N13NVCVColorSpec29NVCV_COLOR_SPEC_BT2020_LINEARE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color spec defining ITU-R BT.2020 standard, limited range and linear transfer function. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13NVCVColorSpec25NVCV_COLOR_SPEC_BT2020_PQE">
+<span id="_CPPv3N13NVCVColorSpec25NVCV_COLOR_SPEC_BT2020_PQE"></span><span id="_CPPv2N13NVCVColorSpec25NVCV_COLOR_SPEC_BT2020_PQE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1b475019946b97bd2e531806bc112f70a461449b389aaf2e979fafbe26db44328"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_SPEC_BT2020_PQ</span></span></span><a class="headerlink" href="#_CPPv4N13NVCVColorSpec25NVCV_COLOR_SPEC_BT2020_PQE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color spec defining ITU-R BT.2020 standard, limited range and perceptual quantizer transfer function. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13NVCVColorSpec28NVCV_COLOR_SPEC_BT2020_PQ_ERE">
+<span id="_CPPv3N13NVCVColorSpec28NVCV_COLOR_SPEC_BT2020_PQ_ERE"></span><span id="_CPPv2N13NVCVColorSpec28NVCV_COLOR_SPEC_BT2020_PQ_ERE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1b475019946b97bd2e531806bc112f70af5ad7f29e875586f2cc3859f3e1a3e7d"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_SPEC_BT2020_PQ_ER</span></span></span><a class="headerlink" href="#_CPPv4N13NVCVColorSpec28NVCV_COLOR_SPEC_BT2020_PQ_ERE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color spec defining ITU-R BT.2020 standard, full range and perceptual quantizer transfer function. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13NVCVColorSpec23NVCV_COLOR_SPEC_BT2020cE">
+<span id="_CPPv3N13NVCVColorSpec23NVCV_COLOR_SPEC_BT2020cE"></span><span id="_CPPv2N13NVCVColorSpec23NVCV_COLOR_SPEC_BT2020cE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1b475019946b97bd2e531806bc112f70ac40fc655776ff2e253c939521f300696"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_SPEC_BT2020c</span></span></span><a class="headerlink" href="#_CPPv4N13NVCVColorSpec23NVCV_COLOR_SPEC_BT2020cE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color spec defining ITU-R BT.2020 standard for constant luminance, limited range. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13NVCVColorSpec26NVCV_COLOR_SPEC_BT2020c_ERE">
+<span id="_CPPv3N13NVCVColorSpec26NVCV_COLOR_SPEC_BT2020c_ERE"></span><span id="_CPPv2N13NVCVColorSpec26NVCV_COLOR_SPEC_BT2020c_ERE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1b475019946b97bd2e531806bc112f70aa00a3e8c051bf0c8fd2fafe06f5143f7"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_SPEC_BT2020c_ER</span></span></span><a class="headerlink" href="#_CPPv4N13NVCVColorSpec26NVCV_COLOR_SPEC_BT2020c_ERE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color spec defining ITU-R BT.2020 standard for constant luminance, full range. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13NVCVColorSpec27NVCV_COLOR_SPEC_MPEG2_BT601E">
+<span id="_CPPv3N13NVCVColorSpec27NVCV_COLOR_SPEC_MPEG2_BT601E"></span><span id="_CPPv2N13NVCVColorSpec27NVCV_COLOR_SPEC_MPEG2_BT601E"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1b475019946b97bd2e531806bc112f70ae738fee78c94d78243825050db22fdfe"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_SPEC_MPEG2_BT601</span></span></span><a class="headerlink" href="#_CPPv4N13NVCVColorSpec27NVCV_COLOR_SPEC_MPEG2_BT601E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color spec defining MPEG2 standard using ITU-R BT.601 encoding. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13NVCVColorSpec27NVCV_COLOR_SPEC_MPEG2_BT709E">
+<span id="_CPPv3N13NVCVColorSpec27NVCV_COLOR_SPEC_MPEG2_BT709E"></span><span id="_CPPv2N13NVCVColorSpec27NVCV_COLOR_SPEC_MPEG2_BT709E"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1b475019946b97bd2e531806bc112f70a2b3d6c53acc5d47b3a25ffc139f41b88"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_SPEC_MPEG2_BT709</span></span></span><a class="headerlink" href="#_CPPv4N13NVCVColorSpec27NVCV_COLOR_SPEC_MPEG2_BT709E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color spec defining MPEG2 standard using ITU-R BT.709 encoding. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13NVCVColorSpec31NVCV_COLOR_SPEC_MPEG2_SMPTE240ME">
+<span id="_CPPv3N13NVCVColorSpec31NVCV_COLOR_SPEC_MPEG2_SMPTE240ME"></span><span id="_CPPv2N13NVCVColorSpec31NVCV_COLOR_SPEC_MPEG2_SMPTE240ME"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1b475019946b97bd2e531806bc112f70a6683e8970b0405d881e95e4c4cef80e6"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_SPEC_MPEG2_SMPTE240M</span></span></span><a class="headerlink" href="#_CPPv4N13NVCVColorSpec31NVCV_COLOR_SPEC_MPEG2_SMPTE240ME" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color spec defining MPEG2 standard using SMPTE 240M encoding. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13NVCVColorSpec20NVCV_COLOR_SPEC_sRGBE">
+<span id="_CPPv3N13NVCVColorSpec20NVCV_COLOR_SPEC_sRGBE"></span><span id="_CPPv2N13NVCVColorSpec20NVCV_COLOR_SPEC_sRGBE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1b475019946b97bd2e531806bc112f70a633b41b51e8bbfc0a64ab23f3082748d"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_SPEC_sRGB</span></span></span><a class="headerlink" href="#_CPPv4N13NVCVColorSpec20NVCV_COLOR_SPEC_sRGBE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color spec defining sRGB standard. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13NVCVColorSpec20NVCV_COLOR_SPEC_sYCCE">
+<span id="_CPPv3N13NVCVColorSpec20NVCV_COLOR_SPEC_sYCCE"></span><span id="_CPPv2N13NVCVColorSpec20NVCV_COLOR_SPEC_sYCCE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1b475019946b97bd2e531806bc112f70a7ff5b5a5e0d7ed4c6335551bbf15f8c4"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_SPEC_sYCC</span></span></span><a class="headerlink" href="#_CPPv4N13NVCVColorSpec20NVCV_COLOR_SPEC_sYCCE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color spec defining sYCC standard. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13NVCVColorSpec25NVCV_COLOR_SPEC_SMPTE240ME">
+<span id="_CPPv3N13NVCVColorSpec25NVCV_COLOR_SPEC_SMPTE240ME"></span><span id="_CPPv2N13NVCVColorSpec25NVCV_COLOR_SPEC_SMPTE240ME"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1b475019946b97bd2e531806bc112f70a81df8eea33bbe158643b68a4d7fef5ae"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_SPEC_SMPTE240M</span></span></span><a class="headerlink" href="#_CPPv4N13NVCVColorSpec25NVCV_COLOR_SPEC_SMPTE240ME" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color spec defining SMPTE 240M standard, limited range. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13NVCVColorSpec25NVCV_COLOR_SPEC_DISPLAYP3E">
+<span id="_CPPv3N13NVCVColorSpec25NVCV_COLOR_SPEC_DISPLAYP3E"></span><span id="_CPPv2N13NVCVColorSpec25NVCV_COLOR_SPEC_DISPLAYP3E"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1b475019946b97bd2e531806bc112f70a713c7142e3d378a3c9e92d36e127347b"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_SPEC_DISPLAYP3</span></span></span><a class="headerlink" href="#_CPPv4N13NVCVColorSpec25NVCV_COLOR_SPEC_DISPLAYP3E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color spec defining Display P3 standard, with sRGB color transfer function. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13NVCVColorSpec32NVCV_COLOR_SPEC_DISPLAYP3_LINEARE">
+<span id="_CPPv3N13NVCVColorSpec32NVCV_COLOR_SPEC_DISPLAYP3_LINEARE"></span><span id="_CPPv2N13NVCVColorSpec32NVCV_COLOR_SPEC_DISPLAYP3_LINEARE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1b475019946b97bd2e531806bc112f70a5597152de2642b0d874efdcfbc16df4a"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_COLOR_SPEC_DISPLAYP3_LINEAR</span></span></span><a class="headerlink" href="#_CPPv4N13NVCVColorSpec32NVCV_COLOR_SPEC_DISPLAYP3_LINEARE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Color spec defining Display P3 standard, with linear color transfer function. </p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="cpp enum">
+<dt class="sig sig-object cpp" id="_CPPv414NVCVRawPattern">
+<span id="_CPPv314NVCVRawPattern"></span><span id="_CPPv214NVCVRawPattern"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga1d9dc866383532cfe1e1260d29d0aee1"></span><span class="k"><span class="pre">enum</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCVRawPattern</span></span></span><a class="headerlink" href="#_CPPv414NVCVRawPattern" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Defines Bayer patterns used by RAW color model. R,G,B represent the color primaries red, green, blue. C represent a clear channel, it lets all light pass. </p>
+<p><em>Values:</em></p>
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14NVCVRawPattern19NVCV_RAW_BAYER_RGGBE">
+<span id="_CPPv3N14NVCVRawPattern19NVCV_RAW_BAYER_RGGBE"></span><span id="_CPPv2N14NVCVRawPattern19NVCV_RAW_BAYER_RGGBE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1d9dc866383532cfe1e1260d29d0aee1a90d5940ee3076ffa6479db28572daca8"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_RAW_BAYER_RGGB</span></span></span><a class="headerlink" href="#_CPPv4N14NVCVRawPattern19NVCV_RAW_BAYER_RGGBE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Bayer format with X channel mapped to samples as follows:<ul class="simple">
+<li><p>span 1: R G R G R G R G</p></li>
+<li><p>span 2: G B G B G B G B (Y,Z,W are discarded) </p></li>
+</ul>
+</p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14NVCVRawPattern19NVCV_RAW_BAYER_BGGRE">
+<span id="_CPPv3N14NVCVRawPattern19NVCV_RAW_BAYER_BGGRE"></span><span id="_CPPv2N14NVCVRawPattern19NVCV_RAW_BAYER_BGGRE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1d9dc866383532cfe1e1260d29d0aee1a6624f999d533887a442a0e96228cbc97"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_RAW_BAYER_BGGR</span></span></span><a class="headerlink" href="#_CPPv4N14NVCVRawPattern19NVCV_RAW_BAYER_BGGRE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Bayer format with X channel mapped to samples as follows:<ul class="simple">
+<li><p>span 1: B G B G B G B G</p></li>
+<li><p><p>span 2: G R G R G R G R</p>
+<p>(Y,Z,W are discarded)</p>
+</p></li>
+</ul>
+</p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14NVCVRawPattern19NVCV_RAW_BAYER_GRBGE">
+<span id="_CPPv3N14NVCVRawPattern19NVCV_RAW_BAYER_GRBGE"></span><span id="_CPPv2N14NVCVRawPattern19NVCV_RAW_BAYER_GRBGE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1d9dc866383532cfe1e1260d29d0aee1ac958b57f8e24ad023161e5aac17cbb58"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_RAW_BAYER_GRBG</span></span></span><a class="headerlink" href="#_CPPv4N14NVCVRawPattern19NVCV_RAW_BAYER_GRBGE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Bayer format with X channel mapped to samples as follows:<ul class="simple">
+<li><p>span 1: G R G R G R G R</p></li>
+<li><p><p>span 2: B G B G B G B G</p>
+<p>(Y,Z,W are discarded)</p>
+</p></li>
+</ul>
+</p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14NVCVRawPattern19NVCV_RAW_BAYER_GBRGE">
+<span id="_CPPv3N14NVCVRawPattern19NVCV_RAW_BAYER_GBRGE"></span><span id="_CPPv2N14NVCVRawPattern19NVCV_RAW_BAYER_GBRGE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1d9dc866383532cfe1e1260d29d0aee1a8f2495fcadd4a32c56f5e5ebe55a00b2"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_RAW_BAYER_GBRG</span></span></span><a class="headerlink" href="#_CPPv4N14NVCVRawPattern19NVCV_RAW_BAYER_GBRGE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Bayer format with X channel mapped to samples as follows:<ul class="simple">
+<li><p>span 1: G B G B G B G B</p></li>
+<li><p><p>span 2: R G R G R G R G</p>
+<p>(Y,Z,W are discarded)</p>
+</p></li>
+</ul>
+</p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14NVCVRawPattern19NVCV_RAW_BAYER_RCCBE">
+<span id="_CPPv3N14NVCVRawPattern19NVCV_RAW_BAYER_RCCBE"></span><span id="_CPPv2N14NVCVRawPattern19NVCV_RAW_BAYER_RCCBE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1d9dc866383532cfe1e1260d29d0aee1a6af76e996ff2f5fb3657c1c0b468bfda"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_RAW_BAYER_RCCB</span></span></span><a class="headerlink" href="#_CPPv4N14NVCVRawPattern19NVCV_RAW_BAYER_RCCBE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Bayer format with X channel mapped to samples as follows:<ul class="simple">
+<li><p>span 1: R C R C R C R C</p></li>
+<li><p><p>span 2: C B C B C B C B</p>
+<p>(Y,Z,W are discarded)</p>
+</p></li>
+</ul>
+</p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14NVCVRawPattern19NVCV_RAW_BAYER_BCCRE">
+<span id="_CPPv3N14NVCVRawPattern19NVCV_RAW_BAYER_BCCRE"></span><span id="_CPPv2N14NVCVRawPattern19NVCV_RAW_BAYER_BCCRE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1d9dc866383532cfe1e1260d29d0aee1a05d8c99ff717a6da6ac4da0cc6d618d9"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_RAW_BAYER_BCCR</span></span></span><a class="headerlink" href="#_CPPv4N14NVCVRawPattern19NVCV_RAW_BAYER_BCCRE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Bayer format with X channel mapped to samples as follows:<ul class="simple">
+<li><p>span 1: B C B C B C B C</p></li>
+<li><p><p>span 2: C R C R C R C R</p>
+<p>(Y,Z,W are discarded)</p>
+</p></li>
+</ul>
+</p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14NVCVRawPattern19NVCV_RAW_BAYER_CRBCE">
+<span id="_CPPv3N14NVCVRawPattern19NVCV_RAW_BAYER_CRBCE"></span><span id="_CPPv2N14NVCVRawPattern19NVCV_RAW_BAYER_CRBCE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1d9dc866383532cfe1e1260d29d0aee1ac42f7cd06b099c421347329307c40b58"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_RAW_BAYER_CRBC</span></span></span><a class="headerlink" href="#_CPPv4N14NVCVRawPattern19NVCV_RAW_BAYER_CRBCE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Bayer format with X channel mapped to samples as follows:<ul class="simple">
+<li><p>span 1: C R C R C R C R</p></li>
+<li><p><p>span 2: B C B C B C B C</p>
+<p>(Y,Z,W are discarded)</p>
+</p></li>
+</ul>
+</p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14NVCVRawPattern19NVCV_RAW_BAYER_CBRCE">
+<span id="_CPPv3N14NVCVRawPattern19NVCV_RAW_BAYER_CBRCE"></span><span id="_CPPv2N14NVCVRawPattern19NVCV_RAW_BAYER_CBRCE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1d9dc866383532cfe1e1260d29d0aee1a319ae5253b7d1b3f21f06f258375d287"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_RAW_BAYER_CBRC</span></span></span><a class="headerlink" href="#_CPPv4N14NVCVRawPattern19NVCV_RAW_BAYER_CBRCE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Bayer format with X channel mapped to samples as follows:<ul class="simple">
+<li><p>span 1: C B C B C B C B</p></li>
+<li><p><p>span 2: R C R C R C R C</p>
+<p>(Y,Z,W are discarded)</p>
+</p></li>
+</ul>
+</p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14NVCVRawPattern19NVCV_RAW_BAYER_RCCCE">
+<span id="_CPPv3N14NVCVRawPattern19NVCV_RAW_BAYER_RCCCE"></span><span id="_CPPv2N14NVCVRawPattern19NVCV_RAW_BAYER_RCCCE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1d9dc866383532cfe1e1260d29d0aee1a945e8ed78e46a8fa39913d4808535714"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_RAW_BAYER_RCCC</span></span></span><a class="headerlink" href="#_CPPv4N14NVCVRawPattern19NVCV_RAW_BAYER_RCCCE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Bayer format with X channel mapped to samples as follows:<ul class="simple">
+<li><p>span 1: R C R C R C R C</p></li>
+<li><p><p>span 2: C C C C C C C C</p>
+<p>(Y,Z,W are discarded)</p>
+</p></li>
+</ul>
+</p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14NVCVRawPattern19NVCV_RAW_BAYER_CRCCE">
+<span id="_CPPv3N14NVCVRawPattern19NVCV_RAW_BAYER_CRCCE"></span><span id="_CPPv2N14NVCVRawPattern19NVCV_RAW_BAYER_CRCCE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1d9dc866383532cfe1e1260d29d0aee1a8e6cb547657a50ee8a1bd96f7fbd7e47"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_RAW_BAYER_CRCC</span></span></span><a class="headerlink" href="#_CPPv4N14NVCVRawPattern19NVCV_RAW_BAYER_CRCCE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Bayer format with X channel mapped to samples as follows:<ul class="simple">
+<li><p>span 1: C R C R C R C R</p></li>
+<li><p><p>span 2: C C C C C C C C</p>
+<p>(Y,Z,W are discarded)</p>
+</p></li>
+</ul>
+</p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14NVCVRawPattern19NVCV_RAW_BAYER_CCRCE">
+<span id="_CPPv3N14NVCVRawPattern19NVCV_RAW_BAYER_CCRCE"></span><span id="_CPPv2N14NVCVRawPattern19NVCV_RAW_BAYER_CCRCE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1d9dc866383532cfe1e1260d29d0aee1a3373654804f668f67f60c7549f789b58"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_RAW_BAYER_CCRC</span></span></span><a class="headerlink" href="#_CPPv4N14NVCVRawPattern19NVCV_RAW_BAYER_CCRCE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Bayer format with X channel mapped to samples as follows:<ul class="simple">
+<li><p>span 1: C C C C C C C C</p></li>
+<li><p><p>span 2: R C R C R C R C</p>
+<p>(Y,Z,W are discarded)</p>
+</p></li>
+</ul>
+</p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14NVCVRawPattern19NVCV_RAW_BAYER_CCCRE">
+<span id="_CPPv3N14NVCVRawPattern19NVCV_RAW_BAYER_CCCRE"></span><span id="_CPPv2N14NVCVRawPattern19NVCV_RAW_BAYER_CCCRE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1d9dc866383532cfe1e1260d29d0aee1acf9f7bd963c9a64143914cd559412ab3"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_RAW_BAYER_CCCR</span></span></span><a class="headerlink" href="#_CPPv4N14NVCVRawPattern19NVCV_RAW_BAYER_CCCRE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Bayer format with X channel mapped to samples as follows:<ul class="simple">
+<li><p>span 1: C C C C C C C C</p></li>
+<li><p><p>span 2: C R C R C R C R</p>
+<p>(Y,Z,W are discarded)</p>
+</p></li>
+</ul>
+</p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14NVCVRawPattern19NVCV_RAW_BAYER_CCCCE">
+<span id="_CPPv3N14NVCVRawPattern19NVCV_RAW_BAYER_CCCCE"></span><span id="_CPPv2N14NVCVRawPattern19NVCV_RAW_BAYER_CCCCE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga1d9dc866383532cfe1e1260d29d0aee1a0993e562c96d0f3b88e864295a90496d"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_RAW_BAYER_CCCC</span></span></span><a class="headerlink" href="#_CPPv4N14NVCVRawPattern19NVCV_RAW_BAYER_CCCCE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Bayer format with X channel mapped to samples as follows:<ul class="simple">
+<li><p>span 1: C C C C C C C C</p></li>
+<li><p><p>span 2: C C C C C C C C</p>
+<p>(Y,Z,W are discarded)</p>
+</p></li>
+</ul>
+</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="cpp enum">
+<dt class="sig sig-object cpp" id="_CPPv421NVCVChromaSubsampling">
+<span id="_CPPv321NVCVChromaSubsampling"></span><span id="_CPPv221NVCVChromaSubsampling"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga6c7a7299cc6b132bf528ef975d4a2f90"></span><span class="k"><span class="pre">enum</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCVChromaSubsampling</span></span></span><a class="headerlink" href="#_CPPv421NVCVChromaSubsampling" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Defines how chroma-subsampling is done. This is only applicable to image formats whose color model is YUV. Other image formats must use <a class="reference internal" href="#group__NVCV__C__CORE__COLORSPEC_1gga6c7a7299cc6b132bf528ef975d4a2f90ac9ec7fd7c87203745a550d0f0edb7775"><span class="std std-ref">NVCV_CSS_NONE</span></a>. Chroma subsampling is defined by 2 parameters:<ul class="simple">
+<li><p>Horizontal resolution relative to luma resolution.</p></li>
+<li><p>Vertical resolution relative to luma resolution. </p></li>
+</ul>
+</p>
+<p><em>Values:</em></p>
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N21NVCVChromaSubsampling13NVCV_CSS_NONEE">
+<span id="_CPPv3N21NVCVChromaSubsampling13NVCV_CSS_NONEE"></span><span id="_CPPv2N21NVCVChromaSubsampling13NVCV_CSS_NONEE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga6c7a7299cc6b132bf528ef975d4a2f90ac9ec7fd7c87203745a550d0f0edb7775"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_CSS_NONE</span></span></span><a class="headerlink" href="#_CPPv4N21NVCVChromaSubsampling13NVCV_CSS_NONEE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Used when no chroma subsampling takes place, specially for color specs without chroma components. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N21NVCVChromaSubsampling12NVCV_CSS_444E">
+<span id="_CPPv3N21NVCVChromaSubsampling12NVCV_CSS_444E"></span><span id="_CPPv2N21NVCVChromaSubsampling12NVCV_CSS_444E"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga6c7a7299cc6b132bf528ef975d4a2f90a8829c2035c70d3bea219ff2e7b2d347c"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_CSS_444</span></span></span><a class="headerlink" href="#_CPPv4N21NVCVChromaSubsampling12NVCV_CSS_444E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>4:4:4 sub-sampling. Chroma has full horizontal and vertical resolution, meaning no chroma subsampling. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N21NVCVChromaSubsampling12NVCV_CSS_422E">
+<span id="_CPPv3N21NVCVChromaSubsampling12NVCV_CSS_422E"></span><span id="_CPPv2N21NVCVChromaSubsampling12NVCV_CSS_422E"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga6c7a7299cc6b132bf528ef975d4a2f90ab21d6bc1eb19535e6e06a28e228ce3d1"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_CSS_422</span></span></span><a class="headerlink" href="#_CPPv4N21NVCVChromaSubsampling12NVCV_CSS_422E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>4:2:2 BT.601 sub-sampling. Chroma has half horizontal and full vertical resolutions. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N21NVCVChromaSubsampling13NVCV_CSS_422RE">
+<span id="_CPPv3N21NVCVChromaSubsampling13NVCV_CSS_422RE"></span><span id="_CPPv2N21NVCVChromaSubsampling13NVCV_CSS_422RE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga6c7a7299cc6b132bf528ef975d4a2f90a39efa150a23dbed394c2a06e822c989e"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_CSS_422R</span></span></span><a class="headerlink" href="#_CPPv4N21NVCVChromaSubsampling13NVCV_CSS_422RE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>4:2:2R BT.601 sub-sampling. Chroma has full horizontal and half vertical resolutions. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N21NVCVChromaSubsampling12NVCV_CSS_411E">
+<span id="_CPPv3N21NVCVChromaSubsampling12NVCV_CSS_411E"></span><span id="_CPPv2N21NVCVChromaSubsampling12NVCV_CSS_411E"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga6c7a7299cc6b132bf528ef975d4a2f90a7a1d27db92a5353510825069a579a447"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_CSS_411</span></span></span><a class="headerlink" href="#_CPPv4N21NVCVChromaSubsampling12NVCV_CSS_411E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>4:1:1 sub-sampling. Chroma has 1/4 horizontal and full vertical resolutions. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N21NVCVChromaSubsampling13NVCV_CSS_411RE">
+<span id="_CPPv3N21NVCVChromaSubsampling13NVCV_CSS_411RE"></span><span id="_CPPv2N21NVCVChromaSubsampling13NVCV_CSS_411RE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga6c7a7299cc6b132bf528ef975d4a2f90a9177609e3ec7f18819739d17a9bc645c"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_CSS_411R</span></span></span><a class="headerlink" href="#_CPPv4N21NVCVChromaSubsampling13NVCV_CSS_411RE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>4:1:1 sub-sampling. Chroma has full horizontal and 1/4 vertical resolutions. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N21NVCVChromaSubsampling12NVCV_CSS_420E">
+<span id="_CPPv3N21NVCVChromaSubsampling12NVCV_CSS_420E"></span><span id="_CPPv2N21NVCVChromaSubsampling12NVCV_CSS_420E"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga6c7a7299cc6b132bf528ef975d4a2f90add6007b2e6cd7913ed861e4ed6deb2fe"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_CSS_420</span></span></span><a class="headerlink" href="#_CPPv4N21NVCVChromaSubsampling12NVCV_CSS_420E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>4:2:0 sub-sampling. Chroma has half horizontal and vertical resolutions. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N21NVCVChromaSubsampling12NVCV_CSS_440E">
+<span id="_CPPv3N21NVCVChromaSubsampling12NVCV_CSS_440E"></span><span id="_CPPv2N21NVCVChromaSubsampling12NVCV_CSS_440E"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga6c7a7299cc6b132bf528ef975d4a2f90a04bbe1bdd6a86378a07831c16dee3bd3"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_CSS_440</span></span></span><a class="headerlink" href="#_CPPv4N21NVCVChromaSubsampling12NVCV_CSS_440E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>4:4:0 sub-sampling. Chroma has full horizontal and half vertical resolutions </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N21NVCVChromaSubsampling12NVCV_CSS_410E">
+<span id="_CPPv3N21NVCVChromaSubsampling12NVCV_CSS_410E"></span><span id="_CPPv2N21NVCVChromaSubsampling12NVCV_CSS_410E"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga6c7a7299cc6b132bf528ef975d4a2f90a377cc7a68956aecc0031cdea585bd50a"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_CSS_410</span></span></span><a class="headerlink" href="#_CPPv4N21NVCVChromaSubsampling12NVCV_CSS_410E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>4:1:0 sub-sampling. Chroma has 1/4 horizontal and half vertical resolutions. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N21NVCVChromaSubsampling13NVCV_CSS_410RE">
+<span id="_CPPv3N21NVCVChromaSubsampling13NVCV_CSS_410RE"></span><span id="_CPPv2N21NVCVChromaSubsampling13NVCV_CSS_410RE"></span><span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gga6c7a7299cc6b132bf528ef975d4a2f90adaa160af33d04f3f42c53e2e6aa177f5"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_CSS_410R</span></span></span><a class="headerlink" href="#_CPPv4N21NVCVChromaSubsampling13NVCV_CSS_410RE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>4:1:0V sub-sampling. Chroma has half horizontal and 1/4 vertical resolutions. </p>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-functions">Functions</p>
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga23cdb3fc462eb486739041d6d6fd77f2"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">NVCVStatus</span> <span class="pre">nvcvMakeColorSpec</span> <span class="pre">(NVCVColorSpec</span> <span class="pre">*outColorSpec,</span> <span class="pre">NVCVColorSpace</span> <span class="pre">cspace,</span> <span class="pre">NVCVYCbCrEncoding</span> <span class="pre">encoding,</span> <span class="pre">NVCVColorTransferFunction</span> <span class="pre">xferFunc,</span> <span class="pre">NVCVColorRange</span> <span class="pre">range,</span> <span class="pre">NVCVChromaLocation</span> <span class="pre">locHoriz,</span> <span class="pre">NVCVChromaLocation</span> <span class="pre">locVert)</span></span></dt>
+<dd><p>Creates a user-defined <a class="reference internal" href="#group__NVCV__C__CORE__COLORSPEC_1ga1b475019946b97bd2e531806bc112f70"><span class="std std-ref">NVCVColorSpec</span></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>outColorSpec</strong> – <strong>[out]</strong> Pointer to the output colorspec.<ul>
+<li><p>Cannot be NULL. </p></li>
+</ul>
+</p></li>
+<li><p><strong>cspace</strong> – <strong>[in]</strong> Color space. </p></li>
+<li><p><strong>encoding</strong> – <strong>[in]</strong> R’G’B’ -&gt; Y’CbCr encoding. </p></li>
+<li><p><strong>xferFunc</strong> – <strong>[in]</strong> Color transfer function. </p></li>
+<li><p><strong>range</strong> – <strong>[in]</strong> Color quantization range. </p></li>
+<li><p><strong>locHoriz</strong> – <strong>[in]</strong> Horizontal chroma location. </p></li>
+<li><p><strong>locVert</strong> – <strong>[in]</strong> Vertical chroma location.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return values<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NVCV_ERROR_INVALID_ARGUMENT</strong> – Some argument is outside its valid range. </p></li>
+<li><p><strong>NVCV_SUCCESS</strong> – Operation executed successfully. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gad0e47a619dfacccfb79dabc42415929d"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">NVCVStatus</span> <span class="pre">nvcvMakeChromaSubsampling</span> <span class="pre">(NVCVChromaSubsampling</span> <span class="pre">*outCSS,</span> <span class="pre">int32_t</span> <span class="pre">samplesHoriz,</span> <span class="pre">int32_t</span> <span class="pre">samplesVert)</span></span></dt>
+<dd><p>Creates a <a class="reference internal" href="#group__NVCV__C__CORE__COLORSPEC_1ga6c7a7299cc6b132bf528ef975d4a2f90"><span class="std std-ref">NVCVChromaSubsampling</span></a> given the horizontal and vertical sampling.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>outCSS</strong> – <strong>[out]</strong> Pointer to output color subsampling.<ul>
+<li><p>Cannot be NULL. </p></li>
+</ul>
+</p></li>
+<li><p><strong>samplesHoriz</strong> – <strong>[in]</strong> Number of horizontal samples, 1, 2 or 4. </p></li>
+<li><p><strong>samplesVert</strong> – <strong>[in]</strong> Number of vertical samples, 1, 2 or 4.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return values<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NVCV_ERROR_INVALID_ARGUMENT</strong> – Some argument is outside its valid range. </p></li>
+<li><p><strong>NVCV_SUCCESS</strong> – Operation executed successfully. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga753f84a83d57639776ff8aa4dce6003f"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">NVCVStatus</span> <span class="pre">nvcvChromaSubsamplingGetNumSamples</span> <span class="pre">(NVCVChromaSubsampling</span> <span class="pre">css,</span> <span class="pre">int32_t</span> <span class="pre">*outSamplesHoriz,</span> <span class="pre">int32_t</span> <span class="pre">*outSamplesVert)</span></span></dt>
+<dd><p>Get the number of chroma samples for each group of 4 horizontal/vertical luma samples.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>css</strong> – <strong>[in]</strong> Chroma subsampling to be queried.<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">css</span></code> must be valid.</p></li>
+</ul>
+</p></li>
+<li><p><strong>outSamplesHoriz, outSamplesVert</strong> – <strong>[out]</strong> The number of chroma samples for each group of 4 horizontal/vertical luma samples. If NULL, corresponding value won’t be output.<ul>
+<li><p>Both cannot be NULL.</p></li>
+</ul>
+</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return values<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NVCV_ERROR_INVALID_ARGUMENT</strong> – Some argument is outside its valid range. </p></li>
+<li><p><strong>NVCV_SUCCESS</strong> – Operation executed successfully. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga10f7eb806c010645c0ef0b55176425b3"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">NVCVStatus</span> <span class="pre">nvcvColorSpecGetChromaLoc</span> <span class="pre">(NVCVColorSpec</span> <span class="pre">cspec,</span> <span class="pre">NVCVChromaLocation</span> <span class="pre">*outLocHoriz,</span> <span class="pre">NVCVChromaLocation</span> <span class="pre">*outLocVert)</span></span></dt>
+<dd><p>Get the chroma sampling location of a given color spec.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>cspec</strong> – <strong>[in]</strong> Color spec to be queried.<ul>
+<li><p>Color spec must be valid.</p></li>
+</ul>
+</p></li>
+<li><p><strong>outLocVert, outLocHoriz</strong> – <strong>[out]</strong> Chroma sample location with respect to luma horizontal/vertical coordinate. If NULL, corresponding value won’t be output.<ul>
+<li><p>Both cannot be NULL.</p></li>
+</ul>
+</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return values<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NVCV_ERROR_INVALID_ARGUMENT</strong> – Some argument is outside its valid range. </p></li>
+<li><p><strong>NVCV_SUCCESS</strong> – Operation executed successfully. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gae4a68db724ff0e8fec126ce913b461fe"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">NVCVStatus</span> <span class="pre">nvcvColorSpecSetChromaLoc</span> <span class="pre">(NVCVColorSpec</span> <span class="pre">*cspec,</span> <span class="pre">NVCVChromaLocation</span> <span class="pre">locHoriz,</span> <span class="pre">NVCVChromaLocation</span> <span class="pre">locVert)</span></span></dt>
+<dd><p>Set the chroma sample location of a given color spec</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>cspec</strong> – <strong>[inout]</strong> Color spec to be updated.<ul>
+<li><p>Cannot be NULL.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">cspec</span></code> must be valid.</p></li>
+</ul>
+</p></li>
+<li><p><strong>locHoriz</strong> – <strong>[in]</strong> Horizontal chroma sampling location with respect to luma coordinate.</p></li>
+<li><p><strong>locVert</strong> – <strong>[in]</strong> Vertical chroma sampling location with respect to luma coordinate.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return values<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NVCV_ERROR_INVALID_ARGUMENT</strong> – Some argument is outside its valid range. </p></li>
+<li><p><strong>NVCV_SUCCESS</strong> – Operation executed successfully. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga91abf1b0f54a09cbab18c6dcb211143c"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">NVCVStatus</span> <span class="pre">nvcvColorSpecGetColorSpace</span> <span class="pre">(NVCVColorSpec</span> <span class="pre">cspec,</span> <span class="pre">NVCVColorSpace</span> <span class="pre">*outColorSpace)</span></span></dt>
+<dd><p>Get the color space of a given color spec.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>cspec</strong> – <strong>[in]</strong> Color spec to be queried.<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">cspec</span></code> must be valid. </p></li>
+</ul>
+</p></li>
+<li><p><strong>outColorSpace</strong> – <strong>[out]</strong> Pointer to the output color space associated with the color spec.<ul>
+<li><p>Cannot be NULL.</p></li>
+</ul>
+</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return values<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NVCV_ERROR_INVALID_ARGUMENT</strong> – Some argument is outside its valid range. </p></li>
+<li><p><strong>NVCV_SUCCESS</strong> – Operation executed successfully. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga436aedf591c8c04d932667ac912bb8da"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">NVCVStatus</span> <span class="pre">nvcvColorSpecSetColorSpace</span> <span class="pre">(NVCVColorSpec</span> <span class="pre">*cspec,</span> <span class="pre">NVCVColorSpace</span> <span class="pre">cspace)</span></span></dt>
+<dd><p>Set the color space of a given color spec.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>cspec</strong> – <strong>[inout]</strong> Color spec to be updated.<ul>
+<li><p>Cannot be NULL.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">cspec</span></code> must be valid.</p></li>
+</ul>
+</p></li>
+<li><p><strong>cspace</strong> – <strong>[in]</strong> The new color_space.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return values<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NVCV_ERROR_INVALID_ARGUMENT</strong> – Some argument is outside its valid range. </p></li>
+<li><p><strong>NVCV_SUCCESS</strong> – Operation executed successfully. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga8aa2d9a9c24121cfc1ba8b3732b293d4"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">NVCVStatus</span> <span class="pre">nvcvColorSpecGetYCbCrEncoding</span> <span class="pre">(NVCVColorSpec</span> <span class="pre">cspec,</span> <span class="pre">NVCVYCbCrEncoding</span> <span class="pre">*outEncoding)</span></span></dt>
+<dd><p>Get the R’G’B’ &lt;-&gt; Y’CbCr encoding scheme of a given color spec.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>cspec</strong> – <strong>[in]</strong> Color spec to be queried.<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">cspec</span></code> must be valid. </p></li>
+</ul>
+</p></li>
+<li><p><strong>outEncoding</strong> – <strong>[out]</strong> The Y’CbCr encoding scheme associated with the color spec.<ul>
+<li><p>Cannot be NULL.</p></li>
+</ul>
+</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return values<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NVCV_ERROR_INVALID_ARGUMENT</strong> – Some argument is outside its valid range. </p></li>
+<li><p><strong>NVCV_SUCCESS</strong> – Operation executed successfully. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga0fc2dd21cc6872122d44c9ea2e052911"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">NVCVStatus</span> <span class="pre">nvcvColorSpecSetYCbCrEncoding</span> <span class="pre">(NVCVColorSpec</span> <span class="pre">*cspec,</span> <span class="pre">NVCVYCbCrEncoding</span> <span class="pre">encoding)</span></span></dt>
+<dd><p>Set the R’G’B’ &lt;-&gt; Y’CbCr encoding scheme of a given color spec.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>cspec</strong> – <strong>[inout]</strong> Color spec to be updated.<ul>
+<li><p>Cannot be NULL.</p></li>
+</ul>
+</p></li>
+<li><p><strong>encoding</strong> – <strong>[in]</strong> The new Y’CbCr encoding scheme.<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">encoding</span></code> cannot be <a class="reference internal" href="#group__NVCV__C__CORE__COLORSPEC_1gga60de8029ca0cb4b53692d11577ff15e0a68176457d8b98259b7164e0154b5f64c"><span class="std std-ref">NVCV_YCbCr_ENC_UNDEFINED</span></a>.</p></li>
+</ul>
+</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return values<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NVCV_ERROR_INVALID_ARGUMENT</strong> – Some argument is outside its valid range. </p></li>
+<li><p><strong>NVCV_SUCCESS</strong> – Operation executed successfully. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gac5846da6b38d638d50cfaa5cfb147273"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">NVCVStatus</span> <span class="pre">nvcvColorSpecGetColorTransferFunction</span> <span class="pre">(NVCVColorSpec</span> <span class="pre">cspec,</span> <span class="pre">NVCVColorTransferFunction</span> <span class="pre">*outXferFunc)</span></span></dt>
+<dd><p>Get the color transfer function of a given color spec.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>cspec</strong> – <strong>[in]</strong> Color spec to be queried.<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">cspec</span></code> must be valid.</p></li>
+</ul>
+</p></li>
+<li><p><strong>outXferFunc</strong> – <strong>[out]</strong> Pointer to the output color transfer function of the given colorspec.<ul>
+<li><p>Cannot be NULL.</p></li>
+</ul>
+</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return values<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NVCV_ERROR_INVALID_ARGUMENT</strong> – Some argument is outside its valid range. </p></li>
+<li><p><strong>NVCV_SUCCESS</strong> – Operation executed successfully. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga07ad28cce5431d150f9d972163b42e03"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">NVCVStatus</span> <span class="pre">nvcvColorSpecSetColorTransferFunction</span> <span class="pre">(NVCVColorSpec</span> <span class="pre">*cspec,</span> <span class="pre">NVCVColorTransferFunction</span> <span class="pre">xferFunc)</span></span></dt>
+<dd><p>Set the color transfer function of a given color spec.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>cspec</strong> – <strong>[inout]</strong> Color spec to be updated.<ul>
+<li><p>Cannot be NULL.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">cspec</span></code> must be valid.</p></li>
+</ul>
+</p></li>
+<li><p><strong>xferFunc</strong> – <strong>[in]</strong> The new color transfer function.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return values<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NVCV_ERROR_INVALID_ARGUMENT</strong> – Some argument is outside its valid range. </p></li>
+<li><p><strong>NVCV_SUCCESS</strong> – Operation executed successfully. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gada79864a4778fe682c7c569a2047b75c"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">NVCVStatus</span> <span class="pre">nvcvColorSpecGetRange</span> <span class="pre">(NVCVColorSpec</span> <span class="pre">cspec,</span> <span class="pre">NVCVColorRange</span> <span class="pre">*outColorRange)</span></span></dt>
+<dd><p>Get the color quantization range of a given color spec.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>cspec</strong> – <strong>[in]</strong> Color spec to be queried.<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">cspec</span></code> must be valid.</p></li>
+</ul>
+</p></li>
+<li><p><strong>outColorRange</strong> – <strong>[out]</strong> The color quantization range of a given color spec.<ul>
+<li><p>Cannot be NULL.</p></li>
+</ul>
+</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return values<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NVCV_ERROR_INVALID_ARGUMENT</strong> – Some argument is outside its valid range. </p></li>
+<li><p><strong>NVCV_SUCCESS</strong> – Operation executed successfully. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gaa449a61e014578239ebeebdee7b032c2"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">NVCVStatus</span> <span class="pre">nvcvColorSpecSetRange</span> <span class="pre">(NVCVColorSpec</span> <span class="pre">*cspec,</span> <span class="pre">NVCVColorRange</span> <span class="pre">range)</span></span></dt>
+<dd><p>Set the color quantization range of a given color spec.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>cspec</strong> – <strong>[inout]</strong> Color spec to be updated.<ul>
+<li><p>Cannot be NULL.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">cspec</span></code> must be valid.</p></li>
+</ul>
+</p></li>
+<li><p><strong>range</strong> – <strong>[in]</strong> The new color quantization range.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return values<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NVCV_ERROR_INVALID_ARGUMENT</strong> – Some argument is outside its valid range. </p></li>
+<li><p><strong>NVCV_SUCCESS</strong> – Operation executed successfully. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gae7821579da2e01aba50fec36ceb0aed1"></span><span class="sig-name descname"><span class="pre">const</span> <span class="pre">NVCV_PUBLIC</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvColorSpecGetName</span> <span class="pre">(NVCVColorSpec</span> <span class="pre">cspec)</span></span></dt>
+<dd><p>Returns a string representation of the color spec.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>cspec</strong> – <strong>[in]</strong> Color spec whose name is to be returned.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The string representation of the color spec. Returned string is valid until next call of this function from the same calling thread. Returned pointer must not be freed. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga55487db286283d60dfff32daddb1c042"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">NVCVStatus</span> <span class="pre">nvcvColorModelNeedsColorspec</span> <span class="pre">(NVCVColorModel</span> <span class="pre">cmodel,</span> <span class="pre">int8_t</span> <span class="pre">*outBool)</span></span></dt>
+<dd><p>Returns whether a given color model needs a colorspec.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>cmodel</strong> – <strong>[in]</strong> Color model to be queried</p></li>
+<li><p><strong>outBool</strong> – <strong>[out]</strong> Returns the boolean result. 0 if color model doesn’t need a colorspec, != 0 otherwise.<ul>
+<li><p>Cannot be NULL.</p></li>
+</ul>
+</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return values<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NVCV_ERROR_INVALID_ARGUMENT</strong> – Some argument is outside its valid range. </p></li>
+<li><p><strong>NVCV_SUCCESS</strong> – Operation executed successfully. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga4d928202ff8e533be298b808c4dc64af"></span><span class="sig-name descname"><span class="pre">const</span> <span class="pre">NVCV_PUBLIC</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvColorModelGetName</span> <span class="pre">(NVCVColorModel</span> <span class="pre">cmodel)</span></span></dt>
+<dd><p>Returns a string representation of the color model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>cmodel</strong> – <strong>[in]</strong> Color model whose name is to be returned.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The string representation of the color model. Returned pointer must not be freed. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gaa74b234bd3025524d1e06b488abdcbbb"></span><span class="sig-name descname"><span class="pre">const</span> <span class="pre">NVCV_PUBLIC</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvColorSpaceGetName</span> <span class="pre">(NVCVColorSpace</span> <span class="pre">cspace)</span></span></dt>
+<dd><p>Returns a string representation of the color space.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>cspace</strong> – <strong>[in]</strong> Color model whose name is to be returned.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The string representation of the color model. Returned pointer must not be freed. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga04bd7df1020506f146f6eaf4bbea3a02"></span><span class="sig-name descname"><span class="pre">const</span> <span class="pre">NVCV_PUBLIC</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvWhitePointGetName</span> <span class="pre">(NVCVWhitePoint</span> <span class="pre">wpoint)</span></span></dt>
+<dd><p>Returns a string representation of the white point.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>wpoint</strong> – <strong>[in]</strong> White point whose name is to be returned.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The string representation of the white point. Returned pointer must not be freed. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga727340c050da26330a398549cd606a69"></span><span class="sig-name descname"><span class="pre">const</span> <span class="pre">NVCV_PUBLIC</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvYCbCrEncodingGetName</span> <span class="pre">(NVCVYCbCrEncoding</span> <span class="pre">enc)</span></span></dt>
+<dd><p>Returns a string representation of the YCbCr encoding.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>enc</strong> – <strong>[in]</strong> YCbCr encoding whose name is to be returned.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The string representation of the YCbCr encoding. Returned pointer must not be freed. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gaa5a4a71f7d3a8365be77d581082e806e"></span><span class="sig-name descname"><span class="pre">const</span> <span class="pre">NVCV_PUBLIC</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvColorTransferFunctionGetName</span> <span class="pre">(NVCVColorTransferFunction</span> <span class="pre">xfer)</span></span></dt>
+<dd><p>Returns a string representation of the color transfer function.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>xfer</strong> – <strong>[in]</strong> Color transfer function whose name is to be returned.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The string representation of the color transfer function. Returned pointer must not be freed. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gae162f3e90f1ff7a61844bfe568764823"></span><span class="sig-name descname"><span class="pre">const</span> <span class="pre">NVCV_PUBLIC</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvColorRangeGetName</span> <span class="pre">(NVCVColorRange</span> <span class="pre">range)</span></span></dt>
+<dd><p>Returns a string representation of the color range.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>range</strong> – <strong>[in]</strong> Color range whose name is to be returned.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The string representation of the color range. Returned pointer must not be freed. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gaa51b5f2b207c67e45287f424a253428d"></span><span class="sig-name descname"><span class="pre">const</span> <span class="pre">NVCV_PUBLIC</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvChromaLocationGetName</span> <span class="pre">(NVCVChromaLocation</span> <span class="pre">loc)</span></span></dt>
+<dd><p>Returns a string representation of the chroma location.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>loc</strong> – <strong>[in]</strong> Chroma location whose name is to be returned.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The string representation of the chroma location. Returned pointer must not be freed. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga77076c77cc3b5ae2033bf269d271e4bb"></span><span class="sig-name descname"><span class="pre">const</span> <span class="pre">NVCV_PUBLIC</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvRawPatternGetName</span> <span class="pre">(NVCVRawPattern</span> <span class="pre">raw)</span></span></dt>
+<dd><p>Returns a string representation of the raw pattern.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>raw</strong> – <strong>[in]</strong> Raw pattern whose name is to be returned.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The string representation of the raw pattern. Returned pointer must not be freed. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga6563f7eed9a6321bcb3ce32fe3ac5823"></span><span class="sig-name descname"><span class="pre">const</span> <span class="pre">NVCV_PUBLIC</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvChromaSubsamplingGetName</span> <span class="pre">(NVCVChromaSubsampling</span> <span class="pre">css)</span></span></dt>
+<dd><p>Returns a string representation of the chroma subsampling.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>css</strong> – <strong>[in]</strong> Chroma subsampling whose name is to be returned.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The string representation of the chroma subsampling. Returned pointer must not be freed. </p>
+</dd>
+</dl>
+</dd></dl>
+
+</div>
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../modules/c_core.html" class="btn btn-neutral float-left" title="Core" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="group__NVCV__C__CORE__DATALAYOUT.html" class="btn btn-neutral float-right" title="Data Layout" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022-2024, NVIDIA..
+      <span class="lastupdated">Last updated on Jun 28, 2024.
+      </span></p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(false);
+      });
+  </script> 
+
+</body>
+</html>

@@ -17,7 +17,7 @@
 .. _videobatchencoder_pyvideocodec:
 
 Video Encoding using VpyNvVideoCodecPF
-====================
+======================================
 
 
 The video batch encoder is responsible for writing tensors as an MP4 video. The actual encoding is done in batches using NVIDIA's pyNvVideoCodec. The video encoder is generic enough to be used across the sample applications. The code associated with this class can be found in the ``samples/common/python/nvcodec_utils.py`` file.
@@ -35,7 +35,7 @@ The first class acts as a wrapper on the second class which allows us to:
 
 
 VideoBatchEncoderVPF
-------------------
+--------------------
 
 To get started, here is how the class is initialized in its ``__init__`` method. The encoder instance and CVCUDA color conversion tensors both are allocated when needed upon the first use.
 

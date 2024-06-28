@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Type Traits &mdash; CV-CUDA Beta documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=19f00094" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=76b435a8" />
+
+  
+    <link rel="shortcut icon" href="../_static/nv_icon.png"/>
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../_static/jquery.js?v=5d32c60e"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js?v=bd46b8a5"></script>
+        <script src="../_static/doctools.js?v=888ff710"></script>
+        <script src="../_static/sphinx_highlight.js?v=4825356b"></script>
+        <script src="../_static/pk_scripts.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Python API" href="../modules/python_modules.html" />
+    <link rel="prev" title="TensorWrap shortcuts" href="group__NVCV__CPP__CUDATOOLS__TENSORWRAPS.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #000000" >
+
+          
+          
+          <a href="../index.html">
+            
+              <img src="../_static/nv_logo.png" class="logo" alt="Logo"/>
+          </a>
+              <div class="version">
+                Beta
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Beginner's Guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#pre-requisites">Pre-requisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#setup">Setup</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started.html">Getting Started</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../prerequisites.html">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../samples.html">Samples</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../samples/cpp_samples.html">C++</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../samples/cpp_samples/cropresize.html">Crop and Resize</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../samples/python_samples.html">Python</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/classification.html">Classification</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/segmentation.html">Semantic Segmentation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/segmentation_triton.html">Semantic Segmentation using Triton</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/object_detection.html">Object Detection</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../modules/c_modules.html">C Modules</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../modules/c_core.html">Core</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__COLORSPEC.html">Color Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__DATALAYOUT.html">Data Layout</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__DATATYPE.html">Data types</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__IMAGETYPE.html">Image Formats</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/c_utils.html">Utilities</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__UTIL__STATUS.html">Status Codes</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/c_algos.html">Algorithms</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ADAPTIVETHRESHOLD.html">Adaptive Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__AVERAGEBLUR.html">Average Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BILATERAL__FILTER.html">Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BRIGHTNESS__CONTRAST.html">Brightness Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CENTER__CROP.html">Center Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CHANNEL__REORDER.html">Channel Reorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COLOR__TWIST.html">Color Twist</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COMPOSITE.html">Composite</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONV2D.html">2D Convolution</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONVERT__TO.html">Convert To</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COPYMAKEBORDER.html">Copy Make Border</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAMMA__CONTRAST.html">Gamma Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN.html">Gaussian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN__NOISE.html">GaussianNoise</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__HQ__RESIZE.html">HQ Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__INPAINT.html">Inpaint</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__JOINT__BILATERAL__FILTER.html">Joint Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LABEL.html">Label</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LAPLACIAN.html">Laplacian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MEDIAN__BLUR.html">Median Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MINMAXLOC.html">MinMaxLoc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MORPHOLOGY.html">Morphology</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NON__MAXIMUM__SUPPRESSION.html">Non-Maximum Suppression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NORMALIZE.html">Normalize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PADANDSTACK.html">Pad and Stack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PAIRWISE__MATCHER.html">Pairwise Matcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PILLOW__RESIZE.html">Pillow Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RANDOMRESIZEDCROP.html">Random Resized Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REFORMAT.html">Reformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REMAP.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RESIZE.html">Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ROTATE.html">Rotate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__SIFT.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__THRESHOLD.html">Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__AFFINE.html">Warp Affine</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__PERSPECTIVE.html">Warp Perspective</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____ADV__CVT__COLOR.html">Adv Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BND__BOX.html">BndBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BOX__BLUR.html">BoxBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM.html">Histogram</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM__EQ.html">Histogram Eq</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____MIN__AREA__RECT.html">Min Area Rect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____O__S__D.html">OSD</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____RESIZE__CROP.html">Resize Crop Convert</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____STACK.html">Stack</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1 current"><a class="reference internal" href="../modules/cpp_modules.html">C++ Modules</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_core.html">Core</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__COLORSPEC.html">Color Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html">Data Layout</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__DATATYPE.html">Data types</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__IMAGETYPE.html">Image Formats</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__SIZE.html">Size Operator</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_utils.html">Utilities</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__UTIL__EXCEPTION.html">Exception</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__UTIL__STATUS.html">Status Codes</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_algos.html">Algorithms</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ADAPTIVETHRESHOLD.html">Adaptive Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__AVERAGEBLUR.html">Average Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BILATERAL__FILTER.html">Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BRIGHTNESS__CONTRAST.html">Brightness Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CENTER__CROP.html">Center Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CHANNEL__REORDER.html">Channel Reorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COLOR__TWIST.html">Color Twist</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COMPOSITE.html">Composite</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONV2D.html">2D Convolution</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONVERT__TO.html">Convert To</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COPYMAKEBORDER.html">Copy Make Border</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAMMA__CONTRAST.html">Gamma Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN.html">Gaussian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN__NOISE.html">GaussianNoise</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__HQ__RESIZE.html">HQ Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__INPAINT.html">Inpaint</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__JOINT__BILATERAL__FILTER.html">Joint Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LABEL.html">Label</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LAPLACIAN.html">Laplacian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MEDIAN__BLUR.html">Median Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MINMAXLOC.html">MinMaxLoc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MORPHOLOGY.html">Morphology</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NON__MAXIMUM__SUPPRESSION.html">Non-Maximum Suppression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NORMALIZE.html">Normalize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PADANDSTACK.html">Pad and Stack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PAIRWISE__MATCHER.html">Pairwise Matcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PILLOW__RESIZE.html">Pillow Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RANDOMRESIZEDCROP.html">Random Resized Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REFORMAT.html">Reformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REMAP.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RESIZE.html">Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ROTATE.html">Rotate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__SIFT.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__THRESHOLD.html">Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__AFFINE.html">Warp Affine</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__PERSPECTIVE.html">Warp Perspective</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____ADV__CVT__COLOR.html">Adv Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BND__BOX.html">BndBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BOX__BLUR.html">BoxBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM.html">Histogram</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM__EQ.html">Histogram Eq</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____MIN__AREA__RECT.html">Min Area Rect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____O__S__D.html">OSD</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____RESIZE__CROP.html">Resize Crop Convert</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____STACK.html">Stack</a></li>
+</ul>
+</li>
+<li class="toctree-l2 current"><a class="reference internal" href="../modules/cpp_cudatools.html">CUDA Tools</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__ATOMICS.html">Atomic operations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__BORDER.html">Border functions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__BORDERVARSHAPEWRAP.html">BorderVarShapeWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__BORDERWRAP.html">BorderWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__DROPCAST.html">Drop Cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__FULLTENSORWRAP.html">FullTensorWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__IMAGEWRAP.html">Image Wrapper classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__INTERPOLATION.html">Interpolation functions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__INTERPOLATIONVARSHAPEWRAP.html">InterpolationVarShapeWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__INTERPOLATIONWRAP.html">InterpolationWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__LINALG.html">Linear algebra</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHOPERATORS.html">Math operators</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHWRAPPERS.html">Math wrappers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__RANGECAST.html">Range cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__SATURATECAST.html">Saturate cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__STATICCAST.html">Static Cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORBATCHWRAP.html">TensorBatchWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORBATCHWRAPS.html">TensorBatchWrap shortcuts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORWRAP.html">TensorWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORWRAPS.html">TensorWrap shortcuts</a></li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">Type Traits</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../modules/python_modules.html">Python Modules</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../modules/python_core.html">Core</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/cache.html">Cache</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/colorspec.html">Color Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/format.html">Image Formats</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/recti.html">Rect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/image.html">Image</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/imagebatch.html">ImageBatchVarShape</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/tensor.html">Tensor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/tensorbatch.html">TensorBatchVarShape</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/python_algos.html">Algorithms</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_adaptivethreshold.html">AdaptiveThreshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_advcvtcolor.html">AdvCvtColor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_averageblur.html">AverageBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_bilateralfilter.html">BilateralFilter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_bndbox.html">BndBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_boxblur.html">BoxBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_brightnesscontrast.html">BrightnessContrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_centercrop.html">CenterCrop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_channelreorder.html">ChannelReorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_colortwist.html">ColorTwist</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_composite.html">Composite</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_conv2d.html">Conv2D</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_convertto.html">ConvertTo</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_copymakeborder.html">CopyMakeBorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_cropflipnormalizereformat.html">CropFlipNormalizeReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_customcrop.html">CustomCrop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_cvtcolor.html">CvtColor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_erase.html">Erase</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_findhomography.html">FindHomography</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_flip.html">Flip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_gammacontrast.html">GammaContrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_gaussian.html">Gaussian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_gaussiannoise.html">GaussianNoise</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_histogram.html">Histogram</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_histogrameq.html">HistogramEq</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_hqresize.html">HQResize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_inpaint.html">Inpaint</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_jointbilateralfilter.html">JointBilateralFilter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_label.html">Label</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_laplacian.html">Laplacian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_medianblur.html">MedianBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_minarearect.html">MinAreaRect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_minmaxloc.html">MinMaxLoc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_morphology.html">Morphology</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_nonmaximumsuppression.html">NonMaximumSuppression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_normalize.html">Normalize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_osd.html">OSD</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_padandstack.html">PadAndStack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_pairwisematcher.html">PairwiseMatcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_pillowresize.html">PillowResize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_randomresizedcrop.html">RandomResizedCrop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_reformat.html">Reformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_remap.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_resize.html">Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_resizecropconvertreformat.html">ResizeCropConvertReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_rotate.html">Rotate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_sift.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_stack.html">Stack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_threshold.html">Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_warpaffine.html">WarpAffine</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_warpperspective.html">WarpPerspective</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_adaptivethresholdtype.html">AdaptiveThresholdType</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_arrow.html">Arrow</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_blurboxi.html">BlurBoxI</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_bndboxi.html">BndBoxI</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_border.html">Border</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_channelmanip.html">ChannelManip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_circle.html">Circle</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_clockformat.html">ClockFormat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_colorconversion.html">ColorConversion</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_connectivitytype.html">ConnectivityType</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_interp.html">Interp</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_label.html">LABEL</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_line.html">Line</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_matcher.html">Matcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_morphologytype.html">MorphologyType</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_norm.html">Norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_point.html">Point</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_remap.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_rotatedbox.html">RotatedBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_sift.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_thresholdtype.html">ThresholdType</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Release Notes</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.9.0-beta.html">v0.9.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.8.0-beta.html">v0.8.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.7.0-beta.html">v0.7.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.6.0-beta.html">v0.6.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.5.0-beta.html">v0.5.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.4.0-beta.html">v0.4.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.3.1-beta.html">v0.3.1-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#bug-fixes">Bug Fixes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#known-issues">Known Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.3.0-beta.html">v0.3.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html">v0.2.1-alpha</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#general">General</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#new-operators">New Operators</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#improved-testing">Improved Testing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#bug-fixes">Bug Fixes</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html">v0.2.0-alpha</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html">v0.1.0-prealpha</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#known-issues">Known Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#license">License</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #000000" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">CV-CUDA</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../modules/cpp_modules.html">C++ API</a></li>
+          <li class="breadcrumb-item"><a href="../modules/cpp_cudatools.html">CUDA Tools</a></li>
+      <li class="breadcrumb-item active">Type Traits</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/_c_cpp_api/group__NVCV__CPP__CUDATOOLS__TYPETRAITS.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="type-traits">
+<h1>Type Traits<a class="headerlink" href="#type-traits" title="Permalink to this heading"></a></h1>
+<dl>
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__TYPETRAITS"></span><em><span class="pre">group</span></em> <span class="sig-name descname"><span class="pre">NVCV_CPP_CUDATOOLS_TYPETRAITS</span></span></dt>
+<dd><p>Metastruct to define type traits for regular C types and CUDA built-in vector (or compound) types.</p>
+<p>CUDA built-in vector types are also called compound types. The number of components in the metastruct is zero for regular C types and between 1 and 4 for CUDA compound types. On the flip side, the number of elements is between 1 and 4 for regular C types and CUDA compound types, i.e. the number of elements may be used regardless of the type. The base type of a CUDA compound type is the type of each of its components, for instance uchar4 has 4 elements of base type unsigned char. Type traits also provide the name of the type, each element minimum and maximum representable values.</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="k">using</span><span class="w"> </span><span class="n">BaseType</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">typename</span><span class="w"> </span><span class="nc">nvcv</span><span class="o">::</span><span class="n">cuda</span><span class="o">::</span><span class="n">TypeTraits</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;::</span><span class="n">base_type</span><span class="p">;</span>
+<span class="kt">int</span><span class="w"> </span><span class="n">nc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">nvcv</span><span class="o">::</span><span class="n">cuda</span><span class="o">::</span><span class="n">TypeTraits</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;::</span><span class="n">components</span><span class="p">;</span>
+<span class="kt">int</span><span class="w"> </span><span class="n">ne</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">nvcv</span><span class="o">::</span><span class="n">cuda</span><span class="o">::</span><span class="n">TypeTraits</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;::</span><span class="n">elements</span><span class="p">;</span>
+<span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">nvcv</span><span class="o">::</span><span class="n">cuda</span><span class="o">::</span><span class="n">TypeTraits</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;::</span><span class="n">name</span><span class="p">;</span>
+<span class="n">T</span><span class="w"> </span><span class="n">min</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">nvcv</span><span class="o">::</span><span class="n">cuda</span><span class="o">::</span><span class="n">TypeTraits</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;::</span><span class="n">min</span><span class="p">;</span>
+<span class="n">T</span><span class="w"> </span><span class="n">max</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">nvcv</span><span class="o">::</span><span class="n">cuda</span><span class="o">::</span><span class="n">TypeTraits</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;::</span><span class="n">max</span><span class="p">;</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">tparam T<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Type to get traits from. </p>
+</dd>
+</dl>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-typedefs">Typedefs</p>
+<dl class="cpp type">
+<dt class="sig sig-object cpp" id="_CPPv4I_bE7Require">
+<span id="_CPPv3I_bE7Require"></span><span id="_CPPv2I_bE7Require"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">B</span></span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="group__NVCV__CPP__CUDATOOLS__TYPETRAITS_1ga54cd4a28ac556e5ffd6fe20f785fe405"></span><span class="k"><span class="pre">using</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Require</span></span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">enable_if_t</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I_bE7Require" title="Require::B"><span class="n"><span class="pre">B</span></span></a><span class="p"><span class="pre">&gt;</span></span><a class="headerlink" href="#_CPPv4I_bE7Require" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp type">
+<dt class="sig sig-object cpp" id="_CPPv4I00E8BaseType">
+<span id="_CPPv3I00E8BaseType"></span><span id="_CPPv2I00E8BaseType"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">T</span></span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I_bE7Require" title="Require"><span class="n"><span class="pre">Require</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4IDpE13HasTypeTraits" title="HasTypeTraits"><span class="n"><span class="pre">HasTypeTraits</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I00E8BaseType" title="BaseType::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="group__NVCV__CPP__CUDATOOLS__TYPETRAITS_1ga1a94bf87b01a240ed3e0b85f0984ec52"></span><span class="k"><span class="pre">using</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">BaseType</span></span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="k"><span class="pre">typename</span></span><span class="w"> </span><span class="n"><span class="pre">TypeTraits</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I00E8BaseType" title="BaseType::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">base_type</span></span><a class="headerlink" href="#_CPPv4I00E8BaseType" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Metatype to get the base type of a CUDA compound types.</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="k">using</span><span class="w"> </span><span class="n">DataType</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">...;</span>
+<span class="k">using</span><span class="w"> </span><span class="n">ChannelType</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">nvcv</span><span class="o">::</span><span class="n">cuda</span><span class="o">::</span><span class="n">BaseType</span><span class="o">&lt;</span><span class="n">DataType</span><span class="o">&gt;</span><span class="p">;</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This is identity for regular C types.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Template Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>T</strong> – Type to get the base type from. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp type">
+<dt class="sig sig-object cpp" id="_CPPv4I0_i0E8MakeType">
+<span id="_CPPv3I0_i0E8MakeType"></span><span id="_CPPv2I0_i0E8MakeType"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">T</span></span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="kt"><span class="pre">int</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">C</span></span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I_bE7Require" title="Require"><span class="n"><span class="pre">Require</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4IDpE13HasTypeTraits" title="HasTypeTraits"><span class="n"><span class="pre">HasTypeTraits</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I0_i0E8MakeType" title="MakeType::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="group__NVCV__CPP__CUDATOOLS__TYPETRAITS_1ga9c36cb5c99c3950309677c84e857985d"></span><span class="k"><span class="pre">using</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">MakeType</span></span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="n"><span class="pre">detail</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">MakeType_t</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I0_i0E8MakeType" title="MakeType::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_i0E8MakeType" title="MakeType::C"><span class="n"><span class="pre">C</span></span></a><span class="p"><span class="pre">&gt;</span></span><a class="headerlink" href="#_CPPv4I0_i0E8MakeType" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Metatype to make a type from a base type and number of components.</p>
+<p>When number of components is zero, it yields the identity (regular C) type, and when it is between 1 and 4 it yields the CUDA compound type.</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="k">using</span><span class="w"> </span><span class="n">RGB8Type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">MakeType</span><span class="o">&lt;</span><span class="kt">unsigned</span><span class="w"> </span><span class="kt">char</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="o">&gt;</span><span class="p">;</span><span class="w"> </span><span class="c1">// yields uchar3</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Note that T=char might yield uchar1..4 types when char is equal unsigned char, i.e. CHAR_MIN == 0.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Template Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>T</strong> – Base type to make the type from. </p></li>
+<li><p><strong>C</strong> – Number of components to make the type. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp type">
+<dt class="sig sig-object cpp" id="_CPPv4I000E17ConvertBaseTypeTo">
+<span id="_CPPv3I000E17ConvertBaseTypeTo"></span><span id="_CPPv2I000E17ConvertBaseTypeTo"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">BT</span></span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">T</span></span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I_bE7Require" title="Require"><span class="n"><span class="pre">Require</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4IDpE13HasTypeTraits" title="HasTypeTraits"><span class="n"><span class="pre">HasTypeTraits</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I000E17ConvertBaseTypeTo" title="ConvertBaseTypeTo::BT"><span class="n"><span class="pre">BT</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I000E17ConvertBaseTypeTo" title="ConvertBaseTypeTo::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="group__NVCV__CPP__CUDATOOLS__TYPETRAITS_1ga0a09ebca974bcf5d56636479b62f1025"></span><span class="k"><span class="pre">using</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ConvertBaseTypeTo</span></span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="n"><span class="pre">detail</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">ConvertBaseTypeTo_t</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I000E17ConvertBaseTypeTo" title="ConvertBaseTypeTo::BT"><span class="n"><span class="pre">BT</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I000E17ConvertBaseTypeTo" title="ConvertBaseTypeTo::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">&gt;</span></span><a class="headerlink" href="#_CPPv4I000E17ConvertBaseTypeTo" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Metatype to convert the base type of a type.</p>
+<p>The base type of target type <code class="docutils literal notranslate"><span class="pre">T</span></code> is replaced to be <code class="docutils literal notranslate"><span class="pre">BT</span></code>.</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="k">using</span><span class="w"> </span><span class="n">DataType</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">...;</span>
+<span class="k">using</span><span class="w"> </span><span class="n">FloatDataType</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ConvertBaseTypeTo</span><span class="o">&lt;</span><span class="kt">float</span><span class="p">,</span><span class="w"> </span><span class="n">DataType</span><span class="o">&gt;</span><span class="p">;</span><span class="w"> </span><span class="c1">// yields float1..4</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Template Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>BT</strong> – Base type to use in the conversion. </p></li>
+<li><p><strong>T</strong> – Target type to convert its base type. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</div>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-functions">Functions</p>
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__TYPETRAITS_1gab9dccb8d8c16c2203fbe72577e8c3c7a"></span><span class="sig-name descname"><span class="pre">template&lt;typename</span> <span class="pre">T,</span> <span class="pre">typename</span> <span class="pre">RT</span> <span class="pre">=</span> <span class="pre">detail::CopyConstness_t&lt;T,</span> <span class="pre">std::conditional_t&lt;IsCompound&lt;T&gt;,</span> <span class="pre">BaseType&lt;T&gt;,</span> <span class="pre">T&gt;&gt;,</span> <span class="pre">class</span> <span class="pre">=</span> <span class="pre">Require&lt;HasTypeTraits&lt;T&gt;&gt;&gt;</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">RT</span> <span class="pre">&amp;</span> <span class="pre">GetElement</span> <span class="pre">(T</span> <span class="pre">&amp;v,</span> <span class="pre">int</span> <span class="pre">eidx)</span></span></dt>
+<dd><p>Metafunction to get an element by reference from a given value reference.</p>
+<p>The value may be of CUDA compound type with 1 to 4 elements, where the corresponding element index is 0 to 3, and the return is a reference to the element with the base type of the compound type, copying the constness (that is the return reference is constant if the input value is constant). The value may be a regular C type, in which case the element index is ignored and the identity is returned. It is a requirement of the GetElement function that the type <code class="docutils literal notranslate"><span class="pre">T</span></code> has type traits.</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="k">using</span><span class="w"> </span><span class="n">PixelRGB8Type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">MakeType</span><span class="o">&lt;</span><span class="kt">unsigned</span><span class="w"> </span><span class="kt">char</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="o">&gt;</span><span class="p">;</span>
+<span class="n">PixelRGB8Type</span><span class="w"> </span><span class="n">pix</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">...;</span>
+<span class="k">auto</span><span class="w"> </span><span class="n">green</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">GetElement</span><span class="p">(</span><span class="n">pix</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">);</span><span class="w"> </span><span class="c1">// yields unsigned char</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Template Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>T</strong> – Type of the value to get the element from.</p>
+</dd>
+<dt class="field-even">Parameters<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>v</strong> – <strong>[in]</strong> Value of type T to get an element from. </p></li>
+<li><p><strong>eidx</strong> – <strong>[in]</strong> Element index in [0, 3] inside the compound value to get the reference from. This element index is ignored in case the value is not of a CUDA compound type.</p></li>
+</ul>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The reference of the value’s element. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__TYPETRAITS_1gaf743a34c48b7728590891f2e2b808454"></span><span class="sig-name descname"><span class="pre">template&lt;int</span> <span class="pre">EIDX,</span> <span class="pre">typename</span> <span class="pre">T,</span> <span class="pre">typename</span> <span class="pre">RT</span> <span class="pre">=</span> <span class="pre">detail::CopyConstness_t&lt;T,</span> <span class="pre">std::conditional_t&lt;IsCompound&lt;T&gt;,</span> <span class="pre">BaseType&lt;T&gt;,</span> <span class="pre">T&gt;&gt;,</span> <span class="pre">class</span> <span class="pre">=</span> <span class="pre">Require&lt;HasTypeTraits&lt;T&gt;&gt;&gt;</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">RT</span> <span class="pre">&amp;</span> <span class="pre">GetElement</span> <span class="pre">(T</span> <span class="pre">&amp;v)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__TYPETRAITS_1ga5422437538ed9b2f1ed1d925bee901bd"></span><span class="sig-name descname"><span class="pre">template&lt;typename</span> <span class="pre">T,</span> <span class="pre">class</span> <span class="pre">=</span> <span class="pre">Require&lt;HasTypeTraits&lt;T&gt;&gt;&gt;</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">T</span> <span class="pre">SetAll</span> <span class="pre">(BaseType&lt;</span> <span class="pre">T</span> <span class="pre">&gt;</span> <span class="pre">x)</span></span></dt>
+<dd><p>Metafunction to set all elements to the same value.</p>
+<p>Set all elements to the value <code class="docutils literal notranslate"><span class="pre">x</span></code> passed as argument. For instance, an int3 can have all its elements set to zero by calling SetAll and passing int3 as template argument and zero as argument (see example below). Another way to set all elements to a value is by using the type of the argument as base type and passing the number of channels of the return type (see example below).</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="k">auto</span><span class="w"> </span><span class="n">idx</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">SetAll</span><span class="o">&lt;</span><span class="n">int3</span><span class="o">&gt;</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span><span class="w"> </span><span class="c1">// sets to zero all elements of an int3 index idx: {0, 0, 0}</span>
+<span class="kt">unsigned</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="n">ch</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">127</span><span class="p">;</span>
+<span class="k">auto</span><span class="w"> </span><span class="n">pix</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">SetAll</span><span class="o">&lt;</span><span class="mi">4</span><span class="o">&gt;</span><span class="p">(</span><span class="n">ch</span><span class="p">);</span><span class="w"> </span><span class="c1">// sets all elements of an uchar3 pixel pix: {127, 127, 127, 127}</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Template Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>T</strong> – Type to be returned with all elements set to the given value <code class="docutils literal notranslate"><span class="pre">x</span></code>. </p></li>
+<li><p><strong>N</strong> – Number of components as a second option instead of passing the type <code class="docutils literal notranslate"><span class="pre">T</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Parameters<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>x</strong> – <strong>[in]</strong> Value to set all elements to.</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The object of type T with all elements set to <code class="docutils literal notranslate"><span class="pre">x</span></code>. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__TYPETRAITS_1ga6a455d0d473ab47a721415903b92f546"></span><span class="sig-name descname"><span class="pre">template&lt;int</span> <span class="pre">N,</span> <span class="pre">typename</span> <span class="pre">BT,</span> <span class="pre">typename</span> <span class="pre">RT</span> <span class="pre">=</span> <span class="pre">MakeType&lt;BT,</span> <span class="pre">N&gt;,</span> <span class="pre">class</span> <span class="pre">=</span> <span class="pre">Require&lt;HasTypeTraits&lt;BT&gt;&gt;&gt;</span> <span class="pre">__host__</span> <span class="pre">__device__</span> <span class="pre">RT</span> <span class="pre">SetAll</span> <span class="pre">(BT</span> <span class="pre">x)</span></span></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CUDATOOLS__TYPETRAITS_1ga0000e52ad50483963b57d5b4fc36fcf0"></span><span class="sig-name descname"><span class="pre">template&lt;class</span> <span class="pre">T,</span> <span class="pre">class</span> <span class="pre">=</span> <span class="pre">Require&lt;HasTypeTraits&lt;T&gt;&gt;&gt;</span> <span class="pre">const</span> <span class="pre">__host__</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">GetTypeName</span> <span class="pre">()</span></span></dt>
+<dd><p>Metafunction to get the name of a type.</p>
+<p>Unfortunately typeid().name() in C/C++ typeinfo yields different names depending on the platform. This function returns the name of the type resembling the CUDA compound type, that may be useful for debug printing.</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="n">std</span><span class="o">::</span><span class="n">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">GetTypeName</span><span class="o">&lt;</span><span class="n">DataType</span><span class="o">&gt;</span><span class="p">();</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Template Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>T</strong> – Type to get the name from.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>String with the name of the type. </p>
+</dd>
+</dl>
+</dd></dl>
+
+</div>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-variables">Variables</p>
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv4IDpE13HasTypeTraits">
+<span id="_CPPv3IDpE13HasTypeTraits"></span><span id="_CPPv2IDpE13HasTypeTraits"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">typename</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="sig-name descname"><span class="n"><span class="pre">Ts</span></span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="group__NVCV__CPP__CUDATOOLS__TYPETRAITS_1gaae6f96fedfad8b3d0fe16cf26ea687a4"></span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">HasTypeTraits</span></span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">detail</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">HasTypeTraits_t</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4IDpE13HasTypeTraits" title="HasTypeTraits::Ts"><span class="n"><span class="pre">Ts</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">value</span></span><span class="w"> </span><span class="o"><span class="pre">&amp;&amp;</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">)</span></span><a class="headerlink" href="#_CPPv4IDpE13HasTypeTraits" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv4I00E10IsCompound">
+<span id="_CPPv3I00E10IsCompound"></span><span id="_CPPv2I00E10IsCompound"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">T</span></span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I_bE7Require" title="Require"><span class="n"><span class="pre">Require</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4IDpE13HasTypeTraits" title="HasTypeTraits"><span class="n"><span class="pre">HasTypeTraits</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I00E10IsCompound" title="IsCompound::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="group__NVCV__CPP__CUDATOOLS__TYPETRAITS_1gac25f5fd046d016269f588794b8d227e2"></span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">IsCompound</span></span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="n"><span class="pre">TypeTraits</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I00E10IsCompound" title="IsCompound::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">components</span></span><span class="w"> </span><span class="o"><span class="pre">&gt;=</span></span><span class="w"> </span><span class="m"><span class="pre">1</span></span><a class="headerlink" href="#_CPPv4I00E10IsCompound" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv4I0_i0E19HasEnoughComponents">
+<span id="_CPPv3I0_i0E19HasEnoughComponents"></span><span id="_CPPv2I0_i0E19HasEnoughComponents"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">typename</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">T</span></span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="kt"><span class="pre">int</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">N</span></span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I_bE7Require" title="Require"><span class="n"><span class="pre">Require</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4IDpE13HasTypeTraits" title="HasTypeTraits"><span class="n"><span class="pre">HasTypeTraits</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I0_i0E19HasEnoughComponents" title="HasEnoughComponents::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="group__NVCV__CPP__CUDATOOLS__TYPETRAITS_1ga852d6108ba3d39bccfe6bd41e055e7fd"></span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">HasEnoughComponents</span></span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0_i0E19HasEnoughComponents" title="HasEnoughComponents::N"><span class="n"><span class="pre">N</span></span></a><span class="w"> </span><span class="o"><span class="pre">&lt;=</span></span><span class="w"> </span><span class="n"><span class="pre">TypeTraits</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I0_i0E19HasEnoughComponents" title="HasEnoughComponents::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">components</span></span><a class="headerlink" href="#_CPPv4I0_i0E19HasEnoughComponents" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv4I0E12IsStrideType">
+<span id="_CPPv3I0E12IsStrideType"></span><span id="_CPPv2I0E12IsStrideType"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">typename</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">T</span></span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="group__NVCV__CPP__CUDATOOLS__TYPETRAITS_1gaee78c4385787ea2c484599145198a031"></span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">IsStrideType</span></span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">is_same_v</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I0E12IsStrideType" title="IsStrideType::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="o"><span class="pre">||</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">is_same_v</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I0E12IsStrideType" title="IsStrideType::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="n"><span class="pre">int64_t</span></span><span class="p"><span class="pre">&gt;</span></span><a class="headerlink" href="#_CPPv4I0E12IsStrideType" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv4I00E11IsIndexType">
+<span id="_CPPv3I00E11IsIndexType"></span><span id="_CPPv2I00E11IsIndexType"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">typename</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">T</span></span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="k"><span class="pre">typename</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">StrideType</span></span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="group__NVCV__CPP__CUDATOOLS__TYPETRAITS_1ga180780caf4159cbfd05bef966d77b67e"></span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">IsIndexType</span></span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">is_integral_v</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I00E11IsIndexType" title="IsIndexType::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="o"><span class="pre">&amp;&amp;</span></span><span class="w"> </span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">TypeTraits</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I00E11IsIndexType" title="IsIndexType::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">max</span></span><span class="w"> </span><span class="o"><span class="pre">&lt;=</span></span><span class="w"> </span><span class="n"><span class="pre">TypeTraits</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I00E11IsIndexType" title="IsIndexType::StrideType"><span class="n"><span class="pre">StrideType</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">max</span></span><span class="p"><span class="pre">)</span></span><a class="headerlink" href="#_CPPv4I00E11IsIndexType" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv4I00E13NumComponents">
+<span id="_CPPv3I00E13NumComponents"></span><span id="_CPPv2I00E13NumComponents"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">T</span></span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I_bE7Require" title="Require"><span class="n"><span class="pre">Require</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4IDpE13HasTypeTraits" title="HasTypeTraits"><span class="n"><span class="pre">HasTypeTraits</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I00E13NumComponents" title="NumComponents::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="group__NVCV__CPP__CUDATOOLS__TYPETRAITS_1gab07e95c298494887b508ee4cc08d2e41"></span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="kt"><span class="pre">int</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NumComponents</span></span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="n"><span class="pre">TypeTraits</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I00E13NumComponents" title="NumComponents::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">components</span></span><a class="headerlink" href="#_CPPv4I00E13NumComponents" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Metavariable to get the number of components of a type.</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="k">using</span><span class="w"> </span><span class="n">DataType</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">...;</span>
+<span class="kt">int</span><span class="w"> </span><span class="n">nc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">nvcv</span><span class="o">::</span><span class="n">cuda</span><span class="o">::</span><span class="n">NumComponents</span><span class="o">&lt;</span><span class="n">DataType</span><span class="o">&gt;</span><span class="p">;</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This is zero for regular C types.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Template Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>T</strong> – Type to get the number of components from. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv4I00E11NumElements">
+<span id="_CPPv3I00E11NumElements"></span><span id="_CPPv2I00E11NumElements"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">T</span></span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I_bE7Require" title="Require"><span class="n"><span class="pre">Require</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4IDpE13HasTypeTraits" title="HasTypeTraits"><span class="n"><span class="pre">HasTypeTraits</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I00E11NumElements" title="NumElements::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="group__NVCV__CPP__CUDATOOLS__TYPETRAITS_1gafe4b2708aff200b4f74a958a6201f1e5"></span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="kt"><span class="pre">int</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NumElements</span></span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="n"><span class="pre">TypeTraits</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I00E11NumElements" title="NumElements::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">elements</span></span><a class="headerlink" href="#_CPPv4I00E11NumElements" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Metavariable to get the number of elements of a type.</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="k">using</span><span class="w"> </span><span class="n">DataType</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">...;</span>
+<span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">e</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">e</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">nvcv</span><span class="o">::</span><span class="n">cuda</span><span class="o">::</span><span class="n">NumElements</span><span class="o">&lt;</span><span class="n">DataType</span><span class="o">&gt;</span><span class="p">;</span><span class="w"> </span><span class="o">++</span><span class="n">e</span><span class="p">)</span>
+<span class="w">    </span><span class="c1">// ...</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This is one for regular C types and one to four for CUDA compound types.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Template Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>T</strong> – Type to get the number of elements from. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv4I00E6Lowest">
+<span id="_CPPv3I00E6Lowest"></span><span id="_CPPv2I00E6Lowest"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">typename</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">T</span></span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I_bE7Require" title="Require"><span class="n"><span class="pre">Require</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4IDpE13HasTypeTraits" title="HasTypeTraits"><span class="n"><span class="pre">HasTypeTraits</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I00E6Lowest" title="Lowest::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="group__NVCV__CPP__CUDATOOLS__TYPETRAITS_1ga49e6b4804c10bcb960f4b2fbcc5a2950"></span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I00E8BaseType" title="BaseType"><span class="n"><span class="pre">BaseType</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I00E6Lowest" title="Lowest::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Lowest</span></span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">is_floating_point_v</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I00E8BaseType" title="BaseType"><span class="n"><span class="pre">BaseType</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I00E6Lowest" title="Lowest::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="o"><span class="pre">?</span></span><span class="w"> </span><span class="o"><span class="pre">-</span></span><span class="n"><span class="pre">TypeTraits</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I00E6Lowest" title="Lowest::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">max</span></span><span class="w"> </span><span class="o"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">TypeTraits</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I00E6Lowest" title="Lowest::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">min</span></span><a class="headerlink" href="#_CPPv4I00E6Lowest" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+</div>
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="group__NVCV__CPP__CUDATOOLS__TENSORWRAPS.html" class="btn btn-neutral float-left" title="TensorWrap shortcuts" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../modules/python_modules.html" class="btn btn-neutral float-right" title="Python API" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022-2024, NVIDIA..
+      <span class="lastupdated">Last updated on Jun 28, 2024.
+      </span></p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(false);
+      });
+  </script> 
+
+</body>
+</html>

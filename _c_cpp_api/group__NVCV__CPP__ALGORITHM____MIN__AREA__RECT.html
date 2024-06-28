@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MinAreaRect &mdash; CV-CUDA Beta documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=19f00094" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=76b435a8" />
+
+  
+    <link rel="shortcut icon" href="../_static/nv_icon.png"/>
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../_static/jquery.js?v=5d32c60e"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js?v=bd46b8a5"></script>
+        <script src="../_static/doctools.js?v=888ff710"></script>
+        <script src="../_static/sphinx_highlight.js?v=4825356b"></script>
+        <script src="../_static/pk_scripts.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #000000" >
+
+          
+          
+          <a href="../index.html">
+            
+              <img src="../_static/nv_logo.png" class="logo" alt="Logo"/>
+          </a>
+              <div class="version">
+                Beta
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Beginner's Guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#pre-requisites">Pre-requisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#setup">Setup</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started.html">Getting Started</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../prerequisites.html">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../samples.html">Samples</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../samples/cpp_samples.html">C++</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../samples/cpp_samples/cropresize.html">Crop and Resize</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../samples/python_samples.html">Python</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/classification.html">Classification</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/segmentation.html">Semantic Segmentation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/segmentation_triton.html">Semantic Segmentation using Triton</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/object_detection.html">Object Detection</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../modules/c_modules.html">C Modules</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../modules/c_core.html">Core</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__COLORSPEC.html">Color Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__DATALAYOUT.html">Data Layout</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__DATATYPE.html">Data types</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__IMAGETYPE.html">Image Formats</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/c_utils.html">Utilities</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__UTIL__STATUS.html">Status Codes</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/c_algos.html">Algorithms</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ADAPTIVETHRESHOLD.html">Adaptive Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__AVERAGEBLUR.html">Average Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BILATERAL__FILTER.html">Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BRIGHTNESS__CONTRAST.html">Brightness Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CENTER__CROP.html">Center Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CHANNEL__REORDER.html">Channel Reorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COLOR__TWIST.html">Color Twist</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COMPOSITE.html">Composite</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONV2D.html">2D Convolution</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONVERT__TO.html">Convert To</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COPYMAKEBORDER.html">Copy Make Border</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAMMA__CONTRAST.html">Gamma Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN.html">Gaussian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN__NOISE.html">GaussianNoise</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__HQ__RESIZE.html">HQ Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__INPAINT.html">Inpaint</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__JOINT__BILATERAL__FILTER.html">Joint Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LABEL.html">Label</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LAPLACIAN.html">Laplacian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MEDIAN__BLUR.html">Median Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MINMAXLOC.html">MinMaxLoc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MORPHOLOGY.html">Morphology</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NON__MAXIMUM__SUPPRESSION.html">Non-Maximum Suppression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NORMALIZE.html">Normalize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PADANDSTACK.html">Pad and Stack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PAIRWISE__MATCHER.html">Pairwise Matcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PILLOW__RESIZE.html">Pillow Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RANDOMRESIZEDCROP.html">Random Resized Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REFORMAT.html">Reformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REMAP.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RESIZE.html">Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ROTATE.html">Rotate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__SIFT.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__THRESHOLD.html">Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__AFFINE.html">Warp Affine</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__PERSPECTIVE.html">Warp Perspective</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____ADV__CVT__COLOR.html">Adv Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BND__BOX.html">BndBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BOX__BLUR.html">BoxBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM.html">Histogram</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM__EQ.html">Histogram Eq</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____MIN__AREA__RECT.html">Min Area Rect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____O__S__D.html">OSD</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____RESIZE__CROP.html">Resize Crop Convert</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____STACK.html">Stack</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../modules/cpp_modules.html">C++ Modules</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_core.html">Core</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__COLORSPEC.html">Color Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html">Data Layout</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__DATATYPE.html">Data types</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__IMAGETYPE.html">Image Formats</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__SIZE.html">Size Operator</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_utils.html">Utilities</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__UTIL__EXCEPTION.html">Exception</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__UTIL__STATUS.html">Status Codes</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_algos.html">Algorithms</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ADAPTIVETHRESHOLD.html">Adaptive Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__AVERAGEBLUR.html">Average Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BILATERAL__FILTER.html">Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BRIGHTNESS__CONTRAST.html">Brightness Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CENTER__CROP.html">Center Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CHANNEL__REORDER.html">Channel Reorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COLOR__TWIST.html">Color Twist</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COMPOSITE.html">Composite</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONV2D.html">2D Convolution</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONVERT__TO.html">Convert To</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COPYMAKEBORDER.html">Copy Make Border</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAMMA__CONTRAST.html">Gamma Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN.html">Gaussian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN__NOISE.html">GaussianNoise</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__HQ__RESIZE.html">HQ Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__INPAINT.html">Inpaint</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__JOINT__BILATERAL__FILTER.html">Joint Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LABEL.html">Label</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LAPLACIAN.html">Laplacian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MEDIAN__BLUR.html">Median Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MINMAXLOC.html">MinMaxLoc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MORPHOLOGY.html">Morphology</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NON__MAXIMUM__SUPPRESSION.html">Non-Maximum Suppression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NORMALIZE.html">Normalize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PADANDSTACK.html">Pad and Stack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PAIRWISE__MATCHER.html">Pairwise Matcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PILLOW__RESIZE.html">Pillow Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RANDOMRESIZEDCROP.html">Random Resized Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REFORMAT.html">Reformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REMAP.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RESIZE.html">Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ROTATE.html">Rotate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__SIFT.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__THRESHOLD.html">Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__AFFINE.html">Warp Affine</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__PERSPECTIVE.html">Warp Perspective</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____ADV__CVT__COLOR.html">Adv Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BND__BOX.html">BndBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BOX__BLUR.html">BoxBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM.html">Histogram</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM__EQ.html">Histogram Eq</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____MIN__AREA__RECT.html">Min Area Rect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____O__S__D.html">OSD</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____RESIZE__CROP.html">Resize Crop Convert</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____STACK.html">Stack</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_cudatools.html">CUDA Tools</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__ATOMICS.html">Atomic operations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__BORDER.html">Border functions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__BORDERVARSHAPEWRAP.html">BorderVarShapeWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__BORDERWRAP.html">BorderWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__DROPCAST.html">Drop Cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__FULLTENSORWRAP.html">FullTensorWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__IMAGEWRAP.html">Image Wrapper classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__INTERPOLATION.html">Interpolation functions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__INTERPOLATIONVARSHAPEWRAP.html">InterpolationVarShapeWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__INTERPOLATIONWRAP.html">InterpolationWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__LINALG.html">Linear algebra</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHOPERATORS.html">Math operators</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHWRAPPERS.html">Math wrappers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__RANGECAST.html">Range cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__SATURATECAST.html">Saturate cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__STATICCAST.html">Static Cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORBATCHWRAP.html">TensorBatchWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORBATCHWRAPS.html">TensorBatchWrap shortcuts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORWRAP.html">TensorWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORWRAPS.html">TensorWrap shortcuts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TYPETRAITS.html">Type Traits</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../modules/python_modules.html">Python Modules</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../modules/python_core.html">Core</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/cache.html">Cache</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/colorspec.html">Color Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/format.html">Image Formats</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/recti.html">Rect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/image.html">Image</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/imagebatch.html">ImageBatchVarShape</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/tensor.html">Tensor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/tensorbatch.html">TensorBatchVarShape</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/python_algos.html">Algorithms</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_adaptivethreshold.html">AdaptiveThreshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_advcvtcolor.html">AdvCvtColor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_averageblur.html">AverageBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_bilateralfilter.html">BilateralFilter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_bndbox.html">BndBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_boxblur.html">BoxBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_brightnesscontrast.html">BrightnessContrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_centercrop.html">CenterCrop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_channelreorder.html">ChannelReorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_colortwist.html">ColorTwist</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_composite.html">Composite</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_conv2d.html">Conv2D</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_convertto.html">ConvertTo</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_copymakeborder.html">CopyMakeBorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_cropflipnormalizereformat.html">CropFlipNormalizeReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_customcrop.html">CustomCrop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_cvtcolor.html">CvtColor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_erase.html">Erase</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_findhomography.html">FindHomography</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_flip.html">Flip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_gammacontrast.html">GammaContrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_gaussian.html">Gaussian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_gaussiannoise.html">GaussianNoise</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_histogram.html">Histogram</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_histogrameq.html">HistogramEq</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_hqresize.html">HQResize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_inpaint.html">Inpaint</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_jointbilateralfilter.html">JointBilateralFilter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_label.html">Label</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_laplacian.html">Laplacian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_medianblur.html">MedianBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_minarearect.html">MinAreaRect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_minmaxloc.html">MinMaxLoc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_morphology.html">Morphology</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_nonmaximumsuppression.html">NonMaximumSuppression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_normalize.html">Normalize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_osd.html">OSD</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_padandstack.html">PadAndStack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_pairwisematcher.html">PairwiseMatcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_pillowresize.html">PillowResize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_randomresizedcrop.html">RandomResizedCrop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_reformat.html">Reformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_remap.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_resize.html">Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_resizecropconvertreformat.html">ResizeCropConvertReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_rotate.html">Rotate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_sift.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_stack.html">Stack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_threshold.html">Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_warpaffine.html">WarpAffine</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_warpperspective.html">WarpPerspective</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_adaptivethresholdtype.html">AdaptiveThresholdType</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_arrow.html">Arrow</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_blurboxi.html">BlurBoxI</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_bndboxi.html">BndBoxI</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_border.html">Border</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_channelmanip.html">ChannelManip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_circle.html">Circle</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_clockformat.html">ClockFormat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_colorconversion.html">ColorConversion</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_connectivitytype.html">ConnectivityType</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_interp.html">Interp</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_label.html">LABEL</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_line.html">Line</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_matcher.html">Matcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_morphologytype.html">MorphologyType</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_norm.html">Norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_point.html">Point</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_remap.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_rotatedbox.html">RotatedBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_sift.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_thresholdtype.html">ThresholdType</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Release Notes</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.9.0-beta.html">v0.9.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.8.0-beta.html">v0.8.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.7.0-beta.html">v0.7.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.6.0-beta.html">v0.6.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.5.0-beta.html">v0.5.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.4.0-beta.html">v0.4.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.3.1-beta.html">v0.3.1-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#bug-fixes">Bug Fixes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#known-issues">Known Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.3.0-beta.html">v0.3.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html">v0.2.1-alpha</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#general">General</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#new-operators">New Operators</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#improved-testing">Improved Testing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#bug-fixes">Bug Fixes</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html">v0.2.0-alpha</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html">v0.1.0-prealpha</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#known-issues">Known Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#license">License</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #000000" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">CV-CUDA</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">MinAreaRect</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/_c_cpp_api/group__NVCV__CPP__ALGORITHM____MIN__AREA__RECT.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="minarearect">
+<h1>MinAreaRect<a class="headerlink" href="#minarearect" title="Permalink to this heading"></a></h1>
+<dl>
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__ALGORITHM____MIN__AREA__RECT"></span><em><span class="pre">group</span></em> <span class="sig-name descname"><span class="pre">NVCV_CPP_ALGORITHM__MIN_AREA_RECT</span></span></dt>
+<dd><div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-functions">Functions</p>
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv411MinAreaRecti">
+<span id="_CPPv311MinAreaRecti"></span><span id="_CPPv211MinAreaRecti"></span><span id="MinAreaRect__i"></span><span class="target" id="group__NVCV__CPP__ALGORITHM____MIN__AREA__RECT_1gad11464b82c4e07d27de6dfbc67666064"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="k"><span class="pre">explicit</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">MinAreaRect</span></span></span><span class="sig-paren">(</span><span class="kt"><span class="pre">int</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">maxContourNum</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv411MinAreaRecti" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4D0v">
+<span id="_CPPv3D0v"></span><span id="_CPPv2D0v"></span><span id="~MinAreaRect"></span><span class="target" id="group__NVCV__CPP__ALGORITHM____MIN__AREA__RECT_1ga362f7c2b0b3edf1e540a338dbe699df8"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">~MinAreaRect</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4D0v" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4cl12cudaStream_tRKN4nvcv6TensorERKN4nvcv6TensorERKN4nvcv6TensorEi">
+<span id="_CPPv3cl12cudaStream_tRKN4nvcv6TensorERKN4nvcv6TensorERKN4nvcv6TensorEi"></span><span id="_CPPv2cl12cudaStream_tRKN4nvcv6TensorERKN4nvcv6TensorERKN4nvcv6TensorEi"></span><span id="call-operator__cudaStream_t.nvcv::TensorCR.nvcv::TensorCR.nvcv::TensorCR.i"></span><span class="target" id="group__NVCV__CPP__ALGORITHM____MIN__AREA__RECT_1gaed4c4f1c718b556e184e3e7c9edd4957"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="k"><span class="pre">operator</span></span><span class="o"><span class="pre">()</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">cudaStream_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">stream</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__COLORSPEC.html#_CPPv44nvcv" title="nvcv"><span class="n"><span class="pre">nvcv</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__COLORSPEC.html#_CPPv4N4nvcv6TensorE" title="nvcv::Tensor"><span class="n"><span class="pre">Tensor</span></span></a><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">in</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__COLORSPEC.html#_CPPv44nvcv" title="nvcv"><span class="n"><span class="pre">nvcv</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__COLORSPEC.html#_CPPv4N4nvcv6TensorE" title="nvcv::Tensor"><span class="n"><span class="pre">Tensor</span></span></a><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">out</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__COLORSPEC.html#_CPPv44nvcv" title="nvcv"><span class="n"><span class="pre">nvcv</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__COLORSPEC.html#_CPPv4N4nvcv6TensorE" title="nvcv::Tensor"><span class="n"><span class="pre">Tensor</span></span></a><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">numPointsInContour</span></span>, <span class="kt"><span class="pre">int</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">totalContours</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4cl12cudaStream_tRKN4nvcv6TensorERKN4nvcv6TensorERKN4nvcv6TensorEi" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK6handleEv">
+<span id="_CPPv3NK6handleEv"></span><span id="_CPPv2NK6handleEv"></span><span id="handleC"></span><span class="target" id="group__NVCV__CPP__ALGORITHM____MIN__AREA__RECT_1ga7e4f161d7d8bd5c31497d659013f6184"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="k"><span class="pre">virtual</span></span><span class="w"> </span><span class="n"><span class="pre">NVCVOperatorHandle</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">handle</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="k"><span class="pre">noexcept</span></span><span class="w"> </span><span class="k"><span class="pre">override</span></span><a class="headerlink" href="#_CPPv4NK6handleEv" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+</div>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-variables">Variables</p>
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv48m_handle">
+<span id="_CPPv38m_handle"></span><span id="_CPPv28m_handle"></span><span id="m_handle__NVCVOperatorHandle"></span><span class="target" id="group__NVCV__CPP__ALGORITHM____MIN__AREA__RECT_1gaade0a27704d1e08f1314e18b317f1048"></span><span class="n"><span class="pre">NVCVOperatorHandle</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">m_handle</span></span></span><a class="headerlink" href="#_CPPv48m_handle" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+</div>
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda11MinAreaRectE">
+<span id="_CPPv3N6cvcuda11MinAreaRectE"></span><span id="_CPPv2N6cvcuda11MinAreaRectE"></span><span id="cvcuda::MinAreaRect"></span><span class="target" id="classcvcuda_1_1MinAreaRect"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">MinAreaRect</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda11MinAreaRectE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpMinAreaRect.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp type">
+<dt class="sig sig-object cpp" id="_CPPv46cvcuda">
+<span id="_CPPv36cvcuda"></span><span id="_CPPv26cvcuda"></span><span id="cvcuda"></span><span class="target" id="namespacecvcuda"></span><span class="k"><span class="pre">namespace</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">cvcuda</span></span></span><a class="headerlink" href="#_CPPv46cvcuda" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-typedefs">Typedefs</p>
+<dl class="cpp type">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda9WorkspaceE">
+<span id="_CPPv3N6cvcuda9WorkspaceE"></span><span id="_CPPv2N6cvcuda9WorkspaceE"></span><span class="target" id="namespacecvcuda_1a92e7d5a8788e63935e100b3a7835f8af"></span><span class="k"><span class="pre">using</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Workspace</span></span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="n"><span class="pre">NVCVWorkspace</span></span><a class="headerlink" href="#_CPPv4N6cvcuda9WorkspaceE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp type">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda12WorkspaceMemE">
+<span id="_CPPv3N6cvcuda12WorkspaceMemE"></span><span id="_CPPv2N6cvcuda12WorkspaceMemE"></span><span class="target" id="namespacecvcuda_1affcb3cde3022c975354723bdc79c1867"></span><span class="k"><span class="pre">using</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">WorkspaceMem</span></span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="n"><span class="pre">NVCVWorkspaceMem</span></span><a class="headerlink" href="#_CPPv4N6cvcuda12WorkspaceMemE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp type">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda21WorkspaceRequirementsE">
+<span id="_CPPv3N6cvcuda21WorkspaceRequirementsE"></span><span id="_CPPv2N6cvcuda21WorkspaceRequirementsE"></span><span class="target" id="namespacecvcuda_1a299b4e7e15e80b5e4b850cfda4d5fc39"></span><span class="k"><span class="pre">using</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">WorkspaceRequirements</span></span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="n"><span class="pre">NVCVWorkspaceRequirements</span></span><a class="headerlink" href="#_CPPv4N6cvcuda21WorkspaceRequirementsE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp type">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda24WorkspaceMemRequirementsE">
+<span id="_CPPv3N6cvcuda24WorkspaceMemRequirementsE"></span><span id="_CPPv2N6cvcuda24WorkspaceMemRequirementsE"></span><span class="target" id="namespacecvcuda_1aa56e4a8cd0fe108a3223eeffe8e5d042"></span><span class="k"><span class="pre">using</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">WorkspaceMemRequirements</span></span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="n"><span class="pre">NVCVWorkspaceMemRequirements</span></span><a class="headerlink" href="#_CPPv4N6cvcuda24WorkspaceMemRequirementsE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+</div>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-functions">Functions</p>
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda15MaxWorkspaceReqE24WorkspaceMemRequirements24WorkspaceMemRequirements">
+<span id="_CPPv3N6cvcuda15MaxWorkspaceReqE24WorkspaceMemRequirements24WorkspaceMemRequirements"></span><span id="_CPPv2N6cvcuda15MaxWorkspaceReqE24WorkspaceMemRequirements24WorkspaceMemRequirements"></span><span id="cvcuda::MaxWorkspaceReq__WorkspaceMemRequirements.WorkspaceMemRequirements"></span><span class="target" id="namespacecvcuda_1a10aa05cedebe13d0b0217b4e102f8e41"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda24WorkspaceMemRequirementsE" title="cvcuda::WorkspaceMemRequirements"><span class="n"><span class="pre">WorkspaceMemRequirements</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">MaxWorkspaceReq</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda24WorkspaceMemRequirementsE" title="cvcuda::WorkspaceMemRequirements"><span class="n"><span class="pre">WorkspaceMemRequirements</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">a</span></span>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda24WorkspaceMemRequirementsE" title="cvcuda::WorkspaceMemRequirements"><span class="n"><span class="pre">WorkspaceMemRequirements</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">b</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N6cvcuda15MaxWorkspaceReqE24WorkspaceMemRequirements24WorkspaceMemRequirements" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Computes memory requirements that can cover both input requirements.</p>
+<p>The resulting memory requriements will have alignment and size that is not smaller than that of either of the arguments.</p>
+<p>alignment = max(a.alignment, b.alignment) size = align_up(max(a.size, b.size), alignment) </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda15MaxWorkspaceReqERK21WorkspaceRequirementsRK21WorkspaceRequirements">
+<span id="_CPPv3N6cvcuda15MaxWorkspaceReqERK21WorkspaceRequirementsRK21WorkspaceRequirements"></span><span id="_CPPv2N6cvcuda15MaxWorkspaceReqERK21WorkspaceRequirementsRK21WorkspaceRequirements"></span><span id="cvcuda::MaxWorkspaceReq__WorkspaceRequirementsCR.WorkspaceRequirementsCR"></span><span class="target" id="namespacecvcuda_1aa784addbd30224bbefc91a66ef21c71f"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">NVCVWorkspaceRequirements</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">MaxWorkspaceReq</span></span></span><span class="sig-paren">(</span><span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda21WorkspaceRequirementsE" title="cvcuda::WorkspaceRequirements"><span class="n"><span class="pre">WorkspaceRequirements</span></span></a><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">a</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda21WorkspaceRequirementsE" title="cvcuda::WorkspaceRequirements"><span class="n"><span class="pre">WorkspaceRequirements</span></span></a><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">b</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N6cvcuda15MaxWorkspaceReqERK21WorkspaceRequirementsRK21WorkspaceRequirements" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Computes workspace requirements that can cover both input requirments. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda7AlignUpER21WorkspaceRequirements">
+<span id="_CPPv3N6cvcuda7AlignUpER21WorkspaceRequirements"></span><span id="_CPPv2N6cvcuda7AlignUpER21WorkspaceRequirements"></span><span id="cvcuda::AlignUp__WorkspaceRequirementsR"></span><span class="target" id="namespacecvcuda_1a67c87474f4882ef63e891633a107438b"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">AlignUp</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda21WorkspaceRequirementsE" title="cvcuda::WorkspaceRequirements"><span class="n"><span class="pre">WorkspaceRequirements</span></span></a><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">ws</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N6cvcuda7AlignUpER21WorkspaceRequirements" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda17AllocateWorkspaceE21WorkspaceRequirementsN4nvcv9AllocatorE">
+<span id="_CPPv3N6cvcuda17AllocateWorkspaceE21WorkspaceRequirementsN4nvcv9AllocatorE"></span><span id="_CPPv2N6cvcuda17AllocateWorkspaceE21WorkspaceRequirementsN4nvcv9AllocatorE"></span><span id="cvcuda::AllocateWorkspace__WorkspaceRequirements.nvcv::Allocator"></span><span class="target" id="namespacecvcuda_1a006defc158090d28a55098df4b7aa537"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda15UniqueWorkspaceE" title="cvcuda::UniqueWorkspace"><span class="n"><span class="pre">UniqueWorkspace</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">AllocateWorkspace</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda21WorkspaceRequirementsE" title="cvcuda::WorkspaceRequirements"><span class="n"><span class="pre">WorkspaceRequirements</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">req</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__COLORSPEC.html#_CPPv44nvcv" title="nvcv"><span class="n"><span class="pre">nvcv</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__COLORSPEC.html#_CPPv4N4nvcv9AllocatorE" title="nvcv::Allocator"><span class="n"><span class="pre">Allocator</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">alloc</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="p"><span class="pre">{</span></span><span class="p"><span class="pre">}</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N6cvcuda17AllocateWorkspaceE21WorkspaceRequirementsN4nvcv9AllocatorE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Allocates a workspace with an allocator specified in <code class="docutils literal notranslate"><span class="pre">alloc</span></code> (or a default one).</p>
+<p>This function is meant as a simple helper to simplify the usage operators requiring a workspace, but its intense use may degrade performance due to excessive allocations and deallocations. For code used in tight loops, some workspace reuse scheme and/or resource pools are recommended. </p>
+</dd></dl>
+
+</div>
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda17AdaptiveThresholdE">
+<span id="_CPPv3N6cvcuda17AdaptiveThresholdE"></span><span id="_CPPv2N6cvcuda17AdaptiveThresholdE"></span><span id="cvcuda::AdaptiveThreshold"></span><span class="target" id="classcvcuda_1_1AdaptiveThreshold"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">AdaptiveThreshold</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda17AdaptiveThresholdE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpAdaptiveThreshold.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda11AdvCvtColorE">
+<span id="_CPPv3N6cvcuda11AdvCvtColorE"></span><span id="_CPPv2N6cvcuda11AdvCvtColorE"></span><span id="cvcuda::AdvCvtColor"></span><span class="target" id="classcvcuda_1_1AdvCvtColor"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">AdvCvtColor</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda11AdvCvtColorE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpAdvCvtColor.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda11AverageBlurE">
+<span id="_CPPv3N6cvcuda11AverageBlurE"></span><span id="_CPPv2N6cvcuda11AverageBlurE"></span><span id="cvcuda::AverageBlur"></span><span class="target" id="classcvcuda_1_1AverageBlur"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">AverageBlur</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda11AverageBlurE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpAverageBlur.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda15BilateralFilterE">
+<span id="_CPPv3N6cvcuda15BilateralFilterE"></span><span id="_CPPv2N6cvcuda15BilateralFilterE"></span><span id="cvcuda::BilateralFilter"></span><span class="target" id="classcvcuda_1_1BilateralFilter"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">BilateralFilter</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda15BilateralFilterE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpBilateralFilter.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda6BndBoxE">
+<span id="_CPPv3N6cvcuda6BndBoxE"></span><span id="_CPPv2N6cvcuda6BndBoxE"></span><span id="cvcuda::BndBox"></span><span class="target" id="classcvcuda_1_1BndBox"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">BndBox</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda6BndBoxE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpBndBox.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda7BoxBlurE">
+<span id="_CPPv3N6cvcuda7BoxBlurE"></span><span id="_CPPv2N6cvcuda7BoxBlurE"></span><span id="cvcuda::BoxBlur"></span><span class="target" id="classcvcuda_1_1BoxBlur"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">BoxBlur</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda7BoxBlurE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpBoxBlur.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda18BrightnessContrastE">
+<span id="_CPPv3N6cvcuda18BrightnessContrastE"></span><span id="_CPPv2N6cvcuda18BrightnessContrastE"></span><span id="cvcuda::BrightnessContrast"></span><span class="target" id="classcvcuda_1_1BrightnessContrast"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">BrightnessContrast</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda18BrightnessContrastE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpBrightnessContrast.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda10CenterCropE">
+<span id="_CPPv3N6cvcuda10CenterCropE"></span><span id="_CPPv2N6cvcuda10CenterCropE"></span><span id="cvcuda::CenterCrop"></span><span class="target" id="classcvcuda_1_1CenterCrop"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">CenterCrop</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda10CenterCropE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpCenterCrop.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda14ChannelReorderE">
+<span id="_CPPv3N6cvcuda14ChannelReorderE"></span><span id="_CPPv2N6cvcuda14ChannelReorderE"></span><span id="cvcuda::ChannelReorder"></span><span class="target" id="classcvcuda_1_1ChannelReorder"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ChannelReorder</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda14ChannelReorderE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpChannelReorder.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda10ColorTwistE">
+<span id="_CPPv3N6cvcuda10ColorTwistE"></span><span id="_CPPv2N6cvcuda10ColorTwistE"></span><span id="cvcuda::ColorTwist"></span><span class="target" id="classcvcuda_1_1ColorTwist"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ColorTwist</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda10ColorTwistE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpColorTwist.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda9CompositeE">
+<span id="_CPPv3N6cvcuda9CompositeE"></span><span id="_CPPv2N6cvcuda9CompositeE"></span><span id="cvcuda::Composite"></span><span class="target" id="classcvcuda_1_1Composite"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Composite</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda9CompositeE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpComposite.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda6Conv2DE">
+<span id="_CPPv3N6cvcuda6Conv2DE"></span><span id="_CPPv2N6cvcuda6Conv2DE"></span><span id="cvcuda::Conv2D"></span><span class="target" id="classcvcuda_1_1Conv2D"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Conv2D</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda6Conv2DE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpConv2D.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda9ConvertToE">
+<span id="_CPPv3N6cvcuda9ConvertToE"></span><span id="_CPPv2N6cvcuda9ConvertToE"></span><span id="cvcuda::ConvertTo"></span><span class="target" id="classcvcuda_1_1ConvertTo"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ConvertTo</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda9ConvertToE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpConvertTo.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda14CopyMakeBorderE">
+<span id="_CPPv3N6cvcuda14CopyMakeBorderE"></span><span id="_CPPv2N6cvcuda14CopyMakeBorderE"></span><span id="cvcuda::CopyMakeBorder"></span><span class="target" id="classcvcuda_1_1CopyMakeBorder"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">CopyMakeBorder</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda14CopyMakeBorderE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpCopyMakeBorder.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda25CropFlipNormalizeReformatE">
+<span id="_CPPv3N6cvcuda25CropFlipNormalizeReformatE"></span><span id="_CPPv2N6cvcuda25CropFlipNormalizeReformatE"></span><span id="cvcuda::CropFlipNormalizeReformat"></span><span class="target" id="classcvcuda_1_1CropFlipNormalizeReformat"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">CropFlipNormalizeReformat</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda25CropFlipNormalizeReformatE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpCropFlipNormalizeReformat.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda10CustomCropE">
+<span id="_CPPv3N6cvcuda10CustomCropE"></span><span id="_CPPv2N6cvcuda10CustomCropE"></span><span id="cvcuda::CustomCrop"></span><span class="target" id="classcvcuda_1_1CustomCrop"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">CustomCrop</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda10CustomCropE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpCustomCrop.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda8CvtColorE">
+<span id="_CPPv3N6cvcuda8CvtColorE"></span><span id="_CPPv2N6cvcuda8CvtColorE"></span><span id="cvcuda::CvtColor"></span><span class="target" id="classcvcuda_1_1CvtColor"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">CvtColor</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda8CvtColorE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpCvtColor.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda5EraseE">
+<span id="_CPPv3N6cvcuda5EraseE"></span><span id="_CPPv2N6cvcuda5EraseE"></span><span id="cvcuda::Erase"></span><span class="target" id="classcvcuda_1_1Erase"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Erase</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda5EraseE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpErase.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda14FindHomographyE">
+<span id="_CPPv3N6cvcuda14FindHomographyE"></span><span id="_CPPv2N6cvcuda14FindHomographyE"></span><span id="cvcuda::FindHomography"></span><span class="target" id="classcvcuda_1_1FindHomography"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">FindHomography</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda14FindHomographyE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpFindHomography.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda4FlipE">
+<span id="_CPPv3N6cvcuda4FlipE"></span><span id="_CPPv2N6cvcuda4FlipE"></span><span id="cvcuda::Flip"></span><span class="target" id="classcvcuda_1_1Flip"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Flip</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda4FlipE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpFlip.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda13GammaContrastE">
+<span id="_CPPv3N6cvcuda13GammaContrastE"></span><span id="_CPPv2N6cvcuda13GammaContrastE"></span><span id="cvcuda::GammaContrast"></span><span class="target" id="classcvcuda_1_1GammaContrast"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">GammaContrast</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda13GammaContrastE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpGammaContrast.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda8GaussianE">
+<span id="_CPPv3N6cvcuda8GaussianE"></span><span id="_CPPv2N6cvcuda8GaussianE"></span><span id="cvcuda::Gaussian"></span><span class="target" id="classcvcuda_1_1Gaussian"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Gaussian</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda8GaussianE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpGaussian.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda13GaussianNoiseE">
+<span id="_CPPv3N6cvcuda13GaussianNoiseE"></span><span id="_CPPv2N6cvcuda13GaussianNoiseE"></span><span id="cvcuda::GaussianNoise"></span><span class="target" id="classcvcuda_1_1GaussianNoise"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">GaussianNoise</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda13GaussianNoiseE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpGaussianNoise.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda9HistogramE">
+<span id="_CPPv3N6cvcuda9HistogramE"></span><span id="_CPPv2N6cvcuda9HistogramE"></span><span id="cvcuda::Histogram"></span><span class="target" id="classcvcuda_1_1Histogram"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Histogram</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda9HistogramE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpHistogram.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda11HistogramEqE">
+<span id="_CPPv3N6cvcuda11HistogramEqE"></span><span id="_CPPv2N6cvcuda11HistogramEqE"></span><span id="cvcuda::HistogramEq"></span><span class="target" id="classcvcuda_1_1HistogramEq"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">HistogramEq</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda11HistogramEqE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpHistogramEq.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda8HQResizeE">
+<span id="_CPPv3N6cvcuda8HQResizeE"></span><span id="_CPPv2N6cvcuda8HQResizeE"></span><span id="cvcuda::HQResize"></span><span class="target" id="classcvcuda_1_1HQResize"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">HQResize</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda8HQResizeE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpHQResize.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda7InpaintE">
+<span id="_CPPv3N6cvcuda7InpaintE"></span><span id="_CPPv2N6cvcuda7InpaintE"></span><span id="cvcuda::Inpaint"></span><span class="target" id="classcvcuda_1_1Inpaint"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Inpaint</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda7InpaintE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpInpaint.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda9IOperatorE">
+<span id="_CPPv3N6cvcuda9IOperatorE"></span><span id="_CPPv2N6cvcuda9IOperatorE"></span><span id="cvcuda::IOperator"></span><span class="target" id="classcvcuda_1_1IOperator"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">IOperator</span></span></span><a class="headerlink" href="#_CPPv4N6cvcuda9IOperatorE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;IOperator.hpp&gt;</em></div>
+<p>Subclassed by <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1AdaptiveThreshold"><span class="std std-ref">cvcuda::AdaptiveThreshold</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1AdvCvtColor"><span class="std std-ref">cvcuda::AdvCvtColor</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1AverageBlur"><span class="std std-ref">cvcuda::AverageBlur</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1BilateralFilter"><span class="std std-ref">cvcuda::BilateralFilter</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1BndBox"><span class="std std-ref">cvcuda::BndBox</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1BoxBlur"><span class="std std-ref">cvcuda::BoxBlur</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1BrightnessContrast"><span class="std std-ref">cvcuda::BrightnessContrast</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1CenterCrop"><span class="std std-ref">cvcuda::CenterCrop</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1ChannelReorder"><span class="std std-ref">cvcuda::ChannelReorder</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1ColorTwist"><span class="std std-ref">cvcuda::ColorTwist</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1Composite"><span class="std std-ref">cvcuda::Composite</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1Conv2D"><span class="std std-ref">cvcuda::Conv2D</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1ConvertTo"><span class="std std-ref">cvcuda::ConvertTo</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1CopyMakeBorder"><span class="std std-ref">cvcuda::CopyMakeBorder</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1CropFlipNormalizeReformat"><span class="std std-ref">cvcuda::CropFlipNormalizeReformat</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1CustomCrop"><span class="std std-ref">cvcuda::CustomCrop</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1CvtColor"><span class="std std-ref">cvcuda::CvtColor</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1Erase"><span class="std std-ref">cvcuda::Erase</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1FindHomography"><span class="std std-ref">cvcuda::FindHomography</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1Flip"><span class="std std-ref">cvcuda::Flip</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1GammaContrast"><span class="std std-ref">cvcuda::GammaContrast</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1Gaussian"><span class="std std-ref">cvcuda::Gaussian</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1GaussianNoise"><span class="std std-ref">cvcuda::GaussianNoise</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1Histogram"><span class="std std-ref">cvcuda::Histogram</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1HistogramEq"><span class="std std-ref">cvcuda::HistogramEq</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1HQResize"><span class="std std-ref">cvcuda::HQResize</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1Inpaint"><span class="std std-ref">cvcuda::Inpaint</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1JointBilateralFilter"><span class="std std-ref">cvcuda::JointBilateralFilter</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1Label"><span class="std std-ref">cvcuda::Label</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1Laplacian"><span class="std std-ref">cvcuda::Laplacian</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1MedianBlur"><span class="std std-ref">cvcuda::MedianBlur</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1MinAreaRect"><span class="std std-ref">cvcuda::MinAreaRect</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1MinMaxLoc"><span class="std std-ref">cvcuda::MinMaxLoc</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1Morphology"><span class="std std-ref">cvcuda::Morphology</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1NonMaximumSuppression"><span class="std std-ref">cvcuda::NonMaximumSuppression</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1Normalize"><span class="std std-ref">cvcuda::Normalize</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1OSD"><span class="std std-ref">cvcuda::OSD</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1PadAndStack"><span class="std std-ref">cvcuda::PadAndStack</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1PairwiseMatcher"><span class="std std-ref">cvcuda::PairwiseMatcher</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1PillowResize"><span class="std std-ref">cvcuda::PillowResize</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1RandomResizedCrop"><span class="std std-ref">cvcuda::RandomResizedCrop</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1Reformat"><span class="std std-ref">cvcuda::Reformat</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1Remap"><span class="std std-ref">cvcuda::Remap</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1Resize"><span class="std std-ref">cvcuda::Resize</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1ResizeCropConvertReformat"><span class="std std-ref">cvcuda::ResizeCropConvertReformat</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1Rotate"><span class="std std-ref">cvcuda::Rotate</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1SIFT"><span class="std std-ref">cvcuda::SIFT</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM__BRIGHTNESS__CONTRAST.html#classcvcuda_1_1Stack"><span class="std std-ref">cvcuda::Stack</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1Threshold"><span class="std std-ref">cvcuda::Threshold</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1WarpAffine"><span class="std std-ref">cvcuda::WarpAffine</span></a>, <a class="reference internal" href="group__NVCV__CPP__ALGORITHM____STACK.html#classcvcuda_1_1WarpPerspective"><span class="std std-ref">cvcuda::WarpPerspective</span></a></p>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda20JointBilateralFilterE">
+<span id="_CPPv3N6cvcuda20JointBilateralFilterE"></span><span id="_CPPv2N6cvcuda20JointBilateralFilterE"></span><span id="cvcuda::JointBilateralFilter"></span><span class="target" id="classcvcuda_1_1JointBilateralFilter"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">JointBilateralFilter</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda20JointBilateralFilterE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpJointBilateralFilter.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda5LabelE">
+<span id="_CPPv3N6cvcuda5LabelE"></span><span id="_CPPv2N6cvcuda5LabelE"></span><span id="cvcuda::Label"></span><span class="target" id="classcvcuda_1_1Label"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Label</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda5LabelE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpLabel.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda9LaplacianE">
+<span id="_CPPv3N6cvcuda9LaplacianE"></span><span id="_CPPv2N6cvcuda9LaplacianE"></span><span id="cvcuda::Laplacian"></span><span class="target" id="classcvcuda_1_1Laplacian"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Laplacian</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda9LaplacianE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpLaplacian.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda10MedianBlurE">
+<span id="_CPPv3N6cvcuda10MedianBlurE"></span><span id="_CPPv2N6cvcuda10MedianBlurE"></span><span id="cvcuda::MedianBlur"></span><span class="target" id="classcvcuda_1_1MedianBlur"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">MedianBlur</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda10MedianBlurE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpMedianBlur.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp">
+<span class="target" id="classcvcuda_1_1MinAreaRect"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">MinAreaRect</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpMinAreaRect.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda9MinMaxLocE">
+<span id="_CPPv3N6cvcuda9MinMaxLocE"></span><span id="_CPPv2N6cvcuda9MinMaxLocE"></span><span id="cvcuda::MinMaxLoc"></span><span class="target" id="classcvcuda_1_1MinMaxLoc"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">MinMaxLoc</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda9MinMaxLocE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpMinMaxLoc.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda10MorphologyE">
+<span id="_CPPv3N6cvcuda10MorphologyE"></span><span id="_CPPv2N6cvcuda10MorphologyE"></span><span id="cvcuda::Morphology"></span><span class="target" id="classcvcuda_1_1Morphology"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Morphology</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda10MorphologyE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpMorphology.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda21NonMaximumSuppressionE">
+<span id="_CPPv3N6cvcuda21NonMaximumSuppressionE"></span><span id="_CPPv2N6cvcuda21NonMaximumSuppressionE"></span><span id="cvcuda::NonMaximumSuppression"></span><span class="target" id="classcvcuda_1_1NonMaximumSuppression"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NonMaximumSuppression</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda21NonMaximumSuppressionE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpNonMaximumSuppression.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda9NormalizeE">
+<span id="_CPPv3N6cvcuda9NormalizeE"></span><span id="_CPPv2N6cvcuda9NormalizeE"></span><span id="cvcuda::Normalize"></span><span class="target" id="classcvcuda_1_1Normalize"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Normalize</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda9NormalizeE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpNormalize.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda3OSDE">
+<span id="_CPPv3N6cvcuda3OSDE"></span><span id="_CPPv2N6cvcuda3OSDE"></span><span id="cvcuda::OSD"></span><span class="target" id="classcvcuda_1_1OSD"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">OSD</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda3OSDE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpOSD.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda11PadAndStackE">
+<span id="_CPPv3N6cvcuda11PadAndStackE"></span><span id="_CPPv2N6cvcuda11PadAndStackE"></span><span id="cvcuda::PadAndStack"></span><span class="target" id="classcvcuda_1_1PadAndStack"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">PadAndStack</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda11PadAndStackE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpPadAndStack.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda15PairwiseMatcherE">
+<span id="_CPPv3N6cvcuda15PairwiseMatcherE"></span><span id="_CPPv2N6cvcuda15PairwiseMatcherE"></span><span id="cvcuda::PairwiseMatcher"></span><span class="target" id="classcvcuda_1_1PairwiseMatcher"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">PairwiseMatcher</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda15PairwiseMatcherE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpPairwiseMatcher.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda12PillowResizeE">
+<span id="_CPPv3N6cvcuda12PillowResizeE"></span><span id="_CPPv2N6cvcuda12PillowResizeE"></span><span id="cvcuda::PillowResize"></span><span class="target" id="classcvcuda_1_1PillowResize"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">PillowResize</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda12PillowResizeE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpPillowResize.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda17RandomResizedCropE">
+<span id="_CPPv3N6cvcuda17RandomResizedCropE"></span><span id="_CPPv2N6cvcuda17RandomResizedCropE"></span><span id="cvcuda::RandomResizedCrop"></span><span class="target" id="classcvcuda_1_1RandomResizedCrop"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">RandomResizedCrop</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda17RandomResizedCropE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpRandomResizedCrop.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda8ReformatE">
+<span id="_CPPv3N6cvcuda8ReformatE"></span><span id="_CPPv2N6cvcuda8ReformatE"></span><span id="cvcuda::Reformat"></span><span class="target" id="classcvcuda_1_1Reformat"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Reformat</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda8ReformatE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpReformat.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda5RemapE">
+<span id="_CPPv3N6cvcuda5RemapE"></span><span id="_CPPv2N6cvcuda5RemapE"></span><span id="cvcuda::Remap"></span><span class="target" id="classcvcuda_1_1Remap"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Remap</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda5RemapE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpRemap.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda6ResizeE">
+<span id="_CPPv3N6cvcuda6ResizeE"></span><span id="_CPPv2N6cvcuda6ResizeE"></span><span id="cvcuda::Resize"></span><span class="target" id="classcvcuda_1_1Resize"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Resize</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda6ResizeE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpResize.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda25ResizeCropConvertReformatE">
+<span id="_CPPv3N6cvcuda25ResizeCropConvertReformatE"></span><span id="_CPPv2N6cvcuda25ResizeCropConvertReformatE"></span><span id="cvcuda::ResizeCropConvertReformat"></span><span class="target" id="classcvcuda_1_1ResizeCropConvertReformat"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ResizeCropConvertReformat</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda25ResizeCropConvertReformatE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpResizeCropConvertReformat.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda6RotateE">
+<span id="_CPPv3N6cvcuda6RotateE"></span><span id="_CPPv2N6cvcuda6RotateE"></span><span id="cvcuda::Rotate"></span><span class="target" id="classcvcuda_1_1Rotate"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Rotate</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda6RotateE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpRotate.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda4SIFTE">
+<span id="_CPPv3N6cvcuda4SIFTE"></span><span id="_CPPv2N6cvcuda4SIFTE"></span><span id="cvcuda::SIFT"></span><span class="target" id="classcvcuda_1_1SIFT"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">SIFT</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda4SIFTE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpSIFT.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda5StackE">
+<span id="_CPPv3N6cvcuda5StackE"></span><span id="_CPPv2N6cvcuda5StackE"></span><span id="cvcuda::Stack"></span><span class="target" id="classcvcuda_1_1Stack"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Stack</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda5StackE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpStack.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda9ThresholdE">
+<span id="_CPPv3N6cvcuda9ThresholdE"></span><span id="_CPPv2N6cvcuda9ThresholdE"></span><span id="cvcuda::Threshold"></span><span class="target" id="classcvcuda_1_1Threshold"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Threshold</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda9ThresholdE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpThreshold.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda15UniqueWorkspaceE">
+<span id="_CPPv3N6cvcuda15UniqueWorkspaceE"></span><span id="_CPPv2N6cvcuda15UniqueWorkspaceE"></span><span id="cvcuda::UniqueWorkspace"></span><span class="target" id="classcvcuda_1_1UniqueWorkspace"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UniqueWorkspace</span></span></span><a class="headerlink" href="#_CPPv4N6cvcuda15UniqueWorkspaceE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;Workspace.hpp&gt;</em></div>
+<p>A helper class that manages the lifetime of resources stored in a Workspace structure.</p>
+<p>This class works in a way similar to unique_ptr with a custom deleter. </p>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda10WarpAffineE">
+<span id="_CPPv3N6cvcuda10WarpAffineE"></span><span id="_CPPv2N6cvcuda10WarpAffineE"></span><span id="cvcuda::WarpAffine"></span><span class="target" id="classcvcuda_1_1WarpAffine"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">WarpAffine</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda10WarpAffineE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpWarpAffine.hpp&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N6cvcuda15WarpPerspectiveE">
+<span id="_CPPv3N6cvcuda15WarpPerspectiveE"></span><span id="_CPPv2N6cvcuda15WarpPerspectiveE"></span><span id="cvcuda::WarpPerspective"></span><span class="target" id="classcvcuda_1_1WarpPerspective"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">WarpPerspective</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv46cvcuda" title="cvcuda"><span class="n"><span class="pre">cvcuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__ALGORITHM__INPAINT.html#_CPPv4N6cvcuda9IOperatorE" title="cvcuda::IOperator"><span class="n"><span class="pre">IOperator</span></span></a><a class="headerlink" href="#_CPPv4N6cvcuda15WarpPerspectiveE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpWarpPerspective.hpp&gt;</em></div>
+</dd></dl>
+
+</dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022-2024, NVIDIA..
+      <span class="lastupdated">Last updated on Jun 28, 2024.
+      </span></p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(false);
+      });
+  </script> 
+
+</body>
+</html>

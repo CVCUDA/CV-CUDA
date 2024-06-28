@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HQ Resize &mdash; CV-CUDA Beta documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=19f00094" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=76b435a8" />
+
+  
+    <link rel="shortcut icon" href="../_static/nv_icon.png"/>
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../_static/jquery.js?v=5d32c60e"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js?v=bd46b8a5"></script>
+        <script src="../_static/doctools.js?v=888ff710"></script>
+        <script src="../_static/sphinx_highlight.js?v=4825356b"></script>
+        <script src="../_static/pk_scripts.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Inpaint" href="group__NVCV__C__ALGORITHM__INPAINT.html" />
+    <link rel="prev" title="GaussianNoise" href="group__NVCV__C__ALGORITHM__GAUSSIAN__NOISE.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #000000" >
+
+          
+          
+          <a href="../index.html">
+            
+              <img src="../_static/nv_logo.png" class="logo" alt="Logo"/>
+          </a>
+              <div class="version">
+                Beta
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Beginner's Guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#pre-requisites">Pre-requisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#setup">Setup</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started.html">Getting Started</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../prerequisites.html">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../samples.html">Samples</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../samples/cpp_samples.html">C++</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../samples/cpp_samples/cropresize.html">Crop and Resize</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../samples/python_samples.html">Python</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/classification.html">Classification</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/segmentation.html">Semantic Segmentation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/segmentation_triton.html">Semantic Segmentation using Triton</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/object_detection.html">Object Detection</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../modules/c_modules.html">C Modules</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../modules/c_core.html">Core</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__COLORSPEC.html">Color Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__DATALAYOUT.html">Data Layout</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__DATATYPE.html">Data types</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__IMAGETYPE.html">Image Formats</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/c_utils.html">Utilities</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__UTIL__STATUS.html">Status Codes</a></li>
+</ul>
+</li>
+<li class="toctree-l2 current"><a class="reference internal" href="../modules/c_algos.html">Algorithms</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ADAPTIVETHRESHOLD.html">Adaptive Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__AVERAGEBLUR.html">Average Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BILATERAL__FILTER.html">Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BRIGHTNESS__CONTRAST.html">Brightness Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CENTER__CROP.html">Center Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CHANNEL__REORDER.html">Channel Reorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COLOR__TWIST.html">Color Twist</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COMPOSITE.html">Composite</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONV2D.html">2D Convolution</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONVERT__TO.html">Convert To</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COPYMAKEBORDER.html">Copy Make Border</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAMMA__CONTRAST.html">Gamma Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN.html">Gaussian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN__NOISE.html">GaussianNoise</a></li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">HQ Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__INPAINT.html">Inpaint</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__JOINT__BILATERAL__FILTER.html">Joint Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LABEL.html">Label</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LAPLACIAN.html">Laplacian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MEDIAN__BLUR.html">Median Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MINMAXLOC.html">MinMaxLoc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MORPHOLOGY.html">Morphology</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NON__MAXIMUM__SUPPRESSION.html">Non-Maximum Suppression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NORMALIZE.html">Normalize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PADANDSTACK.html">Pad and Stack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PAIRWISE__MATCHER.html">Pairwise Matcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PILLOW__RESIZE.html">Pillow Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RANDOMRESIZEDCROP.html">Random Resized Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REFORMAT.html">Reformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REMAP.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RESIZE.html">Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ROTATE.html">Rotate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__SIFT.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__THRESHOLD.html">Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__AFFINE.html">Warp Affine</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__PERSPECTIVE.html">Warp Perspective</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____ADV__CVT__COLOR.html">Adv Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BND__BOX.html">BndBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BOX__BLUR.html">BoxBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM.html">Histogram</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM__EQ.html">Histogram Eq</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____MIN__AREA__RECT.html">Min Area Rect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____O__S__D.html">OSD</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____RESIZE__CROP.html">Resize Crop Convert</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____STACK.html">Stack</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1 current"><a class="reference internal" href="../modules/cpp_modules.html">C++ Modules</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_core.html">Core</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__COLORSPEC.html">Color Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html">Data Layout</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__DATATYPE.html">Data types</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__IMAGETYPE.html">Image Formats</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__SIZE.html">Size Operator</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_utils.html">Utilities</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__UTIL__EXCEPTION.html">Exception</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__UTIL__STATUS.html">Status Codes</a></li>
+</ul>
+</li>
+<li class="toctree-l2 current"><a class="reference internal" href="../modules/cpp_algos.html">Algorithms</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ADAPTIVETHRESHOLD.html">Adaptive Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__AVERAGEBLUR.html">Average Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BILATERAL__FILTER.html">Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BRIGHTNESS__CONTRAST.html">Brightness Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CENTER__CROP.html">Center Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CHANNEL__REORDER.html">Channel Reorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COLOR__TWIST.html">Color Twist</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COMPOSITE.html">Composite</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONV2D.html">2D Convolution</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONVERT__TO.html">Convert To</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COPYMAKEBORDER.html">Copy Make Border</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAMMA__CONTRAST.html">Gamma Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN.html">Gaussian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN__NOISE.html">GaussianNoise</a></li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">HQ Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__INPAINT.html">Inpaint</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__JOINT__BILATERAL__FILTER.html">Joint Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LABEL.html">Label</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LAPLACIAN.html">Laplacian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MEDIAN__BLUR.html">Median Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MINMAXLOC.html">MinMaxLoc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MORPHOLOGY.html">Morphology</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NON__MAXIMUM__SUPPRESSION.html">Non-Maximum Suppression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NORMALIZE.html">Normalize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PADANDSTACK.html">Pad and Stack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PAIRWISE__MATCHER.html">Pairwise Matcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PILLOW__RESIZE.html">Pillow Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RANDOMRESIZEDCROP.html">Random Resized Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REFORMAT.html">Reformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REMAP.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RESIZE.html">Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ROTATE.html">Rotate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__SIFT.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__THRESHOLD.html">Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__AFFINE.html">Warp Affine</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__PERSPECTIVE.html">Warp Perspective</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____ADV__CVT__COLOR.html">Adv Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BND__BOX.html">BndBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BOX__BLUR.html">BoxBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM.html">Histogram</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM__EQ.html">Histogram Eq</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____MIN__AREA__RECT.html">Min Area Rect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____O__S__D.html">OSD</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____RESIZE__CROP.html">Resize Crop Convert</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____STACK.html">Stack</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_cudatools.html">CUDA Tools</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__ATOMICS.html">Atomic operations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__BORDER.html">Border functions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__BORDERVARSHAPEWRAP.html">BorderVarShapeWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__BORDERWRAP.html">BorderWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__DROPCAST.html">Drop Cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__FULLTENSORWRAP.html">FullTensorWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__IMAGEWRAP.html">Image Wrapper classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__INTERPOLATION.html">Interpolation functions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__INTERPOLATIONVARSHAPEWRAP.html">InterpolationVarShapeWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__INTERPOLATIONWRAP.html">InterpolationWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__LINALG.html">Linear algebra</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHOPERATORS.html">Math operators</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHWRAPPERS.html">Math wrappers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__RANGECAST.html">Range cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__SATURATECAST.html">Saturate cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__STATICCAST.html">Static Cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORBATCHWRAP.html">TensorBatchWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORBATCHWRAPS.html">TensorBatchWrap shortcuts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORWRAP.html">TensorWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORWRAPS.html">TensorWrap shortcuts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TYPETRAITS.html">Type Traits</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../modules/python_modules.html">Python Modules</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../modules/python_core.html">Core</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/cache.html">Cache</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/colorspec.html">Color Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/format.html">Image Formats</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/recti.html">Rect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/image.html">Image</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/imagebatch.html">ImageBatchVarShape</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/tensor.html">Tensor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/tensorbatch.html">TensorBatchVarShape</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/python_algos.html">Algorithms</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_adaptivethreshold.html">AdaptiveThreshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_advcvtcolor.html">AdvCvtColor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_averageblur.html">AverageBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_bilateralfilter.html">BilateralFilter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_bndbox.html">BndBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_boxblur.html">BoxBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_brightnesscontrast.html">BrightnessContrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_centercrop.html">CenterCrop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_channelreorder.html">ChannelReorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_colortwist.html">ColorTwist</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_composite.html">Composite</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_conv2d.html">Conv2D</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_convertto.html">ConvertTo</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_copymakeborder.html">CopyMakeBorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_cropflipnormalizereformat.html">CropFlipNormalizeReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_customcrop.html">CustomCrop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_cvtcolor.html">CvtColor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_erase.html">Erase</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_findhomography.html">FindHomography</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_flip.html">Flip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_gammacontrast.html">GammaContrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_gaussian.html">Gaussian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_gaussiannoise.html">GaussianNoise</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_histogram.html">Histogram</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_histogrameq.html">HistogramEq</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_hqresize.html">HQResize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_inpaint.html">Inpaint</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_jointbilateralfilter.html">JointBilateralFilter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_label.html">Label</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_laplacian.html">Laplacian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_medianblur.html">MedianBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_minarearect.html">MinAreaRect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_minmaxloc.html">MinMaxLoc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_morphology.html">Morphology</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_nonmaximumsuppression.html">NonMaximumSuppression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_normalize.html">Normalize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_osd.html">OSD</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_padandstack.html">PadAndStack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_pairwisematcher.html">PairwiseMatcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_pillowresize.html">PillowResize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_randomresizedcrop.html">RandomResizedCrop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_reformat.html">Reformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_remap.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_resize.html">Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_resizecropconvertreformat.html">ResizeCropConvertReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_rotate.html">Rotate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_sift.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_stack.html">Stack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_threshold.html">Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_warpaffine.html">WarpAffine</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_warpperspective.html">WarpPerspective</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_adaptivethresholdtype.html">AdaptiveThresholdType</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_arrow.html">Arrow</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_blurboxi.html">BlurBoxI</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_bndboxi.html">BndBoxI</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_border.html">Border</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_channelmanip.html">ChannelManip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_circle.html">Circle</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_clockformat.html">ClockFormat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_colorconversion.html">ColorConversion</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_connectivitytype.html">ConnectivityType</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_interp.html">Interp</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_label.html">LABEL</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_line.html">Line</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_matcher.html">Matcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_morphologytype.html">MorphologyType</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_norm.html">Norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_point.html">Point</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_remap.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_rotatedbox.html">RotatedBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_sift.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_thresholdtype.html">ThresholdType</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Release Notes</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.9.0-beta.html">v0.9.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.8.0-beta.html">v0.8.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.7.0-beta.html">v0.7.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.6.0-beta.html">v0.6.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.5.0-beta.html">v0.5.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.4.0-beta.html">v0.4.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.3.1-beta.html">v0.3.1-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#bug-fixes">Bug Fixes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#known-issues">Known Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.3.0-beta.html">v0.3.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html">v0.2.1-alpha</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#general">General</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#new-operators">New Operators</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#improved-testing">Improved Testing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#bug-fixes">Bug Fixes</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html">v0.2.0-alpha</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html">v0.1.0-prealpha</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#known-issues">Known Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#license">License</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #000000" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">CV-CUDA</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../modules/c_modules.html">C API</a></li>
+          <li class="breadcrumb-item"><a href="../modules/c_algos.html">Algorithms</a></li>
+      <li class="breadcrumb-item active">HQ Resize</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/_c_cpp_api/group__NVCV__C__ALGORITHM__HQ__RESIZE.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="hq-resize">
+<h1>HQ Resize<a class="headerlink" href="#hq-resize" title="Permalink to this heading"></a></h1>
+<dl>
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__ALGORITHM__HQ__RESIZE"></span><em><span class="pre">group</span></em> <span class="sig-name descname"><span class="pre">NVCV_C_ALGORITHM_HQ_RESIZE</span></span></dt>
+<dd><div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-defines">Defines</p>
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.NVCV_HQ_RESIZE_MAX_RESIZED_NDIM">
+<span class="target" id="group__NVCV__C__ALGORITHM__HQ__RESIZE_1ga966ed1566c383f75cae82857c6eb3a5b"></span><span class="sig-name descname"><span class="n"><span class="pre">NVCV_HQ_RESIZE_MAX_RESIZED_NDIM</span></span></span><a class="headerlink" href="#c.NVCV_HQ_RESIZE_MAX_RESIZED_NDIM" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+</div>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-functions">Functions</p>
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv420cvcudaHQResizeCreateP18NVCVOperatorHandle">
+<span id="_CPPv320cvcudaHQResizeCreateP18NVCVOperatorHandle"></span><span id="_CPPv220cvcudaHQResizeCreateP18NVCVOperatorHandle"></span><span id="cvcudaHQResizeCreate__NVCVOperatorHandleP"></span><span class="target" id="group__NVCV__C__ALGORITHM__HQ__RESIZE_1ga0726d2f0bcad43d71cff1730c35cafbc"></span><a class="reference internal" href="group__NVCV__C__UTIL__STATUS.html#_CPPv410NVCVStatus" title="NVCVStatus"><span class="n"><span class="pre">NVCVStatus</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">cvcudaHQResizeCreate</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">NVCVOperatorHandle</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">handle</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv420cvcudaHQResizeCreateP18NVCVOperatorHandle" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Constructs an instance of the HQResize operator.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>handle</strong> – <strong>[out]</strong> Where the image instance handle will be written to.<ul class="simple">
+<li><p>Must not be NULL.</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-even">Return values<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NVCV_ERROR_INVALID_ARGUMENT</strong> – Handle is null. </p></li>
+<li><p><strong>NVCV_ERROR_OUT_OF_MEMORY</strong> – Not enough memory to create the operator. </p></li>
+<li><p><strong>NVCV_SUCCESS</strong> – Operation executed successfully. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv444cvcudaHQResizeTensorGetWorkspaceRequirements18NVCVOperatorHandleiK20HQResizeTensorShapeIK20HQResizeTensorShapeIK21NVCVInterpolationTypeK21NVCVInterpolationTypebPK12HQResizeRoiFP25NVCVWorkspaceRequirements">
+<span id="_CPPv344cvcudaHQResizeTensorGetWorkspaceRequirements18NVCVOperatorHandleiK20HQResizeTensorShapeIK20HQResizeTensorShapeIK21NVCVInterpolationTypeK21NVCVInterpolationTypebPK12HQResizeRoiFP25NVCVWorkspaceRequirements"></span><span id="_CPPv244cvcudaHQResizeTensorGetWorkspaceRequirements18NVCVOperatorHandleiK20HQResizeTensorShapeIK20HQResizeTensorShapeIK21NVCVInterpolationTypeK21NVCVInterpolationTypebPK12HQResizeRoiFP25NVCVWorkspaceRequirements"></span><span id="cvcudaHQResizeTensorGetWorkspaceRequirements__NVCVOperatorHandle.i.HQResizeTensorShapeIC.HQResizeTensorShapeIC.NVCVInterpolationTypeC.NVCVInterpolationTypeC.b.HQResizeRoiFCP.NVCVWorkspaceRequirementsP"></span><span class="target" id="group__NVCV__C__ALGORITHM__HQ__RESIZE_1ga72d85de75c9cc22827a6cecfbc6b8105"></span><a class="reference internal" href="group__NVCV__C__UTIL__STATUS.html#_CPPv410NVCVStatus" title="NVCVStatus"><span class="n"><span class="pre">NVCVStatus</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">cvcudaHQResizeTensorGetWorkspaceRequirements</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">NVCVOperatorHandle</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">handle</span></span>, <span class="kt"><span class="pre">int</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">batchSize</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv420HQResizeTensorShapeI" title="HQResizeTensorShapeI"><span class="n"><span class="pre">HQResizeTensorShapeI</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">inputShape</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv420HQResizeTensorShapeI" title="HQResizeTensorShapeI"><span class="n"><span class="pre">HQResizeTensorShapeI</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">outputShape</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv421NVCVInterpolationType" title="NVCVInterpolationType"><span class="n"><span class="pre">NVCVInterpolationType</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">minInterpolation</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv421NVCVInterpolationType" title="NVCVInterpolationType"><span class="n"><span class="pre">NVCVInterpolationType</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">magInterpolation</span></span>, <span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">antialias</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv412HQResizeRoiF" title="HQResizeRoiF"><span class="n"><span class="pre">HQResizeRoiF</span></span></a><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">roi</span></span>, <span class="n"><span class="pre">NVCVWorkspaceRequirements</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">reqOut</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv444cvcudaHQResizeTensorGetWorkspaceRequirements18NVCVOperatorHandleiK20HQResizeTensorShapeIK20HQResizeTensorShapeIK21NVCVInterpolationTypeK21NVCVInterpolationTypebPK12HQResizeRoiFP25NVCVWorkspaceRequirements" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Calculates the workspace requirements for Tensor input/ouput.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>handle</strong> – <strong>[in]</strong> Where the image instance handle will be written to.<ul>
+<li><p>Must not be NULL.</p></li>
+</ul>
+</p></li>
+<li><p><strong>batchSize</strong> – <strong>[in]</strong> The number of samples in the tensor (the size of N extent).</p></li>
+<li><p><strong>inputShape</strong> – <strong>[in]</strong> The HW or DHW extents of the input tensor, the number of resized extents, and the number of channels. Supported number of resizes extents are 2 and 3. For ndim = 2, a tensor of layout (N)HW(C) is expected to be processed, for ndim = 3, a tensor of layout (N)DHW(C) is expected to be processed.</p></li>
+<li><p><strong>outputShape</strong> – <strong>[in]</strong> The HW or DHW extents of the output tensor and the number of channels. The number of extents and channels must be the same as in inputShape.</p></li>
+<li><p><strong>minInterpolation</strong> – <strong>[in]</strong> The type of interpolation to be used when downsampling an extent (i.e. when output extent is smaller than the corresponding input extent).</p></li>
+<li><p><strong>magInterpolation</strong> – <strong>[in]</strong> The type of interpolation to be used when upsampling an extent (i.e. when output extent is bigger than the corresponding input extent).</p></li>
+<li><p><strong>antialias</strong> – <strong>[in]</strong> Whether to use antialiasing when downsampling.</p></li>
+<li><p><strong>roi</strong> – <strong>[in]</strong> Optional region of interest for the input, in (D)HW layout.</p></li>
+<li><p><strong>reqOut</strong> – <strong>[out]</strong> The pointer for workspace requirements struct that will be filled by the call.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return values<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NVCV_ERROR_INVALID_ARGUMENT</strong> – Handle is null or one of the arguments is out of range. </p></li>
+<li><p><strong>NVCV_SUCCESS</strong> – Operation executed successfully. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv449cvcudaHQResizeTensorBatchGetWorkspaceRequirements18NVCVOperatorHandleiK21HQResizeTensorShapesIK21HQResizeTensorShapesIK21NVCVInterpolationTypeK21NVCVInterpolationTypebK13HQResizeRoisFP25NVCVWorkspaceRequirements">
+<span id="_CPPv349cvcudaHQResizeTensorBatchGetWorkspaceRequirements18NVCVOperatorHandleiK21HQResizeTensorShapesIK21HQResizeTensorShapesIK21NVCVInterpolationTypeK21NVCVInterpolationTypebK13HQResizeRoisFP25NVCVWorkspaceRequirements"></span><span id="_CPPv249cvcudaHQResizeTensorBatchGetWorkspaceRequirements18NVCVOperatorHandleiK21HQResizeTensorShapesIK21HQResizeTensorShapesIK21NVCVInterpolationTypeK21NVCVInterpolationTypebK13HQResizeRoisFP25NVCVWorkspaceRequirements"></span><span id="cvcudaHQResizeTensorBatchGetWorkspaceRequirements__NVCVOperatorHandle.i.HQResizeTensorShapesIC.HQResizeTensorShapesIC.NVCVInterpolationTypeC.NVCVInterpolationTypeC.b.HQResizeRoisFC.NVCVWorkspaceRequirementsP"></span><span class="target" id="group__NVCV__C__ALGORITHM__HQ__RESIZE_1ga828ed7ef2dc3cc1b16213e06d5878e3d"></span><a class="reference internal" href="group__NVCV__C__UTIL__STATUS.html#_CPPv410NVCVStatus" title="NVCVStatus"><span class="n"><span class="pre">NVCVStatus</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">cvcudaHQResizeTensorBatchGetWorkspaceRequirements</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">NVCVOperatorHandle</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">handle</span></span>, <span class="kt"><span class="pre">int</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">batchSize</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv421HQResizeTensorShapesI" title="HQResizeTensorShapesI"><span class="n"><span class="pre">HQResizeTensorShapesI</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">inputShapes</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv421HQResizeTensorShapesI" title="HQResizeTensorShapesI"><span class="n"><span class="pre">HQResizeTensorShapesI</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">outputShapes</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv421NVCVInterpolationType" title="NVCVInterpolationType"><span class="n"><span class="pre">NVCVInterpolationType</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">minInterpolation</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv421NVCVInterpolationType" title="NVCVInterpolationType"><span class="n"><span class="pre">NVCVInterpolationType</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">magInterpolation</span></span>, <span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">antialias</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv413HQResizeRoisF" title="HQResizeRoisF"><span class="n"><span class="pre">HQResizeRoisF</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">roi</span></span>, <span class="n"><span class="pre">NVCVWorkspaceRequirements</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">reqOut</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv449cvcudaHQResizeTensorBatchGetWorkspaceRequirements18NVCVOperatorHandleiK21HQResizeTensorShapesIK21HQResizeTensorShapesIK21NVCVInterpolationTypeK21NVCVInterpolationTypebK13HQResizeRoisFP25NVCVWorkspaceRequirements" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Calculates the workspace requirements for TensorBatch/ImageBatchVarShape input/ouput.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>handle</strong> – <strong>[in]</strong> Where the image instance handle will be written to.<ul>
+<li><p>Must not be NULL.</p></li>
+</ul>
+</p></li>
+<li><p><strong>batchSize</strong> – <strong>[in]</strong> The number of samples in the tensor batch/image batch.</p></li>
+<li><p><strong>inputShapes</strong> – <strong>[in]</strong> The list of shapes (HW or DHW extents) in the input batch, the number of channels, and the number of extents to be resampled (2 or 3). The number of channels can be specified once for the whole batch or each sample separately.</p></li>
+<li><p><strong>outputShapes</strong> – <strong>[in]</strong> The list of shapes (HW or DHW extents) in the output batch, the number of channels, and the number of extents to be resampled (2 or 3). The number of channels must match the number of channels in the input.</p></li>
+<li><p><strong>minInterpolation</strong> – <strong>[in]</strong> The type of interpolation to be used when downsampling an extent (i.e. when output extent is smaller than the corresponding input extent).</p></li>
+<li><p><strong>magInterpolation</strong> – <strong>[in]</strong> The type of interpolation to be used when upsampling an extent (i.e. when output extent is bigger than the corresponding input extent).</p></li>
+<li><p><strong>antialias</strong> – <strong>[in]</strong> Whether to use antialiasing when downsampling.</p></li>
+<li><p><strong>roi</strong> – <strong>[in]</strong> Optional region of interest for the input, in (D)HW layout. The roi can be described as a list for each sample or contain a single element to be used for all the samples in the batch.</p></li>
+<li><p><strong>reqOut</strong> – <strong>[out]</strong> The pointer for workspace requirements struct that will be filled by the call.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return values<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NVCV_ERROR_INVALID_ARGUMENT</strong> – Handle is null or one of the arguments is out of range. </p></li>
+<li><p><strong>NVCV_SUCCESS</strong> – Operation executed successfully. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv441cvcudaHQResizeGetMaxWorkspaceRequirements18NVCVOperatorHandleiK20HQResizeTensorShapeIP25NVCVWorkspaceRequirements">
+<span id="_CPPv341cvcudaHQResizeGetMaxWorkspaceRequirements18NVCVOperatorHandleiK20HQResizeTensorShapeIP25NVCVWorkspaceRequirements"></span><span id="_CPPv241cvcudaHQResizeGetMaxWorkspaceRequirements18NVCVOperatorHandleiK20HQResizeTensorShapeIP25NVCVWorkspaceRequirements"></span><span id="cvcudaHQResizeGetMaxWorkspaceRequirements__NVCVOperatorHandle.i.HQResizeTensorShapeIC.NVCVWorkspaceRequirementsP"></span><span class="target" id="group__NVCV__C__ALGORITHM__HQ__RESIZE_1gaa01850dcfb983815c9676729a453f6a9"></span><a class="reference internal" href="group__NVCV__C__UTIL__STATUS.html#_CPPv410NVCVStatus" title="NVCVStatus"><span class="n"><span class="pre">NVCVStatus</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">cvcudaHQResizeGetMaxWorkspaceRequirements</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">NVCVOperatorHandle</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">handle</span></span>, <span class="kt"><span class="pre">int</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">maxBatchSize</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv420HQResizeTensorShapeI" title="HQResizeTensorShapeI"><span class="n"><span class="pre">HQResizeTensorShapeI</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">maxShape</span></span>, <span class="n"><span class="pre">NVCVWorkspaceRequirements</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">reqOut</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv441cvcudaHQResizeGetMaxWorkspaceRequirements18NVCVOperatorHandleiK20HQResizeTensorShapeIP25NVCVWorkspaceRequirements" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Calculates the upper bound for workspace requirements. The workspace that meets the returned requirements can be used with any call to the operator as long as: the input dimensionality (2 or 3) matches, the number of samples does not exceed the maxBatchSize, and all the input and output shapes do not exceed the maxShape in any extent (including number of channels).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>handle</strong> – <strong>[in]</strong> Where the image instance handle will be written to.<ul>
+<li><p>Must not be NULL.</p></li>
+</ul>
+</p></li>
+<li><p><strong>maxBatchSize</strong> – <strong>[in]</strong> The maximal number of samples in the tensor/tensor batch/image batch.</p></li>
+<li><p><strong>maxShape</strong> – <strong>[in]</strong> The maximal shape of any input or output sample. The number of channels must be an upper bound for number of channels in any sample.</p></li>
+<li><p><strong>reqOut</strong> – <strong>[out]</strong> The pointer for workspace requirements struct that will be filled by the call.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return values<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NVCV_ERROR_INVALID_ARGUMENT</strong> – Handle is null or one of the arguments is out of range. </p></li>
+<li><p><strong>NVCV_SUCCESS</strong> – Operation executed successfully. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv420cvcudaHQResizeSubmit18NVCVOperatorHandle12cudaStream_tPK13NVCVWorkspace16NVCVTensorHandle16NVCVTensorHandleK21NVCVInterpolationTypeK21NVCVInterpolationTypebPK12HQResizeRoiF">
+<span id="_CPPv320cvcudaHQResizeSubmit18NVCVOperatorHandle12cudaStream_tPK13NVCVWorkspace16NVCVTensorHandle16NVCVTensorHandleK21NVCVInterpolationTypeK21NVCVInterpolationTypebPK12HQResizeRoiF"></span><span id="_CPPv220cvcudaHQResizeSubmit18NVCVOperatorHandle12cudaStream_tPK13NVCVWorkspace16NVCVTensorHandle16NVCVTensorHandleK21NVCVInterpolationTypeK21NVCVInterpolationTypebPK12HQResizeRoiF"></span><span id="cvcudaHQResizeSubmit__NVCVOperatorHandle.cudaStream_t.NVCVWorkspaceCP.NVCVTensorHandle.NVCVTensorHandle.NVCVInterpolationTypeC.NVCVInterpolationTypeC.b.HQResizeRoiFCP"></span><span class="target" id="group__NVCV__C__ALGORITHM__HQ__RESIZE_1ga0da8809825f2b52f8b4fe398911de2cb"></span><a class="reference internal" href="group__NVCV__C__UTIL__STATUS.html#_CPPv410NVCVStatus" title="NVCVStatus"><span class="n"><span class="pre">NVCVStatus</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">cvcudaHQResizeSubmit</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">NVCVOperatorHandle</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">handle</span></span>, <span class="n"><span class="pre">cudaStream_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">stream</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="n"><span class="pre">NVCVWorkspace</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">workspace</span></span>, <span class="n"><span class="pre">NVCVTensorHandle</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">in</span></span>, <span class="n"><span class="pre">NVCVTensorHandle</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">out</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv421NVCVInterpolationType" title="NVCVInterpolationType"><span class="n"><span class="pre">NVCVInterpolationType</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">minInterpolation</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv421NVCVInterpolationType" title="NVCVInterpolationType"><span class="n"><span class="pre">NVCVInterpolationType</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">magInterpolation</span></span>, <span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">antialias</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv412HQResizeRoiF" title="HQResizeRoiF"><span class="n"><span class="pre">HQResizeRoiF</span></span></a><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">roi</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv420cvcudaHQResizeSubmit18NVCVOperatorHandle12cudaStream_tPK13NVCVWorkspace16NVCVTensorHandle16NVCVTensorHandleK21NVCVInterpolationTypeK21NVCVInterpolationTypebPK12HQResizeRoiF" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Executes the HQResize operation on the given cuda stream. This operation does not wait for completion.</p>
+<p>Limitations:</p>
+<p>Input, Output: Data Layout: NVCV_TENSOR_[N][D]HW[C]</p>
+<p>Number of channels: Positive integer</p>
+<p><table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Data Type </p></th>
+<th class="head"><p>Allowed  </p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>8bit Unsigned </p></td>
+<td><p>Yes  </p></td>
+</tr>
+<tr class="row-odd"><td><p>8bit Signed </p></td>
+<td><p>No  </p></td>
+</tr>
+<tr class="row-even"><td><p>16bit Unsigned </p></td>
+<td><p>Yes  </p></td>
+</tr>
+<tr class="row-odd"><td><p>16bit Signed </p></td>
+<td><p>Yes  </p></td>
+</tr>
+<tr class="row-even"><td><p>32bit Unsigned </p></td>
+<td><p>No  </p></td>
+</tr>
+<tr class="row-odd"><td><p>32bit Signed </p></td>
+<td><p>No  </p></td>
+</tr>
+<tr class="row-even"><td><p>32bit Float </p></td>
+<td><p>Yes  </p></td>
+</tr>
+<tr class="row-odd"><td><p>64bit Float </p></td>
+<td><p>No  </p></td>
+</tr>
+</tbody>
+</table>
+</p>
+<p>Input/Output dependency <table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Property </p></th>
+<th class="head"><p>Input == Output  </p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Data Layout </p></td>
+<td><p>Yes  </p></td>
+</tr>
+<tr class="row-odd"><td><p>Data Type </p></td>
+<td><p>No (output can be the same or float32).  </p></td>
+</tr>
+<tr class="row-even"><td><p>Channels </p></td>
+<td><p>Yes  </p></td>
+</tr>
+<tr class="row-odd"><td><p>Width </p></td>
+<td><p>No  </p></td>
+</tr>
+<tr class="row-even"><td><p>Height </p></td>
+<td><p>No  </p></td>
+</tr>
+<tr class="row-odd"><td><p>Samples </p></td>
+<td><p>Yes  </p></td>
+</tr>
+</tbody>
+</table>
+</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>handle</strong> – <strong>[in]</strong> Handle to the operator.<ul>
+<li><p>Must not be NULL. </p></li>
+</ul>
+</p></li>
+<li><p><strong>stream</strong> – <strong>[in]</strong> Handle to a valid CUDA stream.</p></li>
+<li><p><strong>workspace</strong> – <strong>[in]</strong> The workspace with memory for intermediate results. The requirements for a given input can be acquired with a call to <code class="docutils literal notranslate"><span class="pre">cvcudaHQResizeTensorGetWorkspaceRequirements</span></code> or <code class="docutils literal notranslate"><span class="pre">cvcudaHQResizeGetMaxWorkspaceRequirements</span></code>.</p></li>
+<li><p><strong>in</strong> – <strong>[in]</strong> The input tensor with (N)(D)HW(C) layout.</p></li>
+<li><p><strong>out</strong> – <strong>[in]</strong> The output tensor with the same layout, number of samples and channels as the in tensor.</p></li>
+<li><p><strong>minInterpolation</strong> – <strong>[in]</strong> The type of interpolation to be used when downsampling an extent (i.e. when output extent is smaller than the corresponding input extent). Supported interpolation formats are: <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_NEAREST</span></code>, <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_LINEAR</span></code>, <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_CUBIC</span></code>, <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_LANCZOS</span></code>, and <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_GAUSSIAN</span></code>.</p></li>
+<li><p><strong>magInterpolation</strong> – <strong>[in]</strong> The type of interpolation to be used when upsampling an extent (i.e. when output extent is bigger than the corresponding input extent). Supported interpolation formats are: <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_NEAREST</span></code>, <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_LINEAR</span></code>, <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_CUBIC</span></code>, <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_LANCZOS</span></code>, and <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_GAUSSIAN</span></code>.</p></li>
+<li><p><strong>antialias</strong> – <strong>[in]</strong> Whether to use antialiasing when downsampling. The value is ignored for <code class="docutils literal notranslate"><span class="pre">minInterpolation</span> <span class="pre">=</span> <span class="pre">NVCV_INTERP_NEAREST</span></code>.</p></li>
+<li><p><strong>roi</strong> – <strong>[in]</strong> Optional region of interest for the input, in (D)HW layout. If, for some axis, the low bound is bigger than the high bound, the image is flipped in that dimension.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return values<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NVCV_ERROR_INVALID_ARGUMENT</strong> – Some parameter is outside valid range. </p></li>
+<li><p><strong>NVCV_ERROR_INTERNAL</strong> – Internal error in the operator, invalid types passed in. </p></li>
+<li><p><strong>NVCV_SUCCESS</strong> – Operation executed successfully. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv430cvcudaHQResizeImageBatchSubmit18NVCVOperatorHandle12cudaStream_tPK13NVCVWorkspace20NVCVImageBatchHandle20NVCVImageBatchHandleK21NVCVInterpolationTypeK21NVCVInterpolationTypebK13HQResizeRoisF">
+<span id="_CPPv330cvcudaHQResizeImageBatchSubmit18NVCVOperatorHandle12cudaStream_tPK13NVCVWorkspace20NVCVImageBatchHandle20NVCVImageBatchHandleK21NVCVInterpolationTypeK21NVCVInterpolationTypebK13HQResizeRoisF"></span><span id="_CPPv230cvcudaHQResizeImageBatchSubmit18NVCVOperatorHandle12cudaStream_tPK13NVCVWorkspace20NVCVImageBatchHandle20NVCVImageBatchHandleK21NVCVInterpolationTypeK21NVCVInterpolationTypebK13HQResizeRoisF"></span><span id="cvcudaHQResizeImageBatchSubmit__NVCVOperatorHandle.cudaStream_t.NVCVWorkspaceCP.NVCVImageBatchHandle.NVCVImageBatchHandle.NVCVInterpolationTypeC.NVCVInterpolationTypeC.b.HQResizeRoisFC"></span><span class="target" id="group__NVCV__C__ALGORITHM__HQ__RESIZE_1ga6fa5715947ed04eb747374f3270c4f7f"></span><a class="reference internal" href="group__NVCV__C__UTIL__STATUS.html#_CPPv410NVCVStatus" title="NVCVStatus"><span class="n"><span class="pre">NVCVStatus</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">cvcudaHQResizeImageBatchSubmit</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">NVCVOperatorHandle</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">handle</span></span>, <span class="n"><span class="pre">cudaStream_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">stream</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="n"><span class="pre">NVCVWorkspace</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">workspace</span></span>, <span class="n"><span class="pre">NVCVImageBatchHandle</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">in</span></span>, <span class="n"><span class="pre">NVCVImageBatchHandle</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">out</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv421NVCVInterpolationType" title="NVCVInterpolationType"><span class="n"><span class="pre">NVCVInterpolationType</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">minInterpolation</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv421NVCVInterpolationType" title="NVCVInterpolationType"><span class="n"><span class="pre">NVCVInterpolationType</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">magInterpolation</span></span>, <span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">antialias</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv413HQResizeRoisF" title="HQResizeRoisF"><span class="n"><span class="pre">HQResizeRoisF</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">roi</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv430cvcudaHQResizeImageBatchSubmit18NVCVOperatorHandle12cudaStream_tPK13NVCVWorkspace20NVCVImageBatchHandle20NVCVImageBatchHandleK21NVCVInterpolationTypeK21NVCVInterpolationTypebK13HQResizeRoisF" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Executes the HQResize operation on the given cuda stream. This operation does not wait for completion.</p>
+<p>Limitations:</p>
+<p>Input, Output: Data Layout: NVCV_TENSOR_HWC</p>
+<p>Number of channels: [1, 2, 3, 4]</p>
+<p><table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Data Type </p></th>
+<th class="head"><p>Allowed  </p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>8bit Unsigned </p></td>
+<td><p>Yes  </p></td>
+</tr>
+<tr class="row-odd"><td><p>8bit Signed </p></td>
+<td><p>No  </p></td>
+</tr>
+<tr class="row-even"><td><p>16bit Unsigned </p></td>
+<td><p>Yes  </p></td>
+</tr>
+<tr class="row-odd"><td><p>16bit Signed </p></td>
+<td><p>Yes  </p></td>
+</tr>
+<tr class="row-even"><td><p>32bit Unsigned </p></td>
+<td><p>No  </p></td>
+</tr>
+<tr class="row-odd"><td><p>32bit Signed </p></td>
+<td><p>No  </p></td>
+</tr>
+<tr class="row-even"><td><p>32bit Float </p></td>
+<td><p>Yes  </p></td>
+</tr>
+<tr class="row-odd"><td><p>64bit Float </p></td>
+<td><p>No  </p></td>
+</tr>
+</tbody>
+</table>
+</p>
+<p>Input/Output dependency <table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Property </p></th>
+<th class="head"><p>Input == Output  </p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Data Layout </p></td>
+<td><p>Yes  </p></td>
+</tr>
+<tr class="row-odd"><td><p>Data Type </p></td>
+<td><p>No (output can be the same or float32).  </p></td>
+</tr>
+<tr class="row-even"><td><p>Channels </p></td>
+<td><p>Yes  </p></td>
+</tr>
+<tr class="row-odd"><td><p>Width </p></td>
+<td><p>No  </p></td>
+</tr>
+<tr class="row-even"><td><p>Height </p></td>
+<td><p>No  </p></td>
+</tr>
+<tr class="row-odd"><td><p>Samples </p></td>
+<td><p>Yes  </p></td>
+</tr>
+</tbody>
+</table>
+</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>handle</strong> – <strong>[in]</strong> Handle to the operator.<ul>
+<li><p>Must not be NULL. </p></li>
+</ul>
+</p></li>
+<li><p><strong>stream</strong> – <strong>[in]</strong> Handle to a valid CUDA stream.</p></li>
+<li><p><strong>workspace</strong> – <strong>[in]</strong> The workspace with memory for intermediate results. The requirements for a given input can be acquired with a call to <code class="docutils literal notranslate"><span class="pre">cvcudaHQResizeTensorBatchGetWorkspaceRequirements</span></code> or <code class="docutils literal notranslate"><span class="pre">cvcudaHQResizeGetMaxWorkspaceRequirements</span></code>.</p></li>
+<li><p><strong>in</strong> – <strong>[in]</strong> The ImageBatchVarShape batch of input samples.</p></li>
+<li><p><strong>out</strong> – <strong>[in]</strong> The ImageBatchVarShape batch of output samples.</p></li>
+<li><p><strong>minInterpolation</strong> – <strong>[in]</strong> The type of interpolation to be used when downsampling an extent (i.e. when output extent is smaller than the corresponding input extent). Supported interpolation formats are: <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_NEAREST</span></code>, <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_LINEAR</span></code>, <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_CUBIC</span></code>, <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_LANCZOS</span></code>, and <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_GAUSSIAN</span></code>.</p></li>
+<li><p><strong>magInterpolation</strong> – <strong>[in]</strong> The type of interpolation to be used when upsampling an extent (i.e. when output extent is bigger than the corresponding input extent). Supported interpolation formats are: <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_NEAREST</span></code>, <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_LINEAR</span></code>, <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_CUBIC</span></code>, <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_LANCZOS</span></code>, and <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_GAUSSIAN</span></code>.</p></li>
+<li><p><strong>antialias</strong> – <strong>[in]</strong> Whether to use antialiasing when downsampling. The value is ignored for <code class="docutils literal notranslate"><span class="pre">minInterpolation</span> <span class="pre">=</span> <span class="pre">NVCV_INTERP_NEAREST</span></code>.</p></li>
+<li><p><strong>roi</strong> – <strong>[in]</strong> Optional region of interest for the input, in (D)HW layout. The roi can be described as a list of elements for each sample or a list containing a single element to be used for all the samples in the batch. If, for some axis, the low bound is bigger than the high bound, the image is flipped in that dimension.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return values<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NVCV_ERROR_INVALID_ARGUMENT</strong> – Some parameter is outside valid range. </p></li>
+<li><p><strong>NVCV_ERROR_INTERNAL</strong> – Internal error in the operator, invalid types passed in. </p></li>
+<li><p><strong>NVCV_SUCCESS</strong> – Operation executed successfully. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv431cvcudaHQResizeTensorBatchSubmit18NVCVOperatorHandle12cudaStream_tPK13NVCVWorkspace21NVCVTensorBatchHandle21NVCVTensorBatchHandleK21NVCVInterpolationTypeK21NVCVInterpolationTypebK13HQResizeRoisF">
+<span id="_CPPv331cvcudaHQResizeTensorBatchSubmit18NVCVOperatorHandle12cudaStream_tPK13NVCVWorkspace21NVCVTensorBatchHandle21NVCVTensorBatchHandleK21NVCVInterpolationTypeK21NVCVInterpolationTypebK13HQResizeRoisF"></span><span id="_CPPv231cvcudaHQResizeTensorBatchSubmit18NVCVOperatorHandle12cudaStream_tPK13NVCVWorkspace21NVCVTensorBatchHandle21NVCVTensorBatchHandleK21NVCVInterpolationTypeK21NVCVInterpolationTypebK13HQResizeRoisF"></span><span id="cvcudaHQResizeTensorBatchSubmit__NVCVOperatorHandle.cudaStream_t.NVCVWorkspaceCP.NVCVTensorBatchHandle.NVCVTensorBatchHandle.NVCVInterpolationTypeC.NVCVInterpolationTypeC.b.HQResizeRoisFC"></span><span class="target" id="group__NVCV__C__ALGORITHM__HQ__RESIZE_1gae2b084f8df61c05c481eef0ef7a98efa"></span><a class="reference internal" href="group__NVCV__C__UTIL__STATUS.html#_CPPv410NVCVStatus" title="NVCVStatus"><span class="n"><span class="pre">NVCVStatus</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">cvcudaHQResizeTensorBatchSubmit</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">NVCVOperatorHandle</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">handle</span></span>, <span class="n"><span class="pre">cudaStream_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">stream</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="n"><span class="pre">NVCVWorkspace</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">workspace</span></span>, <span class="n"><span class="pre">NVCVTensorBatchHandle</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">in</span></span>, <span class="n"><span class="pre">NVCVTensorBatchHandle</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">out</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv421NVCVInterpolationType" title="NVCVInterpolationType"><span class="n"><span class="pre">NVCVInterpolationType</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">minInterpolation</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv421NVCVInterpolationType" title="NVCVInterpolationType"><span class="n"><span class="pre">NVCVInterpolationType</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">magInterpolation</span></span>, <span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">antialias</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv413HQResizeRoisF" title="HQResizeRoisF"><span class="n"><span class="pre">HQResizeRoisF</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">roi</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv431cvcudaHQResizeTensorBatchSubmit18NVCVOperatorHandle12cudaStream_tPK13NVCVWorkspace21NVCVTensorBatchHandle21NVCVTensorBatchHandleK21NVCVInterpolationTypeK21NVCVInterpolationTypebK13HQResizeRoisF" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Executes the HQResize operation on the given cuda stream. This operation does not wait for completion.</p>
+<p>Limitations:</p>
+<p>Input, Output: Data Layout: NVCV_TENSOR_[D]HW[C]</p>
+<p>Number of channels: Positive integer</p>
+<p><table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Data Type </p></th>
+<th class="head"><p>Allowed  </p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>8bit Unsigned </p></td>
+<td><p>Yes  </p></td>
+</tr>
+<tr class="row-odd"><td><p>8bit Signed </p></td>
+<td><p>No  </p></td>
+</tr>
+<tr class="row-even"><td><p>16bit Unsigned </p></td>
+<td><p>Yes  </p></td>
+</tr>
+<tr class="row-odd"><td><p>16bit Signed </p></td>
+<td><p>Yes  </p></td>
+</tr>
+<tr class="row-even"><td><p>32bit Unsigned </p></td>
+<td><p>No  </p></td>
+</tr>
+<tr class="row-odd"><td><p>32bit Signed </p></td>
+<td><p>No  </p></td>
+</tr>
+<tr class="row-even"><td><p>32bit Float </p></td>
+<td><p>Yes  </p></td>
+</tr>
+<tr class="row-odd"><td><p>64bit Float </p></td>
+<td><p>No  </p></td>
+</tr>
+</tbody>
+</table>
+</p>
+<p>Input/Output dependency <table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Property </p></th>
+<th class="head"><p>Input == Output  </p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Data Layout </p></td>
+<td><p>Yes  </p></td>
+</tr>
+<tr class="row-odd"><td><p>Data Type </p></td>
+<td><p>No (output can be the same or float32).  </p></td>
+</tr>
+<tr class="row-even"><td><p>Channels </p></td>
+<td><p>Yes  </p></td>
+</tr>
+<tr class="row-odd"><td><p>Width </p></td>
+<td><p>No  </p></td>
+</tr>
+<tr class="row-even"><td><p>Height </p></td>
+<td><p>No  </p></td>
+</tr>
+<tr class="row-odd"><td><p>Samples </p></td>
+<td><p>Yes  </p></td>
+</tr>
+</tbody>
+</table>
+</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>handle</strong> – <strong>[in]</strong> Handle to the operator.<ul>
+<li><p>Must not be NULL. </p></li>
+</ul>
+</p></li>
+<li><p><strong>stream</strong> – <strong>[in]</strong> Handle to a valid CUDA stream.</p></li>
+<li><p><strong>workspace</strong> – <strong>[in]</strong> The workspace with memory for intermediate results. The requirements for a given input can be acquired with a call to <code class="docutils literal notranslate"><span class="pre">cvcudaHQResizeTensorBatchGetWorkspaceRequirements</span></code> or <code class="docutils literal notranslate"><span class="pre">cvcudaHQResizeGetMaxWorkspaceRequirements</span></code>.</p></li>
+<li><p><strong>in</strong> – <strong>[in]</strong> The TensorBatch of input samples.</p></li>
+<li><p><strong>out</strong> – <strong>[in]</strong> The TensorBatch batch of output samples.</p></li>
+<li><p><strong>minInterpolation</strong> – <strong>[in]</strong> The type of interpolation to be used when downsampling an extent (i.e. when output extent is smaller than the corresponding input extent). Supported interpolation formats are: <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_NEAREST</span></code>, <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_LINEAR</span></code>, <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_CUBIC</span></code>, <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_LANCZOS</span></code>, and <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_GAUSSIAN</span></code>.</p></li>
+<li><p><strong>magInterpolation</strong> – <strong>[in]</strong> The type of interpolation to be used when upsampling an extent (i.e. when output extent is bigger than the corresponding input extent). Supported interpolation formats are: <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_NEAREST</span></code>, <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_LINEAR</span></code>, <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_CUBIC</span></code>, <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_LANCZOS</span></code>, and <code class="docutils literal notranslate"><span class="pre">NVCV_INTERP_GAUSSIAN</span></code>.</p></li>
+<li><p><strong>antialias</strong> – <strong>[in]</strong> Whether to use antialiasing when downsampling. The value is ignored for <code class="docutils literal notranslate"><span class="pre">minInterpolation</span> <span class="pre">=</span> <span class="pre">NVCV_INTERP_NEAREST</span></code>.</p></li>
+<li><p><strong>roi</strong> – <strong>[in]</strong> Optional region of interest for the input, in (D)HW layout. The roi can be described as a list of elements for each sample or a list containing a single element to be used for all the samples in the batch. If, for some axis, the low bound is bigger than the high bound, the image is flipped in that dimension.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return values<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NVCV_ERROR_INVALID_ARGUMENT</strong> – Some parameter is outside valid range. </p></li>
+<li><p><strong>NVCV_ERROR_INTERNAL</strong> – Internal error in the operator, invalid types passed in. </p></li>
+<li><p><strong>NVCV_SUCCESS</strong> – Operation executed successfully. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</div>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-variables">Variables</p>
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv46extent">
+<span id="_CPPv36extent"></span><span id="_CPPv26extent"></span><span id="extent__int32_tA"></span><span class="target" id="group__NVCV__C__ALGORITHM__HQ__RESIZE_1ga6e7ad201efc713c0283c6ffc502ba956"></span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">extent</span></span></span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">(</span></span><span class="m"><span class="pre">3</span></span><span class="p"><span class="pre">)</span></span><span class="p"><span class="pre">]</span></span><a class="headerlink" href="#_CPPv46extent" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv44ndim">
+<span id="_CPPv34ndim"></span><span id="_CPPv24ndim"></span><span id="ndim__int32_t"></span><span class="target" id="group__NVCV__C__ALGORITHM__HQ__RESIZE_1gae8facb50c9266641fd427c07766d702c"></span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ndim</span></span></span><a class="headerlink" href="#_CPPv44ndim" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv411numChannels">
+<span id="_CPPv311numChannels"></span><span id="_CPPv211numChannels"></span><span id="numChannels__int32_t"></span><span class="target" id="group__NVCV__C__ALGORITHM__HQ__RESIZE_1ga7f0acbc5aef08c7ba6cac5d2e35a6637"></span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">numChannels</span></span></span><a class="headerlink" href="#_CPPv411numChannels" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv45shape">
+<span id="_CPPv35shape"></span><span id="_CPPv25shape"></span><span id="shape__HQResizeTensorShapeIP"></span><span class="target" id="group__NVCV__C__ALGORITHM__HQ__RESIZE_1ga5b624ee4aae249e2c6cc8c3ee2c107f9"></span><a class="reference internal" href="#_CPPv420HQResizeTensorShapeI" title="HQResizeTensorShapeI"><span class="n"><span class="pre">HQResizeTensorShapeI</span></span></a><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="sig-name descname"><span class="n"><span class="pre">shape</span></span></span><a class="headerlink" href="#_CPPv45shape" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv44size">
+<span id="_CPPv34size"></span><span id="_CPPv24size"></span><span id="size__int32_t"></span><span class="target" id="group__NVCV__C__ALGORITHM__HQ__RESIZE_1gae650f5a8542994b01005758d443b9cd2"></span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">size</span></span></span><a class="headerlink" href="#_CPPv44size" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__ALGORITHM__HQ__RESIZE_1ga3d3a7bf3fa3ca3c68eca01785980a442"></span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ndim</span></span></span><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__ALGORITHM__HQ__RESIZE_1gad95ee21f89be22a940b04a18be16e9fc"></span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">numChannels</span></span></span><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv42lo">
+<span id="_CPPv32lo"></span><span id="_CPPv22lo"></span><span id="lo__floatA"></span><span class="target" id="group__NVCV__C__ALGORITHM__HQ__RESIZE_1gae13ce29260d26ba6a0ec77fe482c5911"></span><span class="kt"><span class="pre">float</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">lo</span></span></span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">(</span></span><span class="m"><span class="pre">3</span></span><span class="p"><span class="pre">)</span></span><span class="p"><span class="pre">]</span></span><a class="headerlink" href="#_CPPv42lo" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv42hi">
+<span id="_CPPv32hi"></span><span id="_CPPv22hi"></span><span id="hi__floatA"></span><span class="target" id="group__NVCV__C__ALGORITHM__HQ__RESIZE_1ga04f3380cb4440e08acd31a9d722f97b3"></span><span class="kt"><span class="pre">float</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">hi</span></span></span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">(</span></span><span class="m"><span class="pre">3</span></span><span class="p"><span class="pre">)</span></span><span class="p"><span class="pre">]</span></span><a class="headerlink" href="#_CPPv42hi" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__ALGORITHM__HQ__RESIZE_1ga3a9a8c4944a03c8c54bf69dedf5ea9e3"></span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">size</span></span></span><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__C__ALGORITHM__HQ__RESIZE_1ga4cc00aa246690b74e780c871481f6299"></span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ndim</span></span></span><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv43roi">
+<span id="_CPPv33roi"></span><span id="_CPPv23roi"></span><span id="roi__HQResizeRoiFP"></span><span class="target" id="group__NVCV__C__ALGORITHM__HQ__RESIZE_1gaf668e4a63bab278b301cb0dab33bc196"></span><a class="reference internal" href="#_CPPv412HQResizeRoiF" title="HQResizeRoiF"><span class="n"><span class="pre">HQResizeRoiF</span></span></a><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="sig-name descname"><span class="n"><span class="pre">roi</span></span></span><a class="headerlink" href="#_CPPv43roi" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+</div>
+<dl class="cpp struct">
+<dt class="sig sig-object cpp" id="_CPPv420HQResizeTensorShapeI">
+<span id="_CPPv320HQResizeTensorShapeI"></span><span id="_CPPv220HQResizeTensorShapeI"></span><span id="HQResizeTensorShapeI"></span><span class="target" id="structHQResizeTensorShapeI"></span><span class="k"><span class="pre">struct</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">HQResizeTensorShapeI</span></span></span><a class="headerlink" href="#_CPPv420HQResizeTensorShapeI" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpHQResize.h&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp struct">
+<dt class="sig sig-object cpp" id="_CPPv421HQResizeTensorShapesI">
+<span id="_CPPv321HQResizeTensorShapesI"></span><span id="_CPPv221HQResizeTensorShapesI"></span><span id="HQResizeTensorShapesI"></span><span class="target" id="structHQResizeTensorShapesI"></span><span class="k"><span class="pre">struct</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">HQResizeTensorShapesI</span></span></span><a class="headerlink" href="#_CPPv421HQResizeTensorShapesI" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpHQResize.h&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp struct">
+<dt class="sig sig-object cpp" id="_CPPv412HQResizeRoiF">
+<span id="_CPPv312HQResizeRoiF"></span><span id="_CPPv212HQResizeRoiF"></span><span id="HQResizeRoiF"></span><span class="target" id="structHQResizeRoiF"></span><span class="k"><span class="pre">struct</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">HQResizeRoiF</span></span></span><a class="headerlink" href="#_CPPv412HQResizeRoiF" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpHQResize.h&gt;</em></div>
+</dd></dl>
+
+<dl class="cpp struct">
+<dt class="sig sig-object cpp" id="_CPPv413HQResizeRoisF">
+<span id="_CPPv313HQResizeRoisF"></span><span id="_CPPv213HQResizeRoisF"></span><span id="HQResizeRoisF"></span><span class="target" id="structHQResizeRoisF"></span><span class="k"><span class="pre">struct</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">HQResizeRoisF</span></span></span><a class="headerlink" href="#_CPPv413HQResizeRoisF" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;OpHQResize.h&gt;</em></div>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="group__NVCV__C__ALGORITHM__GAUSSIAN__NOISE.html" class="btn btn-neutral float-left" title="GaussianNoise" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="group__NVCV__C__ALGORITHM__INPAINT.html" class="btn btn-neutral float-right" title="Inpaint" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022-2024, NVIDIA..
+      <span class="lastupdated">Last updated on Jun 28, 2024.
+      </span></p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(false);
+      });
+  </script> 
+
+</body>
+</html>

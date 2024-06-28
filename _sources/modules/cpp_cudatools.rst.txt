@@ -22,4 +22,4 @@ CUDA Tools
 .. toctree::
    :glob:
 
-   ../_exhale_api/group__NVCV__CPP__CUDATOOLS_*
+   ../_c_cpp_api/group__NVCV__CPP__CUDATOOLS_*

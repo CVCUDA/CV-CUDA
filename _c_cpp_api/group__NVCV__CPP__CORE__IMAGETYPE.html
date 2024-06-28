@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Image Formats &mdash; CV-CUDA Beta documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=19f00094" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=76b435a8" />
+
+  
+    <link rel="shortcut icon" href="../_static/nv_icon.png"/>
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../_static/jquery.js?v=5d32c60e"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js?v=bd46b8a5"></script>
+        <script src="../_static/doctools.js?v=888ff710"></script>
+        <script src="../_static/sphinx_highlight.js?v=4825356b"></script>
+        <script src="../_static/pk_scripts.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Size Operator" href="group__NVCV__CPP__CORE__SIZE.html" />
+    <link rel="prev" title="Data types" href="group__NVCV__CPP__CORE__DATATYPE.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #000000" >
+
+          
+          
+          <a href="../index.html">
+            
+              <img src="../_static/nv_logo.png" class="logo" alt="Logo"/>
+          </a>
+              <div class="version">
+                Beta
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Beginner's Guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#pre-requisites">Pre-requisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#setup">Setup</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started.html">Getting Started</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../prerequisites.html">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../samples.html">Samples</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../samples/cpp_samples.html">C++</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../samples/cpp_samples/cropresize.html">Crop and Resize</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../samples/python_samples.html">Python</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/classification.html">Classification</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/segmentation.html">Semantic Segmentation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/segmentation_triton.html">Semantic Segmentation using Triton</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/object_detection.html">Object Detection</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../modules/c_modules.html">C Modules</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../modules/c_core.html">Core</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__COLORSPEC.html">Color Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__DATALAYOUT.html">Data Layout</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__DATATYPE.html">Data types</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__IMAGETYPE.html">Image Formats</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/c_utils.html">Utilities</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__UTIL__STATUS.html">Status Codes</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/c_algos.html">Algorithms</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ADAPTIVETHRESHOLD.html">Adaptive Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__AVERAGEBLUR.html">Average Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BILATERAL__FILTER.html">Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BRIGHTNESS__CONTRAST.html">Brightness Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CENTER__CROP.html">Center Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CHANNEL__REORDER.html">Channel Reorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COLOR__TWIST.html">Color Twist</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COMPOSITE.html">Composite</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONV2D.html">2D Convolution</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONVERT__TO.html">Convert To</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COPYMAKEBORDER.html">Copy Make Border</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAMMA__CONTRAST.html">Gamma Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN.html">Gaussian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN__NOISE.html">GaussianNoise</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__HQ__RESIZE.html">HQ Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__INPAINT.html">Inpaint</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__JOINT__BILATERAL__FILTER.html">Joint Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LABEL.html">Label</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LAPLACIAN.html">Laplacian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MEDIAN__BLUR.html">Median Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MINMAXLOC.html">MinMaxLoc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MORPHOLOGY.html">Morphology</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NON__MAXIMUM__SUPPRESSION.html">Non-Maximum Suppression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NORMALIZE.html">Normalize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PADANDSTACK.html">Pad and Stack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PAIRWISE__MATCHER.html">Pairwise Matcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PILLOW__RESIZE.html">Pillow Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RANDOMRESIZEDCROP.html">Random Resized Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REFORMAT.html">Reformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REMAP.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RESIZE.html">Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ROTATE.html">Rotate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__SIFT.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__THRESHOLD.html">Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__AFFINE.html">Warp Affine</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__PERSPECTIVE.html">Warp Perspective</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____ADV__CVT__COLOR.html">Adv Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BND__BOX.html">BndBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BOX__BLUR.html">BoxBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM.html">Histogram</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM__EQ.html">Histogram Eq</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____MIN__AREA__RECT.html">Min Area Rect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____O__S__D.html">OSD</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____RESIZE__CROP.html">Resize Crop Convert</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____STACK.html">Stack</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1 current"><a class="reference internal" href="../modules/cpp_modules.html">C++ Modules</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../modules/cpp_core.html">Core</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__COLORSPEC.html">Color Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html">Data Layout</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__DATATYPE.html">Data types</a></li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">Image Formats</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__SIZE.html">Size Operator</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_utils.html">Utilities</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__UTIL__EXCEPTION.html">Exception</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__UTIL__STATUS.html">Status Codes</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_algos.html">Algorithms</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ADAPTIVETHRESHOLD.html">Adaptive Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__AVERAGEBLUR.html">Average Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BILATERAL__FILTER.html">Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BRIGHTNESS__CONTRAST.html">Brightness Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CENTER__CROP.html">Center Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CHANNEL__REORDER.html">Channel Reorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COLOR__TWIST.html">Color Twist</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COMPOSITE.html">Composite</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONV2D.html">2D Convolution</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONVERT__TO.html">Convert To</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COPYMAKEBORDER.html">Copy Make Border</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAMMA__CONTRAST.html">Gamma Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN.html">Gaussian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN__NOISE.html">GaussianNoise</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__HQ__RESIZE.html">HQ Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__INPAINT.html">Inpaint</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__JOINT__BILATERAL__FILTER.html">Joint Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LABEL.html">Label</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LAPLACIAN.html">Laplacian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MEDIAN__BLUR.html">Median Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MINMAXLOC.html">MinMaxLoc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MORPHOLOGY.html">Morphology</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NON__MAXIMUM__SUPPRESSION.html">Non-Maximum Suppression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NORMALIZE.html">Normalize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PADANDSTACK.html">Pad and Stack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PAIRWISE__MATCHER.html">Pairwise Matcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PILLOW__RESIZE.html">Pillow Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RANDOMRESIZEDCROP.html">Random Resized Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REFORMAT.html">Reformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REMAP.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RESIZE.html">Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ROTATE.html">Rotate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__SIFT.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__THRESHOLD.html">Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__AFFINE.html">Warp Affine</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__PERSPECTIVE.html">Warp Perspective</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____ADV__CVT__COLOR.html">Adv Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BND__BOX.html">BndBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BOX__BLUR.html">BoxBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM.html">Histogram</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM__EQ.html">Histogram Eq</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____MIN__AREA__RECT.html">Min Area Rect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____O__S__D.html">OSD</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____RESIZE__CROP.html">Resize Crop Convert</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____STACK.html">Stack</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_cudatools.html">CUDA Tools</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__ATOMICS.html">Atomic operations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__BORDER.html">Border functions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__BORDERVARSHAPEWRAP.html">BorderVarShapeWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__BORDERWRAP.html">BorderWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__DROPCAST.html">Drop Cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__FULLTENSORWRAP.html">FullTensorWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__IMAGEWRAP.html">Image Wrapper classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__INTERPOLATION.html">Interpolation functions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__INTERPOLATIONVARSHAPEWRAP.html">InterpolationVarShapeWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__INTERPOLATIONWRAP.html">InterpolationWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__LINALG.html">Linear algebra</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHOPERATORS.html">Math operators</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHWRAPPERS.html">Math wrappers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__RANGECAST.html">Range cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__SATURATECAST.html">Saturate cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__STATICCAST.html">Static Cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORBATCHWRAP.html">TensorBatchWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORBATCHWRAPS.html">TensorBatchWrap shortcuts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORWRAP.html">TensorWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORWRAPS.html">TensorWrap shortcuts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TYPETRAITS.html">Type Traits</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../modules/python_modules.html">Python Modules</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../modules/python_core.html">Core</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/cache.html">Cache</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/colorspec.html">Color Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/format.html">Image Formats</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/recti.html">Rect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/image.html">Image</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/imagebatch.html">ImageBatchVarShape</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/tensor.html">Tensor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/tensorbatch.html">TensorBatchVarShape</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/python_algos.html">Algorithms</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_adaptivethreshold.html">AdaptiveThreshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_advcvtcolor.html">AdvCvtColor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_averageblur.html">AverageBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_bilateralfilter.html">BilateralFilter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_bndbox.html">BndBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_boxblur.html">BoxBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_brightnesscontrast.html">BrightnessContrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_centercrop.html">CenterCrop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_channelreorder.html">ChannelReorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_colortwist.html">ColorTwist</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_composite.html">Composite</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_conv2d.html">Conv2D</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_convertto.html">ConvertTo</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_copymakeborder.html">CopyMakeBorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_cropflipnormalizereformat.html">CropFlipNormalizeReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_customcrop.html">CustomCrop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_cvtcolor.html">CvtColor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_erase.html">Erase</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_findhomography.html">FindHomography</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_flip.html">Flip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_gammacontrast.html">GammaContrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_gaussian.html">Gaussian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_gaussiannoise.html">GaussianNoise</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_histogram.html">Histogram</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_histogrameq.html">HistogramEq</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_hqresize.html">HQResize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_inpaint.html">Inpaint</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_jointbilateralfilter.html">JointBilateralFilter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_label.html">Label</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_laplacian.html">Laplacian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_medianblur.html">MedianBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_minarearect.html">MinAreaRect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_minmaxloc.html">MinMaxLoc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_morphology.html">Morphology</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_nonmaximumsuppression.html">NonMaximumSuppression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_normalize.html">Normalize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_osd.html">OSD</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_padandstack.html">PadAndStack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_pairwisematcher.html">PairwiseMatcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_pillowresize.html">PillowResize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_randomresizedcrop.html">RandomResizedCrop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_reformat.html">Reformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_remap.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_resize.html">Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_resizecropconvertreformat.html">ResizeCropConvertReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_rotate.html">Rotate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_sift.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_stack.html">Stack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_threshold.html">Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_warpaffine.html">WarpAffine</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_warpperspective.html">WarpPerspective</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_adaptivethresholdtype.html">AdaptiveThresholdType</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_arrow.html">Arrow</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_blurboxi.html">BlurBoxI</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_bndboxi.html">BndBoxI</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_border.html">Border</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_channelmanip.html">ChannelManip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_circle.html">Circle</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_clockformat.html">ClockFormat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_colorconversion.html">ColorConversion</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_connectivitytype.html">ConnectivityType</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_interp.html">Interp</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_label.html">LABEL</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_line.html">Line</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_matcher.html">Matcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_morphologytype.html">MorphologyType</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_norm.html">Norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_point.html">Point</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_remap.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_rotatedbox.html">RotatedBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_sift.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_thresholdtype.html">ThresholdType</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Release Notes</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.9.0-beta.html">v0.9.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.8.0-beta.html">v0.8.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.7.0-beta.html">v0.7.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.6.0-beta.html">v0.6.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.5.0-beta.html">v0.5.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.4.0-beta.html">v0.4.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.3.1-beta.html">v0.3.1-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#bug-fixes">Bug Fixes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#known-issues">Known Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.3.0-beta.html">v0.3.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html">v0.2.1-alpha</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#general">General</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#new-operators">New Operators</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#improved-testing">Improved Testing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#bug-fixes">Bug Fixes</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html">v0.2.0-alpha</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html">v0.1.0-prealpha</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#known-issues">Known Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#license">License</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #000000" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">CV-CUDA</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../modules/cpp_modules.html">C++ API</a></li>
+          <li class="breadcrumb-item"><a href="../modules/cpp_core.html">Core</a></li>
+      <li class="breadcrumb-item active">Image Formats</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/_c_cpp_api/group__NVCV__CPP__CORE__IMAGETYPE.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="image-formats">
+<h1>Image Formats<a class="headerlink" href="#image-formats" title="Permalink to this heading"></a></h1>
+<dl>
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE"></span><em><span class="pre">group</span></em> <span class="sig-name descname"><span class="pre">NVCV_CPP_CORE_IMAGETYPE</span></span></dt>
+<dd><p>Represents the format of an image, encapsulating various properties like data kind, memory layout, color spec, etc. </p>
+<p>The <code class="docutils literal notranslate"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHOPERATORS.html#classnvcv_1_1ImageFormat"><span class="std std-ref"><span class="pre">ImageFormat</span></span></a></code> class is a comprehensive representation of how image data is organized in memory, including its data type, layout, and color information. This format is crucial when processing or manipulating images, as it provides the necessary metadata for correct interpretation of the image data. </p>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-functions">Functions</p>
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4lsRNSt7ostreamE11ImageFormat">
+<span id="_CPPv3lsRNSt7ostreamE11ImageFormat"></span><span id="_CPPv2lsRNSt7ostreamE11ImageFormat"></span><span id="lshift-operator__osR.ImageFormat"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1ga56f4de7779b881c0bc5169ececf5d141"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">ostream</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="sig-name descname"><span class="k"><span class="pre">operator</span></span><span class="o"><span class="pre">&lt;&lt;</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">ostream</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">out</span></span>, <a class="reference internal" href="#_CPPv411ImageFormatv" title="ImageFormat"><span class="n"><span class="pre">ImageFormat</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">fmt</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4lsRNSt7ostreamE11ImageFormat" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv417HasSameDataLayout11ImageFormat11ImageFormat">
+<span id="_CPPv317HasSameDataLayout11ImageFormat11ImageFormat"></span><span id="_CPPv217HasSameDataLayout11ImageFormat11ImageFormat"></span><span id="HasSameDataLayout__ImageFormat.ImageFormat"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1ga0661225051b72b25dea066d7ec403bca"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">HasSameDataLayout</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv411ImageFormatv" title="ImageFormat"><span class="n"><span class="pre">ImageFormat</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">a</span></span>, <a class="reference internal" href="#_CPPv411ImageFormatv" title="ImageFormat"><span class="n"><span class="pre">ImageFormat</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">b</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv417HasSameDataLayout11ImageFormat11ImageFormat" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv411ImageFormatv">
+<span id="_CPPv311ImageFormatv"></span><span id="_CPPv211ImageFormatv"></span><span id="ImageFormatCE"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1gadd96bec212d74e40a1a360baa751120e"></span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ImageFormat</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv411ImageFormatv" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv411ImageFormat15NVCVImageFormat">
+<span id="_CPPv311ImageFormat15NVCVImageFormat"></span><span id="_CPPv211ImageFormat15NVCVImageFormat"></span><span id="ImageFormat__NVCVImageFormatCE"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1ga0b98801585e68e3448e45253060487f1"></span><span class="k"><span class="pre">explicit</span></span><span class="w"> </span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ImageFormat</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="group__NVCV__C__CORE__IMAGETYPE.html#_CPPv415NVCVImageFormat" title="NVCVImageFormat"><span class="n"><span class="pre">NVCVImageFormat</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">format</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv411ImageFormat15NVCVImageFormat" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Constructor that initializes from a native format representation. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>format</strong> – The native format to initialize from. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv411ImageFormat9ColorSpec17ChromaSubsampling9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaTypePK16ExtraChannelInfo">
+<span id="_CPPv311ImageFormat9ColorSpec17ChromaSubsampling9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaTypePK16ExtraChannelInfo"></span><span id="_CPPv211ImageFormat9ColorSpec17ChromaSubsampling9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaTypePK16ExtraChannelInfo"></span><span id="ImageFormat__ColorSpec.ChromaSubsampling.MemLayout.DataKind.Swizzle.Packing.Packing.Packing.Packing.AlphaType.ExtraChannelInfoCP"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1ga5e01eecf280f457c36f3a3744067b41b"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ImageFormat</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">ColorSpec</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">colorSpec</span></span>, <span class="n"><span class="pre">ChromaSubsampling</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">chromaSub</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv49MemLayout" title="MemLayout"><span class="n"><span class="pre">MemLayout</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">memLayout</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv48DataKind" title="DataKind"><span class="n"><span class="pre">DataKind</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">dataKind</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Swizzle" title="Swizzle"><span class="n"><span class="pre">Swizzle</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">swizzle</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing0</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing1</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N7Packing4NONEE" title="Packing::NONE"><span class="n"><span class="pre">NONE</span></span></a>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing2</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N7Packing4NONEE" title="Packing::NONE"><span class="n"><span class="pre">NONE</span></span></a>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing3</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N7Packing4NONEE" title="Packing::NONE"><span class="n"><span class="pre">NONE</span></span></a>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv49AlphaType" title="AlphaType"><span class="n"><span class="pre">AlphaType</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">alphaType</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv49AlphaType" title="AlphaType"><span class="n"><span class="pre">AlphaType</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N9AlphaType10ASSOCIATEDE" title="AlphaType::ASSOCIATED"><span class="n"><span class="pre">ASSOCIATED</span></span></a>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv416ExtraChannelInfo" title="ExtraChannelInfo"><span class="n"><span class="pre">ExtraChannelInfo</span></span></a><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">exChannelInfo</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv411ImageFormat9ColorSpec17ChromaSubsampling9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaTypePK16ExtraChannelInfo" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Constructs an <code class="docutils literal notranslate"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHOPERATORS.html#classnvcv_1_1ImageFormat"><span class="std std-ref"><span class="pre">ImageFormat</span></span></a></code> using the provided parameters. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>colorSpec</strong> – Specification of the color. </p></li>
+<li><p><strong>chromaSub</strong> – Chroma subsampling information. </p></li>
+<li><p><strong>memLayout</strong> – Memory layout type. </p></li>
+<li><p><strong>dataKind</strong> – Kind of data (e.g., float, integer). </p></li>
+<li><p><strong>swizzle</strong> – Channel swizzling information. </p></li>
+<li><p><strong>packing0</strong> – Primary packing format. </p></li>
+<li><p><strong>packing1</strong> – Secondary packing format (optional). </p></li>
+<li><p><strong>packing2</strong> – Tertiary packing format (optional). </p></li>
+<li><p><strong>packing3</strong> – Quaternary packing format (optional). </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv411ConstCreate9ColorSpec17ChromaSubsampling9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaType">
+<span id="_CPPv311ConstCreate9ColorSpec17ChromaSubsampling9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaType"></span><span id="_CPPv211ConstCreate9ColorSpec17ChromaSubsampling9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaType"></span><span id="ConstCreate__ColorSpec.ChromaSubsampling.MemLayout.DataKind.Swizzle.Packing.Packing.Packing.Packing.AlphaTypeCE"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1ga5674ea7b26190273e2e2f5a72065d9fb"></span><span class="k"><span class="pre">static</span></span><span class="w"> </span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv411ImageFormatv" title="ImageFormat"><span class="n"><span class="pre">ImageFormat</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ConstCreate</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">ColorSpec</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">colorSpec</span></span>, <span class="n"><span class="pre">ChromaSubsampling</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">chromaSub</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv49MemLayout" title="MemLayout"><span class="n"><span class="pre">MemLayout</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">memLayout</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv48DataKind" title="DataKind"><span class="n"><span class="pre">DataKind</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">dataKind</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Swizzle" title="Swizzle"><span class="n"><span class="pre">Swizzle</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">swizzle</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing0</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing1</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N7Packing4NONEE" title="Packing::NONE"><span class="n"><span class="pre">NONE</span></span></a>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing2</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N7Packing4NONEE" title="Packing::NONE"><span class="n"><span class="pre">NONE</span></span></a>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing3</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N7Packing4NONEE" title="Packing::NONE"><span class="n"><span class="pre">NONE</span></span></a>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv49AlphaType" title="AlphaType"><span class="n"><span class="pre">AlphaType</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">alphaType</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv49AlphaType" title="AlphaType"><span class="n"><span class="pre">AlphaType</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N9AlphaType10ASSOCIATEDE" title="AlphaType::ASSOCIATED"><span class="n"><span class="pre">ASSOCIATED</span></span></a><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv411ConstCreate9ColorSpec17ChromaSubsampling9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaType" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Const versions of <code class="docutils literal notranslate"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHOPERATORS.html#classnvcv_1_1ImageFormat"><span class="std std-ref"><span class="pre">ImageFormat</span></span></a></code> using the provided parameters. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv411ImageFormat10ColorModel9ColorSpec9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaTypePK16ExtraChannelInfo">
+<span id="_CPPv311ImageFormat10ColorModel9ColorSpec9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaTypePK16ExtraChannelInfo"></span><span id="_CPPv211ImageFormat10ColorModel9ColorSpec9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaTypePK16ExtraChannelInfo"></span><span id="ImageFormat__ColorModel.ColorSpec.MemLayout.DataKind.Swizzle.Packing.Packing.Packing.Packing.AlphaType.ExtraChannelInfoCP"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1ga5e459a6cdb58b65eea8c634cfbe4ccd1"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ImageFormat</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">ColorModel</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">colorModel</span></span>, <span class="n"><span class="pre">ColorSpec</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">colorSpec</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv49MemLayout" title="MemLayout"><span class="n"><span class="pre">MemLayout</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">memLayout</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv48DataKind" title="DataKind"><span class="n"><span class="pre">DataKind</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">dataKind</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Swizzle" title="Swizzle"><span class="n"><span class="pre">Swizzle</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">swizzle</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing0</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing1</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N7Packing4NONEE" title="Packing::NONE"><span class="n"><span class="pre">NONE</span></span></a>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing2</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N7Packing4NONEE" title="Packing::NONE"><span class="n"><span class="pre">NONE</span></span></a>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing3</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N7Packing4NONEE" title="Packing::NONE"><span class="n"><span class="pre">NONE</span></span></a>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv49AlphaType" title="AlphaType"><span class="n"><span class="pre">AlphaType</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">alphaType</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv49AlphaType" title="AlphaType"><span class="n"><span class="pre">AlphaType</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N9AlphaType10ASSOCIATEDE" title="AlphaType::ASSOCIATED"><span class="n"><span class="pre">ASSOCIATED</span></span></a>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv416ExtraChannelInfo" title="ExtraChannelInfo"><span class="n"><span class="pre">ExtraChannelInfo</span></span></a><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">exChannelInfo</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv411ImageFormat10ColorModel9ColorSpec9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaTypePK16ExtraChannelInfo" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Constructs an <code class="docutils literal notranslate"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHOPERATORS.html#classnvcv_1_1ImageFormat"><span class="std std-ref"><span class="pre">ImageFormat</span></span></a></code> using the provided parameters. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>colorModel</strong> – Model of the color representation (e.g., RGB, YUV). </p></li>
+<li><p><strong>colorSpec</strong> – Specification of the color. </p></li>
+<li><p><strong>memLayout</strong> – Memory layout type. </p></li>
+<li><p><strong>dataKind</strong> – Kind of data (e.g., float, integer). </p></li>
+<li><p><strong>swizzle</strong> – Channel swizzling information. </p></li>
+<li><p><strong>packing0</strong> – Primary packing format. </p></li>
+<li><p><strong>packing1</strong> – Secondary packing format (optional). </p></li>
+<li><p><strong>packing2</strong> – Tertiary packing format (optional). </p></li>
+<li><p><strong>packing3</strong> – Quaternary packing format (optional). </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv411ConstCreate10ColorModel9ColorSpec9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaType">
+<span id="_CPPv311ConstCreate10ColorModel9ColorSpec9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaType"></span><span id="_CPPv211ConstCreate10ColorModel9ColorSpec9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaType"></span><span id="ConstCreate__ColorModel.ColorSpec.MemLayout.DataKind.Swizzle.Packing.Packing.Packing.Packing.AlphaTypeCE"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1ga69bb843726ec532a9efe97305f927169"></span><span class="k"><span class="pre">static</span></span><span class="w"> </span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv411ImageFormatv" title="ImageFormat"><span class="n"><span class="pre">ImageFormat</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ConstCreate</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">ColorModel</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">colorModel</span></span>, <span class="n"><span class="pre">ColorSpec</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">colorSpec</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv49MemLayout" title="MemLayout"><span class="n"><span class="pre">MemLayout</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">memLayout</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv48DataKind" title="DataKind"><span class="n"><span class="pre">DataKind</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">dataKind</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Swizzle" title="Swizzle"><span class="n"><span class="pre">Swizzle</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">swizzle</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing0</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing1</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N7Packing4NONEE" title="Packing::NONE"><span class="n"><span class="pre">NONE</span></span></a>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing2</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N7Packing4NONEE" title="Packing::NONE"><span class="n"><span class="pre">NONE</span></span></a>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing3</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N7Packing4NONEE" title="Packing::NONE"><span class="n"><span class="pre">NONE</span></span></a>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv49AlphaType" title="AlphaType"><span class="n"><span class="pre">AlphaType</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">alphaType</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv49AlphaType" title="AlphaType"><span class="n"><span class="pre">AlphaType</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N9AlphaType10ASSOCIATEDE" title="AlphaType::ASSOCIATED"><span class="n"><span class="pre">ASSOCIATED</span></span></a><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv411ConstCreate10ColorModel9ColorSpec9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaType" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv411ImageFormat9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaTypePK16ExtraChannelInfo">
+<span id="_CPPv311ImageFormat9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaTypePK16ExtraChannelInfo"></span><span id="_CPPv211ImageFormat9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaTypePK16ExtraChannelInfo"></span><span id="ImageFormat__MemLayout.DataKind.Swizzle.Packing.Packing.Packing.Packing.AlphaType.ExtraChannelInfoCP"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1ga0befdbd5c36653d8fc1170e386088821"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ImageFormat</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv49MemLayout" title="MemLayout"><span class="n"><span class="pre">MemLayout</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">memLayout</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv48DataKind" title="DataKind"><span class="n"><span class="pre">DataKind</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">dataKind</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Swizzle" title="Swizzle"><span class="n"><span class="pre">Swizzle</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">swizzle</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing0</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing1</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N7Packing4NONEE" title="Packing::NONE"><span class="n"><span class="pre">NONE</span></span></a>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing2</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N7Packing4NONEE" title="Packing::NONE"><span class="n"><span class="pre">NONE</span></span></a>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing3</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N7Packing4NONEE" title="Packing::NONE"><span class="n"><span class="pre">NONE</span></span></a>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv49AlphaType" title="AlphaType"><span class="n"><span class="pre">AlphaType</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">alphaType</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv49AlphaType" title="AlphaType"><span class="n"><span class="pre">AlphaType</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N9AlphaType10ASSOCIATEDE" title="AlphaType::ASSOCIATED"><span class="n"><span class="pre">ASSOCIATED</span></span></a>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv416ExtraChannelInfo" title="ExtraChannelInfo"><span class="n"><span class="pre">ExtraChannelInfo</span></span></a><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">exChannelInfo</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv411ImageFormat9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaTypePK16ExtraChannelInfo" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Constructs an <code class="docutils literal notranslate"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHOPERATORS.html#classnvcv_1_1ImageFormat"><span class="std std-ref"><span class="pre">ImageFormat</span></span></a></code> using the given memory layout, data kind, swizzle, and packing parameters. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>memLayout</strong> – Memory layout type. </p></li>
+<li><p><strong>dataKind</strong> – Kind of data (e.g., float, integer). </p></li>
+<li><p><strong>swizzle</strong> – Channel swizzling information. </p></li>
+<li><p><strong>packing0</strong> – Primary packing format. </p></li>
+<li><p><strong>packing1</strong> – Secondary packing format (optional). </p></li>
+<li><p><strong>packing2</strong> – Tertiary packing format (optional). </p></li>
+<li><p><strong>packing3</strong> – Quaternary packing format (optional). </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv411ConstCreate9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaType">
+<span id="_CPPv311ConstCreate9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaType"></span><span id="_CPPv211ConstCreate9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaType"></span><span id="ConstCreate__MemLayout.DataKind.Swizzle.Packing.Packing.Packing.Packing.AlphaTypeCE"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1gabbce55a4906924e435bdb6be0a18e6ac"></span><span class="k"><span class="pre">static</span></span><span class="w"> </span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv411ImageFormatv" title="ImageFormat"><span class="n"><span class="pre">ImageFormat</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ConstCreate</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv49MemLayout" title="MemLayout"><span class="n"><span class="pre">MemLayout</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">memLayout</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv48DataKind" title="DataKind"><span class="n"><span class="pre">DataKind</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">dataKind</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Swizzle" title="Swizzle"><span class="n"><span class="pre">Swizzle</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">swizzle</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing0</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing1</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N7Packing4NONEE" title="Packing::NONE"><span class="n"><span class="pre">NONE</span></span></a>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing2</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N7Packing4NONEE" title="Packing::NONE"><span class="n"><span class="pre">NONE</span></span></a>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing3</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N7Packing4NONEE" title="Packing::NONE"><span class="n"><span class="pre">NONE</span></span></a>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv49AlphaType" title="AlphaType"><span class="n"><span class="pre">AlphaType</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">alphaType</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv49AlphaType" title="AlphaType"><span class="n"><span class="pre">AlphaType</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N9AlphaType10ASSOCIATEDE" title="AlphaType::ASSOCIATED"><span class="n"><span class="pre">ASSOCIATED</span></span></a><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv411ConstCreate9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaType" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv411ImageFormat10RawPattern9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaTypePK16ExtraChannelInfo">
+<span id="_CPPv311ImageFormat10RawPattern9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaTypePK16ExtraChannelInfo"></span><span id="_CPPv211ImageFormat10RawPattern9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaTypePK16ExtraChannelInfo"></span><span id="ImageFormat__RawPattern.MemLayout.DataKind.Swizzle.Packing.Packing.Packing.Packing.AlphaType.ExtraChannelInfoCP"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1ga03db98b05e53527f5dcd79452cea9012"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ImageFormat</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">RawPattern</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">rawPattern</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv49MemLayout" title="MemLayout"><span class="n"><span class="pre">MemLayout</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">memLayout</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv48DataKind" title="DataKind"><span class="n"><span class="pre">DataKind</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">dataKind</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Swizzle" title="Swizzle"><span class="n"><span class="pre">Swizzle</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">swizzle</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing0</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing1</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N7Packing4NONEE" title="Packing::NONE"><span class="n"><span class="pre">NONE</span></span></a>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing2</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N7Packing4NONEE" title="Packing::NONE"><span class="n"><span class="pre">NONE</span></span></a>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing3</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N7Packing4NONEE" title="Packing::NONE"><span class="n"><span class="pre">NONE</span></span></a>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv49AlphaType" title="AlphaType"><span class="n"><span class="pre">AlphaType</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">alphaType</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv49AlphaType" title="AlphaType"><span class="n"><span class="pre">AlphaType</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N9AlphaType10ASSOCIATEDE" title="AlphaType::ASSOCIATED"><span class="n"><span class="pre">ASSOCIATED</span></span></a>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv416ExtraChannelInfo" title="ExtraChannelInfo"><span class="n"><span class="pre">ExtraChannelInfo</span></span></a><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">exChannelInfo</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv411ImageFormat10RawPattern9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaTypePK16ExtraChannelInfo" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Constructs an <code class="docutils literal notranslate"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHOPERATORS.html#classnvcv_1_1ImageFormat"><span class="std std-ref"><span class="pre">ImageFormat</span></span></a></code> using a raw pattern along with other parameters. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>rawPattern</strong> – Pattern of raw data. </p></li>
+<li><p><strong>memLayout</strong> – Memory layout type. </p></li>
+<li><p><strong>dataKind</strong> – Kind of data (e.g., float, integer). </p></li>
+<li><p><strong>swizzle</strong> – Channel swizzling information. </p></li>
+<li><p><strong>packing0</strong> – Primary packing format. </p></li>
+<li><p><strong>packing1</strong> – Secondary packing format (optional). </p></li>
+<li><p><strong>packing2</strong> – Tertiary packing format (optional). </p></li>
+<li><p><strong>packing3</strong> – Quaternary packing format (optional). </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv411ConstCreate10RawPattern9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaType">
+<span id="_CPPv311ConstCreate10RawPattern9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaType"></span><span id="_CPPv211ConstCreate10RawPattern9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaType"></span><span id="ConstCreate__RawPattern.MemLayout.DataKind.Swizzle.Packing.Packing.Packing.Packing.AlphaTypeCE"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1gaabb928afdd041a623cb49a33bbf8174f"></span><span class="k"><span class="pre">static</span></span><span class="w"> </span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv411ImageFormatv" title="ImageFormat"><span class="n"><span class="pre">ImageFormat</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ConstCreate</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">RawPattern</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">rawPattern</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv49MemLayout" title="MemLayout"><span class="n"><span class="pre">MemLayout</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">memLayout</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv48DataKind" title="DataKind"><span class="n"><span class="pre">DataKind</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">dataKind</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Swizzle" title="Swizzle"><span class="n"><span class="pre">Swizzle</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">swizzle</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing0</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing1</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N7Packing4NONEE" title="Packing::NONE"><span class="n"><span class="pre">NONE</span></span></a>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing2</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N7Packing4NONEE" title="Packing::NONE"><span class="n"><span class="pre">NONE</span></span></a>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing3</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N7Packing4NONEE" title="Packing::NONE"><span class="n"><span class="pre">NONE</span></span></a>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv49AlphaType" title="AlphaType"><span class="n"><span class="pre">AlphaType</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">alphaType</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv49AlphaType" title="AlphaType"><span class="n"><span class="pre">AlphaType</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv4N9AlphaType10ASSOCIATEDE" title="AlphaType::ASSOCIATED"><span class="n"><span class="pre">ASSOCIATED</span></span></a><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv411ConstCreate10RawPattern9MemLayout8DataKind7Swizzle7Packing7Packing7Packing7Packing9AlphaType" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv410FromFourCC8uint32_t9ColorSpec9MemLayout">
+<span id="_CPPv310FromFourCC8uint32_t9ColorSpec9MemLayout"></span><span id="_CPPv210FromFourCC8uint32_t9ColorSpec9MemLayout"></span><span id="FromFourCC__uint32_t.ColorSpec.MemLayout"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1ga49382e33f8fa0dcecad61a1b69004094"></span><span class="k"><span class="pre">static</span></span><span class="w"> </span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv411ImageFormatv" title="ImageFormat"><span class="n"><span class="pre">ImageFormat</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">FromFourCC</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">uint32_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">fourcc</span></span>, <span class="n"><span class="pre">ColorSpec</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">colorSpec</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv49MemLayout" title="MemLayout"><span class="n"><span class="pre">MemLayout</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">memLayout</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv410FromFourCC8uint32_t9ColorSpec9MemLayout" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Creates an <code class="docutils literal notranslate"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHOPERATORS.html#classnvcv_1_1ImageFormat"><span class="std std-ref"><span class="pre">ImageFormat</span></span></a></code> from a given FourCC code and other parameters. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>fourcc</strong> – The FourCC code representing the format. </p></li>
+<li><p><strong>colorSpec</strong> – Specification of the color. </p></li>
+<li><p><strong>memLayout</strong> – Memory layout type.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>An <code class="docutils literal notranslate"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHOPERATORS.html#classnvcv_1_1ImageFormat"><span class="std std-ref"><span class="pre">ImageFormat</span></span></a></code> object constructed from the FourCC code. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv410FromPlanes11ImageFormat11ImageFormat11ImageFormat11ImageFormat">
+<span id="_CPPv310FromPlanes11ImageFormat11ImageFormat11ImageFormat11ImageFormat"></span><span id="_CPPv210FromPlanes11ImageFormat11ImageFormat11ImageFormat11ImageFormat"></span><span id="FromPlanes__ImageFormat.ImageFormat.ImageFormat.ImageFormat"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1gaf78bf60bc8cdbab7cb39741e379abe1a"></span><span class="k"><span class="pre">static</span></span><span class="w"> </span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv411ImageFormatv" title="ImageFormat"><span class="n"><span class="pre">ImageFormat</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">FromPlanes</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv411ImageFormatv" title="ImageFormat"><span class="n"><span class="pre">ImageFormat</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">plane0</span></span>, <a class="reference internal" href="#_CPPv411ImageFormatv" title="ImageFormat"><span class="n"><span class="pre">ImageFormat</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">plane1</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="p"><span class="pre">{</span></span><span class="p"><span class="pre">}</span></span>, <a class="reference internal" href="#_CPPv411ImageFormatv" title="ImageFormat"><span class="n"><span class="pre">ImageFormat</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">plane2</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="p"><span class="pre">{</span></span><span class="p"><span class="pre">}</span></span>, <a class="reference internal" href="#_CPPv411ImageFormatv" title="ImageFormat"><span class="n"><span class="pre">ImageFormat</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">plane3</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="p"><span class="pre">{</span></span><span class="p"><span class="pre">}</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv410FromPlanes11ImageFormat11ImageFormat11ImageFormat11ImageFormat" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Creates an <code class="docutils literal notranslate"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHOPERATORS.html#classnvcv_1_1ImageFormat"><span class="std std-ref"><span class="pre">ImageFormat</span></span></a></code> that represents a combination of multiple image planes. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plane0</strong> – Primary image plane format. </p></li>
+<li><p><strong>plane1</strong> – Secondary image plane format (optional). </p></li>
+<li><p><strong>plane2</strong> – Tertiary image plane format (optional). </p></li>
+<li><p><strong>plane3</strong> – Quaternary image plane format (optional).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>An <code class="docutils literal notranslate"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHOPERATORS.html#classnvcv_1_1ImageFormat"><span class="std std-ref"><span class="pre">ImageFormat</span></span></a></code> object representing multiple image planes. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NKcv15NVCVImageFormatEv">
+<span id="_CPPv3NKcv15NVCVImageFormatEv"></span><span id="_CPPv2NKcv15NVCVImageFormatEv"></span><span id="castto-NVCVImageFormat-operatorCCE"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1ga490e127e0646030ba3da1e913697c820"></span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="sig-name descname"><span class="k"><span class="pre">operator</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__C__CORE__IMAGETYPE.html#_CPPv415NVCVImageFormat" title="NVCVImageFormat"><span class="n"><span class="pre">NVCVImageFormat</span></span></a></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="k"><span class="pre">noexcept</span></span><a class="headerlink" href="#_CPPv4NKcv15NVCVImageFormatEv" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK6cvalueEv">
+<span id="_CPPv3NK6cvalueEv"></span><span id="_CPPv2NK6cvalueEv"></span><span id="cvalueCCE"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1gaac0b3a769f63ef885e41b6b5e17d3ee5"></span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__C__CORE__IMAGETYPE.html#_CPPv415NVCVImageFormat" title="NVCVImageFormat"><span class="n"><span class="pre">NVCVImageFormat</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">cvalue</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="k"><span class="pre">noexcept</span></span><a class="headerlink" href="#_CPPv4NK6cvalueEv" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NKeqE11ImageFormat">
+<span id="_CPPv3NKeqE11ImageFormat"></span><span id="_CPPv2NKeqE11ImageFormat"></span><span id="eq-operator__ImageFormatCCE"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1ga3298200f1b79f0a605a7ec9bf611b037"></span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="k"><span class="pre">operator</span></span><span class="o"><span class="pre">==</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv411ImageFormatv" title="ImageFormat"><span class="n"><span class="pre">ImageFormat</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">that</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="k"><span class="pre">noexcept</span></span><a class="headerlink" href="#_CPPv4NKeqE11ImageFormat" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NKneE11ImageFormat">
+<span id="_CPPv3NKneE11ImageFormat"></span><span id="_CPPv2NKneE11ImageFormat"></span><span id="neq-operator__ImageFormatCCE"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1ga91dbecb4ebc76378239cbf37af55d8fa"></span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="k"><span class="pre">operator</span></span><span class="o"><span class="pre">!=</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv411ImageFormatv" title="ImageFormat"><span class="n"><span class="pre">ImageFormat</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">that</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="k"><span class="pre">noexcept</span></span><a class="headerlink" href="#_CPPv4NKneE11ImageFormat" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8dataKindE8DataKind">
+<span id="_CPPv3NK8dataKindE8DataKind"></span><span id="_CPPv2NK8dataKindE8DataKind"></span><span id="dataKind__DataKindC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1gaea6bfe0362db8f27dac584dec30094bf"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv411ImageFormatv" title="ImageFormat"><span class="n"><span class="pre">ImageFormat</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">dataKind</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv48DataKind" title="DataKind"><span class="n"><span class="pre">DataKind</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">dataKind</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8dataKindE8DataKind" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8dataKindEv">
+<span id="_CPPv3NK8dataKindEv"></span><span id="_CPPv2NK8dataKindEv"></span><span id="dataKindC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1gaa6b6f3652b4e614fef7951c9ade4df48"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv48DataKind" title="DataKind"><span class="n"><span class="pre">DataKind</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">dataKind</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="k"><span class="pre">noexcept</span></span><a class="headerlink" href="#_CPPv4NK8dataKindEv" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK9alphaTypeE9AlphaType">
+<span id="_CPPv3NK9alphaTypeE9AlphaType"></span><span id="_CPPv2NK9alphaTypeE9AlphaType"></span><span id="alphaType__AlphaTypeC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1ga08a0297c5b1e89097fbc48e3da2563d1"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv411ImageFormatv" title="ImageFormat"><span class="n"><span class="pre">ImageFormat</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">alphaType</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv49AlphaType" title="AlphaType"><span class="n"><span class="pre">AlphaType</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">newAlphaType</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK9alphaTypeE9AlphaType" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK9alphaTypeEv">
+<span id="_CPPv3NK9alphaTypeEv"></span><span id="_CPPv2NK9alphaTypeEv"></span><span id="alphaTypeC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1ga163f851956237a969f8af7e8c093827f"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv49AlphaType" title="AlphaType"><span class="n"><span class="pre">AlphaType</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">alphaType</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="k"><span class="pre">noexcept</span></span><a class="headerlink" href="#_CPPv4NK9alphaTypeEv" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK16extraChannelInfoEPK16ExtraChannelInfo">
+<span id="_CPPv3NK16extraChannelInfoEPK16ExtraChannelInfo"></span><span id="_CPPv2NK16extraChannelInfoEPK16ExtraChannelInfo"></span><span id="extraChannelInfo__ExtraChannelInfoCPC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1ga5e1248ee461927cf11fa38e417e8b286"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv411ImageFormatv" title="ImageFormat"><span class="n"><span class="pre">ImageFormat</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">extraChannelInfo</span></span></span><span class="sig-paren">(</span><span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv416ExtraChannelInfo" title="ExtraChannelInfo"><span class="n"><span class="pre">ExtraChannelInfo</span></span></a><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">newExChannelInfo</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK16extraChannelInfoEPK16ExtraChannelInfo" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK16extraChannelInfoEP16ExtraChannelInfo">
+<span id="_CPPv3NK16extraChannelInfoEP16ExtraChannelInfo"></span><span id="_CPPv2NK16extraChannelInfoEP16ExtraChannelInfo"></span><span id="extraChannelInfo__ExtraChannelInfoPC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1gae658430214331f73d300eb4d70ee3554"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">extraChannelInfo</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv416ExtraChannelInfo" title="ExtraChannelInfo"><span class="n"><span class="pre">ExtraChannelInfo</span></span></a><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">exChannelInfo</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="k"><span class="pre">noexcept</span></span><a class="headerlink" href="#_CPPv4NK16extraChannelInfoEP16ExtraChannelInfo" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK9memLayoutE9MemLayout">
+<span id="_CPPv3NK9memLayoutE9MemLayout"></span><span id="_CPPv2NK9memLayoutE9MemLayout"></span><span id="memLayout__MemLayoutC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1ga45a68e2e18817b749851f7512ba2e068"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv411ImageFormatv" title="ImageFormat"><span class="n"><span class="pre">ImageFormat</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">memLayout</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv49MemLayout" title="MemLayout"><span class="n"><span class="pre">MemLayout</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">newMemLayout</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK9memLayoutE9MemLayout" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK9memLayoutEv">
+<span id="_CPPv3NK9memLayoutEv"></span><span id="_CPPv2NK9memLayoutEv"></span><span id="memLayoutC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1ga59a8a389f4902207a9626be810df581f"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv49MemLayout" title="MemLayout"><span class="n"><span class="pre">MemLayout</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">memLayout</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="k"><span class="pre">noexcept</span></span><a class="headerlink" href="#_CPPv4NK9memLayoutEv" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK9colorSpecE9ColorSpec">
+<span id="_CPPv3NK9colorSpecE9ColorSpec"></span><span id="_CPPv2NK9colorSpecE9ColorSpec"></span><span id="colorSpec__ColorSpecC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1ga7453d1f5d5133fa27976abcf78ad075a"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv411ImageFormatv" title="ImageFormat"><span class="n"><span class="pre">ImageFormat</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">colorSpec</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">ColorSpec</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">newColorSpec</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK9colorSpecE9ColorSpec" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK9colorSpecEv">
+<span id="_CPPv3NK9colorSpecEv"></span><span id="_CPPv2NK9colorSpecEv"></span><span id="colorSpecC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1ga1f51278009be724f038e272178c6c3ae"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">ColorSpec</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">colorSpec</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="k"><span class="pre">noexcept</span></span><a class="headerlink" href="#_CPPv4NK9colorSpecEv" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK17chromaSubsamplingE17ChromaSubsampling">
+<span id="_CPPv3NK17chromaSubsamplingE17ChromaSubsampling"></span><span id="_CPPv2NK17chromaSubsamplingE17ChromaSubsampling"></span><span id="chromaSubsampling__ChromaSubsamplingC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1gaf55a65b5d9484fea4773315357060223"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv411ImageFormatv" title="ImageFormat"><span class="n"><span class="pre">ImageFormat</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">chromaSubsampling</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">ChromaSubsampling</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">css</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK17chromaSubsamplingE17ChromaSubsampling" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK17chromaSubsamplingEv">
+<span id="_CPPv3NK17chromaSubsamplingEv"></span><span id="_CPPv2NK17chromaSubsamplingEv"></span><span id="chromaSubsamplingC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1gac081ab69ab3647f38b0044ce91245373"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">ChromaSubsampling</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">chromaSubsampling</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="k"><span class="pre">noexcept</span></span><a class="headerlink" href="#_CPPv4NK17chromaSubsamplingEv" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK10rawPatternE10RawPattern">
+<span id="_CPPv3NK10rawPatternE10RawPattern"></span><span id="_CPPv2NK10rawPatternE10RawPattern"></span><span id="rawPattern__RawPatternC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1ga67e6a59b9727f37ca90dad4ae0d5db80"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv411ImageFormatv" title="ImageFormat"><span class="n"><span class="pre">ImageFormat</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">rawPattern</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">RawPattern</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">newRawPattern</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK10rawPatternE10RawPattern" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK10rawPatternEv">
+<span id="_CPPv3NK10rawPatternEv"></span><span id="_CPPv2NK10rawPatternEv"></span><span id="rawPatternC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1ga1fa4af20214b7eb812057ff03cbc1c20"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">RawPattern</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">rawPattern</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="k"><span class="pre">noexcept</span></span><a class="headerlink" href="#_CPPv4NK10rawPatternEv" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK7swizzleEv">
+<span id="_CPPv3NK7swizzleEv"></span><span id="_CPPv2NK7swizzleEv"></span><span id="swizzleC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1ga9172ce9735f5f5cb288cedf5106bfcf9"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Swizzle" title="Swizzle"><span class="n"><span class="pre">Swizzle</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">swizzle</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="k"><span class="pre">noexcept</span></span><a class="headerlink" href="#_CPPv4NK7swizzleEv" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK10colorModelEv">
+<span id="_CPPv3NK10colorModelEv"></span><span id="_CPPv2NK10colorModelEv"></span><span id="colorModelC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1gac67fd45ad3b5068a220fdc0d7985d328"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">ColorModel</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">colorModel</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="k"><span class="pre">noexcept</span></span><a class="headerlink" href="#_CPPv4NK10colorModelEv" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK11numChannelsEv">
+<span id="_CPPv3NK11numChannelsEv"></span><span id="_CPPv2NK11numChannelsEv"></span><span id="numChannelsC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1ga91c0c091935150bc17ee8eb5775e7d9c"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">numChannels</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="k"><span class="pre">noexcept</span></span><a class="headerlink" href="#_CPPv4NK11numChannelsEv" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK14bitsPerChannelEv">
+<span id="_CPPv3NK14bitsPerChannelEv"></span><span id="_CPPv2NK14bitsPerChannelEv"></span><span id="bitsPerChannelC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1ga998d6e25f825c577c475417553ca0b7f"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">array</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="m"><span class="pre">4</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">bitsPerChannel</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="k"><span class="pre">noexcept</span></span><a class="headerlink" href="#_CPPv4NK14bitsPerChannelEv" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK6fourCCEv">
+<span id="_CPPv3NK6fourCCEv"></span><span id="_CPPv2NK6fourCCEv"></span><span id="fourCCC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1gab4c93e93d1e4e5d0c1acaeffb5b8d7ac"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">uint32_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">fourCC</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK6fourCCEv" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK9numPlanesEv">
+<span id="_CPPv3NK9numPlanesEv"></span><span id="_CPPv2NK9numPlanesEv"></span><span id="numPlanesC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1gae6548eae8ae219b8d3a3972bac361698"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">numPlanes</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="k"><span class="pre">noexcept</span></span><a class="headerlink" href="#_CPPv4NK9numPlanesEv" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK17swizzleAndPackingE7Swizzle7Packing7Packing7Packing7Packing">
+<span id="_CPPv3NK17swizzleAndPackingE7Swizzle7Packing7Packing7Packing7Packing"></span><span id="_CPPv2NK17swizzleAndPackingE7Swizzle7Packing7Packing7Packing7Packing"></span><span id="swizzleAndPacking__Swizzle.Packing.Packing.Packing.PackingC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1gaa204512200380a425f2e0b2871cab53e"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv411ImageFormatv" title="ImageFormat"><span class="n"><span class="pre">ImageFormat</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">swizzleAndPacking</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Swizzle" title="Swizzle"><span class="n"><span class="pre">Swizzle</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">newSwizzle</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">newPacking0</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">newPacking1</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">newPacking2</span></span>, <a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">newPacking3</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK17swizzleAndPackingE7Swizzle7Packing7Packing7Packing7Packing" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK12planePackingE7int32_t">
+<span id="_CPPv3NK12planePackingE7int32_t"></span><span id="_CPPv2NK12planePackingE7int32_t"></span><span id="planePacking__int32_tC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1gabdd2b80f081d6a14a853f1566ff64446"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">planePacking</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">plane</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="k"><span class="pre">noexcept</span></span><a class="headerlink" href="#_CPPv4NK12planePackingE7int32_t" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK13planeDataTypeE7int32_t">
+<span id="_CPPv3NK13planeDataTypeE7int32_t"></span><span id="_CPPv2NK13planeDataTypeE7int32_t"></span><span id="planeDataType__int32_tC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1gab504cb2e00936883ce6a0029654f5e81"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATATYPE.html#_CPPv48DataTypev" title="DataType"><span class="n"><span class="pre">DataType</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">planeDataType</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">plane</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="k"><span class="pre">noexcept</span></span><a class="headerlink" href="#_CPPv4NK13planeDataTypeE7int32_t" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK21planePixelStrideBytesE7int32_t">
+<span id="_CPPv3NK21planePixelStrideBytesE7int32_t"></span><span id="_CPPv2NK21planePixelStrideBytesE7int32_t"></span><span id="planePixelStrideBytes__int32_tC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1ga3184d57a2a87833f3baf9dbc695d43a5"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">planePixelStrideBytes</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">plane</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="k"><span class="pre">noexcept</span></span><a class="headerlink" href="#_CPPv4NK21planePixelStrideBytesE7int32_t" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK16planeNumChannelsE7int32_t">
+<span id="_CPPv3NK16planeNumChannelsE7int32_t"></span><span id="_CPPv2NK16planeNumChannelsE7int32_t"></span><span id="planeNumChannels__int32_tC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1gaf83585fb22cb5a9606d7dda2bc9fb9c6"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">planeNumChannels</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">plane</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="k"><span class="pre">noexcept</span></span><a class="headerlink" href="#_CPPv4NK16planeNumChannelsE7int32_t" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK17planeBitsPerPixelE7int32_t">
+<span id="_CPPv3NK17planeBitsPerPixelE7int32_t"></span><span id="_CPPv2NK17planeBitsPerPixelE7int32_t"></span><span id="planeBitsPerPixel__int32_tC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1ga2eb8e72e8eee64fb69ed5991a2badc33"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">planeBitsPerPixel</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">plane</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="k"><span class="pre">noexcept</span></span><a class="headerlink" href="#_CPPv4NK17planeBitsPerPixelE7int32_t" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK17planeRowAlignmentE7int32_t">
+<span id="_CPPv3NK17planeRowAlignmentE7int32_t"></span><span id="_CPPv2NK17planeRowAlignmentE7int32_t"></span><span id="planeRowAlignment__int32_tC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1ga3ee7073830308d644141fcdd41d4437d"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">planeRowAlignment</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">plane</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="k"><span class="pre">noexcept</span></span><a class="headerlink" href="#_CPPv4NK17planeRowAlignmentE7int32_t" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK9planeSizeE6Size2D7int32_t">
+<span id="_CPPv3NK9planeSizeE6Size2D7int32_t"></span><span id="_CPPv2NK9planeSizeE6Size2D7int32_t"></span><span id="planeSize__Size2D.int32_tC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1gaa912b12de7dcfecf1ca131c670bcfa2b"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">Size2D</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">planeSize</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">Size2D</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">imgSize</span></span>, <a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">plane</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="k"><span class="pre">noexcept</span></span><a class="headerlink" href="#_CPPv4NK9planeSizeE6Size2D7int32_t" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK12planeSwizzleE7int32_t">
+<span id="_CPPv3NK12planeSwizzleE7int32_t"></span><span id="_CPPv2NK12planeSwizzleE7int32_t"></span><span id="planeSwizzle__int32_tC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1ga52ac1a4dc7467b9ceaee775ba8fd3f3a"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__DATALAYOUT.html#_CPPv47Swizzle" title="Swizzle"><span class="n"><span class="pre">Swizzle</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">planeSwizzle</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">plane</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="k"><span class="pre">noexcept</span></span><a class="headerlink" href="#_CPPv4NK12planeSwizzleE7int32_t" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK11planeFormatE7int32_t">
+<span id="_CPPv3NK11planeFormatE7int32_t"></span><span id="_CPPv2NK11planeFormatE7int32_t"></span><span id="planeFormat__int32_tC"></span><span class="target" id="group__NVCV__CPP__CORE__IMAGETYPE_1gaf6c399c961bc245667e4ea0054876f0f"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv411ImageFormatv" title="ImageFormat"><span class="n"><span class="pre">ImageFormat</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">planeFormat</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">plane</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="k"><span class="pre">noexcept</span></span><a class="headerlink" href="#_CPPv4NK11planeFormatE7int32_t" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+</div>
+<dl class="cpp class">
+<dt class="sig sig-object cpp" id="_CPPv4N4nvcv11ImageFormatE">
+<span id="_CPPv3N4nvcv11ImageFormatE"></span><span id="_CPPv2N4nvcv11ImageFormatE"></span><span id="nvcv::ImageFormat"></span><span class="target" id="classnvcv_1_1ImageFormat"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ImageFormat</span></span></span><a class="headerlink" href="#_CPPv4N4nvcv11ImageFormatE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;ImageFormat.hpp&gt;</em></div>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="group__NVCV__CPP__CORE__DATATYPE.html" class="btn btn-neutral float-left" title="Data types" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="group__NVCV__CPP__CORE__SIZE.html" class="btn btn-neutral float-right" title="Size Operator" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022-2024, NVIDIA..
+      <span class="lastupdated">Last updated on Jun 28, 2024.
+      </span></p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(false);
+      });
+  </script> 
+
+</body>
+</html>

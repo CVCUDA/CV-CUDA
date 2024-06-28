@@ -1,0 +1,1405 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Data Layout &mdash; CV-CUDA Beta documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=19f00094" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=76b435a8" />
+
+  
+    <link rel="shortcut icon" href="../_static/nv_icon.png"/>
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../_static/jquery.js?v=5d32c60e"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js?v=bd46b8a5"></script>
+        <script src="../_static/doctools.js?v=888ff710"></script>
+        <script src="../_static/sphinx_highlight.js?v=4825356b"></script>
+        <script src="../_static/pk_scripts.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Data types" href="group__NVCV__CPP__CORE__DATATYPE.html" />
+    <link rel="prev" title="Color Models" href="group__NVCV__CPP__CORE__COLORSPEC.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #000000" >
+
+          
+          
+          <a href="../index.html">
+            
+              <img src="../_static/nv_logo.png" class="logo" alt="Logo"/>
+          </a>
+              <div class="version">
+                Beta
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Beginner's Guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#pre-requisites">Pre-requisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#setup">Setup</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started.html">Getting Started</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../prerequisites.html">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../samples.html">Samples</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../samples/cpp_samples.html">C++</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../samples/cpp_samples/cropresize.html">Crop and Resize</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../samples/python_samples.html">Python</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/classification.html">Classification</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/segmentation.html">Semantic Segmentation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/segmentation_triton.html">Semantic Segmentation using Triton</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../samples/python_samples/object_detection.html">Object Detection</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../modules/c_modules.html">C Modules</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../modules/c_core.html">Core</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__COLORSPEC.html">Color Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__DATALAYOUT.html">Data Layout</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__DATATYPE.html">Data types</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__CORE__IMAGETYPE.html">Image Formats</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/c_utils.html">Utilities</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__UTIL__STATUS.html">Status Codes</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/c_algos.html">Algorithms</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ADAPTIVETHRESHOLD.html">Adaptive Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__AVERAGEBLUR.html">Average Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BILATERAL__FILTER.html">Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BRIGHTNESS__CONTRAST.html">Brightness Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CENTER__CROP.html">Center Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CHANNEL__REORDER.html">Channel Reorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COLOR__TWIST.html">Color Twist</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COMPOSITE.html">Composite</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONV2D.html">2D Convolution</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONVERT__TO.html">Convert To</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COPYMAKEBORDER.html">Copy Make Border</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAMMA__CONTRAST.html">Gamma Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN.html">Gaussian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN__NOISE.html">GaussianNoise</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__HQ__RESIZE.html">HQ Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__INPAINT.html">Inpaint</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__JOINT__BILATERAL__FILTER.html">Joint Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LABEL.html">Label</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LAPLACIAN.html">Laplacian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MEDIAN__BLUR.html">Median Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MINMAXLOC.html">MinMaxLoc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MORPHOLOGY.html">Morphology</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NON__MAXIMUM__SUPPRESSION.html">Non-Maximum Suppression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NORMALIZE.html">Normalize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PADANDSTACK.html">Pad and Stack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PAIRWISE__MATCHER.html">Pairwise Matcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PILLOW__RESIZE.html">Pillow Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RANDOMRESIZEDCROP.html">Random Resized Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REFORMAT.html">Reformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REMAP.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RESIZE.html">Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ROTATE.html">Rotate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__SIFT.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__THRESHOLD.html">Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__AFFINE.html">Warp Affine</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__PERSPECTIVE.html">Warp Perspective</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____ADV__CVT__COLOR.html">Adv Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BND__BOX.html">BndBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BOX__BLUR.html">BoxBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM.html">Histogram</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM__EQ.html">Histogram Eq</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____MIN__AREA__RECT.html">Min Area Rect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____O__S__D.html">OSD</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____RESIZE__CROP.html">Resize Crop Convert</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____STACK.html">Stack</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1 current"><a class="reference internal" href="../modules/cpp_modules.html">C++ Modules</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../modules/cpp_core.html">Core</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__COLORSPEC.html">Color Models</a></li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">Data Layout</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__DATATYPE.html">Data types</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__IMAGETYPE.html">Image Formats</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CORE__SIZE.html">Size Operator</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_utils.html">Utilities</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__UTIL__EXCEPTION.html">Exception</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__UTIL__STATUS.html">Status Codes</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_algos.html">Algorithms</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ADAPTIVETHRESHOLD.html">Adaptive Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__AVERAGEBLUR.html">Average Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BILATERAL__FILTER.html">Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BRIGHTNESS__CONTRAST.html">Brightness Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CENTER__CROP.html">Center Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CHANNEL__REORDER.html">Channel Reorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COLOR__TWIST.html">Color Twist</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COMPOSITE.html">Composite</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONV2D.html">2D Convolution</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CONVERT__TO.html">Convert To</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__COPYMAKEBORDER.html">Copy Make Border</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAMMA__CONTRAST.html">Gamma Contrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN.html">Gaussian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__GAUSSIAN__NOISE.html">GaussianNoise</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__HQ__RESIZE.html">HQ Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__INPAINT.html">Inpaint</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__JOINT__BILATERAL__FILTER.html">Joint Bilateral Filter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LABEL.html">Label</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__LAPLACIAN.html">Laplacian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MEDIAN__BLUR.html">Median Blur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MINMAXLOC.html">MinMaxLoc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__MORPHOLOGY.html">Morphology</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NON__MAXIMUM__SUPPRESSION.html">Non-Maximum Suppression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__NORMALIZE.html">Normalize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PADANDSTACK.html">Pad and Stack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PAIRWISE__MATCHER.html">Pairwise Matcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__PILLOW__RESIZE.html">Pillow Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RANDOMRESIZEDCROP.html">Random Resized Crop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REFORMAT.html">Reformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__REMAP.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__RESIZE.html">Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ROTATE.html">Rotate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__SIFT.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__THRESHOLD.html">Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__AFFINE.html">Warp Affine</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__WARP__PERSPECTIVE.html">Warp Perspective</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____ADV__CVT__COLOR.html">Adv Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BND__BOX.html">BndBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____BOX__BLUR.html">BoxBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM.html">Histogram</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____HISTOGRAM__EQ.html">Histogram Eq</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____MIN__AREA__RECT.html">Min Area Rect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____O__S__D.html">OSD</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____RESIZE__CROP.html">Resize Crop Convert</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM____STACK.html">Stack</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_cudatools.html">CUDA Tools</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__ATOMICS.html">Atomic operations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__BORDER.html">Border functions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__BORDERVARSHAPEWRAP.html">BorderVarShapeWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__BORDERWRAP.html">BorderWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__DROPCAST.html">Drop Cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__FULLTENSORWRAP.html">FullTensorWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__IMAGEWRAP.html">Image Wrapper classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__INTERPOLATION.html">Interpolation functions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__INTERPOLATIONVARSHAPEWRAP.html">InterpolationVarShapeWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__INTERPOLATIONWRAP.html">InterpolationWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__LINALG.html">Linear algebra</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHOPERATORS.html">Math operators</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHWRAPPERS.html">Math wrappers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__RANGECAST.html">Range cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__SATURATECAST.html">Saturate cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__STATICCAST.html">Static Cast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORBATCHWRAP.html">TensorBatchWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORBATCHWRAPS.html">TensorBatchWrap shortcuts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORWRAP.html">TensorWrap classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TENSORWRAPS.html">TensorWrap shortcuts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__TYPETRAITS.html">Type Traits</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../modules/python_modules.html">Python Modules</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../modules/python_core.html">Core</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/cache.html">Cache</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/colorspec.html">Color Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/format.html">Image Formats</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/recti.html">Rect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/image.html">Image</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/imagebatch.html">ImageBatchVarShape</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/tensor.html">Tensor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/tensorbatch.html">TensorBatchVarShape</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/python_algos.html">Algorithms</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_adaptivethreshold.html">AdaptiveThreshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_advcvtcolor.html">AdvCvtColor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_averageblur.html">AverageBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_bilateralfilter.html">BilateralFilter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_bndbox.html">BndBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_boxblur.html">BoxBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_brightnesscontrast.html">BrightnessContrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_centercrop.html">CenterCrop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_channelreorder.html">ChannelReorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_colortwist.html">ColorTwist</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_composite.html">Composite</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_conv2d.html">Conv2D</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_convertto.html">ConvertTo</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_copymakeborder.html">CopyMakeBorder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_cropflipnormalizereformat.html">CropFlipNormalizeReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_customcrop.html">CustomCrop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_cvtcolor.html">CvtColor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_erase.html">Erase</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_findhomography.html">FindHomography</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_flip.html">Flip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_gammacontrast.html">GammaContrast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_gaussian.html">Gaussian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_gaussiannoise.html">GaussianNoise</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_histogram.html">Histogram</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_histogrameq.html">HistogramEq</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_hqresize.html">HQResize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_inpaint.html">Inpaint</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_jointbilateralfilter.html">JointBilateralFilter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_label.html">Label</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_laplacian.html">Laplacian</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_medianblur.html">MedianBlur</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_minarearect.html">MinAreaRect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_minmaxloc.html">MinMaxLoc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_morphology.html">Morphology</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_nonmaximumsuppression.html">NonMaximumSuppression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_normalize.html">Normalize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_osd.html">OSD</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_padandstack.html">PadAndStack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_pairwisematcher.html">PairwiseMatcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_pillowresize.html">PillowResize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_randomresizedcrop.html">RandomResizedCrop</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_reformat.html">Reformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_remap.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_resize.html">Resize</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_resizecropconvertreformat.html">ResizeCropConvertReformat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_rotate.html">Rotate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_sift.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_stack.html">Stack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_threshold.html">Threshold</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_warpaffine.html">WarpAffine</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_warpperspective.html">WarpPerspective</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_adaptivethresholdtype.html">AdaptiveThresholdType</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_arrow.html">Arrow</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_blurboxi.html">BlurBoxI</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_bndboxi.html">BndBoxI</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_border.html">Border</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_channelmanip.html">ChannelManip</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_circle.html">Circle</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_clockformat.html">ClockFormat</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_colorconversion.html">ColorConversion</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_connectivitytype.html">ConnectivityType</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_interp.html">Interp</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_label.html">LABEL</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_line.html">Line</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_matcher.html">Matcher</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_morphologytype.html">MorphologyType</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_norm.html">Norm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_point.html">Point</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_remap.html">Remap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_rotatedbox.html">RotatedBox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_sift.html">SIFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_thresholdtype.html">ThresholdType</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Release Notes</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.9.0-beta.html">v0.9.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.9.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.8.0-beta.html">v0.8.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.8.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.7.0-beta.html">v0.7.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.7.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.6.0-beta.html">v0.6.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.6.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.5.0-beta.html">v0.5.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.5.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.4.0-beta.html">v0.4.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.4.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.3.1-beta.html">v0.3.1-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#bug-fixes">Bug Fixes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#known-issues">Known Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.1-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.3.0-beta.html">v0.3.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.3.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html">v0.2.1-alpha</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#general">General</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#new-operators">New Operators</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#improved-testing">Improved Testing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.1-alpha.html#bug-fixes">Bug Fixes</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html">v0.2.0-alpha</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#known-issues-limitations">Known Issues/Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.2.0-alpha.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html">v0.1.0-prealpha</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#compatibility">Compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#known-issues">Known Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.1.0-prealpha.html#license">License</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #000000" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">CV-CUDA</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../modules/cpp_modules.html">C++ API</a></li>
+          <li class="breadcrumb-item"><a href="../modules/cpp_core.html">Core</a></li>
+      <li class="breadcrumb-item active">Data Layout</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/_c_cpp_api/group__NVCV__CPP__CORE__DATALAYOUT.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="data-layout">
+<h1>Data Layout<a class="headerlink" href="#data-layout" title="Permalink to this heading"></a></h1>
+<dl>
+<dt class="sig sig-object cpp">
+<span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT"></span><em><span class="pre">group</span></em> <span class="sig-name descname"><span class="pre">NVCV_CPP_CORE_DATALAYOUT</span></span></dt>
+<dd><div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-typedefs">Typedefs</p>
+<dl class="cpp type">
+<dt class="sig sig-object cpp" id="_CPPv416ExtraChannelInfo">
+<span id="_CPPv316ExtraChannelInfo"></span><span id="_CPPv216ExtraChannelInfo"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ga1086bbbc779f68c5eb0bd43c20b078ce"></span><span class="k"><span class="pre">using</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ExtraChannelInfo</span></span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__C__CORE__DATALAYOUT.html#_CPPv420NVCVExtraChannelInfo" title="NVCVExtraChannelInfo"><span class="n"><span class="pre">NVCVExtraChannelInfo</span></span></a><a class="headerlink" href="#_CPPv416ExtraChannelInfo" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+</div>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-enums">Enums</p>
+<dl class="cpp enum-class">
+<dt class="sig sig-object cpp" id="_CPPv47Packing">
+<span id="_CPPv37Packing"></span><span id="_CPPv27Packing"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ga3450a1a62585d703b52423925e939072"></span><span class="k"><span class="pre">enum</span></span><span class="w"> </span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Packing</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><a class="headerlink" href="#_CPPv47Packing" title="Permalink to this definition"></a><br /></dt>
+<dd><p><em>Values:</em></p>
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing4NONEE">
+<span id="_CPPv3N7Packing4NONEE"></span><span id="_CPPv2N7Packing4NONEE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072ab50339a10e1de285ac99d4c3990b8693"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NONE</span></span></span><a class="headerlink" href="#_CPPv4N7Packing4NONEE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing2X1E">
+<span id="_CPPv3N7Packing2X1E"></span><span id="_CPPv2N7Packing2X1E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072abb7f5ae6220c9828e5ec91faf054197c"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X1</span></span></span><a class="headerlink" href="#_CPPv4N7Packing2X1E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One 1-bit channel. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing2X2E">
+<span id="_CPPv3N7Packing2X2E"></span><span id="_CPPv2N7Packing2X2E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a54105bddbfe3f639d49cbe8f5182c958"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X2</span></span></span><a class="headerlink" href="#_CPPv4N7Packing2X2E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One 2-bit channel. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing2X4E">
+<span id="_CPPv3N7Packing2X4E"></span><span id="_CPPv2N7Packing2X4E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a7d71ed2af4cc5c6a8380324d9bc4a45f"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X4</span></span></span><a class="headerlink" href="#_CPPv4N7Packing2X4E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One 4-bit channel. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing2X8E">
+<span id="_CPPv3N7Packing2X8E"></span><span id="_CPPv2N7Packing2X8E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072ab8295fda5d2245c683e47e1137656c78"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X8</span></span></span><a class="headerlink" href="#_CPPv4N7Packing2X8E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One 8-bit channel. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing4X4Y4E">
+<span id="_CPPv3N7Packing4X4Y4E"></span><span id="_CPPv2N7Packing4X4Y4E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072abf80c40db2a76f71e31a7cf71fed7f27"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X4Y4</span></span></span><a class="headerlink" href="#_CPPv4N7Packing4X4Y4E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Two 4-bit channels in one word. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing6X3Y3Z2E">
+<span id="_CPPv3N7Packing6X3Y3Z2E"></span><span id="_CPPv2N7Packing6X3Y3Z2E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a7da8f19d457d9ec57c7f81ebfcd578bb"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X3Y3Z2</span></span></span><a class="headerlink" href="#_CPPv4N7Packing6X3Y3Z2E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Three 3-, 3- and 2-bit channels in one 8-bit word. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing3X16E">
+<span id="_CPPv3N7Packing3X16E"></span><span id="_CPPv2N7Packing3X16E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a8566d518618cc93194d9e7688e2dafa2"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X16</span></span></span><a class="headerlink" href="#_CPPv4N7Packing3X16E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One 16-bit channel. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing5b6X10E">
+<span id="_CPPv3N7Packing5b6X10E"></span><span id="_CPPv2N7Packing5b6X10E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072ab20f0c064ec3ee04c2099c7cc338bb7a"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">b6X10</span></span></span><a class="headerlink" href="#_CPPv4N7Packing5b6X10E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One LSB 10-bit channel in one 16-bit word. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing5X10b6E">
+<span id="_CPPv3N7Packing5X10b6E"></span><span id="_CPPv2N7Packing5X10b6E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a5dc00f834f3b8110b9e40ca9e7945574"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X10b6</span></span></span><a class="headerlink" href="#_CPPv4N7Packing5X10b6E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One MSB 10-bit channel in one 16-bit word. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing5b4X12E">
+<span id="_CPPv3N7Packing5b4X12E"></span><span id="_CPPv2N7Packing5b4X12E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a9af9c118426c3f2939f3bd556568fb75"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">b4X12</span></span></span><a class="headerlink" href="#_CPPv4N7Packing5b4X12E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One LSB 12-bit channel in one 16-bit word. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing5X12b4E">
+<span id="_CPPv3N7Packing5X12b4E"></span><span id="_CPPv2N7Packing5X12b4E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a514ff1efd2e24394b54dd0cc7a3dc805"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X12b4</span></span></span><a class="headerlink" href="#_CPPv4N7Packing5X12b4E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One MSB 12-bit channel in one 16-bit word. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing5b2X14E">
+<span id="_CPPv3N7Packing5b2X14E"></span><span id="_CPPv2N7Packing5b2X14E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072ab9d9b98408341f0b70a469cdf80b6122"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">b2X14</span></span></span><a class="headerlink" href="#_CPPv4N7Packing5b2X14E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One LSB 14-bit channel in one 16-bit word. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing5X8_Y8E">
+<span id="_CPPv3N7Packing5X8_Y8E"></span><span id="_CPPv2N7Packing5X8_Y8E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a90391328f1e676e4d473a923f6532745"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X8_Y8</span></span></span><a class="headerlink" href="#_CPPv4N7Packing5X8_Y8E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Two 8-bit channels in two 8-bit words. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing6X5Y5Z6E">
+<span id="_CPPv3N7Packing6X5Y5Z6E"></span><span id="_CPPv2N7Packing6X5Y5Z6E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a4287b3858a12da268c475a3af6967b83"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X5Y5Z6</span></span></span><a class="headerlink" href="#_CPPv4N7Packing6X5Y5Z6E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Three 5-, 5- and 6-bit channels in one 16-bit word. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing6X5Y6Z5E">
+<span id="_CPPv3N7Packing6X5Y6Z5E"></span><span id="_CPPv2N7Packing6X5Y6Z5E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a02322a39d95ef96723e59777c9b0bfe0"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X5Y6Z5</span></span></span><a class="headerlink" href="#_CPPv4N7Packing6X5Y6Z5E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Three 5-, 6- and 5-bit channels in one 16-bit word. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing6X6Y5Z5E">
+<span id="_CPPv3N7Packing6X6Y5Z5E"></span><span id="_CPPv2N7Packing6X6Y5Z5E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a7fd9cd0e53a72067fdf9810572a22b3a"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X6Y5Z5</span></span></span><a class="headerlink" href="#_CPPv4N7Packing6X6Y5Z5E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Three 6-, 5- and 5-bit channels in one 16-bit word. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing8b4X4Y4Z4E">
+<span id="_CPPv3N7Packing8b4X4Y4Z4E"></span><span id="_CPPv2N7Packing8b4X4Y4Z4E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a02058090add39206a33d3d2e7cfff51c"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">b4X4Y4Z4</span></span></span><a class="headerlink" href="#_CPPv4N7Packing8b4X4Y4Z4E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Three 4-bit channels in one 16-bit word. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing8b1X5Y5Z5E">
+<span id="_CPPv3N7Packing8b1X5Y5Z5E"></span><span id="_CPPv2N7Packing8b1X5Y5Z5E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a8560ab1eb510b49296778e873f5ebf6b"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">b1X5Y5Z5</span></span></span><a class="headerlink" href="#_CPPv4N7Packing8b1X5Y5Z5E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Three 5-bit channels in one 16-bit word. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing8X5Y5b1Z5E">
+<span id="_CPPv3N7Packing8X5Y5b1Z5E"></span><span id="_CPPv2N7Packing8X5Y5b1Z5E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072af206f3bff9b76685a34ff40da38950c2"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X5Y5b1Z5</span></span></span><a class="headerlink" href="#_CPPv4N7Packing8X5Y5b1Z5E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Three 5-bit channels in one 16-bit word. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing8X1Y5Z5W5E">
+<span id="_CPPv3N7Packing8X1Y5Z5W5E"></span><span id="_CPPv2N7Packing8X1Y5Z5W5E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a1288c9f1b4ba6b6b35b475a394ee8509"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X1Y5Z5W5</span></span></span><a class="headerlink" href="#_CPPv4N7Packing8X1Y5Z5W5E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Four 1-, 5-, 5- and 5-bit channels in one 16-bit word. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing8X4Y4Z4W4E">
+<span id="_CPPv3N7Packing8X4Y4Z4W4E"></span><span id="_CPPv2N7Packing8X4Y4Z4W4E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a4abb2d7fcc8ec589397f03b4e966fe47"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X4Y4Z4W4</span></span></span><a class="headerlink" href="#_CPPv4N7Packing8X4Y4Z4W4E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Four 4-bit channels in one 16-bit word. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing8X5Y1Z5W5E">
+<span id="_CPPv3N7Packing8X5Y1Z5W5E"></span><span id="_CPPv2N7Packing8X5Y1Z5W5E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072ad73e44671b084bec434984de94738c24"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X5Y1Z5W5</span></span></span><a class="headerlink" href="#_CPPv4N7Packing8X5Y1Z5W5E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Four 5-, 1-, 5- and 5-bit channels in one 16-bit word. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing8X5Y5Z1W5E">
+<span id="_CPPv3N7Packing8X5Y5Z1W5E"></span><span id="_CPPv2N7Packing8X5Y5Z1W5E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a37190e0b5a4847ef2fd4adf0913eff47"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X5Y5Z1W5</span></span></span><a class="headerlink" href="#_CPPv4N7Packing8X5Y5Z1W5E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Four 5-, 5-, 1- and 5-bit channels in one 16-bit word. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing8X5Y5Z5W1E">
+<span id="_CPPv3N7Packing8X5Y5Z5W1E"></span><span id="_CPPv2N7Packing8X5Y5Z5W1E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a47b7306f7779ea357565317d634ab3fd"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X5Y5Z5W1</span></span></span><a class="headerlink" href="#_CPPv4N7Packing8X5Y5Z5W1E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Four 5-, 5-, 5- and 1-bit channels in one 16-bit word. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing12X8_Y8__X8_Z8E">
+<span id="_CPPv3N7Packing12X8_Y8__X8_Z8E"></span><span id="_CPPv2N7Packing12X8_Y8__X8_Z8E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072af2fab54934d9dbd943cdc3fe8ebe3250"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X8_Y8__X8_Z8</span></span></span><a class="headerlink" href="#_CPPv4N7Packing12X8_Y8__X8_Z8E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>2 pixels of 2 8-bit channels each, totalling 4 8-bit words. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing12Y8_X8__Z8_X8E">
+<span id="_CPPv3N7Packing12Y8_X8__Z8_X8E"></span><span id="_CPPv2N7Packing12Y8_X8__Z8_X8E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a1e86f97187b8f010ea36c9f636659b64"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Y8_X8__Z8_X8</span></span></span><a class="headerlink" href="#_CPPv4N7Packing12Y8_X8__Z8_X8E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>2 pixels of 2 swapped 8-bit channels each, totalling 4 8-bit words. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing3X24E">
+<span id="_CPPv3N7Packing3X24E"></span><span id="_CPPv2N7Packing3X24E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a7a1384edfa52e20a2136c1c185730e9f"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X24</span></span></span><a class="headerlink" href="#_CPPv4N7Packing3X24E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One 24-bit channel. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing8X8_Y8_Z8E">
+<span id="_CPPv3N7Packing8X8_Y8_Z8E"></span><span id="_CPPv2N7Packing8X8_Y8_Z8E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a6511293b2efcd65023f18d78b620cd9f"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X8_Y8_Z8</span></span></span><a class="headerlink" href="#_CPPv4N7Packing8X8_Y8_Z8E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Three 8-bit channels in three 8-bit words. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing3X32E">
+<span id="_CPPv3N7Packing3X32E"></span><span id="_CPPv2N7Packing3X32E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072aaebf1ebe049feaa907e785eeb955ae32"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X32</span></span></span><a class="headerlink" href="#_CPPv4N7Packing3X32E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One 32-bit channel. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing6b12X20E">
+<span id="_CPPv3N7Packing6b12X20E"></span><span id="_CPPv2N7Packing6b12X20E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a58de73b127b62796d3abfcab9412d41f"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">b12X20</span></span></span><a class="headerlink" href="#_CPPv4N7Packing6b12X20E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One LSB 20-bit channel in one 32-bit word. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing7X16_Y16E">
+<span id="_CPPv3N7Packing7X16_Y16E"></span><span id="_CPPv2N7Packing7X16_Y16E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a04fb4dedfa146458a04f79899270de60"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X16_Y16</span></span></span><a class="headerlink" href="#_CPPv4N7Packing7X16_Y16E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Two 16-bit channels in two 16-bit words. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing11X10b6_Y10b6E">
+<span id="_CPPv3N7Packing11X10b6_Y10b6E"></span><span id="_CPPv2N7Packing11X10b6_Y10b6E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a1affb1c8aee659de97e1f558105c9063"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X10b6_Y10b6</span></span></span><a class="headerlink" href="#_CPPv4N7Packing11X10b6_Y10b6E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Two MSB 10-bit channels in two 16-bit words. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing11X12b4_Y12b4E">
+<span id="_CPPv3N7Packing11X12b4_Y12b4E"></span><span id="_CPPv2N7Packing11X12b4_Y12b4E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a683a66fa1cd6793dc197c74fb3b7c76e"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X12b4_Y12b4</span></span></span><a class="headerlink" href="#_CPPv4N7Packing11X12b4_Y12b4E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Two MSB 12-bit channels in two 16-bit words. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing9X10Y11Z11E">
+<span id="_CPPv3N7Packing9X10Y11Z11E"></span><span id="_CPPv2N7Packing9X10Y11Z11E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072aba8694726f475802f62ba6189d9f10b6"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X10Y11Z11</span></span></span><a class="headerlink" href="#_CPPv4N7Packing9X10Y11Z11E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Three 10-, 11- and 11-bit channels in one 32-bit word. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing9X11Y11Z10E">
+<span id="_CPPv3N7Packing9X11Y11Z10E"></span><span id="_CPPv2N7Packing9X11Y11Z10E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a78845640863af55a622cb8b7e64ba542"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X11Y11Z10</span></span></span><a class="headerlink" href="#_CPPv4N7Packing9X11Y11Z10E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Three 11-, 11- and 10-bit channels in one 32-bit word. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing11X8_Y8_Z8_W8E">
+<span id="_CPPv3N7Packing11X8_Y8_Z8_W8E"></span><span id="_CPPv2N7Packing11X8_Y8_Z8_W8E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072ae8949154c981d32d8d5270fb1af1a0d9"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X8_Y8_Z8_W8</span></span></span><a class="headerlink" href="#_CPPv4N7Packing11X8_Y8_Z8_W8E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Four 8-bit channels in one 32-bit word. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing11X2Y10Z10W10E">
+<span id="_CPPv3N7Packing11X2Y10Z10W10E"></span><span id="_CPPv2N7Packing11X2Y10Z10W10E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a9fe3aa6d6d2f282059b58f16d59f17fc"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X2Y10Z10W10</span></span></span><a class="headerlink" href="#_CPPv4N7Packing11X2Y10Z10W10E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Four 2-, 10-, 10- and 10-bit channels in one 32-bit word. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing11X10Y10Z10W2E">
+<span id="_CPPv3N7Packing11X10Y10Z10W2E"></span><span id="_CPPv2N7Packing11X10Y10Z10W2E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a61c34ee0d75e1a063283be7f6c8fa4b9"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X10Y10Z10W2</span></span></span><a class="headerlink" href="#_CPPv4N7Packing11X10Y10Z10W2E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Four 10-, 10-, 10- and 2-bit channels in one 32-bit word. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing3X48E">
+<span id="_CPPv3N7Packing3X48E"></span><span id="_CPPv2N7Packing3X48E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072ae1995de58886bfa9115fb0d63d4e6048"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X48</span></span></span><a class="headerlink" href="#_CPPv4N7Packing3X48E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One 48-bit channel. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing11X16_Y16_Z16E">
+<span id="_CPPv3N7Packing11X16_Y16_Z16E"></span><span id="_CPPv2N7Packing11X16_Y16_Z16E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a7ffa8d8c6c21a5ddac5738d15a7e560d"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X16_Y16_Z16</span></span></span><a class="headerlink" href="#_CPPv4N7Packing11X16_Y16_Z16E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Three 16-bit channels in three 16-bit words. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing3X64E">
+<span id="_CPPv3N7Packing3X64E"></span><span id="_CPPv2N7Packing3X64E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072af0851da0e02bf22830828822f578dc8f"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X64</span></span></span><a class="headerlink" href="#_CPPv4N7Packing3X64E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One 64-bit channel. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing7X32_Y32E">
+<span id="_CPPv3N7Packing7X32_Y32E"></span><span id="_CPPv2N7Packing7X32_Y32E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a350fd8c8319ab03e0b3e263a2deedf11"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X32_Y32</span></span></span><a class="headerlink" href="#_CPPv4N7Packing7X32_Y32E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Two 32-bit channels in two 32-bit words. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing15X16_Y16_Z16_W16E">
+<span id="_CPPv3N7Packing15X16_Y16_Z16_W16E"></span><span id="_CPPv2N7Packing15X16_Y16_Z16_W16E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a6dbf6ce3fd2715a5b66f055614524c52"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X16_Y16_Z16_W16</span></span></span><a class="headerlink" href="#_CPPv4N7Packing15X16_Y16_Z16_W16E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Four 16-bit channels in one 64-bit word. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing3X96E">
+<span id="_CPPv3N7Packing3X96E"></span><span id="_CPPv2N7Packing3X96E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072aeb511789f968efb6265ddaec15524506"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X96</span></span></span><a class="headerlink" href="#_CPPv4N7Packing3X96E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One 96-bit channel. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing11X32_Y32_Z32E">
+<span id="_CPPv3N7Packing11X32_Y32_Z32E"></span><span id="_CPPv2N7Packing11X32_Y32_Z32E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a75e080a94dac4820160a4960268c1e41"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X32_Y32_Z32</span></span></span><a class="headerlink" href="#_CPPv4N7Packing11X32_Y32_Z32E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Three 32-bit channels in three 32-bit words. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing4X128E">
+<span id="_CPPv3N7Packing4X128E"></span><span id="_CPPv2N7Packing4X128E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072aaee478c3ddbc5b64fd18069e0aabb86c"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X128</span></span></span><a class="headerlink" href="#_CPPv4N7Packing4X128E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One 128-bit channel. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing7X64_Y64E">
+<span id="_CPPv3N7Packing7X64_Y64E"></span><span id="_CPPv2N7Packing7X64_Y64E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a7147ba8cf8f58cbead9c30362aae23a7"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X64_Y64</span></span></span><a class="headerlink" href="#_CPPv4N7Packing7X64_Y64E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Two 64-bit channels in two 64-bit words. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing15X32_Y32_Z32_W32E">
+<span id="_CPPv3N7Packing15X32_Y32_Z32_W32E"></span><span id="_CPPv2N7Packing15X32_Y32_Z32_W32E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a38eaef67a8ace7daba431bafd44d5bb3"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X32_Y32_Z32_W32</span></span></span><a class="headerlink" href="#_CPPv4N7Packing15X32_Y32_Z32_W32E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Four 32-bit channels in three 32-bit words. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing4X192E">
+<span id="_CPPv3N7Packing4X192E"></span><span id="_CPPv2N7Packing4X192E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a92e43f2480ba4273103377ce6dce8767"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X192</span></span></span><a class="headerlink" href="#_CPPv4N7Packing4X192E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One 192-bit channel. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing11X64_Y64_Z64E">
+<span id="_CPPv3N7Packing11X64_Y64_Z64E"></span><span id="_CPPv2N7Packing11X64_Y64_Z64E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072ab3902f16334dabc59168dcac2b0d4283"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X64_Y64_Z64</span></span></span><a class="headerlink" href="#_CPPv4N7Packing11X64_Y64_Z64E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Three 64-bit channels in three 64-bit words. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing4X256E">
+<span id="_CPPv3N7Packing4X256E"></span><span id="_CPPv2N7Packing4X256E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a8a94e5c989c9a46b9c3c37173e29569f"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X256</span></span></span><a class="headerlink" href="#_CPPv4N7Packing4X256E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>One 256-bit channel. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing9X128_Y128E">
+<span id="_CPPv3N7Packing9X128_Y128E"></span><span id="_CPPv2N7Packing9X128_Y128E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a8d536853f7c8c023522eb4fcbaa7aa7a"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X128_Y128</span></span></span><a class="headerlink" href="#_CPPv4N7Packing9X128_Y128E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Two 128-bit channels in two 128-bit words. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Packing15X64_Y64_Z64_W64E">
+<span id="_CPPv3N7Packing15X64_Y64_Z64_W64E"></span><span id="_CPPv2N7Packing15X64_Y64_Z64_W64E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga3450a1a62585d703b52423925e939072a437cfdfddc103c025b026cf73f75322e"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X64_Y64_Z64_W64</span></span></span><a class="headerlink" href="#_CPPv4N7Packing15X64_Y64_Z64_W64E" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Four 64-bit channels in four 64-bit words. </p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="cpp enum-class">
+<dt class="sig sig-object cpp" id="_CPPv48DataKind">
+<span id="_CPPv38DataKind"></span><span id="_CPPv28DataKind"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ga08e808a08be98700d81947cc1b0eefc3"></span><span class="k"><span class="pre">enum</span></span><span class="w"> </span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">DataKind</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int8_t</span></span><a class="headerlink" href="#_CPPv48DataKind" title="Permalink to this definition"></a><br /></dt>
+<dd><p><em>Values:</em></p>
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N8DataKind11UNSPECIFIEDE">
+<span id="_CPPv3N8DataKind11UNSPECIFIEDE"></span><span id="_CPPv2N8DataKind11UNSPECIFIEDE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga08e808a08be98700d81947cc1b0eefc3a1c04cc3823d476c3017238679a0fdf52"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UNSPECIFIED</span></span></span><a class="headerlink" href="#_CPPv4N8DataKind11UNSPECIFIEDE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N8DataKind8UNSIGNEDE">
+<span id="_CPPv3N8DataKind8UNSIGNEDE"></span><span id="_CPPv2N8DataKind8UNSIGNEDE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga08e808a08be98700d81947cc1b0eefc3aaf36b47f395cd01f48b8fc1013665054"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UNSIGNED</span></span></span><a class="headerlink" href="#_CPPv4N8DataKind8UNSIGNEDE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N8DataKind6SIGNEDE">
+<span id="_CPPv3N8DataKind6SIGNEDE"></span><span id="_CPPv2N8DataKind6SIGNEDE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga08e808a08be98700d81947cc1b0eefc3a6898b46a1cde8a1572e2722c44c5ab07"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">SIGNED</span></span></span><a class="headerlink" href="#_CPPv4N8DataKind6SIGNEDE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N8DataKind5FLOATE">
+<span id="_CPPv3N8DataKind5FLOATE"></span><span id="_CPPv2N8DataKind5FLOATE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga08e808a08be98700d81947cc1b0eefc3ae738c26bf4ce1037fa81b039a915cbf6"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">FLOAT</span></span></span><a class="headerlink" href="#_CPPv4N8DataKind5FLOATE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N8DataKind7COMPLEXE">
+<span id="_CPPv3N8DataKind7COMPLEXE"></span><span id="_CPPv2N8DataKind7COMPLEXE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga08e808a08be98700d81947cc1b0eefc3a921a0157a6e61eebbaa0f713fdfbb0f7"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">COMPLEX</span></span></span><a class="headerlink" href="#_CPPv4N8DataKind7COMPLEXE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="cpp enum-class">
+<dt class="sig sig-object cpp" id="_CPPv49MemLayout">
+<span id="_CPPv39MemLayout"></span><span id="_CPPv29MemLayout"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ga5c916a14bc5cee28d56022ab40ae36dd"></span><span class="k"><span class="pre">enum</span></span><span class="w"> </span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">MemLayout</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int8_t</span></span><a class="headerlink" href="#_CPPv49MemLayout" title="Permalink to this definition"></a><br /></dt>
+<dd><p><em>Values:</em></p>
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N9MemLayout12PITCH_LINEARE">
+<span id="_CPPv3N9MemLayout12PITCH_LINEARE"></span><span id="_CPPv2N9MemLayout12PITCH_LINEARE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga5c916a14bc5cee28d56022ab40ae36dda9773175fa514dda4e45e09efbf1f67ec"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">PITCH_LINEAR</span></span></span><a class="headerlink" href="#_CPPv4N9MemLayout12PITCH_LINEARE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N9MemLayout13BLOCK1_LINEARE">
+<span id="_CPPv3N9MemLayout13BLOCK1_LINEARE"></span><span id="_CPPv2N9MemLayout13BLOCK1_LINEARE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga5c916a14bc5cee28d56022ab40ae36dda477c9c05eaa50cfc32ecadd60a02ca8e"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">BLOCK1_LINEAR</span></span></span><a class="headerlink" href="#_CPPv4N9MemLayout13BLOCK1_LINEARE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N9MemLayout13BLOCK2_LINEARE">
+<span id="_CPPv3N9MemLayout13BLOCK2_LINEARE"></span><span id="_CPPv2N9MemLayout13BLOCK2_LINEARE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga5c916a14bc5cee28d56022ab40ae36ddab4df766388478153a0c1b4918cbdd1c5"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">BLOCK2_LINEAR</span></span></span><a class="headerlink" href="#_CPPv4N9MemLayout13BLOCK2_LINEARE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N9MemLayout13BLOCK4_LINEARE">
+<span id="_CPPv3N9MemLayout13BLOCK4_LINEARE"></span><span id="_CPPv2N9MemLayout13BLOCK4_LINEARE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga5c916a14bc5cee28d56022ab40ae36dda7c13541bb001ff82fc2509ca4cad0c0f"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">BLOCK4_LINEAR</span></span></span><a class="headerlink" href="#_CPPv4N9MemLayout13BLOCK4_LINEARE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N9MemLayout13BLOCK8_LINEARE">
+<span id="_CPPv3N9MemLayout13BLOCK8_LINEARE"></span><span id="_CPPv2N9MemLayout13BLOCK8_LINEARE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga5c916a14bc5cee28d56022ab40ae36ddabe987eb9f179933bfbcc7c8605ba104c"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">BLOCK8_LINEAR</span></span></span><a class="headerlink" href="#_CPPv4N9MemLayout13BLOCK8_LINEARE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N9MemLayout14BLOCK16_LINEARE">
+<span id="_CPPv3N9MemLayout14BLOCK16_LINEARE"></span><span id="_CPPv2N9MemLayout14BLOCK16_LINEARE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga5c916a14bc5cee28d56022ab40ae36dda772e92188ceb40dfb17991e0ee5dcec5"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">BLOCK16_LINEAR</span></span></span><a class="headerlink" href="#_CPPv4N9MemLayout14BLOCK16_LINEARE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N9MemLayout14BLOCK32_LINEARE">
+<span id="_CPPv3N9MemLayout14BLOCK32_LINEARE"></span><span id="_CPPv2N9MemLayout14BLOCK32_LINEARE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga5c916a14bc5cee28d56022ab40ae36dda205aade3d39d634120bdeef75e7fdb82"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">BLOCK32_LINEAR</span></span></span><a class="headerlink" href="#_CPPv4N9MemLayout14BLOCK32_LINEARE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N9MemLayout12BLOCK_LINEARE">
+<span id="_CPPv3N9MemLayout12BLOCK_LINEARE"></span><span id="_CPPv2N9MemLayout12BLOCK_LINEARE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga5c916a14bc5cee28d56022ab40ae36dda52117ce5625d2a411acce7e47a368bfa"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">BLOCK_LINEAR</span></span></span><a class="headerlink" href="#_CPPv4N9MemLayout12BLOCK_LINEARE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N9MemLayout2PLE">
+<span id="_CPPv3N9MemLayout2PLE"></span><span id="_CPPv2N9MemLayout2PLE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga5c916a14bc5cee28d56022ab40ae36dda9b7d173b068dc4d5517bfae92d676437"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">PL</span></span></span><a class="headerlink" href="#_CPPv4N9MemLayout2PLE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N9MemLayout2BLE">
+<span id="_CPPv3N9MemLayout2BLE"></span><span id="_CPPv2N9MemLayout2BLE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga5c916a14bc5cee28d56022ab40ae36ddaa6f5350f5a2b25a96d66757f761ce65c"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">BL</span></span></span><a class="headerlink" href="#_CPPv4N9MemLayout2BLE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="cpp enum-class">
+<dt class="sig sig-object cpp" id="_CPPv47Channel">
+<span id="_CPPv37Channel"></span><span id="_CPPv27Channel"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ga04947d15146c6dec36b41161fc48444d"></span><span class="k"><span class="pre">enum</span></span><span class="w"> </span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Channel</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int8_t</span></span><a class="headerlink" href="#_CPPv47Channel" title="Permalink to this definition"></a><br /></dt>
+<dd><p><em>Values:</em></p>
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Channel4NONEE">
+<span id="_CPPv3N7Channel4NONEE"></span><span id="_CPPv2N7Channel4NONEE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga04947d15146c6dec36b41161fc48444dab50339a10e1de285ac99d4c3990b8693"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">NONE</span></span></span><a class="headerlink" href="#_CPPv4N7Channel4NONEE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Channel1XE">
+<span id="_CPPv3N7Channel1XE"></span><span id="_CPPv2N7Channel1XE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga04947d15146c6dec36b41161fc48444da02129bb861061d1a052c592e2dc6b383"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">X</span></span></span><a class="headerlink" href="#_CPPv4N7Channel1XE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Channel1YE">
+<span id="_CPPv3N7Channel1YE"></span><span id="_CPPv2N7Channel1YE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga04947d15146c6dec36b41161fc48444da57cec4137b614c87cb4e24a3d003a3e0"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Y</span></span></span><a class="headerlink" href="#_CPPv4N7Channel1YE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Channel1ZE">
+<span id="_CPPv3N7Channel1ZE"></span><span id="_CPPv2N7Channel1ZE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga04947d15146c6dec36b41161fc48444da21c2e59531c8710156d34a3c30ac81d5"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Z</span></span></span><a class="headerlink" href="#_CPPv4N7Channel1ZE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Channel1WE">
+<span id="_CPPv3N7Channel1WE"></span><span id="_CPPv2N7Channel1WE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga04947d15146c6dec36b41161fc48444da61e9c06ea9a85a5088a499df6458d276"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">W</span></span></span><a class="headerlink" href="#_CPPv4N7Channel1WE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Channel3MAXE">
+<span id="_CPPv3N7Channel3MAXE"></span><span id="_CPPv2N7Channel3MAXE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga04947d15146c6dec36b41161fc48444da26a4b44a837bf97b972628509912b4a5"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">MAX</span></span></span><a class="headerlink" href="#_CPPv4N7Channel3MAXE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="cpp enum-class">
+<dt class="sig sig-object cpp" id="_CPPv412ExtraChannel">
+<span id="_CPPv312ExtraChannel"></span><span id="_CPPv212ExtraChannel"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ga5788ba1da0d9165a566d66509c3d3684"></span><span class="k"><span class="pre">enum</span></span><span class="w"> </span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ExtraChannel</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int8_t</span></span><a class="headerlink" href="#_CPPv412ExtraChannel" title="Permalink to this definition"></a><br /></dt>
+<dd><p><em>Values:</em></p>
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N12ExtraChannel1UE">
+<span id="_CPPv3N12ExtraChannel1UE"></span><span id="_CPPv2N12ExtraChannel1UE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga5788ba1da0d9165a566d66509c3d3684a4c614360da93c0a041b22e537de151eb"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">U</span></span></span><a class="headerlink" href="#_CPPv4N12ExtraChannel1UE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N12ExtraChannel1DE">
+<span id="_CPPv3N12ExtraChannel1DE"></span><span id="_CPPv2N12ExtraChannel1DE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga5788ba1da0d9165a566d66509c3d3684af623e75af30e62bbd73d6df5b50bb7b5"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">D</span></span></span><a class="headerlink" href="#_CPPv4N12ExtraChannel1DE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N12ExtraChannel5POS3DE">
+<span id="_CPPv3N12ExtraChannel5POS3DE"></span><span id="_CPPv2N12ExtraChannel5POS3DE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga5788ba1da0d9165a566d66509c3d3684a2776afef681feb08590d328c79a86709"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">POS3D</span></span></span><a class="headerlink" href="#_CPPv4N12ExtraChannel5POS3DE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="cpp enum-class">
+<dt class="sig sig-object cpp" id="_CPPv49AlphaType">
+<span id="_CPPv39AlphaType"></span><span id="_CPPv29AlphaType"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ga544c5636c55cc0eeba6c493d7029c39e"></span><span class="k"><span class="pre">enum</span></span><span class="w"> </span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">AlphaType</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int8_t</span></span><a class="headerlink" href="#_CPPv49AlphaType" title="Permalink to this definition"></a><br /></dt>
+<dd><p><em>Values:</em></p>
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N9AlphaType10ASSOCIATEDE">
+<span id="_CPPv3N9AlphaType10ASSOCIATEDE"></span><span id="_CPPv2N9AlphaType10ASSOCIATEDE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga544c5636c55cc0eeba6c493d7029c39eaee8390da0906b3e297d8f30e7741fbf0"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ASSOCIATED</span></span></span><a class="headerlink" href="#_CPPv4N9AlphaType10ASSOCIATEDE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N9AlphaType12UNASSOCIATEDE">
+<span id="_CPPv3N9AlphaType12UNASSOCIATEDE"></span><span id="_CPPv2N9AlphaType12UNASSOCIATEDE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga544c5636c55cc0eeba6c493d7029c39eaef02be8a095271a11a544922fd3af87d"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UNASSOCIATED</span></span></span><a class="headerlink" href="#_CPPv4N9AlphaType12UNASSOCIATEDE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="cpp enum-class">
+<dt class="sig sig-object cpp" id="_CPPv47Swizzle">
+<span id="_CPPv37Swizzle"></span><span id="_CPPv27Swizzle"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gadc01b5523e7b0b811c5fa302162497ba"></span><span class="k"><span class="pre">enum</span></span><span class="w"> </span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Swizzle</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><a class="headerlink" href="#_CPPv47Swizzle" title="Permalink to this definition"></a><br /></dt>
+<dd><p><em>Values:</em></p>
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_0000E">
+<span id="_CPPv3N7Swizzle6S_0000E"></span><span id="_CPPv2N7Swizzle6S_0000E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa8ca6c8a789096c4ce0ab49ac14bb7064"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_0000</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_0000E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_1000E">
+<span id="_CPPv3N7Swizzle6S_1000E"></span><span id="_CPPv2N7Swizzle6S_1000E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa3c5d857dc28c00f4ee48a01d6e4cd28e"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_1000</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_1000E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_0001E">
+<span id="_CPPv3N7Swizzle6S_0001E"></span><span id="_CPPv2N7Swizzle6S_0001E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baaa970e5750865ead74a6839e822e1c27f"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_0001</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_0001E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_XYZWE">
+<span id="_CPPv3N7Swizzle6S_XYZWE"></span><span id="_CPPv2N7Swizzle6S_XYZWE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baac5c757113256793138279a50f6d59b9b"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_XYZW</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_XYZWE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_ZYXWE">
+<span id="_CPPv3N7Swizzle6S_ZYXWE"></span><span id="_CPPv2N7Swizzle6S_ZYXWE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa2700738a3d0156f0fada6c335da7cc7c"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_ZYXW</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_ZYXWE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_WXYZE">
+<span id="_CPPv3N7Swizzle6S_WXYZE"></span><span id="_CPPv2N7Swizzle6S_WXYZE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa5ce3d3579d5602ddeb48002e6888934b"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_WXYZ</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_WXYZE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_WZYXE">
+<span id="_CPPv3N7Swizzle6S_WZYXE"></span><span id="_CPPv2N7Swizzle6S_WZYXE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa8b24595dc4e7ce09da32733d065af09d"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_WZYX</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_WZYXE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_YZWXE">
+<span id="_CPPv3N7Swizzle6S_YZWXE"></span><span id="_CPPv2N7Swizzle6S_YZWXE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa76ad5933a992c8f0b53e2d732af24629"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_YZWX</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_YZWXE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_XYZ1E">
+<span id="_CPPv3N7Swizzle6S_XYZ1E"></span><span id="_CPPv2N7Swizzle6S_XYZ1E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa7758612fb8c478da4cee950b8c6e07cf"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_XYZ1</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_XYZ1E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_XYZ0E">
+<span id="_CPPv3N7Swizzle6S_XYZ0E"></span><span id="_CPPv2N7Swizzle6S_XYZ0E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baadbf8b8236d4fb9d61d781e2e07340ba7"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_XYZ0</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_XYZ0E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_YZW1E">
+<span id="_CPPv3N7Swizzle6S_YZW1E"></span><span id="_CPPv2N7Swizzle6S_YZW1E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baaf915aed71e1c4d476542822412e43e88"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_YZW1</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_YZW1E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_XXX1E">
+<span id="_CPPv3N7Swizzle6S_XXX1E"></span><span id="_CPPv2N7Swizzle6S_XXX1E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa49eef23adf4618b7c8ff299205fbc8a0"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_XXX1</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_XXX1E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_XZY1E">
+<span id="_CPPv3N7Swizzle6S_XZY1E"></span><span id="_CPPv2N7Swizzle6S_XZY1E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baad26cf02b5c5c40b88cfcc6c4cbf5bd8f"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_XZY1</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_XZY1E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_ZYX1E">
+<span id="_CPPv3N7Swizzle6S_ZYX1E"></span><span id="_CPPv2N7Swizzle6S_ZYX1E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa9f58e28887bfdbe1e0221ab07f535588"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_ZYX1</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_ZYX1E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_ZYX0E">
+<span id="_CPPv3N7Swizzle6S_ZYX0E"></span><span id="_CPPv2N7Swizzle6S_ZYX0E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baad01c402eaace430387d689f9035dfc19"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_ZYX0</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_ZYX0E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_WZY1E">
+<span id="_CPPv3N7Swizzle6S_WZY1E"></span><span id="_CPPv2N7Swizzle6S_WZY1E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa28efb066b8c4761e497e17dd670e1364"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_WZY1</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_WZY1E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_X000E">
+<span id="_CPPv3N7Swizzle6S_X000E"></span><span id="_CPPv2N7Swizzle6S_X000E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa3f73985f309547f35d7cc8999ba28111"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_X000</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_X000E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_0X00E">
+<span id="_CPPv3N7Swizzle6S_0X00E"></span><span id="_CPPv2N7Swizzle6S_0X00E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa7a5cbde2d0865b7215bb6542b8221fd7"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_0X00</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_0X00E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_00X0E">
+<span id="_CPPv3N7Swizzle6S_00X0E"></span><span id="_CPPv2N7Swizzle6S_00X0E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baaff6114fd6b7ac8e2b9fab0cb486117d7"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_00X0</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_00X0E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_000XE">
+<span id="_CPPv3N7Swizzle6S_000XE"></span><span id="_CPPv2N7Swizzle6S_000XE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa3a338cf8fb5975e741570d1bdc53b7b1"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_000X</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_000XE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_Y000E">
+<span id="_CPPv3N7Swizzle6S_Y000E"></span><span id="_CPPv2N7Swizzle6S_Y000E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baaa97fa2198ca51e76718dfd83858bbf24"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_Y000</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_Y000E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_0Y00E">
+<span id="_CPPv3N7Swizzle6S_0Y00E"></span><span id="_CPPv2N7Swizzle6S_0Y00E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa1b77826a31c7657b31ac84f11f348060"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_0Y00</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_0Y00E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_00Y0E">
+<span id="_CPPv3N7Swizzle6S_00Y0E"></span><span id="_CPPv2N7Swizzle6S_00Y0E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa95fda17239114aec2b50ad13147a66f3"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_00Y0</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_00Y0E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_000YE">
+<span id="_CPPv3N7Swizzle6S_000YE"></span><span id="_CPPv2N7Swizzle6S_000YE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa4c030459829e54fcfdda2c97cb4ef808"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_000Y</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_000YE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_0XY0E">
+<span id="_CPPv3N7Swizzle6S_0XY0E"></span><span id="_CPPv2N7Swizzle6S_0XY0E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baaf22743c48f61df676a988c709d870e22"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_0XY0</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_0XY0E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_XXXYE">
+<span id="_CPPv3N7Swizzle6S_XXXYE"></span><span id="_CPPv2N7Swizzle6S_XXXYE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa86c451c3a9ba684eecbb6856cab80efd"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_XXXY</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_XXXYE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_YYYXE">
+<span id="_CPPv3N7Swizzle6S_YYYXE"></span><span id="_CPPv2N7Swizzle6S_YYYXE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa7bc6bf3e22e60e399a5a0e1fb4e4158b"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_YYYX</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_YYYXE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_0YX0E">
+<span id="_CPPv3N7Swizzle6S_0YX0E"></span><span id="_CPPv2N7Swizzle6S_0YX0E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baaa504b320d9f677dac0c2ad84e0e02c98"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_0YX0</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_0YX0E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_X00YE">
+<span id="_CPPv3N7Swizzle6S_X00YE"></span><span id="_CPPv2N7Swizzle6S_X00YE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa6ddd2dea3634407edd7e76ca0b326adb"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_X00Y</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_X00YE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_Y00XE">
+<span id="_CPPv3N7Swizzle6S_Y00XE"></span><span id="_CPPv2N7Swizzle6S_Y00XE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa72ec05722b5949114d9680b3507d4baa"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_Y00X</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_Y00XE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_X001E">
+<span id="_CPPv3N7Swizzle6S_X001E"></span><span id="_CPPv2N7Swizzle6S_X001E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa0fe1a978f66fdac3d55bcf1c686b9fb2"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_X001</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_X001E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_XY01E">
+<span id="_CPPv3N7Swizzle6S_XY01E"></span><span id="_CPPv2N7Swizzle6S_XY01E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baad7bf67691ba127939961cfe26f11566a"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_XY01</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_XY01E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_XY00E">
+<span id="_CPPv3N7Swizzle6S_XY00E"></span><span id="_CPPv2N7Swizzle6S_XY00E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa8b4e3c8cfaeecbd88644065e70cf47cd"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_XY00</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_XY00E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_0XZ0E">
+<span id="_CPPv3N7Swizzle6S_0XZ0E"></span><span id="_CPPv2N7Swizzle6S_0XZ0E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa4c8d656ec239a3d119b13bb4e3058e32"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_0XZ0</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_0XZ0E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_0ZX0E">
+<span id="_CPPv3N7Swizzle6S_0ZX0E"></span><span id="_CPPv2N7Swizzle6S_0ZX0E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa0629dd2fcf610388dee275c84ef36eaf"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_0ZX0</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_0ZX0E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_XZY0E">
+<span id="_CPPv3N7Swizzle6S_XZY0E"></span><span id="_CPPv2N7Swizzle6S_XZY0E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa3c8aef32fc34af258ecff66aad709620"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_XZY0</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_XZY0E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_YZX1E">
+<span id="_CPPv3N7Swizzle6S_YZX1E"></span><span id="_CPPv2N7Swizzle6S_YZX1E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baaa4f3791d2f3f591c3e78411171d03d82"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_YZX1</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_YZX1E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_ZYW1E">
+<span id="_CPPv3N7Swizzle6S_ZYW1E"></span><span id="_CPPv2N7Swizzle6S_ZYW1E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baaaa31d809eb0f61d1c796a7e19a8b52e7"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_ZYW1</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_ZYW1E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_0YX1E">
+<span id="_CPPv3N7Swizzle6S_0YX1E"></span><span id="_CPPv2N7Swizzle6S_0YX1E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa4dbf2d8161c7a56b5d27db9633633baf"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_0YX1</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_0YX1E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_XYXZE">
+<span id="_CPPv3N7Swizzle6S_XYXZE"></span><span id="_CPPv2N7Swizzle6S_XYXZE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa5d9e9ba484f8c4349af32b0a20e03cf5"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_XYXZ</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_XYXZE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_YXZXE">
+<span id="_CPPv3N7Swizzle6S_YXZXE"></span><span id="_CPPv2N7Swizzle6S_YXZXE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa97d5120ef5bdfbac145c452bbaa8b28a"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_YXZX</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_YXZXE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_XZ00E">
+<span id="_CPPv3N7Swizzle6S_XZ00E"></span><span id="_CPPv2N7Swizzle6S_XZ00E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baace13dd129b88e03ed9197d62cd77cc94"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_XZ00</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_XZ00E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_WYXZE">
+<span id="_CPPv3N7Swizzle6S_WYXZE"></span><span id="_CPPv2N7Swizzle6S_WYXZE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa2c9074cd617f3aa751b885c2191031df"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_WYXZ</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_WYXZE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_YX00E">
+<span id="_CPPv3N7Swizzle6S_YX00E"></span><span id="_CPPv2N7Swizzle6S_YX00E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baacb51542cd6f0a440902883cf43448000"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_YX00</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_YX00E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_YX01E">
+<span id="_CPPv3N7Swizzle6S_YX01E"></span><span id="_CPPv2N7Swizzle6S_YX01E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa1f88cb60540f4440ccd9dec7e3f3a13a"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_YX01</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_YX01E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_00YXE">
+<span id="_CPPv3N7Swizzle6S_00YXE"></span><span id="_CPPv2N7Swizzle6S_00YXE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa8226fc67f5087b13ed53e064169dbd4f"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_00YX</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_00YXE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_00XYE">
+<span id="_CPPv3N7Swizzle6S_00XYE"></span><span id="_CPPv2N7Swizzle6S_00XYE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baaafab0bbcab7b83ecaf84827a97375134"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_00XY</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_00XYE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_0XY1E">
+<span id="_CPPv3N7Swizzle6S_0XY1E"></span><span id="_CPPv2N7Swizzle6S_0XY1E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baae5affbb5e1d3d9ae1c6fa0ef1b2509c2"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_0XY1</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_0XY1E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_0X01E">
+<span id="_CPPv3N7Swizzle6S_0X01E"></span><span id="_CPPv2N7Swizzle6S_0X01E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa764ea01565ca9dea31340d328a945977"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_0X01</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_0X01E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_YZXWE">
+<span id="_CPPv3N7Swizzle6S_YZXWE"></span><span id="_CPPv2N7Swizzle6S_YZXWE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baaf672d8b68f9c2d4e0314fe6ff59454ed"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_YZXW</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_YZXWE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_YW00E">
+<span id="_CPPv3N7Swizzle6S_YW00E"></span><span id="_CPPv2N7Swizzle6S_YW00E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa3ff1d44aad08790bfd0302e54123140c"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_YW00</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_YW00E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_XYW0E">
+<span id="_CPPv3N7Swizzle6S_XYW0E"></span><span id="_CPPv2N7Swizzle6S_XYW0E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa23927b72c0170ad9ac55c354def7e2e4"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_XYW0</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_XYW0E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_YZW0E">
+<span id="_CPPv3N7Swizzle6S_YZW0E"></span><span id="_CPPv2N7Swizzle6S_YZW0E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa89eb9c712e5a5e345a0ce3d34a9a98a5"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_YZW0</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_YZW0E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_YZ00E">
+<span id="_CPPv3N7Swizzle6S_YZ00E"></span><span id="_CPPv2N7Swizzle6S_YZ00E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baadd9e4485827854d7251e67e71ff8888c"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_YZ00</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_YZ00E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_00X1E">
+<span id="_CPPv3N7Swizzle6S_00X1E"></span><span id="_CPPv2N7Swizzle6S_00X1E"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa1a8273be48011fd96cdbad72ec72cdc3"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_00X1</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_00X1E" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle6S_0ZXYE">
+<span id="_CPPv3N7Swizzle6S_0ZXYE"></span><span id="_CPPv2N7Swizzle6S_0ZXYE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baa5bda17812bad0809d8b21756260243c7"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_0ZXY</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle6S_0ZXYE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N7Swizzle13S_UNSUPPORTEDE">
+<span id="_CPPv3N7Swizzle13S_UNSUPPORTEDE"></span><span id="_CPPv2N7Swizzle13S_UNSUPPORTEDE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ggadc01b5523e7b0b811c5fa302162497baaec6294d8691437da783c2e158ac777ac"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">S_UNSUPPORTED</span></span></span><a class="headerlink" href="#_CPPv4N7Swizzle13S_UNSUPPORTEDE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="cpp enum-class">
+<dt class="sig sig-object cpp" id="_CPPv49ByteOrder">
+<span id="_CPPv39ByteOrder"></span><span id="_CPPv29ByteOrder"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ga5f4996b34fd86cb881f08fd90f4ae35e"></span><span class="k"><span class="pre">enum</span></span><span class="w"> </span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ByteOrder</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int8_t</span></span><a class="headerlink" href="#_CPPv49ByteOrder" title="Permalink to this definition"></a><br /></dt>
+<dd><p><em>Values:</em></p>
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N9ByteOrder3LSBE">
+<span id="_CPPv3N9ByteOrder3LSBE"></span><span id="_CPPv2N9ByteOrder3LSBE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga5f4996b34fd86cb881f08fd90f4ae35ea6ea6688cc99719eb4624eef718719215"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">LSB</span></span></span><a class="headerlink" href="#_CPPv4N9ByteOrder3LSBE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N9ByteOrder3MSBE">
+<span id="_CPPv3N9ByteOrder3MSBE"></span><span id="_CPPv2N9ByteOrder3MSBE"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gga5f4996b34fd86cb881f08fd90f4ae35eae86b28b55eaf8feb03e24730be892314"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">MSB</span></span></span><a class="headerlink" href="#_CPPv4N9ByteOrder3MSBE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-functions">Functions</p>
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv411MakeSwizzle7Channel7Channel7Channel7Channel">
+<span id="_CPPv311MakeSwizzle7Channel7Channel7Channel7Channel"></span><span id="_CPPv211MakeSwizzle7Channel7Channel7Channel7Channel"></span><span id="MakeSwizzle__Channel.Channel.Channel.Channel"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gabda265dd58098753687257bc2d9991eb"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv47Swizzle" title="Swizzle"><span class="n"><span class="pre">Swizzle</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">MakeSwizzle</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv47Channel" title="Channel"><span class="n"><span class="pre">Channel</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">x</span></span>, <a class="reference internal" href="#_CPPv47Channel" title="Channel"><span class="n"><span class="pre">Channel</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">y</span></span>, <a class="reference internal" href="#_CPPv47Channel" title="Channel"><span class="n"><span class="pre">Channel</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">z</span></span>, <a class="reference internal" href="#_CPPv47Channel" title="Channel"><span class="n"><span class="pre">Channel</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">w</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv411MakeSwizzle7Channel7Channel7Channel7Channel" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv411GetChannels7Swizzle">
+<span id="_CPPv311GetChannels7Swizzle"></span><span id="_CPPv211GetChannels7Swizzle"></span><span id="GetChannels__Swizzle"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ga072edd90f8c14752fddab5136337ccd8"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">array</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv47Channel" title="Channel"><span class="n"><span class="pre">Channel</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="m"><span class="pre">4</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">GetChannels</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv47Swizzle" title="Swizzle"><span class="n"><span class="pre">Swizzle</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">swizzle</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv411GetChannels7Swizzle" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv414GetNumChannels7Swizzle">
+<span id="_CPPv314GetNumChannels7Swizzle"></span><span id="_CPPv214GetNumChannels7Swizzle"></span><span id="GetNumChannels__Swizzle"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ga949938805e0f1e117c3b95113e3be0b7"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">GetNumChannels</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv47Swizzle" title="Swizzle"><span class="n"><span class="pre">Swizzle</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">swizzle</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv414GetNumChannels7Swizzle" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv411MakePackingRK13PackingParams">
+<span id="_CPPv311MakePackingRK13PackingParams"></span><span id="_CPPv211MakePackingRK13PackingParams"></span><span id="MakePacking__PackingParamsCR"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ga8c92261f24e903a1e07172af1b20afea"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">MakePacking</span></span></span><span class="sig-paren">(</span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="n"><span class="pre">PackingParams</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">params</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv411MakePackingRK13PackingParams" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv49GetParams7Packing">
+<span id="_CPPv39GetParams7Packing"></span><span id="_CPPv29GetParams7Packing"></span><span id="GetParams__Packing"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ga1b5ee34180b56479689609ea832f0daa"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">PackingParams</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">GetParams</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv49GetParams7Packing" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv416GetNumComponents7Packing">
+<span id="_CPPv316GetNumComponents7Packing"></span><span id="_CPPv216GetNumComponents7Packing"></span><span id="GetNumComponents__Packing"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ga24ee36de849d99cd2aceab5b2bcfadb3"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">GetNumComponents</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv416GetNumComponents7Packing" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv419GetBitsPerComponent7Packing">
+<span id="_CPPv319GetBitsPerComponent7Packing"></span><span id="_CPPv219GetBitsPerComponent7Packing"></span><span id="GetBitsPerComponent__Packing"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ga3d1b79b6e9b0af4af7a7f41c88d8f06c"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">array</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="m"><span class="pre">4</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">GetBitsPerComponent</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv419GetBitsPerComponent7Packing" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv415GetBitsPerPixel7Packing">
+<span id="_CPPv315GetBitsPerPixel7Packing"></span><span id="_CPPv215GetBitsPerPixel7Packing"></span><span id="GetBitsPerPixel__Packing"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ga822463bf76c5383c52b88ae7155b53d5"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">GetBitsPerPixel</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv415GetBitsPerPixel7Packing" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv412GetAlignment7Packing">
+<span id="_CPPv312GetAlignment7Packing"></span><span id="_CPPv212GetAlignment7Packing"></span><span id="GetAlignment__Packing"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ga8effddb03bafd403d57ff90cf68b5916"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">GetAlignment</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv412GetAlignment7Packing" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4lsRNSt7ostreamE8DataKind">
+<span id="_CPPv3lsRNSt7ostreamE8DataKind"></span><span id="_CPPv2lsRNSt7ostreamE8DataKind"></span><span id="lshift-operator__osR.DataKind"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ga57f24590a61ed18fd381e041796f0a02"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">ostream</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="sig-name descname"><span class="k"><span class="pre">operator</span></span><span class="o"><span class="pre">&lt;&lt;</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">ostream</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">out</span></span>, <a class="reference internal" href="#_CPPv48DataKind" title="DataKind"><span class="n"><span class="pre">DataKind</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">dataKind</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4lsRNSt7ostreamE8DataKind" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4lsRNSt7ostreamE7Packing">
+<span id="_CPPv3lsRNSt7ostreamE7Packing"></span><span id="_CPPv2lsRNSt7ostreamE7Packing"></span><span id="lshift-operator__osR.Packing"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ga7db2fb1665a06f0129298d8b17613064"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">ostream</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="sig-name descname"><span class="k"><span class="pre">operator</span></span><span class="o"><span class="pre">&lt;&lt;</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">ostream</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">out</span></span>, <a class="reference internal" href="#_CPPv47Packing" title="Packing"><span class="n"><span class="pre">Packing</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">packing</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4lsRNSt7ostreamE7Packing" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4lsRNSt7ostreamE9MemLayout">
+<span id="_CPPv3lsRNSt7ostreamE9MemLayout"></span><span id="_CPPv2lsRNSt7ostreamE9MemLayout"></span><span id="lshift-operator__osR.MemLayout"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ga02f23422c57c483dbadc47814520a709"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">ostream</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="sig-name descname"><span class="k"><span class="pre">operator</span></span><span class="o"><span class="pre">&lt;&lt;</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">ostream</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">out</span></span>, <a class="reference internal" href="#_CPPv49MemLayout" title="MemLayout"><span class="n"><span class="pre">MemLayout</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">memLayout</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4lsRNSt7ostreamE9MemLayout" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4lsRNSt7ostreamE7Channel">
+<span id="_CPPv3lsRNSt7ostreamE7Channel"></span><span id="_CPPv2lsRNSt7ostreamE7Channel"></span><span id="lshift-operator__osR.Channel"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ga0dd654a9c1c7f8169651168b2bebe7af"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">ostream</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="sig-name descname"><span class="k"><span class="pre">operator</span></span><span class="o"><span class="pre">&lt;&lt;</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">ostream</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">out</span></span>, <a class="reference internal" href="#_CPPv47Channel" title="Channel"><span class="n"><span class="pre">Channel</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">swizzleChannel</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4lsRNSt7ostreamE7Channel" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4lsRNSt7ostreamE7Swizzle">
+<span id="_CPPv3lsRNSt7ostreamE7Swizzle"></span><span id="_CPPv2lsRNSt7ostreamE7Swizzle"></span><span id="lshift-operator__osR.Swizzle"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gae1fac6c2807849613f695f0b6fc473e3"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">ostream</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="sig-name descname"><span class="k"><span class="pre">operator</span></span><span class="o"><span class="pre">&lt;&lt;</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">ostream</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">out</span></span>, <a class="reference internal" href="#_CPPv47Swizzle" title="Swizzle"><span class="n"><span class="pre">Swizzle</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">swizzle</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4lsRNSt7ostreamE7Swizzle" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4lsRNSt7ostreamE9ByteOrder">
+<span id="_CPPv3lsRNSt7ostreamE9ByteOrder"></span><span id="_CPPv2lsRNSt7ostreamE9ByteOrder"></span><span id="lshift-operator__osR.ByteOrder"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1gad6555517721099a61b1e1a760f2bba3e"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">ostream</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="sig-name descname"><span class="k"><span class="pre">operator</span></span><span class="o"><span class="pre">&lt;&lt;</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">ostream</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">out</span></span>, <a class="reference internal" href="#_CPPv49ByteOrder" title="ByteOrder"><span class="n"><span class="pre">ByteOrder</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">byteOrder</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4lsRNSt7ostreamE9ByteOrder" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+</div>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-variables">Variables</p>
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv49byteOrder">
+<span id="_CPPv39byteOrder"></span><span id="_CPPv29byteOrder"></span><span id="byteOrder__ByteOrder"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ga12c8ed709454181ea901d18d21e2765b"></span><a class="reference internal" href="#_CPPv49ByteOrder" title="ByteOrder"><span class="n"><span class="pre">ByteOrder</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">byteOrder</span></span></span><a class="headerlink" href="#_CPPv49byteOrder" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv47swizzle">
+<span id="_CPPv37swizzle"></span><span id="_CPPv27swizzle"></span><span id="swizzle__Swizzle"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ga500667fd11c008703d1a34e38be747bc"></span><a class="reference internal" href="#_CPPv47Swizzle" title="Swizzle"><span class="n"><span class="pre">Swizzle</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">swizzle</span></span></span><a class="headerlink" href="#_CPPv47swizzle" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv44bits">
+<span id="_CPPv34bits"></span><span id="_CPPv24bits"></span><span id="bits__std::array:int32_t.(4):"></span><span class="target" id="group__NVCV__CPP__CORE__DATALAYOUT_1ga93e492869b94343854bb7103b8c4cbad"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">array</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="group__NVCV__C__TYPES.html#_CPPv47int32_t" title="int32_t"><span class="n"><span class="pre">int32_t</span></span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">(</span></span><span class="m"><span class="pre">4</span></span><span class="p"><span class="pre">)</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">bits</span></span></span><a class="headerlink" href="#_CPPv44bits" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+</div>
+<dl class="cpp struct">
+<dt class="sig sig-object cpp" id="_CPPv4N4nvcv13PackingParamsE">
+<span id="_CPPv3N4nvcv13PackingParamsE"></span><span id="_CPPv2N4nvcv13PackingParamsE"></span><span id="nvcv::PackingParams"></span><span class="target" id="structnvcv_1_1PackingParams"></span><span class="k"><span class="pre">struct</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">PackingParams</span></span></span><br /></dt>
+<dd><div class="docutils container">
+<em>#include &lt;DataLayout.hpp&gt;</em></div>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="group__NVCV__CPP__CORE__COLORSPEC.html" class="btn btn-neutral float-left" title="Color Models" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="group__NVCV__CPP__CORE__DATATYPE.html" class="btn btn-neutral float-right" title="Data types" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022-2024, NVIDIA..
+      <span class="lastupdated">Last updated on Jun 28, 2024.
+      </span></p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(false);
+      });
+  </script> 
+
+</body>
+</html>

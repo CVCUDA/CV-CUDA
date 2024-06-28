@@ -1,7 +1,0 @@
-:orphan:
-
-Resize Crop
-===========
-
-.. doxygengroup:: NVCV_C_ALGORITHM__RESIZE_CROP
-   :project: cvcuda

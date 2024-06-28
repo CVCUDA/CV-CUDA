@@ -17,7 +17,7 @@
 .. _v0.2.0-alpha:
 
 v0.2.0-alpha
-========
+============
 
 CV-CUDA 0.2.0 is the first open-source release of the project.
 
@@ -61,7 +61,7 @@ Refer to documentation of the sample applications for dependencies.
 
 
 Known Issues/Limitations
-------------
+------------------------
 *  Performance optimization of variable shape versions of the operators will be addressed in the next release.
 *  Improvements to APIs of some operators are expected in the next release.
 *  Morphology operator - performance will be optimized in the next release
