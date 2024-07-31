@@ -18,7 +18,7 @@
 #include "BenchUtils.hpp"
 
 #include <cvcuda/OpResizeCropConvertReformat.hpp>
-#include <nvcv/cuda/TypeTraits.hpp>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 
 #include <nvbench/nvbench.cuh>
 

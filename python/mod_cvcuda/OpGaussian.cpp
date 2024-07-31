@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +21,7 @@
 #include <common/String.hpp>
 #include <cvcuda/OpGaussian.hpp>
 #include <cvcuda/Types.h>
-#include <nvcv/cuda/TypeTraits.hpp>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/python/ImageBatchVarShape.hpp>
 #include <nvcv/python/ResourceGuard.hpp>
 #include <nvcv/python/Stream.hpp>
@@ -110,7 +110,7 @@ void ExportOpGaussian(py::module &m)
     m.def("gaussian", &Gaussian, "src"_a, "kernel_size"_a, "sigma"_a, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT,
           py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
-        cvcuda.gaussian(src : nvcv.Tensor, kernel_size: Tuple [int,int], sigma : Tuple [double,double], border : border_mode:NVCVBorderType, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
+        cvcuda.gaussian(src: nvcv.Tensor, kernel_size: Tuple[int, int], sigma: Tuple[double, double], border: border_mode: cvcuda.Border, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
         Executes the Gaussian operation on the given cuda stream.
 
         See also:
@@ -118,14 +118,14 @@ void ExportOpGaussian(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (Tensor): Input tensor containing one or more images.
-            kernel_size (Tuple [int,int]): Kernel width, height.
-            sigma (Tuple [double,double]): Gaussian kernel standard deviation in X,Y directions.
-            border (NVCVBorderType, optional): Border mode to be used when accessing elements outside input image.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            kernel_size (Tuple[int, int]): Kernel width, height.
+            sigma (Tuple[double, double]): Gaussian kernel standard deviation in X,Y directions.
+            border (cvcuda.Border, optional): Border mode to be used when accessing elements outside input image.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output tensor.
+            nvcv.Tensor: The output tensor.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -135,7 +135,7 @@ void ExportOpGaussian(py::module &m)
     m.def("gaussian_into", &GaussianInto, "dst"_a, "src"_a, "kernel_size"_a, "sigma"_a,
           "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
-        cvcuda.gaussian_into(dst : nvcv.Tensor, src :  Tensor, kernel_size: Tuple [int,int], sigma : Tuple [double,double], border : border_mode:NVCVBorderType, stream: Optional[nvcv.cuda.Stream] = None)
+        cvcuda.gaussian_into(dst: nvcv.Tensor, src:  Tensor, kernel_size: Tuple[int, int], sigma: Tuple[double, double], border: border_mode: cvcuda.Border, stream: Optional[nvcv.cuda.Stream] = None)
         Executes the Gaussian operation on the given cuda stream.
 
         See also:
@@ -143,12 +143,12 @@ void ExportOpGaussian(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (Tensor): Output tensor to store the result of the operation.
-            src (Tensor): Input tensor containing one or more images.
-            kernel_size (Tuple [int,int]): Kernel width, height.
-            sigma (Tuple [double,double]): Gaussian kernel standard deviation in X,Y directions.
-            border (NVCVBorderType, optional): Border mode to be used when accessing elements outside input image.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            dst (nvcv.Tensor): Output tensor to store the result of the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            kernel_size (Tuple[int, int]): Kernel width, height.
+            sigma (Tuple[double, double]): Gaussian kernel standard deviation in X,Y directions.
+            border (cvcuda.Border, optional): Border mode to be used when accessing elements outside input image.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None
@@ -161,7 +161,7 @@ void ExportOpGaussian(py::module &m)
     m.def("gaussian", &VarShapeGaussian, "src"_a, "max_kernel_size"_a, "kernel_size"_a, "sigma"_a,
           "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
-        cvcuda.gaussian(src : nvcv.ImageBatchVarShape, kernel_size: nvcv.Tensor, sigma : nvcv.Tensor, border : border_mode:NVCVBorderType, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+        cvcuda.gaussian(src: nvcv.ImageBatchVarShape, kernel_size: nvcv.Tensor, sigma: nvcv.Tensor, border: border_mode: cvcuda.Border, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
 
         Executes the Gaussian operation on the given cuda stream.
 
@@ -170,14 +170,14 @@ void ExportOpGaussian(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            kernel_size (Tensor): Kernel width, height.
-            sigma (Tensor): Gaussian kernel standard deviation in X,Y directions.
-            border (NVCVBorderType, optional): Border mode to be used when accessing elements outside input image.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            kernel_size (nvcv.Tensor): Kernel width, height.
+            sigma (nvcv.Tensor): Gaussian kernel standard deviation in X,Y directions.
+            border (cvcuda.Border, optional): Border mode to be used when accessing elements outside input image.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.ImageBatchVarShape: The output image batch.
+            nvcv.ImageBatchVarShape: The output image batch.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -187,7 +187,7 @@ void ExportOpGaussian(py::module &m)
     m.def("gaussian_into", &VarShapeGaussianInto, "dst"_a, "src"_a, "max_kernel_size"_a, "kernel_size"_a, "sigma"_a,
           "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
-        cvcuda.gaussian_into(dst : nvcv.ImageBatchVarShape, src : nvcv.ImageBatchVarShape, kernel_size: nvcv.Tensor, sigma : nvcv.Tensor, border : border_mode:NVCVBorderType, stream: Optional[nvcv.cuda.Stream] = None)
+        cvcuda.gaussian_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, kernel_size: nvcv.Tensor, sigma: nvcv.Tensor, border: border_mode: cvcuda.Border, stream: Optional[nvcv.cuda.Stream] = None)
 
 	Executes the Gaussian operation on the given cuda stream.
 
@@ -196,12 +196,12 @@ void ExportOpGaussian(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
-            kernel_size (Tensor): Kernel width, height.
-            sigma (Tensor): Gaussian kernel standard deviation in X,Y directions.
-            border (NVCVBorderType, optional): Border mode to be used when accessing elements outside input image.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            dst (nvcv.ImageBatchVarShape): Output image batch containing the result of the operation.
+            kernel_size (nvcv.Tensor): Kernel width, height.
+            sigma (nvcv.Tensor): Gaussian kernel standard deviation in X,Y directions.
+            border (cvcuda.Border, optional): Border mode to be used when accessing elements outside input image.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

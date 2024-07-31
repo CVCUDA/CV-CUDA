@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -134,7 +134,32 @@ void ExportOpBrightnessContrast(py::module &m)
 	cvcuda.brightness_contrast(src: nvcv.Tensor, brightness: nvcv.Tensor, contrast: nvcv.Tensor, brightness_shift: nvcv.Tensor, contrast_center: nvcv.Tensor, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Adjusts the brightness and contrast of the images according to the formula:
-        `out = brightness_shift + brightness * (contrast_center + contrast * (in - contrast_center))`.
+        ``out = brightness_shift + brightness * (contrast_center + contrast * (in - contrast_center))``.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the BrightnessContrast operator
+            for more details and usage examples.
+
+        Args:
+            src (nvcv.Tensor): Input tensor.
+            brightness (nvcv.Tensor, optional): Optional tensor describing brightness multiplier.
+                If specified, it must contain only 1 element. If not specified, the neutral ``1.``
+                is used.
+            contrast (nvcv.Tensor, optional): Optional tensor describing contrast multiplier.
+                If specified, it must contain only 1 element. If not specified, the neutral ``1.``
+                is used.
+            brightness_shift (nvcv.Tensor, optional): Optional tensor describing brightness shift.
+                If specified, it must contain only 1 element. If not specified, the neutral ``0.``
+                is used.
+            contrast_center (nvcv.Tensor, optional): Optional tensor describing contrast center.
+                If specified, it must contain only 1 element. If not specified, the middle of the
+                assumed input type range is used. For floats it is ``0.5``, for unsigned integer
+                types it is ``2 * (number_of_bits - 1)``, for signed integer types it is
+                ``2 * (number_of_bits - 2)``.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            nvcv.Tensor: The output tensor.
     )pbdoc");
     m.def("brightness_contrast_into", &BrightnessContrastInto, "dst"_a, "src"_a, "brightness"_a = nullptr,
           "contrast"_a = nullptr, "brightness_shift"_a = nullptr, "contrast_center"_a = nullptr, py::kw_only(),
@@ -144,7 +169,33 @@ void ExportOpBrightnessContrast(py::module &m)
 	cvcuda.brightness_contrast_into(dst: nvcv.Tensor, src: nvcv.Tensor, brightness: nvcv.Tensor, contrast: nvcv.Tensor, brightness_shift: nvcv.Tensor, contrast_center: nvcv.Tensor, stream: Optional[nvcv.cuda.Stream] = None)
 
         Adjusts the brightness and contrast of the images according to the formula:
-        `out = brightness_shift + brightness * (contrast_center + contrast * (in - contrast_center))`.
+        ``out = brightness_shift + brightness * (contrast_center + contrast * (in - contrast_center))``.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the BrightnessContrast operator
+            for more details and usage examples.
+
+        Args:
+            src (nvcv.Tensor): Input tensor.
+            dst (nvcv.Tensor): Output tensor containing the result of the operation.
+            brightness (nvcv.Tensor, optional): Optional tensor describing brightness multiplier.
+                If specified, it must contain only 1 element. If not specified, the neutral ``1.``
+                is used.
+            contrast (nvcv.Tensor, optional): Optional tensor describing contrast multiplier.
+                If specified, it must contain only 1 element. If not specified, the neutral ``1.``
+                is used.
+            brightness_shift (nvcv.Tensor, optional): Optional tensor describing brightness shift.
+                If specified, it must contain only 1 element. If not specified, the neutral ``0.``
+                is used.
+            contrast_center (nvcv.Tensor, optional): Optional tensor describing contrast center.
+                If specified, it must contain only 1 element. If not specified, the middle of the
+                assumed input type range is used. For floats it is ``0.5``, for unsigned integer
+                types it is ``2 * (number_of_bits - 1)``, for signed integer types it is
+                ``2 * (number_of_bits - 2)``.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
     )pbdoc");
 
     // VarShape variants
@@ -155,10 +206,41 @@ void ExportOpBrightnessContrast(py::module &m)
 	cvcuda.brightness_contrast(src: nvcv.ImageBatchVarShape, brightness: nvcv.Tensor, contrast: nvcv.Tensor, brightness_shift: nvcv.Tensor, contrast_center: nvcv.Tensor, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
 
         Adjusts the brightness and contrast of the images according to the formula:
-        `out = brightness_shift + brightness * (contrast_center + contrast * (in - contrast_center))`.
+        ``out = brightness_shift + brightness * (contrast_center + contrast * (in - contrast_center))``.
 
         The brightness/brightness_shift/contrast/contrast_center tensors' length must match the
         number of samples in the batch.
+
+
+        See also:
+            Refer to the CV-CUDA C API reference for the BrightnessContrast operator
+            for more details and usage examples.
+
+        Args:
+            src (nvcv.ImageBatchVarShape): Input tensor.
+            brightness (nvcv.Tensor, optional): Optional tensor describing brightness multiplier.
+                If specified, it must contain 1 or N elements where N is the number of input
+                images. If it contains a single element, the same value is used for all input
+                images. If not specified, the neutral ``1.`` is used.
+            contrast (nvcv.Tensor, optional): Optional tensor describing contrast multiplier.
+                If specified, it must contain either 1 or N elements where N is the number of
+                input images. If it contains a single element, the same value is used for all
+                input images. If not specified, the neutral ``1.`` is used.
+            brightness_shift (nvcv.Tensor, optional): Optional tensor describing brightness shift.
+                If specified, it must contain either 1 or N elements where N is the number of
+                input images. If it contains a single element, the same value is used for all
+                input images. If not specified, the neutral ``0.`` is used.
+            contrast_center (nvcv.Tensor, optional): Optional tensor describing contrast center.
+                If specified, it must contain either 1 or N elements where N is the number of input
+                images. If it contains a single element, the same value is used for all input
+                images. If not specified, the middle of the assumed input type range is used. For
+                floats it is ``0.5``, for unsigned integer types it is
+                ``2 * (number_of_bits - 1)``, for signed integer types it is
+                ``2 * (number_of_bits - 2)``.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            nvcv.ImageBatchVarShape: The output image batch.
     )pbdoc");
     m.def("brightness_contrast_into", &VarShapeBrightnessContrastInto, "dst"_a, "src"_a, "brightness"_a = nullptr,
           "contrast"_a = nullptr, "brightness_shift"_a = nullptr, "contrast_center"_a = nullptr, py::kw_only(),
@@ -168,7 +250,42 @@ void ExportOpBrightnessContrast(py::module &m)
 	cvcuda.brightness_contrast_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, brightness: nvcv.Tensor, contrast: nvcv.Tensor, brightness_shift: nvcv.Tensor, contrast_center: nvcv.Tensor, stream: Optional[nvcv.cuda.Stream] = None)
 
         Adjusts the brightness and contrast of the images according to the formula:
-        `out = brightness_shift + brightness * (contrast_center + contrast * (in - contrast_center))`.
+        ``out = brightness_shift + brightness * (contrast_center + contrast * (in - contrast_center))``.
+
+        The brightness/brightness_shift/contrast/contrast_center tensors' length must match the
+        number of samples in the batch.
+
+
+        See also:
+            Refer to the CV-CUDA C API reference for the BrightnessContrast operator
+            for more details and usage examples.
+
+        Args:
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            dst (nvcv.ImageBatchVarShape): Output image batch containing the result of the operation.
+            brightness (nvcv.ImageBatchVarShape, optional): Optional tensor describing brightness multiplier.
+                If specified, it must contain 1 or N elements where N is the number of input
+                images. If it contains a single element, the same value is used for all input
+                images. If not specified, the neutral ``1.`` is used.
+            contrast (nvcv.Tensor, optional): Optional tensor describing contrast multiplier.
+                If specified, it must contain either 1 or N elements where N is the number of
+                input images. If it contains a single element, the same value is used for all
+                input images. If not specified, the neutral ``1.`` is used.
+            brightness_shift (nvcv.Tensor, optional): Optional tensor describing brightness shift.
+                If specified, it must contain either 1 or N elements where N is the number of
+                input images. If it contains a single element, the same value is used for all
+                input images. If not specified, the neutral ``0.`` is used.
+            contrast_center (nvcv.Tensor, optional): Optional tensor describing contrast center.
+                If specified, it must contain either 1 or N elements where N is the number of input
+                images. If it contains a single element, the same value is used for all input
+                images. If not specified, the middle of the assumed input type range is used. For
+                floats it is ``0.5``, for unsigned integer types it is
+                ``2 * (number_of_bits - 1)``, for signed integer types it is
+                ``2 * (number_of_bits - 2)``.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
     )pbdoc");
 }
 

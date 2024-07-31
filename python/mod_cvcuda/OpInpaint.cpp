@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -195,7 +195,7 @@ void ExportOpInpaint(py::module &m)
     m.def("inpaint", &Inpaint, "src"_a, "masks"_a, "inpaintRadius"_a, py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
 
-	cvcuda.inpaint(src: nvcv.Tensor, masks:Tensor, inpaintRadius:double, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
+	cvcuda.inpaint(src: nvcv.Tensor, masks: Tensor, inpaintRadius: float, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the Inpaint operation on the given cuda stream.
 
@@ -204,13 +204,13 @@ void ExportOpInpaint(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (Tensor): Input tensor containing one or more images.
-            masks (Tensor): Mask tensor, 8-bit 1-channel images. Non-zero pixels indicate the area that needs to be inpainted.
-            inpaintRadius (double): Radius of a circular neighborhood of each point inpainted that is considered by the algorithm.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            masks (nvcv.Tensor): Mask tensor, 8-bit 1-channel images. Non-zero pixels indicate the area that needs to be inpainted.
+            inpaintRadius (float): Radius of a circular neighborhood of each point inpainted that is considered by the algorithm.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output tensor.
+            nvcv.Tensor: The output tensor.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -220,7 +220,7 @@ void ExportOpInpaint(py::module &m)
     m.def("inpaint_into", &InpaintInto, "dst"_a, "src"_a, "masks"_a, "inpaintRadius"_a, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.inpaint_into(dst: nvcv.Tensor,src: nvcv.Tensor, masks:Tensor, inpaintRadius:double, stream: Optional[nvcv.cuda.Stream] = None)
+	cvcuda.inpaint_into(dst: nvcv.Tensor, src: nvcv.Tensor, masks: Tensor, inpaintRadius: float, stream: Optional[nvcv.cuda.Stream] = None)
 
 	Executes the Inpaint operation on the given cuda stream.
 
@@ -229,11 +229,11 @@ void ExportOpInpaint(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (Tensor): Output tensor to store the result of the operation.
-            src (Tensor): Input tensor containing one or more images.
-            masks (Tensor): Mask tensor, 8-bit 1-channel images. Non-zero pixels indicate the area that needs to be inpainted.
-            inpaintRadius (double): Radius of a circular neighborhood of each point inpainted that is considered by the algorithm.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            dst (nvcv.Tensor): Output tensor to store the result of the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            masks (nvcv.Tensor): Mask tensor, 8-bit 1-channel images. Non-zero pixels indicate the area that needs to be inpainted.
+            inpaintRadius (float): Radius of a circular neighborhood of each point inpainted that is considered by the algorithm.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None
@@ -246,7 +246,7 @@ void ExportOpInpaint(py::module &m)
     m.def("inpaint", &InpaintVarShape, "src"_a, "masks"_a, "inpaintRadius"_a, py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
 
-	cvcuda.inpaint(src: nvcv.ImageBatchVarShape, masks:ImageBatchVarShape, inpaintRadius:double, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+	cvcuda.inpaint(src: nvcv.ImageBatchVarShape, masks:ImageBatchVarShape, inpaintRadius: float, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
 
 	Executes the Inpaint operation on the given cuda stream.
 
@@ -255,13 +255,13 @@ void ExportOpInpaint(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            masks (ImageBatchVarShape): Mask image batch, 8-bit 1-channel images. Non-zero pixels indicate the area that needs to be inpainted.
-            inpaintRadius (double): Radius of a circular neighborhood of each point inpainted that is considered by the algorithm.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            masks (nvcv.ImageBatchVarShape): Mask image batch, 8-bit 1-channel images. Non-zero pixels indicate the area that needs to be inpainted.
+            inpaintRadius (float): Radius of a circular neighborhood of each point inpainted that is considered by the algorithm.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.ImageBatchVarShape: The output image batch.
+            nvcv.ImageBatchVarShape: The output image batch.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -272,7 +272,7 @@ void ExportOpInpaint(py::module &m)
           "stream"_a = nullptr, R"pbdoc(
 
 
-	cvcuda.inpaint_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, masks:ImageBatchVarShape, inpaintRadius:double, stream: Optional[nvcv.cuda.Stream] = None)
+	cvcuda.inpaint_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, masks:ImageBatchVarShape, inpaintRadius: float, stream: Optional[nvcv.cuda.Stream] = None)
 
 	Executes the Inpaint operation on the given cuda stream.
 
@@ -281,11 +281,11 @@ void ExportOpInpaint(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (ImageBatchVarShape): Output image batch to store the result of the operation.
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            masks (ImageBatchVarShape): Mask image batch, 8-bit 1-channel images. Non-zero pixels indicate the area that needs to be inpainted.
-            inpaintRadius (double): Radius of a circular neighborhood of each point inpainted that is considered by the algorithm.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            dst (nvcv.ImageBatchVarShape): Output image batch to store the result of the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            masks (nvcv.ImageBatchVarShape): Mask image batch, 8-bit 1-channel images. Non-zero pixels indicate the area that needs to be inpainted.
+            inpaintRadius (float): Radius of a circular neighborhood of each point inpainted that is considered by the algorithm.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

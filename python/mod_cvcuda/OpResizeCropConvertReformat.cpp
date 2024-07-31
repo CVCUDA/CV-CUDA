@@ -231,8 +231,8 @@ void ExportOpResizeCropConvertReformat(py::module &m)
         Args:
             src (nvcv.Tensor): Input tensor containing one or more images.
             resize_dim (tuple[int,int]): Dimensions, width & height, of resized tensor (prior to cropping).
-            interp (cvcuda.Interp): Interpolation type used for resizing. Currently, only NVCV_INTERP_NEAREST and
-                                    NVCV_INTERP_LINEAR are available.
+            interp (cvcuda.Interp): Interpolation type used for resizing. Currently, only cvcuda.Interp.NEAREST and
+                                    cvcuda.Interp.LINEAR are available.
             crop_rect (nvcv.RectI): Crop rectangle, (top, left, width, height), specifying the top-left corner and
                                    width & height dimensions of the region to crop from the resized images.
             layout(string, optional): String specifying output tensor layout (e.g., 'NHWC' or 'CHW'). Empty string
@@ -288,8 +288,8 @@ void ExportOpResizeCropConvertReformat(py::module &m)
                                or float) and tensor layout (e.g., 'NHWC' or 'NCHW').
             src (nvcv.Tensor): Input tensor containing one or more images.
             resize_dim (tuple[int,int]): Dimensions, width & height, of resized tensor (prior to cropping).
-            interp (cvcuda.Interp): Interpolation type used for resizing. Currently, only NVCV_INTERP_NEAREST and
-                                    NVCV_INTERP_LINEAR are available.
+            interp (cvcuda.Interp): Interpolation type used for resizing. Currently, only cvcuda.Interp.NEAREST and
+                                    cvcuda.Interp.LINEAR are available.
             cropPos (tuple[int,int]): Crop position, (top, left), specifying the top-left corner of the region to crop
                                       from the resized images. The crop region's width and height is specified by the
                                       output tensor's width & height.
@@ -339,11 +339,11 @@ void ExportOpResizeCropConvertReformat(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images of varying sizes, but all images
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images of varying sizes, but all images
                                       must have the same data type, channels, and layout.
             resize_dim (tuple[int,int]): Dimensions, width & height, of resized tensor (prior to cropping).
-            interp (cvcuda.Interp): Interpolation type used for resizing. Currently, only NVCV_INTERP_NEAREST and
-                                    NVCV_INTERP_LINEAR are available.
+            interp (cvcuda.Interp): Interpolation type used for resizing. Currently, only cvcuda.Interp.NEAREST and
+                                    cvcuda.Interp.LINEAR are available.
             crop_rect (nvcv.RectI): Crop rectangle, (top, left, width, height), specifying the top-left corner and
                                    width & height dimensions of the region to crop from the resized images.
             layout(string, optional): String specifying output tensor layout (e.g., 'NHWC' or 'CHW'). Empty string
@@ -397,11 +397,11 @@ void ExportOpResizeCropConvertReformat(py::module &m)
             dst (nvcv.Tensor): Output tensor to store the result of the operation. Output tensor also specifies the
                                crop dimensions (i.e., width & height), as well as the output data type (e.g., uchar3
                                or float) and tensor layout (e.g., 'NHWC' or 'NCHW').
-            src (ImageBatchVarShape): Input image batch containing one or more images of varying sizes, but all images
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images of varying sizes, but all images
                                       must have the same data type, channels, and layout.
             resize_dim (tuple[int,int]): Dimensions, width & height, of resized tensor (prior to cropping).
-            interp (cvcuda.Interp): Interpolation type used for resizing. Currently, only NVCV_INTERP_NEAREST and
-                                    NVCV_INTERP_LINEAR are available.
+            interp (cvcuda.Interp): Interpolation type used for resizing. Currently, only cvcuda.Interp.NEAREST and
+                                    cvcuda.Interp.LINEAR are available.
             cropPos (tuple[int,int]): Crop position, (top, left), specifying the top-left corner of the region to
                                       crop from the resized images. The crop region's width and height is specified by
                                       the output tensor's width & height.

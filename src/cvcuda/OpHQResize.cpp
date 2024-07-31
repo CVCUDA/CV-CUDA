@@ -23,7 +23,7 @@
 #include <nvcv/Exception.hpp>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
-#include <util/Assert.h>
+#include <nvcv/util/Assert.h>
 
 namespace priv = cvcuda::priv;
 

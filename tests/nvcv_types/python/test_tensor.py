@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -428,3 +428,28 @@ def test_tensor_wrap_cuda_array_interface(shape_arg, dtype_arg, layout_arg):
     assert wrapped.shape == shape_arg
     assert wrapped.dtype == dtype_arg
     assert wrapped.layout == layout_arg
+
+
+def test_tensor_size_in_bytes():
+    """
+    Checks if the computation of the Tensor size in bytes is correct
+    """
+    tensor_create_for_image_batch = nvcv.Tensor(
+        2, (37, 7), nvcv.Format.RGB8, rowalign=1
+    )
+    assert nvcv.internal.nbytes_in_cache(tensor_create_for_image_batch) > 0
+
+    tensor_create = nvcv.Tensor((5, 16, 32, 4), np.float32, nvcv.TensorLayout.NHWC)
+    assert nvcv.internal.nbytes_in_cache(tensor_create) > 0
+
+    tensor_wrap = nvcv.as_tensor(
+        torch.as_tensor(np.ndarray((5, 16, 32, 4), dtype=np.float32), device="cuda")
+    )
+    assert nvcv.internal.nbytes_in_cache(tensor_wrap) == 0
+
+    img = nvcv.Image((32, 16), nvcv.Format.RGBA8)
+    tensor_wrap_image = nvcv.as_tensor(img)
+    assert nvcv.internal.nbytes_in_cache(tensor_wrap_image) == 0
+
+    tensor_reshape = nvcv.reshape(tensor_create, (5, 32, 16, 4), nvcv.TensorLayout.NHWC)
+    assert nvcv.internal.nbytes_in_cache(tensor_reshape) == 0

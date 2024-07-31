@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,6 +22,7 @@
 #include "Image.hpp"
 
 #include <common/Assert.hpp>
+#include <common/CheckError.hpp>
 
 namespace nvcvpy::priv {
 
@@ -83,8 +84,24 @@ std::shared_ptr<ImageBatchVarShape> ImageBatchVarShape::WrapExternalBufferVector
 ImageBatchVarShape::ImageBatchVarShape(int capacity)
     : m_key(capacity)
     , m_impl(capacity)
+    , m_size_inbytes(doComputeSizeInBytes(nvcv::ImageBatchVarShape::CalcRequirements(capacity)))
 {
     m_list.reserve(capacity);
+}
+
+int64_t ImageBatchVarShape::doComputeSizeInBytes(const NVCVImageBatchVarShapeRequirements &reqs)
+{
+    int64_t size_inbytes;
+    util::CheckThrow(nvcvMemRequirementsCalcTotalSizeBytes(&(reqs.mem.cudaMem), &size_inbytes));
+    return size_inbytes;
+}
+
+int64_t ImageBatchVarShape::GetSizeInBytes() const
+{
+    // m_size_inbytes == -1 indicates failure case and value has not been computed yet
+    NVCV_ASSERT(m_size_inbytes != -1
+                && "ImageBatchVarShape has m_size_inbytes == -1, ie m_size_inbytes has not been correctly set");
+    return m_size_inbytes;
 }
 
 const nvcv::ImageBatchVarShape &ImageBatchVarShape::impl() const

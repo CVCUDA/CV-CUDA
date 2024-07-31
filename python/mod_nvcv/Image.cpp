@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -452,14 +452,21 @@ nvcv::ImageDataStridedHost CreateNVCVImageDataHost(const std::vector<DLPackTenso
 } // namespace
 
 Image::Image(const Size2D &size, nvcv::ImageFormat fmt, int rowAlign)
-    : m_impl(nvcv::Size2D{std::get<0>(size), std::get<1>(size)}, fmt, nullptr /* allocator */,
-             rowAlign == 0 ? nvcv::MemAlignment{} : nvcv::MemAlignment{}.rowAddr(rowAlign))
-    , m_key{size, fmt}
 {
+    nvcv::MemAlignment    bufAlign = rowAlign == 0 ? nvcv::MemAlignment{} : nvcv::MemAlignment{}.rowAddr(rowAlign);
+    NVCVImageRequirements reqs;
+
+    nvcvImageCalcRequirements(std::get<0>(size), std::get<1>(size), fmt, bufAlign.baseAddr(), bufAlign.rowAddr(),
+                              &reqs);
+
+    m_impl         = nvcv::Image(reqs, nullptr /* allocator */);
+    m_key          = Key{size, fmt};
+    m_size_inbytes = doComputeSizeInBytes(reqs);
 }
 
 Image::Image(std::vector<std::shared_ptr<ExternalBuffer>> bufs, const nvcv::ImageDataStridedCuda &imgData)
     : m_key{} // it's a wrap!
+    , m_size_inbytes{doComputeSizeInBytes(NVCVImageRequirements())}
 {
     m_wrapData.emplace();
 
@@ -472,8 +479,14 @@ Image::Image(std::vector<py::buffer> bufs, const nvcv::ImageDataStridedHost &hos
     // We'll create a regular image and copy the host data into it.
 
     // Create the image with same size and format as host data
-    m_impl = nvcv::Image(hostData.size(), hostData.format(), nullptr /* allocator */,
-                         nvcv::MemAlignment{}.rowAddr(rowAlign));
+    nvcv::MemAlignment    bufAlign = nvcv::MemAlignment{}.rowAddr(rowAlign);
+    NVCVImageRequirements reqs;
+
+    nvcvImageCalcRequirements(hostData.size().w, hostData.size().h, hostData.format(), bufAlign.baseAddr(),
+                              bufAlign.rowAddr(), &reqs);
+
+    m_impl         = nvcv::Image(reqs, nullptr /* allocator */);
+    m_size_inbytes = doComputeSizeInBytes(reqs);
 
     auto devData = *m_impl.exportData<nvcv::ImageDataStridedCuda>();
     NVCV_ASSERT(hostData.format() == devData.format());
@@ -497,6 +510,20 @@ Image::Image(std::vector<py::buffer> bufs, const nvcv::ImageDataStridedHost &hos
         {m_impl.size().w, m_impl.size().h},
         m_impl.format()
     };
+}
+
+int64_t Image::doComputeSizeInBytes(const NVCVImageRequirements &reqs)
+{
+    int64_t size_inbytes;
+    util::CheckThrow(nvcvMemRequirementsCalcTotalSizeBytes(&(reqs.mem.cudaMem), &size_inbytes));
+    return size_inbytes;
+}
+
+int64_t Image::GetSizeInBytes() const
+{
+    // m_size_inbytes == -1 indicates failure case and value has not been computed yet
+    NVCV_ASSERT(m_size_inbytes != -1 && "Image has m_size_inbytes == -1, ie m_size_inbytes has not been correctly set");
+    return m_size_inbytes;
 }
 
 std::shared_ptr<Image> Image::shared_from_this()

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,9 +35,6 @@ add_executable(nvcv_test_types_unit
     TestHandleWrapper.cpp
     TestTypeTraits.cpp
     TestSharedCoreObj.cpp
-    TestStreamId.cpp
-    TestSimpleCache.cpp
-    TestPerStreamCache.cpp
 )
 
 if(ENABLE_COMPAT_OLD_GLIBC)

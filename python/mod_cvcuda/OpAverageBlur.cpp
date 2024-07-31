@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +21,7 @@
 #include <common/String.hpp>
 #include <cvcuda/OpAverageBlur.hpp>
 #include <cvcuda/Types.h>
-#include <nvcv/cuda/TypeTraits.hpp>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/python/ImageBatchVarShape.hpp>
 #include <nvcv/python/ResourceGuard.hpp>
 #include <nvcv/python/Stream.hpp>
@@ -114,7 +114,7 @@ void ExportOpAverageBlur(py::module &m)
 
     m.def("averageblur", &AverageBlur, "src"_a, "kernel_size"_a, "kernel_anchor"_a = def_anchor,
           "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-	cvcuda.averageblur(src: nvcv.Tensor, kernel_size: Tuple [int,int], kernel_anchor: Tuple [int,int], border: NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
+	cvcuda.averageblur(src: nvcv.Tensor, kernel_size: Tuple[int, int], kernel_anchor: Tuple[int, int], border: cvcuda.Border = cvcuda.Border.CONSTANT, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
 	Executes the AverageBlur operation on the given cuda stream.
 
@@ -123,18 +123,18 @@ void ExportOpAverageBlur(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (Tensor): Input tensor containing one or more images.
-            kernel_size (Tuple [int,int]): Specifies the size of the blur kernel.
-            kernel_anchor (Tuple [int,int]): Kernel anchor, use (-1,-1) to indicate kernel center.
-            border (NVCVBorderType, optional): Border mode to be used when accessing elements outside input image.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            kernel_size (Tuple[int, int]): Specifies the size of the blur kernel.
+            kernel_anchor (Tuple[int, int]): Kernel anchor, use (-1,-1) to indicate kernel center.
+            border (cvcuda.Border, optional): Border mode to be used when accessing elements outside input image.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         See also:
             Refer to the CV-CUDA C API reference for the AverageBlur operator
             for more details and usage examples.
 
         Returns:
-            cvcuda.Tensor: The output tensor.
+            nvcv.Tensor: The output tensor.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -143,7 +143,7 @@ void ExportOpAverageBlur(py::module &m)
 
     m.def("averageblur_into", &AverageBlurInto, "dst"_a, "src"_a, "kernel_size"_a, "kernel_anchor"_a = def_anchor,
           "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-	cvcuda.averageblur_into(dst: nvcv.Tensor, src: nvcv.Tensor, kernel_size: Tuple [int,int], kernel_anchor: Tuple [int,int], border: NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, stream: Optional[nvcv.cuda.Stream] = None)
+	cvcuda.averageblur_into(dst: nvcv.Tensor, src: nvcv.Tensor, kernel_size: Tuple[int, int], kernel_anchor: Tuple[int, int], border: cvcuda.Border = cvcuda.Border.CONSTANT, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the AverageBlur operation on the given cuda stream and writes the result into the 'dst' tensor.
 
@@ -152,12 +152,12 @@ void ExportOpAverageBlur(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (Tensor): Output tensor to store the result of the operation.
-            src (Tensor): Input tensor containing one or more images.
-            kernel_size (Tuple [int,int]): Specifies the size of the blur kernel.
-            kernel_anchor (Tuple [int,int]): Kernel anchor, use (-1,-1) to indicate kernel center.
-            border (NVCVBorderType, optional): Border mode to be used when accessing elements outside input image.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            dst (nvcv.Tensor): Output tensor to store the result of the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            kernel_size (Tuple[int, int]): Specifies the size of the blur kernel.
+            kernel_anchor (Tuple[int, int]): Kernel anchor, use (-1,-1) to indicate kernel center.
+            border (cvcuda.Border, optional): Border mode to be used when accessing elements outside input image.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None
@@ -169,20 +169,20 @@ void ExportOpAverageBlur(py::module &m)
 
     m.def("averageblur", &AverageBlurVarShape, "src"_a, "max_kernel_size"_a, "kernel_size"_a, "kernel_anchor"_a,
           "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-	cvcuda.averageblur(src: nvcv.ImageBatchVarShape, kernel_size: Tuple [int,int], kernel_anchor: Tuple [int,int], border: NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+	cvcuda.averageblur(src: nvcv.ImageBatchVarShape, kernel_size: Tuple[int, int], kernel_anchor: Tuple[int, int], border: cvcuda.Border = cvcuda.Border.CONSTANT, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
 
         Executes the AverageBlur operation with a variable shape tensors on the given cuda stream.
 
         Args:
-            src (Tensor): Input tensor containing one or more images.
-            max_kernel_size (Tuple [int,int]): Specifies the maximum size of the blur kernel.
-            kernel_size (Tuple [int,int]): Specifies the size of the blur kernel within the maximum kernel size.
-            kernel_anchor (Tuple [int,int]): Kernel anchor, use (-1,-1) to indicate kernel center.
-            border (NVCVBorderType, optional): Border mode to be used when accessing elements outside input image.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            max_kernel_size (Tuple[int, int]): Specifies the maximum size of the blur kernel.
+            kernel_size (Tuple[int, int]): Specifies the size of the blur kernel within the maximum kernel size.
+            kernel_anchor (Tuple[int, int]): Kernel anchor, use (-1,-1) to indicate kernel center.
+            border (cvcuda.Border, optional): Border mode to be used when accessing elements outside input image.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.ImageBatchVarShape: The output image batch.
+            nvcv.ImageBatchVarShape: The output image batch.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -192,18 +192,18 @@ void ExportOpAverageBlur(py::module &m)
     m.def("averageblur_into", &AverageBlurVarShapeInto, "dst"_a, "src"_a, "max_kernel_size"_a, "kernel_size"_a,
           "kernel_anchor"_a, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
-	cvcuda.averageblur_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, kernel_size: Tuple [int,int], kernel_anchor: Tuple [int,int], border: NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT > , stream: Optional[nvcv.cuda.Stream] = None)
+	cvcuda.averageblur_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, kernel_size: Tuple[int, int], kernel_anchor: Tuple[int, int], border: cvcuda.Border = cvcuda.Border.CONSTANT, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the AverageBlur operation with a variable shape tensors on the given cuda stream.
 
         Args:
-            dst (ImageBatchVarShape): Output containing one or more images.
-            src (ImageBatchVarShape): Input containing one or more images.
-            max_kernel_size (Tuple [int,int]): Specifies the maximum size of the blur kernel.
-            kernel_size (Tuple [int,int]): Specifies the size of the blur kernel within the maximum kernel size.
-            kernel_anchor (Tuple [int,int]): Kernel anchor, use (-1,-1) to indicate kernel center.
-            border (NVCVBorderType, optional): Border mode to be used when accessing elements outside input image.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            dst (nvcv.ImageBatchVarShape): Output containing one or more images.
+            src (nvcv.ImageBatchVarShape): Input containing one or more images.
+            max_kernel_size (Tuple[int, int]): Specifies the maximum size of the blur kernel.
+            kernel_size (Tuple[int, int]): Specifies the size of the blur kernel within the maximum kernel size.
+            kernel_anchor (Tuple[int, int]): Kernel anchor, use (-1,-1) to indicate kernel center.
+            border (cvcuda.Border, optional): Border mode to be used when accessing elements outside input image.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -54,7 +54,13 @@ if(UNIX)
 
         add_test(NAME "${TESTNAME}" COMMAND "${TESTCMD}")
 
+        # If an external target is being added to the tests, it should not be considered as a regular target,
+        # avoiding linking it against libraries and using install targets with it
         if(TARGET ${TESTNAME})
+            get_target_property(EXTERNAL_TARGET ${TESTNAME} IMPORTED)
+        endif()
+
+        if(TARGET ${TESTNAME} AND NOT EXTERNAL_TARGET)
             target_link_libraries(${TESTNAME} PRIVATE nvcv_test_main)
         endif()
 
@@ -66,7 +72,7 @@ if(UNIX)
 
         file(APPEND "${TESTS_DRIVER}" "run ${TESTNAME} ${TESTGROUP}\n")
 
-        if(TARGET ${TESTNAME})
+        if(TARGET ${TESTNAME} AND NOT EXTERNAL_TARGET)
             install(TARGETS ${TESTNAME}
                     DESTINATION ${CMAKE_INSTALL_BINDIR}
                     COMPONENT tests)

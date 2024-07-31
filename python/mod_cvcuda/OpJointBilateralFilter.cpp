@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +21,7 @@
 #include <common/String.hpp>
 #include <cvcuda/OpJointBilateralFilter.hpp>
 #include <cvcuda/Types.h>
-#include <nvcv/cuda/TypeTraits.hpp>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/python/ImageBatchVarShape.hpp>
 #include <nvcv/python/ResourceGuard.hpp>
 #include <nvcv/python/Stream.hpp>
@@ -113,7 +113,7 @@ void ExportOpJointBilateralFilter(py::module &m)
           "sigma_space"_a, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
 
-	cvcuda.joint_bilateral_filter(src: nvcv.Tensor, srcColor:Tensor, diameter: int, sigma_color: float, sigma_space: float, border:NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
+	cvcuda.joint_bilateral_filter(src: nvcv.Tensor, srcColor: Tensor, diameter: int, sigma_color: float, sigma_space: float, border: cvcuda.Border = cvcuda.Border.CONSTANT, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the Joint Bilateral Filter operation on the given cuda stream.
 
@@ -122,16 +122,16 @@ void ExportOpJointBilateralFilter(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (Tensor): Input tensor containing one or more images.
-            srcColor (Tensor): Input tensor for color distance.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            srcColor (nvcv.Tensor): Input tensor for color distance.
             diameter (int): Bilateral filter diameter.
             sigma_color (float): Gaussian exponent for color difference.
             sigma_space (float): Gaussian exponent for position difference.
-            border (NVCVBorderType, optional): Texture border mode for input tensor.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            border (cvcuda.Border, optional): Border mode for input tensor.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output tensor.
+            nvcv.Tensor: The output tensor.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -142,7 +142,7 @@ void ExportOpJointBilateralFilter(py::module &m)
           "sigma_color"_a, "sigma_space"_a, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.joint_bilateral_filter_into(dst: nvcv.Tensor,src: nvcv.Tensor, srcColor:Tensor, diameter: int, sigma_color: float, sigma_space: float, border:NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, stream: Optional[nvcv.cuda.Stream] = None)
+	cvcuda.joint_bilateral_filter_into(dst: nvcv.Tensor, src: nvcv.Tensor, srcColor: Tensor, diameter: int, sigma_color: float, sigma_space: float, border: cvcuda.Border = cvcuda.Border.CONSTANT, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Joint Bilateral Filter operation on the given cuda stream.
 
@@ -151,14 +151,14 @@ void ExportOpJointBilateralFilter(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (Tensor): Output tensor to store the result of the operation.
-            src (Tensor): Input tensor containing one or more images.
-            srcColor (Tensor): Input tensor for color distance.
+            dst (nvcv.Tensor): Output tensor to store the result of the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            srcColor (nvcv.Tensor): Input tensor for color distance.
             diameter (int): Bilateral filter diameter.
             sigma_color (float): Gaussian exponent for color difference.
             sigma_space (float): Gaussian exponent for position difference.
-            border (NVCVBorderType, optional): Texture border mode for input tensor.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            border (cvcuda.Border, optional): Border mode for input tensor.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None
@@ -172,7 +172,7 @@ void ExportOpJointBilateralFilter(py::module &m)
           "sigma_space"_a, py::kw_only(), "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "stream"_a = nullptr,
           R"pbdoc(
 
-	cvcuda.joint_bilateral_filter(src: nvcv.ImageBatchVarShape, srcColor:ImageBatchVarShape,*, diameter: int, sigma_color: float, sigma_space: float, border:NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+	cvcuda.joint_bilateral_filter(src: nvcv.ImageBatchVarShape, srcColor:ImageBatchVarShape,*, diameter: int, sigma_color: float, sigma_space: float, border: cvcuda.Border = cvcuda.Border.CONSTANT, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
 
         Executes the Joint Bilateral operation on the given cuda stream.
 
@@ -181,15 +181,16 @@ void ExportOpJointBilateralFilter(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            srcColor (ImageBatchVarShape): Input images for color distance.
-            diameter (Tensor): Bilateral filter diameter per image.
-            sigma_color (Tensor): Gaussian exponent for color difference per image.
-            sigma_space (Tensor): Gaussian exponent for position difference per image.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            srcColor (nvcv.ImageBatchVarShape): Input images for color distance.
+            diameter (nvcv.Tensor): Bilateral filter diameter per image.
+            sigma_color (nvcv.Tensor): Gaussian exponent for color difference per image.
+            sigma_space (nvcv.Tensor): Gaussian exponent for position difference per image.
+            border (cvcuda.Border, optional): Border mode for input tensor.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.ImageBatchVarShape: The output image batch.
+            nvcv.ImageBatchVarShape: The output image batch.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -200,7 +201,7 @@ void ExportOpJointBilateralFilter(py::module &m)
           "diameter"_a, "sigma_color"_a, "sigma_space"_a, py::kw_only(),
           "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.joint_bilateral_filter_into(dst: nvcv.ImageBatchVarShape,src: nvcv.ImageBatchVarShape, srcColor:ImageBatchVarShape,*, diameter: int, sigma_color: float, sigma_space: float, border:NVCVBorderType = <NVCVBorderType::NVCV_BORDER_CONSTANT >, stream: Optional[nvcv.cuda.Stream] = None)
+	cvcuda.joint_bilateral_filter_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, srcColor:ImageBatchVarShape,*, diameter: int, sigma_color: float, sigma_space: float, border: border (cvcuda.Border, optional): Border mode for input tensor. = <cvcuda.Border.CONSTANT >, stream: Optional[nvcv.cuda.Stream] = None)
 
 	Executes the Joint Bilateral operation on the given cuda stream.
 
@@ -209,12 +210,13 @@ void ExportOpJointBilateralFilter(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
-            diameter (Tensor): Bilateral filter diameter per image.
-            sigma_color (Tensor): Gaussian exponent for color difference per image.
-            sigma_space (Tensor): Gaussian exponent for position difference per image.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            dst (nvcv.ImageBatchVarShape): Output image batch containing the result of the operation.
+            diameter (nvcv.Tensor): Bilateral filter diameter per image.
+            sigma_color (nvcv.Tensor): Gaussian exponent for color difference per image.
+            sigma_space (nvcv.Tensor): Gaussian exponent for position difference per image.
+            border (cvcuda.Border, optional): Border mode for input tensor.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

@@ -30,7 +30,8 @@ add_subdirectory(${PYBIND11_SOURCE_DIR} pybind11)
 
 find_package(nvcv_types REQUIRED)
 
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/util nvcv_util)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/nvcv/util nvcv_util)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/cvcuda/util cvcuda_util)
 
 set(PYTHON_MODULE_NAME python${PYTHON_VERSION})
 string(REPLACE "." "" PYTHON_MODULE_NAME "${PYTHON_MODULE_NAME}")

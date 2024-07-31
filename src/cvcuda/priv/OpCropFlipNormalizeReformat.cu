@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,18 +17,18 @@
 
 #include "OpCropFlipNormalizeReformat.hpp"
 
+#include <cvcuda/cuda_tools/BorderVarShapeWrap.hpp>
+#include <cvcuda/cuda_tools/ImageBatchVarShapeWrap.hpp>
+#include <cvcuda/cuda_tools/MathOps.hpp>
+#include <cvcuda/cuda_tools/SaturateCast.hpp>
+#include <cvcuda/cuda_tools/StaticCast.hpp>
+#include <cvcuda/cuda_tools/TensorWrap.hpp>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/DataType.hpp>
 #include <nvcv/Exception.hpp>
 #include <nvcv/TensorData.hpp>
 #include <nvcv/TensorLayout.hpp>
-#include <nvcv/cuda/BorderVarShapeWrap.hpp>
-#include <nvcv/cuda/ImageBatchVarShapeWrap.hpp>
-#include <nvcv/cuda/MathOps.hpp>
-#include <nvcv/cuda/SaturateCast.hpp>
-#include <nvcv/cuda/StaticCast.hpp>
-#include <nvcv/cuda/TensorWrap.hpp>
-#include <nvcv/cuda/TypeTraits.hpp>
-#include <util/CheckError.hpp>
+#include <nvcv/util/CheckError.hpp>
 
 #include <iostream>
 #include <sstream>

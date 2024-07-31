@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +21,7 @@
 #include <common/String.hpp>
 #include <cvcuda/OpComposite.hpp>
 #include <cvcuda/Types.h>
-#include <nvcv/cuda/TypeTraits.hpp>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/python/ImageBatchVarShape.hpp>
 #include <nvcv/python/ResourceGuard.hpp>
 #include <nvcv/python/Stream.hpp>
@@ -109,7 +109,7 @@ void ExportOpComposite(py::module &m)
     m.def("composite", &Composite, "foreground"_a, "background"_a, "fgmask"_a, "outchannels"_a, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
 
-        cvcuda.composite(foreground: nvcv.Tensor, background: nvcv.Tensor, fgmask : nvcv.Tensor, outchannels: int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
+        cvcuda.composite(foreground: nvcv.Tensor, background: nvcv.Tensor, fgmask: nvcv.Tensor, outchannels: int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the Composite operation on the given cuda stream.
 
@@ -118,14 +118,14 @@ void ExportOpComposite(py::module &m)
             for more details and usage examples.
 
         Args:
-            foreground (Tensor): Input tensor containing one or more foreground images. Each image is BGR (3-channel) 8-bit.
-            background (Tensor): Input tensor containing one or more background images. Each image is BGR (3-channel) 8-bit.
-            fgmask(Tensor): Input foreground mask tensor. Each mask image is grayscale 8-bit
-            outchannels(int): Specifies 3 channel for RGB and 4 channel for BGRA.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            foreground (nvcv.Tensor): Input tensor containing one or more foreground images. Each image is BGR (3-channel) 8-bit.
+            background (nvcv.Tensor): Input tensor containing one or more background images. Each image is BGR (3-channel) 8-bit.
+            fgmask (nvcv.Tensor): Input foreground mask tensor. Each mask image is grayscale 8-bit
+            outchannels (int): Specifies 3 channel for RGB and 4 channel for BGRA.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output tensor.
+            nvcv.Tensor: The output tensor.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -135,7 +135,7 @@ void ExportOpComposite(py::module &m)
     m.def("composite_into", &CompositeInto, "dst"_a, "foreground"_a, "background"_a, "fgmask"_a, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
 
-        cvcuda.composite_into(dst: nvcv.Tensor, foreground: nvcv.Tensor, background: nvcv.Tensor, fgmask : nvcv.Tensor, outchannels: int, stream: Optional[nvcv.cuda.Stream] = None)
+        cvcuda.composite_into(dst: nvcv.Tensor, foreground: nvcv.Tensor, background: nvcv.Tensor, fgmask: nvcv.Tensor, outchannels: int, stream: Optional[nvcv.cuda.Stream] = None)
 
 	Executes the Composite operation on the given cuda stream.
 
@@ -144,11 +144,11 @@ void ExportOpComposite(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (Tensor): Output tensor to store the result of the operation.
-            foreground (Tensor): Input tensor containing one or more foreground images. Each image is BGR (3-channel) 8-bit.
-            background (Tensor): Input tensor containing one or more background images. Each image is BGR (3-channel) 8-bit.
-            fgmask(Tensor): Input foreground mask tensor. Each mask image is grayscale 8-bit.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            dst (nvcv.Tensor): Output tensor to store the result of the operation.
+            foreground (nvcv.Tensor): Input tensor containing one or more foreground images. Each image is BGR (3-channel) 8-bit.
+            background (nvcv.Tensor): Input tensor containing one or more background images. Each image is BGR (3-channel) 8-bit.
+            fgmask (nvcv.Tensor): Input foreground mask tensor. Each mask image is grayscale 8-bit.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None
@@ -161,7 +161,7 @@ void ExportOpComposite(py::module &m)
     m.def("composite", &CompositeVarShape, "foreground"_a, "background"_a, "fgmask"_a, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.composite(foreground: nvcv.ImageBatchVarShape, background: nvcv.ImageBatchVarShape, fgmask : nvcv.ImageBatchVarShape, outchannels: int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+	cvcuda.composite(foreground: nvcv.ImageBatchVarShape, background: nvcv.ImageBatchVarShape, fgmask: nvcv.ImageBatchVarShape, outchannels: int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
 
 	Executes the Composite operation on the given cuda stream.
 
@@ -170,13 +170,13 @@ void ExportOpComposite(py::module &m)
             for more details and usage examples.
 
         Args:
-            foreground (ImageBatchVarShape): Input tensor containing one or more foreground images. Each image is BGR (3-channel) 8-bit.
-            background (ImageBatchVarShape): Input tensor containing one or more background images. Each image is BGR (3-channel) 8-bit.
-            fgmask(ImageBatchVarShape): Input foreground mask image batch. Each mask image is grayscale 8-bit.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            foreground (nvcv.ImageBatchVarShape): Input tensor containing one or more foreground images. Each image is BGR (3-channel) 8-bit.
+            background (nvcv.ImageBatchVarShape): Input tensor containing one or more background images. Each image is BGR (3-channel) 8-bit.
+            fgmask (nvcv.ImageBatchVarShape): Input foreground mask image batch. Each mask image is grayscale 8-bit.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.ImageBatchVarShape: The output image batch.
+            nvcv.ImageBatchVarShape: The output image batch.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -186,7 +186,7 @@ void ExportOpComposite(py::module &m)
     m.def("composite_into", &CompositeVarShapeInto, "dst"_a, "foreground"_a, "background"_a, "fgmask"_a, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.composite_into(dst: nvcv.ImageBatchVarShape, foreground: nvcv.ImageBatchVarShape, background: nvcv.ImageBatchVarShape, fgmask : nvcv.ImageBatchVarShape, outchannels: int, stream: Optional[nvcv.cuda.Stream] = None)
+	cvcuda.composite_into(dst: nvcv.ImageBatchVarShape, foreground: nvcv.ImageBatchVarShape, background: nvcv.ImageBatchVarShape, fgmask: nvcv.ImageBatchVarShape, outchannels: int, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Composite operation on the given cuda stream.
 
@@ -195,11 +195,11 @@ void ExportOpComposite(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
-            foreground (ImageBatchVarShape): Input tensor containing one or more foreground images. Each image is BGR (3-channel) 8-bit.
-            background (ImageBatchVarShape): Input tensor containing one or more background images. Each image is BGR (3-channel) 8-bit.
-            fgmask(ImageBatchVarShape): Input foreground mask image batch. Each mask image is grayscale 8-bit.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            dst (nvcv.ImageBatchVarShape): Output image batch containing the result of the operation.
+            foreground (nvcv.ImageBatchVarShape): Input tensor containing one or more foreground images. Each image is BGR (3-channel) 8-bit.
+            background (nvcv.ImageBatchVarShape): Input tensor containing one or more background images. Each image is BGR (3-channel) 8-bit.
+            fgmask (nvcv.ImageBatchVarShape): Input foreground mask image batch. Each mask image is grayscale 8-bit.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

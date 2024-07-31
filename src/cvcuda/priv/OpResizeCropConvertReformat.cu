@@ -19,17 +19,17 @@
 #include "legacy/CvCudaLegacy.h"
 #include "legacy/CvCudaLegacyHelpers.hpp"
 
+#include <cvcuda/cuda_tools/DropCast.hpp>
+#include <cvcuda/cuda_tools/InterpolationVarShapeWrap.hpp>
+#include <cvcuda/cuda_tools/InterpolationWrap.hpp>
+#include <cvcuda/cuda_tools/MathOps.hpp>
+#include <cvcuda/cuda_tools/StaticCast.hpp>
 #include <nvcv/DataType.hpp>
 #include <nvcv/Exception.hpp>
 #include <nvcv/TensorData.hpp>
 #include <nvcv/TensorLayout.hpp>
-#include <nvcv/cuda/DropCast.hpp>
-#include <nvcv/cuda/InterpolationVarShapeWrap.hpp>
-#include <nvcv/cuda/InterpolationWrap.hpp>
-#include <nvcv/cuda/MathOps.hpp>
-#include <nvcv/cuda/StaticCast.hpp>
-#include <util/Assert.h>
-#include <util/Math.hpp>
+#include <nvcv/util/Assert.h>
+#include <nvcv/util/Math.hpp>
 
 #include <limits> // for numeric_limits
 #include <type_traits>
@@ -192,8 +192,8 @@ __global__ void resizeCrop_bilinear(DstMap dst, SrcWrapper src, const int src_w,
                 scale * cuda::SaturateCast<SrcT>((1-fy) * ((1-fx) * ptr0[0] + ptr0[sx1] * fx)
                                                   + fy  * ((1-fx) * ptr1[0] + ptr1[sx1] * fx)) + offset);
         else
-            dst(blockIdx.z, dst_y, dst_x, scale * (1-fy) * ((1-fx) * ptr0[0] + ptr0[sx1] * fx)
-                                                   + fy  * ((1-fx) * ptr1[0] + ptr1[sx1] * fx) + offset);
+            dst(blockIdx.z, dst_y, dst_x, scale * ((1-fy) * ((1-fx) * ptr0[0] + ptr0[sx1] * fx)
+                                                    + fy  * ((1-fx) * ptr1[0] + ptr1[sx1] * fx)) + offset);
     }
 } // resizeCrop_bilinear
 
@@ -272,8 +272,8 @@ __global__ void resizeCrop_bilinear_varShape(DstMap dst, SrcWrapper src,
                 scale * cuda::SaturateCast<SrcT>((1-fy) * ((1-fx) * ptr0[0] + ptr0[sx1] * fx)
                                                   + fy  * ((1-fx) * ptr1[0] + ptr1[sx1] * fx)) + offset);
         else
-            dst(blockIdx.z, dst_y, dst_x, scale * (1-fy) * ((1-fx) * ptr0[0] + ptr0[sx1] * fx)
-                                                   + fy  * ((1-fx) * ptr1[0] + ptr1[sx1] * fx) + offset);
+            dst(blockIdx.z, dst_y, dst_x, scale * ((1-fy) * ((1-fx) * ptr0[0] + ptr0[sx1] * fx)
+                                                    + fy  * ((1-fx) * ptr1[0] + ptr1[sx1] * fx)) + offset);
     }
 } // resizeCrop_bilinear_varShape
 

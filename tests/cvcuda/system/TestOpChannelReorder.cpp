@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,13 +17,13 @@
 
 #include "Definitions.hpp"
 
+#include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpChannelReorder.hpp>
+#include <cvcuda/cuda_tools/MathOps.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
-#include <nvcv/cuda/MathOps.hpp>
-#include <util/TensorDataUtils.hpp>
 
 namespace test = nvcv::test;
 

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -484,3 +484,27 @@ def test_image_wrapper_nodeletion():
             assert (pt_img.cpu().numpy() == np_img).all()
         except RuntimeError:
             assert False, "Invalid memory"
+
+
+def test_image_size_in_bytes():
+    """
+    Checks if the computation of the image size in bytes is correct
+    """
+    img_create = nvcv.Image.zeros((1, 1), nvcv.Format.F32)
+    assert nvcv.internal.nbytes_in_cache(img_create) > 0
+
+    np_img = np.random.rand(1, 1).astype(np.float32)
+    img_create_host = nvcv.Image(np_img)
+    assert nvcv.internal.nbytes_in_cache(img_create_host) > 0
+
+    np_img = np.random.rand(1, 1).astype(np.float32)
+    img_create_host_vector = nvcv.Image([np_img, np_img])
+    assert nvcv.internal.nbytes_in_cache(img_create_host_vector) > 0
+
+    pt_img = torch.from_numpy(np_img).cuda()
+
+    img_wrap_external_buffer = cvcuda.as_image(pt_img)
+    assert nvcv.internal.nbytes_in_cache(img_wrap_external_buffer) == 0
+
+    img_wrap_external_buffer_vector = cvcuda.as_image([pt_img, pt_img])
+    assert nvcv.internal.nbytes_in_cache(img_wrap_external_buffer_vector) == 0

@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -24,7 +24,7 @@
 
 #include "CvCudaUtils.cuh"
 
-#include <util/CheckError.hpp>
+#include <nvcv/util/CheckError.hpp>
 
 #define BLOCK 32
 

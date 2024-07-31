@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,9 +18,9 @@
 #ifndef NVCV_PYTHON_HASH_HPP
 #define NVCV_PYTHON_HASH_HPP
 
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/Size.hpp>
-#include <nvcv/cuda/TypeTraits.hpp>
-#include <util/Ranges.hpp>
+#include <nvcv/util/Ranges.hpp>
 
 #include <functional>
 #include <tuple>

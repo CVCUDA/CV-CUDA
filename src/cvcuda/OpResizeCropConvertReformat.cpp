@@ -22,7 +22,7 @@
 #include <nvcv/Exception.hpp>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
-#include <util/Assert.h>
+#include <nvcv/util/Assert.h>
 
 namespace priv = cvcuda::priv;
 
@@ -41,24 +41,24 @@ CVCUDA_DEFINE_API(0, 8, NVCVStatus, cvcudaResizeCropConvertReformatCreate, (NVCV
         });
 }
 
-CVCUDA_DEFINE_API(0, 8, NVCVStatus, cvcudaResizeCropConvertReformatSubmit,
+CVCUDA_DEFINE_API(0, 10, NVCVStatus, cvcudaResizeCropConvertReformatSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in, NVCVTensorHandle out,
                    const NVCVSize2D resizeDim, const NVCVInterpolationType interpolation, const int2 cropPos,
-                   const NVCVChannelManip manip, const float scale, const float offset))
+                   const NVCVChannelManip manip, const float scale, const float offset, const bool srcCast))
 {
     return nvcv::ProtectCall(
         [&]
         {
             nvcv::TensorWrapHandle input(in), output(out);
             priv::ToDynamicRef<priv::ResizeCropConvertReformat>(handle)(stream, input, output, resizeDim, interpolation,
-                                                                        cropPos, manip, scale, offset);
+                                                                        cropPos, manip, scale, offset, srcCast);
         });
 }
 
-CVCUDA_DEFINE_API(0, 8, NVCVStatus, cvcudaResizeCropConvertReformatVarShapeSubmit,
+CVCUDA_DEFINE_API(0, 10, NVCVStatus, cvcudaResizeCropConvertReformatVarShapeSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVImageBatchHandle in, NVCVTensorHandle out,
                    const NVCVSize2D resizeDim, const NVCVInterpolationType interpolation, const int2 cropPos,
-                   const NVCVChannelManip manip, const float scale, const float offset))
+                   const NVCVChannelManip manip, const float scale, const float offset, const bool srcCast))
 {
     return nvcv::ProtectCall(
         [&]
@@ -66,6 +66,6 @@ CVCUDA_DEFINE_API(0, 8, NVCVStatus, cvcudaResizeCropConvertReformatVarShapeSubmi
             nvcv::ImageBatchVarShapeWrapHandle input(in);
             nvcv::TensorWrapHandle             output(out);
             priv::ToDynamicRef<priv::ResizeCropConvertReformat>(handle)(stream, input, output, resizeDim, interpolation,
-                                                                        cropPos, manip, scale, offset);
+                                                                        cropPos, manip, scale, offset, srcCast);
         });
 }

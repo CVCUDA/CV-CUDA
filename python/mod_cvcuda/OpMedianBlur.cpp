@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +21,7 @@
 #include <common/String.hpp>
 #include <cvcuda/OpMedianBlur.hpp>
 #include <cvcuda/Types.h>
-#include <nvcv/cuda/TypeTraits.hpp>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/python/Image.hpp>
 #include <nvcv/python/ImageBatchVarShape.hpp>
 #include <nvcv/python/ResourceGuard.hpp>
@@ -105,7 +105,7 @@ void ExportOpMedianBlur(py::module &m)
 
     m.def("median_blur", &MedianBlur, "src"_a, "ksize"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.median_blur(src: nvcv.Tensor, ksize:Tuple [int,int], stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
+	cvcuda.median_blur(src: nvcv.Tensor, ksize: Tuple[int, int], stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the Median Blur operation on the given cuda stream.
 
@@ -114,12 +114,12 @@ void ExportOpMedianBlur(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (Tensor): Input tensor containing one or more images.
-            ksize (Tuple [int,int]): Width and Height of the kernel.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            ksize (Tuple[int, int]): Width and Height of the kernel.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output tensor.
+            nvcv.Tensor: The output tensor.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -129,7 +129,7 @@ void ExportOpMedianBlur(py::module &m)
     m.def("median_blur_into", &MedianBlurInto, "dst"_a, "src"_a, "ksize"_a, py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
 
-	cvcuda.median_blur_into(dst: nvcv.Tensor,src: nvcv.Tensor, ksize:Tuple [int,int], stream: Optional[nvcv.cuda.Stream] = None)
+	cvcuda.median_blur_into(dst: nvcv.Tensor, src: nvcv.Tensor, ksize: Tuple[int, int], stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Median Blur operation on the given cuda stream.
 
@@ -138,10 +138,10 @@ void ExportOpMedianBlur(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (Tensor): Output tensor to store the result of the operation.
-            src (Tensor): Input tensor containing one or more images.
-            ksize (Tuple [int,int]): Width and Height of the kernel.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            dst (nvcv.Tensor): Output tensor to store the result of the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            ksize (Tuple[int, int]): Width and Height of the kernel.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None
@@ -153,7 +153,7 @@ void ExportOpMedianBlur(py::module &m)
 
     m.def("median_blur", &VarShapeMedianBlur, "src"_a, "ksize"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.median_blur(src: nvcv.ImageBatchVarShape, ksize:Tuple [int,int], stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+	cvcuda.median_blur(src: nvcv.ImageBatchVarShape, ksize: Tuple[int, int], stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
 
         Executes the Median Blur operation on the given cuda stream.
 
@@ -162,12 +162,12 @@ void ExportOpMedianBlur(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            ksize (Tensor): Width and Height of the kernel for each image.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            ksize (nvcv.Tensor): Width and Height of the kernel for each image.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.ImageBatchVarShape: The output image batch.
+            nvcv.ImageBatchVarShape: The output image batch.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -177,7 +177,7 @@ void ExportOpMedianBlur(py::module &m)
     m.def("median_blur_into", &VarShapeMedianBlurInto, "dst"_a, "src"_a, "ksize"_a, py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
 
-	cvcuda.median_blur_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, ksize:Tuple [int,int], stream: Optional[nvcv.cuda.Stream] = None)
+	cvcuda.median_blur_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, ksize: Tuple[int, int], stream: Optional[nvcv.cuda.Stream] = None)
 
 	Executes the Median Blur operation on the given cuda stream.
 
@@ -186,10 +186,10 @@ void ExportOpMedianBlur(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
-            ksize (Tensor): Width and Height of the kernel for each image.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            dst (nvcv.ImageBatchVarShape): Output image batch containing the result of the operation.
+            ksize (nvcv.Tensor): Width and Height of the kernel for each image.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

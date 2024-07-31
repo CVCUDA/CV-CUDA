@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,18 +17,18 @@
 
 #include "OpSIFT.hpp"
 
+#include <cvcuda/cuda_tools/InterpolationWrap.hpp>
+#include <cvcuda/cuda_tools/MathOps.hpp>
+#include <cvcuda/cuda_tools/MathWrappers.hpp>
+#include <cvcuda/cuda_tools/StaticCast.hpp>
+#include <cvcuda/cuda_tools/TensorWrap.hpp>
+#include <cvcuda/cuda_tools/math/LinAlg.hpp>
 #include <nvcv/Exception.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorData.hpp>
 #include <nvcv/TensorDataAccess.hpp>
-#include <nvcv/cuda/InterpolationWrap.hpp>
-#include <nvcv/cuda/MathOps.hpp>
-#include <nvcv/cuda/MathWrappers.hpp>
-#include <nvcv/cuda/StaticCast.hpp>
-#include <nvcv/cuda/TensorWrap.hpp>
-#include <nvcv/cuda/math/LinAlg.hpp>
-#include <util/CheckError.hpp>
-#include <util/Math.hpp>
+#include <nvcv/util/CheckError.hpp>
+#include <nvcv/util/Math.hpp>
 
 #include <cmath>
 

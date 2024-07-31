@@ -16,13 +16,20 @@
  */
 
 #include "OpHQResize.hpp"
+#include "WorkspaceUtil.hpp"
 #include "cvcuda/Workspace.hpp"
 
 #include "OpHQResizeBatchWrap.cuh"
 #include "OpHQResizeFilter.cuh"
 
 #include <cuda_runtime.h>
-#include <cvcuda/priv/WorkspaceUtil.hpp>
+#include <cvcuda/cuda_tools/DropCast.hpp>
+#include <cvcuda/cuda_tools/ImageBatchVarShapeWrap.hpp>
+#include <cvcuda/cuda_tools/MathOps.hpp>
+#include <cvcuda/cuda_tools/MathWrappers.hpp>
+#include <cvcuda/cuda_tools/SaturateCast.hpp>
+#include <cvcuda/cuda_tools/StaticCast.hpp>
+#include <cvcuda/cuda_tools/TensorWrap.hpp>
 #include <nvcv/DataType.hpp>
 #include <nvcv/Exception.hpp>
 #include <nvcv/ImageData.hpp>
@@ -30,16 +37,9 @@
 #include <nvcv/TensorData.hpp>
 #include <nvcv/TensorDataAccess.hpp>
 #include <nvcv/TensorLayout.hpp>
-#include <nvcv/cuda/DropCast.hpp>
-#include <nvcv/cuda/ImageBatchVarShapeWrap.hpp>
-#include <nvcv/cuda/MathOps.hpp>
-#include <nvcv/cuda/MathWrappers.hpp>
-#include <nvcv/cuda/SaturateCast.hpp>
-#include <nvcv/cuda/StaticCast.hpp>
-#include <nvcv/cuda/TensorWrap.hpp>
-#include <util/Assert.h>
-#include <util/CheckError.hpp>
-#include <util/Math.hpp>
+#include <nvcv/util/Assert.h>
+#include <nvcv/util/CheckError.hpp>
+#include <nvcv/util/Math.hpp>
 
 #include <tuple>
 #include <type_traits>

@@ -1,5 +1,5 @@
 ..
-  # SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  # SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
   # SPDX-License-Identifier: Apache-2.0
   #
   # Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,6 +25,7 @@ Core components and related functions for the NVIDIA® NVCV library.
   Color Models <../_python_api/nvcv/colorspec>
   Image Formats <../_python_api/nvcv/format>
   Rect <../_python_api/nvcv/recti>
+  Resource <../_python_api/nvcv/resource>
   Image <../_python_api/nvcv/image>
   ImageBatchVarShape <../_python_api/nvcv/imagebatch>
   Tensor <../_python_api/nvcv/tensor>

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,15 +19,15 @@
 #define CVCUDA_BENCH_UTILS_HPP
 
 #include <cvcuda/Types.h>
+#include <cvcuda/cuda_tools/DropCast.hpp>
+#include <cvcuda/cuda_tools/MathOps.hpp>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/BorderType.h>
 #include <nvcv/DataType.hpp>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/ImageFormat.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorData.hpp>
-#include <nvcv/cuda/DropCast.hpp>
-#include <nvcv/cuda/MathOps.hpp>
-#include <nvcv/cuda/TypeTraits.hpp>
 
 #include <algorithm>
 #include <iostream>

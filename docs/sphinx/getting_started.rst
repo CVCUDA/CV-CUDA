@@ -1,5 +1,5 @@
 ..
-  # SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  # SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
   # SPDX-License-Identifier: Apache-2.0
   #
   # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,11 +19,12 @@
 Getting Started
 ===============
 
-This section guides you step-by-step towards building different types of Computer Vision and Deep Learning pipelines accelerated on the GPU using the CV-CUDA APIs. Before getting started, please review the :ref:`prerequisites`. Once reviewed, head over to the :ref:`samples`' section which showcases various CV-CUDA samples.
+This section guides you step-by-step towards building different types of Computer Vision and Deep Learning pipelines accelerated on the GPU using the CV-CUDA APIs. Before getting started, please review the :ref:`prerequisites` and :ref:`bestpractices`. Once reviewed, head over to the :ref:`samples`' section which showcases various CV-CUDA samples.
 
 
 .. toctree::
     :maxdepth: 1
 
     prerequisites
+    bestpractices
     samples

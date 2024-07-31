@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -63,6 +63,8 @@ public:
 
     void holdResources(LockResources usedResources);
 
+    int64_t GetSizeInBytes() const override;
+
     void         sync();
     cudaStream_t handle() const;
 
@@ -76,6 +78,8 @@ public:
 private:
     Stream(Stream &&) = delete;
     Stream();
+
+    int64_t doComputeSizeInBytes();
 
     // Singleton access to the auxiliary CUDA stream
 
@@ -98,6 +102,11 @@ private:
     cudaStream_t m_handle = nullptr;
     cudaEvent_t  m_event  = nullptr;
     py::object   m_wrappedObj;
+    int64_t      m_size_inbytes = -1;
+
+    // TODO: these don't have to be static members, but simply defined
+    // as local entities in Stream.cpp, thereby minimizing code coupling and
+    // unnecessary rebuilds.
 
     //singleton aux stream and protection. this a a bit overkill
     //for now as python is single threaded, but it is a good practice
@@ -108,6 +117,24 @@ private:
     static void          incrementInstanceCount();
     static int           decrementInstanceCount();
     static cudaStream_t &GetAuxStream();
+    static void          SyncAuxStream();
+
+    // Adds the object to the garbage-collector's bag to delay its destruction
+    // until it's safe to destroy it.
+    // Safe here means: not from a thread that is processing tasks in a cuda stream,
+    // i.e., not inside the callback given to cudaStreamAddCallback. If this happens,
+    // cuda calls will be made from within the callback, and CUDA docs prohibit it.
+    struct HostFunctionClosure;
+    static void AddToGCBag(std::unique_ptr<HostFunctionClosure> obj);
+
+    // Clear the garbage-collector's bag. It's supposed to be called by
+    // functions that
+    static void ClearGCBag();
+
+    using GCBag = std::vector<std::unique_ptr<HostFunctionClosure>>;
+    static std::mutex m_gcMutex;
+
+    static GCBag &GetGCBag();
 };
 
 } // namespace nvcvpy::priv

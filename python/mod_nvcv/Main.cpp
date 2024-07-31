@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,6 +20,7 @@
 #include "ColorSpec.hpp"
 #include "Container.hpp"
 #include "DataType.hpp"
+#include "Definitions.hpp"
 #include "ExternalBuffer.hpp"
 #include "Image.hpp"
 #include "ImageBatch.hpp"
@@ -41,6 +42,22 @@ PYBIND11_MODULE(nvcv, m)
 
     using namespace nvcvpy::priv;
 
+    // Submodule used for additional functionality needed only by tests
+    // so that some level of white-box testing is possible.
+    //
+    // This guarantees a clear separation of public and private APIs.
+    // Users are restricted to the public API, allowing us to change the
+    // private APIs as needed, without worring in breaking user's code.
+    //
+    // To retrieve it from inside the Export call, include "Definitions.hpp"
+    // and call:
+    //    py::module_ internal = m.attr(INTERNAL_SUBMODULE_NAME);
+    // Functions and other properties can be then exposed as usual, e.g.
+    //    internal.def("foo", &Foo");
+    // and accessed in python as you'd expect:
+    //    nvcv.internal.foo()
+    m.def_submodule(INTERNAL_SUBMODULE_NAME);
+
     // These will be destroyed in the reverse order here
     // Since everything is ref counted the order should not matter
     // but it is safer to ini them in order
@@ -48,6 +65,7 @@ PYBIND11_MODULE(nvcv, m)
     // Core entities
     ExportCAPI(m);
     Resource::Export(m);
+    Cache::Export(m);
     Container::Export(m);
     ExternalBuffer::Export(m);
 
@@ -63,10 +81,14 @@ PYBIND11_MODULE(nvcv, m)
     Image::Export(m);
     ImageBatchVarShape::Export(m);
 
-    // Cache and Streams
-    Cache::Export(m);
+    // Streams
     {
         py::module_ cuda = m.def_submodule("cuda");
+        // cuda submodule also has its submodule to export internal utilities.
+        // The code in the export calls below might expect it, as it is unaware that
+        // their functionality is not being defined directly under "nvcv" module.
+        cuda.def_submodule(INTERNAL_SUBMODULE_NAME);
+
         Stream::Export(cuda);
     }
 }

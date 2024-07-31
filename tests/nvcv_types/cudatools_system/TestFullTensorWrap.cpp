@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,12 +18,12 @@
 #include "DeviceBorderWrap.hpp"     // to test in device
 #include "DeviceFullTensorWrap.hpp" // to test in device
 
-#include <common/BorderUtils.hpp>    // for test::IsInside, etc.
-#include <common/TypedTests.hpp>     // for NVCV_TYPED_TEST_SUITE, etc.
-#include <nvcv/Tensor.hpp>           // for Tensor, etc.
-#include <nvcv/TensorDataAccess.hpp> // for TensorDataAccessStridedImagePlanar, etc.
-#include <nvcv/cuda/BorderWrap.hpp>  // for BorderWrap, etc.
-#include <nvcv/cuda/MathOps.hpp>     // for operator == to allow EXPECT_EQ
+#include <common/BorderUtils.hpp>           // for test::IsInside, etc.
+#include <common/TypedTests.hpp>            // for NVCV_TYPED_TEST_SUITE, etc.
+#include <cvcuda/cuda_tools/BorderWrap.hpp> // for BorderWrap, etc.
+#include <cvcuda/cuda_tools/MathOps.hpp>    // for operator == to allow EXPECT_EQ
+#include <nvcv/Tensor.hpp>                  // for Tensor, etc.
+#include <nvcv/TensorDataAccess.hpp>        // for TensorDataAccessStridedImagePlanar, etc.
 
 #include <limits>
 #include <random>

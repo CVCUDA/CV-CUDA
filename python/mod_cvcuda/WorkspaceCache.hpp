@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,11 +20,11 @@
 
 #include <common/CheckError.hpp>
 #include <cvcuda/Workspace.hpp>
+#include <cvcuda/util/Event.hpp>
+#include <cvcuda/util/PerStreamCache.hpp>
+#include <cvcuda/util/SimpleCache.hpp>
+#include <cvcuda/util/StreamId.hpp>
 #include <nvcv/alloc/Allocator.hpp>
-#include <util/Event.hpp>
-#include <util/PerStreamCache.hpp>
-#include <util/SimpleCache.hpp>
-#include <util/StreamId.hpp>
 
 #include <atomic>
 #include <cassert>

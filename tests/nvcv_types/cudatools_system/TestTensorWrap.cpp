@@ -17,13 +17,13 @@
 
 #include "DeviceTensorWrap.hpp" // to test in device
 
-#include <common/HashUtils.hpp>      // for NVCV_INSTANTIATE_TEST_SUITE_P, etc.
-#include <common/TypedTests.hpp>     // for NVCV_TYPED_TEST_SUITE, etc.
-#include <common/ValueTests.hpp>     // for StringLiteral
-#include <nvcv/Image.hpp>            // for Image, etc.
-#include <nvcv/Tensor.hpp>           // for Tensor, etc.
-#include <nvcv/TensorDataAccess.hpp> // for TensorDataAccessStridedImagePlanar, etc.
-#include <nvcv/cuda/MathOps.hpp>     // for operator == to allow EXPECT_EQ
+#include <common/HashUtils.hpp>          // for NVCV_INSTANTIATE_TEST_SUITE_P, etc.
+#include <common/TypedTests.hpp>         // for NVCV_TYPED_TEST_SUITE, etc.
+#include <common/ValueTests.hpp>         // for StringLiteral
+#include <cvcuda/cuda_tools/MathOps.hpp> // for operator == to allow EXPECT_EQ
+#include <nvcv/Image.hpp>                // for Image, etc.
+#include <nvcv/Tensor.hpp>               // for Tensor, etc.
+#include <nvcv/TensorDataAccess.hpp>     // for TensorDataAccessStridedImagePlanar, etc.
 
 #include <limits>
 

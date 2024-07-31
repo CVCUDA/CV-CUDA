@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +18,7 @@
 #include "Stream.hpp"
 
 #include "Cache.hpp"
+#include "Definitions.hpp"
 #include "StreamStack.hpp"
 
 #include <common/Assert.hpp>
@@ -32,6 +33,7 @@ namespace nvcvpy::priv {
 cudaStream_t     Stream::m_auxStream     = nullptr;
 std::atomic<int> Stream::m_instanceCount = 0;
 std::mutex       Stream::m_auxStreamMutex;
+std::mutex       Stream::m_gcMutex;
 
 // Here we define the representation of external cuda streams.
 // It defines pybind11's type casters from the python object
@@ -197,6 +199,7 @@ std::shared_ptr<Stream> Stream::Create()
 
 Stream::Stream()
     : m_owns(true)
+    , m_size_inbytes(doComputeSizeInBytes())
 {
     try
     {
@@ -259,6 +262,12 @@ cudaStream_t &Stream::GetAuxStream()
     return m_auxStream;
 }
 
+void Stream::SyncAuxStream()
+{
+    cudaStream_t auxStream = GetAuxStream();
+    util::CheckThrow(cudaStreamSynchronize(auxStream));
+}
+
 Stream::~Stream()
 {
     destroy();
@@ -289,6 +298,20 @@ void Stream::destroy()
         util::CheckThrow(cudaEventDestroy(m_event));
         m_event = nullptr;
     }
+}
+
+int64_t Stream::doComputeSizeInBytes()
+{
+    // We only cache the stream's handles, which are 8 byte on CPU memory, hence 0 bytes gpu memory.
+    return 0;
+}
+
+int64_t Stream::GetSizeInBytes() const
+{
+    // m_size_inbytes == -1 indicates failure case and value has not been computed yet
+    NVCV_ASSERT(m_size_inbytes != -1
+                && "Stream has m_size_inbytes == -1, ie m_size_inbytes has not been correctly set");
+    return m_size_inbytes;
 }
 
 std::shared_ptr<Stream> Stream::shared_from_this()
@@ -334,17 +357,29 @@ void Stream::deactivate(py::object exc_type, py::object exc_value, py::object ex
     StreamStack::Instance().pop();
 }
 
+// Stores the data held by a cuda host callback function in a cuda stream.
+// It's used for:
+// - Extend the lifetime of the objects it contains until they aren't needed
+//   by any future cuda kernels in the stream.
+struct Stream::HostFunctionClosure
+{
+    // Also hold the stream reference so that it isn't destroyed before the processing is done.
+    std::shared_ptr<const Stream> stream;
+    LockResources                 resources;
+};
+
 void Stream::holdResources(LockResources usedResources)
 {
-    struct HostFunctionClosure
-    {
-        // Also hold the stream reference so that it isn't destroyed before the processing is done.
-        std::shared_ptr<const Stream> stream;
-        LockResources                 resources;
-    };
-
     if (!usedResources.empty())
     {
+        // Looks like a good place to clear the gc bag, as every time we create
+        // a new closure that eventually gets added to the bag, we empty it.
+        // The bag shouldn't grow unlimited.
+        // Calling it before allocating a new closure just avoid having two
+        // closures not inside a cuda stream that are simultaneously alive, but
+        // in practice it doesn't seem to matter much.
+        ClearGCBag();
+
         auto closure = std::make_unique<HostFunctionClosure>();
 
         closure->stream    = this->shared_from_this();
@@ -352,8 +387,9 @@ void Stream::holdResources(LockResources usedResources)
 
         auto fn = [](cudaStream_t stream, cudaError_t error, void *userData) -> void
         {
-            auto *pclosure = reinterpret_cast<HostFunctionClosure *>(userData);
-            delete pclosure;
+            std::unique_ptr<HostFunctionClosure> pclosure(reinterpret_cast<HostFunctionClosure *>(userData));
+            NVCV_ASSERT(pclosure != nullptr);
+            AddToGCBag(std::move(pclosure));
         };
 
         // If we naively execute the callback in the main stream (m_handle), the GPU will wait until the callback
@@ -379,13 +415,72 @@ void Stream::holdResources(LockResources usedResources)
         util::CheckThrow(cudaEventRecord(m_event, m_handle)); // add async record the event in the main stream
         util::CheckThrow(
             cudaStreamWaitEvent(GetAuxStream(), m_event)); // add async wait for the event in the aux stream
+
+        // cudaStreamAddCallback pushes a task to the given stream, which at some point (asynchonously) calls
+        // the given callback (fn), passing to it the closure we created, among other stream states.
+        // When fn is executed, the refcnt of all objects that the closure holds will eventually be decremented, which
+        // will trigger their deletion if refcnt==0. This effectively extends the objects' lifetime until
+        // all tasks that refer to them are finished.
+
         // The callback will be executed in the singleton aux stream there may be contention with other callbacks and waitEvents from
         // other streams. However the callback is used to release resources from the cache and should not be a performance bottleneck.
         // This avoids opening a new aux stream for each stream object.
+
+        // NOTE: cudaStreamAddCallback is slated for deprecation, without a proper replacement (for now).
+        // The other option we could use is cudaLaunchHostFunc, but it doesn't guarantee that the callback
+        // will be called. We need this guarantee to make sure the object's refcount is eventually decremented,
+        // and the closure is freed, avoiding memory leaks.
+        // cudaLaunchHostFunc won't call the callback if the current cuda context is in error state, for instance.
+        // Ref: CUDA SDK docs for both functions.
         util::CheckThrow(
             cudaStreamAddCallback(GetAuxStream(), fn, closure.get(), 0)); // add async callback in the aux stream
         closure.release();
     }
+}
+
+Stream::GCBag &Stream::GetGCBag()
+{
+    // By defining the gcBag inside this function instead of the global scope,
+    // we guarantee that it'll be destroyed *before* the global python context
+    // is destroyed. This is due to this function being called the first time
+    // (via AddToGCBag or ClearGCBag) only after the python script (and python
+    // ctx) has already started.
+    static GCBag gcBag;
+    return gcBag;
+}
+
+void Stream::AddToGCBag(std::unique_ptr<HostFunctionClosure> closure)
+{
+    std::unique_lock lk(m_gcMutex);
+    GetGCBag().push_back(std::move(closure));
+}
+
+void Stream::ClearGCBag()
+{
+    GCBag objectsToBeDestroyed;
+
+    GCBag &gcBag = GetGCBag();
+
+    std::unique_lock lk(m_gcMutex);
+    // Do as little as possible while mutex is locked to avoid
+    // deadlocks.
+
+    // In the case here, instead of simply empting up the gc bag,
+    // which might trigger object destruction while the mutex is locked,
+    // we move its contents to a temporary local bag.
+
+    // take of benefit of ADL if available
+    using std::swap;
+    swap(objectsToBeDestroyed, gcBag);
+
+    // Now the original bag is left empty, but no objects were
+    // destroyed yet.
+    NVCV_ASSERT(gcBag.empty()); // post-condition (can't be guaranteed after unlock)
+
+    lk.unlock();
+
+    // Let the local object bag go out of scope, the objects in it
+    // will be finally destroyed with the mutex unlocked.
 }
 
 std::ostream &operator<<(std::ostream &out, const Stream &stream)
@@ -401,13 +496,16 @@ static void ExportExternalStream(py::module &m)
 
 void Stream::Export(py::module &m)
 {
-    py::class_<Stream, std::shared_ptr<Stream>> stream(m, "Stream");
+    py::class_<Stream, std::shared_ptr<Stream>, CacheItem> stream(m, "Stream");
 
     stream
         .def_property_readonly_static(
             "current", [](py::object) { return Current().shared_from_this(); },
             "Get the current CUDA stream for this thread.")
         .def(py::init(&Stream::Create), "Create a new CUDA stream.");
+
+    py::module_ internal = m.attr(INTERNAL_SUBMODULE_NAME);
+    internal.def("syncAuxStream", &SyncAuxStream);
 
     // Create the global stream object by wrapping cuda stream 0.
     // It'll be destroyed when python module is deinitialized.
@@ -443,6 +541,7 @@ void Stream::Export(py::module &m)
                                       stream->sync();
                                   }
                                   globalStream->sync();
+                                  Stream::SyncAuxStream();
 
                                   // There should only be 1 stream in the stack, namely the
                                   // global stream.
@@ -457,11 +556,16 @@ void Stream::Export(py::module &m)
                                   {
                                       StreamStack::Instance().pop();
                                   }
+
+                                  // Make sure the gc bag is also cleaned up *after* all streams are done,
+                                  // then when know all remaining items that need to be GC'd are in the bag.
+                                  Stream::ClearGCBag();
                               }
                               catch (const std::exception &e)
                               {
                                   //Do nothing here this can happen if someone closes the cuda context prior to exit.
-                                  std::cerr << "Warning CVCUDA cleanup may be incomplete due to: " << e.what() << "\n";
+                                  std::cerr << "Warning CVCUDA cleanup may be incomplete due to: " << e.what()
+                                            << std::endl;
                               }
                           });
 }

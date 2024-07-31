@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,9 +23,9 @@
 #include <iostream>
 
 #if NVCV_EXPORTING
-#    include <nvcv_types/priv/ColorSpec.hpp>
-#    include <nvcv_types/priv/DataLayout.hpp>
-#    include <nvcv_types/priv/Status.hpp>
+#    include <nvcv/src/priv/ColorSpec.hpp>
+#    include <nvcv/src/priv/DataLayout.hpp>
+#    include <nvcv/src/priv/Status.hpp>
 #else
 #    include <nvcv/ColorSpec.hpp>
 #    include <nvcv/DataLayout.hpp>

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -143,11 +143,11 @@ void ExportOpStack(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (Tensor List): Input tensors containing one or more samples each images all tensors must be N(HWC/CHW) or HWC/CHW and have the same data type and shape.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (List[nvcv.Tensor]): Input tensors containing one or more samples each images all tensors must be N(HWC/CHW) or HWC/CHW and have the same data type and shape.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output tensor containing the stacked input tensors.
+            nvcv.Tensor: The output tensor containing the stacked input tensors.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -163,9 +163,9 @@ void ExportOpStack(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (Tensor): Output N(CHW/HWC) tensor to store the result of the operation.
-            src (Tensor List): Input tensors containing one or more samples each images all tensors must be N(HWC/CHW) or HWC/CHW and have the same data type and shape.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            dst (nvcv.Tensor): Output N(CHW/HWC) tensor to store the result of the operation.
+            src (List[nvcv.Tensor]): Input tensors containing one or more samples each images all tensors must be N(HWC/CHW) or HWC/CHW and have the same data type and shape.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

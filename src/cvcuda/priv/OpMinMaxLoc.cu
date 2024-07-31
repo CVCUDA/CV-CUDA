@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,17 +17,17 @@
 
 #include "OpMinMaxLoc.hpp"
 
+#include <cvcuda/cuda_tools/Atomics.hpp>
+#include <cvcuda/cuda_tools/ImageBatchVarShapeWrap.hpp>
+#include <cvcuda/cuda_tools/StaticCast.hpp>
+#include <cvcuda/cuda_tools/TensorWrap.hpp>
 #include <nvcv/DataType.hpp>
 #include <nvcv/Exception.hpp>
 #include <nvcv/TensorData.hpp>
 #include <nvcv/TensorDataAccess.hpp>
 #include <nvcv/TensorLayout.hpp>
-#include <nvcv/cuda/Atomics.hpp>
-#include <nvcv/cuda/ImageBatchVarShapeWrap.hpp>
-#include <nvcv/cuda/StaticCast.hpp>
-#include <nvcv/cuda/TensorWrap.hpp>
-#include <util/CheckError.hpp>
-#include <util/Math.hpp>
+#include <nvcv/util/CheckError.hpp>
+#include <nvcv/util/Math.hpp>
 
 #include <cub/cub.cuh>
 

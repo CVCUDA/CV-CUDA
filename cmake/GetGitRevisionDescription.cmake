@@ -167,7 +167,7 @@ function(git_local_changes _var)
 	endif()
 endfunction()
 
-# Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
 # SPDX-License-Identifier: Apache-2.0
 # NVIDIA CORPORATION, its affiliates and licensors retain all intellectual

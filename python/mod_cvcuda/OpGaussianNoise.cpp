@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -111,7 +111,7 @@ void ExportOpGaussianNoise(py::module &m)
     m.def("gaussiannoise", &GaussianNoise, "src"_a, "mu"_a, "sigma"_a, "per_channel"_a, "seed"_a, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
 
-        cvcuda.gaussiannoise(src : nvcv.Tensor, mu : nvcv.Tensor, sigma : nvcv.Tensor, per_channel : bool, seed : int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
+        cvcuda.gaussiannoise(src: nvcv.Tensor, mu: nvcv.Tensor, sigma: nvcv.Tensor, per_channel: bool, seed: int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the GaussianNoise operation on the given cuda stream.
 
@@ -120,15 +120,15 @@ void ExportOpGaussianNoise(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (Tensor): Input image batch containing one or more images.
-            mu (Tensor): An array of size batch that gives the mu value of each image.
-            sigma (Tensor): An array of size batch that gives the sigma value of each image.
+            src (nvcv.Tensor): Input image batch containing one or more images.
+            mu (nvcv.Tensor): An array of size batch that gives the mu value of each image.
+            sigma (nvcv.Tensor): An array of size batch that gives the sigma value of each image.
             per_channel (bool): Whether to add the same noise for all channels.
             seed (int): Seed for random numbers.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output image batch.
+            nvcv.Tensor: The output image batch.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -138,7 +138,7 @@ void ExportOpGaussianNoise(py::module &m)
     m.def("gaussiannoise_into", &GaussianNoiseInto, "dst"_a, "src"_a, "mu"_a, "sigma"_a, "per_channel"_a, "seed"_a,
           py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
-        cvcuda.gaussiannoise_into(dst : nvcv.Tensor, src : nvcv.Tensor, mu : nvcv.Tensor, sigma : nvcv.Tensor, per_channel : bool, seed : int, stream: Optional[nvcv.cuda.Stream] = None)
+        cvcuda.gaussiannoise_into(dst: nvcv.Tensor, src: nvcv.Tensor, mu: nvcv.Tensor, sigma: nvcv.Tensor, per_channel: bool, seed: int, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the GaussianNoise operation on the given cuda stream.
 
@@ -147,13 +147,13 @@ void ExportOpGaussianNoise(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (Tensor): Output image batch containing the result of the operation.
-            src (Tensor): Input image batch containing one or more images.
-            mu (Tensor): An array of size batch that gives the mu value of each image.
-            sigma (Tensor): An array of size batch that gives the sigma value of each image.
+            dst (nvcv.Tensor): Output image batch containing the result of the operation.
+            src (nvcv.Tensor): Input image batch containing one or more images.
+            mu (nvcv.Tensor): An array of size batch that gives the mu value of each image.
+            sigma (nvcv.Tensor): An array of size batch that gives the sigma value of each image.
             per_channel (bool): Whether to add the same noise for all channels.
             seed (int): Seed for random numbers.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None
@@ -166,7 +166,7 @@ void ExportOpGaussianNoise(py::module &m)
     m.def("gaussiannoise", &GaussianNoiseVarShape, "src"_a, "mu"_a, "sigma"_a, "per_channel"_a, "seed"_a, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
 
-        cvcuda.gaussiannoise(src : nvcv.ImageBatchVarShape, mu : nvcv.Tensor, sigma : nvcv.Tensor, per_channel : bool, seed : int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+        cvcuda.gaussiannoise(src: nvcv.ImageBatchVarShape, mu: nvcv.Tensor, sigma: nvcv.Tensor, per_channel: bool, seed: int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
 
         Executes the GaussianNoise operation on the given cuda stream.
 
@@ -176,11 +176,11 @@ void ExportOpGaussianNoise(py::module &m)
 
         Args:
             src (ImageBatchVarShape): Input image batch containing one or more images.
-            mu (Tensor): An array of size batch that gives the mu value of each image.
-            sigma (Tensor): An array of size batch that gives the sigma value of each image.
+            mu (nvcv.Tensor): An array of size batch that gives the mu value of each image.
+            sigma (nvcv.Tensor): An array of size batch that gives the sigma value of each image.
             per_channel (bool): Whether to add the same noise for all channels.
             seed (int): Seed for random numbers.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             cvcuda.ImageBatchVarShape: The output image batch.
@@ -193,7 +193,7 @@ void ExportOpGaussianNoise(py::module &m)
     m.def("gaussiannoise_into", &GaussianNoiseVarShapeInto, "dst"_a, "src"_a, "mu"_a, "sigma"_a, "per_channel"_a,
           "seed"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
-        cvcuda.gaussiannoise_into(dst : nvcv.ImageBatchVarShape, src : nvcv.ImageBatchVarShape, mu : nvcv.Tensor, sigma : nvcv.Tensor, per_channel : bool, seed : int, stream: Optional[nvcv.cuda.Stream] = None)
+        cvcuda.gaussiannoise_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, mu: nvcv.Tensor, sigma: nvcv.Tensor, per_channel: bool, seed: int, stream: Optional[nvcv.cuda.Stream] = None)
 
 	Executes the GaussianNoise operation on the given cuda stream.
 
@@ -204,11 +204,11 @@ void ExportOpGaussianNoise(py::module &m)
         Args:
             dst (ImageBatchVarShape): Output image batch containing the result of the operation.
             src (ImageBatchVarShape): Input image batch containing one or more images.
-            mu (Tensor): An array of size batch that gives the mu value of each image.
-            sigma (Tensor): An array of size batch that gives the sigma value of each image.
+            mu (nvcv.Tensor): An array of size batch that gives the mu value of each image.
+            sigma (nvcv.Tensor): An array of size batch that gives the sigma value of each image.
             per_channel (bool): Whether to add the same noise for all channels.
             seed (int): Seed for random numbers.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

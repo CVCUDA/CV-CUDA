@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -50,6 +50,16 @@ RNG = np.random.default_rng(0)
             cvcuda.ColorConversion.YUV2RGB,
             ((1, 61, 62, 3), np.uint8, "NHWC"),
         ),
+        (
+            ((60, 62, 1), np.uint8, "HWC"),
+            cvcuda.ColorConversion.YUV2RGB_NV12,
+            ((40, 62, 3), np.uint8, "HWC"),
+        ),
+        (
+            ((2, 40, 62, 3), np.uint8, "NHWC"),
+            cvcuda.ColorConversion.BGR2YUV_NV21,
+            ((2, 60, 62, 1), np.uint8, "NHWC"),
+        ),
     ],
 )
 def test_op_cvtcolor(input_args, code, output_args):
@@ -68,7 +78,6 @@ def test_op_cvtcolor(input_args, code, output_args):
         stream=stream,
     )
     assert tmp is output
-    assert output.shape[:-1] == input.shape[:-1]
 
 
 @t.mark.parametrize(

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,9 @@
 add_executable(cvcuda_test_unit
     TestWorkspaceAllocator.cpp
     TestWorkspaceEstimator.cpp
+    TestStreamId.cpp
+    TestSimpleCache.cpp
+    TestPerStreamCache.cpp
 )
 
 target_compile_definitions(cvcuda_test_unit
@@ -29,6 +32,8 @@ target_link_libraries(cvcuda_test_unit
         nvcv_util
         nvcv_test_common
         cvcuda_priv
+        cvcuda_util
+        cuda
 )
 
 nvcv_add_test(cvcuda_test_unit cvcuda)

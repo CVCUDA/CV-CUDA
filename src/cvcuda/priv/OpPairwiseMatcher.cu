@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,12 +18,12 @@
 #include "Assert.h"
 #include "OpPairwiseMatcher.hpp"
 
+#include <cvcuda/cuda_tools/MathWrappers.hpp>
+#include <cvcuda/cuda_tools/TensorWrap.hpp>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/Exception.hpp>
-#include <nvcv/cuda/MathWrappers.hpp>
-#include <nvcv/cuda/TensorWrap.hpp>
-#include <nvcv/cuda/TypeTraits.hpp>
-#include <util/CheckError.hpp>
-#include <util/Math.hpp>
+#include <nvcv/util/CheckError.hpp>
+#include <nvcv/util/Math.hpp>
 
 #include <cub/cub.cuh>
 

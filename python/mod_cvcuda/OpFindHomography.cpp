@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,8 +22,8 @@
 #include <common/String.hpp>
 #include <cvcuda/OpFindHomography.hpp>
 #include <cvcuda/Types.h>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/TensorDataAccess.hpp>
-#include <nvcv/cuda/TypeTraits.hpp>
 #include <nvcv/python/Image.hpp>
 #include <nvcv/python/ImageFormat.hpp>
 #include <nvcv/python/ResourceGuard.hpp>
@@ -243,12 +243,12 @@ void ExportOpFindHomography(py::module &m)
             for more details and usage examples.
 
         Args:
-            srcPts (Tensor): Input source coordinates tensor containing 2D coordinates in the source image.
-            dstPts (Tensor): Input destination coordinates tensor containing 2D coordinates in the target image.
+            srcPts (nvcv.Tensor): Input source coordinates tensor containing 2D coordinates in the source image.
+            dstPts (nvcv.Tensor): Input destination coordinates tensor containing 2D coordinates in the target image.
             stream (Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The model homography matrix tensor.
+            nvcv.Tensor: The model homography matrix tensor.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -266,13 +266,13 @@ void ExportOpFindHomography(py::module &m)
             for more details and usage examples.
 
         Args:
-            models (Tensor) : Output model tensor containing 3x3 homography matrices.
-            srcPts (Tensor): Input source coordinates tensor containing 2D coordinates in the source image.
-            dstPts (Tensor): Input destination coordinates tensor containing 2D coordinates in the target image.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            models (nvcv.Tensor): Output model tensor containing 3x3 homography matrices.
+            srcPts (nvcv.Tensor): Input source coordinates tensor containing 2D coordinates in the source image.
+            dstPts (nvcv.Tensor): Input destination coordinates tensor containing 2D coordinates in the target image.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The model homography matrix tensor.
+            nvcv.Tensor: The model homography matrix tensor.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -290,12 +290,12 @@ void ExportOpFindHomography(py::module &m)
             for more details and usage examples.
 
         Args:
-            srcPts (TensorBatch): Input source coordinates tensor containing 2D coordinates in the source image.
-            dstPts (TensorBatch): Input destination coordinates tensor containing 2D coordinates in the target image.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            srcPts (nvcv.TensorBatch): Input source coordinates tensor containing 2D coordinates in the source image.
+            dstPts (nvcv.TensorBatch): Input destination coordinates tensor containing 2D coordinates in the target image.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.TensorBatch: The model homography matrix tensor batch.
+            nvcv.TensorBatch: The model homography matrix tensor batch.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -314,13 +314,13 @@ void ExportOpFindHomography(py::module &m)
             for more details and usage examples.
 
         Args:
-            models (TensorBatch) : Output model tensor containing 3x3 homography matrices.
-            srcPts (TensorBatch): Input source coordinates tensor containing 2D coordinates in the source image.
-            dstPts (TensorBatch): Input destination coordinates tensor containing 2D coordinates in the target image.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            models (nvcv.TensorBatch): Output model tensor containing 3x3 homography matrices.
+            srcPts (nvcv.TensorBatch): Input source coordinates tensor containing 2D coordinates in the source image.
+            dstPts (nvcv.TensorBatch): Input destination coordinates tensor containing 2D coordinates in the target image.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.TensorBatch: The model homography matrix tensor batch.
+            nvcv.TensorBatch: The model homography matrix tensor batch.
 
 
         Caution:

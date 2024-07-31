@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,8 +22,8 @@
 #include <common/String.hpp>
 #include <cvcuda/OpPillowResize.hpp>
 #include <cvcuda/Types.h>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/TensorDataAccess.hpp>
-#include <nvcv/cuda/TypeTraits.hpp>
 #include <nvcv/python/Image.hpp>
 #include <nvcv/python/ImageBatchVarShape.hpp>
 #include <nvcv/python/ImageFormat.hpp>
@@ -265,7 +265,7 @@ void ExportOpPillowResize(py::module &m)
     m.def("pillowresize", &PillowResize, "src"_a, "shape"_a, "format"_a, "interp"_a = NVCV_INTERP_LINEAR, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.pillowresize(src: nvcv.Tensor, shape:Shape, format:ImageFormat, interp: Interp = < NVCV_INTERP_LINEAR >, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
+	cvcuda.pillowresize(src: nvcv.Tensor, shape:Shape, format:ImageFormat, interp: Interp = cvcuda.Interp.LINEAR, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the Pillow Resize operation on the given cuda stream.
 
@@ -274,14 +274,14 @@ void ExportOpPillowResize(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (Tensor): Input tensor containing one or more images.
-            shape (Shape): Shape of the output image.
-            format (ImageFormat): Format of the input and output images.
-            interp(Interp): Interpolation type used for transform.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            shape (tuple): Shape of the output image.
+            format (nvcv.Format): Format of the input and output images.
+            interp (cvcuda.Interp, optional): Interpolation type used for transform.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output tensor.
+            nvcv.Tensor: The output tensor.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -291,7 +291,7 @@ void ExportOpPillowResize(py::module &m)
     m.def("pillowresize_into", &PillowResizeInto, "dst"_a, "src"_a, "format"_a, "interp"_a = NVCV_INTERP_LINEAR,
           py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.pillowresize_into(dst: nvcv.Tensor, src: nvcv.Tensor, shape:Shape, format:ImageFormat, interp: Interp = < NVCV_INTERP_LINEAR >, stream: Optional[nvcv.cuda.Stream] = None)
+	cvcuda.pillowresize_into(dst: nvcv.Tensor, src: nvcv.Tensor, shape: Tuple[int], format: nvcv.Format, interp: Interp = cvcuda.Interp.LINEAR, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Pillow Resize operation on the given cuda stream.
 
@@ -300,12 +300,12 @@ void ExportOpPillowResize(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (Tensor): Output tensor to store the result of the operation.
-            src (Tensor): Input tensor containing one or more images.
-            shape (Shape): Shape of the output image.
-            format (ImageFormat): Format of the input and output images.
-            interp(Interp): Interpolation type used for transform.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            dst (nvcv.Tensor): Output tensor to store the result of the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            shape (tuple): Shape of the output image.
+            format (nvcv.Format): Format of the input and output images.
+            interp (cvcuda.Interp, optional): Interpolation type used for transform.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None
@@ -318,7 +318,7 @@ void ExportOpPillowResize(py::module &m)
     m.def("pillowresize", &VarShapePillowResize, "src"_a, "sizes"_a, "interp"_a = NVCV_INTERP_LINEAR, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.pillowresize(src: nvcv.ImageBatchVarShape, shape:Shape, format:ImageFormat, interp: Interp = < NVCV_INTERP_LINEAR >, stream: Optional[nvcv.cuda.Stream] = None) ->ImageBatchVarShape
+	cvcuda.pillowresize(src: nvcv.ImageBatchVarShape, shape: Tuple[int], format: nvcv.Format, interp: Interp = cvcuda.Interp.LINEAR, stream: Optional[nvcv.cuda.Stream] = None) ->ImageBatchVarShape
 
         Executes the Pillow Resize operation on the given cuda stream.
 
@@ -327,13 +327,13 @@ void ExportOpPillowResize(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            sizes (Tuple vector): Shapes of output images.
-            interp(Interp): Interpolation type used for transform.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            sizes (Tuple[int]): Shapes of output images.
+            interp (cvcuda.Interp, optional): Interpolation type used for transform.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.ImageBatchVarShape: The output image batch.
+            nvcv.ImageBatchVarShape: The output image batch.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -343,7 +343,7 @@ void ExportOpPillowResize(py::module &m)
     m.def("pillowresize_into", &VarShapePillowResizeInto, "dst"_a, "src"_a, "interp"_a = NVCV_INTERP_LINEAR,
           py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.pillowresize(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, shape:Shape, format:ImageFormat, interp: Interp = < NVCV_INTERP_LINEAR >, stream: Optional[nvcv.cuda.Stream] = None)
+	cvcuda.pillowresize(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, shape: Tuple[int], format: nvcv.Format, interp: cvcuda.Interp = cvcuda.Interp.LINEAR, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Pillow Resize operation on the given cuda stream.
 
@@ -352,11 +352,10 @@ void ExportOpPillowResize(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
-            sizes (Tuple vector): Shapes of output images.
-            interp(Interp): Interpolation type used for transform.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            dst (nvcv.ImageBatchVarShape): Output image batch containing the result of the operation.
+            interp (cvcuda.Interp, optional): Interpolation type used for transform.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

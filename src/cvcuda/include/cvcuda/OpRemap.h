@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -76,7 +76,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaRemapCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
- *       32bit Float    | Yes
+ *       32bit Float    | Yes (only if Channel=1)
  *       64bit Float    | No
  *
  *  Output:
@@ -91,7 +91,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaRemapCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
- *       32bit Float    | Yes
+ *       32bit Float    | Yes (only if Channel=1)
  *       64bit Float    | No
  *
  *  Input map:

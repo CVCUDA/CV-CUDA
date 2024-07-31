@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,9 +18,9 @@
 #ifndef NVCV_TESTS_DEVICE_TENSOR_WRAP_HPP
 #define NVCV_TESTS_DEVICE_TENSOR_WRAP_HPP
 
-#include <cuda_runtime.h>           // for int2, etc.
-#include <nvcv/cuda/TensorWrap.hpp> // the object of this test
-#include <nvcv/cuda/TypeTraits.hpp> // for MakeType, etc.
+#include <cuda_runtime.h>                   // for int2, etc.
+#include <cvcuda/cuda_tools/TensorWrap.hpp> // the object of this test
+#include <cvcuda/cuda_tools/TypeTraits.hpp> // for MakeType, etc.
 
 #include <array> // for std::array, etc.
 

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -123,7 +123,7 @@ void ExportOpErase(py::module &m)
     m.def("erase", &Erase, "src"_a, "anchor"_a, "erasing"_a, "values"_a, "imgIdx"_a, py::kw_only(), "random"_a = false,
           "seed"_a = 0, "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.erase(src: nvcv.Tensor, anchor : nvcv.Tensor, erasing : nvcv.Tensor, values : nvcv.Tensor, imgIdx : nvcv.Tensor, random : int8, seed : int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
+	cvcuda.erase(src: nvcv.Tensor, anchor: nvcv.Tensor, erasing: nvcv.Tensor, values: nvcv.Tensor, imgIdx: nvcv.Tensor, random: int, seed: int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
 	Executes the Erase operation on the given cuda stream.
 
@@ -132,20 +132,20 @@ void ExportOpErase(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (Tensor): Input tensor containing one or more images.
-            anchor (Tensor): anchor an array of size num_erasing_area that gives the
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            anchor (nvcv.Tensor): anchor an array of size num_erasing_area that gives the
                              x coordinate and y coordinate of the top left point in the eraseing areas.
-            erasing (Tensor): Eraisng an array of size num_erasing_area that gives the widths of the eraseing areas,
+            erasing (nvcv.Tensor): Eraisng an array of size num_erasing_area that gives the widths of the eraseing areas,
                               the heights of the eraseing areas and integers in range 0-15, each of whose bits
                               indicates whether or not the corresponding channel need to be erased.
-            values (Tensor): An array of size num_erasing_area*4 that gives the filling value for each erase area.
-            imgIdx (Tensor): An array of size num_erasing_area that maps a erase area idx to img idx in the batch.
-            random (int8 , optional): random an value for random op.
-            seed (int ,optional): seed random seed for random filling erase area.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            values (nvcv.Tensor): An array of size num_erasing_area*4 that gives the filling value for each erase area.
+            imgIdx (nvcv.Tensor): An array of size num_erasing_area that maps a erase area idx to img idx in the batch.
+            random (int, optional): 8-bit integer value for random op.
+            seed (int, optional): seed random seed for random filling erase area.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output tensor.
+            nvcv.Tensor: The output tensor.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -155,7 +155,7 @@ void ExportOpErase(py::module &m)
     m.def("erase_into", &EraseInto, "dst"_a, "src"_a, "anchor"_a, "erasing"_a, "values"_a, "imgIdx"_a, py::kw_only(),
           "random"_a = false, "seed"_a = 0, "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.erase_into(dst: nvcv.Tensor, src: nvcv.Tensor, anchor : nvcv.Tensor, erasing : nvcv.Tensor, values : nvcv.Tensor, imgIdx : nvcv.Tensor, random : int8, seed : int, stream: Optional[nvcv.cuda.Stream] = None)
+	cvcuda.erase_into(dst: nvcv.Tensor, src: nvcv.Tensor, anchor: nvcv.Tensor, erasing: nvcv.Tensor, values: nvcv.Tensor, imgIdx: nvcv.Tensor, random: int, seed: int, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Erase operation on the given cuda stream.
 
@@ -164,18 +164,18 @@ void ExportOpErase(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (Tensor): Output tensor to store the result of the operation.
-            src (Tensor): Input tensor containing one or more images.
-            anchor (Tensor): anchor an array of size num_erasing_area that gives the
+            dst (nvcv.Tensor): Output tensor to store the result of the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            anchor (nvcv.Tensor): anchor an array of size num_erasing_area that gives the
                              x coordinate and y coordinate of the top left point in the eraseing areas.
-            erasing (Tensor): Eraisng an array of size num_erasing_area that gives the widths of the eraseing areas,
+            erasing (nvcv.Tensor): Eraisng an array of size num_erasing_area that gives the widths of the eraseing areas,
                               the heights of the eraseing areas and integers in range 0-15, each of whose bits
                               indicates whether or not the corresponding channel need to be erased.
-            values (Tensor): An array of size num_erasing_area*4 that gives the filling value for each erase area.
-            imgIdx (Tensor): An array of size num_erasing_area that maps a erase area idx to img idx in the batch.
-            random (int8 , optional): random an value for random op.
-            seed (int ,optional): seed random seed for random filling erase area.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            values (nvcv.Tensor): An array of size num_erasing_area*4 that gives the filling value for each erase area.
+            imgIdx (nvcv.Tensor): An array of size num_erasing_area that maps a erase area idx to img idx in the batch.
+            random (int, optional): 8-bit integer value for random op.
+            seed (int, optional): seed random seed for random filling erase area.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None
@@ -188,7 +188,7 @@ void ExportOpErase(py::module &m)
     m.def("erase", &EraseVarShape, "src"_a, "anchor"_a, "erasing"_a, "values"_a, "imgIdx"_a, py::kw_only(),
           "random"_a = false, "seed"_a = 0, "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.erase(src: nvcv.ImageBatchVarShape, anchor : nvcv.Tensor, erasing : nvcv.Tensor, values : nvcv.Tensor, imgIdx : nvcv.Tensor, random : int8, seed : int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+	cvcuda.erase(src: nvcv.ImageBatchVarShape, anchor: nvcv.Tensor, erasing: nvcv.Tensor, values: nvcv.Tensor, imgIdx: nvcv.Tensor, random: int, seed: int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
 
         Executes the Erase operation on the given cuda stream.
 
@@ -197,21 +197,21 @@ void ExportOpErase(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            anchor (Tensor): anchor an array of size num_erasing_area that gives the
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            anchor (nvcv.Tensor): anchor an array of size num_erasing_area that gives the
                              x coordinate and y coordinate of the top left point in the eraseing areas.
-            erasing (Tensor): Eraisng an array of size num_erasing_area that gives the widths of the eraseing areas,
+            erasing (nvcv.Tensor): Eraisng an array of size num_erasing_area that gives the widths of the eraseing areas,
                               the heights of the eraseing areas and integers in range 0-15, each of whose bits
                               indicates whether or not the corresponding channel need to be erased.
-            values (Tensor): An array of size num_erasing_area*4 that gives the filling value for each erase area.
-            imgIdx (Tensor): An array of size num_erasing_area that maps a erase area idx to img idx in the batch.
-            random (int8 , optional): random an value for random op.
-            seed (int ,optional): seed random seed for random filling erase area.
+            values (nvcv.Tensor): An array of size num_erasing_area*4 that gives the filling value for each erase area.
+            imgIdx (nvcv.Tensor): An array of size num_erasing_area that maps a erase area idx to img idx in the batch.
+            random (int, optional): 8-bit integer value for random op.
+            seed (int, optional): seed random seed for random filling erase area.
 
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.ImageBatchVarShape: The output image batch.
+            nvcv.ImageBatchVarShape: The output image batch.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -221,7 +221,7 @@ void ExportOpErase(py::module &m)
     m.def("erase_into", &EraseVarShapeInto, "dst"_a, "src"_a, "anchor"_a, "erasing"_a, "values"_a, "imgIdx"_a,
           py::kw_only(), "random"_a = false, "seed"_a = 0, "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.erase_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, anchor : nvcv.Tensor, erasing : nvcv.Tensor, values : nvcv.Tensor, imgIdx : nvcv.Tensor, random : int8, seed : int, stream: Optional[nvcv.cuda.Stream] = None)
+	cvcuda.erase_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, anchor: nvcv.Tensor, erasing: nvcv.Tensor, values: nvcv.Tensor, imgIdx: nvcv.Tensor, random: int, seed: int, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Erase operation on the given cuda stream.
 
@@ -230,17 +230,17 @@ void ExportOpErase(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
-            anchor (Tensor): anchor an array of size num_erasing_area that gives the
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            dst (nvcv.ImageBatchVarShape): Output image batch containing the result of the operation.
+            anchor (nvcv.Tensor): anchor an array of size num_erasing_area that gives the
                              x coordinate and y coordinate of the top left point in the eraseing areas.
-            erasing (Tensor): Eraisng an array of size num_erasing_area that gives the widths of the eraseing areas,
+            erasing (nvcv.Tensor): Eraisng an array of size num_erasing_area that gives the widths of the eraseing areas,
                               the heights of the eraseing areas and integers in range 0-15, each of whose bits
                               indicates whether or not the corresponding channel need to be erased.
-            values (Tensor): An array of size num_erasing_area*4 that gives the filling value for each erase area.
-            imgIdx (Tensor): An array of size num_erasing_area that maps a erase area idx to img idx in the batch.
-            random (int8 , optional): random an value for random op.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            values (nvcv.Tensor): An array of size num_erasing_area*4 that gives the filling value for each erase area.
+            imgIdx (nvcv.Tensor): An array of size num_erasing_area that maps a erase area idx to img idx in the batch.
+            random (int, optional): 8-bit integer value for random op.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

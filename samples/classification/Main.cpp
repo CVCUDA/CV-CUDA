@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -248,7 +248,7 @@ int main(int argc, char *argv[])
     auto numBindings = trtBackend->getBlobCount();
     if (numBindings != 2)
     {
-        std::cerr << "Number of bindings should be 2\n";
+        std::cerr << "Number of bindings should be 2" << std::endl;
         return -1;
     }
 

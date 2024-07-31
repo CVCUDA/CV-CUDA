@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -101,12 +101,12 @@ void ExportOpHistogram(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (Tensor): Input tensor containing one or more images, input tensor must be (N)HWC, currently only grayscale uint8 is supported.
-            mask (Tensor, optional): Input tensor containing the mask of the pixels to be considered for the histogram, must be the same shape as src.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images, input tensor must be (N)HWC, currently only grayscale uint8 is supported.
+            mask (nvcv.Tensor, optional): Input tensor containing the mask of the pixels to be considered for the histogram, must be the same shape as src.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output tensor containing the histogram. The tensor is formatted as HWC with W = 256 and H = number of input tensors, and C = 1.
+            nvcv.Tensor: The output tensor containing the histogram. The tensor is formatted as HWC with W = 256 and H = number of input tensors, and C = 1.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -123,10 +123,10 @@ void ExportOpHistogram(py::module &m)
             for more details and usage examples.
 
         Args:
-            histogram (Tensor): Output tensor containing the histogram. The tensor is formatted as HWC with W = 256 and H = number of input tensors, and C = 1.
-            src (Tensor): Input tensor containing one or more images, input tensor must be (N)HWC, currently only grayscale uint8 is supported.
-            mask (Tensor, optional): Input tensor containing the bit mask of the pixels to be considered for the histogram, must be the same shape as src.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            histogram (nvcv.Tensor): Output tensor containing the histogram. The tensor is formatted as HWC with W = 256 and H = number of input tensors, and C = 1.
+            src (nvcv.Tensor): Input tensor containing one or more images, input tensor must be (N)HWC, currently only grayscale uint8 is supported.
+            mask (nvcv.Tensor, optional): Input tensor containing the bit mask of the pixels to be considered for the histogram, must be the same shape as src.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None.

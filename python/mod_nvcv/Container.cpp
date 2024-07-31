@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,7 +31,7 @@ std::shared_ptr<const Container> Container::shared_from_this() const
 
 void Container::Export(py::module &m)
 {
-    py::class_<Container, std::shared_ptr<Container>, Resource> cont(m, "Container");
+    py::class_<Container, std::shared_ptr<Container>, Resource, CacheItem> cont(m, "Container");
 
     py::class_<ExternalContainer, Container, std::shared_ptr<ExternalContainer>, Resource> extcont(
         nullptr, "ExternalContainer", py::module_local());

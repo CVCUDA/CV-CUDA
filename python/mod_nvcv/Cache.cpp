@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,7 +17,10 @@
 
 #include "Cache.hpp"
 
+#include "Definitions.hpp"
+
 #include <common/Assert.hpp>
+#include <common/CheckError.hpp>
 #include <common/PyUtil.hpp>
 
 #include <mutex>
@@ -75,10 +78,13 @@ bool CacheItem::isInUse() const
     return sthis.use_count() > 2;
 }
 
+using Items = std::unordered_multimap<const IKey *, std::shared_ptr<CacheItem>, HashKey, KeyEqual>;
+
 struct Cache::Impl
 {
-    std::mutex                                                                           mtx;
-    std::unordered_multimap<const IKey *, std::shared_ptr<CacheItem>, HashKey, KeyEqual> items;
+    std::mutex mtx;
+    Items      items;
+    int64_t    cache_limit_inbytes;
 };
 
 Cache::Cache()
@@ -88,9 +94,21 @@ Cache::Cache()
 
 void Cache::add(CacheItem &item)
 {
-    std::unique_lock<std::mutex> lk(pimpl->mtx);
+    Items savedItems;
+    {
+        std::unique_lock<std::mutex> lk(pimpl->mtx);
+        if (item.GetSizeInBytes() > doGetCacheLimit())
+        {
+            return;
+        }
 
-    pimpl->items.emplace(&item.key(), item.shared_from_this());
+        if (item.GetSizeInBytes() + doCurrentSizeInBytes() > doGetCacheLimit())
+        {
+            savedItems = std::move(pimpl->items);
+        }
+
+        pimpl->items.emplace(&item.key(), item.shared_from_this());
+    }
 }
 
 void Cache::removeAllNotInUseMatching(const IKey &key)
@@ -184,14 +202,75 @@ std::shared_ptr<CacheItem> Cache::fetchOne(const IKey &key) const
 
 void Cache::clear()
 {
+    Items                        savedItems;
     std::unique_lock<std::mutex> lk(pimpl->mtx);
-    pimpl->items.clear();
+    savedItems = std::move(pimpl->items);
+    lk.unlock();
+    savedItems.clear();
 }
 
-size_t Cache::size()
+size_t Cache::size() const
 {
     std::unique_lock<std::mutex> lk(pimpl->mtx);
     return pimpl->items.size();
+}
+
+void Cache::setCacheLimit(int64_t new_cache_limit_inbytes)
+{
+    if (new_cache_limit_inbytes < 0)
+    {
+        throw std::invalid_argument("Cache limit must be non-negative.");
+    }
+
+    size_t free_mem, total_mem;
+    util::CheckThrow(cudaMemGetInfo(&free_mem, &total_mem));
+
+    if (static_cast<int64_t>(total_mem) < new_cache_limit_inbytes)
+    {
+        // Cache is not device aware, so in a multi-gpu scenario it could be ok to have a cache limit larger
+        // than the total mem of the current device, but we should notify the user about this.
+        std::cerr << "WARNING: new_cache_limit=" << new_cache_limit_inbytes
+                  << " is more than total available memory on current device: " << total_mem << std::endl;
+    }
+
+    Items savedItems;
+    {
+        std::unique_lock<std::mutex> lk(pimpl->mtx);
+        if (doCurrentSizeInBytes() > new_cache_limit_inbytes)
+        {
+            savedItems = std::move(pimpl->items);
+        }
+        pimpl->cache_limit_inbytes = new_cache_limit_inbytes;
+    }
+}
+
+int64_t Cache::getCacheLimit() const
+{
+    std::unique_lock<std::mutex> lk(pimpl->mtx);
+    return doGetCacheLimit();
+}
+
+int64_t Cache::doGetCacheLimit() const
+{
+    return pimpl->cache_limit_inbytes;
+}
+
+int64_t Cache::getCurrentSizeInBytes()
+{
+    std::unique_lock<std::mutex> lk(pimpl->mtx);
+    return doCurrentSizeInBytes();
+}
+
+int64_t Cache::doCurrentSizeInBytes() const
+{
+    int64_t current_size_inbytes = 0;
+
+    for (auto it = pimpl->items.begin(); it != pimpl->items.end(); ++it)
+    {
+        current_size_inbytes += it->second->GetSizeInBytes();
+    }
+
+    return current_size_inbytes;
 }
 
 void Cache::doIterateThroughItems(const std::function<void(CacheItem &item)> &fn) const
@@ -229,6 +308,11 @@ void Cache::Export(py::module &m)
     py::class_<ExternalCacheItem, CacheItem, std::shared_ptr<ExternalCacheItem>>(nullptr, "ExternalCacheItem",
                                                                                  py::module_local());
 
+    // Initialy set cache limit to half the size of the GPU memory
+    size_t free_mem, total_mem;
+    util::CheckThrow(cudaMemGetInfo(&free_mem, &total_mem));
+    Cache::Instance().setCacheLimit(total_mem / 2);
+
     util::RegisterCleanup(m,
                           []
                           {
@@ -242,6 +326,21 @@ void Cache::Export(py::module &m)
     m.def(
         "cache_size", [] { return Cache::Instance().size(); },
         "Returns the quantity of items in the NVCV Python cache");
+
+    m.def(
+        "get_cache_limit_inbytes", [] { return Cache::Instance().getCacheLimit(); },
+        "Returns the current cache limit [in bytes]");
+    m.def(
+        "set_cache_limit_inbytes",
+        [](int64_t new_cache_limit_inbytes) { Cache::Instance().setCacheLimit(new_cache_limit_inbytes); },
+        "Sets the current cache limit [in bytes]");
+
+    m.def(
+        "current_cache_size_inbytes", [] { return Cache::Instance().getCurrentSizeInBytes(); },
+        "Returns the current cache size [in bytes]");
+
+    py::module_ internal = m.attr(INTERNAL_SUBMODULE_NAME);
+    internal.def("nbytes_in_cache", [](const CacheItem &item) { return item.GetSizeInBytes(); });
 
     // Just to check if fetchAll compiles, it's harmless
     Cache::Instance().fetchAll<Cache>();

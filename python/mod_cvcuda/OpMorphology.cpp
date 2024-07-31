@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +21,7 @@
 #include <common/String.hpp>
 #include <cvcuda/OpMorphology.hpp>
 #include <cvcuda/Types.h>
-#include <nvcv/cuda/TypeTraits.hpp>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/python/ImageBatchVarShape.hpp>
 #include <nvcv/python/ResourceGuard.hpp>
 #include <nvcv/python/Stream.hpp>
@@ -140,7 +140,7 @@ void ExportOpMorphology(py::module &m)
           "workspace"_a = nullptr, "iteration"_a = 1, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT,
           "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.morphology(src : nvcv.Tensor, morphologyType: MorphologyType, maskSize: Tuple [int,int], anchor: Tuple [int,int], workspace: nvcv.Tensor, iteration: int, border: NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
+	cvcuda.morphology(src: nvcv.Tensor, morphologyType: cvcuda.MorphologyType, maskSize: Tuple[int, int], anchor: Tuple[int, int], workspace: nvcv.Tensor, iteration: int, border: cvcuda.Border = cvcuda.Border.CONSTANT, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the Morphology operation on the given cuda stream.
 
@@ -149,17 +149,18 @@ void ExportOpMorphology(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (Tensor): Input tensor containing one or more images.
-            morphologyType (MorphologyType): Type of operation to perform (Erode/Dilate).
-            maskSize (Tuple [int,int]): Mask width and height for morphology operation.
-            anchor (Tuple [int,int]): X,Y offset of kernel, use -1,-1 for center.
-            workspace (Tensor, optional): Workspace tensor for intermediate results, must be the same size as src. Can be omitted if operation is Dilate/Erode with iteration = 1.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            morphologyType (cvcuda.MorphologyType): Type of operation to perform (e.g. cvcuda.MorphologyType.ERODE or
+                cvcuda.MorphologyType.DILATE).
+            maskSize (Tuple[int, int]): Mask width and height for morphology operation.
+            anchor (Tuple[int, int]): X,Y offset of kernel, use -1,-1 for center.
+            workspace (nvcv.Tensor, optional): Workspace tensor for intermediate results, must be the same size as src. Can be omitted if operation is Dilate/Erode with iteration = 1.
             iteration (int, optional): Number of times to run the kernel.
-            border (NVCVBorderType, optional): Border mode to be used when accessing elements outside input image.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            border (cvcuda.Border, optional): Border mode to be used when accessing elements outside input image.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output tensor.
+            nvcv.Tensor: The output tensor.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -171,7 +172,7 @@ void ExportOpMorphology(py::module &m)
           "stream"_a = nullptr,
           R"pbdoc(
 
-	cvcuda.morphology_into(dst: nvcv.Tensor, src: nvcv.Tensor, morphologyType: MorphologyType, maskSize: Tuple [int,int], anchor: Tuple [int,int], workspace: nvcv.Tensor, iteration: int, border: NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, stream: Optional[nvcv.cuda.Stream] = None)
+	cvcuda.morphology_into(dst: nvcv.Tensor, src: nvcv.Tensor, morphologyType: cvcuda.MorphologyType, maskSize: Tuple[int, int], anchor: Tuple[int, int], workspace: nvcv.Tensor, iteration: int, border: cvcuda.Border = cvcuda.Border.CONSTANT, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Morphology operation on the given cuda stream.
 
@@ -180,15 +181,16 @@ void ExportOpMorphology(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (Tensor): Output tensor to store the result of the operation.
-            src (Tensor): Input tensor containing one or more images.
-            morphologyType (MorphologyType): Type of operation to perform (Erode/Dilate).
-            maskSize (Tuple [int,int]): Mask width and height for morphology operation.
-            anchor (Tuple [int,int]): X,Y offset of kernel, use -1,-1 for center.
-            workspace (Tensor, optional): Workspace tensor for intermediate results, must be the same size as src. Can be omitted if operation is Dilate/Erode with iteration = 1.
+            dst (nvcv.Tensor): Output tensor to store the result of the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            morphologyType (cvcuda.MorphologyType): Type of operation to perform (e.g. cvcuda.MorphologyType.ERODE or
+                cvcuda.MorphologyType.DILATE).
+            maskSize (Tuple[int, int]): Mask width and height for morphology operation.
+            anchor (Tuple[int, int]): X,Y offset of kernel, use -1,-1 for center.
+            workspace (nvcv.Tensor, optional): Workspace tensor for intermediate results, must be the same size as src. Can be omitted if operation is Dilate/Erode with iteration = 1.
             iteration (int, optional): Number of times to run the kernel.
-            border (NVCVBorderType, optional): Border mode to be used when accessing elements outside input image.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            border (cvcuda.Border, optional): Border mode to be used when accessing elements outside input image.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None
@@ -202,7 +204,7 @@ void ExportOpMorphology(py::module &m)
           "workspace"_a = nullptr, "iteration"_a = 1, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT,
           "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.morphology(src: nvcv.ImageBatchVarShape, morphologyType: MorphologyType, maskSize: nvcv.Tensor, anchor : nvcv.Tensor, workspace: nvcv.ImageBatchVarShape, iteration: int, border: NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+	cvcuda.morphology(src: nvcv.ImageBatchVarShape, morphologyType: cvcuda.MorphologyType, maskSize: nvcv.Tensor, anchor: nvcv.Tensor, workspace: nvcv.ImageBatchVarShape, iteration: int, border: cvcuda.Border = cvcuda.Border.CONSTANT, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
 
         Executes the Morphology operation on the given cuda stream.
 
@@ -211,17 +213,18 @@ void ExportOpMorphology(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            morphologyType (MorphologyType): Type of operation to perform (Erode/Dilate).
-            maskSize (Tensor): Mask width and height for morphology operation for every image.
-            anchor (Tensor): X,Y offset of kernel for every image, use -1,-1 for center.
-            workspace (ImageBatchVarShape, optional): Workspace tensor for intermediate results, must be the same size as src. Can be omitted if operation is Dilate/Erode with iteration = 1.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            morphologyType (cvcuda.MorphologyType): Type of operation to perform (e.g. cvcuda.MorphologyType.ERODE or
+                cvcuda.MorphologyType.DILATE).
+            maskSize (nvcv.Tensor): Mask width and height for morphology operation for every image.
+            anchor (nvcv.Tensor): X,Y offset of kernel for every image, use -1,-1 for center.
+            workspace (nvcv.ImageBatchVarShape, optional): Workspace tensor for intermediate results, must be the same size as src. Can be omitted if operation is Dilate/Erode with iteration = 1.
             iteration (int, optional): Number of times to run the kernel.
-            border (NVCVBorderType, optional): Border mode to be used when accessing elements outside input image.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            border (cvcuda.Border, optional): Border mode to be used when accessing elements outside input image.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.ImageBatchVarShape: The output image batch.
+            nvcv.ImageBatchVarShape: The output image batch.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -233,7 +236,7 @@ void ExportOpMorphology(py::module &m)
           "stream"_a = nullptr,
           R"pbdoc(
 
-	cvcuda.morphology_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, morphologyType: MorphologyType, maskSize: nvcv.Tensor, anchor : nvcv.Tensor, workspace: nvcv.ImageBatchVarShape, iteration: int, border: NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, stream: Optional[nvcv.cuda.Stream] = None)
+	cvcuda.morphology_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, morphologyType: cvcuda.MorphologyType, maskSize: nvcv.Tensor, anchor: nvcv.Tensor, workspace: nvcv.ImageBatchVarShape, iteration: int, border: cvcuda.Border = cvcuda.Border.CONSTANT, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Morphology operation on the given cuda stream.
 
@@ -242,15 +245,16 @@ void ExportOpMorphology(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
-            morphologyType (MorphologyType): Type of operation to perform (Erode/Dilate).
-            maskSize (Tensor): Mask width and height for morphology operation for every image.
-            anchor (Tensor): X,Y offset of kernel for every image, use -1,-1 for center.
-            workspace (ImageBatchVarShape, optional): Workspace tensor for intermediate results, must be the same size as src. Can be omitted if operation is Dilate/Erode with iteration = 1.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            dst (nvcv.ImageBatchVarShape): Output image batch containing the result of the operation.
+            morphologyType (cvcuda.MorphologyType): Type of operation to perform (e.g. cvcuda.MorphologyType.ERODE or
+                cvcuda.MorphologyType.DILATE).
+            maskSize (nvcv.Tensor): Mask width and height for morphology operation for every image.
+            anchor (nvcv.Tensor): X,Y offset of kernel for every image, use -1,-1 for center.
+            workspace (nvcv.ImageBatchVarShape, optional): Workspace tensor for intermediate results, must be the same size as src. Can be omitted if operation is Dilate/Erode with iteration = 1.
             iteration (int, optional): Number of times to run the kernel.
-            border (NVCVBorderType, optional): Border mode to be used when accessing elements outside input image.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            border (cvcuda.Border, optional): Border mode to be used when accessing elements outside input image.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +21,7 @@
 #include <common/String.hpp>
 #include <cvcuda/OpChannelReorder.hpp>
 #include <cvcuda/Types.h>
-#include <nvcv/cuda/TypeTraits.hpp>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/python/Image.hpp>
 #include <nvcv/python/ImageBatchVarShape.hpp>
 #include <nvcv/python/ResourceGuard.hpp>
@@ -85,15 +85,15 @@ void ExportOpChannelReorder(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input tensor containing one or more images.
-            order(Tensor): 2D tensor with layout "NC" which specifies, for each output image sample in the batch,
+            src (nvcv.ImageBatchVarShape): Input tensor containing one or more images.
+            order (nvcv.Tensor): 2D tensor with layout "NC" which specifies, for each output image sample in the batch,
                            the index of the input channel to copy to the output channel.
-            format(ImageFormat): Format of the destination image.
+            format (nvcv.Format): Format of the destination image.
 
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.ImageBatchVarShape: The output image batch.
+            nvcv.ImageBatchVarShape: The output image batch.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -110,13 +110,13 @@ void ExportOpChannelReorder(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (ImageBatchVarShape): Output tensor to store the result of the operation.
-            src (ImageBatchVarShape): Input tensor containing one or more images.
-            order(Tensor): 2D tensor with layout "NC" which specifies, for each output image sample in the batch,
+            dst (nvcv.ImageBatchVarShape): Output tensor to store the result of the operation.
+            src (nvcv.ImageBatchVarShape): Input tensor containing one or more images.
+            order (nvcv.Tensor): 2D tensor with layout "NC" which specifies, for each output image sample in the batch,
                            the index of the input channel to copy to the output channel.
-            format(ImageFormat): Format of the destination image.
+            format (nvcv.Format): Format of the destination image.
 
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,14 +17,14 @@
 
 #include "Definitions.hpp"
 
+#include <common/TensorDataUtils.hpp>
 #include <common/TypedTests.hpp>
 #include <cvcuda/OpLabel.hpp>
+#include <cvcuda/cuda_tools/DropCast.hpp>
+#include <cvcuda/cuda_tools/MathOps.hpp>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
-#include <nvcv/cuda/DropCast.hpp>
-#include <nvcv/cuda/MathOps.hpp>
-#include <nvcv/cuda/TypeTraits.hpp>
-#include <util/TensorDataUtils.hpp>
 
 #include <algorithm>
 #include <cmath>

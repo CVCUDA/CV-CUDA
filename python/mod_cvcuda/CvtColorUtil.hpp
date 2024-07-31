@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,7 +20,13 @@
 
 #include <cvcuda/Types.h>
 #include <nvcv/ImageFormat.hpp>
+#include <nvcv/TensorShape.hpp>
 
 nvcv::ImageFormat GetOutputFormat(nvcv::DataType in, NVCVColorConversionCode code);
+
+int64_t GetOutputHeight(int64_t inputHeight, NVCVColorConversionCode code);
+
+nvcv::TensorShape GetOutputTensorShape(nvcv::TensorShape inputShape, nvcv::ImageFormat outputFormat,
+                                       NVCVColorConversionCode code);
 
 #endif // NVCV_COLOR_CONVERSION_UTIL_HPP

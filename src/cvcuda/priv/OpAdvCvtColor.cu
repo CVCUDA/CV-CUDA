@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,11 +22,11 @@
 
 #include "legacy/CvCudaUtils.cuh"
 
+#include <cvcuda/cuda_tools/TensorWrap.hpp>
 #include <nvcv/ColorSpec.hpp>
 #include <nvcv/Exception.hpp>
 #include <nvcv/TensorLayout.hpp>
-#include <nvcv/cuda/TensorWrap.hpp>
-#include <util/CheckError.hpp>
+#include <nvcv/util/CheckError.hpp>
 
 #define BLOCK 32
 

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,10 +20,10 @@
 #include <common/HashUtils.hpp>  // for NVCV_INSTANTIATE_TEST_SUITE_P, etc.
 #include <common/TypedTests.hpp> // for NVCV_TYPED_TEST_SUITE, etc.
 #include <common/ValueTests.hpp> // for StringLiteral
+#include <cvcuda/cuda_tools/ArrayWrap.hpp>
+#include <cvcuda/cuda_tools/MathOps.hpp>
 #include <nvcv/Array.hpp>
 #include <nvcv/ArrayDataAccess.hpp>
-#include <nvcv/cuda/ArrayWrap.hpp>
-#include <nvcv/cuda/MathOps.hpp>
 
 #include <limits>
 

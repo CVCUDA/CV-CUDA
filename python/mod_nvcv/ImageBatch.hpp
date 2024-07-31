@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -54,6 +54,8 @@ public:
     int32_t    numImages() const;
     Size2D     maxSize() const;
 
+    int64_t GetSizeInBytes() const override;
+
     void pushBack(Image &img);
     void pushBackMany(const std::vector<std::shared_ptr<Image>> &imgList);
     void popBack(int imgCount);
@@ -84,9 +86,13 @@ public:
 
 private:
     explicit ImageBatchVarShape(int capacity);
+
+    int64_t doComputeSizeInBytes(const NVCVImageBatchVarShapeRequirements &reqs);
+
     Key                      m_key;
     ImageList                m_list;
     nvcv::ImageBatchVarShape m_impl;
+    int64_t                  m_size_inbytes = -1;
 };
 
 } // namespace nvcvpy::priv

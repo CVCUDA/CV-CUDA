@@ -17,18 +17,18 @@
 
 #include "OpRemap.hpp"
 
+#include <cvcuda/cuda_tools/DropCast.hpp>
+#include <cvcuda/cuda_tools/InterpolationVarShapeWrap.hpp>
+#include <cvcuda/cuda_tools/InterpolationWrap.hpp>
+#include <cvcuda/cuda_tools/MathOps.hpp>
+#include <cvcuda/cuda_tools/StaticCast.hpp>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/DataType.hpp>
 #include <nvcv/Exception.hpp>
 #include <nvcv/TensorData.hpp>
 #include <nvcv/TensorLayout.hpp>
-#include <nvcv/cuda/DropCast.hpp>
-#include <nvcv/cuda/InterpolationVarShapeWrap.hpp>
-#include <nvcv/cuda/InterpolationWrap.hpp>
-#include <nvcv/cuda/MathOps.hpp>
-#include <nvcv/cuda/StaticCast.hpp>
-#include <nvcv/cuda/TypeTraits.hpp>
-#include <util/Assert.h>
-#include <util/Math.hpp>
+#include <nvcv/util/Assert.h>
+#include <nvcv/util/Math.hpp>
 
 namespace cuda = nvcv::cuda;
 namespace util = nvcv::util;

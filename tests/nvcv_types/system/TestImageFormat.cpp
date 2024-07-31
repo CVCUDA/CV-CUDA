@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,9 +20,9 @@
 #include <common/ValueTests.hpp>
 #include <nvcv/ImageFormat.h>
 #include <nvcv/ImageFormat.hpp>
-#include <util/Assert.h>
-#include <util/Compiler.hpp>
-#include <util/Size.hpp>
+#include <nvcv/util/Assert.h>
+#include <nvcv/util/Compiler.hpp>
+#include <nvcv/util/Size.hpp>
 
 #include <unordered_set>
 

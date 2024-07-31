@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -97,6 +97,7 @@ target_link_libraries(cvcuda_module_python
         pynvcv
         nvcv_util_compat
         cvcuda
+        cvcuda_util
         nvcv_python_common
         nvcv_util
         cuda

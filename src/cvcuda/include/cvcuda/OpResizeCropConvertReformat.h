@@ -217,19 +217,15 @@ CVCUDA_PUBLIC NVCVStatus cvcudaResizeCropConvertReformatCreate(NVCVOperatorHandl
  * @retval #NVCV_SUCCESS                Operation executed successfully.
  */
 /** @{ */
-CVCUDA_PUBLIC NVCVStatus cvcudaResizeCropConvertReformatSubmit(NVCVOperatorHandle handle, cudaStream_t stream,
-                                                               NVCVTensorHandle in, NVCVTensorHandle out,
-                                                               const NVCVSize2D            resizeDim,
-                                                               const NVCVInterpolationType interpolation,
-                                                               const int2 cropPos, const NVCVChannelManip manip,
-                                                               const float scale, const float offset, bool srcCast);
+CVCUDA_PUBLIC NVCVStatus cvcudaResizeCropConvertReformatSubmit(
+    NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in, NVCVTensorHandle out,
+    const NVCVSize2D resizeDim, const NVCVInterpolationType interpolation, const int2 cropPos,
+    const NVCVChannelManip manip, const float scale, const float offset, const bool srcCast);
 
-CVCUDA_PUBLIC NVCVStatus cvcudaResizeCropConvertReformatVarShapeSubmit(NVCVOperatorHandle handle, cudaStream_t stream,
-                                                                       NVCVImageBatchHandle in, NVCVTensorHandle out,
-                                                                       const NVCVSize2D            resizeDim,
-                                                                       const NVCVInterpolationType interpolation,
-                                                                       const int2 cropPos, const NVCVChannelManip manip,
-                                                                       const float scale, float offset, bool srcCast);
+CVCUDA_PUBLIC NVCVStatus cvcudaResizeCropConvertReformatVarShapeSubmit(
+    NVCVOperatorHandle handle, cudaStream_t stream, NVCVImageBatchHandle in, NVCVTensorHandle out,
+    const NVCVSize2D resizeDim, const NVCVInterpolationType interpolation, const int2 cropPos,
+    const NVCVChannelManip manip, const float scale, const float offset, const bool srcCast);
 /** @} */
 
 #ifdef __cplusplus

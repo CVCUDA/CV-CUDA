@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +21,7 @@
 #include <common/String.hpp>
 #include <cvcuda/OpLaplacian.hpp>
 #include <cvcuda/Types.h>
-#include <nvcv/cuda/TypeTraits.hpp>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/python/Image.hpp>
 #include <nvcv/python/ImageBatchVarShape.hpp>
 #include <nvcv/python/ResourceGuard.hpp>
@@ -116,13 +116,13 @@ void ExportOpLaplacian(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (Tensor): Input tensor containing one or more images.
+            src (nvcv.Tensor): Input tensor containing one or more images.
             ksize (int): Aperture size used to compute the second-derivative filters, it can be 1 or 3.
             scale (float): Scale factor for the Laplacian values (use 1 for no scale).
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output tensor.
+            nvcv.Tensor: The output tensor.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -141,11 +141,11 @@ void ExportOpLaplacian(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (Tensor): Output tensor to store the result of the operation.
-            src (Tensor): Input tensor containing one or more images.
+            dst (nvcv.Tensor): Output tensor to store the result of the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
             ksize (int): Aperture size used to compute the second-derivative filters, it can be 1 or 3.
             scale (float): Scale factor for the Laplacian values (use 1 for no scale).
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None
@@ -167,13 +167,13 @@ void ExportOpLaplacian(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            ksize (Tensor): Aperture size used to compute the second-derivative filters, it can be 1 or 3 for each image.
-            scale (Tensor): Scale factor for the Laplacian values (use 1 for no scale) for each image.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            ksize (nvcv.Tensor): Aperture size used to compute the second-derivative filters, it can be 1 or 3 for each image.
+            scale (nvcv.Tensor): Scale factor for the Laplacian values (use 1 for no scale) for each image.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.ImageBatchVarShape: The output image batch.
+            nvcv.ImageBatchVarShape: The output image batch.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -192,11 +192,11 @@ void ExportOpLaplacian(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
-            ksize (Tensor): Aperture size used to compute the second-derivative filters, it can be 1 or 3 for each image.
-            scale (Tensor): Scale factor for the Laplacian values (use 1 for no scale) for each image.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            dst (nvcv.ImageBatchVarShape): Output image batch containing the result of the operation.
+            ksize (nvcv.Tensor): Aperture size used to compute the second-derivative filters, it can be 1 or 3 for each image.
+            scale (nvcv.Tensor): Scale factor for the Laplacian values (use 1 for no scale) for each image.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

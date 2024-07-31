@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,7 +22,7 @@
 
 #include <gtest/gtest-typed-test.h>
 #include <gtest/gtest.h>
-#include <util/Compiler.hpp>
+#include <nvcv/util/Compiler.hpp>
 
 // Utilities for creating parameters for typed tests on GoogleTest
 // We support both typed and (constexpr) value parameters. In order to work them

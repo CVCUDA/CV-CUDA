@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -130,7 +130,7 @@ void ExportOpNormalize(py::module &m)
           "globalscale"_a = defGlobalScale, "globalshift"_a = defGlobalShift, "epsilon"_a = defEpsilon,
           "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.normalize(src: nvcv.Tensor, base:Tensor, scale:Tensor, flags:int, globalscale: float, globalshift: float, epsilon: float, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
+	cvcuda.normalize(src: nvcv.Tensor, base: nvcv.Tensor, scale: nvcv.Tensor, flags: int, globalscale: float, globalshift: float, epsilon: float, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the Normalize operation on the given cuda stream.
 
@@ -139,19 +139,19 @@ void ExportOpNormalize(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (Tensor): Input tensor containing one or more images.
-            base (Tensor): Tensor providing base values for normalization.
-            scale (Tensor): Tensor providing scale values for normalization.
-            flags (int ,optional): Algorithm flags, use CVCUDA_NORMALIZE_SCALE_IS_STDDEV if scale passed as argument
-                                   is standard deviation instead or 0 if it is scaling.
-            globalscale (float ,optional): Additional scale value to be used in addition to scale.
-            globalshift (float ,optional): Additional bias value to be used in addition to base.
-            epsilon (float ,optional): Epsilon to use when CVCUDA_NORMALIZE_SCALE_IS_STDDEV flag is set as a regularizing term to be
-                                       added to variance.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            base (nvcv.Tensor): Tensor providing base values for normalization.
+            scale (nvcv.Tensor): Tensor providing scale values for normalization.
+            flags (int, optional): Algorithm flags, use cvcuda.NormalizeFlags.SCALE_IS_STDDEV if scale passed as argument
+                is standard deviation instead or 0 if it is scaling.
+            globalscale (float, optional): Additional scale value to be used in addition to scale.
+            globalshift (float, optional): Additional bias value to be used in addition to base.
+            epsilon (float, optional): Epsilon to use when cvcuda.NormalizeFlags.SCALE_IS_STDDEV flag is set as a regularizing
+                term to be added to variance.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output tensor.
+            nvcv.Tensor: The output tensor.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -162,7 +162,7 @@ void ExportOpNormalize(py::module &m)
           py::kw_only(), "globalscale"_a = defGlobalScale, "globalshift"_a = defGlobalShift, "epsilon"_a = defEpsilon,
           "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.normalize_into(dst* Tensor, src: nvcv.Tensor, base:Tensor, scale:Tensor, flags:int, globalscale: float, globalshift: float, epsilon: float, stream: Optional[nvcv.cuda.Stream] = None)
+	cvcuda.normalize_into(dst: nvcv.Tensor, src: nvcv.Tensor, base: nvcv.Tensor, scale: nvcv.Tensor, flags: int, globalscale: float, globalshift: float, epsilon: float, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Normalize operation on the given cuda stream.
 
@@ -171,17 +171,17 @@ void ExportOpNormalize(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (Tensor): Output tensor to store the result of the operation.
-            src (Tensor): Input tensor containing one or more images.
-            base (Tensor): Tensor providing base values for normalization.
-            scale (Tensor): Tensor providing scale values for normalization.
-            flags (int ,optional): Algorithm flags, use CVCUDA_NORMALIZE_SCALE_IS_STDDEV if scale passed as argument
-                                   is standard deviation instead or 0 if it is scaling.
-            globalscale (float ,optional): Additional scale value to be used in addition to scale.
-            globalshift (float ,optional): Additional bias value to be used in addition to base.
-            epsilon (float ,optional): Epsilon to use when CVCUDA_NORMALIZE_SCALE_IS_STDDEV flag is set as a regularizing term to be
-                                       added to variance.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            dst (nvcv.Tensor): Output tensor to store the result of the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            base (nvcv.Tensor): Tensor providing base values for normalization.
+            scale (nvcv.Tensor): Tensor providing scale values for normalization.
+            flags (int, optional): Algorithm flags, use cvcuda.NormalizeFlags.SCALE_IS_STDDEV if scale passed as argument
+                is standard deviation instead or 0 if it is scaling.
+            globalscale (float, optional): Additional scale value to be used in addition to scale.
+            globalshift (float, optional): Additional bias value to be used in addition to base.
+            epsilon (float, optional): Epsilon to use when cvcuda.NormalizeFlags.SCALE_IS_STDDEV flag is set as a regularizing
+                term to be added to variance.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None
@@ -195,7 +195,7 @@ void ExportOpNormalize(py::module &m)
           "globalscale"_a = defGlobalScale, "globalshift"_a = defGlobalShift, "epsilon"_a = defEpsilon,
           "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.normalize(src: nvcv.ImageBatchVarShape, base:Tensor, scale:Tensor, flags:int, globalscale: float, globalshift: float, epsilon: float, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+	cvcuda.normalize(src: nvcv.ImageBatchVarShape, base: nvcv.Tensor, scale: nvcv.Tensor, flags: int, globalscale: float, globalshift: float, epsilon: float, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
 
 	Executes the Normalize operation on the given cuda stream.
 
@@ -204,19 +204,19 @@ void ExportOpNormalize(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            base (Tensor): Tensor providing base values for normalization.
-            scale (Tensor): Tensor providing scale values for normalization.
-            flags (int ,optional): Algorithm flags, use CVCUDA_NORMALIZE_SCALE_IS_STDDEV if scale passed as argument
-                                   is standard deviation instead or 0 if it is scaling.
-            globalscale (float ,optional): Additional scale value to be used in addition to scale.
-            globalshift (float ,optional): Additional bias value to be used in addition to base.
-            epsilon (float ,optional): Epsilon to use when CVCUDA_NORMALIZE_SCALE_IS_STDDEV flag is set as a regularizing term to be
-                                       added to variance.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            base (nvcv.Tensor): Tensor providing base values for normalization.
+            scale (nvcv.Tensor): Tensor providing scale values for normalization.
+            flags (int, optional): Algorithm flags, use cvcuda.NormalizeFlags.SCALE_IS_STDDEV if scale passed as argument
+                is standard deviation instead or 0 if it is scaling.
+            globalscale (float, optional): Additional scale value to be used in addition to scale.
+            globalshift (float, optional): Additional bias value to be used in addition to base.
+            epsilon (float, optional): Epsilon to use when cvcuda.NormalizeFlags.SCALE_IS_STDDEV flag is set as a regularizing
+                term to be added to variance.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.ImageBatchVarShape: The output image batch.
+            nvcv.ImageBatchVarShape: The output image batch.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -227,7 +227,7 @@ void ExportOpNormalize(py::module &m)
           py::kw_only(), "globalscale"_a = defGlobalScale, "globalshift"_a = defGlobalShift, "epsilon"_a = defEpsilon,
           "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.normalize_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, base:Tensor, scale:Tensor, flags:int, globalscale: float, globalshift: float, epsilon: float, stream: Optional[nvcv.cuda.Stream] = None)
+	cvcuda.normalize_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, base: nvcv.Tensor, scale: nvcv.Tensor, flags: int, globalscale: float, globalshift: float, epsilon: float, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Normalize operation on the given cuda stream.
 
@@ -236,17 +236,17 @@ void ExportOpNormalize(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            base (Tensor): Tensor providing base values for normalization.
-            scale (Tensor): Tensor providing scale values for normalization.
-            flags (int ,optional): Algorithm flags, use CVCUDA_NORMALIZE_SCALE_IS_STDDEV if scale passed as argument
-                                   is standard deviation instead or 0 if it is scaling.
-            globalscale (float ,optional): Additional scale value to be used in addition to scale.
-            globalshift (float ,optional): Additional bias value to be used in addition to base.
-            epsilon (float ,optional): Epsilon to use when CVCUDA_NORMALIZE_SCALE_IS_STDDEV flag is set as a regularizing term to be
-                                       added to variance.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            dst (nvcv.ImageBatchVarShape): Output image batch containing the result of the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            base (nvcv.Tensor): Tensor providing base values for normalization.
+            scale (nvcv.Tensor): Tensor providing scale values for normalization.
+            flags (int, optional): Algorithm flags, use cvcuda.NormalizeFlags.SCALE_IS_STDDEV if scale passed as argument
+                is standard deviation instead or 0 if it is scaling.
+            globalscale (float, optional): Additional scale value to be used in addition to scale.
+            globalshift (float, optional): Additional bias value to be used in addition to base.
+            epsilon (float, optional): Epsilon to use when cvcuda.NormalizeFlags.SCALE_IS_STDDEV flag is set as a regularizing
+                term to be added to variance.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

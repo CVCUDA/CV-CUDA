@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +21,7 @@
 #include <common/String.hpp>
 #include <cvcuda/OpGammaContrast.hpp>
 #include <cvcuda/Types.h>
-#include <nvcv/cuda/TypeTraits.hpp>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/python/ImageBatchVarShape.hpp>
 #include <nvcv/python/ResourceGuard.hpp>
 #include <nvcv/python/Stream.hpp>
@@ -81,12 +81,12 @@ void ExportOpGammaContrast(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input tensor containing one or more images.
-            gamma (Tensor): 1D Tensor with the the gamma value for each image / image channel.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.ImageBatchVarShape): Input tensor containing one or more images.
+            gamma (nvcv.Tensor): 1D Tensor with the the gamma value for each image / image channel.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.ImageBatchVarShape: The output image batch.
+            nvcv.ImageBatchVarShape: The output image batch.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -103,10 +103,10 @@ void ExportOpGammaContrast(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (ImageBatchVarShape): Output tensor to store the result of the operation.
-            src (ImageBatchVarShape): Input tensor containing one or more images.
-            gamma (Tensor): 1D Tensor with the the gamma value for each image / image channel.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            dst (nvcv.ImageBatchVarShape): Output tensor to store the result of the operation.
+            src (nvcv.ImageBatchVarShape): Input tensor containing one or more images.
+            gamma (nvcv.Tensor): 1D Tensor with the the gamma value for each image / image channel.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

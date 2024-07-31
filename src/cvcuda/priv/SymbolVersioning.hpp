@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,7 +18,7 @@
 #ifndef CVCUDA_PRIV_SYMBOLVERSIONING_HPP
 #define CVCUDA_PRIV_SYMBOLVERSIONING_HPP
 
-#include <util/SymbolVersioning.hpp>
+#include <nvcv/util/SymbolVersioning.hpp>
 
 #define CVCUDA_DEFINE_API(...)     NVCV_PROJ_DEFINE_API(CVCUDA, __VA_ARGS__)
 #define CVCUDA_DEFINE_OLD_API(...) NVCV_PROJ_DEFINE_OLD_API(CVCUDA, __VA_ARGS__)

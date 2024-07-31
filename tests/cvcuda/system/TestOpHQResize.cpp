@@ -16,18 +16,18 @@
  */
 
 #include <common/InterpUtils.hpp>
+#include <common/TensorDataUtils.hpp>
 #include <common/TypedTests.hpp>
 #include <cvcuda/OpHQResize.hpp>
+#include <cvcuda/cuda_tools/DropCast.hpp>
+#include <cvcuda/cuda_tools/StaticCast.hpp>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorBatch.hpp>
 #include <nvcv/TensorDataAccess.hpp>
-#include <nvcv/cuda/DropCast.hpp>
-#include <nvcv/cuda/StaticCast.hpp>
-#include <nvcv/cuda/TypeTraits.hpp>
-#include <util/Math.hpp>
-#include <util/TensorDataUtils.hpp>
+#include <nvcv/util/Math.hpp>
 
 #include <cmath>
 #include <iostream>

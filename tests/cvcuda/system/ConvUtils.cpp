@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,12 +17,12 @@
 
 #include "ConvUtils.hpp"
 
-#include <nvcv/cuda/DropCast.hpp>     // for SaturateCast, etc.
-#include <nvcv/cuda/MathOps.hpp>      // for operator *, etc.
-#include <nvcv/cuda/MathWrappers.hpp> // for min/max
-#include <nvcv/cuda/SaturateCast.hpp> // for SaturateCast, etc.
-#include <nvcv/cuda/TypeTraits.hpp>   // for BaseType, etc.
-#include <util/Assert.h>              // for NVCV_ASSERT, etc.
+#include <cvcuda/cuda_tools/DropCast.hpp>     // for SaturateCast, etc.
+#include <cvcuda/cuda_tools/MathOps.hpp>      // for operator *, etc.
+#include <cvcuda/cuda_tools/MathWrappers.hpp> // for min/max
+#include <cvcuda/cuda_tools/SaturateCast.hpp> // for SaturateCast, etc.
+#include <cvcuda/cuda_tools/TypeTraits.hpp>   // for BaseType, etc.
+#include <nvcv/util/Assert.h>                 // for NVCV_ASSERT, etc.
 
 namespace nvcv::test {
 

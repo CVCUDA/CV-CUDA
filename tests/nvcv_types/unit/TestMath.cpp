@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,7 +18,7 @@
 #include "Definitions.hpp"
 
 #include <common/ValueTests.hpp>
-#include <util/Math.hpp>
+#include <nvcv/util/Math.hpp>
 
 namespace t    = ::testing;
 namespace util = nvcv::util;

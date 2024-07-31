@@ -17,12 +17,12 @@
 
 #include "ResizeUtils.hpp"
 
-#include <nvcv/cuda/DropCast.hpp>     // for SaturateCast, etc.
-#include <nvcv/cuda/MathOps.hpp>      // for operator *, etc.
-#include <nvcv/cuda/MathWrappers.hpp> // for ROUND, etc
-#include <nvcv/cuda/SaturateCast.hpp> // for SaturateCast, etc.
-#include <nvcv/cuda/TypeTraits.hpp>   // for BaseType, etc.
-#include <util/Assert.h>              // for NVCV_ASSERT, etc.
+#include <cvcuda/cuda_tools/DropCast.hpp>     // for SaturateCast, etc.
+#include <cvcuda/cuda_tools/MathOps.hpp>      // for operator *, etc.
+#include <cvcuda/cuda_tools/MathWrappers.hpp> // for ROUND, etc
+#include <cvcuda/cuda_tools/SaturateCast.hpp> // for SaturateCast, etc.
+#include <cvcuda/cuda_tools/TypeTraits.hpp>   // for BaseType, etc.
+#include <nvcv/util/Assert.h>                 // for NVCV_ASSERT, etc.
 
 #include <cmath>
 
@@ -233,10 +233,8 @@ void resizedCrop(std::vector<T> &dst, int dstStep, nvcv::Size2D dstSize, const s
                 int sy = std::floor(fy);
                 int sx = std::floor(fx);
 
-                fy -= sy;
-                fx -= sx;
-
-                fx = (sx < 0 || sx >= srcSize.w - 1) ? 0 : fx;
+                fy = ((sy < 0) ? 0 : ((sy > srcSize.h - 2) ? 1 : fy - sy));
+                fx = ((sx < 0) ? 0 : ((sx > srcSize.w - 2) ? 1 : fx - sx));
 
                 sy = std::max(0, std::min(sy, srcSize.h - 2));
                 sx = std::max(0, std::min(sx, srcSize.w - 2));

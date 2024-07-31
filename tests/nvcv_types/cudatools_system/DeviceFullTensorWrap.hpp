@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,8 +20,8 @@
 
 #include "DeviceTensorWrap.hpp" // for Array, etc.
 
-#include <cuda_runtime.h>               // for int2, etc.
-#include <nvcv/cuda/FullTensorWrap.hpp> // the object of this test
+#include <cuda_runtime.h>                       // for int2, etc.
+#include <cvcuda/cuda_tools/FullTensorWrap.hpp> // the object of this test
 
 template<class InputType>
 void DeviceUseFullTensorWrap(const InputType &);
