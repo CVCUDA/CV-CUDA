@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -110,7 +110,8 @@ void ExportOpAdaptiveThreshold(py::module &m)
     m.def("adaptivethreshold", &AdaptiveThreshold, "src"_a, "max_value"_a,
           "adaptive_method"_a = NVCV_ADAPTIVE_THRESH_MEAN_C, "threshold_type"_a = NVCV_THRESH_BINARY, "block_size"_a,
           "c"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-        cvcuda.adaptivethreshold(src: nvcv.Tensor, max_value: double, adaptive_method: NVCVAdaptiveThresholdType = < NVCV_ADAPTIVE_THRESH_MEAN_C >, threshold_type: NVCVThresholdType = < NVCV_THRESH_BINARY >, block_size: int, c: double, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
+        cvcuda.adaptivethreshold(src: nvcv.Tensor, max_value: float, adaptive_method: cvcuda.AdaptiveThresholdType = cvcuda.AdaptiveThresholdType.MEAN_C,
+            threshold_type: cvcuda.ThresholdType = cvcuda.ThresholdType.BINARY, block_size: int, c: float, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the adaptive threshold operation on the given cuda stream.
 
@@ -119,16 +120,16 @@ void ExportOpAdaptiveThreshold(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (Tensor): Input tensor containing one or more images.
-            max_value (double): Non-zero value assigned to the pixels for which the condition is satisfied.
-            adaptive_method (NVCVAdaptiveThresholdType): Adaptive threshold algorithm to use.
-            threshold_type (NVCVThresholdType): Threshold type that must be either THRESH_BINARY or THRESH_BINARY_INV.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            max_value (float): Non-zero value assigned to the pixels for which the condition is satisfied.
+            adaptive_method (cvcuda.AdaptiveThresholdType): Adaptive threshold algorithm to use.
+            threshold_type (cvcuda.ThresholdType): Threshold type that must be either cvcuda.ThresholdType.BINARY or cvcuda.ThresholdType.BINARY_INV.
             block_size (int): Size of a pixel neighborhood that is used to calculate a threshold value for the pixel: 3, 5, 7, and so on.
-            c (double): Constant subtracted from the mean or weighted mean. Normally, it is positive but may be zero or negative as well.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            c (float): Constant subtracted from the mean or weighted mean. Normally, it is positive but may be zero or negative as well.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output image.
+            nvcv.Tensor: The output image.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -138,8 +139,9 @@ void ExportOpAdaptiveThreshold(py::module &m)
     m.def("adaptivethreshold_into", &AdaptiveThresholdInto, "dst"_a, "src"_a, "max_value"_a,
           "adaptive_method"_a = NVCV_ADAPTIVE_THRESH_MEAN_C, "threshold_type"_a = NVCV_THRESH_BINARY, "block_size"_a,
           "c"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-        cvcuda.adaptivethreshold_into(dst: nvcv.Tensor, src: nvcv.Tensor, max_value: double, adaptive_method: NVCVAdaptiveThresholdType = < NVCV_ADAPTIVE_TH
-RESH_MEAN_C >, threshold_type: NVCVThresholdType = < NVCV_THRESH_BINARY >, block_size: int, c: double, stream: Optional[nvcv.cuda.Stream] = None)
+        cvcuda.adaptivethreshold_into(dst: nvcv.Tensor, src: nvcv.Tensor, max_value: float, adaptive_method: cvcuda.AdaptiveThresholdType = <
+            cvcuda.AdaptiveThresholdType.MEAN_C >, threshold_type: cvcuda.ThresholdType = cvcuda.ThresholdType.BINARY,
+            block_size: int, c: float, stream: Optional[nvcv.cuda.Stream] = None)
 
 	    Executes the adaptive threshold operation on the given cuda stream.
 
@@ -148,14 +150,14 @@ RESH_MEAN_C >, threshold_type: NVCVThresholdType = < NVCV_THRESH_BINARY >, block
             for more details and usage examples.
 
         Args:
-            dst (Tensor): Output tensor to store the result of the operation.
-            src (Tensor): Input tensor containing one or more images.
-            max_value (double): Non-zero value assigned to the pixels for which the condition is satisfied.
-            adaptive_method (NVCVAdaptiveThresholdType): Adaptive threshold algorithm to use.
-            threshold_type (NVCVThresholdType): Threshold type that must be either THRESH_BINARY or THRESH_BINARY_INV.
+            dst (nvcv.Tensor): Output tensor to store the result of the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            max_value (float): Non-zero value assigned to the pixels for which the condition is satisfied.
+            adaptive_method (cvcuda.AdaptiveThresholdType): Adaptive threshold algorithm to use.
+            threshold_type (cvcuda.ThresholdType): Threshold type that must be either cvcuda.ThresholdType.BINARY or cvcuda.ThresholdType.BINARY_INV.
             block_size (int): Size of a pixel neighborhood that is used to calculate a threshold value for the pixel: 3, 5, 7, and so on.
-            c (double): Constant subtracted from the mean or weighted mean. Normally, it is positive but may be zero or negative as well.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            c (float): Constant subtracted from the mean or weighted mean. Normally, it is positive but may be zero or negative as well.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None
@@ -168,7 +170,7 @@ RESH_MEAN_C >, threshold_type: NVCVThresholdType = < NVCV_THRESH_BINARY >, block
     m.def("adaptivethreshold", &AdaptiveThresholdVarShape, "src"_a, "max_value"_a,
           "adaptive_method"_a = NVCV_ADAPTIVE_THRESH_MEAN_C, "threshold_type"_a = NVCV_THRESH_BINARY,
           "max_block_size"_a, "block_size"_a, "c"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-        cvcuda.adaptivethreshold(src: nvcv.ImageBatchVarShape, max_value: nvcv.Tensor, adaptive_method: NVCVAdaptiveThresholdType = < NVCV_ADAPTIVE_THRESH_MEAN_C >, threshold_type: NVCVThresholdType = < NVCV_THRESH_BINARY > , block_size: int, c: double, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+        cvcuda.adaptivethreshold(src: nvcv.ImageBatchVarShape, max_value: nvcv.Tensor, adaptive_method: cvcuda.AdaptiveThresholdType = cvcuda.AdaptiveThresholdType.MEAN_C, threshold_type: cvcuda.ThresholdType = cvcuda.ThresholdType.BINARY, block_size: int, c: float, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
 
         Executes the adaptive threshold operation on the given cuda stream.
 
@@ -177,17 +179,17 @@ RESH_MEAN_C >, threshold_type: NVCVThresholdType = < NVCV_THRESH_BINARY >, block
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing the result of the operation.
-            max_value (Tensor): Non-zero value assigned to the pixels for which the condition is satisfied, specified per image.
-            adaptive_method (NVCVAdaptiveThresholdType): Adaptive threshold algorithm to use.
-            threshold_type (NVCVThresholdType): Threshold type that must be either THRESH_BINARY or THRESH_BINARY_INV.
+            src (nvcv.ImageBatchVarShape): Input image batch containing the result of the operation.
+            max_value (nvcv.Tensor): Non-zero value assigned to the pixels for which the condition is satisfied, specified per image.
+            adaptive_method (cvcuda.AdaptiveThresholdType): Adaptive threshold algorithm to use.
+            threshold_type (cvcuda.ThresholdType): Threshold type that must be either cvcuda.ThresholdType.BINARY or cvcuda.ThresholdType.BINARY_INV.
             max_block_size (int): The maximum block size that will be used by the operator.
-            block_size (Tensor): Size of a pixel neighborhood that is used to calculate a threshold value for the pixel: 3, 5, 7, and so on, specified per image.
-            c (Tensor): Constant subtracted from the mean or weighted mean. Normally, it is positive but may be zero or negative as well, specified per image.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            block_size (nvcv.Tensor): Size of a pixel neighborhood that is used to calculate a threshold value for the pixel: 3, 5, 7, and so on, specified per image.
+            c (nvcv.Tensor): Constant subtracted from the mean or weighted mean. Normally, it is positive but may be zero or negative as well, specified per image.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.ImageBatchVarShape: The output image batch.
+            nvcv.ImageBatchVarShape: The output image batch.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -197,9 +199,9 @@ RESH_MEAN_C >, threshold_type: NVCVThresholdType = < NVCV_THRESH_BINARY >, block
     m.def("adaptivethreshold_into", &AdaptiveThresholdVarShapeInto, "dst"_a, "src"_a, "max_value"_a,
           "adaptive_method"_a = NVCV_ADAPTIVE_THRESH_MEAN_C, "threshold_type"_a = NVCV_THRESH_BINARY,
           "max_block_size"_a, "block_size"_a, "c"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-        cvcuda.adaptivethreshold_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, max_value: nvcv.Tensor, adaptive_method: NVCVAdaptiveThres
-holdType = < NVCV_ADAPTIVE_THRESH_MEAN_C > , threshold_type: NVCVThresholdType = < NVCV_THRESH_BINARY >, block_size: int, c: double, stream: Optional[nvcv.cu
-da.Stream] = None)
+        cvcuda.adaptivethreshold_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, max_value: nvcv.Tensor,
+            adaptive_method: cvcuda.AdaptiveThresholdType = cvcuda.AdaptiveThresholdType.MEAN_C, threshold_type: cvcuda.ThresholdType = cvcuda.ThresholdType.BINARY,
+            block_size: int, c: float, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the adaptive threshold operation on the given cuda stream.
 
@@ -208,15 +210,15 @@ da.Stream] = None)
             for more details and usage examples.
 
         Args:
-            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
-            src (ImageBatchVarShape): Input image batch containing the result of the operation.
-            max_value (Tensor): Non-zero value assigned to the pixels for which the condition is satisfied, specified per image.
-            adaptive_method (NVCVAdaptiveThresholdType): Adaptive threshold algorithm to use.
-            threshold_type (NVCVThresholdType): Threshold type that must be either THRESH_BINARY or THRESH_BINARY_INV.
+            dst (nvcv.ImageBatchVarShape): Output image batch containing the result of the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing the result of the operation.
+            max_value (nvcv.Tensor): Non-zero value assigned to the pixels for which the condition is satisfied, specified per image.
+            adaptive_method (cvcuda.AdaptiveThresholdType): Adaptive threshold algorithm to use.
+            threshold_type (cvcuda.ThresholdType): Threshold type that must be either cvcuda.ThresholdType.BINARY or cvcuda.ThresholdType.BINARY_INV.
             max_block_size (int): The maximum block size that will be used by the operator.
-            block_size (Tensor): Size of a pixel neighborhood that is used to calculate a threshold value for the pixel: 3, 5, 7, and so on, specified per image.
-            c (Tensor): Constant subtracted from the mean or weighted mean. Normally, it is positive but may be zero or negative as well, specified per image.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            block_size (nvcv.Tensor): Size of a pixel neighborhood that is used to calculate a threshold value for the pixel: 3, 5, 7, and so on, specified per image.
+            c (nvcv.Tensor): Constant subtracted from the mean or weighted mean. Normally, it is positive but may be zero or negative as well, specified per image.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

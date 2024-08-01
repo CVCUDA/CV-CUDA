@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,11 +18,11 @@
 #ifndef NVCV_TESTS_COMMON_INTERPUTILS_HPP
 #define NVCV_TESTS_COMMON_INTERPUTILS_HPP
 
-#include <common/BorderUtils.hpp>     // for test::IsInside, etc.
-#include <cvcuda/Types.h>             // for NVCVInterpolationType, etc.
-#include <nvcv/cuda/MathOps.hpp>      // for operator +, etc.
-#include <nvcv/cuda/MathWrappers.hpp> // for cuda::round, etc.
-#include <nvcv/cuda/SaturateCast.hpp> // for cuda::SaturateCast, etc.
+#include <common/BorderUtils.hpp>             // for test::IsInside, etc.
+#include <cvcuda/Types.h>                     // for NVCVInterpolationType, etc.
+#include <cvcuda/cuda_tools/MathOps.hpp>      // for operator +, etc.
+#include <cvcuda/cuda_tools/MathWrappers.hpp> // for cuda::round, etc.
+#include <cvcuda/cuda_tools/SaturateCast.hpp> // for cuda::SaturateCast, etc.
 
 #include <vector>
 

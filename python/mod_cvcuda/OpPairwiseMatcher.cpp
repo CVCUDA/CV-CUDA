@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -137,11 +137,11 @@ void ExportOpPairwiseMatcher(py::module &m)
             Refer to the CV-CUDA C API reference for this operator for more details and usage examples.
 
         Args:
-            set1 (Tensor): Input tensor with 1st set of points.
-            set2 (Tensor): Input tensor with 2nd set of points.
-            num_set1 (Tensor, optional): Input tensor with number of valid points in the 1st set.  If not provided,
+            set1 (nvcv.Tensor): Input tensor with 1st set of points.
+            set2 (nvcv.Tensor): Input tensor with 2nd set of points.
+            num_set1 (nvcv.Tensor, optional): Input tensor with number of valid points in the 1st set.  If not provided,
                                          consider the entire set1 containing valid points.
-            num_set2 (Tensor, optional): Input tensor with number of valid points in the 2nd set.  If not provided,
+            num_set2 (nvcv.Tensor, optional): Input tensor with number of valid points in the 2nd set.  If not provided,
                                          consider the entire set2 containing valid points.
             num_matches (bool, optional): Use True to return the number of matches.  If not provided, it is set
                                           to True if crossCheck=True and False otherwise.
@@ -151,10 +151,10 @@ void ExportOpPairwiseMatcher(py::module &m)
             matches_per_point (Number, optional): Number of best matches to return per point.
             norm_type (cvcuda.Norm, optional): Choice on how distances are normalized.  Defaults to cvcuda.Norm.L2.
             algo_choice (cvcuda.Matcher, optional): Choice of the algorithm to perform the match.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            Tuple[Tensor, Tensor, Tensor]: A tuple wih output matches, number of matches and their distances.
+            Tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]: A tuple with output matches, number of matches and their distances.
                                            The number of matches tensor may be None if its argument is False.
                                            The distances tensor may be None if its argument is False.
 
@@ -173,24 +173,24 @@ void ExportOpPairwiseMatcher(py::module &m)
             Refer to the CV-CUDA C API reference for this operator for more details and usage examples.
 
         Args:
-            matches (Tensor): Output tensor with matches.
-            num_matches (Tensor, optional): Output tensor with number of matches.
-            distances (Tensor, optional): Output tensor with match distances.
-            set1 (Tensor): Input tensor with 1st set of points.
-            set2 (Tensor): Input tensor with 2nd set of points.
-            num_set1 (Tensor, optional): Input tensor with number of valid points in the 1st set.  If not provided,
+            matches (nvcv.Tensor): Output tensor with matches.
+            num_matches (nvcv.Tensor, optional): Output tensor with number of matches.
+            distances (nvcv.Tensor, optional): Output tensor with match distances.
+            set1 (nvcv.Tensor): Input tensor with 1st set of points.
+            set2 (nvcv.Tensor): Input tensor with 2nd set of points.
+            num_set1 (nvcv.Tensor, optional): Input tensor with number of valid points in the 1st set.  If not provided,
                                          consider the entire set1 containing valid points.
-            num_set2 (Tensor, optional): Input tensor with number of valid points in the 2nd set.  If not provided,
+            num_set2 (nvcv.Tensor, optional): Input tensor with number of valid points in the 2nd set.  If not provided,
                                          consider the entire set2 containing valid points.
             cross_check (bool, optional): Use True to cross check best matches, a best match is only returned if it is
                                           the best match (minimum distance) from 1st set to 2nd set and vice versa.
             matches_per_point (Number, optional): Number of best matches to return per point.
             norm_type (cvcuda.Norm, optional): Choice on how distances are normalized.  Defaults to cvcuda.Norm.L2.
             algo_choice (cvcuda.Matcher, optional): Choice of the algorithm to perform the match.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            Tuple[Tensor, Tensor, Tensor]: A tuple wih output matches, number of matches and their distances.
+            Tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]: A tuple with output matches, number of matches and their distances.
                                            The number of matches tensor may be None if its argument is None.
                                            The distances tensor may be None if its argument is None.
 

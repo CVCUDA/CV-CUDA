@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,7 +18,7 @@
 #ifndef NVCV_TEST_COMMON_HASHMD5_HPP
 #define NVCV_TEST_COMMON_HASHMD5_HPP
 
-#include <util/Ranges.hpp>
+#include <nvcv/util/Ranges.hpp>
 
 #include <array>
 #include <cstdint>

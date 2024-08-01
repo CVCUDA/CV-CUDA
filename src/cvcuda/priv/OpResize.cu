@@ -17,19 +17,19 @@
 
 #include "OpResize.hpp"
 
+#include <cvcuda/cuda_tools/DropCast.hpp>
+#include <cvcuda/cuda_tools/InterpolationWrap.hpp>
+#include <cvcuda/cuda_tools/MathOps.hpp>
+#include <cvcuda/cuda_tools/MathWrappers.hpp>
+#include <cvcuda/cuda_tools/Printer.hpp>
+#include <cvcuda/cuda_tools/StaticCast.hpp>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/DataType.hpp>
 #include <nvcv/Exception.hpp>
 #include <nvcv/TensorData.hpp>
 #include <nvcv/TensorLayout.hpp>
-#include <nvcv/cuda/DropCast.hpp>
-#include <nvcv/cuda/InterpolationWrap.hpp>
-#include <nvcv/cuda/MathOps.hpp>
-#include <nvcv/cuda/MathWrappers.hpp>
-#include <nvcv/cuda/Printer.hpp>
-#include <nvcv/cuda/StaticCast.hpp>
-#include <nvcv/cuda/TypeTraits.hpp>
-#include <util/Assert.h>
-#include <util/Math.hpp>
+#include <nvcv/util/Assert.h>
+#include <nvcv/util/Math.hpp>
 
 namespace {
 
@@ -38,7 +38,12 @@ namespace util = nvcv::util;
 
 // Destination pack type given the source and destination type T
 template<typename T>
-using DPT = std::conditional_t<sizeof(T) == 3, uint3, uint4>;
+using DPT = std::conditional_t<cuda::NumElements<T> == 3, uint3, uint4>;
+
+// Row alignment mask to determine if data pointer is aligned for vectorized write:
+// note that in CUDA, uint3 has 4-byte (uint) alignment.
+template<typename T>
+constexpr uint MSK = (sizeof(DPT<T>) == sizeof(uint3) ? sizeof(uint) : sizeof(DPT<T>)) - 1;
 
 // Number of items in x written by each thread
 template<typename T>
@@ -46,9 +51,17 @@ constexpr int NIX = sizeof(DPT<T>) / sizeof(T);
 
 // Write a pack of N elements of type T as a different pack type DPT
 template<typename T>
-__device__ void WritePack(T &u, const T (&v)[NIX<T>])
+__device__ __forceinline__
+void WritePack(T &u, const T (&v)[NIX<T>])
 {
     reinterpret_cast<DPT<T> &>(u) = reinterpret_cast<const DPT<T> &>(v);
+}
+
+// Check if destination row pointer is aligned for vector writes.
+template<typename T>
+__device__ __forceinline__
+bool CheckRowAlign(T *row) {
+    return (static_cast<uint>(reinterpret_cast<size_t>(row)) & MSK<T>) == 0;
 }
 
 // Nearest ---------------------------------------------------------------------
@@ -86,7 +99,14 @@ inline __device__ void NearestInterpolatePack(T *dstRow, SrcWrapper src, int3 iS
             }
         }
 
-        WritePack(dstRow[dstCoordX], dstPack);
+        if (CheckRowAlign(dstRow))     // Branch is the same for all threads in warp.
+            WritePack(dstRow[dstCoordX], dstPack);     // If row is aligned, write vector pack;
+        else {
+            T *dstPtr = dstRow + dstCoordX;            // otherwise, write individual elements.
+#pragma unroll
+            for (uint i = 0; i < NIX<T>; ++i) dstPtr[i] = dstPack[i];
+        }
+        // writePack(dstRow + dstCoordX, dstPack);
     }
     else
     {
@@ -155,8 +175,8 @@ inline __device__ void LinearReadPack(SrcWrapper src, T (&srcPack)[4], int3 iSrc
 }
 
 template<bool INTERSECT, typename T, class SrcWrapper>
-inline __device__ T LinearInterpolatePack(T *dstRow, SrcWrapper src, int3 iSrcCoord, float srcCoordX, int srcSizeX,
-                                          int dstCoordX, int dstSizeX, float scaleRatioX, float2 w)
+inline __device__ void LinearInterpolatePack(T *dstRow, SrcWrapper src, int3 iSrcCoord, float srcCoordX, int srcSizeX,
+                                             int dstCoordX, int dstSizeX, float scaleRatioX, float2 w)
 {
     float sx;
     int   iPrevCoordX;
@@ -171,8 +191,7 @@ inline __device__ T LinearInterpolatePack(T *dstRow, SrcWrapper src, int3 iSrcCo
             sx          = srcCoordX + x * scaleRatioX;
             iSrcCoord.x = floor(sx);
 
-            w.x = sx - iSrcCoord.x;
-            w.x = (iSrcCoord.x < 0 || iSrcCoord.x >= srcSizeX - 1) ? 0 : w.x;
+            w.x = ((iSrcCoord.x < 0) ? 0 : ((iSrcCoord.x > srcSizeX - 2) ? 1 : sx - iSrcCoord.x));
 
             iSrcCoord.x = cuda::max(0, cuda::min(iSrcCoord.x, srcSizeX - 2));
 
@@ -215,7 +234,14 @@ inline __device__ T LinearInterpolatePack(T *dstRow, SrcWrapper src, int3 iSrcCo
             }
         }
 
-        WritePack(dstRow[dstCoordX], dstPack);
+        if (CheckRowAlign(dstRow))     // Branch is the same for all threads in warp.
+            WritePack(dstRow[dstCoordX], dstPack);     // If row is aligned, write vector pack;
+        else {
+            T *dstPtr = dstRow + dstCoordX;            // otherwise, write individual elements.
+#pragma unroll
+            for (uint i = 0; i < NIX<T>; ++i) dstPtr[i] = dstPack[i];
+        }
+        // writePack<true>(dstRow + dstCoordX, dstPack, reinterpret_cast<uint>(dstRow) & DstMask) == 0);
     }
     else
     {
@@ -227,8 +253,7 @@ inline __device__ T LinearInterpolatePack(T *dstRow, SrcWrapper src, int3 iSrcCo
                 sx          = srcCoordX + x * scaleRatioX;
                 iSrcCoord.x = floor(sx);
 
-                w.x = sx - iSrcCoord.x;
-                w.x = (iSrcCoord.x < 0 || iSrcCoord.x >= srcSizeX - 1) ? 0 : w.x;
+                w.x = ((iSrcCoord.x < 0) ? 0 : ((iSrcCoord.x > srcSizeX - 2) ? 1 : sx - iSrcCoord.x));
 
                 iSrcCoord.x = cuda::max(0, cuda::min(iSrcCoord.x, srcSizeX - 2));
 
@@ -291,7 +316,8 @@ __global__ void LinearResize(SrcWrapper src, DstWrapper dst, int2 srcSize, int2 
         int3   iSrcCoord{0, (int)floor(srcCoord.y), dstCoord.z};
 
         float2 w;
-        w.y = srcCoord.y - iSrcCoord.y;
+
+        w.y = ((iSrcCoord.y < 0) ? 0 : ((iSrcCoord.y > srcSize.y - 2) ? 1 : srcCoord.y - iSrcCoord.y));
 
         iSrcCoord.y = cuda::max(0, cuda::min(iSrcCoord.y, srcSize.y - 2));
 

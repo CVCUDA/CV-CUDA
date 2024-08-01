@@ -18,7 +18,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-yellogreen.svg)](https://opensource.org/licenses/Apache-2.0)
 
-![Version](https://img.shields.io/badge/Version-v0.9.0--beta-blue)
+![Version](https://img.shields.io/badge/Version-v0.10.0--beta-blue)
 
 ![Platform](https://img.shields.io/badge/Platform-linux--64_%7C_win--64_wsl2%7C_aarch64-gray)
 
@@ -61,7 +61,9 @@ To get a local copy up and running follow these steps.
 - Only one CUDA version (CUDA 11.x or CUDA 12.x) of CV-CUDA packages (Debian packages, tarballs, Python Wheels) can be installed at a time. Please uninstall all packages from a given CUDA version before installing packages from a different version.
 - Documentation built on Ubuntu 20.04 needs an up-to-date version of sphinx (`pip install --upgrade sphinx`) as well as explicitly parsing the system's default python version ` ./ci/build_docs path/to/build -DPYTHON_VERSIONS="<py_ver>"`.
 - Python bindings installed via Debian packages and Python tests fail with Numpy 2.0. We recommend using an older version of Numpy (e.g. 1.26) until we have implemented a fix.
-- The Resize and RandomResizedCrop operators incorrectly interpolate pixel values near the boundary of an image or tensor when using linear and cubic interpolation. This will be fixed in an upcoming release.
+- The Resize and RandomResizedCrop operators incorrectly interpolate pixel values near the boundary of an image or tensor when using cubic interpolation. This will be fixed in an upcoming release.
+- Cache/resource management introduced in v0.10 add micro-second-level overhead to Python operator calls. Based on the performance analysis of our Python samples, we expect the production- and pipeline-level impact to be negligible. CUDA kernel and C++ call performance is not affected. We aim to investigate and reduce this overhead further in a future release.​
+- Sporadic Pybind11-deallocation crashes have been reported in long-lasting multi-threaded Python pipelines with externally allocated memory (eg wrapped Pytorch buffers). We are evaluating an upgrade of Pybind11 (currently using 2.10) as a potential fix in an upcoming release.
 
 ### Installation
 

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -112,3 +112,11 @@ def test_wrap_stream_external(stream_type):
 
 def test_stream_default_is_zero():
     assert nvcv.cuda.Stream.default.handle == 0
+
+
+def test_stream_size_in_bytes():
+    """
+    Checks if the computation of the Stream size in bytes is correct
+    """
+    stream = nvcv.cuda.Stream()
+    assert nvcv.internal.nbytes_in_cache(stream) == 0

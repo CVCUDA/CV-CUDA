@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,8 +21,8 @@
 #include <common/String.hpp>
 #include <cvcuda/OpCopyMakeBorder.hpp>
 #include <cvcuda/Types.h>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/DataType.hpp>
-#include <nvcv/cuda/TypeTraits.hpp>
 #include <nvcv/python/ImageBatchVarShape.hpp>
 #include <nvcv/python/ResourceGuard.hpp>
 #include <nvcv/python/Stream.hpp>
@@ -204,7 +204,7 @@ void ExportOpCopyMakeBorder(py::module &m)
           "border_value"_a = std::vector<float>(), py::kw_only(), "top"_a, "bottom"_a, "left"_a, "right"_a,
           "stream"_a       = nullptr, R"pbdoc(
 
-	cvcuda.copymakeborder(src: nvcv.Tensor, border_mode : NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, border_value : float array , top : int, bottom : int, right : int , stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
+	cvcuda.copymakeborder(src: nvcv.Tensor, border_mode: cvcuda.Border = cvcuda.Border.CONSTANT, border_value: List[float], top: int, bottom: int, right: int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
 	Executes the Copy Make Border operation on the given cuda stream.
 
@@ -213,18 +213,18 @@ void ExportOpCopyMakeBorder(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (Tensor): Input tensor containing one or more images.
-            border_mode(NVCVBorderType, optional): Border mode to be used when accessing elements outside input image.
-            border_value(float array, optional): Border value to be used for constant border mode, each element of the array corresponds to the
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            border_mode (cvcuda.Border, optional): Border mode to be used when accessing elements outside input image.
+            border_value (List[float], optional): Border value to be used for constant border mode, each element of the array corresponds to the
                                        image color channel must be a size <= 4 and dim of 1, where the values specify the border color for each color channel.
             top (int): The top pixel position.
             left (int): The left pixel position.
             bottom (int): The bottom pixel position.
             right (int): The right pixel position.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output tensor.
+            nvcv.Tensor: The output tensor.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -235,7 +235,7 @@ void ExportOpCopyMakeBorder(py::module &m)
           "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "border_value"_a = std::vector<float>(),
           py::kw_only(), "top"_a, "left"_a, "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.copymakeborder_into(dst: nvcv.Tensor, src: nvcv.Tensor, border_mode : NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, border_value : float array, top : int, bottom : int, right : int , stream: Optional[nvcv.cuda.Stream] = None)
+	cvcuda.copymakeborder_into(dst: nvcv.Tensor, src: nvcv.Tensor, border_mode: cvcuda.Border = cvcuda.Border.CONSTANT, border_value: List[float], top: int, bottom: int, right: int, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Copy Make Border operation on the given cuda stream.
 
@@ -244,14 +244,14 @@ void ExportOpCopyMakeBorder(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (Tensor): Output tensor to store the result of the operation.
-            src (Tensor): Input tensor containing one or more images.
-            border_mode(NVCVBorderType): Border mode to be used when accessing elements outside input image.
-            border_value(float array, optional): Border value to be used for constant border mode, each element of the array corresponds to the
+            dst (nvcv.Tensor): Output tensor to store the result of the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            border_mode (cvcuda.Border): Border mode to be used when accessing elements outside input image.
+            border_value (List[float], optional): Border value to be used for constant border mode, each element of the array corresponds to the
                                        image color channel must be a size <= 4 and dim of 1, where the values specify the border color for each color channel.
             top (int): The top pixel position.
             left (int): The left pixel position.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None
@@ -265,7 +265,7 @@ void ExportOpCopyMakeBorder(py::module &m)
           "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "border_value"_a = std::vector<float>(),
           py::kw_only(), "top"_a, "left"_a, "out_height"_a, "out_width"_a, "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.copymakeborderstack(src: nvcv.ImageBatchVarShape, border_mode : NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, border_value : float array, top : int, bottom : int, right : int , stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
+	cvcuda.copymakeborderstack(src: nvcv.ImageBatchVarShape, border_mode: cvcuda.Border = cvcuda.Border.CONSTANT, border_value: List[float], top: int, bottom: int, right: int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the Copy Make Border Stack operation on the given cuda stream.
 
@@ -274,18 +274,18 @@ void ExportOpCopyMakeBorder(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            border_mode(NVCVBorderType, optional): Border mode to be used when accessing elements outside input image.
-            border_value(float array, optional): Border value to be used for constant border mode, each element of the array corresponds to the
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            border_mode (cvcuda.Border, optional): Border mode to be used when accessing elements outside input image.
+            border_value (List[float], optional): Border value to be used for constant border mode, each element of the array corresponds to the
                                        image color channel must be a size <= 4 and dim of 1, where the values specify the border color for each color channel.
-            top (Tensor): The top pixel position for each image.
-            left (Tensor): The left pixel position for each image.
+            top (nvcv.Tensor): The top pixel position for each image.
+            left (nvcv.Tensor): The left pixel position for each image.
             out_height (int): The height of the output.
             out_width (int): The width of the output.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output images.
+            nvcv.Tensor: The output images.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -296,7 +296,7 @@ void ExportOpCopyMakeBorder(py::module &m)
           "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "border_value"_a = std::vector<float>(),
           py::kw_only(), "top"_a, "left"_a, "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.copymakeborderstack_into(dst: nvcv.Tensor, src: nvcv.ImageBatchVarShape, border_mode : NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, border_value : float array, top : int, bottom : int, right : int , stream: Optional[nvcv.cuda.Stream] = None)
+	cvcuda.copymakeborderstack_into(dst: nvcv.Tensor, src: nvcv.ImageBatchVarShape, border_mode: cvcuda.Border = cvcuda.Border.CONSTANT, border_value: List[float], top: int, bottom: int, right: int, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Copy Make Border Stack operation on the given cuda stream.
 
@@ -305,16 +305,16 @@ void ExportOpCopyMakeBorder(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (Tensor): Output tensor to store the result of the operation.
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            border_mode(NVCVBorderType, optional): Border mode to be used when accessing elements outside input image.
-            border_value(float array, optional): Border value to be used for constant border mode, each element of the array corresponds to the
+            dst (nvcv.Tensor): Output tensor to store the result of the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            border_mode (cvcuda.Border, optional): Border mode to be used when accessing elements outside input image.
+            border_value (List[float], optional): Border value to be used for constant border mode, each element of the array corresponds to the
                                        image color channel must be a size <= 4 and dim of 1, where the values specify the border color for each color channel.
-            top (Tensor): The top pixel position for each image.
-            left (Tensor): The left pixel position for each image.
+            top (nvcv.Tensor): The top pixel position for each image.
+            left (nvcv.Tensor): The left pixel position for each image.
             out_height (int): The height of the output.
             out_width (int): The width of the output.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None
@@ -328,7 +328,7 @@ void ExportOpCopyMakeBorder(py::module &m)
           "border_value"_a = std::vector<float>(), py::kw_only(), "top"_a, "left"_a, "out_heights"_a, "out_widths"_a,
           "stream"_a       = nullptr, R"pbdoc(
 
-	cvcuda.copymakeborder(src: nvcv.ImageBatchVarShape, border_mode : NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, border_value : float array, top : int, bottom : int, right : int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+	cvcuda.copymakeborder(src: nvcv.ImageBatchVarShape, border_mode: cvcuda.Border = cvcuda.Border.CONSTANT, border_value: List[float], top: int, bottom: int, right: int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
 
         Executes the Copy Make Border operation on the given cuda stream.
 
@@ -337,18 +337,18 @@ void ExportOpCopyMakeBorder(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            border_mode(NVCVBorderType, optional): Border mode to be used when accessing elements outside input image.
-            border_value(float array, optional): Border value to be used for constant border mode, each element of the array corresponds to the
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            border_mode (cvcuda.Border, optional): Border mode to be used when accessing elements outside input image.
+            border_value (List[float], optional): Border value to be used for constant border mode, each element of the array corresponds to the
                                        image color channel must be a size <= 4 and dim of 1, where the values specify the border color for each color channel.
-            top (Tensor): The top pixel position for each image.
-            left (Tensor): The left pixel position for each image.
-            out_heights (Tensor): The heights of each output image.
-            out_widths (Tensor):  The widths of each output image.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            top (nvcv.Tensor): The top pixel position for each image.
+            left (nvcv.Tensor): The left pixel position for each image.
+            out_heights (nvcv.Tensor): The heights of each output image.
+            out_widths (nvcv.Tensor):  The widths of each output image.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.ImageBatchVarShape: The output image batch.
+            nvcv.ImageBatchVarShape: The output image batch.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -359,7 +359,7 @@ void ExportOpCopyMakeBorder(py::module &m)
           "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "border_value"_a = std::vector<float>(),
           py::kw_only(), "top"_a, "left"_a, "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.copymakeborder_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, border_mode : NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, border_value : float array, top : int, bottom : int, right : int , stream: Optional[nvcv.cuda.Stream] = None)
+	cvcuda.copymakeborder_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, border_mode: cvcuda.Border = cvcuda.Border.CONSTANT, border_value: List[float], top: int, bottom: int, right: int, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Copy Make Border operation on the given cuda stream.
 
@@ -368,16 +368,16 @@ void ExportOpCopyMakeBorder(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            border_mode(NVCVBorderType, optional): Border mode to be used when accessing elements outside input image.
-            border_value(float array, optional): Border value to be used for constant border mode, each element of the array corresponds to the
+            dst (nvcv.ImageBatchVarShape): Output image batch containing the result of the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            border_mode (cvcuda.Border, optional): Border mode to be used when accessing elements outside input image.
+            border_value (List[float], optional): Border value to be used for constant border mode, each element of the array corresponds to the
                                        image color channel must be a size <= 4 and dim of 1, where the values specify the border color for each color channel.
-            top (Tensor): The top pixel position for each image.
-            left (Tensor): The left pixel position for each image.
-            out_heights (Tensor): The heights of each output image.
-            out_widths (Tensor):  The widths of each output image.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            top (nvcv.Tensor): The top pixel position for each image.
+            left (nvcv.Tensor): The left pixel position for each image.
+            out_heights (nvcv.Tensor): The heights of each output image.
+            out_widths (nvcv.Tensor):  The widths of each output image.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

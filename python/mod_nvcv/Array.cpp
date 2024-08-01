@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -173,12 +173,14 @@ std::shared_ptr<Array> Array::Resize(Shape shape)
 Array::Array(const nvcv::Array::Requirements &reqs)
     : m_impl{reqs}
     , m_key{reqs}
+    , m_size_inbytes{doComputeSizeInBytes(reqs)}
 {
 }
 
 Array::Array(const nvcv::ArrayData &data, py::object wrappedObject)
     : m_impl{nvcv::ArrayWrapData(data)}
     , m_key{}
+    , m_size_inbytes{doComputeSizeInBytes(nvcv::Array::Requirements())}
     , m_wrappedObject(wrappedObject)
 {
 }
@@ -186,7 +188,22 @@ Array::Array(const nvcv::ArrayData &data, py::object wrappedObject)
 Array::Array(nvcv::Array &&array)
     : m_impl{std::move(array)}
     , m_key{}
+    , m_size_inbytes{doComputeSizeInBytes(nvcv::Array::Requirements())}
 {
+}
+
+int64_t Array::doComputeSizeInBytes(const nvcv::Array::Requirements &reqs)
+{
+    int64_t size_inbytes;
+    util::CheckThrow(nvcvMemRequirementsCalcTotalSizeBytes(&(reqs.mem.cudaMem), &size_inbytes));
+    return size_inbytes;
+}
+
+int64_t Array::GetSizeInBytes() const
+{
+    // m_size_inbytes == -1 indicates failure case and value has not been computed yet
+    NVCV_ASSERT(m_size_inbytes != -1 && "Array has m_size_inbytes == -1, ie m_size_inbytes has not been correctly set");
+    return m_size_inbytes;
 }
 
 std::shared_ptr<Array> Array::shared_from_this()

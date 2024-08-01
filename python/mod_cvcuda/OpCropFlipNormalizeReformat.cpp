@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -95,27 +95,27 @@ void ExportOpCropFlipNormalizeReformat(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            out_shape (Shape): The shape of the output.
-            out_dtype (DataType): The data type of the output.
-            out_layout (TensorLayout): The layout of the output.
-            rect (Tensor): The crop rectangle tensor which has shape of [batch_size, 1, 1, 4] in reference to the input tensor.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            out_shape (tuple): The shape of the output.
+            out_dtype (numpy.dtype): The data type of the output.
+            out_layout (nvcv.TensorLayout): The layout of the output.
+            rect (nvcv.Tensor): The crop rectangle tensor which has shape of [batch_size, 1, 1, 4] in reference to the input tensor.
                            The crop value of [crop_x, crop_y, crop_width, crop_height] stored in the final dimension of
                            the crop tensor, provided per image.
-            flip_code (Tensor): A tensor flag to specify how to flip the array; 0 means flipping around the x-axis,
+            flip_code (nvcv.Tensor): A tensor flag to specify how to flip the array; 0 means flipping around the x-axis,
                                 1 means flipping around the y-axis, -1 means flipping around both axes,
                                 and any other value will result  in no flip, provided per image.
-            base (Tensor): Tensor providing base values for normalization.
-            scale (Tensor): Tensor providing scale values for normalization.
-            globalscale (float ,optional): Additional scale value to be used in addition to scale
-            globalshift (float ,optional): Additional bias value to be used in addition to base.
-            epsilon (float ,optional): Epsilon to use when CVCUDA_NORMALIZE_SCALE_IS_STDDEV flag is set as a regularizing term to be
+            base (nvcv.Tensor): Tensor providing base values for normalization.
+            scale (nvcv.Tensor): Tensor providing scale values for normalization.
+            globalscale (float, optional): Additional scale value to be used in addition to scale
+            globalshift (float, optional): Additional bias value to be used in addition to base.
+            epsilon (float, optional): Epsilon to use when CVCUDA_NORMALIZE_SCALE_IS_STDDEV flag is set as a regularizing term to be
                                        added to variance.
-            flags (int ,optional): Algorithm flags, use CVCUDA_NORMALIZE_SCALE_IS_STDDEV if scale passed as argument
+            flags (int, optional): Algorithm flags, use CVCUDA_NORMALIZE_SCALE_IS_STDDEV if scale passed as argument
                                    is standard deviation instead or 0 if it is scaling.
-            border (BorderType ,optional): Border mode to be used when accessing elements outside input image.
-            bvalue (float ,optional): Border value to be used for constant border mode NVCV_BORDER_CONSTANT.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            border (cvcuda.Border, optional): Border mode to be used when accessing elements outside input image.
+            bvalue (float, optional): Border value to be used for constant border mode cvcuda.Border.CONSTANT.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None
@@ -137,25 +137,25 @@ void ExportOpCropFlipNormalizeReformat(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            rect (Tensor): The crop rectangle tensor which has shape of [batch_size, 1, 1, 4] in reference to the input tensor.
+            dst (nvcv.ImageBatchVarShape): Output image batch containing the result of the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            rect (nvcv.Tensor): The crop rectangle tensor which has shape of [batch_size, 1, 1, 4] in reference to the input tensor.
                            The crop value of [crop_x, crop_y, crop_width, crop_height] stored in the final dimension of
                            the crop tensor, provided per image.
-            flip_code (Tensor): A tensor flag to specify how to flip the array; 0 means flipping around the x-axis,
+            flip_code (nvcv.Tensor): A tensor flag to specify how to flip the array; 0 means flipping around the x-axis,
                                 1 means flipping around the y-axis, -1 means flipping around both axes,
                                 and any other value will result  in no flip, provided per image.
-            base (Tensor): Tensor providing base values for normalization.
-            scale (Tensor): Tensor providing scale values for normalization.
-            globalscale (float ,optional): Additional scale value to be used in addition to scale
-            globalshift (float ,optional): Additional bias value to be used in addition to base.
-            epsilon (float ,optional): Epsilon to use when CVCUDA_NORMALIZE_SCALE_IS_STDDEV flag is set as a regularizing term to be
+            base (nvcv.Tensor): Tensor providing base values for normalization.
+            scale (nvcv.Tensor): Tensor providing scale values for normalization.
+            globalscale (float, optional): Additional scale value to be used in addition to scale
+            globalshift (float, optional): Additional bias value to be used in addition to base.
+            epsilon (float, optional): Epsilon to use when CVCUDA_NORMALIZE_SCALE_IS_STDDEV flag is set as a regularizing term to be
                                        added to variance.
-            flags (int ,optional): Algorithm flags, use CVCUDA_NORMALIZE_SCALE_IS_STDDEV if scale passed as argument
+            flags (int, optional): Algorithm flags, use CVCUDA_NORMALIZE_SCALE_IS_STDDEV if scale passed as argument
                                    is standard deviation instead or 0 if it is scaling.
-            border (BorderType ,optional): Border mode to be used when accessing elements outside input image.
-            bvalue (float ,optional): Border value to be used for constant border mode NVCV_BORDER_CONSTANT.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            border (cvcuda.Border, optional): Border mode to be used when accessing elements outside input image.
+            bvalue (float, optional): Border value to be used for constant border mode cvcuda.Border.CONSTANT.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +21,7 @@
 #include <common/String.hpp>
 #include <cvcuda/OpRotate.hpp>
 #include <cvcuda/Types.h>
-#include <nvcv/cuda/TypeTraits.hpp>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/python/ImageBatchVarShape.hpp>
 #include <nvcv/python/ResourceGuard.hpp>
 #include <nvcv/python/Stream.hpp>
@@ -109,7 +109,7 @@ void ExportOpRotate(py::module &m)
     m.def("rotate", &Rotate, "src"_a, "angle_deg"_a, "shift"_a, "interpolation"_a, py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
 
-	cvcuda.rotate(src: nvcv.Tensor, angle_deg: double, shift: Tuple [double, double], interpolation : Interp, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
+	cvcuda.rotate(src: nvcv.Tensor, angle_deg: float, shift: Tuple[float, float], interpolation: cvcuda.Interp, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the Rotate operation on the given cuda stream.
 
@@ -118,14 +118,14 @@ void ExportOpRotate(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (Tensor): Input tensor containing one or more images.
-            angle_deg (double): Angle used for rotation in degrees.
-            shift (Tuple [double, double]): Value of shift in {x, y} directions to move the center at the same coord after rotation.
-            interpolation (Interp): Interpolation type used for transform.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            angle_deg (float): Angle used for rotation in degrees.
+            shift (Tuple[float, float]): Value of shift in {x, y} directions to move the center at the same coord after rotation.
+            interpolation (cvcuda.Interp): Interpolation type used for transform.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output tensor.
+            nvcv.Tensor: The output tensor.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -135,7 +135,7 @@ void ExportOpRotate(py::module &m)
     m.def("rotate_into", &RotateInto, "dst"_a, "src"_a, "angle_deg"_a, "shift"_a, "interpolation"_a, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.rotate_into(dst: nvcv.Tensor, src: nvcv.Tensor, angle_deg: double, shift: Tuple [double, double], interpolation : Interp, stream: Optional[nvcv.cuda.Stream] = None)
+	cvcuda.rotate_into(dst: nvcv.Tensor, src: nvcv.Tensor, angle_deg: float, shift: Tuple[float, float], interpolation: cvcuda.Interp, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Rotate operation on the given cuda stream.
 
@@ -144,12 +144,12 @@ void ExportOpRotate(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (Tensor): Output tensor to store the result of the operation.
-            src (Tensor): Input tensor containing one or more images.
-            angle_deg (double): Angle used for rotation in degrees.
-            shift (Tuple [double, double]): Value of shift in {x, y} directions to move the center at the same coord after rotation.
-            interpolation (Interp): Interpolation type used for transform.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            dst (nvcv.Tensor): Output tensor to store the result of the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            angle_deg (float): Angle used for rotation in degrees.
+            shift (Tuple[float, float]): Value of shift in {x, y} directions to move the center at the same coord after rotation.
+            interpolation (cvcuda.Interp): Interpolation type used for transform.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None
@@ -162,7 +162,7 @@ void ExportOpRotate(py::module &m)
     m.def("rotate", &VarShapeRotate, "src"_a, "angle_deg"_a, "shift"_a, "interpolation"_a, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.rotate(src: nvcv.ImageBatchVarShape, angle_deg: double, shift: Tuple [double, double], interpolation : Interp, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+	cvcuda.rotate(src: nvcv.ImageBatchVarShape, angle_deg: float, shift: Tuple[float, float], interpolation: cvcuda.Interp, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
 
 
 	Executes the Rotate operation on the given cuda stream.
@@ -172,15 +172,15 @@ void ExportOpRotate(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
-            angle_deg (Tensor): Angle used for rotation in degrees for each image.
-            shift (Tensor): Value of shift in {x, y} directions to move the center at the same coord after rotation for each image.
-            interpolation (Interp): Interpolation type used for transform.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            dst (nvcv.ImageBatchVarShape): Output image batch containing the result of the operation.
+            angle_deg (float): Angle used for rotation in degrees for each image.
+            shift (Tuple[float, float]): Value of shift in {x, y} directions to move the center at the same coord after rotation for each image.
+            interpolation (cvcuda.Interp): Interpolation type used for transform.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.ImageBatchVarShape: The output image batch.
+            nvcv.ImageBatchVarShape: The output image batch.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -190,7 +190,7 @@ void ExportOpRotate(py::module &m)
     m.def("rotate_into", &VarShapeRotateInto, "dst"_a, "src"_a, "angle_deg"_a, "shift"_a, "interpolation"_a,
           py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.rotate_into(dst:ImageBatchVarShape, src: nvcv.ImageBatchVarShape, angle_deg: double, shift: Tuple [double, double], interpolation : Interp, stream: Optional[nvcv.cuda.Stream] = None)
+	cvcuda.rotate_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, angle_deg: nvcv.Tensor, shift: nvcv.Tensor, interpolation: cvcuda.Interp, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Rotate operation on the given cuda stream.
 
@@ -199,12 +199,12 @@ void ExportOpRotate(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
-            angle_deg (Tensor): Angle used for rotation in degrees for each image.
-            shift (Tensor): Value of shift in {x, y} directions to move the center at the same coord after rotation for each image.
-            interpolation (Interp): Interpolation type used for transform.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            dst (nvcv.ImageBatchVarShape): Output image batch containing the result of the operation.
+            angle_deg (nvcv.Tensor): Angle used for rotation in degrees for each image.
+            shift (nvcv.Tensor): Value of shift in {x, y} directions to move the center at the same coord after rotation for each image.
+            interpolation (cvcuda.Interp): Interpolation type used for transform.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

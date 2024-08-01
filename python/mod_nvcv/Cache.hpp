@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,6 +20,7 @@
 
 #include "Object.hpp"
 
+#include <common/Assert.hpp>
 #include <common/Hash.hpp>
 #include <nvcv/python/Cache.hpp>
 #include <pybind11/pybind11.h>
@@ -40,6 +41,8 @@ public:
     std::shared_ptr<CacheItem>       shared_from_this();
     std::shared_ptr<const CacheItem> shared_from_this() const;
 
+    virtual int64_t GetSizeInBytes() const = 0;
+
     bool isInUse() const;
 
 protected:
@@ -54,7 +57,16 @@ class ExternalCacheItem : public CacheItem
 public:
     ExternalCacheItem(std::shared_ptr<nvcvpy::ICacheItem> obj_)
         : obj(obj_)
+        , m_size_inbytes(doComputeSizeInBytes())
     {
+    }
+
+    int64_t GetSizeInBytes() const override
+    {
+        // m_size_inbytes == -1 indicates failure case and value has not been computed yet
+        NVCV_ASSERT(m_size_inbytes != -1
+                    && "ExternalCacheItem has m_size_inbytes == -1, ie m_size_inbytes has not been correctly set");
+        return m_size_inbytes;
     }
 
     std::shared_ptr<nvcvpy::ICacheItem> obj;
@@ -63,6 +75,16 @@ public:
     {
         return obj->key();
     }
+
+private:
+    int64_t doComputeSizeInBytes()
+    {
+        // ExternalCacheItems (CacheItems outside of nvcv, eg. operators from cvcuda) will not pollute the
+        // Cache, thus for now we say they've no impact on the Cache
+        return 0;
+    }
+
+    int64_t m_size_inbytes = -1;
 };
 
 class PYBIND11_EXPORT Cache
@@ -100,7 +122,11 @@ public:
     }
 
     void   clear();
-    size_t size();
+    size_t size() const;
+
+    void    setCacheLimit(int64_t new_cache_limit);
+    int64_t getCacheLimit() const;
+    int64_t getCurrentSizeInBytes();
 
 private:
     struct Impl;
@@ -108,7 +134,9 @@ private:
 
     Cache();
 
-    void doIterateThroughItems(const std::function<void(CacheItem &item)> &fn) const;
+    void    doIterateThroughItems(const std::function<void(CacheItem &item)> &fn) const;
+    int64_t doCurrentSizeInBytes() const;
+    int64_t doGetCacheLimit() const;
 };
 
 } // namespace nvcvpy::priv

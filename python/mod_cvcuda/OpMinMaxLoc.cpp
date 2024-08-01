@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -275,12 +275,12 @@ inline std::string GetDocString(const std::string &strInto, const std::string &s
     if (strTensor.find("tensor") != std::string::npos)
     {
         strSrc = std::string(R"pbdoc(
-            src (Tensor): Input tensor to get minimum/maximum values/locations.)pbdoc");
+            src (nvcv.Tensor): Input tensor to get minimum/maximum values/locations.)pbdoc");
     }
     else if (strTensor.find("batch") != std::string::npos)
     {
         strSrc = std::string(R"pbdoc(
-            src (ImageBatchVarShape): Input image batch to get minimum/maximum values/locations.)pbdoc");
+            src (nvcv.ImageBatchVarShape): Input image batch to get minimum/maximum values/locations.)pbdoc");
     }
 
     std::string strArgs;
@@ -289,16 +289,16 @@ inline std::string GetDocString(const std::string &strInto, const std::string &s
         if (strMinMax.find("min") != std::string::npos)
         {
             strArgs += std::string(R"pbdoc(
-            min_val (Tensor): Output tensor with minimum value.
-            min_loc (Tensor): Output tensor with minimum locations.
-            num_min (Tensor): Output tensor with number of minimum locations found.)pbdoc");
+            min_val (nvcv.Tensor): Output tensor with minimum value.
+            min_loc (nvcv.Tensor): Output tensor with minimum locations.
+            num_min (nvcv.Tensor): Output tensor with number of minimum locations found.)pbdoc");
         }
         if (strMinMax.find("max") != std::string::npos)
         {
             strArgs += std::string(R"pbdoc(
-            max_val (Tensor): Output tensor with maximum value.
-            max_loc (Tensor): Output tensor with maximum locations.
-            num_max (Tensor): Output tensor with number of maximum locations found.)pbdoc");
+            max_val (nvcv.Tensor): Output tensor with maximum value.
+            max_loc (nvcv.Tensor): Output tensor with maximum locations.
+            num_max (nvcv.Tensor): Output tensor with number of maximum locations found.)pbdoc");
         }
         strArgs += strSrc;
     }
@@ -314,19 +314,19 @@ inline std::string GetDocString(const std::string &strInto, const std::string &s
     if (strMinMax.find("minimum/maximum") != std::string::npos)
     {
         strReturns = std::string(R"pbdoc(
-            Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]: A tuple with minimum value, locations and number
+            Tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]: A tuple with minimum value, locations and number
             of minima, and also maximum value, locations and number of maxima.)pbdoc");
     }
     else if (strMinMax.find("min") != std::string::npos)
     {
         strReturns = std::string(R"pbdoc(
-            Tuple[Tensor, Tensor, Tensor]: A tuple with minimum value, locations and number
+            Tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]: A tuple with minimum value, locations and number
             of minima.)pbdoc");
     }
     else if (strMinMax.find("max") != std::string::npos)
     {
         strReturns = std::string(R"pbdoc(
-            Tuple[Tensor, Tensor, Tensor]: A tuple with maximum value, locations and number
+            Tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]: A tuple with maximum value, locations and number
             of maxima.)pbdoc");
     }
 
@@ -341,7 +341,7 @@ inline std::string GetDocString(const std::string &strInto, const std::string &s
 
         Args:)pbdoc")
          + strArgs + std::string(R"pbdoc(
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:)pbdoc")
          + strReturns + std::string(R"pbdoc(

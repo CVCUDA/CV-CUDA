@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -204,3 +204,15 @@ def test_imgbatchvarshape_wrapper_nodeletion():
             assert (pt_img.cpu().numpy() == np_img).all()
         except RuntimeError:
             assert False, "Invalid memory"
+
+
+def test_imagebatchvarshape_size_in_bytes():
+    """
+    Checks if the computation of the ImageBatchVarShape size in bytes is correct
+    """
+    batch_create = nvcv.ImageBatchVarShape(5)
+    assert nvcv.internal.nbytes_in_cache(batch_create) > 0
+
+    pt_img = torch.as_tensor(np.ndarray((16, 32, 4), dtype=np.float32), device="cuda")
+    batch_as_images = nvcv.as_images([pt_img])
+    assert nvcv.internal.nbytes_in_cache(batch_as_images) > 0

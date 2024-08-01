@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -121,7 +121,7 @@ void ExportOpRandomResizedCrop(py::module &m)
           py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
 
-	cvcuda.random_resized_crop(src: nvcv.Tensor, shape:Tuple, min_scale:double, max_scale:double, min_ratio:double, max_ratio:double, interp: Interp = < NVCV_INTERP_LINEAR >, seed: int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
+	cvcuda.random_resized_crop(src: nvcv.Tensor, shape: Tuple, min_scale: double, max_scale: double, min_ratio: double, max_ratio: double, interp: Interp = cvcuda.Interp.LINEAR, seed: int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the RandomResizedCrop operation on the given cuda stream.
 
@@ -130,18 +130,18 @@ void ExportOpRandomResizedCrop(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (Tensor): Input tensor containing one or more images.
+            src (nvcv.Tensor): Input tensor containing one or more images.
             shape (Tuple): Shape of output tensor.
             min_scale (double, optional): Lower bound for the random area of the crop, before resizing. The scale is defined with respect to the area of the original image.
             max_scale (double, optional): Upper bound for the random area of the crop, before resizing. The scale is defined with respect to the area of the original image.
             min_ratio (double, optional): Lower bound for the random aspect ratio of the crop, before resizing.
             max_ratio (double, optional): Upper bound for the random aspect ratio of the crop, before resizing.
-            interp (Interp, optional): Interpolation type used for transform.
+            interp (cvcuda.Interp, optional): Interpolation type used for transform.
             seed (int, optional): Random seed, should be unsigned int32.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output tensor.
+            nvcv.Tensor: The output tensor.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -152,7 +152,7 @@ void ExportOpRandomResizedCrop(py::module &m)
           "max_scale"_a = 1.0, "min_ratio"_a = 0.75, "max_ratio"_a = 1.3333333333333333,
           "interp"_a = NVCV_INTERP_LINEAR, "seed"_a = 0, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.random_resized_crop_into(dst: nvcv.Tensor,src: nvcv.Tensor, shape:Tuple, min_scale:double, max_scale:double, min_ratio:double, max_ratio:double, interp: Interp = < NVCV_INTERP_LINEAR >, seed: int, stream: Optional[nvcv.cuda.Stream] = None)
+	cvcuda.random_resized_crop_into(dst: nvcv.Tensor, src: nvcv.Tensor, shape: Tuple, min_scale: double, max_scale: double, min_ratio: double, max_ratio: double, interp: Interp = cvcuda.Interp.LINEAR, seed: int, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the RandomResizedCrop operation on the given cuda stream.
 
@@ -161,15 +161,15 @@ void ExportOpRandomResizedCrop(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (Tensor): Output tensor to store the result of the operation.
-            src (Tensor): Input tensor containing one or more images.
+            dst (nvcv.Tensor): Output tensor to store the result of the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
             min_scale (double, optional): Lower bound for the random area of the crop, before resizing. The scale is defined with respect to the area of the original image.
             max_scale (double, optional): Upper bound for the random area of the crop, before resizing. The scale is defined with respect to the area of the original image.
             min_ratio (double, optional): Lower bound for the random aspect ratio of the crop, before resizing.
             max_ratio (double, optional): Upper bound for the random aspect ratio of the crop, before resizing.
-            interp (Interp, optional): Interpolation type used for transform.
+            interp (cvcuda.Interp, optional): Interpolation type used for transform.
             seed (int, optional): Random seed, should be unsigned int32.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None
@@ -183,7 +183,7 @@ void ExportOpRandomResizedCrop(py::module &m)
           "max_scale"_a = 1.0, "min_ratio"_a = 0.75, "max_ratio"_a = 1.3333333333333333,
           "interp"_a = NVCV_INTERP_LINEAR, "seed"_a = 0, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.random_resized_crop(src: nvcv.ImageBatchVarShape, shape:Tuple, min_scale:double, max_scale:double, min_ratio:double, max_ratio:double, interp: Interp = < NVCV_INTERP_LINEAR >, seed: int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+	cvcuda.random_resized_crop(src: nvcv.ImageBatchVarShape, shape: Tuple, min_scale: double, max_scale: double, min_ratio: double, max_ratio: double, interp: Interp = cvcuda.Interp.LINEAR, seed: int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
 
         Executes the RandomResizedCrop operation on the given cuda stream.
 
@@ -192,18 +192,18 @@ void ExportOpRandomResizedCrop(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
             sizes (Tuple vector): Shapes of output images.
             min_scale (double, optional): Lower bound for the random area of the crop, before resizing. The scale is defined with respect to the area of the original image.
             max_scale (double, optional): Upper bound for the random area of the crop, before resizing. The scale is defined with respect to the area of the original image.
             min_ratio (double, optional): Lower bound for the random aspect ratio of the crop, before resizing.
             max_ratio (double, optional): Upper bound for the random aspect ratio of the crop, before resizing.
-            interp (Interp, optional): Interpolation type used for transform.
+            interp (cvcuda.Interp, optional): Interpolation type used for transform.
             seed (int, optional): Random seed, should be unsigned int32.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output tensor.
+            nvcv.Tensor: The output tensor.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -214,7 +214,7 @@ void ExportOpRandomResizedCrop(py::module &m)
           "max_scale"_a = 1.0, "min_ratio"_a = 0.75, "max_ratio"_a = 1.3333333333333333,
           "interp"_a = NVCV_INTERP_LINEAR, "seed"_a = 0, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.random_resized_crop_into(dst: nvcv.ImageBatchVarShape,src: nvcv.ImageBatchVarShape, shape:Tuple, min_scale:double, max_scale:double, min_ratio:double, max_ratio:double, interp: Interp = < NVCV_INTERP_LINEAR >, seed: int, stream: Optional[nvcv.cuda.Stream] = None)
+	cvcuda.random_resized_crop_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, shape: Tuple, min_scale: double, max_scale: double, min_ratio: double, max_ratio: double, interp: Interp = cvcuda.Interp.LINEAR, seed: int, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the RandomResizedCrop operation on the given cuda stream.
 
@@ -223,15 +223,15 @@ void ExportOpRandomResizedCrop(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            dst (nvcv.ImageBatchVarShape): Output image batch containing the result of the operation.
             min_scale (double, optional): Lower bound for the random area of the crop, before resizing. The scale is defined with respect to the area of the original image.
             max_scale (double, optional): Upper bound for the random area of the crop, before resizing. The scale is defined with respect to the area of the original image.
             min_ratio (double, optional): Lower bound for the random aspect ratio of the crop, before resizing.
             max_ratio (double, optional): Upper bound for the random aspect ratio of the crop, before resizing.
-            interp (Interp, optional): Interpolation type used for transform.
+            interp (cvcuda.Interp, optional): Interpolation type used for transform.
             seed (int, optional): Random seed, should be unsigned int32.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

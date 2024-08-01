@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -89,7 +89,7 @@ std::shared_ptr<const Resource> Resource::shared_from_this() const
 
 void Resource::Export(py::module &m)
 {
-    py::class_<Resource, std::shared_ptr<Resource>>(m, "Resource")
+    py::class_<Resource, std::shared_ptr<Resource>>(m, "Resource", "Resource")
         .def_property_readonly("id", &Resource::id, "Unique resource instance identifier")
         .def("submitStreamSync", &Resource::submitSync, "Syncs object on new Stream");
 }

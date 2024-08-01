@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +21,7 @@
 #include <common/String.hpp>
 #include <cvcuda/OpConv2D.hpp>
 #include <cvcuda/Types.h>
-#include <nvcv/cuda/TypeTraits.hpp>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/python/Image.hpp>
 #include <nvcv/python/ImageBatchVarShape.hpp>
 #include <nvcv/python/ResourceGuard.hpp>
@@ -85,16 +85,16 @@ void ExportOpConv2D(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            kernel(Tensor): Convolution kernels (one for each batch image) to be used. Each image width and height
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            kernel (nvcv.Tensor): Convolution kernels (one for each batch image) to be used. Each image width and height
                             correspond to the kernel width and height. (must be float)
-            kernel_anchor(Tensor): 1D Tensor with the anchor of each kernel (one for each batch image).  The anchor (x, y)
+            kernel_anchor (nvcv.Tensor): 1D Tensor with the anchor of each kernel (one for each batch image).  The anchor (x, y)
                             indicates the relative position of a filtered point within the kernel.
                             (-1, -1) means that the anchor is at the kernel center.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.ImageBatchVarShape: The output image batch.
+            nvcv.ImageBatchVarShape: The output image batch.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -111,14 +111,14 @@ void ExportOpConv2D(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (ImageBatchVarShape): Output image batch to store the result of the operation.
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            kernel(Tensor): Convolution kernels (one for each batch image) to be used. Each image width and height
+            dst (nvcv.ImageBatchVarShape): Output image batch to store the result of the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            kernel (nvcv.Tensor): Convolution kernels (one for each batch image) to be used. Each image width and height
                             correspond to the kernel width and height. (must be float)
-            kernel_anchor(Tensor): 1D Tensor with the anchor of each kernel (one for each batch image).  The anchor (x, y)
+            kernel_anchor (nvcv.Tensor): 1D Tensor with the anchor of each kernel (one for each batch image).  The anchor (x, y)
                             indicates the relative position of a filtered point within the kernel.
                             (-1, -1) means that the anchor is at the kernel center.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

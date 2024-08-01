@@ -18,6 +18,7 @@
 #include "Definitions.hpp"
 
 #include <common/InterpUtils.hpp>
+#include <common/TensorDataUtils.hpp>
 #include <common/TypedTests.hpp>
 #include <cvcuda/OpConvertTo.hpp>
 #include <cvcuda/OpCustomCrop.hpp>
@@ -29,7 +30,6 @@
 #include <nvcv/Image.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
-#include <util/TensorDataUtils.hpp>
 
 #include <iostream>
 #include <random>

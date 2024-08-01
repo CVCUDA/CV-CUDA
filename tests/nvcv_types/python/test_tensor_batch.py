@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -225,3 +225,15 @@ def test_tensorbatch_errors():
         batch = nvcv.TensorBatch(10)
         batch.pushback(random_tensors(2, np.int16, 4, "NHWC"))
         batch.pushback(random_tensors(3, np.int16, 4, "FHWC"))
+
+
+def test_tensorbatch_size_in_bytes():
+    """
+    Checks if the computation of the TensorBatch size in bytes is correct
+    """
+    batch_create = nvcv.TensorBatch(10)
+    assert nvcv.internal.nbytes_in_cache(batch_create) > 0
+
+    pt_img = torch.as_tensor(np.ndarray((16, 32, 4), dtype=np.float32), device="cuda")
+    batch_as_tensors = nvcv.as_tensors([pt_img])
+    assert nvcv.internal.nbytes_in_cache(batch_as_tensors) > 0

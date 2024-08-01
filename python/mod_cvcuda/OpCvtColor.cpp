@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,7 +22,7 @@
 #include <common/String.hpp>
 #include <cvcuda/OpCvtColor.hpp>
 #include <cvcuda/Types.h>
-#include <nvcv/cuda/TypeTraits.hpp>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/python/ImageBatchVarShape.hpp>
 #include <nvcv/python/ResourceGuard.hpp>
 #include <nvcv/python/Stream.hpp>
@@ -56,25 +56,21 @@ Tensor CvtColorInto(Tensor &output, Tensor &input, NVCVColorConversionCode code,
 
 Tensor CvtColor(Tensor &input, NVCVColorConversionCode code, std::optional<Stream> pstream)
 {
-    int  ndim      = input.shape().size();
-    auto layout    = input.layout();
-    auto outFormat = GetOutputFormat(input.dtype(), code);
-    auto out_dtype = outFormat.planeDataType(0).channelType(0);
-    if (ndim < 3)
-    {
-        throw std::runtime_error("Invalid input tensor shape");
-    }
+    nvcv::ImageFormat outputFormat = GetOutputFormat(input.dtype(), code);
+    nvcv::TensorShape outputShape  = GetOutputTensorShape(input.shape(), outputFormat, code);
+    nvcv::DataType    outputDType  = outputFormat.planeDataType(0).channelType(0);
 
-    std::array<int64_t, NVCV_TENSOR_MAX_RANK> shape_data;
-    for (int d = 0; d < ndim; d++)
+#ifndef NDEBUG
+    assert(outputFormat.numPlanes() == 1);
+    nvcv::DataType channelDType = outputFormat.planeDataType(0).channelType(0);
+    for (int c = 1; c < outputFormat.planeDataType(0).numChannels(); ++c)
     {
-        if (layout[d] == 'C')
-            shape_data[d] = outFormat.numChannels();
-        else
-            shape_data[d] = input.shape()[d];
+        assert(channelDType == outputFormat.planeDataType(0).channelType(c));
     }
-    nvcv::TensorShape out_shape(shape_data.data(), ndim, layout);
-    Tensor            output = Tensor::Create(out_shape, out_dtype);
+#endif
+
+    Tensor output = Tensor::Create(outputShape, outputDType);
+
     return CvtColorInto(output, input, code, pstream);
 }
 
@@ -131,7 +127,7 @@ void ExportOpCvtColor(py::module &m)
 
     m.def("cvtcolor", &CvtColor, "src"_a, "code"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
-        cvcuda.cvtcolor(src: nvcv.Tensor, code : NVCVColorConversionCode, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
+        cvcuda.cvtcolor(src: nvcv.Tensor, code: cvcuda.ColorConversion, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
 	Executes the CVT Color operation on the given cuda stream.
 
@@ -140,12 +136,12 @@ void ExportOpCvtColor(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (Tensor): Input tensor containing one or more images.
-            code (NVCVColorConversionCode): Code describing the desired color conversion.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            code (cvcuda.ColorConversion): Code describing the desired color conversion.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output tensor.
+            nvcv.Tensor: The output tensor.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -154,7 +150,7 @@ void ExportOpCvtColor(py::module &m)
 
     m.def("cvtcolor_into", &CvtColorInto, "dst"_a, "src"_a, "code"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
-        cvcuda.cvtcolor_into(ds : nvcv.Tensor, src: nvcv.Tensor, code : NVCVColorConversionCode, stream: Optional[nvcv.cuda.Stream] = None)
+        cvcuda.cvtcolor_into(dst: nvcv.Tensor, src: nvcv.Tensor, code: cvcuda.ColorConversion, stream: Optional[nvcv.cuda.Stream] = None)
 
 	Executes the CVT Color operation on the given cuda stream.
 
@@ -163,10 +159,10 @@ void ExportOpCvtColor(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (Tensor): Output tensor to store the result of the operation.
-            src (Tensor): Input tensor containing one or more images.
-            code (NVCVColorConversionCode): Code describing the desired color conversion.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            dst (nvcv.Tensor): Output tensor to store the result of the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            code (cvcuda.ColorConversion): Code describing the desired color conversion.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None
@@ -178,7 +174,7 @@ void ExportOpCvtColor(py::module &m)
 
     m.def("cvtcolor", &CvtColorVarShape, "src"_a, "code"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
-        cvcuda.cvtcolor(src: nvcv.ImageBatchVarShape, code : NVCVColorConversionCode, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+        cvcuda.cvtcolor(src: nvcv.ImageBatchVarShape, code: cvcuda.ColorConversion, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
 
 	Executes the CVT Color operation on the given cuda stream.
 
@@ -187,12 +183,12 @@ void ExportOpCvtColor(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            code (NVCVColorConversionCode): Code describing the desired color conversion.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            code (cvcuda.ColorConversion): Code describing the desired color conversion.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.ImageBatchVarShape: The output image batch.
+            nvcv.ImageBatchVarShape: The output image batch.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -202,7 +198,7 @@ void ExportOpCvtColor(py::module &m)
     m.def("cvtcolor_into", &CvtColorVarShapeInto, "dst"_a, "src"_a, "code"_a, py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
 
-        cvcuda.cvtcolor_into(dst : nvcv.ImageBatchVarShape , src: nvcv.ImageBatchVarShape, code : NVCVColorConversionCode, stream: Optional[nvcv.cuda.Stream] = None)
+        cvcuda.cvtcolor_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, code: cvcuda.ColorConversion, stream: Optional[nvcv.cuda.Stream] = None)
 
 	Executes the CVT Color operation on the given cuda stream.
 
@@ -211,10 +207,10 @@ void ExportOpCvtColor(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
-            code (NVCVColorConversionCode): Code describing the desired color conversion.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            dst (nvcv.ImageBatchVarShape): Output image batch containing the result of the operation.
+            code (cvcuda.ColorConversion): Code describing the desired color conversion.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

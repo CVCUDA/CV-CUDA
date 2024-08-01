@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,13 +17,13 @@
 
 #include "Definitions.hpp"
 
+#include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpJointBilateralFilter.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
-#include <util/TensorDataUtils.hpp>
 
 #include <iostream>
 #include <random>
@@ -103,10 +103,11 @@ static void CPUJointBilateralFilter(uint8_t *pIn, uint8_t *pInColor, uint8_t *pO
         {
             std::vector<float> numerators(channels, 0.0f);
             float              denominator = 0;
-            std::vector<float> centerColors{static_cast<float>(pInColor[j * rowStride + k * channels]),
-                                            static_cast<float>(pInColor[j * rowStride + k * channels + 1]),
-                                            static_cast<float>(pInColor[j * rowStride + k * channels + 2]),
-                                            static_cast<float>(pInColor[j * rowStride + k * channels + 3])};
+            std::vector<float> centerColors{
+                static_cast<float>(pInColor[j * rowStride + k * channels]),
+                channels > 1 ? static_cast<float>(pInColor[j * rowStride + k * channels + 1]) : 0,
+                channels > 2 ? static_cast<float>(pInColor[j * rowStride + k * channels + 2]) : 0,
+                channels > 3 ? static_cast<float>(pInColor[j * rowStride + k * channels + 3]) : 0};
 
             for (int y = j - radius; y <= j + radius; y++)
             {

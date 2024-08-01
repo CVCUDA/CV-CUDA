@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -164,17 +164,186 @@ void ExportOpRemap(py::module &m)
 
     m.def("remap", &Remap, "src"_a, "map"_a, "src_interp"_a = NVCV_INTERP_NEAREST, "map_interp"_a = NVCV_INTERP_NEAREST,
           "map_type"_a = NVCV_REMAP_ABSOLUTE, "align_corners"_a = false, "border"_a = NVCV_BORDER_CONSTANT,
-          "border_value"_a = pyarray{}, py::kw_only(), "stream"_a = nullptr);
+          "border_value"_a = pyarray{}, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        cvcuda.remap(src: nvcv.Tensor, map: nvcv.Tensor, src_interp: cvcuda.Interp = cvcuda.Interp.NEAREST, map_interp: cvcuda.Interp = cvcuda.Interp.NEAREST, map_type: cvcuda.Remap = cvcuda.Remap.ABSOLUTE, align_corners: bool = False, border: cvcuda.Border = cvcuda.Border.CONSTANT, border_value: numpy.ndarray = np.ndarray((0,)), stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
+
+        Executes the Warp Perspective operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Remap operator for more details and usage
+            examples.
+
+        Args:
+            src (nvcv.Tensor): Input tensor.
+            src_interp (cvcuda.Interp, optional): Interpolation type used when fetching values
+                from the source image.
+            map_interp (cvcuda.Interp, optional): Interpolation type used when fetching values
+                from the map tensor.
+            map_type (cvcuda.Remap, optional): This determines how the values inside the map are
+                interpreted.  If it is cvcuda.Remap.ABSOLUTE the map values are absolute,
+                denormalized positions in the input tensor to fetch values from.  If it is
+                cvcuda.Remap.ABSOLUTE_NORMALIZED the map values are absolute, normalized
+                positions in [-1, 1] range to fetch values from the input tensor in a resolution
+                agnostic way.  If it is cvcuda.Remap.RELATIVE_NORMALIZED the map values are
+                relative, normalized offsets to be applied to each output position to fetch values
+                from the input tensor, also resolution agnostic.
+            align_corners (bool, optional): The remap operation from output to input via the map
+                is done in the floating-point domain. If ``True``, they are aligned by the center
+                points of their corner pixels. Otherwise, they are aligned by the corner points of
+                their corner pixels.
+            border (cvcuda.Border, optional): pixel extrapolation method (cvcuda.Border.CONSTANT,
+                cvcuda.Border.REPLICATE, cvcuda.Border.REFLECT, cvcuda.Border.REFLECT_101, or
+                cvcuda.Border.WRAP).
+            border_value (numpy.ndarray, optional): Used to specify values for a constant border,
+                should have size <= 4 and dim of 1, where the values specify the border color for
+                each color channel.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            nvcv.Tensor: The output tensor.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C API references of the CV-CUDA
+            operator.
+    )pbdoc");
     m.def("remap_into", &RemapInto, "dst"_a, "src"_a, "map"_a, "src_interp"_a = NVCV_INTERP_NEAREST,
           "map_interp"_a = NVCV_INTERP_NEAREST, "map_type"_a = NVCV_REMAP_ABSOLUTE, "align_corners"_a = false,
-          "border"_a = NVCV_BORDER_CONSTANT, "border_value"_a = pyarray{}, py::kw_only(), "stream"_a = nullptr);
+          "border"_a = NVCV_BORDER_CONSTANT, "border_value"_a = pyarray{}, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
+        cvcuda.remap_into(dst: nvcv.Tensor, src: nvcv.Tensor, map: nvcv.Tensor, src_interp: cvcuda.Interp = cvcuda.Interp.NEAREST, map_interp: cvcuda.Interp = cvcuda.Interp.NEAREST, map_type: cvcuda.Remap = cvcuda.Remap.ABSOLUTE, align_corners: bool = False, border: cvcuda.Border = cvcuda.Border.CONSTANT, border_value: numpy.ndarray = np.ndarray((0,)), stream: Optional[nvcv.cuda.Stream] = None)
+
+        Executes the Warp Perspective operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Remap operator for more details and usage
+            examples.
+
+        Args:
+            dst (nvcv.Tensor): Output tensor.
+            src (nvcv.Tensor): Input tensor.
+            src_interp (cvcuda.Interp, optional): Interpolation type used when fetching values
+                from the source image.
+            map_interp (cvcuda.Interp, optional): Interpolation type used when fetching values
+                from the map tensor.
+            map_type (cvcuda.Remap, optional): This determines how the values inside the map are
+                interpreted.  If it is cvcuda.Remap.ABSOLUTE the map values are absolute,
+                denormalized positions in the input tensor to fetch values from.  If it is
+                cvcuda.Remap.ABSOLUTE_NORMALIZED the map values are absolute, normalized
+                positions in [-1, 1] range to fetch values from the input tensor in a resolution
+                agnostic way.  If it is cvcuda.Remap.RELATIVE_NORMALIZED the map values are
+                relative, normalized offsets to be applied to each output position to fetch values
+                from the input tensor, also resolution agnostic.
+            align_corners (bool, optional): The remap operation from output to input via the map
+                is done in the floating-point domain. If ``True``, they are aligned by the center
+                points of their corner pixels. Otherwise, they are aligned by the corner points of
+                their corner pixels.
+            border (cvcuda.Border, optional): pixel extrapolation method (cvcuda.Border.CONSTANT,
+                cvcuda.Border.REPLICATE, cvcuda.Border.REFLECT, cvcuda.Border.REFLECT_101, or
+                cvcuda.Border.WRAP).
+            border_value (numpy.ndarray, optional): Used to specify values for a constant border,
+                should have size <= 4 and dim of 1, where the values specify the border color for
+                each color channel.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C API references of the CV-CUDA
+            operator.
+    )pbdoc");
     m.def("remap", &VarShapeRemap, "src"_a, "map"_a, "src_interp"_a = NVCV_INTERP_NEAREST,
           "map_interp"_a = NVCV_INTERP_NEAREST, "map_type"_a = NVCV_REMAP_ABSOLUTE, "align_corners"_a = false,
-          "border"_a = NVCV_BORDER_CONSTANT, "border_value"_a = pyarray{}, py::kw_only(), "stream"_a = nullptr);
+          "border"_a = NVCV_BORDER_CONSTANT, "border_value"_a = pyarray{}, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        cvcuda.remap(src: nvcv.ImageBatchVarShape, map: nvcv.Tensor, src_interp: cvcuda.Interp = cvcuda.Interp.NEAREST, map_interp: cvcuda.Interp = cvcuda.Interp.NEAREST, map_type: cvcuda.Remap = cvcuda.Remap.ABSOLUTE, align_corners: bool = False, border: cvcuda.Border = cvcuda.Border.CONSTANT, border_value: numpy.ndarray = np.ndarray((0,)), stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+
+        Executes the Warp Perspective operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Remap operator for more details and usage
+            examples.
+
+        Args:
+            src (nvcv.ImageBatchVarShape): Input image batch.
+            src_interp (cvcuda.Interp, optional): Interpolation type used when fetching values
+                from the source image.
+            map_interp (cvcuda.Interp, optional): Interpolation type used when fetching values
+                from the map tensor.
+            map_type (cvcuda.Remap, optional): This determines how the values inside the map are
+                interpreted.  If it is cvcuda.Remap.ABSOLUTE the map values are absolute,
+                denormalized positions in the input tensor to fetch values from.  If it is
+                cvcuda.Remap.ABSOLUTE_NORMALIZED the map values are absolute, normalized
+                positions in [-1, 1] range to fetch values from the input tensor in a resolution
+                agnostic way.  If it is cvcuda.Remap.RELATIVE_NORMALIZED the map values are
+                relative, normalized offsets to be applied to each output position to fetch values
+                from the input tensor, also resolution agnostic.
+            align_corners (bool, optional): The remap operation from output to input via the map
+                is done in the floating-point domain. If ``True``, they are aligned by the center
+                points of their corner pixels. Otherwise, they are aligned by the corner points of
+                their corner pixels.
+            border (cvcuda.Border, optional): pixel extrapolation method (cvcuda.Border.CONSTANT,
+                cvcuda.Border.REPLICATE, cvcuda.Border.REFLECT, cvcuda.Border.REFLECT_101, or
+                cvcuda.Border.WRAP).
+            border_value (numpy.ndarray, optional): Used to specify values for a constant border,
+                should have size <= 4 and dim of 1, where the values specify the border color for
+                each color channel.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            nvcv.ImageBatchVarShape: The output image batch.
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C API references of the CV-CUDA
+            operator.
+    )pbdoc");
     m.def("remap_into", &VarShapeRemapInto, "dst"_a, "src"_a, "map"_a, "src_interp"_a = NVCV_INTERP_NEAREST,
           "map_interp"_a = NVCV_INTERP_NEAREST, "map_type"_a = NVCV_REMAP_ABSOLUTE, "align_corners"_a = false,
-          "border"_a = NVCV_BORDER_CONSTANT, "border_value"_a = pyarray{}, py::kw_only(), "stream"_a = nullptr);
+          "border"_a = NVCV_BORDER_CONSTANT, "border_value"_a = pyarray{}, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+
+        cvcuda.remap_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, map: nvcv.Tensor, src_interp: cvcuda.Interp = cvcuda.Interp.NEAREST, map_interp: cvcuda.Interp = cvcuda.Interp.NEAREST, map_type: cvcuda.Remap = cvcuda.Remap.ABSOLUTE, align_corners: bool = False, border: cvcuda.Border = cvcuda.Border.CONSTANT, border_value: numpy.ndarray = np.ndarray((0,)), stream: Optional[nvcv.cuda.Stream] = None)
+
+        Executes the Warp Perspective operation on the given cuda stream.
+
+        See also:
+            Refer to the CV-CUDA C API reference for the Remap operator for more details and usage
+            examples.
+
+        Args:
+            dst (nvcv.ImageBatchVarShape): Output image batch.
+            src (nvcv.ImageBatchVarShape): Input image batch.
+            src_interp (cvcuda.Interp, optional): Interpolation type used when fetching values
+                from the source image.
+            map_interp (cvcuda.Interp, optional): Interpolation type used when fetching values
+                from the map tensor.
+            map_type (cvcuda.Remap, optional): This determines how the values inside the map are
+                interpreted.  If it is cvcuda.Remap.ABSOLUTE the map values are absolute,
+                denormalized positions in the input tensor to fetch values from.  If it is
+                cvcuda.Remap.ABSOLUTE_NORMALIZED the map values are absolute, normalized
+                positions in [-1, 1] range to fetch values from the input tensor in a resolution
+                agnostic way.  If it is cvcuda.Remap.RELATIVE_NORMALIZED the map values are
+                relative, normalized offsets to be applied to each output position to fetch values
+                from the input tensor, also resolution agnostic.
+            align_corners (bool, optional): The remap operation from output to input via the map
+                is done in the floating-point domain. If ``True``, they are aligned by the center
+                points of their corner pixels. Otherwise, they are aligned by the corner points of
+                their corner pixels.
+            border (cvcuda.Border, optional): pixel extrapolation method (cvcuda.Border.CONSTANT,
+                cvcuda.Border.REPLICATE, cvcuda.Border.REFLECT, cvcuda.Border.REFLECT_101, or
+                cvcuda.Border.WRAP).
+            border_value (numpy.ndarray, optional): Used to specify values for a constant border,
+                should have size <= 4 and dim of 1, where the values specify the border color for
+                each color channel.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            None
+
+        Caution:
+            Restrictions to several arguments may apply. Check the C API references of the CV-CUDA
+            operator.
+    )pbdoc");
 }
 
 } // namespace cvcudapy

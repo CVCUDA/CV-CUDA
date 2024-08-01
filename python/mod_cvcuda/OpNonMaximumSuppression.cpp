@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -84,21 +84,21 @@ void ExportOpNonMaximumSuppression(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (Tensor): src[i, j] is the set of input bounding box proposals
+            src (nvcv.Tensor): src[i, j] is the set of input bounding box proposals
                 for an image where i ranges from 0 to batch-1, j ranges from 0
                 to number of bounding box proposals anchored at the top-left of
                 the bounding box area
-            scores (Tensor): scores[i, j] are the associated scores for each
+            scores (nvcv.Tensor): scores[i, j] are the associated scores for each
                 bounding box proposal in ``src`` considered during the reduce
                 operation of NMS
             score_threshold (float): Minimum score of a bounding box proposals
             iou_threshold (float): Maximum overlap between bounding box proposals
                 covering the same effective image region as calculated by
                 Intersection-over-Union (IoU)
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output tensor of selected bounding boxes.
+            nvcv.Tensor: The output tensor of selected bounding boxes.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -118,22 +118,22 @@ void ExportOpNonMaximumSuppression(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (Tensor): dst[i, j] is the output boolean mask marking selected
+            dst (nvcv.Tensor): dst[i, j] is the output boolean mask marking selected
                 bounding boxes, where i ranges from 0 to batch-1, j ranges from 0
                 to the number of bounding box proposals anchored at the
                 top-left of the bounding box area
-            src (Tensor): src[i, j] is the set of input bounding box proposals
+            src (nvcv.Tensor): src[i, j] is the set of input bounding box proposals
                 for an image where i ranges from 0 to batch-1, j ranges from 0
                 to number of bounding box proposals anchored at the top-left of
                 the bounding box area
-            scores (Tensor): scores[i, j] are the associated scores for each
+            scores (nvcv.Tensor): scores[i, j] are the associated scores for each
                 bounding box proposal in ``src`` considered during the reduce
                 operation of NMS
             score_threshold (float): Minimum score of a bounding box proposals
             iou_threshold (float): Maximum overlap between bounding box proposals
                 covering the same effective image region as calculated by
                 Intersection-over-Union (IoU)
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

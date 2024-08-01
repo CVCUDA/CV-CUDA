@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 
-#include <common/TypedTests.hpp>  // for NVCV_TYPED_TEST_SUITE, etc.
-#include <nvcv/cuda/DropCast.hpp> // the object of this test
+#include <common/TypedTests.hpp>          // for NVCV_TYPED_TEST_SUITE, etc.
+#include <cvcuda/cuda_tools/DropCast.hpp> // the object of this test
 
 namespace t     = ::testing;
 namespace cuda  = nvcv::cuda;

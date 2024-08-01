@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -207,12 +207,14 @@ std::shared_ptr<Tensor> Tensor::Reshape(Shape shape, std::optional<nvcv::TensorL
 Tensor::Tensor(const nvcv::Tensor::Requirements &reqs)
     : m_impl{reqs}
     , m_key{reqs}
+    , m_size_inbytes{doComputeSizeInBytes(reqs)}
 {
 }
 
 Tensor::Tensor(const nvcv::TensorData &data, py::object wrappedObject)
     : m_impl{nvcv::TensorWrapData(data)}
     , m_key{}
+    , m_size_inbytes{doComputeSizeInBytes(nvcv::Tensor::Requirements())}
     , m_wrappedObject(wrappedObject)
 {
 }
@@ -220,6 +222,7 @@ Tensor::Tensor(const nvcv::TensorData &data, py::object wrappedObject)
 Tensor::Tensor(Image &img)
     : m_impl{nvcv::TensorWrapImage(img.impl())}
     , m_key{}
+    , m_size_inbytes{doComputeSizeInBytes(nvcv::Tensor::Requirements())}
     , m_wrappedObject(py::cast(img))
 {
 }
@@ -227,7 +230,23 @@ Tensor::Tensor(Image &img)
 Tensor::Tensor(nvcv::Tensor &&tensor)
     : m_impl{std::move(tensor)}
     , m_key{}
+    , m_size_inbytes{doComputeSizeInBytes(nvcv::Tensor::Requirements())}
 {
+}
+
+int64_t Tensor::doComputeSizeInBytes(const nvcv::Tensor::Requirements &reqs)
+{
+    int64_t size_inbytes;
+    util::CheckThrow(nvcvMemRequirementsCalcTotalSizeBytes(&(reqs.mem.cudaMem), &size_inbytes));
+    return size_inbytes;
+}
+
+int64_t Tensor::GetSizeInBytes() const
+{
+    // m_size_inbytes == -1 indicates failure case and value has not been computed yet
+    NVCV_ASSERT(m_size_inbytes != -1
+                && "Tensor has m_size_inbytes == -1, ie m_size_inbytes has not been correctly set");
+    return m_size_inbytes;
 }
 
 std::shared_ptr<Tensor> Tensor::shared_from_this()

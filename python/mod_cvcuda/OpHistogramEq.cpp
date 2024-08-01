@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -102,7 +102,7 @@ void ExportOpHistogramEq(py::module &m)
 
     m.def("histogrameq", &HistogramEq, "src"_a, "dtype"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.histogrameq(src: nvcv.Tensor, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
+	cvcuda.histogrameq(src: nvcv.Tensor, dtype: numpy.dtype, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the histogram equalization operation on the given cuda stream.
 
@@ -111,11 +111,12 @@ void ExportOpHistogramEq(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (Tensor): Input image batch containing one or more images.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.Tensor): Input image batch containing one or more images.
+            dtype (numpy.dtype): The data type of the output.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output image batch.
+            nvcv.Tensor: The output image batch.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -133,9 +134,9 @@ void ExportOpHistogramEq(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (Tensor): Output image batch containing the result of the operation.
-            src (Tensor): Input image batch containing one or more images.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            dst (nvcv.Tensor): Output image batch containing the result of the operation.
+            src (nvcv.Tensor): Input image batch containing one or more images.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None
@@ -156,11 +157,11 @@ void ExportOpHistogramEq(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.ImageBatchVarShape: The output image batch.
+            cvcuda.nvcv.ImageBatchVarShape: The output image batch.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -178,9 +179,9 @@ void ExportOpHistogramEq(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            dst (nvcv.ImageBatchVarShape): Output image batch containing the result of the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,16 +16,16 @@
  */
 
 #include <common/InterpUtils.hpp>
+#include <common/TensorDataUtils.hpp>
 #include <common/TypedTests.hpp>
 #include <cvcuda/OpBrightnessContrast.hpp>
+#include <cvcuda/cuda_tools/DropCast.hpp>
+#include <cvcuda/cuda_tools/StaticCast.hpp>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
-#include <nvcv/cuda/DropCast.hpp>
-#include <nvcv/cuda/StaticCast.hpp>
-#include <nvcv/cuda/TypeTraits.hpp>
-#include <util/TensorDataUtils.hpp>
 
 #include <iostream>
 #include <random>

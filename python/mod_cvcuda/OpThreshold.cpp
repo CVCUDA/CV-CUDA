@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -118,15 +118,16 @@ void ExportOpThreshold(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (Tensor): Input tensor containing one or more images.
-            thresh (Tensor): An array of size batch that gives the threshold value of each image.
-            maxval (Tensor): An array of size batch that gives the maxval value of each image,
-                             using with the NVCV_THRESH_BINARY and NVCV_THRESH_BINARY_INV threshold types.
-            type (ThresholdType): Thresholding type.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            thresh (nvcv.Tensor): An array of size batch that gives the threshold value of each image.
+            maxval (nvcv.Tensor): An array of size batch that gives the maxval value of each image,
+                             using with the cvcuda.ThresholdType.BINARY or cvcuda.ThresholdType.BINARY_INV
+                             threshold types.
+            type (cvcuda.ThresholdType): Thresholding type.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output tensor.
+            nvcv.Tensor: The output tensor.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -136,7 +137,7 @@ void ExportOpThreshold(py::module &m)
     m.def("threshold_into", &ThresholdInto, "dst"_a, "src"_a, "thresh"_a, "maxval"_a, "type"_a, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.threshold_into(dst: nvcv.Tensor,src: nvcv.Tensor, thresh: nvcv.Tensor, maxval: nvcv.Tensor, type:ThresholdType, stream: Optional[nvcv.cuda.Stream] = None)
+	cvcuda.threshold_into(dst: nvcv.Tensor, src: nvcv.Tensor, thresh: nvcv.Tensor, maxval: nvcv.Tensor, type:ThresholdType, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Threshold operation on the given cuda stream.
 
@@ -145,13 +146,14 @@ void ExportOpThreshold(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (Tensor): Output tensor to store the result of the operation.
-            src (Tensor): Input tensor containing one or more images.
-            thresh (Tensor): An array of size batch that gives the threshold value of each image.
-            maxval (Tensor): An array of size batch that gives the maxval value of each image,
-                             using with the NVCV_THRESH_BINARY and NVCV_THRESH_BINARY_INV threshold types.
-            type (ThresholdType): Thresholding type.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            dst (nvcv.Tensor): Output tensor to store the result of the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            thresh (nvcv.Tensor): An array of size batch that gives the threshold value of each image.
+            maxval (nvcv.Tensor): An array of size batch that gives the maxval value of each image,
+                             using with the cvcuda.ThresholdType.BINARY or cvcuda.ThresholdType.BINARY_INV
+                             threshold types.
+            type (cvcuda.ThresholdType): Thresholding type.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None
@@ -173,15 +175,16 @@ void ExportOpThreshold(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            thresh (Tensor): An array of size batch that gives the threshold value of each image.
-            maxval (Tensor): An array of size batch that gives the maxval value of each image,
-                             using with the NVCV_THRESH_BINARY and NVCV_THRESH_BINARY_INV threshold types.
-            type (ThresholdType): Thresholding type.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            thresh (nvcv.Tensor): An array of size batch that gives the threshold value of each image.
+            maxval (nvcv.Tensor): An array of size batch that gives the maxval value of each image,
+                             using with the cvcuda.ThresholdType.BINARY or cvcuda.ThresholdType.BINARY_INV
+                             threshold types.
+            type (cvcuda.ThresholdType): Thresholding type.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.ImageBatchVarShape: The output image batch.
+            nvcv.ImageBatchVarShape: The output image batch.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -200,13 +203,14 @@ void ExportOpThreshold(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            thresh (Tensor): An array of size batch that gives the threshold value of each image.
-            maxval (Tensor): An array of size batch that gives the maxval value of each image,
-                             using with the NVCV_THRESH_BINARY and NVCV_THRESH_BINARY_INV threshold types.
-            type (ThresholdType): Thresholding type.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            dst (nvcv.ImageBatchVarShape): Output image batch containing the result of the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            thresh (nvcv.Tensor): An array of size batch that gives the threshold value of each image.
+            maxval (nvcv.Tensor): An array of size batch that gives the maxval value of each image,
+                             using with the cvcuda.ThresholdType.BINARY or cvcuda.ThresholdType.BINARY_INV
+                             threshold types.
+            type (cvcuda.ThresholdType): Thresholding type.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

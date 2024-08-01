@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,12 +19,12 @@
 
 #include <nvcv/ImageFormat.hpp>
 #include <nvcv/Size.hpp>
-#include <nvcv_types/priv/Context.hpp>
-#include <nvcv_types/priv/DefaultAllocator.hpp>
-#include <nvcv_types/priv/Exception.hpp>
-#include <nvcv_types/priv/Image.hpp>
-#include <nvcv_types/priv/ImageManager.hpp>
-#include <nvcv_types/priv/SharedCoreObj.hpp>
+#include <nvcv/src/priv/Context.hpp>
+#include <nvcv/src/priv/DefaultAllocator.hpp>
+#include <nvcv/src/priv/Exception.hpp>
+#include <nvcv/src/priv/Image.hpp>
+#include <nvcv/src/priv/ImageManager.hpp>
+#include <nvcv/src/priv/SharedCoreObj.hpp>
 
 inline NVCVImageHandle CreateImage()
 {

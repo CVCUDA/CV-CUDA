@@ -1,6 +1,6 @@
 #!/bin/bash -e
 
-# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -61,6 +61,12 @@ mkdir -p "$build_dir"
 
 # Set build configuration
 cmake_args="-DBUILD_TESTS=1"
+
+if [[ "$ENABLE_SANITIZER" == 'true' || "$ENABLE_SANITIZER" == '1' ]]; then
+    cmake_args="$cmake_args -DENABLE_SANITIZER=ON"
+else
+    cmake_args="$cmake_args -DENABLE_SANITIZER=OFF"
+fi
 
 # Python build configuration
 if [[ "$ENABLE_PYTHON" == '0' || "$ENABLE_PYTHON" == 'no' ]]; then

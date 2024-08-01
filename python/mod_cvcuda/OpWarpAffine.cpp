@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +21,7 @@
 #include <common/String.hpp>
 #include <cvcuda/OpWarpAffine.hpp>
 #include <cvcuda/Types.h>
-#include <nvcv/cuda/TypeTraits.hpp>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/python/ImageBatchVarShape.hpp>
 #include <nvcv/python/ResourceGuard.hpp>
 #include <nvcv/python/Stream.hpp>
@@ -145,7 +145,7 @@ void ExportOpWarpAffine(py::module &m)
     m.def("warp_affine", &WarpAffine, "src"_a, "xform"_a, "flags"_a, py::kw_only(),
           "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "border_value"_a = 0, "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.warp_affine(src: nvcv.Tensor, xform: nvcv.Tensor, flags: nvcv.Tensor, border_mode: NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, border_value:pyarray,stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
+	cvcuda.warp_affine(src: nvcv.Tensor, xform: nvcv.Tensor, flags: nvcv.Tensor, border_mode: cvcuda.Border = cvcuda.Border.CONSTANT, border_value: numpy.ndarray, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the Warp Affine operation on the given cuda stream.
 
@@ -154,17 +154,18 @@ void ExportOpWarpAffine(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (Tensor): Input tensor containing one or more images.
-            xform (Tensor): 2x3 float affine transformation matrix.
-            flags (int): Combination of interpolation methods(NVCV_INTERP_NEAREST, NVCV_INTERP_LINEAR or NVCV_INTERP_CUBIC)
-                          and the optional flag NVCV_WARP_INVERSE_MAP, that sets xform as the inverse transformation.
-            border_mode (NVCVBorderType, optional): Pixel extrapolation method (NVCV_BORDER_CONSTANT or NVCV_BORDER_REPLICATE).
-            border_value (pyarray, optional):Used to specify values for a constant border, must be a size <= 4 and dim of 1,
-                                    where the values specify the border color for each color channel.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            xform (nvcv.Tensor): 2x3 float affine transformation matrix.
+            flags (int): Combination of interpolation methods(cvcuda.Interp.NEAREST, cvcuda.Interp.LINEAR or cvcuda.Interp.CUBIC)
+                and the optional flag cvcuda.Interp.WARP_INVERSE_MAP, that sets xform as the inverse transformation.
+            border_mode (cvcuda.Border, optional): Pixel extrapolation method (cvcuda.Border.CONSTANT or
+                cvcuda.Border.REPLICATE).
+            border_value (numpy.ndarray, optional):Used to specify values for a constant border, must be a size <= 4 and dim of 1,
+                where the values specify the border color for each color channel.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output tensor.
+            nvcv.Tensor: The output tensor.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -174,7 +175,7 @@ void ExportOpWarpAffine(py::module &m)
     m.def("warp_affine_into", &WarpAffineInto, "dst"_a, "src"_a, "xform"_a, "flags"_a, py::kw_only(),
           "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "border_value"_a = 0, "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.warp_affine_into(dst: nvcv.Tensor, src: nvcv.Tensor, xform: nvcv.Tensor, flags: nvcv.Tensor, border_mode: NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, border_value:pyarray,stream: Optional[nvcv.cuda.Stream] = None)
+	cvcuda.warp_affine_into(dst: nvcv.Tensor, src: nvcv.Tensor, xform: nvcv.Tensor, flags: nvcv.Tensor, border_mode: cvcuda.Border = cvcuda.Border.CONSTANT, border_value: numpy.ndarray, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Warp Affine operation on the given cuda stream.
 
@@ -183,15 +184,16 @@ void ExportOpWarpAffine(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (Tensor): Output tensor to store the result of the operation.
-            src (Tensor): Input tensor containing one or more images.
-            xform (Tensor): 2x3 float affine transformation matrix.
-            flags (int): Combination of interpolation methods(NVCV_INTERP_NEAREST, NVCV_INTERP_LINEAR or NVCV_INTERP_CUBIC)
-                          and the optional flag NVCV_WARP_INVERSE_MAP, that sets xform as the inverse transformation.
-            border_mode (NVCVBorderType, optional): Pixel extrapolation method (NVCV_BORDER_CONSTANT or NVCV_BORDER_REPLICATE).
-            border_value (pyarray, optional):Used to specify values for a constant border, must be a size <= 4 and dim of 1,
+            dst (nvcv.Tensor): Output tensor to store the result of the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            xform (nvcv.Tensor): 2x3 float affine transformation matrix.
+            flags (int): Combination of interpolation methods(cvcuda.Interp.NEAREST, cvcuda.Interp.LINEAR or cvcuda.Interp.CUBIC)
+                          and the optional flag cvcuda.Interp.WARP_INVERSE_MAP, that sets xform as the inverse transformation.
+            border_mode (cvcuda.Border, optional): Pixel extrapolation method (cvcuda.Border.CONSTANT or
+                cvcuda.Border.REPLICATE).
+            border_value (numpy.ndarray, optional):Used to specify values for a constant border, must be a size <= 4 and dim of 1,
                                     where the values specify the border color for each color channel.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None
@@ -204,7 +206,7 @@ void ExportOpWarpAffine(py::module &m)
     m.def("warp_affine", &WarpAffineVarShape, "src"_a, "xform"_a, "flags"_a, py::kw_only(),
           "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "border_value"_a = 0, "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.warp_affine(src: nvcv.ImageBatchVarShape, xform: nvcv.Tensor, flags: nvcv.Tensor, border_mode: NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, border_value:pyarray,stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+	cvcuda.warp_affine(src: nvcv.ImageBatchVarShape, xform: nvcv.Tensor, flags: nvcv.Tensor, border_mode: cvcuda.Border = cvcuda.Border.CONSTANT, border_value: numpy.ndarray, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
 
         Executes the Warp Affine operation on the given cuda stream.
 
@@ -213,17 +215,18 @@ void ExportOpWarpAffine(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            xform (Tensor): 2x3 float affine transformation matrix(s) for each image.
-            flags (int): Combination of interpolation methods(NVCV_INTERP_NEAREST, NVCV_INTERP_LINEAR or NVCV_INTERP_CUBIC)
-                          and the optional flag NVCV_WARP_INVERSE_MAP, that sets xform as the inverse transformation.
-            border_mode (NVCVBorderType, optional): Pixel extrapolation method (NVCV_BORDER_CONSTANT or NVCV_BORDER_REPLICATE).
-            border_value (pyarray, optional):Used to specify values for a constant border, must be a size <= 4 and dim of 1,
-                                    where the values specify the border color for each color channel.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            xform (nvcv.Tensor): 2x3 float affine transformation matrix(s) for each image.
+            flags (int): Combination of interpolation methods(cvcuda.Interp.NEAREST, cvcuda.Interp.LINEAR or cvcuda.Interp.CUBIC)
+                and the optional flag cvcuda.Interp.WARP_INVERSE_MAP, that sets xform as the inverse transformation.
+            border_mode (cvcuda.Border, optional): Pixel extrapolation method (cvcuda.Border.CONSTANT or
+                cvcuda.Border.REPLICATE).
+            border_value (numpy.ndarray, optional):Used to specify values for a constant border, must be a size <= 4 and dim of 1,
+                where the values specify the border color for each color channel.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.ImageBatchVarShape: The output image batch.
+            nvcv.ImageBatchVarShape: The output image batch.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -233,7 +236,7 @@ void ExportOpWarpAffine(py::module &m)
     m.def("warp_affine_into", &WarpAffineVarShapeInto, "dst"_a, "src"_a, "xform"_a, "flags"_a, py::kw_only(),
           "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "border_value"_a = 0, "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.warp_affine_into(dst: nvcv.ImageBatchVarShape,src: nvcv.ImageBatchVarShape, xform: nvcv.Tensor, flags: nvcv.Tensor, border_mode: NVCVBorderType = < NVCVBorderType::NVCV_BORDER_CONSTANT >, border_value:pyarray,stream: Optional[nvcv.cuda.Stream] = None)
+	cvcuda.warp_affine_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, xform: nvcv.Tensor, flags: nvcv.Tensor, border_mode: cvcuda.Border = cvcuda.Border.CONSTANT, border_value: numpy.ndarray, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Warp Affine operation on the given cuda stream.
 
@@ -242,15 +245,16 @@ void ExportOpWarpAffine(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            xform (Tensor): 2x3 float affine transformation matrix(s) for each image in batch.
-            flags (int): Combination of interpolation methods(NVCV_INTERP_NEAREST, NVCV_INTERP_LINEAR or NVCV_INTERP_CUBIC)
-                          and the optional flag NVCV_WARP_INVERSE_MAP, that sets xform as the inverse transformation.
-            border_mode (NVCVBorderType, optional): Pixel extrapolation method (NVCV_BORDER_CONSTANT or NVCV_BORDER_REPLICATE).
-            border_value (pyarray, optional):Used to specify values for a constant border, must be a size <= 4 and dim of 1,
-                                    where the values specify the border color for each color channel.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            dst (nvcv.ImageBatchVarShape): Output image batch containing the result of the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            xform (nvcv.Tensor): 2x3 float affine transformation matrix(s) for each image in batch.
+            flags (int): Combination of interpolation methods(cvcuda.Interp.NEAREST, cvcuda.Interp.LINEAR or cvcuda.Interp.CUBIC)
+                and the optional flag cvcuda.Interp.WARP_INVERSE_MAP, that sets xform as the inverse transformation.
+            border_mode (cvcuda.Border, optional): Pixel extrapolation method (cvcuda.Border.CONSTANT or
+                cvcuda.Border.REPLICATE).
+            border_value (numpy.ndarray, optional):Used to specify values for a constant border, must be a size <= 4 and dim of 1,
+                where the values specify the border color for each color channel.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,16 +17,9 @@
 
 #include "CvtColorUtil.hpp"
 
-//#include <common/PyUtil.hpp>
 #include <common/String.hpp>
-//#include <cvcuda/OpCvtColor.hpp>
 #include <cvcuda/Types.h>
-#include <nvcv/cuda/TypeTraits.hpp>
-//#include <nvcv/python/ImageBatchVarShape.hpp>
-//#include <nvcv/python/ResourceGuard.hpp>
-//#include <nvcv/python/Stream.hpp>
-//#include <nvcv/python/Tensor.hpp>
-//#include <pybind11/stl.h>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 
 #include <map>
 #include <unordered_map>
@@ -280,4 +273,56 @@ nvcv::ImageFormat GetOutputFormat(nvcv::DataType in, NVCVColorConversionCode cod
                                             nvcv::Packing::NONE);
 
     return outFormat;
+}
+
+int64_t GetOutputHeight(int64_t height, NVCVColorConversionCode code)
+{
+    switch (code)
+    {
+    case NVCVColorConversionCode::NVCV_COLOR_YUV2RGB_NV12:
+    case NVCVColorConversionCode::NVCV_COLOR_YUV2BGR_NV12:
+    case NVCVColorConversionCode::NVCV_COLOR_YUV2RGB_NV21:
+    case NVCVColorConversionCode::NVCV_COLOR_YUV2BGR_NV21:
+        return (2 * height) / 3; // output height must be 2/3 of input height from NV12 or NV21
+
+    case NVCVColorConversionCode::NVCV_COLOR_RGB2YUV_NV12:
+    case NVCVColorConversionCode::NVCV_COLOR_BGR2YUV_NV12:
+    case NVCVColorConversionCode::NVCV_COLOR_RGB2YUV_NV21:
+    case NVCVColorConversionCode::NVCV_COLOR_BGR2YUV_NV21:
+        return (3 * height) / 2; // output height must be 3/2 of input height for UV plane
+
+    default:
+        return height;
+    }
+}
+
+nvcv::TensorShape GetOutputTensorShape(nvcv::TensorShape inputShape, nvcv::ImageFormat outputFormat,
+                                       NVCVColorConversionCode code)
+{
+    if (inputShape.rank() < 3 || inputShape.rank() > 4)
+    {
+        throw std::runtime_error("Invalid input tensor shape, only NHWC or HWC are supported");
+    }
+
+    int64_t outputShape[4] = {};
+    bool    heightIndex    = inputShape.rank() == 4 ? 1 : 0;
+    for (int i = 0; i < inputShape.rank(); i++)
+    {
+        outputShape[i] = inputShape[i];
+    }
+    int channelIndex = inputShape.rank() == 4 ? 3 : 2;
+
+    outputShape[heightIndex]  = GetOutputHeight(outputShape[heightIndex], code);
+    outputShape[channelIndex] = outputFormat.numChannels();
+
+    if (inputShape.rank() == 4)
+    {
+        return nvcv::TensorShape({outputShape[0], outputShape[1], outputShape[2], outputShape[3]}, "NHWC");
+    }
+    else
+    {
+        assert(inputShape.rank() == 3);
+
+        return nvcv::TensorShape({outputShape[0], outputShape[1], outputShape[2]}, "HWC");
+    }
 }

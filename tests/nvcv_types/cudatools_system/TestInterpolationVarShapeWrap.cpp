@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,15 +17,15 @@
 
 #include "DeviceInterpolationVarShapeWrap.hpp" // to test in the device
 
-#include <common/InterpUtils.hpp>                  // for test::GoldInterp, etc.
-#include <common/Printers.hpp>                     // for stream operator, etc.
-#include <common/TypedTests.hpp>                   // for NVCV_TYPED_TEST_SUITE, etc.
-#include <nvcv/Image.hpp>                          // for Image, etc.
-#include <nvcv/ImageBatch.hpp>                     // for ImageBatchVarShape, etc.
-#include <nvcv/cuda/BorderVarShapeWrap.hpp>        // for ImageBatchVarShapeWrap, etc.
-#include <nvcv/cuda/ImageBatchVarShapeWrap.hpp>    // for ImageBatchVarShapeWrap, etc.
-#include <nvcv/cuda/InterpolationVarShapeWrap.hpp> // the object of this test
-#include <nvcv/cuda/MathOps.hpp>                   // for operator == to allow EXPECT_EQ
+#include <common/InterpUtils.hpp>                          // for test::GoldInterp, etc.
+#include <common/Printers.hpp>                             // for stream operator, etc.
+#include <common/TypedTests.hpp>                           // for NVCV_TYPED_TEST_SUITE, etc.
+#include <cvcuda/cuda_tools/BorderVarShapeWrap.hpp>        // for ImageBatchVarShapeWrap, etc.
+#include <cvcuda/cuda_tools/ImageBatchVarShapeWrap.hpp>    // for ImageBatchVarShapeWrap, etc.
+#include <cvcuda/cuda_tools/InterpolationVarShapeWrap.hpp> // the object of this test
+#include <cvcuda/cuda_tools/MathOps.hpp>                   // for operator == to allow EXPECT_EQ
+#include <nvcv/Image.hpp>                                  // for Image, etc.
+#include <nvcv/ImageBatch.hpp>                             // for ImageBatchVarShape, etc.
 
 #include <algorithm>
 #include <array>

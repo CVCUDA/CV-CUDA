@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -133,21 +133,21 @@ int ParseArgs(int argc, char *argv[], std::string &modelPath, std::string &image
     if (!modelFile.good())
     {
         showUsage();
-        std::cerr << "Model path '" + modelPath + "' does not exist\n";
+        std::cerr << "Model path '" + modelPath + "' does not exist" << std::endl;
         return -1;
     }
     std::ifstream imageFile(imagePath);
     if (!imageFile.good())
     {
         showUsage();
-        std::cerr << "Image path '" + modelPath + "' does not exist\n";
+        std::cerr << "Image path '" + modelPath + "' does not exist" << std::endl;
         return -1;
     }
     std::ifstream labelFile(labelPath);
     if (!labelFile.good())
     {
         showUsage();
-        std::cerr << "Label path '" + modelPath + "' does not exist\n";
+        std::cerr << "Label path '" + modelPath + "' does not exist" << std::endl;
         return -1;
     }
     return 0;

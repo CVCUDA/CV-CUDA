@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +21,7 @@
 #include "Cache.hpp"
 #include "Resource.hpp"
 
+#include <common/Assert.hpp>
 #include <nvcv/python/Container.hpp>
 
 #include <memory>
@@ -47,11 +48,29 @@ class ExternalContainer : public Container
 public:
     explicit ExternalContainer(nvcvpy::Container &extCont)
         : m_extCont(extCont)
+        , m_size_inbytes{doComputeSizeInBytes()}
     {
+    }
+
+    int64_t GetSizeInBytes() const override
+    {
+        // m_size_inbytes == -1 indicates failure case and value has not been computed yet
+        NVCV_ASSERT(m_size_inbytes != -1
+                    && "ExternalContainer has m_size_inbytes == -1, ie m_size_inbytes has not been correctly set");
+        return m_size_inbytes;
     }
 
 private:
     nvcvpy::Container &m_extCont;
+
+    int64_t doComputeSizeInBytes()
+    {
+        // ExternalCacheItems (CacheItems outside of nvcv, eg. operators from cvcuda) will not pollute the
+        // Cache, thus for now we say they've no impact on the Cache
+        return 0;
+    }
+
+    int64_t m_size_inbytes = -1;
 
     const IKey &key() const override
     {

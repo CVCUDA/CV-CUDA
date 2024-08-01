@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,9 +17,9 @@
 
 #include "DeviceMathWrappers.hpp" // to test in the device
 
-#include <common/TypedTests.hpp>      // for NVCV_TYPED_TEST_SUITE, etc.
-#include <nvcv/cuda/MathOps.hpp>      // for operator == to allow EXPECT_EQ
-#include <nvcv/cuda/MathWrappers.hpp> // the object of this test
+#include <common/TypedTests.hpp>              // for NVCV_TYPED_TEST_SUITE, etc.
+#include <cvcuda/cuda_tools/MathOps.hpp>      // for operator == to allow EXPECT_EQ
+#include <cvcuda/cuda_tools/MathWrappers.hpp> // the object of this test
 
 namespace cuda  = nvcv::cuda;
 namespace ttype = nvcv::test::type;

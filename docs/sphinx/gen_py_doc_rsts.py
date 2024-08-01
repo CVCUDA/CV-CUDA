@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -53,11 +53,13 @@ def get_name_of_def(s: str) -> str:
     return re.findall('"([^"]*)"', s)[0]
 
 
-def has_exports(file_path, export_calls):
-    for call in export_calls:
-        if call in open(file_path).read():
-            export_calls.remove(call)
-            return True
+def has_exports(file_path: str, export_calls: List[str]) -> bool:
+    with open(file_path, "r") as file_str:
+        file_str_read = file_str.read()
+        for call in export_calls:
+            if call in file_str_read:
+                export_calls.remove(call)
+                return True
     return False
 
 

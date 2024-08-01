@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -83,6 +83,8 @@ public:
 
     virtual const Key &key() const override;
 
+    int64_t GetSizeInBytes() const override;
+
     py::object cuda() const;
 
 private:
@@ -90,9 +92,11 @@ private:
     Array(const nvcv::ArrayData &data, py::object wrappedObject);
     Array(nvcv::Array &&array);
 
-    // m_impl must come before m_key
-    nvcv::Array m_impl;
+    int64_t doComputeSizeInBytes(const nvcv::Array::Requirements &reqs);
+
+    nvcv::Array m_impl; // must come before m_key
     Key         m_key;
+    int64_t     m_size_inbytes = -1;
 
     mutable py::object m_cacheExternalObject;
 

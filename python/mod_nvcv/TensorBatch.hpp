@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -53,6 +53,8 @@ public:
     std::optional<nvcv::DataType>     dtype() const;
     std::optional<nvcv::TensorLayout> layout() const;
 
+    int64_t GetSizeInBytes() const override;
+
     void pushBack(Tensor &tensor);
     void pushBackMany(std::vector<std::shared_ptr<Tensor>> &tensorList);
     void popBack(int tensorCount);
@@ -86,9 +88,13 @@ public:
 
 private:
     TensorBatch(int capacity);
+
+    int64_t doComputeSizeInBytes(const NVCVTensorBatchRequirements &reqs);
+
     Key               m_key;
     nvcv::TensorBatch m_impl;
     TensorList        m_list;
+    int64_t           m_size_inbytes = -1;
 };
 
 } // namespace nvcvpy::priv

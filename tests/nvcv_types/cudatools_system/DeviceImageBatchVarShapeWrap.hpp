@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,8 +18,8 @@
 #ifndef NVCV_TESTS_DEVICE_IMAGE_BATCH_VAR_SHAPE_WRAP_HPP
 #define NVCV_TESTS_DEVICE_IMAGE_BATCH_VAR_SHAPE_WRAP_HPP
 
-#include <cuda_runtime.h>                       // for int3, etc.
-#include <nvcv/cuda/ImageBatchVarShapeWrap.hpp> // the object of this test
+#include <cuda_runtime.h>                               // for int3, etc.
+#include <cvcuda/cuda_tools/ImageBatchVarShapeWrap.hpp> // the object of this test
 
 template<class DstWrapper>
 void DeviceSetTwos(DstWrapper &, int3, cudaStream_t &);

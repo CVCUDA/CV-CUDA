@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,13 +18,13 @@
 #include "DeviceInterpolationWrap.hpp" // to test in the device
 #include "DeviceTensorWrap.hpp"        // for PackedImage, etc.
 
-#include <common/InterpUtils.hpp>          // for test::GoldInterp, etc.
-#include <common/TypedTests.hpp>           // for NVCV_TYPED_TEST_SUITE, etc.
-#include <nvcv/Tensor.hpp>                 // for Tensor, etc.
-#include <nvcv/TensorDataAccess.hpp>       // for TensorDataAccessStridedImagePlanar, etc.
-#include <nvcv/cuda/DropCast.hpp>          // for DropCast, etc.
-#include <nvcv/cuda/InterpolationWrap.hpp> // the object of this test
-#include <nvcv/cuda/MathOps.hpp>           // for operator == to allow EXPECT_EQ
+#include <common/InterpUtils.hpp>                  // for test::GoldInterp, etc.
+#include <common/TypedTests.hpp>                   // for NVCV_TYPED_TEST_SUITE, etc.
+#include <cvcuda/cuda_tools/DropCast.hpp>          // for DropCast, etc.
+#include <cvcuda/cuda_tools/InterpolationWrap.hpp> // the object of this test
+#include <cvcuda/cuda_tools/MathOps.hpp>           // for operator == to allow EXPECT_EQ
+#include <nvcv/Tensor.hpp>                         // for Tensor, etc.
+#include <nvcv/TensorDataAccess.hpp>               // for TensorDataAccessStridedImagePlanar, etc.
 
 #include <algorithm>
 #include <array>

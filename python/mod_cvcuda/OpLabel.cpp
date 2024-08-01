@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -158,7 +158,7 @@ void ExportOpLabel(py::module &m)
             Refer to the CV-CUDA C API reference for the Label operator for more details and usage examples.
 
         Args:
-            src (Tensor): Input tensor to label connected-component regions.
+            src (nvcv.Tensor): Input tensor to label connected-component regions.
             connectivity (cvcuda.ConnectivityType, optional): Choice to control connectivity of input elements,
                                                               default is cvcuda.CONNECTIVITY_4_2D.
             assign_labels (cvcuda.LABEL, optional): Choice on how labels are assigned,
@@ -168,20 +168,20 @@ void ExportOpLabel(py::module &m)
             count (bool, optional): Use True to return the count of valid labeled regions.
             stats (bool, optional): Use True to return the statistics of valid labeled regions.
             max_labels (Number, optional): Maximum number of labels to compute statistics for, default is 10000.
-            bg_label (Tensor, optional): Background tensor to define input values to be considered background
+            bg_label (nvcv.Tensor, optional): Background tensor to define input values to be considered background
                                          labels and thus ignored.
-            min_thresh (Tensor, optional): Minimum threshold tensor to mask input values below it to be 0, and others 1.
-            max_thresh (Tensor, optional): Maximum threshold tensor to mask input values above it to be 0, and others 1.
-            min_size (Tensor, optional): Minimum size tensor to remove islands, i.e. labeled regions with number of
+            min_thresh (nvcv.Tensor, optional): Minimum threshold tensor to mask input values below it to be 0, and others 1.
+            max_thresh (nvcv.Tensor, optional): Maximum threshold tensor to mask input values above it to be 0, and others 1.
+            min_size (nvcv.Tensor, optional): Minimum size tensor to remove islands, i.e. labeled regions with number of
                                          elements less than the minimum size.
-            mask (Tensor, optional): Mask tensor, its behavior is controlled by \ref mask_type.  One choice is to
+            mask (nvcv.Tensor, optional): Mask tensor, its behavior is controlled by \ref mask_type.  One choice is to
                                      control island removal in addition to \ref min_size, i.e. regions with at
                                      least one element inside the mask (non-zero values) are not removed in case
                                      mask_type is cvcuda.REMOVE_ISLANDS_OUTSIDE_MASK_ONLY.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            Tuple[Tensor, Tensor, Tensor]: A tuple wih output labels, count of regions and their statistics.
+            Tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]: A tuple with output labels, count of regions and their statistics.
                                            The count or stats tensors may be None if theirs arguments are False.
 
         Caution:
@@ -200,30 +200,30 @@ void ExportOpLabel(py::module &m)
             Refer to the CV-CUDA C API reference for the Label operator for more details and usage examples.
 
         Args:
-            dst (Tensor): Output tensor with labels.
-            count (Tensor, optional): Output tensor with count number of labeled regions.
-            stats (Tensor, optional): Output tensor with statistics for each labeled region.
-            src (Tensor): Input tensor to label connected-component regions.
+            dst (nvcv.Tensor): Output tensor with labels.
+            count (nvcv.Tensor, optional): Output tensor with count number of labeled regions.
+            stats (nvcv.Tensor, optional): Output tensor with statistics for each labeled region.
+            src (nvcv.Tensor): Input tensor to label connected-component regions.
             connectivity (cvcuda.ConnectivityType, optional): Choice to control connectivity of input elements,
                                                               default is cvcuda.CONNECTIVITY_4_2D.
             assign_labels (cvcuda.LABEL, optional): Choice on how labels are assigned,
                                                     default is cvcuda.LABEL.FAST.
             mask_type (cvcuda.LabelMaskType, optional): Choice on how the mask is used,
                                                         default is cvcuda.REMOVE_ISLANDS_OUTSIDE_MASK_ONLY.
-            bg_label (Tensor, optional): Background tensor to define input values to be considered background
+            bg_label (nvcv.Tensor, optional): Background tensor to define input values to be considered background
                                          labels and thus ignored.
-            min_thresh (Tensor, optional): Minimum threshold tensor to mask input values below it to be 0, and others 1.
-            max_thresh (Tensor, optional): Maximum threshold tensor to mask input values above it to be 0, and others 1.
-            min_size (Tensor, optional): Minimum size tensor to remove islands, i.e. labeled regions with number of
+            min_thresh (nvcv.Tensor, optional): Minimum threshold tensor to mask input values below it to be 0, and others 1.
+            max_thresh (nvcv.Tensor, optional): Maximum threshold tensor to mask input values above it to be 0, and others 1.
+            min_size (nvcv.Tensor, optional): Minimum size tensor to remove islands, i.e. labeled regions with number of
                                          elements less than the minimum size.
-            mask (Tensor, optional): Mask tensor, its behavior is controlled by \ref mask_type.  One choice is to
+            mask (nvcv.Tensor, optional): Mask tensor, its behavior is controlled by \ref mask_type.  One choice is to
                                      control island removal in addition to \ref min_size, i.e. regions with at
                                      least one element inside the mask (non-zero values) are not removed in case
                                      mask_type is cvcuda.REMOVE_ISLANDS_OUTSIDE_MASK_ONLY.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            Tuple[Tensor, Tensor, Tensor]: A tuple wih output labels, count of regions and their statistics.
+            Tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]: A tuple with output labels, count of regions and their statistics.
                                            The count or stats tensors may be None if theirs arguments are None.
 
         Caution:

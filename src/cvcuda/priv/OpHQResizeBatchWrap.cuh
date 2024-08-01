@@ -17,18 +17,18 @@
 #ifndef CVCUDA_PRIV_HQ_RESIZE_BATCH_WRAP_CUH
 #define CVCUDA_PRIV_HQ_RESIZE_BATCH_WRAP_CUH
 
+#include "WorkspaceUtil.hpp"
 #include "cvcuda/Workspace.hpp"
 
 #include <cuda_runtime.h>
-#include <cvcuda/priv/WorkspaceUtil.hpp>
+#include <cvcuda/cuda_tools/ImageBatchVarShapeWrap.hpp>
+#include <cvcuda/cuda_tools/TensorBatchWrap.hpp>
+#include <cvcuda/cuda_tools/TensorWrap.hpp>
 #include <nvcv/TensorBatch.hpp>
 #include <nvcv/TensorData.hpp>
 #include <nvcv/TensorDataAccess.hpp>
-#include <nvcv/cuda/ImageBatchVarShapeWrap.hpp>
-#include <nvcv/cuda/TensorBatchWrap.hpp>
-#include <nvcv/cuda/TensorWrap.hpp>
-#include <util/Assert.h>
-#include <util/CheckError.hpp>
+#include <nvcv/util/Assert.h>
+#include <nvcv/util/CheckError.hpp>
 
 // This file contains three kind of helpers
 // 1. Helpers to wrap contigious batch with uniform sample stride into TensorWrap

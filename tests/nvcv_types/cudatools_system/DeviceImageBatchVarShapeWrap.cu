@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,9 +17,9 @@
 
 #include "DeviceImageBatchVarShapeWrap.hpp"
 
-#include <gtest/gtest.h>            // for EXPECT_EQ, etc.
-#include <nvcv/cuda/MathOps.hpp>    // for operator == to allow EXPECT_EQ
-#include <nvcv/cuda/StaticCast.hpp> // for StaticCast, etc.
+#include <cvcuda/cuda_tools/MathOps.hpp>    // for operator == to allow EXPECT_EQ
+#include <cvcuda/cuda_tools/StaticCast.hpp> // for StaticCast, etc.
+#include <gtest/gtest.h>                    // for EXPECT_EQ, etc.
 
 namespace cuda = nvcv::cuda;
 

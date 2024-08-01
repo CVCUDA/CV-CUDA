@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,10 +15,10 @@
  * limitations under the License.
  */
 
-#include <common/TypedTests.hpp>    // for NVCV_TYPED_TEST_SUITE_F, etc.
-#include <common/ValueTests.hpp>    // for StringLiteral
-#include <nvcv/cuda/Printer.hpp>    // also object of this test
-#include <nvcv/cuda/TypeTraits.hpp> // the object of this test
+#include <common/TypedTests.hpp>            // for NVCV_TYPED_TEST_SUITE_F, etc.
+#include <common/ValueTests.hpp>            // for StringLiteral
+#include <cvcuda/cuda_tools/Printer.hpp>    // also object of this test
+#include <cvcuda/cuda_tools/TypeTraits.hpp> // the object of this test
 
 #include <limits> // for std::numeric_limits, etc.
 

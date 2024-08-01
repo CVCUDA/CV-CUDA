@@ -561,23 +561,23 @@ void ExportOpHQResize(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (Tensor): Input tensor containing one or more images.
+            src (nvcv.Tensor): Input tensor containing one or more images.
                           The tensor layout must match: (N)(D)HW(C).
-            out_size (Shape): Tuple of 2 or 3 ints describing the output shape in (D)HW layout.
+            out_size (tuple): Tuple of 2 or 3 ints describing the output shape in (D)HW layout.
             antialias (bool): If set to true, an antialiasing is enabled for scaling down.
-            roi(Tuple): Optional bounding box describing the input's region of interest.
+            roi (Tuple): Optional bounding box describing the input's region of interest.
                         For 2D resampling it should be (lowH, lowW, highH, highW),
                         for 3D: (lowD, lowH, lowW, highD, highH, highW).
                         If, for some axis, the low bound is bigger than the high bound,
                         the image is flipped across the axis.
-            interpolation(Interp): Interpolation type used. Used both for scaling down and up,
+            interpolation (cvcuda.Interp): Interpolation type used. Used both for scaling down and up,
                                    cannot be specified together with (min_interpolation or mag_interpolation).
-            min_interpolation(Interp): Interpolation type used for scaling down.
-            mag_interpolation(Interp): Interpolation type used for scaling up.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            min_interpolation (cvcuda.Interp): Interpolation type used for scaling down.
+            mag_interpolation (cvcuda.Interp): Interpolation type used for scaling up.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output tensor.
+            nvcv.Tensor: The output tensor.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -593,23 +593,23 @@ void ExportOpHQResize(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input batch of images.
-            out_size (Shape): Tuple of 2 ints describing the output shape in HW layout.
+            src (nvcv.ImageBatchVarShape): Input batch of images.
+            out_size (tuple): Tuple of 2 ints describing the output shape in HW layout.
             antialias (bool): If set to true, an antialiasing is enabled for scaling down.
-            roi(List[Tuple]): Optional bounding boxes describing the input's region of interest.
+            roi (List[Tuple[int]]): Optional bounding boxes describing the input's region of interest.
                               It should be a list of tuples. The list length must match the number
                               of input tensors or be 1 (so that the same ROI is used for all samples).
                               Each tuple must be of the form (lowH, lowW, highH, highW).
                               If, for some axis, the low bound is bigger than the high bound,
                               the image is flipped across the axis.
-            interpolation(Interp): Interpolation type used. Used both for scaling down and up,
+            interpolation (cvcuda.Interp): Interpolation type used. Used both for scaling down and up,
                                    cannot be specified together with (min_interpolation or mag_interpolation).
-            min_interpolation(Interp): Interpolation type used for scaling down.
-            mag_interpolation(Interp): Interpolation type used for scaling up.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            min_interpolation (cvcuda.Interp): Interpolation type used for scaling down.
+            mag_interpolation (cvcuda.Interp): Interpolation type used for scaling up.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.ImageBatchVarShape: The batch of resized images.
+            nvcv.ImageBatchVarShape: The batch of resized images.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -626,10 +626,10 @@ void ExportOpHQResize(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (TensorBatch): Input batch containing one or more tensors of (D)HW(C) layout.
-            out_size (Shape): Tuple of 2 or 3 ints describing the output shape in (D)HW layout.
+            src (nvcv.TensorBatch): Input batch containing one or more tensors of (D)HW(C) layout.
+            out_size (tuple): Tuple of 2 or 3 ints describing the output shape in (D)HW layout.
             antialias (bool): If set to true, an antialiasing is enabled for scaling down.
-            roi(List[Tuple]): Optional bounding boxes describing the input's region of interest.
+            roi (List[Tuple[int]]): Optional bounding boxes describing the input's region of interest.
                               It should be a list of tuples. The list length must match the number
                               of input tensors or be 1 (so that the same ROI is used for all samples).
                               Each tuple must be of the form:
@@ -637,14 +637,14 @@ void ExportOpHQResize(py::module &m)
                                   * for 3D: (lowD, lowH, lowW, highD, highH, highW).
                               If, for some axis, the low bound is bigger than the high bound,
                               the tensor is flipped across the axis.
-            interpolation(Interp): Interpolation type used. Used both for scaling down and up,
+            interpolation (cvcuda.Interp): Interpolation type used. Used both for scaling down and up,
                                    cannot be specified together with (min_interpolation or mag_interpolation).
-            min_interpolation(Interp): Interpolation type used for scaling down.
-            mag_interpolation(Interp): Interpolation type used for scaling up.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            min_interpolation (cvcuda.Interp): Interpolation type used for scaling down.
+            mag_interpolation (cvcuda.Interp): Interpolation type used for scaling up.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.TensorBatch: The batch of resized tensors.
+            nvcv.TensorBatch: The batch of resized tensors.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -661,25 +661,25 @@ void ExportOpHQResize(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (Tensor): Output tensor. It's layout must match the src tensor.
+            dst (nvcv.Tensor): Output tensor. It's layout must match the src tensor.
                           The size of D, H, and W extents may be different. The dst
                           type must match the src's type or be float32.
-            src (Tensor): Input tensor containing one or more images.
+            src (nvcv.Tensor): Input tensor containing one or more images.
                           The tensor layout must match: (N)(D)HW(C).
             antialias (bool): If set to true, an antialiasing is enabled for scaling down.
-            roi(Tuple): Optional bounding box describing the input's region of interest.
+            roi (Tuple[int]): Optional bounding box describing the input's region of interest.
                         For 2D resampling it should be (lowH, lowW, highH, highW),
                         for 3D: (lowD, lowH, lowW, highD, highH, highW).
                         If, for some axis, the low bound is bigger than the high bound,
                         the image is flipped across the axis.
-            interpolation(Interp): Interpolation type used. Used both for scaling down and up,
+            interpolation (cvcuda.Interp): Interpolation type used. Used both for scaling down and up,
                                    cannot be specified together with (min_interpolation or mag_interpolation).
-            min_interpolation(Interp): Interpolation type used for scaling down.
-            mag_interpolation(Interp): Interpolation type used for scaling up.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            min_interpolation (cvcuda.Interp): Interpolation type used for scaling down.
+            mag_interpolation (cvcuda.Interp): Interpolation type used for scaling up.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output tensor.
+            nvcv.Tensor: The output tensor.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -695,25 +695,25 @@ void ExportOpHQResize(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (ImageBatchVarShape): Output batch. The layout must match the input batch.
+            dst (nvcv.ImageBatchVarShape): Output batch. The layout must match the input batch.
                                       The size of D, H, and W extents may be different. The dst
                                       type must match the src's type or be float32.
-            src (ImageBatchVarShape): Input batch of images.
+            src (nvcv.ImageBatchVarShape): Input batch of images.
             antialias (bool): If set to true, an antialiasing is enabled for scaling down.
-            roi(List[Tuple]): Optional bounding boxes describing the input's region of interest.
+            roi (List[Tuple[int]]): Optional bounding boxes describing the input's region of interest.
                               It should be a list of tuples. The list length must match the number
                               of input tensors or be 1 (so that the same ROI is used for all samples).
                               Each tuple must be of the form (lowH, lowW, highH, highW).
                               If, for some axis, the low bound is bigger than the high bound,
                               the image is flipped across the axis.
-            interpolation(Interp): Interpolation type used. Used both for scaling down and up,
+            interpolation (cvcuda.Interp): Interpolation type used. Used both for scaling down and up,
                                    cannot be specified together with (min_interpolation or mag_interpolation).
-            min_interpolation(Interp): Interpolation type used for scaling down.
-            mag_interpolation(Interp): Interpolation type used for scaling up.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            min_interpolation (cvcuda.Interp): Interpolation type used for scaling down.
+            mag_interpolation (cvcuda.Interp): Interpolation type used for scaling up.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.ImageBatchVarShape: The batch of resized images.
+            nvcv.ImageBatchVarShape: The batch of resized images.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -730,12 +730,12 @@ void ExportOpHQResize(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (TensorBatch): Output batch. The layout must match the input batch.
+            dst (nvcv.TensorBatch): Output batch. The layout must match the input batch.
                                The size of D, H, and W extents may be different. The dst
                                type must match the src's type or be float32.
-            src (TensorBatch): Input batch containing one or more tensors of (D)HW(C) layout.
+            src (nvcv.TensorBatch): Input batch containing one or more tensors of (D)HW(C) layout.
             antialias (bool): If set to true, an antialiasing is enabled for scaling down.
-            roi(List[Tuple]): Optional bounding boxes describing the input's region of interest.
+            roi (List[Tuple[int]]): Optional bounding boxes describing the input's region of interest.
                               It should be a list of tuples. The list length must match the number
                               of input tensors or be 1 (so that the same ROI is used for all samples).
                               Each tuple must be of the form:
@@ -743,14 +743,14 @@ void ExportOpHQResize(py::module &m)
                                   * for 3D: (lowD, lowH, lowW, highD, highH, highW).
                               If, for some axis, the low bound is bigger than the high bound,
                               the tensor is flipped across the axis.
-            interpolation(Interp): Interpolation type used. Used both for scaling down and up,
+            interpolation (cvcuda.Interp): Interpolation type used. Used both for scaling down and up,
                                    cannot be specified together with (min_interpolation or mag_interpolation).
-            min_interpolation(Interp): Interpolation type used for scaling down.
-            mag_interpolation(Interp): Interpolation type used for scaling up.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            min_interpolation (cvcuda.Interp): Interpolation type used for scaling down.
+            mag_interpolation (cvcuda.Interp): Interpolation type used for scaling up.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.TensorBatch: The batch of resized tensors.
+            nvcv.TensorBatch: The batch of resized tensors.
 
         Caution:
             Restrictions to several arguments may apply. Check the C

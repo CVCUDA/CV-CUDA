@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -65,8 +65,6 @@ add_header_compat_test(TARGET nvcv_test_capi_header_compat
 
 # Gather C++ headers
 file(GLOB_RECURSE CXXAPI_HEADERS RELATIVE "${NVCV_SOURCE_DIR}/include" CONFIGURE_DEPENDS "${NVCV_SOURCE_DIR}/include/*.hpp")
-# remove optools files, they are c++17
-list(FILTER CXXAPI_HEADERS EXCLUDE REGEX "nvcv/cuda/")
 
 add_header_compat_test(TARGET nvcv_test_cxxapi_header_compat
                        SOURCE TestAPI.cpp

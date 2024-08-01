@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,11 +17,11 @@
 
 #include "../Assert.h"
 
-#include <nvcv/cuda/DropCast.hpp>     // for DropCast, etc.
-#include <nvcv/cuda/MathOps.hpp>      // for math operators
-#include <nvcv/cuda/MathWrappers.hpp> // for sqrt, etc.
-#include <nvcv/cuda/SaturateCast.hpp> // for SaturateCast, etc.
-#include <nvcv/cuda/TensorWrap.hpp>   // for TensorWrap, etc.
+#include <cvcuda/cuda_tools/DropCast.hpp>     // for DropCast, etc.
+#include <cvcuda/cuda_tools/MathOps.hpp>      // for math operators
+#include <cvcuda/cuda_tools/MathWrappers.hpp> // for sqrt, etc.
+#include <cvcuda/cuda_tools/SaturateCast.hpp> // for SaturateCast, etc.
+#include <cvcuda/cuda_tools/TensorWrap.hpp>   // for TensorWrap, etc.
 
 namespace nvcv::legacy::cuda_op {
 

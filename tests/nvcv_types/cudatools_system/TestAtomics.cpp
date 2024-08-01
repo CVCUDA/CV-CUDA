@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,9 +17,9 @@
 
 #include "DeviceAtomics.hpp" // to test in the device
 
-#include <common/TypedTests.hpp> // for NVCV_TYPED_TEST_SUITE, etc.
-#include <nvcv/cuda/Atomics.hpp> // the object of this test
-#include <nvcv/cuda/MathOps.hpp> // for operator == to allow EXPECT_EQ
+#include <common/TypedTests.hpp>         // for NVCV_TYPED_TEST_SUITE, etc.
+#include <cvcuda/cuda_tools/Atomics.hpp> // the object of this test
+#include <cvcuda/cuda_tools/MathOps.hpp> // for operator == to allow EXPECT_EQ
 
 #include <numeric> // for std::iota
 

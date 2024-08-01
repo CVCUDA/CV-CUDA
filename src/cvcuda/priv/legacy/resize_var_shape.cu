@@ -25,8 +25,8 @@
 
 #include "CvCudaUtils.cuh"
 
-#include <nvcv/cuda/MathWrappers.hpp>
-#include <nvcv/cuda/SaturateCast.hpp>
+#include <cvcuda/cuda_tools/MathWrappers.hpp>
+#include <cvcuda/cuda_tools/SaturateCast.hpp>
 
 using namespace nvcv::legacy::cuda_op;
 using namespace nvcv::legacy::helpers;
@@ -136,7 +136,8 @@ __global__ void resize_bilinear(cuda::ImageBatchVarShapeWrap<const T> src, cuda:
         //y coordinate
         float fy = (float)((dst_y + 0.5f) * scale_y - 0.5f);
         int   sy = cuda::round<cuda::RoundMode::DOWN, int>(fy);
-        fy -= sy;
+
+        fy = ((sy < 0) ? 0 : ((sy > height - 2) ? 1 : fy - sy));
         sy = cuda::max(0, cuda::min(sy, height - 2));
 
         //row pointers
@@ -146,8 +147,8 @@ __global__ void resize_bilinear(cuda::ImageBatchVarShapeWrap<const T> src, cuda:
         { //compute source data position and weight for [x0] components
             float fx = (float)((dst_x + 0.5f) * scale_x - 0.5f);
             int   sx = cuda::round<cuda::RoundMode::DOWN, int>(fx);
-            fx -= sx;
-            fx *= ((sx >= 0) && (sx < width - 1));
+
+            fx = ((sx < 0) ? 0 : ((sx > width - 2) ? 1 : fx - sx));
             sx = cuda::max(0, cuda::min(sx, width - 2));
 
             *dst.ptr(batch_idx, dst_y, dst_x)

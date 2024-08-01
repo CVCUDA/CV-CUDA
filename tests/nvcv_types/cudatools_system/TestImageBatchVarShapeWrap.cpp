@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,10 +17,10 @@
 
 #include "DeviceImageBatchVarShapeWrap.hpp" // to test in the device
 
-#include <common/MixTypedTests.hpp>             // for NVCV_MIXTYPED_TEST_SUITE_P, etc.
-#include <nvcv/ImageBatch.hpp>                  // for ImageBatchVarShape, etc.
-#include <nvcv/cuda/ImageBatchVarShapeWrap.hpp> // for ImageBatchVarShapeWrap, etc.
-#include <nvcv/cuda/MathOps.hpp>                // for operator == to allow EXPECT_EQ
+#include <common/MixTypedTests.hpp>                     // for NVCV_MIXTYPED_TEST_SUITE_P, etc.
+#include <cvcuda/cuda_tools/ImageBatchVarShapeWrap.hpp> // for ImageBatchVarShapeWrap, etc.
+#include <cvcuda/cuda_tools/MathOps.hpp>                // for operator == to allow EXPECT_EQ
+#include <nvcv/ImageBatch.hpp>                          // for ImageBatchVarShape, etc.
 
 #include <list>
 #include <random>

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -83,7 +83,7 @@ int ParseArgs(int argc, char *argv[], std::string &imagePath, uint32_t &batchSiz
     if (!imageFile.good())
     {
         showUsage();
-        std::cerr << "Image path '" + imagePath + "' does not exist\n";
+        std::cerr << "Image path '" + imagePath + "' does not exist" << std::endl;
         return -1;
     }
     return 0;

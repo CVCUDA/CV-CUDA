@@ -20,9 +20,9 @@
 #include <cuda_runtime.h>
 #include <cvcuda/Types.h> // for NVCVInterpolationType, etc.
 #include <nvcv/Exception.hpp>
-#include <util/Assert.h>
-#include <util/CheckError.hpp>
-#include <util/Math.hpp>
+#include <nvcv/util/Assert.h>
+#include <nvcv/util/CheckError.hpp>
+#include <nvcv/util/Math.hpp>
 
 #include <functional>
 #include <memory>

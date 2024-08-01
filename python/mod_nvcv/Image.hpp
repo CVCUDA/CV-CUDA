@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -59,6 +59,8 @@ public:
     int32_t           height() const;
     nvcv::ImageFormat format() const;
 
+    int64_t GetSizeInBytes() const override;
+
     friend std::ostream &operator<<(std::ostream &out, const Image &img);
 
     nvcv::Image &impl()
@@ -108,10 +110,13 @@ private:
     explicit Image(std::vector<std::shared_ptr<ExternalBuffer>> buf, const nvcv::ImageDataStridedCuda &imgData);
     explicit Image(std::vector<py::buffer> buf, const nvcv::ImageDataStridedHost &imgData, int rowalign);
 
+    int64_t doComputeSizeInBytes(const NVCVImageRequirements &reqs);
+
     void setWrapData(std::vector<std::shared_ptr<ExternalBuffer>> buf, const nvcv::ImageDataStridedCuda &imgData);
 
     nvcv::Image m_impl; // must come before m_key
     Key         m_key;
+    int64_t     m_size_inbytes = -1;
 
     struct WrapData
     {

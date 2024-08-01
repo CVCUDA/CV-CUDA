@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +21,7 @@
 #include <common/String.hpp>
 #include <cvcuda/OpFlip.hpp>
 #include <cvcuda/Types.h>
-#include <nvcv/cuda/TypeTraits.hpp>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/python/ImageBatchVarShape.hpp>
 #include <nvcv/python/ResourceGuard.hpp>
 #include <nvcv/python/Stream.hpp>
@@ -102,7 +102,7 @@ void ExportOpFlip(py::module &m)
 
     m.def("flip", &Flip, "src"_a, "flipCode"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
-        cvcuda.flip(src: nvcv.Tensor, flipCode : int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
+        cvcuda.flip(src: nvcv.Tensor, flipCode: int, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the Flip operation on the given cuda stream.
 
@@ -111,15 +111,15 @@ void ExportOpFlip(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (Tensor): Input tensor containing one or more images.
+            src (nvcv.Tensor): Input tensor containing one or more images.
             flipCode (int): Flag to specify how to flip the array; 0 means flipping
                             around the x-axis and positive value (for example, 1) means flipping
                             around y-axis. Negative value (for example, -1) means flipping around
                             both axes.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output tensor.
+            nvcv.Tensor: The output tensor.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -128,7 +128,7 @@ void ExportOpFlip(py::module &m)
 
     m.def("flip_into", &FlipInto, "dst"_a, "src"_a, "flipCode"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
-        cvcuda.flip_into(dst : nvcv.Tensor, src: nvcv.Tensor, flipCode : int, stream: Optional[nvcv.cuda.Stream] = None)
+        cvcuda.flip_into(dst: nvcv.Tensor, src: nvcv.Tensor, flipCode: int, stream: Optional[nvcv.cuda.Stream] = None)
 
 	Executes the Flip operation on the given cuda stream.
 
@@ -137,13 +137,13 @@ void ExportOpFlip(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (Tensor): Output tensor to store the result of the operation.
-            src (Tensor): Input tensor containing one or more images.
+            dst (nvcv.Tensor): Output tensor to store the result of the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
             flipCode (int): Flag to specify how to flip the array; 0 means flipping
                             around the x-axis and positive value (for example, 1) means flipping
                             around y-axis. Negative value (for example, -1) means flipping around
                             both axes.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None
@@ -155,7 +155,7 @@ void ExportOpFlip(py::module &m)
 
     m.def("flip", &FlipVarShape, "src"_a, "flipCode"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
-        cvcuda.flip(src: nvcv.ImageBatchVarShape, flipCode : nvcv.Tensor , stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+        cvcuda.flip(src: nvcv.ImageBatchVarShape, flipCode: nvcv.Tensor, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
 
 	Executes the Flip operation on the given cuda stream.
 
@@ -164,15 +164,15 @@ void ExportOpFlip(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            flipCode (Tensor): Flag to specify how to flip the array; 0 means flipping
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            flipCode (nvcv.Tensor): Flag to specify how to flip the array; 0 means flipping
                             around the x-axis and positive value (for example, 1) means flipping
                             around y-axis. Negative value (for example, -1) means flipping around
                             both axes. Specified for all images in batch.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.ImageBatchVarShape: The output image batch.
+            nvcv.ImageBatchVarShape: The output image batch.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -181,7 +181,7 @@ void ExportOpFlip(py::module &m)
 
     m.def("flip_into", &FlipVarShapeInto, "dst"_a, "src"_a, "flipCode"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
-        cvcuda.flip_into(dst:nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, flipCode : nvcv.Tensor , stream: Optional[nvcv.cuda.Stream] = None)
+        cvcuda.flip_into(dst:nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, flipCode: nvcv.Tensor, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Flip operation on the given cuda stream.
 
@@ -190,13 +190,13 @@ void ExportOpFlip(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
-            flipCode (Tensor): Flag to specify how to flip the array; 0 means flipping
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            dst (nvcv.ImageBatchVarShape): Output image batch containing the result of the operation.
+            flipCode (nvcv.Tensor): Flag to specify how to flip the array; 0 means flipping
                             around the x-axis and positive value (for example, 1) means flipping
                             around y-axis. Negative value (for example, -1) means flipping around
                             both axes. Specified for all images in batch.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

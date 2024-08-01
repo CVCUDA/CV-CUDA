@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,6 +28,7 @@ find_package(ZLIB REQUIRED)
 add_library(nvcv_test_common STATIC
     Printers.cpp
     HashMD5.cpp
+    TensorDataUtils.cpp
 )
 
 target_include_directories(nvcv_test_common
@@ -47,9 +48,10 @@ target_link_libraries(nvcv_test_common
         nvcv_types_headers
         nvcv_util
         nvcv_util_compat
+        cvcuda_headers
     PRIVATE
         OpenSSL::Crypto
-	ZLIB::ZLIB
+        ZLIB::ZLIB
 )
 
 # nvcv_test_common_system ==============================

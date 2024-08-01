@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -197,7 +197,7 @@ def create_tensor(shape, dtype, layout, max_random=None, rng=None, transform_dis
         layout (string): Tensor layout (e.g. NC, HWC, NHWC)
         max_random (number or tuple or list): Maximum random value
         rng (numpy random Generator): To fill tensor with random values
-        transform_dist (function): To transform random values (e.g. MAKE_ODD)
+        transform_dist (function): To transform random values (e.g. dist_odd)
 
     Returns:
         nvcv.Tensor: The created tensor

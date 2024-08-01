@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,8 +18,8 @@
 #include "Definitions.hpp"
 
 #include <common/ValueTests.hpp>
-#include <util/Assert.h>
-#include <util/String.hpp>
+#include <nvcv/util/Assert.h>
+#include <nvcv/util/String.hpp>
 
 namespace util = nvcv::util;
 namespace test = nvcv::test;

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,56 +46,12 @@ Tensor AdvCvtColorInto(Tensor &output, Tensor &input, NVCVColorConversionCode co
 
 Tensor AdvCvtColor(Tensor &input, NVCVColorConversionCode code, NVCVColorSpec spec, std::optional<Stream> pstream)
 {
-    if (input.shape().rank() < 3 || input.shape().rank() > 4)
-    {
-        throw std::runtime_error("Invalid input tensor shape");
-    }
+    nvcv::ImageFormat outputFormat = GetOutputFormat(input.dtype(), code);
+    nvcv::TensorShape outputShape  = GetOutputTensorShape(input.shape(), outputFormat, code);
 
-    int64_t outputShape[4] = {};
-    bool    heightIndex    = input.shape().rank() == 4 ? 1 : 0;
-    for (int i = 0; i < input.shape().rank(); i++)
-    {
-        outputShape[i] = input.shape()[i];
-    }
+    Tensor output = Tensor::Create(outputShape, input.dtype());
 
-    switch (code)
-    {
-    case NVCVColorConversionCode::NVCV_COLOR_YUV2RGB_NV12:
-    case NVCVColorConversionCode::NVCV_COLOR_YUV2BGR_NV12:
-    case NVCVColorConversionCode::NVCV_COLOR_YUV2RGB_NV21:
-    case NVCVColorConversionCode::NVCV_COLOR_YUV2BGR_NV21:
-    {
-        outputShape[heightIndex]     = (2 * outputShape[heightIndex]) / 3; // output height must be 2/3 of input height
-        outputShape[heightIndex + 2] = 3;                                  // output channels must be 3
-        break;
-    }
-
-    case NVCVColorConversionCode::NVCV_COLOR_RGB2YUV_NV12:
-    case NVCVColorConversionCode::NVCV_COLOR_BGR2YUV_NV12:
-    case NVCVColorConversionCode::NVCV_COLOR_RGB2YUV_NV21:
-    case NVCVColorConversionCode::NVCV_COLOR_BGR2YUV_NV21:
-    {
-        outputShape[heightIndex]
-            = (3 * outputShape[heightIndex]) / 2; // output height must be 3/2 of input height for UV plane
-        outputShape[heightIndex + 2] = 1;         // output channels must be 1 for NV
-        break;
-    }
-    default:
-        break;
-    }
-
-    if (input.shape().rank() == 4)
-    {
-        nvcv::TensorShape yuvCorrectedShape({outputShape[0], outputShape[1], outputShape[2], outputShape[3]}, "NHWC");
-        Tensor            output = Tensor::Create(yuvCorrectedShape, input.dtype());
-        return AdvCvtColorInto(output, input, code, spec, pstream);
-    }
-    else
-    {
-        nvcv::TensorShape yuvCorrectedShape({outputShape[0], outputShape[1], outputShape[2]}, "HWC");
-        Tensor            output = Tensor::Create(yuvCorrectedShape, input.dtype());
-        return AdvCvtColorInto(output, input, code, spec, pstream);
-    }
+    return AdvCvtColorInto(output, input, code, spec, pstream);
 }
 
 } // namespace
@@ -113,13 +69,13 @@ void ExportOpAdvCvtColor(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (Tensor): Input tensor containing one or more images.
-            code (NVCVColorConversionCode): Code describing the desired color conversion.
-            spec (NVCVColorSpec): Color specification for the conversion.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            code (cvcuda.ColorConversion): Code describing the desired color conversion.
+            spec (cvcuda.ColorSpec): Color specification for the conversion.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output color converted image.
+            nvcv.Tensor: The output color converted image.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -136,11 +92,11 @@ void ExportOpAdvCvtColor(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (Tensor): Output tensor to store the result of the operation.
-            src (Tensor): Input tensor containing one or more images.
-            code (NVCVColorConversionCode): Code describing the desired color conversion.
-            spec (NVCVColorSpec): Color specification for the conversion.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            dst (nvcv.Tensor): Output tensor to store the result of the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            code (cvcuda.ColorConversion): Code describing the desired color conversion.
+            spec (cvcuda.ColorSpec): Color specification for the conversion.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -84,15 +84,15 @@ void ExportOpMinAreaRect(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (Tensor): Input tensor containing one or more contours.src[i,j,k] is the set of contours
+            src (nvcv.Tensor): Input tensor containing one or more contours.src[i,j,k] is the set of contours
                 where i ranges from 0 to batch-1, j ranges from 0 to max number of points in cotours
                 k is the coordinate of each points which is in [0,1]
-            numPointsInContour (Tensor): Input tensor containing the number of points in each input contours.
-            totalContours (Int) : Number of input contours
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            numPointsInContour (nvcv.Tensor): Input tensor containing the number of points in each input contours.
+            totalContours (int): Number of input contours
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output tensor of rotated bounding boxes.The output will give 4 points' cooridinate(x,y)
+            nvcv.Tensor: The output tensor of rotated bounding boxes.The output will give 4 points' cooridinate(x,y)
             of each contour's minimum rotated bounding boxes
 
         Caution:
@@ -110,15 +110,15 @@ void ExportOpMinAreaRect(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (Tensor): Output tensor will give 4 points' cooridinate(x,y)
+            dst (nvcv.Tensor): Output tensor will give 4 points' cooridinate(x,y)
                 of each contour's minimum rotated bounding boxes
-            src (Tensor): Input tensor containing one or more contours. src[i,j,k] is the set of contours
+            src (nvcv.Tensor): Input tensor containing one or more contours. src[i,j,k] is the set of contours
                 where i ranges from 0 to batch-1, j ranges from 0 to max number of points in cotours
                 k is the coordinate of each points which is in [0,1]
-            numPointsInContour (Tensor): Input tensor containing the number of points in each input contours.
-            totalContours (Int) : Number of input contours
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            numPointsInContour (nvcv.Tensor): Input tensor containing the number of points in each input contours.
+            totalContours (int): Number of input contours
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

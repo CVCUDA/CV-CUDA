@@ -108,7 +108,7 @@ void ExportOpResize(py::module &m)
     m.def("resize", &Resize, "src"_a, "shape"_a, "interp"_a = NVCV_INTERP_LINEAR, py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
 
-	cvcuda.resize(src: nvcv.Tensor, shape:Tuple, interp: Interp = < NVCV_INTERP_LINEAR >, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
+	cvcuda.resize(src: nvcv.Tensor, shape: Tuple[int], interp: cvcuda.Interp = cvcuda.Interp.LINEAR, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.Tensor
 
         Executes the Resize operation on the given cuda stream.
 
@@ -117,13 +117,13 @@ void ExportOpResize(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (Tensor): Input tensor containing one or more images.
-            shape (Tuple): Shape of output tensor.
-            interp(Interp): Interpolation type used for transform.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            shape (Tuple[int]): Shape of output tensor.
+            interp (cvcuda.Interp, optional): Interpolation type used for transform.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.Tensor: The output tensor.
+            nvcv.Tensor: The output tensor.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -133,7 +133,7 @@ void ExportOpResize(py::module &m)
     m.def("resize_into", &ResizeInto, "dst"_a, "src"_a, "interp"_a = NVCV_INTERP_LINEAR, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.resize_into(dst: nvcv.Tensor, src: nvcv.Tensor, shape:Tuple, interp: Interp = < NVCV_INTERP_LINEAR >, stream: Optional[nvcv.cuda.Stream] = None)
+	cvcuda.resize_into(dst: nvcv.Tensor, src: nvcv.Tensor, interp: cvcuda.Interp = cvcuda.Interp.LINEAR, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Resize operation on the given cuda stream.
 
@@ -142,10 +142,10 @@ void ExportOpResize(py::module &m)
             for more details and usage examples.
 
         Args:
-            dst (Tensor): Output tensor to store the result of the operation.
-            src (Tensor): Input tensor containing one or more images.
-            interp(Interp): Interpolation type used for transform.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            dst (nvcv.Tensor): Output tensor to store the result of the operation.
+            src (nvcv.Tensor): Input tensor containing one or more images.
+            interp (cvcuda.Interp, optional): Interpolation type used for transform.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None
@@ -158,7 +158,7 @@ void ExportOpResize(py::module &m)
     m.def("resize", &ResizeVarShape, "src"_a, "sizes"_a, "interp"_a = NVCV_INTERP_LINEAR, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.resize(src: nvcv.ImageBatchVarShape, shape:Tuple, interp: Interp = < NVCV_INTERP_LINEAR >, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
+	cvcuda.resize(src: nvcv.ImageBatchVarShape, interp: cvcuda.Interp = cvcuda.Interp.LINEAR, stream: Optional[nvcv.cuda.Stream] = None) -> nvcv.ImageBatchVarShape
 
         Executes the Resize operation on the given cuda stream.
 
@@ -167,13 +167,13 @@ void ExportOpResize(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
             sizes (Tuple vector): Shapes of output images.
-            interp(Interp): Interpolation type used for transform.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            interp (cvcuda.Interp, optional): Interpolation type used for transform.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            cvcuda.ImageBatchVarShape: The output image batch.
+            nvcv.ImageBatchVarShape: The output image batch.
 
         Caution:
             Restrictions to several arguments may apply. Check the C
@@ -183,7 +183,7 @@ void ExportOpResize(py::module &m)
     m.def("resize_into", &ResizeVarShapeInto, "dst"_a, "src"_a, "interp"_a = NVCV_INTERP_LINEAR, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
 
-	cvcuda.resize_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, shape:Tuple, interp: Interp = < NVCV_INTERP_LINEAR >, stream: Optional[nvcv.cuda.Stream] = None)
+	cvcuda.resize_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, interp: cvcuda.Interp = cvcuda.Interp.LINEAR, stream: Optional[nvcv.cuda.Stream] = None)
 
         Executes the Resize operation on the given cuda stream.
 
@@ -192,10 +192,10 @@ void ExportOpResize(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (ImageBatchVarShape): Input image batch containing one or more images.
-            dst (ImageBatchVarShape): Output image batch containing the result of the operation.
-            interp(Interp): Interpolation type used for transform.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            src (nvcv.ImageBatchVarShape): Input image batch containing one or more images.
+            dst (nvcv.ImageBatchVarShape): Output image batch containing the result of the operation.
+            interp (cvcuda.Interp, optional): Interpolation type used for transform.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             None

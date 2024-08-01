@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,11 +17,11 @@
 
 #include "DeviceBorderVarShapeWrap.hpp" // to test in the device
 
-#include <gtest/gtest.h>                        // for EXPECT_EQ, etc.
-#include <nvcv/cuda/BorderVarShapeWrap.hpp>     // the object of this test
-#include <nvcv/cuda/ImageBatchVarShapeWrap.hpp> // for ImageBatchVarShape, etc.
-#include <nvcv/cuda/MathOps.hpp>                // for operator *, etc.
-#include <nvcv/cuda/StaticCast.hpp>             // for StaticCast, etc.
+#include <cvcuda/cuda_tools/BorderVarShapeWrap.hpp>     // the object of this test
+#include <cvcuda/cuda_tools/ImageBatchVarShapeWrap.hpp> // for ImageBatchVarShape, etc.
+#include <cvcuda/cuda_tools/MathOps.hpp>                // for operator *, etc.
+#include <cvcuda/cuda_tools/StaticCast.hpp>             // for StaticCast, etc.
+#include <gtest/gtest.h>                                // for EXPECT_EQ, etc.
 
 namespace cuda = nvcv::cuda;
 

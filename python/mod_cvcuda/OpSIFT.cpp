@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -219,7 +219,7 @@ void ExportOpSIFT(py::module &m)
             for more details and usage examples.
 
         Args:
-            src (Tensor): Input tensor to extract features and compute descriptors from.
+            src (nvcv.Tensor): Input tensor to extract features and compute descriptors from.
             max_features (Number, optional): Maximum number of features to be extracted, default is 5% of total
                                              pixels at a minimum of 1.
             num_octave_layers (Number, optional): Number of octave layers, default is 3.
@@ -228,10 +228,10 @@ void ExportOpSIFT(py::module &m)
             init_sigma (Number, optional): Initial sigma, default is 1.6.
             flags (cvcuda.SIFT, optional): Flag to whether to expand the input or not, default is
                                            cvcuda.SIFT.USE_EXPANDED_INPUT.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            Tuple[Tensor, Tensor, Tensor, Tensor]: A tuple wih feature coordinates, metadata, descriptors and
+            Tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]: A tuple with feature coordinates, metadata, descriptors and
             number of features.
 
         Caution:
@@ -250,21 +250,21 @@ void ExportOpSIFT(py::module &m)
             for more details and usage examples.
 
         Args:
-            feat_coords (Tensor): Output tensor with feature coordinates.
-            feat_metadata (Tensor): Output tensor with feature metadata.
-            feat_descriptors (Tensor): Output tensor with feature descriptors.
-            num_features (Tensor): Output tensor with number of features.
-            src (Tensor): Input tensor to extract features and compute descriptors from.
+            feat_coords (nvcv.Tensor): Output tensor with feature coordinates.
+            feat_metadata (nvcv.Tensor): Output tensor with feature metadata.
+            feat_descriptors (nvcv.Tensor): Output tensor with feature descriptors.
+            num_features (nvcv.Tensor): Output tensor with number of features.
+            src (nvcv.Tensor): Input tensor to extract features and compute descriptors from.
             num_octave_layers (Number, optional): Number of octave layers, default is 3.
             contrast_threshold (Number, optional): Contrast threshold, default is 0.03.
             edge_threshold (Number, optional): Edge threshold, default is 10.0.
             init_sigma (Number, optional): Initial sigma, default is 1.6.
             flags (cvcuda.SIFT, optional): Flag to whether to expand the input or not, default is
                                            cvcuda.SIFT.USE_EXPANDED_INPUT.
-            stream (Stream, optional): CUDA Stream on which to perform the operation.
+            stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            Tuple[Tensor, Tensor, Tensor, Tensor]: A tuple wih feature coordinates, metadata, descriptors and
+            Tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]: A tuple with feature coordinates, metadata, descriptors and
             number of features.
 
         Caution:
