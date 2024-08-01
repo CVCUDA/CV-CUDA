@@ -15,7 +15,7 @@
 
 torch==2.2.0
 torchvision==0.17.0
-onnx==1.15.0
+onnx==1.16.0
 av==11.0.0
 pycuda==2024.1
 nvtx==0.2.8
