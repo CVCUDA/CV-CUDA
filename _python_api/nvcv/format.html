@@ -113,6 +113,7 @@
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__DISTANCEMAP.html">DistanceMap</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
@@ -183,6 +184,7 @@
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__DISTANCEMAP.html">DistanceMap</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
@@ -468,6 +470,107 @@
              
   <section id="image-formats">
 <h1>Image Formats<a class="headerlink" href="#image-formats" title="Permalink to this heading"></a></h1>
+<dl class="py class">
+<dt class="sig sig-object py">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nvcv.</span></span><span class="sig-name descname"><span class="pre">Format</span></span></dt>
+<dd><p>Members:</p>
+<p>_2S16</p>
+<p>_2S16_BL</p>
+<p>_2F16</p>
+<p>_2F32</p>
+<p>_2C64</p>
+<p>_2C128</p>
+<p>U8</p>
+<p>U8_BL</p>
+<p>S8</p>
+<p>U16</p>
+<p>U32</p>
+<p>S32</p>
+<p>S16</p>
+<p>S16_BL</p>
+<p>F16</p>
+<p>F32</p>
+<p>F64</p>
+<p>C64</p>
+<p>C128</p>
+<p>Y8</p>
+<p>Y8_BL</p>
+<p>Y8_ER</p>
+<p>Y8_ER_BL</p>
+<p>Y16</p>
+<p>Y16_BL</p>
+<p>Y16_ER</p>
+<p>Y16_ER_BL</p>
+<p>NV12</p>
+<p>NV12_BL</p>
+<p>NV12_ER</p>
+<p>NV12_ER_BL</p>
+<p>NV21</p>
+<p>NV21_ER</p>
+<p>NV24</p>
+<p>NV24_BL</p>
+<p>NV24_ER</p>
+<p>NV24_ER_BL</p>
+<p>UYVY</p>
+<p>UYVY_BL</p>
+<p>UYVY_ER</p>
+<p>UYVY_ER_BL</p>
+<p>YUYV</p>
+<p>YUYV_BL</p>
+<p>YUYV_ER</p>
+<p>YUYV_ER_BL</p>
+<p>RGB8</p>
+<p>BGR8</p>
+<p>RGBA8</p>
+<p>BGRA8</p>
+<p>RGB8p</p>
+<p>BGR8p</p>
+<p>RGBA8p</p>
+<p>BGRA8p</p>
+<p>RGBf16</p>
+<p>BGRf16</p>
+<p>RGBAf16</p>
+<p>BGRAf16</p>
+<p>RGBf16p</p>
+<p>BGRf16p</p>
+<p>RGBAf16p</p>
+<p>BGRAf16p</p>
+<p>RGBf32</p>
+<p>BGRf32</p>
+<p>RGBAf32</p>
+<p>BGRAf32</p>
+<p>RGBf32p</p>
+<p>BGRf32p</p>
+<p>RGBAf32p</p>
+<p>BGRAf32p</p>
+<p>HSV8</p>
+<p>CMYK8</p>
+<p>YCCK8</p>
+<p>RGBA8_UNASSOCIATED_ALPHA</p>
+<p>RGB8_1U_U8</p>
+<p>RGB8_7U_U8</p>
+<p>RGBA8_3U_U16</p>
+<p>RGBA8_3POS3D_U32</p>
+<p>RGB8_3D_F32</p>
+<dl class="py property">
+<dt class="sig sig-object py">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">channels</span></span></dt>
+<dd><p>Read-only property that returns the number of color channels in the image</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">name</span></span></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">planes</span></span></dt>
+<dd><p>Read-only property that returns the number of planes in the image</p>
+</dd></dl>
+
+</dd></dl>
+
 </section>
 
 

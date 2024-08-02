@@ -113,6 +113,7 @@
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__DISTANCEMAP.html">DistanceMap</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
@@ -183,6 +184,7 @@
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__DISTANCEMAP.html">DistanceMap</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
@@ -468,6 +470,248 @@
              
   <section id="resizecropconvertreformat">
 <h1>ResizeCropConvertReformat<a class="headerlink" href="#resizecropconvertreformat" title="Permalink to this heading"></a></h1>
+<dl class="py function">
+<dt class="sig sig-object py">
+<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">resize_crop_convert_reformat</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span></dt>
+<dd><dl class="simple">
+<dt>cvcuda.resize_crop_convert_reformat(src: nvcv.Tensor,</dt><dd><p>resize_dim: tuple[int,int],
+interp: cvcuda.Interp,
+crop_rect: nvcv.RectI,
+<a href="#id1"><span class="problematic" id="id2">*</span></a>,
+layout: str = “”,
+data_type: nvcv.Type = 0,
+manip: cvcuda.ChannelManip = cvcuda.ChannelManip.NO_OP,
+scale: float = 1.0,
+offset: float = 0.0,
+srcCast: bool = True,
+stream: Optional[nvcv.cuda.Stream] = None) -&gt; nvcv.Tensor</p>
+</dd>
+</dl>
+<p>Executes the ResizeCropConvertReformat operation on the given cuda stream.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p>Refer to the CV-CUDA C API reference for the ResizeCropConvertReformat operator
+for more details and usage examples.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>src</strong> (<em>nvcv.Tensor</em>) – Input tensor containing one or more images.</p></li>
+<li><p><strong>resize_dim</strong> (<em>tuple</em><em>[</em><em>int</em><em>,</em><em>int</em><em>]</em>) – Dimensions, width &amp; height, of resized tensor (prior to cropping).</p></li>
+<li><p><strong>interp</strong> (<em>cvcuda.Interp</em>) – Interpolation type used for resizing. Currently, only cvcuda.Interp.NEAREST and
+cvcuda.Interp.LINEAR are available.</p></li>
+<li><p><strong>crop_rect</strong> (<em>nvcv.RectI</em>) – Crop rectangle, (top, left, width, height), specifying the top-left corner and
+width &amp; height dimensions of the region to crop from the resized images.</p></li>
+<li><p><strong>layout</strong> (<em>string</em><em>, </em><em>optional</em>) – String specifying output tensor layout (e.g., ‘NHWC’ or ‘CHW’). Empty string
+(default) indicates output tensor layout copies input.</p></li>
+<li><p><strong>data_type</strong> (<em>nvcv.Type</em><em>, </em><em>optional</em>) – Data type of output tensor channel (e.g., uint8 or float). 0 (default)
+indicates output tensor data type copies input.</p></li>
+<li><p><strong>manip</strong> (<em>cvcuda.ChannelManip</em><em>, </em><em>optional</em>) – Channel manipulation (e.g., shuffle RGB to BGR). NO_OP (default)
+indicates output tensor channels are unchanged.</p></li>
+<li><p><strong>scale</strong> (<em>float</em><em>, </em><em>optional</em>) – Scale (i.e., multiply) the output values by this amount. 1.0 (default) results
+in no scaling of the output values.</p></li>
+<li><p><strong>offset</strong> (<em>float</em><em>, </em><em>optional</em>) – Offset (i.e., add to) the output values by this amount. This is applied after
+scaling. Let v be a resized and cropped value, then v * scale + offset is final
+output value. 0.0 (default) results in no offset being added to the output.</p></li>
+<li><p><strong>srcCast</strong> (<em>bool</em><em>, </em><em>optional</em>) – Boolean indicating whether or not the resize interpolation results are re-cast
+back to the input (or source) data type. Refer to the C API reference for more
+information. True (default) re-cast resize interpolation results back to the
+source data type.</p></li>
+<li><p><strong>stream</strong> (<em>nvcv.cuda.Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The output tensor.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>nvcv.Tensor</p>
+</dd>
+</dl>
+<div class="admonition caution">
+<p class="admonition-title">Caution</p>
+<p>Restrictions to several arguments may apply. Check the C
+API references of the CV-CUDA operator.</p>
+</div>
+<dl>
+<dt>cvcuda.resizeCropConvertReformat(src: nvcv.ImageBatchVarShape,</dt><dd><blockquote>
+<div><p>resize_dim: tuple[int,int],</p>
+</div></blockquote>
+<p>interp: cvcuda.Interp,
+crop_rect: nvcv.RectI,
+<a href="#id3"><span class="problematic" id="id4">*</span></a>,
+layout: str = “”,
+data_type: nvcv.Type = 0,
+manip: cvcuda.ChannelManip = cvcuda.ChannelManip.NO_OP,
+scale: float = 1.0,
+offset: float = 0.0,
+srcCast: bool = True,
+stream: Optional[nvcv.cuda.Stream] = None) -&gt; nvcv.Tensor</p>
+</dd>
+</dl>
+<p>Executes the ResizeCropConvertReformat operation on the given cuda stream.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p>Refer to the CV-CUDA C API reference for the ResizeCropConvertReformat operator
+for more details and usage examples.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>src</strong> (<em>nvcv.ImageBatchVarShape</em>) – Input image batch containing one or more images of varying sizes, but all images
+must have the same data type, channels, and layout.</p></li>
+<li><p><strong>resize_dim</strong> (<em>tuple</em><em>[</em><em>int</em><em>,</em><em>int</em><em>]</em>) – Dimensions, width &amp; height, of resized tensor (prior to cropping).</p></li>
+<li><p><strong>interp</strong> (<em>cvcuda.Interp</em>) – Interpolation type used for resizing. Currently, only cvcuda.Interp.NEAREST and
+cvcuda.Interp.LINEAR are available.</p></li>
+<li><p><strong>crop_rect</strong> (<em>nvcv.RectI</em>) – Crop rectangle, (top, left, width, height), specifying the top-left corner and
+width &amp; height dimensions of the region to crop from the resized images.</p></li>
+<li><p><strong>layout</strong> (<em>string</em><em>, </em><em>optional</em>) – String specifying output tensor layout (e.g., ‘NHWC’ or ‘CHW’). Empty string
+(default) indicates output tensor layout copies input.</p></li>
+<li><p><strong>data_type</strong> (<em>nvcv.Type</em><em>, </em><em>optional</em>) – Data type of output tensor channel (e.g., uint8 or float). 0 (default)
+indicates output tensor data type copies input.</p></li>
+<li><p><strong>manip</strong> (<em>cvcuda.ChannelManip</em><em>, </em><em>optional</em>) – Channel manipulation (e.g., shuffle RGB to BGR). NO_OP (default)
+indicates output tensor channels are unchanged.</p></li>
+<li><p><strong>scale</strong> (<em>float</em><em>, </em><em>optional</em>) – Scale (i.e., multiply) the output values by this amount. 1.0 (default) results
+in no scaling of the output values.</p></li>
+<li><p><strong>offset</strong> (<em>float</em><em>, </em><em>optional</em>) – Offset (i.e., add to) the output values by this amount. This is applied after
+scaling. Let v be a resized and cropped value, then v * scale + offset is final
+output value. 0.0 (default) results in no offset being added to the output.</p></li>
+<li><p><strong>srcCast</strong> (<em>bool</em><em>, </em><em>optional</em>) – Boolean indicating whether or not the resize interpolation results are re-cast
+back to the input (or source) data type. Refer to the C API reference for more
+information. True (default) re-cast resize interpolation results back to the
+source data type.</p></li>
+<li><p><strong>stream</strong> (<em>nvcv.cuda.Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The output tensor.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>nvcv.Tensor</p>
+</dd>
+</dl>
+<div class="admonition caution">
+<p class="admonition-title">Caution</p>
+<p>Restrictions to several arguments may apply. Check the C
+API references of the CV-CUDA operator.</p>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py">
+<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">resize_crop_convert_reformat_into</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span></dt>
+<dd><dl class="simple">
+<dt>cvcuda.resize_crop_convert_reformat_into(dst: nvcv.Tensor,</dt><dd><p>src: nvcv.Tensor,
+resize_dim: tuple[int,int],
+interp: cvcuda.Interp,
+cropPos: tuple[int,int],
+<a href="#id5"><span class="problematic" id="id6">*</span></a>,
+manip: cvcuda.ChannelManip = cvcuda.ChannelManip.NO_OP,
+scale: float = 1.0,
+offset: float = 0.0,
+srcCast: bool = True,
+stream: Optional[nvcv.cuda.Stream] = None)</p>
+</dd>
+</dl>
+<p>Executes the ResizeCropConvertReformat operation on the given cuda stream.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p>Refer to the CV-CUDA C API reference for the ResizeCropConvertReformat operator
+for more details and usage examples.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dst</strong> (<em>nvcv.Tensor</em>) – Output tensor to store the result of the operation. Output tensor also specifies the
+crop dimensions (i.e., width &amp; height), as well as the output data type (e.g., uchar3
+or float) and tensor layout (e.g., ‘NHWC’ or ‘NCHW’).</p></li>
+<li><p><strong>src</strong> (<em>nvcv.Tensor</em>) – Input tensor containing one or more images.</p></li>
+<li><p><strong>resize_dim</strong> (<em>tuple</em><em>[</em><em>int</em><em>,</em><em>int</em><em>]</em>) – Dimensions, width &amp; height, of resized tensor (prior to cropping).</p></li>
+<li><p><strong>interp</strong> (<em>cvcuda.Interp</em>) – Interpolation type used for resizing. Currently, only cvcuda.Interp.NEAREST and
+cvcuda.Interp.LINEAR are available.</p></li>
+<li><p><strong>cropPos</strong> (<em>tuple</em><em>[</em><em>int</em><em>,</em><em>int</em><em>]</em>) – Crop position, (top, left), specifying the top-left corner of the region to crop
+from the resized images. The crop region’s width and height is specified by the
+output tensor’s width &amp; height.</p></li>
+<li><p><strong>manip</strong> (<em>cvcuda.ChannelManip</em><em>, </em><em>optional</em>) – Channel manipulation (e.g., shuffle RGB to BGR). NO_OP (default)
+indicates output tensor channels are unchanged.</p></li>
+<li><p><strong>scale</strong> (<em>float</em><em>, </em><em>optional</em>) – Scale (i.e., multiply) the output values by this amount. 1.0 (default) results
+in no scaling of the output values.</p></li>
+<li><p><strong>offset</strong> (<em>float</em><em>, </em><em>optional</em>) – Offset (i.e., add to) the output values by this amount. This is applied after
+scaling. Let v be a resized and cropped value, then v * scale + offset is final
+output value. 0.0 (default) results in no offset being added to the output.</p></li>
+<li><p><strong>srcCast</strong> (<em>bool</em><em>, </em><em>optional</em>) – Boolean indicating whether or not the resize interpolation results are re-cast
+back to the input (or source) data type. Refer to the C API reference for more
+information. True (default) re-cast resize interpolation results back to the
+source data type.</p></li>
+<li><p><strong>stream</strong> (<em>nvcv.cuda.Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+<div class="admonition caution">
+<p class="admonition-title">Caution</p>
+<p>Restrictions to several arguments may apply. Check the C
+API references of the CV-CUDA operator.</p>
+</div>
+<dl class="simple">
+<dt>cvcuda.resize_crop_convert_reformat_into(dst: nvcv.Tensor,</dt><dd><p>src: nvcv.ImageBatchVarShape,
+resize_dim: tuple[int,int],
+interp: cvcuda.Interp,
+cropPos: tuple[int,int],
+<a href="#id7"><span class="problematic" id="id8">*</span></a>,
+manip: cvcuda.ChannelManip = cvcuda.ChannelManip.NO_OP,
+scale: float = 1.0,
+offset: float = 0.0,
+srcCast: bool = True,
+stream: Optional[nvcv.cuda.Stream] = None)</p>
+</dd>
+</dl>
+<p>Executes the ResizeCropConvertReformat operation on the given cuda stream.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p>Refer to the CV-CUDA C API reference for the ResizeCropConvertReformat operator
+for more details and usage examples.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dst</strong> (<em>nvcv.Tensor</em>) – Output tensor to store the result of the operation. Output tensor also specifies the
+crop dimensions (i.e., width &amp; height), as well as the output data type (e.g., uchar3
+or float) and tensor layout (e.g., ‘NHWC’ or ‘NCHW’).</p></li>
+<li><p><strong>src</strong> (<em>nvcv.ImageBatchVarShape</em>) – Input image batch containing one or more images of varying sizes, but all images
+must have the same data type, channels, and layout.</p></li>
+<li><p><strong>resize_dim</strong> (<em>tuple</em><em>[</em><em>int</em><em>,</em><em>int</em><em>]</em>) – Dimensions, width &amp; height, of resized tensor (prior to cropping).</p></li>
+<li><p><strong>interp</strong> (<em>cvcuda.Interp</em>) – Interpolation type used for resizing. Currently, only cvcuda.Interp.NEAREST and
+cvcuda.Interp.LINEAR are available.</p></li>
+<li><p><strong>cropPos</strong> (<em>tuple</em><em>[</em><em>int</em><em>,</em><em>int</em><em>]</em>) – Crop position, (top, left), specifying the top-left corner of the region to
+crop from the resized images. The crop region’s width and height is specified by
+the output tensor’s width &amp; height.</p></li>
+<li><p><strong>manip</strong> (<em>cvcuda.ChannelManip</em><em>, </em><em>optional</em>) – Channel manipulation (e.g., shuffle RGB to BGR). NO_OP (default)
+indicates output tensor channels are unchanged.</p></li>
+<li><p><strong>scale</strong> (<em>float</em><em>, </em><em>optional</em>) – Scale (i.e., multiply) the output values by this amount. 1.0 (default) results
+in no scaling of the output values.</p></li>
+<li><p><strong>offset</strong> (<em>float</em><em>, </em><em>optional</em>) – Offset (i.e., add to) the output values by this amount. This is applied after
+scaling. Let v be a resized and cropped value, then v * scale + offset is final
+output value. 0.0 (default) results in no offset being added to the output.</p></li>
+<li><p><strong>srcCast</strong> (<em>bool</em><em>, </em><em>optional</em>) – Boolean indicating whether or not the resize interpolation results are re-cast
+back to the input (or source) data type. Refer to the C API reference for more
+information. True (default) re-cast resize interpolation results back to the
+source data type.</p></li>
+<li><p><strong>stream</strong> (<em>nvcv.cuda.Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+<div class="admonition caution">
+<p class="admonition-title">Caution</p>
+<p>Restrictions to several arguments may apply. Check the C
+API references of the CV-CUDA operator.</p>
+</div>
+</dd></dl>
+
 </section>
 
 

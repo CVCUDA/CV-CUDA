@@ -113,6 +113,7 @@
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__DISTANCEMAP.html">DistanceMap</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
@@ -183,6 +184,7 @@
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__DISTANCEMAP.html">DistanceMap</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
@@ -468,6 +470,130 @@
              
   <section id="flip">
 <h1>Flip<a class="headerlink" href="#flip" title="Permalink to this heading"></a></h1>
+<dl class="py function">
+<dt class="sig sig-object py">
+<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">flip</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">src</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flipCode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">nvcv.cuda.Stream</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">nvcv.Tensor</span></span></span></dt>
+<dd><p>Executes the Flip operation on the given cuda stream.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p>Refer to the CV-CUDA C API reference for the Flip operator
+for more details and usage examples.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>src</strong> (<em>nvcv.Tensor</em>) – Input tensor containing one or more images.</p></li>
+<li><p><strong>flipCode</strong> (<em>int</em>) – Flag to specify how to flip the array; 0 means flipping
+around the x-axis and positive value (for example, 1) means flipping
+around y-axis. Negative value (for example, -1) means flipping around
+both axes.</p></li>
+<li><p><strong>stream</strong> (<em>nvcv.cuda.Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The output tensor.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>nvcv.Tensor</p>
+</dd>
+</dl>
+<div class="admonition caution">
+<p class="admonition-title">Caution</p>
+<p>Restrictions to several arguments may apply. Check the C
+API references of the CV-CUDA operator.</p>
+</div>
+<p>cvcuda.flip(src: nvcv.ImageBatchVarShape, flipCode: nvcv.Tensor, stream: Optional[nvcv.cuda.Stream] = None) -&gt; nvcv.ImageBatchVarShape</p>
+<p>Executes the Flip operation on the given cuda stream.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p>Refer to the CV-CUDA C API reference for the Flip operator
+for more details and usage examples.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>src</strong> (<em>nvcv.ImageBatchVarShape</em>) – Input image batch containing one or more images.</p></li>
+<li><p><strong>flipCode</strong> (<em>nvcv.Tensor</em>) – Flag to specify how to flip the array; 0 means flipping
+around the x-axis and positive value (for example, 1) means flipping
+around y-axis. Negative value (for example, -1) means flipping around
+both axes. Specified for all images in batch.</p></li>
+<li><p><strong>stream</strong> (<em>nvcv.cuda.Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The output image batch.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>nvcv.ImageBatchVarShape</p>
+</dd>
+</dl>
+<div class="admonition caution">
+<p class="admonition-title">Caution</p>
+<p>Restrictions to several arguments may apply. Check the C
+API references of the CV-CUDA operator.</p>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py">
+<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">flip_into</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dst</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">src</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flipCode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">nvcv.cuda.Stream</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span></dt>
+<dd><p>Executes the Flip operation on the given cuda stream.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p>Refer to the CV-CUDA C API reference for the Flip operator
+for more details and usage examples.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dst</strong> (<em>nvcv.Tensor</em>) – Output tensor to store the result of the operation.</p></li>
+<li><p><strong>src</strong> (<em>nvcv.Tensor</em>) – Input tensor containing one or more images.</p></li>
+<li><p><strong>flipCode</strong> (<em>int</em>) – Flag to specify how to flip the array; 0 means flipping
+around the x-axis and positive value (for example, 1) means flipping
+around y-axis. Negative value (for example, -1) means flipping around
+both axes.</p></li>
+<li><p><strong>stream</strong> (<em>nvcv.cuda.Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+<div class="admonition caution">
+<p class="admonition-title">Caution</p>
+<p>Restrictions to several arguments may apply. Check the C
+API references of the CV-CUDA operator.</p>
+</div>
+<p>cvcuda.flip_into(dst:nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, flipCode: nvcv.Tensor, stream: Optional[nvcv.cuda.Stream] = None)</p>
+<p>Executes the Flip operation on the given cuda stream.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p>Refer to the CV-CUDA C API reference for the Flip operator
+for more details and usage examples.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>src</strong> (<em>nvcv.ImageBatchVarShape</em>) – Input image batch containing one or more images.</p></li>
+<li><p><strong>dst</strong> (<em>nvcv.ImageBatchVarShape</em>) – Output image batch containing the result of the operation.</p></li>
+<li><p><strong>flipCode</strong> (<em>nvcv.Tensor</em>) – Flag to specify how to flip the array; 0 means flipping
+around the x-axis and positive value (for example, 1) means flipping
+around y-axis. Negative value (for example, -1) means flipping around
+both axes. Specified for all images in batch.</p></li>
+<li><p><strong>stream</strong> (<em>nvcv.cuda.Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+<div class="admonition caution">
+<p class="admonition-title">Caution</p>
+<p>Restrictions to several arguments may apply. Check the C
+API references of the CV-CUDA operator.</p>
+</div>
+</dd></dl>
+
 </section>
 
 

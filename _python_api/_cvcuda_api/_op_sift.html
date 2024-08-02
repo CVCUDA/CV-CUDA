@@ -113,6 +113,7 @@
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__DISTANCEMAP.html">DistanceMap</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
@@ -183,6 +184,7 @@
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__DISTANCEMAP.html">DistanceMap</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
@@ -468,6 +470,86 @@
              
   <section id="sift">
 <h1>SIFT<a class="headerlink" href="#sift" title="Permalink to this heading"></a></h1>
+<dl class="py function">
+<dt class="sig sig-object py">
+<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">sift</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">src:</span> <span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_features:</span> <span class="pre">int</span> <span class="pre">=</span> <span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_octave_layers:</span> <span class="pre">int</span> <span class="pre">=</span> <span class="pre">3</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">contrast_threshold:</span> <span class="pre">float</span> <span class="pre">=</span> <span class="pre">0.029999999329447746</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">edge_threshold:</span> <span class="pre">float</span> <span class="pre">=</span> <span class="pre">10.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init_sigma:</span> <span class="pre">float</span> <span class="pre">=</span> <span class="pre">1.600000023841858</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flags:</span> <span class="pre">cvcuda.SIFT</span> <span class="pre">=</span> <span class="pre">&lt;SIFT.USE_EXPANDED_INPUT:</span> <span class="pre">1&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream:</span> <span class="pre">Optional[nvcv.cuda.Stream]</span> <span class="pre">=</span> <span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">nvcv.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">nvcv.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">nvcv.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">nvcv.Tensor</span><span class="p"><span class="pre">]</span></span></span></span></dt>
+<dd><p>Executes the SIFT operation on the given cuda stream.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p>Refer to the CV-CUDA C API reference for the SIFT operator
+for more details and usage examples.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>src</strong> (<em>nvcv.Tensor</em>) – Input tensor to extract features and compute descriptors from.</p></li>
+<li><p><strong>max_features</strong> (<em>Number</em><em>, </em><em>optional</em>) – Maximum number of features to be extracted, default is 5% of total
+pixels at a minimum of 1.</p></li>
+<li><p><strong>num_octave_layers</strong> (<em>Number</em><em>, </em><em>optional</em>) – Number of octave layers, default is 3.</p></li>
+<li><p><strong>contrast_threshold</strong> (<em>Number</em><em>, </em><em>optional</em>) – Contrast threshold, default is 0.03.</p></li>
+<li><p><strong>edge_threshold</strong> (<em>Number</em><em>, </em><em>optional</em>) – Edge threshold, default is 10.0.</p></li>
+<li><p><strong>init_sigma</strong> (<em>Number</em><em>, </em><em>optional</em>) – Initial sigma, default is 1.6.</p></li>
+<li><p><strong>flags</strong> (<em>cvcuda.SIFT</em><em>, </em><em>optional</em>) – Flag to whether to expand the input or not, default is
+cvcuda.SIFT.USE_EXPANDED_INPUT.</p></li>
+<li><p><strong>stream</strong> (<em>nvcv.cuda.Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A tuple with feature coordinates, metadata, descriptors and
+number of features.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]</p>
+</dd>
+</dl>
+<div class="admonition caution">
+<p class="admonition-title">Caution</p>
+<p>Restrictions to several arguments may apply. Check the C
+API references of the CV-CUDA operator.</p>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py">
+<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">sift_into</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">feat_coords:</span> <span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">feat_metadata:</span> <span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">feat_descriptors:</span> <span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_features:</span> <span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">src:</span> <span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_octave_layers:</span> <span class="pre">int</span> <span class="pre">=</span> <span class="pre">3</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">contrast_threshold:</span> <span class="pre">float</span> <span class="pre">=</span> <span class="pre">0.029999999329447746</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">edge_threshold:</span> <span class="pre">float</span> <span class="pre">=</span> <span class="pre">10.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init_sigma:</span> <span class="pre">float</span> <span class="pre">=</span> <span class="pre">1.600000023841858</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flags:</span> <span class="pre">cvcuda.SIFT</span> <span class="pre">=</span> <span class="pre">&lt;SIFT.USE_EXPANDED_INPUT:</span> <span class="pre">1&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream:</span> <span class="pre">Optional[nvcv.cuda.Stream]</span> <span class="pre">=</span> <span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">nvcv.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">nvcv.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">nvcv.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">nvcv.Tensor</span><span class="p"><span class="pre">]</span></span></span></span></dt>
+<dd><p>Executes the SIFT operation on the given cuda stream.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p>Refer to the CV-CUDA C API reference for the SIFT operator
+for more details and usage examples.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>feat_coords</strong> (<em>nvcv.Tensor</em>) – Output tensor with feature coordinates.</p></li>
+<li><p><strong>feat_metadata</strong> (<em>nvcv.Tensor</em>) – Output tensor with feature metadata.</p></li>
+<li><p><strong>feat_descriptors</strong> (<em>nvcv.Tensor</em>) – Output tensor with feature descriptors.</p></li>
+<li><p><strong>num_features</strong> (<em>nvcv.Tensor</em>) – Output tensor with number of features.</p></li>
+<li><p><strong>src</strong> (<em>nvcv.Tensor</em>) – Input tensor to extract features and compute descriptors from.</p></li>
+<li><p><strong>num_octave_layers</strong> (<em>Number</em><em>, </em><em>optional</em>) – Number of octave layers, default is 3.</p></li>
+<li><p><strong>contrast_threshold</strong> (<em>Number</em><em>, </em><em>optional</em>) – Contrast threshold, default is 0.03.</p></li>
+<li><p><strong>edge_threshold</strong> (<em>Number</em><em>, </em><em>optional</em>) – Edge threshold, default is 10.0.</p></li>
+<li><p><strong>init_sigma</strong> (<em>Number</em><em>, </em><em>optional</em>) – Initial sigma, default is 1.6.</p></li>
+<li><p><strong>flags</strong> (<em>cvcuda.SIFT</em><em>, </em><em>optional</em>) – Flag to whether to expand the input or not, default is
+cvcuda.SIFT.USE_EXPANDED_INPUT.</p></li>
+<li><p><strong>stream</strong> (<em>nvcv.cuda.Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A tuple with feature coordinates, metadata, descriptors and
+number of features.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]</p>
+</dd>
+</dl>
+<div class="admonition caution">
+<p class="admonition-title">Caution</p>
+<p>Restrictions to several arguments may apply. Check the C
+API references of the CV-CUDA operator.</p>
+</div>
+</dd></dl>
+
 </section>
 
 
