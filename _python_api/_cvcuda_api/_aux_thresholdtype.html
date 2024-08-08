@@ -24,7 +24,7 @@
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
-    <link rel="next" title="v0.10.0-beta" href="../../relnotes/v0.10.0-beta.html" />
+    <link rel="next" title="v0.10.1-beta" href="../../relnotes/v0.10.1-beta.html" />
     <link rel="prev" title="SIFT" href="_aux_sift.html" /> 
 </head>
 
@@ -113,7 +113,6 @@
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__DISTANCEMAP.html">DistanceMap</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
@@ -184,7 +183,6 @@
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__DISTANCEMAP.html">DistanceMap</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
@@ -343,6 +341,13 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Release Notes</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../relnotes/v0.10.1-beta.html">v0.10.1-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.1-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.1-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.1-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.1-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="../../relnotes/v0.10.0-beta.html">v0.10.0-beta</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.0-beta.html#release-highlights">Release Highlights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
@@ -470,24 +475,6 @@
              
   <section id="thresholdtype">
 <h1>ThresholdType<a class="headerlink" href="#thresholdtype" title="Permalink to this heading"></a></h1>
-<dl class="py class">
-<dt class="sig sig-object py">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">ThresholdType</span></span></dt>
-<dd><p>Members:</p>
-<p>BINARY : Value above threshold is set to maxval, otherwise set to 0</p>
-<p>BINARY_INV : Value above threshold is set to 0, otherwise set to maxval</p>
-<p>TRUNC : Value above threshold is set to threshold, otherwise unchanged</p>
-<p>TOZERO : Value above threshold is unchanged, otherwise set to 0</p>
-<p>TOZERO_INV : Value above threshold is set to 0, otherwise unchanged</p>
-<p>OTSU : Use Otsu’s algorithm to automatically determine threshold</p>
-<p>TRIANGLE : Use Triangle algorithm to automatically determine threshold</p>
-<dl class="py property">
-<dt class="sig sig-object py">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">name</span></span></dt>
-<dd></dd></dl>
-
-</dd></dl>
-
 </section>
 
 
@@ -495,14 +482,14 @@
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="_aux_sift.html" class="btn btn-neutral float-left" title="SIFT" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="../../relnotes/v0.10.0-beta.html" class="btn btn-neutral float-right" title="v0.10.0-beta" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="../../relnotes/v0.10.1-beta.html" class="btn btn-neutral float-right" title="v0.10.1-beta" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>
 
   <div role="contentinfo">
     <p>&#169; Copyright 2022-2024, NVIDIA..
-      <span class="lastupdated">Last updated on Aug 01, 2024.
+      <span class="lastupdated">Last updated on Aug 08, 2024.
       </span></p>
   </div>
 

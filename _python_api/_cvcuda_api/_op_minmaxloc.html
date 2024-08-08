@@ -113,7 +113,6 @@
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__DISTANCEMAP.html">DistanceMap</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
@@ -184,7 +183,6 @@
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__DISTANCEMAP.html">DistanceMap</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
@@ -343,6 +341,13 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Release Notes</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../relnotes/v0.10.1-beta.html">v0.10.1-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.1-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.1-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.1-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.1-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="../../relnotes/v0.10.0-beta.html">v0.10.0-beta</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.0-beta.html#release-highlights">Release Highlights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
@@ -470,330 +475,6 @@
              
   <section id="minmaxloc">
 <h1>MinMaxLoc<a class="headerlink" href="#minmaxloc" title="Permalink to this heading"></a></h1>
-<dl class="py function">
-<dt class="sig sig-object py">
-<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">max_loc</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span></dt>
-<dd><p>Overloaded function.</p>
-<ol class="arabic">
-<li><p>max_loc(src: nvcv.Tensor, max_locations: int = 0, <a href="#id1"><span class="problematic" id="id2">*</span></a>, stream: Optional[nvcv.cuda.Stream] = None) -&gt; tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]</p>
-<blockquote>
-<div><p>Finds maximum on the input tensor.</p>
-<dl>
-<dt>See also:</dt><dd><p>Refer to the CV-CUDA C API reference for the MinMaxLoc operator
-for more details and usage examples.</p>
-</dd>
-<dt>Args:</dt><dd><p>src (nvcv.Tensor): Input tensor to get minimum/maximum values/locations.
-max_locations (Number, optional): Number of maximum locations to find, default is 1% of total</p>
-<blockquote>
-<div><p>pixels at a minimum of 1.</p>
-</div></blockquote>
-<p>stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.</p>
-</dd>
-<dt>Returns:</dt><dd><p>Tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]: A tuple with maximum value, locations and number
-of maxima.</p>
-</dd>
-<dt>Caution:</dt><dd><p>Restrictions to several arguments may apply. Check the C
-API references of the CV-CUDA operator.</p>
-</dd>
-</dl>
-</div></blockquote>
-</li>
-<li><p>max_loc(src: nvcv.ImageBatchVarShape, max_locations: int = 0, <a href="#id3"><span class="problematic" id="id4">*</span></a>, stream: Optional[nvcv.cuda.Stream] = None) -&gt; tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]</p>
-<blockquote>
-<div><p>Finds maximum on the input batch.</p>
-<dl>
-<dt>See also:</dt><dd><p>Refer to the CV-CUDA C API reference for the MinMaxLoc operator
-for more details and usage examples.</p>
-</dd>
-<dt>Args:</dt><dd><p>src (nvcv.ImageBatchVarShape): Input image batch to get minimum/maximum values/locations.
-max_locations (Number, optional): Number of maximum locations to find, default is 1% of total</p>
-<blockquote>
-<div><p>pixels at a minimum of 1.</p>
-</div></blockquote>
-<p>stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.</p>
-</dd>
-<dt>Returns:</dt><dd><p>Tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]: A tuple with maximum value, locations and number
-of maxima.</p>
-</dd>
-<dt>Caution:</dt><dd><p>Restrictions to several arguments may apply. Check the C
-API references of the CV-CUDA operator.</p>
-</dd>
-</dl>
-</div></blockquote>
-</li>
-</ol>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py">
-<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">max_loc_into</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span></dt>
-<dd><p>Overloaded function.</p>
-<ol class="arabic">
-<li><p>max_loc_into(max_val: nvcv.Tensor, max_loc: nvcv.Tensor, num_max: nvcv.Tensor, src: nvcv.Tensor, <a href="#id5"><span class="problematic" id="id6">*</span></a>, stream: Optional[nvcv.cuda.Stream] = None) -&gt; tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]</p>
-<blockquote>
-<div><p>Finds maximum on the input tensor.</p>
-<dl class="simple">
-<dt>See also:</dt><dd><p>Refer to the CV-CUDA C API reference for the MinMaxLoc operator
-for more details and usage examples.</p>
-</dd>
-<dt>Args:</dt><dd><p>max_val (nvcv.Tensor): Output tensor with maximum value.
-max_loc (nvcv.Tensor): Output tensor with maximum locations.
-num_max (nvcv.Tensor): Output tensor with number of maximum locations found.
-src (nvcv.Tensor): Input tensor to get minimum/maximum values/locations.
-stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.</p>
-</dd>
-<dt>Returns:</dt><dd><p>Tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]: A tuple with maximum value, locations and number
-of maxima.</p>
-</dd>
-<dt>Caution:</dt><dd><p>Restrictions to several arguments may apply. Check the C
-API references of the CV-CUDA operator.</p>
-</dd>
-</dl>
-</div></blockquote>
-</li>
-<li><p>max_loc_into(max_val: nvcv.Tensor, max_loc: nvcv.Tensor, num_max: nvcv.Tensor, src: nvcv.ImageBatchVarShape, <a href="#id7"><span class="problematic" id="id8">*</span></a>, stream: Optional[nvcv.cuda.Stream] = None) -&gt; tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]</p>
-<blockquote>
-<div><p>Finds maximum on the input batch.</p>
-<dl class="simple">
-<dt>See also:</dt><dd><p>Refer to the CV-CUDA C API reference for the MinMaxLoc operator
-for more details and usage examples.</p>
-</dd>
-<dt>Args:</dt><dd><p>max_val (nvcv.Tensor): Output tensor with maximum value.
-max_loc (nvcv.Tensor): Output tensor with maximum locations.
-num_max (nvcv.Tensor): Output tensor with number of maximum locations found.
-src (nvcv.ImageBatchVarShape): Input image batch to get minimum/maximum values/locations.
-stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.</p>
-</dd>
-<dt>Returns:</dt><dd><p>Tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]: A tuple with maximum value, locations and number
-of maxima.</p>
-</dd>
-<dt>Caution:</dt><dd><p>Restrictions to several arguments may apply. Check the C
-API references of the CV-CUDA operator.</p>
-</dd>
-</dl>
-</div></blockquote>
-</li>
-</ol>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py">
-<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">min_loc</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span></dt>
-<dd><p>Overloaded function.</p>
-<ol class="arabic">
-<li><p>min_loc(src: nvcv.Tensor, max_locations: int = 0, <a href="#id9"><span class="problematic" id="id10">*</span></a>, stream: Optional[nvcv.cuda.Stream] = None) -&gt; tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]</p>
-<blockquote>
-<div><p>Finds minimum on the input tensor.</p>
-<dl>
-<dt>See also:</dt><dd><p>Refer to the CV-CUDA C API reference for the MinMaxLoc operator
-for more details and usage examples.</p>
-</dd>
-<dt>Args:</dt><dd><p>src (nvcv.Tensor): Input tensor to get minimum/maximum values/locations.
-max_locations (Number, optional): Number of maximum locations to find, default is 1% of total</p>
-<blockquote>
-<div><p>pixels at a minimum of 1.</p>
-</div></blockquote>
-<p>stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.</p>
-</dd>
-<dt>Returns:</dt><dd><p>Tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]: A tuple with minimum value, locations and number
-of minima.</p>
-</dd>
-<dt>Caution:</dt><dd><p>Restrictions to several arguments may apply. Check the C
-API references of the CV-CUDA operator.</p>
-</dd>
-</dl>
-</div></blockquote>
-</li>
-<li><p>min_loc(src: nvcv.ImageBatchVarShape, max_locations: int = 0, <a href="#id11"><span class="problematic" id="id12">*</span></a>, stream: Optional[nvcv.cuda.Stream] = None) -&gt; tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]</p>
-<blockquote>
-<div><p>Finds minimum on the input batch.</p>
-<dl>
-<dt>See also:</dt><dd><p>Refer to the CV-CUDA C API reference for the MinMaxLoc operator
-for more details and usage examples.</p>
-</dd>
-<dt>Args:</dt><dd><p>src (nvcv.ImageBatchVarShape): Input image batch to get minimum/maximum values/locations.
-max_locations (Number, optional): Number of maximum locations to find, default is 1% of total</p>
-<blockquote>
-<div><p>pixels at a minimum of 1.</p>
-</div></blockquote>
-<p>stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.</p>
-</dd>
-<dt>Returns:</dt><dd><p>Tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]: A tuple with minimum value, locations and number
-of minima.</p>
-</dd>
-<dt>Caution:</dt><dd><p>Restrictions to several arguments may apply. Check the C
-API references of the CV-CUDA operator.</p>
-</dd>
-</dl>
-</div></blockquote>
-</li>
-</ol>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py">
-<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">min_loc_into</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span></dt>
-<dd><p>Overloaded function.</p>
-<ol class="arabic">
-<li><p>min_loc_into(min_val: nvcv.Tensor, min_loc: nvcv.Tensor, num_min: nvcv.Tensor, src: nvcv.Tensor, <a href="#id13"><span class="problematic" id="id14">*</span></a>, stream: Optional[nvcv.cuda.Stream] = None) -&gt; tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]</p>
-<blockquote>
-<div><p>Finds minimum on the input tensor.</p>
-<dl class="simple">
-<dt>See also:</dt><dd><p>Refer to the CV-CUDA C API reference for the MinMaxLoc operator
-for more details and usage examples.</p>
-</dd>
-<dt>Args:</dt><dd><p>min_val (nvcv.Tensor): Output tensor with minimum value.
-min_loc (nvcv.Tensor): Output tensor with minimum locations.
-num_min (nvcv.Tensor): Output tensor with number of minimum locations found.
-src (nvcv.Tensor): Input tensor to get minimum/maximum values/locations.
-stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.</p>
-</dd>
-<dt>Returns:</dt><dd><p>Tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]: A tuple with minimum value, locations and number
-of minima.</p>
-</dd>
-<dt>Caution:</dt><dd><p>Restrictions to several arguments may apply. Check the C
-API references of the CV-CUDA operator.</p>
-</dd>
-</dl>
-</div></blockquote>
-</li>
-<li><p>min_loc_into(min_val: nvcv.Tensor, min_loc: nvcv.Tensor, num_min: nvcv.Tensor, src: nvcv.ImageBatchVarShape, <a href="#id15"><span class="problematic" id="id16">*</span></a>, stream: Optional[nvcv.cuda.Stream] = None) -&gt; tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]</p>
-<blockquote>
-<div><p>Finds minimum on the input batch.</p>
-<dl class="simple">
-<dt>See also:</dt><dd><p>Refer to the CV-CUDA C API reference for the MinMaxLoc operator
-for more details and usage examples.</p>
-</dd>
-<dt>Args:</dt><dd><p>min_val (nvcv.Tensor): Output tensor with minimum value.
-min_loc (nvcv.Tensor): Output tensor with minimum locations.
-num_min (nvcv.Tensor): Output tensor with number of minimum locations found.
-src (nvcv.ImageBatchVarShape): Input image batch to get minimum/maximum values/locations.
-stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.</p>
-</dd>
-<dt>Returns:</dt><dd><p>Tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]: A tuple with minimum value, locations and number
-of minima.</p>
-</dd>
-<dt>Caution:</dt><dd><p>Restrictions to several arguments may apply. Check the C
-API references of the CV-CUDA operator.</p>
-</dd>
-</dl>
-</div></blockquote>
-</li>
-</ol>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py">
-<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">min_max_loc</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span></dt>
-<dd><p>Overloaded function.</p>
-<ol class="arabic">
-<li><p>min_max_loc(src: nvcv.Tensor, max_locations: int = 0, <a href="#id17"><span class="problematic" id="id18">*</span></a>, stream: Optional[nvcv.cuda.Stream] = None) -&gt; tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]</p>
-<blockquote>
-<div><p>Finds minimum/maximum on the input tensor.</p>
-<dl>
-<dt>See also:</dt><dd><p>Refer to the CV-CUDA C API reference for the MinMaxLoc operator
-for more details and usage examples.</p>
-</dd>
-<dt>Args:</dt><dd><p>src (nvcv.Tensor): Input tensor to get minimum/maximum values/locations.
-max_locations (Number, optional): Number of maximum locations to find, default is 1% of total</p>
-<blockquote>
-<div><p>pixels at a minimum of 1.</p>
-</div></blockquote>
-<p>stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.</p>
-</dd>
-<dt>Returns:</dt><dd><p>Tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]: A tuple with minimum value, locations and number
-of minima, and also maximum value, locations and number of maxima.</p>
-</dd>
-<dt>Caution:</dt><dd><p>Restrictions to several arguments may apply. Check the C
-API references of the CV-CUDA operator.</p>
-</dd>
-</dl>
-</div></blockquote>
-</li>
-<li><p>min_max_loc(src: nvcv.ImageBatchVarShape, max_locations: int = 0, <a href="#id19"><span class="problematic" id="id20">*</span></a>, stream: Optional[nvcv.cuda.Stream] = None) -&gt; tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]</p>
-<blockquote>
-<div><p>Finds minimum/maximum on the input batch.</p>
-<dl>
-<dt>See also:</dt><dd><p>Refer to the CV-CUDA C API reference for the MinMaxLoc operator
-for more details and usage examples.</p>
-</dd>
-<dt>Args:</dt><dd><p>src (nvcv.ImageBatchVarShape): Input image batch to get minimum/maximum values/locations.
-max_locations (Number, optional): Number of maximum locations to find, default is 1% of total</p>
-<blockquote>
-<div><p>pixels at a minimum of 1.</p>
-</div></blockquote>
-<p>stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.</p>
-</dd>
-<dt>Returns:</dt><dd><p>Tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]: A tuple with minimum value, locations and number
-of minima, and also maximum value, locations and number of maxima.</p>
-</dd>
-<dt>Caution:</dt><dd><p>Restrictions to several arguments may apply. Check the C
-API references of the CV-CUDA operator.</p>
-</dd>
-</dl>
-</div></blockquote>
-</li>
-</ol>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py">
-<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">min_max_loc_into</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span></dt>
-<dd><p>Overloaded function.</p>
-<ol class="arabic">
-<li><p>min_max_loc_into(min_val: nvcv.Tensor, min_loc: nvcv.Tensor, num_min: nvcv.Tensor, max_val: nvcv.Tensor, max_loc: nvcv.Tensor, num_max: nvcv.Tensor, src: nvcv.Tensor, <a href="#id21"><span class="problematic" id="id22">*</span></a>, stream: Optional[nvcv.cuda.Stream] = None) -&gt; tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]</p>
-<blockquote>
-<div><p>Finds minimum/maximum on the input tensor.</p>
-<dl class="simple">
-<dt>See also:</dt><dd><p>Refer to the CV-CUDA C API reference for the MinMaxLoc operator
-for more details and usage examples.</p>
-</dd>
-<dt>Args:</dt><dd><p>min_val (nvcv.Tensor): Output tensor with minimum value.
-min_loc (nvcv.Tensor): Output tensor with minimum locations.
-num_min (nvcv.Tensor): Output tensor with number of minimum locations found.
-max_val (nvcv.Tensor): Output tensor with maximum value.
-max_loc (nvcv.Tensor): Output tensor with maximum locations.
-num_max (nvcv.Tensor): Output tensor with number of maximum locations found.
-src (nvcv.Tensor): Input tensor to get minimum/maximum values/locations.
-stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.</p>
-</dd>
-<dt>Returns:</dt><dd><p>Tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]: A tuple with minimum value, locations and number
-of minima, and also maximum value, locations and number of maxima.</p>
-</dd>
-<dt>Caution:</dt><dd><p>Restrictions to several arguments may apply. Check the C
-API references of the CV-CUDA operator.</p>
-</dd>
-</dl>
-</div></blockquote>
-</li>
-<li><p>min_max_loc_into(min_val: nvcv.Tensor, min_loc: nvcv.Tensor, num_min: nvcv.Tensor, max_val: nvcv.Tensor, max_loc: nvcv.Tensor, num_max: nvcv.Tensor, src: nvcv.ImageBatchVarShape, <a href="#id23"><span class="problematic" id="id24">*</span></a>, stream: Optional[nvcv.cuda.Stream] = None) -&gt; tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]</p>
-<blockquote>
-<div><p>Finds minimum/maximum on the input batch.</p>
-<dl class="simple">
-<dt>See also:</dt><dd><p>Refer to the CV-CUDA C API reference for the MinMaxLoc operator
-for more details and usage examples.</p>
-</dd>
-<dt>Args:</dt><dd><p>min_val (nvcv.Tensor): Output tensor with minimum value.
-min_loc (nvcv.Tensor): Output tensor with minimum locations.
-num_min (nvcv.Tensor): Output tensor with number of minimum locations found.
-max_val (nvcv.Tensor): Output tensor with maximum value.
-max_loc (nvcv.Tensor): Output tensor with maximum locations.
-num_max (nvcv.Tensor): Output tensor with number of maximum locations found.
-src (nvcv.ImageBatchVarShape): Input image batch to get minimum/maximum values/locations.
-stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.</p>
-</dd>
-<dt>Returns:</dt><dd><p>Tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]: A tuple with minimum value, locations and number
-of minima, and also maximum value, locations and number of maxima.</p>
-</dd>
-<dt>Caution:</dt><dd><p>Restrictions to several arguments may apply. Check the C
-API references of the CV-CUDA operator.</p>
-</dd>
-</dl>
-</div></blockquote>
-</li>
-</ol>
-</dd></dl>
-
 </section>
 
 
@@ -808,7 +489,7 @@ API references of the CV-CUDA operator.</p>
 
   <div role="contentinfo">
     <p>&#169; Copyright 2022-2024, NVIDIA..
-      <span class="lastupdated">Last updated on Aug 01, 2024.
+      <span class="lastupdated">Last updated on Aug 08, 2024.
       </span></p>
   </div>
 

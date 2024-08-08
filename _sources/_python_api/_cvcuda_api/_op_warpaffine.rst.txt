@@ -19,4 +19,4 @@ WarpAffine
 
 .. automodule:: cvcuda
   :noindex:
-  :members: warp_affine_into, warp_affine
+  :members: warp_affine, warp_affine_into

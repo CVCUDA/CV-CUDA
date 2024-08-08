@@ -113,7 +113,6 @@
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__DISTANCEMAP.html">DistanceMap</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
@@ -184,7 +183,6 @@
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__DISTANCEMAP.html">DistanceMap</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
@@ -343,6 +341,13 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Release Notes</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../relnotes/v0.10.1-beta.html">v0.10.1-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.1-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.1-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.1-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.1-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="../../relnotes/v0.10.0-beta.html">v0.10.0-beta</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.0-beta.html#release-highlights">Release Highlights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
@@ -470,124 +475,6 @@
              
   <section id="findhomography">
 <h1>FindHomography<a class="headerlink" href="#findhomography" title="Permalink to this heading"></a></h1>
-<dl class="py function">
-<dt class="sig sig-object py">
-<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">findhomography</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">srcPts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dstPts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">nvcv.cuda.Stream</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">nvcv.Tensor</span></span></span></dt>
-<dd><p>Estimates the homography matrix between srcPts and dstPts coordinates on the given cuda stream.</p>
-<div class="admonition seealso">
-<p class="admonition-title">See also</p>
-<p>Refer to the CV-CUDA C API reference for the Find Homography operator
-for more details and usage examples.</p>
-</div>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>srcPts</strong> (<em>nvcv.Tensor</em>) – Input source coordinates tensor containing 2D coordinates in the source image.</p></li>
-<li><p><strong>dstPts</strong> (<em>nvcv.Tensor</em>) – Input destination coordinates tensor containing 2D coordinates in the target image.</p></li>
-<li><p><strong>stream</strong> (<em>Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>The model homography matrix tensor.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>nvcv.Tensor</p>
-</dd>
-</dl>
-<div class="admonition caution">
-<p class="admonition-title">Caution</p>
-<p>Restrictions to several arguments may apply. Check the C
-API references of the CV-CUDA operator.</p>
-</div>
-<p>cvcuda.findhomography(srcPts: nvcv.TensorBatch, dstPts: nvcv.TensorBatch, stream: Optional[nvcv.cuda.Stream] = None) -&gt; TensorBatch</p>
-<p>Executes the Find Homography operation on the given cuda stream.</p>
-<div class="admonition seealso">
-<p class="admonition-title">See also</p>
-<p>Refer to the CV-CUDA C API reference for the Find Homography operator
-for more details and usage examples.</p>
-</div>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>srcPts</strong> (<em>nvcv.TensorBatch</em>) – Input source coordinates tensor containing 2D coordinates in the source image.</p></li>
-<li><p><strong>dstPts</strong> (<em>nvcv.TensorBatch</em>) – Input destination coordinates tensor containing 2D coordinates in the target image.</p></li>
-<li><p><strong>stream</strong> (<em>nvcv.cuda.Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>The model homography matrix tensor batch.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>nvcv.TensorBatch</p>
-</dd>
-</dl>
-<div class="admonition caution">
-<p class="admonition-title">Caution</p>
-<p>Restrictions to several arguments may apply. Check the C
-API references of the CV-CUDA operator.</p>
-</div>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py">
-<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">findhomography_into</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">models</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">srcPts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dstPts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">nvcv.cuda.Stream</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span></dt>
-<dd><p>Executes the Find Homography operation on the given cuda stream.</p>
-<div class="admonition seealso">
-<p class="admonition-title">See also</p>
-<p>Refer to the CV-CUDA C API reference for the Find Homography operator
-for more details and usage examples.</p>
-</div>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>models</strong> (<em>nvcv.Tensor</em>) – Output model tensor containing 3x3 homography matrices.</p></li>
-<li><p><strong>srcPts</strong> (<em>nvcv.Tensor</em>) – Input source coordinates tensor containing 2D coordinates in the source image.</p></li>
-<li><p><strong>dstPts</strong> (<em>nvcv.Tensor</em>) – Input destination coordinates tensor containing 2D coordinates in the target image.</p></li>
-<li><p><strong>stream</strong> (<em>nvcv.cuda.Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>The model homography matrix tensor.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>nvcv.Tensor</p>
-</dd>
-</dl>
-<div class="admonition caution">
-<p class="admonition-title">Caution</p>
-<p>Restrictions to several arguments may apply. Check the C
-API references of the CV-CUDA operator.</p>
-</div>
-<p>cvcuda.findhomography(models: nvcv.TensorBatch, srcPts: nvcv.TensorBatch, dstPts: nvcv.TensorBatch, stream: Optional[nvcv.cuda.Stream] = None)</p>
-<p>Executes the Find Homography operation on the given cuda stream.</p>
-<div class="admonition seealso">
-<p class="admonition-title">See also</p>
-<p>Refer to the CV-CUDA C API reference for the Find Homography operator
-for more details and usage examples.</p>
-</div>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>models</strong> (<em>nvcv.TensorBatch</em>) – Output model tensor containing 3x3 homography matrices.</p></li>
-<li><p><strong>srcPts</strong> (<em>nvcv.TensorBatch</em>) – Input source coordinates tensor containing 2D coordinates in the source image.</p></li>
-<li><p><strong>dstPts</strong> (<em>nvcv.TensorBatch</em>) – Input destination coordinates tensor containing 2D coordinates in the target image.</p></li>
-<li><p><strong>stream</strong> (<em>nvcv.cuda.Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>The model homography matrix tensor batch.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>nvcv.TensorBatch</p>
-</dd>
-</dl>
-<div class="admonition caution">
-<p class="admonition-title">Caution</p>
-<p>Restrictions to several arguments may apply. Check the C
-API references of the CV-CUDA operator.</p>
-</div>
-</dd></dl>
-
 </section>
 
 
@@ -602,7 +489,7 @@ API references of the CV-CUDA operator.</p>
 
   <div role="contentinfo">
     <p>&#169; Copyright 2022-2024, NVIDIA..
-      <span class="lastupdated">Last updated on Aug 01, 2024.
+      <span class="lastupdated">Last updated on Aug 08, 2024.
       </span></p>
   </div>
 

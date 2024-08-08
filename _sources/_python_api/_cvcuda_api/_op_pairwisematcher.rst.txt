@@ -19,4 +19,4 @@ PairwiseMatcher
 
 .. automodule:: cvcuda
   :noindex:
-  :members: match, match_into
+  :members: match_into, match

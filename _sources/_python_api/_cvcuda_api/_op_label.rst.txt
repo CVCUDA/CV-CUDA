@@ -19,4 +19,4 @@ Label
 
 .. automodule:: cvcuda
   :noindex:
-  :members: label, label_into
+  :members: label_into, label

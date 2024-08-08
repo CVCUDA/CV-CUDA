@@ -113,7 +113,6 @@
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__DISTANCEMAP.html">DistanceMap</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
@@ -184,7 +183,6 @@
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__DISTANCEMAP.html">DistanceMap</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
@@ -343,6 +341,13 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Release Notes</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../relnotes/v0.10.1-beta.html">v0.10.1-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.1-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.1-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.1-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.1-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="../../relnotes/v0.10.0-beta.html">v0.10.0-beta</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.0-beta.html#release-highlights">Release Highlights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
@@ -470,62 +475,6 @@
              
   <section id="imagebatchvarshape">
 <h1>ImageBatchVarShape<a class="headerlink" href="#imagebatchvarshape" title="Permalink to this heading"></a></h1>
-<dl class="py class">
-<dt class="sig sig-object py">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nvcv.</span></span><span class="sig-name descname"><span class="pre">ImageBatchVarShape</span></span></dt>
-<dd><p>Batch of Images.</p>
-<dl class="py property">
-<dt class="sig sig-object py">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">capacity</span></span></dt>
-<dd><p>Return the capacity of the ImageBatchVarShape in number of images.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py">
-<span class="sig-name descname"><span class="pre">clear</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">nvcv.ImageBatchVarShape</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span></dt>
-<dd><p>Remove all images from the ImageBatchVarShape.</p>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">maxsize</span></span></dt>
-<dd><p>Return the maximum size of the ImageBatchVarShape in bytes.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py">
-<span class="sig-name descname"><span class="pre">popback</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">nvcv.ImageBatchVarShape</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">count</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span></dt>
-<dd><p>Remove one or more images from the end of the ImageBatchVarShape.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py">
-<span class="sig-name descname"><span class="pre">pushback</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span></dt>
-<dd><p>Overloaded function.</p>
-<ol class="arabic simple">
-<li><p>pushback(self: nvcv.ImageBatchVarShape, arg0: nvcv.Image) -&gt; None</p></li>
-</ol>
-<p>Add a new image to the end of the ImageBatchVarShape.</p>
-<ol class="arabic simple" start="2">
-<li><p>pushback(self: nvcv.ImageBatchVarShape, arg0: list[nvcv.Image]) -&gt; None</p></li>
-</ol>
-<p>Add multiple images to the end of the ImageBatchVarShape.</p>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">uniqueformat</span></span></dt>
-<dd><p>Return True if all the images have the same format, False otherwise.</p>
-</dd></dl>
-
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py">
-<span class="sig-prename descclassname"><span class="pre">nvcv.</span></span><span class="sig-name descname"><span class="pre">as_images</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">buffers</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">object</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">[]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">format</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">nvcv.Format</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">nvcv.Format.NONE</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">nvcv.ImageBatchVarShape</span></span></span></dt>
-<dd><p>Wrap a vector of external buffers as a batch of images, and tie the buffers lifetime to it</p>
-</dd></dl>
-
 </section>
 
 
@@ -540,7 +489,7 @@
 
   <div role="contentinfo">
     <p>&#169; Copyright 2022-2024, NVIDIA..
-      <span class="lastupdated">Last updated on Aug 01, 2024.
+      <span class="lastupdated">Last updated on Aug 08, 2024.
       </span></p>
   </div>
 

@@ -113,7 +113,6 @@
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__DISTANCEMAP.html">DistanceMap</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
@@ -184,7 +183,6 @@
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CROP__FLIP__NORMALIZE__REFORMAT.html">CropFlipNormalizeReformat</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CUSTOM__CROP.html">Custom Crop</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__CVTCOLOR.html">Cvt Color</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__DISTANCEMAP.html">DistanceMap</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__ERASE.html">Erase</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FIND__HOMOGRAPHY.html">Find-Homography</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../_c_cpp_api/group__NVCV__C__ALGORITHM__FLIP.html">Flip</a></li>
@@ -343,6 +341,13 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Release Notes</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../relnotes/v0.10.1-beta.html">v0.10.1-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.1-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.1-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.1-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.1-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="../../relnotes/v0.10.0-beta.html">v0.10.0-beta</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.0-beta.html#release-highlights">Release Highlights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.10.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
@@ -470,108 +475,6 @@
              
   <section id="label">
 <h1>Label<a class="headerlink" href="#label" title="Permalink to this heading"></a></h1>
-<dl class="py function">
-<dt class="sig sig-object py">
-<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">label</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">src:</span> <span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">connectivity:</span> <span class="pre">cvcuda.ConnectivityType</span> <span class="pre">=</span> <span class="pre">&lt;ConnectivityType.CONNECTIVITY_4_2D:</span> <span class="pre">0&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">assign_labels:</span> <span class="pre">cvcuda.LABEL</span> <span class="pre">=</span> <span class="pre">&lt;LABEL.FAST:</span> <span class="pre">0&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask_type:</span> <span class="pre">cvcuda.LabelMaskType</span> <span class="pre">=</span> <span class="pre">&lt;LabelMaskType.REMOVE_ISLANDS_OUTSIDE_MASK_ONLY:</span> <span class="pre">0&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">count:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stats:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_labels:</span> <span class="pre">int</span> <span class="pre">=</span> <span class="pre">10000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bg_label:</span> <span class="pre">Optional[nvcv.Tensor]</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_thresh:</span> <span class="pre">Optional[nvcv.Tensor]</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_thresh:</span> <span class="pre">Optional[nvcv.Tensor]</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_size:</span> <span class="pre">Optional[nvcv.Tensor]</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask:</span> <span class="pre">Optional[nvcv.Tensor]</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream:</span> <span class="pre">Optional[nvcv.cuda.Stream]</span> <span class="pre">=</span> <span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">nvcv.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">nvcv.Tensor</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">nvcv.Tensor</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></span></span></dt>
-<dd><p>Executes the Label operation on the given cuda stream.</p>
-<div class="admonition seealso">
-<p class="admonition-title">See also</p>
-<p>Refer to the CV-CUDA C API reference for the Label operator for more details and usage examples.</p>
-</div>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>src</strong> (<em>nvcv.Tensor</em>) – Input tensor to label connected-component regions.</p></li>
-<li><p><strong>connectivity</strong> (<em>cvcuda.ConnectivityType</em><em>, </em><em>optional</em>) – Choice to control connectivity of input elements,
-default is cvcuda.CONNECTIVITY_4_2D.</p></li>
-<li><p><strong>assign_labels</strong> (<em>cvcuda.LABEL</em><em>, </em><em>optional</em>) – Choice on how labels are assigned,
-default is cvcuda.LABEL.FAST.</p></li>
-<li><p><strong>mask_type</strong> (<em>cvcuda.LabelMaskType</em><em>, </em><em>optional</em>) – Choice on how the mask is used,
-default is cvcuda.REMOVE_ISLANDS_OUTSIDE_MASK_ONLY.</p></li>
-<li><p><strong>count</strong> (<em>bool</em><em>, </em><em>optional</em>) – Use True to return the count of valid labeled regions.</p></li>
-<li><p><strong>stats</strong> (<em>bool</em><em>, </em><em>optional</em>) – Use True to return the statistics of valid labeled regions.</p></li>
-<li><p><strong>max_labels</strong> (<em>Number</em><em>, </em><em>optional</em>) – Maximum number of labels to compute statistics for, default is 10000.</p></li>
-<li><p><strong>bg_label</strong> (<em>nvcv.Tensor</em><em>, </em><em>optional</em>) – Background tensor to define input values to be considered background
-labels and thus ignored.</p></li>
-<li><p><strong>min_thresh</strong> (<em>nvcv.Tensor</em><em>, </em><em>optional</em>) – Minimum threshold tensor to mask input values below it to be 0, and others 1.</p></li>
-<li><p><strong>max_thresh</strong> (<em>nvcv.Tensor</em><em>, </em><em>optional</em>) – Maximum threshold tensor to mask input values above it to be 0, and others 1.</p></li>
-<li><p><strong>min_size</strong> (<em>nvcv.Tensor</em><em>, </em><em>optional</em>) – Minimum size tensor to remove islands, i.e. labeled regions with number of
-elements less than the minimum size.</p></li>
-<li><p><strong>mask</strong> (<em>nvcv.Tensor</em><em>, </em><em>optional</em>) – Mask tensor, its behavior is controlled by ref mask_type.  One choice is to
-control island removal in addition to ref min_size, i.e. regions with at
-least one element inside the mask (non-zero values) are not removed in case
-mask_type is cvcuda.REMOVE_ISLANDS_OUTSIDE_MASK_ONLY.</p></li>
-<li><p><strong>stream</strong> (<em>nvcv.cuda.Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><dl class="simple">
-<dt>A tuple with output labels, count of regions and their statistics.</dt><dd><p>The count or stats tensors may be None if theirs arguments are False.</p>
-</dd>
-</dl>
-</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>Tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]</p>
-</dd>
-</dl>
-<div class="admonition caution">
-<p class="admonition-title">Caution</p>
-<p>Restrictions to several arguments may apply. Check the C API references of the CV-CUDA operator.</p>
-</div>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py">
-<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">label_into</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dst:</span> <span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">count:</span> <span class="pre">Optional[nvcv.Tensor]</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stats:</span> <span class="pre">Optional[nvcv.Tensor]</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">src:</span> <span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">connectivity:</span> <span class="pre">cvcuda.ConnectivityType</span> <span class="pre">=</span> <span class="pre">&lt;ConnectivityType.CONNECTIVITY_4_2D:</span> <span class="pre">0&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">assign_labels:</span> <span class="pre">cvcuda.LABEL</span> <span class="pre">=</span> <span class="pre">&lt;LABEL.FAST:</span> <span class="pre">0&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask_type:</span> <span class="pre">cvcuda.LabelMaskType</span> <span class="pre">=</span> <span class="pre">&lt;LabelMaskType.REMOVE_ISLANDS_OUTSIDE_MASK_ONLY:</span> <span class="pre">0&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bg_label:</span> <span class="pre">Optional[nvcv.Tensor]</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_thresh:</span> <span class="pre">Optional[nvcv.Tensor]</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_thresh:</span> <span class="pre">Optional[nvcv.Tensor]</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_size:</span> <span class="pre">Optional[nvcv.Tensor]</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask:</span> <span class="pre">Optional[nvcv.Tensor]</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream:</span> <span class="pre">Optional[nvcv.cuda.Stream]</span> <span class="pre">=</span> <span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">nvcv.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">nvcv.Tensor</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">nvcv.Tensor</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></span></span></dt>
-<dd><p>Executes the Label operation on the given cuda stream.</p>
-<div class="admonition seealso">
-<p class="admonition-title">See also</p>
-<p>Refer to the CV-CUDA C API reference for the Label operator for more details and usage examples.</p>
-</div>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>dst</strong> (<em>nvcv.Tensor</em>) – Output tensor with labels.</p></li>
-<li><p><strong>count</strong> (<em>nvcv.Tensor</em><em>, </em><em>optional</em>) – Output tensor with count number of labeled regions.</p></li>
-<li><p><strong>stats</strong> (<em>nvcv.Tensor</em><em>, </em><em>optional</em>) – Output tensor with statistics for each labeled region.</p></li>
-<li><p><strong>src</strong> (<em>nvcv.Tensor</em>) – Input tensor to label connected-component regions.</p></li>
-<li><p><strong>connectivity</strong> (<em>cvcuda.ConnectivityType</em><em>, </em><em>optional</em>) – Choice to control connectivity of input elements,
-default is cvcuda.CONNECTIVITY_4_2D.</p></li>
-<li><p><strong>assign_labels</strong> (<em>cvcuda.LABEL</em><em>, </em><em>optional</em>) – Choice on how labels are assigned,
-default is cvcuda.LABEL.FAST.</p></li>
-<li><p><strong>mask_type</strong> (<em>cvcuda.LabelMaskType</em><em>, </em><em>optional</em>) – Choice on how the mask is used,
-default is cvcuda.REMOVE_ISLANDS_OUTSIDE_MASK_ONLY.</p></li>
-<li><p><strong>bg_label</strong> (<em>nvcv.Tensor</em><em>, </em><em>optional</em>) – Background tensor to define input values to be considered background
-labels and thus ignored.</p></li>
-<li><p><strong>min_thresh</strong> (<em>nvcv.Tensor</em><em>, </em><em>optional</em>) – Minimum threshold tensor to mask input values below it to be 0, and others 1.</p></li>
-<li><p><strong>max_thresh</strong> (<em>nvcv.Tensor</em><em>, </em><em>optional</em>) – Maximum threshold tensor to mask input values above it to be 0, and others 1.</p></li>
-<li><p><strong>min_size</strong> (<em>nvcv.Tensor</em><em>, </em><em>optional</em>) – Minimum size tensor to remove islands, i.e. labeled regions with number of
-elements less than the minimum size.</p></li>
-<li><p><strong>mask</strong> (<em>nvcv.Tensor</em><em>, </em><em>optional</em>) – Mask tensor, its behavior is controlled by ref mask_type.  One choice is to
-control island removal in addition to ref min_size, i.e. regions with at
-least one element inside the mask (non-zero values) are not removed in case
-mask_type is cvcuda.REMOVE_ISLANDS_OUTSIDE_MASK_ONLY.</p></li>
-<li><p><strong>stream</strong> (<em>nvcv.cuda.Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><dl class="simple">
-<dt>A tuple with output labels, count of regions and their statistics.</dt><dd><p>The count or stats tensors may be None if theirs arguments are None.</p>
-</dd>
-</dl>
-</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>Tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]</p>
-</dd>
-</dl>
-<div class="admonition caution">
-<p class="admonition-title">Caution</p>
-<p>Restrictions to several arguments may apply. Check the C API references of the CV-CUDA operator.</p>
-</div>
-</dd></dl>
-
 </section>
 
 
@@ -586,7 +489,7 @@ mask_type is cvcuda.REMOVE_ISLANDS_OUTSIDE_MASK_ONLY.</p></li>
 
   <div role="contentinfo">
     <p>&#169; Copyright 2022-2024, NVIDIA..
-      <span class="lastupdated">Last updated on Aug 01, 2024.
+      <span class="lastupdated">Last updated on Aug 08, 2024.
       </span></p>
   </div>
 
