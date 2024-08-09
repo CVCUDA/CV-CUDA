@@ -475,6 +475,96 @@
              
   <section id="cropflipnormalizereformat">
 <h1>CropFlipNormalizeReformat<a class="headerlink" href="#cropflipnormalizereformat" title="Permalink to this heading"></a></h1>
+<dl class="py function">
+<dt class="sig sig-object py">
+<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">crop_flip_normalize_reformat</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">src:</span> <span class="pre">nvcv.ImageBatchVarShape</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">out_shape:</span> <span class="pre">tuple</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">out_dtype:</span> <span class="pre">nvcv.Type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">out_layout:</span> <span class="pre">nvcv.TensorLayout</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rect:</span> <span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flip_code:</span> <span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">base:</span> <span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale:</span> <span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">globalscale:</span> <span class="pre">float</span> <span class="pre">=</span> <span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">globalshift:</span> <span class="pre">float</span> <span class="pre">=</span> <span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">epsilon:</span> <span class="pre">float</span> <span class="pre">=</span> <span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flags:</span> <span class="pre">Optional[int]</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">border:</span> <span class="pre">cvcuda.Border</span> <span class="pre">=</span> <span class="pre">&lt;Border.CONSTANT:</span> <span class="pre">0&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bvalue:</span> <span class="pre">float</span> <span class="pre">=</span> <span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream:</span> <span class="pre">Optional[nvcv.cuda.Stream]</span> <span class="pre">=</span> <span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">nvcv.Tensor</span></span></span></dt>
+<dd><p>Executes the CropFlipNormalizeReformat operation on the given cuda stream.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p>Refer to the CV-CUDA C API reference for the Copy Make Border operator
+for more details and usage examples.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>src</strong> (<em>nvcv.ImageBatchVarShape</em>) – Input image batch containing one or more images.</p></li>
+<li><p><strong>out_shape</strong> (<em>tuple</em>) – The shape of the output.</p></li>
+<li><p><strong>out_dtype</strong> (<em>numpy.dtype</em>) – The data type of the output.</p></li>
+<li><p><strong>out_layout</strong> (<em>nvcv.TensorLayout</em>) – The layout of the output.</p></li>
+<li><p><strong>rect</strong> (<em>nvcv.Tensor</em>) – The crop rectangle tensor which has shape of [batch_size, 1, 1, 4] in reference to the input tensor.
+The crop value of [crop_x, crop_y, crop_width, crop_height] stored in the final dimension of
+the crop tensor, provided per image.</p></li>
+<li><p><strong>flip_code</strong> (<em>nvcv.Tensor</em>) – A tensor flag to specify how to flip the array; 0 means flipping around the x-axis,
+1 means flipping around the y-axis, -1 means flipping around both axes,
+and any other value will result  in no flip, provided per image.</p></li>
+<li><p><strong>base</strong> (<em>nvcv.Tensor</em>) – Tensor providing base values for normalization.</p></li>
+<li><p><strong>scale</strong> (<em>nvcv.Tensor</em>) – Tensor providing scale values for normalization.</p></li>
+<li><p><strong>globalscale</strong> (<em>float</em><em>, </em><em>optional</em>) – Additional scale value to be used in addition to scale</p></li>
+<li><p><strong>globalshift</strong> (<em>float</em><em>, </em><em>optional</em>) – Additional bias value to be used in addition to base.</p></li>
+<li><p><strong>epsilon</strong> (<em>float</em><em>, </em><em>optional</em>) – Epsilon to use when CVCUDA_NORMALIZE_SCALE_IS_STDDEV flag is set as a regularizing term to be
+added to variance.</p></li>
+<li><p><strong>flags</strong> (<em>int</em><em>, </em><em>optional</em>) – Algorithm flags, use CVCUDA_NORMALIZE_SCALE_IS_STDDEV if scale passed as argument
+is standard deviation instead or 0 if it is scaling.</p></li>
+<li><p><strong>border</strong> (<em>cvcuda.Border</em><em>, </em><em>optional</em>) – Border mode to be used when accessing elements outside input image.</p></li>
+<li><p><strong>bvalue</strong> (<em>float</em><em>, </em><em>optional</em>) – Border value to be used for constant border mode cvcuda.Border.CONSTANT.</p></li>
+<li><p><strong>stream</strong> (<em>nvcv.cuda.Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+<div class="admonition caution">
+<p class="admonition-title">Caution</p>
+<p>Restrictions to several arguments may apply. Check the C
+API references of the CV-CUDA operator.</p>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py">
+<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">crop_flip_normalize_reformat_into</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dst:</span> <span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">src:</span> <span class="pre">nvcv.ImageBatchVarShape</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rect:</span> <span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flip_code:</span> <span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">base:</span> <span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale:</span> <span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">globalscale:</span> <span class="pre">float</span> <span class="pre">=</span> <span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">globalshift:</span> <span class="pre">float</span> <span class="pre">=</span> <span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">epsilon:</span> <span class="pre">float</span> <span class="pre">=</span> <span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flags:</span> <span class="pre">Optional[int]</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">border:</span> <span class="pre">cvcuda.Border</span> <span class="pre">=</span> <span class="pre">&lt;Border.CONSTANT:</span> <span class="pre">0&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bvalue:</span> <span class="pre">float</span> <span class="pre">=</span> <span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream:</span> <span class="pre">Optional[nvcv.cuda.Stream]</span> <span class="pre">=</span> <span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">nvcv.Tensor</span></span></span></dt>
+<dd><p>Executes the CropFlipNormalizeReformat operation on the given cuda stream.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p>Refer to the CV-CUDA C API reference for the Copy Make Border operator
+for more details and usage examples.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dst</strong> (<em>nvcv.ImageBatchVarShape</em>) – Output image batch containing the result of the operation.</p></li>
+<li><p><strong>src</strong> (<em>nvcv.ImageBatchVarShape</em>) – Input image batch containing one or more images.</p></li>
+<li><p><strong>rect</strong> (<em>nvcv.Tensor</em>) – The crop rectangle tensor which has shape of [batch_size, 1, 1, 4] in reference to the input tensor.
+The crop value of [crop_x, crop_y, crop_width, crop_height] stored in the final dimension of
+the crop tensor, provided per image.</p></li>
+<li><p><strong>flip_code</strong> (<em>nvcv.Tensor</em>) – A tensor flag to specify how to flip the array; 0 means flipping around the x-axis,
+1 means flipping around the y-axis, -1 means flipping around both axes,
+and any other value will result  in no flip, provided per image.</p></li>
+<li><p><strong>base</strong> (<em>nvcv.Tensor</em>) – Tensor providing base values for normalization.</p></li>
+<li><p><strong>scale</strong> (<em>nvcv.Tensor</em>) – Tensor providing scale values for normalization.</p></li>
+<li><p><strong>globalscale</strong> (<em>float</em><em>, </em><em>optional</em>) – Additional scale value to be used in addition to scale</p></li>
+<li><p><strong>globalshift</strong> (<em>float</em><em>, </em><em>optional</em>) – Additional bias value to be used in addition to base.</p></li>
+<li><p><strong>epsilon</strong> (<em>float</em><em>, </em><em>optional</em>) – Epsilon to use when CVCUDA_NORMALIZE_SCALE_IS_STDDEV flag is set as a regularizing term to be
+added to variance.</p></li>
+<li><p><strong>flags</strong> (<em>int</em><em>, </em><em>optional</em>) – Algorithm flags, use CVCUDA_NORMALIZE_SCALE_IS_STDDEV if scale passed as argument
+is standard deviation instead or 0 if it is scaling.</p></li>
+<li><p><strong>border</strong> (<em>cvcuda.Border</em><em>, </em><em>optional</em>) – Border mode to be used when accessing elements outside input image.</p></li>
+<li><p><strong>bvalue</strong> (<em>float</em><em>, </em><em>optional</em>) – Border value to be used for constant border mode cvcuda.Border.CONSTANT.</p></li>
+<li><p><strong>stream</strong> (<em>nvcv.cuda.Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+<div class="admonition caution">
+<p class="admonition-title">Caution</p>
+<p>Restrictions to several arguments may apply. Check the C
+API references of the CV-CUDA operator.</p>
+</div>
+</dd></dl>
+
 </section>
 
 

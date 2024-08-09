@@ -475,6 +475,146 @@
              
   <section id="normalize">
 <h1>Normalize<a class="headerlink" href="#normalize" title="Permalink to this heading"></a></h1>
+<dl class="py function">
+<dt class="sig sig-object py">
+<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">normalize</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">src</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">base</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flags</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">globalscale</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">globalshift</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">epsilon</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">nvcv.cuda.Stream</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">nvcv.Tensor</span></span></span></dt>
+<dd><p>Executes the Normalize operation on the given cuda stream.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p>Refer to the CV-CUDA C API reference for the Normalize operator
+for more details and usage examples.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>src</strong> (<em>nvcv.Tensor</em>) – Input tensor containing one or more images.</p></li>
+<li><p><strong>base</strong> (<em>nvcv.Tensor</em>) – Tensor providing base values for normalization.</p></li>
+<li><p><strong>scale</strong> (<em>nvcv.Tensor</em>) – Tensor providing scale values for normalization.</p></li>
+<li><p><strong>flags</strong> (<em>int</em><em>, </em><em>optional</em>) – Algorithm flags, use cvcuda.NormalizeFlags.SCALE_IS_STDDEV if scale passed as argument
+is standard deviation instead or 0 if it is scaling.</p></li>
+<li><p><strong>globalscale</strong> (<em>float</em><em>, </em><em>optional</em>) – Additional scale value to be used in addition to scale.</p></li>
+<li><p><strong>globalshift</strong> (<em>float</em><em>, </em><em>optional</em>) – Additional bias value to be used in addition to base.</p></li>
+<li><p><strong>epsilon</strong> (<em>float</em><em>, </em><em>optional</em>) – Epsilon to use when cvcuda.NormalizeFlags.SCALE_IS_STDDEV flag is set as a regularizing
+term to be added to variance.</p></li>
+<li><p><strong>stream</strong> (<em>nvcv.cuda.Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The output tensor.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>nvcv.Tensor</p>
+</dd>
+</dl>
+<div class="admonition caution">
+<p class="admonition-title">Caution</p>
+<p>Restrictions to several arguments may apply. Check the C
+API references of the CV-CUDA operator.</p>
+</div>
+<p>cvcuda.normalize(src: nvcv.ImageBatchVarShape, base: nvcv.Tensor, scale: nvcv.Tensor, flags: int, globalscale: float, globalshift: float, epsilon: float, stream: Optional[nvcv.cuda.Stream] = None) -&gt; nvcv.ImageBatchVarShape</p>
+<p>Executes the Normalize operation on the given cuda stream.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p>Refer to the CV-CUDA C API reference for the Normalize operator
+for more details and usage examples.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>src</strong> (<em>nvcv.ImageBatchVarShape</em>) – Input image batch containing one or more images.</p></li>
+<li><p><strong>base</strong> (<em>nvcv.Tensor</em>) – Tensor providing base values for normalization.</p></li>
+<li><p><strong>scale</strong> (<em>nvcv.Tensor</em>) – Tensor providing scale values for normalization.</p></li>
+<li><p><strong>flags</strong> (<em>int</em><em>, </em><em>optional</em>) – Algorithm flags, use cvcuda.NormalizeFlags.SCALE_IS_STDDEV if scale passed as argument
+is standard deviation instead or 0 if it is scaling.</p></li>
+<li><p><strong>globalscale</strong> (<em>float</em><em>, </em><em>optional</em>) – Additional scale value to be used in addition to scale.</p></li>
+<li><p><strong>globalshift</strong> (<em>float</em><em>, </em><em>optional</em>) – Additional bias value to be used in addition to base.</p></li>
+<li><p><strong>epsilon</strong> (<em>float</em><em>, </em><em>optional</em>) – Epsilon to use when cvcuda.NormalizeFlags.SCALE_IS_STDDEV flag is set as a regularizing
+term to be added to variance.</p></li>
+<li><p><strong>stream</strong> (<em>nvcv.cuda.Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The output image batch.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>nvcv.ImageBatchVarShape</p>
+</dd>
+</dl>
+<div class="admonition caution">
+<p class="admonition-title">Caution</p>
+<p>Restrictions to several arguments may apply. Check the C
+API references of the CV-CUDA operator.</p>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py">
+<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">normalize_into</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dst</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">src</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">base</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flags</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">globalscale</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">globalshift</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">epsilon</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">nvcv.cuda.Stream</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span></dt>
+<dd><p>Executes the Normalize operation on the given cuda stream.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p>Refer to the CV-CUDA C API reference for the Normalize operator
+for more details and usage examples.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dst</strong> (<em>nvcv.Tensor</em>) – Output tensor to store the result of the operation.</p></li>
+<li><p><strong>src</strong> (<em>nvcv.Tensor</em>) – Input tensor containing one or more images.</p></li>
+<li><p><strong>base</strong> (<em>nvcv.Tensor</em>) – Tensor providing base values for normalization.</p></li>
+<li><p><strong>scale</strong> (<em>nvcv.Tensor</em>) – Tensor providing scale values for normalization.</p></li>
+<li><p><strong>flags</strong> (<em>int</em><em>, </em><em>optional</em>) – Algorithm flags, use cvcuda.NormalizeFlags.SCALE_IS_STDDEV if scale passed as argument
+is standard deviation instead or 0 if it is scaling.</p></li>
+<li><p><strong>globalscale</strong> (<em>float</em><em>, </em><em>optional</em>) – Additional scale value to be used in addition to scale.</p></li>
+<li><p><strong>globalshift</strong> (<em>float</em><em>, </em><em>optional</em>) – Additional bias value to be used in addition to base.</p></li>
+<li><p><strong>epsilon</strong> (<em>float</em><em>, </em><em>optional</em>) – Epsilon to use when cvcuda.NormalizeFlags.SCALE_IS_STDDEV flag is set as a regularizing
+term to be added to variance.</p></li>
+<li><p><strong>stream</strong> (<em>nvcv.cuda.Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+<div class="admonition caution">
+<p class="admonition-title">Caution</p>
+<p>Restrictions to several arguments may apply. Check the C
+API references of the CV-CUDA operator.</p>
+</div>
+<p>cvcuda.normalize_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, base: nvcv.Tensor, scale: nvcv.Tensor, flags: int, globalscale: float, globalshift: float, epsilon: float, stream: Optional[nvcv.cuda.Stream] = None)</p>
+<p>Executes the Normalize operation on the given cuda stream.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p>Refer to the CV-CUDA C API reference for the Normalize operator
+for more details and usage examples.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dst</strong> (<em>nvcv.ImageBatchVarShape</em>) – Output image batch containing the result of the operation.</p></li>
+<li><p><strong>src</strong> (<em>nvcv.ImageBatchVarShape</em>) – Input image batch containing one or more images.</p></li>
+<li><p><strong>base</strong> (<em>nvcv.Tensor</em>) – Tensor providing base values for normalization.</p></li>
+<li><p><strong>scale</strong> (<em>nvcv.Tensor</em>) – Tensor providing scale values for normalization.</p></li>
+<li><p><strong>flags</strong> (<em>int</em><em>, </em><em>optional</em>) – Algorithm flags, use cvcuda.NormalizeFlags.SCALE_IS_STDDEV if scale passed as argument
+is standard deviation instead or 0 if it is scaling.</p></li>
+<li><p><strong>globalscale</strong> (<em>float</em><em>, </em><em>optional</em>) – Additional scale value to be used in addition to scale.</p></li>
+<li><p><strong>globalshift</strong> (<em>float</em><em>, </em><em>optional</em>) – Additional bias value to be used in addition to base.</p></li>
+<li><p><strong>epsilon</strong> (<em>float</em><em>, </em><em>optional</em>) – Epsilon to use when cvcuda.NormalizeFlags.SCALE_IS_STDDEV flag is set as a regularizing
+term to be added to variance.</p></li>
+<li><p><strong>stream</strong> (<em>nvcv.cuda.Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+<div class="admonition caution">
+<p class="admonition-title">Caution</p>
+<p>Restrictions to several arguments may apply. Check the C
+API references of the CV-CUDA operator.</p>
+</div>
+</dd></dl>
+
 </section>
 
 

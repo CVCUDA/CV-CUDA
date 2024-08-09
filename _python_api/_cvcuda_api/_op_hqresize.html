@@ -475,6 +475,256 @@
              
   <section id="hqresize">
 <h1>HQResize<a class="headerlink" href="#hqresize" title="Permalink to this heading"></a></h1>
+<dl class="py function">
+<dt class="sig sig-object py">
+<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">hq_resize</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span></dt>
+<dd><p>Overloaded function.</p>
+<ol class="arabic">
+<li><p>hq_resize(src: nvcv.Tensor, out_size: tuple, <a href="#id1"><span class="problematic" id="id2">*</span></a>, antialias: Optional[bool] = False, roi: Optional[tuple] = None, interpolation: Optional[cvcuda.Interp] = None, min_interpolation: Optional[cvcuda.Interp] = None, mag_interpolation: Optional[cvcuda.Interp] = None, stream: Optional[nvcv.cuda.Stream] = None) -&gt; nvcv.Tensor</p>
+<blockquote>
+<div><p>Executes the HQ Resize operation on the given cuda stream. The operator
+supports resampling for 2D (images) and 3D volumetric samples.</p>
+<dl>
+<dt>See also:</dt><dd><p>Refer to the CV-CUDA C API reference for the HQ Resize operator
+for more details and usage examples.</p>
+</dd>
+<dt>Args:</dt><dd><dl class="simple">
+<dt>src (nvcv.Tensor): Input tensor containing one or more images.</dt><dd><p>The tensor layout must match: (N)(D)HW(C).</p>
+</dd>
+</dl>
+<p>out_size (tuple): Tuple of 2 or 3 ints describing the output shape in (D)HW layout.
+antialias (bool): If set to true, an antialiasing is enabled for scaling down.
+roi (Tuple): Optional bounding box describing the input’s region of interest.</p>
+<blockquote>
+<div><p>For 2D resampling it should be (lowH, lowW, highH, highW),
+for 3D: (lowD, lowH, lowW, highD, highH, highW).
+If, for some axis, the low bound is bigger than the high bound,
+the image is flipped across the axis.</p>
+</div></blockquote>
+<dl class="simple">
+<dt>interpolation (cvcuda.Interp): Interpolation type used. Used both for scaling down and up,</dt><dd><p>cannot be specified together with (min_interpolation or mag_interpolation).</p>
+</dd>
+</dl>
+<p>min_interpolation (cvcuda.Interp): Interpolation type used for scaling down.
+mag_interpolation (cvcuda.Interp): Interpolation type used for scaling up.
+stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.</p>
+</dd>
+<dt>Returns:</dt><dd><p>nvcv.Tensor: The output tensor.</p>
+</dd>
+<dt>Caution:</dt><dd><p>Restrictions to several arguments may apply. Check the C
+API references of the CV-CUDA operator.</p>
+</dd>
+</dl>
+</div></blockquote>
+</li>
+<li><p>hq_resize(src: nvcv.ImageBatchVarShape, out_size: list[tuple[int, int]], <a href="#id3"><span class="problematic" id="id4">*</span></a>, antialias: Optional[bool] = False, roi: Optional[list[tuple]] = None, interpolation: Optional[cvcuda.Interp] = None, min_interpolation: Optional[cvcuda.Interp] = None, mag_interpolation: Optional[cvcuda.Interp] = None, stream: Optional[nvcv.cuda.Stream] = None) -&gt; nvcv.ImageBatchVarShape</p>
+<blockquote>
+<div><p>Executes the HQ Resize operation on the given cuda stream.</p>
+<dl>
+<dt>See also:</dt><dd><p>Refer to the CV-CUDA C API reference for the HQ Resize operator
+for more details and usage examples.</p>
+</dd>
+<dt>Args:</dt><dd><p>src (nvcv.ImageBatchVarShape): Input batch of images.
+out_size (tuple): Tuple of 2 ints describing the output shape in HW layout.
+antialias (bool): If set to true, an antialiasing is enabled for scaling down.
+roi (List[Tuple[int]]): Optional bounding boxes describing the input’s region of interest.</p>
+<blockquote>
+<div><p>It should be a list of tuples. The list length must match the number
+of input tensors or be 1 (so that the same ROI is used for all samples).
+Each tuple must be of the form (lowH, lowW, highH, highW).
+If, for some axis, the low bound is bigger than the high bound,
+the image is flipped across the axis.</p>
+</div></blockquote>
+<dl class="simple">
+<dt>interpolation (cvcuda.Interp): Interpolation type used. Used both for scaling down and up,</dt><dd><p>cannot be specified together with (min_interpolation or mag_interpolation).</p>
+</dd>
+</dl>
+<p>min_interpolation (cvcuda.Interp): Interpolation type used for scaling down.
+mag_interpolation (cvcuda.Interp): Interpolation type used for scaling up.
+stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.</p>
+</dd>
+<dt>Returns:</dt><dd><p>nvcv.ImageBatchVarShape: The batch of resized images.</p>
+</dd>
+<dt>Caution:</dt><dd><p>Restrictions to several arguments may apply. Check the C
+API references of the CV-CUDA operator.</p>
+</dd>
+</dl>
+</div></blockquote>
+</li>
+<li><p>hq_resize(src: nvcv.TensorBatch, out_size: list[tuple], <a href="#id5"><span class="problematic" id="id6">*</span></a>, antialias: Optional[bool] = False, roi: Optional[list[tuple]] = None, interpolation: Optional[cvcuda.Interp] = None, min_interpolation: Optional[cvcuda.Interp] = None, mag_interpolation: Optional[cvcuda.Interp] = None, stream: Optional[nvcv.cuda.Stream] = None) -&gt; nvcv.TensorBatch</p>
+<blockquote>
+<div><p>Executes the HQ Resize operation on the given cuda stream. The operator
+supports resampling for 2D (images) and 3D volumetric samples.</p>
+<dl>
+<dt>See also:</dt><dd><p>Refer to the CV-CUDA C API reference for the HQ Resize operator
+for more details and usage examples.</p>
+</dd>
+<dt>Args:</dt><dd><p>src (nvcv.TensorBatch): Input batch containing one or more tensors of (D)HW(C) layout.
+out_size (tuple): Tuple of 2 or 3 ints describing the output shape in (D)HW layout.
+antialias (bool): If set to true, an antialiasing is enabled for scaling down.
+roi (List[Tuple[int]]): Optional bounding boxes describing the input’s region of interest.</p>
+<blockquote>
+<div><p>It should be a list of tuples. The list length must match the number
+of input tensors or be 1 (so that the same ROI is used for all samples).
+Each tuple must be of the form:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>for 2D resampling: (lowH, lowW, highH, highW),</p></li>
+<li><p>for 3D: (lowD, lowH, lowW, highD, highH, highW).</p></li>
+</ul>
+</div></blockquote>
+<p>If, for some axis, the low bound is bigger than the high bound,
+the tensor is flipped across the axis.</p>
+</div></blockquote>
+<dl class="simple">
+<dt>interpolation (cvcuda.Interp): Interpolation type used. Used both for scaling down and up,</dt><dd><p>cannot be specified together with (min_interpolation or mag_interpolation).</p>
+</dd>
+</dl>
+<p>min_interpolation (cvcuda.Interp): Interpolation type used for scaling down.
+mag_interpolation (cvcuda.Interp): Interpolation type used for scaling up.
+stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.</p>
+</dd>
+<dt>Returns:</dt><dd><p>nvcv.TensorBatch: The batch of resized tensors.</p>
+</dd>
+<dt>Caution:</dt><dd><p>Restrictions to several arguments may apply. Check the C
+API references of the CV-CUDA operator.</p>
+</dd>
+</dl>
+</div></blockquote>
+</li>
+</ol>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py">
+<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">hq_resize_into</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span></dt>
+<dd><p>Overloaded function.</p>
+<ol class="arabic">
+<li><p>hq_resize_into(dst: nvcv.Tensor, src: nvcv.Tensor, <a href="#id7"><span class="problematic" id="id8">*</span></a>, antialias: Optional[bool] = False, roi: Optional[tuple] = None, interpolation: Optional[cvcuda.Interp] = None, min_interpolation: Optional[cvcuda.Interp] = None, mag_interpolation: Optional[cvcuda.Interp] = None, stream: Optional[nvcv.cuda.Stream] = None) -&gt; nvcv.Tensor</p>
+<blockquote>
+<div><p>Executes the HQ Resize operation on the given cuda stream. The operator
+supports resampling for 2D (images) and 3D volumetric samples.</p>
+<dl>
+<dt>See also:</dt><dd><p>Refer to the CV-CUDA C API reference for the HQ Resize operator
+for more details and usage examples.</p>
+</dd>
+<dt>Args:</dt><dd><dl class="simple">
+<dt>dst (nvcv.Tensor): Output tensor. It’s layout must match the src tensor.</dt><dd><p>The size of D, H, and W extents may be different. The dst
+type must match the src’s type or be float32.</p>
+</dd>
+<dt>src (nvcv.Tensor): Input tensor containing one or more images.</dt><dd><p>The tensor layout must match: (N)(D)HW(C).</p>
+</dd>
+</dl>
+<p>antialias (bool): If set to true, an antialiasing is enabled for scaling down.
+roi (Tuple[int]): Optional bounding box describing the input’s region of interest.</p>
+<blockquote>
+<div><p>For 2D resampling it should be (lowH, lowW, highH, highW),
+for 3D: (lowD, lowH, lowW, highD, highH, highW).
+If, for some axis, the low bound is bigger than the high bound,
+the image is flipped across the axis.</p>
+</div></blockquote>
+<dl class="simple">
+<dt>interpolation (cvcuda.Interp): Interpolation type used. Used both for scaling down and up,</dt><dd><p>cannot be specified together with (min_interpolation or mag_interpolation).</p>
+</dd>
+</dl>
+<p>min_interpolation (cvcuda.Interp): Interpolation type used for scaling down.
+mag_interpolation (cvcuda.Interp): Interpolation type used for scaling up.
+stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.</p>
+</dd>
+<dt>Returns:</dt><dd><p>nvcv.Tensor: The output tensor.</p>
+</dd>
+<dt>Caution:</dt><dd><p>Restrictions to several arguments may apply. Check the C
+API references of the CV-CUDA operator.</p>
+</dd>
+</dl>
+</div></blockquote>
+</li>
+<li><p>hq_resize_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, <a href="#id9"><span class="problematic" id="id10">*</span></a>, antialias: Optional[bool] = False, roi: Optional[list[tuple]] = None, interpolation: Optional[cvcuda.Interp] = None, min_interpolation: Optional[cvcuda.Interp] = None, mag_interpolation: Optional[cvcuda.Interp] = None, stream: Optional[nvcv.cuda.Stream] = None) -&gt; nvcv.ImageBatchVarShape</p>
+<blockquote>
+<div><p>Executes the HQ Resize operation on the given cuda stream.</p>
+<dl>
+<dt>See also:</dt><dd><p>Refer to the CV-CUDA C API reference for the HQ Resize operator
+for more details and usage examples.</p>
+</dd>
+<dt>Args:</dt><dd><dl class="simple">
+<dt>dst (nvcv.ImageBatchVarShape): Output batch. The layout must match the input batch.</dt><dd><p>The size of D, H, and W extents may be different. The dst
+type must match the src’s type or be float32.</p>
+</dd>
+</dl>
+<p>src (nvcv.ImageBatchVarShape): Input batch of images.
+antialias (bool): If set to true, an antialiasing is enabled for scaling down.
+roi (List[Tuple[int]]): Optional bounding boxes describing the input’s region of interest.</p>
+<blockquote>
+<div><p>It should be a list of tuples. The list length must match the number
+of input tensors or be 1 (so that the same ROI is used for all samples).
+Each tuple must be of the form (lowH, lowW, highH, highW).
+If, for some axis, the low bound is bigger than the high bound,
+the image is flipped across the axis.</p>
+</div></blockquote>
+<dl class="simple">
+<dt>interpolation (cvcuda.Interp): Interpolation type used. Used both for scaling down and up,</dt><dd><p>cannot be specified together with (min_interpolation or mag_interpolation).</p>
+</dd>
+</dl>
+<p>min_interpolation (cvcuda.Interp): Interpolation type used for scaling down.
+mag_interpolation (cvcuda.Interp): Interpolation type used for scaling up.
+stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.</p>
+</dd>
+<dt>Returns:</dt><dd><p>nvcv.ImageBatchVarShape: The batch of resized images.</p>
+</dd>
+<dt>Caution:</dt><dd><p>Restrictions to several arguments may apply. Check the C
+API references of the CV-CUDA operator.</p>
+</dd>
+</dl>
+</div></blockquote>
+</li>
+<li><p>hq_resize_into(dst: nvcv.TensorBatch, src: nvcv.TensorBatch, <a href="#id11"><span class="problematic" id="id12">*</span></a>, antialias: Optional[bool] = False, roi: Optional[list[tuple]] = None, interpolation: Optional[cvcuda.Interp] = None, min_interpolation: Optional[cvcuda.Interp] = None, mag_interpolation: Optional[cvcuda.Interp] = None, stream: Optional[nvcv.cuda.Stream] = None) -&gt; nvcv.TensorBatch</p>
+<blockquote>
+<div><p>Executes the HQ Resize operation on the given cuda stream. The operator
+supports resampling for 2D (images) and 3D volumetric samples.</p>
+<dl>
+<dt>See also:</dt><dd><p>Refer to the CV-CUDA C API reference for the HQ Resize operator
+for more details and usage examples.</p>
+</dd>
+<dt>Args:</dt><dd><dl class="simple">
+<dt>dst (nvcv.TensorBatch): Output batch. The layout must match the input batch.</dt><dd><p>The size of D, H, and W extents may be different. The dst
+type must match the src’s type or be float32.</p>
+</dd>
+</dl>
+<p>src (nvcv.TensorBatch): Input batch containing one or more tensors of (D)HW(C) layout.
+antialias (bool): If set to true, an antialiasing is enabled for scaling down.
+roi (List[Tuple[int]]): Optional bounding boxes describing the input’s region of interest.</p>
+<blockquote>
+<div><p>It should be a list of tuples. The list length must match the number
+of input tensors or be 1 (so that the same ROI is used for all samples).
+Each tuple must be of the form:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>for 2D resampling: (lowH, lowW, highH, highW),</p></li>
+<li><p>for 3D: (lowD, lowH, lowW, highD, highH, highW).</p></li>
+</ul>
+</div></blockquote>
+<p>If, for some axis, the low bound is bigger than the high bound,
+the tensor is flipped across the axis.</p>
+</div></blockquote>
+<dl class="simple">
+<dt>interpolation (cvcuda.Interp): Interpolation type used. Used both for scaling down and up,</dt><dd><p>cannot be specified together with (min_interpolation or mag_interpolation).</p>
+</dd>
+</dl>
+<p>min_interpolation (cvcuda.Interp): Interpolation type used for scaling down.
+mag_interpolation (cvcuda.Interp): Interpolation type used for scaling up.
+stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.</p>
+</dd>
+<dt>Returns:</dt><dd><p>nvcv.TensorBatch: The batch of resized tensors.</p>
+</dd>
+<dt>Caution:</dt><dd><p>Restrictions to several arguments may apply. Check the C
+API references of the CV-CUDA operator.</p>
+</dd>
+</dl>
+</div></blockquote>
+</li>
+</ol>
+</dd></dl>
+
 </section>
 
 
