@@ -16,7 +16,7 @@
 # nvcv_types private implementation
 add_subdirectory(priv)
 
-add_library(nvcv_types SHARED
+add_library(nvcv_types
     Config.cpp
     Version.cpp
     Status.cpp
@@ -49,8 +49,14 @@ target_include_directories(nvcv_types
 )
 
 configure_version(nvcv_types NVCV nvcv ${PROJECT_VERSION})
+
 configure_symbol_versioning(nvcv_types NVCV nvcv_types)
-setup_dso(nvcv_types ${PROJECT_VERSION})
+
+if(BUILD_SHARED_LIBS)
+    setup_dso(nvcv_types ${PROJECT_VERSION})
+else()
+    target_compile_definitions(nvcv_types PRIVATE -DNVCV_STATIC=1)
+endif()
 
 target_compile_definitions(nvcv_types PRIVATE -DNVCV_EXPORTING=1)
 

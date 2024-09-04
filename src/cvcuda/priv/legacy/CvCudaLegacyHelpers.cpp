@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -284,6 +284,8 @@ NVCVStatus TranslateError(legacy::cuda_op::ErrorCode err)
 
     switch (err)
     {
+    case ErrorCode::SUCCESS:
+        return NVCV_SUCCESS;
     case ErrorCode::INVALID_PARAMETER:
     case ErrorCode::INVALID_DATA_FORMAT:
     case ErrorCode::INVALID_DATA_SHAPE:

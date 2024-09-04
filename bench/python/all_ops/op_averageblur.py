@@ -23,6 +23,7 @@ import cvcuda
 
 class OpAverageBlur(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         self.kernel_size = (3, 3)
         self.kernel_anchor = (-1, -1)
 

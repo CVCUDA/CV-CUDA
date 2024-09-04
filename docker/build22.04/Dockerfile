@@ -17,6 +17,7 @@
 
 ARG VER_CUDA=?
 ARG VER_UBUNTU=?
+ARG VER_NUMPY=?
 
 FROM nvidia/cuda:$VER_CUDA-devel-ubuntu$VER_UBUNTU
 
@@ -59,7 +60,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python3 -m pip install sphinx-rtd-theme sphinx==4.5.0
 RUN python3 -m pip install breathe exhale recommonmark graphviz
 # Needed for python sphinx docs and Python wheels
-RUN python3 -m pip install numpy==1.24.1 patchelf==0.17.2.1
+RUN python3 -m pip install numpy patchelf==0.17.2.1
 
 # Python bindings ======================================
 
@@ -72,7 +73,6 @@ RUN ln -sf /usr/share/zoneinfo/US/Pacific /etc/localtime
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-    python3.7-dev python3.7-distutils \
     python3.8-dev python3.8-distutils \
     python3.9-dev python3.9-distutils \
     python3.10-dev python3.10-distutils \

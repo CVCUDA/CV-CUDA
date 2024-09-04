@@ -23,6 +23,7 @@ import cvcuda
 
 class OpResizeDown(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         self.resize_width = 640
         self.resize_height = 420
 
@@ -41,6 +42,7 @@ class OpResizeDown(AbstractOpBase):
 
 class OpResizeUp(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         self.resize_width = 1920
         self.resize_height = 1280
 

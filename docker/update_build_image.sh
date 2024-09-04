@@ -37,11 +37,12 @@ cd "$SDIR"
 
 cd build$VER_UBUNTU
 
-image=$IMAGE_URL_BASE/build-linux:$VER_UBUNTU-$VER_CUDA
+image=$IMAGE_URL_BASE/build-linux:$VER_UBUNTU-$VER_CUDA-$VER_NUMPY
 
 docker build --network=host \
     --build-arg "VER_CUDA=$VER_CUDA" \
     --build-arg "VER_UBUNTU=$VER_UBUNTU" \
+    --build-arg "VER_NUMPY=$VER_NUMPY" \
     . -t "$image"
 
 if [[ $do_push == 1 ]]; then

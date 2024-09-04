@@ -17,6 +17,7 @@
 
 ARG BASE_IMAGE=?
 ARG TAG_IMAGE=?
+ARG VER_NUMPY=?
 
 FROM $BASE_IMAGE:$TAG_IMAGE
 
@@ -59,14 +60,17 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # needed by tests (python3 is python3.10 in ubuntu22.04)
-RUN python3 -m pip install torch==1.13.0 torchvision cupy-cuda11x \
+RUN python3 -m pip install torch==2.4.0 torchvision cupy-cuda11x \
+    numpy==$VER_NUMPY \
     && rm -rf /root/.cache/pip
-RUN python3.8 -m pip install torch==1.13.0 torchvision cupy-cuda11x \
-    numpy sphinx-rtd-theme sphinx breathe exhale recommonmark graphviz \
+RUN python3.8 -m pip install torch==2.4.0 torchvision cupy-cuda11x \
+    numpy sphinx-rtd-theme sphinx breathe exhale recommonmark \
+    graphviz && rm -rf /root/.cache/pip
+RUN python3.9 -m pip install pytest torch==2.4.0 torchvision cupy-cuda11x \
+    numpy==$VER_NUMPY \
     && rm -rf /root/.cache/pip
-RUN python3.9 -m pip install pytest torch==1.13.0 torchvision cupy-cuda11x \
-    && rm -rf /root/.cache/pip
-RUN python3.11 -m pip install --upgrade pytest torch==1.13.0 cupy-cuda11x \
+RUN python3.11 -m pip install --upgrade pytest torch==2.4.0 cupy-cuda11x \
+    numpy==$VER_NUMPY \
     && rm -rf /root/.cache/pip
 
 WORKDIR /cvcuda

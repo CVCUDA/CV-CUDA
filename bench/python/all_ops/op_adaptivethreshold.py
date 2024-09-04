@@ -23,6 +23,7 @@ import cvcuda
 
 class OpAdaptiveThreshold(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         self.maxval = 255.0
         self.adaptive_method = cvcuda.AdaptiveThresholdType.GAUSSIAN_C
         self.threshold_type = cvcuda.ThresholdType.BINARY

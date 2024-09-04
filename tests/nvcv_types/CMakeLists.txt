@@ -44,19 +44,27 @@ include(ExternalProject)
 
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/../../src/nvcv DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/standalone/)
 
+set(NVCV_STANDALONE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/standalone)
+
+set(NVCV_STANDALONE_CMAKE_ARGS
+    -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
+    -DNVCV_DIR=${CMAKE_CURRENT_BINARY_DIR}/standalone/nvcv
+    -DNVCV_ENABLE_INSTALL=OFF
+    -DEXPOSE_CODE=OFF
+    -DWARNINGS_AS_ERRORS=${WARNINGS_AS_ERRORS}
+    -DENABLE_TEGRA=${ENABLE_TEGRA}
+    -DENABLE_COMPAT_OLD_GLIBC=${ENABLE_COMPAT_OLD_GLIBC}
+)
+
 ExternalProject_Add(
     nvcv_standalone
-    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/standalone
-    BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/standalone
+    SOURCE_DIR ${NVCV_STANDALONE_SOURCE_DIR}
+    PREFIX ${CMAKE_CURRENT_BINARY_DIR}/standalone/shared
     INSTALL_COMMAND ""
     CMAKE_ARGS
-        -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
-        -DNVCV_DIR=${CMAKE_CURRENT_BINARY_DIR}/standalone/nvcv
-        -DNVCV_ENABLE_INSTALL=OFF
-        -DEXPOSE_CODE=OFF
-        -DWARNINGS_AS_ERRORS=${WARNINGS_AS_ERRORS}
-        -DENABLE_TEGRA=${ENABLE_TEGRA}
-        -DENABLE_COMPAT_OLD_GLIBC=${ENABLE_COMPAT_OLD_GLIBC}
+        ${NVCV_STANDALONE_CMAKE_ARGS}
+        -DNVCV_BUILD_SHARED_LIBS=ON
+        -DNVCV_EXE=nvcv_test_standalone
 )
 
 add_executable(nvcv_test_standalone IMPORTED)
@@ -66,3 +74,24 @@ set_target_properties(nvcv_test_standalone PROPERTIES
 add_dependencies(nvcv_test_standalone nvcv_standalone)
 
 nvcv_add_test(${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/nvcv_test_standalone nvcv)
+
+# Test NVCV can be build statically via the standalone test
+
+ExternalProject_Add(
+    nvcv_standalone_static
+    SOURCE_DIR ${NVCV_STANDALONE_SOURCE_DIR}
+    PREFIX ${CMAKE_CURRENT_BINARY_DIR}/standalone/static
+    INSTALL_COMMAND ""
+    CMAKE_ARGS
+        ${NVCV_STANDALONE_CMAKE_ARGS}
+        -DNVCV_BUILD_SHARED_LIBS=OFF
+        -DNVCV_EXE=nvcv_test_standalone_static
+)
+
+add_executable(nvcv_test_standalone_static IMPORTED)
+set_target_properties(nvcv_test_standalone_static PROPERTIES
+    IMPORTED_LOCATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/nvcv_test_standalone_static
+)
+add_dependencies(nvcv_test_standalone_static nvcv_standalone_static)
+
+nvcv_add_test(${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/nvcv_test_standalone_static nvcv)

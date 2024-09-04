@@ -24,6 +24,7 @@ import cvcuda
 
 class OpResizeCropConvertReformat(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         resize = 256
         crop = 224
         delta_shape = resize - crop

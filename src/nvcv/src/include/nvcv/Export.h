@@ -34,7 +34,11 @@
 #    endif
 #else
 #    if __GNUC__ >= 4
-#        define NVCV_PUBLIC __attribute__((visibility("default")))
+#        ifdef NVCV_STATIC
+#            define NVCV_PUBLIC __attribute__((visibility("hidden")))
+#        else
+#            define NVCV_PUBLIC __attribute__((visibility("default")))
+#        endif
 #    else
 #        define NVCV_PUBLIC
 #    endif

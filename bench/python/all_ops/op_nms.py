@@ -25,6 +25,7 @@ import os
 
 class OpNMS(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         bboxes = torch.load(
             os.path.join(self.assets_dir, "brooklyn_bboxes.pt"),
             map_location="cuda:%d" % self.device_id,

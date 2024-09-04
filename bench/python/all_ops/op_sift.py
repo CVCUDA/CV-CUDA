@@ -23,6 +23,7 @@ import cvcuda
 
 class OpSIFT(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         self.max_features = 100
         self.num_octave_layers = 3
         self.contrast_threshold = 0.04

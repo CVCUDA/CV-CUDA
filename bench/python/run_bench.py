@@ -20,6 +20,7 @@ import os
 import sys
 import logging
 import cvcuda
+import nvcv
 import torch
 
 from pathlib import Path
@@ -134,6 +135,7 @@ def run_bench(
                     output_dir=output_dir,
                     should_visualize=should_visualize,
                 )
+                torch.cuda.current_stream().synchronize()
                 cvcuda_perf.pop_range()  # For init_op
             except Exception as e:
                 logger.error(
@@ -164,6 +166,11 @@ def run_bench(
                     break
 
             cvcuda_perf.pop_range(delete_range=not success)  # For the run_op
+            # reset the cache limit to not affect other operator benchmarks, in case a benchmark test
+            # changed it
+            if hasattr(nvcv, "set_cache_limit_inbytes"):
+                total = torch.cuda.mem_get_info()[1]
+                nvcv.set_cache_limit_inbytes(total // 2)
 
             # Step 3: log the parameters used by the operator, initialized during the setup call.
             if success:

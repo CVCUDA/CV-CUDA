@@ -24,6 +24,7 @@ import numpy as np
 
 class OpWarpPerspective(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         self.xform = np.array(
             [
                 [3.46153846e-01, 3.33031674e-01, 1.28000000e02],
@@ -48,6 +49,7 @@ class OpWarpPerspective(AbstractOpBase):
 
 class OpWarpPerspectiveInverse(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         self.xform = np.array(
             [
                 [3.46153846e-01, 3.33031674e-01, 1.28000000e02],

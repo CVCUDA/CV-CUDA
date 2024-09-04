@@ -296,7 +296,7 @@ int64_t GetOutputHeight(int64_t height, NVCVColorConversionCode code)
     }
 }
 
-nvcv::TensorShape GetOutputTensorShape(nvcv::TensorShape inputShape, nvcv::ImageFormat outputFormat,
+nvcv::TensorShape GetOutputTensorShape(const nvcv::TensorShape &inputShape, nvcv::ImageFormat outputFormat,
                                        NVCVColorConversionCode code)
 {
     if (inputShape.rank() < 3 || inputShape.rank() > 4)

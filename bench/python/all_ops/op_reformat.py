@@ -23,6 +23,7 @@ import cvcuda
 
 class OpReformatNCHWToNHWC(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         self.input_nchw = cvcuda.reformat(input, "NCHW")
 
     def run(self, input):
@@ -34,7 +35,7 @@ class OpReformatNCHWToNHWC(AbstractOpBase):
 
 class OpReformatNHWCToNCHW(AbstractOpBase):
     def setup(self, input):
-        pass
+        super().setup(input)
 
     def run(self, input):
         return cvcuda.reformat(input, "NCHW")

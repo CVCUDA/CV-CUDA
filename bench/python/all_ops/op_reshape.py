@@ -23,6 +23,7 @@ import cvcuda
 
 class OpReshape(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         self.shape = input.shape[::-1]  # Reverse everything out
 
     def run(self, input):

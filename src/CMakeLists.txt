@@ -21,5 +21,8 @@ if(LTO_ENABLED)
     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION on)
 endif()
 
+# Setting NVCV lib to be a shared lib
+set(NVCV_BUILD_SHARED_LIBS ON)
+
 add_subdirectory(nvcv)
 add_subdirectory(cvcuda)

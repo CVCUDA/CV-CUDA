@@ -26,6 +26,7 @@ import os
 
 class OpBoundingBox(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         self.border_color = (0, 255, 0, 255)
         self.fill_color = (0, 0, 255, 0)
         self.thickness = 5

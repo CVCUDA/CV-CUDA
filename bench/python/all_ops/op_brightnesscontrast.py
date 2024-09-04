@@ -24,6 +24,7 @@ import torch
 
 class OpBrightnessContrast(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         brightness = torch.tensor([1.2]).cuda(self.device_id)
         self.brightness = cvcuda.as_tensor(brightness, "N")
 

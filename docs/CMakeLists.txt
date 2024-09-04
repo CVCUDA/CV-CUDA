@@ -52,8 +52,12 @@ set(C_CPP_API_RST ${SPHINX_SOURCE}/_c_cpp_api)
 set(PY_CVCUDA_API_RST ${SPHINX_SOURCE}/_python_api/_cvcuda_api)
 
 # Start from clean directory for rst files, otherwise build could be affected due to old files
-file(REMOVE_RECURSE ${C_CPP_API_RST}/*)
-file(REMOVE_RECURSE ${PY_CVCUDA_API_RST}/*)
+if(EXISTS ${C_CPP_API_RST})
+        file(REMOVE_RECURSE ${C_CPP_API_RST})
+endif()
+if(EXISTS ${PY_CVCUDA_API_RST})
+        file(REMOVE_RECURSE ${PY_CVCUDA_API_RST})
+endif()
 
 # Generate rst files for groups from doxygen index.xml
 add_custom_target(cvcuda_groups ALL python3 ${SPHINX_SOURCE}/generate_groups.py ${C_CPP_API_RST} ${DOXYGEN_OUTPUT_DIR}/xml
@@ -74,6 +78,7 @@ add_custom_command(OUTPUT ${SPHINX_INDEX_FILE}
                     DEPENDS ${SPHINX_SOURCE}/index.rst
                             cvcuda_doxygen
 		            cvcuda_groups
+                            cvcuda_python_docs
                     MAIN_DEPENDENCY ${SPHINX_SOURCE}/conf.py
                     COMMENT "Generating documentation with Sphinx")
 

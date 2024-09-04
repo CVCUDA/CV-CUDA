@@ -23,6 +23,7 @@ import cvcuda
 
 class OpFlipX(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         self.flip_code = 0  # means flipping around x axis.
 
     def run(self, input):
@@ -31,6 +32,7 @@ class OpFlipX(AbstractOpBase):
 
 class OpFlipY(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         self.flip_code = 1  # means flipping around y axis.
 
     def run(self, input):
@@ -39,6 +41,7 @@ class OpFlipY(AbstractOpBase):
 
 class OpFlipXY(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         self.flip_code = -1  # means flipping around x and y axis.
 
     def run(self, input):

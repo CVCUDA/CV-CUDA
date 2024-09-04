@@ -135,7 +135,7 @@ private:
     Cache();
 
     void    doIterateThroughItems(const std::function<void(CacheItem &item)> &fn) const;
-    int64_t doCurrentSizeInBytes() const;
+    int64_t doGetCurrentSizeInBytes() const;
     int64_t doGetCacheLimit() const;
 };
 

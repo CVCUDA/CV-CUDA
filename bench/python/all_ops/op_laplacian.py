@@ -23,6 +23,7 @@ import cvcuda
 
 class OpLaplacian(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         self.kernel_size = 3
         self.scale = 2.0
 

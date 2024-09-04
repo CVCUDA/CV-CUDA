@@ -26,6 +26,7 @@ import os
 
 class OpComposite(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         data = read_image(os.path.join(self.assets_dir, "brooklyn.jpg"))
         data = data.moveaxis(0, -1).contiguous()  # From CHW to HWC
         data = data.cuda(self.device_id)

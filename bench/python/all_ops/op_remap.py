@@ -25,6 +25,7 @@ import torch
 
 class OpRemap(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         batch_size, width, height = input.shape[0], input.shape[2], input.shape[1]
         batch_map = np.stack([self.flipH(w=width, h=height) for _ in range(batch_size)])
         batch_map = torch.as_tensor(batch_map, device="cuda")

@@ -24,6 +24,7 @@ import nvcv
 
 class OpConvertTo(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         self.target_dtype = nvcv.Type.F32
         self.offset = 10.2
         self.scale = 1 / 255.0

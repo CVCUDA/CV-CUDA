@@ -17,6 +17,7 @@
 
 ARG BASE_IMAGE=?
 ARG TAG_IMAGE=?
+ARG VER_NUMPY=?
 
 FROM $BASE_IMAGE:$TAG_IMAGE
 
@@ -50,14 +51,19 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # needed by tests
-RUN for PYTHON_VERSION in 3.7 3.8 3.9 3.10 3.11; do \
+RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.8 && \
+    python3.8 -m pip install --upgrade pip && \
+    python3.8 -m pip install --upgrade \
+    pytest torch==2.4.0 numpy typing-extensions && \
+    rm -rf /root/.cache/pip;
+
+# Debug: Print the VER_NUMPY value to ensure it is passed correctly
+RUN for PYTHON_VERSION in 3.9 3.10 3.11; do \
     curl -sS https://bootstrap.pypa.io/get-pip.py | python$PYTHON_VERSION && \
     python$PYTHON_VERSION -m pip install --upgrade pip && \
     python$PYTHON_VERSION -m pip install --upgrade \
-    pytest torch==1.13.0 numpy typing-extensions && \
+    pytest torch==2.4.0 numpy==$VER_NUMPY typing-extensions && \
     rm -rf /root/.cache/pip; \
     done
-
-
 
 WORKDIR /cvcuda

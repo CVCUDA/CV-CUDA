@@ -23,6 +23,7 @@ from bench_utils import AbstractOpBase
 
 class OpAsImageFromNVCVImage(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         # dummy run that does not use cache
         img = nvcv.Image((128, 128), nvcv.Format.RGBA8)
 

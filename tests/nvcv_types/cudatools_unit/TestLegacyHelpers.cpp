@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
@@ -64,6 +64,7 @@ NVCV_TEST_SUITE_P(CheckLegacyFormatHelpersInvalid, test::ValueList<legOp::DataFo
 });
 
 // clang-format on
+
 TEST_P(CheckLegacyFormatHelpersInvalid, check_conversion_to_legacy_data_format_invalid)
 {
     int32_t numCh     = GetParamValue<1>();
@@ -87,6 +88,7 @@ NVCV_TEST_SUITE_P(CheckLegacyHelpersDataType, test::ValueList<legOp::DataType, i
 });
 
 // clang-format on
+
 TEST_P(CheckLegacyHelpersDataType, check_conversion_to_legacy_data_type)
 {
     legOp::DataType expect = GetParamValue<0>();
@@ -94,4 +96,137 @@ TEST_P(CheckLegacyHelpersDataType, check_conversion_to_legacy_data_type)
     nvcv::DataKind  kind   = GetParamValue<2>();
 
     EXPECT_EQ(expect, helpers::GetLegacyDataType(bpp, kind));
+}
+
+// clang-format off
+NVCV_TEST_SUITE_P(CheckLegacyHelpersDataTypeInvalid, test::ValueList<int32_t, nvcv::DataKind>
+{
+    {8, nvcv::DataKind::FLOAT},
+    {64, nvcv::DataKind::SIGNED},
+    {64, nvcv::DataKind::UNSIGNED},
+    {32, nvcv::DataKind::COMPLEX},
+    {32, nvcv::DataKind::UNSPECIFIED}
+});
+
+// clang-format on
+
+TEST_P(CheckLegacyHelpersDataTypeInvalid, check_conversion_to_legacy_data_type_invalid)
+{
+    int32_t        bpp  = GetParamValue<0>();
+    nvcv::DataKind kind = GetParamValue<1>();
+    EXPECT_THROW(helpers::GetLegacyDataType(bpp, kind), nvcv::Exception);
+}
+
+TEST(CheckLegacyHelpersDataFormat, check_image_batch_invalid_different_fmt)
+{
+    nvcv::ImageBatchVarShape imgBatch(2);
+    imgBatch.pushBack(nvcv::Image{
+        nvcv::Size2D{24, 24},
+        nvcv::FMT_NV12
+    });
+    imgBatch.pushBack(nvcv::Image{
+        nvcv::Size2D{24, 24},
+        nvcv::FMT_U8
+    });
+    EXPECT_THROW(helpers::GetLegacyDataFormat(imgBatch), nvcv::Exception);
+}
+
+// clang-format off
+NVCV_TEST_SUITE_P(CheckLegacyHelpersDataFormat, test::ValueList<legOp::DataFormat, int32_t, nvcv::ImageFormat>
+{
+    {legOp::DataFormat::kNCHW, 2, nvcv::FMT_RGB8p},
+    {legOp::DataFormat::kCHW, 1, nvcv::FMT_RGB8p},
+    {legOp::DataFormat::kNHWC, 2, nvcv::FMT_RGB8},
+    {legOp::DataFormat::kHWC, 1, nvcv::FMT_RGB8},
+});
+
+// clang-format on
+
+TEST_P(CheckLegacyHelpersDataFormat, check_image_batch_conversion)
+{
+    legOp::DataFormat expect    = GetParamValue<0>();
+    int32_t           batchSize = GetParamValue<1>();
+    nvcv::ImageFormat fmt       = GetParamValue<2>();
+
+    nvcv::ImageBatchVarShape imgBatch(batchSize);
+    for (auto i = 0; i < batchSize; ++i)
+    {
+        imgBatch.pushBack(nvcv::Image{
+            nvcv::Size2D{24, 24},
+            fmt
+        });
+    }
+
+    EXPECT_EQ(helpers::GetLegacyDataFormat(imgBatch), expect);
+}
+
+TEST_P(CheckLegacyHelpersDataFormat, check_image_batch_conversion_exported)
+{
+    legOp::DataFormat expect    = GetParamValue<0>();
+    int32_t           batchSize = GetParamValue<1>();
+    nvcv::ImageFormat fmt       = GetParamValue<2>();
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::ImageBatchVarShape imgBatch(batchSize);
+    for (auto i = 0; i < batchSize; ++i)
+    {
+        imgBatch.pushBack(nvcv::Image{
+            nvcv::Size2D{24, 24},
+            fmt
+        });
+    }
+
+    auto exportedData = imgBatch.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
+
+    EXPECT_EQ(helpers::GetLegacyDataFormat(exportedData.value()), expect);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+// clang-format off
+NVCV_TEST_SUITE_P(CheckLegacyTranslateError, test::ValueList<NVCVStatus, legOp::ErrorCode>
+{
+    {NVCV_SUCCESS, legOp::ErrorCode::SUCCESS},
+    {NVCV_ERROR_INVALID_ARGUMENT, legOp::ErrorCode::INVALID_PARAMETER},
+    {NVCV_ERROR_INVALID_ARGUMENT, legOp::ErrorCode::INVALID_DATA_FORMAT},
+    {NVCV_ERROR_INVALID_ARGUMENT, legOp::ErrorCode::INVALID_DATA_SHAPE},
+    {NVCV_ERROR_INVALID_ARGUMENT, legOp::ErrorCode::INVALID_DATA_TYPE}
+});
+
+// clang-format on
+
+TEST_P(CheckLegacyTranslateError, check_error_conversion)
+{
+    NVCVStatus       expect = GetParamValue<0>();
+    legOp::ErrorCode err    = GetParamValue<1>();
+    EXPECT_EQ(nvcv::util::TranslateError(err), expect);
+}
+
+// clang-format off
+NVCV_TEST_SUITE_P(CheckLegacyToString, test::ValueList<legOp::ErrorCode, std::string, std::string>
+{
+    {legOp::ErrorCode::SUCCESS, "SUCCESS", "Operation executed successfully"},
+    {legOp::ErrorCode::INVALID_PARAMETER, "INVALID_PARAMETER", "Some parameter is outside its acceptable range"},
+    {legOp::ErrorCode::INVALID_DATA_FORMAT, "INVALID_DATA_FORMAT", "Data format is outside its acceptable range"},
+    {legOp::ErrorCode::INVALID_DATA_SHAPE, "INVALID_DATA_SHAPE", "Tensor shape is outside its acceptable range"},
+    {legOp::ErrorCode::INVALID_DATA_TYPE, "INVALID_DATA_TYPE", "Data type is outside its acceptable range"}
+});
+
+// clang-format on
+
+TEST_P(CheckLegacyToString, check_error_to_string_conversion)
+{
+    legOp::ErrorCode err               = GetParamValue<0>();
+    std::string      expectedErrorName = GetParamValue<1>();
+    std::string      expectedDescr     = GetParamValue<2>();
+
+    char        bufferDesc[256];
+    const char *bufferDescPtr = bufferDesc;
+    const char *buffer        = nvcv::util::ToString(err, &bufferDescPtr);
+
+    EXPECT_STREQ(bufferDescPtr, expectedDescr.c_str());
+    EXPECT_STREQ(buffer, expectedErrorName.c_str());
 }

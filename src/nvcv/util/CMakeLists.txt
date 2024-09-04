@@ -16,7 +16,7 @@
 find_package(CUDAToolkit REQUIRED)
 
 # nvcv_util_sanitizer ---------------------------------
-add_library(nvcv_util_sanitizer
+add_library(nvcv_util_sanitizer STATIC
     SanitizerOptions.c
 )
 
@@ -176,7 +176,7 @@ target_include_directories(nvcv_util_symver
 )
 
 # nvcv_util ---------------------------------
-add_library(nvcv_util
+add_library(nvcv_util STATIC
     Assert.cpp
     CheckError.cpp
     String.cpp
