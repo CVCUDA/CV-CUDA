@@ -24,6 +24,7 @@ import torch
 
 class OpNormalize(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         mean_tensor = (
             torch.Tensor([0.485, 0.456, 0.406]).reshape(1, 1, 1, 3).cuda(self.device_id)
         )

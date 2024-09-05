@@ -29,11 +29,15 @@ endif()
 
 add_subdirectory(${NVCV_DIR} nvcv_dir)
 
-add_executable(nvcv_test_standalone
+if(NOT NVCV_EXE)
+    message(FATAL_ERROR "NVCV_EXE is empty!  NVCV executable must be given.")
+endif()
+
+add_executable(${NVCV_EXE}
     TestNVCVStandalone.cpp
 )
 
-target_link_libraries(nvcv_test_standalone
+target_link_libraries(${NVCV_EXE}
     PUBLIC
         nvcv_types
         GTest::gtest_main

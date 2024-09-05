@@ -70,5 +70,5 @@ docker run --gpus=all --net=host --pull always -ti \
     -v /var/tmp:/var/tmp \
     -v $SDIR/..:$HOME/cvcuda \
     $extra_args \
-    $IMAGE_URL_BASE/devel-linux:$VER_UBUNTU-$VER_CUDA \
+    $IMAGE_URL_BASE/devel-linux:$VER_UBUNTU-$VER_CUDA-$VER_NUMPY \
     /usr/bin/bash -c "mkdir -p $HOME && chown $USER:$USER $HOME && su - $USER -c \"$extra_cmds\" && su - $USER"

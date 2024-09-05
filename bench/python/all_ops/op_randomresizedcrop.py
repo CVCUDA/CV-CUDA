@@ -23,6 +23,7 @@ import cvcuda
 
 class OpRandomResizedCrop(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         self.resized_shape = (input.shape[0], 320, 580, 3)
         self.min_scale = 0.08
         self.max_scale = 1.0

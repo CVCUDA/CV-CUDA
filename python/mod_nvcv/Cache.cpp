@@ -85,6 +85,7 @@ struct Cache::Impl
     std::mutex mtx;
     Items      items;
     int64_t    cache_limit_inbytes;
+    int64_t    current_size_inbytes = 0;
 };
 
 Cache::Cache()
@@ -102,12 +103,15 @@ void Cache::add(CacheItem &item)
             return;
         }
 
-        if (item.GetSizeInBytes() + doCurrentSizeInBytes() > doGetCacheLimit())
+        if (item.GetSizeInBytes() + doGetCurrentSizeInBytes() > doGetCacheLimit())
         {
-            savedItems = std::move(pimpl->items);
+            // we clear the cache: all pimpl->items will be dtor'ed at the end of scope of savedItems and cache size will be reset to 0
+            savedItems                  = std::move(pimpl->items);
+            pimpl->current_size_inbytes = 0;
         }
 
         pimpl->items.emplace(&item.key(), item.shared_from_this());
+        pimpl->current_size_inbytes += item.GetSizeInBytes();
     }
 }
 
@@ -138,6 +142,7 @@ void Cache::removeAllNotInUseMatching(const IKey &key)
             if (!it->second->isInUse())
             {
                 holdItemsUntilMtxUnlocked.push_back(it->second);
+                pimpl->current_size_inbytes -= it->second->GetSizeInBytes();
                 pimpl->items.erase(it++);
             }
             else
@@ -202,11 +207,12 @@ std::shared_ptr<CacheItem> Cache::fetchOne(const IKey &key) const
 
 void Cache::clear()
 {
-    Items                        savedItems;
-    std::unique_lock<std::mutex> lk(pimpl->mtx);
-    savedItems = std::move(pimpl->items);
-    lk.unlock();
-    savedItems.clear();
+    Items savedItems;
+    {
+        std::unique_lock<std::mutex> lk(pimpl->mtx);
+        savedItems                  = std::move(pimpl->items);
+        pimpl->current_size_inbytes = 0;
+    }
 }
 
 size_t Cache::size() const
@@ -236,9 +242,11 @@ void Cache::setCacheLimit(int64_t new_cache_limit_inbytes)
     Items savedItems;
     {
         std::unique_lock<std::mutex> lk(pimpl->mtx);
-        if (doCurrentSizeInBytes() > new_cache_limit_inbytes)
+        if (doGetCurrentSizeInBytes() > new_cache_limit_inbytes)
         {
-            savedItems = std::move(pimpl->items);
+            // we clear the cache: all pimpl->items will be dtor'ed at the end of scope of savedItems and cache size will be reset to 0
+            savedItems                  = std::move(pimpl->items);
+            pimpl->current_size_inbytes = 0;
         }
         pimpl->cache_limit_inbytes = new_cache_limit_inbytes;
     }
@@ -258,19 +266,12 @@ int64_t Cache::doGetCacheLimit() const
 int64_t Cache::getCurrentSizeInBytes()
 {
     std::unique_lock<std::mutex> lk(pimpl->mtx);
-    return doCurrentSizeInBytes();
+    return doGetCurrentSizeInBytes();
 }
 
-int64_t Cache::doCurrentSizeInBytes() const
+int64_t Cache::doGetCurrentSizeInBytes() const
 {
-    int64_t current_size_inbytes = 0;
-
-    for (auto it = pimpl->items.begin(); it != pimpl->items.end(); ++it)
-    {
-        current_size_inbytes += it->second->GetSizeInBytes();
-    }
-
-    return current_size_inbytes;
+    return pimpl->current_size_inbytes;
 }
 
 void Cache::doIterateThroughItems(const std::function<void(CacheItem &item)> &fn) const

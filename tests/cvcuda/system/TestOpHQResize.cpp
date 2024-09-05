@@ -20,6 +20,7 @@
 #include <common/TypedTests.hpp>
 #include <cvcuda/OpHQResize.hpp>
 #include <cvcuda/cuda_tools/DropCast.hpp>
+#include <cvcuda/cuda_tools/MathWrappers.hpp>
 #include <cvcuda/cuda_tools/StaticCast.hpp>
 #include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/Image.hpp>
@@ -45,12 +46,29 @@ using uniform_distribution
 
 namespace baseline {
 
-template<typename Cb>
-void ForAll(int2 shape, Cb &&cb)
+template<int kSpatialNDim>
+struct Roi
 {
-    for (int y = 0; y < shape.y; y++)
+    using ShapeT = cuda::MakeType<int, kSpatialNDim>;
+    ShapeT origin;
+    ShapeT shape;
+};
+
+template<int kSpatialNDim>
+Roi<kSpatialNDim> FullRoi(typename Roi<kSpatialNDim>::ShapeT shape)
+{
+    Roi<kSpatialNDim> roi;
+    roi.origin = decltype(roi.origin){0};
+    roi.shape  = shape;
+    return roi;
+}
+
+template<typename Cb>
+void ForAllInRoi(Roi<2> roi, Cb &&cb)
+{
+    for (int y = roi.origin.y; y < roi.origin.y + roi.shape.y; y++)
     {
-        for (int x = 0; x < shape.x; x++)
+        for (int x = roi.origin.x; x < roi.origin.x + roi.shape.x; x++)
         {
             cb(int2{x, y});
         }
@@ -58,16 +76,18 @@ void ForAll(int2 shape, Cb &&cb)
 }
 
 template<typename Cb>
-void ForAll(int3 shape, Cb &&cb)
+void ForAllInRoi(Roi<3> roi, Cb &&cb)
 {
-    for (int z = 0; z < shape.z; z++)
-        for (int y = 0; y < shape.y; y++)
+    for (int z = roi.origin.z; z < roi.origin.z + roi.shape.z; z++)
+    {
+        for (int y = roi.origin.y; y < roi.origin.y + roi.shape.y; y++)
         {
-            for (int x = 0; x < shape.x; x++)
+            for (int x = roi.origin.x; x < roi.origin.x + roi.shape.x; x++)
             {
                 cb(int3{x, y, z});
             }
         }
+    }
 }
 
 template<typename BT, int kSpatialNDim>
@@ -88,7 +108,7 @@ struct CpuSample
 
     BT &get(int sampleIdx, const ShapeT idx, int channel)
     {
-        return *(reinterpret_cast<BT *>(m_data.data() + offset(sampleIdx, idx)) + channel);
+        return *(reinterpret_cast<BT *>(data() + offset(sampleIdx, idx)) + channel);
     }
 
     uint8_t *data()
@@ -268,7 +288,8 @@ private:
 };
 
 template<typename OutBT, typename InBT, int kSpatialNDim>
-void RunNN(int axis, CpuSample<OutBT, kSpatialNDim> &outTensorCpu, CpuSample<InBT, kSpatialNDim> &inTensorCpu)
+void RunNN(int axis, CpuSample<OutBT, kSpatialNDim> &outTensorCpu, CpuSample<InBT, kSpatialNDim> &inTensorCpu,
+           Roi<kSpatialNDim> roi)
 {
     const int   numSamples  = inTensorCpu.numSamples();
     const int   numChannels = inTensorCpu.numChannels();
@@ -280,24 +301,25 @@ void RunNN(int axis, CpuSample<OutBT, kSpatialNDim> &outTensorCpu, CpuSample<InB
     const float axisOrigin  = 0.5f * axisScale;
     for (int sampleIdx = 0; sampleIdx < numSamples; sampleIdx++)
     {
-        ForAll(outShape,
-               [&](const cuda::MakeType<int, kSpatialNDim> outIdx)
-               {
-                   auto inIdx                    = outIdx;
-                   int  inAxis                   = std::floor(cuda::GetElement(outIdx, axis) * axisScale + axisOrigin);
-                   inAxis                        = inAxis < 0 ? 0 : (inAxis > inSize - 1 ? inSize - 1 : inAxis);
-                   cuda::GetElement(inIdx, axis) = inAxis;
-                   for (int c = 0; c < numChannels; c++)
-                   {
-                       outTensorCpu.get(sampleIdx, outIdx, c)
-                           = cuda::SaturateCast<OutBT>(inTensorCpu.get(sampleIdx, inIdx, c));
-                   }
-               });
+        ForAllInRoi(roi,
+                    [&](const cuda::MakeType<int, kSpatialNDim> outIdx)
+                    {
+                        auto inIdx  = outIdx;
+                        int  inAxis = std::floor(cuda::GetElement(outIdx, axis) * axisScale + axisOrigin);
+                        inAxis      = inAxis < 0 ? 0 : (inAxis > inSize - 1 ? inSize - 1 : inAxis);
+                        cuda::GetElement(inIdx, axis) = inAxis;
+                        for (int c = 0; c < numChannels; c++)
+                        {
+                            outTensorCpu.get(sampleIdx, outIdx, c)
+                                = cuda::SaturateCast<OutBT>(inTensorCpu.get(sampleIdx, inIdx, c));
+                        }
+                    });
     }
 }
 
 template<typename OutBT, typename InBT, int kSpatialNDim>
-void RunLinear(int axis, CpuSample<OutBT, kSpatialNDim> &outTensorCpu, CpuSample<InBT, kSpatialNDim> &inTensorCpu)
+void RunLinear(int axis, CpuSample<OutBT, kSpatialNDim> &outTensorCpu, CpuSample<InBT, kSpatialNDim> &inTensorCpu,
+               Roi<kSpatialNDim> roi)
 {
     const int   numSamples  = inTensorCpu.numSamples();
     const int   numChannels = inTensorCpu.numChannels();
@@ -309,33 +331,33 @@ void RunLinear(int axis, CpuSample<OutBT, kSpatialNDim> &outTensorCpu, CpuSample
     const float axisOrigin  = 0.5f * axisScale - 0.5f;
     for (int sampleIdx = 0; sampleIdx < numSamples; sampleIdx++)
     {
-        ForAll(outShape,
-               [&](const cuda::MakeType<int, kSpatialNDim> outIdx)
-               {
-                   const float inAxis0f           = cuda::GetElement(outIdx, axis) * axisScale + axisOrigin;
-                   int         inAxis0            = std::floor(inAxis0f);
-                   int         inAxis1            = inAxis0 + 1;
-                   const float q                  = inAxis0f - inAxis0;
-                   inAxis0                        = inAxis0 < 0 ? 0 : (inAxis0 > inSize - 1 ? inSize - 1 : inAxis0);
-                   inAxis1                        = inAxis1 < 0 ? 0 : (inAxis1 > inSize - 1 ? inSize - 1 : inAxis1);
-                   auto inIdx0                    = outIdx;
-                   auto inIdx1                    = outIdx;
-                   cuda::GetElement(inIdx0, axis) = inAxis0;
-                   cuda::GetElement(inIdx1, axis) = inAxis1;
-                   for (int c = 0; c < numChannels; c++)
-                   {
-                       const float a                          = inTensorCpu.get(sampleIdx, inIdx0, c);
-                       const float b                          = inTensorCpu.get(sampleIdx, inIdx1, c);
-                       const float tmp                        = b - a;
-                       outTensorCpu.get(sampleIdx, outIdx, c) = cuda::SaturateCast<OutBT>(std::fmaf(tmp, q, a));
-                   }
-               });
+        ForAllInRoi(roi,
+                    [&](const cuda::MakeType<int, kSpatialNDim> outIdx)
+                    {
+                        const float inAxis0f = cuda::GetElement(outIdx, axis) * axisScale + axisOrigin;
+                        int         inAxis0  = std::floor(inAxis0f);
+                        int         inAxis1  = inAxis0 + 1;
+                        const float q        = inAxis0f - inAxis0;
+                        inAxis0              = inAxis0 < 0 ? 0 : (inAxis0 > inSize - 1 ? inSize - 1 : inAxis0);
+                        inAxis1              = inAxis1 < 0 ? 0 : (inAxis1 > inSize - 1 ? inSize - 1 : inAxis1);
+                        auto inIdx0          = outIdx;
+                        auto inIdx1          = outIdx;
+                        cuda::GetElement(inIdx0, axis) = inAxis0;
+                        cuda::GetElement(inIdx1, axis) = inAxis1;
+                        for (int c = 0; c < numChannels; c++)
+                        {
+                            const float a                          = inTensorCpu.get(sampleIdx, inIdx0, c);
+                            const float b                          = inTensorCpu.get(sampleIdx, inIdx1, c);
+                            const float tmp                        = b - a;
+                            outTensorCpu.get(sampleIdx, outIdx, c) = cuda::SaturateCast<OutBT>(std::fmaf(tmp, q, a));
+                        }
+                    });
     }
 }
 
 template<typename OutBT, typename InBT, typename FilterT, int kSpatialNDim>
 void RunFilter(int axis, CpuSample<OutBT, kSpatialNDim> &outTensorCpu, CpuSample<InBT, kSpatialNDim> &inTensorCpu,
-               const FilterT &filter)
+               const FilterT &filter, Roi<kSpatialNDim> roi)
 {
     const int   numSamples    = inTensorCpu.numSamples();
     const int   numChannels   = inTensorCpu.numChannels();
@@ -350,36 +372,36 @@ void RunFilter(int axis, CpuSample<OutBT, kSpatialNDim> &outTensorCpu, CpuSample
 
     for (int sampleIdx = 0; sampleIdx < numSamples; sampleIdx++)
     {
-        ForAll(outShape,
-               [&](const cuda::MakeType<int, kSpatialNDim> outIdx)
-               {
-                   const float inAxis0f = cuda::GetElement(outIdx, axis) * axisScale + axisOrigin;
-                   int         inAxis0  = std::ceil(inAxis0f);
-                   const float fStart   = (inAxis0 - inAxis0f) * filterStep;
-                   for (int c = 0; c < numChannels; c++)
-                   {
-                       float tmp  = 0;
-                       float norm = 0;
-                       for (int k = 0; k < filterSupport; k++)
-                       {
-                           int inAxis                    = inAxis0 + k;
-                           inAxis                        = inAxis < 0 ? 0 : (inAxis > inSize - 1 ? inSize - 1 : inAxis);
-                           auto inIdx                    = outIdx;
-                           cuda::GetElement(inIdx, axis) = inAxis;
-                           const InBT inVal              = inTensorCpu.get(sampleIdx, inIdx, c);
-                           float      coeff              = filter(fStart + k * filterStep);
-                           tmp                           = std::fmaf(inVal, coeff, tmp);
-                           norm += coeff;
-                       }
-                       outTensorCpu.get(sampleIdx, outIdx, c) = cuda::SaturateCast<OutBT>(tmp / norm);
-                   }
-               });
+        ForAllInRoi(roi,
+                    [&](const cuda::MakeType<int, kSpatialNDim> outIdx)
+                    {
+                        const float inAxis0f = cuda::GetElement(outIdx, axis) * axisScale + axisOrigin;
+                        int         inAxis0  = std::ceil(inAxis0f);
+                        const float fStart   = (inAxis0 - inAxis0f) * filterStep;
+                        for (int c = 0; c < numChannels; c++)
+                        {
+                            float tmp  = 0;
+                            float norm = 0;
+                            for (int k = 0; k < filterSupport; k++)
+                            {
+                                int inAxis = inAxis0 + k;
+                                inAxis     = inAxis < 0 ? 0 : (inAxis > inSize - 1 ? inSize - 1 : inAxis);
+                                auto inIdx = outIdx;
+                                cuda::GetElement(inIdx, axis) = inAxis;
+                                const InBT inVal              = inTensorCpu.get(sampleIdx, inIdx, c);
+                                float      coeff              = filter(fStart + k * filterStep);
+                                tmp                           = std::fmaf(inVal, coeff, tmp);
+                                norm += coeff;
+                            }
+                            outTensorCpu.get(sampleIdx, outIdx, c) = cuda::SaturateCast<OutBT>(tmp / norm);
+                        }
+                    });
     }
 }
 
 template<typename OutBT, typename InBT, int kSpatialNDim>
 void RunFilter(int axis, CpuSample<OutBT, kSpatialNDim> &outTensorCpu, CpuSample<InBT, kSpatialNDim> &inTensorCpu,
-               const NVCVInterpolationType interpolation, bool antialias)
+               const NVCVInterpolationType interpolation, bool antialias, Roi<kSpatialNDim> roi)
 {
     const auto  inShape  = inTensorCpu.shape();
     const auto  outShape = outTensorCpu.shape();
@@ -391,28 +413,28 @@ void RunFilter(int axis, CpuSample<OutBT, kSpatialNDim> &outTensorCpu, CpuSample
     {
         float radius  = antialias ? inSize / outSize : 1;
         float support = std::max(1.0f, 2 * radius);
-        RunFilter(axis, outTensorCpu, inTensorCpu, Filter<FilterTriangular>{support});
+        RunFilter(axis, outTensorCpu, inTensorCpu, Filter<FilterTriangular>{support}, roi);
     }
     break;
     case NVCV_INTERP_CUBIC:
     {
         float radius  = antialias ? (2 * inSize / outSize) : 2;
         float support = std::max(4.0f, 2 * radius);
-        RunFilter(axis, outTensorCpu, inTensorCpu, Filter<FilterCubic>{support});
+        RunFilter(axis, outTensorCpu, inTensorCpu, Filter<FilterCubic>{support}, roi);
     }
     break;
     case NVCV_INTERP_GAUSSIAN:
     {
         float radius  = antialias ? inSize / outSize : 1;
         float support = std::max(1.0f, 2 * radius);
-        RunFilter(axis, outTensorCpu, inTensorCpu, Filter<FilterGaussian>{support});
+        RunFilter(axis, outTensorCpu, inTensorCpu, Filter<FilterGaussian>{support}, roi);
     }
     break;
     case NVCV_INTERP_LANCZOS:
     {
         float radius  = antialias ? (3 * inSize / outSize) : 3;
         float support = std::max(6.0f, 2 * radius);
-        RunFilter(axis, outTensorCpu, inTensorCpu, Filter<FilterLanczos>{support});
+        RunFilter(axis, outTensorCpu, inTensorCpu, Filter<FilterLanczos>{support}, roi);
     }
     break;
     default:
@@ -422,7 +444,8 @@ void RunFilter(int axis, CpuSample<OutBT, kSpatialNDim> &outTensorCpu, CpuSample
 
 template<typename OutBT, typename InBT, int kSpatialNDim>
 void RunPass(int axis, CpuSample<OutBT, kSpatialNDim> &outTensorCpu, CpuSample<InBT, kSpatialNDim> &inTensorCpu,
-             const NVCVInterpolationType minInterpolation, const NVCVInterpolationType magInterpolation, bool antialias)
+             const NVCVInterpolationType minInterpolation, const NVCVInterpolationType magInterpolation, bool antialias,
+             Roi<kSpatialNDim> roi)
 
 {
     const auto inShape       = inTensorCpu.shape();
@@ -435,63 +458,80 @@ void RunPass(int axis, CpuSample<OutBT, kSpatialNDim> &outTensorCpu, CpuSample<I
     switch (interpolation)
     {
     case NVCV_INTERP_NEAREST:
-        RunNN(axis, outTensorCpu, inTensorCpu);
+        RunNN(axis, outTensorCpu, inTensorCpu, roi);
         break;
     case NVCV_INTERP_LINEAR:
     {
         if (antialias)
         {
-            RunFilter(axis, outTensorCpu, inTensorCpu, interpolation, antialias);
+            RunFilter(axis, outTensorCpu, inTensorCpu, interpolation, antialias, roi);
         }
         else
         {
-            RunLinear(axis, outTensorCpu, inTensorCpu);
+            RunLinear(axis, outTensorCpu, inTensorCpu, roi);
         }
     }
     break;
     default:
-        RunFilter(axis, outTensorCpu, inTensorCpu, interpolation, antialias);
+        RunFilter(axis, outTensorCpu, inTensorCpu, interpolation, antialias, roi);
         break;
     }
 }
 
 template<typename OutBT, typename InBT>
 void Resize(CpuSample<OutBT, 2> &refTensorCpu, CpuSample<InBT, 2> &inTensorCpu,
-            const NVCVInterpolationType minInterpolation, const NVCVInterpolationType magInterpolation, bool antialias)
+            const NVCVInterpolationType minInterpolation, const NVCVInterpolationType magInterpolation, bool antialias,
+            std::optional<Roi<2>> inRoiArg = std::nullopt, std::optional<Roi<2>> outRoiArg = std::nullopt)
 {
-    int        numSamples         = inTensorCpu.numSamples();
-    int        numChannels        = inTensorCpu.numChannels();
-    const int2 inShape            = inTensorCpu.shape();
-    const int2 outShape           = refTensorCpu.shape();
-    const int2 interShape         = {outShape.x, inShape.y};
-    auto       intermediateTensor = GetIntermediate(numSamples, interShape, numChannels);
-    RunPass(0, intermediateTensor, inTensorCpu, minInterpolation, magInterpolation, antialias);
-    RunPass(1, refTensorCpu, intermediateTensor, minInterpolation, magInterpolation, antialias);
+    int        numSamples  = inTensorCpu.numSamples();
+    int        numChannels = inTensorCpu.numChannels();
+    const int2 inShape     = inTensorCpu.shape();
+    const int2 outShape    = refTensorCpu.shape();
+    const int2 interShape  = {outShape.x, inShape.y};
+    Roi<2>     inRoi       = inRoiArg.value_or(FullRoi<2>(inShape));
+    Roi<2>     outRoi      = outRoiArg.value_or(FullRoi<2>(outShape));
+    auto       interRoi    = Roi<2>(int2(outRoi.origin.x, inRoi.origin.y), int2(outRoi.shape.x, inRoi.shape.y));
+
+    auto intermediateTensor = GetIntermediate(numSamples, interShape, numChannels);
+    RunPass(0, intermediateTensor, inTensorCpu, minInterpolation, magInterpolation, antialias, interRoi);
+    RunPass(1, refTensorCpu, intermediateTensor, minInterpolation, magInterpolation, antialias, outRoi);
 }
 
 template<typename OutBT, typename InBT>
 void Resize(CpuSample<OutBT, 3> &refTensorCpu, CpuSample<InBT, 3> &inTensorCpu,
-            const NVCVInterpolationType minInterpolation, const NVCVInterpolationType magInterpolation, bool antialias)
+            const NVCVInterpolationType minInterpolation, const NVCVInterpolationType magInterpolation, bool antialias,
+            std::optional<Roi<3>> inRoiArg = std::nullopt, std::optional<Roi<3>> outRoiArg = std::nullopt)
 {
-    int        numSamples          = inTensorCpu.numSamples();
-    int        numChannels         = inTensorCpu.numChannels();
-    const int3 inShape             = inTensorCpu.shape();
-    const int3 outShape            = refTensorCpu.shape();
-    const int3 interShape0         = {outShape.x, inShape.y, inShape.z};
-    const int3 interShape1         = {outShape.x, outShape.y, inShape.z};
-    auto       intermediateTensor0 = GetIntermediate(numSamples, interShape0, numChannels);
-    RunPass(0, intermediateTensor0, inTensorCpu, minInterpolation, magInterpolation, antialias);
+    int        numSamples  = inTensorCpu.numSamples();
+    int        numChannels = inTensorCpu.numChannels();
+    const int3 inShape     = inTensorCpu.shape();
+    const int3 outShape    = refTensorCpu.shape();
+    const int3 interShape0 = {outShape.x, inShape.y, inShape.z};
+    const int3 interShape1 = {outShape.x, outShape.y, inShape.z};
+    Roi<3>     inRoi       = inRoiArg.value_or(FullRoi<3>(inShape));
+    Roi<3>     outRoi      = outRoiArg.value_or(FullRoi<3>(outShape));
+    auto       interRoi0   = Roi<3>{
+                int3{outRoi.origin.x, inRoi.origin.y, inRoi.origin.z},
+                int3{ outRoi.shape.x,  inRoi.shape.y,  inRoi.shape.z}
+    };
+    auto interRoi1 = Roi<3>(int3{outRoi.origin.x, outRoi.origin.y, inRoi.origin.z},
+                            int3{outRoi.shape.x, outRoi.shape.y, inRoi.shape.z});
+
+    auto intermediateTensor0 = GetIntermediate(numSamples, interShape0, numChannels);
+    RunPass(0, intermediateTensor0, inTensorCpu, minInterpolation, magInterpolation, antialias, interRoi0);
     auto intermediateTensor1 = GetIntermediate(numSamples, interShape1, numChannels);
-    RunPass(1, intermediateTensor1, intermediateTensor0, minInterpolation, magInterpolation, antialias);
-    RunPass(2, refTensorCpu, intermediateTensor1, minInterpolation, magInterpolation, antialias);
+    RunPass(1, intermediateTensor1, intermediateTensor0, minInterpolation, magInterpolation, antialias, interRoi1);
+    RunPass(2, refTensorCpu, intermediateTensor1, minInterpolation, magInterpolation, antialias, outRoi);
 }
 
 template<typename InBT, typename BT, int kSpatialNDim>
-void Compare(CpuSample<BT, kSpatialNDim> &tensor, CpuSample<BT, kSpatialNDim> &refTensor, bool antialias)
+void Compare(CpuSample<BT, kSpatialNDim> &tensor, CpuSample<BT, kSpatialNDim> &refTensor, bool antialias,
+             std::optional<Roi<kSpatialNDim>> roi_arg = std::nullopt)
 {
     int        numSamples  = tensor.numSamples();
     int        numChannels = tensor.numChannels();
     const auto shape       = tensor.shape();
+    const auto roi         = roi_arg.value_or(FullRoi<kSpatialNDim>(shape));
     ASSERT_EQ(numSamples, refTensor.numSamples());
     ASSERT_EQ(numChannels, refTensor.numChannels());
     ASSERT_EQ(shape, refTensor.shape());
@@ -499,33 +539,33 @@ void Compare(CpuSample<BT, kSpatialNDim> &tensor, CpuSample<BT, kSpatialNDim> &r
     int64_t vol = 0;
     for (int sampleIdx = 0; sampleIdx < numSamples; sampleIdx++)
     {
-        ForAll(shape,
-               [&](const cuda::MakeType<int, kSpatialNDim> idx)
-               {
-                   for (int c = 0; c < numChannels; c++)
-                   {
-                       const BT val    = tensor.get(sampleIdx, idx, c);
-                       const BT refVal = refTensor.get(sampleIdx, idx, c);
-                       err += abs(val - refVal);
-                       vol += 1;
+        ForAllInRoi(roi,
+                    [&](const cuda::MakeType<int, kSpatialNDim> idx)
+                    {
+                        for (int c = 0; c < numChannels; c++)
+                        {
+                            const BT val    = tensor.get(sampleIdx, idx, c);
+                            const BT refVal = refTensor.get(sampleIdx, idx, c);
+                            err += abs(val - refVal);
+                            vol += 1;
 
-                       if (std::is_integral_v<BT>) // uchar -> uchar, short -> short, ushort -> ushort
-                       {
-                           ASSERT_NEAR(val, refVal, (std::is_same_v<BT, uchar> ? 1 : 10)); // uchar : short, ushort
-                       }
-                       else // output type is float
-                       {
-                           if (!std::is_integral_v<InBT>) // float -> float
-                           {
-                               ASSERT_NEAR(val, refVal, 1e-4);
-                           }
-                           else // [uchar, short, ushort] -> float
-                           {
-                               ASSERT_NEAR(val, refVal, (std::is_same_v<BT, uchar> ? 0.1 : 6));
-                           }
-                       }
-                   }
-               });
+                            if (std::is_integral_v<BT>) // uchar -> uchar, short -> short, ushort -> ushort
+                            {
+                                ASSERT_NEAR(val, refVal, (std::is_same_v<BT, uchar> ? 1 : 10)); // uchar : short, ushort
+                            }
+                            else // output type is float
+                            {
+                                if (!std::is_integral_v<InBT>) // float -> float
+                                {
+                                    ASSERT_NEAR(val, refVal, 1e-4);
+                                }
+                                else // [uchar, short, ushort] -> float
+                                {
+                                    ASSERT_NEAR(val, refVal, (std::is_same_v<BT, uchar> ? 0.1 : 6));
+                                }
+                            }
+                        }
+                    });
     }
     double mean_err = err / vol;
     ASSERT_LE(mean_err, antialias ? 0.1 : 0.4);
@@ -662,6 +702,18 @@ void TestTensor(bool antialias)
     nvcv::Tensor inTensor  = CreateTensorHelper(inDtype, "NHWC", numSamples, inShape.y, inShape.x, numChannels);
     nvcv::Tensor outTensor = CreateTensorHelper(outDtype, "NHWC", numSamples, outShape.y, outShape.x, numChannels);
 
+    baseline::Roi<2> inRoi  = baseline::FullRoi<2>(inShape);
+    baseline::Roi<2> outRoi = baseline::FullRoi<2>(outShape);
+    if (inShape.x * inShape.y > 1 << 23)
+    {
+        inRoi.shape  = cuda::min(inShape, int2{1 << 12, 1 << 11});
+        inRoi.origin = inShape - inRoi.shape;
+
+        double2 scale = cuda::StaticCast<double>(outShape) / cuda::StaticCast<double>(inShape);
+        outRoi.shape  = cuda::StaticCast<int>(scale * cuda::StaticCast<double>(inRoi.shape));
+        outRoi.origin = cuda::StaticCast<int>(scale * cuda::StaticCast<double>(inRoi.origin));
+    }
+
     auto inData  = inTensor.exportData<nvcv::TensorDataStridedCuda>();
     auto outData = outTensor.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_TRUE(inData && outData);
@@ -690,16 +742,14 @@ void TestTensor(bool antialias)
 
     for (int sampleIdx = 0; sampleIdx < numSamples; sampleIdx++)
     {
-        for (int y = 0; y < inShape.y; y++)
-        {
-            for (int x = 0; x < inShape.x; x++)
-            {
-                for (int c = 0; c < numChannels; c++)
-                {
-                    inTensorCpu.get(sampleIdx, int2{x, y}, c) = rand(rng);
-                }
-            }
-        }
+        baseline::ForAllInRoi(inRoi,
+                              [&](int2 idx)
+                              {
+                                  for (int c = 0; c < numChannels; c++)
+                                  {
+                                      inTensorCpu.get(sampleIdx, idx, c) = rand(rng);
+                                  }
+                              });
     }
 
     cvcuda::HQResize        op;
@@ -725,9 +775,9 @@ void TestTensor(bool antialias)
     ASSERT_NO_THROW(op(stream, ws.get(), inTensor, outTensor, interpolation, interpolation, antialias));
     ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(outTensorCpu.data(), outData->basePtr(), outStrides.z * numSamples,
                                            cudaMemcpyDeviceToHost, stream));
-    baseline::Resize(refTensorCpu, inTensorCpu, interpolation, interpolation, antialias);
+    baseline::Resize(refTensorCpu, inTensorCpu, interpolation, interpolation, antialias, {inRoi}, {outRoi});
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
-    baseline::Compare<InBT>(outTensorCpu, refTensorCpu, antialias);
+    baseline::Compare<InBT>(outTensorCpu, refTensorCpu, antialias, {outRoi});
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
@@ -752,7 +802,7 @@ NVCV_TYPED_TEST_SUITE(
         NVCV_TEST_ROW(3, NVCV_SHAPE3D(100, 100, 100), NVCV_SHAPE3D(100, 100, 50), 3, float, float, NVCV_INTERP_CUBIC),
         NVCV_TEST_ROW(4, NVCV_SHAPE3D(40, 40, 40), NVCV_SHAPE3D(100, 40, 40), 5, uchar, float, NVCV_INTERP_LANCZOS),
         NVCV_TEST_ROW(7, NVCV_SHAPE3D(40, 40, 40), NVCV_SHAPE3D(50, 150, 100), 3, uchar, uchar, NVCV_INTERP_CUBIC),
-        NVCV_TEST_ROW(3, NVCV_SHAPE3D(1 << 10, 1 << 9, 1 << 9), NVCV_SHAPE3D(50, 150, 100), 3, uchar, uchar,
+        NVCV_TEST_ROW(3, NVCV_SHAPE3D(1 << 10, 1 << 9, 1 << 9), NVCV_SHAPE3D(100, 150, 100), 3, uchar, uchar,
                       NVCV_INTERP_CUBIC)>);
 
 TYPED_TEST(OpHQResizeTensor3D, correct_output_with_antialias)
@@ -772,6 +822,18 @@ TYPED_TEST(OpHQResizeTensor3D, correct_output_with_antialias)
         = CreateTensorHelper(inDtype, "NDHWC", numSamples, inShape.z, inShape.y, inShape.x, numChannels);
     nvcv::Tensor outTensor
         = CreateTensorHelper(outDtype, "NDHWC", numSamples, outShape.z, outShape.y, outShape.x, numChannels);
+
+    baseline::Roi<3> inRoi  = baseline::FullRoi<3>(inShape);
+    baseline::Roi<3> outRoi = baseline::FullRoi<3>(outShape);
+    if (inShape.x * inShape.y * inShape.z > 1 << 22)
+    {
+        inRoi.shape  = cuda::min(inShape, int3{1 << 8, 1 << 7, 1 << 7});
+        inRoi.origin = inShape - inRoi.shape;
+
+        double3 scale = cuda::StaticCast<double>(outShape) / cuda::StaticCast<double>(inShape);
+        outRoi.shape  = cuda::StaticCast<int>(scale * cuda::StaticCast<double>(inRoi.shape));
+        outRoi.origin = cuda::StaticCast<int>(scale * cuda::StaticCast<double>(inRoi.origin));
+    }
 
     auto inData  = inTensor.exportData<nvcv::TensorDataStridedCuda>();
     auto outData = outTensor.exportData<nvcv::TensorDataStridedCuda>();
@@ -802,19 +864,14 @@ TYPED_TEST(OpHQResizeTensor3D, correct_output_with_antialias)
 
     for (int sampleIdx = 0; sampleIdx < numSamples; sampleIdx++)
     {
-        for (int z = 0; z < inShape.z; z++)
-        {
-            for (int y = 0; y < inShape.y; y++)
-            {
-                for (int x = 0; x < inShape.x; x++)
-                {
-                    for (int c = 0; c < numChannels; c++)
-                    {
-                        inTensorCpu.get(sampleIdx, int3{x, y, z}, c) = rand(rng);
-                    }
-                }
-            }
-        }
+        baseline::ForAllInRoi(inRoi,
+                              [&](int3 idx)
+                              {
+                                  for (int c = 0; c < numChannels; c++)
+                                  {
+                                      inTensorCpu.get(sampleIdx, idx, c) = rand(rng);
+                                  }
+                              });
     }
 
     cvcuda::HQResize        op;
@@ -840,9 +897,9 @@ TYPED_TEST(OpHQResizeTensor3D, correct_output_with_antialias)
     ASSERT_NO_THROW(op(stream, ws.get(), inTensor, outTensor, interpolation, interpolation, antialias));
     ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(outTensorCpu.data(), outData->basePtr(), outStrides.w * numSamples,
                                            cudaMemcpyDeviceToHost, stream));
-    baseline::Resize(refTensorCpu, inTensorCpu, interpolation, interpolation, antialias);
+    baseline::Resize(refTensorCpu, inTensorCpu, interpolation, interpolation, antialias, {inRoi}, {outRoi});
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
-    baseline::Compare<InBT>(outTensorCpu, refTensorCpu, antialias);
+    baseline::Compare<InBT>(outTensorCpu, refTensorCpu, antialias, {outRoi});
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
@@ -905,6 +962,28 @@ TYPED_TEST(OpHQResizeBatch, tensor_batch_2d_correct_output)
         {{128, 256}, 2, inShapes[3].numChannels},
         {{512, 512}, 2, inShapes[4].numChannels}
     };
+
+    std::vector<baseline::Roi<2>> inRois(numSamples);
+    std::vector<baseline::Roi<2>> outRois(numSamples);
+
+    for (int s = 0; s < numSamples; s++)
+    {
+        int2 inShape{inShapes[s].extent[1], inShapes[s].extent[0]};
+        int2 outShape{outShapes[s].extent[1], outShapes[s].extent[0]};
+
+        inRois[s]  = baseline::FullRoi<2>(inShape);
+        outRois[s] = baseline::FullRoi<2>(outShape);
+
+        if (inShape.x * inShape.y > 1 << 23)
+        {
+            inRois[s].shape  = cuda::min(inShape, int2{1 << 12, 1 << 11});
+            inRois[s].origin = inShape - inRois[s].shape;
+
+            double2 scale     = cuda::StaticCast<double>(outShape) / cuda::StaticCast<double>(inShape);
+            outRois[s].shape  = cuda::StaticCast<int>(scale * cuda::StaticCast<double>(inRois[s].shape));
+            outRois[s].origin = cuda::StaticCast<int>(scale * cuda::StaticCast<double>(inRois[s].origin));
+        }
+    }
 
     ASSERT_EQ(numSamples, inShapes.size());
     ASSERT_EQ(numSamples, outShapes.size());
@@ -969,17 +1048,17 @@ TYPED_TEST(OpHQResizeBatch, tensor_batch_2d_correct_output)
         refBatchCpu.push_back(
             baseline::CpuSample<OutBT, 2>{outStrides.z, outStrides, 1, outShape, outAccess->numChannels()});
 
-        auto &inTensorCpu = inBatchCpu[sampleIdx];
-        for (int y = 0; y < inShape.y; y++)
-        {
-            for (int x = 0; x < inShape.x; x++)
-            {
-                for (int c = 0; c < inShapes[sampleIdx].numChannels; c++)
-                {
-                    inTensorCpu.get(0, int2{x, y}, c) = rand(rng);
-                }
-            }
-        }
+        const auto &inRoi       = inRois[sampleIdx];
+        auto       &inTensorCpu = inBatchCpu[sampleIdx];
+        baseline::ForAllInRoi(inRoi,
+                              [&](int2 idx)
+                              {
+                                  for (int c = 0; c < inShapes[sampleIdx].numChannels; c++)
+                                  {
+                                      inTensorCpu.get(0, idx, c) = rand(rng);
+                                  }
+                              });
+
         ASSERT_EQ(cudaSuccess,
                   cudaMemcpyAsync(inData->basePtr(), inTensorCpu.data(), inStrides.z, cudaMemcpyHostToDevice, stream));
     }
@@ -1008,8 +1087,9 @@ TYPED_TEST(OpHQResizeBatch, tensor_batch_2d_correct_output)
     for (int sampleIdx = 0; sampleIdx < numSamples; sampleIdx++)
     {
         SCOPED_TRACE(sampleIdx);
-        baseline::Resize(refBatchCpu[sampleIdx], inBatchCpu[sampleIdx], minInterpolation, magInterpolation, antialias);
-        baseline::Compare<InBT>(outBatchCpu[sampleIdx], refBatchCpu[sampleIdx], antialias);
+        baseline::Resize(refBatchCpu[sampleIdx], inBatchCpu[sampleIdx], minInterpolation, magInterpolation, antialias,
+                         {inRois[sampleIdx]}, {outRois[sampleIdx]});
+        baseline::Compare<InBT>(outBatchCpu[sampleIdx], refBatchCpu[sampleIdx], antialias, {outRois[sampleIdx]});
     }
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }

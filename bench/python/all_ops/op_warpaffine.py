@@ -24,6 +24,7 @@ import numpy as np
 
 class OpWarpAffine(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         self.xform = np.array(
             [[1.26666667, 0.6, -83.33333333], [-0.33333333, 1.0, 66.66666667]]
         )
@@ -43,6 +44,7 @@ class OpWarpAffine(AbstractOpBase):
 
 class OpWarpAffineInverse(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         self.xform = np.array(
             [[1.26666667, 0.6, -83.33333333], [-0.33333333, 1.0, 66.66666667]]
         )

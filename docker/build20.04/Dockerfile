@@ -17,6 +17,7 @@
 
 ARG VER_CUDA=?
 ARG VER_UBUNTU=?
+ARG VER_NUMPY=?
 
 FROM nvidia/cuda:$VER_CUDA-devel-ubuntu$VER_UBUNTU
 
@@ -63,7 +64,7 @@ RUN python3 -m pip install pre-commit
 RUN python3 -m pip install sphinx-rtd-theme sphinx==4.5.0
 RUN python3 -m pip install breathe exhale recommonmark graphviz
 # Needed for python sphinx docs and Python wheels
-RUN python3 -m pip install numpy==1.24.1 patchelf==0.17.2.1
+RUN python3 -m pip install numpy patchelf==0.17.2.1
 
 # Python bindings ======================================
 
@@ -71,7 +72,7 @@ RUN python3 -m pip install numpy==1.24.1 patchelf==0.17.2.1
 ADD deadsnakes-ubuntu-ppa-focal.list /etc/apt/sources.list.d
 RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys BA6932366A755776
 
-RUN for PYTHON_VERSION in 3.7 3.8 3.9 3.10 3.11; do \
+RUN for PYTHON_VERSION in 3.8 3.9 3.10 3.11; do \
     apt-get update \
     && apt-get install -y --no-install-recommends \
     python$PYTHON_VERSION-dev python$PYTHON_VERSION-distutils; \

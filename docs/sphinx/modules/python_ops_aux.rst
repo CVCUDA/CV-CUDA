@@ -1,5 +1,5 @@
 ..
-  # SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  # SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
   # SPDX-License-Identifier: Apache-2.0
   #
   # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,12 +14,12 @@
   # See the License for the specific language governing permissions and
   # limitations under the License.
 
-C++ API
-=======
+OPERATOR'S AUXILIARY ENTITIES
+=============================
+
+Operator's auxiliary entities for the NVIDIA® CV-CUDA library.
 
 .. toctree::
+  :glob:
 
-   Core <cpp_core>
-   Utilities <cpp_utils>
-   Operators <cpp_algos>
-   CUDA Tools <cpp_cudatools>
+  ../_python_api/_cvcuda_api/_aux_*

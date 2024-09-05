@@ -23,6 +23,7 @@ import cvcuda
 
 class OpCenterCrop(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         width, height = input.shape[2], input.shape[1]
         self.crop_size = [width // 2, height // 2]
 

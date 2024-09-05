@@ -26,6 +26,7 @@ import os
 
 class OpBlurBox(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         self.kernel_size = 5
 
         data = read_image(os.path.join(self.assets_dir, "brooklyn.jpg"))

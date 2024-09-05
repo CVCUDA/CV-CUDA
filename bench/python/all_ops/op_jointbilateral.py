@@ -26,6 +26,7 @@ import os
 
 class OpJointBilateral(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         self.diameter = 5
         self.sigma_color = 50
         self.sigma_space = 1

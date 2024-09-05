@@ -26,14 +26,14 @@ CV-CUDA v0.10.0 includes a critical bug fix (cache growth management) alongside 
 
 * **New Features**:
 
-  * Added mechanism to limit and manage cache memory consumption (includes new "Best Practices" documentation).
+  * Added mechanism to limit and manage cache memory consumption (includes new "Best Practices" documentation) [1]_.
   * Performance improvements of color conversion operators (e.g., 2x faster RGB2YUV).
   * Refactored codebase to allow independent build of NVCV library (data structures).
 
 * **Bug Fixes**:
 
-  * Fixed unbounded cache memory consumption issue.
-  * Improved management of Python-created object lifetimes, decoupled from cache management.
+  * Fixed unbounded cache memory consumption issue [1]_.
+  * Improved management of Python-created object lifetimes, decoupled from cache management [1]_.
   * Fixed potential crash in Resize operator's linear and nearest neighbor interpolation from non-aligned vectorized writes.
   * Fixed Python CvtColor operator to correctly handle NV12 and NV21 outputs.
   * Fixed Resize and RandomResizedCrop linear interpolation weight for border rows and columns.
@@ -68,3 +68,5 @@ Acknowledgements
 ----------------
 
 CV-CUDA is developed jointly by NVIDIA and the ByteDance Machine Learning team.
+
+.. [1] These fixes and features add micro-second-level overhead to Python operator calls. Based on the performance analysis of our Python samples, we expect the production- and pipeline-level impact to be negligible. CUDA kernel and C++ call performance is not affected. We aim to investigate and reduce this overhead further in a future release.​

@@ -22,6 +22,14 @@ endif()
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
+# PIC must be enabled if building a shared lib
+if(NVCV_BUILD_SHARED_LIBS)
+    set(BUILD_SHARED_LIBS ON)
+    set(CMAKE_POSITION_INDEPENDENT_CODE on)
+else()
+    set(BUILD_SHARED_LIBS OFF)
+endif()
+
 include(GNUInstallDirs)
 
 set(CMAKE_INSTALL_LIBDIR "lib/${CMAKE_LIBRARY_ARCHITECTURE}")

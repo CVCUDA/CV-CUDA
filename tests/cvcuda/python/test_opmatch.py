@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -39,9 +39,21 @@ class ref:
         if norm_type == cvcuda.Norm.HAMMING:
             return sum([bin(c1 ^ c2).count("1") for c1, c2 in zip(p1, p2)])
         elif norm_type == cvcuda.Norm.L1:
-            return sum([abs(ref.absdiff(c1, c2)) for c1, c2 in zip(p1, p2)])
+            return sum(
+                [
+                    abs(ref.absdiff(c1.astype(np.float64), c2.astype(np.float64)))
+                    for c1, c2 in zip(p1, p2)
+                ]
+            )
         elif norm_type == cvcuda.Norm.L2:
-            return np.sqrt(sum([ref.absdiff(c1, c2) ** 2 for c1, c2 in zip(p1, p2)]))
+            return np.sqrt(
+                sum(
+                    [
+                        ref.absdiff(c1.astype(np.float64), c2.astype(np.float64)) ** 2
+                        for c1, c2 in zip(p1, p2)
+                    ]
+                )
+            )
 
     def brute_force_matcher(batch_set1, batch_set2, cross_check, norm_type):
         batch_matches = []

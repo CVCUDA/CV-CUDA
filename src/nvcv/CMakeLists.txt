@@ -17,14 +17,24 @@ cmake_minimum_required(VERSION 3.20.1)
 
 project(nvcv
         LANGUAGES C CXX
-        VERSION 0.10.1
+        VERSION 0.11.0
         DESCRIPTION "NVCV is NVIDIA Computer Vision library"
 )
 
 # Used when creating special builds
 set(PROJECT_VERSION_SUFFIX "-beta")
 
-option(NVCV_ENABLE_INSTALL "Enables creation of NVCV installers using cpack" ON)
+include(CMakeDependentOption)
+
+option(NVCV_BUILD_SHARED_LIBS "Builds NVCV as shared library" ON)
+
+if(NVCV_ENABLE_INSTALL AND NOT NVCV_BUILD_SHARED_LIBS)
+    message(FATAL_ERROR "NVCV installers can only be enabled when building NVCV as a shared library")
+endif()
+
+# Enables install targets by default if building shared libs. User can disable it.
+# If building static libs, forcibly disables install targets.
+cmake_dependent_option(NVCV_ENABLE_INSTALL "Enables creation of NVCV installers using cpack" ON NVCV_BUILD_SHARED_LIBS OFF)
 
 # Configure build tree ======================
 
@@ -32,9 +42,6 @@ list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 include(ConfigVersion)
 include(ConfigBuildTree)
-
-# NVCV currently supports only shared build
-set(CMAKE_POSITION_INDEPENDENT_CODE on)
 
 add_subdirectory(util)
 add_subdirectory(src)

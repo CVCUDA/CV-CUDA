@@ -24,6 +24,7 @@ import nvcv
 
 class OpCustomCrop(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         self.rectI = nvcv.RectI(x=30, y=40, width=420, height=390)
 
     def run(self, input):

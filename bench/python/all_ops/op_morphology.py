@@ -64,6 +64,7 @@ class MorphologyBase:
 
 class OpMorphologyOpen(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         self.MorphologyBase = MorphologyBase(
             self.device_id, input, cvcuda.MorphologyType.OPEN
         )
@@ -74,6 +75,7 @@ class OpMorphologyOpen(AbstractOpBase):
 
 class OpMorphologyClose(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         self.MorphologyBase = MorphologyBase(
             self.device_id, input, cvcuda.MorphologyType.CLOSE
         )
@@ -84,6 +86,7 @@ class OpMorphologyClose(AbstractOpBase):
 
 class OpMorphologyDilate(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         self.MorphologyBase = MorphologyBase(
             self.device_id, input, cvcuda.MorphologyType.DILATE
         )
@@ -94,6 +97,7 @@ class OpMorphologyDilate(AbstractOpBase):
 
 class OpMorphologyErode(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         self.MorphologyBase = MorphologyBase(
             self.device_id, input, cvcuda.MorphologyType.ERODE
         )

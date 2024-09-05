@@ -14,13 +14,12 @@
   # See the License for the specific language governing permissions and
   # limitations under the License.
 
-ALGORITHMS
-==========
+OPERATORS
+=========
 
-Algorithms for the NVIDIA® CV-CUDA library.
+Operators for the NVIDIA® CV-CUDA library.
 
 .. toctree::
   :glob:
 
   ../_python_api/_cvcuda_api/_op_*
-  ../_python_api/_cvcuda_api/_aux_*

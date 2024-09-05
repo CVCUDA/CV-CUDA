@@ -30,6 +30,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 import json
 import pandas
+import nvcv
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -96,7 +97,8 @@ class AbstractOpBase(ABC):
         Performs various setup activities to set this operator before it can be run.
         :param input: The input tensor to run the operator on.
         """
-        pass
+        if hasattr(nvcv, "clear_cache"):
+            nvcv.clear_cache()
 
     @abstractmethod
     def run(self, input):

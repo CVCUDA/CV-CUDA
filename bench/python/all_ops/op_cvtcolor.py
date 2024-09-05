@@ -23,7 +23,7 @@ import cvcuda
 
 class OpCvtColorRGB2GRAY(AbstractOpBase):
     def setup(self, input):
-        pass
+        super().setup(input)
 
     def run(self, input):
         return cvcuda.cvtcolor(input, cvcuda.ColorConversion.RGB2GRAY)
@@ -31,7 +31,7 @@ class OpCvtColorRGB2GRAY(AbstractOpBase):
 
 class OpCvtColorRGB2BGR(AbstractOpBase):
     def setup(self, input):
-        pass
+        super().setup(input)
 
     def run(self, input):
         return cvcuda.cvtcolor(input, cvcuda.ColorConversion.RGB2BGR)

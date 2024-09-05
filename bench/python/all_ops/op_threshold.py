@@ -24,6 +24,7 @@ import torch
 
 class OpThreshold(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         threshold = torch.tensor([150.0] * input.shape[0])
         threshold = threshold.type(torch.float64)
         threshold = threshold.cuda(self.device_id)

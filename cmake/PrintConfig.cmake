@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -53,6 +53,12 @@ if(BUILD_BENCH)
     message(STATUS "    BUILD_BENCH              : ON")
 else()
     message(STATUS "    BUILD_BENCH              : off")
+endif()
+
+if(BUILD_DOCS)
+    message(STATUS "    BUILD_DOCS               : ON")
+else()
+    message(STATUS "    BUILD_DOCS               : off")
 endif()
 
 if(ENABLE_TEGRA)

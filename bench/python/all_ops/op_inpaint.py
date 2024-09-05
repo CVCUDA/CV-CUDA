@@ -26,6 +26,7 @@ import os
 
 class OpInpaint(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         data = read_image(os.path.join(self.assets_dir, "brooklyn.jpg"))
         mask = read_image(os.path.join(self.assets_dir, "countour_lines.jpg"))
         # Binarize the mask

@@ -23,6 +23,7 @@ import cvcuda
 
 class OpGaussianBlur(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         self.kernel_size = (3, 3)
         self.sigma = (5, 5)
 

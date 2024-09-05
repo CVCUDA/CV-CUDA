@@ -14,10 +14,10 @@
   # See the License for the specific language governing permissions and
   # limitations under the License.
 
-ALGORITHMS
-==========
+OPERATORS
+=========
 
-CV-CUDA Algorithms
+CV-CUDA Operators
 
 .. toctree::
    :glob:

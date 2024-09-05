@@ -23,6 +23,7 @@ import cvcuda
 
 class OpRotate(AbstractOpBase):
     def setup(self, input):
+        super().setup(input)
         self.angle_deg = 40
         self.shift = [input.shape[2] // 4, input.shape[1] // 4]
         self.interpolation_type = cvcuda.Interp.LINEAR

@@ -419,6 +419,7 @@ NVCV_TEST_SUITE_P(OpOSD, test::ValueList<int, int, int, int, int, nvcv::ImageFor
 });
 
 // clang-format on
+
 TEST_P(OpOSD, OSD_sanity)
 {
     cudaStream_t stream;
@@ -435,6 +436,7 @@ TEST_P(OpOSD, OSD_sanity)
 }
 
 // clang-format on
+
 TEST(OpOSD, OSD_memory)
 {
     cudaStream_t stream;
@@ -450,5 +452,92 @@ TEST(OpOSD, OSD_memory)
     //check if data is cleared
     sed++;
     runOp(stream, op, inN, inW, inH, num, sed, format);
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpOSD, stb_backend)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    int               inN    = 1;
+    int               inW    = 224;
+    int               inH    = 224;
+    int               sed    = 22;
+    nvcv::ImageFormat format = nvcv::FMT_RGBA8;
+    cvcuda::OSD       op;
+    NVCVOSDType       type = NVCVOSDType::NVCV_OSD_TEXT;
+
+    srand(sed);
+
+    std::vector<std::vector<std::shared_ptr<NVCVElement>>> elementVec;
+
+    std::vector<std::string> testStrings{
+        // valid
+        "Hello!", "\u00E9", "\u20AC", "\U0001F600",
+        // invalid
+        "\xC0\x80", "\xc2\x00", // second bytes
+        "\xde\x82\xa0", "\xe2\x00\xa0", "\xe2\x82\x00", "\xe0\x9f\xa0",
+        "\xed\xbf\xa0", // three bytes
+        "\xf4\x90\x84\x9e", "\xf0\x9d\x04\x9e", "\xf0\x80\x84\x9e", "\xf4\xbf\x84\x9e", "\xf0\x9d\x84\x0e",
+        "\xf5\xc0\x84\x9e", "\xf3\xc0\x84\x9e" // four bytes
+    };
+
+    std::vector<std::shared_ptr<NVCVElement>> textVec;
+    for (auto testStr : testStrings)
+    {
+        std::shared_ptr<NVCVElement> element;
+        NVCVText                     text = NVCVText(testStr.c_str(), 5 * randl(1, 10), DEFAULT_OSD_FONT,
+                                                     NVCVPointI({randl(0, inW - 1), randl(0, inH - 1)}),
+                                                     NVCVColorRGBA({(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
+                                                                    (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)}),
+                                                     NVCVColorRGBA({(unsigned char)randl(0, 255), (unsigned char)randl(0, 255),
+                                                                    (unsigned char)randl(0, 255), (unsigned char)randl(0, 255)}));
+        element                           = std::make_shared<NVCVElement>(type, &text);
+        textVec.push_back(element);
+    }
+
+    elementVec.push_back(textVec);
+
+    std::shared_ptr<NVCVElementsImpl> ctx = std::make_shared<NVCVElementsImpl>(elementVec);
+
+    nvcv::Tensor imgIn  = nvcv::util::CreateTensor(inN, inW, inH, format);
+    nvcv::Tensor imgOut = nvcv::util::CreateTensor(inN, inW, inH, format);
+
+    auto input  = imgIn.exportData<nvcv::TensorDataStridedCuda>();
+    auto output = imgOut.exportData<nvcv::TensorDataStridedCuda>();
+
+    ASSERT_NE(input, nullptr);
+    ASSERT_NE(output, nullptr);
+
+    auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*input);
+    ASSERT_TRUE(inAccess);
+
+    auto outAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*output);
+    ASSERT_TRUE(outAccess);
+
+    long inSampleStride  = inAccess->numRows() * inAccess->rowStride();
+    long outSampleStride = outAccess->numRows() * outAccess->rowStride();
+
+    int inBufSize  = inSampleStride * inAccess->numSamples();
+    int outBufSize = outSampleStride * outAccess->numSamples();
+
+    EXPECT_EQ(cudaSuccess, cudaMemset(input->basePtr(), 0xFF, inSampleStride * inAccess->numSamples()));
+    EXPECT_EQ(cudaSuccess, cudaMemset(output->basePtr(), 0xFF, outSampleStride * outAccess->numSamples()));
+
+    EXPECT_NO_THROW(op(stream, imgIn, imgOut, (NVCVElements)ctx.get()));
+
+    // check cdata
+    std::vector<uint8_t> test(outBufSize);
+    std::vector<uint8_t> testIn(inBufSize);
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaMemcpy(testIn.data(), input->basePtr(), inBufSize, cudaMemcpyDeviceToHost));
+    EXPECT_EQ(cudaSuccess, cudaMemcpy(test.data(), output->basePtr(), outBufSize, cudaMemcpyDeviceToHost));
+
+    std::vector<uint8_t> gold(outBufSize);
+    setGoldBuffer(gold, format, *inAccess, input->basePtr(), ctx, stream);
+
+    EXPECT_EQ(gold, test);
+
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
