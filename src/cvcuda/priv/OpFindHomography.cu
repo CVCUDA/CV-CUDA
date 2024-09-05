@@ -1362,7 +1362,7 @@ void FindHomographyWrapper(SrcDstWrapper srcWrap, SrcDstWrapper dstWrap, ModelTy
     grid.z = batchSize;
     LtLOp ltl_op(srcMean, dstMean, srcShiftSum, dstShiftSum);
     compute_LtL<<<grid, block, 0, stream>>>(srcWrap, dstWrap, LtL, ltl_op, numPoints, batchSize);
-#ifdef DEBUG
+#ifdef DEBUG_MODEL_KERNEL
     for (int b = 0; b < batchSize; b++)
     {
         std::cout << "==================== Batch " << b << " =======================" << std::endl;
