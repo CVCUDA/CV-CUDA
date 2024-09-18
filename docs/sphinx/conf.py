@@ -52,7 +52,7 @@ class Mock(MagicMock):
         return MagicMock()
 
 # List of modules to mock
-MOCK_MODULES = ['cvcuda']
+MOCK_MODULES = ['nvcv', 'cvcuda']
 sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)
 
 # -- General configuration ---------------------------------------------------
