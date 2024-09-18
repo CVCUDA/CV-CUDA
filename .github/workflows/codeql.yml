@@ -27,6 +27,7 @@ jobs:
   analyze:
     name: Analyze
     runs-on: ubuntu-22.04-64core
+    container: nvidia/cuda:12.2.0-devel-ubuntu22.04
     timeout-minutes: 360
     permissions:
       actions: write
@@ -66,25 +67,25 @@ jobs:
         && python3 -m pip install sphinx-rtd-theme sphinx breathe recommonmark graphviz \
         && python3 -m pip install numpy==2.0.1 patchelf==0.17.2.1
 
-    - if: matrix.language == 'c-cpp'
-      name: Install CUDA Toolkit
-      uses: Jimver/cuda-toolkit@v0.2.16
-      id: cuda-toolkit
-      with:
-        cuda: '12.2.0'
-        linux-local-args: '["--toolkit", "--driver"]'
+    # - if: matrix.language == 'c-cpp'
+    #   name: Install CUDA Toolkit
+    #   uses: Jimver/cuda-toolkit@v0.2.16
+    #   id: cuda-toolkit
+    #   with:
+    #     cuda: '12.2.0'
+    #     linux-local-args: '["--toolkit", "--driver"]'
 
     - if: matrix.language == 'c-cpp'
       name: Install CUDA Python Binding
       run: |
         python3 -m pip install cuda-python==12.2.0
 
-    - if: matrix.language == 'c-cpp'
-      name: Verify CUDA installation
-      run: |
-          echo "Installed CUDA version is: ${{ steps.cuda-toolkit.outputs.cuda }}"
-          echo "CUDA install location: ${{ steps.cuda-toolkit.outputs.CUDA_PATH }}"
-          nvcc -V
+    # - if: matrix.language == 'c-cpp'
+    #   name: Verify CUDA installation
+    #   run: |
+    #       echo "Installed CUDA version is: ${{ steps.cuda-toolkit.outputs.cuda }}"
+    #       echo "CUDA install location: ${{ steps.cuda-toolkit.outputs.CUDA_PATH }}"
+    #       nvcc -V
 
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v3
