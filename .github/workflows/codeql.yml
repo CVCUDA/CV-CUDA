@@ -61,7 +61,7 @@ jobs:
           && python3 -m pip install sphinx-rtd-theme sphinx breathe recommonmark graphviz \
           && python3 -m pip install numpy==2.0.1 patchelf==0.17.2.1 \
           && python3 -m pip install cuda-python==12.2.0 \ 
-          && python3 -m pip install -U sphinx breathe
+          && python3 -m pip install -U sphinx
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
