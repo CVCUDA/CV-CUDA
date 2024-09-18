@@ -68,11 +68,16 @@ jobs:
 
     - if: matrix.language == 'c-cpp'
       name: Install CUDA Toolkit
-      uses: Jimver/cuda-toolkit@v0.2.15
+      uses: Jimver/cuda-toolkit@v0.2.16
       id: cuda-toolkit
       with:
         cuda: '12.2.0'
-        linux-local-args: '["--toolkit"]'
+        linux-local-args: '["--toolkit", "--driver"]'
+
+    - if: matrix.language == 'c-cpp'
+      name: Install CUDA Python Binding
+      run: |
+        python3 -m pip install cuda-python==12.2.0
 
     - if: matrix.language == 'c-cpp'
       name: Verify CUDA installation
