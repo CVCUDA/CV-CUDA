@@ -1,19 +1,12 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
+# NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
-#
 # http://www.apache.org/licenses/LICENSE-2.0
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# See the License for the specific language governing permissions and limitations under the License.
 
-name: "CodeQL"
+name: CodeQL Analysis
 
 on:
   push:
@@ -24,9 +17,12 @@ on:
     - cron: '28 22 * * 1'
 
 jobs:
-  analyze:
-    name: Analyze
+  codeql-analysis:
+    name: CodeQL Analysis
     runs-on: ubuntu-22.04-64core
+    container:
+      image: nvidia/cuda:12.2.0-devel-ubuntu22.04
+      options: --user root
     timeout-minutes: 360
     permissions:
       actions: write
@@ -39,90 +35,72 @@ jobs:
         language: [ 'c-cpp', 'javascript-typescript', 'python' ]
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        lfs: true
-        submodules: 'recursive'
+      - name: Set up Environment
+        run: |
+          apt-get update -y && apt-get install -y --no-install-recommends \
+          git git-lfs gcc-11 g++-11 ninja-build build-essential ccache libgtest-dev libgmock-dev \
+          shellcheck curl doxygen python3 python3-pip python3-dev python3-distutils \
+          texlive-latex-extra ghostscript graphviz \
+          && curl -L https://cmake.org/files/v3.20/cmake-3.20.1-linux-x86_64.tar.gz --output /tmp/cmake-3.20.1.tar.gz \
+          && tar -xzf /tmp/cmake-3.20.1.tar.gz -C /tmp/ && cp -r /tmp/cmake-3.20.1-linux-x86_64/bin/ /usr/local/ \
+          && cp -r /tmp/cmake-3.20.1-linux-x86_64/share/ /usr/local/ && cp -r /tmp/cmake-3.20.1-linux-x86_64/doc/ /usr/local/ \
+          && rm -rf /tmp/cmake-3.20.1*
 
-    - if: matrix.language == 'c-cpp'
-      name: Setup environment
-      run: |
-        sudo apt update -y && sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y && \
-        sudo apt update -y && sudo apt install -y --no-install-recommends \
-        git git-lfs gcc-11 g++-11 ninja-build ccache libgtest-dev libgmock-dev \
-        shellcheck curl doxygen python3 python3-pip python3-dev python3-distutils \
-        texlive-latex-extra ghostscript graphviz \
-        && curl -L https://cmake.org/files/v3.20/cmake-3.20.1-linux-x86_64.tar.gz --output /tmp/cmake-3.20.1.tar.gz \
-        && tar -xzf /tmp/cmake-3.20.1.tar.gz -C /tmp/ && sudo cp -r /tmp/cmake-3.20.1-linux-x86_64/bin/ /usr/local/ \
-        && sudo cp -r /tmp/cmake-3.20.1-linux-x86_64/share/ /usr/local/ && sudo cp -r /tmp/cmake-3.20.1-linux-x86_64/doc/ /usr/local/ \
-        && rm -rf /tmp/cmake-3.20.1*
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+          submodules: recursive
 
-    - if: matrix.language == 'c-cpp'
-      name: Install Python Dependencies
-      run: |
-        sudo apt update -y && sudo apt install -y --no-install-recommends \
-        python3 python3-pip python3-dev python3-distutils doxygen && sudo rm -rf /var/lib/apt/lists/* \
-        && python3 -m pip install sphinx-rtd-theme sphinx breathe recommonmark graphviz \
-        && python3 -m pip install numpy==2.0.1 patchelf==0.17.2.1
+      - name: Install Python Dependencies (C/C++)
+        if: matrix.language == 'c-cpp'
+        run: |
+          apt-get update -y && apt-get install -y --no-install-recommends \
+          python3 python3-pip python3-dev python3-distutils doxygen \
+          && rm -rf /var/lib/apt/lists/* \
+          && python3 -m pip install sphinx-rtd-theme sphinx breathe recommonmark graphviz \
+          && python3 -m pip install numpy==2.0.1 patchelf==0.17.2.1 \
+          && python3 -m pip install cuda-python==12.2.0
 
-    - if: matrix.language == 'c-cpp'
-      name: Install CUDA Toolkit
-      uses: Jimver/cuda-toolkit@v0.2.15
-      id: cuda-toolkit
-      with:
-        cuda: '12.2.0'
-        linux-local-args: '["--toolkit"]'
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: +security-and-quality
 
-    - if: matrix.language == 'c-cpp'
-      name: Verify CUDA installation
-      run: |
-          echo "Installed CUDA version is: ${{ steps.cuda-toolkit.outputs.cuda }}"
-          echo "CUDA install location: ${{ steps.cuda-toolkit.outputs.CUDA_PATH }}"
-          sudo ln -s ${{ steps.cuda-toolkit.outputs.CUDA_PATH }}/lib64/libcudart.so \
-            /usr/lib/x86_64-linux-gnu/libcuda.so
-          nvcc -V
+      - name: Autobuild (Non C/C++)
+        if: matrix.language != 'c-cpp'
+        uses: github/codeql-action/autobuild@v3
 
-    - name: Initialize CodeQL
-      uses: github/codeql-action/init@v3
-      with:
-        languages: ${{ matrix.language }}
-        queries: +security-and-quality
+      - name: Build CMake Project (C/C++)
+        if: matrix.language == 'c-cpp'
+        run: |
+          echo "Running CMake project build script"
+          ./ci/build.sh debug build "-DBUILD_SAMPLES=OFF -DBUILD_TESTS=OFF -DBUILD_PYTHON=ON"
 
-    - if: matrix.language != 'c-cpp'
-      name: Autobuild
-      uses: github/codeql-action/autobuild@v3
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
 
-    - if: matrix.language == 'c-cpp'
-      name: Build CMake project
-      run: |
-        echo "Running CMake project build script"
-        ./ci/build.sh debug build "-DBUILD_SAMPLES=OFF -DBUILD_TESTS=OFF -DBUILD_PYTHON=ON" $*
+      - name: Build and Clean Documentation (C/C++, Push Event)
+        if: matrix.language == 'c-cpp' && github.event_name == 'push'
+        run: |
+          ./ci/build.sh debug build "-DBUILD_SAMPLES=OFF -DBUILD_TESTS=OFF -DBUILD_DOCS=ON -DBUILD_PYTHON=ON -DPYTHON_VERSIONS=3.10"
+          find build/docs/sphinx -name '*.doctree' -delete
+          find build/docs/sphinx -name '*.map' -delete
+          find build/docs/sphinx -name '*.pickle' -delete
+          find build/docs/sphinx -name '*.inv' -delete
+          find build/docs/sphinx -name '*.gz' -delete
 
-    - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v3
-      with:
-        category: "/language:${{matrix.language}}"
+      - name: Create .nojekyll File (C/C++, Push Event)
+        if: matrix.language == 'c-cpp' && github.event_name == 'push'
+        run: touch build/docs/sphinx/.nojekyll
 
-    - if: matrix.language == 'c-cpp' && github.event_name == 'push'
-      name: Build Docs and Clean up Sphinx Build Directory
-      run: |
-        ./ci/build.sh debug build "-DBUILD_SAMPLES=OFF -DBUILD_TESTS=OFF -DBUILD_PYTHON=ON -DPYTHON_VERSIONS=3.10" $*
-        ./ci/build.sh debug build "-DBUILD_SAMPLES=OFF -DBUILD_TESTS=OFF -DBUILD_DOCS=ON -DBUILD_PYTHON=ON -DPYTHON_VERSIONS=3.10" $*
-        find build/docs/sphinx -name '*.doctree' -delete
-        find build/docs/sphinx -name '*.map' -delete
-        find build/docs/sphinx -name '*.pickle' -delete
-        find build/docs/sphinx -name '*.inv' -delete
-        find build/docs/sphinx -name '*.gz' -delete
-
-    - if: matrix.language == 'c-cpp' && github.event_name == 'push'
-      name: Create .nojekyll file
-      run: touch build/docs/sphinx/.nojekyll
-
-    - if: matrix.language == 'c-cpp' && github.event_name == 'push'
-      name: Deploy to GitHub Pages
-      uses: JamesIves/github-pages-deploy-action@v4
-      with:
-        folder: build/docs/sphinx
-        branch: gh-pages
-        clean: true
+      - name: Deploy to GitHub Pages (C/C++, Push Event)
+        if: matrix.language == 'c-cpp' && github.event_name == 'push'
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: build/docs/sphinx
+          branch: gh-pages
+          clean: true
