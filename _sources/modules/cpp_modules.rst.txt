@@ -21,5 +21,5 @@ C++ API
 
    Core <cpp_core>
    Utilities <cpp_utils>
-   Algorithms <cpp_algos>
+   Operators <cpp_algos>
    CUDA Tools <cpp_cudatools>

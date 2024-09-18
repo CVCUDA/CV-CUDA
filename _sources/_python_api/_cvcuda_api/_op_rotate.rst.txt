@@ -19,4 +19,4 @@ Rotate
 
 .. automodule:: cvcuda
   :noindex:
-  :members: rotate, rotate_into
+  :members: rotate_into, rotate

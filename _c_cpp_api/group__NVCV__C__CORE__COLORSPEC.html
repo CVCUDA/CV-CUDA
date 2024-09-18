@@ -98,7 +98,7 @@
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__UTIL__STATUS.html">Status Codes</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="../modules/c_algos.html">Algorithms</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../modules/c_algos.html">Operators</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ADAPTIVETHRESHOLD.html">Adaptive Threshold</a></li>
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__AVERAGEBLUR.html">Average Blur</a></li>
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BILATERAL__FILTER.html">Bilateral Filter</a></li>
@@ -168,7 +168,7 @@
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__UTIL__STATUS.html">Status Codes</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_algos.html">Algorithms</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_algos.html">Operators</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ADAPTIVETHRESHOLD.html">Adaptive Threshold</a></li>
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__AVERAGEBLUR.html">Average Blur</a></li>
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BILATERAL__FILTER.html">Bilateral Filter</a></li>
@@ -261,7 +261,7 @@
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/tensorbatch.html">TensorBatchVarShape</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="../modules/python_algos.html">Algorithms</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../modules/python_ops.html">Operators</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_adaptivethreshold.html">AdaptiveThreshold</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_advcvtcolor.html">AdvCvtColor</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_averageblur.html">AverageBlur</a></li>
@@ -313,6 +313,9 @@
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_threshold.html">Threshold</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_warpaffine.html">WarpAffine</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_warpperspective.html">WarpPerspective</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/python_ops_aux.html">Operator's auxiliary entities</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_adaptivethresholdtype.html">AdaptiveThresholdType</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_arrow.html">Arrow</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_blurboxi.html">BlurBoxI</a></li>
@@ -341,11 +344,12 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Release Notes</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.10.1-beta.html">v0.10.1-beta</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.10.1-beta.html#release-highlights">Release Highlights</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.10.1-beta.html#license">License</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.10.1-beta.html#resources">Resources</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.10.1-beta.html#acknowledgements">Acknowledgements</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.11.0-beta.html">v0.11.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.11.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.11.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.11.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.11.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.11.0-beta.html#acknowledgements">Acknowledgements</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.10.0-beta.html">v0.10.0-beta</a><ul>
@@ -1465,7 +1469,7 @@
 
 <dl class="cpp function">
 <dt class="sig sig-object cpp">
-<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gae7821579da2e01aba50fec36ceb0aed1"></span><span class="sig-name descname"><span class="pre">const</span> <span class="pre">NVCV_PUBLIC</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvColorSpecGetName</span> <span class="pre">(NVCVColorSpec</span> <span class="pre">cspec)</span></span></dt>
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gad41cbbcda2847960cf2d16fde5a3bf18"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">const</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvColorSpecGetName</span> <span class="pre">(NVCVColorSpec</span> <span class="pre">cspec)</span></span></dt>
 <dd><p>Returns a string representation of the color spec.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1502,7 +1506,7 @@
 
 <dl class="cpp function">
 <dt class="sig sig-object cpp">
-<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga4d928202ff8e533be298b808c4dc64af"></span><span class="sig-name descname"><span class="pre">const</span> <span class="pre">NVCV_PUBLIC</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvColorModelGetName</span> <span class="pre">(NVCVColorModel</span> <span class="pre">cmodel)</span></span></dt>
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga1391738605d2abe1f125c15c2541cee3"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">const</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvColorModelGetName</span> <span class="pre">(NVCVColorModel</span> <span class="pre">cmodel)</span></span></dt>
 <dd><p>Returns a string representation of the color model.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1516,7 +1520,7 @@
 
 <dl class="cpp function">
 <dt class="sig sig-object cpp">
-<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gaa74b234bd3025524d1e06b488abdcbbb"></span><span class="sig-name descname"><span class="pre">const</span> <span class="pre">NVCV_PUBLIC</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvColorSpaceGetName</span> <span class="pre">(NVCVColorSpace</span> <span class="pre">cspace)</span></span></dt>
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga9a199f79c398ccea154c2288555ffb97"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">const</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvColorSpaceGetName</span> <span class="pre">(NVCVColorSpace</span> <span class="pre">cspace)</span></span></dt>
 <dd><p>Returns a string representation of the color space.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1530,7 +1534,7 @@
 
 <dl class="cpp function">
 <dt class="sig sig-object cpp">
-<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga04bd7df1020506f146f6eaf4bbea3a02"></span><span class="sig-name descname"><span class="pre">const</span> <span class="pre">NVCV_PUBLIC</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvWhitePointGetName</span> <span class="pre">(NVCVWhitePoint</span> <span class="pre">wpoint)</span></span></dt>
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gaaf52fa542b346114352e1a66af081749"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">const</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvWhitePointGetName</span> <span class="pre">(NVCVWhitePoint</span> <span class="pre">wpoint)</span></span></dt>
 <dd><p>Returns a string representation of the white point.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1544,7 +1548,7 @@
 
 <dl class="cpp function">
 <dt class="sig sig-object cpp">
-<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga727340c050da26330a398549cd606a69"></span><span class="sig-name descname"><span class="pre">const</span> <span class="pre">NVCV_PUBLIC</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvYCbCrEncodingGetName</span> <span class="pre">(NVCVYCbCrEncoding</span> <span class="pre">enc)</span></span></dt>
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gab601dc0fd00d9253e8c41c61cab79211"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">const</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvYCbCrEncodingGetName</span> <span class="pre">(NVCVYCbCrEncoding</span> <span class="pre">enc)</span></span></dt>
 <dd><p>Returns a string representation of the YCbCr encoding.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1558,7 +1562,7 @@
 
 <dl class="cpp function">
 <dt class="sig sig-object cpp">
-<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gaa5a4a71f7d3a8365be77d581082e806e"></span><span class="sig-name descname"><span class="pre">const</span> <span class="pre">NVCV_PUBLIC</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvColorTransferFunctionGetName</span> <span class="pre">(NVCVColorTransferFunction</span> <span class="pre">xfer)</span></span></dt>
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga4e5df541f5b5a9c868f08a6e5b796280"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">const</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvColorTransferFunctionGetName</span> <span class="pre">(NVCVColorTransferFunction</span> <span class="pre">xfer)</span></span></dt>
 <dd><p>Returns a string representation of the color transfer function.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1572,7 +1576,7 @@
 
 <dl class="cpp function">
 <dt class="sig sig-object cpp">
-<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gae162f3e90f1ff7a61844bfe568764823"></span><span class="sig-name descname"><span class="pre">const</span> <span class="pre">NVCV_PUBLIC</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvColorRangeGetName</span> <span class="pre">(NVCVColorRange</span> <span class="pre">range)</span></span></dt>
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gac06d90594ea587776990267dc4b48fb6"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">const</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvColorRangeGetName</span> <span class="pre">(NVCVColorRange</span> <span class="pre">range)</span></span></dt>
 <dd><p>Returns a string representation of the color range.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1586,7 +1590,7 @@
 
 <dl class="cpp function">
 <dt class="sig sig-object cpp">
-<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gaa51b5f2b207c67e45287f424a253428d"></span><span class="sig-name descname"><span class="pre">const</span> <span class="pre">NVCV_PUBLIC</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvChromaLocationGetName</span> <span class="pre">(NVCVChromaLocation</span> <span class="pre">loc)</span></span></dt>
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga694d6157c9929a1f2014793e274a6d1e"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">const</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvChromaLocationGetName</span> <span class="pre">(NVCVChromaLocation</span> <span class="pre">loc)</span></span></dt>
 <dd><p>Returns a string representation of the chroma location.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1600,7 +1604,7 @@
 
 <dl class="cpp function">
 <dt class="sig sig-object cpp">
-<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga77076c77cc3b5ae2033bf269d271e4bb"></span><span class="sig-name descname"><span class="pre">const</span> <span class="pre">NVCV_PUBLIC</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvRawPatternGetName</span> <span class="pre">(NVCVRawPattern</span> <span class="pre">raw)</span></span></dt>
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gab06dbe8408d5424eed51f924a55fe5bb"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">const</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvRawPatternGetName</span> <span class="pre">(NVCVRawPattern</span> <span class="pre">raw)</span></span></dt>
 <dd><p>Returns a string representation of the raw pattern.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1614,7 +1618,7 @@
 
 <dl class="cpp function">
 <dt class="sig sig-object cpp">
-<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1ga6563f7eed9a6321bcb3ce32fe3ac5823"></span><span class="sig-name descname"><span class="pre">const</span> <span class="pre">NVCV_PUBLIC</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvChromaSubsamplingGetName</span> <span class="pre">(NVCVChromaSubsampling</span> <span class="pre">css)</span></span></dt>
+<span class="target" id="group__NVCV__C__CORE__COLORSPEC_1gafbcbbb5205cd3869087ea97a7d668119"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">const</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvChromaSubsamplingGetName</span> <span class="pre">(NVCVChromaSubsampling</span> <span class="pre">css)</span></span></dt>
 <dd><p>Returns a string representation of the chroma subsampling.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1643,7 +1647,7 @@
 
   <div role="contentinfo">
     <p>&#169; Copyright 2022-2024, NVIDIA..
-      <span class="lastupdated">Last updated on Aug 08, 2024.
+      <span class="lastupdated">Last updated on Sep 17, 2024.
       </span></p>
   </div>
 

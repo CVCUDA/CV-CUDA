@@ -99,7 +99,7 @@
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__UTIL__STATUS.html">Status Codes</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="../modules/c_algos.html">Algorithms</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../modules/c_algos.html">Operators</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ADAPTIVETHRESHOLD.html">Adaptive Threshold</a></li>
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__AVERAGEBLUR.html">Average Blur</a></li>
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BILATERAL__FILTER.html">Bilateral Filter</a></li>
@@ -169,7 +169,7 @@
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__UTIL__STATUS.html">Status Codes</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_algos.html">Algorithms</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_algos.html">Operators</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ADAPTIVETHRESHOLD.html">Adaptive Threshold</a></li>
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__AVERAGEBLUR.html">Average Blur</a></li>
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BILATERAL__FILTER.html">Bilateral Filter</a></li>
@@ -262,7 +262,7 @@
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/tensorbatch.html">TensorBatchVarShape</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="../modules/python_algos.html">Algorithms</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../modules/python_ops.html">Operators</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_adaptivethreshold.html">AdaptiveThreshold</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_advcvtcolor.html">AdvCvtColor</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_averageblur.html">AverageBlur</a></li>
@@ -314,6 +314,9 @@
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_threshold.html">Threshold</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_warpaffine.html">WarpAffine</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_warpperspective.html">WarpPerspective</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/python_ops_aux.html">Operator's auxiliary entities</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_adaptivethresholdtype.html">AdaptiveThresholdType</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_arrow.html">Arrow</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_blurboxi.html">BlurBoxI</a></li>
@@ -342,11 +345,12 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Release Notes</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.10.1-beta.html">v0.10.1-beta</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.10.1-beta.html#release-highlights">Release Highlights</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.10.1-beta.html#license">License</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.10.1-beta.html#resources">Resources</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.10.1-beta.html#acknowledgements">Acknowledgements</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.11.0-beta.html">v0.11.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.11.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.11.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.11.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.11.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.11.0-beta.html#acknowledgements">Acknowledgements</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.10.0-beta.html">v0.10.0-beta</a><ul>
@@ -1625,7 +1629,7 @@ Some formats allow different packings when pixels’ horizontal coordinate is ev
 
 <dl class="cpp function">
 <dt class="sig sig-object cpp">
-<span class="target" id="group__NVCV__C__CORE__DATALAYOUT_1ga0376845724acb6aee02ae869ab8d1e52"></span><span class="sig-name descname"><span class="pre">const</span> <span class="pre">NVCV_PUBLIC</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvPackingGetName</span> <span class="pre">(NVCVPacking</span> <span class="pre">fmt)</span></span></dt>
+<span class="target" id="group__NVCV__C__CORE__DATALAYOUT_1gad5105dfc06036e4fd6bbcd119c8b9d8e"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">const</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvPackingGetName</span> <span class="pre">(NVCVPacking</span> <span class="pre">fmt)</span></span></dt>
 <dd><p>Returns a string representation of a packing.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1639,7 +1643,7 @@ Some formats allow different packings when pixels’ horizontal coordinate is ev
 
 <dl class="cpp function">
 <dt class="sig sig-object cpp">
-<span class="target" id="group__NVCV__C__CORE__DATALAYOUT_1ga0eaaec777693c7a561a282ebc728c83e"></span><span class="sig-name descname"><span class="pre">const</span> <span class="pre">NVCV_PUBLIC</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvDataKindGetName</span> <span class="pre">(NVCVDataKind</span> <span class="pre">dtype)</span></span></dt>
+<span class="target" id="group__NVCV__C__CORE__DATALAYOUT_1gaddf5db327f262ae83e91809c87687b3c"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">const</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvDataKindGetName</span> <span class="pre">(NVCVDataKind</span> <span class="pre">dtype)</span></span></dt>
 <dd><p>Returns a string representation of a data type.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1653,7 +1657,7 @@ Some formats allow different packings when pixels’ horizontal coordinate is ev
 
 <dl class="cpp function">
 <dt class="sig sig-object cpp">
-<span class="target" id="group__NVCV__C__CORE__DATALAYOUT_1ga8916485d614491e50e8ed9e46d4f6781"></span><span class="sig-name descname"><span class="pre">const</span> <span class="pre">NVCV_PUBLIC</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvMemLayoutGetName</span> <span class="pre">(NVCVMemLayout</span> <span class="pre">memlayout)</span></span></dt>
+<span class="target" id="group__NVCV__C__CORE__DATALAYOUT_1ga7460e0ccbb6ae87bb60121c94b5fab6f"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">const</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvMemLayoutGetName</span> <span class="pre">(NVCVMemLayout</span> <span class="pre">memlayout)</span></span></dt>
 <dd><p>Returns a string representation of a memory layout.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1667,7 +1671,7 @@ Some formats allow different packings when pixels’ horizontal coordinate is ev
 
 <dl class="cpp function">
 <dt class="sig sig-object cpp">
-<span class="target" id="group__NVCV__C__CORE__DATALAYOUT_1ga3b8482eecafcbd852a8d068c98370ed8"></span><span class="sig-name descname"><span class="pre">const</span> <span class="pre">NVCV_PUBLIC</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvChannelGetName</span> <span class="pre">(NVCVChannel</span> <span class="pre">channel)</span></span></dt>
+<span class="target" id="group__NVCV__C__CORE__DATALAYOUT_1gae64b3c46d52bf6e3b94fd15f166bb4c6"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">const</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvChannelGetName</span> <span class="pre">(NVCVChannel</span> <span class="pre">channel)</span></span></dt>
 <dd><p>Returns a string representation of a channel.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1681,7 +1685,7 @@ Some formats allow different packings when pixels’ horizontal coordinate is ev
 
 <dl class="cpp function">
 <dt class="sig sig-object cpp">
-<span class="target" id="group__NVCV__C__CORE__DATALAYOUT_1gaeb01ea73616947d1aaf74183c17ad436"></span><span class="sig-name descname"><span class="pre">const</span> <span class="pre">NVCV_PUBLIC</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvSwizzleGetName</span> <span class="pre">(NVCVSwizzle</span> <span class="pre">swizzle)</span></span></dt>
+<span class="target" id="group__NVCV__C__CORE__DATALAYOUT_1gad1f2edc59c04e06de2d8e8f5fa70ba37"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">const</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvSwizzleGetName</span> <span class="pre">(NVCVSwizzle</span> <span class="pre">swizzle)</span></span></dt>
 <dd><p>Returns a string representation of a swizzle.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1695,7 +1699,7 @@ Some formats allow different packings when pixels’ horizontal coordinate is ev
 
 <dl class="cpp function">
 <dt class="sig sig-object cpp">
-<span class="target" id="group__NVCV__C__CORE__DATALAYOUT_1ga8e1a834b86d96f3ebcc8339ed2327155"></span><span class="sig-name descname"><span class="pre">const</span> <span class="pre">NVCV_PUBLIC</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvByteOrderGetName</span> <span class="pre">(NVCVByteOrder</span> <span class="pre">byteOrder)</span></span></dt>
+<span class="target" id="group__NVCV__C__CORE__DATALAYOUT_1ga1899dbfcb7df1e13296a743351a374ee"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">const</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvByteOrderGetName</span> <span class="pre">(NVCVByteOrder</span> <span class="pre">byteOrder)</span></span></dt>
 <dd><p>Returns a string representation of a byte order.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1740,7 +1744,7 @@ Some formats allow different packings when pixels’ horizontal coordinate is ev
 
   <div role="contentinfo">
     <p>&#169; Copyright 2022-2024, NVIDIA..
-      <span class="lastupdated">Last updated on Aug 08, 2024.
+      <span class="lastupdated">Last updated on Sep 17, 2024.
       </span></p>
   </div>
 

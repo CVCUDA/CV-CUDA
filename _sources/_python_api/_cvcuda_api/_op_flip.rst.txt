@@ -19,4 +19,4 @@ Flip
 
 .. automodule:: cvcuda
   :noindex:
-  :members: flip, flip_into
+  :members: flip_into, flip

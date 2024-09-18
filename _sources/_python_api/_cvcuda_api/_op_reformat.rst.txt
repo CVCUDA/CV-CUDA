@@ -19,4 +19,4 @@ Reformat
 
 .. automodule:: cvcuda
   :noindex:
-  :members: reformat_into, reformat
+  :members: reformat, reformat_into

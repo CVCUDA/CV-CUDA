@@ -22,4 +22,5 @@ Python API
   :maxdepth: 3
 
   Core <python_core>
-  Algorithms <python_algos>
+  Operators <python_ops>
+  Operator's auxiliary entities <python_ops_aux>

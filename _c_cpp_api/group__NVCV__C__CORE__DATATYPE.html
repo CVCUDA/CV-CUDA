@@ -98,7 +98,7 @@
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__UTIL__STATUS.html">Status Codes</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="../modules/c_algos.html">Algorithms</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../modules/c_algos.html">Operators</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ADAPTIVETHRESHOLD.html">Adaptive Threshold</a></li>
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__AVERAGEBLUR.html">Average Blur</a></li>
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BILATERAL__FILTER.html">Bilateral Filter</a></li>
@@ -168,7 +168,7 @@
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__UTIL__STATUS.html">Status Codes</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_algos.html">Algorithms</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_algos.html">Operators</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ADAPTIVETHRESHOLD.html">Adaptive Threshold</a></li>
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__AVERAGEBLUR.html">Average Blur</a></li>
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BILATERAL__FILTER.html">Bilateral Filter</a></li>
@@ -261,7 +261,7 @@
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/tensorbatch.html">TensorBatchVarShape</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="../modules/python_algos.html">Algorithms</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../modules/python_ops.html">Operators</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_adaptivethreshold.html">AdaptiveThreshold</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_advcvtcolor.html">AdvCvtColor</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_averageblur.html">AverageBlur</a></li>
@@ -313,6 +313,9 @@
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_threshold.html">Threshold</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_warpaffine.html">WarpAffine</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_warpperspective.html">WarpPerspective</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/python_ops_aux.html">Operator's auxiliary entities</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_adaptivethresholdtype.html">AdaptiveThresholdType</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_arrow.html">Arrow</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_blurboxi.html">BlurBoxI</a></li>
@@ -341,11 +344,12 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Release Notes</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.10.1-beta.html">v0.10.1-beta</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.10.1-beta.html#release-highlights">Release Highlights</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.10.1-beta.html#license">License</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.10.1-beta.html#resources">Resources</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.10.1-beta.html#acknowledgements">Acknowledgements</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.11.0-beta.html">v0.11.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.11.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.11.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.11.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.11.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.11.0-beta.html#acknowledgements">Acknowledgements</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.10.0-beta.html">v0.10.0-beta</a><ul>
@@ -988,7 +992,7 @@
 
 <dl class="cpp function">
 <dt class="sig sig-object cpp">
-<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga0d4612ecd79614ba9829be37ee8f5276"></span><span class="sig-name descname"><span class="pre">const</span> <span class="pre">NVCV_PUBLIC</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvDataTypeGetName</span> <span class="pre">(NVCVDataType</span> <span class="pre">type)</span></span></dt>
+<span class="target" id="group__NVCV__C__CORE__DATATYPE_1ga50dcfdfffd3916f59d3d15502676e90a"></span><span class="sig-name descname"><span class="pre">NVCV_PUBLIC</span> <span class="pre">const</span> <span class="pre">char</span> <span class="pre">*</span> <span class="pre">nvcvDataTypeGetName</span> <span class="pre">(NVCVDataType</span> <span class="pre">type)</span></span></dt>
 <dd><p>Returns a string representation of the data type.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1079,7 +1083,7 @@
 
   <div role="contentinfo">
     <p>&#169; Copyright 2022-2024, NVIDIA..
-      <span class="lastupdated">Last updated on Aug 08, 2024.
+      <span class="lastupdated">Last updated on Sep 17, 2024.
       </span></p>
   </div>
 

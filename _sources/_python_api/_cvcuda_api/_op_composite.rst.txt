@@ -19,4 +19,4 @@ Composite
 
 .. automodule:: cvcuda
   :noindex:
-  :members: composite, composite_into
+  :members: composite_into, composite

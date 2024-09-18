@@ -98,7 +98,7 @@
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__UTIL__STATUS.html">Status Codes</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="../modules/c_algos.html">Algorithms</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../modules/c_algos.html">Operators</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ADAPTIVETHRESHOLD.html">Adaptive Threshold</a></li>
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__AVERAGEBLUR.html">Average Blur</a></li>
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BILATERAL__FILTER.html">Bilateral Filter</a></li>
@@ -168,7 +168,7 @@
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__CPP__UTIL__STATUS.html">Status Codes</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_algos.html">Algorithms</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../modules/cpp_algos.html">Operators</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__ADAPTIVETHRESHOLD.html">Adaptive Threshold</a></li>
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__AVERAGEBLUR.html">Average Blur</a></li>
 <li class="toctree-l3"><a class="reference internal" href="group__NVCV__C__ALGORITHM__BILATERAL__FILTER.html">Bilateral Filter</a></li>
@@ -261,7 +261,7 @@
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/nvcv/tensorbatch.html">TensorBatchVarShape</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="../modules/python_algos.html">Algorithms</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../modules/python_ops.html">Operators</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_adaptivethreshold.html">AdaptiveThreshold</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_advcvtcolor.html">AdvCvtColor</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_averageblur.html">AverageBlur</a></li>
@@ -313,6 +313,9 @@
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_threshold.html">Threshold</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_warpaffine.html">WarpAffine</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_op_warpperspective.html">WarpPerspective</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../modules/python_ops_aux.html">Operator's auxiliary entities</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_adaptivethresholdtype.html">AdaptiveThresholdType</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_arrow.html">Arrow</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../_python_api/_cvcuda_api/_aux_blurboxi.html">BlurBoxI</a></li>
@@ -341,11 +344,12 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Release Notes</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.10.1-beta.html">v0.10.1-beta</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.10.1-beta.html#release-highlights">Release Highlights</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.10.1-beta.html#license">License</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.10.1-beta.html#resources">Resources</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.10.1-beta.html#acknowledgements">Acknowledgements</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.11.0-beta.html">v0.11.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.11.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.11.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.11.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.11.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../relnotes/v0.11.0-beta.html#acknowledgements">Acknowledgements</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="../relnotes/v0.10.0-beta.html">v0.10.0-beta</a><ul>
@@ -483,8 +487,8 @@
 <span id="_CPPv3I0EN4nvcv4cuda22ImageBatchVarShapeWrapE"></span><span id="_CPPv2I0EN4nvcv4cuda22ImageBatchVarShapeWrapE"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">typename</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">T</span></span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="classnvcv_1_1cuda_1_1ImageBatchVarShapeWrap"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ImageBatchVarShapeWrap</span></span></span><a class="headerlink" href="#_CPPv4I0EN4nvcv4cuda22ImageBatchVarShapeWrapE" title="Permalink to this definition"></a><br /></dt>
 <dd><div class="docutils container">
 <em>#include &lt;ImageBatchVarShapeWrap.hpp&gt;</em></div>
-<p><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHOPERATORS.html#classnvcv_1_1Image"><span class="std std-ref">Image</span></a> batch var-shape wrapper class to wrap <a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHOPERATORS.html#classnvcv_1_1ImageBatchVarShapeDataStridedCuda"><span class="std std-ref">ImageBatchVarShapeDataStridedCuda</span></a>.</p>
-<p><a class="reference internal" href="group__NVCV__CPP__CORE__COLORSPEC.html#classnvcv_1_1cuda_1_1ImageBatchVarShapeWrap"><span class="std std-ref">ImageBatchVarShapeWrap</span></a> is a wrapper of an image batch (or a list of images) of variable shapes. The template parameter <code class="docutils literal notranslate"><span class="pre">T</span></code> is the type of each element inside the wrapper, and it can be compound type to represent a pixel type, e.g. uchar4 for RGBA images.</p>
+<p>Image batch var-shape wrapper class to wrap ImageBatchVarShapeDataStridedCuda.</p>
+<p><a class="reference internal" href="#classnvcv_1_1cuda_1_1ImageBatchVarShapeWrap"><span class="std std-ref">ImageBatchVarShapeWrap</span></a> is a wrapper of an image batch (or a list of images) of variable shapes. The template parameter <code class="docutils literal notranslate"><span class="pre">T</span></code> is the type of each element inside the wrapper, and it can be compound type to represent a pixel type, e.g. uchar4 for RGBA images.</p>
 <div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="w"> </span><span class="n">cudaStream_t</span><span class="w"> </span><span class="n">stream</span><span class="p">;</span>
 <span class="w"> </span><span class="n">cudaStreamCreate</span><span class="p">(</span><span class="o">&amp;</span><span class="n">stream</span><span class="p">);</span>
 <span class="w"> </span><span class="n">nvcv</span><span class="o">::</span><span class="n">ImageBatchVarShape</span><span class="w"> </span><span class="nf">imageBatch</span><span class="p">(</span><span class="n">samples</span><span class="p">);</span>
@@ -493,7 +497,7 @@
 <span class="w"> </span><span class="c1">// Now wrap can be used in device code to access elements of the image batch via operator[] or ptr method.</span>
 </pre></div>
 </div>
-<p><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHOPERATORS.html#classnvcv_1_1Image"><span class="std std-ref">Image</span></a> batch var-shape wrapper class to wrap <a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHOPERATORS.html#classnvcv_1_1ImageBatchVarShapeDataStridedCuda"><span class="std std-ref">ImageBatchVarShapeDataStridedCuda</span></a>.</p>
+<p>Image batch var-shape wrapper class to wrap ImageBatchVarShapeDataStridedCuda.</p>
 <p>This class is specialized for non-constant value type.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Template Parameters<span class="colon">:</span></dt>
@@ -503,7 +507,7 @@
 </ul>
 </dd>
 </dl>
-<p>Subclassed by <a class="reference internal" href="group__NVCV__CPP__CORE__COLORSPEC.html#classnvcv_1_1cuda_1_1ImageBatchVarShapeWrapNHWC"><span class="std std-ref">nvcv::cuda::ImageBatchVarShapeWrapNHWC&lt; T &gt;</span></a></p>
+<p>Subclassed by <a class="reference internal" href="#classnvcv_1_1cuda_1_1ImageBatchVarShapeWrapNHWC"><span class="std std-ref">nvcv::cuda::ImageBatchVarShapeWrapNHWC&lt; T &gt;</span></a></p>
 </dd></dl>
 
 <dl class="cpp class">
@@ -515,14 +519,14 @@
 
 <dl class="cpp class">
 <dt class="sig sig-object cpp" id="_CPPv4I0EN4nvcv4cuda26ImageBatchVarShapeWrapNHWCE">
-<span id="_CPPv3I0EN4nvcv4cuda26ImageBatchVarShapeWrapNHWCE"></span><span id="_CPPv2I0EN4nvcv4cuda26ImageBatchVarShapeWrapNHWCE"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">typename</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">T</span></span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="classnvcv_1_1cuda_1_1ImageBatchVarShapeWrapNHWC"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ImageBatchVarShapeWrapNHWC</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">private</span></span><span class="w"> </span><a class="reference internal" href="group__NVCV__CPP__CORE__COLORSPEC.html#_CPPv44nvcv" title="nvcv"><span class="n"><span class="pre">nvcv</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="group__NVCV__CPP__CORE__COLORSPEC.html#_CPPv4N4nvcv4cudaE" title="nvcv::cuda"><span class="n"><span class="pre">cuda</span></span></a><span class="p"><span class="pre">::</span></span><a class="reference internal" href="#_CPPv4I0EN4nvcv4cuda22ImageBatchVarShapeWrapE" title="nvcv::cuda::ImageBatchVarShapeWrap"><span class="n"><span class="pre">ImageBatchVarShapeWrap</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I0EN4nvcv4cuda26ImageBatchVarShapeWrapNHWCE" title="nvcv::cuda::ImageBatchVarShapeWrapNHWC::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">&gt;</span></span><a class="headerlink" href="#_CPPv4I0EN4nvcv4cuda26ImageBatchVarShapeWrapNHWCE" title="Permalink to this definition"></a><br /></dt>
+<span id="_CPPv3I0EN4nvcv4cuda26ImageBatchVarShapeWrapNHWCE"></span><span id="_CPPv2I0EN4nvcv4cuda26ImageBatchVarShapeWrapNHWCE"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">typename</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">T</span></span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="classnvcv_1_1cuda_1_1ImageBatchVarShapeWrapNHWC"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ImageBatchVarShapeWrapNHWC</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">private</span></span><span class="w"> </span><span class="n"><span class="pre">nvcv</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">cuda</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="#_CPPv4I0EN4nvcv4cuda22ImageBatchVarShapeWrapE" title="nvcv::cuda::ImageBatchVarShapeWrap"><span class="n"><span class="pre">ImageBatchVarShapeWrap</span></span></a><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="#_CPPv4I0EN4nvcv4cuda26ImageBatchVarShapeWrapNHWCE" title="nvcv::cuda::ImageBatchVarShapeWrapNHWC::T"><span class="n"><span class="pre">T</span></span></a><span class="p"><span class="pre">&gt;</span></span><a class="headerlink" href="#_CPPv4I0EN4nvcv4cuda26ImageBatchVarShapeWrapNHWCE" title="Permalink to this definition"></a><br /></dt>
 <dd><div class="docutils container">
 <em>#include &lt;ImageBatchVarShapeWrap.hpp&gt;</em></div>
-<p><a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHOPERATORS.html#classnvcv_1_1Image"><span class="std std-ref">Image</span></a> batch var-shape wrapper NHWC class to wrap <a class="reference internal" href="group__NVCV__CPP__CUDATOOLS__MATHOPERATORS.html#classnvcv_1_1ImageBatchVarShapeDataStridedCuda"><span class="std std-ref">ImageBatchVarShapeDataStridedCuda</span></a> and number of channels.</p>
+<p>Image batch var-shape wrapper NHWC class to wrap ImageBatchVarShapeDataStridedCuda and number of channels.</p>
 <p>This class handles number of channels as a separate run-time parameter instead of built-in <code class="docutils literal notranslate"><span class="pre">T</span></code>. It considers interleaved channels, where they appear in a packed sequence at the last dimension (thus NHWC). It also considers each image in the batch has a single plane.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p>The class <a class="reference internal" href="group__NVCV__CPP__CORE__COLORSPEC.html#classnvcv_1_1cuda_1_1ImageBatchVarShapeWrap"><span class="std std-ref">ImageBatchVarShapeWrap</span></a> can be used with its template parameter <code class="docutils literal notranslate"><span class="pre">T</span></code> type as a compound type, where its number of elements yield the number of channels.</p>
+<p>The class <a class="reference internal" href="#classnvcv_1_1cuda_1_1ImageBatchVarShapeWrap"><span class="std std-ref">ImageBatchVarShapeWrap</span></a> can be used with its template parameter <code class="docutils literal notranslate"><span class="pre">T</span></code> type as a compound type, where its number of elements yield the number of channels.</p>
 </div>
 <dl class="field-list simple">
 <dt class="field-odd">Template Parameters<span class="colon">:</span></dt>
@@ -547,7 +551,7 @@
 
   <div role="contentinfo">
     <p>&#169; Copyright 2022-2024, NVIDIA..
-      <span class="lastupdated">Last updated on Aug 08, 2024.
+      <span class="lastupdated">Last updated on Sep 17, 2024.
       </span></p>
   </div>
 

@@ -14,16 +14,35 @@
   # See the License for the specific language governing permissions and
   # limitations under the License.
 
-.. _v0.10.1-beta:
+.. _v0.11.0-beta:
 
-v0.10.1-beta
+v0.11.0-beta
 ============
 
 Release Highlights
 ------------------
 
-CV-CUDA v0.10.1 reverts the OpCvtColor performance improvements introduced in v0.10.0 due to discovered bugs.
-These optimizations will be reintroduced, with consolidated testing, in a future release.
+CV-CUDA v0.11.0 includes critical bug fixes alongside the following changes:​
+
+* **New Features**:​
+
+  * Enable NVCV to be built as static library​
+  * Improve Python doc generation and structure ​
+
+* **Bug Fixes**:​
+
+  * Update pybind11 2.10.0 to 2.13.1. Fixes rare race conditions with Python garbage collector, adds compatibility with numpy2​
+
+Compatibility and Known Limitations
+-----------------------------------
+  
+* **Pre-existing limitations**:
+
+  * We note a bug in the YUV(420) color conversion API (NVCV_COLOR_RGB2YUV_I420) which incorrectly computes the U and V plane index​
+
+    * This persists through this release and we intend to address this bug in CV-CUDA v0.12.0​
+
+For the full list, see main README on `CV-CUDA GitHub <https://github.com/CVCUDA/CV-CUDA>`_.
 
 License
 -------
@@ -42,3 +61,5 @@ Acknowledgements
 ----------------
 
 CV-CUDA is developed jointly by NVIDIA and the ByteDance Machine Learning team.
+
+.. [1] These fixes and features add micro-second-level overhead to Python operator calls. Based on the performance analysis of our Python samples, we expect the production- and pipeline-level impact to be negligible. CUDA kernel and C++ call performance is not affected. We aim to investigate and reduce this overhead further in a future release.​

@@ -19,4 +19,4 @@ SIFT
 
 .. automodule:: cvcuda
   :noindex:
-  :members: sift, sift_into
+  :members: sift_into, sift
