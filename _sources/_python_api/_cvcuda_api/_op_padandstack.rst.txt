@@ -19,4 +19,4 @@ PadAndStack
 
 .. automodule:: cvcuda
   :noindex:
-  :members: padandstack, padandstack_into
+  :members: padandstack_into, padandstack
