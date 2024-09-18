@@ -28,6 +28,7 @@
 
 import os
 import sys
+from unittest.mock import MagicMock
 
 import sphinx_rtd_theme
 
@@ -42,6 +43,17 @@ release = version
 # set python docstring source path
 lib_path = os.getenv("SPHINX_PYTHON_SRC", default=".")
 sys.path.insert(0, os.path.abspath(lib_path))
+
+# -- Module mocking ----------------------------------------------------------
+
+class Mock(MagicMock):
+    @classmethod
+    def __getattr__(cls, name):
+        return MagicMock()
+
+# List of modules to mock
+MOCK_MODULES = ['cvcuda']
+sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)
 
 # -- General configuration ---------------------------------------------------
 
