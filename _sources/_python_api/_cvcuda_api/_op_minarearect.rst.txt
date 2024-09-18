@@ -19,4 +19,4 @@ MinAreaRect
 
 .. automodule:: cvcuda
   :noindex:
-  :members: minarearect_into, minarearect
+  :members: minarearect, minarearect_into

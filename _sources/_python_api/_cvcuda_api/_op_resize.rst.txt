@@ -19,4 +19,4 @@ Resize
 
 .. automodule:: cvcuda
   :noindex:
-  :members: resize, resize_into
+  :members: resize_into, resize
