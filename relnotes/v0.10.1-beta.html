@@ -4,7 +4,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>v0.7.0-beta &mdash; CV-CUDA Beta documentation</title>
+  <title>v0.10.1-beta &mdash; CV-CUDA Beta documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=fa44fd50" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=19f00094" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=76b435a8" />
@@ -23,9 +23,7 @@
         <script src="../_static/pk_scripts.js"></script>
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
-    <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="v0.6.0-beta" href="v0.6.0-beta.html" />
-    <link rel="prev" title="v0.8.0-beta" href="v0.8.0-beta.html" /> 
+    <link rel="search" title="Search" href="../search.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -1109,7 +1107,7 @@
 </li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Release Notes</span></p>
-<ul class="current">
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="v0.11.0-beta.html">v0.11.0-beta</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="v0.11.0-beta.html#release-highlights">Release Highlights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="v0.11.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
@@ -1142,12 +1140,12 @@
 <li class="toctree-l2"><a class="reference internal" href="v0.8.0-beta.html#acknowledgements">Acknowledgements</a></li>
 </ul>
 </li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">v0.7.0-beta</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#release-highlights">Release Highlights</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#license">License</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#resources">Resources</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#acknowledgements">Acknowledgements</a></li>
+<li class="toctree-l1"><a class="reference internal" href="v0.7.0-beta.html">v0.7.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="v0.7.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="v0.7.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="v0.7.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="v0.7.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="v0.7.0-beta.html#acknowledgements">Acknowledgements</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="v0.6.0-beta.html">v0.6.0-beta</a><ul>
@@ -1231,9 +1229,9 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
-      <li class="breadcrumb-item active">v0.7.0-beta</li>
+      <li class="breadcrumb-item active">v0.10.1-beta</li>
       <li class="wy-breadcrumbs-aside">
-            <a href="../_sources/relnotes/v0.7.0-beta.rst.txt" rel="nofollow"> View page source</a>
+            <a href="../_sources/relnotes/v0.10.1-beta.rst.txt" rel="nofollow"> View page source</a>
       </li>
   </ul>
   <hr/>
@@ -1241,36 +1239,12 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="v0-7-0-beta">
-<span id="id1"></span><h1>v0.7.0-beta<a class="headerlink" href="#v0-7-0-beta" title="Link to this heading"></a></h1>
-<p>CV-CUDA v0.7.0 introduces performance and support enhancements, along with bug fixes and new features.</p>
+  <section id="v0-10-1-beta">
+<span id="id1"></span><h1>v0.10.1-beta<a class="headerlink" href="#v0-10-1-beta" title="Link to this heading"></a></h1>
 <section id="release-highlights">
 <h2>Release Highlights<a class="headerlink" href="#release-highlights" title="Link to this heading"></a></h2>
-<p>CV-CUDA v0.7.0 includes the following improvements:</p>
-<ul class="simple">
-<li><p><strong>New Features</strong>:</p>
-<ul>
-<li><p>Optimized Python bindings: near-zero overhead compared to C++ calls​</p></li>
-<li><p>Added masking option to Label operator: conditional island removal</p></li>
-<li><p>Added IGX Orin support (with dGPU, Ampere or Ada RTX6000)​</p></li>
-<li><p>Added support of signed 32bits output datatype for Label operator​</p></li>
-</ul>
-</li>
-<li><p><strong>Removed Operator</strong>:​</p>
-<ul>
-<li><p>Removed Find Contours operator for troubleshooting of major limitations</p></li>
-</ul>
-</li>
-<li><p><strong>Bug Fixes</strong>:</p>
-<ul>
-<li><p>Fixed constraint on installation directory for Python tests​: tar test packages can now be used from any directory​</p></li>
-</ul>
-</li>
-</ul>
-</section>
-<section id="compatibility-and-known-limitations">
-<h2>Compatibility and Known Limitations<a class="headerlink" href="#compatibility-and-known-limitations" title="Link to this heading"></a></h2>
-<p>See main README on <a class="reference external" href="https://github.com/CVCUDA/CV-CUDA">CV-CUDA GitHub</a>.</p>
+<p>CV-CUDA v0.10.1 reverts the OpCvtColor performance improvements introduced in v0.10.0 due to discovered bugs.
+These optimizations will be reintroduced, with consolidated testing, in a future release.</p>
 </section>
 <section id="license">
 <h2>License<a class="headerlink" href="#license" title="Link to this heading"></a></h2>
@@ -1294,10 +1268,7 @@
 
            </div>
           </div>
-          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="v0.8.0-beta.html" class="btn btn-neutral float-left" title="v0.8.0-beta" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="v0.6.0-beta.html" class="btn btn-neutral float-right" title="v0.6.0-beta" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
-    </div>
+          <footer>
 
   <hr/>
 

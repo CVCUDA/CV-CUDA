@@ -19,4 +19,4 @@ AverageBlur
 
 .. automodule:: cvcuda
   :noindex:
-  :members: averageblur, averageblur_into
+  :members: averageblur_into, averageblur

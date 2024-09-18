@@ -19,4 +19,4 @@ FindHomography
 
 .. automodule:: cvcuda
   :noindex:
-  :members: findhomography, findhomography_into
+  :members: findhomography_into, findhomography

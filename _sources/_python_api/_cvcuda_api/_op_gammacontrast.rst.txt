@@ -19,4 +19,4 @@ GammaContrast
 
 .. automodule:: cvcuda
   :noindex:
-  :members: gamma_contrast, gamma_contrast_into
+  :members: gamma_contrast_into, gamma_contrast
