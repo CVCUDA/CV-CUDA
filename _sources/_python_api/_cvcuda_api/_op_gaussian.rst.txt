@@ -19,4 +19,4 @@ Gaussian
 
 .. automodule:: cvcuda
   :noindex:
-  :members: gaussian_into, gaussian
+  :members: gaussian, gaussian_into
