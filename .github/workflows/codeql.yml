@@ -27,7 +27,9 @@ jobs:
   analyze:
     name: Analyze
     runs-on: ubuntu-22.04-64core
-    container: nvidia/cuda:12.2.0-devel-ubuntu22.04
+    container:
+      image: nvidia/cuda:12.2.0-devel-ubuntu22.04
+      options: --user root
     timeout-minutes: 360
     permissions:
       actions: write
