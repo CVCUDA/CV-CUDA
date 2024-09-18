@@ -84,8 +84,6 @@ jobs:
       run: |
           echo "Installed CUDA version is: ${{ steps.cuda-toolkit.outputs.cuda }}"
           echo "CUDA install location: ${{ steps.cuda-toolkit.outputs.CUDA_PATH }}"
-          sudo ln -s ${{ steps.cuda-toolkit.outputs.CUDA_PATH }}/lib64/libcudart.so \
-            /usr/lib/x86_64-linux-gnu/libcuda.so
           nvcc -V
 
     - name: Initialize CodeQL
