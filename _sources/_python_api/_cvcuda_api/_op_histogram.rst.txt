@@ -19,4 +19,4 @@ Histogram
 
 .. automodule:: cvcuda
   :noindex:
-  :members: histogram_into, histogram
+  :members: histogram, histogram_into

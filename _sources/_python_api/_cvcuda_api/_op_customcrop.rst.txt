@@ -19,4 +19,4 @@ CustomCrop
 
 .. automodule:: cvcuda
   :noindex:
-  :members: customcrop, customcrop_into
+  :members: customcrop_into, customcrop
