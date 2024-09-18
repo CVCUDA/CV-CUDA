@@ -28,7 +28,6 @@
 
 import os
 import sys
-from unittest.mock import MagicMock
 
 import sphinx_rtd_theme
 
@@ -46,14 +45,7 @@ sys.path.insert(0, os.path.abspath(lib_path))
 
 # -- Module mocking ----------------------------------------------------------
 
-class Mock(MagicMock):
-    @classmethod
-    def __getattr__(cls, name):
-        return MagicMock()
-
-# List of modules to mock
-MOCK_MODULES = ['nvcv', 'cvcuda']
-sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)
+autodoc_mock_imports = ['nvcv', 'cvcuda']
 
 # -- General configuration ---------------------------------------------------
 
