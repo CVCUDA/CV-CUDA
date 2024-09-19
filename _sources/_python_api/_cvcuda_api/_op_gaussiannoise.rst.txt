@@ -19,4 +19,4 @@ GaussianNoise
 
 .. automodule:: cvcuda
   :noindex:
-  :members: gaussiannoise, gaussiannoise_into
+  :members: gaussiannoise_into, gaussiannoise
