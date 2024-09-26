@@ -184,13 +184,16 @@ nvcv::Tensor CreateTensor(int numImages, int imgWidth, int imgHeight, const nvcv
     if (imgFormat == NVCV_IMAGE_FORMAT_NV12 || imgFormat == NVCV_IMAGE_FORMAT_NV12_ER
         || imgFormat == NVCV_IMAGE_FORMAT_NV21 || imgFormat == NVCV_IMAGE_FORMAT_NV21_ER)
     {
-        int height420
-            = (imgHeight * 3) / 2; // tensor size is 3/2 times the image size to accommodate the 1/2 chroma planes
-        // width must be even and height must be multiple of 3 (original height must be even and multiple of 2)
-        if (height420 % 3 != 0 || imgWidth % 2 != 0)
+        // Width and height must be a multiple of 2 (i.e., even).
+        if (imgHeight % 2 != 0 || imgWidth % 2 != 0)
         {
-            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid height");
+            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                                  "Invalid height or width: height and width need to be a "
+                                  "multiple of 2 for planar and semi-planar YUV420 formats.");
         }
+
+        // Tensor height is 3/2 times the image height to accommodate the half-height chroma planes.
+        int height420 = (imgHeight * 3) / 2;
 
         if (numImages == 1)
         {
@@ -208,6 +211,25 @@ nvcv::Tensor CreateTensor(int numImages, int imgWidth, int imgHeight, const nvcv
             // modified height.
             return nvcv::Tensor(numImages, {imgWidth, height420}, nvcv::ImageFormat(NVCV_IMAGE_FORMAT_Y8));
         }
+    }
+    else if (imgFormat == NVCV_IMAGE_FORMAT_UYVY || imgFormat == NVCV_IMAGE_FORMAT_UYVY_ER
+             || imgFormat == NVCV_IMAGE_FORMAT_YUYV || imgFormat == NVCV_IMAGE_FORMAT_YUYV_ER)
+    {
+        if (imgWidth % 2 != 0)
+        {
+            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                                  "Invalid width: width needs to be a multiple of 2 for interleaved YUV422 formats.");
+        }
+
+        int wdth422 = 2 * imgWidth; // Tensor width is 2x the image width to accomodate two chromaticity values for
+                                    //   each group of two luma values (UYVY or YUYV).
+        // clang-format off
+        nvcv::DataType    type  = imgFormat.planeDataType(0).channelType(0);
+        nvcv::TensorShape shape = numImages > 1 ? nvcv::TensorShape({numImages, imgHeight, wdth422, 1}, "NHWC")
+                                                : nvcv::TensorShape(           {imgHeight, wdth422, 1},  "HWC");
+
+        return nvcv::Tensor(shape, type);
+        // clang-format on
     }
     if (numImages == 1)
     {

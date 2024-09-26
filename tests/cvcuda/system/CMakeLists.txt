@@ -53,7 +53,9 @@ add_executable(cvcuda_test_system
     TestOpCropFlipNormalizeReformat.cpp
     FlipUtils.cpp
     ConvUtils.cpp
+    CvtColorUtils.cpp
     ResizeUtils.cpp
+    TestUtils.cpp
     TestOpNonMaximumSuppression.cpp
     TestOpReformat.cpp
     TestOpResize.cpp

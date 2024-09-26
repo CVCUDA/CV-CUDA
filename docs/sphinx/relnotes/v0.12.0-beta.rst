@@ -14,16 +14,32 @@
   # See the License for the specific language governing permissions and
   # limitations under the License.
 
-.. _v0.10.1-beta:
+.. _v0.12.0-beta:
 
-v0.10.1-beta
+v0.12.0-beta
 ============
 
 Release Highlights
 ------------------
 
-CV-CUDA v0.10.1 reverts the OpCvtColor performance improvements introduced in v0.10.0 due to discovered bugs.
-These optimizations will be reintroduced, with consolidated testing, in a future release.
+CV-CUDA v0.12.0 includes critical bug fixes alongside the following changes:​
+
+* **New Features**:​
+
+  * Increased functional test coverage of color conversions. ​
+  * Reintroduced from 24.07: Improved performance of color conversion operators (e.g., 2x faster RGB2YUV).
+
+* **Bug Fixes**:​
+
+  * Fixed bug in YUV(420) conversions: The CvtColor operator incorrectly computed the data location of the second chromaticity channel for conversions.​
+  * Fixed bug in YUV(422) conversions: The CvtColor operator incorrectly interpreted the interleaved YUV(422) data layout as a three-channel tensor.​
+  * Prevent CV_16F alpha addition: some color conversions in the CvtColor operator allowed for the addition of an alpha channel to the destination tensor, which is undefined for the CV_16F data type.
+
+
+Compatibility and Known Limitations
+-----------------------------------
+
+For the full list, see main README on `CV-CUDA GitHub <https://github.com/CVCUDA/CV-CUDA>`_.
 
 License
 -------
