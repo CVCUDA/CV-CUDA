@@ -1260,6 +1260,72 @@
              
   <section id="padandstack">
 <h1>PadAndStack<a class="headerlink" href="#padandstack" title="Link to this heading"></a></h1>
+<dl class="py function">
+<dt class="sig sig-object py">
+<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">padandstack</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">src:</span> <span class="pre">nvcv.ImageBatchVarShape</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">top:</span> <span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">left:</span> <span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">border:</span> <span class="pre">cvcuda.Border</span> <span class="pre">=</span> <span class="pre">&lt;Border.CONSTANT:</span> <span class="pre">0&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bvalue:</span> <span class="pre">float</span> <span class="pre">=</span> <span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream:</span> <span class="pre">Optional[nvcv.cuda.Stream]</span> <span class="pre">=</span> <span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">nvcv.Tensor</span></span></span></dt>
+<dd><p>Executes the Pad and Stack operation on the given cuda stream.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p>Refer to the CV-CUDA C API reference for the Pad and Stack operator
+for more details and usage examples.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>src</strong> (<em>nvcv.ImageBatchVarShape</em>) – input image batch containing one or more images.</p></li>
+<li><p><strong>top</strong> (<em>nvcv.Tensor</em>) – Top tensor to store amount of top padding per batch input image.</p></li>
+<li><p><strong>left</strong> (<em>nvcv.Tensor</em>) – Left tensor to store amount of left padding per batch input image.</p></li>
+<li><p><strong>border</strong> (<em>cvcuda.Border</em>) – Border mode to be used when accessing elements outside input image.</p></li>
+<li><p><strong>bvalue</strong> (<em>float</em>) – Border value to be used for constant border mode.</p></li>
+<li><p><strong>stream</strong> (<em>nvcv.cuda.Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The output tensor.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>nvcv.Tensor</p>
+</dd>
+</dl>
+<div class="admonition caution">
+<p class="admonition-title">Caution</p>
+<p>Restrictions to several arguments may apply. Check the C
+API references of the CV-CUDA operator.</p>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py">
+<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">padandstack_into</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dst:</span> <span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">src:</span> <span class="pre">nvcv.ImageBatchVarShape</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">top:</span> <span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">left:</span> <span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">border:</span> <span class="pre">cvcuda.Border</span> <span class="pre">=</span> <span class="pre">&lt;Border.CONSTANT:</span> <span class="pre">0&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bvalue:</span> <span class="pre">float</span> <span class="pre">=</span> <span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream:</span> <span class="pre">Optional[nvcv.cuda.Stream]</span> <span class="pre">=</span> <span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">nvcv.Tensor</span></span></span></dt>
+<dd><p>Executes the Pad and Stack operation on the given cuda stream.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p>Refer to the CV-CUDA C API reference for the Pad and Stack operator
+for more details and usage examples.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dst</strong> (<em>nvcv.Tensor</em>) – Output tensor to store the result of the operation.</p></li>
+<li><p><strong>src</strong> (<em>nvcv.ImageBatchVarShape</em>) – input image batch containing one or more images.</p></li>
+<li><p><strong>top</strong> (<em>nvcv.Tensor</em>) – Top tensor to store amount of top padding per batch input image.</p></li>
+<li><p><strong>left</strong> (<em>nvcv.Tensor</em>) – Left tensor to store amount of left padding per batch input image.</p></li>
+<li><p><strong>border</strong> (<em>cvcuda.Border</em>) – Border mode to be used when accessing elements outside input image.</p></li>
+<li><p><strong>bvalue</strong> (<em>float</em>) – Border value to be used for constant border mode.</p></li>
+<li><p><strong>stream</strong> (<em>nvcv.cuda.Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+<div class="admonition caution">
+<p class="admonition-title">Caution</p>
+<p>Restrictions to several arguments may apply. Check the C
+API references of the CV-CUDA operator.</p>
+</div>
+</dd></dl>
+
 </section>
 
 
@@ -1274,7 +1340,7 @@
 
   <div role="contentinfo">
     <p>&#169; Copyright 2022-2024, NVIDIA..
-      <span class="lastupdated">Last updated on Sep 27, 2024.
+      <span class="lastupdated">Last updated on Sep 26, 2024.
       </span></p>
   </div>
 

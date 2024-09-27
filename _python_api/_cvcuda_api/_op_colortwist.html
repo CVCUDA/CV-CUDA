@@ -1260,6 +1260,114 @@
              
   <section id="colortwist">
 <h1>ColorTwist<a class="headerlink" href="#colortwist" title="Link to this heading"></a></h1>
+<dl class="py function">
+<dt class="sig sig-object py">
+<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">color_twist</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span></dt>
+<dd><p>Overloaded function.</p>
+<ol class="arabic">
+<li><p>color_twist(src: nvcv.Tensor, twist: nvcv.Tensor, <a href="#id1"><span class="problematic" id="id2">*</span></a>, stream: Optional[nvcv.cuda.Stream] = None) -&gt; nvcv.Tensor</p>
+<blockquote>
+<div><p>cvcuda.color_twist(src: nvcv.Tensor, twist: nvcv.Tensor, stream: Optional[nvcv.cuda.Stream] = None) -&gt; nvcv.Tensor</p>
+<p>Transforms an image by applying affine transformation to the channels extent.</p>
+<dl>
+<dt>See Also:</dt><dd><p>Refer to the CV-CUDA C API reference for the ColorTwist operator for more details and
+usage examples.</p>
+</dd>
+<dt>Args:</dt><dd><dl class="simple">
+<dt>src (nvcv.Tensor): Tensor corresponding to the input image. It must have</dt><dd><p>either 3 or 4 channels. In the case of 4 channels, the alpha channel is
+unmodified.</p>
+</dd>
+</dl>
+<p>twist (nvcv.Tensor): A 2D tensor describing a 3x4 affine transformation matrix.
+stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.</p>
+</dd>
+<dt>Returns:</dt><dd><p>nvcv.Tensor: The output tensor.</p>
+</dd>
+</dl>
+</div></blockquote>
+</li>
+<li><p>color_twist(src: nvcv.ImageBatchVarShape, twist: nvcv.Tensor, <a href="#id3"><span class="problematic" id="id4">*</span></a>, stream: Optional[nvcv.cuda.Stream] = None) -&gt; nvcv.ImageBatchVarShape</p>
+<blockquote>
+<div><p>cvcuda.color_twist(src: nvcv.ImageBatchVarShape, twist: nvcv.Tensor, stream: Optional[nvcv.cuda.Stream] = None) -&gt; nvcv.ImageBatchVarShape</p>
+<p>Transforms a batch of images by applying affine transformation to the channels extent.</p>
+<dl>
+<dt>See Also:</dt><dd><p>Refer to the CV-CUDA C API reference for the ColorTwist operator for more details and
+usage examples.</p>
+</dd>
+<dt>Args:</dt><dd><dl class="simple">
+<dt>src (nvcv.ImageBatchVarShape): Input image batch. Each image must have either 3 or 4</dt><dd><p>channels. In the case of 4 channels the alpha channel is unmodified.</p>
+</dd>
+<dt>twist (nvcv.Tensor): A 3x4 2D tensor describing an affine transformation matrix or a</dt><dd><p>Nx3x4 3D tensor specifying separate transformations for each sample in the input
+image batch.</p>
+</dd>
+</dl>
+<p>stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.</p>
+</dd>
+<dt>Returns:</dt><dd><p>nvcv.ImageBatchVarShape: The output image batch.</p>
+</dd>
+</dl>
+</div></blockquote>
+</li>
+</ol>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py">
+<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">color_twist_into</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span></dt>
+<dd><p>Overloaded function.</p>
+<ol class="arabic">
+<li><p>color_twist_into(dst: nvcv.Tensor, src: nvcv.Tensor, twist: nvcv.Tensor, <a href="#id5"><span class="problematic" id="id6">*</span></a>, stream: Optional[nvcv.cuda.Stream] = None) -&gt; nvcv.Tensor</p>
+<blockquote>
+<div><p>cvcuda.color_twist_into(dst: nvcv.Tensor, src: nvcv.Tensor, twist: nvcv.Tensor, stream: Optional[nvcv.cuda.Stream] = None)</p>
+<p>Transforms an image by applying affine transformation to the channels extent.</p>
+<dl>
+<dt>See Also:</dt><dd><p>Refer to the CV-CUDA C API reference for the ColorTwist operator for more details and
+usage examples.</p>
+</dd>
+<dt>Args:</dt><dd><dl class="simple">
+<dt>dst (nvcv.Tensor): Tensor corresponding to the output image. Must match the shape of</dt><dd><p>the input image.</p>
+</dd>
+<dt>src (nvcv.Tensor): Tensor corresponding to the input image. It must have</dt><dd><p>either 3 or 4 channels. In the case of 4 channels, the alpha channel is
+unmodified.</p>
+</dd>
+</dl>
+<p>twist (nvcv.Tensor): A 2D tensor describing a 3x4 affine transformation matrix.
+stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.</p>
+</dd>
+<dt>Returns:</dt><dd><p>None</p>
+</dd>
+</dl>
+</div></blockquote>
+</li>
+<li><p>color_twist_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, twist: nvcv.Tensor, <a href="#id7"><span class="problematic" id="id8">*</span></a>, stream: Optional[nvcv.cuda.Stream] = None) -&gt; nvcv.ImageBatchVarShape</p>
+<blockquote>
+<div><p>cvcuda.color_twist_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, twist: nvcv.Tensor, stream: Optional[nvcv.cuda.Stream] = None)</p>
+<p>Transforms a batch of images by applying affine transformation to the channels extent.</p>
+<p>The twist should be a 2D tensor describing 3x4 affine transformation matrix or a 3D tensor specifying
+separate transformations for each sample in the input image batch.</p>
+<dl>
+<dt>See Also:</dt><dd><p>Refer to the CV-CUDA C API reference for the ColorTwist operator for more details and
+usage examples.</p>
+</dd>
+<dt>Args:</dt><dd><dl class="simple">
+<dt>dst (nvcv.ImageBatchVarShape): Output image batch. The shapes of the output images</dt><dd><p>must match the input image batch.</p>
+</dd>
+<dt>src (nvcv.ImageBatchVarShape): Input image batch. Each image must have either 3 or 4</dt><dd><p>channels. In the case of 4 channels the alpha channel is unmodified.</p>
+</dd>
+<dt>twist (nvcv.Tensor): A 3x4 2D tensor describing an affine transformation matrix or an</dt><dd><p>Nx3x4 3D tensor specifying separate transformations for each sample in the input
+image batch.</p>
+</dd>
+</dl>
+<p>stream (nvcv.cuda.Stream, optional): CUDA Stream on which to perform the operation.</p>
+</dd>
+<dt>Returns:</dt><dd><p>None</p>
+</dd>
+</dl>
+</div></blockquote>
+</li>
+</ol>
+</dd></dl>
+
 </section>
 
 
@@ -1274,7 +1382,7 @@
 
   <div role="contentinfo">
     <p>&#169; Copyright 2022-2024, NVIDIA..
-      <span class="lastupdated">Last updated on Sep 27, 2024.
+      <span class="lastupdated">Last updated on Sep 26, 2024.
       </span></p>
   </div>
 

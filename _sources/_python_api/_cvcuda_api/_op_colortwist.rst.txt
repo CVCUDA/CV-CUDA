@@ -19,4 +19,4 @@ ColorTwist
 
 .. automodule:: cvcuda
   :noindex:
-  :members: color_twist_into, color_twist
+  :members: color_twist, color_twist_into

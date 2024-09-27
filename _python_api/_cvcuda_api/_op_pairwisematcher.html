@@ -1260,6 +1260,98 @@
              
   <section id="pairwisematcher">
 <h1>PairwiseMatcher<a class="headerlink" href="#pairwisematcher" title="Link to this heading"></a></h1>
+<dl class="py function">
+<dt class="sig sig-object py">
+<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">match</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">set1:</span> <span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">set2:</span> <span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_set1:</span> <span class="pre">Optional[nvcv.Tensor]</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_set2:</span> <span class="pre">Optional[nvcv.Tensor]</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_matches:</span> <span class="pre">Optional[bool]</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">distances:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cross_check:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">matches_per_point:</span> <span class="pre">int</span> <span class="pre">=</span> <span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">norm_type:</span> <span class="pre">Optional[cvcuda.Norm]</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">algo_choice:</span> <span class="pre">cvcuda.Matcher</span> <span class="pre">=</span> <span class="pre">&lt;Matcher.BRUTE_FORCE:</span> <span class="pre">0&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream:</span> <span class="pre">Optional[nvcv.cuda.Stream]</span> <span class="pre">=</span> <span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">nvcv.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">nvcv.Tensor</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">nvcv.Tensor</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></span></span></dt>
+<dd><p>Executes the Pairwise matcher operation on the given CUDA stream.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p>Refer to the CV-CUDA C API reference for this operator for more details and usage examples.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>set1</strong> (<em>nvcv.Tensor</em>) – Input tensor with 1st set of points.</p></li>
+<li><p><strong>set2</strong> (<em>nvcv.Tensor</em>) – Input tensor with 2nd set of points.</p></li>
+<li><p><strong>num_set1</strong> (<em>nvcv.Tensor</em><em>, </em><em>optional</em>) – Input tensor with number of valid points in the 1st set.  If not provided,
+consider the entire set1 containing valid points.</p></li>
+<li><p><strong>num_set2</strong> (<em>nvcv.Tensor</em><em>, </em><em>optional</em>) – Input tensor with number of valid points in the 2nd set.  If not provided,
+consider the entire set2 containing valid points.</p></li>
+<li><p><strong>num_matches</strong> (<em>bool</em><em>, </em><em>optional</em>) – Use True to return the number of matches.  If not provided, it is set
+to True if crossCheck=True and False otherwise.</p></li>
+<li><p><strong>distances</strong> (<em>bool</em><em>, </em><em>optional</em>) – Use True to return the match distances.</p></li>
+<li><p><strong>cross_check</strong> (<em>bool</em><em>, </em><em>optional</em>) – Use True to cross check best matches, a best match is only returned if it is
+the best match (minimum distance) from 1st set to 2nd set and vice versa.</p></li>
+<li><p><strong>matches_per_point</strong> (<em>Number</em><em>, </em><em>optional</em>) – Number of best matches to return per point.</p></li>
+<li><p><strong>norm_type</strong> (<em>cvcuda.Norm</em><em>, </em><em>optional</em>) – Choice on how distances are normalized.  Defaults to cvcuda.Norm.L2.</p></li>
+<li><p><strong>algo_choice</strong> (<em>cvcuda.Matcher</em><em>, </em><em>optional</em>) – Choice of the algorithm to perform the match.</p></li>
+<li><p><strong>stream</strong> (<em>nvcv.cuda.Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>A tuple with output matches, number of matches and their distances.</dt><dd><p>The number of matches tensor may be None if its argument is False.
+The distances tensor may be None if its argument is False.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]</p>
+</dd>
+</dl>
+<div class="admonition caution">
+<p class="admonition-title">Caution</p>
+<p>Restrictions to several arguments may apply. Check the C API references of the CV-CUDA operator.</p>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py">
+<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">match_into</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">matches:</span> <span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_matches:</span> <span class="pre">Optional[nvcv.Tensor]</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">distances:</span> <span class="pre">Optional[nvcv.Tensor]</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">set1:</span> <span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">set2:</span> <span class="pre">nvcv.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_set1:</span> <span class="pre">Optional[nvcv.Tensor]</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_set2:</span> <span class="pre">Optional[nvcv.Tensor]</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cross_check:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">matches_per_point:</span> <span class="pre">int</span> <span class="pre">=</span> <span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">norm_type:</span> <span class="pre">Optional[cvcuda.Norm]</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">algo_choice:</span> <span class="pre">cvcuda.Matcher</span> <span class="pre">=</span> <span class="pre">&lt;Matcher.BRUTE_FORCE:</span> <span class="pre">0&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream:</span> <span class="pre">Optional[nvcv.cuda.Stream]</span> <span class="pre">=</span> <span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">nvcv.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">nvcv.Tensor</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">nvcv.Tensor</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></span></span></dt>
+<dd><p>Executes the Pairwise matcher operation on the given CUDA stream.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p>Refer to the CV-CUDA C API reference for this operator for more details and usage examples.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>matches</strong> (<em>nvcv.Tensor</em>) – Output tensor with matches.</p></li>
+<li><p><strong>num_matches</strong> (<em>nvcv.Tensor</em><em>, </em><em>optional</em>) – Output tensor with number of matches.</p></li>
+<li><p><strong>distances</strong> (<em>nvcv.Tensor</em><em>, </em><em>optional</em>) – Output tensor with match distances.</p></li>
+<li><p><strong>set1</strong> (<em>nvcv.Tensor</em>) – Input tensor with 1st set of points.</p></li>
+<li><p><strong>set2</strong> (<em>nvcv.Tensor</em>) – Input tensor with 2nd set of points.</p></li>
+<li><p><strong>num_set1</strong> (<em>nvcv.Tensor</em><em>, </em><em>optional</em>) – Input tensor with number of valid points in the 1st set.  If not provided,
+consider the entire set1 containing valid points.</p></li>
+<li><p><strong>num_set2</strong> (<em>nvcv.Tensor</em><em>, </em><em>optional</em>) – Input tensor with number of valid points in the 2nd set.  If not provided,
+consider the entire set2 containing valid points.</p></li>
+<li><p><strong>cross_check</strong> (<em>bool</em><em>, </em><em>optional</em>) – Use True to cross check best matches, a best match is only returned if it is
+the best match (minimum distance) from 1st set to 2nd set and vice versa.</p></li>
+<li><p><strong>matches_per_point</strong> (<em>Number</em><em>, </em><em>optional</em>) – Number of best matches to return per point.</p></li>
+<li><p><strong>norm_type</strong> (<em>cvcuda.Norm</em><em>, </em><em>optional</em>) – Choice on how distances are normalized.  Defaults to cvcuda.Norm.L2.</p></li>
+<li><p><strong>algo_choice</strong> (<em>cvcuda.Matcher</em><em>, </em><em>optional</em>) – Choice of the algorithm to perform the match.</p></li>
+<li><p><strong>stream</strong> (<em>nvcv.cuda.Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>A tuple with output matches, number of matches and their distances.</dt><dd><p>The number of matches tensor may be None if its argument is None.
+The distances tensor may be None if its argument is None.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple[nvcv.Tensor, nvcv.Tensor, nvcv.Tensor]</p>
+</dd>
+</dl>
+<div class="admonition caution">
+<p class="admonition-title">Caution</p>
+<p>Restrictions to several arguments may apply. Check the C API references of the CV-CUDA operator.</p>
+</div>
+</dd></dl>
+
 </section>
 
 
@@ -1274,7 +1366,7 @@
 
   <div role="contentinfo">
     <p>&#169; Copyright 2022-2024, NVIDIA..
-      <span class="lastupdated">Last updated on Sep 27, 2024.
+      <span class="lastupdated">Last updated on Sep 26, 2024.
       </span></p>
   </div>
 

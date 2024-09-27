@@ -19,4 +19,4 @@ Conv2D
 
 .. automodule:: cvcuda
   :noindex:
-  :members: conv2d, conv2d_into
+  :members: conv2d_into, conv2d
