@@ -220,7 +220,11 @@ public:
     }
 
     // On-purpose public data to allow POD-class direct initialization.
+#ifdef __CUDA_ARCH__
     T m_data[N];
+#else
+    T m_data[N] = {};
+#endif
 };
 
 /**

@@ -32,6 +32,9 @@ set(CMAKE_CUDA_STANDARD ${CMAKE_CXX_STANDARD})
 # Compress kernels to generate smaller executables
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xfatbin=--compress-all")
 
+# Enable device lambdas
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --extended-lambda")
+
 if(NOT USE_CMAKE_CUDA_ARCHITECTURES)
     set(CMAKE_CUDA_ARCHITECTURES "$ENV{CUDAARCHS}")
 

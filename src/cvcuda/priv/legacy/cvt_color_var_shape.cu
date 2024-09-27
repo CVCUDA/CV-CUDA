@@ -338,9 +338,9 @@ __global__ void bgr_to_hsv_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, cu
     vmin = min(vmin, g);
     vmin = min(vmin, r);
 
-    unsigned char diff = cuda::SaturateCast<unsigned char>(v - vmin);
-    vr                 = v == r ? -1 : 0;
-    vg                 = v == g ? -1 : 0;
+    uint8_t diff = cuda::SaturateCast<uint8_t>(v - vmin);
+    vr           = v == r ? -1 : 0;
+    vg           = v == g ? -1 : 0;
 
     int hdiv_table = diff == 0 ? 0 : cuda::SaturateCast<int>((hrange << hsv_shift) / (6. * diff));
     int sdiv_table = v == 0 ? 0 : cuda::SaturateCast<int>((255 << hsv_shift) / (1. * v));
@@ -349,9 +349,9 @@ __global__ void bgr_to_hsv_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, cu
     h              = (h * hdiv_table + (1 << (hsv_shift - 1))) >> hsv_shift;
     h += h < 0 ? hr : 0;
 
-    *dst.ptr(batch_idx, dst_y, dst_x, 0) = cuda::SaturateCast<unsigned char>(h);
-    *dst.ptr(batch_idx, dst_y, dst_x, 1) = (unsigned char)s;
-    *dst.ptr(batch_idx, dst_y, dst_x, 2) = (unsigned char)v;
+    *dst.ptr(batch_idx, dst_y, dst_x, 0) = cuda::SaturateCast<uint8_t>(h);
+    *dst.ptr(batch_idx, dst_y, dst_x, 1) = (uint8_t)s;
+    *dst.ptr(batch_idx, dst_y, dst_x, 2) = (uint8_t)v;
 }
 
 template<class T>
@@ -401,8 +401,7 @@ __global__ void bgr_to_hsv_float_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, c
     *dst.ptr(batch_idx, dst_y, dst_x, 2) = v;
 }
 
-inline __device__ void HSV2RGB_native_var_shape(float h, float s, float v, float &b, float &g, float &r,
-                                                const float hscale)
+inline __device__ void HSV2RGB_native_var_shape(float h, float s, float v, float &b, float &g, float &r)
 {
     if (s == 0)
         b = g = r = v;
@@ -416,26 +415,22 @@ inline __device__ void HSV2RGB_native_var_shape(float h, float s, float v, float
             {0, 1, 3},
             {2, 1, 0}
         };
-        float tab[4];
-        int   sector;
-        h *= hscale;
-        h      = fmod(h, 6.f);
-        sector = (int)floor(h);
-        h -= sector;
-        if ((unsigned)sector >= 6u)
-        {
-            sector = 0;
-            h      = 0.f;
-        }
 
-        tab[0] = v;
-        tab[1] = v * (1.f - s);
-        tab[2] = v * (1.f - s * h);
-        tab[3] = v * (1.f - s * (1.f - h));
+        h += 6 * (h < 0);              // Add 6 if h < 0.
+        int idx = static_cast<int>(h); // Sector index.
+        h -= idx;                      // Fractional part of h.
+        idx %= 6;                      // Make sure index is in valid range.
 
-        b = tab[sector_data[sector][0]];
-        g = tab[sector_data[sector][1]];
-        r = tab[sector_data[sector][2]];
+        // clang-format off
+        const float tab[4] {v,
+                            v * (1 - s),
+                            v * (1 - s * h),
+                            v * (1 - s * (1 - h))};
+        // clang-format on
+
+        b = tab[sector_data[idx][0]];
+        g = tab[sector_data[idx][1]];
+        r = tab[sector_data[idx][2]];
     }
 }
 
@@ -449,16 +444,16 @@ __global__ void hsv_to_bgr_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, cu
     if (dst_x >= dst.width(batch_idx) || dst_y >= dst.height(batch_idx))
         return;
 
-    float h = *src.ptr(batch_idx, dst_y, dst_x, 0);
-    float s = *src.ptr(batch_idx, dst_y, dst_x, 1) * (1.0f / 255.0f);
-    float v = *src.ptr(batch_idx, dst_y, dst_x, 2) * (1.0f / 255.0f);
+    const float     scaleH  = 6.f / (isFullRange ? 256 : 180);
+    constexpr float scaleSV = 1.0f / 255.0f;
+    constexpr T     alpha   = cuda::TypeTraits<T>::max;
 
-    float         hrange = isFullRange ? 255 : 180;
-    unsigned char alpha  = cuda::TypeTraits<T>::max;
-    float         hs     = 6.f / hrange;
+    float h = *src.ptr(batch_idx, dst_y, dst_x, 0) * scaleH;
+    float s = *src.ptr(batch_idx, dst_y, dst_x, 1) * scaleSV;
+    float v = *src.ptr(batch_idx, dst_y, dst_x, 2) * scaleSV;
 
     float b, g, r;
-    HSV2RGB_native_var_shape(h, s, v, b, g, r, hs);
+    HSV2RGB_native_var_shape(h, s, v, b, g, r);
 
     *dst.ptr(batch_idx, dst_y, dst_x, bidx)     = cuda::SaturateCast<uchar>(b * 255.0f);
     *dst.ptr(batch_idx, dst_y, dst_x, 1)        = cuda::SaturateCast<uchar>(g * 255.0f);
@@ -477,16 +472,15 @@ __global__ void hsv_to_bgr_float_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, c
     if (dst_x >= dst.width(batch_idx) || dst_y >= dst.height(batch_idx))
         return;
 
-    float h = *src.ptr(batch_idx, dst_y, dst_x, 0);
+    constexpr float scaleH = 6.0f / 360.0f;
+    constexpr float alpha  = 1.0f;
+
+    float h = *src.ptr(batch_idx, dst_y, dst_x, 0) * scaleH;
     float s = *src.ptr(batch_idx, dst_y, dst_x, 1);
     float v = *src.ptr(batch_idx, dst_y, dst_x, 2);
 
-    float hrange = 360.0;
-    float alpha  = 1.f;
-    float hs     = 6.f / hrange;
-
     float b, g, r;
-    HSV2RGB_native_var_shape(h, s, v, b, g, r, hs);
+    HSV2RGB_native_var_shape(h, s, v, b, g, r);
 
     *dst.ptr(batch_idx, dst_y, dst_x, bidx)     = b;
     *dst.ptr(batch_idx, dst_y, dst_x, 1)        = g;
@@ -550,21 +544,34 @@ __global__ void bgr_to_yuv420sp_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> sr
 
     assert(checkShapeFromYUV420(dst.height(batch_idx), dst.width(batch_idx), code));
 
-    int uv_x = (src_x % 2 == 0) ? src_x : (src_x - 1);
-
     uchar b = static_cast<uchar>(*src.ptr(batch_idx, src_y, src_x, bidx));
     uchar g = static_cast<uchar>(*src.ptr(batch_idx, src_y, src_x, 1));
     uchar r = static_cast<uchar>(*src.ptr(batch_idx, src_y, src_x, bidx ^ 2));
-    // Ignore gray channel if input is RGBA
+    // Ignore alpha channel if input is RGBA.
 
     uchar Y{0}, U{0}, V{0};
     bgr_to_yuv42xxp_kernel(r, g, b, Y, U, V);
 
-    *dst.ptr(batch_idx, src_y, src_x, 0) = Y;
+    // U and V are subsampled at half the full resolution (both in x and y), combined (i.e., interleaved), and arranged
+    // as full rows after the full resolution Y data. Example memory layout for 4 x 4 image (NV12):
+    //   Y_00 Y_01 Y_02 Y_03
+    //   Y_10 Y_11 Y_12 Y_13
+    //   Y_20 Y_21 Y_22 Y_23
+    //   Y_30 Y_31 Y_32 Y_33
+    //   U_00 V_00 U_02 V_02
+    //   U_20 V_20 U_22 V_22
+    // Each U and V value corresponds to a 2x2 block of Y values--e.g. U_00 and V_00 correspond to Y_00, Y_01, Y_10,
+    // and Y_11. Each full U-V row represents 2 rows of Y values. Some layouts (e.g., NV21) swap the location
+    // of the U and V values in each U-V pair.
+
+    *dst.ptr(batch_idx, src_y, src_x) = Y;
     if (src_y % 2 == 0 && src_x % 2 == 0)
     {
-        *dst.ptr(batch_idx, src_rows + src_y / 2, uv_x + uidx)       = U;
-        *dst.ptr(batch_idx, src_rows + src_y / 2, uv_x + (1 - uidx)) = V;
+        const int uv_y = src_rows + src_y / 2; // The interleaved U-V semi-plane is 1/2 the height of the Y data.
+        const int uv_x = (src_x & ~1);         // Convert x to even # (set lowest bit to 0).
+
+        *dst.ptr(batch_idx, uv_y, uv_x + uidx)       = U; // Some formats swap the U and V elements (as indicated
+        *dst.ptr(batch_idx, uv_y, uv_x + (uidx ^ 1)) = V; //   by the uidx parameter).
     }
 }
 
@@ -583,23 +590,39 @@ __global__ void bgr_to_yuv420p_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src
 
     assert(checkShapeFromYUV420(dst.height(batch_idx), dst.width(batch_idx), code));
 
-    int plane_y_step  = src_rows * src_cols;
-    int plane_uv_step = plane_y_step / 4;
-    int uv_x          = (src_y % 4 < 2) ? src_x / 2 : (src_x / 2 + src_cols / 2);
-
     uchar b = static_cast<uchar>(*src.ptr(batch_idx, src_y, src_x, bidx));
     uchar g = static_cast<uchar>(*src.ptr(batch_idx, src_y, src_x, 1));
     uchar r = static_cast<uchar>(*src.ptr(batch_idx, src_y, src_x, bidx ^ 2));
-    // Ignore gray channel if input is RGBA
+    // Ignore alpha channel if input is RGBA.
 
     uchar Y{0}, U{0}, V{0};
     bgr_to_yuv42xxp_kernel(r, g, b, Y, U, V);
 
-    *dst.ptr(batch_idx, src_y, src_x, 0) = Y;
+    // U and V are sampled at half the full resolution (in both x and y) and arranged as non-interleaved planes
+    // (i.e., planar format). Each subsampled U and V "plane" is arranged as full rows after the full resolution Y
+    // data--so two consecutive subsampled U or V rows are combined into one row spanning the same width as the Y
+    // plane. Example memory layout for 4 x 4 image (e.g. I420):
+    //   Y_00 Y_01 Y_02 Y_03
+    //   Y_10 Y_11 Y_12 Y_13
+    //   Y_20 Y_21 Y_22 Y_23
+    //   Y_30 Y_31 Y_32 Y_33
+    //   U_00 U_02 U_20 U_22
+    //   V_00 V_02 V_20 V_22
+    // Each U and V value corresponds to a 2x2 block of Y values--e.g. U_00 and V_00 correspond to Y_00, Y_01, Y_10,
+    // and Y_11. Each full U and V row represents 4 rows of Y values. Some layouts (e.g., YV12) swap the location
+    // of the U and V planes.
+
+    *dst.ptr(batch_idx, src_y, src_x) = Y;
     if (src_y % 2 == 0 && src_x % 2 == 0)
     {
-        *dst.ptr(batch_idx, src_rows + src_y / 4, uv_x + plane_uv_step * uidx)       = U;
-        *dst.ptr(batch_idx, src_rows + src_y / 4, uv_x + plane_uv_step * (1 - uidx)) = V;
+        const int by = src_rows + src_y / 4; // Base row index for U and V: subsampled plane is 1/4 the height.
+        const int h4 = src_rows / 4;         // Height (# of rows) of each subsampled U and V plane.
+
+        // Compute x position that combines two subsampled rows into one.
+        const int uv_x = (src_x / 2) + ((src_rows / 2) & -((src_y / 2) & 1));
+
+        *dst.ptr(batch_idx, by + h4 * uidx, uv_x)       = U; // Some formats swap the U and V "planes" (as indicated
+        *dst.ptr(batch_idx, by + h4 * (uidx ^ 1), uv_x) = V; //   by the uidx parameter).
     }
 }
 
@@ -618,11 +641,13 @@ __global__ void yuv420sp_to_bgr_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> sr
 
     assert(checkShapeFromYUV420(src.height(batch_idx), src.width(batch_idx), code));
 
-    int uv_x = (dst_x % 2 == 0) ? dst_x : (dst_x - 1);
+    // See layout commments in bgr_to_yuv420sp_char_nhwc.
+    const int uv_y = dst_rows + dst_y / 2; // The interleaved U-V semi-plane is 1/2 the height of the Y data.
+    const int uv_x = (dst_x & ~1);         // Convert x to even # (set lowest bit to 0).
 
     T Y = *src.ptr(batch_idx, dst_y, dst_x);
-    T U = *src.ptr(batch_idx, dst_rows + dst_y / 2, uv_x + uidx);
-    T V = *src.ptr(batch_idx, dst_rows + dst_y / 2, uv_x + 1 - uidx);
+    T U = *src.ptr(batch_idx, uv_y, uv_x + uidx);       // Some formats swap the U and V elements (as indicated
+    T V = *src.ptr(batch_idx, uv_y, uv_x + (uidx ^ 1)); //   by the uidx parameter).
 
     uchar r{0}, g{0}, b{0}, a{0xff};
     yuv42xxp_to_bgr_kernel(int(Y), int(U), int(V), r, g, b);
@@ -651,13 +676,16 @@ __global__ void yuv420p_to_bgr_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src
 
     assert(checkShapeFromYUV420(src.height(batch_idx), src.width(batch_idx), code));
 
-    int plane_y_step  = dst_rows * dst_cols;
-    int plane_uv_step = plane_y_step / 4;
-    int uv_x          = (dst_y % 4 < 2) ? dst_x / 2 : (dst_x / 2 + dst_cols / 2);
+    // See layout commments in bgr_to_yuv420p_char_nhwc.
+    const int by = dst_rows + dst_y / 4; // Base row index for U and V: subsampled plane is 1/4 the height.
+    const int h4 = dst_rows / 4;         // Height (# of rows) of each subsampled U and V plane.
+
+    // Compute x position that combines two subsampled rows into one.
+    const int uv_x = (dst_x / 2) + ((dst_cols / 2) & -((dst_y / 2) & 1));
 
     T Y = *src.ptr(batch_idx, dst_y, dst_x);
-    T U = *src.ptr(batch_idx, dst_rows + dst_y / 4, uv_x + plane_uv_step * uidx);
-    T V = *src.ptr(batch_idx, dst_rows + dst_y / 4, uv_x + plane_uv_step * (1 - uidx));
+    T U = *src.ptr(batch_idx, by + h4 * uidx, uv_x);       // Some formats swap the U and V "planes" (as indicated
+    T V = *src.ptr(batch_idx, by + h4 * (uidx ^ 1), uv_x); //   by the uidx parameter).
 
     uchar r{0}, g{0}, b{0}, a{0xff};
     yuv42xxp_to_bgr_kernel(int(Y), int(U), int(V), r, g, b);
@@ -671,33 +699,63 @@ __global__ void yuv420p_to_bgr_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src
     }
 }
 
+// YUV 422 interleaved formats (e.g., YUYV, YVYU, and UYVY) group 2 pixels into groups of 4 elements. Each group of two
+// pixels has two distinct luma (Y) values, one for each pixel. The chromaticity values (U and V) are subsampled by a
+// factor of two so that there is only one U and one V value for each group of 2 pixels. Example memory layout for
+// 4 x 4 image (UYVY format):
+//   U_00 Y_00 V_00 Y_01 U_02 Y_02 V_02 Y_03
+//   U_10 Y_10 V_10 Y_11 U_12 Y_12 V_12 Y_13
+//   U_20 Y_20 V_20 Y_21 U_22 Y_22 V_22 Y_23
+//   U_30 Y_30 V_30 Y_31 U_32 Y_32 V_32 Y_33
+// Each U and V value corresponds to two Y values--e.g. U_00 and V_00 correspond to Y_00 and Y_10 while U_12 and V_12
+// correspond to Y_12 and Y_13. Thus, a given Y value, Y_rc = Y(r,c) (where r is the row, or y coordinate, and c is the
+// column, or x coordinate), corresponds to U(r,c') and V(r,c') where c' is the even column coordinate <= c -- that is,
+// c' = 2 * floor(c/2) = (c & ~1). Some layouts swap the positions of the chromaticity and luma values (e.g., YUYV)
+// (indicated by the yidx parameter) and / or swap the the positions of the U and V chromaticity valus (e.g., YVYU)
+// (indicated by the uidx parameter).
+// The data layout is treated as a single channel tensor, so each group of 4 values corresponds to two pixels. As such,
+// the tensor width is twice the actual pixel width. Thus, it's easiest to process 4 consecutive values (2 pixels) per
+// thread.
 template<class T>
-__global__ void yuv422_to_bgr_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src,
-                                        cuda::ImageBatchVarShapeWrapNHWC<T> dst, int bidx, int yidx, int uidx)
+__global__ void yuv422_to_bgr_char_nhwc(cuda::ImageBatchVarShapeWrap<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
+                                        int dcn, int bidx, int yidx, int uidx)
 {
-    int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
-    int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
-    int       dst_cols  = dst.width(batch_idx);
-    int       dst_rows  = dst.height(batch_idx);
-    if (dst_x >= dst_cols || dst_y >= dst_rows)
-        return;
-    int uv_x = (dst_x % 2 == 0) ? dst_x : dst_x - 1;
 
-    T Y = *src.ptr(batch_idx, dst_y, dst_x, yidx);
-    T U = *src.ptr(batch_idx, dst_y, uv_x, (1 - yidx) + uidx);
-    T V = *src.ptr(batch_idx, dst_y, uv_x, (1 - yidx) + uidx ^ 2);
+    int dst_y = blockIdx.y * blockDim.y + threadIdx.y;
+    if (dst_y >= dst.height(batch_idx))
+        return;
+
+    int dst_x = blockIdx.x * blockDim.x + threadIdx.x;
+    if (dst_x >= dst.width(batch_idx))
+        return;
+
+    int src_x = 2 * dst_x;    // Process 4 source elements/thread (i.e., 2 destination pixels).
+    int uv_x  = (src_x & ~3); // Compute "even" x coordinate for U and V (set lowest two bits to 0).
+
+    T Y0 = *src.ptr(batch_idx, dst_y, src_x + yidx);
+    T Y1 = *src.ptr(batch_idx, dst_y, src_x + yidx + 2);
+    T U  = *src.ptr(batch_idx, dst_y, uv_x + (yidx ^ 1) + uidx);
+    T V  = *src.ptr(batch_idx, dst_y, uv_x + (yidx ^ 1) + (uidx ^ 2));
 
     uchar r{0}, g{0}, b{0}, a{0xff};
-    yuv42xxp_to_bgr_kernel(int(Y), int(U), int(V), r, g, b);
+
+    yuv42xxp_to_bgr_kernel(int(Y0), int(U), int(V), r, g, b);
 
     *dst.ptr(batch_idx, dst_y, dst_x, bidx)     = b;
     *dst.ptr(batch_idx, dst_y, dst_x, 1)        = g;
     *dst.ptr(batch_idx, dst_y, dst_x, bidx ^ 2) = r;
-    if (dst.numChannels() == 4)
-    {
+    if (dcn == 4)
         *dst.ptr(batch_idx, dst_y, dst_x, 3) = a;
-    }
+
+    dst_x++; // Move to next output pixel.
+    yuv42xxp_to_bgr_kernel(int(Y1), int(U), int(V), r, g, b);
+
+    *dst.ptr(batch_idx, dst_y, dst_x, bidx)     = b;
+    *dst.ptr(batch_idx, dst_y, dst_x, 1)        = g;
+    *dst.ptr(batch_idx, dst_y, dst_x, bidx ^ 2) = r;
+    if (dcn == 4)
+        *dst.ptr(batch_idx, dst_y, dst_x, 3) = a;
 }
 
 template<class T>
@@ -716,17 +774,25 @@ __global__ void yuv420_to_gray_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src
     *dst.ptr(batch_idx, dst_y, dst_x, 0) = Y;
 }
 
+// See layout comment before yuv422_to_bgr_char_nhwc.
 template<class T>
-__global__ void yuv422_to_gray_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src,
-                                         cuda::ImageBatchVarShapeWrapNHWC<T> dst, int yidx)
+__global__ void yuv422_to_gray_char_nhwc(cuda::ImageBatchVarShapeWrap<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
+                                         int yidx)
 {
-    int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
-    int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
-    if (dst_x >= dst.width(batch_idx) || dst_y >= dst.height(batch_idx))
+
+    int dst_y = blockIdx.y * blockDim.y + threadIdx.y;
+    if (dst_y >= dst.height(batch_idx))
         return;
-    T Y                                  = *src.ptr(batch_idx, dst_y, dst_x, yidx);
-    *dst.ptr(batch_idx, dst_y, dst_x, 0) = Y;
+
+    int dst_x = blockIdx.x * blockDim.x + threadIdx.x;
+    if (dst_x >= dst.width(batch_idx))
+        return;
+
+    int src_x = 2 * dst_x; // Process 4 source elements/thread (i.e., 2 destination pixels).
+
+    *dst.ptr(batch_idx, dst_y, dst_x++) = *src.ptr(batch_idx, dst_y, src_x + yidx);
+    *dst.ptr(batch_idx, dst_y, dst_x)   = *src.ptr(batch_idx, dst_y, src_x + yidx + 2);
 }
 
 inline ErrorCode BGR_to_RGB(const ImageBatchVarShapeDataStridedCuda &inData,
@@ -776,6 +842,12 @@ inline ErrorCode BGR_to_RGB(const ImageBatchVarShapeDataStridedCuda &inData,
         return ErrorCode::INVALID_DATA_SHAPE;
     }
 
+    if (out_data_type == kCV_16F && sch < 4 && dch == 4)
+    {
+        LOG_ERROR("Adding alpha to the output is not supported for " << out_data_type);
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
     int max_width  = inData.maxSize().w;
     int max_height = inData.maxSize().h;
     int batch_size = inData.numImages();
@@ -794,8 +866,8 @@ inline ErrorCode BGR_to_RGB(const ImageBatchVarShapeDataStridedCuda &inData,
         checkKernelErrors();
     }
     break;
+    case kCV_16F: // Not properly handled when adding alpha to the destination.
     case kCV_16U:
-    case kCV_16F:
     case kCV_16S:
     {
         cuda::ImageBatchVarShapeWrapNHWC<uint16_t> src_ptr(inData, sch);
@@ -874,6 +946,12 @@ inline ErrorCode GRAY_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData,
         return ErrorCode::INVALID_DATA_SHAPE;
     }
 
+    if (out_data_type == kCV_16F && dch == 4)
+    {
+        LOG_ERROR("Adding alpha to the output is not supported for " << out_data_type);
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
     int max_width  = inData.maxSize().w;
     int max_height = inData.maxSize().h;
     int batch_size = inData.numImages();
@@ -892,8 +970,8 @@ inline ErrorCode GRAY_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData,
         checkKernelErrors();
     }
     break;
+    case kCV_16F: // Not properly handled when adding alpha to the destination.
     case kCV_16U:
-    case kCV_16F:
     case kCV_16S:
     {
         cuda::ImageBatchVarShapeWrapNHWC<uint16_t> src_ptr(inData, channels);
@@ -1464,7 +1542,7 @@ inline ErrorCode YUV422_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData,
     int      channels  = inData.uniqueFormat().numChannels();
     DataType data_type = helpers::GetLegacyDataType(inData.uniqueFormat());
 
-    if (channels != 2)
+    if (channels != 3)
     {
         LOG_ERROR("Invalid input channel number " << channels);
         return ErrorCode::INVALID_DATA_SHAPE;
@@ -1483,10 +1561,34 @@ inline ErrorCode YUV422_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData,
 
     int dcn = outData.uniqueFormat().numChannels();
 
-    if (dcn != 3 && dcn != 4)
+    if ((code != NVCV_COLOR_YUV2GRAY_UYVY && code != NVCV_COLOR_YUV2GRAY_YUY2 || dcn != 1) && dcn != 3 && dcn != 4)
     {
         LOG_ERROR("Invalid output channel number " << dcn);
         return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+    auto inList = inData.imageList();
+
+    for (int i = 0; i < inData.numImages(); i++)
+    {
+        if (inList[i].numPlanes != 1)
+        {
+            LOG_ERROR("Input batch images must all be a single plane of data");
+            return ErrorCode::INVALID_DATA_SHAPE;
+        }
+
+        NVCVImagePlaneStrided plane = inList[i].planes[0];
+
+        if (plane.width % 2 != 0)
+        {
+            LOG_ERROR("Input batch images must all have a width that is a multiple of 2");
+            return ErrorCode::INVALID_DATA_SHAPE;
+        }
+        if (plane.rowStride < plane.width * 2)
+        {
+            LOG_ERROR("Insufficient input batch image stride");
+            return ErrorCode::INVALID_DATA_SHAPE;
+        }
     }
 
     int max_width  = inData.maxSize().w;
@@ -1494,17 +1596,17 @@ inline ErrorCode YUV422_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData,
     int batch_size = inData.numImages();
 
     dim3 blockSize(BLOCK, BLOCK / 4, 1);
-    dim3 gridSize(divUp(max_width, blockSize.x), divUp(max_height, blockSize.y), batch_size);
+    dim3 gridSize(divUp(max_width / 2, blockSize.x), divUp(max_height, blockSize.y), batch_size);
 
-    cuda::ImageBatchVarShapeWrapNHWC<unsigned char> src_ptr(inData, channels);
-    cuda::ImageBatchVarShapeWrapNHWC<unsigned char> dst_ptr(outData, dcn);
+    cuda::ImageBatchVarShapeWrap<uint8_t>     src_ptr(inData);
+    cuda::ImageBatchVarShapeWrapNHWC<uint8_t> dst_ptr(outData, dcn);
 
     switch (code)
     {
     case NVCV_COLOR_YUV2GRAY_YUY2:
     case NVCV_COLOR_YUV2GRAY_UYVY:
     {
-        yuv422_to_gray_char_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, yidx);
+        yuv422_to_gray_char_nhwc<uint8_t><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, yidx);
         checkKernelErrors();
     }
     break;
@@ -1521,7 +1623,7 @@ inline ErrorCode YUV422_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData,
     case NVCV_COLOR_YUV2RGBA_UYVY:
     case NVCV_COLOR_YUV2BGRA_UYVY:
     {
-        yuv422_to_bgr_char_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx, yidx, uidx);
+        yuv422_to_bgr_char_nhwc<uint8_t><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dcn, bidx, yidx, uidx);
         checkKernelErrors();
     }
     break;

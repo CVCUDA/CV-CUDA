@@ -428,6 +428,7 @@ NVCV_TEST_SUITE_P(OpMorphology, test::ValueList<int, int, int, NVCVImageFormat, 
 {
     // width, height, batches,               format,  maskWidth, maskHeight,             borderMode,  morphType,    iteration
     {      5,      5,       1, NVCV_IMAGE_FORMAT_U8,          2,          2,   NVCV_BORDER_CONSTANT, NVCV_ERODE,            3},
+    {      5,      5,       1, NVCV_IMAGE_FORMAT_U8,         -1,         -1,   NVCV_BORDER_CONSTANT, NVCV_DILATE,           1},
     {      5,      5,       1, NVCV_IMAGE_FORMAT_RGBAf32,     3,          3,   NVCV_BORDER_CONSTANT, NVCV_DILATE,           1},
     {     25,     45,       2, NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_CONSTANT, NVCV_DILATE,           2},
     {    125,     35,       1, NVCV_IMAGE_FORMAT_RGBA8,       4,          4,   NVCV_BORDER_CONSTANT, NVCV_ERODE,            1},
@@ -445,7 +446,22 @@ NVCV_TEST_SUITE_P(OpMorphology, test::ValueList<int, int, int, NVCVImageFormat, 
     {    325,    800,       3, NVCV_IMAGE_FORMAT_RGB8,        3,          2,   NVCV_BORDER_CONSTANT, NVCV_OPEN,            10},
     {     25,     44,       1, NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_CONSTANT, NVCV_CLOSE,            1},
     {     21,    435,       2, NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_CONSTANT, NVCV_CLOSE,            3},
-
+    {      5,      5,       1, NVCV_IMAGE_FORMAT_U8,          2,          2,   NVCV_BORDER_REPLICATE, NVCV_ERODE,           3},
+    {     25,     45,       2, NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_REPLICATE, NVCV_DILATE,          2},
+    {     25,     45,       2, NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_REPLICATE, NVCV_OPEN,            3},
+    {     25,     44,       2, NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_REPLICATE, NVCV_CLOSE,           2},
+    {      5,      5,       1, NVCV_IMAGE_FORMAT_U8,          2,          2,   NVCV_BORDER_REFLECT, NVCV_ERODE,             3},
+    {     25,     45,       2, NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_REFLECT, NVCV_DILATE,            2},
+    {     25,     45,       2, NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_REFLECT, NVCV_OPEN,              3},
+    {     25,     44,       2, NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_REFLECT, NVCV_CLOSE,             2},
+    {      5,      5,       1, NVCV_IMAGE_FORMAT_U8,          2,          2,   NVCV_BORDER_WRAP, NVCV_ERODE,                3},
+    {     25,     45,       2, NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_WRAP, NVCV_DILATE,               2},
+    {     25,     45,       2, NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_WRAP, NVCV_OPEN,                 3},
+    {     25,     44,       2, NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_WRAP, NVCV_CLOSE,                2},
+    {      5,      5,       1, NVCV_IMAGE_FORMAT_U8,          2,          2,   NVCV_BORDER_REFLECT101, NVCV_ERODE,          3},
+    {     25,     45,       2, NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_REFLECT101, NVCV_DILATE,         2},
+    {     25,     45,       2, NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_REFLECT101, NVCV_OPEN,           3},
+    {     25,     44,       2, NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_REFLECT101, NVCV_CLOSE,          2}
 });
 
 // clang-format on
@@ -569,6 +585,11 @@ TEST_P(OpMorphology, morph_random)
     ASSERT_EQ(cudaSuccess, cudaMemcpy(testVec.data(), outData->basePtr(), outBufSize, cudaMemcpyDeviceToHost));
 
     // generate gold result
+    if (maskSize.w == -1 || maskSize.h == -1)
+    {
+        maskSize.w = 3;
+        maskSize.h = 3;
+    }
     int2 kernelAnchor{maskSize.w / 2, maskSize.h / 2};
     hostMorph(goldVec, outStrides, inVec, inStrides, shape, format, maskSize, kernelAnchor, iteration, borderMode,
               morphType);
@@ -595,8 +616,23 @@ NVCV_TEST_SUITE_P(OpMorphologyVarShape, test::ValueList<int, int, int, NVCVImage
     {     52,     45,      21,      NVCV_IMAGE_FORMAT_U16,         1,         2,    NVCV_BORDER_CONSTANT, NVCV_CLOSE,          1},
     {    325,     45,       3,      NVCV_IMAGE_FORMAT_RGB8,        3,         4,    NVCV_BORDER_CONSTANT, NVCV_CLOSE,          1},
     {     25,    456,       4,      NVCV_IMAGE_FORMAT_U8,          3,         3,    NVCV_BORDER_CONSTANT, NVCV_OPEN,           1},
-    {     55,     45,       2,      NVCV_IMAGE_FORMAT_U8,         -1,        -1,    NVCV_BORDER_CONSTANT, NVCV_OPEN,           1}
-
+    {     55,     45,       2,      NVCV_IMAGE_FORMAT_U8,         -1,        -1,    NVCV_BORDER_CONSTANT, NVCV_OPEN,           1},
+    {      5,      5,       4,      NVCV_IMAGE_FORMAT_U8,          2,          2,   NVCV_BORDER_REPLICATE, NVCV_ERODE,         3},
+    {     25,     45,       2,      NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_REPLICATE, NVCV_DILATE,        2},
+    {     25,     45,       2,      NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_REPLICATE, NVCV_OPEN,          3},
+    {     25,     44,       2,      NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_REPLICATE, NVCV_CLOSE,         2},
+    {      5,      5,       1,      NVCV_IMAGE_FORMAT_U8,          2,          2,   NVCV_BORDER_REFLECT, NVCV_ERODE,           3},
+    {     25,     45,       2,      NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_REFLECT, NVCV_DILATE,          2},
+    {     25,     45,       2,      NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_REFLECT, NVCV_OPEN,            3},
+    {     25,     44,       2,      NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_REFLECT, NVCV_CLOSE,           2},
+    {      5,      5,       4,      NVCV_IMAGE_FORMAT_U8,          2,          2,   NVCV_BORDER_WRAP, NVCV_ERODE,              3},
+    {     25,     45,       2,      NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_WRAP, NVCV_DILATE,             2},
+    {     25,     45,       2,      NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_WRAP, NVCV_OPEN,               3},
+    {     25,     44,       2,      NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_WRAP, NVCV_CLOSE,              2},
+    {      5,      5,       4,      NVCV_IMAGE_FORMAT_U8,          2,          2,   NVCV_BORDER_REFLECT101, NVCV_ERODE,        3},
+    {     25,     45,       2,      NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_REFLECT101, NVCV_DILATE,       2},
+    {     25,     45,       2,      NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_REFLECT101, NVCV_OPEN,         3},
+    {     25,     44,       2,      NVCV_IMAGE_FORMAT_U8,          3,          3,   NVCV_BORDER_REFLECT101, NVCV_CLOSE,        2}
 });
 
 // clang-format on
@@ -877,5 +913,182 @@ TEST_P(OpMorphologyVarShape, varshape_noop)
                                srcData->plane(0).rowStride, srcVecRowStride[i], shape.y, cudaMemcpyDeviceToHost));
 
         EXPECT_EQ(testVec, goldVec);
+    }
+}
+
+TEST(OpMorphology_Negative, createNull)
+{
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaMorphologyCreate(nullptr));
+}
+
+TEST(OpMorphology_Negative, operator)
+{
+    NVCVBorderType    borderMode = NVCV_BORDER_CONSTANT;
+    nvcv::ImageFormat format{NVCV_IMAGE_FORMAT_U8};
+    nvcv::Tensor      inTensor  = nvcv::util::CreateTensor(1, 24, 24, format);
+    nvcv::Tensor      outTensor = nvcv::util::CreateTensor(1, 24, 24, format);
+
+    cvcuda::Morphology morphOp;
+    int2               anchor(0, 0);
+
+    nvcv::Size2D maskSize(1, 1);
+
+    // testSet0: iteration < 0
+    EXPECT_THROW(morphOp(nullptr, inTensor, outTensor, nvcv::NullOpt, NVCV_ERODE, maskSize, anchor, -1, borderMode),
+                 nvcv::Exception);
+
+    // testSet1: NVCV_DILATE and NVCV_ERODE && iteration > 1 && null workspace
+    std::vector<NVCVMorphologyType> testSet1{NVCV_DILATE, NVCV_ERODE};
+    for (auto morphType : testSet1)
+    {
+        EXPECT_THROW(morphOp(nullptr, inTensor, outTensor, nvcv::NullOpt, morphType, maskSize, anchor, 2, borderMode),
+                     nvcv::Exception);
+    }
+
+    // testSet2: NVCV_CLOSE and NVCV_OPEN && null workspace
+    std::vector<NVCVMorphologyType> testSet2{NVCV_CLOSE, NVCV_OPEN};
+    for (auto morphType : testSet2)
+    {
+        EXPECT_THROW(morphOp(nullptr, inTensor, outTensor, nvcv::NullOpt, morphType, maskSize, anchor, 1, borderMode),
+                     nvcv::Exception);
+    }
+
+    // testSet3: invalid data type
+    {
+        nvcv::Tensor inTensorInvalid
+            = nvcv::util::CreateTensor(1, 24, 24, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_RGBAf16});
+        nvcv::Tensor outTensorInvalid
+            = nvcv::util::CreateTensor(1, 24, 24, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_RGBAf16});
+        EXPECT_THROW(morphOp(nullptr, inTensorInvalid, outTensorInvalid, nvcv::NullOpt, NVCV_ERODE, maskSize, anchor, 0,
+                             borderMode),
+                     nvcv::Exception);
+    }
+
+    // testSet4: input format is not equal to output format
+    {
+        nvcv::Tensor outTensorInvalid = nvcv::util::CreateTensor(2, 24, 24, format);
+        EXPECT_THROW(
+            morphOp(nullptr, inTensor, outTensorInvalid, nvcv::NullOpt, NVCV_ERODE, maskSize, anchor, 0, borderMode),
+            nvcv::Exception);
+    }
+}
+
+TEST(OpMorphology_Negative, operator_varshape)
+{
+    NVCVBorderType    borderMode = NVCV_BORDER_CONSTANT;
+    nvcv::ImageFormat format{NVCV_IMAGE_FORMAT_U8};
+    const int         batches = 2;
+
+    std::vector<nvcv::Image> imgSrc;
+    nvcv::ImageBatchVarShape batchSrc(batches);
+    for (int i = 0; i < batches; ++i)
+    {
+        imgSrc.emplace_back(nvcv::Size2D{24, 24}, format);
+    }
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+
+    std::vector<nvcv::Image> imgDst;
+    std::vector<nvcv::Image> imgWorkspace;
+    nvcv::ImageBatchVarShape batchDst(batches);
+    nvcv::ImageBatchVarShape batchWorkspace(batches);
+    for (int i = 0; i < batches; ++i)
+    {
+        imgDst.emplace_back(imgSrc[i].size(), imgSrc[i].format());
+        imgWorkspace.emplace_back(imgSrc[i].size(), imgSrc[i].format());
+    }
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+    batchWorkspace.pushBack(imgWorkspace.begin(), imgWorkspace.end());
+
+    // Create kernel mask size tensor
+    nvcv::Tensor maskTensor({{batches}, "N"}, nvcv::TYPE_2S32);
+    {
+        auto dev = maskTensor.exportData<nvcv::TensorDataStridedCuda>();
+        ASSERT_NE(dev, nullptr);
+
+        std::vector<int2> vec(batches, int2{1, 1});
+
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy(dev->basePtr(), vec.data(), vec.size() * sizeof(int2), cudaMemcpyHostToDevice));
+    }
+
+    // Create Anchor tensor
+    nvcv::Tensor anchorTensor({{batches}, "N"}, nvcv::TYPE_2S32);
+    {
+        auto dev = anchorTensor.exportData<nvcv::TensorDataStridedCuda>();
+        ASSERT_NE(dev, nullptr);
+
+        std::vector<int2> vec(batches, int2{0, 0});
+
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy(dev->basePtr(), vec.data(), vec.size() * sizeof(int2), cudaMemcpyHostToDevice));
+    }
+
+    cvcuda::Morphology morphOp;
+
+    // testSet0: iteration < 0
+    EXPECT_THROW(
+        morphOp(nullptr, batchSrc, batchDst, batchWorkspace, NVCV_ERODE, maskTensor, anchorTensor, -1, borderMode),
+        nvcv::Exception);
+
+    // testSet1: NVCV_DILATE and NVCV_ERODE && iteration > 1 && null workspace
+    std::vector<NVCVMorphologyType> testSet1{NVCV_DILATE, NVCV_ERODE};
+    for (auto morphType : testSet1)
+    {
+        EXPECT_THROW(
+            morphOp(nullptr, batchSrc, batchDst, nvcv::NullOpt, morphType, maskTensor, anchorTensor, 2, borderMode),
+            nvcv::Exception);
+    }
+
+    // testSet2: NVCV_CLOSE and NVCV_OPEN && null workspace
+    std::vector<NVCVMorphologyType> testSet2{NVCV_CLOSE, NVCV_OPEN};
+    for (auto morphType : testSet2)
+    {
+        EXPECT_THROW(
+            morphOp(nullptr, batchSrc, batchDst, nvcv::NullOpt, morphType, maskTensor, anchorTensor, 1, borderMode),
+            nvcv::Exception);
+    }
+
+    // testSet3: invalid data type
+    {
+        nvcv::ImageFormat        formatInvalid{NVCV_IMAGE_FORMAT_RGBAf16};
+        std::vector<nvcv::Image> imgSrcInvalid;
+        nvcv::ImageBatchVarShape batchSrcInvalid(batches);
+        for (int i = 0; i < batches; ++i)
+        {
+            imgSrcInvalid.emplace_back(nvcv::Size2D{24, 24}, formatInvalid);
+        }
+        batchSrcInvalid.pushBack(imgSrcInvalid.begin(), imgSrcInvalid.end());
+
+        std::vector<nvcv::Image> imgDstInvalid;
+        std::vector<nvcv::Image> imgWorkspaceInvalid;
+        nvcv::ImageBatchVarShape batchDstInvalid(batches);
+        nvcv::ImageBatchVarShape batchWorkspaceInvalid(batches);
+        for (int i = 0; i < batches; ++i)
+        {
+            imgDstInvalid.emplace_back(imgSrcInvalid[i].size(), imgSrcInvalid[i].format());
+            imgWorkspaceInvalid.emplace_back(imgSrcInvalid[i].size(), imgSrcInvalid[i].format());
+        }
+        batchDstInvalid.pushBack(imgDstInvalid.begin(), imgDstInvalid.end());
+        batchWorkspaceInvalid.pushBack(imgWorkspaceInvalid.begin(), imgWorkspaceInvalid.end());
+
+        EXPECT_THROW(morphOp(nullptr, batchSrcInvalid, batchDstInvalid, batchWorkspaceInvalid, NVCV_ERODE, maskTensor,
+                             anchorTensor, 1, borderMode),
+                     nvcv::Exception);
+    }
+
+    // testSet4: input format is not equal to output format
+    {
+        std::vector<nvcv::Image> imgDstInvalid;
+        std::vector<nvcv::Image> imgWorkspaceInvalid;
+        nvcv::ImageBatchVarShape batchDstInvalid(1);
+        nvcv::ImageBatchVarShape batchWorkspaceInvalid(1);
+        imgDstInvalid.emplace_back(imgSrc[0].size(), imgSrc[0].format());
+        imgWorkspaceInvalid.emplace_back(imgSrc[0].size(), imgSrc[0].format());
+        batchDstInvalid.pushBack(imgDstInvalid.begin(), imgDstInvalid.end());
+        batchWorkspaceInvalid.pushBack(imgWorkspaceInvalid.begin(), imgWorkspaceInvalid.end());
+
+        EXPECT_THROW(morphOp(nullptr, batchSrc, batchDstInvalid, batchWorkspaceInvalid, NVCV_ERODE, maskTensor,
+                             anchorTensor, 1, borderMode),
+                     nvcv::Exception);
     }
 }

@@ -38,28 +38,9 @@ Compatibility and Known Limitations
   
 * **Pre-existing limitations**:
 
-  * The CvtColor operator incorrectly computes the data location of the second chromaticity channel for conversions that involve YUV(420) semi-planar formats. This issue persists through the current release and we intend to address this bug in CV-CUDA v0.12. We do not recommend using these formats.​
+  * We note a bug in the YUV(420) color conversion API (NVCV_COLOR_RGB2YUV_I420) which incorrectly computes the U and V plane index​
 
-    * Known affected formats:​
-      * NVCV_COLOR_YUV2RGB_I420​
-      * NVCV_COLOR_RGB2YUV_I420​
-      * NVCV_COLOR_YUV2BGR_I420​
-      * NVCV_COLOR_BGR2YUV_I420​
-      * NVCV_COLOR_YUV2RGBA_I420​
-      * NVCV_COLOR_RGBA2YUV_I420​
-      * NVCV_COLOR_YUV2BGRA_I420​
-      * NVCV_COLOR_BGRA2YUV_I420​
-      * NVCV_COLOR_RGB2YUV_I420​
-      * NVCV_COLOR_YUV2RGB_YV12​
-      * NVCV_COLOR_RGB2YUV_YV12​
-      * NVCV_COLOR_YUV2BGR_YV12​
-      * NVCV_COLOR_BGR2YUV_YV12​
-      * NVCV_COLOR_YUV2RGBA_YV12​
-      * NVCV_COLOR_RGBA2YUV_YV12​
-      * NVCV_COLOR_YUV2BGRA_YV12​
-      * NVCV_COLOR_BGRA2YUV_YV12​
-      * NVCV_COLOR_RGB2YUV_YV12​
-      * NVCV_COLOR_YUV2GRAY_420​
+    * This persists through this release and we intend to address this bug in CV-CUDA v0.12.0​
 
 For the full list, see main README on `CV-CUDA GitHub <https://github.com/CVCUDA/CV-CUDA>`_.
 

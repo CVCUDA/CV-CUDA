@@ -43,10 +43,6 @@ release = version
 lib_path = os.getenv("SPHINX_PYTHON_SRC", default=".")
 sys.path.insert(0, os.path.abspath(lib_path))
 
-# -- Module mocking ----------------------------------------------------------
-
-autodoc_mock_imports = ['nvcv', 'cvcuda']
-
 # -- General configuration ---------------------------------------------------
 
 # Add any Sphinx extension module names here, as strings. They can be

@@ -136,4 +136,3 @@ python3 $SAMPLES_DIR/label/python/main.py -o "$LABEL_RUN_DIR"
 # Run it with batch size 1 on a single image
 LABEL_RUN_DIR=$(create_output_dir "$LABEL_OUT_DIR")
 python3 $SAMPLES_DIR/label/python/main.py -i $SAMPLES_DIR/assets/images/peoplenet.jpg  -b 1 -o "$LABEL_RUN_DIR"
-
