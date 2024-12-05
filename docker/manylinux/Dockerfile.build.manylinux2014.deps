@@ -1,0 +1,117 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Build arguments and version numbers
+ARG FROM_IMAGE_NAME=quay.io/pypa/manylinux2014_x86_64
+ARG BUILDER_EXTRA_DEPS=scratch
+
+# Base image
+FROM ${BUILDER_EXTRA_DEPS} AS extra_deps
+FROM ${FROM_IMAGE_NAME}
+
+ARG ARCH=x86_64
+ARG CC=gcc
+ARG CXX=g++
+ARG PATCHELF_VERSION=0.17.2
+ARG CMAKE_VERSION=3.20.1
+ARG PYVER=3.8
+ARG PYV=38
+ARG CLANG_VERSION=14.0
+ARG SPHINX_VERSION=4.5.0
+
+# Set build arguments as environment variables
+ENV ARCH=${ARCH}
+ENV CC=${CC}
+ENV CXX=${CXX}
+ENV PATCHELF_VERSION=${PATCHELF_VERSION}
+ENV CMAKE_VERSION=${CMAKE_VERSION}
+ENV PYVER=${PYVER}
+ENV PYV=${PYV}
+ENV CLANG_VERSION=${CLANG_VERSION}
+ENV LIBCLANG_VERSION=${CLANG_VERSION}
+ENV SPHINX_VERSION=${SPHINX_VERSION}
+
+# Install additional dependencies
+RUN yum install -y ninja-build ccache ShellCheck curl
+
+# Configure ccache
+RUN mkdir -p /cache
+COPY ccache.conf /etc/ccache.conf
+ENV CCACHE_CONFIGPATH=/etc/ccache.conf
+ENV PRE_COMMIT_HOME=/cache/pre-commit
+
+# Install patchelf (needed to patch rpath of dependencies in bundle-wheel.sh)
+RUN wget -q https://github.com/NixOS/patchelf/releases/download/${PATCHELF_VERSION}/patchelf-${PATCHELF_VERSION}-${ARCH}.tar.gz -O /tmp/patchelf.tar.gz && \
+    tar -xzf /tmp/patchelf.tar.gz -C /tmp && \
+    mv /tmp/bin/patchelf /usr/local/bin/ && \
+    rm -rf /tmp/patchelf*
+
+# Install CMake
+RUN cmake --version
+RUN wget -q https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-${ARCH}.sh -O /tmp/cmake-install.sh && \
+    chmod +x /tmp/cmake-install.sh && \
+    mkdir /opt/cmake-${CMAKE_VERSION} && \
+    /tmp/cmake-install.sh --skip-license --prefix=/opt/cmake-${CMAKE_VERSION} \
+    && rm -f /usr/local/bin/*cmake* \
+    && rm -f /usr/local/bin/cpack \
+    && rm -f /usr/local/bin/ctest && \
+    ln -s /opt/cmake-${CMAKE_VERSION}/bin/* /usr/local/bin/ && \
+    rm -rf /tmp/cmake-install.sh
+
+# Set up Python environment variables
+ENV PYTHONPATH=/opt/python/v
+ENV PYBIN=${PYTHONPATH}/bin
+ENV PYLIB=${PYTHONPATH}/lib
+
+# Create symlink to the desired Python version
+RUN ln -s /opt/python/cp${PYV}* ${PYTHONPATH}
+
+# Update PATH and library paths
+ENV PATH=${PYTHONPATH}/bin:/opt/python/*/bin:${PATH}
+ENV LD_LIBRARY_PATH=/usr/local/lib:/opt/python/*/lib:${PYLIB}:${LD_LIBRARY_PATH}
+ENV LIBRARY_PATH=/usr/local/lib:/opt/python/*/lib:${PYLIB}:${LIBRARY_PATH}
+
+# Propagate the environment variable to profile.d
+RUN echo "export PYTHONPATH=${PYTHONPATH}" >> /etc/profile.d/python.sh && \
+    echo "export PYBIN=${PYBIN}" >> /etc/profile.d/python.sh && \
+    echo "export PYLIB=${PYLIB}" >> /etc/profile.d/python.sh && \
+    echo "export PATH=\${PYTHONPATH}/bin:/opt/python/*/bin:\${PATH}" >> /etc/profile.d/python.sh && \
+    echo "export LD_LIBRARY_PATH=/usr/local/lib:/opt/python/*/lib:\${PYLIB}:\${LD_LIBRARY_PATH}" >> /etc/profile.d/python.sh && \
+    echo "export LIBRARY_PATH=/usr/local/lib:/opt/python/*/lib:\${PYLIB}:\${LIBRARY_PATH}" >> /etc/profile.d/python.sh && \
+    chmod +x /etc/profile.d/python.sh
+
+# Install Python packages
+RUN python3 -m pip install --no-cache-dir \
+    breathe \
+    cibuildwheel \
+    clang==${CLANG_VERSION} \
+    exhale \
+    flake8 \
+    future \
+    graphviz \
+    numpy \
+    pre-commit \
+    recommonmark \
+    setuptools \
+    sphinx_rtd_theme \
+    sphinx==${SPHINX_VERSION} \
+    twine \
+    wheel
+
+# Update the dynamic linker run-time bindings
+RUN ldconfig
+
+# extra deps
+COPY --from=extra_deps / /

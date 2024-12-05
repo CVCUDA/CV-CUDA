@@ -45,8 +45,11 @@ target_link_libraries(nvcv_test_main
 if(UNIX)
     file(TO_NATIVE_PATH "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/" TESTS_DRIVER_DIR)
     set(TESTS_DRIVER "${TESTS_DRIVER_DIR}/run_tests.sh")
+    set(WHEEL_TESTER "${TESTS_DRIVER_DIR}/test_wheels.sh")
 
     configure_file(${CMAKE_CURRENT_SOURCE_DIR}/run_tests.sh.in ${TESTS_DRIVER}
+        @ONLY)
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/test_wheels.sh.in ${WHEEL_TESTER}
         @ONLY)
 
     macro(nvcv_add_test TESTCMD TESTGROUP)
@@ -84,6 +87,9 @@ if(UNIX)
     endmacro()
 
     install(PROGRAMS ${TESTS_DRIVER}
+        TYPE BIN
+        COMPONENT tests)
+    install(PROGRAMS ${WHEEL_TESTER}
         TYPE BIN
         COMPONENT tests)
 else()

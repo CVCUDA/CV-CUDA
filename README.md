@@ -18,7 +18,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-yellogreen.svg)](https://opensource.org/licenses/Apache-2.0)
 
-![Version](https://img.shields.io/badge/Version-v0.12.0--beta-blue)
+![Version](https://img.shields.io/badge/Version-v0.13.0--beta-blue)
 
 ![Platform](https://img.shields.io/badge/Platform-linux--64_%7C_win--64_wsl2%7C_aarch64-gray)
 
@@ -239,12 +239,13 @@ cpack . -G [DEB|TXZ]
 
 Python Wheels
 
-By default during the `release` build, Python bindings and wheels are created for the available CUDA version and the specified Python version(s). The wheels are stored in `build-rel/pythonX.Y/wheel` folder, where `build-rel` is the build directory used to build the release build and `X` and `Y` are Python major and minor versions.
+By default, during the `release` build, Python bindings and wheels are created for the available CUDA version and the specified Python version(s). The wheels are now output to the `build-rel/python3/repaired_wheels` folder (after being processed by the `auditwheel repair` command in the case of ManyLinux). The single generated python wheel is compatible with all versions of python specified during the cmake build step. Here, `build-rel` is the build directory used to build the release build.
 
-The built wheels can be installed using pip.
-For example, to install the Python wheel built for CUDA 12.x, Python 3.10 on Linux x86_64 systems:
+The new Python wheels for PyPI compliance must be built within the ManyLinux 2014 Docker environment. The Docker images can be generated using the `docker/manylinux/docker_buildx.sh` script. These images ensure the wheels meet ManyLinux 2014 and PyPI standards.
+
+The built wheels can still be installed using `pip`. For example, to install the Python wheel built for CUDA 12.x, Python 3.10 and 3.11 on Linux x86_64 systems:
 ```shell
-pip install cvcuda_cu12-<x.x.x>-cp310-cp310-linux_x86_64.whl
+pip install cvcuda_cu12-<x.x.x>-cp310.cp311-cp310.cp311-linux_x86_64.whl
 ```
 
 ## Contributing

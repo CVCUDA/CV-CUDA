@@ -1,81 +1,107 @@
 # SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
+# Licensed under the Apache License, Version 2.0 (the 'License');
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
+# distributed under the License is distributed on an 'AS IS' BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# This is a Python setuptools setup script to generate Python wheels.
-# It is in a template form with placeholder fields that looks like ${}.
-# This script will be automatically invoked by cmake when Python bindings are built.
-# Do not invoke this outside of cmake.
-
-
-from setuptools import setup, Extension
+import os
+from collections import defaultdict
+from setuptools import setup, find_packages, Extension
 from setuptools.command.build_ext import build_ext
 
 
 class NoBuildExtension(build_ext):
     """
-    Since CV-CUDA Python wheels are pure pre-compiled binary distribution at this point
-    without any Python or any other source code files and since the binaries are generated
-    by cmake system outside and without the knowledge of the setuptools, we must
-    create a dummy class to build an extension here with no source code in it and
-    no build steps in it to let setuptools create a platform library instead of a
-    pure library. Without any extensions in a setup tools project setuptools will
-    end up creating a purelib package. One can compile cmake/pybind11 code here
-    as an extension but since that part is handled outside of this file for now
-    we will simply create an empty extension and a corresponding build step that
-    actually does nothing but let setuptools know that this is a pure binary distribution.
+    Prevent setuptools from trying to build extensions since the actual
+    compilation is handled externally (e.g., via CMake).
     """
-
     def run(self):
-        return  # Do nothing during build time.
+        pass
 
 
-# Define our PyPI trove classifiers for this project. Many values here are
-# placeholders which will be filled in by cmake when this is built.
-pypi_trove_classifiers = [
-    "Development Status :: 4 - Beta",
-    "Environment :: GPU :: NVIDIA CUDA",
-    "Environment :: GPU :: NVIDIA CUDA :: ${CUDA_VERSION_MAJOR}",
-    "Operating System :: POSIX :: Linux",
-    "License :: OSI Approved :: Apache Software License",
-    "Programming Language :: Python :: ${PYTHON_VERSION}",
-    "Programming Language :: Python :: Implementation :: CPython",
-]
+def find_shared_libraries(lib_dir):
+    """
+    Locate the central shared libraries (libcvcuda.so, libnvcv_types.so)
+    and Python bindings (*.cpython-*.so) in the given directory.
 
-# Finally call the setup.
+    Args:
+        lib_dir (str): The directory to search for shared libraries.
+
+    Returns:
+        dict: A dictionary containing shared libraries and bindings.
+    """
+    shared_libraries = defaultdict(list)
+
+    for root, _, files in os.walk(lib_dir):
+        for file in files:
+            if file.endswith('.so'):
+                file_path = os.path.relpath(os.path.join(root, file),
+                                            start=lib_dir)
+
+                # Central shared libraries
+                if file.startswith('libcvcuda'):
+                    shared_libraries['cvcuda'].append(file_path)
+                elif file.startswith('libnvcv_types'):
+                    shared_libraries['nvcv'].append(file_path)
+                # Python bindings
+                elif file.startswith('cvcuda') and 'cpython' in file:
+                    shared_libraries['cvcuda_bindings'].append(file_path)
+                elif file.startswith('nvcv') and 'cpython' in file:
+                    shared_libraries['nvcv_bindings'].append(file_path)
+
+    return shared_libraries
+
+
+# Locate libraries and bindings in the specified directory
+libs = find_shared_libraries(os.path.dirname(__file__))
+print(libs)
+
 setup(
-    name="cvcuda-cu${CUDA_VERSION_MAJOR}",
-    description="${CMAKE_PROJECT_DESCRIPTION}",
-    author="NVIDIA Corporation",
-    url="https://github.com/CVCUDA/CV-CUDA",
-    version="${CMAKE_PROJECT_VERSION}${PROJECT_VERSION_SUFFIX}",
-    packages=[""],  # Must be empty to support current CV-CUDA style distribution
-    package_dir={"": "."},
-    package_data={
-        "": ["*.so", "cvcuda.libs/*.*"]
-    },  # Includes the binding .so + core .so files
-    include_package_data=True,
-    install_requires=["numpy>=1.23.5"],
-    python_requires="==${PYTHON_VERSION}.*",
-    zip_safe=False,
-    cmdclass={
-        "build_ext": NoBuildExtension,  # This allows us to make it a platlib.
+    name='cvcuda-cu${CUDA_VERSION_MAJOR}',
+    version='${CMAKE_PROJECT_VERSION}${PROJECT_VERSION_SUFFIX}',
+    description='${CMAKE_PROJECT_DESCRIPTION}',
+    author='NVIDIA Corporation',
+    author_email='support@nvidia.com',
+    url='https://github.com/CVCUDA/CV-CUDA',
+    packages=find_packages(include=["cvcuda", "nvcv"]),
+    package_dir={
+        'cvcuda': 'cvcuda',
+        'nvcv': 'nvcv',
     },
+    package_data={
+        'cvcuda': ['_bindings/*.*'],
+        'nvcv': ['_bindings/*.*'],
+        'cvcuda_cu${CUDA_VERSION_MAJOR}.libs': ['*.*'],
+    },
+    include_package_data=True,
+    install_requires=['numpy>=1.23.5'],
+    python_requires='>=3.8, <3.14',
+    zip_safe=False,
+    cmdclass={'build_ext': NoBuildExtension},
     ext_modules=[
-        Extension(
-            name="UnusedEmptyExtension", sources=[]
-        ),  # This allows us to make it a platlib.
+        Extension(name='UnusedEmptyExtension', sources=[]),
     ],
-    classifiers=pypi_trove_classifiers,
+    classifiers=[
+        'Development Status :: 4 - Beta',
+        'Environment :: GPU :: NVIDIA CUDA',
+        'Environment :: GPU :: NVIDIA CUDA :: ${CUDA_VERSION_MAJOR}',
+        'Operating System :: POSIX :: Linux',
+        'License :: OSI Approved :: Apache Software License',
+        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11',
+        'Programming Language :: Python :: 3.12',
+        'Programming Language :: Python :: 3.13',
+        'Programming Language :: Python :: Implementation :: CPython',
+    ],
 )

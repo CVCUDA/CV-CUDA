@@ -23,7 +23,7 @@ endif()
 
 project(cvcuda
         LANGUAGES C CXX
-        VERSION 0.12.0
+        VERSION 0.13.0
         DESCRIPTION "CUDA-accelerated Computer Vision algorithms"
 )
 

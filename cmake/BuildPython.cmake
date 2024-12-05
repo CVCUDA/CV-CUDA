@@ -45,14 +45,14 @@ list(APPEND PYPROJ_COMMON_ARGS
     -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
 )
 
-# It need to overwrite the PYTHON_MODULE_EXTENSION to generate
+# It needs to overwrite the PYTHON_MODULE_EXTENSION to generate
 # python module name with correct name when cross compiling
 # example: set(PYTHON_MODULE_EXTENSION .cpython-py38-aarch64-linux-gnu.so)
 if (CMAKE_CROSSCOMPILING)
-list(APPEND PYPROJ_COMMON_ARGS
-    -DCUDAToolkit_ROOT=${CUDAToolkit_ROOT}
-    -DPYTHON_MODULE_EXTENSION=${PYTHON_MODULE_EXTENSION}
-)
+    list(APPEND PYPROJ_COMMON_ARGS
+        -DCUDAToolkit_ROOT=${CUDAToolkit_ROOT}
+        -DPYTHON_MODULE_EXTENSION=${PYTHON_MODULE_EXTENSION}
+    )
 endif()
 
 foreach(VER ${PYTHON_VERSIONS})
@@ -61,7 +61,7 @@ foreach(VER ${PYTHON_VERSIONS})
     ExternalProject_Add(cvcuda_python${VER}
         PREFIX ${BASEDIR}
         SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/python
-        CMAKE_ARGS ${PYPROJ_COMMON_ARGS} -DPYTHON_VERSION=${VER} -DBUILD_ROOT=${CMAKE_BINARY_DIR} -DPYTHON_VERSION_SHORT=${VER}
+        CMAKE_ARGS ${PYPROJ_COMMON_ARGS} -DPYTHON_VERSION=${VER}
         BINARY_DIR ${BASEDIR}/build
         TMP_DIR ${BASEDIR}/tmp
         STAMP_DIR ${BASEDIR}/stamp
@@ -72,7 +72,37 @@ foreach(VER ${PYTHON_VERSIONS})
 endforeach()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    foreach(PYTHON_VERSION ${PYTHON_VERSIONS})
-        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/python/setup.py.in" "${CMAKE_BINARY_DIR}/python${PYTHON_VERSION}/setup.py")
+    set(PACKAGE_LIB_DIR ${CMAKE_BINARY_DIR}/python3/lib)
+
+    file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/python3)
+    file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/python3/lib)
+    file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/python3/cvcuda)
+    file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/python3/cvcuda/_bindings)
+    file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/python3/nvcv)
+    file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/python3/nvcv/_bindings)
+
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/python/setup.py.in" "${CMAKE_BINARY_DIR}/python3/setup.py")
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/python/__init__.py.in" "${CMAKE_BINARY_DIR}/python3/cvcuda/__init__.py")
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/python/__init__.py.in" "${CMAKE_BINARY_DIR}/python3/nvcv/__init__.py")
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/python/_load_binding.py.in" "${CMAKE_BINARY_DIR}/python3/cvcuda/_load_binding.py")
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/python/_load_binding.py.in" "${CMAKE_BINARY_DIR}/python3/nvcv/_load_binding.py")
+
+    add_custom_target(wheel ALL)
+
+    foreach(VER ${PYTHON_VERSIONS})
+        add_dependencies(wheel cvcuda_python${VER})
     endforeach()
+
+    add_custom_command(
+        TARGET wheel
+        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:cvcuda> ${CMAKE_BINARY_DIR}/python3/lib
+        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:nvcv_types> ${CMAKE_BINARY_DIR}/python3/lib
+        COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/lib/python/cvcuda*.so ${CMAKE_BINARY_DIR}/python3/cvcuda/_bindings
+        COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/lib/python/nvcv*.so ${CMAKE_BINARY_DIR}/python3/nvcv/_bindings
+    )
+
+    add_custom_command(
+        TARGET wheel
+        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/python/build_wheels.sh" "${CMAKE_BINARY_DIR}/python3"
+    )
 endif()
