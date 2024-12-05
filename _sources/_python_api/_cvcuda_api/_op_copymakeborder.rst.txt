@@ -19,4 +19,4 @@ CopyMakeBorder
 
 .. automodule:: cvcuda
   :noindex:
-  :members: copymakeborderstack_into, copymakeborder_into, copymakeborderstack, copymakeborder
+  :members: copymakeborder, copymakeborderstack_into, copymakeborder_into, copymakeborderstack

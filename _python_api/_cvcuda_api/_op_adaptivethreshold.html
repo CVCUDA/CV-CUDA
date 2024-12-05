@@ -1,3 +1,5 @@
+
+
 <!DOCTYPE html>
 <html class="writer-html5" lang="en" data-content_root="../../">
 <head>
@@ -6,21 +8,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AdaptiveThreshold &mdash; CV-CUDA Beta documentation</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=fa44fd50" />
-      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=19f00094" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/custom.css?v=76b435a8" />
 
   
     <link rel="shortcut icon" href="../../_static/nv_icon.png"/>
-  <!--[if lt IE 9]>
-    <script src="../../_static/js/html5shiv.min.js"></script>
-  <![endif]-->
-  
-        <script src="../../_static/jquery.js?v=5d32c60e"></script>
-        <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-        <script src="../../_static/documentation_options.js?v=c5864913"></script>
-        <script src="../../_static/doctools.js?v=9a2dae69"></script>
-        <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
-        <script src="../../_static/pk_scripts.js"></script>
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=c5864913"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../../_static/pk_scripts.js"></script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
@@ -40,9 +38,6 @@
             
               <img src="../../_static/nv_logo.png" class="logo" alt="Logo"/>
           </a>
-              <div class="version">
-                Beta
-              </div>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
     <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
@@ -1110,6 +1105,14 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Release Notes</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../relnotes/v0.13.0-beta.html">v0.13.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.13.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.13.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.13.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.13.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.13.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="../../relnotes/v0.12.0-beta.html">v0.12.0-beta</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.12.0-beta.html#release-highlights">Release Highlights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../relnotes/v0.12.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
@@ -1260,149 +1263,6 @@
              
   <section id="adaptivethreshold">
 <h1>AdaptiveThreshold<a class="headerlink" href="#adaptivethreshold" title="Link to this heading"></a></h1>
-<dl class="py function">
-<dt class="sig sig-object py">
-<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">adaptivethreshold</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span></dt>
-<dd><dl class="simple">
-<dt>cvcuda.adaptivethreshold(src: nvcv.Tensor, max_value: float, adaptive_method: cvcuda.AdaptiveThresholdType = cvcuda.AdaptiveThresholdType.MEAN_C,</dt><dd><p>threshold_type: cvcuda.ThresholdType = cvcuda.ThresholdType.BINARY, block_size: int, c: float, stream: Optional[nvcv.cuda.Stream] = None) -&gt; nvcv.Tensor</p>
-</dd>
-</dl>
-<p>Executes the adaptive threshold operation on the given cuda stream.</p>
-<div class="admonition seealso">
-<p class="admonition-title">See also</p>
-<p>Refer to the CV-CUDA C API reference for the Composite operator
-for more details and usage examples.</p>
-</div>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>src</strong> (<em>nvcv.Tensor</em>) – Input tensor containing one or more images.</p></li>
-<li><p><strong>max_value</strong> (<em>float</em>) – Non-zero value assigned to the pixels for which the condition is satisfied.</p></li>
-<li><p><strong>adaptive_method</strong> (<em>cvcuda.AdaptiveThresholdType</em>) – Adaptive threshold algorithm to use.</p></li>
-<li><p><strong>threshold_type</strong> (<em>cvcuda.ThresholdType</em>) – Threshold type that must be either cvcuda.ThresholdType.BINARY or cvcuda.ThresholdType.BINARY_INV.</p></li>
-<li><p><strong>block_size</strong> (<em>int</em>) – Size of a pixel neighborhood that is used to calculate a threshold value for the pixel: 3, 5, 7, and so on.</p></li>
-<li><p><strong>c</strong> (<em>float</em>) – Constant subtracted from the mean or weighted mean. Normally, it is positive but may be zero or negative as well.</p></li>
-<li><p><strong>stream</strong> (<em>nvcv.cuda.Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>The output image.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>nvcv.Tensor</p>
-</dd>
-</dl>
-<div class="admonition caution">
-<p class="admonition-title">Caution</p>
-<p>Restrictions to several arguments may apply. Check the C
-API references of the CV-CUDA operator.</p>
-</div>
-<p>cvcuda.adaptivethreshold(src: nvcv.ImageBatchVarShape, max_value: nvcv.Tensor, adaptive_method: cvcuda.AdaptiveThresholdType = cvcuda.AdaptiveThresholdType.MEAN_C, threshold_type: cvcuda.ThresholdType = cvcuda.ThresholdType.BINARY, block_size: int, c: float, stream: Optional[nvcv.cuda.Stream] = None) -&gt; nvcv.ImageBatchVarShape</p>
-<p>Executes the adaptive threshold operation on the given cuda stream.</p>
-<div class="admonition seealso">
-<p class="admonition-title">See also</p>
-<p>Refer to the CV-CUDA C API reference for the Composite operator
-for more details and usage examples.</p>
-</div>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>src</strong> (<em>nvcv.ImageBatchVarShape</em>) – Input image batch containing the result of the operation.</p></li>
-<li><p><strong>max_value</strong> (<em>nvcv.Tensor</em>) – Non-zero value assigned to the pixels for which the condition is satisfied, specified per image.</p></li>
-<li><p><strong>adaptive_method</strong> (<em>cvcuda.AdaptiveThresholdType</em>) – Adaptive threshold algorithm to use.</p></li>
-<li><p><strong>threshold_type</strong> (<em>cvcuda.ThresholdType</em>) – Threshold type that must be either cvcuda.ThresholdType.BINARY or cvcuda.ThresholdType.BINARY_INV.</p></li>
-<li><p><strong>max_block_size</strong> (<em>int</em>) – The maximum block size that will be used by the operator.</p></li>
-<li><p><strong>block_size</strong> (<em>nvcv.Tensor</em>) – Size of a pixel neighborhood that is used to calculate a threshold value for the pixel: 3, 5, 7, and so on, specified per image.</p></li>
-<li><p><strong>c</strong> (<em>nvcv.Tensor</em>) – Constant subtracted from the mean or weighted mean. Normally, it is positive but may be zero or negative as well, specified per image.</p></li>
-<li><p><strong>stream</strong> (<em>nvcv.cuda.Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>The output image batch.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>nvcv.ImageBatchVarShape</p>
-</dd>
-</dl>
-<div class="admonition caution">
-<p class="admonition-title">Caution</p>
-<p>Restrictions to several arguments may apply. Check the C
-API references of the CV-CUDA operator.</p>
-</div>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py">
-<span class="sig-prename descclassname"><span class="pre">cvcuda.</span></span><span class="sig-name descname"><span class="pre">adaptivethreshold_into</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span></dt>
-<dd><dl>
-<dt>cvcuda.adaptivethreshold_into(dst: nvcv.Tensor, src: nvcv.Tensor, max_value: float, adaptive_method: cvcuda.AdaptiveThresholdType = &lt;</dt><dd><p>cvcuda.AdaptiveThresholdType.MEAN_C &gt;, threshold_type: cvcuda.ThresholdType = cvcuda.ThresholdType.BINARY,
-block_size: int, c: float, stream: Optional[nvcv.cuda.Stream] = None)</p>
-<p>Executes the adaptive threshold operation on the given cuda stream.</p>
-</dd>
-</dl>
-<div class="admonition seealso">
-<p class="admonition-title">See also</p>
-<p>Refer to the CV-CUDA C API reference for the Composite operator
-for more details and usage examples.</p>
-</div>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>dst</strong> (<em>nvcv.Tensor</em>) – Output tensor to store the result of the operation.</p></li>
-<li><p><strong>src</strong> (<em>nvcv.Tensor</em>) – Input tensor containing one or more images.</p></li>
-<li><p><strong>max_value</strong> (<em>float</em>) – Non-zero value assigned to the pixels for which the condition is satisfied.</p></li>
-<li><p><strong>adaptive_method</strong> (<em>cvcuda.AdaptiveThresholdType</em>) – Adaptive threshold algorithm to use.</p></li>
-<li><p><strong>threshold_type</strong> (<em>cvcuda.ThresholdType</em>) – Threshold type that must be either cvcuda.ThresholdType.BINARY or cvcuda.ThresholdType.BINARY_INV.</p></li>
-<li><p><strong>block_size</strong> (<em>int</em>) – Size of a pixel neighborhood that is used to calculate a threshold value for the pixel: 3, 5, 7, and so on.</p></li>
-<li><p><strong>c</strong> (<em>float</em>) – Constant subtracted from the mean or weighted mean. Normally, it is positive but may be zero or negative as well.</p></li>
-<li><p><strong>stream</strong> (<em>nvcv.cuda.Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>None</p>
-</dd>
-</dl>
-<div class="admonition caution">
-<p class="admonition-title">Caution</p>
-<p>Restrictions to several arguments may apply. Check the C
-API references of the CV-CUDA operator.</p>
-</div>
-<dl class="simple">
-<dt>cvcuda.adaptivethreshold_into(dst: nvcv.ImageBatchVarShape, src: nvcv.ImageBatchVarShape, max_value: nvcv.Tensor,</dt><dd><p>adaptive_method: cvcuda.AdaptiveThresholdType = cvcuda.AdaptiveThresholdType.MEAN_C, threshold_type: cvcuda.ThresholdType = cvcuda.ThresholdType.BINARY,
-block_size: int, c: float, stream: Optional[nvcv.cuda.Stream] = None)</p>
-</dd>
-</dl>
-<p>Executes the adaptive threshold operation on the given cuda stream.</p>
-<div class="admonition seealso">
-<p class="admonition-title">See also</p>
-<p>Refer to the CV-CUDA C API reference for the Composite operator
-for more details and usage examples.</p>
-</div>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>dst</strong> (<em>nvcv.ImageBatchVarShape</em>) – Output image batch containing the result of the operation.</p></li>
-<li><p><strong>src</strong> (<em>nvcv.ImageBatchVarShape</em>) – Input image batch containing the result of the operation.</p></li>
-<li><p><strong>max_value</strong> (<em>nvcv.Tensor</em>) – Non-zero value assigned to the pixels for which the condition is satisfied, specified per image.</p></li>
-<li><p><strong>adaptive_method</strong> (<em>cvcuda.AdaptiveThresholdType</em>) – Adaptive threshold algorithm to use.</p></li>
-<li><p><strong>threshold_type</strong> (<em>cvcuda.ThresholdType</em>) – Threshold type that must be either cvcuda.ThresholdType.BINARY or cvcuda.ThresholdType.BINARY_INV.</p></li>
-<li><p><strong>max_block_size</strong> (<em>int</em>) – The maximum block size that will be used by the operator.</p></li>
-<li><p><strong>block_size</strong> (<em>nvcv.Tensor</em>) – Size of a pixel neighborhood that is used to calculate a threshold value for the pixel: 3, 5, 7, and so on, specified per image.</p></li>
-<li><p><strong>c</strong> (<em>nvcv.Tensor</em>) – Constant subtracted from the mean or weighted mean. Normally, it is positive but may be zero or negative as well, specified per image.</p></li>
-<li><p><strong>stream</strong> (<em>nvcv.cuda.Stream</em><em>, </em><em>optional</em>) – CUDA Stream on which to perform the operation.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>None</p>
-</dd>
-</dl>
-<div class="admonition caution">
-<p class="admonition-title">Caution</p>
-<p>Restrictions to several arguments may apply. Check the C
-API references of the CV-CUDA operator.</p>
-</div>
-</dd></dl>
-
 </section>
 
 
@@ -1417,7 +1277,7 @@ API references of the CV-CUDA operator.</p>
 
   <div role="contentinfo">
     <p>&#169; Copyright 2022-2024, NVIDIA..
-      <span class="lastupdated">Last updated on Sep 26, 2024.
+      <span class="lastupdated">Last updated on Dec 05, 2024.
       </span></p>
   </div>
 
