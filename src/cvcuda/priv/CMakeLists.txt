@@ -103,8 +103,8 @@ target_link_libraries(cvcuda_priv
         nvcv_util_sanitizer
         cvcuda_legacy
         CUDA::cudart_static
-	CUDA::cusolver
-        CUDA::cublas
-        CUDA::cublasLt
+        CUDA::cusolver_static
+        CUDA::cublas_static
+        CUDA::cublasLt_static
         -lrt
 )

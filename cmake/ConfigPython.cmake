@@ -81,6 +81,33 @@ file(GENERATE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/cmake/cvcuda_$<LOWER_CASE:$<CON
 # Python versions to build already set?
 if(PYTHON_VERSIONS)
     set(USE_DEFAULT_PYTHON false)
+
+    set(AVAILABLE_PYTHON_VERSIONS "")
+    foreach(VER ${PYTHON_VERSIONS})
+        find_program(PYTHON_EXECUTABLE python${VER} PATHS /usr/bin /usr/local/bin NO_DEFAULT_PATH)
+        if (PYTHON_EXECUTABLE)
+            execute_process(
+                COMMAND ${PYTHON_EXECUTABLE} -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
+                OUTPUT_VARIABLE PYTHON_VERSION_OUTPUT
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+            )
+            if (PYTHON_VERSION_OUTPUT STREQUAL ${VER})
+                list(APPEND AVAILABLE_PYTHON_VERSIONS ${VER})
+            else()
+                message(WARNING "Python executable ${PYTHON_EXECUTABLE} does not match version ${VER} (${PYTHON_VERSION_OUTPUT}). Skipping.")
+            endif()
+        else()
+            message(WARNING "Python version ${VER} not found. Skipping.")
+        endif()
+        unset(PYTHON_EXECUTABLE CACHE)
+    endforeach()
+
+    if(NOT AVAILABLE_PYTHON_VERSIONS)
+        message(FATAL_ERROR "No available Python versions found. Exiting.")
+    endif()
+
+    set(PYTHON_VERSIONS ${AVAILABLE_PYTHON_VERSIONS})
+    unset(AVAILABLE_PYTHON_VERSIONS)
 # If not, gets the default version from FindPython
 else()
     find_package(Python COMPONENTS Interpreter REQUIRED)

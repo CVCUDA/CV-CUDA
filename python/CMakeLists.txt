@@ -39,10 +39,6 @@ string(REPLACE "." "" PYTHON_MODULE_NAME "${PYTHON_MODULE_NAME}")
 include(GNUInstallDirs)
 set(PYTHON_MODULE_FILENAME_LIST "" CACHE INTERNAL "")
 
-if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    add_custom_target(wheel ALL)
-endif()
-
 function(nvcv_python_add_module)
     cmake_parse_arguments(ARG "SHARED;MODULE" "TARGET;OUTPUT_NAME" "SOURCES" ${ARGV})
 
@@ -80,10 +76,6 @@ function(nvcv_python_add_module)
     set(PYTHON_MODULE_FILENAME_LIST
         "${PYTHON_MODULE_FILENAME_LIST};${prefix}${ARG_OUTPUT_NAME}${suffix}" CACHE INTERNAL "")
 
-    if(CMAKE_BUILD_TYPE STREQUAL "Release")
-        add_dependencies(wheel ${ARG_TARGET})
-    endif()
-
     install(TARGETS ${ARG_TARGET}
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/python
         COMPONENT ${PYTHON_MODULE_NAME}
@@ -102,10 +94,3 @@ string(JOIN " " PYTHON_MODULE_FILENAME_LIST ${PYTHON_MODULE_FILENAME_LIST})
 
 configure_file(cpack/debian_python_postinst.in cpack/postinst @ONLY)
 configure_file(cpack/debian_python_prerm.in cpack/prerm @ONLY)
-
-# Create Python wheel
-if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    add_custom_command(
-        TARGET wheel
-        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/build_wheels.sh" "${BUILD_ROOT}" ${PYTHON_VERSION_SHORT} )
-endif()

@@ -1,0 +1,124 @@
+#!/bin/bash -e
+
+# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Enable recursive globbing
+shopt -s globstar
+
+if [ -z "$1" ]; then
+    echo "Usage: $0 <directory_containing_wheels>"
+    exit 1
+fi
+
+WHEEL_LIST=($1/**/cvcuda*.whl)
+PACKAGES=("cvcuda" "nvcv")
+
+# Check for GPU and driver
+if command -v nvidia-smi &> /dev/null; then
+    if ! nvidia-smi > /dev/null 2>&1; then
+        echo "Warning: No GPU detected or driver not working with nvidia-smi. Skipping wheel testing..."
+        exit 0
+    fi
+    echo "GPU detected and driver is working (via nvidia-smi)."
+elif command -v tegrastats &> /dev/null; then
+    if ! tegrastats > /dev/null 2>&1; then
+        echo "Warning: tegrastats could not verify GPU. Skipping wheel testing..."
+        exit 0
+    fi
+    echo "GPU detected and driver is working (via tegrastats)."
+else
+    echo "Warning: Neither nvidia-smi nor tegrastats found. Skipping wheel testing..."
+    exit 0
+fi
+
+# Check if there are any wheels to test
+if [ ${#WHEEL_LIST[@]} -eq 0 ]; then
+    echo "No wheels found in the specified directory."
+    exit 0
+fi
+
+# Extract compatible Python versions from the wheel filenames
+get_compatible_pythons() {
+    local wheel_file="$1"
+    local compatible_versions=()
+    python_tag=$(basename "${wheel_file}" | cut -d'-' -f3)
+    IFS='.' read -ra tags <<< "${python_tag}"
+
+    for tag in "${tags[@]}"; do
+        if [[ "${tag}" =~ cp(3[0-9]{1,2}) ]]; then
+            py_ver="${BASH_REMATCH[1]}"
+            compatible_versions+=("${py_ver}")
+        fi
+    done
+
+    echo "${compatible_versions[@]}"
+}
+
+# Test each wheel
+for whl in "${WHEEL_LIST[@]}"; do
+    echo "Testing wheel: $(basename "${whl}")"
+
+    # Determine compatible Python versions
+    compatible_pythons=($(get_compatible_pythons "${whl}"))
+    if [ "${#compatible_pythons[@]}" -eq 0 ]; then
+        echo "Error: No compatible Python versions found for $(basename "${whl}"). Skipping."
+        continue
+    fi
+
+    for py_ver in "${compatible_pythons[@]}"; do
+        py_exec="python3.${py_ver:1}"
+        if ! command -v "${py_exec}" &> /dev/null; then
+            echo "Skipping Python ${py_ver}: ${py_exec} not found."
+            continue
+        fi
+
+        echo "Testing with ${py_exec}..."
+
+        # Create a temporary virtual environment
+        test_env_dir=$(mktemp -d)
+        ${py_exec} -m venv --without-pip "${test_env_dir}/test_env"
+        source "${test_env_dir}/test_env/bin/activate"
+
+        # Manually install pip using get-pip.py
+        echo "Manually installing pip..."
+        curl -sS https://bootstrap.pypa.io/get-pip.py | ${py_exec}
+
+        # Ensure pip is up to date
+        echo "Upgrading pip..."
+        ${py_exec} -m pip install --upgrade pip
+
+        # Install and test the wheel
+        echo "Installing ${whl}..."
+        ${py_exec} -m pip install "${whl}"
+
+        for package in "${PACKAGES[@]}"; do
+            echo "Testing import for package ${package}..."
+            if ! ${py_exec} -c "import ${package}" &> /dev/null; then
+                echo "  Error: Failed to import ${package} with ${py_exec}."
+                deactivate
+                rm -rf "${test_env_dir}"
+                exit 1
+            fi
+            echo "  ${package} imported successfully with ${py_exec}."
+        done
+
+        deactivate
+        rm -rf "${test_env_dir}"
+        echo "Testing with ${py_exec} completed successfully."
+    done
+done
+
+echo "All wheels tested successfully."
