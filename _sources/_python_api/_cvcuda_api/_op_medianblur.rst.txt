@@ -19,4 +19,4 @@ MedianBlur
 
 .. automodule:: cvcuda
   :noindex:
-  :members: median_blur, median_blur_into
+  :members: median_blur_into, median_blur

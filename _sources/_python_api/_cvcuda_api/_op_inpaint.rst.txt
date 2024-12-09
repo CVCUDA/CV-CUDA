@@ -19,4 +19,4 @@ Inpaint
 
 .. automodule:: cvcuda
   :noindex:
-  :members: inpaint, inpaint_into
+  :members: inpaint_into, inpaint

@@ -19,4 +19,4 @@ CvtColor
 
 .. automodule:: cvcuda
   :noindex:
-  :members: cvtcolor, cvtcolor_into
+  :members: cvtcolor_into, cvtcolor
