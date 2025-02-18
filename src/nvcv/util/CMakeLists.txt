@@ -194,8 +194,13 @@ target_link_libraries(nvcv_util
         nvcv_types_headers
         CUDA::cudart_static
         nvcv_util_compat
-        -lrt
 )
+
+if(NOT PLATFORM_IS_QNX)
+    # Realtime extensions library don't need to be linked on QNX.
+    target_link_libraries(nvcv_util
+        PUBLIC -lrt)
+endif()
 
 target_compile_definitions(nvcv_util
     PUBLIC

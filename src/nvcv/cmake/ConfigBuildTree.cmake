@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -57,6 +57,13 @@ option(EXPOSE_CODE "Expose in resulting binaries parts of our code" ${DEFAULT_EX
 option(WARNINGS_AS_ERRORS "Treat compilation warnings as errors" OFF)
 cmake_dependent_option(ENABLE_TEGRA "Enable tegra support" ON "PLATFORM_IS_ARM64" OFF)
 cmake_dependent_option(ENABLE_COMPAT_OLD_GLIBC "Generates binaries that work with old distros, with old glibc" ON "NOT ENABLE_TEGRA" OFF)
+cmake_dependent_option(ENABLE_QNX "Enable QNX support" OFF "PLATFORM_IS_ARM64" OFF)
+
+if(ENABLE_QNX)
+    set(PLATFORM_IS_QNX ON)
+else()
+    set(PLATFORM_IS_QNX OFF)
+endif()
 
 # Needed to get cuda version
 find_package(CUDAToolkit REQUIRED)
@@ -94,11 +101,19 @@ function(setup_dso target version)
     # Put each function and it's data into separate linker sections
     target_compile_options(${target} PRIVATE -ffunction-sections -fdata-sections)
 
-    # Link with static C/C++ libs ==========================
-    target_link_libraries(${target} PRIVATE
-        -static-libstdc++
-        -static-libgcc
-    )
+    if(PLATFORM_IS_QNX)
+        # For QNX, explicitly link libc++ as the C++ Standard Library and Math library
+        target_link_libraries(${target} PRIVATE
+            c++
+            m
+        )
+    else()
+        # Link with static C/C++ libs
+        target_link_libraries(${target} PRIVATE
+            -static-libstdc++
+            -static-libgcc
+        )
+    endif()
 
     #   Configure symbol visibility ---------------------------------------------
     set_target_properties(${target} PROPERTIES VISIBILITY_INLINES_HIDDEN on

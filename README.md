@@ -18,7 +18,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-yellogreen.svg)](https://opensource.org/licenses/Apache-2.0)
 
-![Version](https://img.shields.io/badge/Version-v0.13.0--beta-blue)
+![Version](https://img.shields.io/badge/Version-v0.13.1--beta-blue)
 
 ![Platform](https://img.shields.io/badge/Platform-linux--64_%7C_win--64_wsl2%7C_aarch64-gray)
 
