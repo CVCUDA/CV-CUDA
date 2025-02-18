@@ -21,6 +21,7 @@
 
 #include <cstdarg>
 #include <regex>
+#include <sstream>
 
 namespace nvcv::util {
 
