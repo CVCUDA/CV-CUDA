@@ -19,4 +19,4 @@ AdaptiveThreshold
 
 .. automodule:: cvcuda
   :noindex:
-  :members: adaptivethreshold, adaptivethreshold_into
+  :members: adaptivethreshold_into, adaptivethreshold

@@ -19,4 +19,4 @@ WarpPerspective
 
 .. automodule:: cvcuda
   :noindex:
-  :members: warp_perspective_into, warp_perspective
+  :members: warp_perspective, warp_perspective_into

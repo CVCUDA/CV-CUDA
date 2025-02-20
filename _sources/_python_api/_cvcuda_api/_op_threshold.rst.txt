@@ -19,4 +19,4 @@ Threshold
 
 .. automodule:: cvcuda
   :noindex:
-  :members: threshold_into, threshold
+  :members: threshold, threshold_into
