@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,6 +25,7 @@
 #include <nvcv/python/Cache.hpp>
 #include <pybind11/pybind11.h>
 
+#include <unordered_set>
 #include <vector>
 
 namespace nvcvpy::priv {
@@ -93,6 +94,8 @@ public:
     static void Export(py::module &m);
 
     static Cache &Instance();
+    static void   ClearAll();
+    static size_t TotalSize();
 
     void add(CacheItem &container);
     void removeAllNotInUseMatching(const IKey &key);
@@ -129,10 +132,13 @@ public:
     int64_t getCurrentSizeInBytes();
 
 private:
+    inline static std::unordered_set<Cache *> instances;
+
     struct Impl;
     std::unique_ptr<Impl> pimpl;
 
     Cache();
+    ~Cache();
 
     void    doIterateThroughItems(const std::function<void(CacheItem &item)> &fn) const;
     int64_t doGetCurrentSizeInBytes() const;

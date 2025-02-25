@@ -26,6 +26,7 @@
 #include <pybind11/pybind11.h>
 
 #include <memory>
+#include <mutex>
 
 // fwd declaration from driver_types.h
 typedef struct CUevent_st *cudaEvent_t;
@@ -91,6 +92,7 @@ private:
     uint64_t                                     m_id;         /**< The unique identifier of the resource. */
     cudaEvent_t                                  m_event;      /**< The CUDA event used for synchronization. */
     std::optional<std::shared_ptr<const Stream>> m_lastStream; /**< Cache the last stream used for this resource. */
+    std::mutex                                   m_mtx;        /**< Lock reads and writes to the resource.  */
 
     cudaEvent_t event();
 };

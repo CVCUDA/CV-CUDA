@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -226,6 +226,12 @@ ErrorCode BilateralFilterVarShape::infer(const ImageBatchVarShapeDataStridedCuda
                                          const TensorDataStridedCuda &sigmaSpaceData, NVCVBorderType borderMode,
                                          cudaStream_t stream)
 {
+    if (!inData.uniqueFormat())
+    {
+        LOG_ERROR("Images in the input varshape must all have the same format");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
+
     cuda_op::DataFormat input_format  = GetLegacyDataFormat(inData);
     cuda_op::DataFormat output_format = GetLegacyDataFormat(outData);
 
@@ -242,15 +248,9 @@ ErrorCode BilateralFilterVarShape::infer(const ImageBatchVarShapeDataStridedCuda
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
-    if (!inData.uniqueFormat())
-    {
-        LOG_ERROR("Images in the input varshape must all have the same format");
-        return ErrorCode::INVALID_DATA_FORMAT;
-    }
-
     if (inData.uniqueFormat() != outData.uniqueFormat())
     {
-        LOG_ERROR("Input and Output formats must be same input format ="
+        LOG_ERROR("Input and Output formats must be same input format = "
                   << helpers::GetLegacyDataType(inData.uniqueFormat())
                   << " output format = " << helpers::GetLegacyDataType(outData.uniqueFormat()));
         return ErrorCode::INVALID_DATA_FORMAT;
@@ -294,8 +294,8 @@ ErrorCode BilateralFilterVarShape::infer(const ImageBatchVarShapeDataStridedCuda
 
     if (inData.numImages() != outData.numImages())
     {
-        LOG_ERROR("Input and Output data must have the same number of images (" << inData.numImages()
-                                                                                << " != " << outData.numImages());
+        LOG_ERROR("Input and Output data must have the same number of images ("
+                  << inData.numImages() << " != " << outData.numImages() << ")");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 

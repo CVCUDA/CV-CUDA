@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -47,6 +47,7 @@ if(NOT USE_CMAKE_CUDA_ARCHITECTURES)
         if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "11.8")
             list(APPEND CMAKE_CUDA_ARCHITECTURES
                 89-real # Jetson IGX Orin with optional RTX 6000 Ada
+                90-real # Grace Hopper - gh100/Tesla
             )
         endif()
     else()

@@ -420,13 +420,13 @@ ErrorCode AverageBlur::infer(const TensorDataStridedCuda &inData, const TensorDa
         return ErrorCode::INVALID_PARAMETER;
     }
 
-    if (!(kernelAnchor.x == -1 || kernelAnchor.x > 0 || kernelAnchor.x < kernelSize.w))
+    if (!(kernelAnchor.x == -1 || (kernelAnchor.x >= 0 && kernelAnchor.x < kernelSize.w)))
     {
         LOG_ERROR("Invalid kernelAnchor.x " << kernelAnchor.x);
         return ErrorCode::INVALID_PARAMETER;
     }
 
-    if (!(kernelAnchor.y == -1 || kernelAnchor.y > 0 || kernelAnchor.y < kernelSize.h))
+    if (!(kernelAnchor.y == -1 || (kernelAnchor.y >= 0 && kernelAnchor.y < kernelSize.h)))
     {
         LOG_ERROR("Invalid kernelAnchor.y " << kernelAnchor.y);
         return ErrorCode::INVALID_PARAMETER;

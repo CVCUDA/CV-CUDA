@@ -14,20 +14,9 @@
   # See the License for the specific language governing permissions and
   # limitations under the License.
 
-Core
-====
+Thread scope
+============
 
-Core components and related functions for the NVIDIA® NVCV library.
-
-.. toctree::
-
-  Cache <../_python_api/nvcv/cache>
-  Color Models <../_python_api/nvcv/colorspec>
-  Image Formats <../_python_api/nvcv/format>
-  Rect <../_python_api/nvcv/recti>
-  Resource <../_python_api/nvcv/resource>
-  Image <../_python_api/nvcv/image>
-  ImageBatchVarShape <../_python_api/nvcv/imagebatch>
-  Tensor <../_python_api/nvcv/tensor>
-  TensorBatchVarShape <../_python_api/nvcv/tensorbatch>
-  Thread scope <../_python_api/nvcv/threadscope>
+.. automodule:: nvcv
+  :noindex:
+  :members: ThreadScope

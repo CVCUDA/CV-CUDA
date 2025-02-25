@@ -174,7 +174,7 @@ public:
     static ImageFormat FromPlanes(ImageFormat plane0, ImageFormat plane1 = {}, ImageFormat plane2 = {},
                                   ImageFormat plane3 = {});
 
-    constexpr                 operator NVCVImageFormat() const noexcept;
+    constexpr operator NVCVImageFormat() const noexcept;
     constexpr NVCVImageFormat cvalue() const noexcept;
 
     constexpr bool operator==(ImageFormat that) const noexcept;
@@ -449,6 +449,18 @@ constexpr ImageFormat FMT_UYVY_ER{NVCV_IMAGE_FORMAT_UYVY_ER};
 /** YUV422 8-bit block-linear format in one plane with UYVY ordering and full range. */
 constexpr ImageFormat FMT_UYVY_ER_BL{NVCV_IMAGE_FORMAT_UYVY_ER_BL};
 
+/** YUV422 8-bit pitch-linear format in one plane with VYUY ordering and limited range. */
+constexpr ImageFormat FMT_VYUY{NVCV_IMAGE_FORMAT_VYUY};
+
+/** YUV422 8-bit block-linear format in one plane with VYUY ordering and limited range. */
+constexpr ImageFormat FMT_VYUY_BL{NVCV_IMAGE_FORMAT_VYUY_BL};
+
+/** YUV422 8-bit pitch-linear format in one plane with VYUY ordering and full range. */
+constexpr ImageFormat FMT_VYUY_ER{NVCV_IMAGE_FORMAT_VYUY_ER};
+
+/** YUV422 8-bit block-linear format in one plane with VYUY ordering and full range. */
+constexpr ImageFormat FMT_VYUY_ER_BL{NVCV_IMAGE_FORMAT_VYUY_ER_BL};
+
 /** YUV422 8-bit pitch-linear format in one plane with YUYV ordering and limited range.
      *  Also known as YUY2 format.
      */
@@ -471,6 +483,12 @@ constexpr ImageFormat FMT_YUYV_ER_BL{NVCV_IMAGE_FORMAT_YUYV_ER_BL};
 
 /** Single plane with interleaved YUV 8-bit channel. */
 constexpr ImageFormat FMT_YUV8{NVCV_IMAGE_FORMAT_YUV8};
+
+/** Planar YUV unsigned 8-bit per channel with limited range. */
+constexpr ImageFormat FMT_YUV8p{NVCV_IMAGE_FORMAT_YUV8p};
+
+/** Planar YUV unsigned 8-bit per channel with full range. */
+constexpr ImageFormat FMT_YUV8p_ER{NVCV_IMAGE_FORMAT_YUV8p_ER};
 
 /** Single plane with interleaved RGB 8-bit channel. */
 constexpr ImageFormat FMT_RGB8{NVCV_IMAGE_FORMAT_RGB8};

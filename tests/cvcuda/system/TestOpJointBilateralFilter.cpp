@@ -161,7 +161,29 @@ static void CPUJointBilateralFilterTensor(std::vector<uint8_t> &vIn, std::vector
                                           int channels, int sampleStride, int diameter, float sigmaColor,
                                           float sigmaSpace)
 {
-    int   radius           = diameter / 2;
+    if (sigmaColor <= 0)
+    {
+        sigmaColor = 1;
+    }
+    if (sigmaSpace <= 0)
+    {
+        sigmaSpace = 1;
+    }
+
+    int radius;
+    if (diameter <= 0)
+    {
+        radius = std::roundf(sigmaSpace * 1.5f);
+    }
+    else
+    {
+        radius = diameter / 2;
+    }
+    if (radius < 1)
+    {
+        radius = 1;
+    }
+
     float spaceCoefficient = -1 / (2 * sigmaSpace * sigmaSpace);
     float colorCoefficient = -1 / (2 * sigmaColor * sigmaColor);
     for (int i = 0; i < batch; i++)
@@ -183,9 +205,35 @@ static void CPUJointBilateralFilterVarShape(std::vector<std::vector<uint8_t>> &v
 {
     for (size_t i = 0; i < vIn.size(); i++)
     {
-        int   radius           = vDiameter[i] / 2;
-        float spaceCoefficient = -1 / (2 * vSigmaSpace[i] * vSigmaSpace[i]);
-        float colorCoefficient = -1 / (2 * vSigmaColor[i] * vSigmaColor[i]);
+        float sigmaColor = vSigmaColor[i];
+        float sigmaSpace = vSigmaSpace[i];
+        int   diameter   = vDiameter[i];
+
+        if (sigmaColor <= 0)
+        {
+            sigmaColor = 1;
+        }
+        if (sigmaSpace <= 0)
+        {
+            sigmaSpace = 1;
+        }
+
+        int radius;
+        if (diameter <= 0)
+        {
+            radius = std::roundf(sigmaSpace * 1.5f);
+        }
+        else
+        {
+            radius = diameter / 2;
+        }
+        if (radius < 1)
+        {
+            radius = 1;
+        }
+
+        float spaceCoefficient = -1 / (2 * sigmaSpace * sigmaSpace);
+        float colorCoefficient = -1 / (2 * sigmaColor * sigmaColor);
         CPUJointBilateralFilter(vIn[i].data(), vInColor[i].data(), vOut[i].data(), vColumns[i], vRows[i], vRowStride[i],
                                 vChannels[i], radius, colorCoefficient, spaceCoefficient);
     }
@@ -199,6 +247,10 @@ NVCV_TEST_SUITE_P(OpJointBilateralFilter, test::ValueList<int, int, int, float, 
     {    48,     32, 4, 5,          3,          1},
     {    64,     32, 4, 5,          3,          1},
     {    32,    128, 4, 5,          3,          1},
+    {    32,    128, 4, 0,          3,          1},
+    {    32,    128, 4, 5,          0,          1},
+    {    32,    128, 0, 5,          3,          1},
+    {    32,    128, 1, 5,          3,          1},
 
     //width, height, d, SigmaColor, sigmaSpace, numberImages
     {    32,     48, 4, 5,          3,          5},
@@ -214,6 +266,7 @@ NVCV_TEST_SUITE_P(OpJointBilateralFilter, test::ValueList<int, int, int, float, 
 });
 
 // clang-format on
+
 TEST_P(OpJointBilateralFilter, JointBilateralFilter_packed)
 {
     cudaStream_t stream;
@@ -437,3 +490,277 @@ TEST_P(OpJointBilateralFilter, JointBilateralFilter_VarShape)
 }
 
 #undef NVCV_IMAGE_FORMAT_2U8
+
+// clang-format off
+NVCV_TEST_SUITE_P(OpJointBilateralFilterVarshape_Negative, nvcv::test::ValueList<NVCVStatus, nvcv::ImageFormat, nvcv::ImageFormat, nvcv::ImageFormat, NVCVBorderType, nvcv::DataType, nvcv::DataType, nvcv::DataType, int, int>{
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, nvcv::FMT_U16, NVCV_BORDER_CONSTANT, nvcv::TYPE_S32, nvcv::TYPE_F32, nvcv::TYPE_F32, 5, 5}, // in/out image format not same
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U16, nvcv::FMT_U8, nvcv::FMT_U16, NVCV_BORDER_CONSTANT, nvcv::TYPE_S32, nvcv::TYPE_F32, nvcv::TYPE_F32, 5, 5}, // inColor/out image format not same
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8p, nvcv::FMT_RGB8, nvcv::FMT_RGB8, NVCV_BORDER_CONSTANT, nvcv::TYPE_S32, nvcv::TYPE_F32, nvcv::TYPE_F32, 5, 5}, // in/out data format not same
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8, nvcv::FMT_RGB8p, nvcv::FMT_RGB8, NVCV_BORDER_CONSTANT, nvcv::TYPE_S32, nvcv::TYPE_F32, nvcv::TYPE_F32, 5, 5}, // inColor/out data format not same
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8p, nvcv::FMT_RGB8p, nvcv::FMT_RGB8p, NVCV_BORDER_CONSTANT, nvcv::TYPE_S32, nvcv::TYPE_F32, nvcv::TYPE_F32, 5, 5}, // input not kHWC/kNHWC
+#ifndef ENABLE_SANITIZER
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, nvcv::FMT_U8, static_cast<NVCVBorderType>(255), nvcv::TYPE_S32, nvcv::TYPE_F32, nvcv::TYPE_F32, 5, 5}, // invalid border type
+#endif
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F16, nvcv::FMT_F16, nvcv::FMT_F16, NVCV_BORDER_CONSTANT, nvcv::TYPE_S32, nvcv::TYPE_F32, nvcv::TYPE_F32, 5, 5}, // invalid data type
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, nvcv::FMT_U8, NVCV_BORDER_CONSTANT, nvcv::TYPE_F32, nvcv::TYPE_F32, nvcv::TYPE_F32, 5, 5}, // invalid diameter data type
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, nvcv::FMT_U8, NVCV_BORDER_CONSTANT, nvcv::TYPE_S32, nvcv::TYPE_S32, nvcv::TYPE_F32, 5, 5}, // invalid sigmaColor data type
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, nvcv::FMT_U8, NVCV_BORDER_CONSTANT, nvcv::TYPE_S32, nvcv::TYPE_F32, nvcv::TYPE_S32, 5, 5}, // invalid sigmaSpace data type
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, nvcv::FMT_U8, NVCV_BORDER_CONSTANT, nvcv::TYPE_S32, nvcv::TYPE_F32, nvcv::TYPE_F32, 6, 5}, // in/out images number not equal
+});
+
+NVCV_TEST_SUITE_P(OpJointBilateralFilter_Negative, nvcv::test::ValueList<NVCVStatus, nvcv::ImageFormat, nvcv::ImageFormat, nvcv::ImageFormat, NVCVBorderType>{
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, nvcv::FMT_U16, NVCV_BORDER_CONSTANT}, // in/out image format not same
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U16, nvcv::FMT_U8, nvcv::FMT_U16, NVCV_BORDER_CONSTANT}, // inColor/out image format not same
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8p, nvcv::FMT_RGB8, nvcv::FMT_RGB8, NVCV_BORDER_CONSTANT}, // in/out data format not same
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8, nvcv::FMT_RGB8p, nvcv::FMT_RGB8, NVCV_BORDER_CONSTANT}, // inColor/out data format not same
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8p, nvcv::FMT_RGB8p, nvcv::FMT_RGB8p, NVCV_BORDER_CONSTANT}, // input not kHWC/kNHWC
+#ifndef ENABLE_SANITIZER
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, nvcv::FMT_U8, static_cast<NVCVBorderType>(255)}, // invalid border type
+#endif
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F16, nvcv::FMT_F16, nvcv::FMT_F16, NVCV_BORDER_CONSTANT}, // invalid data type
+});
+
+// clang-format on
+
+TEST_P(OpJointBilateralFilter_Negative, op)
+{
+    cudaStream_t stream;
+    EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    NVCVStatus        expectedReturnCode = GetParamValue<0>();
+    nvcv::ImageFormat inputFmt           = GetParamValue<1>();
+    nvcv::ImageFormat inputColorFmt      = GetParamValue<2>();
+    nvcv::ImageFormat outputFmt          = GetParamValue<3>();
+    NVCVBorderType    borderType         = GetParamValue<4>();
+
+    int   width          = 24;
+    int   height         = 24;
+    int   diameter       = 4;
+    float sigmaColor     = 5;
+    float sigmaSpace     = 3;
+    int   numberOfImages = 5;
+
+    nvcv::Tensor imgOut     = nvcv::util::CreateTensor(numberOfImages, width, height, outputFmt);
+    nvcv::Tensor imgIn      = nvcv::util::CreateTensor(numberOfImages, width, height, inputFmt);
+    nvcv::Tensor imgInColor = nvcv::util::CreateTensor(numberOfImages, width, height, inputColorFmt);
+
+    // run operator
+    cvcuda::JointBilateralFilter jointBilateralFilterOp;
+
+    EXPECT_EQ(expectedReturnCode, nvcv::ProtectCall(
+                                      [&] {
+                                          jointBilateralFilterOp(stream, imgIn, imgInColor, imgOut, diameter,
+                                                                 sigmaColor, sigmaSpace, borderType);
+                                      }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST_P(OpJointBilateralFilterVarshape_Negative, op)
+{
+    cudaStream_t stream;
+    EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    NVCVStatus        expectedReturnCode   = GetParamValue<0>();
+    nvcv::ImageFormat inputFmt             = GetParamValue<1>();
+    nvcv::ImageFormat inputColorFmt        = GetParamValue<2>();
+    nvcv::ImageFormat outputFmt            = GetParamValue<3>();
+    NVCVBorderType    borderType           = GetParamValue<4>();
+    nvcv::DataType    diameterDataType     = GetParamValue<5>();
+    nvcv::DataType    sigmaColorDataType   = GetParamValue<6>();
+    nvcv::DataType    sigmaSpaceDataType   = GetParamValue<7>();
+    int               numberOfInputImages  = GetParamValue<8>();
+    int               numberOfOutputImages = GetParamValue<9>();
+
+    int   width      = 24;
+    int   height     = 24;
+    int   diameter   = 4;
+    float sigmaColor = 5;
+    float sigmaSpace = 3;
+
+    // Create input varshape
+    std::default_random_engine         rng;
+    std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
+    std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
+
+    std::vector<nvcv::Image> imgSrc;
+    std::vector<nvcv::Image> imgSrcColor;
+
+    for (int i = 0; i < numberOfInputImages; ++i)
+    {
+        int          w = udistWidth(rng);
+        int          h = udistHeight(rng);
+        nvcv::Size2D sz(w, h);
+        imgSrc.emplace_back(sz, inputFmt);
+        imgSrcColor.emplace_back(sz, inputColorFmt);
+    }
+
+    nvcv::ImageBatchVarShape batchSrc(numberOfInputImages);
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+    nvcv::ImageBatchVarShape batchSrcColor(numberOfInputImages);
+    batchSrcColor.pushBack(imgSrcColor.begin(), imgSrcColor.end());
+
+    // Create output varshape
+    std::vector<nvcv::Image> imgDst;
+    for (int i = 0; i < numberOfOutputImages; ++i)
+    {
+        imgDst.emplace_back(imgSrc[i].size(), outputFmt);
+    }
+    nvcv::ImageBatchVarShape batchDst(numberOfOutputImages);
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    // Create diameter tensor
+    std::vector<int> vDiameter(numberOfInputImages, diameter);
+    nvcv::Tensor     diameterTensor({{numberOfInputImages}, "N"}, diameterDataType);
+    {
+        auto dev = diameterTensor.exportData<nvcv::TensorDataStridedCuda>();
+        ASSERT_NE(dev, nullptr);
+
+        ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(dev->basePtr(), vDiameter.data(), vDiameter.size() * sizeof(int),
+                                               cudaMemcpyHostToDevice, stream));
+    }
+
+    // Create sigmaColor tensor
+    std::vector<float> vSigmaColor(numberOfInputImages, sigmaColor);
+    nvcv::Tensor       sigmaColorTensor({{numberOfInputImages}, "N"}, sigmaColorDataType);
+    {
+        auto dev = sigmaColorTensor.exportData<nvcv::TensorDataStridedCuda>();
+        ASSERT_NE(dev, nullptr);
+
+        ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(dev->basePtr(), vSigmaColor.data(), vSigmaColor.size() * sizeof(float),
+                                               cudaMemcpyHostToDevice, stream));
+    }
+
+    // Create sigmaSpace tensor
+    std::vector<float> vSigmaSpace(numberOfInputImages, sigmaSpace);
+    nvcv::Tensor       sigmaSpaceTensor({{numberOfInputImages}, "N"}, sigmaSpaceDataType);
+    {
+        auto dev = sigmaSpaceTensor.exportData<nvcv::TensorDataStridedCuda>();
+        ASSERT_NE(dev, nullptr);
+
+        ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(dev->basePtr(), vSigmaSpace.data(), vSigmaSpace.size() * sizeof(float),
+                                               cudaMemcpyHostToDevice, stream));
+    }
+
+    // Run operator
+    cvcuda::JointBilateralFilter jointBilateralFilterOp;
+    EXPECT_EQ(expectedReturnCode, nvcv::ProtectCall(
+                                      [&]
+                                      {
+                                          jointBilateralFilterOp(stream, batchSrc, batchSrcColor, batchDst,
+                                                                 diameterTensor, sigmaColorTensor, sigmaSpaceTensor,
+                                                                 borderType);
+                                      }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpJointBilateralFilter_Negative, varshape_hasNotSameFormat)
+{
+    nvcv::ImageFormat fmt = nvcv::FMT_RGB8;
+
+    std::vector<std::tuple<nvcv::ImageFormat, nvcv::ImageFormat, nvcv::ImageFormat>> testSet{
+        {nvcv::FMT_U8,          fmt,          fmt},
+        {         fmt, nvcv::FMT_U8,          fmt},
+        {         fmt,          fmt, nvcv::FMT_U8}
+    };
+
+    for (auto testCase : testSet)
+    {
+        nvcv::ImageFormat inputFmtExtra      = std::get<0>(testCase);
+        nvcv::ImageFormat inputColorFmtExtra = std::get<1>(testCase);
+        nvcv::ImageFormat outputFmtExtra     = std::get<2>(testCase);
+
+        cudaStream_t stream;
+        EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+        int   width          = 24;
+        int   height         = 24;
+        int   diameter       = 4;
+        float sigmaColor     = 5;
+        float sigmaSpace     = 3;
+        int   numberOfImages = 5;
+
+        // Create input varshape
+        std::default_random_engine         rng;
+        std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
+        std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
+
+        std::vector<nvcv::Image> imgSrc;
+        std::vector<nvcv::Image> imgSrcColor;
+
+        for (int i = 0; i < numberOfImages - 1; ++i)
+        {
+            int          w = udistWidth(rng);
+            int          h = udistHeight(rng);
+            nvcv::Size2D sz(w, h);
+            imgSrc.emplace_back(sz, fmt);
+            imgSrcColor.emplace_back(sz, fmt);
+        }
+        imgSrc.emplace_back(imgSrc[0].size(), inputFmtExtra);
+        imgSrcColor.emplace_back(imgSrc[0].size(), inputColorFmtExtra);
+
+        nvcv::ImageBatchVarShape batchSrc(numberOfImages);
+        batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+        nvcv::ImageBatchVarShape batchSrcColor(numberOfImages);
+        batchSrcColor.pushBack(imgSrcColor.begin(), imgSrcColor.end());
+
+        // Create output varshape
+        std::vector<nvcv::Image> imgDst;
+        for (int i = 0; i < numberOfImages - 1; ++i)
+        {
+            imgDst.emplace_back(imgSrc[i].size(), fmt);
+        }
+        imgDst.emplace_back(imgSrc.back().size(), outputFmtExtra);
+
+        nvcv::ImageBatchVarShape batchDst(numberOfImages);
+        batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+        // Create diameter tensor
+        std::vector<int> vDiameter(numberOfImages, diameter);
+        nvcv::Tensor     diameterTensor({{numberOfImages}, "N"}, nvcv::TYPE_S32);
+        {
+            auto dev = diameterTensor.exportData<nvcv::TensorDataStridedCuda>();
+            ASSERT_NE(dev, nullptr);
+
+            ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(dev->basePtr(), vDiameter.data(), vDiameter.size() * sizeof(int),
+                                                   cudaMemcpyHostToDevice, stream));
+        }
+
+        // Create sigmaColor tensor
+        std::vector<float> vSigmaColor(numberOfImages, sigmaColor);
+        nvcv::Tensor       sigmaColorTensor({{numberOfImages}, "N"}, nvcv::TYPE_F32);
+        {
+            auto dev = sigmaColorTensor.exportData<nvcv::TensorDataStridedCuda>();
+            ASSERT_NE(dev, nullptr);
+
+            ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(dev->basePtr(), vSigmaColor.data(),
+                                                   vSigmaColor.size() * sizeof(float), cudaMemcpyHostToDevice, stream));
+        }
+
+        // Create sigmaSpace tensor
+        std::vector<float> vSigmaSpace(numberOfImages, sigmaSpace);
+        nvcv::Tensor       sigmaSpaceTensor({{numberOfImages}, "N"}, nvcv::TYPE_F32);
+        {
+            auto dev = sigmaSpaceTensor.exportData<nvcv::TensorDataStridedCuda>();
+            ASSERT_NE(dev, nullptr);
+
+            ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(dev->basePtr(), vSigmaSpace.data(),
+                                                   vSigmaSpace.size() * sizeof(float), cudaMemcpyHostToDevice, stream));
+        }
+
+        // Run operator
+        cvcuda::JointBilateralFilter jointBilateralFilterOp;
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall(
+                                                   [&]
+                                                   {
+                                                       jointBilateralFilterOp(stream, batchSrc, batchSrcColor, batchDst,
+                                                                              diameterTensor, sigmaColorTensor,
+                                                                              sigmaSpaceTensor, NVCV_BORDER_CONSTANT);
+                                                   }));
+
+        EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+        EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+    }
+}

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -417,6 +417,11 @@ TEST(ImageFormatTests, get_extra_channel_info_image_format_none)
     EXPECT_EQ(0, exChannelInfo.bitsPerPixel);
     EXPECT_EQ(NVCV_DATA_KIND_UNSPECIFIED, exChannelInfo.datakind);
     EXPECT_EQ(NVCV_EXTRA_CHANNEL_U, exChannelInfo.channelType);
+}
+
+TEST(ImageFormatTests, get_extra_channel_info_null_output)
+{
+    ASSERT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatGetExtraChannelInfo(NVCV_IMAGE_FORMAT_NONE, nullptr));
 }
 
 TEST(ImageFormatTests, set_extra_channel_info_image_format_none)
@@ -1123,7 +1128,8 @@ TEST(ImageFormatTests, set_extra_channel_info)
 TEST(ImageFormatTests, set_alphatype_imageformat_none)
 {
     NVCVImageFormat imgFormat = NVCV_IMAGE_FORMAT_NONE;
-    ASSERT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatSetAlphaType(&imgFormat, NVCV_ALPHA_UNASSOCIATED));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatSetAlphaType(&imgFormat, NVCV_ALPHA_UNASSOCIATED));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatSetAlphaType(nullptr, NVCV_ALPHA_UNASSOCIATED));
 }
 
 TEST(ImageFormatTests, set_memlayout)

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -238,6 +238,12 @@ TEST(ArrayTests, invalid_alignment_calcReq_with_target)
     NVCVArrayRequirements req;
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
               nvcvArrayCalcRequirementsWithTarget(16, NVCV_DATA_TYPE_U8, 7, NVCV_RESOURCE_MEM_HOST, &req));
+#ifndef ENABLE_SANITIZER
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvArrayCalcRequirementsWithTarget(16, NVCV_DATA_TYPE_U8, 0, static_cast<NVCVResourceType>(255), &req));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvArrayCalcRequirementsWithTarget(
+                                               16, NVCV_DATA_TYPE_U8, 128, static_cast<NVCVResourceType>(255), &req));
+#endif
 }
 
 TEST(ArrayTests, invalid_input_construct)
@@ -266,6 +272,18 @@ TEST(ArrayTests, valid_construct_with_target)
               nvcvArrayCalcRequirementsWithTarget(16, NVCV_DATA_TYPE_U8, 0, NVCV_RESOURCE_MEM_HOST_PINNED, &req));
     EXPECT_EQ(NVCV_SUCCESS, nvcvArrayConstructWithTarget(&req, nullptr, NVCV_RESOURCE_MEM_HOST_PINNED, &arrayHandle));
     EXPECT_EQ(NVCV_SUCCESS, nvcvArrayDecRef(arrayHandle, nullptr));
+}
+
+TEST(ArrayTests, invalid_construct_with_target)
+{
+    NVCVArrayRequirements req;
+    EXPECT_EQ(NVCV_SUCCESS,
+              nvcvArrayCalcRequirementsWithTarget(16, NVCV_DATA_TYPE_U8, 0, NVCV_RESOURCE_MEM_HOST_PINNED, &req));
+#ifndef ENABLE_SANITIZER
+    NVCVArrayHandle arrayHandle;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvArrayConstructWithTarget(&req, nullptr, static_cast<NVCVResourceType>(255), &arrayHandle));
+#endif
 }
 
 TEST(ArrayTests, mismatch_construct_with_target)
@@ -338,6 +356,20 @@ TEST(ArrayTests, valid_handle_wrap_data_construct)
     NVCVArrayData         arrayData;
     EXPECT_EQ(NVCV_SUCCESS, nvcvArrayCalcRequirements(16, NVCV_DATA_TYPE_U8, 0, &req));
     EXPECT_EQ(NVCV_SUCCESS, nvcvArrayConstruct(&req, nullptr, &arrayHandle));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayExportData(arrayHandle, &arrayData));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayWrapDataConstruct(&arrayData, &arrayDataCleanUpFunc, nullptr, &arrayHandle2));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayDecRef(arrayHandle, nullptr));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayDecRef(arrayHandle2, nullptr));
+}
+
+TEST(ArrayTests, valid_handle_wrap_data_construct_pinned)
+{
+    NVCVArrayHandle       arrayHandle, arrayHandle2;
+    NVCVArrayRequirements req;
+    NVCVArrayData         arrayData;
+    EXPECT_EQ(NVCV_SUCCESS,
+              nvcvArrayCalcRequirementsWithTarget(16, NVCV_DATA_TYPE_U8, 0, NVCV_RESOURCE_MEM_HOST_PINNED, &req));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArrayConstructWithTarget(&req, nullptr, NVCV_RESOURCE_MEM_HOST_PINNED, &arrayHandle));
     EXPECT_EQ(NVCV_SUCCESS, nvcvArrayExportData(arrayHandle, &arrayData));
     EXPECT_EQ(NVCV_SUCCESS, nvcvArrayWrapDataConstruct(&arrayData, &arrayDataCleanUpFunc, nullptr, &arrayHandle2));
     EXPECT_EQ(NVCV_SUCCESS, nvcvArrayDecRef(arrayHandle, nullptr));

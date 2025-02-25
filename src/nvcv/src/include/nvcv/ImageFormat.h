@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -210,7 +210,7 @@ typedef uint64_t NVCVImageFormat;
  *    both horizontally and vertically.
  *    For a given pixel, Cb channel has lower memory address than Cr.
  */
-#define NVCV_IMAGE_FORMAT_NV21 NVCV_DETAIL_MAKE_YCbCr_FMT2(BT601_ER, 420, PL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8_Y8)
+#define NVCV_IMAGE_FORMAT_NV21 NVCV_DETAIL_MAKE_YCbCr_FMT2(BT601, 420, PL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8_Y8)
 
 /** YUV420sp 8-bit pitch-linear format with full range.
  * Format is composed of two planes:
@@ -270,6 +270,18 @@ typedef uint64_t NVCVImageFormat;
 /** YUV422 8-bit block-linear format in one plane with UYVY ordering and full range. */
 #define NVCV_IMAGE_FORMAT_UYVY_ER_BL NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601_ER, 422, BL, UNSIGNED, XYZ1, ASSOCIATED, Y8_X8__Z8_X8)
 
+/** YUV422 8-bit pitch-linear format in one plane with VYUY ordering and limited range. */
+#define NVCV_IMAGE_FORMAT_VYUY NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, 422, PL, UNSIGNED, XZY1, ASSOCIATED, Y8_X8__Z8_X8)
+
+/** YUV422 8-bit block-linear format in one plane with VYUY ordering and limited range. */
+#define NVCV_IMAGE_FORMAT_VYUY_BL NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, 422, BL, UNSIGNED, XZY1, ASSOCIATED, Y8_X8__Z8_X8)
+
+/** YUV422 8-bit pitch-linear format in one plane with VYUY ordering and full range. */
+#define NVCV_IMAGE_FORMAT_VYUY_ER NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601_ER, 422, PL, UNSIGNED, XZY1, ASSOCIATED, Y8_X8__Z8_X8)
+
+/** YUV422 8-bit block-linear format in one plane with VYUY ordering and full range. */
+#define NVCV_IMAGE_FORMAT_VYUY_ER_BL NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601_ER, 422, BL, UNSIGNED, XZY1, ASSOCIATED, Y8_X8__Z8_X8)
+
 /** YUV422 8-bit pitch-linear format in one plane with YUYV ordering and limited range.
  * Also known as YUY2 format.
  */
@@ -292,6 +304,12 @@ typedef uint64_t NVCVImageFormat;
 
 /** Single plane with interleaved YUV 8-bit channel. */
 #define NVCV_IMAGE_FORMAT_YUV8  NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, NONE, PL, UNSIGNED, XYZ1, ASSOCIATED, X8_Y8_Z8)
+
+/** Planar YUV unsigned 8-bit per channel with limited range. */
+#define NVCV_IMAGE_FORMAT_YUV8p NVCV_DETAIL_MAKE_YCbCr_FMT3(BT601, NONE, PL, UNSIGNED, XYZ1, ASSOCIATED, X8, X8, X8)
+
+/** Planar YUV unsigned 8-bit per channel with full range. */
+#define NVCV_IMAGE_FORMAT_YUV8p_ER NVCV_DETAIL_MAKE_YCbCr_FMT3(BT601_ER, NONE, PL, UNSIGNED, XYZ1, ASSOCIATED, X8, X8, X8)
 
 /** Single plane with interleaved RGB 8-bit channel. */
 #define NVCV_IMAGE_FORMAT_RGB8 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, UNSIGNED, XYZ1, ASSOCIATED, X8_Y8_Z8)

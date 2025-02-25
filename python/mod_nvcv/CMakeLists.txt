@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -64,6 +64,7 @@ nvcv_python_add_module(
         DLPackUtils.cpp
         ColorSpec.cpp
         Array.cpp
+        ThreadScope.cpp
 )
 
 target_include_directories(nvcv_module_python

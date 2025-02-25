@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,9 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+import threading
 import numpy as np
 import torch
 import copy
+from typing_extensions import Callable, Concatenate, ParamSpec
+
+P = ParamSpec("P")
 
 
 def to_cuda_buffer(host):
@@ -41,3 +46,43 @@ def to_cuda_buffer(host):
     buf.obj = dev  # make sure it holds a reference to the torch buffer
 
     return buf
+
+
+def run_parallel(
+    target: Callable[Concatenate[int, P], None],
+    *args: P.args,
+    **kwargs: P.kwargs,
+):
+    """Run a callable in multiple threads and forward any exception to the main thread.
+
+    Args:
+        target (Callable): Callable to be run in multiple threads. The first argument is the thread index
+        args: Positional arguments fowarded to the callable
+        kwargs: Keyword arguments forwarded to the callable
+    """
+
+    def wrapper(thread_no: int):
+        nonlocal exception
+
+        barrier.wait()
+
+        try:
+            target(thread_no, *args, **kwargs)
+        except Exception as exc:
+            exception = exc
+
+    nb_threads = len(os.sched_getaffinity(0))
+    threads = [
+        threading.Thread(target=wrapper, args=(idx,)) for idx in range(nb_threads)
+    ]
+    barrier = threading.Barrier(nb_threads)
+    exception: Exception | None = None
+
+    for thread in threads:
+        thread.start()
+
+    for thread in threads:
+        thread.join()
+
+    if exception is not None:
+        raise exception

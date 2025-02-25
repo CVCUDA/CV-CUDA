@@ -37,38 +37,68 @@ namespace test = nvcv::test;
 namespace t    = ::testing;
 
 // clang-format off
-NVCV_TEST_SUITE_P(OpResize, test::ValueList<int, int, int, int, NVCVInterpolationType, int>
-{
-    // srcWidth, srcHeight, dstWidth, dstHeight,       interpolation, numberImages
-    {         42,       48,       23,        24, NVCV_INTERP_NEAREST,           1},
-    {        113,       12,       12,        36, NVCV_INTERP_NEAREST,           1},
-    {        421,      148,      223,       124, NVCV_INTERP_NEAREST,           2},
-    {        313,      212,      412,       336, NVCV_INTERP_NEAREST,           3},
-    {         42,       40,       21,        20,  NVCV_INTERP_LINEAR,           1},
-    {         21,       21,       42,        42,  NVCV_INTERP_LINEAR,           1},
-    {        420,      420,      210,       210,  NVCV_INTERP_LINEAR,           4},
-    {        210,      210,      420,       420,  NVCV_INTERP_LINEAR,           5},
-    {         42,       40,       21,        20,   NVCV_INTERP_CUBIC,           1},
-    {         21,       21,       42,        42,   NVCV_INTERP_CUBIC,           6},
-    {        420,      420,      420,       420,   NVCV_INTERP_CUBIC,           2},
-    {        420,      420,      420,       420,   NVCV_INTERP_CUBIC,           1},
-    {        420,      420,       40,        42,   NVCV_INTERP_CUBIC,           1},
-    {       1920,     1080,      640,       320,   NVCV_INTERP_CUBIC,           1},
-    {       1920,     1080,      640,       320,   NVCV_INTERP_CUBIC,           2},
-    {         44,       40,       22,        20,    NVCV_INTERP_AREA,           2},
-    {         30,       30,       20,        20,    NVCV_INTERP_AREA,           2},
-    {         30,       30,       60,        60,    NVCV_INTERP_AREA,           4},
-    {       1080,     1920,      720,      1280,  NVCV_INTERP_LINEAR,           1},
-    {        720,     1280,      480,       854,  NVCV_INTERP_CUBIC,            1},
-    {       1440,     2560,     1080,      1920,  NVCV_INTERP_AREA,             1},
-    {       2160,     3840,     1080,      1920,  NVCV_INTERP_LINEAR,           1},
-    {       1080,     1920,      540,       960,  NVCV_INTERP_CUBIC,            1},
-    {        720,     1280,      360,       640,  NVCV_INTERP_AREA,             1},
-    {       2160,     3840,     1440,      2560,  NVCV_INTERP_LINEAR,           1},
-    {       1080,     1920,      360,       640,  NVCV_INTERP_CUBIC,            1},
-    {       1440,     2560,      720,      1280,  NVCV_INTERP_AREA,             1},
 
+#define NVCV_IMAGE_FORMAT_4U8 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, UNSIGNED, XYZW, ASSOCIATED, X8_Y8_Z8_W8)
+#define NVCV_IMAGE_FORMAT_3U16 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, UNSIGNED, XYZ1, ASSOCIATED, X16_Y16_Z16)
+#define NVCV_IMAGE_FORMAT_4U16 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, UNSIGNED, XYZW, ASSOCIATED, X16_Y16_Z16_W16)
+#define NVCV_IMAGE_FORMAT_3S16 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, SIGNED, XYZ1, ASSOCIATED, X16_Y16_Z16)
+#define NVCV_IMAGE_FORMAT_4S16 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, SIGNED, XYZW, ASSOCIATED, X16_Y16_Z16_W16)
+#define NVCV_IMAGE_FORMAT_3F32 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, FLOAT, XYZ1, ASSOCIATED, X32_Y32_Z32)
+#define NVCV_IMAGE_FORMAT_4F32 NVCV_DETAIL_MAKE_NONCOLOR_FMT1(PL, FLOAT, XYZW, ASSOCIATED, X32_Y32_Z32_W32)
+
+NVCV_TEST_SUITE_P(OpResize, test::ValueList<int, int, int, int, NVCVInterpolationType, int, nvcv::ImageFormat>
+{
+    // srcWidth, srcHeight, dstWidth, dstHeight,       interpolation, numberImages,    imageFormat
+    {         42,       48,       23,        24, NVCV_INTERP_NEAREST,           1,     nvcv::FMT_RGBA8},
+    {        113,       12,       12,        36, NVCV_INTERP_NEAREST,           1,     nvcv::FMT_RGBA8},
+    {        421,      148,      223,       124, NVCV_INTERP_NEAREST,           2,     nvcv::FMT_RGBA8},
+    {        313,      212,      412,       336, NVCV_INTERP_NEAREST,           3,     nvcv::FMT_RGBA8},
+    {         42,       40,       21,        20,  NVCV_INTERP_LINEAR,           1,     nvcv::FMT_RGBA8},
+    {         21,       21,       42,        42,  NVCV_INTERP_LINEAR,           1,     nvcv::FMT_RGBA8},
+    {        420,      420,      210,       210,  NVCV_INTERP_LINEAR,           4,     nvcv::FMT_RGBA8},
+    {        210,      210,      420,       420,  NVCV_INTERP_LINEAR,           5,     nvcv::FMT_RGBA8},
+    {         42,       40,       21,        20,   NVCV_INTERP_CUBIC,           1,     nvcv::FMT_RGBA8},
+    {         21,       21,       42,        42,   NVCV_INTERP_CUBIC,           6,     nvcv::FMT_RGBA8},
+    {        420,      420,      420,       420,   NVCV_INTERP_CUBIC,           2,     nvcv::FMT_RGBA8},
+    {        420,      420,      420,       420,   NVCV_INTERP_CUBIC,           1,     nvcv::FMT_RGBA8},
+    {        420,      420,       40,        42,   NVCV_INTERP_CUBIC,           1,     nvcv::FMT_RGBA8},
+    {       1920,     1080,      640,       320,   NVCV_INTERP_CUBIC,           1,     nvcv::FMT_RGBA8},
+    {       1920,     1080,      640,       320,   NVCV_INTERP_CUBIC,           2,     nvcv::FMT_RGBA8},
+    {         44,       40,       22,        20,    NVCV_INTERP_AREA,           2,     nvcv::FMT_RGBA8},
+    {         30,       30,       20,        20,    NVCV_INTERP_AREA,           2,     nvcv::FMT_RGBA8},
+    {         30,       30,       60,        60,    NVCV_INTERP_AREA,           4,     nvcv::FMT_RGBA8},
+    {       1080,     1920,      720,      1280,  NVCV_INTERP_LINEAR,           1,     nvcv::FMT_RGBA8},
+    {        720,     1280,      480,       854,  NVCV_INTERP_CUBIC,            1,     nvcv::FMT_RGBA8},
+    {       1440,     2560,     1080,      1920,  NVCV_INTERP_AREA,             1,     nvcv::FMT_RGBA8},
+    {       2160,     3840,     1080,      1920,  NVCV_INTERP_LINEAR,           1,     nvcv::FMT_RGBA8},
+    {       1080,     1920,      540,       960,  NVCV_INTERP_CUBIC,            1,     nvcv::FMT_RGBA8},
+    {        720,     1280,      360,       640,  NVCV_INTERP_AREA,             1,     nvcv::FMT_RGBA8},
+    {       2160,     3840,     1440,      2560,  NVCV_INTERP_LINEAR,           1,     nvcv::FMT_RGBA8},
+    {       1080,     1920,      360,       640,  NVCV_INTERP_CUBIC,            1,     nvcv::FMT_RGBA8},
+    {       1440,     2560,      720,      1280,  NVCV_INTERP_AREA,             1,     nvcv::FMT_RGBA8},
+    {         42,       48,       23,        24, NVCV_INTERP_NEAREST,           1,     nvcv::FMT_U8},
+    {         42,       48,       23,        24, NVCV_INTERP_NEAREST,           1,     nvcv::FMT_RGB8},
+    {         42,       48,       23,        24, NVCV_INTERP_NEAREST,           1,     nvcv::ImageFormat{NVCV_IMAGE_FORMAT_4U8}},
+    {         42,       48,       23,        24, NVCV_INTERP_NEAREST,           1,     nvcv::FMT_U16},
+    {         42,       48,       23,        24, NVCV_INTERP_NEAREST,           1,     nvcv::ImageFormat{NVCV_IMAGE_FORMAT_3U16}},
+    {         42,       48,       23,        24, NVCV_INTERP_NEAREST,           1,     nvcv::ImageFormat{NVCV_IMAGE_FORMAT_4U16}},
+    {         42,       48,       23,        24, NVCV_INTERP_NEAREST,           1,     nvcv::FMT_S16},
+    {         42,       48,       23,        24, NVCV_INTERP_NEAREST,           1,     nvcv::ImageFormat{NVCV_IMAGE_FORMAT_3S16}},
+    {         42,       48,       23,        24, NVCV_INTERP_NEAREST,           1,     nvcv::ImageFormat{NVCV_IMAGE_FORMAT_4S16}},
+    {         42,       48,       23,        24, NVCV_INTERP_NEAREST,           1,     nvcv::FMT_F32},
+    {         42,       48,       23,        24, NVCV_INTERP_NEAREST,           1,     nvcv::ImageFormat{NVCV_IMAGE_FORMAT_3F32}},
+    {         42,       48,       23,        24, NVCV_INTERP_NEAREST,           1,     nvcv::ImageFormat{NVCV_IMAGE_FORMAT_4F32}},
 });
+
+#undef NVCV_IMAGE_FORMAT_4U8
+#undef NVCV_IMAGE_FORMAT_3U16
+#undef NVCV_IMAGE_FORMAT_4U16
+#undef NVCV_IMAGE_FORMAT_3S16
+#undef NVCV_IMAGE_FORMAT_4S16
+#undef NVCV_IMAGE_FORMAT_3F32
+#undef NVCV_IMAGE_FORMAT_4F32
+
+// clang-format oon
 
 TEST_P(OpResize, tensor_correct_output)
 {
@@ -84,7 +114,7 @@ TEST_P(OpResize, tensor_correct_output)
 
     int numberOfImages = GetParamValue<5>();
 
-    const nvcv::ImageFormat fmt = nvcv::FMT_RGBA8;
+    const nvcv::ImageFormat fmt = GetParamValue<6>();
 
     // Generate input
     nvcv::Tensor imgSrc = nvcv::util::CreateTensor(numberOfImages, srcWidth, srcHeight, fmt);
@@ -176,7 +206,7 @@ TEST_P(OpResize, varshape_correct_output)
 
     int numberOfImages = GetParamValue<5>();
 
-    const nvcv::ImageFormat fmt = nvcv::FMT_RGBA8;
+    const nvcv::ImageFormat fmt = GetParamValue<6>();
 
     // Create input and output
     std::default_random_engine         randEng;
@@ -281,4 +311,48 @@ TEST_P(OpResize, varshape_correct_output)
 
         EXPECT_THAT(mae, t::Each(t::Le(maeThreshold)));
     }
+}
+
+// clang-format off
+NVCV_TEST_SUITE_P(OpResize_Negative, test::ValueList<NVCVStatus, nvcv::ImageFormat, nvcv::ImageFormat, int, int, NVCVInterpolationType>{
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U16, 1, 1, NVCV_INTERP_NEAREST}, // in/out image data type not same
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_RGB8p, 1, 1, NVCV_INTERP_NEAREST}, // in/out image layout not same
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8p, nvcv::FMT_U8, 1, 1, NVCV_INTERP_NEAREST}, // in/out image layout not NHWC
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8, nvcv::FMT_RGB8, 1, 2, NVCV_INTERP_NEAREST}, // in/out image num are different
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_RGB8, 1, 1, NVCV_INTERP_NEAREST}, // in/out image channels are different
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F16, nvcv::FMT_F16, 1, 1, NVCV_INTERP_NEAREST}, // invalid datatype
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F16, nvcv::FMT_F16, 1, 1, NVCV_INTERP_HAMMING}, // invalid interpolation
+});
+
+// clang-format on
+
+TEST_P(OpResize_Negative, op)
+{
+    cudaStream_t stream;
+    EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    int srcWidth  = 42;
+    int srcHeight = 48;
+    int dstWidth  = 23;
+    int dstHeight = 24;
+
+    NVCVInterpolationType interpolation = NVCV_INTERP_NEAREST;
+
+    NVCVStatus              expectedReturnCode = GetParamValue<0>();
+    const nvcv::ImageFormat inputFmt           = GetParamValue<1>();
+    const nvcv::ImageFormat outputFmt          = GetParamValue<2>();
+    int                     numInputImages     = GetParamValue<3>();
+    int                     numOutputImages    = GetParamValue<4>();
+
+    // Generate input
+    nvcv::Tensor imgSrc = nvcv::util::CreateTensor(numInputImages, srcWidth, srcHeight, inputFmt);
+
+    // Generate test result
+    nvcv::Tensor imgDst = nvcv::util::CreateTensor(numOutputImages, dstWidth, dstHeight, outputFmt);
+
+    cvcuda::Resize resizeOp;
+    EXPECT_EQ(expectedReturnCode, nvcv::ProtectCall([&] { resizeOp(stream, imgSrc, imgDst, interpolation); }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }

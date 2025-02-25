@@ -51,16 +51,15 @@ constexpr int NIX = sizeof(DPT<T>) / sizeof(T);
 
 // Write a pack of N elements of type T as a different pack type DPT
 template<typename T>
-__device__ __forceinline__
-void WritePack(T &u, const T (&v)[NIX<T>])
+__device__ __forceinline__ void WritePack(T &u, const T (&v)[NIX<T>])
 {
     reinterpret_cast<DPT<T> &>(u) = reinterpret_cast<const DPT<T> &>(v);
 }
 
 // Check if destination row pointer is aligned for vector writes.
 template<typename T>
-__device__ __forceinline__
-bool CheckRowAlign(T *row) {
+__device__ __forceinline__ bool CheckRowAlign(T *row)
+{
     return (static_cast<uint>(reinterpret_cast<size_t>(row)) & MSK<T>) == 0;
 }
 
@@ -99,10 +98,11 @@ inline __device__ void NearestInterpolatePack(T *dstRow, SrcWrapper src, int3 iS
             }
         }
 
-        if (CheckRowAlign(dstRow))     // Branch is the same for all threads in warp.
-            WritePack(dstRow[dstCoordX], dstPack);     // If row is aligned, write vector pack;
-        else {
-            T *dstPtr = dstRow + dstCoordX;            // otherwise, write individual elements.
+        if (CheckRowAlign(dstRow))                 // Branch is the same for all threads in warp.
+            WritePack(dstRow[dstCoordX], dstPack); // If row is aligned, write vector pack;
+        else
+        {
+            T *dstPtr = dstRow + dstCoordX; // otherwise, write individual elements.
 #pragma unroll
             for (uint i = 0; i < NIX<T>; ++i) dstPtr[i] = dstPack[i];
         }
@@ -234,10 +234,11 @@ inline __device__ void LinearInterpolatePack(T *dstRow, SrcWrapper src, int3 iSr
             }
         }
 
-        if (CheckRowAlign(dstRow))     // Branch is the same for all threads in warp.
-            WritePack(dstRow[dstCoordX], dstPack);     // If row is aligned, write vector pack;
-        else {
-            T *dstPtr = dstRow + dstCoordX;            // otherwise, write individual elements.
+        if (CheckRowAlign(dstRow))                 // Branch is the same for all threads in warp.
+            WritePack(dstRow[dstCoordX], dstPack); // If row is aligned, write vector pack;
+        else
+        {
+            T *dstPtr = dstRow + dstCoordX; // otherwise, write individual elements.
 #pragma unroll
             for (uint i = 0; i < NIX<T>; ++i) dstPtr[i] = dstPack[i];
         }
@@ -507,10 +508,6 @@ void Resize::RunResize(cudaStream_t stream, const nvcv::TensorDataStridedCuda &s
     if (srcData.layout() != nvcv::TENSOR_HWC && srcData.layout() != nvcv::TENSOR_NHWC)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input must have (N)HWC layout");
-    }
-    if (dstData.layout() != nvcv::TENSOR_HWC && dstData.layout() != nvcv::TENSOR_NHWC)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Output must have (N)HWC layout");
     }
 
     auto srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(srcData);

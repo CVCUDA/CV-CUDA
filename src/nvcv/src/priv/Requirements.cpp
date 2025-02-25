@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -71,15 +71,14 @@ void AddBuffer(NVCVMemRequirements &memReq, int64_t bufSize, int64_t bufAlignmen
     if (bufSize >= 0)
     {
         int64_t maxBlocks = std::numeric_limits<std::remove_reference_t<decltype(memReq.numBlocks[0])>>::max();
-
-        if (memReq.numBlocks[log2Align] + numBlocks < memReq.numBlocks[log2Align])
+        int64_t newBlocks = memReq.numBlocks[log2Align] + numBlocks;
+        if (newBlocks < memReq.numBlocks[log2Align]) // weird error: compare directly cannot fetch the overflow
         {
             throw Exception(NVCV_ERROR_OVERFLOW,
                             "Number of blocks with alignment %ld would overflow, buffer size must be <= %ld, not %ld",
                             bufAlignment, maxBlocks - memReq.numBlocks[log2Align], numBlocks);
         }
-
-        memReq.numBlocks[log2Align] += numBlocks;
+        memReq.numBlocks[log2Align] = newBlocks;
     }
     else
     {

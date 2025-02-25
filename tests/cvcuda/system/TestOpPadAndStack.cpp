@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -232,4 +232,105 @@ TEST_P(OpPadAndStack, correct_output)
     ASSERT_EQ(cudaSuccess, cudaMemcpy(testVec.data(), dstData->basePtr(), dstBufSize, cudaMemcpyDeviceToHost));
 
     EXPECT_EQ(goldVec, testVec);
+}
+
+// clang-format off
+
+NVCV_TEST_SUITE_P(OpPadAndStack_Negative, test::ValueList<NVCVStatus, nvcv::ImageFormat, nvcv::ImageFormat, nvcv::ImageFormat, nvcv::ImageFormat, NVCVBorderType>
+{
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGBA8p, nvcv::FMT_RGBA8, nvcv::FMT_S32, nvcv::FMT_S32, NVCV_BORDER_CONSTANT}, // input is not nhwc/hwc
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGBA8, nvcv::FMT_RGBA8p, nvcv::FMT_S32, nvcv::FMT_S32, NVCV_BORDER_CONSTANT}, // output is not nhwc/hwc
+#ifndef ENABLE_SANITIZER
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGBA8, nvcv::FMT_RGBA8, nvcv::FMT_S32, nvcv::FMT_S32, static_cast<NVCVBorderType>(255)}, // invalid borderType
+#endif
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F16, nvcv::FMT_F16, nvcv::FMT_S32, nvcv::FMT_S32, NVCV_BORDER_CONSTANT}, // invalid datatype
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_F16, nvcv::FMT_S32, nvcv::FMT_S32, NVCV_BORDER_CONSTANT}, // invalid datatype
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F16, nvcv::FMT_U8, nvcv::FMT_S32, nvcv::FMT_S32, NVCV_BORDER_CONSTANT}, // invalid datatype
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGBA8, nvcv::FMT_RGBA8, nvcv::FMT_F32, nvcv::FMT_S32, NVCV_BORDER_CONSTANT}, // invalid top datatype
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGBA8, nvcv::FMT_RGBA8, nvcv::FMT_S32, nvcv::FMT_F32, NVCV_BORDER_CONSTANT}, // invalid left datatype
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGBA8, nvcv::FMT_RGBA8, nvcv::FMT_RGBA8p, nvcv::FMT_S32, NVCV_BORDER_CONSTANT}, // invalid top datatype
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGBA8, nvcv::FMT_RGBA8, nvcv::FMT_S32, nvcv::FMT_RGBA8p, NVCV_BORDER_CONSTANT}, // invalid left datatype
+});
+
+// clang-format on
+
+TEST_P(OpPadAndStack_Negative, op)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    NVCVStatus        expectedReturnCode = GetParamValue<0>();
+    nvcv::ImageFormat inputFmt           = GetParamValue<1>();
+    nvcv::ImageFormat outputFmt          = GetParamValue<2>();
+    nvcv::ImageFormat topFmt             = GetParamValue<3>();
+    nvcv::ImageFormat leftFmt            = GetParamValue<4>();
+    NVCVBorderType    borderType         = GetParamValue<5>();
+
+    int   srcWidth    = 12;
+    int   srcHeight   = 13;
+    int   numBatches  = 3;
+    int   dstWidth    = 111;
+    int   dstHeight   = 131;
+    float borderValue = 0.f;
+
+    nvcv::Tensor inTop(1, {numBatches, 1}, topFmt);
+    nvcv::Tensor inLeft(1, {numBatches, 1}, leftFmt);
+
+    std::vector<nvcv::Image> srcImgVec;
+    for (int b = 0; b < numBatches; ++b)
+    {
+        srcImgVec.emplace_back(nvcv::Size2D{srcWidth, srcHeight}, inputFmt);
+    }
+    nvcv::ImageBatchVarShape imgBatchSrc(numBatches);
+    imgBatchSrc.pushBack(srcImgVec.begin(), srcImgVec.end());
+
+    nvcv::Tensor        imgDst(numBatches, {dstWidth, dstHeight}, outputFmt);
+    // Generate test result
+    cvcuda::PadAndStack padAndStackOp;
+
+    EXPECT_EQ(
+        expectedReturnCode,
+        nvcv::ProtectCall([&] { padAndStackOp(stream, imgBatchSrc, imgDst, inTop, inLeft, borderType, borderValue); }));
+
+    // Get test data back
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpPadAndStack_Negative, input_format_not_same)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    int   srcWidth    = 12;
+    int   srcHeight   = 13;
+    int   numBatches  = 3;
+    int   dstWidth    = 111;
+    int   dstHeight   = 131;
+    float borderValue = 0.f;
+
+    nvcv::Tensor inTop(1, {numBatches, 1}, nvcv::FMT_S32);
+    nvcv::Tensor inLeft(1, {numBatches, 1}, nvcv::FMT_S32);
+
+    std::vector<nvcv::Image> srcImgVec;
+    for (int b = 0; b < numBatches - 1; ++b)
+    {
+        srcImgVec.emplace_back(nvcv::Size2D{srcWidth, srcHeight}, nvcv::FMT_RGBA8);
+    }
+    srcImgVec.emplace_back(nvcv::Size2D{srcWidth, srcHeight}, nvcv::FMT_RGB8);
+    nvcv::ImageBatchVarShape imgBatchSrc(numBatches);
+    imgBatchSrc.pushBack(srcImgVec.begin(), srcImgVec.end());
+
+    nvcv::Tensor        imgDst(numBatches, {dstWidth, dstHeight}, nvcv::FMT_RGBA8);
+    // Generate test result
+    cvcuda::PadAndStack padAndStackOp;
+
+    EXPECT_EQ(
+        NVCV_ERROR_INVALID_ARGUMENT,
+        nvcv::ProtectCall(
+            [&] { padAndStackOp(stream, imgBatchSrc, imgDst, inTop, inLeft, NVCV_BORDER_CONSTANT, borderValue); }));
+
+    // Get test data back
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }

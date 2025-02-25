@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -51,6 +51,7 @@ NVCV_TEST_SUITE_P(ReplaceAllInlineTests,
                       {   "tRODest",  8, "ROD",    "ABCD",      "tABCDes"}, // buffer size too small for replacement
                       {   "RODtest",  8, "ROD",    "ABCD",      "ABCDtes"}, // buffer size too small for replacement
                       {   "RODtesT",  8,   "T",    "ABCD",      "RODtesA"}, // buffer size too small for replacement
+                      {   "RODtesT",  0,   "T",    "ABCD",      "RODtesT"}, // buffer size too small for replacement
                       {   "RODTest",  8,   "T",    "ABCD",      "RODABCD"}, // buffer size too small for replacement
                       {   "ROTests",  8,   "T",    "ABCD",      "ROABCDe"}, // buffer size too small for replacement
                       {   "RODTest",  8,  "es",    "ABCD",      "RODTABC"}, // buffer size too small for replacement

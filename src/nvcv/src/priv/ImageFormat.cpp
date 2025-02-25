@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -1082,7 +1082,7 @@ ImageFormat ImageFormat::swizzleAndPacking(NVCVSwizzle newSwizzle, NVCVPacking n
 {
     if (m_format == NVCV_IMAGE_FORMAT_NONE)
     {
-        throw Exception(NVCV_ERROR_INVALID_ARGUMENT, "Can't set raw pattern of NONE format");
+        throw Exception(NVCV_ERROR_INVALID_ARGUMENT, "Can't set swizzle and packing of NONE format");
     }
 
     NVCVExtraChannelInfo exChannelInfo;
@@ -1264,10 +1264,16 @@ std::ostream &operator<<(std::ostream &out, ImageFormat fmt)
         NVCV_ENUM(NVCV_IMAGE_FORMAT_UYVY_BL);
         NVCV_ENUM(NVCV_IMAGE_FORMAT_UYVY_ER);
         NVCV_ENUM(NVCV_IMAGE_FORMAT_UYVY_ER_BL);
+        NVCV_ENUM(NVCV_IMAGE_FORMAT_VYUY);
+        NVCV_ENUM(NVCV_IMAGE_FORMAT_VYUY_BL);
+        NVCV_ENUM(NVCV_IMAGE_FORMAT_VYUY_ER);
+        NVCV_ENUM(NVCV_IMAGE_FORMAT_VYUY_ER_BL);
         NVCV_ENUM(NVCV_IMAGE_FORMAT_YUYV);
         NVCV_ENUM(NVCV_IMAGE_FORMAT_YUYV_BL);
         NVCV_ENUM(NVCV_IMAGE_FORMAT_YUYV_ER);
         NVCV_ENUM(NVCV_IMAGE_FORMAT_YUYV_ER_BL);
+        NVCV_ENUM(NVCV_IMAGE_FORMAT_YUV8p);
+        NVCV_ENUM(NVCV_IMAGE_FORMAT_YUV8p_ER);
         NVCV_ENUM(NVCV_IMAGE_FORMAT_RGB8_1U_U8);
         NVCV_ENUM(NVCV_IMAGE_FORMAT_RGB8_7U_U8);
         NVCV_ENUM(NVCV_IMAGE_FORMAT_RGBA8_3U_U16);

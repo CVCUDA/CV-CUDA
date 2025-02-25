@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -648,4 +648,170 @@ TEST_P(OpCopyMakeBorder, stack_correct_output)
     else if (nvcv::FMT_RGBf32 == format || nvcv::FMT_RGBAf32 == format)
         StartTestStack<float>(srcWidth, srcHeight, numBatches, topPad, bottomPad, leftPad, rightPad, borderType,
                               borderValue, format);
+}
+
+// clang-format off
+NVCV_TEST_SUITE_P(OpCopyMakeBorder_Negative, test::ValueList<NVCVStatus, nvcv::ImageFormat, nvcv::ImageFormat, int, int, NVCVBorderType>{
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8, nvcv::FMT_RGB8p, 0, 0, NVCV_BORDER_CONSTANT}, // data format is different
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8p, nvcv::FMT_RGB8p, 0, 0, NVCV_BORDER_CONSTANT}, // data format is not kNHWC/kHWC
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U16, 0, 0, NVCV_BORDER_CONSTANT}, // data type is different
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F16, nvcv::FMT_F16, 0, 0, NVCV_BORDER_CONSTANT}, // invalid data type
+#ifndef ENABLE_SANITIZER
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, 0, 0, static_cast<NVCVBorderType>(255)}, // invalid borderType
+#endif
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, -1, 0, NVCV_BORDER_CONSTANT}, // invalid top
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, 0, -1, NVCV_BORDER_CONSTANT}, // invalid left
+});
+
+// clang-format on
+
+TEST_P(OpCopyMakeBorder_Negative, op)
+{
+    NVCVStatus        expectedReturnCode = GetParamValue<0>();
+    nvcv::ImageFormat inputFmt           = GetParamValue<1>();
+    nvcv::ImageFormat outputFmt          = GetParamValue<2>();
+    int               topPad             = GetParamValue<3>();
+    int               leftPad            = GetParamValue<4>();
+    NVCVBorderType    borderType         = GetParamValue<5>();
+
+    int    srcWidth   = 24;
+    int    srcHeight  = 24;
+    int    dstWidth   = srcWidth + leftPad;
+    int    dstHeight  = srcHeight + topPad;
+    int    numBatches = 3;
+    float4 borderValue;
+    borderValue.x = 1.f;
+    borderValue.y = 1.f;
+    borderValue.z = 1.f;
+    borderValue.w = 1.f;
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::Tensor imgSrc(numBatches, {srcWidth, srcHeight}, inputFmt);
+    nvcv::Tensor imgDst(numBatches, {dstWidth, dstHeight}, outputFmt);
+
+    // Generate test result
+    cvcuda::CopyMakeBorder cpyMakeBorderOp;
+    EXPECT_EQ(
+        expectedReturnCode,
+        nvcv::ProtectCall([&] { cpyMakeBorderOp(stream, imgSrc, imgDst, topPad, leftPad, borderType, borderValue); }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpCopyMakeBorder_Negative, invalid_out_size)
+{
+    nvcv::ImageFormat fmt     = nvcv::FMT_U8;
+    int               topPad  = 2;
+    int               leftPad = 2;
+
+    std::vector<std::pair<int, int>> testSet{
+        {-1,  0}, // invalid dst width
+        { 0, -1}  // invalid dst height
+    };
+
+    for (auto testCase : testSet)
+    {
+        int leftPadExtra = std::get<0>(testCase);
+        int topPadExtra  = std::get<1>(testCase);
+
+        int    srcWidth   = 24;
+        int    srcHeight  = 24;
+        int    dstWidth   = srcWidth + leftPad + leftPadExtra;
+        int    dstHeight  = srcHeight + topPad + topPadExtra;
+        int    numBatches = 3;
+        float4 borderValue;
+        borderValue.x = 1.f;
+        borderValue.y = 1.f;
+        borderValue.z = 1.f;
+        borderValue.w = 1.f;
+
+        cudaStream_t stream;
+        ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+        nvcv::Tensor imgSrc(numBatches, {srcWidth, srcHeight}, fmt);
+        nvcv::Tensor imgDst(numBatches, {dstWidth, dstHeight}, fmt);
+
+        // Generate test result
+        cvcuda::CopyMakeBorder cpyMakeBorderOp;
+        EXPECT_EQ(
+            NVCV_ERROR_INVALID_ARGUMENT,
+            nvcv::ProtectCall(
+                [&] { cpyMakeBorderOp(stream, imgSrc, imgDst, topPad, leftPad, NVCV_BORDER_CONSTANT, borderValue); }));
+
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+        ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+    }
+}
+
+// clang-format off
+NVCV_TEST_SUITE_P(OpCopyMakeBorderVarshape_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat, nvcv::ImageFormat, nvcv::ImageFormat, NVCVBorderType>{
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8p, nvcv::FMT_S32, nvcv::FMT_S32, NVCV_BORDER_CONSTANT},
+    {nvcv::FMT_RGB8p, nvcv::FMT_RGB8p, nvcv::FMT_S32, nvcv::FMT_S32, NVCV_BORDER_CONSTANT},
+    {nvcv::FMT_RGBf16, nvcv::FMT_RGBf16, nvcv::FMT_S32, nvcv::FMT_S32, NVCV_BORDER_CONSTANT},
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, nvcv::FMT_F32, nvcv::FMT_S32, NVCV_BORDER_CONSTANT},
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, nvcv::FMT_S32, nvcv::FMT_F32, NVCV_BORDER_CONSTANT},
+#ifndef ENABLE_SANITIZER
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, nvcv::FMT_S32, nvcv::FMT_S32, static_cast<NVCVBorderType>(255)},
+#endif
+});
+// clang-format on
+
+TEST_P(OpCopyMakeBorderVarshape_Negative, op)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    int srcWidthBase  = 24;
+    int srcHeightBase = 24;
+    int left          = 1;
+    int top           = 1;
+    int numBatches    = 3;
+
+    float4 borderValue;
+    borderValue.x = 1.f;
+    borderValue.y = 1.f;
+    borderValue.z = 1.f;
+    borderValue.w = 1.f;
+
+    nvcv::ImageFormat inputFmt   = GetParamValue<0>();
+    nvcv::ImageFormat outputFmt  = GetParamValue<1>();
+    nvcv::ImageFormat topPadFmt  = GetParamValue<2>();
+    nvcv::ImageFormat leftPadDmt = GetParamValue<3>();
+    NVCVBorderType    borderType = GetParamValue<4>();
+
+    std::default_random_engine         randEng{0};
+    std::uniform_int_distribution<int> rndSrcWidth(srcWidthBase * 0.8, srcWidthBase * 1.2);
+    std::uniform_int_distribution<int> rndSrcHeight(srcHeightBase * 0.8, srcHeightBase * 1.2);
+
+    //Prepare input and output buffer
+    std::vector<nvcv::Image> imgSrcVec, imgDstVec;
+    for (int i = 0; i < numBatches; ++i)
+    {
+        int srcWidth  = rndSrcWidth(randEng);
+        int srcHeight = rndSrcHeight(randEng);
+
+        int dstWidth  = srcWidth + left;
+        int dstHeight = srcHeight + top;
+        //prepare input buffers
+        imgSrcVec.emplace_back(nvcv::Size2D{srcWidth, srcHeight}, inputFmt);
+        //prepare output Buffers
+        imgDstVec.emplace_back(nvcv::Size2D{dstWidth, dstHeight}, outputFmt);
+    }
+    nvcv::ImageBatchVarShape imgBatchSrc(numBatches);
+    imgBatchSrc.pushBack(imgSrcVec.begin(), imgSrcVec.end());
+    nvcv::ImageBatchVarShape imgBatchDst(numBatches);
+    imgBatchDst.pushBack(imgDstVec.begin(), imgDstVec.end());
+
+    // Prepare top and left inputs
+    nvcv::Tensor inTop(1, {numBatches, 1}, topPadFmt);
+    nvcv::Tensor inLeft(1, {numBatches, 1}, leftPadDmt);
+
+    // Generate test result
+    cvcuda::CopyMakeBorder cpyMakeBorderOp;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall(
+                  [&] { cpyMakeBorderOp(stream, imgBatchSrc, imgBatchDst, inTop, inLeft, borderType, borderValue); }));
 }

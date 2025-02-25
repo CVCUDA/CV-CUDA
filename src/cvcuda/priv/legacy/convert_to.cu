@@ -148,6 +148,19 @@ ErrorCode ConvertTo::infer(const TensorDataStridedCuda &inData, const TensorData
     auto inAccess = TensorDataAccessStridedImagePlanar::Create(inData);
     NVCV_ASSERT(inAccess);
 
+    auto outAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(outData);
+    NVCV_ASSERT(outAccess);
+
+    cuda_op::DataShape inputShape  = helpers::GetLegacyDataShape(inAccess->infoShape());
+    cuda_op::DataShape outputShape = helpers::GetLegacyDataShape(outAccess->infoShape());
+
+    if (outputShape.H != inputShape.H || outputShape.W != inputShape.W || outputShape.N != inputShape.N
+        || outputShape.C != inputShape.C)
+    {
+        LOG_ERROR("input/output shape is different " << inputShape << "/" << outputShape);
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
     int batch    = inAccess->numSamples();
     int channels = inAccess->numChannels();
     int rows     = inAccess->numRows();

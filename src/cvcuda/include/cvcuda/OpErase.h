@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -40,7 +40,7 @@ extern "C"
 {
 #endif
 
-/* Constructs and an instance of the erase operator.
+/** Constructs and an instance of the erase operator.
  *
  * @param [out] handle Where the image instance handle will be written to.
  *                     + Must not be NULL.
@@ -54,7 +54,7 @@ extern "C"
 
 CVCUDA_PUBLIC NVCVStatus cvcudaEraseCreate(NVCVOperatorHandle *handle, int32_t max_num_erasing_area);
 
-/* Executes the erase operation on the given cuda stream. This operation does not
+/** Executes the erase operation on the given cuda stream. This operation does not
  *  wait for completion.
  *
  *  Limitations:

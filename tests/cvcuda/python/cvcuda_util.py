@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,13 +14,17 @@
 # limitations under the License.
 
 import math
+import os
+import threading
 import torch
 import numpy as np
 import numbers
 import nvcv
 import copy
 import colorsys
+from typing_extensions import Callable, Concatenate, ParamSpec
 
+P = ParamSpec("P")
 
 IMG_FORMAT_TO_TYPE = {
     nvcv.Format.U8: nvcv.Type.U8,
@@ -340,3 +344,43 @@ def clone_image_batch(input_image_batch, img_format=None):
         )
         output_image_batch.pushback(image)
     return output_image_batch
+
+
+def run_parallel(
+    target: Callable[Concatenate[int, P], None],
+    *args: P.args,
+    **kwargs: P.kwargs,
+):
+    """Run a callable in multiple threads and forward any exception to the main thread.
+
+    Args:
+        target (Callable): Callable to be run in multiple threads. The first argument is the thread index
+        args: Positional arguments fowarded to the callable
+        kwargs: Keyword arguments forwarded to the callable
+    """
+
+    def wrapper(thread_no: int):
+        nonlocal exception
+
+        barrier.wait()
+
+        try:
+            target(thread_no, *args, **kwargs)
+        except Exception as exc:
+            exception = exc
+
+    nb_threads = len(os.sched_getaffinity(0))
+    threads = [
+        threading.Thread(target=wrapper, args=(idx,)) for idx in range(nb_threads)
+    ]
+    barrier = threading.Barrier(nb_threads)
+    exception: Exception | None = None
+
+    for thread in threads:
+        thread.start()
+
+    for thread in threads:
+        thread.join()
+
+    if exception is not None:
+        raise exception

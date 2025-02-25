@@ -54,6 +54,7 @@ cudaEvent_t Resource::event()
 
 void Resource::submitSync(Stream &stream)
 {
+    std::unique_lock<std::mutex> lk(m_mtx);
     //Check if we have a last stream, if not set it to the current stream
     if (!m_lastStream.has_value())
     {

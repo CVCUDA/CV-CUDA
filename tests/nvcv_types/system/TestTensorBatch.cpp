@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -491,5 +491,108 @@ TEST(TensorBatch, invalid_out_get_allocator)
     EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchConstruct(&req, nullptr, &tensorBatchHandle));
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorBatchGetAllocator(tensorBatchHandle, nullptr));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchDecRef(tensorBatchHandle, nullptr));
+}
+
+TEST(TensorBatch, calc_req_invalid_arg)
+{
+    // output is nullptr
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorBatchCalcRequirements(32, nullptr));
+}
+
+TEST(TensorBatch, construct_invalid_arg)
+{
+    NVCVTensorBatchHandle       tensorBatchHandle;
+    NVCVTensorBatchRequirements req;
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchCalcRequirements(16, &req));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorBatchConstruct(nullptr, nullptr, &tensorBatchHandle));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorBatchConstruct(&req, nullptr, nullptr));
+}
+
+TEST(TensorBatch, push_invalid_arg)
+{
+    NVCVTensorBatchHandle       tensorBatchHandle;
+    NVCVTensorBatchRequirements req;
+    NVCVTensorHandle            inTensors;
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchCalcRequirements(16, &req));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchConstruct(&req, nullptr, &tensorBatchHandle));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorBatchPushTensors(tensorBatchHandle, nullptr, 1));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchPushTensors(tensorBatchHandle, &inTensors, 0));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorBatchPushTensors(tensorBatchHandle, &inTensors, -1));
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchDecRef(tensorBatchHandle, nullptr));
+}
+
+TEST(TensorBatch, ref_count_invalid_arg)
+{
+    NVCVTensorBatchHandle       tensorBatchHandle;
+    NVCVTensorBatchRequirements req;
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchCalcRequirements(16, &req));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchConstruct(&req, nullptr, &tensorBatchHandle));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorBatchRefCount(tensorBatchHandle, nullptr));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchDecRef(tensorBatchHandle, nullptr));
+}
+
+TEST(TensorBatch, get_invalid_arg)
+{
+    NVCVTensorBatchHandle       tensorBatchHandle;
+    NVCVTensorBatchRequirements req;
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchCalcRequirements(16, &req));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchConstruct(&req, nullptr, &tensorBatchHandle));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorBatchGetCapacity(tensorBatchHandle, nullptr));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorBatchGetRank(tensorBatchHandle, nullptr));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorBatchGetDType(tensorBatchHandle, nullptr));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorBatchGetLayout(tensorBatchHandle, nullptr));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorBatchGetType(tensorBatchHandle, nullptr));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorBatchGetNumTensors(tensorBatchHandle, nullptr));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorBatchGetUserPointer(tensorBatchHandle, nullptr));
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchDecRef(tensorBatchHandle, nullptr));
+}
+
+TEST(TensorBatch, export_invalid_arg)
+{
+    NVCVTensorBatchHandle       tensorBatchHandle;
+    NVCVTensorBatchRequirements req;
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchCalcRequirements(16, &req));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchConstruct(&req, nullptr, &tensorBatchHandle));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorBatchExportData(tensorBatchHandle, nullptr, nullptr));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchDecRef(tensorBatchHandle, nullptr));
+}
+
+TEST(TensorBatch, getTensors_invalid_arg)
+{
+    NVCVTensorBatchHandle       tensorBatchHandle;
+    NVCVTensorBatchRequirements req;
+    NVCVTensorHandle            outTensors;
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchCalcRequirements(16, &req));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchConstruct(&req, nullptr, &tensorBatchHandle));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorBatchGetTensors(nullptr, 0, &outTensors, 1));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorBatchGetTensors(tensorBatchHandle, -1, &outTensors, 1));
+    EXPECT_EQ(NVCV_ERROR_OVERFLOW, nvcvTensorBatchGetTensors(tensorBatchHandle, 0, &outTensors, 32));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorBatchGetTensors(tensorBatchHandle, 0, nullptr, 1));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorBatchGetTensors(tensorBatchHandle, 0, &outTensors, -1));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchDecRef(tensorBatchHandle, nullptr));
+}
+
+TEST(TensorBatch, setTensors_invalid_arg)
+{
+    NVCVTensorBatchHandle       tensorBatchHandle;
+    NVCVTensorBatchRequirements req;
+    NVCVTensorHandle            inTensors;
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchCalcRequirements(16, &req));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchConstruct(&req, nullptr, &tensorBatchHandle));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorBatchSetTensors(nullptr, 0, &inTensors, 1));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorBatchSetTensors(tensorBatchHandle, -1, &inTensors, 1));
+    EXPECT_EQ(NVCV_ERROR_OVERFLOW, nvcvTensorBatchSetTensors(tensorBatchHandle, 0, &inTensors, 32));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorBatchSetTensors(tensorBatchHandle, 0, nullptr, 1));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorBatchSetTensors(tensorBatchHandle, 0, &inTensors, -1));
     EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchDecRef(tensorBatchHandle, nullptr));
 }

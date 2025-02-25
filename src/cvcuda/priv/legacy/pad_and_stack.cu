@@ -94,12 +94,26 @@ ErrorCode PadAndStack::infer(const ImageBatchVarShapeDataStridedCuda &inData, co
                              const TensorDataStridedCuda &top, const TensorDataStridedCuda &left,
                              const NVCVBorderType borderMode, const float borderValue, cudaStream_t stream)
 {
+    if (!inData.uniqueFormat())
+    {
+        LOG_ERROR("Images in the input varshape must all have the same format");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
+
+    DataFormat input_format    = helpers::GetLegacyDataFormat(inData);
+    DataType   input_data_type = helpers::GetLegacyDataType(inData.uniqueFormat());
+
     DataFormat format    = helpers::GetLegacyDataFormat(outData.layout());
     DataType   data_type = helpers::GetLegacyDataType(outData.dtype());
 
+    if (!(input_format == kNHWC || input_format == kHWC))
+    {
+        LOG_ERROR("Invalid input DataFormat " << input_format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
     if (!(format == kNHWC || format == kHWC))
     {
-        LOG_ERROR("Invalid input DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
+        LOG_ERROR("Invalid output DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
@@ -113,7 +127,13 @@ ErrorCode PadAndStack::infer(const ImageBatchVarShapeDataStridedCuda &inData, co
     if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32S
           || data_type == kCV_32F))
     {
-        LOG_ERROR("Invalid DataType " << data_type);
+        LOG_ERROR("Invalid output DataType " << data_type);
+        return ErrorCode::INVALID_DATA_TYPE;
+    }
+    if (!(input_data_type == kCV_8U || input_data_type == kCV_16U || input_data_type == kCV_16S
+          || input_data_type == kCV_32S || input_data_type == kCV_32F))
+    {
+        LOG_ERROR("Invalid input DataType " << input_data_type);
         return ErrorCode::INVALID_DATA_TYPE;
     }
 
@@ -122,15 +142,15 @@ ErrorCode PadAndStack::infer(const ImageBatchVarShapeDataStridedCuda &inData, co
 
     DataType   left_data_type = helpers::GetLegacyDataType(left.dtype());
     DataFormat left_format    = helpers::GetLegacyDataFormat(left.layout());
-    if (left_data_type != kCV_32S)
-    {
-        LOG_ERROR("Invalid Left DataType " << left_data_type);
-        return ErrorCode::INVALID_DATA_TYPE;
-    }
     if (!(left_format == kNHWC || left_format == kHWC))
     {
         LOG_ERROR("Invalid Left DataFormat " << left_format);
         return ErrorCode::INVALID_DATA_FORMAT;
+    }
+    if (left_data_type != kCV_32S)
+    {
+        LOG_ERROR("Invalid Left DataType " << left_data_type);
+        return ErrorCode::INVALID_DATA_TYPE;
     }
 
     auto leftAccess = TensorDataAccessStridedImagePlanar::Create(left);
@@ -141,15 +161,15 @@ ErrorCode PadAndStack::infer(const ImageBatchVarShapeDataStridedCuda &inData, co
 
     DataType   top_data_type = helpers::GetLegacyDataType(top.dtype());
     DataFormat top_format    = helpers::GetLegacyDataFormat(top.layout());
-    if (top_data_type != kCV_32S)
-    {
-        LOG_ERROR("Invalid Top DataType " << top_data_type);
-        return ErrorCode::INVALID_DATA_TYPE;
-    }
     if (!(top_format == kNHWC || top_format == kHWC))
     {
         LOG_ERROR("Invalid Top DataFormat " << top_format);
         return ErrorCode::INVALID_DATA_FORMAT;
+    }
+    if (top_data_type != kCV_32S)
+    {
+        LOG_ERROR("Invalid Top DataType " << top_data_type);
+        return ErrorCode::INVALID_DATA_TYPE;
     }
 
     auto topAccess = TensorDataAccessStridedImagePlanar::Create(top);

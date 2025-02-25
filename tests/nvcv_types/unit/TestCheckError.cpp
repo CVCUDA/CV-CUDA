@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -97,4 +97,26 @@ TEST(CheckStatusMacroTests, throw_with_extra_string)
     const char       *extraString = "abc\n\0";
 
     NVCV_EXPECT_STATUS(NVCV_ERROR_INTERNAL, NVCV_CHECK_THROW(cudaErrCode, fmt, extraString));
+}
+
+TEST(CheckErrorTest, GetFunctionName)
+{
+    // valid
+    EXPECT_EQ(nvcv::util::detail::FormatErrorMessage("customError", "func0()", ""), "(func0:customError)");
+    EXPECT_EQ(nvcv::util::detail::FormatErrorMessage("customError", "func1(param1)", ""), "(func1:customError)");
+    EXPECT_EQ(nvcv::util::detail::FormatErrorMessage("customError", "func2(param1, param2)", ""),
+              "(func2:customError)");
+
+    // invalid
+    EXPECT_EQ(nvcv::util::detail::FormatErrorMessage("customError", "()", ""), "(customError)");
+    EXPECT_EQ(nvcv::util::detail::FormatErrorMessage("customError", "invalidFuncName", ""), "(customError)");
+}
+
+TEST(CheckErrorTest, cudaErr_to_String)
+{
+    const char *errDesc = nullptr;
+    auto        res     = nvcv::util::ToString(cudaErrorInvalidValue, &errDesc);
+
+    EXPECT_STREQ(errDesc, "invalid argument");
+    EXPECT_STREQ(res, "cudaErrorInvalidValue");
 }

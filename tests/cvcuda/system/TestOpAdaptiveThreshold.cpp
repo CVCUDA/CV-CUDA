@@ -331,3 +331,197 @@ TEST_P(OpAdaptiveThreshold, varshape_correct_output)
         EXPECT_EQ(testVec, goldVec);
     }
 }
+
+// clang-format off
+NVCV_TEST_SUITE_P(OpAdaptiveThresholdVarshape_Negative, test::ValueList<NVCVStatus, nvcv::ImageFormat, nvcv::ImageFormat, int, NVCVAdaptiveThresholdType, NVCVThresholdType>{
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, 6, NVCV_ADAPTIVE_THRESH_MEAN_C, NVCV_THRESH_BINARY}, // exceed max batch size
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8, nvcv::FMT_RGB8p, 2, NVCV_ADAPTIVE_THRESH_MEAN_C, NVCV_THRESH_BINARY}, // data format is different
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8p, nvcv::FMT_RGB8p, 2, NVCV_ADAPTIVE_THRESH_MEAN_C, NVCV_THRESH_BINARY}, // data format is not kNHWC/kHWC
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F16, nvcv::FMT_F16, 2, NVCV_ADAPTIVE_THRESH_MEAN_C, NVCV_THRESH_BINARY}, // invalid data type
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8, nvcv::FMT_RGB8, 2, NVCV_ADAPTIVE_THRESH_MEAN_C, NVCV_THRESH_BINARY}, // invalid channel
+#ifndef ENABLE_SANITIZER
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, 2, static_cast<NVCVAdaptiveThresholdType>(255), NVCV_THRESH_BINARY},
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, 2, NVCV_ADAPTIVE_THRESH_MEAN_C, static_cast<NVCVThresholdType>(255)},
+#endif
+});
+
+NVCV_TEST_SUITE_P(OpAdaptiveThreshold_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat, NVCVAdaptiveThresholdType, NVCVThresholdType, int>{
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8p, NVCV_ADAPTIVE_THRESH_MEAN_C, NVCV_THRESH_BINARY, 3},
+    {nvcv::FMT_RGB8p, nvcv::FMT_RGB8p, NVCV_ADAPTIVE_THRESH_MEAN_C, NVCV_THRESH_BINARY, 3},
+    {nvcv::FMT_U8, nvcv::FMT_S16, NVCV_ADAPTIVE_THRESH_MEAN_C, NVCV_THRESH_BINARY, 3},
+    {nvcv::FMT_S16, nvcv::FMT_S16, NVCV_ADAPTIVE_THRESH_MEAN_C, NVCV_THRESH_BINARY, 3},
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, NVCV_ADAPTIVE_THRESH_MEAN_C, NVCV_THRESH_BINARY, 3},
+    {nvcv::FMT_U8, nvcv::FMT_U8, NVCV_ADAPTIVE_THRESH_MEAN_C, NVCV_THRESH_BINARY, 2},
+#ifndef ENABLE_SANITIZER
+    {nvcv::FMT_U8, nvcv::FMT_U8, static_cast<NVCVAdaptiveThresholdType>(255), NVCV_THRESH_BINARY, 3},
+    {nvcv::FMT_U8, nvcv::FMT_U8, NVCV_ADAPTIVE_THRESH_MEAN_C, NVCV_THRESH_OTSU, 3},
+#endif
+});
+// clang-format on
+
+TEST_P(OpAdaptiveThreshold_Negative, op)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    const int    width    = 24;
+    const int    height   = 24;
+    const int    batch    = 2;
+    const double maxValue = 127.0;
+    double       c        = 2.5;
+
+    nvcv::ImageFormat               inputFmt              = GetParamValue<0>();
+    nvcv::ImageFormat               outputFmt             = GetParamValue<1>();
+    const NVCVAdaptiveThresholdType adaptiveThresholdType = GetParamValue<2>();
+    const NVCVThresholdType         thresholdType         = GetParamValue<3>();
+    const int                       blockSize             = GetParamValue<4>();
+
+    nvcv::Tensor imgIn  = nvcv::util::CreateTensor(batch, width, height, inputFmt);
+    nvcv::Tensor imgOut = nvcv::util::CreateTensor(batch, width, height, outputFmt);
+
+    // Call operator
+    cvcuda::AdaptiveThreshold adaptiveThresholdOp(blockSize, 1);
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall(
+                                               [&] {
+                                                   adaptiveThresholdOp(stream, imgIn, imgOut, maxValue,
+                                                                       adaptiveThresholdType, thresholdType, blockSize,
+                                                                       c);
+                                               }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST_P(OpAdaptiveThresholdVarshape_Negative, op)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    NVCVStatus                expectedReturnCode    = GetParamValue<0>();
+    nvcv::ImageFormat         inputFmt              = GetParamValue<1>();
+    nvcv::ImageFormat         outputFmt             = GetParamValue<2>();
+    int                       batch                 = GetParamValue<3>();
+    NVCVAdaptiveThresholdType adaptiveThresholdType = GetParamValue<4>();
+    NVCVThresholdType         thresholdType         = GetParamValue<5>();
+
+    int width     = 24;
+    int height    = 24;
+    int blockSize = 3;
+    int maxBatch  = 5;
+
+    // Create input varshape
+    std::default_random_engine         rng;
+    std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
+    std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
+
+    std::vector<nvcv::Image> imgSrc;
+
+    for (int i = 0; i < batch; ++i)
+    {
+        imgSrc.emplace_back(nvcv::Size2D{udistWidth(rng), udistHeight(rng)}, inputFmt);
+    }
+    nvcv::ImageBatchVarShape batchSrc(batch);
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+
+    // Create output varshape
+    std::vector<nvcv::Image> imgDst;
+    for (int i = 0; i < batch; ++i)
+    {
+        imgDst.emplace_back(imgSrc[i].size(), outputFmt);
+    }
+    nvcv::ImageBatchVarShape batchDst(batch);
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    // Create maxValue tensor
+    nvcv::Tensor maxValueTensor({{batch}, "N"}, nvcv::TYPE_F64);
+    // Create blockSize tensor
+    nvcv::Tensor blockSizeTensor({{batch}, "N"}, nvcv::TYPE_S32);
+    // Create c tensor
+    nvcv::Tensor cTensor({{batch}, "N"}, nvcv::TYPE_F64);
+
+    // Run operator
+    cvcuda::AdaptiveThreshold adaptiveThresholdOp(blockSize, maxBatch);
+
+    EXPECT_EQ(expectedReturnCode, nvcv::ProtectCall(
+                                      [&]
+                                      {
+                                          adaptiveThresholdOp(stream, batchSrc, batchDst, maxValueTensor,
+                                                              adaptiveThresholdType, thresholdType, blockSizeTensor,
+                                                              cTensor);
+                                      }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpAdaptiveThresholdVarshape_Negative, varshape_hasNotSameFormat)
+{
+    nvcv::ImageFormat         fmt                   = nvcv::FMT_U8;
+    int                       batch                 = 2;
+    NVCVAdaptiveThresholdType adaptiveThresholdType = NVCV_ADAPTIVE_THRESH_MEAN_C;
+    NVCVThresholdType         thresholdType         = NVCV_THRESH_BINARY;
+
+    int width     = 24;
+    int height    = 24;
+    int blockSize = 3;
+
+    std::vector<std::tuple<nvcv::ImageFormat, nvcv::ImageFormat>> testSet{
+        {nvcv::FMT_U16,           fmt},
+        {          fmt, nvcv::FMT_U16}
+    };
+
+    for (auto testCase : testSet)
+    {
+        nvcv::ImageFormat inputFmtExtra  = std::get<0>(testCase);
+        nvcv::ImageFormat outputFmtExtra = std::get<1>(testCase);
+
+        cudaStream_t stream;
+        ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+        // Create input varshape
+        std::default_random_engine         rng;
+        std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
+        std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
+
+        std::vector<nvcv::Image> imgSrc;
+
+        for (int i = 0; i < batch - 1; ++i)
+        {
+            imgSrc.emplace_back(nvcv::Size2D{udistWidth(rng), udistHeight(rng)}, fmt);
+        }
+        imgSrc.emplace_back(imgSrc[0].size(), inputFmtExtra);
+        nvcv::ImageBatchVarShape batchSrc(batch);
+        batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+
+        // Create output varshape
+        std::vector<nvcv::Image> imgDst;
+        for (int i = 0; i < batch - 1; ++i)
+        {
+            imgDst.emplace_back(imgSrc[i].size(), fmt);
+        }
+        imgDst.emplace_back(imgSrc.back().size(), outputFmtExtra);
+        nvcv::ImageBatchVarShape batchDst(batch);
+        batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+        // Create maxValue tensor
+        nvcv::Tensor              maxValueTensor({{batch}, "N"}, nvcv::TYPE_F64);
+        // Create blockSize tensor
+        nvcv::Tensor              blockSizeTensor({{batch}, "N"}, nvcv::TYPE_S32);
+        // Create c tensor
+        nvcv::Tensor              cTensor({{batch}, "N"}, nvcv::TYPE_F64);
+        // Run operator
+        cvcuda::AdaptiveThreshold adaptiveThresholdOp(blockSize, batch);
+
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall(
+                                                   [&]
+                                                   {
+                                                       adaptiveThresholdOp(stream, batchSrc, batchDst, maxValueTensor,
+                                                                           adaptiveThresholdType, thresholdType,
+                                                                           blockSizeTensor, cTensor);
+                                                   }));
+
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+        ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+    }
+}

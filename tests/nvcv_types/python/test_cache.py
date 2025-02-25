@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,10 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+import threading
+
 import nvcv
 import cvcuda
 import torch
 import pytest
+import numpy as np
+
+import nvcv_util as util
+
+RNG = np.random.default_rng(12345)
 
 
 def test_cache_limit_get_set():
@@ -116,3 +124,71 @@ def test_cache_zero_cache_limit():
 def test_cache_negative_cache_limit():
     with pytest.raises(ValueError):
         nvcv.set_cache_limit_inbytes(-1)
+
+
+def test_parallel_cache_size():
+    """Check that the cache size is properly synced accross threads."""
+
+    def create_tensors(thread_no: int, h: int, w: int):
+        N = items_per_thread[thread_no]
+
+        for _ in range(N):
+            tensor = nvcv.Tensor((h, w), np.uint8)
+            tensors.append(tensor)
+
+        assert nvcv.cache_size(nvcv.ThreadScope.LOCAL) == N
+        assert N <= nvcv.cache_size(nvcv.ThreadScope.GLOBAL) <= nb_items * nb_threads
+
+        # Keep all threads alive until the assertions
+        barrier.wait()
+
+    # Ensure that the cache limit was not altered by another test
+    nvcv.set_cache_limit_inbytes(torch.cuda.mem_get_info()[1] // 2)
+    nvcv.clear_cache()
+
+    nb_threads = len(os.sched_getaffinity(0))
+    items_per_thread = RNG.integers(50, 200, size=nb_threads)
+    nb_items = items_per_thread.sum()
+    tensors = []
+    barrier = threading.Barrier(nb_threads)
+    util.run_parallel(create_tensors, 16, 32)
+
+    assert nvcv.cache_size(nvcv.ThreadScope.LOCAL) == 0
+    # Other threads have been destroyed - the cache is empty again
+    assert (
+        nvcv.cache_size(nvcv.ThreadScope.GLOBAL)
+        == nvcv.current_cache_size_inbytes()
+        == 0
+    )
+
+
+def test_parallel_clear_cache():
+    """Make sure that nvcv.clear_cache clears the cache for all threads."""
+
+    def clear_cache():
+        done_event.wait()  # wait for the main thread to be ready
+        nvcv.clear_cache()
+        clear_event.set()  # notify that the cache has been cleared
+
+    # Ensure that the cache limit was not altered by another test
+    nvcv.set_cache_limit_inbytes(torch.cuda.mem_get_info()[1] // 2)
+    nvcv.clear_cache()
+
+    done_event = threading.Event()
+    clear_event = threading.Event()
+    clear_thread = threading.Thread(target=clear_cache, daemon=True)
+    clear_thread.start()
+
+    h, w = 16, 32
+    nvcv.Tensor((h, w), np.uint8)
+    size_inbytes = nvcv.current_cache_size_inbytes()
+    assert nvcv.cache_size() == 1
+    assert size_inbytes > 0
+
+    done_event.set()
+    clear_event.wait()
+
+    assert nvcv.cache_size() == nvcv.current_cache_size_inbytes() == 0
+    nvcv.Tensor((h, w), np.uint8)
+    assert nvcv.cache_size() == 1
+    assert nvcv.current_cache_size_inbytes() == size_inbytes

@@ -1,6 +1,6 @@
 #!/bin/bash -ex
 
-# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,9 +17,6 @@
 
 export DOCKER_BUILDKIT=${DOCKER_BUILDKIT:-1}
 
-export PLATFORM=${PLATFORM:-"linux/amd64"}
-export ARCH=${ARCH:-"x86_64"}
-
 export REGISTRY_MANYLINUX_PREFIX=${REGISTRY_MANYLINUX_PREFIX:-"quay.io/pypa/"}
 export REGISTRY_CUDA_PREFIX=${REGISTRY_CUDA_PREFIX:-"nvidia/"}
 export REGISTRY_HOST_PREFIX=${REGISTRY_HOST_PREFIX:-""}
@@ -27,6 +24,11 @@ export REGISTRY_HOST_PREFIX=${REGISTRY_HOST_PREFIX:-""}
 export MANYLINUX_VERSION="2014"
 export MANYLINUX_BASE_OS="centos7"
 export MANYLINUX_IMAGE_TAG="2024.10.26-1"
+
+export ARCHITECTURES=(
+    "x86_64"
+    "aarch64"
+)
 
 export GCC_VERSIONS=(
     "10"

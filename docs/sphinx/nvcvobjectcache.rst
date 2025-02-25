@@ -1,5 +1,5 @@
 ..
-   # SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+   # SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
    # SPDX-License-Identifier: Apache-2.0
    #
    # Licensed under the Apache License, Version 2.0 (the "License");
@@ -102,11 +102,11 @@ The cache limit can be controlled in the following manner::
    import cvcuda
 
    # Get the cache limit (in bytes)
-   current_cache_limit = nvcv.get_cache_limit()
+   current_cache_limit = nvcv.get_cache_limit_inbytes()
 
    # Set the cache limit (in bytes)
    my_new_cache_limit = 12345 # in bytes
-   nvcv.set_cache_limit(my_new_cache_limit)
+   nvcv.set_cache_limit_inbytes(my_new_cache_limit)
 
 By default the cache limit is set to half the total GPU memory of the current device when importing cvcuda, eg::
 
@@ -115,7 +115,7 @@ By default the cache limit is set to half the total GPU memory of the current de
 
    # Set the cache limit (in bytes)
    total_mem = torch.cuda.mem_get_info()[1]
-   nvcv.set_cache_limit(total_mem // 2)
+   nvcv.set_cache_limit_inbytes(total_mem // 2)
 
 It is also feasible to set the cache limit to a value larger than the total GPU memory.
 Due to CV-CUDA being device agnostic, it can happen that a larger cache than one GPU's total memory is possible.
@@ -131,6 +131,39 @@ CV-CUDA also provides querying the current cache size (in bytes). This can be he
 
    import cvcuda
 
-   print(nvcv.current_cache_inbytes())
+   print(nvcv.current_cache_size_inbytes())
    img = nvcv.Image.zeros((1, 1), nvcv.Format.F32)
-   print(nvcv.current_cache_inbytes())
+   print(nvcv.current_cache_size_inbytes())
+
+Using the cache with multiple threads
+-------------------------------------
+
+Internally, the cache uses thread-local storage. As a result, CV-CUDA objects
+created in a thread cannot be reused from another thread when they run out of
+scope.
+
+.. warning::
+    Since the cache size and limit are shared between threads, care must be
+    taken in multithreaded applications.
+
+It is possible to clear the cache of the current thread using
+``nvcv.clear_cache(nvcv.ThreadScope.LOCAL)``. Similarly,
+``nvcv.cache_size(nvcv.ThreadScope.LOCAL)`` allows querying the number of
+elements in the cache for the current thread:
+
+.. code-block:: python
+
+    import threading
+    import nvcv
+    import numpy as np
+
+
+    def create_tensor_and_clear():
+        tensor = nvcv.Tensor((16, 32, 4), np.float32, nvcv.TensorLayout.HWC)
+        print(nvcv.cache_size(), nvcv.cache_size(nvcv.ThreadScope.LOCAL))  # 2 1
+        nvcv.clear_cache(nvcv.ThreadScope.LOCAL)
+        print(nvcv.cache_size(), nvcv.cache_size(nvcv.ThreadScope.LOCAL))  # 1 0
+
+
+    tensor = nvcv.Tensor((16, 32, 4), np.float32, nvcv.TensorLayout.HWC)
+    threading.Thread(target=create_tensor_and_clear).start()
