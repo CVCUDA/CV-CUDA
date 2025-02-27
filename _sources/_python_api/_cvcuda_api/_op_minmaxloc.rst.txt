@@ -19,4 +19,4 @@ MinMaxLoc
 
 .. automodule:: cvcuda
   :noindex:
-  :members: min_loc_into, max_loc, min_max_loc_into, min_loc, max_loc_into, min_max_loc
+  :members: max_loc_into, min_loc_into, min_max_loc_into, max_loc, min_max_loc, min_loc
