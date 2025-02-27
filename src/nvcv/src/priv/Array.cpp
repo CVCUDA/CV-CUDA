@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -51,7 +51,6 @@ constexpr NVCVArrayBufferType ResourceToBufferType(NVCVResourceType target)
         break;
     default:
         throw Exception(NVCV_ERROR_INVALID_ARGUMENT) << "Unknown Resource type " << target;
-        break;
     }
 
     return result;
@@ -88,7 +87,6 @@ NVCVArrayRequirements Array::CalcRequirements(int64_t capacity, const DataType &
                 break;
             default:
                 throw Exception(NVCV_ERROR_INVALID_ARGUMENT) << "Unknown Resource type " << target;
-                break;
             }
 
             align = std::lcm(align, util::RoundUpNextPowerOfTwo(dtype.strideBytes()));
@@ -121,7 +119,6 @@ NVCVArrayRequirements Array::CalcRequirements(int64_t capacity, const DataType &
         break;
     default:
         throw Exception(NVCV_ERROR_INVALID_ARGUMENT) << "Unknown Resource type " << target;
-        break;
     }
 
     return reqs;

@@ -116,6 +116,7 @@ NVCV_TEST_SUITE_P(OpCustomCrop, test::ValueList<int, int, int, int, int, int, in
 });
 
 // clang-format on
+
 TEST_P(OpCustomCrop, CustomCrop_packed)
 {
     cudaStream_t stream;
@@ -182,4 +183,51 @@ TEST_P(OpCustomCrop, CustomCrop_packed)
     dbgImage(gold, outData->rowStride());
 #endif
     EXPECT_EQ(gold, test);
+}
+
+// clang-format off
+NVCV_TEST_SUITE_P(OpCustomCrop_Negative, test::ValueList<NVCVStatus, nvcv::ImageFormat, nvcv::ImageFormat, int, int, int, int, int, int>{
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 5, 5, 2, 2, 0, 0},
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8, nvcv::FMT_RGB8p, 5, 5, 2, 2, 0, 0},
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGBf32, nvcv::FMT_RGB8, 5, 5, 2, 2, 0, 0},
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8, nvcv::FMT_RGB8, 5, 5, 7, 2, 0, 0}, // invalid width
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8, nvcv::FMT_RGB8, 5, 5, 2, 7, 0, 0}, // invalid height
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8, nvcv::FMT_RGB8, 5, 5, 2, 2, -1, 0}, // invalid x
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8, nvcv::FMT_RGB8, 5, 5, 2, 2, 0, -1}, // invalid y
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8, nvcv::FMT_RGB8, 5, 5, 2, 2, 6, 0}, // invalid x
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8, nvcv::FMT_RGB8, 5, 5, 2, 2, 0, 6}, // invalid y
+});
+
+// clang-format on
+
+TEST_P(OpCustomCrop_Negative, op)
+{
+    cudaStream_t stream;
+    EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    NVCVStatus        expectedReturnCode = GetParamValue<0>();
+    nvcv::ImageFormat inputFmt           = GetParamValue<1>();
+    nvcv::ImageFormat outputFmt          = GetParamValue<2>();
+    const int         inWidth            = GetParamValue<3>();
+    const int         inHeight           = GetParamValue<4>();
+    const int         cropWidth          = GetParamValue<5>();
+    const int         cropHeight         = GetParamValue<6>();
+    const int         cropX              = GetParamValue<7>();
+    const int         cropY              = GetParamValue<8>();
+
+    const int outWidth       = inWidth;
+    const int outHeight      = inHeight;
+    int       numberOfImages = 5;
+
+    nvcv::Tensor imgOut = nvcv::util::CreateTensor(numberOfImages, outWidth, outHeight, inputFmt);
+    nvcv::Tensor imgIn  = nvcv::util::CreateTensor(numberOfImages, inWidth, inHeight, outputFmt);
+
+    NVCVRectI          crpRect = {cropX, cropY, cropWidth, cropHeight};
+    // run operator
+    cvcuda::CustomCrop cropOp;
+
+    EXPECT_EQ(expectedReturnCode, nvcv::ProtectCall([&] { cropOp(stream, imgIn, imgOut, crpRect); }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }

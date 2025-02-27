@@ -266,3 +266,182 @@ TEST_P(OpAverageBlur, varshape_correct_output)
         EXPECT_EQ(testVec, goldVec);
     }
 }
+
+// clang-format off
+NVCV_TEST_SUITE_P(OpAverageBlur_Negative, nvcv::test::ValueList<NVCVStatus, nvcv::ImageFormat, nvcv::ImageFormat, int, int, int, int, NVCVBorderType>{
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U16, 3, 3, -1, -1, NVCV_BORDER_CONSTANT}, // data type is different
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8, nvcv::FMT_RGB8p, 3, 3, -1, -1, NVCV_BORDER_CONSTANT}, // data format is different
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8p, nvcv::FMT_RGB8p, 3, 3, -1, -1, NVCV_BORDER_CONSTANT}, // data format is not kNHWC/kHWC
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F16, nvcv::FMT_F16, 3, 3, -1, -1, NVCV_BORDER_CONSTANT}, // invalid data type
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, 4, 3, -1, -1, NVCV_BORDER_CONSTANT}, // invalid kernel size
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, 3, 4, -1, -1, NVCV_BORDER_CONSTANT}, // invalid kernel size
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, 3, 3, 4, -2, NVCV_BORDER_CONSTANT}, // invalid kernel anchor
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, 3, 3, -2, 4, NVCV_BORDER_CONSTANT}, // invalid kernel anchor
+#ifndef ENABLE_SANITIZER
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, 3, 3, -1, -1, static_cast<NVCVBorderType>(255)}, // invalid borderType
+#endif
+});
+
+// clang-format on
+
+TEST_P(OpAverageBlur_Negative, op)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    NVCVStatus        expectedReturnCode = GetParamValue<0>();
+    nvcv::ImageFormat inputFmt           = GetParamValue<1>();
+    nvcv::ImageFormat outputFmt          = GetParamValue<2>();
+    int               ksizeX             = GetParamValue<3>();
+    int               ksizeY             = GetParamValue<4>();
+    int               kanchorX           = GetParamValue<5>();
+    int               kanchorY           = GetParamValue<6>();
+    NVCVBorderType    borderMode         = GetParamValue<7>();
+
+    int width   = 24;
+    int height  = 24;
+    int batches = 1;
+
+    nvcv::Size2D kernelSize(ksizeX, ksizeY);
+
+    int2 kernelAnchor{kanchorX, kanchorY};
+
+    nvcv::Tensor inTensor  = nvcv::util::CreateTensor(batches, width, height, inputFmt);
+    nvcv::Tensor outTensor = nvcv::util::CreateTensor(batches, width, height, outputFmt);
+
+    // run operator
+    cvcuda::AverageBlur averageBlurOp(kernelSize, 1);
+
+    EXPECT_EQ(
+        expectedReturnCode,
+        nvcv::ProtectCall([&] { averageBlurOp(stream, inTensor, outTensor, kernelSize, kernelAnchor, borderMode); }));
+}
+
+// clang-format off
+NVCV_TEST_SUITE_P(OpAverageBlurVarshape_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat, NVCVBorderType, int, int>{
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8p, NVCV_BORDER_CONSTANT, 3, 3},
+    {nvcv::FMT_RGB8p, nvcv::FMT_RGB8p, NVCV_BORDER_CONSTANT, 3, 3},
+    {nvcv::FMT_RGBf16, nvcv::FMT_RGBf16, NVCV_BORDER_CONSTANT, 3, 3},
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, NVCV_BORDER_CONSTANT, 3, -1},
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, NVCV_BORDER_CONSTANT, 5, 3},
+#ifndef ENABLE_SANITIZER
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, static_cast<NVCVBorderType>(255), 3, 3},
+#endif
+});
+// clang-format on
+
+TEST_P(OpAverageBlurVarshape_Negative, varshape_correct_output)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    int          width  = 32;
+    int          height = 32;
+    nvcv::Size2D kernelSize(3, 3);
+
+    nvcv::ImageFormat inputFmt   = GetParamValue<0>();
+    nvcv::ImageFormat outputFmt  = GetParamValue<1>();
+    NVCVBorderType    borderMode = GetParamValue<2>();
+    int               batches    = GetParamValue<3>();
+    int               maxBatches = GetParamValue<4>();
+
+    // Create input varshape
+    std::default_random_engine         rng;
+    std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
+    std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
+
+    std::vector<nvcv::Image> imgSrc;
+    std::vector<nvcv::Image> imgDst;
+
+    for (int i = 0; i < batches; ++i)
+    {
+        imgSrc.emplace_back(nvcv::Size2D{udistWidth(rng), udistHeight(rng)}, inputFmt);
+        imgDst.emplace_back(imgSrc[i].size(), outputFmt);
+    }
+
+    nvcv::ImageBatchVarShape batchSrc(batches);
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+    nvcv::ImageBatchVarShape batchDst(batches);
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    // Create kernel size tensor
+    nvcv::Tensor kernelSizeTensor({{batches}, "N"}, nvcv::TYPE_2S32);
+
+    // Create kernel anchor tensor
+    nvcv::Tensor kernelAnchorTensor({{batches}, "N"}, nvcv::TYPE_2S32);
+
+    // Run operator
+    cvcuda::AverageBlur averageBlurOp(kernelSize, maxBatches);
+
+    EXPECT_EQ(
+        NVCV_ERROR_INVALID_ARGUMENT,
+        nvcv::ProtectCall(
+            [&] { averageBlurOp(stream, batchSrc, batchDst, kernelSizeTensor, kernelAnchorTensor, borderMode); }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST_P(OpAverageBlurVarshape_Negative, varshape_hasNotSameFormat)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::ImageFormat fmt = nvcv::FMT_RGB8;
+
+    std::vector<std::tuple<nvcv::ImageFormat, nvcv::ImageFormat>> testSet{
+        {nvcv::FMT_U8,          fmt},
+        {         fmt, nvcv::FMT_U8}
+    };
+
+    for (auto testCase : testSet)
+    {
+        nvcv::ImageFormat inputFmtExtra  = std::get<0>(testCase);
+        nvcv::ImageFormat outputFmtExtra = std::get<1>(testCase);
+
+        int            width   = 32;
+        int            height  = 32;
+        int            batches = 3;
+        nvcv::Size2D   kernelSize(3, 3);
+        NVCVBorderType borderMode = NVCV_BORDER_CONSTANT;
+
+        // Create input varshape
+        std::default_random_engine         rng;
+        std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
+        std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
+
+        std::vector<nvcv::Image> imgSrc;
+        std::vector<nvcv::Image> imgDst;
+
+        for (int i = 0; i < batches - 1; ++i)
+        {
+            imgSrc.emplace_back(nvcv::Size2D{udistWidth(rng), udistHeight(rng)}, fmt);
+            imgDst.emplace_back(imgSrc[i].size(), fmt);
+        }
+        imgSrc.emplace_back(nvcv::Size2D{udistWidth(rng), udistHeight(rng)}, inputFmtExtra);
+        imgDst.emplace_back(imgSrc.back().size(), outputFmtExtra);
+
+        nvcv::ImageBatchVarShape batchSrc(batches);
+        batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+        nvcv::ImageBatchVarShape batchDst(batches);
+        batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+        // Create kernel size tensor
+        nvcv::Tensor kernelSizeTensor({{batches}, "N"}, nvcv::TYPE_2S32);
+
+        // Create kernel anchor tensor
+        nvcv::Tensor kernelAnchorTensor({{batches}, "N"}, nvcv::TYPE_2S32);
+
+        // Run operator
+        cvcuda::AverageBlur averageBlurOp(kernelSize, batches);
+
+        EXPECT_EQ(
+            NVCV_ERROR_INVALID_ARGUMENT,
+            nvcv::ProtectCall(
+                [&] { averageBlurOp(stream, batchSrc, batchDst, kernelSizeTensor, kernelAnchorTensor, borderMode); }));
+
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}

@@ -1,4 +1,4 @@
-/* Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -38,7 +38,11 @@ INSTANTIATE_TEST_SUITE_P(AllStatuses, StatusNameTest,
                                     MAKE_STATUS_NAME(NVCV_ERROR_OUT_OF_MEMORY),
                                     MAKE_STATUS_NAME(NVCV_ERROR_INTERNAL),
                                     MAKE_STATUS_NAME(NVCV_ERROR_OVERFLOW),
-                                    MAKE_STATUS_NAME(NVCV_ERROR_UNDERFLOW)));
+                                    MAKE_STATUS_NAME(NVCV_ERROR_UNDERFLOW)
+#ifndef ENABLE_SANITIZER
+                                    ,std::make_tuple(static_cast<NVCVStatus>(255), "Unknown error")
+#endif
+                                    ));
 
 // clang-format on
 
@@ -96,7 +100,7 @@ TEST(StatusTest, peek_at_last_status_msg_success_has_correct_message)
     EXPECT_STREQ("success", msg);
 }
 
-TEST(StatusTest, function_success_doesnt_reset_status)
+TEST(StatusTest, function_success_doesnot_reset_status)
 {
     ASSERT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageCalcRequirements(640, 480, NVCV_IMAGE_FORMAT_U8, 0, 0, nullptr));
 
@@ -144,6 +148,13 @@ TEST(StatusTest, set_thread_status_var_arg_list)
     char msg[NVCV_MAX_STATUS_MESSAGE_LENGTH];
     ASSERT_EQ(NVCV_ERROR_DEVICE, nvcvGetLastErrorMessage(msg, sizeof(msg)));
     EXPECT_STREQ("test message 321 rod l", msg);
+}
+
+TEST(StatusTest, set_thread_status_var_arg_list_1)
+{
+    va_list va;
+    nvcvSetThreadStatusVarArgList(NVCV_ERROR_DEVICE, nullptr, va);
+    EXPECT_EQ(NVCV_ERROR_DEVICE, nvcvGetLastError());
 }
 
 TEST(StatusTest, set_thread_status_null_message)

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -158,6 +158,9 @@ std::pair<int, int> GetChromaSamples(NVCVChromaSubsampling css)
     case NVCV_CSS_411R:
         return {4, 1};
 
+    case NVCV_CSS_410R:
+        return {2, 1};
+
     case NVCV_CSS_422:
         return {2, 4};
 
@@ -166,6 +169,9 @@ std::pair<int, int> GetChromaSamples(NVCVChromaSubsampling css)
 
     case NVCV_CSS_411:
         return {1, 4};
+
+    case NVCV_CSS_410:
+        return {1, 2};
     }
 
     throw Exception(NVCV_ERROR_INVALID_ARGUMENT) << "Invalid chroma subsampling: " << css;
@@ -464,6 +470,8 @@ const char *GetName(NVCVChromaSubsampling chromaSub)
             ENUM_CASE_CSS(4, 1, 1, );
             ENUM_CASE_CSS(4, 1, 1, R);
             ENUM_CASE_CSS(4, 2, 0, );
+            ENUM_CASE_CSS(4, 1, 0, );
+            ENUM_CASE_CSS(4, 1, 0, R);
 #undef ENUM_CASE_CSS
         }
 

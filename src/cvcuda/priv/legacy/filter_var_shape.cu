@@ -126,6 +126,17 @@ ErrorCode Conv2DVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inData,
                                 const TensorDataStridedCuda &kernelAnchorData, NVCVBorderType borderMode,
                                 cudaStream_t stream)
 {
+    if (!inData.uniqueFormat())
+    {
+        LOG_ERROR("Images in the input batch must all have the same format");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
+    if (!outData.uniqueFormat())
+    {
+        LOG_ERROR("Images in the output batch must all have the same format");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
+
     DataFormat input_format  = helpers::GetLegacyDataFormat(inData);
     DataFormat output_format = helpers::GetLegacyDataFormat(outData);
     if (input_format != output_format)
@@ -147,12 +158,6 @@ ErrorCode Conv2DVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inData,
     {
         LOG_ERROR("Invalid borderMode " << borderMode);
         return ErrorCode::INVALID_PARAMETER;
-    }
-
-    if (!inData.uniqueFormat())
-    {
-        LOG_ERROR("Images in the input batch must all have the same format");
-        return ErrorCode::INVALID_DATA_FORMAT;
     }
 
     DataType data_type = helpers::GetLegacyDataType(inData.uniqueFormat());
@@ -311,6 +316,17 @@ ErrorCode LaplacianVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inDa
                                    const ImageBatchVarShapeDataStridedCuda &outData, const TensorDataStridedCuda &ksize,
                                    const TensorDataStridedCuda &scale, NVCVBorderType borderMode, cudaStream_t stream)
 {
+    if (!inData.uniqueFormat())
+    {
+        LOG_ERROR("Images in the input batch must all have the same format");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
+    if (!outData.uniqueFormat())
+    {
+        LOG_ERROR("Images in the output batch must all have the same format");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
+
     DataFormat input_format  = GetLegacyDataFormat(inData);
     DataFormat output_format = GetLegacyDataFormat(outData);
     if (input_format != output_format)
@@ -332,12 +348,6 @@ ErrorCode LaplacianVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inDa
     {
         LOG_ERROR("Invalid borderMode " << borderMode);
         return ErrorCode::INVALID_PARAMETER;
-    }
-
-    if (!inData.uniqueFormat())
-    {
-        LOG_ERROR("Images in the input batch must all have the same format");
-        return ErrorCode::INVALID_DATA_FORMAT;
     }
 
     DataType data_type = helpers::GetLegacyDataType(inData.uniqueFormat());
@@ -487,6 +497,17 @@ ErrorCode GaussianVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inDat
                                   const TensorDataStridedCuda &kernelSize, const TensorDataStridedCuda &sigma,
                                   NVCVBorderType borderMode, cudaStream_t stream)
 {
+    if (!inData.uniqueFormat())
+    {
+        LOG_ERROR("Images in the input batch must all have the same format");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
+    if (!outData.uniqueFormat())
+    {
+        LOG_ERROR("Images in the output batch must all have the same format");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
+
     if (m_maxBatchSize <= 0 || inData.numImages() > m_maxBatchSize)
     {
         LOG_ERROR("Invalid maximum batch size");
@@ -514,12 +535,6 @@ ErrorCode GaussianVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inDat
     {
         LOG_ERROR("Invalid borderMode " << borderMode);
         return ErrorCode::INVALID_PARAMETER;
-    }
-
-    if (!inData.uniqueFormat())
-    {
-        LOG_ERROR("Images in the input batch must all have the same format");
-        return ErrorCode::INVALID_DATA_FORMAT;
     }
 
     DataType data_type = helpers::GetLegacyDataType(inData.uniqueFormat());
@@ -694,6 +709,17 @@ ErrorCode AverageBlurVarShape::infer(const ImageBatchVarShapeDataStridedCuda &in
                                      const TensorDataStridedCuda &kernelSize, const TensorDataStridedCuda &kernelAnchor,
                                      NVCVBorderType borderMode, cudaStream_t stream)
 {
+    if (!inData.uniqueFormat())
+    {
+        LOG_ERROR("Images in the input batch must all have the same format");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
+    if (!outData.uniqueFormat())
+    {
+        LOG_ERROR("Images in the output batch must all have the same format");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
+
     if (m_maxBatchSize <= 0 || inData.numImages() > m_maxBatchSize)
     {
         LOG_ERROR("Invalid maximum batch size");
@@ -721,12 +747,6 @@ ErrorCode AverageBlurVarShape::infer(const ImageBatchVarShapeDataStridedCuda &in
     {
         LOG_ERROR("Invalid borderMode " << borderMode);
         return ErrorCode::INVALID_PARAMETER;
-    }
-
-    if (!inData.uniqueFormat())
-    {
-        LOG_ERROR("Images in the input batch must all have the same format");
-        return ErrorCode::INVALID_DATA_FORMAT;
     }
 
     DataType data_type = helpers::GetLegacyDataType(inData.uniqueFormat());

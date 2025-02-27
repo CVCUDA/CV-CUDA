@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,6 +30,7 @@
 #include "Stream.hpp"
 #include "Tensor.hpp"
 #include "TensorBatch.hpp"
+#include "ThreadScope.hpp"
 
 #include <nvcv/Version.h>
 #include <pybind11/pybind11.h>
@@ -62,18 +63,19 @@ PYBIND11_MODULE(nvcv, m)
     // Since everything is ref counted the order should not matter
     // but it is safer to ini them in order
 
+    // Supporting objects
+    ExportColorSpec(m);
+    ExportImageFormat(m);
+    ExportDataType(m);
+    ExportRect(m);
+    ExportThreadScope(m);
+
     // Core entities
     ExportCAPI(m);
     Resource::Export(m);
     Cache::Export(m);
     Container::Export(m);
     ExternalBuffer::Export(m);
-
-    // Supporting objects
-    ExportColorSpec(m);
-    ExportImageFormat(m);
-    ExportDataType(m);
-    ExportRect(m);
 
     // Objects
     Tensor::Export(m);

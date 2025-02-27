@@ -1,5 +1,5 @@
 
-[//]: # "SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved."
+[//]: # "SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved."
 [//]: # "SPDX-License-Identifier: Apache-2.0"
 [//]: # ""
 [//]: # "Licensed under the Apache License, Version 2.0 (the 'License');"
@@ -18,7 +18,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-yellogreen.svg)](https://opensource.org/licenses/Apache-2.0)
 
-![Version](https://img.shields.io/badge/Version-v0.13.1--beta-blue)
+![Version](https://img.shields.io/badge/Version-v0.14.0--beta-blue)
 
 ![Platform](https://img.shields.io/badge/Platform-linux--64_%7C_win--64_wsl2%7C_aarch64-gray)
 
@@ -44,17 +44,21 @@ To get a local copy up and running follow these steps.
 
 |CV-CUDA Build|Platform|CUDA Version|CUDA Compute Capability|Hardware Architectures|Nvidia Driver|Python Versions|Supported Compilers (build from source)|API compatibility with prebuilt binaries|OS/Linux distributions tested with prebuilt packages|
 |-|-|-|-|-|-|-|-|-|-|
-|x86_64_cu11|x86_64|11.7 or later|SM7 and later|Volta, Turing, Ampere, Hopper, Ada Lovelace|r525 or later*** |3.8, 3.9, 3.10, 3.11|gcc>=9* <br> gcc>=11**|gcc>=9|Ubuntu>= 20.04<br>WSL2/Ubuntu>=20.04|
-|x86_64_cu12|x86_64|12.2 or later|SM7 and later|Volta, Turing, Ampere, Hopper, Ada Lovelace|r525 or later***|3.8, 3.9, 3.10, 3.11|gcc>=9* <br> gcc>=11**|gcc>=9|Ubuntu>= 20.04<br>WSL2/Ubuntu>=20.04|
-|aarch64_cu11|aarch64|11.4|SM7 and later|Jetson AGX Orin|JetPack 5.1|3.8|gcc>=9* <br> gcc>=11**|gcc>=9|Jetson Linux 35.x|
-|aarch64_cu12|aarch64|12.2|SM7 and later|Jetson AGX Orin, IGX Orin + Ampere RTX6000, IGX Orin + ADA RTX6000|JetPack 6.0 DP, r535 (IGX OS v0.6)|3.10|gcc>=9* <br> gcc>=11**|gcc>=9|Jetson Linux 36.2<br> IGX OS v0.6|
+|x86_64_cu11|x86_64|11.7 or later|SM7 and later|Volta, Turing, Ampere, Hopper, Ada Lovelace|r525 or later*** |3.8, 3.9, 3.10, 3.11|gcc>=9* <br> gcc>=11**|gcc>=9|ManyLinux2014-compliant, Ubuntu>= 20.04<br>WSL2/Ubuntu>=20.04|
+|x86_64_cu12|x86_64|12.2 or later|SM7 and later|Volta, Turing, Ampere, Hopper, Ada Lovelace|r525 or later***|3.8, 3.9, 3.10, 3.11|gcc>=9* <br> gcc>=11**|gcc>=9|ManyLinux2014-compliant, Ubuntu>= 20.04<br>WSL2/Ubuntu>=20.04|
+|aarch64_cu12|aarch64 SBSA****|12.2 or later|SM7 and later|ARM SBSA: Volta, Turing, Ampere, Hopper, Ada Lovelace, Grace Hopper|r525 or later***|3.8, 3.9, 3.10, 3.11|gcc>=9* <br> gcc>=11**|gcc>=9|ManyLinux2014-compliant, Ubuntu>= 20.04|
+|aarch64_cu11|aarch64 Jetson****|11.4|SM7 and later|Jetson AGX Orin|JetPack 5.1|3.8|gcc>=9* <br> gcc>=11**|gcc>=9|Jetson Linux 35.x|
+|aarch64_cu12|aarch64 Jetson****|12.2|SM7 and later|Jetson AGX Orin, IGX Orin + Ampere RTX6000, IGX Orin + ADA RTX6000|JetPack 6.0 DP, r535 (IGX OS v0.6)|3.10|gcc>=9* <br> gcc>=11**|gcc>=9|Jetson Linux 36.2<br> IGX OS v0.6|
 
 \* partial build, no test module (see Known Limitations) <br>
 \** full build, including test module <br>
-\*** [samples][CV-CUDA Samples] require driver r535 or later to run and are only officially supported with CUDA 12.
+\*** [samples][CV-CUDA Samples] require driver r535 or later to run and are only officially supported with CUDA 12. <br>
+\**** starting with v0.14, aarch64_cu12 packages (deb, tar.xz or wheels) distributed on Github (release "assets") or Pypi are SBSA-compatible unless noted otherwise. Jetson builds (deb, tar.xz, whl) can be found in explicitly named "Jetson" archives in Github release assets.
 
 ### Known limitations and issues
 
+- Starting with v0.14, aarch64_cu12 packages (deb, tar.xz or wheels) distributed on Github (release "assets") and Pypi are the SBSA-compatible ones. Jetson builds (deb, tar.xz, whl) can be found in explicitly named "Jetson" archives in Github release assets.
+- We do not provide SBSA-compatible aarch64_cu11 packages yet, this will be addressed in an upcoming release.
 - For GCC versions lower than 11.0, C++17 support needs to be enabled when compiling CV-CUDA.
 - The C++ test module cannot build with gcc<11 (requires specific C++-20 features).  With gcc-9 or gcc-10, please build with option `-DBUILD_TESTS=0`
 - [CV-CUDA Samples] require driver r535 or later to run and are only officially supported with CUDA 12.

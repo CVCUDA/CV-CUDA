@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,12 +18,15 @@
 #include "Cache.hpp"
 
 #include "Definitions.hpp"
+#include "ThreadScope.hpp"
 
 #include <common/Assert.hpp>
 #include <common/CheckError.hpp>
 #include <common/PyUtil.hpp>
 
+#include <atomic>
 #include <mutex>
+#include <numeric>
 #include <thread>
 #include <unordered_map>
 
@@ -50,7 +53,7 @@ struct KeyEqual
 
 CacheItem::CacheItem()
 {
-    static uint64_t idnext = 0;
+    static std::atomic_uint16_t idnext = 0;
 
     m_id = idnext++;
 }
@@ -82,15 +85,50 @@ using Items = std::unordered_multimap<const IKey *, std::shared_ptr<CacheItem>, 
 
 struct Cache::Impl
 {
-    std::mutex mtx;
-    Items      items;
-    int64_t    cache_limit_inbytes;
-    int64_t    current_size_inbytes = 0;
+    Items                    items;
+    inline static std::mutex mtx;
+    inline static int64_t    cache_limit_inbytes;
+    inline static int64_t    current_size_inbytes;
 };
 
 Cache::Cache()
     : pimpl(new Impl())
 {
+    std::lock_guard<std::mutex> lk(pimpl->mtx);
+    instances.insert(this);
+}
+
+Cache::~Cache()
+{
+    {
+        std::lock_guard<std::mutex> lk(pimpl->mtx);
+        instances.erase(this);
+        // It might not be safe to call destructors here, decrease the size manually
+        for (const auto &node : pimpl->items)
+        {
+            pimpl->current_size_inbytes -= node.second->GetSizeInBytes();
+        }
+    }
+
+    Impl *pimpl = this->pimpl.release();
+    try
+    {
+#if PY_MAJOR_VERSION >= 3 && PY_MINOR_VERSION >= 13
+        if (Py_IsInitialized() && !Py_IsFinalizing())
+#else
+        if (Py_IsInitialized())
+#endif
+        {
+            // Make sure that the main thread doesn't finalize the interpreter until all objects have been destroyed
+            py::gil_scoped_acquire acq;
+            delete pimpl;
+        }
+    }
+    catch (const std::exception &)
+    {
+        // Leak intentionally if the Python runtime is not available anymore.
+        // See https://pybind11.readthedocs.io/en/stable/advanced/misc.html#common-sources-of-global-interpreter-lock-errors
+    }
 }
 
 void Cache::add(CacheItem &item)
@@ -207,17 +245,11 @@ std::shared_ptr<CacheItem> Cache::fetchOne(const IKey &key) const
 
 void Cache::clear()
 {
-    Items savedItems;
-    {
-        std::unique_lock<std::mutex> lk(pimpl->mtx);
-        savedItems                  = std::move(pimpl->items);
-        pimpl->current_size_inbytes = 0;
-    }
+    pimpl->items.clear();
 }
 
 size_t Cache::size() const
 {
-    std::unique_lock<std::mutex> lk(pimpl->mtx);
     return pimpl->items.size();
 }
 
@@ -298,12 +330,32 @@ void Cache::doIterateThroughItems(const std::function<void(CacheItem &item)> &fn
 
 Cache &Cache::Instance()
 {
-    static Cache cache;
+    thread_local Cache cache;
     return cache;
+}
+
+void Cache::ClearAll()
+{
+    Items savedItems;
+    {
+        std::lock_guard<std::mutex> lk(Cache::Impl::mtx);
+        std::for_each(instances.begin(), instances.end(),
+                      [&](Cache *instance) { savedItems.merge(instance->pimpl->items); });
+        Cache::Impl::current_size_inbytes = 0;
+    }
+}
+
+size_t Cache::TotalSize()
+{
+    std::lock_guard<std::mutex> lk(Cache::Impl::mtx);
+    return std::accumulate(instances.cbegin(), instances.cend(), static_cast<size_t>(0),
+                           [](size_t sum, const Cache *instance) { return sum + instance->size(); });
 }
 
 void Cache::Export(py::module &m)
 {
+    using namespace pybind11::literals;
+
     py::class_<CacheItem, std::shared_ptr<CacheItem>>(nullptr, "CacheItem", py::module_local());
 
     py::class_<ExternalCacheItem, CacheItem, std::shared_ptr<ExternalCacheItem>>(nullptr, "ExternalCacheItem",
@@ -314,19 +366,51 @@ void Cache::Export(py::module &m)
     util::CheckThrow(cudaMemGetInfo(&free_mem, &total_mem));
     Cache::Instance().setCacheLimit(total_mem / 2);
 
-    util::RegisterCleanup(m,
-                          []
-                          {
-                              // Make sure cache is cleared up when script ends.
-                              Cache::Instance().clear();
-                          });
+    // Make sure cache is cleared up when script ends.
+    util::RegisterCleanup(m, Cache::ClearAll);
 
     m.def(
-        "clear_cache", [] { Cache::Instance().clear(); }, "Clears the NVCV Python cache");
+        "clear_cache",
+        [](ThreadScope scope)
+        {
+            switch (scope)
+            {
+            case ThreadScope::GLOBAL:
+                Cache::ClearAll();
+                break;
+            case ThreadScope::LOCAL:
+                Cache::Instance().clear();
+                break;
+            }
+        },
+        "scope"_a = ThreadScope::GLOBAL, R"pbdoc(
+        Clears the NVCV Python cache
+
+        Args:
+            scope (nvcv.ThreadScope): Thread scope that must be either ``nvcv.ThreadScope.GLOBAL`` or ``nvcv.ThreadScope.LOCAL``.
+    )pbdoc");
 
     m.def(
-        "cache_size", [] { return Cache::Instance().size(); },
-        "Returns the quantity of items in the NVCV Python cache");
+        "cache_size",
+        [](ThreadScope scope)
+        {
+            switch (scope)
+            {
+            case ThreadScope::GLOBAL:
+                return Cache::TotalSize();
+            case ThreadScope::LOCAL:
+                return Cache::Instance().size();
+            }
+
+            // Should be unreachable, especially from Python
+            throw std::invalid_argument("Invalid scope");
+        },
+        "scope"_a = ThreadScope::GLOBAL, R"pbdoc(
+        Returns the quantity of items in the NVCV Python cache
+
+        Args:
+            scope (nvcv.ThreadScope): Thread scope that must be either ``nvcv.ThreadScope.GLOBAL`` or ``nvcv.ThreadScope.LOCAL``.
+    )pbdoc");
 
     m.def(
         "get_cache_limit_inbytes", [] { return Cache::Instance().getCacheLimit(); },

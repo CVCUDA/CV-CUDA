@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -440,25 +440,23 @@
 
 // No extra channels
 
-#define NVCV_DETAIL_MAKE_RAW_FMT1(RawPattern, MemLayout, DataKind, Swizzle, AlphaType, P0)                             \
-    NVCV_DETAIL_MAKE_RAW_FORMAT1(NVCV_RAW_##RawPattern, NVCV_MEM_LAYOUT_##MemLayout, NVCV_DATA_KIND_##DataKind,        \
-                                 NVCV_SWIZZLE_##Swizzle, NVCV_ALPHA_##AlphaType, NVCV_PACKING_##P0, 0, 0, UNSPECIFIED, \
-                                 U)
+#define NVCV_DETAIL_MAKE_RAW_FMT1(RawPattern, MemLayout, DataKind, Swizzle, AlphaType, P0)                      \
+    NVCV_DETAIL_MAKE_RAW_FORMAT1(NVCV_RAW_##RawPattern, NVCV_MEM_LAYOUT_##MemLayout, NVCV_DATA_KIND_##DataKind, \
+                                 NVCV_SWIZZLE_##Swizzle, NVCV_ALPHA_##AlphaType, NVCV_PACKING_##P0)
 
-#define NVCV_DETAIL_MAKE_RAW_FMT2(RawPattern, MemLayout, DataKind, Swizzle, AlphaType, P0, P1)                         \
-    NVCV_DETAIL_MAKE_RAW_FORMAT2(NVCV_RAW_##RawPattern, NVCV_MEM_LAYOUT_##MemLayout, NVCV_DATA_KIND_##DataKind,        \
-                                 NVCV_SWIZZLE_##Swizzle, NVCV_ALPHA_##AlphaType, NVCV_PACKING_##P0, NVCV_PACKING_##P1, \
-                                 0, 0, UNSPECIFIED, U)
+#define NVCV_DETAIL_MAKE_RAW_FMT2(RawPattern, MemLayout, DataKind, Swizzle, AlphaType, P0, P1)                  \
+    NVCV_DETAIL_MAKE_RAW_FORMAT2(NVCV_RAW_##RawPattern, NVCV_MEM_LAYOUT_##MemLayout, NVCV_DATA_KIND_##DataKind, \
+                                 NVCV_SWIZZLE_##Swizzle, NVCV_ALPHA_##AlphaType, NVCV_PACKING_##P0, NVCV_PACKING_##P1)
 
 #define NVCV_DETAIL_MAKE_RAW_FMT3(RawPattern, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P2)                     \
     NVCV_DETAIL_MAKE_RAW_FORMAT3(NVCV_RAW_##RawPattern, NVCV_MEM_LAYOUT_##MemLayout, NVCV_DATA_KIND_##DataKind,        \
                                  NVCV_SWIZZLE_##Swizzle, NVCV_ALPHA_##AlphaType, NVCV_PACKING_##P0, NVCV_PACKING_##P1, \
-                                 NVCV_PACKING_##P2, 0, 0, UNSPECIFIED, U)
+                                 NVCV_PACKING_##P2)
 
 #define NVCV_DETAIL_MAKE_RAW_FMT4(RawPattern, MemLayout, DataKind, Swizzle, AlphaType, P0, P1, P2, P3)                 \
     NVCV_DETAIL_MAKE_RAW_FORMAT4(NVCV_RAW_##RawPattern, NVCV_MEM_LAYOUT_##MemLayout, NVCV_DATA_KIND_##DataKind,        \
                                  NVCV_SWIZZLE_##Swizzle, NVCV_ALPHA_##AlphaType, NVCV_PACKING_##P0, NVCV_PACKING_##P1, \
-                                 NVCV_PACKING_##P2, NVCV_PACKING_##P3, 0, 0, UNSPECIFIED, U)
+                                 NVCV_PACKING_##P2, NVCV_PACKING_##P3)
 
 #define NVCV_DETAIL_MAKE_RAW_FMT(RawPattern, MemLayout, DataKind, Swizzle, AlphaType, NumPlanes, ...) \
     NVCV_DETAIL_MAKE_RAW_FMT##NumPlanes(RawPattern, MemLayout, DataKind, Swizzle, AlphaType, __VA_ARGS__)

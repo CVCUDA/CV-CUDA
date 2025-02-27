@@ -210,6 +210,17 @@ ErrorCode AdaptiveThresholdVarShape::infer(const ImageBatchVarShapeDataStridedCu
         LOG_ERROR("Invalid maximum batch size");
         return ErrorCode::INVALID_PARAMETER;
     }
+    if (!in.uniqueFormat())
+    {
+        LOG_ERROR("Images in the input batch must all have the same format");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
+
+    if (!out.uniqueFormat())
+    {
+        LOG_ERROR("Images in the output batch must all have the same format");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
 
     DataFormat input_format  = helpers::GetLegacyDataFormat(in);
     DataFormat output_format = helpers::GetLegacyDataFormat(out);
@@ -224,18 +235,6 @@ ErrorCode AdaptiveThresholdVarShape::infer(const ImageBatchVarShapeDataStridedCu
     if (!(format == kNHWC || format == kHWC))
     {
         LOG_ERROR("Invalid input DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
-        return ErrorCode::INVALID_DATA_FORMAT;
-    }
-
-    if (!in.uniqueFormat())
-    {
-        LOG_ERROR("Images in the input batch must all have the same format");
-        return ErrorCode::INVALID_DATA_FORMAT;
-    }
-
-    if (!out.uniqueFormat())
-    {
-        LOG_ERROR("Images in the output batch must all have the same format");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 

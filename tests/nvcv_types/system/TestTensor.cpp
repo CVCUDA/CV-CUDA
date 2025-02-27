@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -568,7 +568,7 @@ TEST_F(TensorTests_Negative, invalid_parameter_TensorCalcRequirements)
               nvcvTensorCalcRequirements(3, valid_wh, NVCV_DATA_TYPE_U8, NVCV_TENSOR_LAYOUT_MAKE("HW"), 0, 0,
                                          &reqs)); // mismatch rank
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-              nvcvTensorCalcRequirements(-1, valid_wh, NVCV_DATA_TYPE_U8, NVCV_TENSOR_LAYOUT_MAKE("HW"), 0, 0,
+              nvcvTensorCalcRequirements(-1, valid_wh, NVCV_DATA_TYPE_U8, NVCV_TENSOR_LAYOUT_MAKE(""), 0, 0,
                                          &reqs)); // invalid rank
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorCalcRequirements(2, valid_wh, NVCV_DATA_TYPE_U8, NVCV_TENSOR_NONE,
                                                                       3, 0, &reqs)); // invalid baseAddrAlignment
@@ -644,18 +644,18 @@ TEST_F(TensorTests_Negative, invalid_parameter_TensorGetUserPointer)
 
 TEST_F(TensorTests_Negative, invalid_parameter_TensorReshape)
 {
-    int64_t          new_shape[] = {1, 224, 112, 2};
+    int64_t          new_shape[] = {4, 224, 224};
     NVCVTensorHandle outHandle;
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-              nvcvTensorReshape(nullptr, 4, new_shape, NVCV_TENSOR_NHWC, &outHandle)); // null handle
+              nvcvTensorReshape(nullptr, 3, new_shape, NVCV_TENSOR_CHW, &outHandle)); // null handle
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-              nvcvTensorReshape(handle, 0, new_shape, NVCV_TENSOR_NHWC, &outHandle)); // invalid rank
+              nvcvTensorReshape(handle, 0, new_shape, NVCV_TENSOR_CHW, &outHandle)); // invalid rank
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorReshape(handle, NVCV_TENSOR_MAX_RANK + 1, new_shape,
-                                                             NVCV_TENSOR_NHWC, &outHandle)); // invalid rank 2
+                                                             NVCV_TENSOR_CHW, &outHandle)); // invalid rank 2
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-              nvcvTensorReshape(handle, 4, new_shape, NVCV_TENSOR_HW, &outHandle)); // mismatch layout
+              nvcvTensorReshape(handle, 3, new_shape, NVCV_TENSOR_HW, &outHandle)); // mismatch layout
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-              nvcvTensorReshape(handle, 4, new_shape, NVCV_TENSOR_NHWC, nullptr)); // null out handle
+              nvcvTensorReshape(handle, 3, new_shape, NVCV_TENSOR_CHW, nullptr)); // null out handle
 }
 
 TEST_F(TensorTests_Negative, invalid_parameter_TensorShapePermute)
@@ -707,4 +707,46 @@ TEST_P(TensorPermuteTests, smoke)
     std::vector<int64_t> outShape(goldShape.size());
     ASSERT_EQ(NVCV_SUCCESS, nvcvTensorShapePermute(srcLayout, srcShape.data(), dstLayout, outShape.data()));
     EXPECT_EQ(outShape, goldShape);
+}
+
+TEST(TensorTests_Negative_, invalidWrapImageConstruct_invalid_mem_layout)
+{
+    NVCVTensorHandle handle;
+    nvcv::Image      img(nvcv::Size2D{24, 24}, nvcv::FMT_UYVY);
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorWrapImageConstruct(img.handle(), &handle));
+}
+
+TEST(TensorTests_Negative_, invalidWrapImageConstruct_diff_dtype)
+{
+#define NVCV_IMAGE_FORMAT_DIFF_DTYPE \
+    NVCV_DETAIL_MAKE_COLOR_FMT3(RGB, UNDEFINED, PL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8, X16)
+
+    NVCVTensorHandle handle;
+    nvcv::Image      img(nvcv::Size2D{24, 24}, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_DIFF_DTYPE});
+
+#undef NVCV_IMAGE_FORMAT_DIFF_DTYPE
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorWrapImageConstruct(img.handle(), &handle));
+}
+
+TEST(TensorTests_Negative_, invalidWrapImageConstruct_invalid_params)
+{
+    NVCVTensorHandle handle;
+    nvcv::Image      img(nvcv::Size2D{24, 24}, nvcv::FMT_U8);
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorWrapImageConstruct(nullptr, &handle));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorWrapImageConstruct(img.handle(), nullptr));
+}
+
+TEST(TensorTests_Negative_, invalid_getDataType)
+{
+    nvcv::Tensor tensor(
+        nvcv::TensorShape{
+            {4, 16, 17},
+            nvcv::TENSOR_CHW
+    },
+        nvcv::TYPE_U8);
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorGetDataType(tensor.handle(), nullptr));
 }

@@ -218,3 +218,129 @@ TEST_P(OpFlip, varshape_correct_output)
         EXPECT_EQ(testVec, goldVec);
     }
 }
+
+// clang-format off
+NVCV_TEST_SUITE_P(OpFlip_Negative, nvcv::test::ValueList<NVCVStatus, nvcv::ImageFormat, nvcv::ImageFormat>{
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8, nvcv::FMT_RGB8p},  // data format is different
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8p, nvcv::FMT_RGB8p}, // data format is not kNHWC/kHWC
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F16, nvcv::FMT_F16},  // invalid data type
+});
+
+// clang-format on
+
+TEST_P(OpFlip_Negative, op)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    NVCVStatus        expectedReturnCode = GetParamValue<0>();
+    nvcv::ImageFormat inputFmt           = GetParamValue<1>();
+    nvcv::ImageFormat outputFmt          = GetParamValue<2>();
+
+    int width    = 24;
+    int height   = 24;
+    int batches  = 3;
+    int flipCode = 0;
+
+    std::default_random_engine         rng;
+    std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
+    std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
+
+    std::vector<nvcv::Image> imgSrc;
+    for (int i = 0; i < batches; ++i)
+    {
+        imgSrc.emplace_back(nvcv::Size2D{udistWidth(rng), udistHeight(rng)}, inputFmt);
+    }
+    nvcv::ImageBatchVarShape batchSrc(batches);
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+
+    // Create output varshape
+    std::vector<nvcv::Image> imgDst;
+    for (int i = 0; i < batches; ++i)
+    {
+        imgDst.emplace_back(imgSrc[i].size(), outputFmt);
+    }
+    nvcv::ImageBatchVarShape batchDst(batches);
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    // Create flip code tensor
+    nvcv::Tensor flip_code({{batches}, "N"}, nvcv::TYPE_S32);
+    {
+        auto dev = flip_code.exportData<nvcv::TensorDataStridedCuda>();
+        ASSERT_NE(dev, nullptr);
+
+        std::vector<int> vec(batches, flipCode);
+
+        ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(dev->basePtr(), vec.data(), vec.size() * sizeof(int),
+                                               cudaMemcpyHostToDevice, stream));
+    }
+
+    // Run operator
+    cvcuda::Flip flipOp(batches);
+
+    EXPECT_EQ(expectedReturnCode, nvcv::ProtectCall([&] { flipOp(stream, batchSrc, batchDst, flip_code); }));
+}
+
+TEST(OpFlip_Negative, varshape_hasNotSameFormat)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::ImageFormat fmt      = nvcv::FMT_RGB8;
+    int               flipCode = 0;
+    int               width    = 24;
+    int               height   = 24;
+    int               batches  = 3;
+
+    std::default_random_engine         rng;
+    std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
+    std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
+
+    std::vector<std::tuple<nvcv::ImageFormat, nvcv::ImageFormat>> testSet{
+        {nvcv::FMT_RGBA8,             fmt},
+        {            fmt, nvcv::FMT_RGBA8}
+    };
+
+    for (auto testCase : testSet)
+    {
+        nvcv::ImageFormat inputFmtExtra  = std::get<0>(testCase);
+        nvcv::ImageFormat outputFmtExtra = std::get<1>(testCase);
+
+        std::vector<nvcv::Image> imgSrc;
+        for (int i = 0; i < batches - 1; ++i)
+        {
+            imgSrc.emplace_back(nvcv::Size2D{udistWidth(rng), udistHeight(rng)}, fmt);
+        }
+        imgSrc.emplace_back(imgSrc[0].size(), inputFmtExtra);
+        nvcv::ImageBatchVarShape batchSrc(batches);
+        batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+
+        // Create output varshape
+        std::vector<nvcv::Image> imgDst;
+        for (int i = 0; i < batches - 1; ++i)
+        {
+            imgDst.emplace_back(imgSrc[i].size(), imgSrc[i].format());
+        }
+        imgDst.emplace_back(imgSrc.back().size(), outputFmtExtra);
+        nvcv::ImageBatchVarShape batchDst(batches);
+        batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+        // Create flip code tensor
+        nvcv::Tensor flip_code({{batches}, "N"}, nvcv::TYPE_S32);
+        {
+            auto dev = flip_code.exportData<nvcv::TensorDataStridedCuda>();
+            ASSERT_NE(dev, nullptr);
+
+            std::vector<int> vec(batches, flipCode);
+
+            ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(dev->basePtr(), vec.data(), vec.size() * sizeof(int),
+                                                   cudaMemcpyHostToDevice, stream));
+        }
+
+        // Run operator
+        cvcuda::Flip flipOp(batches);
+
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+                  nvcv::ProtectCall([&] { flipOp(stream, batchSrc, batchDst, flip_code); }));
+    }
+}

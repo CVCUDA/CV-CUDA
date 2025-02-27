@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,7 +33,8 @@ NVCV_TEST_SUITE_P(TensorLayoutMakeExecTests,
       {
         {"ABC", NVCV_TENSOR_LAYOUT_MAKE("ABC")},
         {"", NVCV_TENSOR_LAYOUT_MAKE("")},
-        {"0123456789ABCDE", NVCV_TENSOR_LAYOUT_MAKE("0123456789ABCDE")}
+        {"0123456789ABCDE", NVCV_TENSOR_LAYOUT_MAKE("0123456789ABCDE")},
+        {nullptr, NVCV_TENSOR_LAYOUT_MAKE("")}
       });
 
 // clang-format on
@@ -52,6 +53,10 @@ TEST_P(TensorLayoutMakeExecTests, from_range)
 {
     const char             *input = std::get<0>(GetParam());
     const NVCVTensorLayout &gold  = std::get<1>(GetParam());
+    if (!input)
+    {
+        GTEST_SKIP();
+    }
 
     NVCVTensorLayout test;
     ASSERT_EQ(NVCV_SUCCESS, nvcvTensorLayoutMakeRange(input, input + strlen(input), &test));
@@ -437,15 +442,17 @@ TEST(TensorLayoutTests_Negative, invalid_parameter_TensorLayoutMakeRange)
     std::string exceededDescr(NVCV_TENSOR_MAX_RANK + 1, 'Z');
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-              nvcvTensorLayoutMakeRange(exceededDescr.c_str(), exceededDescr.c_str() + validDescr.size(),
+              nvcvTensorLayoutMakeRange(validDescr.c_str(), validDescr.c_str() + validDescr.size(),
                                         nullptr)); // null output
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-              nvcvTensorLayoutMakeRange(nullptr, exceededDescr.c_str() + validDescr.size(), &outLayout)); // null begin
+              nvcvTensorLayoutMakeRange(nullptr, validDescr.c_str() + validDescr.size(), &outLayout)); // null begin
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-              nvcvTensorLayoutMakeRange(exceededDescr.c_str(), nullptr, &outLayout)); // null end
+              nvcvTensorLayoutMakeRange(validDescr.c_str(), nullptr, &outLayout)); // null end
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
               nvcvTensorLayoutMakeRange(exceededDescr.c_str(), exceededDescr.c_str() + exceededDescr.size(),
                                         &outLayout)); // exceed range
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvTensorLayoutMakeRange(validDescr.c_str() + 1, validDescr.c_str(),
+                                                                     &outLayout)); // negative index
 }
 
 TEST(TensorLayoutTests_Negative, invalid_parameter_TensorLayoutMakeFirst)

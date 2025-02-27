@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -277,6 +277,59 @@ TEST(Image, invalid_out_get_allocator)
     EXPECT_EQ(NVCV_SUCCESS, nvcvImageDecRef(handle, nullptr));
 }
 
+TEST(Image, invalid_calc_invalid_align)
+{
+    NVCVImageRequirements reqs;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageCalcRequirements(224, 224, NVCV_IMAGE_FORMAT_RGBA8, 0, 3, &reqs));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageCalcRequirements(224, 224, NVCV_IMAGE_FORMAT_RGBA8, 3, 0, &reqs));
+}
+
+TEST(Image, construct_BLlayout_image)
+{
+    NVCVImageHandle       handle;
+    NVCVImageRequirements reqs;
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvImageCalcRequirements(224, 224, NVCV_IMAGE_FORMAT_U8_BL, 0, 0, &reqs));
+    EXPECT_EQ(NVCV_ERROR_NOT_IMPLEMENTED, nvcvImageConstruct(&reqs, nullptr, &handle));
+}
+
+TEST(Image, construct_null_parameter)
+{
+    NVCVImageHandle       handle;
+    NVCVImageRequirements reqs;
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvImageCalcRequirements(224, 224, NVCV_IMAGE_FORMAT_U8, 0, 0, &reqs));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageConstruct(nullptr, nullptr, &handle));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageConstruct(&reqs, nullptr, nullptr));
+}
+
+TEST(Image, get_null_parameter)
+{
+    NVCVImageHandle       handle;
+    NVCVImageRequirements reqs;
+    NVCVImageFormat       fmt;
+    NVCVTypeImage         imageType;
+    int32_t               width, height;
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvImageCalcRequirements(224, 224, NVCV_IMAGE_FORMAT_U8, 0, 0, &reqs));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvImageConstruct(&reqs, nullptr, &handle));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageGetSize(handle, nullptr, &height));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageGetSize(handle, &width, nullptr));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageGetFormat(handle, nullptr));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageGetFormat(nullptr, &fmt));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageGetType(handle, nullptr));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageGetType(nullptr, &imageType));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageExportData(handle, nullptr));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageGetUserPointer(handle, nullptr));
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvImageDecRef(handle, nullptr));
+}
+
 TEST(ImageWrapData, smoke_cleanup)
 {
     nvcv::ImageDataStridedCuda::Buffer buf;
@@ -349,6 +402,112 @@ TEST(ImageWrapData, valid_get_allocator)
 
     EXPECT_EQ(NVCV_SUCCESS, nvcvImageDecRef(handle, nullptr));
     EXPECT_EQ(NVCV_SUCCESS, nvcvImageDecRef(warpHandle, nullptr));
+}
+
+TEST(ImageWrapData, construct_invalid_memLayout)
+{
+    nvcv::ImageDataStridedCuda::Buffer buf;
+    buf.numPlanes                         = 1;
+    buf.planes[0].width                   = 173;
+    buf.planes[0].height                  = 79;
+    buf.planes[0].rowStride               = 190;
+    buf.planes[0].basePtr                 = reinterpret_cast<NVCVByte *>(678);
+    NVCVImageHandle                handle = nullptr;
+    nvcv::ImageDataCleanupCallback callBackFunc{};
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvImageWrapDataConstruct(&(nvcv::ImageDataStridedCuda{nvcv::FMT_U8_BL, buf}.cdata()),
+                                         callBackFunc.targetFunc(), callBackFunc.targetHandle(), &handle));
+}
+
+TEST(ImageWrapData, construct_invalid_buffer_numPlanes)
+{
+    nvcv::ImageDataStridedCuda::Buffer buf;
+    buf.numPlanes                         = 0;
+    buf.planes[0].width                   = 173;
+    buf.planes[0].height                  = 79;
+    buf.planes[0].rowStride               = 190;
+    buf.planes[0].basePtr                 = reinterpret_cast<NVCVByte *>(678);
+    NVCVImageHandle                handle = nullptr;
+    nvcv::ImageDataCleanupCallback callBackFunc{};
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvImageWrapDataConstruct(&(nvcv::ImageDataStridedCuda{nvcv::FMT_U8, buf}.cdata()),
+                                         callBackFunc.targetFunc(), callBackFunc.targetHandle(), &handle));
+}
+
+TEST(ImageWrapData, construct_null_parameters)
+{
+    nvcv::ImageDataStridedCuda::Buffer buf;
+    buf.numPlanes                         = 1;
+    buf.planes[0].width                   = 173;
+    buf.planes[0].height                  = 79;
+    buf.planes[0].rowStride               = 190;
+    buf.planes[0].basePtr                 = reinterpret_cast<NVCVByte *>(678);
+    NVCVImageHandle                handle = nullptr;
+    nvcv::ImageDataCleanupCallback callBackFunc{};
+
+    // null handle
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvImageWrapDataConstruct(&(nvcv::ImageDataStridedCuda{nvcv::FMT_U8, buf}.cdata()),
+                                         callBackFunc.targetFunc(), callBackFunc.targetHandle(), nullptr));
+    // null data
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvImageWrapDataConstruct(nullptr, callBackFunc.targetFunc(), callBackFunc.targetHandle(), &handle));
+}
+
+TEST(ImageWrapData, construct_invalid_buffer_basePtr)
+{
+    nvcv::ImageDataStridedCuda::Buffer buf;
+    buf.numPlanes                         = 1;
+    buf.planes[0].width                   = 173;
+    buf.planes[0].height                  = 79;
+    buf.planes[0].rowStride               = 190;
+    buf.planes[0].basePtr                 = nullptr;
+    NVCVImageHandle                handle = nullptr;
+    nvcv::ImageDataCleanupCallback callBackFunc{};
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvImageWrapDataConstruct(&(nvcv::ImageDataStridedCuda{nvcv::FMT_U8, buf}.cdata()),
+                                         callBackFunc.targetFunc(), callBackFunc.targetHandle(), &handle));
+}
+
+TEST(ImageWrapData, construct_invalid_host)
+{
+    nvcv::ImageDataCudaArray::Buffer buf;
+    buf.numPlanes                         = 1;
+    NVCVImageHandle                handle = nullptr;
+    nvcv::ImageDataCleanupCallback callBackFunc{};
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvImageWrapDataConstruct(&(nvcv::ImageDataCudaArray{nvcv::FMT_U8, buf}.cdata()),
+                                         callBackFunc.targetFunc(), callBackFunc.targetHandle(), &handle));
+}
+
+TEST(ImageWrapData, construct_invalid_cudaArray)
+{
+    nvcv::ImageDataStridedHost::Buffer buf;
+    buf.numPlanes                         = 1;
+    buf.planes[0].width                   = 173;
+    buf.planes[0].height                  = 79;
+    buf.planes[0].rowStride               = 190;
+    buf.planes[0].basePtr                 = reinterpret_cast<NVCVByte *>(678);
+    NVCVImageHandle                handle = nullptr;
+    nvcv::ImageDataCleanupCallback callBackFunc{};
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvImageWrapDataConstruct(&(nvcv::ImageDataStridedHost{nvcv::FMT_U8, buf}.cdata()),
+                                         callBackFunc.targetFunc(), callBackFunc.targetHandle(), &handle));
+}
+
+TEST(ImageWrapData, construct_invalid_noneBuffer)
+{
+    nvcv::ImageDataCleanupCallback callBackFunc{};
+    NVCVImageHandle                handle = nullptr;
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcvImageWrapDataConstruct(&(nvcv::ImageData().cdata()), callBackFunc.targetFunc(),
+                                         callBackFunc.targetHandle(), &handle));
 }
 
 // Future API ideas

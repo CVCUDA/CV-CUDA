@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -952,8 +952,6 @@ const char *GetName(NVCVAlphaType alphaType)
         return "ASSOCIATED";
     case NVCV_ALPHA_UNASSOCIATED:
         return "UNASSOCIATED";
-    default:
-        return "ASSOCIATED";
     }
 
     priv::CoreTLS &tls = priv::GetCoreTLS();

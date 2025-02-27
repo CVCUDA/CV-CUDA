@@ -118,8 +118,8 @@ NVCV_TEST_SUITE_P(OpConvertTo, test::ValueList<int, int, double, double, int>
 
 TEST_P(OpConvertTo, OpConvertTo_RGBA8toRGBA8)
 {
-    using toType   = uint8_t;
     using fromType = uint8_t;
+    using toType   = uint8_t;
 
     int    width  = GetParamValue<0>();
     int    height = GetParamValue<1>();
@@ -135,8 +135,8 @@ TEST_P(OpConvertTo, OpConvertTo_RGBA8toRGBA8)
 
 TEST_P(OpConvertTo, OpConvertTo_RGBA8toRGBAf32)
 {
-    using toType   = float;
     using fromType = uint8_t;
+    using toType   = float;
 
     int    width  = GetParamValue<0>();
     int    height = GetParamValue<1>();
@@ -152,8 +152,8 @@ TEST_P(OpConvertTo, OpConvertTo_RGBA8toRGBAf32)
 
 TEST_P(OpConvertTo, OpConvertTo_RGBAf32toRGBA8)
 {
-    using toType   = uint8_t;
     using fromType = float;
+    using toType   = uint8_t;
 
     int    width  = GetParamValue<0>();
     int    height = GetParamValue<1>();
@@ -167,10 +167,10 @@ TEST_P(OpConvertTo, OpConvertTo_RGBAf32toRGBA8)
     testConvertTo<fromType, toType>(nvcv::FMT_RGBAf32, nvcv::FMT_RGBA8, batch, width, height, alpha, beta, val, valExp);
 }
 
-TEST_P(OpConvertTo, OpConvertTo_RGBAf32toRGBAf32t)
+TEST_P(OpConvertTo, OpConvertTo_RGBAf32toRGBAf32)
 {
-    using toType   = float;
     using fromType = float;
+    using toType   = float;
 
     int    width  = GetParamValue<0>();
     int    height = GetParamValue<1>();
@@ -183,4 +183,96 @@ TEST_P(OpConvertTo, OpConvertTo_RGBAf32toRGBAf32t)
 
     testConvertTo<fromType, toType>(nvcv::FMT_RGBAf32, nvcv::FMT_RGBAf32, batch, width, height, alpha, beta, val,
                                     valExp);
+}
+
+TEST_P(OpConvertTo, OpConvertTo_U8toU16)
+{
+    using fromType = uint8_t;
+    using toType   = uint16_t;
+
+    int    width  = GetParamValue<0>();
+    int    height = GetParamValue<1>();
+    double alpha  = GetParamValue<2>();
+    double beta   = GetParamValue<3>();
+    int    batch  = GetParamValue<4>();
+
+    fromType val    = 0x10;
+    toType   valExp = nvcv::cuda::SaturateCast<toType>(alpha * val + beta);
+
+    testConvertTo<fromType, toType>(nvcv::FMT_U8, nvcv::FMT_U16, batch, width, height, alpha, beta, val, valExp);
+}
+
+TEST_P(OpConvertTo, OpConvertTo_2S16to2F32)
+{
+    using fromType = uint16_t;
+    using toType   = float;
+
+    int    width  = GetParamValue<0>();
+    int    height = GetParamValue<1>();
+    double alpha  = GetParamValue<2>();
+    double beta   = GetParamValue<3>();
+    int    batch  = GetParamValue<4>();
+
+    fromType val    = 0x10;
+    toType   valExp = nvcv::cuda::SaturateCast<toType>(alpha * val + beta);
+
+    testConvertTo<fromType, toType>(nvcv::FMT_2S16, nvcv::FMT_2F32, batch, width, height, alpha, beta, val, valExp);
+}
+
+TEST_P(OpConvertTo, OpConvertTo_RGB8toRGBf32)
+{
+    using fromType = uint8_t;
+    using toType   = float;
+
+    int    width  = GetParamValue<0>();
+    int    height = GetParamValue<1>();
+    double alpha  = GetParamValue<2>();
+    double beta   = GetParamValue<3>();
+    int    batch  = GetParamValue<4>();
+
+    fromType val    = 0x10;
+    toType   valExp = nvcv::cuda::SaturateCast<toType>(alpha * val + beta);
+
+    testConvertTo<fromType, toType>(nvcv::FMT_RGB8, nvcv::FMT_RGBf32, batch, width, height, alpha, beta, val, valExp);
+}
+
+// clang-format off
+
+NVCV_TEST_SUITE_P(OpConvertTo_Negative, nvcv::test::ValueList<NVCVStatus, nvcv::ImageFormat, nvcv::ImageFormat, int, int, int, int, int, int>{
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGBA8p, nvcv::FMT_RGBA8, 24, 24, 24, 24, 3, 3}, // data format is not kHWC/kNHWC
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F16, nvcv::FMT_F32, 24, 24, 24, 24, 3, 3}, // invalid input data type
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F32, nvcv::FMT_F16, 24, 24, 24, 24, 3, 3}, // invalid output data type
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F32, nvcv::FMT_F32, 25, 24, 24, 24, 3, 3}, // width is different
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F32, nvcv::FMT_F32, 24, 25, 24, 24, 3, 3}, // height is different
+    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F32, nvcv::FMT_F32, 24, 24, 24, 24, 4, 3}, // batch number is different
+});
+
+// clang-format on
+
+TEST_P(OpConvertTo_Negative, op)
+{
+    NVCVStatus        expectedReturnCode = GetParamValue<0>();
+    nvcv::ImageFormat inputFmt           = GetParamValue<1>();
+    nvcv::ImageFormat outputFmt          = GetParamValue<2>();
+    int               inputWidth         = GetParamValue<3>();
+    int               inputHeight        = GetParamValue<4>();
+    int               outputWidth        = GetParamValue<5>();
+    int               outputHeight       = GetParamValue<6>();
+    int               inputBatch         = GetParamValue<7>();
+    int               outputBatch        = GetParamValue<8>();
+
+    double alpha = 1.0;
+    double beta  = 0.0;
+
+    cudaStream_t stream;
+    EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::Tensor imgOut = nvcv::util::CreateTensor(outputBatch, outputWidth, outputHeight, outputFmt);
+    nvcv::Tensor imgIn  = nvcv::util::CreateTensor(inputBatch, inputWidth, inputHeight, inputFmt);
+
+    // run operator
+    cvcuda::ConvertTo convertToOp;
+    EXPECT_EQ(expectedReturnCode, nvcv::ProtectCall([&] { convertToOp(stream, imgIn, imgOut, alpha, beta); }));
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }

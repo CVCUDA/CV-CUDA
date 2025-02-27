@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -367,14 +367,14 @@ typedef enum
     /** 4:2:0 sub-sampling. Chroma has half horizontal and vertical resolutions.*/
     NVCV_CSS_420,
 
-    /** 4:4:0 sub-sampling. Chroma has full horizontal and half vertical resolutions */
-    NVCV_CSS_440 = NVCV_CSS_422R,
-
     /** 4:1:0 sub-sampling. Chroma has 1/4 horizontal and half vertical resolutions. */
     NVCV_CSS_410,
 
     /** 4:1:0V sub-sampling. Chroma has half horizontal and 1/4 vertical resolutions. */
-    NVCV_CSS_410R
+    NVCV_CSS_410R,
+
+    /** 4:4:0 sub-sampling. Chroma has full horizontal and half vertical resolutions */
+    NVCV_CSS_440 = NVCV_CSS_422R
 } NVCVChromaSubsampling;
 
 /** Creates a \ref NVCVChromaSubsampling given the horizontal and vertical sampling.

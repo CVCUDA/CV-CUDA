@@ -65,7 +65,8 @@ if(ENABLE_SANITIZER)
         # not properly supported, see https://gcc.gnu.org/bugzilla/show_bug.cgi?id=64234
         #-static-libasan
         -static-liblsan
-        -static-libubsan)
+        -static-libubsan
+        -DENABLE_SANITIZER)
     string(REPLACE ";" " " COMPILER_SANITIZER_FLAGS "${COMPILER_SANITIZER_FLAGS}" )
 
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${COMPILER_SANITIZER_FLAGS}")

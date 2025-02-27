@@ -22,6 +22,7 @@
 #include <cvcuda/cuda_tools/MathOps.hpp>
 #include <cvcuda/cuda_tools/StaticCast.hpp>
 #include <cvcuda/cuda_tools/TypeTraits.hpp>
+#include <malloc.h>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
 
@@ -187,7 +188,7 @@ TEST_P(OpNonMaximumSuppression, correct_output)
 
     cvcuda::NonMaximumSuppression nms;
 
-    nms(stream, srcBB, dstMk, srcSc, scThresh, iouThresh);
+    EXPECT_NO_THROW(nms(stream, srcBB, dstMk, srcSc, scThresh, iouThresh));
 
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
@@ -209,4 +210,63 @@ TEST_P(OpNonMaximumSuppression, correct_output)
     GoldNMS(srcBBVec, dstMkVecGold, srcScVec, srcBBStrides, dstMkStrides, srcScStrides, shape, scThresh, iouThresh);
 
     EXPECT_EQ(dstMkVecTest, dstMkVecGold);
+}
+
+// clang-format off
+NVCV_TEST_SUITE_P(OpNonMaximumSuppression_Negative, test::ValueList<std::string, nvcv::DataType, std::string, nvcv::DataType, std::string, nvcv::DataType, float, int, int, int, int, int, int, int>{
+    {"NWC", nvcv::TYPE_S16, "NW", nvcv::TYPE_U8, "NW", nvcv::TYPE_F32, 0.1f, 1, 3, 3, 3, 5, 5, 5}, // in: rank3 + S16 + last shape is not 4
+    {"NWC", nvcv::TYPE_4S16, "NW", nvcv::TYPE_U8, "NW", nvcv::TYPE_F32, 0.1f, 4, 3, 3, 3, 5, 5, 5}, // in: rank3 + S16 + last shape is not 1
+    {"NW", nvcv::TYPE_S16, "NW", nvcv::TYPE_U8, "NW", nvcv::TYPE_F32, 0.1f, 1, 3, 3, 3, 5, 5, 5}, // in: rank2 + S16
+    {"NW", nvcv::TYPE_4U8, "NW", nvcv::TYPE_U8, "NW", nvcv::TYPE_F32, 0.1f, 1, 3, 3, 3, 5, 5, 5}, // in: not S16
+    {"NW", nvcv::TYPE_4S16, "NWC", nvcv::TYPE_U8, "NW", nvcv::TYPE_F32, 0.1f, 4, 3, 3, 3, 5, 5, 5}, // out: rank3 + last shape not 1
+    {"NW", nvcv::TYPE_4S16, "NW", nvcv::TYPE_S16, "NW", nvcv::TYPE_F32, 0.1f, 1, 3, 3, 3, 5, 5, 5}, // out: not U8
+    {"NW", nvcv::TYPE_4S16, "NW", nvcv::TYPE_U8, "NWC", nvcv::TYPE_F32, 0.1f, 4, 3, 3, 3, 5, 5, 5}, // scores : rank3 + last shape not 1
+    {"NW", nvcv::TYPE_4S16, "NW", nvcv::TYPE_U8, "NW", nvcv::TYPE_F64, 0.1f, 1, 3, 3, 3, 5, 5, 5}, // scores: not F32
+    {"NW", nvcv::TYPE_4S16, "NW", nvcv::TYPE_U8, "NW", nvcv::TYPE_F32, 0.f, 1, 3, 3, 3, 5, 5, 5}, // invalid iou threshold
+    {"NW", nvcv::TYPE_4S16, "NW", nvcv::TYPE_U8, "NW", nvcv::TYPE_F32, 1.5f, 1, 3, 3, 3, 5, 5, 5}, // invalid iou threshold
+    {"NW", nvcv::TYPE_4S16, "NW", nvcv::TYPE_U8, "NW", nvcv::TYPE_F32, 0.1f, 1, 3, 2, 3, 5, 5, 5}, // input, output number of batches is not equal
+    {"NW", nvcv::TYPE_4S16, "NW", nvcv::TYPE_U8, "NW", nvcv::TYPE_F32, 0.1f, 1, 3, 3, 2, 5, 5, 5}, // input, scores number of batches is not equal
+    {"NW", nvcv::TYPE_4S16, "NW", nvcv::TYPE_U8, "NW", nvcv::TYPE_F32, 0.1f, 1, 3, 3, 3, 5, 4, 5}, // input, scores number of boxes is not equal
+    {"NW", nvcv::TYPE_4S16, "NW", nvcv::TYPE_U8, "NW", nvcv::TYPE_F32, 0.1f, 1, 3, 3, 3, 5, 5, 4}, // input, scores number of boxes is not equal
+});
+
+// clang-format on
+
+TEST_P(OpNonMaximumSuppression_Negative, op)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    std::string    srcBBLayout     = GetParamValue<0>();
+    nvcv::DataType srcBBDatatype   = GetParamValue<1>();
+    std::string    dstMkLayout     = GetParamValue<2>();
+    nvcv::DataType dstMkDatatype   = GetParamValue<3>();
+    std::string    srcScLayout     = GetParamValue<4>();
+    nvcv::DataType srcScDatatype   = GetParamValue<5>();
+    const float    iouThresh       = GetParamValue<6>();
+    const int      lastShape       = GetParamValue<7>();
+    const int      numSamplesSrcBB = GetParamValue<8>();
+    const int      numSamplesDstMk = GetParamValue<9>();
+    const int      numSamplesSrcSc = GetParamValue<10>();
+    const int      numBBoxesSrcBB  = GetParamValue<11>();
+    const int      numBBoxesDstMk  = GetParamValue<12>();
+    const int      numBBoxesSrcSc  = GetParamValue<13>();
+
+    float scThresh = 0.5f;
+
+    nvcv::TensorShape srcBBShape = srcBBLayout.size() == 3 ? nvcv::TensorShape{{numSamplesSrcBB, numBBoxesSrcBB, lastShape}, srcBBLayout.c_str()} : nvcv::TensorShape{{numSamplesSrcBB, numBBoxesSrcBB}, srcBBLayout.c_str()};
+    nvcv::TensorShape dstMkShape = dstMkLayout.size() == 3 ? nvcv::TensorShape{{numSamplesDstMk, numBBoxesDstMk, lastShape}, dstMkLayout.c_str()} : nvcv::TensorShape{{numSamplesDstMk, numBBoxesDstMk}, dstMkLayout.c_str()};
+    nvcv::TensorShape srcScShape = srcScLayout.size() == 3 ? nvcv::TensorShape{{numSamplesSrcSc, numBBoxesSrcSc, lastShape}, srcScLayout.c_str()} : nvcv::TensorShape{{numSamplesSrcSc, numBBoxesSrcSc}, srcScLayout.c_str()};
+
+    nvcv::Tensor srcBB(srcBBShape, srcBBDatatype);
+    nvcv::Tensor dstMk(dstMkShape, dstMkDatatype);
+    nvcv::Tensor srcSc(srcScShape, srcScDatatype);
+
+    cvcuda::NonMaximumSuppression nms;
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { nms(stream, srcBB, dstMk, srcSc, scThresh, iouThresh); }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }

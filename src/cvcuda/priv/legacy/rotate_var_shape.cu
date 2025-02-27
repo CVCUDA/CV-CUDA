@@ -155,6 +155,18 @@ ErrorCode RotateVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inData,
                                 const TensorDataStridedCuda &shift, const NVCVInterpolationType interpolation,
                                 cudaStream_t stream)
 {
+    if (!inData.uniqueFormat())
+    {
+        LOG_ERROR("Images in the input varshape must all have the same format");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
+
+    if (!outData.uniqueFormat())
+    {
+        LOG_ERROR("Images in the output varshape must all have the same format");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
+
     if (m_maxBatchSize <= 0)
     {
         LOG_ERROR("Operator rotate var shape is not initialized properly, maxVarShapeBatchSize: " << m_maxBatchSize);
@@ -184,12 +196,6 @@ ErrorCode RotateVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inData,
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
-    if (!inData.uniqueFormat())
-    {
-        LOG_ERROR("Images in the input varshape must all have the same format");
-        return ErrorCode::INVALID_DATA_FORMAT;
-    }
-
     int channels = inData.uniqueFormat().numChannels();
 
     if (channels > 4)
@@ -198,11 +204,25 @@ ErrorCode RotateVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inData,
         return ErrorCode::INVALID_DATA_SHAPE;
     }
 
-    DataType data_type = helpers::GetLegacyDataType(inData.uniqueFormat());
+    DataType data_type          = helpers::GetLegacyDataType(inData.uniqueFormat());
+    DataType angleDec_data_type = helpers::GetLegacyDataType(angleDeg.dtype());
+    DataType shift_data_type    = helpers::GetLegacyDataType(shift.dtype());
 
     if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32F))
     {
         LOG_ERROR("Invalid DataType " << data_type);
+        return ErrorCode::INVALID_DATA_TYPE;
+    }
+
+    if (angleDec_data_type != kCV_64F)
+    {
+        LOG_ERROR("Invalid angleDeg DataType " << data_type);
+        return ErrorCode::INVALID_DATA_TYPE;
+    }
+
+    if (shift_data_type != kCV_64F)
+    {
+        LOG_ERROR("Invalid shift DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
     }
 

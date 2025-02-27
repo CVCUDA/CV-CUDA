@@ -92,6 +92,17 @@ ErrorCode FlipOrCopyVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inp
 {
     DataFormat inputFormat  = helpers::GetLegacyDataFormat(input);
     DataFormat outputFormat = helpers::GetLegacyDataFormat(output);
+    if (!input.uniqueFormat())
+    {
+        LOG_ERROR("Images in the input batch must all have the same format");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
+    if (!output.uniqueFormat())
+    {
+        LOG_ERROR("Images in the output batch must all have the same format");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
+
     if (inputFormat != outputFormat)
     {
         LOG_ERROR("Invalid DataFormat between input (" << inputFormat << ") and output (" << outputFormat << ")");
@@ -102,12 +113,6 @@ ErrorCode FlipOrCopyVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inp
     if (!(format == kNHWC || format == kHWC))
     {
         LOG_ERROR("Invalid input DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
-        return ErrorCode::INVALID_DATA_FORMAT;
-    }
-
-    if (!input.uniqueFormat())
-    {
-        LOG_ERROR("Images in the input batch must all have the same format");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -208,3 +208,82 @@ TEST(Requirements, total_size_bytes)
     EXPECT_EQ(totSizeHost, CalcTotalSizeBytes(req.hostMem()));
     EXPECT_EQ(totSizeHostPinned, CalcTotalSizeBytes(req.hostPinnedMem()));
 }
+
+TEST(Requirements, init_negative)
+{
+    // init nullptr
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvRequirementsInit(nullptr));
+}
+
+TEST(Requirements, add_negative)
+{
+    NVCVRequirements req;
+    EXPECT_EQ(NVCV_SUCCESS, nvcvRequirementsInit(&req));
+    // left value is nullptr
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvRequirementsAdd(nullptr, &req));
+
+    // right value is nullptr
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvRequirementsAdd(&req, nullptr));
+}
+
+TEST(Requirements, calcSize_ivalid_argument)
+{
+    NVCVRequirements req;
+    int64_t          sizeBytes;
+    EXPECT_EQ(NVCV_SUCCESS, nvcvRequirementsInit(&req));
+    NVCVMemRequirements &memReq = req.cudaMem;
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvMemRequirementsAddBuffer(&memReq, 256, 256));
+
+    // mem requirements is null
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvMemRequirementsCalcTotalSizeBytes(nullptr, &sizeBytes));
+
+    // sizeBytes is null
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvMemRequirementsCalcTotalSizeBytes(&memReq, nullptr));
+}
+
+TEST(Requirements, calcSize_overflow)
+{
+    NVCVRequirements req;
+    int64_t          sizeBytes;
+    EXPECT_EQ(NVCV_SUCCESS, nvcvRequirementsInit(&req));
+    NVCVMemRequirements &memReq = req.cudaMem;
+
+    // Total size > INT64_MAX
+    memReq.numBlocks[0] = std::numeric_limits<std::remove_reference_t<decltype(memReq.numBlocks[0])>>::max();
+    memReq.numBlocks[1] = 2;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvMemRequirementsCalcTotalSizeBytes(&memReq, &sizeBytes));
+
+    // Total size > UINT64_MAX
+    memReq.numBlocks[0] = std::numeric_limits<std::remove_reference_t<decltype(memReq.numBlocks[0])>>::max();
+    memReq.numBlocks[1] = std::numeric_limits<std::remove_reference_t<decltype(memReq.numBlocks[1])>>::max();
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvMemRequirementsCalcTotalSizeBytes(&memReq, &sizeBytes));
+}
+
+TEST(Requirements, addBuffer_ivalid_argument)
+{
+    NVCVRequirements req;
+    EXPECT_EQ(NVCV_SUCCESS, nvcvRequirementsInit(&req));
+    NVCVMemRequirements &memReq = req.cudaMem;
+
+    // mem requirements is null
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvMemRequirementsAddBuffer(nullptr, 256, 256));
+
+    // alignment is not power of 2
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvMemRequirementsAddBuffer(&memReq, 256, 3));
+
+    // log2(alignment) is larger than 32
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvMemRequirementsAddBuffer(&memReq, 256, (((int64_t)1) << (32)) + 1LL));
+}
+
+#ifndef ENABLE_SANITIZER
+TEST(Requirements, addBuffer_overflow)
+{
+    NVCVRequirements req;
+    EXPECT_EQ(NVCV_SUCCESS, nvcvRequirementsInit(&req));
+    NVCVMemRequirements &memReq = req.cudaMem;
+
+    memReq.numBlocks[0] = std::numeric_limits<std::remove_reference_t<decltype(memReq.numBlocks[0])>>::max();
+    EXPECT_EQ(NVCV_ERROR_OVERFLOW, nvcvMemRequirementsAddBuffer(&memReq, 2, 1));
+}
+#endif

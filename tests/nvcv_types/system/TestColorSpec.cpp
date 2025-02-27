@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,7 +46,8 @@ NVCV_INSTANTIATE_TEST_SUITE_P(Predefined, ChromaSubsamplingTests,
                               test::ValueList<NVCVChromaSubsampling, int, int, const char *>{
                                   MAKE_CHROMASUB(444, 4, 4, "4:4:4"), MAKE_CHROMASUB(422, 2, 4, "4:2:2"),
                                   MAKE_CHROMASUB(422R, 4, 2, "4:2:2R"), MAKE_CHROMASUB(411R, 4, 1, "4:1:1R"),
-                                  MAKE_CHROMASUB(411, 1, 4, "4:1:1"), MAKE_CHROMASUB(420, 2, 2, "4:2:0")});
+                                  MAKE_CHROMASUB(411, 1, 4, "4:1:1"), MAKE_CHROMASUB(420, 2, 2, "4:2:0"),
+                                  MAKE_CHROMASUB(410, 1, 2, "4:1:0"), MAKE_CHROMASUB(410R, 2, 1, "4:1:0R")});
 
 TEST_P(ChromaSubsamplingTests, predefined_has_correct_definition)
 {
@@ -84,6 +85,11 @@ TEST_P(ChromaSubsamplingTests, get_name)
 
 TEST(ChromaSubsamplingTests, invalidChromaSubsamplingGetNumSamples)
 {
+#ifndef ENABLE_SANITIZER
+    int32_t outSamplesHoriz, outSamplesVert;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvChromaSubsamplingGetNumSamples(static_cast<NVCVChromaSubsampling>(255),
+                                                                              &outSamplesHoriz, &outSamplesVert));
+#endif
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvChromaSubsamplingGetNumSamples(NVCV_CSS_444, nullptr, nullptr));
 }
 
@@ -104,6 +110,9 @@ TEST(ChromaSubsamplingTests, invalidChromaSubsampling)
 {
     NVCVChromaSubsampling test;
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvMakeChromaSubsampling(&test, 5, 5));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvMakeChromaSubsampling(&test, 4, 5));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvMakeChromaSubsampling(&test, 2, 5));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvMakeChromaSubsampling(&test, 1, 5));
 }
 
 TEST(ChromaSubsamplingTests, invalidOut)
