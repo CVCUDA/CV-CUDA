@@ -19,4 +19,4 @@ HQResize
 
 .. automodule:: cvcuda
   :noindex:
-  :members: hq_resize_into, hq_resize
+  :members: hq_resize, hq_resize_into

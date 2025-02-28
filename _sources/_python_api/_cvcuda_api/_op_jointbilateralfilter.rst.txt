@@ -19,4 +19,4 @@ JointBilateralFilter
 
 .. automodule:: cvcuda
   :noindex:
-  :members: joint_bilateral_filter_into, joint_bilateral_filter
+  :members: joint_bilateral_filter, joint_bilateral_filter_into

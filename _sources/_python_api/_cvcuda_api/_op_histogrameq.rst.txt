@@ -19,4 +19,4 @@ HistogramEq
 
 .. automodule:: cvcuda
   :noindex:
-  :members: histogrameq_into, histogrameq
+  :members: histogrameq, histogrameq_into

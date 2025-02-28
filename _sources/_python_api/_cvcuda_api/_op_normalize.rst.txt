@@ -19,4 +19,4 @@ Normalize
 
 .. automodule:: cvcuda
   :noindex:
-  :members: normalize, normalize_into
+  :members: normalize_into, normalize
