@@ -36,7 +36,7 @@ endif()
 enable_language(CUDA)
 
 # Used when creating special builds
-set(PROJECT_VERSION_SUFFIX "-beta")
+set(PROJECT_VERSION_SUFFIX "")
 
 # if user didn't set install prefix,
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)

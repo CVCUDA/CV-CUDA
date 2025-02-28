@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the 'License');
@@ -91,7 +91,6 @@ setup(
         Extension(name='UnusedEmptyExtension', sources=[]),
     ],
     classifiers=[
-        'Development Status :: 4 - Beta',
         'Environment :: GPU :: NVIDIA CUDA',
         'Environment :: GPU :: NVIDIA CUDA :: ${CUDA_VERSION_MAJOR}',
         'Operating System :: POSIX :: Linux',
@@ -100,8 +99,6 @@ setup(
         'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3.10',
         'Programming Language :: Python :: 3.11',
-        'Programming Language :: Python :: 3.12',
-        'Programming Language :: Python :: 3.13',
         'Programming Language :: Python :: Implementation :: CPython',
     ],
 )

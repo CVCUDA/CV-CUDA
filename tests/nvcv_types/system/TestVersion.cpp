@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +18,8 @@
 #include "Definitions.hpp"
 
 #include <nvcv/Version.h>
+
+#include <string>
 
 TEST(VersionTests, version_numeric)
 {
@@ -38,13 +40,16 @@ TEST(VersionTests, get_version_components)
 
 TEST(VersionTests, get_version_string)
 {
-    const char *ver = STR(NVCV_VERSION_MAJOR) "." STR(NVCV_VERSION_MINOR) "." STR(NVCV_VERSION_PATCH)
+    std::string ver = std::string(STR(NVCV_VERSION_MAJOR)) + "." + STR(NVCV_VERSION_MINOR) + "."
+                    + STR(NVCV_VERSION_PATCH)
 #if NVCV_VERSION_TWEAK
-        "." STR(NVCV_VERSION_TWEAK)
+                    + "." + STR(NVCV_VERSION_TWEAK)
 #endif
-            "-" NVCV_VERSION_SUFFIX;
+        ;
+    if (!std::string(NVCV_VERSION_SUFFIX).empty())
+        ver += std::string("-") + NVCV_VERSION_SUFFIX;
 
-    EXPECT_STREQ(ver, NVCV_VERSION_STRING);
+    EXPECT_STREQ(ver.c_str(), NVCV_VERSION_STRING);
 }
 
 TEST(VersionTests, make_version4_macro)

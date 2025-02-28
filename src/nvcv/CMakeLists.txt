@@ -22,7 +22,7 @@ project(nvcv
 )
 
 # Used when creating special builds
-set(PROJECT_VERSION_SUFFIX "-beta")
+set(PROJECT_VERSION_SUFFIX "")
 
 include(CMakeDependentOption)
 
