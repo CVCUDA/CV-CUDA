@@ -79,9 +79,18 @@ Choose the installation method that meets your environment needs.
 
 #### Python Wheel File Installation
 
-Download the appropriate .whl file for your computer architecture, Python and CUDA version from the release assets of current CV-CUDA release. Release information of all CV-CUDA releases can be found [here][CV-CUDA GitHub Releases]. Once downloaded, execute the `pip install` command to install the Python wheel. For example:
+Check pypi.org projects for support for your platform of choice, [cvcuda-cu11][cvcuda-cu11] and [cvcuda-cu12][cvcuda-cu12] for CUDA 11 and CUDA 12, respectively.
+
+Use the following command to install the latest available version:
    ```shell
-   pip install cvcuda_<cu_ver>-<x.x.x>-cp<py_ver>-cp<py_ver>-linux_<arch>.whl
+   pip install cvcuda_<cu_ver>
+   ```
+
+where <cu_ver> is the desired CUDA version.
+
+Alternatively, download the appropriate .whl file for your computer architecture, Python and CUDA version from the release assets of current CV-CUDA release. Release information of all CV-CUDA releases can be found [here][CV-CUDA GitHub Releases]. Once downloaded, execute the `pip install` command to install the Python wheel. For example:
+   ```shell
+   pip install ./cvcuda_<cu_ver>-<x.x.x>-cp<py_ver>-cp<py_ver>-linux_<arch>.whl
    ```
 
 where `<cu_ver>` is the desired CUDA version, `<x.x.x>` is the CV-CUDA release version, `<py_ver>` is the desired Python version and `<arch>` is the desired architecture.
@@ -249,7 +258,7 @@ The new Python wheels for PyPI compliance must be built within the ManyLinux 201
 
 The built wheels can still be installed using `pip`. For example, to install the Python wheel built for CUDA 12.x, Python 3.10 and 3.11 on Linux x86_64 systems:
 ```shell
-pip install cvcuda_cu12-<x.x.x>-cp310.cp311-cp310.cp311-linux_x86_64.whl
+pip install ./cvcuda_cu12-<x.x.x>-cp310.cp311-cp310.cp311-linux_x86_64.whl
 ```
 
 ## Contributing
@@ -324,3 +333,5 @@ CV-CUDA is developed jointly by NVIDIA and ByteDance.
 [ByteDance]: https://www.bytedance.com/
 [CV-CUDA GitHub Releases]: https://github.com/CVCUDA/CV-CUDA/releases
 [CV-CUDA Samples]: https://github.com/CVCUDA/CV-CUDA/blob/main/samples/README.md
+[cvcuda-cu11]: https://pypi.org/project/cvcuda-cu11/
+[cvcuda-cu12]: https://pypi.org/project/cvcuda-cu12/

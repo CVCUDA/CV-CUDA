@@ -1,5 +1,5 @@
 ..
-  # SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  # SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
   # SPDX-License-Identifier: Apache-2.0
   #
   # Licensed under the Apache License, Version 2.0 (the "License");
@@ -74,11 +74,19 @@ You can download the CV-CUDA tar, deb or wheel packages from `the asset section 
 
 * Python Wheel File Installation
 
-    Download the appropriate .whl file for your computer architecture, Python and CUDA version from `the asset section of the latest release <https://github.com/CVCUDA/CV-CUDA/releases>`_
+    Check pypi.org projects for support for your platform of choice, `cvcuda-cu11 <https://pypi.org/project/cvcuda-cu11/>`_ and `cvcuda-cu12 <https://pypi.org/project/cvcuda-cu12/>`_ for CUDA 11 and CUDA 12, respectively.
+    Use the following command to install the latest available version::
+
+        pip install cvcuda_<cu_ver>
+
+    where <cu_ver> is the desired CUDA version.
+
+
+    Alternatively, download the appropriate .whl file for your computer architecture, Python and CUDA version from `the asset section of the latest release <https://github.com/CVCUDA/CV-CUDA/releases>`_
 
     Execute the following command to install appropriate CV-CUDA Python wheel ::
 
-        pip install cvcuda_<cu_ver>-<x.x.x>-cp<py_ver>-cp<py_ver>-linux_<arch>.whl
+        pip install ./cvcuda_<cu_ver>-<x.x.x>-cp<py_ver>-cp<py_ver>-linux_<arch>.whl
 
     where <cu_ver> is the desired CUDA version, <x.x.x> the CV-CUDA release version, <py_ver> the desired Python version and <arch> the desired architecture.
 
