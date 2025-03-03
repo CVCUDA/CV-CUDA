@@ -1479,9 +1479,15 @@ You can download the CV-CUDA tar, deb or wheel packages from <a class="reference
 </li>
 <li><p>Python Wheel File Installation</p>
 <blockquote>
-<div><p>Download the appropriate .whl file for your computer architecture, Python and CUDA version from <a class="reference external" href="https://github.com/CVCUDA/CV-CUDA/releases">the asset section of the latest release</a></p>
+<div><p>Check pypi.org projects for support for your platform of choice, <a class="reference external" href="https://pypi.org/project/cvcuda-cu11/">cvcuda-cu11</a> and <a class="reference external" href="https://pypi.org/project/cvcuda-cu12/">cvcuda-cu12</a> for CUDA 11 and CUDA 12, respectively.
+Use the following command to install the latest available version:</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span><span class="w"> </span><span class="n">install</span><span class="w"> </span><span class="n">cvcuda_</span><span class="o">&lt;</span><span class="n">cu_ver</span><span class="o">&gt;</span>
+</pre></div>
+</div>
+<p>where &lt;cu_ver&gt; is the desired CUDA version.</p>
+<p>Alternatively, download the appropriate .whl file for your computer architecture, Python and CUDA version from <a class="reference external" href="https://github.com/CVCUDA/CV-CUDA/releases">the asset section of the latest release</a></p>
 <p>Execute the following command to install appropriate CV-CUDA Python wheel</p>
-<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span><span class="w"> </span><span class="n">install</span><span class="w"> </span><span class="n">cvcuda_</span><span class="o">&lt;</span><span class="n">cu_ver</span><span class="o">&gt;-&lt;</span><span class="n">x</span><span class="p">.</span><span class="n">x</span><span class="p">.</span><span class="n">x</span><span class="o">&gt;-</span><span class="n">cp</span><span class="o">&lt;</span><span class="n">py_ver</span><span class="o">&gt;-</span><span class="n">cp</span><span class="o">&lt;</span><span class="n">py_ver</span><span class="o">&gt;-</span><span class="n">linux_</span><span class="o">&lt;</span><span class="n">arch</span><span class="o">&gt;</span><span class="p">.</span><span class="n">whl</span>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span><span class="w"> </span><span class="n">install</span><span class="w"> </span><span class="p">.</span><span class="o">/</span><span class="n">cvcuda_</span><span class="o">&lt;</span><span class="n">cu_ver</span><span class="o">&gt;-&lt;</span><span class="n">x</span><span class="p">.</span><span class="n">x</span><span class="p">.</span><span class="n">x</span><span class="o">&gt;-</span><span class="n">cp</span><span class="o">&lt;</span><span class="n">py_ver</span><span class="o">&gt;-</span><span class="n">cp</span><span class="o">&lt;</span><span class="n">py_ver</span><span class="o">&gt;-</span><span class="n">linux_</span><span class="o">&lt;</span><span class="n">arch</span><span class="o">&gt;</span><span class="p">.</span><span class="n">whl</span>
 </pre></div>
 </div>
 <p>where &lt;cu_ver&gt; is the desired CUDA version, &lt;x.x.x&gt; the CV-CUDA release version, &lt;py_ver&gt; the desired Python version and &lt;arch&gt; the desired architecture.</p>
@@ -1522,7 +1528,7 @@ Default installation path is /opt/nvidia/cvcuda0/bin.</p>
 
   <div role="contentinfo">
     <p>&#169; Copyright 2022-2024, NVIDIA..
-      <span class="lastupdated">Last updated on Feb 28, 2025.
+      <span class="lastupdated">Last updated on Mar 03, 2025.
       </span></p>
   </div>
 

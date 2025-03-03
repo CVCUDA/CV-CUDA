@@ -19,4 +19,4 @@ NonMaximumSuppression
 
 .. automodule:: cvcuda
   :noindex:
-  :members: nms_into, nms
+  :members: nms, nms_into

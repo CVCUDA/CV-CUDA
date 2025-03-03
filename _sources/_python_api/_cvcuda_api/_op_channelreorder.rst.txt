@@ -19,4 +19,4 @@ ChannelReorder
 
 .. automodule:: cvcuda
   :noindex:
-  :members: channelreorder, channelreorder_into
+  :members: channelreorder_into, channelreorder

@@ -1425,6 +1425,10 @@
 <span id="id1"></span><h1>v0.14.0-beta<a class="headerlink" href="#v0-14-0-beta" title="Link to this heading"></a></h1>
 <section id="release-highlights">
 <h2>Release Highlights<a class="headerlink" href="#release-highlights" title="Link to this heading"></a></h2>
+<p>Python x86_64 wheels are now available on PyPi, <a class="reference external" href="https://pypi.org/project/cvcuda-cu11/">cvcuda-cu11</a> and <a class="reference external" href="https://pypi.org/project/cvcuda-cu12/">cvcuda-cu12</a> for CUDA 11 and CUDA 12, respectively</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span><span class="w"> </span><span class="n">install</span><span class="w"> </span><span class="n">cvcuda</span><span class="o">-</span><span class="n">cu</span><span class="o">&lt;</span><span class="n">CUDA_VERSION</span><span class="o">&gt;</span>
+</pre></div>
+</div>
 <p>CV-CUDA v0.14.0 includes the following changes:​</p>
 <ul class="simple">
 <li><p><strong>New Features</strong>:​</p>
@@ -1453,6 +1457,7 @@
 <ul class="simple">
 <li><p>Starting with v0.14, aarch64_cu12 packages (deb, tar.xz or wheels) distributed on Github (release “assets”) and Pypi are the SBSA-compatible ones. Jetson builds (deb, tar.xz, whl) can be found in explicitly named “Jetson” archives in Github release assets.</p></li>
 <li><p>We do not provide SBSA-compatible aarch64_cu11 packages yet, this will be addressed in an upcoming release.</p></li>
+<li><p>Only x86_64 wheels are available on PyPi as of 02/28/25. SBSA/Grace CUDA 12 wheels will be added shortly.</p></li>
 </ul>
 <p>For the full list, see main README on <a class="reference external" href="https://github.com/CVCUDA/CV-CUDA">CV-CUDA GitHub</a>.</p>
 </section>
@@ -1487,7 +1492,7 @@
 
   <div role="contentinfo">
     <p>&#169; Copyright 2022-2024, NVIDIA..
-      <span class="lastupdated">Last updated on Feb 28, 2025.
+      <span class="lastupdated">Last updated on Mar 03, 2025.
       </span></p>
   </div>
 

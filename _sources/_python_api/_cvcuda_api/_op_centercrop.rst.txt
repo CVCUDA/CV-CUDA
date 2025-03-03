@@ -19,4 +19,4 @@ CenterCrop
 
 .. automodule:: cvcuda
   :noindex:
-  :members: center_crop_into, center_crop
+  :members: center_crop, center_crop_into

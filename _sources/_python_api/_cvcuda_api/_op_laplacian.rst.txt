@@ -19,4 +19,4 @@ Laplacian
 
 .. automodule:: cvcuda
   :noindex:
-  :members: laplacian_into, laplacian
+  :members: laplacian, laplacian_into
