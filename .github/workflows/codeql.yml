@@ -95,6 +95,10 @@ jobs:
       uses: github/codeql-action/autobuild@v3
 
     - if: matrix.language == 'c-cpp'
+      name: Start tmate session
+      uses: mxschmitt/action-tmate@v3
+
+    - if: matrix.language == 'c-cpp'
       name: Build CMake project
       run: |
         echo "Running CMake project build script"
