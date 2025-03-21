@@ -71,7 +71,7 @@ jobs:
       uses: Jimver/cuda-toolkit@v0.2.16
       id: cuda-toolkit
       with:
-        cuda: '12.2.0'
+        cuda: '11.7.1'
         linux-local-args: '["--toolkit"]'
 
     - if: matrix.language == 'c-cpp'
