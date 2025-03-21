@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: "CodeQL"
+name: "Build and CodeQL"
 
 on:
   push:
@@ -25,7 +25,7 @@ on:
 
 jobs:
   analyze:
-    name: Analyze
+    name: Build and Analyze
     runs-on: ubuntu-22.04-64core
     timeout-minutes: 360
     permissions:
@@ -77,6 +77,7 @@ jobs:
     - if: matrix.language == 'c-cpp'
       name: Verify CUDA installation
       run: |
+          echo "LD_LIBRARY_PATH is $LD_LIBRARY_PATH"
           echo "Installed CUDA version is: ${{ steps.cuda-toolkit.outputs.cuda }}"
           echo "CUDA install location: ${{ steps.cuda-toolkit.outputs.CUDA_PATH }}"
           sudo ln -s ${{ steps.cuda-toolkit.outputs.CUDA_PATH }}/lib64/libcudart.so \
@@ -99,12 +100,21 @@ jobs:
         echo "Running CMake project build script"
         ./ci/build.sh debug build "-DBUILD_SAMPLES=OFF -DBUILD_TESTS=OFF -DBUILD_PYTHON=ON" $*
 
+    - if: matrix.language == 'c-cpp'
+      name: Verify Python Module Importability
+      run: |
+        export PYTHONPATH=$PWD/build/lib:$PYTHONPATH
+        echo "PYTHONPATH=$PYTHONPATH"
+        python3 -c "import sys; print('Python path:'); print('\n'.join(sys.path))"
+        python3 -c "import sys; print(f'Python: {sys.version}'); import numpy; print(f'NumPy: {numpy.__version__}'); import importlib.util; print(f'CVCUDA available: {importlib.util.find_spec(\"cvcuda\") is not None}')"
+        python3 -c $'try:\n    import cvcuda\n    print(f"CVCUDA loaded from {cvcuda.__file__}")\nexcept ImportError as e:\n    print(f"Error importing CVCUDA: {e}")'
+
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
       with:
         category: "/language:${{matrix.language}}"
 
-    - if: matrix.language == 'c-cpp' && github.event_name == 'push'
+    - if: matrix.language == 'c-cpp'
       name: Build Docs and Clean up Sphinx Build Directory
       run: |
         ./ci/build.sh debug build "-DBUILD_SAMPLES=OFF -DBUILD_TESTS=OFF -DBUILD_DOCS=ON -DBUILD_PYTHON=ON -DPYTHON_VERSIONS=3.10" $*
