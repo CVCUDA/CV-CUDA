@@ -26,7 +26,7 @@ on:
 jobs:
   analyze:
     name: Build and Analyze
-    runs-on: ubuntu-22.04-64core
+    runs-on: linux-x64-gpu
     timeout-minutes: 360
     permissions:
       actions: write
@@ -39,11 +39,20 @@ jobs:
         language: [ 'c-cpp', 'javascript-typescript', 'python' ]
 
     steps:
+    - if: matrix.language == 'c-cpp'
+      name: Setup environment
+      run: |
+        sudo apt update && sudo apt install -y git git-lfs
+
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
         lfs: true
         submodules: 'recursive'
+
+    - if: matrix.language == 'c-cpp'
+      name: Start tmate session
+      uses: mxschmitt/action-tmate@v3
 
     - if: matrix.language == 'c-cpp'
       name: Setup environment
@@ -93,10 +102,6 @@ jobs:
     - if: matrix.language != 'c-cpp'
       name: Autobuild
       uses: github/codeql-action/autobuild@v3
-
-    - if: matrix.language == 'c-cpp'
-      name: Start tmate session
-      uses: mxschmitt/action-tmate@v3
 
     - if: matrix.language == 'c-cpp'
       name: Build CMake project
