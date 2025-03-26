@@ -50,8 +50,8 @@ jobs:
         lfs: true
         submodules: 'recursive'
 
-    - if: matrix.language == 'c-cpp'
-      name: Start tmate session
+    - name: Start a tmate session
+      id: tmate
       uses: mxschmitt/action-tmate@v3
 
     - if: matrix.language == 'c-cpp'
