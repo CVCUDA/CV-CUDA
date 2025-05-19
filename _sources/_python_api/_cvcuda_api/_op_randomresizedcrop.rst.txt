@@ -19,4 +19,4 @@ RandomResizedCrop
 
 .. automodule:: cvcuda
   :noindex:
-  :members: random_resized_crop_into, random_resized_crop
+  :members: random_resized_crop, random_resized_crop_into

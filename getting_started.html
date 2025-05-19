@@ -62,16 +62,21 @@
 </li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="samples.html">Samples</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="samples/cpp_samples.html">C++</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="samples/cpp_samples/cropresize.html">Crop and Resize</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#quick-start">Quick Start</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="samples/hello_world.html">CV-CUDA Hello World</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="samples/hello_world.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l4"><a class="reference internal" href="samples/hello_world.html#writing-the-hello-world-app">Writing the Hello World App</a></li>
+<li class="toctree-l4"><a class="reference internal" href="samples/hello_world.html#running-the-sample">Running the Sample</a></li>
+<li class="toctree-l4"><a class="reference internal" href="samples/hello_world.html#command-line-interface">Command Line Interface</a></li>
+<li class="toctree-l4"><a class="reference internal" href="samples/hello_world.html#next-steps">Next Steps</a></li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="samples/python_samples.html">Python</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="samples/python_samples/classification.html">Classification</a></li>
-<li class="toctree-l4"><a class="reference internal" href="samples/python_samples/segmentation.html">Semantic Segmentation</a></li>
-<li class="toctree-l4"><a class="reference internal" href="samples/python_samples/segmentation_triton.html">Semantic Segmentation using Triton</a></li>
-<li class="toctree-l4"><a class="reference internal" href="samples/python_samples/object_detection.html">Object Detection</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#advanced-topics">Advanced Topics</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="samples.html">Samples</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="samples/cpp_samples.html">C++</a></li>
+<li class="toctree-l4"><a class="reference internal" href="samples/python_samples.html">Python</a></li>
 </ul>
 </li>
 </ul>
@@ -1259,6 +1264,14 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Release Notes</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="relnotes/v0.15.0-beta.html">v0.15.0-beta</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="relnotes/v0.15.0-beta.html#release-highlights">Release Highlights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="relnotes/v0.15.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="relnotes/v0.15.0-beta.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="relnotes/v0.15.0-beta.html#resources">Resources</a></li>
+<li class="toctree-l2"><a class="reference internal" href="relnotes/v0.15.0-beta.html#acknowledgements">Acknowledgements</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="relnotes/v0.14.0-beta.html">v0.14.0-beta</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="relnotes/v0.14.0-beta.html#release-highlights">Release Highlights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="relnotes/v0.14.0-beta.html#compatibility-and-known-limitations">Compatibility and Known Limitations</a></li>
@@ -1423,14 +1436,31 @@
              
   <section id="getting-started">
 <span id="id1"></span><h1>Getting Started<a class="headerlink" href="#getting-started" title="Link to this heading"></a></h1>
-<p>This section guides you step-by-step towards building different types of Computer Vision and Deep Learning pipelines accelerated on the GPU using the CV-CUDA APIs. Before getting started, please review the <a class="reference internal" href="prerequisites.html#prerequisites"><span class="std std-ref">Prerequisites</span></a> and <a class="reference internal" href="bestpractices.html#bestpractices"><span class="std std-ref">Best Practices</span></a>. Once reviewed, head over to the <a class="reference internal" href="samples.html#samples"><span class="std std-ref">Samples</span></a>’ section which showcases various CV-CUDA samples.</p>
+<p>This section guides you step-by-step towards building different types of Computer Vision and Deep Learning pipelines accelerated on the GPU using the CV-CUDA APIs. Before getting started, please review the <a class="reference internal" href="prerequisites.html#prerequisites"><span class="std std-ref">Prerequisites</span></a> and <a class="reference internal" href="bestpractices.html#bestpractices"><span class="std std-ref">Best Practices</span></a>.</p>
 <div class="toctree-wrapper compound">
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="prerequisites.html">Prerequisites</a></li>
 <li class="toctree-l1"><a class="reference internal" href="bestpractices.html">Best Practices</a></li>
+</ul>
+</div>
+<section id="quick-start">
+<h2>Quick Start<a class="headerlink" href="#quick-start" title="Link to this heading"></a></h2>
+<p>If you’re new to CV-CUDA, we recommend starting here. This simple <a class="reference internal" href="samples/hello_world.html#hello-world"><span class="std std-ref">Hello World Tutorial</span></a> will help you understand the basic concepts and workflow of CV-CUDA.</p>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="samples/hello_world.html">CV-CUDA Hello World</a></li>
+</ul>
+</div>
+</section>
+<section id="advanced-topics">
+<h2>Advanced Topics<a class="headerlink" href="#advanced-topics" title="Link to this heading"></a></h2>
+<p>Once you’re comfortable with the basics, you can explore more advanced topics in <a class="reference internal" href="samples.html#samples"><span class="std std-ref">Samples</span></a> for a full machine learning application.</p>
+<div class="toctree-wrapper compound">
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="samples.html">Samples</a></li>
 </ul>
 </div>
+</section>
 </section>
 
 
@@ -1445,7 +1475,7 @@
 
   <div role="contentinfo">
     <p>&#169; Copyright 2022-2024, NVIDIA..
-      <span class="lastupdated">Last updated on Mar 03, 2025.
+      <span class="lastupdated">Last updated on May 19, 2025.
       </span></p>
   </div>
 

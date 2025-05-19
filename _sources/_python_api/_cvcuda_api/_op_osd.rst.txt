@@ -19,4 +19,4 @@ OSD
 
 .. automodule:: cvcuda
   :noindex:
-  :members: osd, osd_into
+  :members: osd_into, osd
