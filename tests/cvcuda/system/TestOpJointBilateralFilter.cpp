@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -656,7 +656,7 @@ TEST_P(OpJointBilateralFilterVarshape_Negative, op)
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
-TEST(OpJointBilateralFilter_Negative, varshape_hasNotSameFormat)
+TEST(OpJointBilateralFilter_Negative, varshape_hasDifferentFormat)
 {
     nvcv::ImageFormat fmt = nvcv::FMT_RGB8;
 

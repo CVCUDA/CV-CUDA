@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,6 +19,7 @@
 
 #include <common/TensorDataUtils.hpp>
 #include <common/TypedTests.hpp>
+#include <common/ValueTests.hpp>
 #include <cvcuda/OpReformat.hpp>
 #include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/Image.hpp>
@@ -179,4 +180,43 @@ TYPED_TEST(OpReformat, correct_output)
                         numCols, numChannels);
 
     EXPECT_EQ(testVec, goldVec);
+}
+
+// clang-format off
+NVCV_TEST_SUITE_P(OpReformat_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat, int, int>{
+    // inFmt, outFmt, inputBatches, outputBatches
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, 2, 1},
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, 1, 2},
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, 6, 3},
+    {nvcv::FMT_RGB8p, nvcv::FMT_RGBf32, 1, 1},
+    {nvcv::FMT_RGBf32, nvcv::FMT_RGB8p, 1, 1},
+    {nvcv::FMT_RGBf16, nvcv::FMT_RGBf16p, 1, 1}
+});
+
+// clang-format on
+
+TEST_P(OpReformat_Negative, op)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::ImageFormat inputFmt      = GetParamValue<0>();
+    nvcv::ImageFormat outputFmt     = GetParamValue<1>();
+    int               inputBatches  = GetParamValue<2>();
+    int               outputBatches = GetParamValue<3>();
+
+    nvcv::Tensor inTensor  = nvcv::util::CreateTensor(inputBatches, 24, 24, inputFmt);
+    nvcv::Tensor outTensor = nvcv::util::CreateTensor(outputBatches, 24, 24, outputFmt);
+
+    // run operator
+    cvcuda::Reformat reformatOp;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { reformatOp(stream, inTensor, outTensor); }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpReformat_Negative, create_null_handle)
+{
+    EXPECT_EQ(cvcudaReformatCreate(nullptr), NVCV_ERROR_INVALID_ARGUMENT);
 }

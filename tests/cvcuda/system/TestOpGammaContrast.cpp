@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -347,7 +347,129 @@ TEST_P(OpGammaContrast, varshape_correct_output)
     }
 }
 
-TEST(OpGammaContrast_negative, create_with_null_handle)
+// clang-format off
+
+NVCV_TEST_SUITE_P(OpGammaContrastVarshape_negative, test::ValueList<int, nvcv::ImageFormat, nvcv::ImageFormat>
+{
+    // batches, inFmt, outFmt
+    {6, nvcv::FMT_U8, nvcv::FMT_U8}, // larger than max batches
+    {2, nvcv::FMT_RGBA8, nvcv::FMT_RGBA8}, // larger than max channels
+    {2, nvcv::FMT_RGB8p, nvcv::FMT_RGB8}, // different format
+    {2, nvcv::FMT_RGB8p, nvcv::FMT_RGB8p},
+    {2, nvcv::FMT_RGBf16, nvcv::FMT_RGBf16},
+    {2, nvcv::FMT_U8, nvcv::FMT_S8},
+});
+
+// clang-format on
+
+TEST_P(OpGammaContrastVarshape_negative, op)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    int               batches = GetParamValue<0>();
+    nvcv::ImageFormat inFmt   = GetParamValue<1>();
+    nvcv::ImageFormat outFmt  = GetParamValue<2>();
+
+    int width       = 24;
+    int height      = 24;
+    int maxBatches  = 5;
+    int maxChannels = 3;
+
+    // Create input varshape
+    std::default_random_engine         rng;
+    std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
+    std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
+    std::vector<nvcv::Image>           imgSrc;
+
+    for (int i = 0; i < batches; ++i)
+    {
+        imgSrc.emplace_back(nvcv::Size2D{udistWidth(rng), udistHeight(rng)}, inFmt);
+    }
+    nvcv::ImageBatchVarShape batchSrc(batches);
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+
+    // Create output varshape
+    std::vector<nvcv::Image> imgDst;
+    for (int i = 0; i < batches; ++i)
+    {
+        imgDst.emplace_back(imgSrc[i].size(), outFmt);
+    }
+    nvcv::ImageBatchVarShape batchDst(batches);
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    nvcv::Tensor gammaTensor({{batches}, "N"}, nvcv::TYPE_F32); // not per channel
+
+    // Run operator
+    cvcuda::GammaContrast gammacontrastOp(maxBatches, maxChannels);
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { gammacontrastOp(stream, batchSrc, batchDst, gammaTensor); }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpGammaContrastVarshape_negative, varshape_hasDifferentFormat)
+{
+    cudaStream_t stream;
+    EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    const int batches     = 5;
+    int       maxChannels = 4;
+
+    int srcWidthBase  = 24;
+    int srcHeightBase = 24;
+
+    nvcv::ImageFormat fmt = nvcv::FMT_RGB8;
+
+    std::vector<std::tuple<nvcv::ImageFormat, nvcv::ImageFormat>> testSet{
+        {nvcv::FMT_RGBA8,  nvcv::FMT_RGB8},
+        { nvcv::FMT_RGB8, nvcv::FMT_RGBA8}
+    };
+
+    for (auto testCase : testSet)
+    {
+        nvcv::ImageFormat inputFmtExtra  = std::get<0>(testCase);
+        nvcv::ImageFormat outputFmtExtra = std::get<1>(testCase);
+
+        // Create input and output
+        std::default_random_engine         randEng;
+        std::uniform_int_distribution<int> rndSrcWidth(srcWidthBase * 0.8, srcWidthBase * 1.1);
+        std::uniform_int_distribution<int> rndSrcHeight(srcHeightBase * 0.8, srcHeightBase * 1.1);
+
+        nvcv::Tensor gammaTensor({{batches}, "N"}, nvcv::TYPE_F32); // not per channel
+
+        std::vector<nvcv::Image> imgSrc, imgDst;
+
+        for (int i = 0; i < batches - 1; ++i)
+        {
+            int tmpWidth  = i == 0 ? srcWidthBase : rndSrcWidth(randEng);
+            int tmpHeight = i == 0 ? srcHeightBase : rndSrcHeight(randEng);
+
+            imgSrc.emplace_back(nvcv::Size2D{tmpWidth, tmpHeight}, fmt);
+            imgDst.emplace_back(nvcv::Size2D{tmpWidth, tmpHeight}, fmt);
+        }
+        imgSrc.emplace_back(imgSrc[0].size(), inputFmtExtra);
+        imgDst.emplace_back(imgSrc.back().size(), outputFmtExtra);
+
+        nvcv::ImageBatchVarShape batchSrc(batches);
+        batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+
+        nvcv::ImageBatchVarShape batchDst(batches);
+        batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+        // Run operator
+        cvcuda::GammaContrast gammacontrastOp(batches, maxChannels);
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+                  nvcv::ProtectCall([&] { gammacontrastOp(stream, batchSrc, batchDst, gammaTensor); }));
+    }
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpGammaContrastVarshape_negative, create_with_null_handle)
 {
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaGammaContrastCreate(nullptr, 4, 4));
 }

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -84,17 +84,17 @@ public:
             m_wdth{width},
             m_hght{height} {_init(addC, remapC<N>(manip)); }
 
-    __host__ __device__ __forceinline__
+    __device__ __forceinline__
     int width() const { return m_wdth; }
 
-    __host__ __device__ __forceinline__
+    __device__ __forceinline__
     int height() const { return m_hght; }
 
-    __host__ __device__ __forceinline__
+    __device__ __forceinline__
     DstT *ptr(const uint n, const int y, const int x) { return m_dst + n * m_addN + (y * m_addY + x * m_addX); }
 
     template <typename SrcT, class = cuda::Require<cuda::HasTypeTraits<SrcT> > >
-    __host__ __device__ __forceinline__
+    __device__ __forceinline__
     void operator()(const uint n, const int y, const int x, const SrcT val)
     {
         static_assert(cuda::NumElements<SrcT> == N);

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -114,7 +114,7 @@ NVCVImageRequirements Image::CalcRequirements(Size2D size, ImageFormat fmt, int3
 
         reqs.planeRowStride[p] = util::RoundUpPowerOfTwo((int64_t)planeSize.w * fmt.planePixelStrideBytes(p), rowAlign);
 
-        AddBuffer(reqs.mem.cudaMem, reqs.planeRowStride[p] * planeSize.h, baseAlign);
+        AddBuffer(reqs.mem.cudaMem, (int64_t)reqs.planeRowStride[p] * planeSize.h, baseAlign);
     }
 
     return reqs;
@@ -183,7 +183,7 @@ void Image::exportData(NVCVImageData &data) const
         plane.rowStride = m_reqs.planeRowStride[p];
         plane.basePtr   = reinterpret_cast<NVCVByte *>(m_memBuffer) + planeOffsetBytes;
 
-        planeOffsetBytes += plane.height * plane.rowStride;
+        planeOffsetBytes += (int64_t)plane.height * plane.rowStride;
     }
 
     // Due to addr alignment, the allocated buffer could be larger than what we need,

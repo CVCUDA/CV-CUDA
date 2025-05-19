@@ -18,6 +18,20 @@
 # SDIR is the directory where this script is located
 SDIR=$(dirname "$(readlink -f "$0")")
 
+# Auto-detect architecture for tagging
+host_arch=$(uname -m)
+
+# Validate supported architectures for tagging
+case $host_arch in
+    x86_64|aarch64)
+        # Supported architecture
+        ;;
+    *)
+        # Use the detected arch name directly for unsupported, but warn
+        echo "Error: Unsupported host architecture '$host_arch'"
+        ;;
+esac
+
 # shellcheck source=docker/config
 . "$SDIR/config"
 
@@ -70,5 +84,5 @@ docker run --gpus=all --net=host --pull always -ti \
     -v /var/tmp:/var/tmp \
     -v $SDIR/..:$HOME/cvcuda \
     $extra_args \
-    $IMAGE_URL_BASE/devel-linux:$VER_UBUNTU-$VER_CUDA-$VER_NUMPY \
+    $IMAGE_URL_BASE/devel-linux-${host_arch}:$VER_UBUNTU-$VER_CUDA-$VER_NUMPY \
     /usr/bin/bash -c "mkdir -p $HOME && chown $USER:$USER $HOME && su - $USER -c \"$extra_cmds\" && su - $USER"

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -1944,7 +1944,7 @@ void Label::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::
                                   "NVCV_REMOVE_ISLANDS_OUTSIDE_MASK_ONLY");
         }
 
-        auto maskData = in.exportData<nvcv::TensorDataStridedCuda>();
+        auto maskData = mask.exportData<nvcv::TensorDataStridedCuda>();
         if (!maskData)
         {
             throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Mask tensor must be cuda-accessible");

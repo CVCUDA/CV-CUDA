@@ -18,13 +18,13 @@
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-yellogreen.svg)](https://opensource.org/licenses/Apache-2.0)
 
-![Version](https://img.shields.io/badge/Version-v0.14.0--beta-blue)
+![Version](https://img.shields.io/badge/Version-v0.15.0--beta-blue)
 
 ![Platform](https://img.shields.io/badge/Platform-linux--64_%7C_win--64_wsl2%7C_aarch64-gray)
 
 [![CUDA](https://img.shields.io/badge/CUDA-v11.7-%2376B900?logo=nvidia)](https://developer.nvidia.com/cuda-toolkit-archive)
 [![GCC](https://img.shields.io/badge/GCC-v11.0-yellow)](https://gcc.gnu.org/gcc-11/changes.html)
-[![Python](https://img.shields.io/badge/python-v3.8_%7c_v3.9_%7c_v3.10%7c_v3.11-blue?logo=python)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-v3.8_%7c_v3.9_%7c_v3.10%7c_v3.11%7c_v3.12%7c_v3.13-blue?logo=python)](https://www.python.org/)
 [![CMake](https://img.shields.io/badge/CMake-v3.20-%23008FBA?logo=cmake)](https://cmake.org/)
 
 CV-CUDA is an open-source project that enables building efficient cloud-scale
@@ -44,21 +44,21 @@ To get a local copy up and running follow these steps.
 
 |CV-CUDA Build|Platform|CUDA Version|CUDA Compute Capability|Hardware Architectures|Nvidia Driver|Python Versions|Supported Compilers (build from source)|API compatibility with prebuilt binaries|OS/Linux distributions tested with prebuilt packages|
 |-|-|-|-|-|-|-|-|-|-|
-|x86_64_cu11|x86_64|11.7 or later|SM7 and later|Volta, Turing, Ampere, Hopper, Ada Lovelace|r525 or later*** |3.8, 3.9, 3.10, 3.11|gcc>=9* <br> gcc>=11**|gcc>=9|ManyLinux2014-compliant, Ubuntu>= 20.04<br>WSL2/Ubuntu>=20.04|
-|x86_64_cu12|x86_64|12.2 or later|SM7 and later|Volta, Turing, Ampere, Hopper, Ada Lovelace|r525 or later***|3.8, 3.9, 3.10, 3.11|gcc>=9* <br> gcc>=11**|gcc>=9|ManyLinux2014-compliant, Ubuntu>= 20.04<br>WSL2/Ubuntu>=20.04|
-|aarch64_cu12|aarch64 SBSA****|12.2 or later|SM7 and later|ARM SBSA: Volta, Turing, Ampere, Hopper, Ada Lovelace, Grace Hopper|r525 or later***|3.8, 3.9, 3.10, 3.11|gcc>=9* <br> gcc>=11**|gcc>=9|ManyLinux2014-compliant, Ubuntu>= 20.04|
+|x86_64_cu11|x86_64|11.7 or later|SM7 and later|Volta, Turing, Ampere, Ada Lovelace, Hopper|r525 or later*** |3.8 - 3.13|gcc>=9* <br> gcc>=11**|gcc>=9|ManyLinux2014-compliant, Ubuntu>= 20.04<br>WSL2/Ubuntu>=20.04|
+|x86_64_cu12|x86_64|12.2 or later|SM7 and later|Volta, Turing, Ampere, Ada Lovelace, Hopper|r525 or later***|3.8 - 3.13|gcc>=9* <br> gcc>=11**|gcc>=9|ManyLinux2014-compliant, Ubuntu>= 20.04<br>WSL2/Ubuntu>=20.04|
+|aarch64_cu11|aarch64 SBSA****|11.7 or later|SM7 and later|ARM SBSA (incl. Grace): Volta, Turing, Ampere, Ada Lovelace, Hopper|r525 or later***|3.8 - 3.13|gcc>=9* <br> gcc>=11**|gcc>=9|ManyLinux2014-compliant, Ubuntu>= 20.04|
+|aarch64_cu12|aarch64 SBSA****|12.2 or later|SM7 and later|ARM SBSA (incl. Grace): Volta, Turing, Ampere, Ada Lovelace, Hopper|r525 or later***|3.8 - 3.13|gcc>=9* <br> gcc>=11**|gcc>=9|ManyLinux2014-compliant, Ubuntu>= 20.04|
 |aarch64_cu11|aarch64 Jetson****|11.4|SM7 and later|Jetson AGX Orin|JetPack 5.1|3.8|gcc>=9* <br> gcc>=11**|gcc>=9|Jetson Linux 35.x|
 |aarch64_cu12|aarch64 Jetson****|12.2|SM7 and later|Jetson AGX Orin, IGX Orin + Ampere RTX6000, IGX Orin + ADA RTX6000|JetPack 6.0 DP, r535 (IGX OS v0.6)|3.10|gcc>=9* <br> gcc>=11**|gcc>=9|Jetson Linux 36.2<br> IGX OS v0.6|
 
 \* partial build, no test module (see Known Limitations) <br>
 \** full build, including test module <br>
 \*** [samples][CV-CUDA Samples] require driver r535 or later to run and are only officially supported with CUDA 12. <br>
-\**** starting with v0.14, aarch64_cu12 packages (deb, tar.xz or wheels) distributed on Github (release "assets") or Pypi are SBSA-compatible unless noted otherwise. Jetson builds (deb, tar.xz, whl) can be found in explicitly named "Jetson" archives in Github release assets.
+\**** starting with v0.14, aarch64 packages (deb, tar.xz or wheels) distributed on Github (release "assets") or Pypi are SBSA-compatible unless noted otherwise. Jetson builds (deb, tar.xz, whl) can be found in explicitly named "Jetson" archives in Github release assets.
 
 ### Known limitations and issues
 
-- Starting with v0.14, aarch64_cu12 packages (deb, tar.xz or wheels) distributed on Github (release "assets") and Pypi are the SBSA-compatible ones. Jetson builds (deb, tar.xz, whl) can be found in explicitly named "Jetson" archives in Github release assets.
-- We do not provide SBSA-compatible aarch64_cu11 packages yet, this will be addressed in an upcoming release.
+- Starting with v0.14, aarch64 packages (deb, tar.xz or wheels) distributed on Github (release "assets") and Pypi are the SBSA-compatible ones. Jetson builds (deb, tar.xz, whl) can be found in explicitly named "Jetson" archives in Github release assets.
 - For GCC versions lower than 11.0, C++17 support needs to be enabled when compiling CV-CUDA.
 - The C++ test module cannot build with gcc<11 (requires specific C++-20 features).  With gcc-9 or gcc-10, please build with option `-DBUILD_TESTS=0`
 - [CV-CUDA Samples] require driver r535 or later to run and are only officially supported with CUDA 12.
@@ -83,10 +83,10 @@ Check pypi.org projects for support for your platform of choice, [cvcuda-cu11][c
 
 Use the following command to install the latest available version:
    ```shell
-   pip install cvcuda_<cu_ver>
+   pip install cvcuda-<cu_ver>
    ```
 
-where <cu_ver> is the desired CUDA version.
+where <cu_ver> is the desired CUDA version, 'cu11' or 'cu12'.
 
 Alternatively, download the appropriate .whl file for your computer architecture, Python and CUDA version from the release assets of current CV-CUDA release. Release information of all CV-CUDA releases can be found [here][CV-CUDA GitHub Releases]. Once downloaded, execute the `pip install` command to install the Python wheel. For example:
    ```shell
@@ -320,6 +320,10 @@ If the script is run from a different location, provide the path to the CV-CUDA 
 
 CV-CUDA operates under the [Apache-2.0](LICENSE.md) license.
 
+## Third-party software redistribution
+
+See [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES.md) for licenses of software redistributed as part of CV-CUDA's code or binary packages.
+
 ## Security
 
 CV-CUDA, as a NVIDIA program, is committed to secure development practices.
@@ -329,9 +333,25 @@ Please read our [Security](SECURITY.md) page to learn more.
 
 CV-CUDA is developed jointly by NVIDIA and ByteDance.
 
+References:
+
+- [Optimizing Microsoft Bing Visual Search with NVIDIA Accelerated Libraries][bing-blog]
+- [Accelerating AI Pipelines: Boosting Visual Search Efficiency, GTC 2025][bing-gtc25]
+- [Optimize Short-Form Video Processing Toward the Speed of Light, GTC 2025][cosmos-splitting-gtc25]
+- [CV-CUDA Increasing Throughput and Reducing Costs for AI-Based Computer Vision with CV-CUDA][increased-throughput-blog]
+- [NVIDIA Announces Microsoft, Tencent, Baidu Adopting CV-CUDA for Computer Vision AI][cv-cuda-announcement]
+- [CV-CUDA helps Tencent Cloud audio and video PaaS platform achieve full-process GPU acceleration for video enhancement AI][tencent-blog]
+
 [NVIDIA Develop]: https://developer.nvidia.com/
 [ByteDance]: https://www.bytedance.com/
 [CV-CUDA GitHub Releases]: https://github.com/CVCUDA/CV-CUDA/releases
 [CV-CUDA Samples]: https://github.com/CVCUDA/CV-CUDA/blob/main/samples/README.md
 [cvcuda-cu11]: https://pypi.org/project/cvcuda-cu11/
 [cvcuda-cu12]: https://pypi.org/project/cvcuda-cu12/
+
+[bing-blog]: https://developer.nvidia.com/blog/optimizing-microsoft-bing-visual-search-with-nvidia-accelerated-libraries/
+[bing-gtc25]: https://www.nvidia.com/en-us/on-demand/session/gtc25-s71676/
+[cosmos-splitting-gtc25]: https://www.nvidia.com/en-us/on-demand/session/gtc25-s73178/
+[increased-throughput-blog]: https://developer.nvidia.com/blog/increasing-throughput-and-reducing-costs-for-computer-vision-with-cv-cuda/
+[cv-cuda-announcement]: https://blogs.nvidia.com/blog/2023/03/21/cv-cuda-ai-computer-vision/
+[tencent-blog]: https://developer.nvidia.com/zh-cn/blog/cv-cuda-high-performance-image-processing/

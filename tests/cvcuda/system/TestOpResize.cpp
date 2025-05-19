@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -314,14 +314,14 @@ TEST_P(OpResize, varshape_correct_output)
 }
 
 // clang-format off
-NVCV_TEST_SUITE_P(OpResize_Negative, test::ValueList<NVCVStatus, nvcv::ImageFormat, nvcv::ImageFormat, int, int, NVCVInterpolationType>{
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U16, 1, 1, NVCV_INTERP_NEAREST}, // in/out image data type not same
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_RGB8p, 1, 1, NVCV_INTERP_NEAREST}, // in/out image layout not same
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8p, nvcv::FMT_U8, 1, 1, NVCV_INTERP_NEAREST}, // in/out image layout not NHWC
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8, nvcv::FMT_RGB8, 1, 2, NVCV_INTERP_NEAREST}, // in/out image num are different
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_RGB8, 1, 1, NVCV_INTERP_NEAREST}, // in/out image channels are different
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F16, nvcv::FMT_F16, 1, 1, NVCV_INTERP_NEAREST}, // invalid datatype
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F16, nvcv::FMT_F16, 1, 1, NVCV_INTERP_HAMMING}, // invalid interpolation
+NVCV_TEST_SUITE_P(OpResize_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat, int, int, NVCVInterpolationType>{
+    {nvcv::FMT_U8, nvcv::FMT_U16, 1, 1, NVCV_INTERP_NEAREST}, // in/out image data type not same
+    {nvcv::FMT_U8, nvcv::FMT_RGB8p, 1, 1, NVCV_INTERP_NEAREST}, // in/out image layout not same
+    {nvcv::FMT_RGB8p, nvcv::FMT_U8, 1, 1, NVCV_INTERP_NEAREST}, // in/out image layout not NHWC
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, 1, 2, NVCV_INTERP_NEAREST}, // in/out image num are different
+    {nvcv::FMT_U8, nvcv::FMT_RGB8, 1, 1, NVCV_INTERP_NEAREST}, // in/out image channels are different
+    {nvcv::FMT_F16, nvcv::FMT_F16, 1, 1, NVCV_INTERP_NEAREST}, // invalid datatype
+    {nvcv::FMT_F16, nvcv::FMT_F16, 1, 1, NVCV_INTERP_HAMMING}, // invalid interpolation
 });
 
 // clang-format on
@@ -338,11 +338,10 @@ TEST_P(OpResize_Negative, op)
 
     NVCVInterpolationType interpolation = NVCV_INTERP_NEAREST;
 
-    NVCVStatus              expectedReturnCode = GetParamValue<0>();
-    const nvcv::ImageFormat inputFmt           = GetParamValue<1>();
-    const nvcv::ImageFormat outputFmt          = GetParamValue<2>();
-    int                     numInputImages     = GetParamValue<3>();
-    int                     numOutputImages    = GetParamValue<4>();
+    const nvcv::ImageFormat inputFmt        = GetParamValue<0>();
+    const nvcv::ImageFormat outputFmt       = GetParamValue<1>();
+    int                     numInputImages  = GetParamValue<2>();
+    int                     numOutputImages = GetParamValue<3>();
 
     // Generate input
     nvcv::Tensor imgSrc = nvcv::util::CreateTensor(numInputImages, srcWidth, srcHeight, inputFmt);
@@ -351,7 +350,7 @@ TEST_P(OpResize_Negative, op)
     nvcv::Tensor imgDst = nvcv::util::CreateTensor(numOutputImages, dstWidth, dstHeight, outputFmt);
 
     cvcuda::Resize resizeOp;
-    EXPECT_EQ(expectedReturnCode, nvcv::ProtectCall([&] { resizeOp(stream, imgSrc, imgDst, interpolation); }));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { resizeOp(stream, imgSrc, imgDst, interpolation); }));
 
     EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));

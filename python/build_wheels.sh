@@ -1,6 +1,6 @@
 #!/bin/bash -e
 
-# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,7 +27,6 @@ REPAIRED_WHEEL_DIR="${PYTHON_BUILD_DIR}/repaired_wheels"
 WHEEL_BUILD_DIR="${PYTHON_BUILD_DIR}/build_wheel"
 LIB_DIR="${PYTHON_BUILD_DIR}/cvcuda_cu${CUDA_VERSION_MAJOR}.libs"
 SUPPORTED_PYTHONS=("38" "39" "310" "311" "312" "313")
-PACKAGES=("cvcuda" "nvcv")
 
 detect_platform_tag() {
     if [ -n "${AUDITWHEEL_PLAT}" ]; then
@@ -88,6 +87,9 @@ ln -sf "${PYTHON_BUILD_DIR}/cvcuda" "${WHEEL_BUILD_DIR}/"
 ln -sf "${PYTHON_BUILD_DIR}/nvcv" "${WHEEL_BUILD_DIR}/"
 ln -sf "${LIB_DIR}" "${WHEEL_BUILD_DIR}/cvcuda_cu${CUDA_VERSION_MAJOR}.libs"
 
+echo "Printing currently installed python packages from v-env: $VIRTUAL_ENV and dir: `pwd`."
+${PYTHON_EXECUTABLE} -m pip list
+
 # Build wheel
 echo "Building wheel..."
 pushd "${WHEEL_BUILD_DIR}" > /dev/null
@@ -109,7 +111,7 @@ popd > /dev/null
 echo "Repairing wheel for compliance..."
 ${PYTHON_EXECUTABLE} -m pip install --upgrade auditwheel
 for whl in "${WHEEL_DIR}"/*.whl; do
-    ${PYTHON_EXECUTABLE} -m auditwheel repair "${whl}" --plat "${PLATFORM_TAG}" -w "${REPAIRED_WHEEL_DIR}"
+    ${PYTHON_EXECUTABLE} -m auditwheel repair "${whl}" --plat "${PLATFORM_TAG}" --exclude libcuda.so.1 -w "${REPAIRED_WHEEL_DIR}"
     rm "${whl}"
 done
 

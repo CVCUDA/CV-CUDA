@@ -66,6 +66,7 @@ set(bench_sources
     BenchLabel.cpp
     BenchPairwiseMatcher.cpp
     BenchStack.cpp
+    BenchFindHomography.cpp
 )
 
 # Metatarget for all benchmarks

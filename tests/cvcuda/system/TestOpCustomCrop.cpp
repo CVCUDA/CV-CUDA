@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -186,16 +186,16 @@ TEST_P(OpCustomCrop, CustomCrop_packed)
 }
 
 // clang-format off
-NVCV_TEST_SUITE_P(OpCustomCrop_Negative, test::ValueList<NVCVStatus, nvcv::ImageFormat, nvcv::ImageFormat, int, int, int, int, int, int>{
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 5, 5, 2, 2, 0, 0},
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8, nvcv::FMT_RGB8p, 5, 5, 2, 2, 0, 0},
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGBf32, nvcv::FMT_RGB8, 5, 5, 2, 2, 0, 0},
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8, nvcv::FMT_RGB8, 5, 5, 7, 2, 0, 0}, // invalid width
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8, nvcv::FMT_RGB8, 5, 5, 2, 7, 0, 0}, // invalid height
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8, nvcv::FMT_RGB8, 5, 5, 2, 2, -1, 0}, // invalid x
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8, nvcv::FMT_RGB8, 5, 5, 2, 2, 0, -1}, // invalid y
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8, nvcv::FMT_RGB8, 5, 5, 2, 2, 6, 0}, // invalid x
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8, nvcv::FMT_RGB8, 5, 5, 2, 2, 0, 6}, // invalid y
+NVCV_TEST_SUITE_P(OpCustomCrop_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat, int, int, int, int, int, int>{
+    {nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 5, 5, 2, 2, 0, 0},
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8p, 5, 5, 2, 2, 0, 0},
+    {nvcv::FMT_RGBf32, nvcv::FMT_RGB8, 5, 5, 2, 2, 0, 0},
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, 5, 5, 7, 2, 0, 0}, // invalid width
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, 5, 5, 2, 7, 0, 0}, // invalid height
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, 5, 5, 2, 2, -1, 0}, // invalid x
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, 5, 5, 2, 2, 0, -1}, // invalid y
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, 5, 5, 2, 2, 6, 0}, // invalid x
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, 5, 5, 2, 2, 0, 6}, // invalid y
 });
 
 // clang-format on
@@ -205,15 +205,14 @@ TEST_P(OpCustomCrop_Negative, op)
     cudaStream_t stream;
     EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
-    NVCVStatus        expectedReturnCode = GetParamValue<0>();
-    nvcv::ImageFormat inputFmt           = GetParamValue<1>();
-    nvcv::ImageFormat outputFmt          = GetParamValue<2>();
-    const int         inWidth            = GetParamValue<3>();
-    const int         inHeight           = GetParamValue<4>();
-    const int         cropWidth          = GetParamValue<5>();
-    const int         cropHeight         = GetParamValue<6>();
-    const int         cropX              = GetParamValue<7>();
-    const int         cropY              = GetParamValue<8>();
+    nvcv::ImageFormat inputFmt   = GetParamValue<0>();
+    nvcv::ImageFormat outputFmt  = GetParamValue<1>();
+    const int         inWidth    = GetParamValue<2>();
+    const int         inHeight   = GetParamValue<3>();
+    const int         cropWidth  = GetParamValue<4>();
+    const int         cropHeight = GetParamValue<5>();
+    const int         cropX      = GetParamValue<6>();
+    const int         cropY      = GetParamValue<7>();
 
     const int outWidth       = inWidth;
     const int outHeight      = inHeight;
@@ -226,8 +225,13 @@ TEST_P(OpCustomCrop_Negative, op)
     // run operator
     cvcuda::CustomCrop cropOp;
 
-    EXPECT_EQ(expectedReturnCode, nvcv::ProtectCall([&] { cropOp(stream, imgIn, imgOut, crpRect); }));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { cropOp(stream, imgIn, imgOut, crpRect); }));
 
     EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpCustomCrop_Negative, create_null_handle)
+{
+    EXPECT_EQ(cvcudaCustomCropCreate(nullptr), NVCV_ERROR_INVALID_ARGUMENT);
 }

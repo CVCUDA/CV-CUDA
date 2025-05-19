@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -111,19 +111,19 @@ ErrorCode Histogram::infer(const TensorDataStridedCuda &inData, OptionalTensorCo
 
     if (!(input_format == kNHWC || input_format == kHWC))
     {
-        LOG_ERROR("Invalid DataFormat for calculating histogram" << input_format);
+        LOG_ERROR("Invalid input DataFormat for calculating histogram " << input_format);
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
     if (!(histo_format == kNHWC || histo_format == kHWC))
     {
-        LOG_ERROR("Invalid DataFormat for calculating histogram" << input_format);
+        LOG_ERROR("Invalid histogram DataFormat for calculating histogram " << input_format);
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
     if (data_type != kCV_8U)
     {
-        LOG_ERROR("Invalid DataType for calculating histogram" << data_type);
+        LOG_ERROR("Invalid DataType for calculating histogram " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
     }
 

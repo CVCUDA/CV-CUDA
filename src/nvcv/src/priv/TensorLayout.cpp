@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,6 +20,8 @@
 #include "Exception.hpp"
 
 #include <nvcv/util/Assert.h>
+
+#include <algorithm>
 
 namespace nvcv::priv {
 
@@ -43,7 +45,7 @@ NVCVTensorLayout CreateLayout(const char *beg, const char *end)
 
     NVCVTensorLayout out;
     out.rank = end - beg;
-    memcpy(out.data, beg, out.rank);
+    std::copy(beg, end, out.data);
 
     return out;
 }
@@ -69,11 +71,15 @@ NVCVTensorLayout CreateLayout(const char *descr)
             // Avoids going through the whole descr buffer, which might pose a
             // security hazard.
             char buf[32];
-            strncpy(buf, descr, 31);
-            buf[31] = 0;
+            int  reqs = snprintf(buf, sizeof(buf), "%s", descr);
+            if (reqs < 0)
+            {
+                reqs   = 0;
+                buf[0] = '\0';
+            }
             throw Exception(NVCV_ERROR_INVALID_ARGUMENT)
                 << "Tensor layout description is too big, must have at most 16 labels: " << buf
-                << (strlen(buf) <= 31 ? "" : "...");
+                << (reqs <= static_cast<int>(sizeof(buf)) - 1 ? "" : "...");
         }
 
         out.rank = cur - descr;
@@ -106,7 +112,9 @@ NVCVTensorLayout CreateFirst(const NVCVTensorLayout &layout, int n)
     {
         NVCVTensorLayout out;
         out.rank = std::min(n, layout.rank);
-        memcpy(out.data, layout.data, out.rank);
+        if (out.rank > NVCV_TENSOR_MAX_RANK)
+            throw Exception(NVCV_ERROR_INVALID_ARGUMENT) << "Layout rank must be <= " << NVCV_TENSOR_MAX_RANK;
+        std::copy(layout.data, layout.data + out.rank, out.data);
         return out;
     }
     else
@@ -121,7 +129,9 @@ NVCVTensorLayout CreateLast(const NVCVTensorLayout &layout, int n)
     {
         NVCVTensorLayout out;
         out.rank = std::min(n, layout.rank);
-        memcpy(out.data, layout.data + layout.rank - out.rank, out.rank);
+        if (out.rank > NVCV_TENSOR_MAX_RANK)
+            throw Exception(NVCV_ERROR_INVALID_ARGUMENT) << "Layout rank must be <= " << NVCV_TENSOR_MAX_RANK;
+        std::copy(layout.data + layout.rank - out.rank, layout.data + layout.rank, out.data);
         return out;
     }
     else
@@ -155,7 +165,9 @@ NVCVTensorLayout CreateSubRange(const NVCVTensorLayout &layout, int beg, int end
     out.rank = end - beg;
     if (out.rank > 0)
     {
-        memcpy(out.data, layout.data + beg, out.rank);
+        if (out.rank > NVCV_TENSOR_MAX_RANK)
+            throw Exception(NVCV_ERROR_INVALID_ARGUMENT) << "Layout rank must be <= " << NVCV_TENSOR_MAX_RANK;
+        std::copy(layout.data + beg, layout.data + end, out.data);
     }
     else
     {

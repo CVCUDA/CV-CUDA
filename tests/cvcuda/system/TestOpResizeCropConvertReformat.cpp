@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -564,37 +564,42 @@ TYPED_TEST(OpResizeCropConvertReformat, varshape_correct_output)
     VEC_EXPECT_NEAR(refVec, dstVec, 1);
 }
 
-#define _TEST_ROW(Interp, inputBatch, outputBatch, srcFmt, dstFmt, DstSize, CropPos, SrcType, DstType, returnCode) \
-    ttype::Types<ttype::Value<Interp>, ttype::Value<inputBatch>, ttype::Value<outputBatch>, ttype::Value<srcFmt>,  \
-                 ttype::Value<dstFmt>, ttype::Value<DstSize>, ttype::Value<CropPos>, SrcType, DstType,             \
-                 ttype::Value<returnCode>>
+#define _TEST_ROW(Interp, inputBatch, outputBatch, srcFmt, dstFmt, DstSize, CropPos, ResizeDim, SrcType, DstType,      \
+                  returnCode)                                                                                          \
+    ttype::Types<ttype::Value<Interp>, ttype::Value<inputBatch>, ttype::Value<outputBatch>, ttype::Value<srcFmt>,      \
+                 ttype::Value<dstFmt>, ttype::Value<DstSize>, ttype::Value<CropPos>, ttype::Value<ResizeDim>, SrcType, \
+                 DstType, ttype::Value<returnCode>>
 
 // clang-format off
 NVCV_TYPED_TEST_SUITE(OpResizeCropConvertReformat_Negative,
 ttype::Types<
     // Interpolation, input batch size, output batch size, src fmt, dst fmt, crop dim, crop pos
     // invalid Interpolation
-    _TEST_ROW(NVCV_INTERP_CUBIC, 2, 2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_BGR8, int2(4, 4), int2(0, 0), uchar3, uint8_t, NVCV_ERROR_INVALID_ARGUMENT),
-    _TEST_ROW(NVCV_INTERP_AREA, 2, 2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_BGR8, int2(4, 4), int2(0, 0), uchar3, uint8_t, NVCV_ERROR_INVALID_ARGUMENT),
-    _TEST_ROW(NVCV_INTERP_LANCZOS, 2, 2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_BGR8, int2(4, 4), int2(0, 0), uchar3, uint8_t, NVCV_ERROR_INVALID_ARGUMENT),
+    _TEST_ROW(NVCV_INTERP_CUBIC, 2, 2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_BGR8, int2(4, 4), int2(0, 0), NVCVSize2D(16, 16), uchar3, uint8_t, NVCV_ERROR_INVALID_ARGUMENT),
+    _TEST_ROW(NVCV_INTERP_AREA, 2, 2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_BGR8, int2(4, 4), int2(0, 0), NVCVSize2D(16, 16), uchar3, uint8_t, NVCV_ERROR_INVALID_ARGUMENT),
+    _TEST_ROW(NVCV_INTERP_LANCZOS, 2, 2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_BGR8, int2(4, 4), int2(0, 0), NVCVSize2D(16, 16), uchar3, uint8_t, NVCV_ERROR_INVALID_ARGUMENT),
     // different input/output batch size
-    _TEST_ROW(NVCV_INTERP_LINEAR, 1, 2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_BGR8, int2(4, 4), int2(0, 0), uchar3, uint8_t, NVCV_ERROR_INVALID_ARGUMENT),
-    _TEST_ROW(NVCV_INTERP_LINEAR, 2, 1, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_BGR8, int2(4, 4), int2(0, 0), uchar3, uint8_t, NVCV_ERROR_INVALID_ARGUMENT),
+    _TEST_ROW(NVCV_INTERP_LINEAR, 1, 2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_BGR8, int2(4, 4), int2(0, 0), NVCVSize2D(16, 16), uchar3, uint8_t, NVCV_ERROR_INVALID_ARGUMENT),
+    _TEST_ROW(NVCV_INTERP_LINEAR, 2, 1, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_BGR8, int2(4, 4), int2(0, 0), NVCVSize2D(16, 16), uchar3, uint8_t, NVCV_ERROR_INVALID_ARGUMENT),
     // different channels
-    _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_BGRA8, int2(4, 4), int2(0, 0), uchar3, uint8_t, NVCV_ERROR_NOT_COMPATIBLE),
-    _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_BGRA8, int2(4, 4), int2(0, 0), uchar3, uint8_t, NVCV_ERROR_NOT_COMPATIBLE),
+    _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_BGRA8, int2(4, 4), int2(0, 0), NVCVSize2D(16, 16), uchar3, uint8_t, NVCV_ERROR_NOT_COMPATIBLE),
+    _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_BGRA8, int2(4, 4), int2(0, 0), NVCVSize2D(16, 16), uchar3, uint8_t, NVCV_ERROR_NOT_COMPATIBLE),
     // not equal to 3 channels
-    _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_RGBA8, NVCV_IMAGE_FORMAT_BGRA8, int2(4, 4), int2(0, 0), uchar3, uint8_t, NVCV_ERROR_NOT_COMPATIBLE),
-    _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_RGBA8, NVCV_IMAGE_FORMAT_BGRA8, int2(4, 4), int2(0, 0), uchar3, uint8_t, NVCV_ERROR_NOT_COMPATIBLE),
+    _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_RGBA8, NVCV_IMAGE_FORMAT_BGRA8, int2(4, 4), int2(0, 0), NVCVSize2D(16, 16), uchar3, uint8_t, NVCV_ERROR_NOT_COMPATIBLE),
+    _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_RGBA8, NVCV_IMAGE_FORMAT_BGRA8, int2(4, 4), int2(0, 0), NVCVSize2D(16, 16), uchar3, uint8_t, NVCV_ERROR_NOT_COMPATIBLE),
     // input is not uchar
-    _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_RGBf32, NVCV_IMAGE_FORMAT_BGR8, int2(4, 4), int2(0, 0), uchar3, uint8_t, NVCV_ERROR_NOT_COMPATIBLE),
+    _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_RGBf32, NVCV_IMAGE_FORMAT_BGR8, int2(4, 4), int2(0, 0), NVCVSize2D(16, 16), uchar3, uint8_t, NVCV_ERROR_NOT_COMPATIBLE),
     // output is not uchar/float
-    _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_BGRf16, int2(4, 4), int2(0, 0), uchar3, uint8_t, NVCV_ERROR_NOT_COMPATIBLE),
+    _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_BGRf16, int2(4, 4), int2(0, 0), NVCVSize2D(16, 16), uchar3, uint8_t, NVCV_ERROR_NOT_COMPATIBLE),
     // invalid Crop Range
-    _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_BGR8, int2(4, 4), int2(-1, 0), uchar3, uint8_t, NVCV_ERROR_INVALID_ARGUMENT),
-    _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_BGR8, int2(4, 4), int2(0, -1), uchar3, uint8_t, NVCV_ERROR_INVALID_ARGUMENT),
-    _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_BGR8, int2(32, 4), int2(0, 0), uchar3, uint8_t, NVCV_ERROR_INVALID_ARGUMENT),
-    _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_BGR8, int2(4, 32), int2(0, 0), uchar3, uint8_t, NVCV_ERROR_INVALID_ARGUMENT)
+    _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_BGR8, int2(4, 4), int2(-1, 0), NVCVSize2D(16, 16), uchar3, uint8_t, NVCV_ERROR_INVALID_ARGUMENT),
+    _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_BGR8, int2(4, 4), int2(0, -1), NVCVSize2D(16, 16), uchar3, uint8_t, NVCV_ERROR_INVALID_ARGUMENT),
+    _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_BGR8, int2(32, 4), int2(0, 0), NVCVSize2D(16, 16), uchar3, uint8_t, NVCV_ERROR_INVALID_ARGUMENT),
+    _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_BGR8, int2(4, 32), int2(0, 0), NVCVSize2D(16, 16), uchar3, uint8_t, NVCV_ERROR_INVALID_ARGUMENT),
+    // invalid input layout
+    _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_RGB8p, NVCV_IMAGE_FORMAT_BGR8, int2(4, 4), int2(0, 0), NVCVSize2D(16, 16), uchar3, uint8_t, NVCV_ERROR_NOT_COMPATIBLE),
+    // invalid resize dim
+    _TEST_ROW(NVCV_INTERP_LINEAR, 2, 2, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_BGR8, int2(4, 4), int2(0, 0), NVCVSize2D(0, 0), uchar3, uint8_t, NVCV_ERROR_INVALID_ARGUMENT)
 >);
 // clang-format on
 
@@ -615,22 +620,22 @@ TYPED_TEST(OpResizeCropConvertReformat_Negative, infer_negative_parameter)
     nvcv::ImageFormat srcFormat{ttype::GetValue<TypeParam, 3>};
     nvcv::ImageFormat dstFormat{ttype::GetValue<TypeParam, 4>};
 
-    int2 cropDim = ttype::GetValue<TypeParam, 5>;
-    int2 cropPos = ttype::GetValue<TypeParam, 6>;
+    int2       cropDim   = ttype::GetValue<TypeParam, 5>;
+    int2       cropPos   = ttype::GetValue<TypeParam, 6>;
+    NVCVSize2D resizeDim = ttype::GetValue<TypeParam, 7>;
 
-    using SrcVT = typename ttype::GetType<TypeParam, 7>;
-    using DstVT = typename ttype::GetType<TypeParam, 8>;
+    using SrcVT = typename ttype::GetType<TypeParam, 8>;
+    using DstVT = typename ttype::GetType<TypeParam, 9>;
     using SrcBT = typename cuda::BaseType<SrcVT>;
     using DstBT = typename cuda::BaseType<DstVT>;
 
-    NVCVStatus expectedReturnCode = ttype::GetValue<TypeParam, 9>;
+    NVCVStatus expectedReturnCode = ttype::GetValue<TypeParam, 10>;
 
     // Resize to 16 * 16 then crop
-    int        srcW = 32;
-    int        srcH = 32;
-    int        dstW = cropDim.x;
-    int        dstH = cropDim.y;
-    NVCVSize2D resizeDim{16, 16};
+    int srcW = 32;
+    int srcH = 32;
+    int dstW = cropDim.x;
+    int dstH = cropDim.y;
 
     NVCVChannelManip manip = ChannelManip(srcFormat, dstFormat);
 
@@ -653,23 +658,23 @@ TYPED_TEST(OpResizeCropConvertReformat_Negative, varshape_infer_negative_paramet
     nvcv::ImageFormat srcFormat{ttype::GetValue<TypeParam, 3>};
     nvcv::ImageFormat dstFormat{ttype::GetValue<TypeParam, 4>};
 
-    int2 cropDim = ttype::GetValue<TypeParam, 5>;
-    int2 cropPos = ttype::GetValue<TypeParam, 6>;
+    int2       cropDim   = ttype::GetValue<TypeParam, 5>;
+    int2       cropPos   = ttype::GetValue<TypeParam, 6>;
+    NVCVSize2D resizeDim = ttype::GetValue<TypeParam, 7>;
 
-    using SrcVT = typename ttype::GetType<TypeParam, 7>;
-    using DstVT = typename ttype::GetType<TypeParam, 8>;
+    using SrcVT = typename ttype::GetType<TypeParam, 8>;
+    using DstVT = typename ttype::GetType<TypeParam, 9>;
     using SrcBT = typename cuda::BaseType<SrcVT>;
     using DstBT = typename cuda::BaseType<DstVT>;
 
-    NVCVStatus expectedReturnCode = ttype::GetValue<TypeParam, 9>;
+    NVCVStatus expectedReturnCode = ttype::GetValue<TypeParam, 10>;
 
     std::vector<nvcv::Image> srcImg;
 
-    int        srcW = 32;
-    int        srcH = 32;
-    int        dstW = cropDim.x;
-    int        dstH = cropDim.y;
-    NVCVSize2D resizeDim{16, 16};
+    int srcW = 32;
+    int srcH = 32;
+    int dstW = cropDim.x;
+    int dstH = cropDim.y;
 
     NVCVChannelManip manip = ChannelManip(srcFormat, dstFormat);
 

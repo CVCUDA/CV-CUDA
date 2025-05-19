@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -554,6 +554,7 @@ NVCV_TYPED_TEST_SUITE(OpLabel, type::Types<
     NVCV_TEST_ROW(NVCV_SHAPE(22, 12, 1, 1), NVCV_DATA_TYPE_U8, uint8_t, false, false, true, 0, false),
     NVCV_TEST_ROW(NVCV_SHAPE(15, 16, 1, 1), NVCV_DATA_TYPE_U8, uint8_t, true, false, true, 1, false),
     NVCV_TEST_ROW(NVCV_SHAPE(14, 26, 1, 1), NVCV_DATA_TYPE_U8, uint8_t, true, true, false, 2, true),
+    NVCV_TEST_ROW(NVCV_SHAPE(40, 17, 1, 1), NVCV_DATA_TYPE_U8, uint8_t, true, true, true, 4, true),
     NVCV_TEST_ROW(NVCV_SHAPE(28, 73, 1, 3), NVCV_DATA_TYPE_U16, uint16_t, true, true, true, 3, true),
     NVCV_TEST_ROW(NVCV_SHAPE(19, 61, 1, 3), NVCV_DATA_TYPE_U16, uint16_t, true, true, true, 4, true),
     NVCV_TEST_ROW(NVCV_SHAPE(23, 21, 12, 1), NVCV_DATA_TYPE_U32, uint32_t, false, false, false, 0, false),
@@ -565,7 +566,8 @@ NVCV_TYPED_TEST_SUITE(OpLabel, type::Types<
     NVCV_TEST_ROW(NVCV_SHAPE(18, 27, 3, 1), NVCV_DATA_TYPE_S32, int32_t, true, false, true, 1, false),
     NVCV_TEST_ROW(NVCV_SHAPE(17, 29, 5, 2), NVCV_DATA_TYPE_U8, uint8_t, true, true, true, 2, false),
     NVCV_TEST_ROW(NVCV_SHAPE(16, 28, 4, 3), NVCV_DATA_TYPE_U8, uint8_t, true, true, true, 3, true),
-    NVCV_TEST_ROW(NVCV_SHAPE(17, 27, 5, 2), NVCV_DATA_TYPE_U8, uint8_t, true, true, true, 4, true)
+    NVCV_TEST_ROW(NVCV_SHAPE(17, 27, 5, 2), NVCV_DATA_TYPE_U8, uint8_t, true, true, true, 4, true),
+    NVCV_TEST_ROW(NVCV_SHAPE(40, 17, 5, 2), NVCV_DATA_TYPE_U8, uint8_t, true, true, true, 4, true)
 >);
 
 // clang-format on
@@ -903,4 +905,300 @@ TYPED_TEST(OpLabel, correct_output)
     EXPECT_EQ(testStats, goldStats);
 
     EXPECT_EQ(labTestVec, labGoldVec);
+}
+
+class OpLabel_Negative : public ::testing::Test
+{
+protected:
+    void SetUp() override
+    {
+        shape = {33, 16, 1, 1};
+        srcDT = nvcv::TYPE_U8;
+        dstDT = nvcv::TYPE_U32;
+        mskDT = nvcv::TYPE_U8;
+
+        connectivity = NVCV_CONNECTIVITY_4_2D;
+        assignLabels = NVCV_LABEL_SEQUENTIAL;
+        maskType     = NVCV_REMOVE_ISLANDS_OUTSIDE_MASK_ONLY; // this is the only mask type allowed
+
+        mskShape = {1, shape.z, shape.y, shape.x}; // mskShape is NDHW whereas shape is WHDN
+        staShape = {1, 10000, (shape.z == 1) ? 7 : 9};
+
+        // clang-format off
+        srcTensor = nvcv::Tensor({{shape.y, shape.x}, "HW"}, srcDT);
+
+        bglTensor = nvcv::Tensor({{shape.w}, "N"}, srcDT);
+        minTensor = nvcv::Tensor({{shape.w}, "N"}, srcDT);
+        maxTensor = nvcv::Tensor({{shape.w}, "N"}, srcDT);
+        cntTensor = nvcv::Tensor({{shape.w}, "N"}, dstDT);
+        staTensor = nvcv::Tensor({{staShape.x, staShape.y, 7}, "NMA"}, dstDT);
+        staTensor3D = nvcv::Tensor({{staShape.x, staShape.y, 9}, "NMA"}, dstDT);
+        mszTensor = nvcv::Tensor({{shape.w}, "N"}, dstDT);
+        mskTensor = nvcv::Tensor({{mskShape.x, mskShape.y, mskShape.z, mskShape.w}, "NDHW"}, mskDT);
+
+        dstTensor = nvcv::Tensor(srcTensor.shape(), dstDT);
+        // clang-format on
+
+        ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    }
+
+    void TearDown() override
+    {
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+        ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+    }
+
+    void runOpLabelNegativeTest(nvcv::Tensor srcTensor, nvcv::Tensor dstTensor, nvcv::Tensor bglTensor,
+                                nvcv::Tensor minTensor, nvcv::Tensor maxTensor, nvcv::Tensor mszTensor,
+                                nvcv::Tensor cntTensor, nvcv::Tensor staTensor, nvcv::Tensor mskTensor,
+                                NVCVConnectivityType connectivity, NVCVLabelType assignLabels,
+                                NVCVLabelMaskType maskType)
+    {
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall(
+                                                   [&]
+                                                   {
+                                                       op(stream, srcTensor, dstTensor, bglTensor, minTensor, maxTensor,
+                                                          mszTensor, cntTensor, staTensor, mskTensor, connectivity,
+                                                          assignLabels, maskType);
+                                                   }));
+        char msg[1024];
+        nvcvGetLastErrorMessage(msg, sizeof(msg));
+        std::cout << "\033[33m" << msg << "\033[0m" << std::endl;
+    }
+
+    int4           shape;
+    nvcv::DataType srcDT;
+    nvcv::DataType dstDT;
+    nvcv::DataType mskDT;
+
+    NVCVConnectivityType connectivity;
+    NVCVLabelType        assignLabels;
+    NVCVLabelMaskType    maskType;
+
+    long4 mskShape;
+    long3 staShape;
+
+    nvcv::Tensor srcTensor;
+
+    nvcv::Tensor bglTensor;
+    nvcv::Tensor minTensor;
+    nvcv::Tensor maxTensor;
+    nvcv::Tensor cntTensor;
+    nvcv::Tensor staTensor;
+    nvcv::Tensor staTensor3D;
+    nvcv::Tensor mszTensor;
+    nvcv::Tensor mskTensor;
+
+    nvcv::Tensor dstTensor;
+
+    cudaStream_t  stream;
+    cvcuda::Label op;
+};
+
+// clang-format off
+TEST_F(OpLabel_Negative, InvalidSourceLayout)
+{
+    nvcv::Tensor srcTensorInvalidLayout({{1, shape.y, shape.x},"CHW"},srcDT);
+    runOpLabelNegativeTest(srcTensorInvalidLayout, dstTensor, bglTensor, minTensor, maxTensor, mszTensor, cntTensor,
+                           staTensor, mskTensor, connectivity, assignLabels, maskType);
+}
+
+TEST_F(OpLabel_Negative, InvalidSourceChannelNum)
+{
+    nvcv::Tensor srcTensorInvalidChannelNum({{shape.y, shape.x, 3},"HWC"},srcDT);
+    nvcv::Tensor dstTensorHWCLayout({{shape.y, shape.x, 3},"HWC"},dstDT);
+    runOpLabelNegativeTest(srcTensorInvalidChannelNum, dstTensorHWCLayout, bglTensor, minTensor, maxTensor, mszTensor,
+                           cntTensor, staTensor, mskTensor, connectivity, assignLabels, maskType);
+}
+
+TEST_F(OpLabel_Negative, Tensor3DWith2DConnectivity)
+{
+    nvcv::Tensor srcTensor3D({{shape.w, 2, shape.y, shape.x},"NDHW"},srcDT);
+    nvcv::Tensor dstTensor3D(srcTensor3D.shape(), dstDT);
+    runOpLabelNegativeTest(srcTensor3D, dstTensor3D, bglTensor, minTensor, maxTensor, mszTensor, cntTensor, staTensor,
+                           mskTensor, connectivity, assignLabels, maskType);
+}
+
+TEST_F(OpLabel_Negative, Tensor2DWith3DConnectivity)
+{
+    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensor, minTensor, maxTensor, mszTensor, cntTensor, staTensor,
+                           mskTensor, NVCV_CONNECTIVITY_6_3D, assignLabels, maskType);
+}
+
+TEST_F(OpLabel_Negative, InvalidDestinationLayout)
+{
+    nvcv::Tensor dstTensorHWCLayout({{shape.y, shape.x, 3},"HWC"},dstDT);
+    runOpLabelNegativeTest(srcTensor, dstTensorHWCLayout, bglTensor, minTensor, maxTensor, mszTensor, cntTensor,
+                           staTensor, mskTensor, connectivity, assignLabels, maskType);
+}
+
+TEST_F(OpLabel_Negative, InvalidDestinationDataType)
+{
+    nvcv::Tensor dstTensorInvalidDtype(srcTensor.shape(), nvcv::TYPE_F32);
+    runOpLabelNegativeTest(srcTensor, dstTensorInvalidDtype, bglTensor, minTensor, maxTensor, mszTensor, cntTensor,
+                           staTensor, mskTensor, connectivity, assignLabels, maskType);
+}
+
+TEST_F(OpLabel_Negative, InvalidBgLabelShape)
+{
+    nvcv::Tensor bglTensorInvalidShape({{shape.w, 2}, "NC"},srcDT);
+    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensorInvalidShape, minTensor, maxTensor, mszTensor, cntTensor,
+                           staTensor, mskTensor, connectivity, assignLabels, maskType);
+}
+
+TEST_F(OpLabel_Negative, InvalidBgLabelDataType)
+{
+    nvcv::Tensor bglTensorInvalidDtype({{shape.w}, "N"}, nvcv::TYPE_U16);
+    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensorInvalidDtype, minTensor, maxTensor, mszTensor, cntTensor,
+                           staTensor, mskTensor, connectivity, assignLabels, maskType);
+}
+
+TEST_F(OpLabel_Negative, InvalidMinThreshShape)
+{
+    nvcv::Tensor minTensorInvalidShape({{shape.w, 2},"NC"},srcDT);
+    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensor, minTensorInvalidShape, maxTensor, mszTensor, cntTensor,
+                           staTensor, mskTensor, connectivity, assignLabels, maskType);
+}
+
+TEST_F(OpLabel_Negative, InvalidMinThreshDataType)
+{
+    nvcv::Tensor minTensorInvalidDtype({{shape.w}, "N"}, nvcv::TYPE_U16);
+    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensor, minTensorInvalidDtype, maxTensor, mszTensor, cntTensor,
+                           staTensor, mskTensor, connectivity, assignLabels, maskType);
+}
+
+TEST_F(OpLabel_Negative, InvalidMaxThreshShape)
+{
+    nvcv::Tensor maxTensorInvalidShape({{shape.w, 2},"NC"},srcDT);
+    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensor, minTensor, maxTensorInvalidShape, mszTensor, cntTensor,
+                           staTensor, mskTensor, connectivity, assignLabels, maskType);
+}
+
+TEST_F(OpLabel_Negative, InvalidMaxThreshDataType)
+{
+    nvcv::Tensor maxTensorInvalidDtype({{shape.w}, "N"}, nvcv::TYPE_U16);
+    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensor, minTensor, maxTensorInvalidDtype, mszTensor, cntTensor,
+                           staTensor, mskTensor, connectivity, assignLabels, maskType);
+}
+
+TEST_F(OpLabel_Negative, InvalidCountShape)
+{
+    nvcv::Tensor cntTensorInvalidShape({{shape.w, 2},"NC"},dstDT);
+    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensor, minTensor, maxTensor, mszTensor, cntTensorInvalidShape,
+                           staTensor, mskTensor, connectivity, assignLabels, maskType);
+}
+
+TEST_F(OpLabel_Negative, InvalidCountDataType)
+{
+    nvcv::Tensor cntTensorInvalidDtype({{shape.w}, "N"}, nvcv::TYPE_U16);
+    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensor, minTensor, maxTensor, mszTensor, cntTensorInvalidDtype,
+                           staTensor, mskTensor, connectivity, assignLabels, maskType);
+}
+
+TEST_F(OpLabel_Negative, StatusWithoutCount)
+{
+    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensor, minTensor, maxTensor, mszTensor, nullptr, staTensor,
+                           mskTensor, connectivity, assignLabels, maskType);
+}
+
+TEST_F(OpLabel_Negative, reLabelWithoutStatus)
+{
+    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensor, minTensor, maxTensor, mszTensor, cntTensor, nullptr,
+                           mskTensor, connectivity, assignLabels, maskType);
+}
+
+TEST_F(OpLabel_Negative, InvalidStatsShape)
+{
+    nvcv::Tensor staTensorInvalidShape({{shape.w, 2},"NC"},dstDT);
+    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensor, minTensor, maxTensor, mszTensor, cntTensor,
+                           staTensorInvalidShape, mskTensor, connectivity, assignLabels, maskType);
+}
+
+TEST_F(OpLabel_Negative, InvalidStatsDataType)
+{
+    nvcv::Tensor staTensorInvalidDtype({{staShape.x, staShape.y, staShape.z},"NMA"},nvcv::TYPE_U16);
+    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensor, minTensor, maxTensor, mszTensor, cntTensor,
+                           staTensorInvalidDtype, mskTensor, connectivity, assignLabels, maskType);
+}
+
+TEST_F(OpLabel_Negative, minSizeWithoutBgLabel)
+{
+    runOpLabelNegativeTest(srcTensor, dstTensor, nullptr, minTensor, maxTensor, mszTensor, cntTensor, staTensor,
+                           mskTensor, connectivity, assignLabels, maskType);
+}
+
+TEST_F(OpLabel_Negative, InvalidMinSizeShape)
+{
+    nvcv::Tensor minSizeInvalidShape({{shape.w, 2},"NC"},dstDT);
+    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensor, minTensor, maxTensor, minSizeInvalidShape, cntTensor,
+                           staTensor, mskTensor, connectivity, assignLabels, maskType);
+}
+
+TEST_F(OpLabel_Negative, InvalidMinSizeDataType)
+{
+    nvcv::Tensor minSizeInvalidDtype({{shape.w}, "N"}, nvcv::TYPE_U16);
+    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensor, minTensor, maxTensor, minSizeInvalidDtype, cntTensor,
+                           staTensor, minSizeInvalidDtype, connectivity, assignLabels, maskType);
+}
+
+TEST_F(OpLabel_Negative, MaskWithoutMinSize)
+{
+    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensor, minTensor, maxTensor, nullptr, cntTensor, staTensor,
+                           mskTensor, connectivity, assignLabels, maskType);
+}
+
+#ifndef ENABLE_SANITIZER
+TEST_F(OpLabel_Negative, InvalidMaskType)
+{
+    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensor, minTensor, maxTensor, mszTensor, cntTensor, staTensor,
+                           mskTensor, connectivity, assignLabels, static_cast<NVCVLabelMaskType>(255));
+}
+#endif
+
+TEST_F(OpLabel_Negative, InvalidMaskShape)
+{
+    nvcv::Tensor mskTensorInvalidN({{mskShape.x + 13, mskShape.y, mskShape.z, mskShape.w},"NDHW"},mskDT);
+    nvcv::Tensor mskTensorInvalidH({{mskShape.x, mskShape.y, mskShape.z + 12, mskShape.w},"NDHW"},mskDT);
+    nvcv::Tensor mskTensorInvalidW({{mskShape.x, mskShape.y, mskShape.z, mskShape.w + 11},"NDHW"},mskDT);
+    nvcv::Tensor mskTensorInvalidD({{mskShape.x, mskShape.y + 10, mskShape.z, mskShape.w},"NDHW"},mskDT);
+    nvcv::Tensor mskTensorInvalidC({{mskShape.x, mskShape.y, mskShape.z, mskShape.w, 9},"NDHWC"},mskDT);
+    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensor, minTensor, maxTensor, mszTensor, cntTensor, staTensor,
+                           mskTensorInvalidN, connectivity, assignLabels, maskType);
+    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensor, minTensor, maxTensor, mszTensor, cntTensor, staTensor,
+                           mskTensorInvalidH, connectivity, assignLabels, maskType);
+    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensor, minTensor, maxTensor, mszTensor, cntTensor, staTensor,
+                           mskTensorInvalidW, connectivity, assignLabels, maskType);
+    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensor, minTensor, maxTensor, mszTensor, cntTensor, staTensor,
+                           mskTensorInvalidD, connectivity, assignLabels, maskType);
+    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensor, minTensor, maxTensor, mszTensor, cntTensor, staTensor,
+                           mskTensorInvalidC, connectivity, assignLabels, maskType);
+}
+
+TEST_F(OpLabel_Negative, InvalidMaskDataType)
+{
+    nvcv::Tensor mskTensorInvalidDtype({{mskShape.x, mskShape.y, mskShape.z, mskShape.w},"NDHW"},nvcv::TYPE_U16);
+    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensor, minTensor, maxTensor, mszTensor, cntTensor, staTensor,
+                           mskTensorInvalidDtype, connectivity, assignLabels, maskType);
+}
+
+TEST_F(OpLabel_Negative, Tensor3DWith2DMask)
+{
+    nvcv::Tensor srcTensor3D({{shape.w, 2, shape.y, shape.x},"NDHW"},srcDT);
+    nvcv::Tensor dstTensor3D(srcTensor3D.shape(), dstDT);
+    nvcv::Tensor mskTensor2D({{1, mskShape.z, mskShape.w, 1},"NHWC"}, mskDT);
+    runOpLabelNegativeTest(srcTensor3D, dstTensor3D, bglTensor, minTensor, maxTensor, mszTensor, cntTensor, staTensor3D,
+                           mskTensor2D, NVCV_CONNECTIVITY_6_3D, assignLabels, maskType);
+}
+
+TEST_F(OpLabel_Negative, fullConnectivity)
+{
+    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensor, minTensor, maxTensor, mszTensor, cntTensor, staTensor,
+                           mskTensor, NVCV_CONNECTIVITY_8_2D, assignLabels, maskType);
+}
+
+// clang-format on
+
+TEST_F(OpLabel_Negative, create_null_handle)
+{
+    EXPECT_EQ(cvcudaLabelCreate(nullptr), NVCV_ERROR_INVALID_ARGUMENT);
 }

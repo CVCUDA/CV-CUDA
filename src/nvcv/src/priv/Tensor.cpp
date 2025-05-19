@@ -30,6 +30,7 @@
 #include <nvcv/util/CheckError.hpp>
 #include <nvcv/util/Math.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <numeric>
 
@@ -237,14 +238,14 @@ void Tensor::exportData(NVCVTensorData &data) const
     data.layout = m_reqs.layout;
     data.rank   = m_reqs.rank;
 
-    memcpy(data.shape, m_reqs.shape, sizeof(data.shape));
+    std::copy_n(m_reqs.shape, NVCV_TENSOR_MAX_RANK, data.shape);
 
     NVCVTensorBufferStrided &buf = data.buffer.strided;
     {
         static_assert(sizeof(buf.strides) == sizeof(m_reqs.strides));
         static_assert(
             std::is_same_v<std::decay_t<decltype(buf.strides[0])>, std::decay_t<decltype(m_reqs.strides[0])>>);
-        memcpy(buf.strides, m_reqs.strides, sizeof(buf.strides));
+        std::copy_n(m_reqs.strides, NVCV_TENSOR_MAX_RANK, buf.strides);
 
         buf.basePtr = reinterpret_cast<NVCVByte *>(m_memBuffer);
     }

@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -173,7 +173,7 @@ ErrorCode EraseVarShape::infer(const nvcv::ImageBatchVarShape &inbatch, const nv
     }
     if (!(out_format == kNHWC || out_format == kHWC))
     {
-        LOG_ERROR("Invalid input DataFormat " << out_format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
+        LOG_ERROR("Invalid output DataFormat " << out_format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
@@ -189,7 +189,7 @@ ErrorCode EraseVarShape::infer(const nvcv::ImageBatchVarShape &inbatch, const nv
     }
 
     DataType data_type     = helpers::GetLegacyDataType(inData->uniqueFormat());
-    DataType out_data_type = GetLegacyDataType(outData->uniqueFormat());
+    DataType out_data_type = helpers::GetLegacyDataType(outData->uniqueFormat());
     if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32S
           || data_type == kCV_32F))
     {

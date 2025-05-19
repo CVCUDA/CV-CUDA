@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -940,6 +940,10 @@ NVCV_TEST_SUITE_P(OpPillowResize, test::ValueList<int, int, int, int, NVCVInterp
 {
     // srcWidth, srcHeight, dstWidth, dstHeight,       interpolation, numberImages, imageFormat
     {        5,          5,        5,         5,  NVCV_INTERP_LINEAR,           1, nvcv::FMT_RGB8},
+    {        8,          8,        4,         4,  NVCV_INTERP_LINEAR,           1, nvcv::FMT_S8},
+    {       16,         16,        8,         8,  NVCV_INTERP_LINEAR,           1, nvcv::FMT_U16},
+    {       16,         16,       12,        12,  NVCV_INTERP_LINEAR,           1, nvcv::FMT_S16},
+    {       32,         32,        8,         8,  NVCV_INTERP_LINEAR,           1, nvcv::FMT_S32},
     {        5,          5,        5,         5,  NVCV_INTERP_LINEAR,           1, nvcv::FMT_RGBf32},
     {        10,        10,        5,         5,  NVCV_INTERP_LINEAR,           1, nvcv::FMT_RGB8},
     {        42,        40,       21,        20,  NVCV_INTERP_LINEAR,           1, nvcv::FMT_RGB8},
@@ -1219,7 +1223,173 @@ TEST_P(OpPillowResize, varshape_correct_output)
         StartVarShapeTest<float>(srcWidth, srcHeight, dstWidth, dstHeight, interpolation, numberOfImages, fmt);
 }
 
-TEST(OpPillowResize, invalidGetWorkSpace)
+// clang-format off
+NVCV_TEST_SUITE_P(OpPillowResize_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat, NVCVInterpolationType>{
+    {nvcv::FMT_RGB8p, nvcv::FMT_RGB8, NVCV_INTERP_LINEAR},
+    {nvcv::FMT_RGB8p, nvcv::FMT_RGB8p, NVCV_INTERP_LINEAR},
+    {nvcv::FMT_F64, nvcv::FMT_F64, NVCV_INTERP_LINEAR},
+#ifndef ENABLE_SANITIZER
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, static_cast<NVCVInterpolationType>(255)},
+#endif
+});
+
+// clang-format on
+
+TEST_P(OpPillowResize_Negative, op)
+{
+    cudaStream_t stream;
+    EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::ImageFormat     inputFmt      = GetParamValue<0>();
+    nvcv::ImageFormat     outputFmt     = GetParamValue<1>();
+    NVCVInterpolationType interpolation = GetParamValue<2>();
+
+    int numberOfImages = 3;
+
+    // Generate input and output
+    nvcv::Tensor imgSrc(numberOfImages, {24, 24}, inputFmt);
+    nvcv::Tensor imgDst(numberOfImages, {12, 12}, outputFmt);
+
+    cvcuda::PillowResize pillowResizeOp;
+
+    cvcuda::UniqueWorkspace ws = cvcuda::AllocateWorkspace(
+        pillowResizeOp.getWorkspaceRequirements(numberOfImages, {24, 24}, {12, 12}, inputFmt));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { pillowResizeOp(stream, ws.get(), imgSrc, imgDst, interpolation); }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST_P(OpPillowResize_Negative, varshape_op)
+{
+    cudaStream_t stream;
+    EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::ImageFormat     inputFmt      = GetParamValue<0>();
+    nvcv::ImageFormat     outputFmt     = GetParamValue<1>();
+    NVCVInterpolationType interpolation = GetParamValue<2>();
+
+    int numberOfImages = 3;
+    int srcWidthBase   = 4;
+    int srcHeightBase  = 4;
+    int dstWidthBase   = 8;
+    int dstHeightBase  = 8;
+
+    // Create input and output
+    std::default_random_engine         randEng;
+    std::uniform_int_distribution<int> rndSrcWidth(srcWidthBase * 0.8, srcWidthBase * 1.1);
+    std::uniform_int_distribution<int> rndSrcHeight(srcHeightBase * 0.8, srcHeightBase * 1.1);
+
+    std::uniform_int_distribution<int> rndDstWidth(dstWidthBase * 0.8, dstWidthBase * 1.1);
+    std::uniform_int_distribution<int> rndDstHeight(dstHeightBase * 0.8, dstHeightBase * 1.1);
+
+    std::vector<nvcv::Image>  imgSrc, imgDst;
+    std::vector<nvcv::Size2D> srcSizes, dstSizes;
+    for (int i = 0; i < numberOfImages; ++i)
+    {
+        imgSrc.emplace_back(nvcv::Size2D{rndSrcWidth(randEng), rndSrcHeight(randEng)}, inputFmt);
+        imgDst.emplace_back(nvcv::Size2D{rndDstWidth(randEng), rndDstHeight(randEng)}, outputFmt);
+        srcSizes.emplace_back(imgSrc.back().size());
+        dstSizes.emplace_back(imgDst.back().size());
+    }
+
+    nvcv::ImageBatchVarShape batchSrc(numberOfImages);
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+
+    nvcv::ImageBatchVarShape batchDst(numberOfImages);
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    // Generate test result
+    cvcuda::PillowResize pillowResizeOp;
+
+    cvcuda::UniqueWorkspace ws = cvcuda::AllocateWorkspace(
+        pillowResizeOp.getWorkspaceRequirements(numberOfImages, srcSizes.data(), dstSizes.data(), inputFmt));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { pillowResizeOp(stream, ws.get(), batchSrc, batchDst, interpolation); }));
+
+    // Get test data back
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpPillowResize_Negative, varshape_hasDifferentFormat)
+{
+    cudaStream_t stream;
+    EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::ImageFormat     fmt           = nvcv::FMT_RGB8;
+    NVCVInterpolationType interpolation = NVCV_INTERP_LINEAR;
+
+    int numberOfImages = 3;
+    int srcWidthBase   = 4;
+    int srcHeightBase  = 4;
+    int dstWidthBase   = 8;
+    int dstHeightBase  = 8;
+
+    std::vector<std::tuple<nvcv::ImageFormat, nvcv::ImageFormat>> testSet{
+        {nvcv::FMT_RGBA8,             fmt},
+        {            fmt, nvcv::FMT_RGBA8}
+    };
+
+    for (auto testCase : testSet)
+    {
+        nvcv::ImageFormat inputFmtExtra  = std::get<0>(testCase);
+        nvcv::ImageFormat outputFmtExtra = std::get<1>(testCase);
+
+        // Create input and output
+        std::default_random_engine         randEng;
+        std::uniform_int_distribution<int> rndSrcWidth(srcWidthBase * 0.8, srcWidthBase * 1.1);
+        std::uniform_int_distribution<int> rndSrcHeight(srcHeightBase * 0.8, srcHeightBase * 1.1);
+        std::uniform_int_distribution<int> rndDstWidth(dstWidthBase * 0.8, dstWidthBase * 1.1);
+        std::uniform_int_distribution<int> rndDstHeight(dstHeightBase * 0.8, dstHeightBase * 1.1);
+
+        std::vector<nvcv::Image>  imgSrc, imgDst;
+        std::vector<nvcv::Size2D> srcSizes, dstSizes;
+
+        // Create n-1 images with standard format
+        for (int i = 0; i < numberOfImages - 1; ++i)
+        {
+            int tmpSrcWidth  = i == 0 ? srcWidthBase : rndSrcWidth(randEng);
+            int tmpSrcHeight = i == 0 ? srcHeightBase : rndSrcHeight(randEng);
+            int tmpDstWidth  = i == 0 ? dstWidthBase : rndDstWidth(randEng);
+            int tmpDstHeight = i == 0 ? dstHeightBase : rndDstHeight(randEng);
+
+            imgSrc.emplace_back(nvcv::Size2D{tmpSrcWidth, tmpSrcHeight}, fmt);
+            imgDst.emplace_back(nvcv::Size2D{tmpDstWidth, tmpDstHeight}, fmt);
+            srcSizes.emplace_back(imgSrc.back().size());
+            dstSizes.emplace_back(imgDst.back().size());
+        }
+
+        // Add the last image with different format
+        imgSrc.emplace_back(nvcv::Size2D{srcWidthBase, srcHeightBase}, inputFmtExtra);
+        imgDst.emplace_back(nvcv::Size2D{dstWidthBase, dstHeightBase}, outputFmtExtra);
+        srcSizes.emplace_back(imgSrc.back().size());
+        dstSizes.emplace_back(imgDst.back().size());
+
+        nvcv::ImageBatchVarShape batchSrc(numberOfImages);
+        batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+
+        nvcv::ImageBatchVarShape batchDst(numberOfImages);
+        batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+        // Generate test result
+        cvcuda::PillowResize pillowResizeOp;
+
+        cvcuda::UniqueWorkspace ws = cvcuda::AllocateWorkspace(
+            pillowResizeOp.getWorkspaceRequirements(numberOfImages, srcSizes.data(), dstSizes.data(), inputFmtExtra));
+
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+                  nvcv::ProtectCall([&] { pillowResizeOp(stream, ws.get(), batchSrc, batchDst, interpolation); }));
+    }
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpPillowResize_Negative, invalidGetWorkSpaceReq)
 {
     NVCVOperatorHandle pillowResizeHandle;
     ASSERT_EQ(NVCV_SUCCESS, cvcudaPillowResizeCreate(&pillowResizeHandle));
@@ -1233,5 +1403,13 @@ TEST(OpPillowResize, invalidGetWorkSpace)
               cvcudaPillowResizeVarShapeGetWorkspaceRequirements(pillowResizeHandle, 1, inputSizesWH, outputSizesWH,
                                                                  NVCV_IMAGE_FORMAT_U8, nullptr));
 
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaPillowResizeGetWorkspaceRequirements(
+                                               pillowResizeHandle, 1, 24, 24, 24, 24, NVCV_IMAGE_FORMAT_U8, nullptr));
+
     nvcvOperatorDestroy(pillowResizeHandle);
+}
+
+TEST(OpPillowResize_Negative, create_null_handle)
+{
+    EXPECT_EQ(cvcudaPillowResizeCreate(nullptr), NVCV_ERROR_INVALID_ARGUMENT);
 }

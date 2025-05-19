@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +18,7 @@
 #include <common/InterpUtils.hpp>
 #include <common/TensorDataUtils.hpp>
 #include <common/TypedTests.hpp>
+#include <common/ValueTests.hpp>
 #include <cvcuda/OpRemap.hpp>
 #include <cvcuda/cuda_tools/DropCast.hpp>
 #include <cvcuda/cuda_tools/StaticCast.hpp>
@@ -382,3 +383,227 @@ TYPED_TEST(OpRemap, varshape_correct_output)
         VEC_EXPECT_NEAR(dstVec, refVec, 1);
     }
 }
+
+#define NVCV_IMAGE_FORMAT_INVALID_MAP NVCV_DETAIL_MAKE_NONCOLOR_FMT2(PL, FLOAT, XYZW, ASSOCIATED, X32_Y32, X32_Y32)
+
+// clang-format off
+NVCV_TEST_SUITE_P(OpRemap_Negative, test::ValueList<int, int, int, int, int, int, int, int, int, nvcv::ImageFormat, nvcv::ImageFormat, nvcv::ImageFormat, NVCVInterpolationType, NVCVInterpolationType, NVCVBorderType>{
+    // inputShape, dstShape, mapShape, inputFormat, outputFormat, mapFormat, inputInterp, mapInterp, borderValue
+    {42, 42, 1, 42, 42, 1, 2, 2, 1, nvcv::FMT_RGB8, nvcv::FMT_U8, nvcv::FMT_2F32, NVCV_INTERP_NEAREST, NVCV_INTERP_NEAREST, NVCV_BORDER_CONSTANT},
+    {42, 42, 2, 42, 42, 1, 2, 2, 1, nvcv::FMT_RGB8, nvcv::FMT_RGB8, nvcv::FMT_2F32, NVCV_INTERP_NEAREST, NVCV_INTERP_NEAREST, NVCV_BORDER_CONSTANT},
+    {42, 42, 2, 42, 42, 2, 2, 2, 5, nvcv::FMT_RGB8, nvcv::FMT_RGB8, nvcv::FMT_2F32, NVCV_INTERP_NEAREST, NVCV_INTERP_NEAREST, NVCV_BORDER_CONSTANT},
+    {42, 42, 1, 42, 42, 1, 2, 2, 1, nvcv::FMT_RGB8p, nvcv::FMT_RGB8, nvcv::FMT_2F32, NVCV_INTERP_NEAREST, NVCV_INTERP_NEAREST, NVCV_BORDER_CONSTANT},
+    {42, 42, 1, 42, 42, 1, 2, 2, 1, nvcv::FMT_RGB8p, nvcv::FMT_RGB8p, nvcv::FMT_2F32, NVCV_INTERP_NEAREST, NVCV_INTERP_NEAREST, NVCV_BORDER_CONSTANT},
+    {42, 42, 1, 42, 42, 1, 2, 2, 1, nvcv::FMT_RGB8, nvcv::FMT_RGBf32, nvcv::FMT_2F32, NVCV_INTERP_NEAREST, NVCV_INTERP_NEAREST, NVCV_BORDER_CONSTANT},
+    {42, 42, 1, 42, 42, 1, 2, 2, 1, nvcv::FMT_RGB8, nvcv::FMT_RGB8, nvcv::FMT_RGBf32, NVCV_INTERP_NEAREST, NVCV_INTERP_NEAREST, NVCV_BORDER_CONSTANT},
+    {42, 42, 1, 42, 42, 1, 2, 2, 1, nvcv::FMT_RGBf16, nvcv::FMT_RGBf16, nvcv::FMT_2F32, NVCV_INTERP_NEAREST, NVCV_INTERP_NEAREST, NVCV_BORDER_CONSTANT},
+#ifndef ENABLE_SANITIZER
+    {42, 42, 1, 42, 42, 1, 2, 2, 1, nvcv::FMT_RGB8, nvcv::FMT_RGB8, nvcv::FMT_2F32, NVCV_INTERP_NEAREST, NVCV_INTERP_NEAREST, static_cast<NVCVBorderType>(255)},
+    {42, 42, 1, 42, 42, 1, 2, 2, 1, nvcv::FMT_RGB8, nvcv::FMT_RGB8, nvcv::FMT_2F32, NVCV_INTERP_NEAREST, static_cast<NVCVInterpolationType>(255), NVCV_BORDER_CONSTANT},
+    {42, 42, 1, 42, 42, 1, 2, 2, 1, nvcv::FMT_RGB8, nvcv::FMT_RGB8, nvcv::FMT_2F32, static_cast<NVCVInterpolationType>(255), NVCV_INTERP_NEAREST, NVCV_BORDER_CONSTANT},
+#endif
+});
+
+NVCV_TEST_SUITE_P(OpRemapVarshape_Negative, test::ValueList<int, int, int, nvcv::ImageFormat, nvcv::ImageFormat, nvcv::ImageFormat>{
+    // inputNumImages, outputNumImages, mapNumSamples, inputFormat, outputFormat, mapFormat
+    {2, 1, 1, nvcv::FMT_RGB8, nvcv::FMT_RGB8, nvcv::FMT_2F32},
+    {1, 1, 2, nvcv::FMT_RGB8, nvcv::FMT_RGB8, nvcv::FMT_2F32},
+    {1, 1, 1, nvcv::FMT_RGB8, nvcv::FMT_RGB8, nvcv::FMT_RGBf32},
+    {1, 1, 1, nvcv::FMT_RGB8p, nvcv::FMT_RGB8, nvcv::FMT_2F32},
+    {1, 1, 1, nvcv::FMT_RGB8p, nvcv::FMT_RGB8p, nvcv::FMT_2F32},
+});
+
+// clang-format on
+
+TEST_P(OpRemap_Negative, op)
+{
+    const int3 srcShape = {GetParamValue<0>(), GetParamValue<1>(), GetParamValue<2>()};
+    const int3 dstShape = {GetParamValue<3>(), GetParamValue<4>(), GetParamValue<5>()};
+    const int3 mapShape = {GetParamValue<6>(), GetParamValue<7>(), GetParamValue<8>()};
+
+    const nvcv::ImageFormat inputFmt  = GetParamValue<9>();
+    const nvcv::ImageFormat outputFmt = GetParamValue<10>();
+    const nvcv::ImageFormat mapFmt    = GetParamValue<11>();
+
+    const NVCVRemapMapValueType kMapValueType = NVCV_REMAP_RELATIVE_NORMALIZED;
+    const NVCVInterpolationType kSrcInterp    = GetParamValue<12>();
+    const NVCVInterpolationType kMapInterp    = GetParamValue<13>();
+    const NVCVBorderType        kBorderType   = GetParamValue<14>();
+
+    const float4 borderValue = nvcv::cuda::SetAll<float4>(0.f);
+
+    const bool kAlignCorners = false;
+
+    nvcv::Tensor srcTensor = nvcv::util::CreateTensor(srcShape.z, srcShape.x, srcShape.y, inputFmt);
+    nvcv::Tensor dstTensor = nvcv::util::CreateTensor(dstShape.z, dstShape.x, dstShape.y, outputFmt);
+    nvcv::Tensor mapTensor = nvcv::util::CreateTensor(mapShape.z, mapShape.x, mapShape.y, mapFmt);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::Remap op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall(
+                                               [&]
+                                               {
+                                                   op(stream, srcTensor, dstTensor, mapTensor, kSrcInterp, kMapInterp,
+                                                      kMapValueType, kAlignCorners, kBorderType, borderValue);
+                                               }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST_P(OpRemapVarshape_Negative, op)
+{
+    const int inputNumImages  = GetParamValue<0>();
+    const int outputNumImages = GetParamValue<1>();
+    const int mapNumSamples   = GetParamValue<2>();
+
+    const nvcv::ImageFormat inputFmt  = GetParamValue<3>();
+    const nvcv::ImageFormat outputFmt = GetParamValue<4>();
+    const nvcv::ImageFormat mapFmt    = GetParamValue<5>();
+
+    const int3 srcShape = {24, 24, inputNumImages};
+    const int3 dstShape = {24, 24, outputNumImages};
+    const int3 mapShape = {24, 24, mapNumSamples};
+
+    const bool kAlignCorners = false;
+
+    constexpr NVCVInterpolationType kSrcInterp    = NVCV_INTERP_NEAREST;
+    constexpr NVCVInterpolationType kMapInterp    = NVCV_INTERP_NEAREST;
+    const NVCVRemapMapValueType     kMapValueType = NVCV_REMAP_RELATIVE_NORMALIZED;
+    constexpr NVCVBorderType        kBorderType   = NVCV_BORDER_CONSTANT;
+
+    const float4 borderValue = nvcv::cuda::SetAll<float4>(0.f);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    std::vector<nvcv::Image> imgSrc;
+
+    std::uniform_int_distribution<int> srcRandW(srcShape.x * 0.8, srcShape.x * 1.2);
+    std::uniform_int_distribution<int> srcRandH(srcShape.y * 0.8, srcShape.y * 1.2);
+
+    for (int z = 0; z < srcShape.z; ++z)
+    {
+        imgSrc.emplace_back(nvcv::Size2D{srcRandW(g_rng), srcRandH(g_rng)}, inputFmt);
+    }
+
+    std::uniform_int_distribution<int> dstRandW(dstShape.x * 0.8, dstShape.x * 1.2);
+    std::uniform_int_distribution<int> dstRandH(dstShape.y * 0.8, dstShape.y * 1.2);
+
+    nvcv::ImageBatchVarShape batchSrc(srcShape.z);
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+
+    std::vector<nvcv::Image> imgDst;
+    for (int z = 0; z < dstShape.z; ++z)
+    {
+        imgDst.emplace_back(nvcv::Size2D{dstRandW(g_rng), dstRandH(g_rng)}, outputFmt);
+    }
+    nvcv::ImageBatchVarShape batchDst(dstShape.z);
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    nvcv::Tensor mapTensor = nvcv::util::CreateTensor(mapShape.z, mapShape.x, mapShape.y, mapFmt);
+
+    cvcuda::Remap op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall(
+                                               [&]
+                                               {
+                                                   op(stream, batchSrc, batchDst, mapTensor, kSrcInterp, kMapInterp,
+                                                      kMapValueType, kAlignCorners, kBorderType, borderValue);
+                                               }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpRemap_Negative, varshape_hasDifferentFormat)
+{
+    cudaStream_t stream;
+    EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::ImageFormat     fmt          = nvcv::FMT_RGB8;
+    NVCVInterpolationType srcInterp    = NVCV_INTERP_LINEAR;
+    NVCVInterpolationType mapInterp    = NVCV_INTERP_LINEAR;
+    NVCVBorderType        borderType   = NVCV_BORDER_CONSTANT;
+    float4                borderValue  = nvcv::cuda::SetAll<float4>(0.f);
+    bool                  alignCorners = false;
+    NVCVRemapMapValueType mapValueType = NVCV_REMAP_RELATIVE_NORMALIZED;
+
+    int numberOfImages = 3;
+    int srcWidthBase   = 42;
+    int srcHeightBase  = 42;
+    int dstWidthBase   = 42;
+    int dstHeightBase  = 42;
+
+    std::vector<std::tuple<nvcv::ImageFormat, nvcv::ImageFormat>> testSet{
+        {nvcv::FMT_RGBA8,             fmt},
+        {            fmt, nvcv::FMT_RGBA8}
+    };
+
+    for (auto testCase : testSet)
+    {
+        nvcv::ImageFormat inputFmtExtra  = std::get<0>(testCase);
+        nvcv::ImageFormat outputFmtExtra = std::get<1>(testCase);
+
+        // Create input and output
+        std::default_random_engine         randEng;
+        std::uniform_int_distribution<int> rndSrcWidth(srcWidthBase * 0.8, srcWidthBase * 1.1);
+        std::uniform_int_distribution<int> rndSrcHeight(srcHeightBase * 0.8, srcHeightBase * 1.1);
+        std::uniform_int_distribution<int> rndDstWidth(dstWidthBase * 0.8, dstWidthBase * 1.1);
+        std::uniform_int_distribution<int> rndDstHeight(dstHeightBase * 0.8, dstHeightBase * 1.1);
+
+        std::vector<nvcv::Image>  imgSrc, imgDst;
+        std::vector<nvcv::Size2D> srcSizes, dstSizes;
+
+        // Create n-1 images with standard format
+        for (int i = 0; i < numberOfImages - 1; ++i)
+        {
+            int tmpSrcWidth  = i == 0 ? srcWidthBase : rndSrcWidth(randEng);
+            int tmpSrcHeight = i == 0 ? srcHeightBase : rndSrcHeight(randEng);
+            int tmpDstWidth  = i == 0 ? dstWidthBase : rndDstWidth(randEng);
+            int tmpDstHeight = i == 0 ? dstHeightBase : rndDstHeight(randEng);
+
+            imgSrc.emplace_back(nvcv::Size2D{tmpSrcWidth, tmpSrcHeight}, fmt);
+            imgDst.emplace_back(nvcv::Size2D{tmpDstWidth, tmpDstHeight}, fmt);
+            srcSizes.emplace_back(imgSrc.back().size());
+            dstSizes.emplace_back(imgDst.back().size());
+        }
+
+        // Add the last image with different format
+        imgSrc.emplace_back(nvcv::Size2D{srcWidthBase, srcHeightBase}, inputFmtExtra);
+        imgDst.emplace_back(nvcv::Size2D{dstWidthBase, dstHeightBase}, outputFmtExtra);
+        srcSizes.emplace_back(imgSrc.back().size());
+        dstSizes.emplace_back(imgDst.back().size());
+
+        nvcv::ImageBatchVarShape batchSrc(numberOfImages);
+        batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+
+        nvcv::ImageBatchVarShape batchDst(numberOfImages);
+        batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+        // Create map tensor with fixed size
+        nvcv::Tensor mapTensor = nvcv::util::CreateTensor(2, 2, 1, nvcv::FMT_2F32);
+
+        // Generate test result
+        cvcuda::Remap remapOp;
+
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall(
+                                                   [&]
+                                                   {
+                                                       remapOp(stream, batchSrc, batchDst, mapTensor, srcInterp,
+                                                               mapInterp, mapValueType, alignCorners, borderType,
+                                                               borderValue);
+                                                   }));
+    }
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpOpRemap_Negative, create_null_handle)
+{
+    EXPECT_EQ(cvcudaRemapCreate(nullptr), NVCV_ERROR_INVALID_ARGUMENT);
+}
+
+#undef NVCV_IMAGE_FORMAT_INVALID_MAP

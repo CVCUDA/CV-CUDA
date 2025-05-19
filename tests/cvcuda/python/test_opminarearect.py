@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -145,6 +145,7 @@ from torch.nn.utils.rnn import pad_sequence
     ],
 )
 def test_op_minarearect(contourData, numPointsInContour, openCvRes):
+
     batchSize = len(contourData)
     numPointsInContour_torch = (
         torch.Tensor(numPointsInContour).type(torch.int32).unsqueeze(0)
@@ -172,7 +173,7 @@ def test_op_minarearect(contourData, numPointsInContour, openCvRes):
         torch.as_tensor(result_cvcuda.cuda()).reshape(batchSize, -1, 2), dim=1
     )
     gold_torch, _ = torch.sort(gold_torch.reshape(batchSize, -1, 2), dim=1)
-    assert (gold_torch - result_torch < 5.0).all()
+    assert (gold_torch.cuda() - result_torch.cuda() < 5.0).all()
 
     stream = cvcuda.cuda.Stream()
     out = cvcuda.Tensor(gold_cvcuda.shape, gold_cvcuda.dtype, gold_cvcuda.layout)

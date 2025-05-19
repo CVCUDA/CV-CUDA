@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -220,10 +220,11 @@ TEST_P(OpFlip, varshape_correct_output)
 }
 
 // clang-format off
-NVCV_TEST_SUITE_P(OpFlip_Negative, nvcv::test::ValueList<NVCVStatus, nvcv::ImageFormat, nvcv::ImageFormat>{
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8, nvcv::FMT_RGB8p},  // data format is different
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8p, nvcv::FMT_RGB8p}, // data format is not kNHWC/kHWC
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F16, nvcv::FMT_F16},  // invalid data type
+NVCV_TEST_SUITE_P(OpFlip_Negative, nvcv::test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat>{
+    {nvcv::FMT_RGB8, nvcv::FMT_RGBf32},  // data type is different
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8p},  // data format is different
+    {nvcv::FMT_RGB8p, nvcv::FMT_RGB8p}, // data format is not kNHWC/kHWC
+    {nvcv::FMT_F16, nvcv::FMT_F16},  // invalid data type,
 });
 
 // clang-format on
@@ -233,9 +234,28 @@ TEST_P(OpFlip_Negative, op)
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
-    NVCVStatus        expectedReturnCode = GetParamValue<0>();
-    nvcv::ImageFormat inputFmt           = GetParamValue<1>();
-    nvcv::ImageFormat outputFmt          = GetParamValue<2>();
+    nvcv::ImageFormat inputFmt  = GetParamValue<0>();
+    nvcv::ImageFormat outputFmt = GetParamValue<1>();
+    int               flipCode  = 0;
+
+    nvcv::Tensor inTensor  = nvcv::util::CreateTensor(2, 24, 24, inputFmt);
+    nvcv::Tensor outTensor = nvcv::util::CreateTensor(2, 24, 24, outputFmt);
+
+    // run operator
+    cvcuda::Flip flipOp;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { flipOp(stream, inTensor, outTensor, flipCode); }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST_P(OpFlip_Negative, varshape_op)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::ImageFormat inputFmt  = GetParamValue<0>();
+    nvcv::ImageFormat outputFmt = GetParamValue<1>();
 
     int width    = 24;
     int height   = 24;
@@ -278,10 +298,10 @@ TEST_P(OpFlip_Negative, op)
     // Run operator
     cvcuda::Flip flipOp(batches);
 
-    EXPECT_EQ(expectedReturnCode, nvcv::ProtectCall([&] { flipOp(stream, batchSrc, batchDst, flip_code); }));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { flipOp(stream, batchSrc, batchDst, flip_code); }));
 }
 
-TEST(OpFlip_Negative, varshape_hasNotSameFormat)
+TEST(OpFlip_Negative, varshape_hasDifferentFormat)
 {
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
@@ -297,8 +317,8 @@ TEST(OpFlip_Negative, varshape_hasNotSameFormat)
     std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
 
     std::vector<std::tuple<nvcv::ImageFormat, nvcv::ImageFormat>> testSet{
-        {nvcv::FMT_RGBA8,             fmt},
-        {            fmt, nvcv::FMT_RGBA8}
+        {nvcv::FMT_U8,          fmt},
+        {         fmt, nvcv::FMT_U8}
     };
 
     for (auto testCase : testSet)
@@ -343,4 +363,9 @@ TEST(OpFlip_Negative, varshape_hasNotSameFormat)
         EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
                   nvcv::ProtectCall([&] { flipOp(stream, batchSrc, batchDst, flip_code); }));
     }
+}
+
+TEST(OpFlip_Negative, create_null_handle)
+{
+    EXPECT_EQ(cvcudaFlipCreate(nullptr, 2), NVCV_ERROR_INVALID_ARGUMENT);
 }

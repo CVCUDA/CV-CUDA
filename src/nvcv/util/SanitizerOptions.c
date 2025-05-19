@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -57,16 +57,17 @@ ASAN_ATTRIBUTES const char *__asan_default_options()
     {
         const char *more = nvcv_additional_asan_default_options();
 
-        int moresize = strlen(more);
+        int moresize = strlen(more); // nosemgrep: flawfinder.strlen-1.wcslen-1._tcslen-1._mbslen-1
 
         // +1 -> ':', +1 = '\0'
+        // nosemgrep: flawfinder.strlen-1.wcslen-1._tcslen-1._mbslen-1
         if (strlen(options) + moresize + 1 + 1 >= sizeof(options))
         {
             printError("ASAN default options too long\n");
             abort();
         }
 
-        int cur = strlen(options);
+        int cur = strlen(options); // nosemgrep: flawfinder.strlen-1.wcslen-1._tcslen-1._mbslen-1
 
         options[cur++] = ':';
 
@@ -112,16 +113,17 @@ ASAN_ATTRIBUTES const char *__lsan_default_suppressions()
     {
         const char *more = nvcv_additional_lsan_default_suppressions();
 
-        int moresize = strlen(more);
+        int moresize = strlen(more); // nosemgrep: flawfinder.strlen-1.wcslen-1._tcslen-1._mbslen-1
 
         // +1 -> ':', +1 = '\0'
+        // nosemgrep: flawfinder.strlen-1.wcslen-1._tcslen-1._mbslen-1
         if (strlen(supp) + moresize + 1 + 1 >= sizeof(supp))
         {
             printError("LSAN default suppressions too long\n");
             abort();
         }
 
-        int cur = strlen(supp);
+        int cur = strlen(supp); // nosemgrep: flawfinder.strlen-1.wcslen-1._tcslen-1._mbslen-1
 
         supp[cur++] = '\n';
 

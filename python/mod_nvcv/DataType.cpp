@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,6 +26,7 @@
 
 #include <complex>
 #include <sstream>
+#include <string_view>
 
 // DataType is implicitly convertible from/to numpy types such as
 // numpy.int8, numpy.complex64, numpy.dtype, etc.
@@ -238,22 +239,22 @@ static std::string DataTypeToString(nvcv::DataType type)
 {
     const char *str = nvcvDataTypeGetName(type);
 
-    const char *prefix = "NVCV_DATA_TYPE_";
+    std::string_view prefix = "NVCV_DATA_TYPE_";
 
     std::ostringstream out;
 
     out << "nvcv.";
 
-    if (strncmp(str, prefix, strlen(prefix)) == 0)
+    if (prefix == str)
     {
-        out << "Type." << str + strlen(prefix);
+        out << "Type." << str + prefix.length();
     }
     else
     {
         prefix = "DataType";
-        if (strncmp(str, prefix, strlen(prefix)) == 0)
+        if (prefix == str)
         {
-            out << "Type" << str + strlen(prefix);
+            out << "Type" << str + prefix.length();
         }
         else
         {
