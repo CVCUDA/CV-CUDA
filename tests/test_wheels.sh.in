@@ -1,6 +1,6 @@
 #!/bin/bash -e
 
-# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,6 +23,7 @@ if [ -z "$1" ]; then
     exit 1
 fi
 
+# shellcheck disable=2206
 WHEEL_LIST=($1/**/cvcuda*.whl)
 PACKAGES=("cvcuda" "nvcv")
 
@@ -72,6 +73,7 @@ for whl in "${WHEEL_LIST[@]}"; do
     echo "Testing wheel: $(basename "${whl}")"
 
     # Determine compatible Python versions
+    # shellcheck disable=2207
     compatible_pythons=($(get_compatible_pythons "${whl}"))
     if [ "${#compatible_pythons[@]}" -eq 0 ]; then
         echo "Error: No compatible Python versions found for $(basename "${whl}"). Skipping."
@@ -94,7 +96,11 @@ for whl in "${WHEEL_LIST[@]}"; do
 
         # Manually install pip using get-pip.py
         echo "Manually installing pip..."
-        curl -sS https://bootstrap.pypa.io/get-pip.py | ${py_exec}
+        if [ "${py_exec}" == "python3.8" ]; then
+            curl -sS https://bootstrap.pypa.io/pip/3.8/get-pip.py | ${py_exec}
+        else
+            curl -sS https://bootstrap.pypa.io/get-pip.py | ${py_exec}
+        fi
 
         # Ensure pip is up to date
         echo "Upgrading pip..."

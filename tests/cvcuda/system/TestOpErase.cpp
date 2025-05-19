@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,7 +37,7 @@ NVCV_TEST_SUITE_P(OpErase, nvcv::test::ValueList<int, bool, bool>{
                                {1, false,  true},
                                {2, false,  true},
                                {1,  true,  true},
-                               {2,  true,  true}
+                               {2,  true,  true},
 });
 
 TEST_P(OpErase, correct_output)
@@ -165,127 +165,131 @@ TEST(OpErase, OpErase_Varshape)
     cudaStream_t stream;
     EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
     std::deque<bool> isInplaces{true, false};
+    std::deque<bool> isRandoms{true, false};
     for (bool isInplace : isInplaces)
     {
-        std::vector<nvcv::Image> imgSrc, imgDst;
-        imgSrc.emplace_back(nvcv::Size2D{640, 480}, nvcv::FMT_U8);
-        imgDst.emplace_back(nvcv::Size2D{640, 480}, nvcv::FMT_U8);
-
-        nvcv::ImageBatchVarShape  batchSrc(1);
-        nvcv::ImageBatchVarShape  _batchDst(1);
-        nvcv::ImageBatchVarShape &batchDst = isInplace ? batchSrc : _batchDst;
-        batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
-        _batchDst.pushBack(imgDst.begin(), imgDst.end());
-
-        for (int i = 0; i < 1; ++i)
+        for (bool random : isRandoms)
         {
-            const auto srcData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
-            assert(srcData->numPlanes() == 1);
+            std::vector<nvcv::Image> imgSrc, imgDst;
+            imgSrc.emplace_back(nvcv::Size2D{640, 480}, nvcv::FMT_U8);
+            imgDst.emplace_back(nvcv::Size2D{640, 480}, nvcv::FMT_U8);
 
-            int srcWidth  = srcData->plane(0).width;
-            int srcHeight = srcData->plane(0).height;
+            nvcv::ImageBatchVarShape  batchSrc(1);
+            nvcv::ImageBatchVarShape  _batchDst(1);
+            nvcv::ImageBatchVarShape &batchDst = isInplace ? batchSrc : _batchDst;
+            batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+            _batchDst.pushBack(imgDst.begin(), imgDst.end());
 
-            int srcRowStride = srcWidth * nvcv::FMT_U8.planePixelStrideBytes(0);
-
-            EXPECT_EQ(cudaSuccess, cudaMemset2D(srcData->plane(0).basePtr, srcRowStride, 0, srcRowStride, srcHeight));
-        }
-
-        if (!isInplace)
-        {
             for (int i = 0; i < 1; ++i)
             {
-                const auto dstData      = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
-                int        dstWidth     = dstData->plane(0).width;
-                int        dstHeight    = dstData->plane(0).height;
-                int        dstRowStride = dstWidth * nvcv::FMT_U8.planePixelStrideBytes(0);
+                const auto srcData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
+                assert(srcData->numPlanes() == 1);
+
+                int srcWidth  = srcData->plane(0).width;
+                int srcHeight = srcData->plane(0).height;
+
+                int srcRowStride = srcWidth * nvcv::FMT_U8.planePixelStrideBytes(0);
+
                 EXPECT_EQ(cudaSuccess,
-                          cudaMemset2D(dstData->plane(0).basePtr, dstRowStride, 0, dstRowStride, dstHeight));
+                          cudaMemset2D(srcData->plane(0).basePtr, srcRowStride, 0, srcRowStride, srcHeight));
             }
-        }
 
-        //parameters
-        int          num_erasing_area = 2;
-        nvcv::Tensor anchor({{num_erasing_area}, "N"}, nvcv::TYPE_2S32);
-        nvcv::Tensor erasing({{num_erasing_area}, "N"}, nvcv::TYPE_3S32);
-        nvcv::Tensor values({{num_erasing_area}, "N"}, nvcv::TYPE_F32);
-        nvcv::Tensor imgIdx({{num_erasing_area}, "N"}, nvcv::TYPE_S32);
+            if (!isInplace)
+            {
+                for (int i = 0; i < 1; ++i)
+                {
+                    const auto dstData      = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
+                    int        dstWidth     = dstData->plane(0).width;
+                    int        dstHeight    = dstData->plane(0).height;
+                    int        dstRowStride = dstWidth * nvcv::FMT_U8.planePixelStrideBytes(0);
+                    EXPECT_EQ(cudaSuccess,
+                              cudaMemset2D(dstData->plane(0).basePtr, dstRowStride, 0, dstRowStride, dstHeight));
+                }
+            }
 
-        auto anchorData  = anchor.exportData<nvcv::TensorDataStridedCuda>();
-        auto erasingData = erasing.exportData<nvcv::TensorDataStridedCuda>();
-        auto valuesData  = values.exportData<nvcv::TensorDataStridedCuda>();
-        auto imgIdxData  = imgIdx.exportData<nvcv::TensorDataStridedCuda>();
+            //parameters
+            int          num_erasing_area = 2;
+            nvcv::Tensor anchor({{num_erasing_area}, "N"}, nvcv::TYPE_2S32);
+            nvcv::Tensor erasing({{num_erasing_area}, "N"}, nvcv::TYPE_3S32);
+            nvcv::Tensor values({{num_erasing_area}, "N"}, nvcv::TYPE_F32);
+            nvcv::Tensor imgIdx({{num_erasing_area}, "N"}, nvcv::TYPE_S32);
 
-        ASSERT_NE(nullptr, anchorData);
-        ASSERT_NE(nullptr, erasingData);
-        ASSERT_NE(nullptr, valuesData);
-        ASSERT_NE(nullptr, imgIdxData);
+            auto anchorData  = anchor.exportData<nvcv::TensorDataStridedCuda>();
+            auto erasingData = erasing.exportData<nvcv::TensorDataStridedCuda>();
+            auto valuesData  = values.exportData<nvcv::TensorDataStridedCuda>();
+            auto imgIdxData  = imgIdx.exportData<nvcv::TensorDataStridedCuda>();
 
-        std::vector<int2>  anchorVec(num_erasing_area);
-        std::vector<int3>  erasingVec(num_erasing_area);
-        std::vector<int>   imgIdxVec(num_erasing_area);
-        std::vector<float> valuesVec(num_erasing_area);
+            ASSERT_NE(nullptr, anchorData);
+            ASSERT_NE(nullptr, erasingData);
+            ASSERT_NE(nullptr, valuesData);
+            ASSERT_NE(nullptr, imgIdxData);
 
-        anchorVec[0].x  = 0;
-        anchorVec[0].y  = 0;
-        erasingVec[0].x = 10;
-        erasingVec[0].y = 10;
-        erasingVec[0].z = 0x1;
-        imgIdxVec[0]    = 0;
-        valuesVec[0]    = 1.f;
+            std::vector<int2>  anchorVec(num_erasing_area);
+            std::vector<int3>  erasingVec(num_erasing_area);
+            std::vector<int>   imgIdxVec(num_erasing_area);
+            std::vector<float> valuesVec(num_erasing_area);
 
-        anchorVec[1].x  = 10;
-        anchorVec[1].y  = 10;
-        erasingVec[1].x = 20;
-        erasingVec[1].y = 20;
-        erasingVec[1].z = 0x1;
-        imgIdxVec[1]    = 0;
-        valuesVec[1]    = 1.f;
+            anchorVec[0].x  = 0;
+            anchorVec[0].y  = 0;
+            erasingVec[0].x = 10;
+            erasingVec[0].y = 10;
+            erasingVec[0].z = 0x1;
+            imgIdxVec[0]    = 0;
+            valuesVec[0]    = 1.f;
 
-        // Copy vectors to the GPU
-        ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(anchorData->basePtr(), anchorVec.data(), anchorVec.size() * sizeof(int2),
-                                               cudaMemcpyHostToDevice, stream));
-        ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(erasingData->basePtr(), erasingVec.data(),
-                                               erasingVec.size() * sizeof(int3), cudaMemcpyHostToDevice, stream));
-        ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(imgIdxData->basePtr(), imgIdxVec.data(), imgIdxVec.size() * sizeof(int),
-                                               cudaMemcpyHostToDevice, stream));
-        ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(valuesData->basePtr(), valuesVec.data(),
-                                               valuesVec.size() * sizeof(float), cudaMemcpyHostToDevice, stream));
+            anchorVec[1].x  = 10;
+            anchorVec[1].y  = 10;
+            erasingVec[1].x = 20;
+            erasingVec[1].y = 20;
+            erasingVec[1].z = 0x1;
+            imgIdxVec[1]    = 0;
+            valuesVec[1]    = 1.f;
 
-        // Call operator
-        unsigned int  seed                 = 0;
-        bool          random               = false;
-        int           max_num_erasing_area = 2;
-        cvcuda::Erase eraseOp(max_num_erasing_area);
-        EXPECT_NO_THROW(eraseOp(stream, batchSrc, batchDst, anchor, erasing, values, imgIdx, random, seed));
+            // Copy vectors to the GPU
+            ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(anchorData->basePtr(), anchorVec.data(),
+                                                   anchorVec.size() * sizeof(int2), cudaMemcpyHostToDevice, stream));
+            ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(erasingData->basePtr(), erasingVec.data(),
+                                                   erasingVec.size() * sizeof(int3), cudaMemcpyHostToDevice, stream));
+            ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(imgIdxData->basePtr(), imgIdxVec.data(),
+                                                   imgIdxVec.size() * sizeof(int), cudaMemcpyHostToDevice, stream));
+            ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(valuesData->basePtr(), valuesVec.data(),
+                                                   valuesVec.size() * sizeof(float), cudaMemcpyHostToDevice, stream));
 
-        EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+            // Call operator
+            unsigned int  seed                 = 0;
+            int           max_num_erasing_area = 2;
+            cvcuda::Erase eraseOp(max_num_erasing_area);
+            EXPECT_NO_THROW(eraseOp(stream, batchSrc, batchDst, anchor, erasing, values, imgIdx, random, seed));
 
-        const auto dstData = isInplace ? imgSrc[0].exportData<nvcv::ImageDataStridedCuda>()
-                                       : imgDst[0].exportData<nvcv::ImageDataStridedCuda>();
-        assert(dstData->numPlanes() == 1);
+            EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
 
-        int dstWidth  = dstData->plane(0).width;
-        int dstHeight = dstData->plane(0).height;
+            const auto dstData = isInplace ? imgSrc[0].exportData<nvcv::ImageDataStridedCuda>()
+                                           : imgDst[0].exportData<nvcv::ImageDataStridedCuda>();
+            assert(dstData->numPlanes() == 1);
 
-        int dstRowStride = dstWidth * nvcv::FMT_U8.planePixelStrideBytes(0);
+            int dstWidth  = dstData->plane(0).width;
+            int dstHeight = dstData->plane(0).height;
 
-        std::vector<uint8_t> test(dstHeight * dstRowStride, 0xFF);
+            int dstRowStride = dstWidth * nvcv::FMT_U8.planePixelStrideBytes(0);
 
-        // Copy output data to Host
-        if (!random)
-        {
-            ASSERT_EQ(cudaSuccess,
-                      cudaMemcpy2D(test.data(), dstRowStride, dstData->plane(0).basePtr, dstData->plane(0).rowStride,
-                                   dstRowStride, dstHeight, cudaMemcpyDeviceToHost));
+            std::vector<uint8_t> test(dstHeight * dstRowStride, 0xFF);
 
-            EXPECT_EQ(test[0], 1);
-            EXPECT_EQ(test[9], 1);
-            EXPECT_EQ(test[10], 0);
-            EXPECT_EQ(test[9 * 640], 1);
-            EXPECT_EQ(test[9 * 640 + 9], 1);
-            EXPECT_EQ(test[9 * 640 + 10], 0);
-            EXPECT_EQ(test[10 * 640], 0);
-            EXPECT_EQ(test[10 * 640 + 10], 1);
+            // Copy output data to Host
+            if (!random)
+            {
+                ASSERT_EQ(cudaSuccess,
+                          cudaMemcpy2D(test.data(), dstRowStride, dstData->plane(0).basePtr,
+                                       dstData->plane(0).rowStride, dstRowStride, dstHeight, cudaMemcpyDeviceToHost));
+
+                EXPECT_EQ(test[0], 1);
+                EXPECT_EQ(test[9], 1);
+                EXPECT_EQ(test[10], 0);
+                EXPECT_EQ(test[9 * 640], 1);
+                EXPECT_EQ(test[9 * 640 + 9], 1);
+                EXPECT_EQ(test[9 * 640 + 10], 0);
+                EXPECT_EQ(test[10 * 640], 0);
+                EXPECT_EQ(test[10 * 640 + 10], 1);
+            }
         }
     }
 
@@ -293,22 +297,22 @@ TEST(OpErase, OpErase_Varshape)
 }
 
 // clang-format off
-NVCV_TEST_SUITE_P(OpErase_Negative, nvcv::test::ValueList<std::string, nvcv::DataType, std::string, nvcv::DataType, std::string, nvcv::DataType, std::string, nvcv::DataType, std::string, nvcv::DataType, std::string, nvcv::DataType, int, NVCVStatus>
+NVCV_TEST_SUITE_P(OpErase_Negative, nvcv::test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat, std::string, nvcv::DataType, std::string, nvcv::DataType, std::string, nvcv::DataType, std::string, nvcv::DataType, int>
 {
-    //   in_layout, in_data_type, out_layout, out_data_type, anchor_layout, anchor_datatype, erasingData_layout, erasingData_datatype, imgIdxData_layout, imgIdxData_datatype, valuesData_layout, valuesData_type, num_erasing_area  expectedReturnCode
-    { "CHW", nvcv::TYPE_U8, "HWC", nvcv::TYPE_U8, "N", nvcv::TYPE_2S32, "N", nvcv::TYPE_3S32, "N", nvcv::TYPE_S32, "N", nvcv::TYPE_F32, 2, NVCV_ERROR_INVALID_ARGUMENT}, // invalid in layout
-    { "HWC", nvcv::TYPE_F16, "HWC", nvcv::TYPE_U8, "N", nvcv::TYPE_2S32, "N", nvcv::TYPE_3S32, "N", nvcv::TYPE_S32, "N", nvcv::TYPE_F32, 2, NVCV_ERROR_INVALID_ARGUMENT}, // invalid in datatype
-    { "HWC", nvcv::TYPE_U8, "CHW", nvcv::TYPE_U8, "N", nvcv::TYPE_2S32, "N", nvcv::TYPE_3S32, "N", nvcv::TYPE_S32, "N", nvcv::TYPE_F32, 2, NVCV_ERROR_INVALID_ARGUMENT}, // invalid out layout
-    { "HWC", nvcv::TYPE_U8, "HWC", nvcv::TYPE_F16, "N", nvcv::TYPE_2S32, "N", nvcv::TYPE_3S32, "N", nvcv::TYPE_S32, "N", nvcv::TYPE_F32, 2, NVCV_ERROR_INVALID_ARGUMENT}, // invalid out datatype
-    { "HWC", nvcv::TYPE_U8, "HWC", nvcv::TYPE_U8, "N", nvcv::TYPE_2F32, "N", nvcv::TYPE_3S32, "N", nvcv::TYPE_S32, "N", nvcv::TYPE_F32, 2, NVCV_ERROR_INVALID_ARGUMENT}, // invalid anchor datatype
-    { "HWC", nvcv::TYPE_U8, "HWC", nvcv::TYPE_U8, "NHW", nvcv::TYPE_2S32, "N", nvcv::TYPE_3S32, "N", nvcv::TYPE_S32, "N", nvcv::TYPE_F32, 2, NVCV_ERROR_INVALID_ARGUMENT}, // invalid anchor dim
-    { "HWC", nvcv::TYPE_U8, "HWC", nvcv::TYPE_U8, "N", nvcv::TYPE_2S32, "N", nvcv::TYPE_3S32, "N", nvcv::TYPE_S32, "N", nvcv::TYPE_F32, 3, NVCV_ERROR_INVALID_ARGUMENT}, // Invalid num of erasing area 3 (> max)
-    { "HWC", nvcv::TYPE_U8, "HWC", nvcv::TYPE_U8, "N", nvcv::TYPE_2S32, "N", nvcv::TYPE_3F32, "N", nvcv::TYPE_S32, "N", nvcv::TYPE_F32, 2, NVCV_ERROR_INVALID_ARGUMENT}, // invalid erasing datatype
-    { "HWC", nvcv::TYPE_U8, "HWC", nvcv::TYPE_U8, "N", nvcv::TYPE_2S32, "NHW", nvcv::TYPE_3S32, "N", nvcv::TYPE_S32, "N", nvcv::TYPE_F32, 2, NVCV_ERROR_INVALID_ARGUMENT}, // invalid erasing dim
-    { "HWC", nvcv::TYPE_U8, "HWC", nvcv::TYPE_U8, "N", nvcv::TYPE_2S32, "N", nvcv::TYPE_3S32, "N", nvcv::TYPE_F32, "N", nvcv::TYPE_F32, 2, NVCV_ERROR_INVALID_ARGUMENT}, // invalid imgIdx datatype
-    { "HWC", nvcv::TYPE_U8, "HWC", nvcv::TYPE_U8, "N", nvcv::TYPE_2S32, "N", nvcv::TYPE_3S32, "NHW", nvcv::TYPE_S32, "N", nvcv::TYPE_F32, 2, NVCV_ERROR_INVALID_ARGUMENT}, // invalid imgIdx datatype
-    { "HWC", nvcv::TYPE_U8, "HWC", nvcv::TYPE_U8, "N", nvcv::TYPE_2S32, "N", nvcv::TYPE_3S32, "N", nvcv::TYPE_S32, "N", nvcv::TYPE_S32, 2, NVCV_ERROR_INVALID_ARGUMENT}, // invalid values datatype
-    { "HWC", nvcv::TYPE_U8, "HWC", nvcv::TYPE_U8, "N", nvcv::TYPE_2S32, "N", nvcv::TYPE_3S32, "N", nvcv::TYPE_S32, "NHW", nvcv::TYPE_F32, 2, NVCV_ERROR_INVALID_ARGUMENT}, // invalid values datatype
+    //   in_format, out_format, anchor_layout, anchor_datatype, erasingData_layout, erasingData_datatype, imgIdxData_layout, imgIdxData_datatype, valuesData_layout, valuesData_type, num_erasing_area
+    { nvcv::FMT_RGB8p, nvcv::FMT_RGB8, "N", nvcv::TYPE_2S32, "N", nvcv::TYPE_3S32, "N", nvcv::TYPE_S32, "N", nvcv::TYPE_F32, 2}, // invalid in layout
+    { nvcv::FMT_RGBf16, nvcv::FMT_RGBf16, "N", nvcv::TYPE_2S32, "N", nvcv::TYPE_3S32, "N", nvcv::TYPE_S32, "N", nvcv::TYPE_F32, 2}, // invalid in layout
+    { nvcv::FMT_RGB8, nvcv::FMT_RGB8p, "N", nvcv::TYPE_2S32, "N", nvcv::TYPE_3S32, "N", nvcv::TYPE_S32, "N", nvcv::TYPE_F32, 2}, // invalid out layout
+    { nvcv::FMT_RGB8, nvcv::FMT_RGBf32, "N", nvcv::TYPE_2S32, "N", nvcv::TYPE_3S32, "N", nvcv::TYPE_S32, "N", nvcv::TYPE_F32, 2}, // different datatype
+    { nvcv::FMT_RGB8, nvcv::FMT_RGB8, "N", nvcv::TYPE_2F32, "N", nvcv::TYPE_3S32, "N", nvcv::TYPE_S32, "N", nvcv::TYPE_F32, 2}, // invalid anchor datatype
+    { nvcv::FMT_RGB8, nvcv::FMT_RGB8, "NHW", nvcv::TYPE_2S32, "N", nvcv::TYPE_3S32, "N", nvcv::TYPE_S32, "N", nvcv::TYPE_F32, 2}, // invalid anchor dim
+    { nvcv::FMT_RGB8, nvcv::FMT_RGB8, "N", nvcv::TYPE_2S32, "N", nvcv::TYPE_3S32, "N", nvcv::TYPE_S32, "N", nvcv::TYPE_F32, 3}, // Invalid num of erasing area 3 (> max)
+    { nvcv::FMT_RGB8, nvcv::FMT_RGB8, "N", nvcv::TYPE_2S32, "N", nvcv::TYPE_3F32, "N", nvcv::TYPE_S32, "N", nvcv::TYPE_F32, 2}, // invalid erasing datatype
+    { nvcv::FMT_RGB8, nvcv::FMT_RGB8, "N", nvcv::TYPE_2S32, "NHW", nvcv::TYPE_3S32, "N", nvcv::TYPE_S32, "N", nvcv::TYPE_F32, 2}, // invalid erasing dim
+    { nvcv::FMT_RGB8, nvcv::FMT_RGB8, "N", nvcv::TYPE_2S32, "N", nvcv::TYPE_3S32, "N", nvcv::TYPE_F32, "N", nvcv::TYPE_F32, 2}, // invalid imgIdx datatype
+    { nvcv::FMT_RGB8, nvcv::FMT_RGB8, "N", nvcv::TYPE_2S32, "N", nvcv::TYPE_3S32, "NHW", nvcv::TYPE_S32, "N", nvcv::TYPE_F32, 2}, // invalid imgIdx datatype
+    { nvcv::FMT_RGB8, nvcv::FMT_RGB8, "N", nvcv::TYPE_2S32, "N", nvcv::TYPE_3S32, "N", nvcv::TYPE_S32, "N", nvcv::TYPE_S32, 2}, // invalid values datatype
+    { nvcv::FMT_RGB8, nvcv::FMT_RGB8, "N", nvcv::TYPE_2S32, "N", nvcv::TYPE_3S32, "N", nvcv::TYPE_S32, "NHW", nvcv::TYPE_F32, 2}, // invalid values datatype
 });
 
 // clang-format on
@@ -326,37 +330,23 @@ TEST(OpErase_Negative, create_negative_area)
 
 TEST_P(OpErase_Negative, infer_negative_parameter)
 {
-    std::string    in_layout            = GetParamValue<0>();
-    nvcv::DataType in_data_type         = GetParamValue<1>();
-    std::string    out_layout           = GetParamValue<2>();
-    nvcv::DataType out_data_type        = GetParamValue<3>();
-    std::string    anchor_layout        = GetParamValue<4>();
-    nvcv::DataType anchor_datatype      = GetParamValue<5>();
-    std::string    erasingData_layout   = GetParamValue<6>();
-    nvcv::DataType erasingData_datatype = GetParamValue<7>();
-    std::string    imgIdxData_layout    = GetParamValue<8>();
-    nvcv::DataType imgIdxData_datatype  = GetParamValue<9>();
-    std::string    valuesData_layout    = GetParamValue<10>();
-    nvcv::DataType valuesData_datatype  = GetParamValue<11>();
-    int            num_erasing_area     = GetParamValue<12>();
-    NVCVStatus     expectedReturnCode   = GetParamValue<13>();
+    nvcv::ImageFormat inputFmt             = GetParamValue<0>();
+    nvcv::ImageFormat outputFmt            = GetParamValue<1>();
+    std::string       anchor_layout        = GetParamValue<2>();
+    nvcv::DataType    anchor_datatype      = GetParamValue<3>();
+    std::string       erasingData_layout   = GetParamValue<4>();
+    nvcv::DataType    erasingData_datatype = GetParamValue<5>();
+    std::string       imgIdxData_layout    = GetParamValue<6>();
+    nvcv::DataType    imgIdxData_datatype  = GetParamValue<7>();
+    std::string       valuesData_layout    = GetParamValue<8>();
+    nvcv::DataType    valuesData_datatype  = GetParamValue<9>();
+    int               num_erasing_area     = GetParamValue<10>();
 
     int          max_num_erasing_area = 2;
     unsigned int seed                 = 0;
 
-    nvcv::Tensor imgIn(
-        {
-            {24, 24, 2},
-            in_layout.c_str()
-    },
-        in_data_type);
-
-    nvcv::Tensor imgOut(
-        {
-            {24, 24, 2},
-            out_layout.c_str()
-    },
-        out_data_type);
+    nvcv::Tensor imgIn  = nvcv::util::CreateTensor(1, 24, 24, inputFmt);
+    nvcv::Tensor imgOut = nvcv::util::CreateTensor(1, 24, 24, outputFmt);
 
     //parameters
     nvcv::TensorShape anchorShape = anchor_layout.size() == 3 ? nvcv::TensorShape{{num_erasing_area, num_erasing_area, num_erasing_area}, anchor_layout.c_str()} : nvcv::TensorShape{{num_erasing_area}, anchor_layout.c_str()};
@@ -371,40 +361,37 @@ TEST_P(OpErase_Negative, infer_negative_parameter)
     // Call operator
     cvcuda::Erase eraseOp(max_num_erasing_area);
     EXPECT_EQ(
-        expectedReturnCode,
+        NVCV_ERROR_INVALID_ARGUMENT,
         nvcv::ProtectCall([&] { eraseOp(nullptr, imgIn, imgOut, anchor, erasing, values, imgIdx, false, seed); }));
 }
 
 TEST_P(OpErase_Negative, varshape_infer_negative_parameter)
 {
-    std::string    in_layout            = GetParamValue<0>();
-    nvcv::DataType in_data_type         = GetParamValue<1>();
-    std::string    out_layout           = GetParamValue<2>();
-    nvcv::DataType out_data_type        = GetParamValue<3>();
-    std::string    anchor_layout        = GetParamValue<4>();
-    nvcv::DataType anchor_datatype      = GetParamValue<5>();
-    std::string    erasingData_layout   = GetParamValue<6>();
-    nvcv::DataType erasingData_datatype = GetParamValue<7>();
-    std::string    imgIdxData_layout    = GetParamValue<8>();
-    nvcv::DataType imgIdxData_datatype  = GetParamValue<9>();
-    std::string    valuesData_layout    = GetParamValue<10>();
-    nvcv::DataType valuesData_datatype  = GetParamValue<11>();
-    int            num_erasing_area     = GetParamValue<12>();
-    NVCVStatus     expectedReturnCode   = GetParamValue<13>();
+    nvcv::ImageFormat inputFmt             = GetParamValue<0>();
+    nvcv::ImageFormat outputFmt            = GetParamValue<1>();
+    std::string       anchor_layout        = GetParamValue<2>();
+    nvcv::DataType    anchor_datatype      = GetParamValue<3>();
+    std::string       erasingData_layout   = GetParamValue<4>();
+    nvcv::DataType    erasingData_datatype = GetParamValue<5>();
+    std::string       imgIdxData_layout    = GetParamValue<6>();
+    nvcv::DataType    imgIdxData_datatype  = GetParamValue<7>();
+    std::string       valuesData_layout    = GetParamValue<8>();
+    nvcv::DataType    valuesData_datatype  = GetParamValue<9>();
+    int               num_erasing_area     = GetParamValue<10>();
 
     int          max_num_erasing_area = 2;
     unsigned int seed                 = 0;
 
-    if (in_layout == "CHW" || in_data_type == nvcv::TYPE_F16 || out_layout == "CHW" || out_data_type == nvcv::TYPE_F16)
-    {
-        GTEST_SKIP();
-    }
-
-    std::vector<nvcv::Image> imgSrc, imgDst;
-    imgSrc.emplace_back(nvcv::Size2D{32, 32}, nvcv::FMT_U8);
-
     nvcv::ImageBatchVarShape batchSrc(1);
-    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+    nvcv::ImageBatchVarShape batchDst(1);
+    batchSrc.pushBack(nvcv::Image{
+        nvcv::Size2D{32, 32},
+        inputFmt
+    });
+    batchDst.pushBack(nvcv::Image{
+        nvcv::Size2D{32, 32},
+        outputFmt
+    });
 
     //parameters
     nvcv::TensorShape anchorShape = anchor_layout.size() == 3 ? nvcv::TensorShape{{num_erasing_area, num_erasing_area, num_erasing_area}, anchor_layout.c_str()} : nvcv::TensorShape{{num_erasing_area}, anchor_layout.c_str()};
@@ -419,6 +406,69 @@ TEST_P(OpErase_Negative, varshape_infer_negative_parameter)
     // Call operator
     cvcuda::Erase eraseOp(max_num_erasing_area);
     EXPECT_EQ(
-        expectedReturnCode,
-        nvcv::ProtectCall([&] { eraseOp(nullptr, batchSrc, batchSrc, anchor, erasing, values, imgIdx, false, seed); }));
+        NVCV_ERROR_INVALID_ARGUMENT,
+        nvcv::ProtectCall([&] { eraseOp(nullptr, batchSrc, batchDst, anchor, erasing, values, imgIdx, false, seed); }));
+}
+
+TEST(OpErase_Negative, varshape_hasDifferentFormat)
+{
+    cudaStream_t stream;
+    EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::ImageFormat fmt            = nvcv::FMT_RGB8;
+    const int         numberOfImages = 5;
+    unsigned int      seed           = 0;
+
+    int srcWidthBase  = 4;
+    int srcHeightBase = 4;
+
+    std::vector<std::tuple<nvcv::ImageFormat, nvcv::ImageFormat>> testSet{
+        {nvcv::FMT_RGBA8,             fmt},
+        {            fmt, nvcv::FMT_RGBA8}
+    };
+    for (auto testCase : testSet)
+    {
+        nvcv::ImageFormat inputFmtExtra  = std::get<0>(testCase);
+        nvcv::ImageFormat outputFmtExtra = std::get<1>(testCase);
+
+        // Create input and output
+        std::default_random_engine         randEng;
+        std::uniform_int_distribution<int> rndSrcWidth(srcWidthBase * 0.8, srcWidthBase * 1.1);
+        std::uniform_int_distribution<int> rndSrcHeight(srcHeightBase * 0.8, srcHeightBase * 1.1);
+
+        int          num_erasing_area = 2;
+        nvcv::Tensor anchor({{num_erasing_area}, "N"}, nvcv::TYPE_2S32);
+        nvcv::Tensor erasing({{num_erasing_area}, "N"}, nvcv::TYPE_3S32);
+        nvcv::Tensor values({{num_erasing_area}, "N"}, nvcv::TYPE_F32);
+        nvcv::Tensor imgIdx({{num_erasing_area}, "N"}, nvcv::TYPE_S32);
+
+        std::vector<nvcv::Image> imgSrc, imgDst;
+
+        for (int i = 0; i < numberOfImages - 1; ++i)
+        {
+            int tmpWidth  = i == 0 ? srcWidthBase : rndSrcWidth(randEng);
+            int tmpHeight = i == 0 ? srcHeightBase : rndSrcHeight(randEng);
+
+            imgSrc.emplace_back(nvcv::Size2D{tmpWidth, tmpHeight}, fmt);
+            imgDst.emplace_back(nvcv::Size2D{tmpWidth, tmpHeight}, fmt);
+        }
+        imgSrc.emplace_back(imgSrc[0].size(), inputFmtExtra);
+        imgDst.emplace_back(imgSrc.back().size(), outputFmtExtra);
+
+        nvcv::ImageBatchVarShape batchSrc(numberOfImages);
+        batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+
+        nvcv::ImageBatchVarShape batchDst(numberOfImages);
+        batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+        // Generate test result
+        cvcuda::Erase eraseOp(num_erasing_area);
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+                  nvcv::ProtectCall(
+                      [&] { eraseOp(nullptr, batchSrc, batchDst, anchor, erasing, values, imgIdx, false, seed); }));
+    }
+
+    // Get test data back
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -44,22 +44,22 @@ static std::string ImageFormatToString(nvcv::ImageFormat fmt)
 {
     const char *str = nvcvImageFormatGetName(fmt);
 
-    const char *prefix = "NVCV_IMAGE_FORMAT_";
+    std::string_view prefix = "NVCV_IMAGE_FORMAT_";
 
     std::ostringstream out;
 
     out << "nvcv.";
 
-    if (strncmp(str, prefix, strlen(prefix)) == 0)
+    if (prefix == str)
     {
-        out << "Format." << str + strlen(prefix);
+        out << "Format." << str + prefix.length();
     }
     else
     {
         prefix = "ImageFormat";
-        if (strncmp(str, prefix, strlen(prefix)) == 0)
+        if (prefix == str)
         {
-            out << "Format" << str + strlen(prefix);
+            out << "Format" << str + prefix.length();
         }
         else
         {

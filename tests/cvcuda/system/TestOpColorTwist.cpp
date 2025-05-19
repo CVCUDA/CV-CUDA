@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +18,7 @@
 #include <common/InterpUtils.hpp>
 #include <common/TensorDataUtils.hpp>
 #include <common/TypedTests.hpp>
+#include <common/ValueTests.hpp>
 #include <cvcuda/OpColorTwist.hpp>
 #include <cvcuda/cuda_tools/DropCast.hpp>
 #include <cvcuda/cuda_tools/StaticCast.hpp>
@@ -186,6 +187,8 @@ struct TwistMatrixArgument
 
 #define NVCV_IMAGE_FORMAT_RGB16U \
     NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, UNSIGNED, XYZ1, ASSOCIATED, X16_Y16_Z16)
+#define NVCV_IMAGE_FORMAT_RGBA16U \
+    NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, UNSIGNED, XYZW, ASSOCIATED, X16_Y16_Z16_W16)
 #define NVCV_IMAGE_FORMAT_RGB16S NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, SIGNED, XYZ1, ASSOCIATED, X16_Y16_Z16)
 #define NVCV_IMAGE_FORMAT_RGBA16S \
     NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, SIGNED, XYZW, ASSOCIATED, X16_Y16_Z16_W16)
@@ -201,10 +204,12 @@ NVCV_TYPED_TEST_SUITE(
         NVCV_TEST_ROW(NVCV_SHAPE(42, 60, 6), float3, NVCV_IMAGE_FORMAT_RGBf32, true, TwistMatrixArgument<float4>),
         NVCV_TEST_ROW(NVCV_SHAPE(42, 60, 6), float4, NVCV_IMAGE_FORMAT_RGBAf32, true, TwistMatrixArgument<float4>),
         NVCV_TEST_ROW(NVCV_SHAPE(41, 59, 1), float3, NVCV_IMAGE_FORMAT_RGBf32, false, TwistMatrixArgument<float4>),
+        NVCV_TEST_ROW(NVCV_SHAPE(55, 27, 1), float4, NVCV_IMAGE_FORMAT_RGBAf32, false, TwistMatrixArgument<float4>),
         NVCV_TEST_ROW(NVCV_SHAPE(349, 31, 2), uchar3, NVCV_IMAGE_FORMAT_RGB8, false, TwistMatrixArgument<float4>),
         NVCV_TEST_ROW(NVCV_SHAPE(349, 31, 2), uchar4, NVCV_IMAGE_FORMAT_RGBA8, false, TwistMatrixArgument<float4>),
         NVCV_TEST_ROW(NVCV_SHAPE(128, 32, 1), uchar3, NVCV_IMAGE_FORMAT_RGB8, true, TwistMatrixArgument<float4>),
         NVCV_TEST_ROW(NVCV_SHAPE(79, 50, 3), ushort3, NVCV_IMAGE_FORMAT_RGB16U, false, TwistMatrixArgument<float4>),
+        NVCV_TEST_ROW(NVCV_SHAPE(88, 57, 3), ushort4, NVCV_IMAGE_FORMAT_RGBA16U, false, TwistMatrixArgument<float4>),
         NVCV_TEST_ROW(NVCV_SHAPE(101, 32, 5), short3, NVCV_IMAGE_FORMAT_RGB16S, true, TwistMatrixArgument<float4>),
         NVCV_TEST_ROW(NVCV_SHAPE(101, 32, 5), short4, NVCV_IMAGE_FORMAT_RGBA16S, true, TwistMatrixArgument<float4>),
         NVCV_TEST_ROW(NVCV_SHAPE(79, 50, 3), uint3, NVCV_IMAGE_FORMAT_RGB32U, true, TwistMatrixArgument<double4>),
@@ -384,4 +389,182 @@ TYPED_TEST(OpColorTwist, varshape_correct_output)
     }
 
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+// clang-format off
+NVCV_TEST_SUITE_P(OpColorTwistVarshape_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat, int, int>{
+    // inFmt, outFmt, inputNumImages, outputNumImages
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, 4, 3},
+    {nvcv::FMT_RGB8p, nvcv::FMT_RGB8p, 3, 3},
+    {nvcv::FMT_U8, nvcv::FMT_U8, 3, 3},
+});
+
+NVCV_TEST_SUITE_P(OpColorTwist_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat, int , int, nvcv::DataType, std::string, int, int, int>{
+    // inFmt, outFmt, inputSamples, outputSamples, twistDtype, layout, twistShapeSamples, twistShapeRows, twistShapeCols
+    //{nvcv::FMT_RGB8, nvcv::FMT_RGB8, 3, 3, nvcv::TYPE_4F32, "H", 3, 3, 4}, // Valid case
+    // Invalid src/dst tensors
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, 4, 3, nvcv::TYPE_4F32, "H", 3, 3, 4},
+    {nvcv::FMT_RGB8, nvcv::FMT_U8, 3, 3, nvcv::TYPE_4F32, "H", 3, 3, 4},
+    {nvcv::FMT_U8, nvcv::FMT_U8, 3, 3, nvcv::TYPE_4F32, "H", 3, 3, 4},
+    {nvcv::FMT_RGB8, nvcv::FMT_RGBf32, 3, 3, nvcv::TYPE_4F32, "H", 3, 3, 4},
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8p, 3, 3, nvcv::TYPE_4F32, "H", 3, 3, 4},
+    {nvcv::FMT_RGB8p, nvcv::FMT_RGB8p, 3, 3, nvcv::TYPE_4F32, "H", 3, 3, 4},
+    // Invalid twist tensor
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, 3, 3, nvcv::TYPE_2F32, "H", 3, 3, 4},
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, 3, 3, nvcv::TYPE_4F32, "NHW", 3, 3, 4},
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, 3, 3, nvcv::TYPE_F32, "NHW", 4, 3, 4}, // has per sample twist
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, 3, 3, nvcv::TYPE_F32, "NHW", 3, 4, 4}, // has per sample twist
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, 3, 3, nvcv::TYPE_F32, "NH", 3, 3, 5},
+});
+
+// clang-format on
+
+TEST_P(OpColorTwist_Negative, op)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    const nvcv::ImageFormat inFmt             = GetParamValue<0>();
+    const nvcv::ImageFormat outFmt            = GetParamValue<1>();
+    const int               inputSamples      = GetParamValue<2>();
+    const int               outputSamples     = GetParamValue<3>();
+    const nvcv::DataType    twistDtype        = GetParamValue<4>();
+    const std::string       layout            = GetParamValue<5>();
+    const int               twistShapeSamples = GetParamValue<6>();
+    const int               twistShapeRows    = GetParamValue<7>();
+    const int               twistShapeCols    = GetParamValue<8>();
+
+    const int3   inShape{32, 32, inputSamples};
+    const int3   outShape{32, 32, outputSamples};
+    nvcv::Tensor srcTensor = nvcv::util::CreateTensor(inShape.z, inShape.x, inShape.y, inFmt);
+    nvcv::Tensor dstTensor = nvcv::util::CreateTensor(outShape.z, outShape.x, outShape.y, outFmt);
+
+    nvcv::Tensor twistTensor;
+    if (layout.size() == 3)
+    {
+        twistTensor = nvcv::Tensor(
+            {
+                {twistShapeSamples, twistShapeRows, twistShapeCols},
+                layout.c_str()
+        },
+            twistDtype);
+    }
+    else if (layout.size() == 2)
+    {
+        twistTensor = nvcv::Tensor(
+            {
+                {twistShapeRows, twistShapeCols},
+                layout.c_str()
+        },
+            twistDtype);
+    }
+    else if (layout.size() == 1)
+    {
+        twistTensor = nvcv::Tensor({{twistShapeRows}, layout.c_str()}, twistDtype);
+    }
+
+    cvcuda::ColorTwist op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(stream, srcTensor, dstTensor, twistTensor); }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST_P(OpColorTwistVarshape_Negative, op)
+{
+    const nvcv::ImageFormat inFmt           = GetParamValue<0>();
+    const nvcv::ImageFormat outFmt          = GetParamValue<1>();
+    const int               inputNumImages  = GetParamValue<2>();
+    const int               outputNumImages = GetParamValue<3>();
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    std::vector<nvcv::Image> imgSrc;
+    std::vector<nvcv::Image> imgDst;
+
+    std::uniform_int_distribution<int> randW(24 * 0.5, 24 * 1.5);
+    std::uniform_int_distribution<int> randH(24 * 0.5, 24 * 1.5);
+    std::mt19937_64                    rng(12345);
+
+    for (int i = 0; i < inputNumImages; ++i)
+    {
+        nvcv::Size2D imgShape{randW(rng), randH(rng)};
+        imgSrc.emplace_back(imgShape, inFmt);
+    }
+    for (int i = 0; i < outputNumImages; ++i)
+    {
+        imgDst.emplace_back(imgSrc[i].size(), outFmt);
+    }
+
+    nvcv::ImageBatchVarShape batchSrc(inputNumImages);
+    nvcv::ImageBatchVarShape batchDst(outputNumImages);
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    nvcv::Tensor twistTensor{
+        {{3}, "H"},
+        nvcv::TYPE_4F32
+    };
+
+    cvcuda::ColorTwist op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(stream, batchSrc, batchDst, twistTensor); }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpColorTwistVarshape_Negative, varshape_hasDifferentFormat)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::ImageFormat fmt            = nvcv::FMT_RGB8;
+    const int         numberOfImages = 5;
+
+    std::vector<std::tuple<nvcv::ImageFormat, nvcv::ImageFormat>> testSet{
+        {nvcv::FMT_RGBA8,             fmt},
+        {            fmt, nvcv::FMT_RGBA8}
+    };
+
+    for (auto testCase : testSet)
+    {
+        nvcv::ImageFormat inputFmtExtra  = std::get<0>(testCase);
+        nvcv::ImageFormat outputFmtExtra = std::get<1>(testCase);
+
+        std::vector<nvcv::Image>           imgSrc, imgDst;
+        std::uniform_int_distribution<int> randW(24 * 0.5, 24 * 1.5);
+        std::uniform_int_distribution<int> randH(24 * 0.5, 24 * 1.5);
+        std::mt19937_64                    rng(12345);
+
+        for (int i = 0; i < numberOfImages - 1; ++i)
+        {
+            nvcv::Size2D imgShape{randW(rng), randH(rng)};
+            imgSrc.emplace_back(imgShape, fmt);
+            imgDst.emplace_back(imgShape, fmt);
+        }
+        imgSrc.emplace_back(imgSrc[0].size(), inputFmtExtra);
+        imgDst.emplace_back(imgSrc.back().size(), outputFmtExtra);
+
+        nvcv::ImageBatchVarShape batchSrc(numberOfImages);
+        nvcv::ImageBatchVarShape batchDst(numberOfImages);
+        batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+        batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+        nvcv::Tensor twistTensor{
+            {{3}, "H"},
+            nvcv::TYPE_4F32
+        };
+
+        cvcuda::ColorTwist op;
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(stream, batchSrc, batchDst, twistTensor); }));
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpColorTwist_Negative, create_null_handle)
+{
+    EXPECT_EQ(cvcudaColorTwistCreate(nullptr), NVCV_ERROR_INVALID_ARGUMENT);
 }

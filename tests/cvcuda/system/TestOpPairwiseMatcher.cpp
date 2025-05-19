@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -313,13 +313,10 @@ TYPED_TEST(OpPairwiseMatcher, CorrectOutput)
     nvcv::Tensor distances;
     nvcv::Optional<nvcv::TensorDataStridedCuda> dData;
 
-    if (crossCheck)
-    {
-        numMatches = nvcv::Tensor({{numSamples}, "N"}, nvcv::TYPE_S32);
+    numMatches = nvcv::Tensor({{numSamples}, "N"}, nvcv::TYPE_S32);
+    nmData = numMatches.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(nmData);
 
-        nmData = numMatches.exportData<nvcv::TensorDataStridedCuda>();
-        ASSERT_TRUE(nmData);
-    }
     if (storeDistances)
     {
         distances = nvcv::Tensor({{numSamples, maxMatches}, "NM"}, nvcv::TYPE_F32);
@@ -439,4 +436,154 @@ TYPED_TEST(OpPairwiseMatcher, CorrectOutput)
                     matchesPerPoint, maxMatches);
 
     EXPECT_EQ(testIdsDist, goldIdsDist);
+}
+
+static void pairwiseMatcherNegative(nvcv::Tensor &set1, nvcv::Tensor &set2, nvcv::Tensor &numSet1,
+                                    nvcv::Tensor &numSet2, nvcv::Tensor &matches, nvcv::Tensor &numMatches,
+                                    nvcv::Tensor &distances, bool crossCheck, int matchesPerPoint,
+                                    NVCVNormType normType, NVCVPairwiseMatcherType algoChoice)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::PairwiseMatcher op(algoChoice);
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall(
+                                               [&] {
+                                                   op(stream, set1, set2, numSet1, numSet2, matches, numMatches,
+                                                      distances, crossCheck, matchesPerPoint, normType);
+                                               }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpPairwiseMatcher_Negative, invalid_inputs)
+{
+    int numSamples      = 2;
+    int maxSet1         = 2 + 12;
+    int maxSet2         = 2 + 23;
+    int numDim          = 3;
+    int matchesPerPoint = 1;
+    int maxMatches      = maxSet1 * matchesPerPoint;
+    // clang-format off
+
+    // null inputs
+    nvcv::Tensor nullTensor;
+
+    // invalid set1
+    nvcv::Tensor invalidRankSet1({{numSamples}, "N"}, nvcv::TYPE_U8); // invalid rank
+    nvcv::Tensor f32Set1({{numSamples, maxSet1, numDim}, "NMD"}, nvcv::TYPE_F32); // different data type
+    nvcv::Tensor f16Set1({{numSamples, maxSet1, numDim}, "NMD"}, nvcv::TYPE_F16);
+
+    // invalid set2
+    nvcv::Tensor invalidRankSet2({{numSamples}, "N"}, nvcv::TYPE_U8); // invalid rank
+    nvcv::Tensor f32Set2({{numSamples, maxSet2, numDim}, "NMD"}, nvcv::TYPE_F32); // different data type
+    nvcv::Tensor f16Set2({{numSamples, maxSet2, numDim}, "NMD"}, nvcv::TYPE_F16);
+    nvcv::Tensor invalidShapeSet2({{numSamples + 1, maxSet2, numDim}, "NMD"}, nvcv::TYPE_U8); // invalid shape 0
+
+    // invalid numSet
+    nvcv::Tensor invalidRankNumSet({{numSamples, maxSet2, numDim}, "NMD"}, nvcv::TYPE_S32);
+    nvcv::Tensor invalidShapeCNumSet({{numSamples, 2}, "NC"}, nvcv::TYPE_S32); // the shape C should be 1
+
+    // invalid matches
+    nvcv::Tensor invalidRankMatches({{numSamples}, "N"}, nvcv::TYPE_S32);
+
+    // invalid distances
+    nvcv::Tensor invalidRankDistances({{numSamples}, "N"}, nvcv::TYPE_F32);
+    nvcv::Tensor invalidShapeCDistances({{numSamples, maxMatches, 2}, "NMC"}, nvcv::TYPE_F32);
+
+    // valid inputs
+    nvcv::Tensor set1({{numSamples, maxSet1, numDim}, "NMD"}, nvcv::TYPE_U8);
+    nvcv::Tensor set2({{numSamples, maxSet2, numDim}, "NMD"}, nvcv::TYPE_U8);
+
+    nvcv::Tensor numSet1({{numSamples}, "N"}, nvcv::TYPE_S32);
+    nvcv::Tensor numSet2({{numSamples}, "N"}, nvcv::TYPE_S32);
+
+    nvcv::Tensor matches({{numSamples, maxMatches, 2}, "NMD"}, nvcv::TYPE_S32);
+    nvcv::Tensor numMatches({{numSamples}, "N"}, nvcv::TYPE_S32);
+
+    nvcv::Tensor distances({{numSamples, maxMatches}, "NM"}, nvcv::TYPE_F32);
+
+    // clang-format on
+
+    // null inputs
+    pairwiseMatcherNegative(nullTensor, set2, numSet1, numSet2, matches, numMatches, distances, false, 1, NVCV_NORM_L1,
+                            NVCV_BRUTE_FORCE);
+    pairwiseMatcherNegative(set1, nullTensor, numSet1, numSet2, matches, numMatches, distances, false, 1, NVCV_NORM_L1,
+                            NVCV_BRUTE_FORCE);
+    pairwiseMatcherNegative(set1, set2, numSet1, numSet2, nullTensor, numMatches, distances, false, 1, NVCV_NORM_L1,
+                            NVCV_BRUTE_FORCE);
+    pairwiseMatcherNegative(set1, set2, numSet1, numSet2, matches, nullTensor, distances, true, 1, NVCV_NORM_L1,
+                            NVCV_BRUTE_FORCE);
+
+    // invalid set1
+    pairwiseMatcherNegative(invalidRankSet1, set2, numSet1, numSet2, matches, numMatches, distances, false, 1,
+                            NVCV_NORM_L1, NVCV_BRUTE_FORCE);
+
+    // invalid set2
+    pairwiseMatcherNegative(set1, invalidRankSet2, numSet1, numSet2, matches, numMatches, distances, false, 1,
+                            NVCV_NORM_L1, NVCV_BRUTE_FORCE);
+    pairwiseMatcherNegative(set1, f32Set2, numSet1, numSet2, matches, numMatches, distances, false, 1, NVCV_NORM_L1,
+                            NVCV_BRUTE_FORCE);
+    pairwiseMatcherNegative(set1, invalidShapeSet2, numSet1, numSet2, matches, numMatches, distances, false, 1,
+                            NVCV_NORM_L1, NVCV_BRUTE_FORCE);
+
+    // invalid numSet1
+    pairwiseMatcherNegative(set1, set2, invalidRankNumSet, numSet2, matches, numMatches, distances, false, 1,
+                            NVCV_NORM_L1, NVCV_BRUTE_FORCE);
+    pairwiseMatcherNegative(set1, set2, invalidShapeCNumSet, numSet2, matches, numMatches, distances, false, 1,
+                            NVCV_NORM_L1, NVCV_BRUTE_FORCE);
+
+    // invalid numSet2
+    pairwiseMatcherNegative(set1, set2, numSet1, invalidRankNumSet, matches, numMatches, distances, false, 1,
+                            NVCV_NORM_L1, NVCV_BRUTE_FORCE);
+    pairwiseMatcherNegative(set1, set2, numSet1, invalidShapeCNumSet, matches, numMatches, distances, false, 1,
+                            NVCV_NORM_L1, NVCV_BRUTE_FORCE);
+
+    // invalid matches
+    pairwiseMatcherNegative(set1, set2, numSet1, numSet2, invalidRankMatches, numMatches, distances, false, 1,
+                            NVCV_NORM_L1, NVCV_BRUTE_FORCE);
+
+    // invalid numMatches
+    pairwiseMatcherNegative(set1, set2, numSet1, numSet2, matches, invalidRankNumSet, distances, false, 1, NVCV_NORM_L1,
+                            NVCV_BRUTE_FORCE);
+    pairwiseMatcherNegative(set1, set2, numSet1, numSet2, matches, invalidShapeCNumSet, distances, false, 1,
+                            NVCV_NORM_L1, NVCV_BRUTE_FORCE);
+
+    // invalid distances
+    pairwiseMatcherNegative(set1, set2, numSet1, numSet2, matches, numMatches, invalidRankDistances, false, 1,
+                            NVCV_NORM_L1, NVCV_BRUTE_FORCE);
+    pairwiseMatcherNegative(set1, set2, numSet1, numSet2, matches, numMatches, invalidShapeCDistances, false, 1,
+                            NVCV_NORM_L1, NVCV_BRUTE_FORCE);
+
+    // invalid matchesPerPoint
+    pairwiseMatcherNegative(set1, set2, numSet1, numSet2, matches, numMatches, distances, false, -1, NVCV_NORM_L1,
+                            NVCV_BRUTE_FORCE);
+    pairwiseMatcherNegative(set1, set2, numSet1, numSet2, matches, numMatches, distances, true, 2, NVCV_NORM_L1,
+                            NVCV_BRUTE_FORCE);
+
+    // invalid type
+    pairwiseMatcherNegative(f16Set1, f16Set2, numSet1, numSet2, matches, numMatches, distances, false, 1, NVCV_NORM_L1,
+                            NVCV_BRUTE_FORCE);
+    pairwiseMatcherNegative(f32Set1, f32Set2, numSet1, numSet2, matches, numMatches, distances, false, 1,
+                            NVCV_NORM_HAMMING, NVCV_BRUTE_FORCE);
+#ifndef ENABLE_SANITIZER
+    pairwiseMatcherNegative(set1, set2, numSet1, numSet2, matches, numMatches, distances, false, 1,
+                            static_cast<NVCVNormType>(255), NVCV_BRUTE_FORCE);
+#endif
+}
+
+#ifndef ENABLE_SANITIZER
+TEST(OpPairwiseMatcher_Negative, create_invalid_algo)
+{
+    NVCVOperatorHandle handle;
+    EXPECT_EQ(cvcudaPairwiseMatcherCreate(&handle, static_cast<NVCVPairwiseMatcherType>(255)),
+              NVCV_ERROR_INVALID_ARGUMENT);
+}
+#endif
+
+TEST(OpPairwiseMatcher_Negative, create_null_handle)
+{
+    EXPECT_EQ(cvcudaPairwiseMatcherCreate(nullptr, NVCV_BRUTE_FORCE), NVCV_ERROR_INVALID_ARGUMENT);
 }

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -434,33 +434,45 @@ TEST(OpGaussianNoise_negative, invalid_mu_sigma_layout)
 }
 
 // clang-format off
-NVCV_TEST_SUITE_P(OpGaussianNoise_negative, nvcv::test::ValueList<std::string, nvcv::DataType, std::string, nvcv::DataType, std::string, nvcv::DataType, std::string, nvcv::DataType, NVCVStatus>
+NVCV_TEST_SUITE_P(OpGaussianNoise_negative, nvcv::test::ValueList<std::string, nvcv::DataType, std::string, nvcv::DataType, std::string, nvcv::DataType, std::string, nvcv::DataType>
 {
     //   in_layout,        in_data_type,   out_layout,     out_data_type,     mu_layout,         mu_data_type,    sigma_layout,    sigma_data_type,    expected_return_status
-    {        "CHW",       nvcv::TYPE_U8,        "HWC",     nvcv::TYPE_U8,           "N",       nvcv::TYPE_F32,             "N",     nvcv::TYPE_F32,    NVCV_ERROR_INVALID_ARGUMENT},
-    {        "HWC",       nvcv::TYPE_U8,        "CHW",     nvcv::TYPE_U8,           "N",       nvcv::TYPE_F32,             "N",     nvcv::TYPE_F32,    NVCV_ERROR_INVALID_ARGUMENT},
-    {        "HWC",      nvcv::TYPE_F64,        "HWC",     nvcv::TYPE_U8,           "N",       nvcv::TYPE_F32,             "N",     nvcv::TYPE_F32,    NVCV_ERROR_INVALID_ARGUMENT},
-    {        "HWC",       nvcv::TYPE_U8,        "HWC",    nvcv::TYPE_F64,           "N",       nvcv::TYPE_F32,             "N",     nvcv::TYPE_F32,    NVCV_ERROR_INVALID_ARGUMENT},
-    {        "HWC",      nvcv::TYPE_U32,        "HWC",     nvcv::TYPE_U8,           "N",       nvcv::TYPE_F32,             "N",     nvcv::TYPE_F32,    NVCV_ERROR_INVALID_ARGUMENT},
-    {        "HWC",       nvcv::TYPE_U8,        "HWC",    nvcv::TYPE_U32,           "N",       nvcv::TYPE_F32,             "N",     nvcv::TYPE_F32,    NVCV_ERROR_INVALID_ARGUMENT},
-    {        "HWC",       nvcv::TYPE_U8,        "HWC",    nvcv::TYPE_U16,           "N",       nvcv::TYPE_F32,             "N",     nvcv::TYPE_F32,    NVCV_ERROR_INVALID_ARGUMENT},
-    {        "HWC",       nvcv::TYPE_U8,        "HWC",     nvcv::TYPE_U8,           "N",       nvcv::TYPE_F64,             "N",     nvcv::TYPE_F32,    NVCV_ERROR_INVALID_ARGUMENT},
-    {        "HWC",       nvcv::TYPE_U8,        "HWC",     nvcv::TYPE_U8,           "N",       nvcv::TYPE_F32,             "N",     nvcv::TYPE_F64,    NVCV_ERROR_INVALID_ARGUMENT},
+    {        "CHW",       nvcv::TYPE_U8,        "HWC",     nvcv::TYPE_U8,           "N",       nvcv::TYPE_F32,             "N",     nvcv::TYPE_F32},
+    {        "HWC",       nvcv::TYPE_U8,        "CHW",     nvcv::TYPE_U8,           "N",       nvcv::TYPE_F32,             "N",     nvcv::TYPE_F32},
+    {        "HWC",      nvcv::TYPE_F64,        "HWC",     nvcv::TYPE_U8,           "N",       nvcv::TYPE_F32,             "N",     nvcv::TYPE_F32},
+    {        "HWC",       nvcv::TYPE_U8,        "HWC",    nvcv::TYPE_F64,           "N",       nvcv::TYPE_F32,             "N",     nvcv::TYPE_F32},
+    {        "HWC",      nvcv::TYPE_U32,        "HWC",     nvcv::TYPE_U8,           "N",       nvcv::TYPE_F32,             "N",     nvcv::TYPE_F32},
+    {        "HWC",       nvcv::TYPE_U8,        "HWC",    nvcv::TYPE_U32,           "N",       nvcv::TYPE_F32,             "N",     nvcv::TYPE_F32},
+    {        "HWC",       nvcv::TYPE_U8,        "HWC",    nvcv::TYPE_U16,           "N",       nvcv::TYPE_F32,             "N",     nvcv::TYPE_F32},
+    {        "HWC",       nvcv::TYPE_U8,        "HWC",     nvcv::TYPE_U8,           "N",       nvcv::TYPE_F64,             "N",     nvcv::TYPE_F32},
+    {        "HWC",       nvcv::TYPE_U8,        "HWC",     nvcv::TYPE_U8,           "N",       nvcv::TYPE_F32,             "N",     nvcv::TYPE_F64},
+});
+
+NVCV_TEST_SUITE_P(OpGaussianNoiseVarshape_negative, nvcv::test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat, std::string, nvcv::DataType, std::string, nvcv::DataType>
+{
+    // inFmt, outFmt, mu_layout, mu_data_type, sigma_layout, sigma_data_type
+    {nvcv::FMT_RGB8p, nvcv::FMT_RGB8, "N", nvcv::TYPE_F32, "N", nvcv::TYPE_F32},
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8p, "N", nvcv::TYPE_F32, "N", nvcv::TYPE_F32},
+    {nvcv::FMT_RGBf16, nvcv::FMT_RGBf16, "N", nvcv::TYPE_F32, "N", nvcv::TYPE_F32},
+    {nvcv::FMT_RGB8, nvcv::FMT_RGBf32, "N", nvcv::TYPE_F32, "N", nvcv::TYPE_F32},
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, "N", nvcv::TYPE_F64, "N", nvcv::TYPE_F32},
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, "N", nvcv::TYPE_F32, "N", nvcv::TYPE_F64},
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, "NW", nvcv::TYPE_F32, "N", nvcv::TYPE_F32},
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, "N", nvcv::TYPE_F32, "NW", nvcv::TYPE_F32},
 });
 
 // clang-format on
 
-TEST_P(OpGaussianNoise_negative, infer_negative_parameter)
+TEST_P(OpGaussianNoise_negative, op)
 {
-    std::string    in_layout              = GetParamValue<0>();
-    nvcv::DataType in_data_type           = GetParamValue<1>();
-    std::string    out_layout             = GetParamValue<2>();
-    nvcv::DataType out_data_type          = GetParamValue<3>();
-    std::string    mu_layout              = GetParamValue<4>();
-    nvcv::DataType mu_data_type           = GetParamValue<5>();
-    std::string    sigma_layout           = GetParamValue<6>();
-    nvcv::DataType sigma_data_type        = GetParamValue<7>();
-    NVCVStatus     expected_return_status = GetParamValue<8>();
+    std::string    in_layout       = GetParamValue<0>();
+    nvcv::DataType in_data_type    = GetParamValue<1>();
+    std::string    out_layout      = GetParamValue<2>();
+    nvcv::DataType out_data_type   = GetParamValue<3>();
+    std::string    mu_layout       = GetParamValue<4>();
+    nvcv::DataType mu_data_type    = GetParamValue<5>();
+    std::string    sigma_layout    = GetParamValue<6>();
+    nvcv::DataType sigma_data_type = GetParamValue<7>();
 
     nvcv::Tensor imgIn(
         {
@@ -483,6 +495,61 @@ TEST_P(OpGaussianNoise_negative, infer_negative_parameter)
     int                   maxBatch = 4;
     unsigned long long    seed     = 12345;
     cvcuda::GaussianNoise GaussianNoiseOp(maxBatch);
-    EXPECT_EQ(expected_return_status,
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
               nvcv::ProtectCall([&] { GaussianNoiseOp(NULL, imgIn, imgOut, muval, sigmaval, false, seed); }));
+}
+
+TEST_P(OpGaussianNoiseVarshape_negative, op)
+{
+    nvcv::ImageFormat inFmt           = GetParamValue<0>();
+    nvcv::ImageFormat outFmt          = GetParamValue<1>();
+    std::string       mu_layout       = GetParamValue<2>();
+    nvcv::DataType    mu_data_type    = GetParamValue<3>();
+    std::string       sigma_layout    = GetParamValue<4>();
+    nvcv::DataType    sigma_data_type = GetParamValue<5>();
+
+    int width  = 24;
+    int height = 24;
+    int batch  = 3;
+
+    cudaStream_t stream;
+    EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    // Create input and output
+    std::default_random_engine         randEng;
+    std::uniform_int_distribution<int> rndWidth(width * 0.8, width * 1.1);
+    std::uniform_int_distribution<int> rndHeight(height * 0.8, height * 1.1);
+
+    std::vector<nvcv::Image> imgSrc, imgDst;
+    for (int i = 0; i < batch; ++i)
+    {
+        int rw = rndWidth(randEng);
+        int rh = rndHeight(randEng);
+        imgSrc.emplace_back(nvcv::Size2D{rw, rh}, inFmt);
+        imgDst.emplace_back(nvcv::Size2D{rw, rh}, outFmt);
+    }
+
+    nvcv::ImageBatchVarShape batchSrc(batch);
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+
+    nvcv::ImageBatchVarShape batchDst(batch);
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    //parameters
+    nvcv::TensorShape muValShape    = mu_layout.size() == 1 ? nvcv::TensorShape({2}, mu_layout.c_str())
+                                                            : nvcv::TensorShape({2, 1}, mu_layout.c_str());
+    nvcv::TensorShape sigmaValShape = sigma_layout.size() == 1 ? nvcv::TensorShape({2}, sigma_layout.c_str())
+                                                               : nvcv::TensorShape({2, 1}, sigma_layout.c_str());
+    nvcv::Tensor      muVal(muValShape, mu_data_type);
+    nvcv::Tensor      sigmaVal(sigmaValShape, sigma_data_type);
+
+    // Call operator
+    int                   maxBatch = 4;
+    unsigned long long    seed     = 12345;
+    cvcuda::GaussianNoise GaussianNoiseOp(maxBatch);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { GaussianNoiseOp(stream, batchSrc, batchDst, muVal, sigmaVal, false, seed); }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }

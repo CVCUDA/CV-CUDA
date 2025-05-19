@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,6 +20,7 @@
 
 #include <cvcuda/Types.h>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -60,10 +61,14 @@ public:
         , fontColor(_fontColor)
         , bgColor(_bgColor)
     {
-        utf8Text = (const char *)malloc(strlen(_utf8Text) + 1);
-        memcpy(const_cast<char *>(utf8Text), _utf8Text, strlen(_utf8Text) + 1);
-        fontName = (const char *)malloc(strlen(_fontName) + 1);
-        memcpy(const_cast<char *>(fontName), _fontName, strlen(_fontName) + 1);
+        size_t len          = std::char_traits<char>::length(_utf8Text);
+        char  *tmp_utf8Text = (char *)malloc(len + 1);
+        std::copy_n(_utf8Text, len + 1, tmp_utf8Text);
+        len                = std::char_traits<char>::length(_fontName);
+        char *tmp_fontName = (char *)malloc(len + 1);
+        std::copy_n(_fontName, len + 1, tmp_fontName);
+        utf8Text = tmp_utf8Text;
+        fontName = tmp_fontName;
     }
 
     NVCVText(const NVCVText &text)
@@ -72,10 +77,14 @@ public:
         , fontColor(text.fontColor)
         , bgColor(text.bgColor)
     {
-        utf8Text = (const char *)malloc(strlen(text.utf8Text) + 1);
-        memcpy(const_cast<char *>(utf8Text), text.utf8Text, strlen(text.utf8Text) + 1);
-        fontName = (const char *)malloc(strlen(text.fontName) + 1);
-        memcpy(const_cast<char *>(fontName), text.fontName, strlen(text.fontName) + 1);
+        size_t len          = std::char_traits<char>::length(text.utf8Text);
+        char  *tmp_utf8Text = (char *)malloc(len + 1);
+        std::copy_n(text.utf8Text, len + 1, tmp_utf8Text);
+        len                = std::char_traits<char>::length(text.fontName);
+        char *tmp_fontName = (char *)malloc(len + 1);
+        std::copy_n(text.fontName, len + 1, tmp_fontName);
+        utf8Text = tmp_utf8Text;
+        fontName = tmp_fontName;
     }
 
     NVCVText &operator=(const NVCVText &text)
@@ -139,8 +148,9 @@ public:
         , borderColor(_borderColor)
         , segColor(_segColor)
     {
-        checkERR(cudaMalloc(&dSeg, segWidth * segHeight * sizeof(float)));
-        checkERR(cudaMemcpy(dSeg, _hSeg, segWidth * segHeight * sizeof(float), cudaMemcpyHostToDevice));
+        checkERR(cudaMalloc(&dSeg, static_cast<size_t>(segWidth) * segHeight * sizeof(float)));
+        checkERR(
+            cudaMemcpy(dSeg, _hSeg, static_cast<size_t>(segWidth) * segHeight * sizeof(float), cudaMemcpyHostToDevice));
     }
 
     NVCVSegment(const NVCVSegment &segment)
@@ -152,8 +162,9 @@ public:
         , borderColor(segment.borderColor)
         , segColor(segment.segColor)
     {
-        checkERR(cudaMalloc(&dSeg, segWidth * segHeight * sizeof(float)));
-        checkERR(cudaMemcpy(dSeg, segment.dSeg, segWidth * segHeight * sizeof(float), cudaMemcpyDeviceToDevice));
+        checkERR(cudaMalloc(&dSeg, static_cast<size_t>(segWidth) * segHeight * sizeof(float)));
+        checkERR(cudaMemcpy(dSeg, segment.dSeg, static_cast<size_t>(segWidth) * segHeight * sizeof(float),
+                            cudaMemcpyDeviceToDevice));
     }
 
     NVCVSegment &operator=(const NVCVSegment &) = delete;
@@ -197,7 +208,7 @@ public:
         hPoints = (int *)malloc(numPoints * 2 * sizeof(int));
         checkERR(cudaMalloc(&dPoints, 2 * numPoints * sizeof(int)));
 
-        memcpy(hPoints, _hPoints, 2 * numPoints * sizeof(int));
+        std::copy_n(_hPoints, 2 * numPoints, hPoints);
         checkERR(cudaMemcpy(dPoints, _hPoints, 2 * numPoints * sizeof(int), cudaMemcpyHostToDevice));
     }
 
@@ -212,7 +223,7 @@ public:
         hPoints = (int *)malloc(numPoints * 2 * sizeof(int));
         checkERR(cudaMalloc(&dPoints, 2 * numPoints * sizeof(int)));
 
-        memcpy(hPoints, pl.hPoints, 2 * numPoints * sizeof(int));
+        std::copy_n(pl.hPoints, 2 * numPoints, hPoints);
         checkERR(cudaMemcpy(dPoints, pl.dPoints, 2 * numPoints * sizeof(int), cudaMemcpyDeviceToDevice));
     }
 
@@ -253,8 +264,10 @@ public:
         , fontColor(_fontColor)
         , bgColor(_bgColor)
     {
-        font = (const char *)malloc(strlen(_font) + 1);
-        memcpy(const_cast<char *>(font), _font, strlen(_font) + 1);
+        const size_t len      = std::char_traits<char>::length(_font);
+        char        *tmp_font = (char *)malloc(len + 1);
+        std::copy_n(_font, len + 1, tmp_font);
+        font = tmp_font;
     }
 
     NVCVClock(const NVCVClock &clock)
@@ -265,8 +278,10 @@ public:
         , fontColor(clock.fontColor)
         , bgColor(clock.bgColor)
     {
-        font = (const char *)malloc(strlen(clock.font) + 1);
-        memcpy(const_cast<char *>(font), clock.font, strlen(clock.font) + 1);
+        const size_t len      = std::char_traits<char>::length(clock.font);
+        char        *tmp_font = (char *)malloc(len + 1);
+        std::copy_n(clock.font, len + 1, tmp_font);
+        font = tmp_font;
     }
 
     NVCVClock &operator=(const NVCVClock &clock)

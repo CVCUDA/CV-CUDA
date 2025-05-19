@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -162,7 +162,14 @@ ErrorCode Reformat::infer(const nvcv::TensorDataStridedCuda &inData, const nvcv:
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
-    DataType data_type = helpers::GetLegacyDataType(inData.dtype());
+    DataType data_type     = helpers::GetLegacyDataType(inData.dtype());
+    DataType out_data_type = helpers::GetLegacyDataType(outData.dtype());
+
+    if (data_type != out_data_type)
+    {
+        LOG_ERROR("DataType of input and output must be equal, but got " << data_type << " and " << out_data_type);
+        return ErrorCode::INVALID_DATA_TYPE;
+    }
 
     if (!(data_type == kCV_8U || data_type == kCV_8S || data_type == kCV_16U || data_type == kCV_16S
           || data_type == kCV_32S || data_type == kCV_32F || data_type == kCV_64F))

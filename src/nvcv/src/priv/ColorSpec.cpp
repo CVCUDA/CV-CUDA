@@ -22,6 +22,7 @@
 #include "TLS.hpp"
 
 #include <nvcv/util/String.hpp>
+#include <stdio.h>
 
 #include <sstream>
 
@@ -256,13 +257,11 @@ const char *GetName(NVCVColorSpec cspec)
     }
     catch (std::exception &e)
     {
-        strncpy(buffer, e.what(), bufSize - 1);
-        buffer[bufSize - 1] = '\0';
+        snprintf(buffer, bufSize, "%s", e.what());
     }
     catch (...)
     {
-        strncpy(buffer, "Unexpected error retrieving NVCVColorSpec string representation", bufSize - 1);
-        buffer[bufSize - 1] = '\0';
+        snprintf(buffer, bufSize, "Unexpected error retrieving NVCVColorSpec string representation");
     }
 
     return buffer;

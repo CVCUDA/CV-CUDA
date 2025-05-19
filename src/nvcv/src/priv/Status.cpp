@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,6 +22,7 @@
 
 #include <nvcv/Exception.hpp>
 #include <nvcv/util/Assert.h>
+#include <stdio.h>
 
 #include <cstring>
 
@@ -42,7 +43,7 @@ void SetThreadError(std::exception_ptr e)
         else
         {
             tls.lastErrorStatus = NVCV_SUCCESS;
-            strncpy(tls.lastErrorMessage, "success", errorMessageLen);
+            snprintf(tls.lastErrorMessage, errorMessageLen, "success");
         }
     }
     catch (const ::nvcv::Exception &e)
@@ -53,27 +54,27 @@ void SetThreadError(std::exception_ptr e)
     catch (const Exception &e)
     {
         tls.lastErrorStatus = e.code();
-        strncpy(tls.lastErrorMessage, e.msg(), errorMessageLen);
+        snprintf(tls.lastErrorMessage, errorMessageLen, "%s", e.msg());
     }
     catch (const std::invalid_argument &e)
     {
         tls.lastErrorStatus = NVCV_ERROR_INVALID_ARGUMENT;
-        strncpy(tls.lastErrorMessage, e.what(), errorMessageLen);
+        snprintf(tls.lastErrorMessage, errorMessageLen, "%s", e.what());
     }
     catch (const std::bad_alloc &)
     {
         tls.lastErrorStatus = NVCV_ERROR_OUT_OF_MEMORY;
-        strncpy(tls.lastErrorMessage, "Not enough space for resource allocation", errorMessageLen);
+        snprintf(tls.lastErrorMessage, errorMessageLen, "Not enough space for resource allocation");
     }
     catch (const std::exception &e)
     {
         tls.lastErrorStatus = NVCV_ERROR_INTERNAL;
-        strncpy(tls.lastErrorMessage, e.what(), errorMessageLen);
+        snprintf(tls.lastErrorMessage, errorMessageLen, "%s", e.what());
     }
     catch (...)
     {
         tls.lastErrorStatus = NVCV_ERROR_INTERNAL;
-        strncpy(tls.lastErrorMessage, "Unexpected error", errorMessageLen);
+        snprintf(tls.lastErrorMessage, errorMessageLen, "Unexpected error");
     }
 
     tls.lastErrorMessage[errorMessageLen] = '\0'; // Make sure it's null-terminated
@@ -103,10 +104,7 @@ NVCVStatus PeekAtLastThreadError(char *outMessage, int outMessageLen) noexcept
     CoreTLS &tls = GetCoreTLS();
 
     if (outMessage != nullptr && outMessageLen > 0)
-    {
-        strncpy(outMessage, tls.lastErrorMessage, outMessageLen);
-        outMessage[outMessageLen - 1] = '\0'; // Make sure it's null-terminated
-    }
+        snprintf(outMessage, outMessageLen, "%s", tls.lastErrorMessage);
 
     return tls.lastErrorStatus;
 }

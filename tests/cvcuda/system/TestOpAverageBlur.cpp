@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -382,7 +382,7 @@ TEST_P(OpAverageBlurVarshape_Negative, varshape_correct_output)
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
-TEST_P(OpAverageBlurVarshape_Negative, varshape_hasNotSameFormat)
+TEST_P(OpAverageBlurVarshape_Negative, varshape_hasDifferentFormat)
 {
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));

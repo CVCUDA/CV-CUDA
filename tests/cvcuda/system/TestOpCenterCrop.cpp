@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -193,4 +193,45 @@ TEST_P(OpCenterCrop, CenterCrop_packed)
     dbgImage(gold, outData->rowStride());
 #endif
     EXPECT_EQ(gold, test);
+}
+
+// clang-format off
+NVCV_TEST_SUITE_P(OpCenterCrop_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat, int, int, int ,int>{
+    // inFmt, outFmt, width, height, cropCols, cropRows
+    {nvcv::FMT_RGB8, nvcv::FMT_RGBf16, 5, 7, 5, 7},
+    {nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 5, 7, 5, 7},
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8p, 5, 7, 5, 7},
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, 5, 7, 6, 7},
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, 5, 7, 5, 8},
+});
+
+// clang-format on
+
+TEST_P(OpCenterCrop_Negative, op)
+{
+    cudaStream_t stream;
+    EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    nvcv::ImageFormat inFmt        = GetParamValue<0>();
+    nvcv::ImageFormat outFmt       = GetParamValue<1>();
+    int               inWidth      = GetParamValue<2>();
+    int               inHeight     = GetParamValue<3>();
+    int               crop_columns = GetParamValue<4>();
+    int               crop_rows    = GetParamValue<5>();
+
+    nvcv::Tensor imgOut = nvcv::util::CreateTensor(2, inWidth, inHeight, inFmt);
+    nvcv::Tensor imgIn  = nvcv::util::CreateTensor(2, inWidth, inHeight, outFmt);
+
+    // run operator
+    cvcuda::CenterCrop cropOp;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall(
+                                               [&] {
+                                                   cropOp(stream, imgIn, imgOut, {crop_columns, crop_rows});
+                                               }));
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpCenterCrop_Negative, create_null_handle)
+{
+    EXPECT_EQ(cvcudaCenterCropCreate(nullptr), NVCV_ERROR_INVALID_ARGUMENT);
 }

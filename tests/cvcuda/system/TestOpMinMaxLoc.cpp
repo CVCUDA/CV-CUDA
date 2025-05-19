@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -490,4 +490,91 @@ TYPED_TEST(OpMinMaxLoc, varshape_correct_output)
         EXPECT_EQ(res.maxLocTest, res.maxLocGold);
         EXPECT_EQ(res.numMaxTest, res.numMaxGold);
     }
+}
+
+TEST(OpMinMaxLoc_Negative, op)
+{
+    int3         inShape{24, 24, 2};
+    int          capacity = 100;
+    nvcv::Tensor in       = nvcv::util::CreateTensor(inShape.z, inShape.x, inShape.y, nvcv::FMT_U8);
+    nvcv::Tensor inInvalidSamples
+        = nvcv::util::CreateTensor(65536, inShape.x, inShape.y, nvcv::FMT_U8); // wrong number of samples
+
+    // clang-format off
+
+    nvcv::Tensor minVal({{inShape.z}, "N"}, nvcv::TYPE_U32);
+    nvcv::Tensor minLoc({{inShape.z, capacity}, "NM"}, nvcv::TYPE_2S32);
+    nvcv::Tensor numMin({{inShape.z}, "N"}, nvcv::TYPE_S32);
+
+    nvcv::Tensor maxVal({{inShape.z}, "N"}, nvcv::TYPE_U32);
+    nvcv::Tensor maxLoc({{inShape.z, capacity}, "NM"}, nvcv::TYPE_2S32);
+    nvcv::Tensor numMax({{inShape.z}, "N"}, nvcv::TYPE_S32);
+
+    nvcv::Tensor valWrongDataType({{inShape.z}, "N"}, nvcv::TYPE_F16); // wrong data type
+    nvcv::Tensor valWrongNumSamples({{inShape.z + 1}, "N"}, nvcv::TYPE_U32); // wrong number of samples
+    nvcv::Tensor valWrongNumChannels({{inShape.z, 2}, "NC"}, nvcv::TYPE_U32); // wrong number of channels
+
+    nvcv::Tensor locWrongNumSamples({{inShape.z + 1, capacity}, "NM"}, nvcv::TYPE_2S32); // wrong number of samples
+    nvcv::Tensor locWrongDataType({{inShape.z, capacity}, "NM"}, nvcv::TYPE_S32); // wrong data type
+
+    nvcv::Tensor numWrongNumSamples({{inShape.z + 1}, "N"}, nvcv::TYPE_S32); // wrong number of samples
+    nvcv::Tensor numWrongNumChannels({{inShape.z, 2}, "NC"}, nvcv::TYPE_S32); // wrong number of channels
+    nvcv::Tensor numWrongDataType({{inShape.z}, "N"}, nvcv::TYPE_U8); // wrong data type
+
+    // clang-format on
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::MinMaxLoc op;
+
+    auto runOpMinMaxLocNegativeTest
+        = [&](nvcv::Tensor in, nvcv::Tensor minVal, nvcv::Tensor minLoc, nvcv::Tensor numMin, nvcv::Tensor maxVal,
+              nvcv::Tensor maxLoc, nvcv::Tensor numMax)
+    {
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+                  nvcv::ProtectCall([&] { op(stream, in, minVal, minLoc, numMin, maxVal, maxLoc, numMax); }));
+    };
+
+    // cases
+    runOpMinMaxLocNegativeTest(inInvalidSamples, minVal, minLoc, numMin, maxVal, maxLoc, numMax);
+
+    runOpMinMaxLocNegativeTest(in, nullptr, minLoc, numMin, maxVal, maxLoc, numMax);
+    runOpMinMaxLocNegativeTest(in, minVal, nullptr, numMin, maxVal, maxLoc, numMax);
+    runOpMinMaxLocNegativeTest(in, minVal, minLoc, nullptr, maxVal, maxLoc, numMax);
+    runOpMinMaxLocNegativeTest(in, minVal, minLoc, numMin, nullptr, maxLoc, numMax);
+    runOpMinMaxLocNegativeTest(in, minVal, minLoc, numMin, maxVal, nullptr, numMax);
+    runOpMinMaxLocNegativeTest(in, minVal, minLoc, numMin, maxVal, maxLoc, nullptr);
+    runOpMinMaxLocNegativeTest(in, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
+
+    runOpMinMaxLocNegativeTest(in, valWrongDataType, minLoc, numMin, nullptr, nullptr, nullptr);
+    runOpMinMaxLocNegativeTest(in, nullptr, nullptr, nullptr, valWrongDataType, maxLoc, numMax);
+
+    runOpMinMaxLocNegativeTest(in, valWrongNumSamples, minLoc, numMin, nullptr, nullptr, nullptr);
+    runOpMinMaxLocNegativeTest(in, nullptr, nullptr, nullptr, valWrongNumSamples, maxLoc, numMax);
+
+    runOpMinMaxLocNegativeTest(in, valWrongNumChannels, minLoc, numMin, nullptr, nullptr, nullptr);
+    runOpMinMaxLocNegativeTest(in, nullptr, nullptr, nullptr, valWrongNumChannels, maxLoc, numMax);
+
+    runOpMinMaxLocNegativeTest(in, minVal, locWrongNumSamples, numMin, nullptr, nullptr, nullptr);
+    runOpMinMaxLocNegativeTest(in, nullptr, nullptr, nullptr, maxVal, locWrongNumSamples, numMax);
+
+    runOpMinMaxLocNegativeTest(in, minVal, locWrongDataType, numMin, nullptr, nullptr, nullptr);
+    runOpMinMaxLocNegativeTest(in, nullptr, nullptr, nullptr, maxVal, locWrongDataType, numMax);
+
+    runOpMinMaxLocNegativeTest(in, minVal, minLoc, numWrongNumSamples, nullptr, nullptr, nullptr);
+    runOpMinMaxLocNegativeTest(in, nullptr, nullptr, nullptr, maxVal, maxLoc, numWrongNumSamples);
+
+    runOpMinMaxLocNegativeTest(in, minVal, minLoc, numWrongNumChannels, nullptr, nullptr, nullptr);
+    runOpMinMaxLocNegativeTest(in, nullptr, nullptr, nullptr, maxVal, maxLoc, numWrongNumChannels);
+
+    runOpMinMaxLocNegativeTest(in, minVal, minLoc, numWrongDataType, nullptr, nullptr, nullptr);
+    runOpMinMaxLocNegativeTest(in, nullptr, nullptr, nullptr, maxVal, maxLoc, numWrongDataType);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpMinMaxLoc_Negative, create_with_null_handle)
+{
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaMinMaxLocCreate(nullptr));
 }

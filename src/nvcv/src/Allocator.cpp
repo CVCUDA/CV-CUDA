@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,6 +26,7 @@
 #include <nvcv/alloc/Allocator.h>
 #include <nvcv/util/Assert.h>
 #include <nvcv/util/String.hpp>
+#include <stdio.h>
 
 #include <memory>
 
@@ -232,13 +233,11 @@ NVCV_DEFINE_API(0, 4, const char *, nvcvResourceTypeGetName, (NVCVResourceType r
     }
     catch (std::exception &e)
     {
-        strncpy(buffer, e.what(), bufSize - 1);
-        buffer[bufSize - 1] = '\0';
+        snprintf(buffer, bufSize, "%s", e.what());
     }
     catch (...)
     {
-        strncpy(buffer, "Unexpected error retrieving NVCVResourceType string representation", bufSize - 1);
-        buffer[bufSize - 1] = '\0';
+        snprintf(buffer, bufSize, "Unexpected error retrieving NVCVResourceType string representation");
     }
 
     return buffer;

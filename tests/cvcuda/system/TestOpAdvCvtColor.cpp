@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,8 +34,6 @@ namespace gt    = ::testing;
 namespace test  = nvcv::test;
 namespace util  = nvcv::util;
 namespace mmath = nvcv::cuda::math;
-
-#define NVCV_IMAGE_FORMAT_YUV8 NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, NONE, PL, UNSIGNED, XYZ1, ASSOCIATED, X8_Y8_Z8)
 
 template<class T>
 using Matrix3x3 = mmath::Matrix<T, 3, 3>;
@@ -420,9 +418,8 @@ TEST_P(OpAdvCvtColor, AdvCvtColor_sanity)
     nvcv::ColorSpec         colorSpec = GetParamValue<6>();
     int                     maxDiff   = GetParamValue<7>();
 
-    nvcv::Tensor inTensor      = nvcv::util::CreateTensor(batches, width, height, formatIn);
-    nvcv::Tensor outTensor     = nvcv::util::CreateTensor(batches, width, height, formatOut);
-    nvcv::Tensor outBackTensor = nvcv::util::CreateTensor(batches, width, height, formatIn);
+    nvcv::Tensor inTensor  = nvcv::util::CreateTensor(batches, width, height, formatIn);
+    nvcv::Tensor outTensor = nvcv::util::CreateTensor(batches, width, height, formatOut);
 
     // NV12/21/YUV8/ARGB are all nHWC
     int    colorChannels  = inTensor.shape()[inTensor.shape().rank() - 1];
@@ -449,4 +446,59 @@ TEST_P(OpAdvCvtColor, AdvCvtColor_sanity)
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 
     verifyOutput(batches, inTensor, outTensor, formatOut, convCode, colorSpec, maxDiff, width, height);
+}
+
+// clang-format off
+// inputNumSamples, outputNumSamples, inWidth, inHeight, outWidth, outHeight, inFormat, outFormat, convCode, colorSpec
+NVCV_TEST_SUITE_P(OpAdvCvtColor_Negative, test::ValueList<int, int, int, int, int, int, NVCVImageFormat, NVCVImageFormat, NVCVColorConversionCode, nvcv::ColorSpec>
+{
+    {2, 2, 400, 400, 400, 400, NVCV_IMAGE_FORMAT_RGBA8, NVCV_IMAGE_FORMAT_RGB8, NVCV_COLOR_RGBA2RGB, NVCV_COLOR_SPEC_BT601},
+    {2, 2, 400, 400, 400, 400, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_YUV8, NVCV_COLOR_RGB2YUV, NVCV_COLOR_SPEC_sRGB},
+    {2, 2, 400, 400, 400, 400, NVCV_IMAGE_FORMAT_RGB8p, NVCV_IMAGE_FORMAT_YUV8, NVCV_COLOR_RGB2YUV, NVCV_COLOR_SPEC_BT601},
+    {3, 2, 400, 400, 400, 400, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_YUV8, NVCV_COLOR_RGB2YUV, NVCV_COLOR_SPEC_BT601},
+    {2, 2, 400, 500, 400, 400, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_YUV8, NVCV_COLOR_RGB2YUV, NVCV_COLOR_SPEC_BT601},
+    {2, 2, 500, 400, 400, 400, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_YUV8, NVCV_COLOR_RGB2YUV, NVCV_COLOR_SPEC_BT601},
+    {2, 2, 300, 300, 300, 300, NVCV_IMAGE_FORMAT_RGBA8, NVCV_IMAGE_FORMAT_YUV8, NVCV_COLOR_RGB2YUV, NVCV_COLOR_SPEC_BT601},
+    {2, 2, 400, 400, 400, 400, NVCV_IMAGE_FORMAT_NV12_ER, NVCV_IMAGE_FORMAT_U8, NVCV_COLOR_YUV2BGR_NV12, NVCV_COLOR_SPEC_BT601},
+    {2, 2, 500, 400, 400, 400, NVCV_IMAGE_FORMAT_NV12_ER, NVCV_IMAGE_FORMAT_U8, NVCV_COLOR_YUV2BGR_NV12, NVCV_COLOR_SPEC_BT601},
+    {2, 2, 300, 300, 300, 300, NVCV_IMAGE_FORMAT_U8, NVCV_IMAGE_FORMAT_NV12_ER, NVCV_COLOR_BGR2YUV_NV12, NVCV_COLOR_SPEC_BT601},
+    {2, 2, 301, 300, 300, 300, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_NV12_ER, NVCV_COLOR_BGR2YUV_NV12, NVCV_COLOR_SPEC_BT601},
+    {2, 2, 300, 301, 300, 300, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_NV12_ER, NVCV_COLOR_BGR2YUV_NV12, NVCV_COLOR_SPEC_BT601},
+    {2, 2, 302, 300, 300, 300, NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_NV12_ER, NVCV_COLOR_BGR2YUV_NV12, NVCV_COLOR_SPEC_BT601},
+
+});
+
+// clang-format on
+
+TEST_P(OpAdvCvtColor_Negative, op)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    int                     inputNumSamples  = GetParamValue<0>();
+    int                     outputNumSamples = GetParamValue<1>();
+    int                     inWidth          = GetParamValue<2>();
+    int                     inHeight         = GetParamValue<3>();
+    int                     outWidth         = GetParamValue<4>();
+    int                     outHeight        = GetParamValue<5>();
+    nvcv::ImageFormat       inFormat{GetParamValue<6>()};
+    nvcv::ImageFormat       outFormat{GetParamValue<7>()};
+    NVCVColorConversionCode convCode  = GetParamValue<8>();
+    nvcv::ColorSpec         colorSpec = GetParamValue<9>();
+
+    nvcv::Tensor inTensor  = nvcv::util::CreateTensor(inputNumSamples, inWidth, inHeight, inFormat);
+    nvcv::Tensor outTensor = nvcv::util::CreateTensor(outputNumSamples, outWidth, outHeight, outFormat);
+
+    // run operator
+    cvcuda::AdvCvtColor op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { op(stream, inTensor, outTensor, convCode, colorSpec); }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpAdvCvtColor_Negative, create_null_handle)
+{
+    EXPECT_EQ(cvcudaAdvCvtColorCreate(nullptr), NVCV_ERROR_INVALID_ARGUMENT);
 }

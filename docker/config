@@ -22,11 +22,13 @@ IMAGE_URL_BASE=''
 # image versions must be upgraded whenever a breaking
 # change is done, such as removing some package, or updating
 # packaged versions that introduces incompatibilities.
-TAG_IMAGE=6
 TAG_IMAGE_SAMPLES=7
-TAG_IMAGE_TEST=5
 
 VER_CUDA=11.7.1
+#12.2.0 or 11.7.1
 VER_UBUNTU=20.04
+#22.04 or 20.04
 VER_TRT=24.01
-VER_NUMPY=1.24.1
+#note: py3.12-13 need numpy>=1.26.2. py8 needs numpy <=1.24.4
+VER_NUMPY=1.26.2
+#1.26.2 or 2.0.1

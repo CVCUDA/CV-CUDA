@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -91,6 +91,9 @@ NVCV_TEST_SUITE_P(OpNormalize, test::ValueList<int, int, int, bool, bool, uint32
     {    122,    212,         2,       true,        true,   normalScale,      1.234f,      43.21f,     0.f, },
     {    211,    102,         3,      false,       false,   normalScale,        1.1f,        0.1f,     0.f, },
     {     21,     12,         5,       true,        true, scaleIsStdDev,        1.2f,        0.2f,     0.f, },
+    {     22,     12,         5,      false,        true, scaleIsStdDev,        1.3f,        0.3f,     0.f, },
+    {     55,     23,         5,       true,       false, scaleIsStdDev,        1.2f,        0.2f,     0.f, },
+    {     72,     88,         5,      false,       false, scaleIsStdDev,        1.2f,        0.2f,     0.f, },
     {     63,     32,         7,      false,        true,   normalScale,        1.3f,        0.3f,     0.f, },
     {     22,     13,         9,       true,       false,   normalScale,        1.4f,        0.4f,     0.f, },
     {     55,     33,         2,       true,       false, scaleIsStdDev,        2.1f,        1.1f,   1.23f, },
@@ -199,7 +202,7 @@ TEST_P(OpNormalize, tensor_correct_output)
     }
 
     // Create dest tensor
-    nvcv::Tensor imgDst(numImages, {width, height}, nvcv::FMT_RGBA8);
+    nvcv::Tensor imgDst = nvcv::util::CreateTensor(numImages, width, height, fmt);
 
     // Generate test result
     cvcuda::Normalize normalizeOp;
@@ -395,4 +398,170 @@ TEST_P(OpNormalize, varshape_correct_output)
 
         EXPECT_THAT(testVec, t::ElementsAreArray(goldVec));
     }
+}
+
+// clang-format off
+NVCV_TEST_SUITE_P(OpNormalize_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat, bool>{
+    // inFmt, outFmt, isVarShapeDifferentFormatTest
+    {nvcv::FMT_RGB8p, nvcv::FMT_RGB8, false},
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8p, false},
+    {nvcv::FMT_RGB8p, nvcv::FMT_RGB8p, false},
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, true},
+});
+
+// clang-format on
+
+TEST_P(OpNormalize_Negative, op)
+{
+    cudaStream_t stream;
+    EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::ImageFormat inFmt                         = GetParamValue<0>();
+    nvcv::ImageFormat outFmt                        = GetParamValue<1>();
+    bool              isVarShapeDifferentFormatTest = GetParamValue<2>();
+
+    if (isVarShapeDifferentFormatTest)
+    {
+        GTEST_SKIP() << "Skip varshape different format test for tensor test";
+    }
+
+    int width     = 24;
+    int height    = 24;
+    int numImages = 2;
+
+    uint32_t flags       = normalScale;
+    float    globalScale = 0.f;
+    float    globalShift = 0.f;
+    float    epsilon     = 0.f;
+
+    int baseWidth      = 1;
+    int scaleWidth     = 1;
+    int baseHeight     = 1;
+    int scaleHeight    = 1;
+    int baseNumImages  = 1;
+    int scaleNumImages = 1;
+
+    nvcv::ImageFormat baseFormat  = nvcv::FMT_F32;
+    nvcv::ImageFormat scaleFormat = nvcv::FMT_F32;
+
+    // Create input and output tensors
+    nvcv::Tensor imgSrc = nvcv::util::CreateTensor(numImages, width, height, inFmt);
+    nvcv::Tensor imgBase(baseNumImages, {baseWidth, baseHeight}, baseFormat);
+    nvcv::Tensor imgScale(scaleNumImages, {scaleWidth, scaleHeight}, scaleFormat);
+    nvcv::Tensor imgDst = nvcv::util::CreateTensor(numImages, width, height, outFmt);
+
+    // Generate test result
+    cvcuda::Normalize normalizeOp;
+    EXPECT_EQ(
+        NVCV_ERROR_INVALID_ARGUMENT,
+        nvcv::ProtectCall(
+            [&] { normalizeOp(stream, imgSrc, imgBase, imgScale, imgDst, globalScale, globalShift, epsilon, flags); }));
+
+    // Get test data back
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST_P(OpNormalize_Negative, varshape_op)
+{
+    cudaStream_t stream;
+    EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::ImageFormat inFmt                         = GetParamValue<0>();
+    nvcv::ImageFormat outFmt                        = GetParamValue<1>();
+    bool              isVarShapeDifferentFormatTest = GetParamValue<2>();
+
+    std::vector<std::pair<nvcv::ImageFormat, nvcv::ImageFormat>> testSet{
+        {isVarShapeDifferentFormatTest ? nvcv::FMT_U16 : inFmt,                                                 outFmt},
+        {                                                inFmt, isVarShapeDifferentFormatTest ? nvcv::FMT_U16 : outFmt}
+    };
+
+    // check
+    if (isVarShapeDifferentFormatTest)
+    {
+        ASSERT_NE(testSet[0].first, inFmt);
+        ASSERT_EQ(testSet[0].second, outFmt);
+        ASSERT_EQ(testSet[1].first, inFmt);
+        ASSERT_NE(testSet[1].second, outFmt);
+    }
+    else
+    {
+        testSet.pop_back();
+        ASSERT_EQ(testSet[0].first, inFmt);
+        ASSERT_EQ(testSet[0].second, outFmt);
+    }
+
+    for (auto testCase : testSet)
+    {
+        nvcv::ImageFormat inputFmtExtra  = std::get<0>(testCase);
+        nvcv::ImageFormat outputFmtExtra = std::get<1>(testCase);
+
+        int width     = 24;
+        int height    = 24;
+        int numImages = 5;
+
+        uint32_t flags       = normalScale;
+        float    globalScale = 0.f;
+        float    globalShift = 0.f;
+        float    epsilon     = 0.f;
+
+        nvcv::ImageFormat baseFormat  = nvcv::FMT_F32;
+        nvcv::ImageFormat scaleFormat = nvcv::FMT_F32;
+
+        std::default_random_engine rng;
+
+        // Create input and output varshape
+
+        std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
+        std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
+
+        std::vector<nvcv::Image> imgSrc;
+        std::vector<nvcv::Image> imgDst;
+
+        for (int i = 0; i < numImages - 1; ++i)
+        {
+            imgSrc.emplace_back(nvcv::Size2D{udistWidth(rng), udistHeight(rng)}, inFmt);
+            imgDst.emplace_back(imgSrc[i].size(), outFmt);
+        }
+        imgSrc.emplace_back(imgSrc[0].size(), inputFmtExtra);
+        imgDst.emplace_back(imgSrc.back().size(), outputFmtExtra);
+
+        nvcv::ImageBatchVarShape batchSrc(numImages);
+        nvcv::ImageBatchVarShape batchDst(numImages);
+        batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+        batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+        // Create base tensor
+        nvcv::Tensor imgBase(
+            {
+                {1, 1, 1, baseFormat.numChannels()},
+                nvcv::TENSOR_NHWC
+        },
+            baseFormat.planeDataType(0));
+
+        // Create scale tensor
+        nvcv::Tensor imgScale(
+            {
+                {1, 1, 1, scaleFormat.numChannels()},
+                nvcv::TENSOR_NHWC
+        },
+            scaleFormat.planeDataType(0));
+
+        // Generate test result
+        cvcuda::Normalize normalizeOp;
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall(
+                                                   [&] {
+                                                       normalizeOp(stream, batchSrc, imgBase, imgScale, batchDst,
+                                                                   globalScale, globalShift, epsilon, flags);
+                                                   }));
+
+        // Get test data back
+        EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    }
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpNormalize_Negative, create_null_handle)
+{
+    EXPECT_EQ(cvcudaNormalizeCreate(nullptr), NVCV_ERROR_INVALID_ARGUMENT);
 }

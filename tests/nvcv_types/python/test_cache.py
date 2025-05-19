@@ -15,7 +15,7 @@
 
 import os
 import threading
-
+import time
 import nvcv
 import cvcuda
 import torch
@@ -154,6 +154,9 @@ def test_parallel_cache_size():
     util.run_parallel(create_tensors, 16, 32)
 
     assert nvcv.cache_size(nvcv.ThreadScope.LOCAL) == 0
+    # Wait a bit for worker thread C++ Cache destructors to run and update the global state
+    time.sleep(1)  # 1 second is enough for now in our case.
+
     # Other threads have been destroyed - the cache is empty again
     assert (
         nvcv.cache_size(nvcv.ThreadScope.GLOBAL)

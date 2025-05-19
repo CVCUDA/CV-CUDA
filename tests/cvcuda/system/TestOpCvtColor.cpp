@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,8 +37,8 @@ using std::vector;
 #define NVCV_IMAGE_FORMAT_BGRS8  NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, SIGNED, ZYX1, ASSOCIATED, X8_Y8_Z8)
 #define NVCV_IMAGE_FORMAT_RGBAS8 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, SIGNED, XYZW, ASSOCIATED, X8_Y8_Z8_W8)
 #define NVCV_IMAGE_FORMAT_BGRAS8 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, SIGNED, ZYXW, ASSOCIATED, X8_Y8_Z8_W8)
+#define NVCV_IMAGE_FORMAT_YS8_ER NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601_ER, NONE, PL, UNSIGNED, X000, ASSOCIATED, X8)
 
-#define NVCV_IMAGE_FORMAT_Y16   NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, NONE, PL, UNSIGNED, X000, ASSOCIATED, X16)
 #define NVCV_IMAGE_FORMAT_BGR16 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, UNSIGNED, ZYX1, ASSOCIATED, X16_Y16_Z16)
 #define NVCV_IMAGE_FORMAT_RGB16 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, UNSIGNED, XYZ1, ASSOCIATED, X16_Y16_Z16)
 #define NVCV_IMAGE_FORMAT_BGRA16 \
@@ -55,12 +55,16 @@ using std::vector;
 #define NVCV_IMAGE_FORMAT_RGBAS16 \
     NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, SIGNED, XYZW, ASSOCIATED, X16_Y16_Z16_W16)
 
+#define NVCV_IMAGE_FORMAT_YUVf16 NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, NONE, PL, FLOAT, XYZ1, ASSOCIATED, X16_Y16_Z16)
+#define NVCV_IMAGE_FORMAT_Yf16   NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, NONE, PL, FLOAT, X000, ASSOCIATED, X16)
+
 #define NVCV_IMAGE_FORMAT_BGRS32 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, SIGNED, ZYX1, ASSOCIATED, X32_Y32_Z32)
 #define NVCV_IMAGE_FORMAT_RGBS32 NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, SIGNED, XYZ1, ASSOCIATED, X32_Y32_Z32)
 #define NVCV_IMAGE_FORMAT_BGRAS32 \
     NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, SIGNED, ZYXW, ASSOCIATED, X32_Y32_Z32_W32)
 #define NVCV_IMAGE_FORMAT_RGBAS32 \
     NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, SIGNED, XYZW, ASSOCIATED, X32_Y32_Z32_W32)
+
 #define NVCV_IMAGE_FORMAT_YUVf32 NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, NONE, PL, FLOAT, XYZ1, ASSOCIATED, X32_Y32_Z32)
 #define NVCV_IMAGE_FORMAT_Yf32   NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, NONE, PL, FLOAT, X000, ASSOCIATED, X32)
 #define NVCV_IMAGE_FORMAT_HSVf32 NVCV_DETAIL_MAKE_COLOR_FMT1(HSV, UNDEFINED, PL, FLOAT, XYZ0, ASSOCIATED, X32_Y32_Z32)
@@ -71,6 +75,8 @@ using std::vector;
     NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, FLOAT, ZYXW, ASSOCIATED, X64_Y64_Z64_W64)
 #define NVCV_IMAGE_FORMAT_RGBAf64 \
     NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, FLOAT, XYZW, ASSOCIATED, X64_Y64_Z64_W64)
+#define NVCV_IMAGE_FORMAT_HSVf64 NVCV_DETAIL_MAKE_COLOR_FMT1(HSV, UNDEFINED, PL, FLOAT, XYZ0, ASSOCIATED, X64_Y64_Z64)
+#define NVCV_IMAGE_FORMAT_Yf64   NVCV_DETAIL_MAKE_YCbCr_FMT1(BT601, NONE, PL, FLOAT, X000, ASSOCIATED, X64)
 
 // clang-format off
 
@@ -546,14 +552,18 @@ test::ValueList<int, int, int, NVCVImageFormat, NVCVImageFormat, NVCVColorConver
     // Codes 9 to 39 are not implemented
     {  55, 257,  4,  NVCV_IMAGE_FORMAT_BGR8,     NVCV_IMAGE_FORMAT_HSV8,     NVCV_COLOR_BGR2HSV,       1.0},
     {  55, 257,  4,  NVCV_IMAGE_FORMAT_HSV8,     NVCV_IMAGE_FORMAT_BGR8,     NVCV_COLOR_HSV2BGR,       1.0},
+    {  55, 257,  4,  NVCV_IMAGE_FORMAT_HSV8,    NVCV_IMAGE_FORMAT_BGRA8,     NVCV_COLOR_HSV2BGR,       1.0},
     { 366,  14,  5,  NVCV_IMAGE_FORMAT_RGB8,     NVCV_IMAGE_FORMAT_HSV8,     NVCV_COLOR_RGB2HSV,       1.0},
     { 366,  14,  5,  NVCV_IMAGE_FORMAT_HSV8,     NVCV_IMAGE_FORMAT_RGB8,     NVCV_COLOR_HSV2RGB,       1.0},
     {4096,4096,  1,  NVCV_IMAGE_FORMAT_RGB8,     NVCV_IMAGE_FORMAT_HSV8,     NVCV_COLOR_RGB2HSV,       1.0},
     {2880,4096,  1,  NVCV_IMAGE_FORMAT_HSV8,     NVCV_IMAGE_FORMAT_RGB8,     NVCV_COLOR_HSV2RGB,       1.0},
+    {4096,4096, 91,  NVCV_IMAGE_FORMAT_BGR8,     NVCV_IMAGE_FORMAT_HSV8,     NVCV_COLOR_BGR2HSV,       1.0},
+    {4096,4096, 92,  NVCV_IMAGE_FORMAT_HSV8,     NVCV_IMAGE_FORMAT_BGR8,     NVCV_COLOR_HSV2BGR,       1.0},
 
     // Hue computation differs slightly because CUDA kernel adds FLT_EPSILON to denominator for 'diff' division.
     {  55, 257,  4,  NVCV_IMAGE_FORMAT_BGRf32,   NVCV_IMAGE_FORMAT_HSVf32,   NVCV_COLOR_BGR2HSV,    ERR2_3},
     {  33, 525,  3,  NVCV_IMAGE_FORMAT_HSVf32,   NVCV_IMAGE_FORMAT_BGRf32,   NVCV_COLOR_HSV2BGR,    ERR1_4},
+    {  33, 525,  4,  NVCV_IMAGE_FORMAT_HSVf32,  NVCV_IMAGE_FORMAT_BGRAf32,   NVCV_COLOR_HSV2BGR,    ERR1_4},
     { 365,  14,  5,  NVCV_IMAGE_FORMAT_RGBf32,   NVCV_IMAGE_FORMAT_HSVf32,   NVCV_COLOR_RGB2HSV,    ERR2_3},
     { 367, 223,  2,  NVCV_IMAGE_FORMAT_HSVf32,   NVCV_IMAGE_FORMAT_RGBf32,   NVCV_COLOR_HSV2RGB,    ERR1_4},
     {4096,4096,  1,  NVCV_IMAGE_FORMAT_RGBf32,   NVCV_IMAGE_FORMAT_HSVf32,   NVCV_COLOR_RGB2HSV,    ERR2_3},
@@ -632,6 +642,8 @@ test::ValueList<int, int, int, NVCVImageFormat, NVCVImageFormat, NVCVColorConver
     {  80,  80,  3,  NVCV_IMAGE_FORMAT_NV21,     NVCV_IMAGE_FORMAT_BGRA8,    NVCV_COLOR_YUV2BGRA_NV21, 2.0},
     {  80,  80,  3,  NVCV_IMAGE_FORMAT_BGRA8,    NVCV_IMAGE_FORMAT_NV21,     NVCV_COLOR_BGRA2YUV_NV21, 1.0},
     {4096,4096,  1,  NVCV_IMAGE_FORMAT_RGB8,     NVCV_IMAGE_FORMAT_NV21,     NVCV_COLOR_RGB2YUV_NV21,  1.0},
+    {4096,4096, 93,  NVCV_IMAGE_FORMAT_RGB8,     NVCV_IMAGE_FORMAT_NV21,     NVCV_COLOR_RGB2YUV_NV21,  1.0},
+    {4096,4096, 94,  NVCV_IMAGE_FORMAT_NV21,     NVCV_IMAGE_FORMAT_BGR8,     NVCV_COLOR_YUV2BGR_NV21,  2.0},
 
     {  80, 120,  2,  NVCV_IMAGE_FORMAT_NV12,     NVCV_IMAGE_FORMAT_Y8,       NVCV_COLOR_YUV2GRAY_420,  0.0},
     { 100,  40,  3,  NVCV_IMAGE_FORMAT_NV21,     NVCV_IMAGE_FORMAT_Y8,       NVCV_COLOR_YUV2GRAY_420,  0.0},
@@ -758,12 +770,14 @@ test::ValueList<int, int, int, NVCVImageFormat, NVCVImageFormat, NVCVColorConver
     { 336, 432,  2,  NVCV_IMAGE_FORMAT_RGBS8,    NVCV_IMAGE_FORMAT_RGBAS8,   NVCV_COLOR_RGB2RGBA,      NVCV_COLOR_RGBA2RGB,      0.0},
     {  77, 212,  3,  NVCV_IMAGE_FORMAT_BGRS8,    NVCV_IMAGE_FORMAT_RGBAS8,   NVCV_COLOR_BGR2RGBA,      NVCV_COLOR_RGBA2BGR,      0.0},
     {  33,  55,  4,  NVCV_IMAGE_FORMAT_RGBS8,    NVCV_IMAGE_FORMAT_BGRAS8,   NVCV_COLOR_RGB2BGRA,      NVCV_COLOR_BGRA2RGB,      0.0},
+    {  77, 112,  3,  NVCV_IMAGE_FORMAT_RGBS8,    NVCV_IMAGE_FORMAT_BGRS8,    NVCV_COLOR_BGR2RGB,       NVCV_COLOR_RGB2BGR,       0.0},
     { 123, 321,  5,  NVCV_IMAGE_FORMAT_RGBAS8,   NVCV_IMAGE_FORMAT_BGRAS8,   NVCV_COLOR_RGBA2BGRA,     NVCV_COLOR_BGRA2RGBA,     0.0},
     { 176, 113,  1,  NVCV_IMAGE_FORMAT_BGR16,    NVCV_IMAGE_FORMAT_BGRA16,   NVCV_COLOR_BGR2BGRA,      NVCV_COLOR_BGRA2BGR,      0.0},
     { 336, 432,  2,  NVCV_IMAGE_FORMAT_RGB16,    NVCV_IMAGE_FORMAT_RGBA16,   NVCV_COLOR_RGB2RGBA,      NVCV_COLOR_RGBA2RGB,      0.0},
     {  77, 212,  3,  NVCV_IMAGE_FORMAT_BGR16,    NVCV_IMAGE_FORMAT_RGBA16,   NVCV_COLOR_BGR2RGBA,      NVCV_COLOR_RGBA2BGR,      0.0},
     {  33,  55,  4,  NVCV_IMAGE_FORMAT_RGB16,    NVCV_IMAGE_FORMAT_BGRA16,   NVCV_COLOR_RGB2BGRA,      NVCV_COLOR_BGRA2RGB,      0.0},
     { 123, 321,  5,  NVCV_IMAGE_FORMAT_RGBA16,   NVCV_IMAGE_FORMAT_BGRA16,   NVCV_COLOR_RGBA2BGRA,     NVCV_COLOR_BGRA2RGBA,     0.0},
+    {  77, 110,  3,  NVCV_IMAGE_FORMAT_RGBS16,   NVCV_IMAGE_FORMAT_BGRS16,   NVCV_COLOR_BGR2RGB,       NVCV_COLOR_RGB2BGR,       0.0},
     { 176, 113,  1,  NVCV_IMAGE_FORMAT_BGRS16,   NVCV_IMAGE_FORMAT_BGRAS16,  NVCV_COLOR_BGR2BGRA,      NVCV_COLOR_BGRA2BGR,      0.0},
     { 336, 432,  2,  NVCV_IMAGE_FORMAT_RGBS16,   NVCV_IMAGE_FORMAT_RGBAS16,  NVCV_COLOR_RGB2RGBA,      NVCV_COLOR_RGBA2RGB,      0.0},
     {  77, 212,  3,  NVCV_IMAGE_FORMAT_BGRS16,   NVCV_IMAGE_FORMAT_RGBAS16,  NVCV_COLOR_BGR2RGBA,      NVCV_COLOR_RGBA2BGR,      0.0},
@@ -772,11 +786,13 @@ test::ValueList<int, int, int, NVCVImageFormat, NVCVImageFormat, NVCVColorConver
     {  77, 212,  3,  NVCV_IMAGE_FORMAT_BGRf16,   NVCV_IMAGE_FORMAT_RGBf16,   NVCV_COLOR_BGR2RGB,       NVCV_COLOR_RGB2BGR,       0.0},
     { 123, 321,  5,  NVCV_IMAGE_FORMAT_RGBAf16,  NVCV_IMAGE_FORMAT_BGRAf16,  NVCV_COLOR_RGBA2BGRA,     NVCV_COLOR_BGRA2RGBA,     0.0},
     { 176, 113,  1,  NVCV_IMAGE_FORMAT_BGRS32,   NVCV_IMAGE_FORMAT_BGRAS32,  NVCV_COLOR_BGR2BGRA,      NVCV_COLOR_BGRA2BGR,      0.0},
+    {  88, 110,  3,  NVCV_IMAGE_FORMAT_RGBS32,   NVCV_IMAGE_FORMAT_BGRS32,   NVCV_COLOR_BGR2RGB,       NVCV_COLOR_RGB2BGR,       0.0},
     { 336, 432,  2,  NVCV_IMAGE_FORMAT_RGBS32,   NVCV_IMAGE_FORMAT_RGBAS32,  NVCV_COLOR_RGB2RGBA,      NVCV_COLOR_RGBA2RGB,      0.0},
     {  77, 212,  3,  NVCV_IMAGE_FORMAT_BGRS32,   NVCV_IMAGE_FORMAT_RGBAS32,  NVCV_COLOR_BGR2RGBA,      NVCV_COLOR_RGBA2BGR,      0.0},
     {  33,  55,  4,  NVCV_IMAGE_FORMAT_RGBS32,   NVCV_IMAGE_FORMAT_BGRAS32,  NVCV_COLOR_RGB2BGRA,      NVCV_COLOR_BGRA2RGB,      0.0},
     { 123, 321,  5,  NVCV_IMAGE_FORMAT_RGBAS32,  NVCV_IMAGE_FORMAT_BGRAS32,  NVCV_COLOR_RGBA2BGRA,     NVCV_COLOR_BGRA2RGBA,     0.0},
     { 176, 113,  1,  NVCV_IMAGE_FORMAT_BGRf64,   NVCV_IMAGE_FORMAT_BGRAf64,  NVCV_COLOR_BGR2BGRA,      NVCV_COLOR_BGRA2BGR,      0.0},
+    {  77, 177,  3,  NVCV_IMAGE_FORMAT_RGBf64,   NVCV_IMAGE_FORMAT_BGRf64,   NVCV_COLOR_BGR2RGB,       NVCV_COLOR_RGB2BGR,       0.0},
     { 336, 432,  2,  NVCV_IMAGE_FORMAT_RGBf64,   NVCV_IMAGE_FORMAT_RGBAf64,  NVCV_COLOR_RGB2RGBA,      NVCV_COLOR_RGBA2RGB,      0.0},
     {  77, 212,  3,  NVCV_IMAGE_FORMAT_BGRf64,   NVCV_IMAGE_FORMAT_RGBAf64,  NVCV_COLOR_BGR2RGBA,      NVCV_COLOR_RGBA2BGR,      0.0},
     {  33,  55,  4,  NVCV_IMAGE_FORMAT_RGBf64,   NVCV_IMAGE_FORMAT_BGRAf64,  NVCV_COLOR_RGB2BGRA,      NVCV_COLOR_BGRA2RGB,      0.0},
@@ -788,6 +804,7 @@ test::ValueList<int, int, int, NVCVImageFormat, NVCVImageFormat, NVCVColorConver
     {  64,  21,  3,  NVCV_IMAGE_FORMAT_Yf32,     NVCV_IMAGE_FORMAT_BGRf32,   NVCV_COLOR_GRAY2BGR,      NVCV_COLOR_BGR2GRAY,     1E-4},
     {  121, 66,  5,  NVCV_IMAGE_FORMAT_Yf32,     NVCV_IMAGE_FORMAT_RGBf32,   NVCV_COLOR_GRAY2RGB,      NVCV_COLOR_RGB2GRAY,     1E-4},
     { 129,  61,  4,  NVCV_IMAGE_FORMAT_BGRf32,   NVCV_IMAGE_FORMAT_BGRAf32,  NVCV_COLOR_BGR2BGRA,      NVCV_COLOR_BGRA2BGR,      0.0},
+    {  55, 110,  3,  NVCV_IMAGE_FORMAT_RGBf32,   NVCV_IMAGE_FORMAT_BGRf32,   NVCV_COLOR_BGR2RGB,       NVCV_COLOR_RGB2BGR,       0.0},
     {  63,  31,  3,  NVCV_IMAGE_FORMAT_RGBf32,   NVCV_IMAGE_FORMAT_RGBAf32,  NVCV_COLOR_RGB2RGBA,      NVCV_COLOR_RGBA2RGB,      0.0},
     {  42, 111,  2,  NVCV_IMAGE_FORMAT_BGRf32,   NVCV_IMAGE_FORMAT_RGBAf32,  NVCV_COLOR_BGR2RGBA,      NVCV_COLOR_RGBA2BGR,      0.0},
     {  21,  72,  2,  NVCV_IMAGE_FORMAT_RGBf32,   NVCV_IMAGE_FORMAT_BGRAf32,  NVCV_COLOR_RGB2BGRA,      NVCV_COLOR_BGRA2RGB,      0.0},
@@ -832,36 +849,6 @@ test::ValueList<int, int, int, NVCVImageFormat, NVCVImageFormat, NVCVColorConver
 });
 
 // clang-format on
-
-#undef NVCV_IMAGE_FORMAT_RGBS8
-#undef NVCV_IMAGE_FORMAT_BGRS8
-#undef NVCV_IMAGE_FORMAT_RGBAS8
-#undef NVCV_IMAGE_FORMAT_BGRAS8
-
-#undef NVCV_IMAGE_FORMAT_Y16
-#undef NVCV_IMAGE_FORMAT_BGR16
-#undef NVCV_IMAGE_FORMAT_RGB16
-#undef NVCV_IMAGE_FORMAT_BGRA16
-#undef NVCV_IMAGE_FORMAT_RGBA16
-#undef NVCV_IMAGE_FORMAT_YUV16
-#undef NVCV_IMAGE_FORMAT_YS16
-#undef NVCV_IMAGE_FORMAT_BGRS16
-#undef NVCV_IMAGE_FORMAT_RGBS16
-#undef NVCV_IMAGE_FORMAT_BGRAS16
-#undef NVCV_IMAGE_FORMAT_RGBAS16
-
-#undef NVCV_IMAGE_FORMAT_BGRS32
-#undef NVCV_IMAGE_FORMAT_RGBS32
-#undef NVCV_IMAGE_FORMAT_BGRAS32
-#undef NVCV_IMAGE_FORMAT_RGBAS32
-#undef NVCV_IMAGE_FORMAT_YUVf32
-#undef NVCV_IMAGE_FORMAT_Yf32
-#undef NVCV_IMAGE_FORMAT_HSVf32
-
-#undef NVCV_IMAGE_FORMAT_BGRS64
-#undef NVCV_IMAGE_FORMAT_RGBS64
-#undef NVCV_IMAGE_FORMAT_BGRAS64
-#undef NVCV_IMAGE_FORMAT_RGBAS64
 
 TEST_P(OpCvtColor_circular, varshape_correct_output)
 {
@@ -994,6 +981,148 @@ TEST(OpCvtColor_negative, create_with_null_handle)
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaCvtColorCreate(nullptr));
 }
 
+TEST(OpCvtColor_negative, mismatch_shape)
+{
+    nvcv::Tensor tensorY8   = util::CreateTensor(2, 224, 224, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_Y8});
+    nvcv::Tensor tensorHSV8 = util::CreateTensor(2, 224, 224, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_HSV8});
+    nvcv::Tensor tensorBGR8 = util::CreateTensor(5, 224, 224, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_BGR8});
+    nvcv::Tensor tensorRGB8 = util::CreateTensor(2, 224, 224, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_RGB8});
+
+    // run operator
+    cvcuda::CvtColor cvtColorOp;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { cvtColorOp(nullptr, tensorY8, tensorBGR8, NVCV_COLOR_GRAY2BGR); }));
+
+    // reserved conversion invalid too
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { cvtColorOp(nullptr, tensorBGR8, tensorY8, NVCV_COLOR_BGR2GRAY); }));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { cvtColorOp(nullptr, tensorHSV8, tensorBGR8, NVCV_COLOR_HSV2BGR); }));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { cvtColorOp(nullptr, tensorBGR8, tensorRGB8, NVCV_COLOR_BGR2RGB); }));
+}
+
+TEST(OpCvtColor_negative, invalid_shape_BGR_to_YUV420xp)
+{
+    std::vector<nvcv::Tensor> srcTensors{util::CreateTensor(1, 7, 8, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_BGR8}),
+                                         util::CreateTensor(1, 8, 6, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_BGR8}),
+                                         util::CreateTensor(1, 8, 8, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_BGRf16}),
+                                         util::CreateTensor(1, 16, 16, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_BGR8})};
+
+    nvcv::Tensor dstTensor = nvcv::Tensor(
+        {
+            {8, 8, 1},
+            "HWC"
+    },
+        nvcv::ImageFormat{NVCV_IMAGE_FORMAT_NV21}.planeDataType(0).channelType(0));
+
+    // run operator
+    cvcuda::CvtColor cvtColorOp;
+    for (auto &srcTensor : srcTensors)
+    {
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+                  nvcv::ProtectCall([&] { cvtColorOp(nullptr, srcTensor, dstTensor, NVCV_COLOR_BGR2YUV_YV12); }));
+    }
+}
+
+TEST(OpCvtColor_negative, invalid_shape_YUV420xp_toBGR)
+{
+    std::vector<nvcv::Tensor> srcTensors{
+        nvcv::Tensor({             {9, 8, 2}, "HWC"},
+        nvcv::ImageFormat{NVCV_IMAGE_FORMAT_NV21      }
+        .planeDataType(0).channelType(0)),
+        nvcv::Tensor({             {7, 8, 1}, "HWC"},
+        nvcv::ImageFormat{NVCV_IMAGE_FORMAT_NV21      }
+        .planeDataType(0).channelType(0)),
+        nvcv::Tensor({             {9, 8, 1}, "HWC"},
+        nvcv::ImageFormat{NVCV_IMAGE_FORMAT_NV21      }
+        .planeDataType(0).channelType(0)),
+        nvcv::Tensor({            {12, 8, 1}, "HWC"},
+        nvcv::ImageFormat{NVCV_IMAGE_FORMAT_NV21      }
+        .planeDataType(0).channelType(0)),
+        nvcv::Tensor({             {9, 8, 1}, "HWC"},
+        nvcv::ImageFormat{NVCV_IMAGE_FORMAT_NV21      }
+        .planeDataType(0).channelType(0)),
+    };
+    nvcv::Tensor srcTensor_1 = util::CreateTensor(1, 8, 8, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_NV21});
+
+    // height: 8 --> 6
+    nvcv::Tensor dstTensor   = util::CreateTensor(1, 8, 6, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_BGR8});
+    nvcv::Tensor dstTensor_1 = util::CreateTensor(1, 8, 6, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_Y8});
+
+    // run operator
+    cvcuda::CvtColor cvtColorOp;
+    for (auto &srcTensor : srcTensors)
+    {
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+                  nvcv::ProtectCall([&] { cvtColorOp(nullptr, srcTensor, dstTensor, NVCV_COLOR_YUV2BGR_YV12); }));
+    }
+
+    EXPECT_EQ(
+        NVCV_ERROR_INVALID_ARGUMENT,
+        nvcv::ProtectCall(
+            [&] { cvtColorOp(nullptr, srcTensor_1, dstTensor_1, NVCV_COLOR_YUV2BGR_YV12); })); // incalid output channel
+}
+
+TEST(OpCvtColor_negative, invalid_shape_YUV422_to_BGR)
+{
+    std::vector<nvcv::Tensor> srcTensors = {
+        nvcv::Tensor({          {120, 21, 1}, "HWC"},
+        nvcv::ImageFormat{NVCV_IMAGE_FORMAT_UYVY      }
+        .planeDataType(0).channelType(0)),
+        nvcv::Tensor({          {120, 20, 2}, "HWC"},
+        nvcv::ImageFormat{NVCV_IMAGE_FORMAT_UYVY      }
+        .planeDataType(0).channelType(0)),
+        nvcv::Tensor({          {120, 24, 1}, "HWC"},
+        nvcv::ImageFormat{NVCV_IMAGE_FORMAT_UYVY      }
+        .planeDataType(0).channelType(0))
+    };
+
+    nvcv::Tensor dstTensor = nvcv::Tensor(
+        {
+            {120, 40, 3},
+            "HWC"
+    },
+        nvcv::ImageFormat{NVCV_IMAGE_FORMAT_BGR8}.planeDataType(0).channelType(0));
+
+    // run operator
+    cvcuda::CvtColor cvtColorOp;
+    for (auto &srcTensor : srcTensors)
+    {
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+                  nvcv::ProtectCall([&] { cvtColorOp(nullptr, srcTensor, dstTensor, NVCV_COLOR_YUV2BGR_UYVY); }));
+    }
+}
+
+TEST(OpCvtColor_negative, invalid_shape_YUV422_to_BGR_invalid_out)
+{
+    nvcv::Tensor srcTensor = nvcv::Tensor(
+        {
+            {120, 20, 1},
+            "HWC"
+    },
+        nvcv::ImageFormat{NVCV_IMAGE_FORMAT_UYVY}.planeDataType(0).channelType(0));
+
+    std::vector<nvcv::Tensor> dstTensors = {
+        nvcv::Tensor({            {120, 20, 1}, "HWC"},
+        nvcv::ImageFormat{  NVCV_IMAGE_FORMAT_BGR8      }
+        .planeDataType(0).channelType(0)),
+        nvcv::Tensor({            {120, 20, 3}, "HWC"},
+                     nvcv::ImageFormat{NVCV_IMAGE_FORMAT_BGRf16      }
+        .planeDataType(0).channelType(0))
+    };
+
+    // run operator
+    cvcuda::CvtColor cvtColorOp;
+    for (auto &dstTensor : dstTensors)
+    {
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+                  nvcv::ProtectCall([&] { cvtColorOp(nullptr, srcTensor, dstTensor, NVCV_COLOR_YUV2BGR_UYVY); }));
+    }
+}
+
 // clang-format off
 
 NVCV_TEST_SUITE_P(OpCvtColor_negative,
@@ -1002,6 +1131,8 @@ test::ValueList<int, int, int, NVCVImageFormat, NVCVImageFormat, NVCVColorConver
     //  W,   H,  N,  Input Format,              Output Format,              Conversion Code
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_Y8,      NVCV_IMAGE_FORMAT_BGRA8,    NVCV_COLOR_BGR2BGRA}, // invalid input channel
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGR8,    NVCV_IMAGE_FORMAT_BGRAf32,  NVCV_COLOR_BGR2BGRA}, // mismatch data type
+    {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGR8,    NVCV_IMAGE_FORMAT_BGRA8p,   NVCV_COLOR_BGR2BGRA}, // mismatch format
+    {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGR8p,   NVCV_IMAGE_FORMAT_BGRA8p,   NVCV_COLOR_BGR2BGRA}, // invalid format
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGR8,    NVCV_IMAGE_FORMAT_Y8,       NVCV_COLOR_BGR2BGRA}, // invalid output channel
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGR8,    NVCV_IMAGE_FORMAT_BGR8,     NVCV_COLOR_GRAY2BGR}, // invalid input channel
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_Y8,      NVCV_IMAGE_FORMAT_BGRf32,   NVCV_COLOR_GRAY2BGR}, // mismatch data type
@@ -1010,18 +1141,24 @@ test::ValueList<int, int, int, NVCVImageFormat, NVCVImageFormat, NVCVColorConver
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGRf32,  NVCV_IMAGE_FORMAT_Y8,       NVCV_COLOR_BGR2GRAY}, // mismatch data type
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGRf16,  NVCV_IMAGE_FORMAT_BGRAf16,  NVCV_COLOR_BGR2BGRA}, // f16 type not allowed to add alpha
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGR8,    NVCV_IMAGE_FORMAT_BGRA8,    NVCV_COLOR_BGR2GRAY}, // invalid output channel
+    {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGRf64,  NVCV_IMAGE_FORMAT_Yf64,    NVCV_COLOR_BGR2GRAY}, // unsupported data type
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGRA8,   NVCV_IMAGE_FORMAT_YUV8,     NVCV_COLOR_BGR2YUV},  // invalid input channel
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGRf32,  NVCV_IMAGE_FORMAT_YUV8,     NVCV_COLOR_BGR2YUV},  // mismatch data type
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGR8,    NVCV_IMAGE_FORMAT_BGRA8,    NVCV_COLOR_BGR2YUV},  // invalid output channel
+    {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGRf16,  NVCV_IMAGE_FORMAT_YUVf16,   NVCV_COLOR_BGR2YUV},  // unsupported data type
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGRA8,   NVCV_IMAGE_FORMAT_BGR8,     NVCV_COLOR_YUV2BGR},  // invalid input channel
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_YUV8,    NVCV_IMAGE_FORMAT_BGRf32,   NVCV_COLOR_YUV2BGR},  // mismatch data type
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_YUV8,    NVCV_IMAGE_FORMAT_BGRA8,    NVCV_COLOR_YUV2BGR},  // invalid output channel
+    {   8,   8,  3,  NVCV_IMAGE_FORMAT_YUVf16,  NVCV_IMAGE_FORMAT_BGRf16,   NVCV_COLOR_YUV2BGR},  // unsupported data type
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGRA8,   NVCV_IMAGE_FORMAT_HSV8,     NVCV_COLOR_BGR2HSV},  // invalid input channel
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGRf32,  NVCV_IMAGE_FORMAT_HSV8,     NVCV_COLOR_BGR2HSV},  // mismatch data type
+    {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGRf64,  NVCV_IMAGE_FORMAT_HSVf64,   NVCV_COLOR_BGR2HSV},  // unsupported data type
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGR8,    NVCV_IMAGE_FORMAT_BGRA8,    NVCV_COLOR_BGR2HSV},  // invalid output channel
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGRA8,   NVCV_IMAGE_FORMAT_BGR8,     NVCV_COLOR_HSV2BGR},  // invalid input channel
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_HSV8,    NVCV_IMAGE_FORMAT_BGRf32,   NVCV_COLOR_HSV2BGR},  // mismatch data type
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_HSV8,    NVCV_IMAGE_FORMAT_Y8,       NVCV_COLOR_HSV2BGR},  // invalid output channel
+    {   8,   8,  3,  NVCV_IMAGE_FORMAT_HSVf64,  NVCV_IMAGE_FORMAT_BGRf64,   NVCV_COLOR_HSV2BGR},  // unsupported data type
+    {  16,   8,  1,  NVCV_IMAGE_FORMAT_Y8,      NVCV_IMAGE_FORMAT_NV21,     NVCV_COLOR_BGR2YUV_YV12}, // invalid channel
 });
 
 // clang-format on
@@ -1085,6 +1222,94 @@ TEST_P(OpCvtColor_negative, varshape_invalid_input)
     // run operator
     cvcuda::CvtColor cvtColorOp;
     EXPECT_ANY_THROW(cvtColorOp(nullptr, batchSrc, batchDst, src2dstCode));
+}
+
+// clang-format off
+
+NVCV_TEST_SUITE_P(OpCvtColor_negative_diff_format, test::ValueList<NVCVImageFormat, NVCVImageFormat, NVCVImageFormat, NVCVImageFormat, NVCVColorConversionCode>
+{
+    {NVCV_IMAGE_FORMAT_Y8,       NVCV_IMAGE_FORMAT_Y16,       NVCV_IMAGE_FORMAT_BGR8,       NVCV_IMAGE_FORMAT_BGR8,      NVCV_COLOR_GRAY2BGR},
+    {NVCV_IMAGE_FORMAT_Y8,       NVCV_IMAGE_FORMAT_Y8,        NVCV_IMAGE_FORMAT_BGR8,       NVCV_IMAGE_FORMAT_BGRf32,    NVCV_COLOR_GRAY2BGR},
+    {NVCV_IMAGE_FORMAT_BGR8,     NVCV_IMAGE_FORMAT_RGBf32,    NVCV_IMAGE_FORMAT_HSV8,       NVCV_IMAGE_FORMAT_BGR8,      NVCV_COLOR_BGR2HSV},
+    {NVCV_IMAGE_FORMAT_BGR8,     NVCV_IMAGE_FORMAT_BGR8,      NVCV_IMAGE_FORMAT_HSV8,       NVCV_IMAGE_FORMAT_BGRf32,    NVCV_COLOR_BGR2HSV},
+});
+// clang-format on
+
+#undef NVCV_IMAGE_FORMAT_RGBS8
+#undef NVCV_IMAGE_FORMAT_BGRS8
+#undef NVCV_IMAGE_FORMAT_RGBAS8
+#undef NVCV_IMAGE_FORMAT_BGRAS8
+#undef NVCV_IMAGE_FORMAT_YS8_ER
+
+#undef NVCV_IMAGE_FORMAT_BGR16
+#undef NVCV_IMAGE_FORMAT_RGB16
+#undef NVCV_IMAGE_FORMAT_BGRA16
+#undef NVCV_IMAGE_FORMAT_RGBA16
+#undef NVCV_IMAGE_FORMAT_YUV16
+#undef NVCV_IMAGE_FORMAT_YS16
+#undef NVCV_IMAGE_FORMAT_BGRS16
+#undef NVCV_IMAGE_FORMAT_RGBS16
+#undef NVCV_IMAGE_FORMAT_BGRAS16
+#undef NVCV_IMAGE_FORMAT_RGBAS16
+#undef NVCV_IMAGE_FORMAT_YUVf16
+
+#undef NVCV_IMAGE_FORMAT_BGRS32
+#undef NVCV_IMAGE_FORMAT_RGBS32
+#undef NVCV_IMAGE_FORMAT_BGRAS32
+#undef NVCV_IMAGE_FORMAT_RGBAS32
+#undef NVCV_IMAGE_FORMAT_YUVf32
+#undef NVCV_IMAGE_FORMAT_Yf32
+#undef NVCV_IMAGE_FORMAT_HSVf32
+
+#undef NVCV_IMAGE_FORMAT_BGRS64
+#undef NVCV_IMAGE_FORMAT_RGBS64
+#undef NVCV_IMAGE_FORMAT_BGRAS64
+#undef NVCV_IMAGE_FORMAT_RGBAS64
+#undef NVCV_IMAGE_FORMAT_HSVf64
+#undef NVCV_IMAGE_FORMAT_Yf64
+
+TEST_P(OpCvtColor_negative_diff_format, varshape_hasDifferentFormat)
+{
+    nvcv::ImageFormat       srcFormat{GetParamValue<0>()};
+    nvcv::ImageFormat       srcExtraFormat{GetParamValue<1>()};
+    nvcv::ImageFormat       dstFormat{GetParamValue<2>()};
+    nvcv::ImageFormat       dstExtraFormat{GetParamValue<3>()};
+    NVCVColorConversionCode src2dstCode{GetParamValue<4>()};
+
+    int batches = 4;
+    int width   = 224;
+    int height  = 224;
+
+    // Create input varshape
+    std::default_random_engine         rng;
+    std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
+    std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
+
+    std::vector<nvcv::Image> imgSrc;
+    for (int i = 0; i < batches - 1; ++i)
+    {
+        imgSrc.emplace_back(nvcv::Size2D{udistWidth(rng), udistHeight(rng)}, srcFormat);
+    }
+    imgSrc.emplace_back(nvcv::Size2D{udistWidth(rng), udistHeight(rng)}, srcExtraFormat);
+
+    nvcv::ImageBatchVarShape batchSrc(batches);
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+
+    // Create output varshape
+    std::vector<nvcv::Image> imgDst;
+
+    for (int i = 0; i < batches - 1; ++i)
+    {
+        imgDst.emplace_back(imgSrc[i].size(), dstFormat);
+    }
+    imgDst.emplace_back(imgSrc[batches - 1].size(), dstExtraFormat);
+
+    nvcv::ImageBatchVarShape batchDst(batches);
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    cvcuda::CvtColor cvtColorOp;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { cvtColorOp(nullptr, batchSrc, batchDst, src2dstCode); }));
 }
 
 #undef VEC_EXPECT_NEAR

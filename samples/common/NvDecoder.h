@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -406,7 +406,8 @@ int getInputDir(std::string &input_dir, const char *executable_path)
             // replace it with the value
             if (executable_name_pos != std::string::npos)
             {
-                pathname.replace(executable_name_pos, strlen("<executable_name>"), executable_name);
+                pathname.replace(executable_name_pos, std::char_traits<char>::length("<executable_name>"),
+                                 executable_name);
             }
 
             if (inputDirExists(pathname.c_str()))

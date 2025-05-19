@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -290,13 +290,13 @@ void pillow_resize_var_shape(const ImageBatchVarShape &inDataBase, const ImageBa
     auto inDataPtr = inDataBase.exportData<ImageBatchVarShapeDataStridedCuda>(stream);
     if (!inDataPtr)
     {
-        throw std::runtime_error("Something wrong happend during conversion of type...!!!");
+        throw std::runtime_error("Something wrong happened during conversion of type...!!!");
     }
 
     auto outDataPtr = outDataBase.exportData<ImageBatchVarShapeDataStridedCuda>(stream);
     if (!outDataPtr)
     {
-        throw std::runtime_error("Something wrong happend during conversion of type...!!!");
+        throw std::runtime_error("Something wrong happened during conversion of type...!!!");
     }
 
     const ImageBatchVarShapeDataStridedCuda &inData  = *inDataPtr;

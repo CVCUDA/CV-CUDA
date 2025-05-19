@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -311,7 +311,13 @@ ErrorCode Normalize::infer(const nvcv::TensorDataStridedCuda &inData, const nvcv
                            const float global_scale, const float shift, const float epsilon, const uint32_t flags,
                            cudaStream_t stream)
 {
-    DataFormat format = GetLegacyDataFormat(inData.layout());
+    DataFormat format        = GetLegacyDataFormat(inData.layout());
+    DataFormat output_format = helpers::GetLegacyDataFormat(outData);
+    if (format != output_format)
+    {
+        LOG_ERROR("Invalid DataFormat between input (" << format << ") and output (" << output_format << ")");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
 
     if (!(format == kNHWC || format == kHWC))
     {

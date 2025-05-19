@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -806,12 +806,6 @@ inline ErrorCode BGR_to_RGB(const ImageBatchVarShapeDataStridedCuda &inData,
                  ? 2
                  : 0;
 
-    if (!inData.uniqueFormat())
-    {
-        LOG_ERROR("Images in the input batch must all have the same format");
-        return ErrorCode::INVALID_DATA_FORMAT;
-    }
-
     int      channels      = inData.uniqueFormat().numChannels();
     DataType data_type     = helpers::GetLegacyDataType(inData.uniqueFormat());
     DataType out_data_type = helpers::GetLegacyDataType(outData.uniqueFormat());
@@ -826,12 +820,6 @@ inline ErrorCode BGR_to_RGB(const ImageBatchVarShapeDataStridedCuda &inData,
     {
         LOG_ERROR("Unsupported input/output DataType " << data_type << "/" << out_data_type);
         return ErrorCode::INVALID_DATA_TYPE;
-    }
-
-    if (!outData.uniqueFormat())
-    {
-        LOG_ERROR("Images in the output batch must all have the same format");
-        return ErrorCode::INVALID_DATA_FORMAT;
     }
 
     int dcn = outData.uniqueFormat().numChannels();
@@ -910,12 +898,6 @@ inline ErrorCode GRAY_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData,
 {
     int dch = (code == NVCV_COLOR_GRAY2BGRA) ? 4 : 3;
 
-    if (!inData.uniqueFormat())
-    {
-        LOG_ERROR("Images in the input batch must all have the same format");
-        return ErrorCode::INVALID_DATA_FORMAT;
-    }
-
     int      channels      = inData.uniqueFormat().numChannels();
     DataType data_type     = helpers::GetLegacyDataType(inData.uniqueFormat());
     DataType out_data_type = helpers::GetLegacyDataType(outData.uniqueFormat());
@@ -930,12 +912,6 @@ inline ErrorCode GRAY_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData,
     {
         LOG_ERROR("Unsupported input/output DataType " << data_type << "/" << out_data_type);
         return ErrorCode::INVALID_DATA_TYPE;
-    }
-
-    if (!outData.uniqueFormat())
-    {
-        LOG_ERROR("Images in the output batch must all have the same format");
-        return ErrorCode::INVALID_DATA_FORMAT;
     }
 
     int dcn = outData.uniqueFormat().numChannels();
@@ -1015,12 +991,6 @@ inline ErrorCode BGR_to_GRAY(const ImageBatchVarShapeDataStridedCuda &inData,
     int bidx = (code == NVCV_COLOR_RGBA2GRAY || code == NVCV_COLOR_RGB2GRAY) ? 2 : 0;
     int sch  = (code == NVCV_COLOR_RGBA2GRAY || code == NVCV_COLOR_BGRA2GRAY) ? 4 : 3;
 
-    if (!inData.uniqueFormat())
-    {
-        LOG_ERROR("Images in the input batch must all have the same format");
-        return ErrorCode::INVALID_DATA_FORMAT;
-    }
-
     int      channels      = inData.uniqueFormat().numChannels();
     DataType data_type     = helpers::GetLegacyDataType(inData.uniqueFormat());
     DataType out_data_type = helpers::GetLegacyDataType(outData.uniqueFormat());
@@ -1035,12 +1005,6 @@ inline ErrorCode BGR_to_GRAY(const ImageBatchVarShapeDataStridedCuda &inData,
     {
         LOG_ERROR("Unsupported input/output DataType " << data_type << "/" << out_data_type);
         return ErrorCode::INVALID_DATA_TYPE;
-    }
-
-    if (!outData.uniqueFormat())
-    {
-        LOG_ERROR("Images in the output batch must all have the same format");
-        return ErrorCode::INVALID_DATA_FORMAT;
     }
 
     int dcn = outData.uniqueFormat().numChannels();
@@ -1097,12 +1061,6 @@ inline ErrorCode BGR_to_YUV(const ImageBatchVarShapeDataStridedCuda &inData,
 {
     int bidx = code == NVCV_COLOR_BGR2YUV ? 0 : 2;
 
-    if (!inData.uniqueFormat())
-    {
-        LOG_ERROR("Images in the input batch must all have the same format");
-        return ErrorCode::INVALID_DATA_FORMAT;
-    }
-
     int      channels      = inData.uniqueFormat().numChannels();
     DataType data_type     = helpers::GetLegacyDataType(inData.uniqueFormat());
     DataType out_data_type = helpers::GetLegacyDataType(outData.uniqueFormat());
@@ -1117,12 +1075,6 @@ inline ErrorCode BGR_to_YUV(const ImageBatchVarShapeDataStridedCuda &inData,
     {
         LOG_ERROR("Unsupported input/output DataType " << data_type << "/" << out_data_type);
         return ErrorCode::INVALID_DATA_TYPE;
-    }
-
-    if (!outData.uniqueFormat())
-    {
-        LOG_ERROR("Images in the output batch must all have the same format");
-        return ErrorCode::INVALID_DATA_FORMAT;
     }
 
     int dcn = outData.uniqueFormat().numChannels();
@@ -1179,12 +1131,6 @@ inline ErrorCode YUV_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData,
 {
     int bidx = code == NVCV_COLOR_YUV2BGR ? 0 : 2;
 
-    if (!inData.uniqueFormat())
-    {
-        LOG_ERROR("Images in the input batch must all have the same format");
-        return ErrorCode::INVALID_DATA_FORMAT;
-    }
-
     int      channels      = inData.uniqueFormat().numChannels();
     DataType data_type     = helpers::GetLegacyDataType(inData.uniqueFormat());
     DataType out_data_type = helpers::GetLegacyDataType(outData.uniqueFormat());
@@ -1199,12 +1145,6 @@ inline ErrorCode YUV_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData,
     {
         LOG_ERROR("Unsupported input/output DataType " << data_type << "/" << out_data_type);
         return ErrorCode::INVALID_DATA_TYPE;
-    }
-
-    if (!outData.uniqueFormat())
-    {
-        LOG_ERROR("Images in the output batch must all have the same format");
-        return ErrorCode::INVALID_DATA_FORMAT;
     }
 
     int dcn = outData.uniqueFormat().numChannels();
@@ -1262,12 +1202,6 @@ inline ErrorCode BGR_to_HSV(const ImageBatchVarShapeDataStridedCuda &inData,
     bool isFullRange = (code == NVCV_COLOR_BGR2HSV_FULL || code == NVCV_COLOR_RGB2HSV_FULL);
     int  bidx        = (code == NVCV_COLOR_BGR2HSV || code == NVCV_COLOR_BGR2HSV_FULL) ? 0 : 2;
 
-    if (!inData.uniqueFormat())
-    {
-        LOG_ERROR("Images in the input batch must all have the same format");
-        return ErrorCode::INVALID_DATA_FORMAT;
-    }
-
     int      channels      = inData.uniqueFormat().numChannels();
     DataType data_type     = helpers::GetLegacyDataType(inData.uniqueFormat());
     DataType out_data_type = helpers::GetLegacyDataType(outData.uniqueFormat());
@@ -1282,12 +1216,6 @@ inline ErrorCode BGR_to_HSV(const ImageBatchVarShapeDataStridedCuda &inData,
     {
         LOG_ERROR("Unsupported input/output DataType " << data_type << "/" << out_data_type);
         return ErrorCode::INVALID_DATA_TYPE;
-    }
-
-    if (!outData.uniqueFormat())
-    {
-        LOG_ERROR("Images in the output batch must all have the same format");
-        return ErrorCode::INVALID_DATA_FORMAT;
     }
 
     int dcn = outData.uniqueFormat().numChannels();
@@ -1337,12 +1265,6 @@ inline ErrorCode HSV_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData,
     bool isFullRange = (code == NVCV_COLOR_HSV2BGR_FULL || code == NVCV_COLOR_HSV2RGB_FULL);
     int  bidx        = (code == NVCV_COLOR_HSV2BGR || code == NVCV_COLOR_HSV2BGR_FULL) ? 0 : 2;
 
-    if (!inData.uniqueFormat())
-    {
-        LOG_ERROR("Images in the input batch must all have the same format");
-        return ErrorCode::INVALID_DATA_FORMAT;
-    }
-
     int      channels      = inData.uniqueFormat().numChannels();
     DataType data_type     = helpers::GetLegacyDataType(inData.uniqueFormat());
     DataType out_data_type = helpers::GetLegacyDataType(outData.uniqueFormat());
@@ -1357,12 +1279,6 @@ inline ErrorCode HSV_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData,
     {
         LOG_ERROR("Unsupported input/output DataType " << data_type << "/" << out_data_type);
         return ErrorCode::INVALID_DATA_TYPE;
-    }
-
-    if (!outData.uniqueFormat())
-    {
-        LOG_ERROR("Images in the output batch must all have the same format");
-        return ErrorCode::INVALID_DATA_FORMAT;
     }
 
     int dcn = outData.uniqueFormat().numChannels();
@@ -1423,12 +1339,6 @@ inline ErrorCode YUV420xp_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData
             ? 0
             : 1;
 
-    if (!inData.uniqueFormat())
-    {
-        LOG_ERROR("Images in the input batch must all have the same format");
-        return ErrorCode::INVALID_DATA_FORMAT;
-    }
-
     int      channels  = inData.uniqueFormat().numChannels();
     DataType data_type = helpers::GetLegacyDataType(inData.uniqueFormat());
 
@@ -1441,12 +1351,6 @@ inline ErrorCode YUV420xp_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData
     {
         LOG_ERROR("Unsupported DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
-    }
-
-    if (!outData.uniqueFormat())
-    {
-        LOG_ERROR("Images in the output batch must all have the same format");
-        return ErrorCode::INVALID_DATA_FORMAT;
     }
 
     int dcn = outData.uniqueFormat().numChannels();
@@ -1533,12 +1437,6 @@ inline ErrorCode YUV422_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData,
             ? 0
             : 2;
 
-    if (!inData.uniqueFormat())
-    {
-        LOG_ERROR("Images in the input batch must all have the same format");
-        return ErrorCode::INVALID_DATA_FORMAT;
-    }
-
     int      channels  = inData.uniqueFormat().numChannels();
     DataType data_type = helpers::GetLegacyDataType(inData.uniqueFormat());
 
@@ -1551,12 +1449,6 @@ inline ErrorCode YUV422_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData,
     {
         LOG_ERROR("Unsupported DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
-    }
-
-    if (!outData.uniqueFormat())
-    {
-        LOG_ERROR("Images in the output batch must all have the same format");
-        return ErrorCode::INVALID_DATA_FORMAT;
     }
 
     int dcn = outData.uniqueFormat().numChannels();
@@ -1682,12 +1574,6 @@ inline ErrorCode BGR_to_YUV420xp(const ImageBatchVarShapeDataStridedCuda &inData
             ? 0
             : 1;
 
-    if (!inData.uniqueFormat())
-    {
-        LOG_ERROR("Images in the input batch must all have the same format");
-        return ErrorCode::INVALID_DATA_FORMAT;
-    }
-
     int      channels  = inData.uniqueFormat().numChannels();
     DataType data_type = helpers::GetLegacyDataType(inData.uniqueFormat());
 
@@ -1752,6 +1638,17 @@ ErrorCode CvtColorVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inDat
                                   const ImageBatchVarShapeDataStridedCuda &outData, NVCVColorConversionCode code,
                                   cudaStream_t stream)
 {
+    if (!inData.uniqueFormat())
+    {
+        LOG_ERROR("Images in the input batch must all have the same format");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
+    if (!outData.uniqueFormat())
+    {
+        LOG_ERROR("Images in the output batch must all have the same format");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
+
     DataFormat input_format  = helpers::GetLegacyDataFormat(inData);
     DataFormat output_format = helpers::GetLegacyDataFormat(outData);
     if (input_format != output_format)

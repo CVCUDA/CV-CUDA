@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,6 +26,7 @@
 #include <nvcv/util/Assert.h>
 #include <nvcv/util/String.hpp>
 
+#include <algorithm>
 #include <cstring>
 
 namespace priv = nvcv::priv;
@@ -89,7 +90,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvDataTypeGetBitsPerChannel, (NVCVDataType t
             priv::DataType         ptype{type};
             std::array<int32_t, 4> tmp = ptype.bpc();
             static_assert(sizeof(tmp) == 4 * sizeof(*outBits));
-            memcpy(outBits, &tmp, sizeof(tmp)); // no UB!
+            std::copy(tmp.begin(), tmp.end(), outBits); // no UB!
         });
 }
 
@@ -158,13 +159,11 @@ NVCV_DEFINE_API(0, 0, const char *, nvcvDataTypeGetName, (NVCVDataType type))
     }
     catch (std::exception &e)
     {
-        strncpy(buffer, e.what(), bufSize - 1);
-        buffer[bufSize - 1] = '\0';
+        std::snprintf(buffer, bufSize, "%s", e.what());
     }
     catch (...)
     {
-        strncpy(buffer, "Unexpected error retrieving NVCVDataType string representation", bufSize - 1);
-        buffer[bufSize - 1] = '\0';
+        std::snprintf(buffer, bufSize, "Unexpected error retrieving NVCVDataType string representation");
     }
 
     return buffer;

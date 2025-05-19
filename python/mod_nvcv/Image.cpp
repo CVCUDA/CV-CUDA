@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -205,7 +205,7 @@ std::vector<BufferImageInfo> ExtractBufferImageInfo(const std::vector<DLPackTens
                 elemStrideBytes, strides[2]));
         }
 
-        ssize_t packedRowStride = elemStrideBytes * infoShape->numCols();
+        ssize_t packedRowStride = static_cast<ssize_t>(elemStrideBytes) * infoShape->numCols();
         ssize_t rowStride       = strides[infoLayout->idxHeight()];
         if (!infoLayout->isChannelLast() && rowStride != packedRowStride)
         {
@@ -502,8 +502,8 @@ Image::Image(std::vector<py::buffer> bufs, const nvcv::ImageDataStridedHost &hos
         NVCV_ASSERT(devPlane.height == hostPlane.height);
 
         util::CheckThrow(cudaMemcpy2D(devPlane.basePtr, devPlane.rowStride, hostPlane.basePtr, hostPlane.rowStride,
-                                      hostPlane.width * hostData.format().planePixelStrideBytes(p), hostPlane.height,
-                                      cudaMemcpyHostToDevice));
+                                      static_cast<size_t>(hostPlane.width) * hostData.format().planePixelStrideBytes(p),
+                                      hostPlane.height, cudaMemcpyHostToDevice));
     }
 
     m_key = Key{
@@ -565,7 +565,8 @@ std::shared_ptr<Image> Image::Zeros(const Size2D &size, nvcv::ImageFormat fmt, i
         const nvcv::ImagePlaneStrided &plane = data.plane(p);
 
         util::CheckThrow(cudaMemset2D(plane.basePtr, plane.rowStride, 0,
-                                      plane.width * data.format().planePixelStrideBytes(p), plane.height));
+                                      static_cast<size_t>(plane.width) * data.format().planePixelStrideBytes(p),
+                                      plane.height));
     }
 
     return img;

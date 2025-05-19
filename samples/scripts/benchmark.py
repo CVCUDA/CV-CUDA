@@ -503,6 +503,12 @@ def recurse_calc_stats_dict(
                     "mean": round(np.mean(input_dict[key], axis=-1), 4),
                     "std": round(np.std(input_dict[key], axis=-1), 4),
                     "median": round(np.median(input_dict[key], axis=-1), 4),
+                    "percentile_16": round(
+                        np.percentile(input_dict[key], 16, axis=-1), 4
+                    ),
+                    "percentile_84": round(
+                        np.percentile(input_dict[key], 84, axis=-1), 4
+                    ),
                     "percentile_95": round(
                         np.percentile(input_dict[key], 95, axis=-1), 4
                     ),
@@ -539,6 +545,22 @@ def recurse_calc_stats_dict(
                         )
                         if stats_dict["median"] > 0
                         else 0,
+                        "percentile_68_range": [
+                            round(
+                                1000
+                                * throughput_multiplier
+                                / stats_dict["percentile_84"],
+                                2,
+                            ),
+                            round(
+                                1000
+                                * throughput_multiplier
+                                / stats_dict["percentile_16"],
+                                2,
+                            ),
+                        ]
+                        if stats_dict["mean"] > 0
+                        else [0, 0],
                         "percentile_95": round(
                             1000 * throughput_multiplier / stats_dict["percentile_95"],
                             2,
@@ -958,6 +980,8 @@ def benchmark_script(
         "--trace",
         "cuda,nvtx",
         "--trace-fork-before-exec=true",
+        "--gpu-video-device",
+        "all",
         sys.executable,
         script,
         *args,
@@ -1059,18 +1083,27 @@ def monitor_gpu_metrics(list_of_device_ids, terminate_event, gpu_metrics_info):
     :param gpu_metrics_info: A multiprocessing share dictionary to store the results of monitoring.
     """
     # Initialize the gpu_metrics_info dictionary for the first time. We will save the
-    # following pieces of information per GPU.
+    # following pieces of information per GPU:
+    #
     # 1) The total GPU power drawn in Watts
     # 2) The GPU utilization in %.
+    # 3) The GPU temperature
+    # 4) The clock event reasons active. (shows any reasons why the GPU clock was changed.)
 
     # We will work in a local dictionary first. Only when we are done that we would
     # transfer its contents to the mp managed dictionary. Because otherwise the mp
     # managed dictionary has no way of knowing when a nested key-value changes and it
     # won't update/save it.
-    gpu_metrics_info_local = {"power.draw.watts": {}, "utilization.gpu": {}}
+    gpu_metrics_info_local = {
+        "power.draw.watts": {},
+        "utilization.gpu": {},
+        "temperature.gpu": {},
+        "clocks_event_reasons": {},
+        "clocks.current.graphics": {},
+    }
     for device_id in list_of_device_ids:
-        gpu_metrics_info_local["power.draw.watts"]["GPU: %s" % device_id] = []
-        gpu_metrics_info_local["utilization.gpu"]["GPU: %s" % device_id] = []
+        for k in gpu_metrics_info_local:
+            gpu_metrics_info_local[k]["GPU: %s" % device_id] = []
 
     # Begin the monitoring loop. Continue till we are asked to stopped by the event.
     while not terminate_event.is_set():
@@ -1079,7 +1112,8 @@ def monitor_gpu_metrics(list_of_device_ids, terminate_event, gpu_metrics_info):
             [
                 "nvidia-smi",
                 "-i=%s" % ",".join(list_of_device_ids),
-                "--query-gpu=power.draw,utilization.gpu",
+                "--query-gpu=power.draw,utilization.gpu,temperature.gpu,"
+                "clocks_event_reasons.active,clocks.current.graphics",
                 "--format=csv,nounits,noheader",
             ],
             stdout=subprocess.PIPE,
@@ -1087,9 +1121,18 @@ def monitor_gpu_metrics(list_of_device_ids, terminate_event, gpu_metrics_info):
         if proc_ret.returncode == 0:
             outputs = proc_ret.stdout.decode().strip().split("\n")
             for idx, device_id in enumerate(list_of_device_ids):
-                power_draw, gpu_util = outputs[idx].split(",")
+                (
+                    power_draw,
+                    gpu_util,
+                    gpu_temp,
+                    clocks_event_reasons,
+                    graphics_clock,
+                ) = outputs[idx].split(",")
                 power_draw = float(power_draw)
                 gpu_util = float(gpu_util)
+                gpu_temp = float(gpu_temp)
+                clocks_event_reasons = int(clocks_event_reasons, 16)  # Hex to Decimal
+                graphics_clock = float(graphics_clock)
 
                 gpu_metrics_info_local["power.draw.watts"][
                     "GPU: %s" % device_id
@@ -1097,17 +1140,22 @@ def monitor_gpu_metrics(list_of_device_ids, terminate_event, gpu_metrics_info):
                 gpu_metrics_info_local["utilization.gpu"]["GPU: %s" % device_id].append(
                     gpu_util
                 )
+                gpu_metrics_info_local["temperature.gpu"]["GPU: %s" % device_id].append(
+                    gpu_temp
+                )
+                gpu_metrics_info_local["clocks_event_reasons"][
+                    "GPU: %s" % device_id
+                ].append(clocks_event_reasons)
+                gpu_metrics_info_local["clocks.current.graphics"][
+                    "GPU: %s" % device_id
+                ].append(graphics_clock)
         else:
             for device_id in list_of_device_ids:
-                gpu_metrics_info_local["power.draw.watts"][
-                    "GPU: %s" % device_id
-                ].append(0.0)
-                gpu_metrics_info_local["utilization.gpu"]["GPU: %s" % device_id].append(
-                    0.0
-                )
+                for k in gpu_metrics_info_local.keys():
+                    gpu_metrics_info_local[k]["GPU: %s" % device_id].append(0.0)
 
         # Sleep a bit
-        time.sleep(0.5)  # 500 milliseconds
+        time.sleep(0.3)  # 300 milliseconds
 
     # Update the mp managed dictionary
     gpu_metrics_info.update(gpu_metrics_info_local)

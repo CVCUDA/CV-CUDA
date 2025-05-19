@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -759,4 +759,104 @@ TEST_P(OpWarpPerspective, varshape_correct_output)
 
         EXPECT_EQ(goldVec, testVec);
     }
+}
+
+// clang-format off
+NVCV_TEST_SUITE_P(OpWarpPerspective_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat>{
+    // input format, output format,
+    {nvcv::FMT_RGBA8, nvcv::FMT_RGBA8p},
+    {nvcv::FMT_RGBA8p, nvcv::FMT_RGBA8},
+    {nvcv::FMT_RGBA8p, nvcv::FMT_RGBA8p},
+    {nvcv::FMT_RGBAf16, nvcv::FMT_RGBAf16}
+});
+
+NVCV_TEST_SUITE_P(OpWarpPerspectiveVarshape_Negative, test::ValueList<int, int, nvcv::ImageFormat, nvcv::ImageFormat>{
+    // maxBatchSize, numImages, input format, output format
+    {5, 5, nvcv::FMT_RGBA8, nvcv::FMT_RGBA8p},
+    {5, 5, nvcv::FMT_RGBA8p, nvcv::FMT_RGBA8},
+    {5, 5, nvcv::FMT_RGBA8p, nvcv::FMT_RGBA8p},
+    {5, 5, nvcv::FMT_RGBAf16, nvcv::FMT_RGBAf16},
+    {0, 5, nvcv::FMT_RGBA8, nvcv::FMT_RGBA8},
+    {2, 5, nvcv::FMT_RGBA8, nvcv::FMT_RGBA8}
+});
+
+// clang-format on
+
+TEST_P(OpWarpPerspective_Negative, op)
+{
+    cudaStream_t stream;
+    EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    const nvcv::ImageFormat inFmt  = GetParamValue<0>();
+    const nvcv::ImageFormat outFmt = GetParamValue<1>();
+
+    NVCVPerspectiveTransform transMatrix   = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+    NVCVInterpolationType    interpolation = NVCV_INTERP_NEAREST;
+    NVCVBorderType           borderMode    = NVCV_BORDER_CONSTANT;
+    const float4             borderValue   = {1, 2, 3, 4};
+    bool                     inverseMap    = true;
+
+    const int flags = interpolation | (inverseMap ? NVCV_WARP_INVERSE_MAP : 0);
+
+    // Create input and output
+    nvcv::Tensor imgSrc(2, {5, 4}, inFmt);
+    nvcv::Tensor imgDst(2, {5, 4}, outFmt);
+
+    cvcuda::WarpPerspective warpPerspectiveOp(0);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall(
+                  [&] { warpPerspectiveOp(stream, imgSrc, imgDst, transMatrix, flags, borderMode, borderValue); }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST_P(OpWarpPerspectiveVarshape_Negative, op)
+{
+    cudaStream_t stream;
+    EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    int                     maxBatchSize = GetParamValue<0>();
+    int                     numImages    = GetParamValue<1>();
+    const nvcv::ImageFormat inFmt        = GetParamValue<2>();
+    const nvcv::ImageFormat outFmt       = GetParamValue<3>();
+
+    NVCVInterpolationType interpolation = NVCV_INTERP_NEAREST;
+    NVCVBorderType        borderMode    = NVCV_BORDER_CONSTANT;
+    const float4          borderValue   = {1, 2, 3, 4};
+    bool                  inverseMap    = true;
+
+    const int flags = interpolation | (inverseMap ? NVCV_WARP_INVERSE_MAP : 0);
+
+    nvcv::Tensor transMatrixTensor(nvcv::TensorShape({numImages, 9}, nvcv::TENSOR_NW), nvcv::TYPE_F32);
+
+    // Create input and output
+    std::default_random_engine randEng;
+    std::vector<nvcv::Image>   imgSrc, imgDst;
+
+    for (int i = 0; i < numImages; ++i)
+    {
+        imgSrc.emplace_back(nvcv::Size2D{5, 4}, inFmt);
+        imgDst.emplace_back(nvcv::Size2D{5, 4}, outFmt);
+    }
+
+    nvcv::ImageBatchVarShape batchSrc(numImages);
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+
+    nvcv::ImageBatchVarShape batchDst(numImages);
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    cvcuda::WarpPerspective warpPerspectiveOp(maxBatchSize);
+    EXPECT_EQ(
+        NVCV_ERROR_INVALID_ARGUMENT,
+        nvcv::ProtectCall(
+            [&] { warpPerspectiveOp(stream, batchSrc, batchDst, transMatrixTensor, flags, borderMode, borderValue); }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpWarpPerspective_Negative, create_null_handle)
+{
+    EXPECT_EQ(cvcudaWarpPerspectiveCreate(nullptr, 2), NVCV_ERROR_INVALID_ARGUMENT);
 }

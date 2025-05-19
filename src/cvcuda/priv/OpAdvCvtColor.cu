@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -393,7 +393,7 @@ static bool areCorrectSizes(const NVCVColorConversionCode code, const nvcv::Tens
         return false;
     }
 
-    // NV12/21 are semi-plaar, so C is 1 for nHWC tensors.
+    // NV12/21 are semi-planar, so C is 1 for nHWC tensors.
     if (at1->numChannels() != at2->numChannels() && !isSemiPlanarToInterleaved(code)
         && !isInterleavedToSemiPlanar(code))
     {
@@ -636,7 +636,7 @@ void AdvCvtColor::NvYuv2Bgr(cudaStream_t stream, const nvcv::TensorDataStridedCu
     }
     if (inputShape.C != 1)
     {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Unsupported intput shape channels");
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Unsupported input shape channels");
     }
 
     int rgb_width  = inputShape.W;
@@ -713,7 +713,7 @@ void AdvCvtColor::Bgr2NvYuv(cudaStream_t stream, const nvcv::TensorDataStridedCu
 
     if (outputShape.H != yuv420_height || outputShape.W != yuv420_width || outputShape.N != inputShape.N)
     {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Unsupported output shape given intput");
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Unsupported output shape given input");
     }
 
     int2 srcSize{inputShape.W, inputShape.H};

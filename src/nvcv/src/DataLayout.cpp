@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,6 +25,7 @@
 #include <nvcv/Status.h>
 #include <nvcv/util/Assert.h>
 
+#include <algorithm>
 #include <cstring>
 
 namespace priv = nvcv::priv;
@@ -60,7 +61,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvSwizzleGetChannels, (NVCVSwizzle swizzle, 
 
             std::array<NVCVChannel, 4> tmp = priv::GetChannels(swizzle);
             static_assert(sizeof(tmp) == sizeof(*outChannels) * 4);
-            memcpy(outChannels, &tmp, sizeof(tmp)); // no UB!
+            std::copy(tmp.begin(), tmp.end(), outChannels);
         });
 }
 
@@ -148,7 +149,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvPackingGetBitsPerComponent, (NVCVPacking p
 
             std::array<int32_t, 4> tmp = priv::GetBitsPerComponent(packing);
             static_assert(sizeof(tmp) == sizeof(*outBits) * 4);
-            memcpy(outBits, &tmp, sizeof(tmp)); // No UB!
+            std::copy(tmp.begin(), tmp.end(), outBits); // no UB!
         });
 }
 

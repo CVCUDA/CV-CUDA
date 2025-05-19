@@ -1,5 +1,5 @@
 
-[//]: # "SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved."
+[//]: # "SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved."
 [//]: # "SPDX-License-Identifier: Apache-2.0"
 [//]: # ""
 [//]: # "Licensed under the Apache License, Version 2.0 (the 'License');"
@@ -102,3 +102,7 @@ To apply the Apache License to your work, attach the following boilerplate notic
     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
     See the License for the specific language governing permissions and
     limitations under the License.
+
+
+-----------------------------------------------
+See [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES.md) for licenses of software redistributed as part of CV-CUDA's code or binary packages.

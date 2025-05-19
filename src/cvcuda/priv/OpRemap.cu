@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -395,11 +395,6 @@ void Remap::operator()(cudaStream_t stream, const nvcv::Tensor &src, const nvcv:
     if (srcData->layout() != nvcv::TENSOR_HWC && srcData->layout() != nvcv::TENSOR_NHWC)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input must have (N)HWC layout");
-    }
-
-    if (dstData->layout() != nvcv::TENSOR_HWC && dstData->layout() != nvcv::TENSOR_NHWC)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Output must have (N)HWC layout");
     }
 
     RunRemap(stream, *srcData, *dstData, *mapData, srcInterp, mapInterp, mapValueType, alignCorners, border,

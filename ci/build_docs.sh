@@ -1,6 +1,6 @@
 #!/bin/bash -e
 
-# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,6 +25,9 @@ if [[ $# -ge 1 ]]; then
    build_dir=$1
 fi
 
+# Get the system's default Python version
+DEFAULT_PYTHON_VER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+
 # (warning): Use "$@" (with quotes) to prevent whitespace problems.
 # shellcheck disable=SC2048
-./ci/build.sh $build_type $build_dir "-DBUILD_DOCS=ON -DBUILD_TESTS=OFF -DBUILD_PYTHON=ON" $*
+./ci/build.sh $build_type $build_dir "-DBUILD_DOCS=ON -DBUILD_TESTS=OFF -DBUILD_PYTHON=ON -DPYTHON_VERSIONS=$DEFAULT_PYTHON_VER" $*

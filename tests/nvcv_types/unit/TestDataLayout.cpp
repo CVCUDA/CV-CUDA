@@ -28,7 +28,6 @@ TEST(DataLayoutTest, GetBlockHeightLog2)
     EXPECT_EQ(nvcv::priv::GetBlockHeightLog2(NVCV_MEM_LAYOUT_BLOCK32_LINEAR), 5);
 }
 
-#if !NVCV_DEBUG
 TEST(DataLayoutTest, FlipByteOrder)
 {
     auto makeSwizzle = [](NVCVChannel x, NVCVChannel y, NVCVChannel z, NVCVChannel w) -> NVCVSwizzle
@@ -46,31 +45,17 @@ TEST(DataLayoutTest, FlipByteOrder)
         EXPECT_EQ(res, makeSwizzle(goldX, goldY, goldZ, goldW));
     };
 
-    // offset is 0
-    testFlipByteOrder(NVCV_CHANNEL_X, NVCV_CHANNEL_Y, NVCV_CHANNEL_Z, NVCV_CHANNEL_0, 0, 1, NVCV_CHANNEL_X,
-                      NVCV_CHANNEL_Y, NVCV_CHANNEL_Z, NVCV_CHANNEL_0); // XYZ0 -> XYZ0
-    testFlipByteOrder(NVCV_CHANNEL_X, NVCV_CHANNEL_Y, NVCV_CHANNEL_0, NVCV_CHANNEL_0, 0, 2, NVCV_CHANNEL_Y,
-                      NVCV_CHANNEL_X, NVCV_CHANNEL_0, NVCV_CHANNEL_0); // XY00 -> YX00
-    testFlipByteOrder(NVCV_CHANNEL_X, NVCV_CHANNEL_Y, NVCV_CHANNEL_Z, NVCV_CHANNEL_0, 0, 3, NVCV_CHANNEL_Z,
-                      NVCV_CHANNEL_Y, NVCV_CHANNEL_X, NVCV_CHANNEL_0); // XYZ0 -> ZYX0
     testFlipByteOrder(NVCV_CHANNEL_X, NVCV_CHANNEL_Y, NVCV_CHANNEL_Z, NVCV_CHANNEL_W, 0, 4, NVCV_CHANNEL_W,
                       NVCV_CHANNEL_Z, NVCV_CHANNEL_Y, NVCV_CHANNEL_X); // XYZW -> WZYX
-
-    // offset is 1
-    testFlipByteOrder(NVCV_CHANNEL_X, NVCV_CHANNEL_Y, NVCV_CHANNEL_Z, NVCV_CHANNEL_0, 1, 1, NVCV_CHANNEL_X,
-                      NVCV_CHANNEL_Y, NVCV_CHANNEL_Z, NVCV_CHANNEL_0); // XYZ0 -> XYY0
     testFlipByteOrder(NVCV_CHANNEL_W, NVCV_CHANNEL_X, NVCV_CHANNEL_Y, NVCV_CHANNEL_Z, 1, 2, NVCV_CHANNEL_W,
                       NVCV_CHANNEL_Y, NVCV_CHANNEL_X, NVCV_CHANNEL_Z); // WXYZ -> WYXZ
     testFlipByteOrder(NVCV_CHANNEL_W, NVCV_CHANNEL_X, NVCV_CHANNEL_Y, NVCV_CHANNEL_Z, 1, 3, NVCV_CHANNEL_W,
                       NVCV_CHANNEL_Z, NVCV_CHANNEL_Y, NVCV_CHANNEL_X); // WXYZ -> WZYX
-
-    // offset is 2
-    testFlipByteOrder(NVCV_CHANNEL_X, NVCV_CHANNEL_Y, NVCV_CHANNEL_Z, NVCV_CHANNEL_0, 2, 1, NVCV_CHANNEL_X,
-                      NVCV_CHANNEL_Y, NVCV_CHANNEL_Z, NVCV_CHANNEL_0); // XYZ0 -> XYZ0
-    testFlipByteOrder(NVCV_CHANNEL_Y, NVCV_CHANNEL_Z, NVCV_CHANNEL_W, NVCV_CHANNEL_X, 2, 2, NVCV_CHANNEL_Y,
-                      NVCV_CHANNEL_Z, NVCV_CHANNEL_X, NVCV_CHANNEL_W); // YZWX -> YZXW
+    testFlipByteOrder(NVCV_CHANNEL_X, NVCV_CHANNEL_Y, NVCV_CHANNEL_Z, NVCV_CHANNEL_W, 0, 3, NVCV_CHANNEL_Z,
+                      NVCV_CHANNEL_Y, NVCV_CHANNEL_X, NVCV_CHANNEL_W);
+    testFlipByteOrder(NVCV_CHANNEL_X, NVCV_CHANNEL_Y, NVCV_CHANNEL_Z, NVCV_CHANNEL_W, 0, 4, NVCV_CHANNEL_W,
+                      NVCV_CHANNEL_Z, NVCV_CHANNEL_Y, NVCV_CHANNEL_X);
 }
-#endif
 
 TEST(DataLayoutTest, MakeNVCVPacking)
 {

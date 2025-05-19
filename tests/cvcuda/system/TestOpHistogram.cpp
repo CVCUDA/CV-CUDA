@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -83,6 +83,7 @@ NVCV_TEST_SUITE_P(OpHistogram, test::ValueList<int, int, NVCVImageFormat, int>
 });
 
 // clang-format on
+
 TEST_P(OpHistogram, Histogram)
 {
     cudaStream_t stream;
@@ -175,4 +176,47 @@ TEST_P(OpHistogram, Histogram_mask)
 
     // Compare the computed histogram with the output histogram
     ASSERT_EQ(opHistogram, goldHistogram);
+}
+
+// clang-format off
+NVCV_TEST_SUITE_P(OpHistogram_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat, nvcv::ImageFormat, int, int>{
+    // inFmt, histFmt, batches, histHeight
+    {nvcv::FMT_RGB8p, nvcv::FMT_RGB8p, nvcv::FMT_RGB8, 3, 3},
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, nvcv::FMT_RGB8p, 3, 3},
+    {nvcv::FMT_F16, nvcv::FMT_F16, nvcv::FMT_S32, 3, 3},
+    {nvcv::FMT_U8, nvcv::FMT_U8, nvcv::FMT_S32, 3, 5},
+    {nvcv::FMT_U8, nvcv::FMT_U8, nvcv::FMT_S32, 5, 3},
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, nvcv::FMT_S32, 3, 3},
+    {nvcv::FMT_U8, nvcv::FMT_RGB8, nvcv::FMT_S32, 3, 3},
+});
+
+// clang-format on
+
+TEST_P(OpHistogram_Negative, op)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::ImageFormat inputFmt   = GetParamValue<0>();
+    nvcv::ImageFormat maskFmt    = GetParamValue<1>();
+    nvcv::ImageFormat histFmt    = GetParamValue<2>();
+    int               batches    = GetParamValue<3>();
+    int               histHeight = GetParamValue<4>();
+
+    nvcv::Tensor inTensor  = nvcv::util::CreateTensor(batches, 16, 16, inputFmt);
+    nvcv::Tensor inMask    = nvcv::util::CreateTensor(batches, 16, 16, maskFmt);
+    nvcv::Tensor histogram = nvcv::util::CreateTensor(1, 256, histHeight, histFmt);
+
+    // run operator
+    cvcuda::Histogram op;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { op(stream, inTensor, inMask, histogram); }));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+// clang-format on
+
+TEST(OpHistogram_Negative, create_null_handle)
+{
+    EXPECT_EQ(cvcudaHistogramCreate(nullptr), NVCV_ERROR_INVALID_ARGUMENT);
 }

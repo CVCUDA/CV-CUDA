@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -324,7 +324,7 @@ public:
     virtual vector<unsigned long int> split_utf8(const char *utf8_text) override
     {
         vector<unsigned long int> output;
-        output.reserve(strlen(utf8_text));
+        output.reserve(std::char_traits<char>::length(utf8_text));
 
         unsigned char *str = (unsigned char *)utf8_text;
         unsigned int   c;
