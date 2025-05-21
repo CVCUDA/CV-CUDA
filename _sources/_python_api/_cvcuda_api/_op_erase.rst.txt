@@ -19,4 +19,4 @@ Erase
 
 .. automodule:: cvcuda
   :noindex:
-  :members: erase_into, erase
+  :members: erase, erase_into

@@ -19,4 +19,4 @@ BoxBlur
 
 .. automodule:: cvcuda
   :noindex:
-  :members: boxblur_into, boxblur
+  :members: boxblur, boxblur_into

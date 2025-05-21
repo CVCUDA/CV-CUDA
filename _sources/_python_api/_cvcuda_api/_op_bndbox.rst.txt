@@ -19,4 +19,4 @@ BndBox
 
 .. automodule:: cvcuda
   :noindex:
-  :members: bndbox, bndbox_into
+  :members: bndbox_into, bndbox
