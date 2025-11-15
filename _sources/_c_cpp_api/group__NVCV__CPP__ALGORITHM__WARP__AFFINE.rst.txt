@@ -1,7 +1,0 @@
-:orphan:
-
-WarpAffine
-==========
-
-.. doxygengroup:: NVCV_CPP_ALGORITHM_WARP_AFFINE
-   :project: cvcuda

@@ -1,7 +1,0 @@
-:orphan:
-
-Channel Reorder
-===============
-
-.. doxygengroup:: NVCV_CPP_ALGORITHM_CHANNEL_REORDER
-   :project: cvcuda

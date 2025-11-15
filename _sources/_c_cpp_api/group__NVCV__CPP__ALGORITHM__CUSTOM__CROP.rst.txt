@@ -1,7 +1,0 @@
-:orphan:
-
-CustomCrop
-==========
-
-.. doxygengroup:: NVCV_CPP_ALGORITHM_CUSTOM_CROP
-   :project: cvcuda

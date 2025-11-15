@@ -1,7 +1,0 @@
-:orphan:
-
-Flip
-====
-
-.. doxygengroup:: NVCV_CPP_ALGORITHM_FLIP
-   :project: cvcuda

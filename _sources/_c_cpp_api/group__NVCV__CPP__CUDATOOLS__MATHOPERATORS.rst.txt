@@ -1,7 +1,0 @@
-:orphan:
-
-Math operators
-==============
-
-.. doxygengroup:: NVCV_CPP_CUDATOOLS_MATHOPERATORS
-   :project: cvcuda

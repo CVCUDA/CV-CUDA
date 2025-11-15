@@ -1,0 +1,13 @@
+:orphan:
+
+2D Convolution
+==============
+
+.. note::
+   The C++ API provides RAII wrappers around the C API.
+   For detailed documentation including parameters, return values, and limitations,
+   please refer to the :doc:`corresponding C API documentation <../_c_api/group__NVCV__C__ALGORITHM__CONV2D>`.
+
+.. doxygengroup:: NVCV_CPP_ALGORITHM_CONV2D
+   :project: cvcuda
+   :content-only:

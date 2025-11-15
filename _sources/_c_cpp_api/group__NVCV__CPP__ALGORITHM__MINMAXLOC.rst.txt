@@ -1,7 +1,0 @@
-:orphan:
-
-MinMaxLoc
-=========
-
-.. doxygengroup:: NVCV_CPP_ALGORITHM_MINMAXLOC
-   :project: cvcuda

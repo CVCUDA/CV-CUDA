@@ -1,7 +1,0 @@
-:orphan:
-
-MinAreaRect
-===========
-
-.. doxygengroup:: NVCV_CPP_ALGORITHM__MIN_AREA_RECT
-   :project: cvcuda

@@ -1,7 +1,0 @@
-:orphan:
-
-Image Wrapper classes
-=====================
-
-.. doxygengroup:: NVCV_CPP_CUDATOOLS_IMAGEWRAP
-   :project: cvcuda

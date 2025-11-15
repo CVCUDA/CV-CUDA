@@ -1,7 +1,0 @@
-:orphan:
-
-Exception
-=========
-
-.. doxygengroup:: NVCV_CPP_UTIL_EXCEPTION
-   :project: cvcuda

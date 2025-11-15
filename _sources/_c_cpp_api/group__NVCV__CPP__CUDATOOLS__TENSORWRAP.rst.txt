@@ -1,7 +1,0 @@
-:orphan:
-
-TensorWrap classes
-==================
-
-.. doxygengroup:: NVCV_CPP_CUDATOOLS_TENSORWRAP
-   :project: cvcuda

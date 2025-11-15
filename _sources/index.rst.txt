@@ -19,31 +19,46 @@
 CV-CUDA
 =======
 
-NVIDIA CV-CUDA™ is an open-source project for building cloud-scale `Artificial Intelligence (AI) imaging and Computer Vision (CV) <https://developer.nvidia.com/computer-vision>`_ applications. It uses graphics processing unit (GPU) acceleration to help developers build highly efficient pre- and post-processing pipelines. It can improve throughput by more than 10x while lowering cloud computing costs.
+CV-CUDA is an open-source library of GPU-accelerated computer vision algorithms designed for speed and scalability.
+It delivers high-throughput, low-latency image/video processing for AI pipelines across NVIDIA cloud, desktop, and edge platforms.
+CV-CUDA is built for performance and works seamlessly with C/C++ and Python frameworks.
 
 CV-CUDA includes:
 
-* A unified, specialized set of high-performance CV and image processing kernels
+* A unified, specialized set of high-performance CV and image processing kernels written in CUDA
 * C, C++, and Python APIs
 * Batching support, with variable shape images
-* Zero-copy interfaces to PyTorch
+* Zero-copy interfaces to PyTorch and other Python frameworks
 * Sample applications: classification, object detection, and image segmentation
 
 
-.. image:: content/cvcuda_arch.jpg
-   :width: 500
+.. image:: content/cvcuda_pipeline.svg
+   :width: 500px
+   :align: center
 
+.. image:: content/cvcuda_arch.svg
+   :width: 500px
+   :align: center
+
+
+Installation
+------------
+
+You can install CV-CUDA by following the :ref:`installation guide <installation>`.
+
+
+Getting Started
+---------------
+
+You can get started with CV-CUDA by following the :ref:`getting started guide <getting_started>`.
 
 
 CV-CUDA Pre- and Post-Processing Operators
 ------------------------------------------
 
-CV-CUDA offers a comprehensive collection of Computer Vision and Image Processing operators, listed below.
+CV-CUDA offers a comprehensive collection of Computer Vision and Image Processing operators. Click any operator name to view its detailed API documentation.
 
-.. csv-table:: List of operators
-   :file: content/cvcuda_oplist.csv
-   :widths: 30, 70
-   :header-rows: 1
+.. include:: content/cvcuda_op.rst
 
 
 Where Are the Release Notes?
@@ -108,21 +123,34 @@ Copyright
 
     Installation <installation>
     Getting Started <getting_started>
+    Docker <docker_images>
+    Data Types <datatypes>
+    Samples <samples>
+    Interoperability <interoperability>
+
+.. toctree::
+    :caption: Advanced Topics
+    :maxdepth: 1
+    :hidden:
+
+    Object Cache <advanced/object_cache>
+    Make Operator Tool <advanced/make_operator>
 
 .. toctree::
     :caption: API Documentation
     :maxdepth: 2
     :hidden:
 
-    C Modules <modules/c_modules>
-    C++ Modules <modules/cpp_modules>
-    Python Modules <modules/python_modules>
+    Python API <modules/python/index>
+    C API <modules/c_api>
+    C++ API <modules/cpp_api>
 
 .. toctree::
     :caption: Release Notes
     :maxdepth: 1
     :hidden:
 
+    v0.16.0-beta <relnotes/v0.16.0-beta>
     v0.15.0-beta <relnotes/v0.15.0-beta>
     v0.14.0-beta <relnotes/v0.14.0-beta>
     v0.13.0-beta <relnotes/v0.13.0-beta>

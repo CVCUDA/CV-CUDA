@@ -1,7 +1,0 @@
-:orphan:
-
-HistogramEq
-===========
-
-.. doxygengroup:: NVCV_CPP_ALGORITHM__HISTOGRAM_EQ
-   :project: cvcuda

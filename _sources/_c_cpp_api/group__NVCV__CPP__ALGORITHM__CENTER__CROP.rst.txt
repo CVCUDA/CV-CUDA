@@ -1,7 +1,0 @@
-:orphan:
-
-CenterCrop
-==========
-
-.. doxygengroup:: NVCV_CPP_ALGORITHM_CENTER_CROP
-   :project: cvcuda

@@ -1,0 +1,76 @@
+..
+  # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  # SPDX-License-Identifier: Apache-2.0
+  #
+  # Licensed under the Apache License, Version 2.0 (the "License");
+  # you may not use this file except in compliance with the License.
+  # You may obtain a copy of the License at
+  #
+  # http://www.apache.org/licenses/LICENSE-2.0
+  #
+  # Unless required by applicable law or agreed to in writing, software
+  # distributed under the License is distributed on an "AS IS" BASIS,
+  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  # See the License for the specific language governing permissions and
+  # limitations under the License.
+
+.. _v0.16.0-beta:
+
+v0.16.0-beta
+============
+
+Release Highlights
+------------------
+
+CV-CUDA v0.16.0 includes the following changes:​
+
+* **New Features and Enhancements**:​
+
+  * Added support for Python 3.14​, CUDA 13, GCC-12 to GCC-14 and Blackwell GPU architecture, including Jetson Thor
+
+  * Improved documentation, :doc:`samples <../samples>` and :doc:`framework interoperability <../interoperability>` examples
+
+  * Added new multi-architecture (x86_64, aarch64) Docker images for building (ManyLinux-based) and developing CV-CUDA (Ubuntu-based)
+
+  * Improved Python wheels generation and packaging​
+
+* **Bug Fixes**:
+
+  * Fixed Coverity security findings​
+
+* **Deprecated Features**:
+
+  * Dropped official support for CUDA 11
+
+  * Dropped official support for CUDA Compute Capability SM7 (Volta architecture)
+
+  * Dropped official support for Ubuntu 20.04
+
+  * Dropped official support for Python 3.8
+
+
+Compatibility and Known Limitations
+-----------------------------------
+
+For the full list, see main README on `CV-CUDA GitHub <https://github.com/CVCUDA/CV-CUDA>`_.
+
+License
+-------
+
+CV-CUDA is licensed under the `Apache 2.0 <https://github.com/CVCUDA/CV-CUDA/blob/main/LICENSE.md>`_ license.
+
+Resources
+---------
+
+1. `CV-CUDA GitHub <https://github.com/CVCUDA/CV-CUDA>`_
+2. `Optimizing Microsoft Bing Visual Search with NVIDIA Accelerated Libraries <https://developer.nvidia.com/blog/optimizing-microsoft-bing-visual-search-with-nvidia-accelerated-libraries/>`_
+3. `Accelerating AI Pipelines: Boosting Visual Search Efficiency <https://www.nvidia.com/en-us/on-demand/session/gtc25-s71676/>`_
+4. `Optimize Short-Form Video Processing Toward the Speed of Light <https://www.nvidia.com/en-us/on-demand/session/gtc25-s73178/>`_
+5. `CV-CUDA Increasing Throughput and Reducing Costs for AI-Based Computer Vision with CV-CUDA <https://developer.nvidia.com/blog/increasing-throughput-and-reducing-costs-for-computer-vision-with-cv-cuda/>`_
+6. `NVIDIA Announces Microsoft, Tencent, Baidu Adopting CV-CUDA for Computer Vision AI <https://blogs.nvidia.com/blog/2023/03/21/cv-cuda-ai-computer-vision/>`_
+7. `CV-CUDA helps Tencent Cloud audio and video PaaS platform achieve full-process GPU acceleration for video enhancement AI <https://developer.nvidia.com/zh-cn/blog/cv-cuda-high-performance-image-processing/>`_
+
+Acknowledgements
+----------------
+
+CV-CUDA originated as a collaborative effort between NVIDIA and the ByteDance Machine Learning team.

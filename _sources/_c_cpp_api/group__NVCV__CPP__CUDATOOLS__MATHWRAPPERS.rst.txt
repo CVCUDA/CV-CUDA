@@ -1,7 +1,0 @@
-:orphan:
-
-Math wrappers
-=============
-
-.. doxygengroup:: NVCV_CPP_CUDATOOLS_MATHWRAPPERS
-   :project: cvcuda

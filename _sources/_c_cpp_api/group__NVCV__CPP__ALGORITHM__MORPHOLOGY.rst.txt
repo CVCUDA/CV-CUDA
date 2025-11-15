@@ -1,7 +1,0 @@
-:orphan:
-
-Morphology
-==========
-
-.. doxygengroup:: NVCV_CPP_ALGORITHM_MORPHOLOGY
-   :project: cvcuda

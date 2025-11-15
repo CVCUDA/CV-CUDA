@@ -1,7 +1,0 @@
-:orphan:
-
-BilateralFilter
-===============
-
-.. doxygengroup:: NVCV_CPP_ALGORITHM_BILATERAL_FILTER
-   :project: cvcuda

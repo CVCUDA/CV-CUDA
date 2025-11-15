@@ -1,7 +1,0 @@
-:orphan:
-
-Remap
-=====
-
-.. doxygengroup:: NVCV_CPP_ALGORITHM__REMAP
-   :project: cvcuda

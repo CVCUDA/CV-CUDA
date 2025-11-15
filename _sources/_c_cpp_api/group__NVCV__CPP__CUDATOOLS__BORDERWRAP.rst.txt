@@ -1,7 +1,0 @@
-:orphan:
-
-BorderWrap classes
-==================
-
-.. doxygengroup:: NVCV_CPP_CUDATOOLS_BORDERWRAP
-   :project: cvcuda

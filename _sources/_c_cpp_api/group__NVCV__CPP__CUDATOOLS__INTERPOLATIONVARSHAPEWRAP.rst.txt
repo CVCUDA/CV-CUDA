@@ -1,7 +1,0 @@
-:orphan:
-
-InterpolationVarShapeWrap classes
-=================================
-
-.. doxygengroup:: NVCV_CPP_CUDATOOLS_INTERPOLATIONVARSHAPEWRAP
-   :project: cvcuda

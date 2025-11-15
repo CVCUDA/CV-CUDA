@@ -1,7 +1,0 @@
-:orphan:
-
-BoxBlur
-=======
-
-.. doxygengroup:: NVCV_CPP_ALGORITHM__BOX_BLUR
-   :project: cvcuda

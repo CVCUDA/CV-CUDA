@@ -1,7 +1,0 @@
-:orphan:
-
-NVCV_CPP_ALGORITHM_GAMMA_CONTRAST
-=================================
-
-.. doxygengroup:: NVCV_CPP_ALGORITHM_GAMMA_CONTRAST
-   :project: cvcuda

@@ -1,0 +1,13 @@
+:orphan:
+
+ResizeCropConvertReformat
+=========================
+
+.. note::
+   The C++ API provides RAII wrappers around the C API.
+   For detailed documentation including parameters, return values, and limitations,
+   please refer to the :doc:`corresponding C API documentation <../_c_api/group__NVCV__C__ALGORITHM____RESIZE__CROP>`.
+
+.. doxygengroup:: NVCV_CPP_ALGORITHM__RESIZE_CROP
+   :project: cvcuda
+   :content-only:

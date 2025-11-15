@@ -1,7 +1,0 @@
-:orphan:
-
-Interpolation functions
-=======================
-
-.. doxygengroup:: NVCV_CPP_CUDATOOLS_INTERPOLATION
-   :project: cvcuda

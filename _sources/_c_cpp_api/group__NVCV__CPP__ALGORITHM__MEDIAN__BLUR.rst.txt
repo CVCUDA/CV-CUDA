@@ -1,7 +1,0 @@
-:orphan:
-
-MedianBlur
-==========
-
-.. doxygengroup:: NVCV_CPP_ALGORITHM_MEDIAN_BLUR
-   :project: cvcuda

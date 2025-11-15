@@ -1,0 +1,13 @@
+:orphan:
+
+Drop Cast
+=========
+
+.. note::
+   The C++ API provides RAII wrappers around the C API.
+   For detailed documentation including parameters, return values, and limitations,
+   please refer to the :doc:`corresponding C API documentation <../_c_api/group__NVCV__C__CUDATOOLS__DROPCAST>`.
+
+.. doxygengroup:: NVCV_CPP_CUDATOOLS_DROPCAST
+   :project: cvcuda
+   :content-only:

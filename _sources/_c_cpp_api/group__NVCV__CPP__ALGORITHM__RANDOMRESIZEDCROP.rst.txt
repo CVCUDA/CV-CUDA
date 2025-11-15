@@ -1,7 +1,0 @@
-:orphan:
-
-Random Resized Crop
-===================
-
-.. doxygengroup:: NVCV_CPP_ALGORITHM_RANDOMRESIZEDCROP
-   :project: cvcuda

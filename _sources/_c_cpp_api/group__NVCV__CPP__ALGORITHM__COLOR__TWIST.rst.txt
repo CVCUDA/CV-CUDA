@@ -1,7 +1,0 @@
-:orphan:
-
-Color Twist
-===========
-
-.. doxygengroup:: NVCV_CPP_ALGORITHM_COLOR_TWIST
-   :project: cvcuda

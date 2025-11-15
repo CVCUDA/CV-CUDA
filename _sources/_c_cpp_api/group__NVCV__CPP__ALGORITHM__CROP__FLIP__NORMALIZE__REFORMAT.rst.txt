@@ -1,7 +1,0 @@
-:orphan:
-
-CropFlipNormalizeReformat
-=========================
-
-.. doxygengroup:: NVCV_CPP_ALGORITHM_CROP_FLIP_NORMALIZE_REFORMAT
-   :project: cvcuda
