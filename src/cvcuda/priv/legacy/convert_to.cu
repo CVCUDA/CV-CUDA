@@ -173,19 +173,25 @@ ErrorCode ConvertTo::infer(const TensorDataStridedCuda &inData, const TensorData
     }
 
     if (!(input_datatype == kCV_8U || input_datatype == kCV_8S || input_datatype == kCV_16U || input_datatype == kCV_16S
-          || input_datatype == kCV_32S || input_datatype == kCV_32F || input_datatype == kCV_64F))
+          || input_datatype == kCV_16F || input_datatype == kCV_32S || input_datatype == kCV_32F
+          || input_datatype == kCV_64F))
     {
         LOG_ERROR("Invalid DataType " << input_datatype);
         return ErrorCode::INVALID_DATA_TYPE;
     }
 
     if (!(output_datatype == kCV_8U || output_datatype == kCV_8S || output_datatype == kCV_16U
-          || output_datatype == kCV_16S || output_datatype == kCV_32S || output_datatype == kCV_32F
-          || output_datatype == kCV_64F))
+          || output_datatype == kCV_16S || output_datatype == kCV_16F || output_datatype == kCV_32S
+          || output_datatype == kCV_32F || output_datatype == kCV_64F))
     {
         LOG_ERROR("Invalid Converted DataType " << output_datatype);
         return ErrorCode::INVALID_DATA_TYPE;
     }
+
+    // Treat kCV_16F (float16) as kCV_16U (ushort) for conversion dispatch
+    // Float16 has the same bit width and can be safely converted using ushort operations
+    cuda_op::DataType input_dispatch  = (input_datatype == kCV_16F) ? kCV_16U : input_datatype;
+    cuda_op::DataType output_dispatch = (output_datatype == kCV_16F) ? kCV_16U : output_datatype;
 
     typedef ErrorCode (*func_t)(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,
                                 int numChannels, const double alpha, const double beta, cudaStream_t stream);
@@ -202,7 +208,7 @@ ErrorCode ConvertTo::infer(const TensorDataStridedCuda &inData, const TensorData
     };
 
     // clang-format on
-    const func_t func = funcs[input_datatype][output_datatype];
+    const func_t func = funcs[input_dispatch][output_dispatch];
     return func(inData, outData, channels, alpha, beta, stream);
 }
 
