@@ -22,5 +22,5 @@ numpy==2.2.6; python_version>="3.10" and python_version<"3.14"
 numpy==2.3.3; python_version=="3.14"
 
 # Sample dependencies
-onnx==1.19.0
+onnx==1.21.0rc1
 onnxslim==0.1.70
