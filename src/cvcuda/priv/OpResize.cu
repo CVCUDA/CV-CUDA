@@ -354,16 +354,14 @@ __global__ void CubicResize(SrcWrapper src, DstWrapper dst, int2 srcSize, int2 d
 
     if (dstCoord.y < dstSize.y && dstCoord.x < dstSize.x)
     {
-        float2 srcCoord = (cuda::DropCast<2>(dstCoord) + .5f) * scaleRatio - .5f;
-        int3   iSrcCoord{(int)floor(srcCoord.x), (int)floor(srcCoord.y), dstCoord.z};
+        const float2 srcCoord = (cuda::DropCast<2>(dstCoord) + .5f) * scaleRatio - .5f;
+        int3         baseCoord{(int)floor(srcCoord.x), (int)floor(srcCoord.y), dstCoord.z};
 
-        float fx = srcCoord.x - iSrcCoord.x;
-        float fy = srcCoord.y - iSrcCoord.y;
+        const float fx = srcCoord.x - baseCoord.x;
+        const float fy = srcCoord.y - baseCoord.y;
 
-        fx = (iSrcCoord.x < 1 || iSrcCoord.x >= srcSize.x - 3) ? 0 : fx;
-
-        iSrcCoord.y = cuda::max(1, cuda::min(iSrcCoord.y, srcSize.y - 3));
-        iSrcCoord.x = cuda::max(1, cuda::min(iSrcCoord.x, srcSize.x - 3));
+        const int xMax = srcSize.x - 1;
+        const int yMax = srcSize.y - 1;
 
         float wx[4];
         float wy[4];
@@ -376,10 +374,13 @@ __global__ void CubicResize(SrcWrapper src, DstWrapper dst, int2 srcSize, int2 d
 #pragma unroll
         for (int cy = -1; cy <= 2; cy++)
         {
+            const int sy = cuda::min(cuda::max(baseCoord.y + cy, 0), yMax);
 #pragma unroll
             for (int cx = -1; cx <= 2; cx++)
             {
-                sum += src[int3{iSrcCoord.x + cx, iSrcCoord.y + cy, iSrcCoord.z}] * (wx[cx + 1] * wy[cy + 1]);
+                const int sx = cuda::min(cuda::max(baseCoord.x + cx, 0), xMax);
+
+                sum += src[int3{sx, sy, baseCoord.z}] * (wx[cx + 1] * wy[cy + 1]);
             }
         }
 

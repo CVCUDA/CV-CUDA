@@ -22,9 +22,9 @@ if(CMAKE_CUDA_ARCHITECTURES)
 endif()
 
 project(cvcuda
-        LANGUAGES C CXX
-        VERSION 0.16.0
-        DESCRIPTION "CUDA-accelerated Computer Vision algorithms"
+	LANGUAGES C CXX
+	VERSION 0.15.0
+	DESCRIPTION "CUDA-accelerated Computer Vision algorithms"
 )
 
 # Make sure the cuda host compiler agrees with what we're using,

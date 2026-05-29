@@ -193,7 +193,9 @@ __global__ void resize_cubic_v1(const SrcWrapper src, DstWrapper dst, const int 
         float fy = (float)((dst_y + 0.5f) * scale_y - 0.5f + top);
         int   sy = cuda::round<cuda::RoundMode::DOWN, int>(fy);
         fy -= sy;
-        sy = cuda::max(1, cuda::min(sy, height - 3));
+        const int syClamped = cuda::max(1, cuda::min(sy, height - 3));
+        fy += static_cast<float>(sy - syClamped);
+        sy = syClamped;
 
         const float A = -0.75f;
 
@@ -208,8 +210,9 @@ __global__ void resize_cubic_v1(const SrcWrapper src, DstWrapper dst, const int 
         float fx = (float)((dst_x + 0.5f) * scale_x - 0.5f + left);
         int   sx = cuda::round<cuda::RoundMode::DOWN, int>(fx);
         fx -= sx;
-        fx *= ((sx >= 1) && (sx < width - 3));
-        sx = cuda::max(1, cuda::min(sx, width - 3));
+        const int sxClamped = cuda::max(1, cuda::min(sx, width - 3));
+        fx += static_cast<float>(sx - sxClamped);
+        sx = sxClamped;
 
         float cX[4];
         cX[0] = ((A * (fx + 1.0f) - 5.0f * A) * (fx + 1.0f) + 8.0f * A) * (fx + 1.0f) - 4.0f * A;
