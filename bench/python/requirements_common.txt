@@ -27,5 +27,5 @@ nvtx==0.2.13
 pandas==2.3.3
 matplotlib==3.10.7
 av==16.0.0
-pillow==12.0.0
+pillow==12.1.1
 PyNvVideoCodec==2.0.3; (platform_machine == "x86_64" or platform_machine == "amd64") and python_version>="3.10" and python_version<="3.13"
