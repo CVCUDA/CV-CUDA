@@ -43,6 +43,12 @@ namespace nvcvpy::priv {
 
 namespace {
 
+// Float16 type wrapper for numpy.float16 support
+struct Float16
+{
+    uint16_t data;
+};
+
 template<class T>
 struct IsComplex : std::false_type
 {
@@ -83,6 +89,47 @@ bool FindDataType(const py::dtype &dt, nvcv::DataType *dtype)
     }
 
     int itemsize = dtbase.itemsize();
+
+    // Special handling for Float16
+    if constexpr (std::is_same_v<T, Float16>)
+    {
+        if (dtbase.kind() == 'f' && itemsize == 2)
+        {
+            nvcv::PackingParams pp = {};
+            pp.byteOrder           = nvcv::ByteOrder::MSB;
+
+            switch (nchannels)
+            {
+            case 1:
+                pp.swizzle = nvcv::Swizzle::S_X000;
+                break;
+            case 2:
+                pp.swizzle = nvcv::Swizzle::S_XY00;
+                break;
+            case 3:
+                pp.swizzle = nvcv::Swizzle::S_XYZ0;
+                break;
+            case 4:
+                pp.swizzle = nvcv::Swizzle::S_XYZW;
+                break;
+            default:
+                NVCV_ASSERT(!"Invalid number of channels");
+            }
+            for (int i = 0; i < nchannels; ++i)
+            {
+                pp.bits[i] = 16;
+            }
+            nvcv::Packing packing = MakePacking(pp);
+
+            NVCV_ASSERT(dtype != nullptr);
+            *dtype = nvcv::DataType{nvcv::DataKind::FLOAT, packing};
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
 
     if (dtbase.equal(py::dtype::of<T>()))
     {
@@ -151,6 +198,7 @@ bool FindDataType(const py::dtype &dt, nvcv::DataType *dtype)
 using SupportedBaseTypes = std::tuple<
       std::complex<float>,
       std::complex<double>,
+      Float16,
       float, double,
       uint8_t, int8_t,
       uint16_t, int16_t,
@@ -180,6 +228,26 @@ bool FindDType(T *, const nvcv::DataType &dtype, py::dtype *dt)
 {
     int nchannels = dtype.numChannels();
     int itemsize  = dtype.bitsPerPixel() / 8;
+
+    // Special handling for Float16
+    if constexpr (std::is_same_v<T, Float16>)
+    {
+        if (dtype.dataKind() == nvcv::DataKind::FLOAT && itemsize / nchannels == 2)
+        {
+            NVCV_ASSERT(dt != nullptr);
+            *dt = py::dtype("float16");
+
+            if (nchannels > 1)
+            {
+                *dt = py::dtype(util::FormatString("%de", nchannels));
+            }
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
 
     if (sizeof(T) != itemsize / nchannels)
     {
