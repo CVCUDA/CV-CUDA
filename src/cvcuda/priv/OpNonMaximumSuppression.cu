@@ -99,11 +99,24 @@ __global__ void NonMaximumSuppression(cuda::Tensor2DWrap<const T, int32_t>     i
         const int2 coordY{bboxY, batchIdx};
         const T    srcY = inBBoxes[coordY];
 
-        if (ComputeIoU(srcX, srcY) > iouThreshold)
+        if (ComputeIoU(srcX, srcY) <= iouThreshold)
         {
-            const float scoreY = inScores[coordY];
+            continue;
+        }
 
-            if (scoreX < scoreY || (scoreX == scoreY && ComputeArea(srcX) < ComputeArea(srcY)))
+        const float scoreY = inScores[coordY];
+
+        if (scoreX < scoreY)
+        {
+            discard = true;
+            break;
+        }
+        else if (scoreX == scoreY)
+        {
+            const float areaX = ComputeArea(srcX);
+            const float areaY = ComputeArea(srcY);
+
+            if (areaX < areaY || (areaX == areaY && bboxX > bboxY))
             {
                 discard = true;
                 break;
