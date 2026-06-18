@@ -124,8 +124,8 @@ inline void FindMinMax(InContainerType &in, InStridesType &inStrides, InShapeTyp
             }
         }
 
-        test::ValueAt<OutVT>(minVal, valStrides, {z}).x = min;
-        test::ValueAt<OutVT>(maxVal, valStrides, {z}).x = max;
+        test::ValueAt<OutVT>(minVal, valStrides, int1{z}).x = min;
+        test::ValueAt<OutVT>(maxVal, valStrides, int1{z}).x = max;
 
         int nMin{0}, nMax{0};
 
@@ -161,8 +161,8 @@ inline void FindMinMax(InContainerType &in, InStridesType &inStrides, InShapeTyp
             }
         }
 
-        test::ValueAt<int1>(numMin, numStrides, {z}).x = nMin;
-        test::ValueAt<int1>(numMax, numStrides, {z}).x = nMax;
+        test::ValueAt<int1>(numMin, numStrides, int1{z}).x = nMin;
+        test::ValueAt<int1>(numMax, numStrides, int1{z}).x = nMax;
     }
 }
 
@@ -181,8 +181,8 @@ inline void LocSort(std::vector<std::vector<int2>> &minLocTest, std::vector<std:
 
     for (int z = 0; z < (int)minLocTest.size(); z++)
     {
-        int nMin = test::ValueAt<int1>(numMinVec, numStrides, {z}).x;
-        int nMax = test::ValueAt<int1>(numMaxVec, numStrides, {z}).x;
+        int nMin = test::ValueAt<int1>(numMinVec, numStrides, int1{z}).x;
+        int nMax = test::ValueAt<int1>(numMaxVec, numStrides, int1{z}).x;
 
         for (int i = 0; i < nMin && i < capacity; i++)
         {
@@ -225,9 +225,9 @@ inline void GoldMinMaxLoc(const nvcv::Tensor &minVal, const nvcv::Tensor &minLoc
 
     int    capacity   = minLocData->shape(1);
     int    numSamples = minValData->shape(0);
-    long1  valStrides = {minValData->stride(0)};
+    long1  valStrides{minValData->stride(0)};
     long2  locStrides = {minLocData->stride(0), minLocData->stride(1)};
-    long1  numStrides = {numMinData->stride(0)};
+    long1  numStrides{numMinData->stride(0)};
     size_t valBufSize = numSamples * valStrides.x;
     size_t locBufSize = numSamples * locStrides.x;
     size_t numBufSize = numSamples * numStrides.x;

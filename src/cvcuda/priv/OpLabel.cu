@@ -66,6 +66,18 @@
 namespace cuda = nvcv::cuda;
 namespace util = nvcv::util;
 
+// Connected-component labelling shifts the per-row left neighbour with a
+// delta-1 warp shuffle. The block is (BW=32, BH=4[, BD=2]) so each image row is
+// one 32-lane subgroup; the shuffles below pass an explicit width of 32 so they
+// stay within a row on a 64-lane CDNA wavefront (two rows per wavefront) exactly
+// as they do within a 32-lane NVIDIA warp. The mask only marks participants and
+// must be 64-bit on ROCm.
+#if defined(__HIP_PLATFORM_AMD__) || defined(USE_HIP)
+#define NVCV_SHFL_MASK NVCV_WARP_FULL_MASK
+#else
+#define NVCV_SHFL_MASK 0xffffffff
+#endif
+
 namespace {
 
 constexpr int REGION_NOT_MARKED  = 0;
@@ -135,7 +147,12 @@ __global__ void BlockLabel2D(DstWrap dst, SrcWrap src, ArgWrap<ST> minThresh, Ar
     using DT = typename DstWrap::ValueType;
     __shared__ DT labels[BW * BH];
 
+#if defined(__HIP_PLATFORM_AMD__) || defined(USE_HIP)
+    // threadIdx is __hip_builtin_threadIdx_t (no NVCV TypeTraits); convert to uint3.
+    int2 tc = cuda::StaticCast<int>(cuda::DropCast<2>(uint3{threadIdx.x, threadIdx.y, threadIdx.z}));
+#else
     int2 tc = cuda::StaticCast<int>(cuda::DropCast<2>(threadIdx));
+#endif
     int3 gc{(int)(blockIdx.x * BW) + tc.x, (int)(blockIdx.y * BH) + tc.y, (int)blockIdx.z};
 
     bool nym1x, nyxm1, nym1xm1;
@@ -167,8 +184,8 @@ __global__ void BlockLabel2D(DstWrap dst, SrcWrap src, ArgWrap<ST> minThresh, Ar
             pym1x = (tc.y > 0) ? (pym1x > maxThreshold ? 0 : 1) : 0;
         }
 
-        ST pyxm1   = __shfl_up_sync(__activemask(), pyx, 1);
-        ST pym1xm1 = __shfl_up_sync(__activemask(), pym1x, 1);
+        ST pyxm1   = __shfl_up_sync(__activemask(), pyx, 1, 32);
+        ST pym1xm1 = __shfl_up_sync(__activemask(), pym1x, 1, 32);
 
         nym1x   = (tc.y > 0) ? (pyx == pym1x) : false;
         nyxm1   = (tc.x > 0) ? (pyx == pyxm1) : false;
@@ -252,8 +269,8 @@ __global__ void YLabelReduction2D(DstWrap dst, SrcWrap src, ArgWrap<ST> minThres
         pym1x = pym1x > maxThreshold ? 0 : 1;
     }
 
-    ST pyxm1   = __shfl_up_sync(0xffffffff, pyx, 1);
-    ST pym1xm1 = __shfl_up_sync(0xffffffff, pym1x, 1);
+    ST pyxm1   = __shfl_up_sync(NVCV_SHFL_MASK, pyx, 1, 32);
+    ST pym1xm1 = __shfl_up_sync(NVCV_SHFL_MASK, pym1x, 1, 32);
 
     if ((pyx == pym1x) && ((threadIdx.x == 0) || (pyx != pyxm1) || (pyx != pym1xm1)))
     {
@@ -305,8 +322,8 @@ __global__ void XLabelReduction2D(DstWrap dst, SrcWrap src, ArgWrap<ST> minThres
 
     bool thread_y = (gc.y % blockDim.y) == 0;
 
-    ST pym1x   = __shfl_up_sync(0xffffffff, pyx, 1);
-    ST pym1xm1 = __shfl_up_sync(0xffffffff, pyxm1, 1);
+    ST pym1x   = __shfl_up_sync(NVCV_SHFL_MASK, pyx, 1, 32);
+    ST pym1xm1 = __shfl_up_sync(NVCV_SHFL_MASK, pyxm1, 1, 32);
 
     if ((pyx == pyxm1) && (thread_y || (pyx != pym1x) || (pyx != pym1xm1)))
     {
@@ -679,7 +696,11 @@ __global__ void BlockLabel3D(DstWrap dst, SrcWrap src, ArgWrap<ST> minThresh, Ar
 
     __shared__ DT labels[BW * BH * BD];
 
+#if defined(__HIP_PLATFORM_AMD__) || defined(USE_HIP)
+    int3 tc = cuda::StaticCast<int>(uint3{threadIdx.x, threadIdx.y, threadIdx.z});
+#else
     int3 tc = cuda::StaticCast<int>(threadIdx);
+#endif
     int4 gc{(int)blockIdx.x * BW + tc.x, (int)blockIdx.y * BH + tc.y, (int)blockIdx.z * BD + tc.z, 0};
 
     bool nzm1yx, nzym1x, nzyxm1, nzym1xm1, nzm1yxm1, nzm1ym1x;
@@ -722,9 +743,9 @@ __global__ void BlockLabel3D(DstWrap dst, SrcWrap src, ArgWrap<ST> minThresh, Ar
                 pzm1ym1x = (tc.z > 0 && tc.y > 0) ? (pzm1ym1x > maxThreshold ? 0 : 1) : 0;
             }
 
-            ST pzyxm1   = __shfl_up_sync(__activemask(), pzyx, 1);
-            ST pzym1xm1 = __shfl_up_sync(__activemask(), pzym1x, 1);
-            ST pzm1yxm1 = __shfl_up_sync(__activemask(), pzm1yx, 1);
+            ST pzyxm1   = __shfl_up_sync(__activemask(), pzyx, 1, 32);
+            ST pzym1xm1 = __shfl_up_sync(__activemask(), pzym1x, 1, 32);
+            ST pzm1yxm1 = __shfl_up_sync(__activemask(), pzm1yx, 1, 32);
 
             nzm1yx = (tc.z > 0) && (pzyx == pzm1yx);
             nzym1x = (tc.y > 0) && (pzyx == pzym1x);
@@ -827,8 +848,8 @@ __global__ void ZLabelReduction3D(DstWrap dst, SrcWrap src, ArgWrap<ST> minThres
             pzm1yx = pzm1yx > maxThreshold ? 0 : 1;
         }
 
-        ST pzyxm1   = __shfl_up_sync(0xffffffff, pzyx, 1);
-        ST pzm1yxm1 = __shfl_up_sync(0xffffffff, pzm1yx, 1);
+        ST pzyxm1   = __shfl_up_sync(NVCV_SHFL_MASK, pzyx, 1, 32);
+        ST pzm1yxm1 = __shfl_up_sync(NVCV_SHFL_MASK, pzm1yx, 1, 32);
 
         if (pzyx == pzm1yx)
         {
@@ -910,8 +931,8 @@ __global__ void YLabelReduction3D(DstWrap dst, SrcWrap src, ArgWrap<ST> minThres
             pzym1x = pzym1x > maxThreshold ? 0 : 1;
         }
 
-        ST pzyxm1   = __shfl_up_sync(0xffffffff, pzyx, 1);
-        ST pzym1xm1 = __shfl_up_sync(0xffffffff, pzym1x, 1);
+        ST pzyxm1   = __shfl_up_sync(NVCV_SHFL_MASK, pzyx, 1, 32);
+        ST pzym1xm1 = __shfl_up_sync(NVCV_SHFL_MASK, pzym1x, 1, 32);
 
         if (pzyx == pzym1x)
         {
@@ -993,8 +1014,8 @@ __global__ void XLabelReduction3D(DstWrap dst, SrcWrap src, ArgWrap<ST> minThres
             pzyxm1 = pzyxm1 > maxThreshold ? 0 : 1;
         }
 
-        ST pzm1yx   = __shfl_up_sync(0xffffffff, pzyx, 1);
-        ST pzm1yxm1 = __shfl_up_sync(0xffffffff, pzyxm1, 1);
+        ST pzm1yx   = __shfl_up_sync(NVCV_SHFL_MASK, pzyx, 1, 32);
+        ST pzm1yxm1 = __shfl_up_sync(NVCV_SHFL_MASK, pzyxm1, 1, 32);
 
         if (pzyx == pzyxm1)
         {

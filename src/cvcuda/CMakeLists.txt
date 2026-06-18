@@ -93,6 +93,12 @@ else()
     list(APPEND CV_CUDA_LIB_FILES ${CV_CUDA_OP_FILES})
 endif()
 
+# cuOSD-dependent operators (OSD, bounding box, box blur) are scoped out of the
+# ROCm build (cuOSD is a prebuilt CUDA-only static lib with no source).
+if(USE_HIP)
+    list(FILTER CV_CUDA_LIB_FILES EXCLUDE REGEX "OpOSD|OpBndBox|OpBoxBlur")
+endif()
+
 add_library(cvcuda SHARED
     ${CV_CUDA_LIB_FILES}
 )

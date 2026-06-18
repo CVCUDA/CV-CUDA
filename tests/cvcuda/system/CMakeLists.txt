@@ -111,29 +111,35 @@ set(CVCUDA_TEST_SOURCES_CUOSD
     OsdUtils.cu
 )
 
-# Build smoke tests unconditionally - they work on all compilers
-add_executable(cvcuda_test_system_smoke ${CVCUDA_SMOKE_TEST_SOURCES})
+# The smoke tests exercise the OSD/BndBox/BoxBlur operators, which depend on the
+# prebuilt CUDA-only cuOSD lib and are scoped out of the ROCm build.
+if(NOT USE_HIP)
+    # Build smoke tests unconditionally - they work on all compilers
+    add_executable(cvcuda_test_system_smoke ${CVCUDA_SMOKE_TEST_SOURCES})
 
-target_link_libraries(cvcuda_test_system_smoke
-    PUBLIC
-        cvcuda
-        nvcv_test_common_system
-        # Note: Does NOT link against cuosd
-)
+    target_link_libraries(cvcuda_test_system_smoke
+        PUBLIC
+            cvcuda
+            nvcv_test_common_system
+            # Note: Does NOT link against cuosd
+    )
 
-nvcv_add_test(cvcuda_test_system_smoke cvcuda cpp)
+    nvcv_add_test(cvcuda_test_system_smoke cvcuda cpp)
+endif()
 
 # Include C++20-requiring tests and libcuosd tests only if compiler supports them properly
 if(NOT (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 11.0))
     list(APPEND CVCUDA_TEST_SOURCES ${CVCUDA_TEST_SOURCES_CPP20})
-    list(APPEND CVCUDA_TEST_SOURCES ${CVCUDA_TEST_SOURCES_CUOSD})
+    if(NOT USE_HIP)
+        list(APPEND CVCUDA_TEST_SOURCES ${CVCUDA_TEST_SOURCES_CUOSD})
+    endif()
 endif()
 
 # Build cvcuda_test_system (works with GCC-10+ but with reduced test coverage for GCC-10)
 add_executable(cvcuda_test_system ${CVCUDA_TEST_SOURCES})
 
 # Link against libcuosd only for GCC-11+ (needed for OSD tests)
-if(NOT (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 11.0))
+if(NOT USE_HIP AND NOT (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 11.0))
     target_link_libraries(cvcuda_test_system
         PUBLIC
             cvcuda

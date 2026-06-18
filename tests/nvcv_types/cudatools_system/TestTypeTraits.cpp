@@ -328,7 +328,10 @@ public:
         }
         else if constexpr (NumElements == 1)
         {
-            pix = {1};
+            // A 1-element vector type's scalar constructor is explicit on HIP
+            // (HIP_vector_type), so copy-list-init from {1} is rejected; SetAll
+            // is the portable NVCV builder and is unchanged on CUDA.
+            pix = cuda::SetAll<DataType>(1);
         }
     }
 };

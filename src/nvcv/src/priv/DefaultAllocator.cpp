@@ -65,6 +65,17 @@ void *DefaultAllocator::doAllocCudaMem(int64_t size, int32_t align)
     void *ptr = nullptr;
     NVCV_CHECK_THROW(::cudaMalloc(&ptr, size));
 
+#if defined(__HIP_PLATFORM_AMD__) || defined(USE_HIP)
+    // hipMalloc returns recycled device memory with stale contents, whereas
+    // freshly cudaMalloc'd memory on the supported NVIDIA setups reads back as
+    // zero. Several gtests fill a tensor's valid region and then compare the
+    // whole strided buffer (including the row-stride padding the operator never
+    // writes) against a zero-initialized CPU reference, so they assume device
+    // padding is zero. Zero new device allocations to keep that contract; the
+    // operators themselves write every valid pixel and are unaffected.
+    NVCV_CHECK_THROW(::cudaMemset(ptr, 0, size));
+#endif
+
     // TODO: can we do better than this?
     if (reinterpret_cast<uintptr_t>(ptr) % align != 0)
     {

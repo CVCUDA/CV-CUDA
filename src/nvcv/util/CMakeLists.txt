@@ -13,7 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-find_package(CUDAToolkit REQUIRED)
+if(NOT USE_HIP)
+    find_package(CUDAToolkit REQUIRED)
+endif()
 
 # nvcv_util_sanitizer ---------------------------------
 add_library(nvcv_util_sanitizer STATIC

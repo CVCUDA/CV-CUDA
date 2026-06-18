@@ -107,7 +107,7 @@ __global__ void SetReferenceKernel(TensorBatchWrapT wrap)
             coords[d] = tmp_i % shape[d];
             tmp_i /= shape[d];
         }
-        SetValue::Set(wrap, sample, coords, cuda::SetAll<TensorBatchWrapT::ValueType>(index % 255));
+        SetValue::Set(wrap, sample, coords, cuda::SetAll<typename TensorBatchWrapT::ValueType>(index % 255));
     }
 }
 

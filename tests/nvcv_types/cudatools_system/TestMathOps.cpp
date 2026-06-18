@@ -141,7 +141,9 @@ NVCV_TYPED_TEST_SUITE(
     ttype::Types<ttype::Value<short1{-1}>, ttype::Value<int1{1}>>,
     ttype::Types<ttype::Value<uchar2{1, 2}>, ttype::Value<int2{-1, -2}>>,
     ttype::Types<ttype::Value<int3{-1, 0, 1}>, ttype::Value<int3{1, 0, -1}>>,
-    ttype::Types<ttype::Value<float4{-1.23f, 0.12f, 1.23f}>, ttype::Value<float4{1.23f, -0.12f, -1.23f}>>
+    // HIP_vector_type has no partial-init constructor (CUDA aggregate zero-fills
+    // the unspecified component); spell the 4th element so both backends match.
+    ttype::Types<ttype::Value<float4{-1.23f, 0.12f, 1.23f, 0.f}>, ttype::Value<float4{1.23f, -0.12f, -1.23f, 0.f}>>
 >);
 
 // clang-format on
@@ -162,7 +164,7 @@ NVCV_TYPED_TEST_SUITE(
     ttype::Types<ttype::Value<short1{-1}>, ttype::Value<int1{-1}>>,
     ttype::Types<ttype::Value<uchar2{1, 2}>, ttype::Value<int2{1, 2}>>,
     ttype::Types<ttype::Value<int3{-1, 0, 1}>, ttype::Value<int3{-1, 0, 1}>>,
-    ttype::Types<ttype::Value<float4{-1.23f, 0.12f, 1.23f}>, ttype::Value<float4{-1.23f, 0.12f, 1.23f}>>
+    ttype::Types<ttype::Value<float4{-1.23f, 0.12f, 1.23f, 0.f}>, ttype::Value<float4{-1.23f, 0.12f, 1.23f, 0.f}>>
 >);
 
 // clang-format on

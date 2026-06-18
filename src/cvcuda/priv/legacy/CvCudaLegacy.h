@@ -18,7 +18,11 @@
 #ifndef CV_CUDA_LEGACY_H
 #define CV_CUDA_LEGACY_H
 
+// CvCudaOSD.hpp pulls in cuOSD, a prebuilt CUDA-only static lib with no source.
+// The OSD/BndBox/BoxBlur operators it backs are scoped out of the ROCm build.
+#if !defined(USE_HIP)
 #include "CvCudaOSD.hpp"
+#endif
 
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
@@ -2043,6 +2047,7 @@ public:
                     NVCVBorderType borderMode, cudaStream_t stream);
 };
 
+#if !defined(USE_HIP)
 class OSD : public CudaBaseOp
 {
 public:
@@ -2111,6 +2116,7 @@ public:
 private:
     nvcv::cuda::osd::cuOSDContext_t m_context;
 };
+#endif // !USE_HIP
 
 class CvtColor : public CudaBaseOp
 {

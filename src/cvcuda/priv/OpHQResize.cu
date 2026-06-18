@@ -343,7 +343,14 @@ std::enable_if_t<NumChannelsT::kHasStaticChannels, typename Wrap::ValueType> __f
 
     if constexpr (kSupportsLdg)
     {
+#if defined(__HIP_PLATFORM_AMD__) || defined(USE_HIP)
+        // HIP's __ldg has no overload for every vector element type (e.g.
+        // ushort4); a plain load is correct (the read-only cache hint is
+        // advisory and maps to a normal load on CDNA anyway).
+        return *GetWrapPtr(wrap, idxs...);
+#else
         return __ldg(GetWrapPtr(wrap, idxs...));
+#endif
     }
     else if constexpr (!kSupportsLdg)
     {

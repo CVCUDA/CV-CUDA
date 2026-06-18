@@ -65,6 +65,8 @@ We provide pre-built Python wheels on pypi.org for a variety of Python versions 
 
 See [Installation](https://cvcuda.github.io/CV-CUDA/installation.html) for complete installation instructions including building from source, installing Debian packages, and tar archives.
 
+CV-CUDA can also be built for AMD GPUs by compiling its GPU code with HIP for ROCm instead of CUDA. This path is additive and off by default; the NVIDIA build is unchanged. See [Building for AMD GPUs (ROCm)](https://cvcuda.github.io/CV-CUDA/installation.html#building-for-amd-gpus-rocm) for details.
+
 ### Compatibility
 
 |CV-CUDA Build|Platform|CUDA Version|CUDA Compute Capability|Hardware Architectures|Nvidia Driver|Python Versions|Supported Compilers (build from source and API compatiblity)|API compatibility with prebuilt binaries|OS/Linux distributions tested with prebuilt packages|

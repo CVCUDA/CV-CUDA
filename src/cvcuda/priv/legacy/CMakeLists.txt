@@ -104,6 +104,12 @@ else()
     list(APPEND CV_CUDA_PRIV_LEGACY_FILES ${CV_CUDA_PRIV_LEGACY_OP_FILES})
 endif()
 
+# cuOSD-backed kernels (osd, box_blur, the text backend) are scoped out of the
+# ROCm build (cuOSD is a prebuilt CUDA-only static lib with no source).
+if(USE_HIP)
+    list(FILTER CV_CUDA_PRIV_LEGACY_FILES EXCLUDE REGEX "osd\\.cu|box_blur\\.cu|textbackend/")
+endif()
+
 add_library(cvcuda_legacy STATIC
     ${CV_CUDA_PRIV_LEGACY_FILES}
 )

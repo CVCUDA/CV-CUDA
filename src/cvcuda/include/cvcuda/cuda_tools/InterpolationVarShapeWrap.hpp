@@ -225,7 +225,9 @@ public:
         c.x = GetIndexForInterpolation<kInterpolationType>(c.x + .5f);
         c.y = GetIndexForInterpolation<kInterpolationType>(c.y + .5f);
 
-        return doGetValue(c);
+        // clang/HIP two-phase lookup: doGetValue is inherited from a dependent
+        // base, so it must be qualified.
+        return this->doGetValue(c);
     }
 };
 

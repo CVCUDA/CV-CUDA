@@ -31,14 +31,16 @@ template<class DstWrapper, class SrcWrapper>
 __global__ void Copy(DstWrapper dst, SrcWrapper src)
 {
     using DimType = cuda::MakeType<int, SrcWrapper::kNumDimensions>;
-    DimType coord = cuda::StaticCast<int>(cuda::DropCast<SrcWrapper::kNumDimensions>(threadIdx));
+    // threadIdx is a builtin struct without NVCV TypeTraits on HIP; uint3
+    // brace-init binds the NVCV helpers and is unchanged on CUDA.
+    DimType coord = cuda::StaticCast<int>(cuda::DropCast<SrcWrapper::kNumDimensions>(uint3{threadIdx.x, threadIdx.y, threadIdx.z}));
     dst[coord]    = src[coord];
 }
 
 template<typename ValueType>
 __global__ void Copy(cuda::Tensor4DWrap<ValueType> dst, cuda::Tensor4DWrap<const ValueType> src, int lastDimSize)
 {
-    int3 c3 = cuda::StaticCast<int>(threadIdx);
+    int3 c3 = cuda::StaticCast<int>(uint3{threadIdx.x, threadIdx.y, threadIdx.z});
     for (int k = 0; k < lastDimSize; k++)
     {
         int4 c4{k, c3.x, c3.y, c3.z};

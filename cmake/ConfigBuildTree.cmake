@@ -66,10 +66,15 @@ include(CMakeDependentOption)
 
 option(EXPOSE_CODE "Expose in resulting binaries parts of our code" ${DEFAULT_EXPOSE_CODE})
 option(WARNINGS_AS_ERRORS "Treat compilation warnings as errors" OFF)
-cmake_dependent_option(ENABLE_COMPAT_OLD_GLIBC "Generates binaries that work with old distros, with old glibc" ON "NOT ARCH_AARCH64" OFF)
+# The old-glibc compat shim links prebuilt glibc-2.17 stub .so files (shipped via
+# Git LFS); it is a deployment-portability feature unrelated to GPU correctness,
+# so default it OFF on the ROCm build.
+cmake_dependent_option(ENABLE_COMPAT_OLD_GLIBC "Generates binaries that work with old distros, with old glibc" ON "NOT ARCH_AARCH64;NOT USE_HIP" OFF)
 
 # Needed to get cuda version
-find_package(CUDAToolkit REQUIRED)
+if(NOT USE_HIP)
+    find_package(CUDAToolkit REQUIRED)
+endif()
 
 # Are we inside a git repo and it has submodules enabled?
 if(EXISTS ${CMAKE_SOURCE_DIR}/.git AND EXISTS ${CMAKE_SOURCE_DIR}/.gitmodules)
@@ -85,7 +90,11 @@ else()
                         "CV-CUDA only supports Linux platform.")
 endif()
 
-set(CVCUDA_BUILD_SUFFIX "cuda${CUDAToolkit_VERSION_MAJOR}-${CVCUDA_SYSTEM_NAME}")
+if(USE_HIP)
+    set(CVCUDA_BUILD_SUFFIX "hip-${CVCUDA_SYSTEM_NAME}")
+else()
+    set(CVCUDA_BUILD_SUFFIX "cuda${CUDAToolkit_VERSION_MAJOR}-${CVCUDA_SYSTEM_NAME}")
+endif()
 
 function(setup_dso target version)
     string(REGEX MATCHALL "[0-9]+" version_list "${version}")

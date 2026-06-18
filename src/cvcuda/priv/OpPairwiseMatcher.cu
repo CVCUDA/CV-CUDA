@@ -100,17 +100,44 @@ public:
 #pragma unroll
         for (int i = 0; i < kNumElem && i < util::DivUp(numDim * (int)sizeof(T), (int)sizeof(RT)); ++i)
         {
+#if defined(__HIP__)
+            data.words[i]
+                = *reinterpret_cast<const RT *>(set.ptr(sampleIdx, setIdx, i * (int)(sizeof(RT) / sizeof(T))));
+#else
             data[i] = *reinterpret_cast<const RT *>(set.ptr(sampleIdx, setIdx, i * (int)(sizeof(RT) / sizeof(T))));
+#endif
         }
     }
 
     inline __device__ T &operator[](int i) const
     {
+#if defined(__HIP__)
+        // The cache is filled as RT (uint32) words in load() but read back as type
+        // T here. Punning through a union (instead of reinterpret_cast on a private
+        // RT[] array) keeps the access well defined so the clang/HIP device
+        // optimizer does not treat the T reads as non-aliasing with the RT stores
+        // and elide them -- which on HIP left every computed distance unset. nvcc
+        // does not elide the reinterpret_cast read, and a union with a const-qualified
+        // variant member would delete this class's default constructor under nvcc, so
+        // the CUDA path keeps the original array spelling unchanged.
+        return const_cast<T &>(data.elems[i]);
+#else
         return reinterpret_cast<T *>(&data[0])[i];
+#endif
     }
 
 private:
+#if defined(__HIP__)
+    union Cache
+    {
+        RT words[kNumElem];
+        T  elems[kNumElem * (int)(sizeof(RT) / sizeof(T))];
+    };
+
+    Cache data;
+#else
     RT data[kNumElem];
+#endif
 };
 
 // Is compatible checks if a {numDim}-dimensional point fits in the corresponding Point T class (above)
@@ -249,6 +276,11 @@ inline __device__ void SortKeyValue(float &sortedDist, int &sortedIdx, const Poi
             sortedIdx  = values[0];
         }
     }
+
+    // SortKeyValue is called twice in the crossCheck path and the compiler aliases
+    // the two function-local CUB TempStorage allocations. CUB requires a
+    // __syncthreads() before that shared storage is reused by the next collective.
+    __syncthreads();
 }
 
 // Write a match of (set1Idx, set2Idx) with (distance) found at matchIdx inside output matches and distances

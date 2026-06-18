@@ -33,7 +33,104 @@ if(NOT CMAKE_CUDA_HOST_COMPILER)
     set(CMAKE_CUDA_HOST_COMPILER "${CMAKE_CXX_COMPILER}")
 endif()
 
-enable_language(CUDA)
+# Build the GPU kernels for AMD via HIP/ROCm instead of CUDA. Additive: the
+# NVIDIA path below is unchanged when USE_HIP is OFF.
+option(USE_HIP "Build the GPU code with HIP for AMD GPUs (ROCm)" OFF)
+
+if(USE_HIP)
+    # Default the architecture only when the caller did not set one, so any AMD
+    # target builds with just -DCMAKE_HIP_ARCHITECTURES=<arch> and no source or
+    # CMake edit.
+    if(NOT DEFINED CMAKE_HIP_ARCHITECTURES OR CMAKE_HIP_ARCHITECTURES STREQUAL "")
+        set(CMAKE_HIP_ARCHITECTURES "gfx90a" CACHE STRING "HIP architectures to build for" FORCE)
+    endif()
+    enable_language(HIP)
+
+    # Host .cpp files also use the CUDA runtime/library spellings (cudaStream_t,
+    # cudaMalloc, ...); steer every C/C++/HIP TU through the ROCm compat layer.
+    add_compile_definitions(USE_HIP __HIP_PLATFORM_AMD__)
+    set(CVCUDA_HIP_COMPAT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/cmake/hip")
+    include_directories(BEFORE "${CVCUDA_HIP_COMPAT_DIR}")
+    # Force-include the compat header on every C++/HIP TU so the cuda*->hip*
+    # aliases and the 64-bit warp mask precede any include, regardless of file
+    # order. C TUs do not use the CUDA runtime, so they are left alone.
+    set(_cvcuda_force_include "-include ${CVCUDA_HIP_COMPAT_DIR}/CvCudaHipCompat.h")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${_cvcuda_force_include}")
+    set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} ${_cvcuda_force_include}")
+
+    # clang (HIP) defaults to -ffp-contract=fast, which forms FMAs across separate
+    # statements/expressions; nvcc only contracts within a single expression
+    # (--fmad=true). That extra contraction makes HIP float results drift by ~1 ULP
+    # from the CUDA build and the CPU gold references (e.g. the bicubic weight chain
+    # in InterpolationWrap), failing the bit-exact gtests. Pin contraction to the
+    # CUDA/host semantics so float math is reproducible across the two toolchains.
+    set(CMAKE_HIP_FLAGS "${CMAKE_HIP_FLAGS} -ffp-contract=on")
+
+    find_package(hip REQUIRED)
+    find_package(hipcub REQUIRED)
+    find_package(hiprand REQUIRED)
+    find_package(hipblas REQUIRED)
+    find_package(hipsolver REQUIRED)
+
+    # The compat header is force-included on every C++/HIP TU and pulls in the
+    # HIP runtime, so the ROCm headers must be on the include path globally (not
+    # only on targets that link hip::host).
+    get_target_property(_hip_inc hip::host INTERFACE_INCLUDE_DIRECTORIES)
+    if(_hip_inc)
+        include_directories(SYSTEM ${_hip_inc})
+    else()
+        include_directories(SYSTEM "/opt/rocm/include")
+    endif()
+
+    # Map the CUDA::* link targets the build uses onto their HIP equivalents so
+    # the per-target target_link_libraries() lines stay untouched.
+    foreach(_cudalib cudart_static cublas_static cublasLt_static cusolver_static cuda_driver)
+        if(NOT TARGET CUDA::${_cudalib})
+            add_library(CUDA::${_cudalib} INTERFACE IMPORTED)
+            target_link_libraries(CUDA::${_cudalib} INTERFACE hip::host)
+        endif()
+    endforeach()
+    target_link_libraries(CUDA::cusolver_static INTERFACE roc::hipsolver)
+    target_link_libraries(CUDA::cublas_static   INTERFACE roc::hipblas)
+
+    # Retag every .cu source LANGUAGE HIP without editing each per-target
+    # CMakeLists. add_library/add_executable are overridden at top scope to
+    # forward to the real command then flip the target's .cu files to HIP and
+    # set HIP_ARCHITECTURES. The NVIDIA build never defines
+    # these macros, so it is a pure passthrough.
+    macro(_cvcuda_hipify_target _tgt)
+        get_target_property(_t_type ${_tgt} TYPE)
+        if(NOT _t_type STREQUAL "INTERFACE_LIBRARY")
+            get_target_property(_t_srcs ${_tgt} SOURCES)
+            if(_t_srcs)
+                foreach(_s ${_t_srcs})
+                    if(_s MATCHES "\\.cu$")
+                        set_source_files_properties(${_s} PROPERTIES LANGUAGE HIP)
+                    endif()
+                endforeach()
+            endif()
+            set_target_properties(${_tgt} PROPERTIES HIP_ARCHITECTURES "${CMAKE_HIP_ARCHITECTURES}")
+        endif()
+    endmacro()
+
+    macro(add_library _tgt)
+        _add_library(${_tgt} ${ARGN})
+        set(_args "${ARGN}")
+        if(NOT "ALIAS" IN_LIST _args AND NOT "IMPORTED" IN_LIST _args AND NOT "INTERFACE" IN_LIST _args)
+            _cvcuda_hipify_target(${_tgt})
+        endif()
+    endmacro()
+
+    macro(add_executable _tgt)
+        _add_executable(${_tgt} ${ARGN})
+        set(_args "${ARGN}")
+        if(NOT "ALIAS" IN_LIST _args AND NOT "IMPORTED" IN_LIST _args)
+            _cvcuda_hipify_target(${_tgt})
+        endif()
+    endmacro()
+else()
+    enable_language(CUDA)
+endif()
 
 # Used when creating special builds
 set(PROJECT_VERSION_SUFFIX "")

@@ -219,8 +219,12 @@ public:
         return v;
     }
 
-    // On-purpose public data to allow POD-class direct initialization.
-#ifdef __CUDA_ARCH__
+    // On-purpose public data to allow POD-class direct initialization. The
+    // default member initializer is omitted on HIP in BOTH compiler passes (not
+    // just the device pass): Vector is used as a __shared__ variable, and a
+    // __shared__ object's type must have no initializer, which clang enforces in
+    // the host pass too.
+#if defined(__CUDA_ARCH__) || defined(__HIP_PLATFORM_AMD__) || defined(USE_HIP)
     T m_data[N];
 #else
     T m_data[N] = {};
@@ -466,7 +470,7 @@ namespace detail {
 template<class T>
 constexpr __host__ __device__ void swap(T &a, T &b)
 {
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
     T c = a;
     a   = b;
     b   = c;
