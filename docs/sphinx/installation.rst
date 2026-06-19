@@ -313,7 +313,7 @@ All boolean options accept both numeric (``0``/``1``) and CMake boolean values (
     ci/build.sh -DCMAKE_CUDA_COMPILER=/usr/local/cuda-13/bin/nvcc
 
     # Build for AMD GPUs with HIP/ROCm
-    ci/build.sh release build-rel -DUSE_HIP=1 -DCMAKE_HIP_ARCHITECTURES=gfx90a
+    ci/build.sh release build-rel -DUSE_HIP=1 -DCMAKE_HIP_ARCHITECTURES=gfx90a -DCMAKE_PREFIX_PATH=/opt/rocm
 
 .. _build-rocm:
 
@@ -331,7 +331,9 @@ Build with HIP enabled, selecting the target AMD architecture:
 
 .. code-block:: shell
 
-    ci/build.sh release build-rel -DUSE_HIP=1 -DCMAKE_HIP_ARCHITECTURES=gfx90a
+    ci/build.sh release build-rel -DUSE_HIP=1 -DCMAKE_HIP_ARCHITECTURES=gfx90a -DCMAKE_PREFIX_PATH=/opt/rocm
+
+If ROCm is not on your ``PATH``, pass ``-DCMAKE_PREFIX_PATH=/opt/rocm`` so CMake finds the hip* packages (``find_package(hip)`` and friends).
 
 When ``CMAKE_HIP_ARCHITECTURES`` is left unset it defaults to ``gfx90a``; set it to the architecture of your GPU (for example ``gfx1100`` for RDNA3 desktop cards). No source or CMake edits are needed to retarget. The build outputs the same library and test layout as the CUDA build, and the test suites run unchanged on the AMD GPU.
 
