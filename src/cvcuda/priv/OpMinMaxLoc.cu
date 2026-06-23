@@ -112,12 +112,19 @@ struct OpMin
     using OutType     = OutputType<T>;
     using BaseOutType = cuda::BaseType<OutType>;
 
-    static constexpr OutType init = {cuda::TypeTraits<OutType>::max};
+    // A function rather than a static constexpr member: OutType is a vector type
+    // whose ctor is non-constexpr under HIP (HIP_vector_type), so a static const
+    // initializer cannot be emitted on the device (clang). Returning it by value
+    // keeps the same codegen after inlining on both backends.
+    __host__ __device__ static OutType init()
+    {
+        return OutType{cuda::TypeTraits<OutType>::max};
+    }
 
     template<class OutWrapper>
     __device__ inline static void initFill(OutWrapper out, int z)
     {
-        get<0>(out)[z] = init;
+        get<0>(out)[z] = init();
     }
 
     template<typename U>
@@ -141,12 +148,15 @@ struct OpMax
     using OutType     = OutputType<T>;
     using BaseOutType = cuda::BaseType<OutType>;
 
-    static constexpr OutType init = {cuda::Lowest<OutType>};
+    __host__ __device__ static OutType init()
+    {
+        return OutType{cuda::Lowest<OutType>};
+    }
 
     template<class OutWrapper>
     __device__ inline static void initFill(OutWrapper out, int z)
     {
-        get<0>(out)[z] = init;
+        get<0>(out)[z] = init();
     }
 
     template<typename U>
@@ -170,13 +180,23 @@ struct OpMinMax
     using BaseOutType = cuda::BaseType<OutputType<T>>;
     using OutType     = cuda::MakeType<BaseOutType, 2>;
 
-    static constexpr OutType init = {cuda::TypeTraits<OutType>::max, cuda::Lowest<OutType>};
+    __host__ __device__ static OutType init()
+    {
+        return OutType{cuda::TypeTraits<OutType>::max, cuda::Lowest<OutType>};
+    }
 
     template<class OutWrapper>
     __device__ inline static void initFill(OutWrapper out, int z)
     {
-        get<0>(out)[z] = {init.x};
-        get<1>(out)[z] = {init.y};
+        OutType v = init();
+#if defined(__HIP_PLATFORM_AMD__) || defined(USE_HIP)
+        // HIP_vector_type has no braced-init-list operator=; set the lane member.
+        get<0>(out)[z].x = v.x;
+        get<1>(out)[z].x = v.y;
+#else
+        get<0>(out)[z] = {v.x};
+        get<1>(out)[z] = {v.y};
+#endif
     }
 
     template<typename U>
@@ -349,7 +369,7 @@ __global__ __launch_bounds__(BW *BH) void FindMinMax(InWrapper in, int2 size, Ou
     int x = (blockIdx.x * blockDim.x + threadIdx.x) * TW;
     int y = blockIdx.y * BH * TH + threadIdx.y;
 
-    auto threadRet = OP::init;
+    auto threadRet = OP::init();
 
 #pragma unroll
     for (int i = 0; i < TH; ++i)

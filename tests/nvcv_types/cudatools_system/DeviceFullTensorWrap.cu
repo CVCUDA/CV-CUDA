@@ -30,7 +30,9 @@ namespace cuda = nvcv::cuda;
 template<class DstWrapper, class SrcWrapper>
 __global__ void Copy(DstWrapper dst, SrcWrapper src)
 {
-    int1 coord = cuda::StaticCast<int>(cuda::DropCast<1>(threadIdx));
+    // threadIdx is a builtin struct without NVCV TypeTraits on HIP; uint3
+    // brace-init binds the NVCV helpers and is unchanged on CUDA.
+    int1 coord = cuda::StaticCast<int>(cuda::DropCast<1>(uint3{threadIdx.x, threadIdx.y, threadIdx.z}));
     dst[coord] = src[coord];
 }
 

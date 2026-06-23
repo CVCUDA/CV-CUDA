@@ -46,7 +46,13 @@ endif()
 include(CheckIPOSupported)
 check_ipo_supported(RESULT LTO_SUPPORTED)
 
-set(LTO_ENABLED ON)
+# LTO does not finalize under the HIP link step (device objects stay slim
+# bitcode), which breaks linking; keep it off on ROCm.
+if(USE_HIP)
+    set(LTO_ENABLED OFF)
+else()
+    set(LTO_ENABLED ON)
+endif()
 
 if(ENABLE_SANITIZER)
     set(COMPILER_SANITIZER_FLAGS

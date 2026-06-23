@@ -21,6 +21,32 @@
 #include <cuda_runtime.h>
 #include <nvcv/Exception.hpp>
 
+#if defined(__HIP_PLATFORM_AMD__) || defined(USE_HIP)
+
+// ROCm exposes hipStreamGetId directly, which is all the stream-identity cache
+// needs. Fall back to the stream-handle pointer value (a stable per-stream key)
+// if the runtime cannot supply an id.
+namespace nvcv::util {
+
+bool IsCudaStreamIdHintUnambiguous()
+{
+    return true;
+}
+
+uint64_t GetCudaStreamIdHint(hipStream_t stream)
+{
+    unsigned long long id  = 0;
+    hipError_t         err = hipStreamGetId(stream, &id);
+    if (err == hipSuccess)
+        return id;
+    (void)hipGetLastError();
+    return reinterpret_cast<uint64_t>(stream);
+}
+
+} // namespace nvcv::util
+
+#else
+
 using cuStreamGetId_t = CUresult(CUstream, unsigned long long *);
 
 #if CUDA_VERSION >= 12000
@@ -148,3 +174,5 @@ uint64_t GetCudaStreamIdHint(CUstream stream)
 }
 
 } // namespace nvcv::util
+
+#endif // __HIP_PLATFORM_AMD__ || USE_HIP

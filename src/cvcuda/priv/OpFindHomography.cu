@@ -384,7 +384,11 @@ __device__ void reducef(float *data, cuda::math::Vector<float, 32> &warpSums, fl
     int      tid    = threadIdx.x;
     int      idx    = threadIdx.x + blockIdx.x * blockDim.x;
     float    val    = 0.0f;
+#if defined(__HIP_PLATFORM_AMD__) || defined(USE_HIP)
+    unsigned long long mask = NVCV_WARP_FULL_MASK;
+#else
     unsigned mask   = 0xFFFFFFFFU;
+#endif
     int      lane   = threadIdx.x % warpSize;
     int      warpID = threadIdx.x / warpSize;
     while (idx < numPoints)
@@ -417,7 +421,11 @@ __device__ void reducef2(float2 *data, cuda::math::Vector<float2, 32> &warpSums,
     int      tid    = threadIdx.x;
     int      idx    = threadIdx.x + blockIdx.x * blockDim.x;
     float2   val    = {0.0f, 0.0f};
+#if defined(__HIP_PLATFORM_AMD__) || defined(USE_HIP)
+    unsigned long long mask = NVCV_WARP_FULL_MASK;
+#else
     unsigned mask   = 0xFFFFFFFFU;
+#endif
     int      lane   = threadIdx.x % warpSize;
     int      warpID = threadIdx.x / warpSize;
     while (idx < numPoints)
@@ -462,7 +470,11 @@ __device__ void reduceLtL(float2 *src, float2 *dst, cuda::math::Vector<float, 32
     int   idx = threadIdx.x + blockIdx.x * blockDim.x;
     float val = 0.0f;
     ;
+#if defined(__HIP_PLATFORM_AMD__) || defined(USE_HIP)
+    unsigned long long mask = NVCV_WARP_FULL_MASK;
+#else
     unsigned mask   = 0xFFFFFFFFU;
+#endif
     int      lane   = threadIdx.x % warpSize;
     int      warpID = threadIdx.x / warpSize;
     while (idx < numPoints)
@@ -511,7 +523,11 @@ __device__ void calculate_Jtx_matvec(float *A, float *B, float *result, matrix8x
     __syncthreads();
 
     float    val[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+#if defined(__HIP_PLATFORM_AMD__) || defined(USE_HIP)
+    unsigned long long mask = NVCV_WARP_FULL_MASK;
+#else
     unsigned mask   = 0xFFFFFFFFU;
+#endif
     int      lane   = threadIdx.x % warpSize;
     int      warpID = threadIdx.x / warpSize;
     while (idx < numPoints)
@@ -760,7 +776,11 @@ __device__ void max(float *data, vector32 &warpSums, float *result, int numPoint
     int      tid    = threadIdx.x;
     int      idx    = threadIdx.x + blockIdx.x * blockDim.x;
     float    val    = 0.0f;
+#if defined(__HIP_PLATFORM_AMD__) || defined(USE_HIP)
+    unsigned long long mask = NVCV_WARP_FULL_MASK;
+#else
     unsigned mask   = 0xFFFFFFFFU;
+#endif
     int      lane   = threadIdx.x % warpSize;
     int      warpID = threadIdx.x / warpSize;
     while (idx < numPoints)

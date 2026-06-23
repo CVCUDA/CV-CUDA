@@ -809,7 +809,7 @@ inline void GoldSIFT(SIFTResults &outResults, const nvcv::Tensor &featCoords, co
     long2 featMetadataShape = {featMetadataData->shape(0), featMetadataData->shape(1)};
     long3 featDescriptorsShape
         = {featDescriptorsData->shape(0), featDescriptorsData->shape(1), featDescriptorsData->shape(2)};
-    long1 numFeaturesShape = {numFeaturesData->shape(0)};
+    long1 numFeaturesShape{numFeaturesData->shape(0)};
 
     ASSERT_TRUE((featCoordsShape == long2{srcShape.x, capacity} && featMetadataShape == long2{srcShape.x, capacity}
                  && featDescriptorsShape == long3{srcShape.x, capacity, 128} && numFeaturesShape == long1{srcShape.x}));
@@ -819,7 +819,7 @@ inline void GoldSIFT(SIFTResults &outResults, const nvcv::Tensor &featCoords, co
     long3 featDescriptorsStrides3
         = {featDescriptorsData->stride(0), featDescriptorsData->stride(1), featDescriptorsData->stride(2)};
     long2 featDescriptorsStrides = {featDescriptorsStrides3.x, featDescriptorsStrides3.y};
-    long1 numFeaturesStrides     = {numFeaturesData->stride(0)};
+    long1 numFeaturesStrides{numFeaturesData->stride(0)};
 
     ASSERT_TRUE(featCoordsStrides.y == sizeof(float4) && featMetadataStrides.y == sizeof(float3)
                 && featDescriptorsStrides3.z == sizeof(uint8_t) && featDescriptorsStrides.y == 128 * sizeof(uint8_t)

@@ -13,6 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# The whole CUDA toolkit configuration is skipped on the HIP/ROCm build; the
+# top-level CMakeLists handles enable_language(HIP) and the HIP packages.
+if(NOT USE_HIP)
+
 string(REPLACE "." ";" CUDA_VERSION_LIST ${CMAKE_CUDA_COMPILER_VERSION})
 list(GET CUDA_VERSION_LIST 0 CUDA_VERSION_MAJOR)
 list(GET CUDA_VERSION_LIST 1 CUDA_VERSION_MINOR)
@@ -100,3 +104,5 @@ if(NOT USE_CMAKE_CUDA_ARCHITECTURES)
     # which is the old architecture supported by nvcc. We don't want that.
     set(CMAKE_CUDA_ARCHITECTURES "${CMAKE_CUDA_ARCHITECTURES}" CACHE STRING "CUDA architectures to build for" FORCE)
 endif()
+
+endif() # NOT USE_HIP

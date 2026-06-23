@@ -53,8 +53,11 @@ if(BUILD_TESTS_CPP)
     )
 
     # Skip standalone tests with GCC-10 due to ABI incompatibility with system libgtest
-    # These tests use find_package(GTest) which requires system GTest, causing ABI issues with GCC-10
-    if(NOT (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 11.0))
+    # These tests use find_package(GTest) which requires system GTest, causing ABI issues with GCC-10.
+    # Also skip on ROCm: the standalone consumer project re-runs cmake on a copied nvcv via
+    # ExternalProject without the top-level USE_HIP/enable_language(HIP) setup, so it would try to
+    # find the CUDA toolkit. It is a build-packaging check, not a GPU operator test.
+    if(NOT USE_HIP AND NOT (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 11.0))
         # Test NVCV can be built as a shared library via the standalone test
         ExternalProject_Add(
             nvcv_standalone

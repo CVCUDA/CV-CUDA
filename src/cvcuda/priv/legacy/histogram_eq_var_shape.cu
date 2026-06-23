@@ -261,6 +261,12 @@ ErrorCode HistogramEqVarShape::infer(const nvcv::ImageBatchVarShapeDataStridedCu
     cuda::ImageBatchVarShapeWrapNHWC<uchar> src(inData, channels);
     auto histo = nvcv::cuda::Tensor2DWrap<int, int32_t>(m_histoArray, (int)(256 * channels * sizeof(int)));
 
+    // hist_kernel accumulates into m_histoArray with atomicAdd, so it must start
+    // at zero. The tensor HistogramEq path memsets it (see HistogramEq::infer);
+    // this varshape path relied on freshly cudaMalloc'd memory reading back as
+    // zero, which does not hold for recycled hipMalloc allocations.
+    checkCudaErrors(cudaMemsetAsync(m_histoArray, 0, m_sizeOfHisto, stream));
+
     {
         //compute the histogram for each image in the batch into m_histoArray
         int bsX = 32; //1024 ( 4 ch of 256 bins)

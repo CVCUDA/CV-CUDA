@@ -26,7 +26,7 @@
 
 namespace nvcv::cuda::detail {
 
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
 
 template<typename T, typename U, int RM = FE_TONEAREST>
 __device__ __forceinline__ T DeviceRoundImpl(U u)
@@ -277,6 +277,14 @@ __device__ __forceinline__ T DeviceRoundImpl(U u)
 template<typename U>
 __device__ __forceinline__ U DeviceMinImpl(U a, U b)
 {
+#if defined(__HIP_DEVICE_COMPILE__)
+    // HIP's global namespace has no typed umin/ullmin/llmin; the ternary lowers to
+    // the same integer-min instruction the CUDA builtins emit. The comparison is
+    // spelled exactly like the host std::min fallback (b < a ? b : a) so the device
+    // result is identical to the host reference for every input, including the
+    // NaN / signed-zero cases the morphology tests exercise with raw-byte floats.
+    return b < a ? b : a;
+#else
     if constexpr (std::is_same_v<U, unsigned int>)
     {
         return ::umin(a, b);
@@ -293,11 +301,17 @@ __device__ __forceinline__ U DeviceMinImpl(U a, U b)
     {
         return ::min(a, b);
     }
+#endif
 }
 
 template<typename U>
 __device__ __forceinline__ U DeviceMaxImpl(U a, U b)
 {
+#if defined(__HIP_DEVICE_COMPILE__)
+    // Spelled exactly like the host std::max fallback (a < b ? b : a) so the device
+    // max matches the host reference exactly on NaN / signed-zero inputs.
+    return a < b ? b : a;
+#else
     if constexpr (std::is_same_v<U, unsigned int>)
     {
         return ::umax(a, b);
@@ -314,6 +328,7 @@ __device__ __forceinline__ U DeviceMaxImpl(U a, U b)
     {
         return ::max(a, b);
     }
+#endif
 }
 
 template<typename U, typename S>
@@ -357,6 +372,21 @@ __device__ __forceinline__ U DeviceExpImpl(U u)
 template<typename U>
 __device__ __forceinline__ U DeviceSqrtImpl(U u)
 {
+#if defined(__HIP_DEVICE_COMPILE__)
+    // gfx90a's single-precision __fsqrt_rn is not always correctly rounded (it can
+    // be 1 ULP off, e.g. sqrt(93606.0f)), whereas CUDA's sqrt.rn.f32 and the host
+    // std::sqrt are correctly rounded. Route 32-bit sqrt through the correctly
+    // rounded f64 sqrt and round once to keep results identical to the CUDA
+    // build and the CPU references (CDNA has fast f64 sqrt).
+    if constexpr (std::is_same_v<U, double>)
+    {
+        return __dsqrt_rn(u);
+    }
+    else
+    {
+        return static_cast<U>(__dsqrt_rn(static_cast<double>(u)));
+    }
+#else
     if constexpr (std::is_same_v<U, float>)
     {
         return __fsqrt_rn(u);
@@ -373,6 +403,7 @@ __device__ __forceinline__ U DeviceSqrtImpl(U u)
     {
         return static_cast<U>(__dsqrt_rn(static_cast<double>(u)));
     }
+#endif
 }
 
 template<typename U>
@@ -417,7 +448,7 @@ inline __host__ U RoundEvenImpl(U u)
 template<typename T, typename U, int RM = FE_TONEAREST>
 inline __host__ __device__ T RoundImpl(U u)
 {
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
     return DeviceRoundImpl<T, U, RM>(u);
 #else
     // In host we use C++ to do round depending on round mode by selecting at compile time the correct function:
@@ -444,7 +475,7 @@ inline __host__ __device__ T RoundImpl(U u)
 template<typename U>
 inline __host__ __device__ U MinImpl(U a, U b)
 {
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
     return DeviceMinImpl(a, b);
 #else
     return std::min(a, b);
@@ -454,7 +485,7 @@ inline __host__ __device__ U MinImpl(U a, U b)
 template<typename U>
 inline __host__ __device__ U MaxImpl(U a, U b)
 {
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
     return DeviceMaxImpl(a, b);
 #else
     return std::max(a, b);
@@ -464,7 +495,7 @@ inline __host__ __device__ U MaxImpl(U a, U b)
 template<typename U, typename S>
 inline __host__ __device__ U PowImpl(U x, S y)
 {
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
     return DevicePowImpl(x, y);
 #else
     return std::pow(x, y);
@@ -474,7 +505,7 @@ inline __host__ __device__ U PowImpl(U x, S y)
 template<typename U>
 inline __host__ __device__ U ExpImpl(U u)
 {
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
     return DeviceExpImpl(u);
 #else
     return std::exp(u);
@@ -484,7 +515,7 @@ inline __host__ __device__ U ExpImpl(U u)
 template<typename U>
 inline __host__ __device__ U SqrtImpl(U u)
 {
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
     return DeviceSqrtImpl(u);
 #else
     return std::sqrt(u);
@@ -500,7 +531,7 @@ inline __host__ __device__ U AbsImpl(U u)
     }
     else
     {
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         return DeviceAbsImpl(u);
 #else
         return std::abs(u);

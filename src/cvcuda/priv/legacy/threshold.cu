@@ -31,6 +31,16 @@ using namespace nvcv::legacy::cuda_op;
 
 using namespace nvcv::cuda;
 
+// Otsu's per-warp scans partition the 256-thread block as warp = localid / 32,
+// so the butterfly/scan shuffles below pass an explicit width of 32 to stay
+// within a 32-lane subgroup on a 64-lane CDNA wavefront. The mask only marks
+// participants and must be 64-bit on ROCm.
+#if defined(__HIP_PLATFORM_AMD__) || defined(USE_HIP)
+#define NVCV_SHFL_MASK NVCV_WARP_FULL_MASK
+#else
+#define NVCV_SHFL_MASK 0xffffffff
+#endif
+
 template<typename P, typename SrcWrap, typename DstWrap>
 __global__ void Binary_overflow(SrcWrap src, DstWrap dst, Tensor1DWrap<double, int32_t> _thresh,
                                 Tensor1DWrap<double, int32_t> _maxval, int height, int width, int channel)
@@ -493,6 +503,17 @@ __global__ void otsu_cal(int *histogram, Tensor1DWrap<double, int32_t> thresh, i
     if (localid < 64)
         reduce[localid] = reduce[localid] + reduce[localid + 64];
     __syncthreads();
+#if defined(__HIP_PLATFORM_AMD__) || defined(USE_HIP)
+    // The 64-lane CDNA wavefront gives no warp-synchronous lockstep guarantee
+    // across the unsynchronized tail below, so keep the __syncthreads tree down
+    // to one element (same add order, block-wide barrier each step).
+    for (int s = 32; s > 0; s >>= 1)
+    {
+        if (localid < s)
+            reduce[localid] = reduce[localid] + reduce[localid + s];
+        __syncthreads();
+    }
+#else
     if (localid < 32)
     {
         reduce[localid] = reduce[localid] + reduce[localid + 32];
@@ -503,6 +524,7 @@ __global__ void otsu_cal(int *histogram, Tensor1DWrap<double, int32_t> thresh, i
         reduce[localid] = reduce[localid] + reduce[localid + 1];
     }
     __syncthreads();
+#endif
 
     mu = reduce[0] * scale;
     __syncthreads();
@@ -513,11 +535,11 @@ __global__ void otsu_cal(int *histogram, Tensor1DWrap<double, int32_t> thresh, i
     int    lane = localid % 32, warp = localid / 32;
     // sum of q1 in warp
     double temp = q1;
-    temp += __shfl_xor_sync(0xffffffff, temp, 1);
-    temp += __shfl_xor_sync(0xffffffff, temp, 2);
-    temp += __shfl_xor_sync(0xffffffff, temp, 4);
-    temp += __shfl_xor_sync(0xffffffff, temp, 8);
-    temp += __shfl_xor_sync(0xffffffff, temp, 16);
+    temp += __shfl_xor_sync(NVCV_SHFL_MASK, temp, 1, 32);
+    temp += __shfl_xor_sync(NVCV_SHFL_MASK, temp, 2, 32);
+    temp += __shfl_xor_sync(NVCV_SHFL_MASK, temp, 4, 32);
+    temp += __shfl_xor_sync(NVCV_SHFL_MASK, temp, 8, 32);
+    temp += __shfl_xor_sync(NVCV_SHFL_MASK, temp, 16, 32);
     if (lane == 0)
         reduce[warp] = temp;
     __syncthreads();
@@ -536,19 +558,19 @@ __global__ void otsu_cal(int *histogram, Tensor1DWrap<double, int32_t> thresh, i
     }
     __syncthreads();
     // prefix scan in warp
-    temp = __shfl_up_sync(0xffffffff, q1, 1);
+    temp = __shfl_up_sync(NVCV_SHFL_MASK, q1, 1, 32);
     if (lane >= 1)
         q1 += temp;
-    temp = __shfl_up_sync(0xffffffff, q1, 2);
+    temp = __shfl_up_sync(NVCV_SHFL_MASK, q1, 2, 32);
     if (lane >= 2)
         q1 += temp;
-    temp = __shfl_up_sync(0xffffffff, q1, 4);
+    temp = __shfl_up_sync(NVCV_SHFL_MASK, q1, 4, 32);
     if (lane >= 4)
         q1 += temp;
-    temp = __shfl_up_sync(0xffffffff, q1, 8);
+    temp = __shfl_up_sync(NVCV_SHFL_MASK, q1, 8, 32);
     if (lane >= 8)
         q1 += temp;
-    temp = __shfl_up_sync(0xffffffff, q1, 16);
+    temp = __shfl_up_sync(NVCV_SHFL_MASK, q1, 16, 32);
     if (lane >= 16)
         q1 += temp;
     q1 += reduce[warp];
@@ -560,11 +582,11 @@ __global__ void otsu_cal(int *histogram, Tensor1DWrap<double, int32_t> thresh, i
     double one = localid * hist[localid] * scale;
     // sum of q1 in warp
     temp = one;
-    temp += __shfl_xor_sync(0xffffffff, temp, 1);
-    temp += __shfl_xor_sync(0xffffffff, temp, 2);
-    temp += __shfl_xor_sync(0xffffffff, temp, 4);
-    temp += __shfl_xor_sync(0xffffffff, temp, 8);
-    temp += __shfl_xor_sync(0xffffffff, temp, 16);
+    temp += __shfl_xor_sync(NVCV_SHFL_MASK, temp, 1, 32);
+    temp += __shfl_xor_sync(NVCV_SHFL_MASK, temp, 2, 32);
+    temp += __shfl_xor_sync(NVCV_SHFL_MASK, temp, 4, 32);
+    temp += __shfl_xor_sync(NVCV_SHFL_MASK, temp, 8, 32);
+    temp += __shfl_xor_sync(NVCV_SHFL_MASK, temp, 16, 32);
     if (lane == 0)
         reduce[warp] = temp;
     __syncthreads();
@@ -583,19 +605,19 @@ __global__ void otsu_cal(int *histogram, Tensor1DWrap<double, int32_t> thresh, i
     }
     __syncthreads();
     // prefix scan in warp
-    temp = __shfl_up_sync(0xffffffff, one, 1);
+    temp = __shfl_up_sync(NVCV_SHFL_MASK, one, 1, 32);
     if (lane >= 1)
         one += temp;
-    temp = __shfl_up_sync(0xffffffff, one, 2);
+    temp = __shfl_up_sync(NVCV_SHFL_MASK, one, 2, 32);
     if (lane >= 2)
         one += temp;
-    temp = __shfl_up_sync(0xffffffff, one, 4);
+    temp = __shfl_up_sync(NVCV_SHFL_MASK, one, 4, 32);
     if (lane >= 4)
         one += temp;
-    temp = __shfl_up_sync(0xffffffff, one, 8);
+    temp = __shfl_up_sync(NVCV_SHFL_MASK, one, 8, 32);
     if (lane >= 8)
         one += temp;
-    temp = __shfl_up_sync(0xffffffff, one, 16);
+    temp = __shfl_up_sync(NVCV_SHFL_MASK, one, 16, 32);
     if (lane >= 16)
         one += temp;
     one += reduce[warp];
@@ -635,6 +657,20 @@ __global__ void otsu_cal(int *histogram, Tensor1DWrap<double, int32_t> thresh, i
     }
     __syncthreads();
 
+#if defined(__HIP_PLATFORM_AMD__) || defined(USE_HIP)
+    for (int s = 32; s > 0; s >>= 1)
+    {
+        if (localid < s && reduce[localid + s] >= reduce[localid])
+        {
+            if (reduce[localid + s] == reduce[localid])
+                idx[localid] = min(idx[localid], idx[localid + s]);
+            else
+                idx[localid] = idx[localid + s];
+            reduce[localid] = reduce[localid + s];
+        }
+        __syncthreads();
+    }
+#else
     if (localid < 32)
     {
         if (reduce[localid + 32] >= reduce[localid])
@@ -687,6 +723,7 @@ __global__ void otsu_cal(int *histogram, Tensor1DWrap<double, int32_t> thresh, i
         }
     }
     __syncthreads();
+#endif
 
     // write to gpu memory
     if (localid == 0)

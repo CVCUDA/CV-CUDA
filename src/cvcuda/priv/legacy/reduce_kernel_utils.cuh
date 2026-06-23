@@ -28,7 +28,11 @@
 
 namespace nvcv::legacy::cuda_op {
 
+#if defined(__HIP_PLATFORM_AMD__) || defined(USE_HIP)
+#define FINAL_MASK 0xffffffffffffffffULL
+#else
 #define FINAL_MASK 0xffffffff
+#endif
 
 template<typename T>
 __inline__ __device__ T warpReduceSum(T val)

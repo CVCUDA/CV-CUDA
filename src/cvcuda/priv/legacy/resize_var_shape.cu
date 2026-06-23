@@ -277,7 +277,11 @@ __global__ void resize_area_ocv_align(const cuda::ImageBatchVarShapeWrap<const T
             int sy2 = cuda::round<cuda::RoundMode::DOWN, int>(fsy2);
 
             using work_type = cuda::ConvertBaseTypeTo<float, T>;
+#if defined(__HIP_PLATFORM_AMD__) || defined(USE_HIP)
+            work_type out = {}; // HIP_vector_type's single-arg ctor is explicit; value-init zeroes all lanes
+#else
             work_type out   = {0};
+#endif
 
             int3 srcCoord = {0, 0, batch_idx};
 
@@ -312,7 +316,11 @@ __global__ void resize_area_ocv_align(const cuda::ImageBatchVarShapeWrap<const T
             = 1.f / (fminf(scale_x, src.width(batch_idx) - fsx1) * fminf(scale_y, src.height(batch_idx) - fsy1));
 
         using work_type = cuda::ConvertBaseTypeTo<float, T>;
+#if defined(__HIP_PLATFORM_AMD__) || defined(USE_HIP)
+        work_type out = {}; // HIP_vector_type's single-arg ctor is explicit; value-init zeroes all lanes
+#else
         work_type out   = {0};
+#endif
 
         int3 srcCoord = {0, 0, batch_idx};
 

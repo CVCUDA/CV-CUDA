@@ -93,7 +93,15 @@ NVCV_CUDA_TYPE_TRAITS(double, double, 0, 1, DBL_MIN, DBL_MAX);
     NVCV_CUDA_TYPE_TRAITS_1_TO_3(COMPOUND_TYPE, BASE_TYPE, MIN_VAL, MAX_VAL);    \
     NVCV_CUDA_TYPE_TRAITS(COMPOUND_TYPE##4, BASE_TYPE, 4, 4, MIN_VAL, MAX_VAL)
 
+#if defined(__HIP_PLATFORM_AMD__) || defined(USE_HIP)
+// HIP's char1..4 are HIP_vector_type<char,N>, whose members are plain `char`
+// (not `signed char` as in CUDA's vector types), so the base_type must be
+// `char` for GetElement's reference return to bind. `char` is signed on the
+// supported targets, so the numeric range is unchanged.
+NVCV_CUDA_TYPE_TRAITS_1_TO_4(char, char, SCHAR_MIN, SCHAR_MAX);
+#else
 NVCV_CUDA_TYPE_TRAITS_1_TO_4(char, signed char, SCHAR_MIN, SCHAR_MAX);
+#endif
 NVCV_CUDA_TYPE_TRAITS_1_TO_4(uchar, unsigned char, 0, UCHAR_MAX);
 NVCV_CUDA_TYPE_TRAITS_1_TO_4(short, short, SHRT_MIN, SHRT_MAX);
 NVCV_CUDA_TYPE_TRAITS_1_TO_4(ushort, unsigned short, 0, USHRT_MAX);

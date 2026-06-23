@@ -13,7 +13,13 @@
 #ifndef NVCV_DETAIL_FWD_CUDA_H
 #define NVCV_DETAIL_FWD_CUDA_H
 
+#if defined(__HIP_PLATFORM_AMD__) || defined(USE_HIP)
+#include <hip/hip_runtime_api.h>
+typedef hipStream_t CUstream;
+typedef hipArray_t  cudaArray_t;
+#else
 typedef struct CUstream_st *CUstream;
 typedef struct cudaArray   *cudaArray_t;
+#endif
 
 #endif // NVCV_DETAIL_FWD_CUDA_H

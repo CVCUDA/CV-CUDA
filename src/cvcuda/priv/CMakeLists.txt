@@ -91,6 +91,12 @@ else()
     list(APPEND CV_CUDA_PRIV_FILES ${CV_CUDA_PRIV_OP_FILES})
 endif()
 
+# cuOSD is a prebuilt CUDA-only static lib with no source, so the operators that
+# depend on it (OSD, bounding box, box blur) are scoped out of the ROCm build.
+if(USE_HIP)
+    list(FILTER CV_CUDA_PRIV_FILES EXCLUDE REGEX "OpOSD|OpBndBox|OpBoxBlur")
+endif()
+
 add_library(cvcuda_priv STATIC
     ${CV_CUDA_PRIV_FILES}
 )

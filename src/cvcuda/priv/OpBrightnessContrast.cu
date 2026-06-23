@@ -120,7 +120,13 @@ inline __device__ void DoBrightnessContrast(SrcWrapper src, DstWrapper dst, cons
 {
     using SrcT                       = std::remove_const_t<typename SrcWrapper::ValueType>;
     using DstT                       = typename DstWrapper::ValueType;
+#if defined(__HIP_PLATFORM_AMD__) || defined(USE_HIP)
+    // std::declval is __host__-only; use the __host__ __device__ shim in this
+    // device-side decltype (clang rejects host fns in __device__ unevaluated ctx).
+    using IntermediateT = decltype(nvcv::cuda::compat::declval<ArgT>() * nvcv::cuda::compat::declval<SrcT>());
+#else
     using IntermediateT              = decltype(std::declval<ArgT>() * std::declval<SrcT>());
+#endif
     using SrcBT                      = cuda::BaseType<SrcT>;
     using DstBT                      = cuda::BaseType<DstT>;
     using BI                         = cuda::BaseType<IntermediateT>;
