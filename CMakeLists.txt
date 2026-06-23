@@ -38,12 +38,9 @@ endif()
 option(USE_HIP "Build the GPU code with HIP for AMD GPUs (ROCm)" OFF)
 
 if(USE_HIP)
-    # Default the architecture only when the caller did not set one, so any AMD
-    # target builds with just -DCMAKE_HIP_ARCHITECTURES=<arch> and no source or
-    # CMake edit.
-    if(NOT DEFINED CMAKE_HIP_ARCHITECTURES OR CMAKE_HIP_ARCHITECTURES STREQUAL "")
-        set(CMAKE_HIP_ARCHITECTURES "gfx90a" CACHE STRING "HIP architectures to build for" FORCE)
-    endif()
+    # enable_language(HIP) honors -DCMAKE_HIP_ARCHITECTURES, otherwise auto-detects
+    # the host GPU(s) via rocm_agent_enumerator and errors if none is found (a
+    # no-GPU build host must then set the arch explicitly).
     enable_language(HIP)
 
     # Host .cpp files also use the CUDA runtime/library spellings (cudaStream_t,
