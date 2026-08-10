@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "priv/OpRandomResizedCrop.hpp"
 
+#include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <nvcv/Exception.hpp>
@@ -31,7 +32,7 @@ CVCUDA_DEFINE_API(0, 4, NVCVStatus, cvcudaRandomResizedCropCreate,
                    int32_t maxBatchSize, uint32_t seed))
 {
     return nvcv::ProtectCall(
-        [&]
+        [&handle, &minScale, &maxScale, &minRatio, &maxRatio, &maxBatchSize, &seed]
         {
             if (handle == nullptr)
             {
@@ -39,8 +40,8 @@ CVCUDA_DEFINE_API(0, 4, NVCVStatus, cvcudaRandomResizedCropCreate,
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            *handle = reinterpret_cast<NVCVOperatorHandle>(
-                new priv::RandomResizedCrop(minScale, maxScale, minRatio, maxRatio, maxBatchSize, seed));
+            *handle = priv::CreateOperatorHandle<priv::RandomResizedCrop>(minScale, maxScale, minRatio, maxRatio,
+                                                                          maxBatchSize, seed);
         });
 }
 
@@ -48,11 +49,14 @@ CVCUDA_DEFINE_API(0, 4, NVCVStatus, cvcudaRandomResizedCropSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in, NVCVTensorHandle out,
                    const NVCVInterpolationType interpolation))
 {
+    CVCUDA_NVTX_RANGE("cvcudaRandomResizedCropSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&in, &out, &handle, &stream, &interpolation]
         {
-            nvcv::TensorWrapHandle input(in), output(out);
-            priv::ToDynamicRef<priv::RandomResizedCrop>(handle)(stream, input, output, interpolation);
+            nvcv::TensorWrapHandle input(in);
+            nvcv::TensorWrapHandle output(out);
+            priv::ToDynamicRef<priv::RandomResizedCrop>(handle)(stream, input.resource(), output.resource(),
+                                                                interpolation);
         });
 }
 
@@ -60,10 +64,13 @@ CVCUDA_DEFINE_API(0, 4, NVCVStatus, cvcudaRandomResizedCropVarShapeSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVImageBatchHandle in, NVCVImageBatchHandle out,
                    const NVCVInterpolationType interpolation))
 {
+    CVCUDA_NVTX_RANGE("cvcudaRandomResizedCropVarShapeSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&in, &out, &handle, &stream, &interpolation]
         {
-            nvcv::ImageBatchVarShapeWrapHandle input(in), output(out);
-            priv::ToDynamicRef<priv::RandomResizedCrop>(handle)(stream, input, output, interpolation);
+            nvcv::ImageBatchVarShapeWrapHandle input(in);
+            nvcv::ImageBatchVarShapeWrapHandle output(out);
+            priv::ToDynamicRef<priv::RandomResizedCrop>(handle)(stream, input.resource(), output.resource(),
+                                                                interpolation);
         });
 }

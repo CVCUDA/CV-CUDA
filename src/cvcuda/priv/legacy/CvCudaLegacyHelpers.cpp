@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -115,7 +115,7 @@ cuda_op::DataType GetLegacyDataType(DataType dtype)
         }
     }
 
-    return GetLegacyDataType(bpc[0], (nvcv::DataKind)dtype.dataKind());
+    return GetLegacyDataType(bpc[0], dtype.dataKind());
 }
 
 cuda_op::DataType GetLegacyDataType(ImageFormat fmt)
@@ -133,7 +133,7 @@ cuda_op::DataType GetLegacyDataType(ImageFormat fmt)
 
 cuda_op::DataShape GetLegacyDataShape(const TensorShapeInfoImage &shapeInfo)
 {
-    return cuda_op::DataShape(shapeInfo.numSamples(), shapeInfo.numChannels(), shapeInfo.numRows(),
+    return cuda_op::DataShape(static_cast<int>(shapeInfo.numSamples()), shapeInfo.numChannels(), shapeInfo.numRows(),
                               shapeInfo.numCols());
 }
 
@@ -298,7 +298,8 @@ NVCVStatus TranslateError(legacy::cuda_op::ErrorCode err)
 
 const char *ToString(legacy::cuda_op::ErrorCode err, const char **perrdescr)
 {
-    const char *errorName = "UNKNOWN", *errorDescr = "Unknown error";
+    const char *errorName;
+    const char *errorDescr;
 
     using legacy::cuda_op::ErrorCode;
 
@@ -325,6 +326,10 @@ const char *ToString(legacy::cuda_op::ErrorCode err, const char **perrdescr)
     case ErrorCode::INVALID_DATA_TYPE:
         errorName  = "INVALID_DATA_TYPE";
         errorDescr = "Data type is outside its acceptable range";
+        break;
+    default:
+        errorName  = "UNKNOWN";
+        errorDescr = "Unknown error";
         break;
     }
 

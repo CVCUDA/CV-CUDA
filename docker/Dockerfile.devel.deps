@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,13 +16,17 @@
 ARG BASE=nvidia/cuda:12.5.0-devel-ubuntu22.04
 FROM ${BASE:-nvidia/cuda:12.5.0-devel-ubuntu22.04}
 
-ARG VER_CUDA=12.9.0
+ARG VER_CUDA=12.5.0
 ARG VER_NUMPY_MAJOR=2
-ARG VER_TORCH=2.8.0
-ARG TORCH_ADDITIONAL_INDEX_URL=""
+ARG TORCH_CUDA_SUFFIX=cu12
 
-ARG PYTHON_VERSIONS="3.9 3.10 3.11 3.12 3.13 3.14"
-ARG CMAKE_VERSION=3.24.3
+ARG PYTHON_VERSIONS="3.10 3.11 3.12 3.13 3.14"
+ARG CMAKE_VERSION=3.31.1
+ARG CCACHE_VERSION=4.13.6
+ARG CCACHE_SHA256_X86_64=09e0547a0c3b250a76675c33130366f1399f3580842fb360c052520d56214ead
+ARG CCACHE_SHA256_AARCH64=bff0e0c19165db8627c85c36b0885b3b180659eda67a028298d26565aad52f56
+ARG NVBENCH_COMMIT=92d2e01cd1ec32ecb914888a8b3374923d818165
+ARG RAPIDS_CMAKE_SHA=edc8773f660e15fa2948324df5dc1a1bb7d9d1cc
 
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -33,21 +37,14 @@ ENV PYTHONUNBUFFERED=1
 # Install basic packages first (needed for add-apt-repository)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        software-properties-common \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-        lsb-release \
         ca-certificates \
         gnupg \
+        lsb-release \
+        software-properties-common \
+    && add-apt-repository -y ppa:apt-fast/stable \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends apt-fast \
     && rm -rf /var/lib/apt/lists/*
-
-# add apt-fast
-RUN add-apt-repository -y ppa:apt-fast/stable && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends apt-fast && \
-    rm -rf /var/lib/apt/lists/*
 
 
 # Install system packages in smaller chunks to avoid QEMU issues
@@ -59,10 +56,14 @@ RUN apt-fast update && apt-fast install -y --no-install-recommends \
         git-lfs \
     && rm -rf /var/lib/apt/lists/*
 
-# Install GCC packages - one version per RUN command for better isolation and caching
-RUN apt-fast update && \
-    apt-fast install -y --no-install-recommends gcc-10 g++-10 \
-    && rm -rf /var/lib/apt/lists/*
+# Install GCC packages - one version per RUN command for better isolation and caching.
+# GCC 10 is not available on Ubuntu 26.04, so keep it only on the Ubuntu 22.04 lane.
+RUN UBUNTU_VERSION=$(lsb_release -rs) && \
+    if [ "$UBUNTU_VERSION" = "22.04" ]; then \
+        apt-fast update && \
+        apt-fast install -y --no-install-recommends gcc-10 g++-10 && \
+        rm -rf /var/lib/apt/lists/*; \
+    fi
 
 RUN apt-fast update && \
     apt-fast install -y --no-install-recommends gcc-11 g++-11 \
@@ -72,26 +73,28 @@ RUN apt-fast update && \
     apt-fast install -y --no-install-recommends gcc-12 g++-12 \
     && rm -rf /var/lib/apt/lists/*
 
-# need to add ppa for gcc-13 and gcc-14
-RUN add-apt-repository ppa:ubuntu-toolchain-r/ppa -y && \
-    add-apt-repository ppa:ubuntu-toolchain-r/test -y
-
-
-RUN apt-fast update && \
-    apt-fast install -y --no-install-recommends gcc-13 g++-13 \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install GCC-14 only for Ubuntu 24.04
+# Install gcc-13 (and gcc-14/gcc-15 on 26.04)
+# On Ubuntu 22.04, gcc-13 requires the ubuntu-toolchain-r PPA
+# On Ubuntu 26.04, gcc-13 through gcc-15 are available natively. GCC 16 is not
+# installed because CUDA 13.3 supports GCC host compilers only through GCC 15.
 RUN UBUNTU_VERSION=$(lsb_release -rs) && \
-    if [ "$UBUNTU_VERSION" = "24.04" ]; then \
+    if [ "$UBUNTU_VERSION" = "22.04" ]; then \
+        add-apt-repository ppa:ubuntu-toolchain-r/ppa -y && \
+        add-apt-repository ppa:ubuntu-toolchain-r/test -y && \
         apt-fast update && \
-        apt-fast install -y --no-install-recommends gcc-14 g++-14 \
-        && rm -rf /var/lib/apt/lists/*; \
+        apt-fast install -y --no-install-recommends gcc-13 g++-13 && \
+        add-apt-repository --remove ppa:ubuntu-toolchain-r/ppa && \
+        add-apt-repository --remove ppa:ubuntu-toolchain-r/test && \
+        rm -rf /var/lib/apt/lists/*; \
+    elif [ "$UBUNTU_VERSION" = "26.04" ]; then \
+        apt-fast update && \
+        apt-fast install -y --no-install-recommends \
+            gcc-13 g++-13 gcc-14 g++-14 gcc-15 g++-15 && \
+        rm -rf /var/lib/apt/lists/*; \
+    else \
+        echo "Unsupported Ubuntu version: $UBUNTU_VERSION" >&2; \
+        exit 1; \
     fi
-
-# remove ppa for gcc-13 and gcc-14
-RUN add-apt-repository --remove ppa:ubuntu-toolchain-r/ppa && \
-    add-apt-repository --remove ppa:ubuntu-toolchain-r/test
 
 # Install clang-11 only for Ubuntu 22.04 or lower
 RUN UBUNTU_VERSION=$(lsb_release -rs) && \
@@ -102,25 +105,56 @@ RUN UBUNTU_VERSION=$(lsb_release -rs) && \
         && rm -rf /var/lib/apt/lists/*; \
     fi
 
-# Install development tools
-RUN apt-fast update && \
+# Install development tools. Clang 14 is not available on Ubuntu 26.04; Clang 18
+# is the oldest native release there and is supported by CUDA 13.3.
+RUN UBUNTU_VERSION=$(lsb_release -rs) && \
+    if [ "$UBUNTU_VERSION" = "22.04" ]; then \
+        CLANG_VERSION=14; \
+    elif [ "$UBUNTU_VERSION" = "26.04" ]; then \
+        CLANG_VERSION=18; \
+    else \
+        echo "Unsupported Ubuntu version: $UBUNTU_VERSION" >&2; \
+        exit 1; \
+    fi && \
+    apt-fast update && \
     apt-fast install -y --no-install-recommends \
-        clang-14 libclang-14-dev \
+        "clang-${CLANG_VERSION}" "libclang-${CLANG_VERSION}-dev" \
         ninja-build \
         libgtest-dev \
         libgmock-dev \
-        ccache \
         libssl-dev \
         doxygen \
         graphviz \
         fonts-dejavu \
     && rm -rf /var/lib/apt/lists/*
 
+# Install ccache from upstream static binaries; distro packages are older 4.x
+# releases missing recent nvcc caching fixes
+RUN ARCH=$(uname -m) \
+    && case "$ARCH" in \
+         x86_64) CCACHE_SHA256="$CCACHE_SHA256_X86_64" ;; \
+         aarch64) CCACHE_SHA256="$CCACHE_SHA256_AARCH64" ;; \
+         *) echo "Unsupported architecture: $ARCH" >&2 && exit 1 ;; \
+       esac \
+    && curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
+        "https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-linux-${ARCH}-musl-static.tar.gz" \
+        --output /tmp/ccache.tar.gz \
+    && echo "${CCACHE_SHA256}  /tmp/ccache.tar.gz" | sha256sum -c - \
+    && tar -xzf /tmp/ccache.tar.gz -C /tmp \
+    && install -m 755 "/tmp/ccache-${CCACHE_VERSION}-linux-${ARCH}-musl-static/ccache" /usr/local/bin/ccache \
+    && rm -rf /tmp/ccache.tar.gz "/tmp/ccache-${CCACHE_VERSION}-linux-${ARCH}-musl-static" \
+    && ccache --version
+
 # Build and install zlib 1.3.1 from source to replace vulnerable system version (CVE-2018-25032)
 # Remove any old system zlib artifacts and install new version to /usr/local
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates build-essential \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        curl \
     && rm -rf /var/lib/apt/lists/* \
-    && curl -L https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz -o /tmp/zlib-1.3.1.tar.gz \
+    && curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
+        https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz \
+        --output /tmp/zlib-1.3.1.tar.gz \
     && tar -xzf /tmp/zlib-1.3.1.tar.gz -C /tmp \
     && cd /tmp/zlib-1.3.1 \
     && ./configure --prefix=/usr/local \
@@ -147,7 +181,8 @@ RUN apt-fast update && \
         python3 python3-dev python3-venv \
     && rm -rf /var/lib/apt/lists/*
 
-# add deadsnakes ppa for python versions
+# Add deadsnakes for the non-default Python versions. It provides Python
+# 3.10-3.13 on Ubuntu 26.04; Ubuntu itself provides Python 3.14.
 RUN add-apt-repository ppa:deadsnakes/ppa -y
 
 # Install all specified Python versions with dev and venv packages
@@ -156,7 +191,7 @@ RUN set -e; \
     for pyver in $PYTHON_VERSIONS; do \
         echo "Installing Python $pyver with dev and venv packages" && \
         apt-fast install -y --no-install-recommends \
-            python$pyver python$pyver-dev python$pyver-venv; \
+            "python${pyver}" "python${pyver}-dev" "python${pyver}-venv"; \
     done && \
     rm -rf /var/lib/apt/lists/*
 
@@ -167,28 +202,44 @@ RUN dpkg_arch=$(dpkg --print-architecture) && \
         arm64) cmake_arch="aarch64";; \
         *) echo >&2 "error: unsupported architecture ('${dpkg_arch}')" && exit 1;; \
     esac && \
-    CMAKE_VERSION_SHORT=$(echo ${CMAKE_VERSION} | cut -d. -f1,2) && \
+    CMAKE_VERSION_SHORT=$(echo "${CMAKE_VERSION}" | cut -d. -f1,2) && \
     echo "Downloading CMake for ${cmake_arch}" && \
-    curl --fail -L https://cmake.org/files/v${CMAKE_VERSION_SHORT}/cmake-${CMAKE_VERSION}-linux-${cmake_arch}.tar.gz --output /tmp/cmake-${CMAKE_VERSION}.tar.gz \
-    && tar -xzf /tmp/cmake-${CMAKE_VERSION}.tar.gz -C /tmp/ && cd /tmp/cmake-${CMAKE_VERSION}-linux-${cmake_arch}/ \
-    && cp -r bin/ share/ doc/ /usr/local/ && rm -rf /tmp/cmake-${CMAKE_VERSION}*
+    curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
+        "https://cmake.org/files/v${CMAKE_VERSION_SHORT}/cmake-${CMAKE_VERSION}-linux-${cmake_arch}.tar.gz" \
+        --output "/tmp/cmake-${CMAKE_VERSION}.tar.gz" \
+    && tar -xzf "/tmp/cmake-${CMAKE_VERSION}.tar.gz" -C /tmp/ && cd "/tmp/cmake-${CMAKE_VERSION}-linux-${cmake_arch}/" \
+    && cp -r bin/ share/ doc/ /usr/local/ && rm -rf "/tmp/cmake-${CMAKE_VERSION}"*
 
+# Install dlpack headers and CMake config from source (header-only library)
+RUN git clone --depth 1 --branch v1.3 https://github.com/dmlc/dlpack.git /tmp/dlpack \
+    && cmake -S /tmp/dlpack -B /tmp/dlpack/build -DBUILD_MOCK=OFF -DBUILD_DOCS=OFF \
+    && cmake --install /tmp/dlpack/build --prefix /usr/local \
+    && rm -rf /tmp/dlpack
 
 # Install pip using get-pip.py for all Python versions
 # This is the simplest solution that works across:
-# - Multiple Ubuntu versions (22.04, 24.04) with different restrictions
+# - Multiple Ubuntu versions (22.04, 26.04) with different restrictions
 # - System Python and deadsnakes PPA versions
-# - Python versions with and without distutils (3.9-3.14)
+# - Python versions with and without distutils (3.10-3.14)
 # Alternative approaches (apt, ensurepip) fail due to Debian restrictions and distutils removal in Python 3.12+
 
-# Upgrade system pip first to support --break-system-packages flag
-# using --force-reinstall to replace the debian packages (eg wheel) with the pip packages
+# Upgrade system pip first to support --break-system-packages. Ignore distro-owned
+# packages because Ubuntu 26.04 packages do not always include pip RECORD metadata.
 RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3 - --break-system-packages --force-reinstall --ignore-installed
 
-# install pip packages needed only for the system python
-COPY requirements.sys_python.txt /tmp/requirements.sys_python.txt
-RUN python3 -m pip install --break-system-packages --force-reinstall -r /tmp/requirements.sys_python.txt && \
-    rm -rf /root/.cache/pip /tmp/requirements.sys_python.txt
+# install build/packaging/linting packages for the system python
+COPY requirements.build.sys_python.txt /tmp/requirements.build.sys_python.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python3 -m pip install --break-system-packages --force-reinstall --ignore-installed \
+        -r /tmp/requirements.build.sys_python.txt && \
+    rm -rf /tmp/requirements.build.sys_python.txt
+
+# install documentation packages for the system python
+COPY requirements.docs.txt /tmp/requirements.docs.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python3 -m pip install --break-system-packages --force-reinstall --ignore-installed \
+        -r /tmp/requirements.docs.txt && \
+    rm -rf /tmp/requirements.docs.txt
 
 
 # Install/Update pip for all python versions in one layer
@@ -196,61 +247,174 @@ RUN python3 -m pip install --break-system-packages --force-reinstall -r /tmp/req
 RUN set -e; \
     for pyver in $PYTHON_VERSIONS; do \
         echo "Installing pip for Python $pyver" && \
-        curl -sS https://bootstrap.pypa.io/get-pip.py | python$pyver - --break-system-packages --force-reinstall --ignore-installed; \
+        curl -sS https://bootstrap.pypa.io/get-pip.py | "python${pyver}" - --break-system-packages --force-reinstall --ignore-installed; \
     done
 
 
-# Install python packages (common dependencies, no torch, no numpy)
-COPY requirements.no_torch_no_numpy.txt /tmp/requirements.no_torch_no_numpy.txt
-RUN set -e; \
+# Install build dependencies (pybind11, needed for CMake find_package)
+COPY requirements.build.all_pythons.txt /tmp/requirements.build.all_pythons.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    set -e; \
     for pyver in $PYTHON_VERSIONS; do \
-        python$pyver -m pip install --break-system-packages --ignore-installed -r /tmp/requirements.no_torch_no_numpy.txt; \
+        "python${pyver}" -m pip install --break-system-packages --ignore-installed \
+            -r /tmp/requirements.build.all_pythons.txt; \
+    done
+
+# Install test dependencies (pytest, typing-extensions)
+COPY requirements.tests.common.txt /tmp/requirements.tests.common.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    set -e; \
+    for pyver in $PYTHON_VERSIONS; do \
+        "python${pyver}" -m pip install --break-system-packages --ignore-installed \
+            -r /tmp/requirements.tests.common.txt; \
     done
 
 # Install numpy based on VER_NUMPY_MAJOR
-COPY requirements.numpy${VER_NUMPY_MAJOR}.txt /tmp/requirements.numpy.txt
+COPY requirements.tests.numpy${VER_NUMPY_MAJOR}.txt /tmp/requirements.tests.numpy.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    set -e; \
+    for pyver in $PYTHON_VERSIONS; do \
+        "python${pyver}" -m pip install --break-system-packages --ignore-installed \
+            -r /tmp/requirements.tests.numpy.txt; \
+    done; \
+    rm -rf /tmp/requirements.build.all_pythons.txt /tmp/requirements.tests.common.txt /tmp/requirements.tests.numpy.txt
+
+
+# Install CUDA-version-specific test dependencies (cupy, cuda-python). NumPy 1
+# uses CuPy 13.6 because CuPy 14 requires NumPy 2.
+COPY requirements.tests.${TORCH_CUDA_SUFFIX}.txt /tmp/requirements.tests.cuda.txt
+COPY requirements.tests.cu12.numpy1.txt /tmp/requirements.tests.cuda.cu12.numpy1.txt
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    set -e; \
+    cuda_requirements=/tmp/requirements.tests.cuda.txt; \
+    if [ "$VER_NUMPY_MAJOR" = "1" ]; then \
+        if [ "$TORCH_CUDA_SUFFIX" != "cu12" ]; then \
+            echo "NumPy 1 test images are supported only with CUDA 12" >&2; \
+            exit 1; \
+        fi; \
+        cuda_requirements=/tmp/requirements.tests.cuda.cu12.numpy1.txt; \
+    fi; \
+    for pyver in $PYTHON_VERSIONS; do \
+        "python${pyver}" -m pip install --break-system-packages -r "$cuda_requirements"; \
+    done; \
+    rm -f /tmp/requirements.tests.cuda.txt /tmp/requirements.tests.cuda.cu12.numpy1.txt
+
+# Build and install nvbench C++ library system-wide, then build Python bindings
+# for all Python versions in parallel to avoid redundant git clones and reduce
+# wall-clock time (especially on SBSA/QEMU where each sequential compile is slow).
+# Uses --no-deps to avoid pulling nvidia-cuda-cupti-cu12 (system CUPTI is used).
+# Skipped for numpy1 images (same gate as bench deps).
+RUN set -e; \
+    git clone https://github.com/NVIDIA/nvbench.git /tmp/nvbench && \
+    cd /tmp/nvbench && git checkout "$NVBENCH_COMMIT" && \
+    cmake -S . -B build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr/local \
+        -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+        -DCMAKE_CUDA_HOST_COMPILER=/usr/bin/c++ \
+        -Drapids-cmake-sha="${RAPIDS_CMAKE_SHA}" \
+        -DNVBench_ENABLE_CUPTI=OFF \
+        -DNVBench_ENABLE_TESTING=OFF \
+        -DNVBench_ENABLE_EXAMPLES=OFF && \
+    cmake --build build -j"$(nproc)" --target install && \
+    if [ "$VER_NUMPY_MAJOR" != "1" ]; then \
+        mkdir -p /tmp/nvbench_wheels && \
+        for pyver in $PYTHON_VERSIONS; do \
+            CMAKE_ARGS="-Drapids-cmake-sha=${RAPIDS_CMAKE_SHA}" \
+            CMAKE_BUILD_PARALLEL_LEVEL="$(nproc)" \
+            "python${pyver}" -m pip wheel --no-deps \
+                /tmp/nvbench/python -w /tmp/nvbench_wheels & \
+        done && \
+        wait && \
+        for pyver in $PYTHON_VERSIONS; do \
+            "python${pyver}" -m pip install --break-system-packages --no-deps \
+                --no-index --find-links /tmp/nvbench_wheels pynvbench; \
+        done && \
+        rm -rf /tmp/nvbench_wheels; \
+    fi && \
+    rm -rf /tmp/nvbench
+
+# Install benchmark dependencies from bench/python/requirements files (single source of truth).
+# Skipped for numpy1 images since benchmarks require numpy 2.
+# Torch and numpy are already installed above; pip will report "already satisfied" for those.
+COPY requirements.bench.common.txt requirements.bench.cu12.txt requirements.bench.cu13.txt /tmp/
+
+# Pre-build pycuda wheels in parallel (pycuda is sdist-only on PyPI — no pre-built wheels).
+# Extracting the version from the requirements file keeps this in sync with versions.env.
+RUN if [ "$VER_NUMPY_MAJOR" != "1" ]; then \
+        set -e; \
+        PYCUDA_VER=$(grep "^pycuda==" /tmp/requirements.bench.common.txt | head -1 | cut -d= -f3); \
+        mkdir -p /tmp/pycuda_wheels && \
+        for pyver in $PYTHON_VERSIONS; do \
+            CMAKE_BUILD_PARALLEL_LEVEL="$(nproc)" \
+            "python${pyver}" -m pip wheel "pycuda==${PYCUDA_VER}" \
+                -w /tmp/pycuda_wheels & \
+        done && \
+        wait; \
+    fi
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    if [ "$VER_NUMPY_MAJOR" != "1" ]; then \
+        set -e; \
+        CUDA_MAJOR=$(echo "$VER_CUDA" | cut -d. -f1); \
+        for pyver in $PYTHON_VERSIONS; do \
+            "python${pyver}" -m pip install --break-system-packages --no-cache-dir \
+                --find-links /tmp/pycuda_wheels \
+                -r "/tmp/requirements.bench.cu${CUDA_MAJOR}.txt"; \
+        done; \
+    fi; \
+    rm -rf /tmp/requirements.bench.common.txt /tmp/requirements.bench.cu*.txt /tmp/pycuda_wheels
+
+# Optionally install NVIDIA Nsight profilers (Nsight Compute + Nsight Systems CLI).
+# Gated behind INSTALL_NSIGHT_COMPUTE because nsight-compute is large (~1.5-2.5 GB,
+# the apt package bundles the GUI + section files); only the benchmark-serving image
+# enables it (see docker/build_dockers.sh). Nsight packages are version-pinned to the
+# toolkit (cuda-nsight-{compute,systems}-<major>-<minor>). Some CUDA repositories
+# provide a lightweight nsight-systems-cli package, while CUDA 13.3 on Ubuntu 26.04
+# uses the versioned meta package. The CUDA apt repo is configured by the base image.
+ARG INSTALL_NSIGHT_COMPUTE=0
+RUN if [ "$INSTALL_NSIGHT_COMPUTE" = "1" ]; then \
+        set -e; \
+        CUDA_DASH=$(echo "$VER_CUDA" | cut -d. -f1,2 | tr '.' '-'); \
+        apt-fast update && \
+        if apt-cache show nsight-systems-cli >/dev/null 2>&1; then \
+            NSIGHT_SYSTEMS_PACKAGE=nsight-systems-cli; \
+        else \
+            NSIGHT_SYSTEMS_PACKAGE="cuda-nsight-systems-${CUDA_DASH}"; \
+        fi && \
+        apt-fast install -y --no-install-recommends \
+            "cuda-nsight-compute-${CUDA_DASH}" \
+            "$NSIGHT_SYSTEMS_PACKAGE" && \
+        rm -rf /var/lib/apt/lists/*; \
+        # The packages install under /opt/nvidia/...; make sure ncu/nsys are on PATH.
+        for tool in ncu nsys; do \
+            if ! command -v "$tool" >/dev/null 2>&1; then \
+                bin=$(find /opt/nvidia -type f -name "$tool" -perm -u+x 2>/dev/null | head -1); \
+                [ -n "$bin" ] && ln -sf "$bin" "/usr/local/bin/$tool"; \
+            fi; \
+        done; \
+        ncu --version && nsys --version; \
+    fi
+
+# Verify critical packages are installed and importable for all Python versions
 RUN set -e; \
     for pyver in $PYTHON_VERSIONS; do \
-        python$pyver -m pip install --break-system-packages --ignore-installed -r /tmp/requirements.numpy.txt; \
-    done
-
-RUN rm -rf /root/.cache/pip /tmp/requirements.no_torch_no_numpy.txt /tmp/requirements.numpy.txt
-
-
-# Install torch
-# breaking down per python version for better caching of layers
-
-# Install torch for Python 3.9 if present in PYTHON_VERSIONS
-RUN if echo "$PYTHON_VERSIONS" | grep -q "3.9"; then \
-        python3.9 -m pip install --break-system-packages ${TORCH_ADDITIONAL_INDEX_URL:+--extra-index-url $TORCH_ADDITIONAL_INDEX_URL} torch==$VER_TORCH; \
-    fi
-
-# Install torch for Python 3.10 if present in PYTHON_VERSIONS
-RUN if echo "$PYTHON_VERSIONS" | grep -q "3.10"; then \
-        python3.10 -m pip install --break-system-packages ${TORCH_ADDITIONAL_INDEX_URL:+--extra-index-url $TORCH_ADDITIONAL_INDEX_URL} torch==$VER_TORCH; \
-    fi
-
-# Install torch for Python 3.11 if present in PYTHON_VERSIONS
-RUN if echo "$PYTHON_VERSIONS" | grep -q "3.11"; then \
-        python3.11 -m pip install --break-system-packages ${TORCH_ADDITIONAL_INDEX_URL:+--extra-index-url $TORCH_ADDITIONAL_INDEX_URL} torch==$VER_TORCH; \
-    fi
-
-# Install torch for Python 3.12 if present in PYTHON_VERSIONS
-RUN if echo "$PYTHON_VERSIONS" | grep -q "3.12"; then \
-        python3.12 -m pip install --break-system-packages ${TORCH_ADDITIONAL_INDEX_URL:+--extra-index-url $TORCH_ADDITIONAL_INDEX_URL} torch==$VER_TORCH; \
-    fi
-
-# Install torch for Python 3.13 if present in PYTHON_VERSIONS
-RUN if echo "$PYTHON_VERSIONS" | grep -q "3.13"; then \
-        python3.13 -m pip install --break-system-packages ${TORCH_ADDITIONAL_INDEX_URL:+--extra-index-url $TORCH_ADDITIONAL_INDEX_URL} torch==$VER_TORCH; \
-    fi
-
-# Install torch for Python 3.14 if present in PYTHON_VERSIONS
-RUN if echo "$PYTHON_VERSIONS" | grep -q "3.14"; then \
-        python3.14 -m pip install --break-system-packages ${TORCH_ADDITIONAL_INDEX_URL:+--extra-index-url $TORCH_ADDITIONAL_INDEX_URL} torch==$VER_TORCH; \
-    fi
-
-# Clean up pip cache
-RUN rm -rf /root/.cache/pip
+        echo "Verifying Python $pyver..."; \
+        "python${pyver}" -c "import pybind11; print(f'  pybind11 {pybind11.__version__}')" || \
+            { echo "VERIFY FAILED: pybind11 not importable for Python $pyver" && exit 1; }; \
+        "python${pyver}" -c "import pytest; print(f'  pytest {pytest.__version__}')" || \
+            { echo "VERIFY FAILED: pytest not importable for Python $pyver" && exit 1; }; \
+        "python${pyver}" -c \
+            "import numpy; \
+            expected='$VER_NUMPY_MAJOR'; \
+            actual=numpy.__version__.split('.', 1)[0]; \
+            assert actual == expected, f'expected NumPy {expected}.x, got {numpy.__version__}'; \
+            print(f'  numpy {numpy.__version__}')" || \
+            { echo "VERIFY FAILED: expected NumPy $VER_NUMPY_MAJOR for Python $pyver" && exit 1; }; \
+        "python${pyver}" -c "import cupy; print(f'  cupy {cupy.__version__}')" || \
+            { echo "VERIFY FAILED: cupy not importable for Python $pyver" && exit 1; }; \
+    done; \
+    echo "All Python versions verified successfully"
 
 WORKDIR /workspace

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "ConvUtils.hpp"
 #include "Definitions.hpp"
+#include "PlanarParityUtils.hpp"
 
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpConv2D.hpp>
@@ -31,18 +32,57 @@
 namespace cuda = nvcv::cuda;
 namespace test = nvcv::test;
 
+static int ScaledSize(int size, double scale)
+{
+    return static_cast<int>(size * scale);
+}
+
+static nvcv::ImageBatchVarShape MakeConv2DKernelBatch(const std::vector<nvcv::Size2D> &kernelSizes)
+{
+    const auto               numImages = static_cast<int>(kernelSizes.size());
+    std::vector<nvcv::Image> kernelImages;
+    kernelImages.reserve(numImages);
+
+    for (int i = 0; i < numImages; ++i)
+    {
+        const nvcv::Size2D kernelSize = kernelSizes[i];
+        kernelImages.emplace_back(kernelSize, nvcv::FMT_F32);
+
+        std::vector<float> kernel(static_cast<size_t>(kernelSize.w) * kernelSize.h);
+        for (size_t k = 0; k < kernel.size(); ++k)
+        {
+            const int coeff = static_cast<int>((k + static_cast<size_t>(i)) % 7) - 3;
+            kernel[k]       = static_cast<float>(coeff) * 0.03125f;
+        }
+
+        auto data = kernelImages.back().exportData<nvcv::ImageDataStridedCuda>();
+        EXPECT_NE(data, nvcv::NullOpt);
+        if (data)
+        {
+            const size_t rowBytes = static_cast<size_t>(kernelSize.w) * sizeof(float);
+            EXPECT_EQ(cudaSuccess, cudaMemcpy2D(data->plane(0).basePtr, data->plane(0).rowStride, kernel.data(),
+                                                rowBytes, rowBytes, kernelSize.h, cudaMemcpyHostToDevice));
+        }
+    }
+
+    nvcv::ImageBatchVarShape batchKernel(numImages);
+    batchKernel.pushBack(kernelImages.begin(), kernelImages.end());
+    return batchKernel;
+}
+
 // clang-format off
 
-NVCV_TEST_SUITE_P(OpConv2D, test::ValueList<int, int, int, int, int, int, int, NVCVBorderType>
+NVCV_TEST_SUITE_P(OpConv2D, test::ValueList<int, int, int, int, int, int, int, NVCVBorderType, bool>
 {
-    // width, height, numImages, kernelWidth, kernelHeight, kernelAnchorX, kernelAnchorY,           borderMode
-    {     32,     33,         1,           3,            3,            -1,            -1, NVCV_BORDER_CONSTANT},
-    {    123,    144,         2,           5,            5,            -1,            -1, NVCV_BORDER_CONSTANT},
-    {     66,     99,         3,           7,            7,             5,             5, NVCV_BORDER_CONSTANT},
-    {     13,     12,        13,           5,            5,             4,             4, NVCV_BORDER_WRAP},
-    {      4,      3,         4,           3,            3,             1,             1, NVCV_BORDER_REPLICATE},
-    {     44,     55,         5,           3,            3,            -1,            -1, NVCV_BORDER_REFLECT},
-    {    244,    155,         6,           5,            5,            -1,            -1, NVCV_BORDER_REFLECT101}
+    // width, height, numImages, kernelWidth, kernelHeight, anchorX, anchorY, borderMode, mixedKernelSizes
+    {     32,     33,         1,           3,            3,      -1,      -1,   NVCV_BORDER_CONSTANT, false},
+    {    123,    144,         2,           5,            5,      -1,      -1,   NVCV_BORDER_CONSTANT, false},
+    {     66,     99,         3,           7,            7,       5,       5,   NVCV_BORDER_CONSTANT, false},
+    {     13,     12,        13,           5,            5,       4,       4,       NVCV_BORDER_WRAP, false},
+    {      4,      3,         4,           3,            3,       1,       1,  NVCV_BORDER_REPLICATE, false},
+    {     44,     55,         5,           3,            3,      -1,      -1,    NVCV_BORDER_REFLECT, false},
+    {    244,    155,         6,           5,            5,      -1,      -1, NVCV_BORDER_REFLECT101, false},
+    {     64,     48,         2,           7,            7,      -1,      -1,   NVCV_BORDER_CONSTANT, true}
 });
 
 // clang-format on
@@ -52,21 +92,25 @@ TEST_P(OpConv2D, varshape_correct_output)
     cudaStream_t stream;
     EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
-    int width         = GetParamValue<0>();
-    int height        = GetParamValue<1>();
-    int numImages     = GetParamValue<2>();
-    int kernelWidth   = GetParamValue<3>();
-    int kernelHeight  = GetParamValue<4>();
-    int kernelAnchorX = GetParamValue<5>();
-    int kernelAnchorY = GetParamValue<6>();
+    int  width            = GetParamValue<0>();
+    int  height           = GetParamValue<1>();
+    int  numImages        = GetParamValue<2>();
+    int  kernelWidth      = GetParamValue<3>();
+    int  kernelHeight     = GetParamValue<4>();
+    int  kernelAnchorX    = GetParamValue<5>();
+    int  kernelAnchorY    = GetParamValue<6>();
+    bool mixedKernelSizes = GetParamValue<8>();
 
     NVCVBorderType borderMode = GetParamValue<7>();
 
     nvcv::ImageFormat imageFormat  = nvcv::FMT_RGBA8;
     nvcv::ImageFormat kernelFormat = nvcv::FMT_F32;
 
-    nvcv::Size2D kernelSize{kernelWidth, kernelHeight};
-    int2         kernelAnchor{kernelAnchorX, kernelAnchorY};
+    nvcv::Size2D              kernelSize{kernelWidth, kernelHeight};
+    std::vector<nvcv::Size2D> kernelSizes(numImages, kernelSize);
+    if (mixedKernelSizes)
+        kernelSizes.back() = nvcv::Size2D{3, 3};
+    int2 kernelAnchor{kernelAnchorX, kernelAnchorY};
 
     float4 borderValue = cuda::SetAll<float4>(0);
 
@@ -74,8 +118,8 @@ TEST_P(OpConv2D, varshape_correct_output)
 
     std::default_random_engine rng;
 
-    std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
-    std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
+    std::uniform_int_distribution udistWidth(ScaledSize(width, 0.8), ScaledSize(width, 1.1));
+    std::uniform_int_distribution udistHeight(ScaledSize(height, 0.8), ScaledSize(height, 1.1));
 
     std::vector<nvcv::Image> imgSrc;
 
@@ -92,7 +136,7 @@ TEST_P(OpConv2D, varshape_correct_output)
         std::uniform_int_distribution<uint8_t> udist(0, 255);
 
         srcVec[i].resize(imgSrc[i].size().h * srcRowStride);
-        std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return udist(rng); });
+        std::ranges::generate(srcVec[i], [&udist, &rng]() { return udist(rng); });
 
         auto imgData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_NE(imgData, nvcv::NullOpt);
@@ -123,7 +167,7 @@ TEST_P(OpConv2D, varshape_correct_output)
 
     for (int i = 0; i < numImages; ++i)
     {
-        kernel.emplace_back(kernelSize, kernelFormat);
+        kernel.emplace_back(kernelSizes[i], kernelFormat);
 
         int rowStride = kernel[i].size().w * sizeof(float);
 
@@ -131,7 +175,7 @@ TEST_P(OpConv2D, varshape_correct_output)
 
         kernelVec[i].resize(kernel[i].size().h * kernel[i].size().w);
 
-        std::generate(kernelVec[i].begin(), kernelVec[i].end(), [&]() { return udist(rng); });
+        std::ranges::generate(kernelVec[i], [&udist, &rng]() { return udist(rng); });
 
         auto data = kernel[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_NE(data, nvcv::NullOpt);
@@ -193,23 +237,58 @@ TEST_P(OpConv2D, varshape_correct_output)
         std::vector<uint8_t> goldVec(shape.y * pitches.y);
 
         // Generate gold result
-        test::Convolve(goldVec, pitches, srcVec[i], pitches, shape, imageFormat, kernelVec[i], kernelSize, kernelAnchor,
-                       borderMode, borderValue);
+        int2 imageKernelAnchor = kernelAnchor;
+        test::Convolve(goldVec, pitches, srcVec[i], pitches, shape, imageFormat, kernelVec[i], kernelSizes[i],
+                       imageKernelAnchor, borderMode, borderValue);
 
         EXPECT_EQ(testVec, goldVec);
     }
 }
 
+static void RunConv2DPlanarParityVarShapeCase(nvcv::ImageFormat planarFmt, nvcv::ImageFormat interleavedFmt, int width,
+                                              int height, nvcv::Size2D kernelSize, int2 kernelAnchor,
+                                              NVCVBorderType borderMode, int numImages, bool mixedKernelSizes)
+{
+    std::vector<nvcv::Size2D> kernelSizes(numImages, kernelSize);
+    if (mixedKernelSizes)
+        kernelSizes.back() = nvcv::Size2D{3, 3};
+    auto kernelBatch = MakeConv2DKernelBatch(kernelSizes);
+    auto kernelAnchorTensor
+        = test::planar::MakePerImageTensor(numImages, nvcv::TYPE_2S32, int2{kernelAnchor.x, kernelAnchor.y});
+
+    cvcuda::Conv2D conv2dOp;
+
+    test::planar::RunVarShapeParity(
+        planarFmt, interleavedFmt, width, height, width, height, numImages,
+        [&conv2dOp, &kernelBatch, &kernelAnchorTensor, borderMode](
+            cudaStream_t stream, const nvcv::ImageBatchVarShape &src, const nvcv::ImageBatchVarShape &dst,
+            nvcv::ImageFormat)
+        { EXPECT_NO_THROW(conv2dOp(stream, src, dst, kernelBatch, kernelAnchorTensor, borderMode)); });
+}
+
+// Parameters: width, height, kernelWidth, kernelHeight, anchorX, anchorY, borderMode, numImages,
+//             planarFmt, interleavedFmt, mixedKernelSizes
 // clang-format off
-NVCV_TEST_SUITE_P(OpConv2D_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat, NVCVBorderType>{
-    {nvcv::FMT_RGB8, nvcv::FMT_RGB8p, NVCV_BORDER_CONSTANT},
-    {nvcv::FMT_RGB8p, nvcv::FMT_RGB8p, NVCV_BORDER_CONSTANT},
-    {nvcv::FMT_RGBf16, nvcv::FMT_RGBf16, NVCV_BORDER_CONSTANT},
-#ifndef ENABLE_SANITIZER
-    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, static_cast<NVCVBorderType>(255)},
-#endif
+NVCV_TEST_SUITE_P(OpConv2DPlanar,
+                  test::ValueList<int, int, int, int, int, int, NVCVBorderType, int, nvcv::ImageFormat,
+                                  nvcv::ImageFormat, bool>{
+    { 32, 24, 3, 3, -1, -1,   NVCV_BORDER_CONSTANT, 2,  nvcv::FMT_RGB8p,    nvcv::FMT_RGB8, false},
+    { 29, 27, 5, 3,  2,  1,  NVCV_BORDER_REPLICATE, 1, nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8, false},
+    { 17, 15, 3, 5, -1, -1, NVCV_BORDER_REFLECT101, 2, nvcv::FMT_RGBf32p, nvcv::FMT_RGBf32, false},
+    { 65, 37, 7, 7, -1, -1,   NVCV_BORDER_CONSTANT, 2,  nvcv::FMT_RGB8p,    nvcv::FMT_RGB8, true},
 });
+
 // clang-format on
+
+TEST_P(OpConv2DPlanar, varshape_matches_interleaved)
+{
+    RunConv2DPlanarParityVarShapeCase(GetParamValue<8>(), GetParamValue<9>(), GetParamValue<0>(), GetParamValue<1>(),
+                                      nvcv::Size2D{GetParamValue<2>(), GetParamValue<3>()},
+                                      int2{GetParamValue<4>(), GetParamValue<5>()}, GetParamValue<6>(),
+                                      GetParamValue<7>(), GetParamValue<10>());
+}
+
+NVCV_TEST_SUITE_P(OpConv2D_Negative, test::PlanarConvolutionNegativeParams());
 
 TEST_P(OpConv2D_Negative, varshape_op)
 {
@@ -234,8 +313,8 @@ TEST_P(OpConv2D_Negative, varshape_op)
 
     std::default_random_engine rng;
 
-    std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
-    std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
+    std::uniform_int_distribution udistWidth(ScaledSize(width, 0.8), ScaledSize(width, 1.1));
+    std::uniform_int_distribution udistHeight(ScaledSize(height, 0.8), ScaledSize(height, 1.1));
 
     std::vector<nvcv::Image> imgSrc;
     std::vector<nvcv::Image> imgDst;
@@ -271,7 +350,8 @@ TEST_P(OpConv2D_Negative, varshape_op)
     cvcuda::Conv2D conv2dOp;
     EXPECT_EQ(
         NVCV_ERROR_INVALID_ARGUMENT,
-        nvcv::ProtectCall([&] { conv2dOp(stream, batchSrc, batchDst, batchKernel, kernelAnchorTensor, borderMode); }));
+        nvcv::ProtectCall([&conv2dOp, &stream, &batchSrc, &batchDst, &batchKernel, &kernelAnchorTensor, &borderMode]
+                          { conv2dOp(stream, batchSrc, batchDst, batchKernel, kernelAnchorTensor, borderMode); }));
 
     EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
@@ -289,11 +369,8 @@ TEST(OpConv2D_Negative, varshape_hasDifferentFormat)
         {         fmt, nvcv::FMT_U8}
     };
 
-    for (auto testCase : testSet)
+    for (const auto &[inputFmtExtra, outputFmtExtra] : testSet)
     {
-        nvcv::ImageFormat inputFmtExtra  = std::get<0>(testCase);
-        nvcv::ImageFormat outputFmtExtra = std::get<1>(testCase);
-
         int width        = 32;
         int height       = 32;
         int numImages    = 2;
@@ -310,8 +387,8 @@ TEST(OpConv2D_Negative, varshape_hasDifferentFormat)
 
         std::default_random_engine rng;
 
-        std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
-        std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
+        std::uniform_int_distribution udistWidth(ScaledSize(width, 0.8), ScaledSize(width, 1.1));
+        std::uniform_int_distribution udistHeight(ScaledSize(height, 0.8), ScaledSize(height, 1.1));
 
         std::vector<nvcv::Image> imgSrc;
         std::vector<nvcv::Image> imgDst;
@@ -347,9 +424,10 @@ TEST(OpConv2D_Negative, varshape_hasDifferentFormat)
         // Generate test result
 
         cvcuda::Conv2D conv2dOp;
-        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-                  nvcv::ProtectCall(
-                      [&] { conv2dOp(stream, batchSrc, batchDst, batchKernel, kernelAnchorTensor, borderMode); }));
+        EXPECT_EQ(
+            NVCV_ERROR_INVALID_ARGUMENT,
+            nvcv::ProtectCall([&conv2dOp, &stream, &batchSrc, &batchDst, &batchKernel, &kernelAnchorTensor, &borderMode]
+                              { conv2dOp(stream, batchSrc, batchDst, batchKernel, kernelAnchorTensor, borderMode); }));
 
         EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     }

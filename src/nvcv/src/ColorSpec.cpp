@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,7 +37,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvMakeColorSpec,
                  NVCVChromaLocation locVert))
 {
     return priv::ProtectCall(
-        [&]
+        [&outColorSpec, &cspace, &encoding, &xferfunc, &range, &locHoriz, &locVert]
         {
             if (outColorSpec == nullptr)
             {
@@ -52,7 +52,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvMakeColorSpec,
                 {locHoriz, locVert}
             };
 
-            *outColorSpec = pcspec;
+            *outColorSpec = static_cast<NVCVColorSpec>(pcspec);
         });
 }
 
@@ -60,7 +60,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvMakeChromaSubsampling,
                 (NVCVChromaSubsampling * outCSS, int samplesHoriz, int samplesVert))
 {
     return priv::ProtectCall(
-        [&]
+        [&outCSS, &samplesHoriz, &samplesVert]
         {
             if (outCSS == nullptr)
             {
@@ -76,7 +76,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvChromaSubsamplingGetNumSamples,
                 (NVCVChromaSubsampling css, int32_t *outSamplesHoriz, int32_t *outSamplesVert))
 {
     return priv::ProtectCall(
-        [&]
+        [&outSamplesHoriz, &outSamplesVert, &css]
         {
             if (outSamplesHoriz == nullptr && outSamplesVert == nullptr)
             {
@@ -85,15 +85,15 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvChromaSubsamplingGetNumSamples,
                     "Pointer to output number of horizontal and horizontal samples cannot both be NULL");
             }
 
-            std::pair<int, int> nsamp = priv::GetChromaSamples(css);
+            auto [samplesHoriz, samplesVert] = priv::GetChromaSamples(css);
 
             if (outSamplesHoriz != nullptr)
             {
-                *outSamplesHoriz = nsamp.first;
+                *outSamplesHoriz = samplesHoriz;
             }
             if (outSamplesVert != nullptr)
             {
-                *outSamplesVert = nsamp.second;
+                *outSamplesVert = samplesVert;
             }
         });
 }
@@ -101,7 +101,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvChromaSubsamplingGetNumSamples,
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvColorSpecSetRange, (NVCVColorSpec * colorSpec, NVCVColorRange range))
 {
     return priv::ProtectCall(
-        [&]
+        [&colorSpec, &range]
         {
             if (colorSpec == nullptr)
             {
@@ -109,14 +109,14 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvColorSpecSetRange, (NVCVColorSpec * colorS
             }
 
             priv::ColorSpec pcspec{*colorSpec};
-            *colorSpec = pcspec.colorRange(range);
+            *colorSpec = static_cast<NVCVColorSpec>(pcspec.colorRange(range));
         });
 }
 
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvColorSpecGetRange, (NVCVColorSpec colorSpec, NVCVColorRange *outColorRange))
 {
     return priv::ProtectCall(
-        [&]
+        [&outColorRange, &colorSpec]
         {
             if (outColorRange == nullptr)
             {
@@ -131,7 +131,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvColorSpecGetRange, (NVCVColorSpec colorSpe
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvColorSpecSetColorSpace, (NVCVColorSpec * colorSpec, NVCVColorSpace cspace))
 {
     return priv::ProtectCall(
-        [&]
+        [&colorSpec, &cspace]
         {
             if (colorSpec == nullptr)
             {
@@ -139,14 +139,14 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvColorSpecSetColorSpace, (NVCVColorSpec * c
             }
 
             priv::ColorSpec pcspec{*colorSpec};
-            *colorSpec = pcspec.colorSpace(cspace);
+            *colorSpec = static_cast<NVCVColorSpec>(pcspec.colorSpace(cspace));
         });
 }
 
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvColorSpecGetColorSpace, (NVCVColorSpec colorSpec, NVCVColorSpace *outColorSpace))
 {
     return priv::ProtectCall(
-        [&]
+        [&outColorSpace, &colorSpec]
         {
             if (outColorSpace == nullptr)
             {
@@ -162,7 +162,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvColorSpecGetYCbCrEncoding,
                 (NVCVColorSpec colorSpec, NVCVYCbCrEncoding *outEncoding))
 {
     return priv::ProtectCall(
-        [&]
+        [&outEncoding, &colorSpec]
         {
             if (outEncoding == nullptr)
             {
@@ -178,7 +178,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvColorSpecSetYCbCrEncoding,
                 (NVCVColorSpec * colorSpec, NVCVYCbCrEncoding encoding))
 {
     return priv::ProtectCall(
-        [&]
+        [&colorSpec, &encoding]
         {
             if (colorSpec == nullptr)
             {
@@ -186,7 +186,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvColorSpecSetYCbCrEncoding,
             }
 
             priv::ColorSpec pcspec{*colorSpec};
-            *colorSpec = pcspec.YCbCrEncoding(encoding);
+            *colorSpec = static_cast<NVCVColorSpec>(pcspec.YCbCrEncoding(encoding));
         });
 }
 
@@ -194,7 +194,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvColorSpecSetColorTransferFunction,
                 (NVCVColorSpec * colorSpec, NVCVColorTransferFunction xferFunc))
 {
     return priv::ProtectCall(
-        [&]
+        [&colorSpec, &xferFunc]
         {
             if (colorSpec == nullptr)
             {
@@ -202,7 +202,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvColorSpecSetColorTransferFunction,
             }
 
             priv::ColorSpec pcspec{*colorSpec};
-            *colorSpec = pcspec.xferFunc(xferFunc);
+            *colorSpec = static_cast<NVCVColorSpec>(pcspec.xferFunc(xferFunc));
         });
 }
 
@@ -210,7 +210,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvColorSpecGetColorTransferFunction,
                 (NVCVColorSpec colorSpec, NVCVColorTransferFunction *outXferFunc))
 {
     return priv::ProtectCall(
-        [&]
+        [&outXferFunc, &colorSpec]
         {
             if (outXferFunc == nullptr)
             {
@@ -227,7 +227,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvColorSpecGetChromaLoc,
                 (NVCVColorSpec colorSpec, NVCVChromaLocation *outLocHoriz, NVCVChromaLocation *outLocVert))
 {
     return priv::ProtectCall(
-        [&]
+        [&outLocHoriz, &outLocVert, &colorSpec]
         {
             if (outLocHoriz == nullptr && outLocVert == nullptr)
             {
@@ -254,7 +254,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvColorSpecSetChromaLoc,
                 (NVCVColorSpec * colorSpec, NVCVChromaLocation locHoriz, NVCVChromaLocation locVert))
 {
     return priv::ProtectCall(
-        [&]
+        [&colorSpec, &locHoriz, &locVert]
         {
             if (colorSpec == nullptr)
             {
@@ -262,7 +262,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvColorSpecSetChromaLoc,
             }
 
             priv::ColorSpec pcspec{*colorSpec};
-            *colorSpec = pcspec.chromaLoc({locHoriz, locVert});
+            *colorSpec = static_cast<NVCVColorSpec>(pcspec.chromaLoc({locHoriz, locVert}));
         });
 }
 
@@ -270,8 +270,8 @@ NVCV_DEFINE_API(0, 0, const char *, nvcvColorSpecGetName, (NVCVColorSpec cspec))
 {
     priv::CoreTLS &tls = priv::GetCoreTLS();
 
-    char         *buffer  = tls.bufColorSpecName;
-    constexpr int bufSize = sizeof(tls.bufColorSpecName);
+    char *buffer  = tls.bufColorSpecName.data();
+    auto  bufSize = static_cast<int>(tls.bufColorSpecName.size());
 
     try
     {
@@ -303,7 +303,7 @@ NVCV_DEFINE_API(0, 0, const char *, nvcvColorSpecGetName, (NVCVColorSpec cspec))
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvColorModelNeedsColorspec, (NVCVColorModel cmodel, int8_t *outBool))
 {
     return priv::ProtectCall(
-        [&]
+        [&outBool, &cmodel]
         {
             if (outBool == nullptr)
             {

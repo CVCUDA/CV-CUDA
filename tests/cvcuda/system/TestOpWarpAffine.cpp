@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,7 @@
  */
 
 #include "Definitions.hpp"
+#include "PlanarParityUtils.hpp"
 
 #include <common/BorderUtils.hpp>
 #include <common/ValueTests.hpp>
@@ -26,6 +27,7 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
 
+#include <array>
 #include <cmath>
 #include <random>
 
@@ -35,6 +37,12 @@ using namespace nvcv::cuda;
 using namespace test;
 
 //#define DBG 1
+
+template<typename T>
+static float ToFloat(T value)
+{
+    return static_cast<float>(value);
+}
 
 template<typename T>
 static T getPixel(const T *srcPtr, const int y, const int x, int k, int width, int height, int srcStride,
@@ -93,13 +101,110 @@ inline float calcBicubicCoeff(float x_)
 static void invertAffineTransform(const NVCVAffineTransform xform, NVCVAffineTransform inverseXform)
 {
     float den       = xform[0] * xform[4] - xform[1] * xform[3];
-    den             = std::abs(den) > 1e-5 ? 1. / den : .0;
-    inverseXform[0] = (float)xform[4] * den;
-    inverseXform[1] = (float)-xform[1] * den;
-    inverseXform[2] = (float)(xform[1] * xform[5] - xform[4] * xform[2]) * den;
-    inverseXform[3] = (float)-xform[3] * den;
-    inverseXform[4] = (float)xform[0] * den;
-    inverseXform[5] = (float)(xform[3] * xform[2] - xform[0] * xform[5]) * den;
+    den             = std::abs(den) > 1e-5f ? 1.0f / den : 0.0f;
+    inverseXform[0] = xform[4] * den;
+    inverseXform[1] = -xform[1] * den;
+    inverseXform[2] = (xform[1] * xform[5] - xform[4] * xform[2]) * den;
+    inverseXform[3] = -xform[3] * den;
+    inverseXform[4] = xform[0] * den;
+    inverseXform[5] = (xform[3] * xform[2] - xform[0] * xform[5]) * den;
+}
+
+template<typename T>
+inline T clampU8(float value)
+{
+    value = std::rint(value);
+    if (value < 0.0f)
+    {
+        return 0;
+    }
+    if (value > 255.0f)
+    {
+        return 255;
+    }
+    return static_cast<T>(value);
+}
+
+template<typename T>
+static void StoreLinearPixel(T *dstPtr, int dstBase, const T *srcPtr, float src_x, float src_y, int srcWidth,
+                             int srcHeight, int srcStride, int elementsPerPixel, NVCVBorderType borderMode,
+                             const float4 borderVal)
+{
+    const auto x1 = static_cast<int>(std::floor(src_x));
+    const auto y1 = static_cast<int>(std::floor(src_y));
+
+    const int x2 = x1 + 1;
+    const int y2 = y1 + 1;
+
+    for (int k = 0; k < elementsPerPixel; k++)
+    {
+        float out = 0;
+
+        T src_reg
+            = getPixel<T>(srcPtr, y1, x1, k, srcWidth, srcHeight, srcStride, elementsPerPixel, borderMode, borderVal);
+        out += ToFloat(src_reg) * ((ToFloat(x2) - src_x) * (ToFloat(y2) - src_y));
+
+        src_reg
+            = getPixel<T>(srcPtr, y1, x2, k, srcWidth, srcHeight, srcStride, elementsPerPixel, borderMode, borderVal);
+        out = out + ToFloat(src_reg) * ((src_x - ToFloat(x1)) * (ToFloat(y2) - src_y));
+
+        src_reg
+            = getPixel<T>(srcPtr, y2, x1, k, srcWidth, srcHeight, srcStride, elementsPerPixel, borderMode, borderVal);
+        out = out + ToFloat(src_reg) * ((ToFloat(x2) - src_x) * (src_y - ToFloat(y1)));
+
+        src_reg
+            = getPixel<T>(srcPtr, y2, x2, k, srcWidth, srcHeight, srcStride, elementsPerPixel, borderMode, borderVal);
+        out = out + ToFloat(src_reg) * ((src_x - ToFloat(x1)) * (src_y - ToFloat(y1)));
+
+        dstPtr[dstBase + k] = clampU8<T>(out);
+    }
+}
+
+template<typename T>
+static void StoreNearestPixel(T *dstPtr, int dstBase, const T *srcPtr, float src_x, float src_y, int srcWidth,
+                              int srcHeight, int srcStride, int elementsPerPixel, NVCVBorderType borderMode,
+                              const float4 borderVal)
+{
+    const auto x1 = static_cast<int>(std::floor(src_x + .5f));
+    const auto y1 = static_cast<int>(std::floor(src_y + .5f));
+
+    for (int k = 0; k < elementsPerPixel; k++)
+    {
+        dstPtr[dstBase + k]
+            = getPixel<T>(srcPtr, y1, x1, k, srcWidth, srcHeight, srcStride, elementsPerPixel, borderMode, borderVal);
+    }
+}
+
+template<typename T>
+static void StoreCubicPixel(T *dstPtr, int dstBase, const T *srcPtr, float src_x, float src_y, int srcWidth,
+                            int srcHeight, int srcStride, int elementsPerPixel, NVCVBorderType borderMode,
+                            const float4 borderVal)
+{
+    const auto xmin = static_cast<int>(std::ceil(src_x - 2.0f));
+    const auto xmax = static_cast<int>(std::floor(src_x + 2.0f));
+
+    const auto ymin = static_cast<int>(std::ceil(src_y - 2.0f));
+    const auto ymax = static_cast<int>(std::floor(src_y + 2.0f));
+
+    for (int k = 0; k < elementsPerPixel; k++)
+    {
+        float sum  = 0;
+        float wsum = 0;
+
+        for (int cy = ymin; cy <= ymax; cy += 1)
+        {
+            for (int cx = xmin; cx <= xmax; cx += 1)
+            {
+                const float w = calcBicubicCoeff(src_x - ToFloat(cx)) * calcBicubicCoeff(src_y - ToFloat(cy));
+                T src_reg = getPixel<T>(srcPtr, cy, cx, k, srcWidth, srcHeight, srcStride, elementsPerPixel, borderMode,
+                                        borderVal);
+                sum += w * ToFloat(src_reg);
+                wsum += w;
+            }
+        }
+
+        dstPtr[dstBase + k] = clampU8<T>(wsum == 0.0f ? 0.0f : sum / wsum);
+    }
 }
 
 template<typename T>
@@ -138,81 +243,23 @@ static void WarpAffineGold(std::vector<uint8_t> &hDst, int dstStride, nvcv::Size
     {
         for (int dst_x = 0; dst_x < dstSize.w; dst_x++)
         {
-            float src_x = (float)(dst_x * xform1[0] + dst_y * xform1[1] + xform1[2]);
-            float src_y = (float)(dst_x * xform1[3] + dst_y * xform1[4] + xform1[5]);
+            auto src_x = ToFloat(dst_x) * xform1[0] + ToFloat(dst_y) * xform1[1] + xform1[2];
+            auto src_y = ToFloat(dst_x) * xform1[3] + ToFloat(dst_y) * xform1[4] + xform1[5];
 
             if (interpolation == NVCV_INTERP_LINEAR)
             {
-                const int x1 = std::floor(src_x);
-                const int y1 = std::floor(src_y);
-
-                const int x2 = x1 + 1;
-                const int y2 = y1 + 1;
-
-                for (int k = 0; k < elementsPerPixel; k++)
-                {
-                    float out = 0;
-
-                    T src_reg = getPixel<T>(srcPtr, y1, x1, k, srcWidth, srcHeight, srcStride, elementsPerPixel,
-                                            borderMode, borderVal);
-                    out += src_reg * ((x2 - src_x) * (y2 - src_y));
-
-                    src_reg = getPixel<T>(srcPtr, y1, x2, k, srcWidth, srcHeight, srcStride, elementsPerPixel,
-                                          borderMode, borderVal);
-                    out     = out + src_reg * ((src_x - x1) * (y2 - src_y));
-
-                    src_reg = getPixel<T>(srcPtr, y2, x1, k, srcWidth, srcHeight, srcStride, elementsPerPixel,
-                                          borderMode, borderVal);
-                    out     = out + src_reg * ((x2 - src_x) * (src_y - y1));
-
-                    src_reg = getPixel<T>(srcPtr, y2, x2, k, srcWidth, srcHeight, srcStride, elementsPerPixel,
-                                          borderMode, borderVal);
-                    out     = out + src_reg * ((src_x - x1) * (src_y - y1));
-
-                    out                                                      = std::rint(out);
-                    dstPtr[dst_y * dstStride + dst_x * elementsPerPixel + k] = out < 0 ? 0 : (out > 255 ? 255 : out);
-                }
+                StoreLinearPixel(dstPtr, dst_y * dstStride + dst_x * elementsPerPixel, srcPtr, src_x, src_y, srcWidth,
+                                 srcHeight, srcStride, elementsPerPixel, borderMode, borderVal);
             }
             else if (interpolation == NVCV_INTERP_NEAREST)
             {
-                const int x1 = std::floor(src_x + .5f);
-                const int y1 = std::floor(src_y + .5f);
-                for (int k = 0; k < elementsPerPixel; k++)
-                {
-                    T src_reg = getPixel<T>(srcPtr, y1, x1, k, srcWidth, srcHeight, srcStride, elementsPerPixel,
-                                            borderMode, borderVal);
-                    dstPtr[dst_y * dstStride + dst_x * elementsPerPixel + k] = src_reg;
-                }
+                StoreNearestPixel(dstPtr, dst_y * dstStride + dst_x * elementsPerPixel, srcPtr, src_x, src_y, srcWidth,
+                                  srcHeight, srcStride, elementsPerPixel, borderMode, borderVal);
             }
             else if (interpolation == NVCV_INTERP_CUBIC)
             {
-                const int xmin = std::ceil(src_x - 2.0f);
-                const int xmax = std::floor(src_x + 2.0f);
-
-                const int ymin = std::ceil(src_y - 2.0f);
-                const int ymax = std::floor(src_y + 2.0f);
-
-                for (int k = 0; k < elementsPerPixel; k++)
-                {
-                    float sum  = 0;
-                    float wsum = 0;
-
-                    for (int cy = ymin; cy <= ymax; cy += 1)
-                    {
-                        for (int cx = xmin; cx <= xmax; cx += 1)
-                        {
-                            const float w = calcBicubicCoeff(src_x - cx) * calcBicubicCoeff(src_y - cy);
-                            T src_reg = getPixel<T>(srcPtr, cy, cx, k, srcWidth, srcHeight, srcStride, elementsPerPixel,
-                                                    borderMode, borderVal);
-                            sum += w * src_reg;
-                            wsum += w;
-                        }
-                    }
-
-                    float res                                                = (!wsum) ? 0 : sum / wsum;
-                    res                                                      = std::rint(res);
-                    dstPtr[dst_y * dstStride + dst_x * elementsPerPixel + k] = res < 0 ? 0 : (res > 255 ? 255 : res);
-                }
+                StoreCubicPixel(dstPtr, dst_y * dstStride + dst_x * elementsPerPixel, srcPtr, src_x, src_y, srcWidth,
+                                srcHeight, srcStride, elementsPerPixel, borderMode, borderVal);
             }
             else
             {
@@ -222,10 +269,22 @@ static void WarpAffineGold(std::vector<uint8_t> &hDst, int dstStride, nvcv::Size
     }
 }
 
-static std::map<std::vector<int>, std::vector<std::vector<float>>> mapOfTransformationMatrix = {
-    {{5, 4, 5, 4}, {{1, 0, 0, 0, 1, 0}, {1, 0, 1, 0, 1, 2}, {1, 2, 1, 2, 1, 2}, {0.5, 2, 1, 0.75, 1, 2}}},
-    {{5, 4, 6, 8}, {{1, 0, 0, 0, 1, 0}, {1, 0, 1, 0, 1, 2}, {1, 2, 1, 2, 1, 2}, {0.5, 2, 1, 0.75, 1, 2}}},
-    {{7, 8, 4, 5}, {{1, 0, 0, 0, 1, 0}, {1, 0, 1, 0, 1, 2}, {1, 2, 1, 2, 1, 2}, {0.5, 2, 1, 0.75, 1, 2}}}
+static const std::map<std::vector<int>, std::vector<std::vector<float>>> mapOfTransformationMatrix = {
+    {{5, 4, 5, 4},
+     {{1.f, 0.f, 0.f, 0.f, 1.f, 0.f},
+     {1.f, 0.f, 1.f, 0.f, 1.f, 2.f},
+     {1.f, 2.f, 1.f, 2.f, 1.f, 2.f},
+     {0.5f, 2.f, 1.f, 0.75f, 1.f, 2.f}}},
+    {{5, 4, 6, 8},
+     {{1.f, 0.f, 0.f, 0.f, 1.f, 0.f},
+     {1.f, 0.f, 1.f, 0.f, 1.f, 2.f},
+     {1.f, 2.f, 1.f, 2.f, 1.f, 2.f},
+     {0.5f, 2.f, 1.f, 0.75f, 1.f, 2.f}}},
+    {{7, 8, 4, 5},
+     {{1.f, 0.f, 0.f, 0.f, 1.f, 0.f},
+     {1.f, 0.f, 1.f, 0.f, 1.f, 2.f},
+     {1.f, 2.f, 1.f, 2.f, 1.f, 2.f},
+     {0.5f, 2.f, 1.f, 0.75f, 1.f, 2.f}}}
 };
 
 // clang-format off
@@ -364,10 +423,13 @@ TEST_P(OpWarpAffine, tensor_correct_output)
 
     for (int i = 0; i < numberOfImages; ++i)
     {
-        std::uniform_int_distribution<uint8_t> rand(0, 255);
+        std::uniform_int_distribution rand(0, 255);
 
         srcVec[i].resize(srcHeight * srcVecStride);
-        std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return rand(randEng); });
+        for (uint8_t &value : srcVec[i])
+        {
+            value = static_cast<uint8_t>(rand(randEng));
+        }
 
         // Copy input data to the GPU
         ASSERT_EQ(cudaSuccess,
@@ -489,17 +551,18 @@ TEST_P(OpWarpAffine, varshape_correct_output)
     ASSERT_TRUE(transMatrixTensorDataAccess);
 
     // Create input and output
-    std::default_random_engine         randEng;
-    std::uniform_int_distribution<int> rndInputDimsIndex(0, mapOfTransformationMatrix.size() - 1);
-    std::uniform_int_distribution<int> rndTransformationMatrixIndex(0, 3);
+    std::default_random_engine    randEng;
+    std::uniform_int_distribution rndInputDimsIndex(0, static_cast<int>(mapOfTransformationMatrix.size() - 1));
+    std::uniform_int_distribution rndTransformationMatrixIndex(0, 3);
 
-    std::vector<nvcv::Image>        imgSrc, imgDst;
+    std::vector<nvcv::Image>        imgSrc;
+    std::vector<nvcv::Image>        imgDst;
     std::vector<std::vector<float>> transMatrixHostVec;
     transMatrixHostVec.resize(numberOfImages);
 
     // List the keys from the map for easy access
     std::vector<std::vector<int>> keysOfMapOfTransformationMatrix;
-    for (auto &[key, value] : mapOfTransformationMatrix)
+    for (const auto &[key, value] : mapOfTransformationMatrix)
     {
         keysOfMapOfTransformationMatrix.push_back(key);
     }
@@ -518,7 +581,7 @@ TEST_P(OpWarpAffine, varshape_correct_output)
         int dictTransformationIndex = rndTransformationMatrixIndex(randEng);
 
         std::vector<int>   key                        = keysOfMapOfTransformationMatrix[dictInputIndex];
-        std::vector<float> chosenTransformationMatrix = mapOfTransformationMatrix[key][dictTransformationIndex];
+        std::vector<float> chosenTransformationMatrix = mapOfTransformationMatrix.at(key)[dictTransformationIndex];
         // Legacy Reflect & Reflect101 has a bug. So, do special thing for them
         if (i > 0 && !(borderMode == NVCV_BORDER_REFLECT || borderMode == NVCV_BORDER_REFLECT101))
         {
@@ -558,23 +621,26 @@ TEST_P(OpWarpAffine, varshape_correct_output)
         const auto srcData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
         assert(srcData->numPlanes() == 1);
 
-        int srcWidth  = srcData->plane(0).width;
-        int srcHeight = srcData->plane(0).height;
+        int sampleSrcWidth  = srcData->plane(0).width;
+        int sampleSrcHeight = srcData->plane(0).height;
 
-        int srcStride = srcWidth * fmt.planePixelStrideBytes(0);
+        int srcStride = sampleSrcWidth * fmt.planePixelStrideBytes(0);
 
         srcVecStride[i] = srcStride;
 
-        std::uniform_int_distribution<uint8_t> rand(0, 255);
+        std::uniform_int_distribution rand(0, 255);
 
-        srcVec[i].resize(srcHeight * srcStride);
-        std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return rand(randEng); });
+        srcVec[i].resize(sampleSrcHeight * srcStride);
+        for (uint8_t &value : srcVec[i])
+        {
+            value = static_cast<uint8_t>(rand(randEng));
+        }
 
         // Copy input data to the GPU
         ASSERT_EQ(cudaSuccess,
                   cudaMemcpy2D(srcData->plane(0).basePtr, srcData->plane(0).rowStride, srcVec[i].data(), srcStride,
                                srcStride, // vec has no padding
-                               srcHeight, cudaMemcpyHostToDevice));
+                               sampleSrcHeight, cudaMemcpyHostToDevice));
     }
 
     // Generate test result
@@ -592,28 +658,27 @@ TEST_P(OpWarpAffine, varshape_correct_output)
 
         const auto srcData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
         assert(srcData->numPlanes() == 1);
-        int srcWidth  = srcData->plane(0).width;
-        int srcHeight = srcData->plane(0).height;
+        int sampleSrcWidth  = srcData->plane(0).width;
+        int sampleSrcHeight = srcData->plane(0).height;
 
         const auto dstData = imgDst[i].exportData<nvcv::ImageDataStridedCuda>();
         assert(dstData->numPlanes() == 1);
 
-        int dstWidth  = dstData->plane(0).width;
-        int dstHeight = dstData->plane(0).height;
+        int sampleDstWidth  = dstData->plane(0).width;
+        int sampleDstHeight = dstData->plane(0).height;
 
-        int srcStride = srcWidth * fmt.planePixelStrideBytes(0);
-        int dstStride = dstWidth * fmt.planePixelStrideBytes(0);
+        int srcStride = sampleSrcWidth * fmt.planePixelStrideBytes(0);
+        int dstStride = sampleDstWidth * fmt.planePixelStrideBytes(0);
 
-        std::vector<uint8_t> testVec(dstHeight * dstStride);
+        std::vector<uint8_t> testVec(sampleDstHeight * dstStride);
 
         // Copy output data to Host
         ASSERT_EQ(cudaSuccess,
                   cudaMemcpy2D(testVec.data(), dstStride, dstData->plane(0).basePtr, dstData->plane(0).rowStride,
                                dstStride, // vec has no padding
-                               dstHeight, cudaMemcpyDeviceToHost));
+                               sampleDstHeight, cudaMemcpyDeviceToHost));
 
-        std::vector<uint8_t> goldVec(dstHeight * dstStride);
-        std::generate(goldVec.begin(), goldVec.end(), [&]() { return 0; });
+        std::vector<uint8_t> goldVec(sampleDstHeight * dstStride);
 
         NVCVAffineTransform transMatrixForGold;
         transMatrixForGold[0] = transMatrixHostVec[i][0];
@@ -624,8 +689,9 @@ TEST_P(OpWarpAffine, varshape_correct_output)
         transMatrixForGold[5] = transMatrixHostVec[i][5];
 
         // Generate gold result
-        WarpAffineGold<uint8_t>(goldVec, dstStride, {dstWidth, dstHeight}, srcVec[i], srcStride, {srcWidth, srcHeight},
-                                fmt, transMatrixForGold, flags, borderMode, borderValue);
+        WarpAffineGold<uint8_t>(goldVec, dstStride, {sampleDstWidth, sampleDstHeight}, srcVec[i], srcStride,
+                                {sampleSrcWidth, sampleSrcHeight}, fmt, transMatrixForGold, flags, borderMode,
+                                borderValue);
 
 #if DBG
         std::cout << "\nPrint src vec " << std::endl;
@@ -665,12 +731,113 @@ TEST_P(OpWarpAffine, varshape_correct_output)
     }
 }
 
+// =============================================================================
+// Planar (NCHW/CHW) layout support
+//
+// Warp samples every channel at the same transformed coordinate, so a planar input is warped
+// plane-by-plane and must produce exactly the same pixels as the interleaved path. These tests feed
+// identical data and transform through cvcuda::WarpAffine in both layouts and require the
+// (re-interleaved) planar output to match the interleaved output bit-for-bit, across interpolation
+// and border modes. CONSTANT border uses a NON-UNIFORM borderValue to exercise the per-channel
+// border path that planar must reproduce. Shared scaffolding lives in PlanarParityUtils.hpp.
+// =============================================================================
+
+namespace {
+
+// Non-trivial affine (scale + shear + translate). Any transform works since the parity check only
+// requires interleaved and planar to match on identical inputs.
+inline std::array<float, 6> PlanarAffine()
+{
+    return {1.1f, 0.05f, 3.0f, -0.03f, 0.95f, 2.0f};
+}
+
+void RunPlanarParityTensorCase(nvcv::ImageFormat planarFmt, nvcv::ImageFormat interleavedFmt, int srcW, int srcH,
+                               int dstW, int dstH, NVCVInterpolationType interp, NVCVBorderType borderMode,
+                               int numImages)
+{
+    const std::array<float, 6> xform       = PlanarAffine();
+    const float4               borderValue = {13.f, 57.f, 101.f, 211.f};
+    const int32_t              flags       = interp;
+    test::planar::RunTensorParity(
+        planarFmt, interleavedFmt, srcW, srcH, dstW, dstH, numImages,
+        [xform, flags, borderMode, borderValue, numImages](cudaStream_t s, const nvcv::Tensor &src,
+                                                           const nvcv::Tensor &dst, nvcv::ImageFormat)
+        {
+            cvcuda::WarpAffine op(numImages);
+            EXPECT_NO_THROW(op(s, src, dst, xform.data(), flags, borderMode, borderValue));
+        });
+}
+
+void RunPlanarParityVarShapeCase(nvcv::ImageFormat planarFmt, nvcv::ImageFormat interleavedFmt, int srcW, int srcH,
+                                 int dstW, int dstH, NVCVInterpolationType interp, NVCVBorderType borderMode,
+                                 int numImages)
+{
+    const std::array<float, 6> xform       = PlanarAffine();
+    const float4               borderValue = {13.f, 57.f, 101.f, 211.f};
+    const int32_t              flags       = interp;
+
+    // Per-image transform tensor (same affine for every image); upload synchronously so it is ready
+    // before the operator runs on the parity helper's stream.
+    nvcv::Tensor transMatrix(nvcv::TensorShape({numImages, 6}, nvcv::TENSOR_NW), nvcv::TYPE_F32);
+    {
+        auto data = transMatrix.exportData<nvcv::TensorDataStridedCuda>();
+        ASSERT_NE(data, nullptr);
+        auto acc = nvcv::TensorDataAccessStrided::Create(*data);
+        ASSERT_TRUE(acc);
+        for (int i = 0; i < numImages; ++i)
+        {
+            ASSERT_EQ(cudaSuccess, cudaMemcpy2D(acc->sampleData(i), acc->sampleStride(), xform.data(),
+                                                sizeof(float) * 6, sizeof(float) * 6, 1, cudaMemcpyHostToDevice));
+        }
+    }
+
+    test::planar::RunVarShapeParity(
+        planarFmt, interleavedFmt, srcW, srcH, dstW, dstH, numImages,
+        [&transMatrix, flags, borderMode, borderValue, numImages](
+            cudaStream_t s, const nvcv::ImageBatchVarShape &src, const nvcv::ImageBatchVarShape &dst, nvcv::ImageFormat)
+        {
+            cvcuda::WarpAffine op(numImages);
+            EXPECT_NO_THROW(op(s, src, dst, transMatrix, flags, borderMode, borderValue));
+        });
+}
+
+} // namespace
+
+// Parameters: srcW, srcH, dstW, dstH, interpolation, borderMode, numImages, planarFmt, interleavedFmt
+// clang-format off
+NVCV_TEST_SUITE_P(OpWarpAffinePlanar,
+    test::ValueList<int, int, int, int, NVCVInterpolationType, NVCVBorderType, int, nvcv::ImageFormat, nvcv::ImageFormat>{
+    { 64, 48, 64, 48, NVCV_INTERP_NEAREST,  NVCV_BORDER_CONSTANT,  2,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+    { 64, 48, 96, 72,  NVCV_INTERP_LINEAR,  NVCV_BORDER_CONSTANT,  2,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+    { 80, 60, 64, 48,   NVCV_INTERP_CUBIC, NVCV_BORDER_REPLICATE,  1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+    { 64, 48, 64, 48,  NVCV_INTERP_LINEAR,      NVCV_BORDER_WRAP,  1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+    { 50, 40, 60, 50, NVCV_INTERP_NEAREST,  NVCV_BORDER_CONSTANT,  2,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8},
+    { 50, 40, 50, 40,  NVCV_INTERP_LINEAR, NVCV_BORDER_REPLICATE,  1,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8},
+    { 64, 48, 96, 72,   NVCV_INTERP_CUBIC,  NVCV_BORDER_CONSTANT,  1,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+    { 64, 48, 64, 48,  NVCV_INTERP_LINEAR,  NVCV_BORDER_CONSTANT,  2, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+});
+
+// clang-format on
+
+TEST_P(OpWarpAffinePlanar, tensor_matches_interleaved)
+{
+    RunPlanarParityTensorCase(GetParamValue<7>(), GetParamValue<8>(), GetParamValue<0>(), GetParamValue<1>(),
+                              GetParamValue<2>(), GetParamValue<3>(), GetParamValue<4>(), GetParamValue<5>(),
+                              GetParamValue<6>());
+}
+
+TEST_P(OpWarpAffinePlanar, varshape_matches_interleaved)
+{
+    RunPlanarParityVarShapeCase(GetParamValue<7>(), GetParamValue<8>(), GetParamValue<0>(), GetParamValue<1>(),
+                                GetParamValue<2>(), GetParamValue<3>(), GetParamValue<4>(), GetParamValue<5>(),
+                                GetParamValue<6>());
+}
+
 // clang-format off
 NVCV_TEST_SUITE_P(OpWarpAffine_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat>{
     // input format, output format,
-    {nvcv::FMT_RGBA8, nvcv::FMT_RGBA8p},
-    {nvcv::FMT_RGBA8p, nvcv::FMT_RGBA8},
-    {nvcv::FMT_RGBA8p, nvcv::FMT_RGBA8p},
+    {nvcv::FMT_RGBA8, nvcv::FMT_RGBA8p},  // interleaved in, planar out: layout mismatch
+    {nvcv::FMT_RGBA8p, nvcv::FMT_RGBA8},  // planar in, interleaved out: layout mismatch
     {nvcv::FMT_RGBAf16, nvcv::FMT_RGBAf16}
 });
 
@@ -678,7 +845,6 @@ NVCV_TEST_SUITE_P(OpWarpAffineVarshape_Negative, test::ValueList<int, int, nvcv:
     // maxBatchSize, numImages, input format, output format
     {5, 5, nvcv::FMT_RGBA8, nvcv::FMT_RGBA8p},
     {5, 5, nvcv::FMT_RGBA8p, nvcv::FMT_RGBA8},
-    {5, 5, nvcv::FMT_RGBA8p, nvcv::FMT_RGBA8p},
     {5, 5, nvcv::FMT_RGBAf16, nvcv::FMT_RGBAf16},
     {0, 5, nvcv::FMT_RGBA8, nvcv::FMT_RGBA8},
     {2, 5, nvcv::FMT_RGBA8, nvcv::FMT_RGBA8}
@@ -708,7 +874,8 @@ TEST_P(OpWarpAffine_Negative, op)
 
     cvcuda::WarpAffine warpAffineOp(0);
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-              nvcv::ProtectCall([&] { warpAffineOp(stream, imgSrc, imgDst, xform, flags, borderMode, borderValue); }));
+              nvcv::ProtectCall([&warpAffineOp, &stream, &imgSrc, &imgDst, &xform, &flags, &borderMode, &borderValue]
+                                { warpAffineOp(stream, imgSrc, imgDst, xform, flags, borderMode, borderValue); }));
 
     EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
@@ -734,8 +901,8 @@ TEST_P(OpWarpAffineVarshape_Negative, op)
     nvcv::Tensor transMatrixTensor(nvcv::TensorShape({numImages, 6}, nvcv::TENSOR_NW), nvcv::TYPE_F32);
 
     // Create input and output
-    std::default_random_engine randEng;
-    std::vector<nvcv::Image>   imgSrc, imgDst;
+    std::vector<nvcv::Image> imgSrc;
+    std::vector<nvcv::Image> imgDst;
 
     for (int i = 0; i < numImages; ++i)
     {
@@ -750,10 +917,10 @@ TEST_P(OpWarpAffineVarshape_Negative, op)
     batchDst.pushBack(imgDst.begin(), imgDst.end());
 
     cvcuda::WarpAffine warpAffineOp(maxBatchSize);
-    EXPECT_EQ(
-        NVCV_ERROR_INVALID_ARGUMENT,
-        nvcv::ProtectCall(
-            [&] { warpAffineOp(stream, batchSrc, batchDst, transMatrixTensor, flags, borderMode, borderValue); }));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall(
+                  [&warpAffineOp, &stream, &batchSrc, &batchDst, &transMatrixTensor, &flags, &borderMode, &borderValue]
+                  { warpAffineOp(stream, batchSrc, batchDst, transMatrixTensor, flags, borderMode, borderValue); }));
 
     EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
@@ -764,6 +931,125 @@ TEST(OpWarpAffine_Negative, create_null_handle)
     EXPECT_EQ(cvcudaWarpAffineCreate(nullptr, 2), NVCV_ERROR_INVALID_ARGUMENT);
 }
 
+TEST(OpWarpAffine_Negative, invalid_border_mode)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    NVCVAffineTransform xform       = {1, 0, 0, 0, 1, 0};
+    const float4        borderValue = {0, 0, 0, 0};
+    const int           flags       = NVCV_INTERP_NEAREST | NVCV_WARP_INVERSE_MAP;
+
+    nvcv::Tensor imgSrc(1, {4, 4}, nvcv::FMT_U8);
+    nvcv::Tensor imgDst(1, {4, 4}, nvcv::FMT_U8);
+
+    cvcuda::WarpAffine op(0);
+
+    // 5 is one past the last valid NVCVBorderType value (NVCV_BORDER_REFLECT101 = 4)
+    auto invalidBorder = static_cast<NVCVBorderType>(5);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&op, &stream, &imgSrc, &imgDst, &xform, &flags, &invalidBorder, &borderValue]
+                                { op(stream, imgSrc, imgDst, xform, flags, invalidBorder, borderValue); }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpWarpAffine_Negative, invalid_interpolation)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    NVCVAffineTransform xform       = {1, 0, 0, 0, 1, 0};
+    const float4        borderValue = {0, 0, 0, 0};
+
+    nvcv::Tensor imgSrc(1, {4, 4}, nvcv::FMT_U8);
+    nvcv::Tensor imgDst(1, {4, 4}, nvcv::FMT_U8);
+
+    cvcuda::WarpAffine op(0);
+
+    // NVCV_INTERP_AREA (3) is not supported by the warp ops
+    const int flags = static_cast<int>(NVCV_INTERP_AREA) | NVCV_WARP_INVERSE_MAP;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&op, &stream, &imgSrc, &imgDst, &xform, &flags, &borderValue]
+                                { op(stream, imgSrc, imgDst, xform, flags, NVCV_BORDER_CONSTANT, borderValue); }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpWarpAffineVarshape_Negative, invalid_border_mode)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    const int    numImages   = 2;
+    const float4 borderValue = {0, 0, 0, 0};
+    const int    flags       = NVCV_INTERP_NEAREST | NVCV_WARP_INVERSE_MAP;
+
+    nvcv::Tensor transMatrixTensor(nvcv::TensorShape({numImages, 6}, nvcv::TENSOR_NW), nvcv::TYPE_F32);
+
+    std::vector<nvcv::Image> imgSrc;
+    std::vector<nvcv::Image> imgDst;
+    for (int i = 0; i < numImages; ++i)
+    {
+        imgSrc.emplace_back(nvcv::Size2D{4, 4}, nvcv::FMT_U8);
+        imgDst.emplace_back(nvcv::Size2D{4, 4}, nvcv::FMT_U8);
+    }
+
+    nvcv::ImageBatchVarShape batchSrc(numImages);
+    nvcv::ImageBatchVarShape batchDst(numImages);
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    cvcuda::WarpAffine op(numImages);
+
+    auto invalidBorder = static_cast<NVCVBorderType>(5);
+    EXPECT_EQ(
+        NVCV_ERROR_INVALID_ARGUMENT,
+        nvcv::ProtectCall([&op, &stream, &batchSrc, &batchDst, &transMatrixTensor, &flags, &invalidBorder, &borderValue]
+                          { op(stream, batchSrc, batchDst, transMatrixTensor, flags, invalidBorder, borderValue); }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpWarpAffineVarshape_Negative, invalid_interpolation)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    const int    numImages   = 2;
+    const float4 borderValue = {0, 0, 0, 0};
+
+    nvcv::Tensor transMatrixTensor(nvcv::TensorShape({numImages, 6}, nvcv::TENSOR_NW), nvcv::TYPE_F32);
+
+    std::vector<nvcv::Image> imgSrc;
+    std::vector<nvcv::Image> imgDst;
+    for (int i = 0; i < numImages; ++i)
+    {
+        imgSrc.emplace_back(nvcv::Size2D{4, 4}, nvcv::FMT_U8);
+        imgDst.emplace_back(nvcv::Size2D{4, 4}, nvcv::FMT_U8);
+    }
+
+    nvcv::ImageBatchVarShape batchSrc(numImages);
+    nvcv::ImageBatchVarShape batchDst(numImages);
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    cvcuda::WarpAffine op(numImages);
+
+    // NVCV_INTERP_AREA (3) is not supported by the warp ops
+    const int flags = static_cast<int>(NVCV_INTERP_AREA) | NVCV_WARP_INVERSE_MAP;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall(
+                  [&op, &stream, &batchSrc, &batchDst, &transMatrixTensor, &flags, &borderValue]
+                  { op(stream, batchSrc, batchDst, transMatrixTensor, flags, NVCV_BORDER_CONSTANT, borderValue); }));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
 TEST(OpWarpAffineVarshape_Negative, different_format_varshape)
 {
     std::vector<std::pair<nvcv::ImageFormat, nvcv::ImageFormat>> extraFmts{
@@ -771,11 +1057,8 @@ TEST(OpWarpAffineVarshape_Negative, different_format_varshape)
         {nvcv::FMT_RGBA8,  nvcv::FMT_RGB8}
     };
 
-    for (const auto &testCase : extraFmts)
+    for (const auto &[extraFmtSrc, extraFmtDst] : extraFmts)
     {
-        auto extraFmtSrc = testCase.first;
-        auto extraFmtDst = testCase.second;
-
         cudaStream_t stream;
         EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
@@ -792,8 +1075,8 @@ TEST(OpWarpAffineVarshape_Negative, different_format_varshape)
         nvcv::Tensor transMatrixTensor(nvcv::TensorShape({numImages, 6}, nvcv::TENSOR_NW), nvcv::TYPE_F32);
 
         // Create input and output
-        std::default_random_engine randEng;
-        std::vector<nvcv::Image>   imgSrc, imgDst;
+        std::vector<nvcv::Image> imgSrc;
+        std::vector<nvcv::Image> imgDst;
 
         for (int i = 0; i < numImages - 1; ++i)
         {
@@ -814,7 +1097,8 @@ TEST(OpWarpAffineVarshape_Negative, different_format_varshape)
         EXPECT_EQ(
             NVCV_ERROR_INVALID_ARGUMENT,
             nvcv::ProtectCall(
-                [&] { warpAffineOp(stream, batchSrc, batchDst, transMatrixTensor, flags, borderMode, borderValue); }));
+                [&warpAffineOp, &stream, &batchSrc, &batchDst, &transMatrixTensor, &flags, &borderMode, &borderValue]
+                { warpAffineOp(stream, batchSrc, batchDst, transMatrixTensor, flags, borderMode, borderValue); }));
 
         EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
         EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));

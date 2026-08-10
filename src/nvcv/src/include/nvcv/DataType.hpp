@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -82,11 +82,17 @@ public:
     static constexpr DataType ConstCreate(DataKind dataKind, Packing packing);
 
     /**
-     * @brief Implicit conversion to the native data type.
+     * @brief Explicit conversion to the native data type.
      *
      * @return The native data type.
      */
-    constexpr operator NVCVDataType() const;
+    explicit constexpr operator NVCVDataType() const;
+
+    constexpr bool operator==(DataType that) const noexcept;
+    constexpr bool operator!=(DataType that) const noexcept;
+    constexpr bool operator<(DataType that) const noexcept;
+    constexpr bool operator==(NVCVDataType that) const noexcept;
+    constexpr bool operator!=(NVCVDataType that) const noexcept;
 
     // Accessors for data type properties
     Packing                packing() const;
@@ -243,6 +249,31 @@ constexpr DataType::operator NVCVDataType() const
     return m_type;
 }
 
+constexpr bool DataType::operator==(DataType that) const noexcept
+{
+    return m_type == that.m_type;
+}
+
+constexpr bool DataType::operator!=(DataType that) const noexcept
+{
+    return !operator==(that);
+}
+
+constexpr bool DataType::operator<(DataType that) const noexcept
+{
+    return m_type < that.m_type;
+}
+
+constexpr bool DataType::operator==(NVCVDataType that) const noexcept
+{
+    return m_type == that;
+}
+
+constexpr bool DataType::operator!=(NVCVDataType that) const noexcept
+{
+    return !operator==(that);
+}
+
 inline Packing DataType::packing() const
 {
     NVCVPacking out;
@@ -259,9 +290,9 @@ inline int32_t DataType::bitsPerPixel() const
 
 inline std::array<int32_t, 4> DataType::bitsPerChannel() const
 {
-    int32_t bits[4];
-    detail::CheckThrow(nvcvDataTypeGetBitsPerChannel(m_type, bits));
-    return {bits[0], bits[1], bits[2], bits[3]};
+    std::array<int32_t, 4> bits;
+    detail::CheckThrow(nvcvDataTypeGetBitsPerChannel(m_type, bits.data()));
+    return bits;
 }
 
 inline DataKind DataType::dataKind() const
@@ -297,6 +328,11 @@ inline int32_t DataType::alignment() const
     int32_t out;
     detail::CheckThrow(nvcvDataTypeGetAlignment(m_type, &out));
     return out;
+}
+
+inline const char *nvcvDataTypeGetName(DataType type)
+{
+    return ::nvcvDataTypeGetName(static_cast<NVCVDataType>(type));
 }
 
 inline std::ostream &operator<<(std::ostream &out, DataType type)

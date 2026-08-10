@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -36,52 +36,53 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class Flip final : public IOperator
 {
 public:
     explicit Flip(int32_t maxVarShapeBatchSize = 0);
-    ~Flip();
 
-    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, int32_t flipCode);
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, int32_t flipCode) const;
     void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
-                    const nvcv::Tensor &flipCode);
+                    const nvcv::Tensor &flipCode) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline Flip::Flip(int32_t maxVarShapeBatchSize)
 {
-    nvcv::detail::CheckThrow(cvcudaFlipCreate(&m_handle, maxVarShapeBatchSize));
-    assert(m_handle);
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaFlipCreate(&h, maxVarShapeBatchSize));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
-inline Flip::~Flip()
+inline void Flip::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                             int32_t flipCode) const
 {
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
-}
-
-inline void Flip::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, int32_t flipCode)
-{
-    nvcv::detail::CheckThrow(cvcudaFlipSubmit(m_handle, stream, in.handle(), out.handle(), flipCode));
+    nvcv::detail::CheckThrow(cvcudaFlipSubmit(m_handle.get(), stream, in.handle(), out.handle(), flipCode));
 }
 
 inline void Flip::operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
-                             const nvcv::Tensor &flipCode)
+                             const nvcv::Tensor &flipCode) const
 {
-    nvcv::detail::CheckThrow(cvcudaFlipVarShapeSubmit(m_handle, stream, in.handle(), out.handle(), flipCode.handle()));
+    nvcv::detail::CheckThrow(
+        cvcudaFlipVarShapeSubmit(m_handle.get(), stream, in.handle(), out.handle(), flipCode.handle()));
 }
 
 inline NVCVOperatorHandle Flip::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA_FLIP_HPP

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -44,8 +44,8 @@ public:
 class IImageBatchVarShape : public IImageBatch
 {
 public:
-    virtual void pushImages(const NVCVImageHandle *images, int32_t numImages) = 0;
-    virtual void pushImages(NVCVPushImageFunc cbPushImage, void *ctxCallback) = 0;
+    virtual void pushImages(const NVCVImageHandle *images, int32_t numImages)           = 0;
+    virtual void pushImages(NVCVPushImageFunc cbPushImage, NVCVUserPointer ctxCallback) = 0;
 
     virtual void popImages(int32_t numImages) = 0;
 

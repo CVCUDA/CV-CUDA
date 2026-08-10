@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -97,20 +97,20 @@ public:
      *
      * @param ptr Pointer to set.
      */
-    void setUserPointer(void *ptr);
+    void setUserPointer(NVCVUserPointer ptr);
 
     /**
      * @brief Retrieves the user-defined pointer associated with the tensor.
      *
      * @return User-defined pointer.
      */
-    void *userPointer() const;
+    NVCVUserPointer userPointer() const;
 
     /**
      * @brief Creates a view of the tensor with a new shape and layout
      *
      */
-    Tensor reshape(const TensorShape &new_shape);
+    Tensor reshape(const TensorShape &new_shape) const;
 
     /**
      * @brief Calculates the requirements for a tensor given its shape and data type.
@@ -134,16 +134,44 @@ public:
     static Requirements CalcRequirements(int numImages, Size2D imgSize, ImageFormat fmt,
                                          const MemAlignment &bufAlign = {});
 
-    NVCV_IMPLEMENT_SHARED_RESOURCE(Tensor, Base);
+    using Base::Base;
+    using Base::operator=;
+
+    Tensor(const Tensor &other)
+        : Base(other)
+    {
+    }
+
+    Tensor(Tensor &&other) noexcept
+        : Base(std::move(other))
+    {
+    }
+
+    Tensor &operator=(const Tensor &other)
+    {
+        Base::operator=(other);
+        return *this;
+    }
+
+    Tensor &operator=(Tensor &&other) noexcept
+    {
+        Base::operator=(std::move(other));
+        return *this;
+    }
+
+    ~Tensor()
+    {
+        this->reset();
+    }
 
     /**
      * @brief Constructors
      */
-    explicit Tensor(const Requirements &reqs, const Allocator &alloc = nullptr);
+    explicit Tensor(const Requirements &reqs, const Allocator &alloc = Allocator{nullptr});
     explicit Tensor(const TensorShape &shape, DataType dtype, const MemAlignment &bufAlign = {},
-                    const Allocator &alloc = nullptr);
+                    const Allocator &alloc = Allocator{nullptr});
     explicit Tensor(int numImages, Size2D imgSize, ImageFormat fmt, const MemAlignment &bufAlign = {},
-                    const Allocator &alloc = nullptr);
+                    const Allocator &alloc = Allocator{nullptr});
 };
 
 // TensorWrapData definition -------------------------------------
@@ -186,11 +214,15 @@ using TensorWrapHandle = NonOwningResource<Tensor>;
 
 using OptionalTensorConstRef = nvcv::Optional<std::reference_wrapper<const nvcv::Tensor>>;
 
-#define NVCV_TENSOR_HANDLE_TO_OPTIONAL(X) X ? nvcv::OptionalTensorConstRef(nvcv::TensorWrapHandle{X}) : nvcv::NullOpt
-#define NVCV_OPTIONAL_TO_HANDLE(X)        X ? X->get().handle() : nullptr
+#define NVCV_TENSOR_HANDLE_TO_OPTIONAL(X)                                                                 \
+    X ? nvcv::OptionalTensorConstRef(nvcv::TensorWrapHandle{X}.resource()) : nvcv::OptionalTensorConstRef \
+    {                                                                                                     \
+        nvcv::NullOpt                                                                                     \
+    }
+#define NVCV_OPTIONAL_TO_HANDLE(X) X ? X->get().handle() : nullptr
 
 } // namespace nvcv
 
-#include "detail/TensorImpl.hpp"
+#include "detail/TensorImpl.hpp" // NOSONAR: inline definitions require the declarations above.
 
 #endif // NVCV_TENSOR_HPP

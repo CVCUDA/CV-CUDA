@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,6 +22,7 @@
 
 #include <cstdlib>
 #include <list>
+#include <stdexcept>
 
 namespace nvcvpy::util {
 
@@ -47,6 +48,11 @@ public:
         doCleanup(); // last chance for cleaning up
         m_instance = nullptr;
     }
+
+    Cleanup(const Cleanup &)            = delete;
+    Cleanup(Cleanup &&)                 = delete;
+    Cleanup &operator=(const Cleanup &) = delete;
+    Cleanup &operator=(Cleanup &&)      = delete;
 
     void addHandler(std::function<void()> fn)
     {
@@ -74,7 +80,7 @@ private:
 Cleanup *Cleanup::m_instance = nullptr;
 } // namespace
 
-void RegisterCleanup(py::module &m, std::function<void()> fn)
+void RegisterCleanup(py::module &, std::function<void()> fn)
 {
     static Cleanup cleanup;
     cleanup.addHandler(std::move(fn));
@@ -82,7 +88,7 @@ void RegisterCleanup(py::module &m, std::function<void()> fn)
 
 std::string GetFullyQualifiedName(py::handle h)
 {
-    py::handle type = h.get_type();
+    py::handle type = py::type::of(h);
 
     std::ostringstream ss;
     ss << type.attr("__module__").cast<std::string>() << '.' << type.attr("__qualname__").cast<std::string>();
@@ -136,6 +142,16 @@ py::dtype ToDType(const std::string &fmt)
 
 namespace cvcudapy {
 
+namespace {
+
+class PyUtilError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
+
+} // namespace
+
 float4 GetFloat4FromPyArray(const pyarray &array)
 {
     if (array.ndim() == 0)
@@ -144,6 +160,13 @@ float4 GetFloat4FromPyArray(const pyarray &array)
     }
     else
     {
+        if (array.ndim() != 1 || array.size() > 4)
+        {
+            throw PyUtilError(nvcvpy::util::ConcatString(
+                "borderValue must be a scalar or 1D array with at most 4 elements, current ndim is '", array.ndim(),
+                "' and size is '", array.size(), "'"));
+        }
+
         float4 value = nvcv::cuda::SetAll<float4>(0.f);
 
         for (int i = 0; i < static_cast<int>(array.size()); i++)

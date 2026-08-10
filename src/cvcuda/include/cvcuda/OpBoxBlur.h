@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -39,9 +39,9 @@ extern "C"
 {
 #endif
 
-/** Constructs and an instance of the BoxBlur operator.
+/** Constructs an instance of the BoxBlur operator.
  *
- * @param [out] handle Where the image instance handle will be written to.
+ * @param [out] handle Where the operator instance handle will be written to.
  *                     + Must not be NULL.
  *
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Handle is null.
@@ -56,8 +56,8 @@ CVCUDA_PUBLIC NVCVStatus cvcudaBoxBlurCreate(NVCVOperatorHandle *handle);
  *  Limitations:
  *
  *  Input:
- *       Data Layout:    [kNHWC, kHWC]
- *       Channels:       [3, 4]
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
+ *       Channels:       [3, 4] (planar kNCHW/kCHW: [3, 4])
  *
  *       Data Type      | Allowed
  *       -------------- | -------------
@@ -67,12 +67,13 @@ CVCUDA_PUBLIC NVCVStatus cvcudaBoxBlurCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | No
  *       64bit Float    | No
  *
  *  Output:
- *       Data Layout:    [kNHWC, kHWC]
- *       Channels:       [3, 4]
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
+ *       Channels:       [3, 4] (planar kNCHW/kCHW: [3, 4])
  *
  *       Data Type      | Allowed
  *       -------------- | -------------
@@ -82,6 +83,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaBoxBlurCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | No
  *       64bit Float    | No
  *
@@ -96,15 +98,15 @@ CVCUDA_PUBLIC NVCVStatus cvcudaBoxBlurCreate(NVCVOperatorHandle *handle);
  *       Width         | Yes
  *       Height        | Yes
  *
- * @param [in] handle Handle to the operator.
+ * @param [in] handle Handle to the operator instance created by #cvcudaBoxBlurCreate.
  *                    + Must not be NULL.
- * @param [in] stream Handle to a valid CUDA stream.
+ * @param [in] stream CUDA stream on which the operation is enqueued; execution may continue asynchronously.
  *
- * @param [in] in intput tensor.
+ * @param [in] in Input tensor that supplies source pixels. It remains unchanged when @p out is a distinct tensor.
  *
- * @param [out] out output tensor.
+ * @param [out] out Output tensor. Its shape, layout, and data type must match the input; it may alias the input.
  *
- * @param [in] bboxes blur boxes in reference to the input tensor.
+ * @param [in] bboxes Per-sample blur boxes in input-tensor coordinates; its batch count must match the input batch.
  *
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
  * @retval #NVCV_ERROR_INTERNAL         Internal error in the operator, invalid types passed in.
@@ -116,5 +118,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaBoxBlurSubmit(NVCVOperatorHandle handle, cudaStre
 #ifdef __cplusplus
 }
 #endif
+
+/** @} */
 
 #endif /* CVCUDA__BOX_BLUR_H */

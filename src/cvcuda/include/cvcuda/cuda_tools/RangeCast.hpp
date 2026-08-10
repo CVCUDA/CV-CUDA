@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,7 +24,7 @@
  * @brief Defines range cast functionality.
  */
 
-#include "TypeTraits.hpp"           // for Require, etc.
+#include "TypeTraits.hpp"
 #include "detail/RangeCastImpl.hpp" // for RangeCastImpl, etc.
 
 namespace nvcv::cuda {
@@ -65,9 +65,11 @@ namespace nvcv::cuda {
  *
  * @return The value with all elements scaled.
  */
-template<typename T, typename U, class = Require<HasTypeTraits<T, U> && !IsCompound<T>>>
+template<typename T, typename U>
 __host__ __device__ auto RangeCast(U u)
 {
+    static_assert(HasTypeTraits<T, U> && !IsCompound<T>, "RangeCast requires a regular C target type");
+
     using RT = ConvertBaseTypeTo<T, U>;
     if constexpr (std::is_same_v<U, RT>)
     {

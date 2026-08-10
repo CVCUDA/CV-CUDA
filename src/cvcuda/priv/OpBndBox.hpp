@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,24 +25,48 @@
 #define CVCUDA_PRIV__BND_BOX_HPP
 
 #include "IOperator.hpp"
+#include "PerDeviceResource.hpp"
 #include "legacy/CvCudaLegacy.h"
 
+#include <cuda_runtime.h>
 #include <nvcv/Tensor.hpp>
 
 #include <memory>
+#include <mutex>
 
 namespace cvcuda::priv {
+
+class Reformat;
+
+struct BndBoxPlanarBridgeWorkspace
+{
+    std::mutex   mutex;
+    nvcv::Tensor interleaved;
+    cudaEvent_t  ready = nullptr;
+    bool         busy  = false;
+
+    BndBoxPlanarBridgeWorkspace();
+    ~BndBoxPlanarBridgeWorkspace();
+
+    void ensure(const nvcv::TensorShape &shape, nvcv::DataType dtype, cudaStream_t stream);
+    void record(cudaStream_t stream);
+};
 
 class BndBox final : public IOperator
 {
 public:
     explicit BndBox();
+    ~BndBox() override;
 
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                     const NVCVBndBoxesI &bboxes) const;
 
 private:
-    std::unique_ptr<nvcv::legacy::cuda_op::OSD> m_legacyOp;
+    static std::unique_ptr<BndBoxPlanarBridgeWorkspace> CreatePlanarBridgeWorkspace(int deviceId);
+
+    std::unique_ptr<nvcv::legacy::cuda_op::OSD>            m_legacyOp;
+    std::unique_ptr<Reformat>                              m_reformatOp;
+    mutable PerDeviceResource<BndBoxPlanarBridgeWorkspace> m_planarWorkspace{CreatePlanarBridgeWorkspace};
 };
 
 } // namespace cvcuda::priv

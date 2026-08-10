@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -44,15 +44,13 @@ public:
     static std::shared_ptr<Image> Zeros(const Size2D &size, nvcv::ImageFormat fmt, int rowAlign);
     static std::shared_ptr<Image> Create(const Size2D &size, nvcv::ImageFormat fmt, int rowAlign);
     static std::shared_ptr<Image> CreateHost(py::buffer buffer, nvcv::ImageFormat fmt, int rowAlign);
-    static std::shared_ptr<Image> CreateHostVector(std::vector<py::buffer> buffer, nvcv::ImageFormat fmt, int rowAlign);
+    static std::shared_ptr<Image> CreateHostVector(const std::vector<py::buffer> &buffer, nvcv::ImageFormat fmt,
+                                                   int rowAlign);
 
     static std::shared_ptr<Image>              WrapExternalBuffer(ExternalBuffer &buffer, nvcv::ImageFormat fmt);
     static std::vector<std::shared_ptr<Image>> WrapExternalBufferMany(
         std::vector<std::shared_ptr<ExternalBuffer>> &buffer, nvcv::ImageFormat fmt);
     static std::shared_ptr<Image> WrapExternalBufferVector(std::vector<py::object> buffer, nvcv::ImageFormat fmt);
-
-    std::shared_ptr<Image>       shared_from_this();
-    std::shared_ptr<const Image> shared_from_this() const;
 
     Size2D            size() const;
     int32_t           width() const;
@@ -93,11 +91,11 @@ public:
         nvcv::ImageFormat m_format;
         bool              m_isWrapper;
 
-        virtual size_t doGetHash() const override;
-        virtual bool   doIsCompatible(const IKey &that) const override;
+        size_t doGetHash() const override;
+        bool   doIsCompatible(const IKey &that) const override;
     };
 
-    virtual const Key &key() const override
+    const Key &key() const override
     {
         return m_key;
     }
@@ -108,9 +106,9 @@ public:
 private:
     explicit Image(const Size2D &size, nvcv::ImageFormat fmt, int rowAlign);
     explicit Image(std::vector<std::shared_ptr<ExternalBuffer>> buf, const nvcv::ImageDataStridedCuda &imgData);
-    explicit Image(std::vector<py::buffer> buf, const nvcv::ImageDataStridedHost &imgData, int rowalign);
+    explicit Image(const std::vector<py::buffer> &buf, const nvcv::ImageDataStridedHost &imgData, int rowalign);
 
-    int64_t doComputeSizeInBytes(const NVCVImageRequirements &reqs);
+    int64_t doComputeSizeInBytes(const NVCVImageRequirements &reqs) const;
 
     void setWrapData(std::vector<std::shared_ptr<ExternalBuffer>> buf, const nvcv::ImageDataStridedCuda &imgData);
 

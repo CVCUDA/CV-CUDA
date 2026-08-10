@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -36,6 +36,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class AverageBlur final : public IOperator
@@ -43,53 +45,48 @@ class AverageBlur final : public IOperator
 public:
     explicit AverageBlur(nvcv::Size2D maxKernelSize, int32_t maxVarShapeBatchSize);
 
-    ~AverageBlur();
-
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, nvcv::Size2D kernelSize,
-                    int2 kernelAnchor, NVCVBorderType borderMode);
+                    int2 kernelAnchor, NVCVBorderType borderMode) const;
 
     void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
-                    const nvcv::Tensor &kernelSize, const nvcv::Tensor &kernelAnchor, NVCVBorderType borderMode);
+                    const nvcv::Tensor &kernelSize, const nvcv::Tensor &kernelAnchor, NVCVBorderType borderMode) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline AverageBlur::AverageBlur(nvcv::Size2D maxKernelSize, int32_t maxVarShapeBatchSize)
 {
-    nvcv::detail::CheckThrow(
-        cvcudaAverageBlurCreate(&m_handle, maxKernelSize.w, maxKernelSize.h, maxVarShapeBatchSize));
-    assert(m_handle);
-}
-
-inline AverageBlur::~AverageBlur()
-{
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaAverageBlurCreate(&h, maxKernelSize.w, maxKernelSize.h, maxVarShapeBatchSize));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void AverageBlur::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
-                                    nvcv::Size2D kernelSize, int2 kernelAnchor, NVCVBorderType borderMode)
+                                    nvcv::Size2D kernelSize, int2 kernelAnchor, NVCVBorderType borderMode) const
 {
-    nvcv::detail::CheckThrow(cvcudaAverageBlurSubmit(m_handle, stream, in.handle(), out.handle(), kernelSize.w,
+    nvcv::detail::CheckThrow(cvcudaAverageBlurSubmit(m_handle.get(), stream, in.handle(), out.handle(), kernelSize.w,
                                                      kernelSize.h, kernelAnchor.x, kernelAnchor.y, borderMode));
 }
 
 inline void AverageBlur::operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
                                     const nvcv::Tensor &kernelSize, const nvcv::Tensor &kernelAnchor,
-                                    NVCVBorderType borderMode)
+                                    NVCVBorderType borderMode) const
 {
-    nvcv::detail::CheckThrow(cvcudaAverageBlurVarShapeSubmit(m_handle, stream, in.handle(), out.handle(),
+    nvcv::detail::CheckThrow(cvcudaAverageBlurVarShapeSubmit(m_handle.get(), stream, in.handle(), out.handle(),
                                                              kernelSize.handle(), kernelAnchor.handle(), borderMode));
 }
 
 inline NVCVOperatorHandle AverageBlur::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA_AVERAGEBLUR_HPP

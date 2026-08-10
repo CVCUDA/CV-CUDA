@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,11 +15,12 @@
 
 import cvcuda
 
-import pytest as t
+import pytest
 import numpy as np
+import cvcuda_tools as cv_tools
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "input_args,rc,out_shape",
     [
         (
@@ -65,3 +66,29 @@ def test_op_customcrop(input_args, rc, out_shape):
     assert out.layout == input.layout
     assert out.shape == input.shape
     assert out.dtype == input.dtype
+
+
+def _customcrop_params(dtype, layout, channels):
+    return {"rect": cvcuda.RectI(0, 0, 10, 10)}
+
+
+globals().update(
+    cv_tools.make_op_tests(
+        name="customcrop",
+        runner_info=[("tensor", cvcuda.customcrop, _customcrop_params)],
+        keystone_dlc=(cvcuda.Type.U8, "NHWC", 3),
+        supported_dtypes={
+            cvcuda.Type.U8,
+            cvcuda.Type.S8,
+            cvcuda.Type.U16,
+            cvcuda.Type.S16,
+            cvcuda.Type.S32,
+            cvcuda.Type.F16,
+            cvcuda.Type.F32,
+            cvcuda.Type.F64,
+        },
+        supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
+        supported_channels={1, 2, 3, 4},
+        exclude_dlc=[(None, "NCHW", 2), (None, "CHW", 2)],
+    )
+)

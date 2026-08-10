@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,11 +25,20 @@
 #include <nvcv/python/Stream.hpp>
 #include <nvcv/python/Tensor.hpp>
 
+#include <sstream>
+#include <stdexcept>
 #include <string>
+#include <string_view>
 
 namespace cvcudapy {
 
 namespace {
+
+class MinMaxLocError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
 
 using TupleTensor3 = std::tuple<Tensor, Tensor, Tensor>;
 using TupleTensor6 = std::tuple<Tensor, Tensor, Tensor, Tensor, Tensor, Tensor>;
@@ -37,24 +46,24 @@ using TupleTensor6 = std::tuple<Tensor, Tensor, Tensor, Tensor, Tensor, Tensor>;
 // Auxiliary function to get the value data type (for minVal or maxVal) for the given input data type
 nvcv::DataType GetValDataType(nvcv::DataType inDataType)
 {
-    switch (inDataType)
+    switch (static_cast<NVCVDataType>(inDataType))
     {
-    case nvcv::TYPE_S8:
-    case nvcv::TYPE_S16:
-    case nvcv::TYPE_S32:
+    case NVCV_DATA_TYPE_S8:
+    case NVCV_DATA_TYPE_S16:
+    case NVCV_DATA_TYPE_S32:
         return nvcv::TYPE_S32;
 
-    case nvcv::TYPE_U8:
-    case nvcv::TYPE_U16:
-    case nvcv::TYPE_U32:
+    case NVCV_DATA_TYPE_U8:
+    case NVCV_DATA_TYPE_U16:
+    case NVCV_DATA_TYPE_U32:
         return nvcv::TYPE_U32;
 
-    case nvcv::TYPE_F32:
-    case nvcv::TYPE_F64:
+    case NVCV_DATA_TYPE_F32:
+    case NVCV_DATA_TYPE_F64:
         return inDataType;
 
     default:
-        throw std::runtime_error("Input data type not supported");
+        throw MinMaxLocError("Input data type not supported");
     }
     return nvcv::DataType();
 }
@@ -81,7 +90,12 @@ TupleTensor3 MinLocInto(Tensor &minVal, Tensor &minLoc, Tensor &numMin, InputCon
     guard.add(LockMode::LOCK_MODE_WRITE, {minVal, minLoc, numMin});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
-    op->submit(pstream->cudaHandle(), input, minVal, minLoc, numMin, nullptr, nullptr, nullptr);
+    guard.run(
+        [&op, &pstream, &input, &minVal, &minLoc, &numMin]()
+        {
+            op->submit(pstream->cudaHandle(), input, minVal, minLoc, numMin, nvcv::Tensor{nullptr},
+                       nvcv::Tensor{nullptr}, nvcv::Tensor{nullptr});
+        });
 
     return TupleTensor3(std::move(minVal), std::move(minLoc), std::move(numMin));
 }
@@ -114,7 +128,12 @@ TupleTensor3 MaxLocInto(Tensor &maxVal, Tensor &maxLoc, Tensor &numMax, InputCon
     guard.add(LockMode::LOCK_MODE_WRITE, {maxVal, maxLoc, numMax});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
-    op->submit(pstream->cudaHandle(), input, nullptr, nullptr, nullptr, maxVal, maxLoc, numMax);
+    guard.run(
+        [&op, &pstream, &input, &maxVal, &maxLoc, &numMax]()
+        {
+            op->submit(pstream->cudaHandle(), input, nvcv::Tensor{nullptr}, nvcv::Tensor{nullptr},
+                       nvcv::Tensor{nullptr}, maxVal, maxLoc, numMax);
+        });
 
     return TupleTensor3(std::move(maxVal), std::move(maxLoc), std::move(numMax));
 }
@@ -147,7 +166,8 @@ TupleTensor6 MinMaxLocInto(Tensor &minVal, Tensor &minLoc, Tensor &numMin, Tenso
     guard.add(LockMode::LOCK_MODE_WRITE, {minVal, minLoc, numMin, maxVal, maxLoc, numMax});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
-    op->submit(pstream->cudaHandle(), input, minVal, minLoc, numMin, maxVal, maxLoc, numMax);
+    guard.run([&op, &pstream, &input, &minVal, &minLoc, &numMin, &maxVal, &maxLoc, &numMax]()
+              { op->submit(pstream->cudaHandle(), input, minVal, minLoc, numMin, maxVal, maxLoc, numMax); });
 
     return TupleTensor6(std::move(minVal), std::move(minLoc), std::move(numMin), std::move(maxVal), std::move(maxLoc),
                         std::move(numMax));
@@ -188,7 +208,7 @@ TupleTensor3 MinLocTensor(Tensor &input, int maxLocs, std::optional<Stream> pstr
 
     maxLocs = maxLocs == 0 ? GetDefaultMaxLocs(inAccess->numCols(), inAccess->numRows()) : maxLocs;
 
-    return MinLoc(input, input.dtype(), inAccess->numSamples(), maxLocs, pstream);
+    return MinLoc(input, input.dtype(), static_cast<int>(inAccess->numSamples()), maxLocs, pstream);
 }
 
 TupleTensor3 MinLocVarShape(ImageBatchVarShape &input, int maxLocs, std::optional<Stream> pstream)
@@ -221,7 +241,7 @@ TupleTensor3 MaxLocTensor(Tensor &input, int maxLocs, std::optional<Stream> pstr
 
     maxLocs = maxLocs == 0 ? GetDefaultMaxLocs(inAccess->numCols(), inAccess->numRows()) : maxLocs;
 
-    return MaxLoc(input, input.dtype(), inAccess->numSamples(), maxLocs, pstream);
+    return MaxLoc(input, input.dtype(), static_cast<int>(inAccess->numSamples()), maxLocs, pstream);
 }
 
 TupleTensor3 MaxLocVarShape(ImageBatchVarShape &input, int maxLocs, std::optional<Stream> pstream)
@@ -257,7 +277,7 @@ TupleTensor6 MinMaxLocTensor(Tensor &input, int maxLocs, std::optional<Stream> p
 
     maxLocs = maxLocs == 0 ? GetDefaultMaxLocs(inAccess->numCols(), inAccess->numRows()) : maxLocs;
 
-    return MinMaxLoc(input, input.dtype(), inAccess->numSamples(), maxLocs, pstream);
+    return MinMaxLoc(input, input.dtype(), static_cast<int>(inAccess->numSamples()), maxLocs, pstream);
 }
 
 TupleTensor6 MinMaxLocVarShape(ImageBatchVarShape &input, int maxLocs, std::optional<Stream> pstream)
@@ -267,89 +287,79 @@ TupleTensor6 MinMaxLocVarShape(ImageBatchVarShape &input, int maxLocs, std::opti
     return MinMaxLoc(input, input.uniqueFormat().planeDataType(0), input.numImages(), maxLocs, pstream);
 }
 
-// Function to get the docstring for an entry function
+// Function to get the docstring for an entry function.
+//
+// Assembles a Google-style docstring with 4-space continuation indent so that
+// Napoleon + docutils render cleanly (no block-quote or unexpected-indent
+// warnings).  Parameters follow the original convention:
+//   strInto   — "" for allocating variants, "into" for *_into variants
+//   strTensor — "tensor" or "batch"
+//   strMinMax — "minimum", "maximum", or "minimum/maximum"
 
-inline std::string GetDocString(const std::string &strInto, const std::string &strTensor, const std::string &strMinMax)
+inline std::string GetDocString(std::string_view strInto, std::string_view strTensor, std::string_view strMinMax)
 {
-    std::string strSrc;
-    if (strTensor.find("tensor") != std::string::npos)
-    {
-        strSrc = std::string(R"pbdoc(
-            src (cvcuda.Tensor): Input tensor to get minimum/maximum values/locations.)pbdoc");
-    }
-    else if (strTensor.find("batch") != std::string::npos)
-    {
-        strSrc = std::string(R"pbdoc(
-            src (cvcuda.ImageBatchVarShape): Input image batch to get minimum/maximum values/locations.)pbdoc");
-    }
+    const bool isInto  = strInto.find("into") != std::string_view::npos;
+    const bool isBatch = strTensor.find("batch") != std::string_view::npos;
+    const bool hasMin  = strMinMax.find("min") != std::string_view::npos;
+    const bool hasMax  = strMinMax.find("max") != std::string_view::npos;
 
-    std::string strArgs;
-    if (strInto.find("into") != std::string::npos)
+    const std::string srcType  = isBatch ? "cvcuda.ImageBatchVarShape" : "cvcuda.Tensor";
+    const std::string srcDesc  = isBatch ? "Input image batch to get minimum/maximum values/locations."
+                                         : "Input tensor to get minimum/maximum values/locations.";
+    const std::string kindDesc = isBatch ? "image batch" : "tensor";
+
+    std::ostringstream out;
+    out << "\n"
+        << "        Finds " << strMinMax << " values and locations on the input " << kindDesc << ".\n"
+        << "\n"
+        << "\n"
+        << "        Args:\n";
+
+    if (isInto)
     {
-        if (strMinMax.find("min") != std::string::npos)
+        if (hasMin)
         {
-            strArgs += std::string(R"pbdoc(
-            min_val (cvcuda.Tensor): Output tensor with minimum value.
-            min_loc (cvcuda.Tensor): Output tensor with minimum locations.
-            num_min (cvcuda.Tensor): Output tensor with number of minimum locations found.)pbdoc");
+            out << "            min_val (cvcuda.Tensor): Output tensor with minimum value.\n"
+                << "            min_loc (cvcuda.Tensor): Output tensor with minimum locations.\n"
+                << "            num_min (cvcuda.Tensor): Output tensor with number of minimum locations found.\n";
         }
-        if (strMinMax.find("max") != std::string::npos)
+        if (hasMax)
         {
-            strArgs += std::string(R"pbdoc(
-            max_val (cvcuda.Tensor): Output tensor with maximum value.
-            max_loc (cvcuda.Tensor): Output tensor with maximum locations.
-            num_max (cvcuda.Tensor): Output tensor with number of maximum locations found.)pbdoc");
+            out << "            max_val (cvcuda.Tensor): Output tensor with maximum value.\n"
+                << "            max_loc (cvcuda.Tensor): Output tensor with maximum locations.\n"
+                << "            num_max (cvcuda.Tensor): Output tensor with number of maximum locations found.\n";
         }
-        strArgs += strSrc;
+        out << "            src (" << srcType << "): " << srcDesc << "\n";
     }
     else
     {
-        strArgs += strSrc;
-        strArgs += std::string(R"pbdoc(
-            max_locations (Number, optional): Number of maximum locations to find, default is 1% of total
-                                              pixels at a minimum of 1.)pbdoc");
+        out << "            src (" << srcType << "): " << srcDesc << "\n"
+            << "            max_locations (Number, optional): Number of maximum locations to find,\n"
+            << "                default is 1% of total pixels at a minimum of 1.\n";
     }
+    out << "            stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.\n"
+        << "\n"
+        << "        Returns:\n";
 
-    std::string strReturns;
-    if (strMinMax.find("minimum/maximum") != std::string::npos)
+    if (strMinMax == "minimum/maximum")
     {
-        strReturns = std::string(R"pbdoc(
-            Tuple[cvcuda.Tensor, cvcuda.Tensor, cvcuda.Tensor, cvcuda.Tensor, cvcuda.Tensor, cvcuda.Tensor]: A tuple with minimum value, locations and number
-            of minima, and also maximum value, locations and number of maxima.)pbdoc");
+        out << "            Tuple[cvcuda.Tensor, cvcuda.Tensor, cvcuda.Tensor,"
+            << " cvcuda.Tensor, cvcuda.Tensor, cvcuda.Tensor]: A tuple with minimum\n"
+            << "                value, locations and number of minima, and also maximum value,\n"
+            << "                locations and number of maxima.\n";
     }
-    else if (strMinMax.find("min") != std::string::npos)
+    else if (hasMin)
     {
-        strReturns = std::string(R"pbdoc(
-            Tuple[cvcuda.Tensor, cvcuda.Tensor, cvcuda.Tensor]: A tuple with minimum value, locations and number
-            of minima.)pbdoc");
+        out << "            Tuple[cvcuda.Tensor, cvcuda.Tensor, cvcuda.Tensor]: A tuple with\n"
+            << "                minimum value, locations and number of minima.\n";
     }
-    else if (strMinMax.find("max") != std::string::npos)
+    else if (hasMax)
     {
-        strReturns = std::string(R"pbdoc(
-            Tuple[cvcuda.Tensor, cvcuda.Tensor, cvcuda.Tensor]: A tuple with maximum value, locations and number
-            of maxima.)pbdoc");
+        out << "            Tuple[cvcuda.Tensor, cvcuda.Tensor, cvcuda.Tensor]: A tuple with\n"
+            << "                maximum value, locations and number of maxima.\n";
     }
-
-    return std::string(R"pbdoc(
-
-        Finds )pbdoc")
-         + strMinMax + std::string(R"pbdoc( on the input )pbdoc") + strTensor + std::string(R"pbdoc(.
-
-        See also:
-            Refer to the CV-CUDA C API reference for the MinMaxLoc operator
-            for more details and usage examples.
-
-        Args:)pbdoc")
-         + strArgs + std::string(R"pbdoc(
-            stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
-
-        Returns:)pbdoc")
-         + strReturns + std::string(R"pbdoc(
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
-    )pbdoc");
+    out << "    ";
+    return out.str();
 }
 
 } // namespace
@@ -358,42 +368,42 @@ void ExportOpMinMaxLoc(py::module &m)
 {
     using namespace pybind11::literals;
 
-    m.def("min_loc", &MinLocTensor, "src"_a, "max_locations"_a = 0, py::kw_only(), "stream"_a = nullptr,
-          GetDocString("", "tensor", "minimum").c_str());
+    m.def("min_loc", NvtxTrace("cvcuda.min_loc", &MinLocTensor), "src"_a, "max_locations"_a = 0, py::kw_only(),
+          "stream"_a = nullptr, GetDocString("", "tensor", "minimum").c_str());
 
-    m.def("min_loc", &MinLocVarShape, "src"_a, "max_locations"_a = 0, py::kw_only(), "stream"_a = nullptr,
-          GetDocString("", "batch", "minimum").c_str());
+    m.def("min_loc", NvtxTrace("cvcuda.min_loc", &MinLocVarShape), "src"_a, "max_locations"_a = 0, py::kw_only(),
+          "stream"_a = nullptr, GetDocString("", "batch", "minimum").c_str());
 
-    m.def("max_loc", &MaxLocTensor, "src"_a, "max_locations"_a = 0, py::kw_only(), "stream"_a = nullptr,
-          GetDocString("", "tensor", "maximum").c_str());
+    m.def("max_loc", NvtxTrace("cvcuda.max_loc", &MaxLocTensor), "src"_a, "max_locations"_a = 0, py::kw_only(),
+          "stream"_a = nullptr, GetDocString("", "tensor", "maximum").c_str());
 
-    m.def("max_loc", &MaxLocVarShape, "src"_a, "max_locations"_a = 0, py::kw_only(), "stream"_a = nullptr,
-          GetDocString("", "batch", "maximum").c_str());
+    m.def("max_loc", NvtxTrace("cvcuda.max_loc", &MaxLocVarShape), "src"_a, "max_locations"_a = 0, py::kw_only(),
+          "stream"_a = nullptr, GetDocString("", "batch", "maximum").c_str());
 
-    m.def("min_max_loc", &MinMaxLocTensor, "src"_a, "max_locations"_a = 0, py::kw_only(), "stream"_a = nullptr,
-          GetDocString("", "tensor", "minimum/maximum").c_str());
+    m.def("min_max_loc", NvtxTrace("cvcuda.min_max_loc", &MinMaxLocTensor), "src"_a, "max_locations"_a = 0,
+          py::kw_only(), "stream"_a = nullptr, GetDocString("", "tensor", "minimum/maximum").c_str());
 
-    m.def("min_max_loc", &MinMaxLocVarShape, "src"_a, "max_locations"_a = 0, py::kw_only(), "stream"_a = nullptr,
-          GetDocString("", "batch", "minimum/maximum").c_str());
+    m.def("min_max_loc", NvtxTrace("cvcuda.min_max_loc", &MinMaxLocVarShape), "src"_a, "max_locations"_a = 0,
+          py::kw_only(), "stream"_a = nullptr, GetDocString("", "batch", "minimum/maximum").c_str());
 
-    m.def("min_loc_into", &MinLocTensorInto, "min_val"_a, "min_loc"_a, "num_min"_a, "src"_a, py::kw_only(),
-          "stream"_a = nullptr, GetDocString("into", "tensor", "minimum").c_str());
+    m.def("min_loc_into", NvtxTrace("cvcuda.min_loc_into", &MinLocTensorInto), "min_val"_a, "min_loc"_a, "num_min"_a,
+          "src"_a, py::kw_only(), "stream"_a = nullptr, GetDocString("into", "tensor", "minimum").c_str());
 
-    m.def("min_loc_into", &MinLocVarShapeInto, "min_val"_a, "min_loc"_a, "num_min"_a, "src"_a, py::kw_only(),
-          "stream"_a = nullptr, GetDocString("into", "batch", "minimum").c_str());
+    m.def("min_loc_into", NvtxTrace("cvcuda.min_loc_into", &MinLocVarShapeInto), "min_val"_a, "min_loc"_a, "num_min"_a,
+          "src"_a, py::kw_only(), "stream"_a = nullptr, GetDocString("into", "batch", "minimum").c_str());
 
-    m.def("max_loc_into", &MaxLocTensorInto, "max_val"_a, "max_loc"_a, "num_max"_a, "src"_a, py::kw_only(),
-          "stream"_a = nullptr, GetDocString("into", "tensor", "maximum").c_str());
+    m.def("max_loc_into", NvtxTrace("cvcuda.max_loc_into", &MaxLocTensorInto), "max_val"_a, "max_loc"_a, "num_max"_a,
+          "src"_a, py::kw_only(), "stream"_a = nullptr, GetDocString("into", "tensor", "maximum").c_str());
 
-    m.def("max_loc_into", &MaxLocVarShapeInto, "max_val"_a, "max_loc"_a, "num_max"_a, "src"_a, py::kw_only(),
-          "stream"_a = nullptr, GetDocString("into", "batch", "maximum").c_str());
+    m.def("max_loc_into", NvtxTrace("cvcuda.max_loc_into", &MaxLocVarShapeInto), "max_val"_a, "max_loc"_a, "num_max"_a,
+          "src"_a, py::kw_only(), "stream"_a = nullptr, GetDocString("into", "batch", "maximum").c_str());
 
-    m.def("min_max_loc_into", &MinMaxLocTensorInto, "min_val"_a, "min_loc"_a, "num_min"_a, "max_val"_a, "max_loc"_a,
-          "num_max"_a, "src"_a, py::kw_only(), "stream"_a = nullptr,
+    m.def("min_max_loc_into", NvtxTrace("cvcuda.min_max_loc_into", &MinMaxLocTensorInto), "min_val"_a, "min_loc"_a,
+          "num_min"_a, "max_val"_a, "max_loc"_a, "num_max"_a, "src"_a, py::kw_only(), "stream"_a = nullptr,
           GetDocString("into", "tensor", "minimum/maximum").c_str());
 
-    m.def("min_max_loc_into", &MinMaxLocVarShapeInto, "min_val"_a, "min_loc"_a, "num_min"_a, "max_val"_a, "max_loc"_a,
-          "num_max"_a, "src"_a, py::kw_only(), "stream"_a = nullptr,
+    m.def("min_max_loc_into", NvtxTrace("cvcuda.min_max_loc_into", &MinMaxLocVarShapeInto), "min_val"_a, "min_loc"_a,
+          "num_min"_a, "max_val"_a, "max_loc"_a, "num_max"_a, "src"_a, py::kw_only(), "stream"_a = nullptr,
           GetDocString("into", "batch", "minimum/maximum").c_str());
 }
 

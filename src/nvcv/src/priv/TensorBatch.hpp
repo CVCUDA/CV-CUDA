@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,7 +38,7 @@ public:
 
     TensorBatch(const NVCVTensorBatchRequirements &reqs, IAllocator &alloc);
 
-    ~TensorBatch();
+    ~TensorBatch() override;
 
     SharedCoreObj<IAllocator> alloc() const override;
 
@@ -72,32 +72,30 @@ private:
 
     // Dirty begin and end describe a range containing all the tensors that have been modified
     // since the previous exportData call and thus should be updated in the exported buffer.
-    int32_t m_dirtyBegin;
-    int32_t m_dirtyEnd;
+    int32_t m_dirtyBegin = 0;
+    int32_t m_dirtyEnd   = 0;
 
     int32_t m_numTensors = 0;
 
-    NVCVTensorHandle              *m_Tensors; // host buffer for tensor handles
+    NVCVTensorHandle              *m_Tensors = nullptr; // host buffer for tensor handles
     // Pinned buffer for the tensor data descriptors
     // It's updated every time the user updates the tensor batch.
     // Changes are tracked with the m_dirty flags.
-    NVCVTensorBatchElementStrided *m_pinnedTensorsBuffer;
+    NVCVTensorBatchElementStrided *m_pinnedTensorsBuffer = nullptr;
     // Device buffer for the tensor data descriptors.
     // It's updated and returned when the exportData method is called.
-    NVCVTensorBatchElementStrided *m_devTensorsBuffer;
+    NVCVTensorBatchElementStrided *m_devTensorsBuffer = nullptr;
 
-    NVCVDataType     m_dtype;
-    NVCVTensorLayout m_layout;
-    int32_t          m_rank;
+    NVCVDataType     m_dtype  = NVCV_DATA_TYPE_NONE;
+    NVCVTensorLayout m_layout = NVCV_TENSOR_LAYOUT_MAKE("");
+    int32_t          m_rank   = -1;
 
-    // TODO: must be retrieved from the resource allocator;
-    cudaEvent_t m_evPostFence;
-
-    void *m_userPointer;
+    // REVISIT: must be retrieved from the resource allocator;
+    cudaEvent_t m_evPostFence = nullptr;
 
     void cleanUp();
 
-    void validateTensors(const NVCVTensorHandle *tensors, int32_t numTensors);
+    void validateTensors(const NVCVTensorHandle *tensors, int32_t numTensors) const;
 
     void setLayoutAndDType(const NVCVTensorHandle *tensors, int32_t numTensors);
 };

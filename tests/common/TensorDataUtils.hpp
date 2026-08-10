@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,13 +24,28 @@
 #include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
+#include <nvcv/util/Assert.h>
 
+#include <array>
 #include <cstdio>
 #include <fstream>
 #include <random>
+#include <stdexcept>
 #include <string>
 
 namespace nvcv::util {
+
+class CudaMemcpyError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
+
+class TensorDataUtilsError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
 
 enum chflags
 {
@@ -47,9 +62,8 @@ enum chflags
 //   int3 coord{...};
 //   ValueAt<int4>(vec, strides, coord) = 0;
 template<typename T, class VecType, typename ST, typename CT,
-         class       = nvcv::cuda::Require<nvcv::cuda::detail::IsSameCompound<ST, CT>>,
          typename RT = std::conditional_t<std::is_const_v<VecType>, const T, T>>
-inline RT &ValueAt(VecType &vec, const ST &strides, const CT &coord)
+inline RT &ValueAt(VecType &vec, const ST &strides, const CT &coord) requires nvcv::cuda::detail::IsSameCompound<ST, CT>
 {
     return *reinterpret_cast<RT *>(&vec[nvcv::cuda::dot(coord, strides)]);
 }
@@ -172,28 +186,28 @@ public:
     template<class T>
     T *item(const int x, const int y, const int c)
     {
-        uint32_t byteIndex = 0;
+        size_t byteIndex = 0;
 
         if (!m_planar)
-            byteIndex = (c * m_bytesPerC) + (x * m_bytesPerC * m_numC) + (y * m_rowStride);
+            byteIndex = static_cast<size_t>((c * m_bytesPerC) + (x * m_bytesPerC * m_numC) + (y * m_rowStride));
         else
-            byteIndex = (c * m_planeStride) + (x * m_bytesPerC) + (y * m_rowStride);
+            byteIndex = static_cast<size_t>((c * m_planeStride) + (x * m_bytesPerC) + (y * m_rowStride));
 
         if (byteIndex >= m_data.size())
-            throw std::runtime_error("Requested data out of bounds");
+            throw TensorDataUtilsError("Requested data out of bounds");
 
-        return reinterpret_cast<T *>(reinterpret_cast<unsigned char *>(m_data.data()) + byteIndex);
+        return reinterpret_cast<T *>(m_data.data() + byteIndex);
     }
 
 private:
-    std::vector<uint8_t> m_data;        // pointer to local data
-    Size2D               m_size;        // h/w in logical pixels, byte offset == m_size.x * bytesPerPixel.
-    int64_t              m_rowStride;   // Row stride in bytes
-    int64_t              m_planeStride; // used for (n)CHW Tensors 0 if not CHW
-    int                  m_numC;        // Number of color channels usually 1,3,4 (Y, RGB, ARGB)
-    bool                 m_planar;      // If true the image is (n)CHW
-    int32_t              m_bytesPerC;   // bytes per logical pixels
-    NVCVTensorLayout     m_layout;      // layout of originating ITensor NVCV_TENSOR_CHW/NVCV_TENSOR_NHWC/HWC
+    std::vector<uint8_t> m_data;            // pointer to local data
+    Size2D               m_size;            // h/w in logical pixels, byte offset == m_size.x * bytesPerPixel.
+    int64_t              m_rowStride;       // Row stride in bytes
+    int64_t              m_planeStride = 0; // used for (n)CHW Tensors 0 if not CHW
+    int                  m_numC;            // Number of color channels usually 1,3,4 (Y, RGB, ARGB)
+    bool                 m_planar;          // If true the image is (n)CHW
+    int32_t              m_bytesPerC;       // bytes per logical pixels
+    NVCVTensorLayout     m_layout;          // layout of originating ITensor NVCV_TENSOR_CHW/NVCV_TENSOR_NHWC/HWC
 };
 
 /**
@@ -356,23 +370,23 @@ void PrintImageFromByteVector(const uint8_t *data, int width, int height, int ro
                               bool planar);
 
 template<typename DT>
-void SetTensorTo(const TensorData &tensorData, DT data, int sample)
+static void SetTensorTo(const TensorData &tensorData, DT data, int sample)
 {
     if (!nvcv::TensorDataAccessStrided::IsCompatible(tensorData))
-        throw std::runtime_error("Tensor Data is not pitch access capable.");
+        throw TensorDataUtilsError("Tensor Data is not pitch access capable.");
 
     auto tDataAc = nvcv::TensorDataAccessStrided::Create(tensorData);
 
     if (tDataAc->numSamples() <= sample)
-        throw std::runtime_error("Number of samples smaller than requested sample.");
+        throw TensorDataUtilsError("Number of samples smaller than requested sample.");
 
-    int             inElements = (tDataAc->sampleStride() / sizeof(DT));
+    auto            inElements = static_cast<int>(tDataAc->sampleStride() / sizeof(DT));
     std::vector<DT> srcVec(inElements, data);
 
     int totalSamples;
     if (sample < 0)
     {
-        totalSamples = tDataAc->numSamples();
+        totalSamples = static_cast<int>(tDataAc->numSamples());
         sample       = 0;
     }
     else
@@ -386,10 +400,8 @@ void SetTensorTo(const TensorData &tensorData, DT data, int sample)
         size_t size         = tDataAc->sampleStride();
         if (auto err = cudaMemcpy(outSamplePtr, srcVec.data(), size, cudaMemcpyHostToDevice))
         {
-            char msg[1024] = {};
-            snprintf(msg, sizeof(msg), "CudaMemcpy failed with %s (%i): %s", cudaGetErrorName(err), err,
-                     cudaGetErrorString(err));
-            throw std::runtime_error(msg);
+            throw CudaMemcpyError(std::string("CudaMemcpy failed with ") + cudaGetErrorName(err) + " ("
+                                  + std::to_string(err) + "): " + cudaGetErrorString(err));
         }
     }
 
@@ -400,21 +412,21 @@ template<typename DT>
 static void SetTensorToRandomValueFloat(const TensorData &tensorData, DT minVal, DT maxVal, int sample)
 {
     if (!nvcv::TensorDataAccessStrided::IsCompatible(tensorData))
-        throw std::runtime_error("Tensor Data is not pitch access capable.");
+        throw TensorDataUtilsError("Tensor Data is not pitch access capable.");
 
     auto tDataAc = nvcv::TensorDataAccessStrided::Create(tensorData);
 
     if (tDataAc->numSamples() <= sample)
-        throw std::runtime_error("Number of samples smaller than requested sample.");
+        throw TensorDataUtilsError("Number of samples smaller than requested sample.");
 
-    int                        inElements = (tDataAc->sampleStride() / sizeof(DT));
+    auto                       inElements = static_cast<int>(tDataAc->sampleStride() / sizeof(DT));
     std::vector<DT>            srcVec(inElements);
     std::default_random_engine randEng(0);
 
     int totalSamples;
     if (sample < 0)
     {
-        totalSamples = tDataAc->numSamples();
+        totalSamples = static_cast<int>(tDataAc->numSamples());
         sample       = 0;
     }
     else
@@ -425,11 +437,12 @@ static void SetTensorToRandomValueFloat(const TensorData &tensorData, DT minVal,
     std::uniform_real_distribution<> srcRand(minVal, maxVal);
     for (int i = sample; i < totalSamples; ++i)
     {
-        std::generate(srcVec.begin(), srcVec.end(), [&]() { return srcRand(randEng); });
+        std::generate( // NOSONAR: std::ranges::generate is C++20.
+            srcVec.begin(), srcVec.end(), [&srcRand, &randEng]() { return srcRand(randEng); });
         if (cudaSuccess
             != cudaMemcpy(tDataAc->sampleData(i), srcVec.data(), tDataAc->sampleStride(), cudaMemcpyHostToDevice))
         {
-            throw std::runtime_error("CudaMemcpy failed");
+            throw TensorDataUtilsError("CudaMemcpy failed");
         }
     }
     return;
@@ -451,21 +464,21 @@ template<typename DT>
 static void SetTensorToRandomValue(const TensorData &tensorData, DT minVal, DT maxVal, int sample)
 {
     if (!nvcv::TensorDataAccessStrided::IsCompatible(tensorData))
-        throw std::runtime_error("Tensor Data is not pitch access capable.");
+        throw TensorDataUtilsError("Tensor Data is not pitch access capable.");
 
     auto tDataAc = nvcv::TensorDataAccessStrided::Create(tensorData);
 
     if (tDataAc->numSamples() <= sample)
-        throw std::runtime_error("Number of samples smaller than requested sample.");
+        throw TensorDataUtilsError("Number of samples smaller than requested sample.");
 
-    int                        inElements = (tDataAc->sampleStride() / sizeof(DT));
+    auto                       inElements = static_cast<int>(tDataAc->sampleStride() / sizeof(DT));
     std::vector<DT>            srcVec(inElements);
     std::default_random_engine randEng(0);
 
     int totalSamples;
     if (sample < 0)
     {
-        totalSamples = tDataAc->numSamples();
+        totalSamples = static_cast<int>(tDataAc->numSamples());
         sample       = 0;
     }
     else
@@ -475,11 +488,12 @@ static void SetTensorToRandomValue(const TensorData &tensorData, DT minVal, DT m
     std::uniform_int_distribution<DT> srcRand{minVal, maxVal};
     for (int i = sample; i < totalSamples; ++i)
     {
-        std::generate(srcVec.begin(), srcVec.end(), [&]() { return srcRand(randEng); });
+        std::generate( // NOSONAR: std::ranges::generate is C++20.
+            srcVec.begin(), srcVec.end(), [&srcRand, &randEng]() { return srcRand(randEng); });
         if (cudaSuccess
             != cudaMemcpy(tDataAc->sampleData(i), srcVec.data(), tDataAc->sampleStride(), cudaMemcpyHostToDevice))
         {
-            throw std::runtime_error("CudaMemcpy failed");
+            throw TensorDataUtilsError("CudaMemcpy failed");
         }
     }
 
@@ -487,18 +501,18 @@ static void SetTensorToRandomValue(const TensorData &tensorData, DT minVal, DT m
 }
 
 template<typename DT>
-void SetTensorFromVector(const TensorData &tensorData, std::vector<DT> &data, int sample)
+static void SetTensorFromVector(const TensorData &tensorData, std::vector<DT> &data, int sample)
 {
     if (!nvcv::TensorDataAccessStrided::IsCompatible(tensorData))
-        throw std::runtime_error("Tensor Data is not pitch access capable.");
+        throw TensorDataUtilsError("Tensor Data is not pitch access capable.");
 
     auto tDataAc = nvcv::TensorDataAccessStrided::Create(tensorData);
 
     if ((int64_t)(data.size() * sizeof(DT)) != tDataAc->sampleStride())
-        throw std::runtime_error("Data vector is incorrect size.");
+        throw TensorDataUtilsError("Data vector is incorrect size.");
 
     if (tDataAc->numSamples() <= sample)
-        throw std::runtime_error("Number of samples smaller than requested sample.");
+        throw TensorDataUtilsError("Number of samples smaller than requested sample.");
 
     if (sample < 0)
     {
@@ -507,7 +521,7 @@ void SetTensorFromVector(const TensorData &tensorData, std::vector<DT> &data, in
             if (cudaSuccess
                 != cudaMemcpy(tDataAc->sampleData(i), data.data(), tDataAc->sampleStride(), cudaMemcpyHostToDevice))
             {
-                throw std::runtime_error("CudaMemcpy failed");
+                throw TensorDataUtilsError("CudaMemcpy failed");
             }
         }
     }
@@ -516,7 +530,7 @@ void SetTensorFromVector(const TensorData &tensorData, std::vector<DT> &data, in
         if (cudaSuccess
             != cudaMemcpy(tDataAc->sampleData(sample), data.data(), tDataAc->sampleStride(), cudaMemcpyHostToDevice))
         {
-            throw std::runtime_error("CudaMemcpy failed");
+            throw TensorDataUtilsError("CudaMemcpy failed");
         }
     }
 
@@ -524,24 +538,24 @@ void SetTensorFromVector(const TensorData &tensorData, std::vector<DT> &data, in
 }
 
 template<typename DT>
-void GetVectorFromTensor(const TensorData &tensorData, int sample, std::vector<DT> &outData)
+static void GetVectorFromTensor(const TensorData &tensorData, int sample, std::vector<DT> &outData)
 {
     if (!nvcv::TensorDataAccessStrided::IsCompatible(tensorData))
-        throw std::runtime_error("Tensor Data is not pitch access capable.");
+        throw TensorDataUtilsError("Tensor Data is not pitch access capable.");
 
     auto tDataAc = nvcv::TensorDataAccessStrided::Create(tensorData);
 
     if (tDataAc->numSamples() <= sample || sample < 0)
-        throw std::runtime_error("Number of samples smaller than requested sample.");
+        throw TensorDataUtilsError("Number of samples smaller than requested sample.");
 
-    int elements = (tDataAc->sampleStride() / sizeof(DT));
+    auto elements = static_cast<int>(tDataAc->sampleStride() / sizeof(DT));
 
     outData.resize(elements);
 
     if (cudaSuccess
         != cudaMemcpy(outData.data(), tDataAc->sampleData(sample), tDataAc->sampleStride(), cudaMemcpyDeviceToHost))
     {
-        throw std::runtime_error("CudaMemcpy failed");
+        throw TensorDataUtilsError("CudaMemcpy failed");
     }
 
     return;
@@ -553,15 +567,15 @@ static void SetImageTensorFromVectorPlanar(const TensorData &tensorData, std::ve
     Optional<TensorDataAccessStridedImagePlanar> tDataAc = nvcv::TensorDataAccessStridedImagePlanar::Create(tensorData);
 
     if (!tDataAc)
-        throw std::runtime_error("Tensor Data not compatible with planar image access.");
+        throw TensorDataUtilsError("Tensor Data not compatible with planar image access.");
 
     if (tDataAc->numSamples() <= sample)
-        throw std::runtime_error("Number of samples smaller than requested sample.");
+        throw TensorDataUtilsError("Number of samples smaller than requested sample.");
 
     if ((int64_t)data.size() != tDataAc->numCols() * tDataAc->numRows() * tDataAc->numChannels())
-        throw std::runtime_error("Data vector is incorrect size, size must be W*C*sizeof(DT)*channels.");
+        throw TensorDataUtilsError("Data vector is incorrect size, size must be W*C*sizeof(DT)*channels.");
 
-    auto copyToGpu = [&](int j)
+    auto copyToGpu = [&tDataAc, &data](int j)
     {
         Byte *basePtr = tDataAc->sampleData(j);
         for (int i = 0; i < tDataAc->numChannels(); ++i)
@@ -572,7 +586,7 @@ static void SetImageTensorFromVectorPlanar(const TensorData &tensorData, std::ve
                                 tDataAc->numCols() * sizeof(DT), tDataAc->numCols() * sizeof(DT), tDataAc->numRows(),
                                 cudaMemcpyHostToDevice))
             {
-                throw std::runtime_error("CudaMemcpy failed for channel plane copy from host to device.");
+                throw TensorDataUtilsError("CudaMemcpy failed for channel plane copy from host to device.");
             }
             basePtr += tDataAc->planeStride();
         }
@@ -593,18 +607,18 @@ static void SetImageTensorFromVector(const TensorData &tensorData, std::vector<D
     Optional<TensorDataAccessStridedImage> tDataAc = nvcv::TensorDataAccessStridedImage::Create(tensorData);
 
     if (!tDataAc)
-        throw std::runtime_error("Tensor Data not compatible with pitch access.");
+        throw TensorDataUtilsError("Tensor Data not compatible with pitch access.");
 
     if (tDataAc->infoLayout().isChannelFirst()) // planar case
         return SetImageTensorFromVectorPlanar<DT>(tensorData, data, sample);
 
     if (tDataAc->numSamples() <= sample)
-        throw std::runtime_error("Number of samples smaller than requested sample.");
+        throw TensorDataUtilsError("Number of samples smaller than requested sample.");
 
     if ((int64_t)data.size() != tDataAc->numCols() * tDataAc->numRows() * tDataAc->numChannels())
-        throw std::runtime_error("Data vector is incorrect size, size must be N*W*C*sizeof(DT).");
+        throw TensorDataUtilsError("Data vector is incorrect size, size must be N*W*C*sizeof(DT).");
 
-    auto copyToGpu = [&](int i)
+    auto copyToGpu = [&tDataAc, &data](int i)
     {
         Byte *basePtr = tDataAc->sampleData(i);
         if (cudaSuccess
@@ -612,7 +626,7 @@ static void SetImageTensorFromVector(const TensorData &tensorData, std::vector<D
                 basePtr, tDataAc->rowStride(), data.data(), tDataAc->numCols() * tDataAc->numChannels() * sizeof(DT),
                 tDataAc->numCols() * tDataAc->numChannels() * sizeof(DT), tDataAc->numRows(), cudaMemcpyHostToDevice))
         {
-            throw std::runtime_error("CudaMemcpy failed on copy of image from host to device.");
+            throw TensorDataUtilsError("CudaMemcpy failed on copy of image from host to device.");
         }
     };
 
@@ -631,10 +645,10 @@ static void GetImageVectorFromTensorPlanar(const TensorData &tensorData, int sam
     Optional<TensorDataAccessStridedImagePlanar> tDataAc = nvcv::TensorDataAccessStridedImagePlanar::Create(tensorData);
 
     if (!tDataAc)
-        throw std::runtime_error("Tensor Data not compatible with planar access.");
+        throw TensorDataUtilsError("Tensor Data not compatible with planar access.");
 
     if (tDataAc->numSamples() <= sample || sample < 0)
-        throw std::runtime_error("Number of samples smaller than requested sample.");
+        throw TensorDataUtilsError("Number of samples smaller than requested sample.");
 
     int elements = tDataAc->numRows() * tDataAc->numCols() * tDataAc->numChannels();
 
@@ -648,7 +662,7 @@ static void GetImageVectorFromTensorPlanar(const TensorData &tensorData, int sam
                             tDataAc->numCols() * sizeof(DT), basePtr, tDataAc->rowStride(),
                             tDataAc->numCols() * sizeof(DT), tDataAc->numRows(), cudaMemcpyDeviceToHost))
         {
-            throw std::runtime_error("CudaMemcpy failed on copy of channel plane from device to host.");
+            throw TensorDataUtilsError("CudaMemcpy failed on copy of channel plane from device to host.");
         }
         basePtr += tDataAc->planeStride();
     }
@@ -662,12 +676,12 @@ static void GetImageVectorFromTensor(const TensorData &tensorData, int sample, s
     Optional<TensorDataAccessStridedImage> tDataAc = nvcv::TensorDataAccessStridedImage::Create(tensorData);
 
     if (!tDataAc)
-        throw std::runtime_error("Tensor Data not compatible with pitch access.");
+        throw TensorDataUtilsError("Tensor Data not compatible with pitch access.");
     if (tDataAc->infoLayout().isChannelFirst())
         return GetImageVectorFromTensorPlanar<DT>(tensorData, sample, outData);
 
     if (tDataAc->numSamples() <= sample || sample < 0)
-        throw std::runtime_error("Number of samples smaller than requested sample.");
+        throw TensorDataUtilsError("Number of samples smaller than requested sample.");
 
     int elements = tDataAc->numRows() * tDataAc->numCols() * tDataAc->numChannels();
 
@@ -680,65 +694,109 @@ static void GetImageVectorFromTensor(const TensorData &tensorData, int sample, s
                         tDataAc->numCols() * sizeof(DT) * tDataAc->numChannels(), tDataAc->numRows(),
                         cudaMemcpyDeviceToHost))
     {
-        throw std::runtime_error("CudaMemcpy failed");
+        throw TensorDataUtilsError("CudaMemcpy failed");
     }
     return;
 }
 
 template<typename DT>
-void SetCvDataTo(TensorImageData &cvImg, DT data, Size2D region, uint8_t chFlags)
+static void SetCvDataPixelChannels(TensorImageData &cvImg, DT data, int x, int y, uint8_t chFlags)
+{
+    for (int c = 0; c < 4; c++)
+    {
+        if (((chFlags >> c) & 0x1) == 0x1) // NOSONAR: chFlags is a channel bitmask, not byte storage.
+        {
+            *cvImg.item<DT>(x, y, c) = data;
+        }
+    }
+}
+
+template<typename DT>
+static void SetCvDataTo(TensorImageData &cvImg, DT data, Size2D region, uint8_t chFlags)
 {
     for (int x = 0; x < region.w; x++)
+    {
         for (int y = 0; y < region.h; y++)
-            for (int c = 0; c < 4; c++)
-                if (((chFlags >> c) & 0x1) == 0x1)
-                    *cvImg.item<DT>(x, y, c) = data;
+        {
+            SetCvDataPixelChannels(cvImg, data, x, y, chFlags);
+        }
+    }
 
     return;
 }
 
 // Useful for debugging
+template<typename ST>
+inline nvcv::cuda::BaseType<ST> BufferShapeElementOrOne(const ST &shape, int element)
+{
+    using BT = nvcv::cuda::BaseType<ST>;
+
+    return nvcv::cuda::NumElements<ST> > element ? nvcv::cuda::GetElement(shape, element) : BT{1};
+}
+
 template<typename VT, typename ST>
-inline void PrintBuffer(const std::vector<uint8_t> &vec, const ST &strides, const ST &shape, const char *name = "",
-                        uint32_t endls = 0b1111)
+inline void PrintBufferValues(const std::vector<uint8_t> &vec, const ST &strides, const ST &shape,
+                              nvcv::cuda::BaseType<ST> x, nvcv::cuda::BaseType<ST> y, nvcv::cuda::BaseType<ST> z,
+                              uint32_t endls)
 {
     using BT  = nvcv::cuda::BaseType<ST>;
     using BT4 = nvcv::cuda::MakeType<BT, 4>;
     using CVT = std::conditional_t<sizeof(VT) == 1, int, VT>;
 
+    std::cout << " " << std::flush;
+    for (BT w = 0; w < BufferShapeElementOrOne(shape, 3); ++w)
+    {
+        ST coord = nvcv::cuda::DropCast<nvcv::cuda::NumElements<ST>>(BT4{x, y, z, w});
+
+        std::cout << " " << static_cast<CVT>(ValueAt<VT>(vec, strides, coord)) << std::flush;
+    }
+
+    if (endls & 0b0010)
+        std::cout << std::endl;
+    else
+        std::cout << std::flush;
+}
+
+template<typename VT, typename ST>
+inline void PrintBufferRows(const std::vector<uint8_t> &vec, const ST &strides, const ST &shape,
+                            nvcv::cuda::BaseType<ST> x, nvcv::cuda::BaseType<ST> y, uint32_t endls)
+{
+    using BT = nvcv::cuda::BaseType<ST>;
+
+    if (endls & 0b0100)
+        std::cout << "  [" << std::endl;
+    else
+        std::cout << "  [" << std::flush;
+
+    for (BT z = 0; z < BufferShapeElementOrOne(shape, 2); ++z)
+    {
+        PrintBufferValues<VT>(vec, strides, shape, x, y, z, endls);
+    }
+
+    if (endls & 0b0001)
+        std::cout << "  ]" << std::endl;
+    else
+        std::cout << "  ]" << std::flush;
+}
+
+template<typename VT, typename ST>
+inline void PrintBuffer(const std::vector<uint8_t> &vec, const ST &strides, const ST &shape, const char *name = "",
+                        uint32_t endls = 0b1111)
+{
+    using BT = nvcv::cuda::BaseType<ST>;
+
     std::cout << "I Printing buffer " << name << " with:\nI\tSize = " << vec.size() << " Bytes\nI\tShape = " << shape
               << "\nI\tStrides = " << strides << "\nI\tValues = " << std::endl;
 
-    for (BT x = 0; x < (nvcv::cuda::NumElements<ST> >= 1 ? nvcv::cuda::GetElement(shape, 0) : 1); ++x)
+    for (BT x = 0; x < BufferShapeElementOrOne(shape, 0); ++x)
     {
         if (endls & 0b1000)
             std::cout << "{" << std::endl;
         else
             std::cout << "{" << std::flush;
-        for (BT y = 0; y < (nvcv::cuda::NumElements<ST> >= 2 ? nvcv::cuda::GetElement(shape, 1) : 1); ++y)
+        for (BT y = 0; y < BufferShapeElementOrOne(shape, 1); ++y)
         {
-            if (endls & 0b0100)
-                std::cout << "  [" << std::endl;
-            else
-                std::cout << "  [" << std::flush;
-            for (BT z = 0; z < (nvcv::cuda::NumElements<ST> >= 3 ? nvcv::cuda::GetElement(shape, 2) : 1); ++z)
-            {
-                std::cout << " " << std::flush;
-                for (BT w = 0; w < (nvcv::cuda::NumElements<ST> >= 4 ? nvcv::cuda::GetElement(shape, 3) : 1); ++w)
-                {
-                    ST coord = nvcv::cuda::DropCast<nvcv::cuda::NumElements<ST>>(BT4{x, y, z, w});
-
-                    std::cout << " " << static_cast<CVT>(ValueAt<VT>(vec, strides, coord)) << std::flush;
-                }
-                if (endls & 0b0010)
-                    std::cout << std::endl;
-                else
-                    std::cout << std::flush;
-            }
-            if (endls & 0b0001)
-                std::cout << "  ]" << std::endl;
-            else
-                std::cout << "  ]" << std::flush;
+            PrintBufferRows<VT>(vec, strides, shape, x, y, endls);
         }
         std::cout << "}" << std::endl;
     }
@@ -747,6 +805,62 @@ inline void PrintBuffer(const std::vector<uint8_t> &vec, const ST &strides, cons
 // Write images in *HW tensor buffer vec to PGM files.
 // The file name provided should have two (one) "%ld" format substr to place the first two (one) indices.
 // The value type VT is converted to U8 when writing to each PGM file.
+template<typename ST>
+inline ST StripPGMCoord(long4_16a coord)
+{
+    if constexpr (nvcv::cuda::NumElements<ST> == 4)
+        return ST{coord};
+    else if constexpr (nvcv::cuda::NumElements<ST> == 3)
+        return ST{coord.y, coord.z, coord.w};
+    return ST{coord.z, coord.w};
+}
+
+template<typename VT>
+inline VT ConvertPGMValue(VT val)
+{
+    if constexpr (std::is_same_v<VT, uint8_t>)
+        return val;
+    else if constexpr (std::is_integral_v<VT> && !std::is_signed_v<VT>)
+        return std::min((VT)255, std::max((VT)0, val));
+    else if constexpr (std::is_integral_v<VT> && std::is_signed_v<VT>)
+        return std::min((VT)255, std::max((VT)0, (VT)std::abs(val)));
+    else
+        return std::min((VT)255, std::max((VT)0, (VT)std::round(std::abs(val))));
+}
+
+template<typename VT, typename ST>
+inline void WritePGMValues(std::ofstream &ofs, const std::vector<uint8_t> &vec, const ST &strides, long c0, long c1,
+                           int width, int height)
+{
+    for (long i = 0; i < height; ++i)
+    {
+        for (long j = 0; j < width; ++j)
+        {
+            ST coord = StripPGMCoord<ST>(long4_16a{c0, c1, i, j});
+            VT val   = util::ValueAt<VT>(vec, strides, coord);
+
+            ofs << ConvertPGMValue(val) << ((j == width - 1) ? "\n" : " ");
+        }
+    }
+}
+
+template<typename VT, typename ST>
+inline void WriteOnePGMImage(const char *filename, const std::vector<uint8_t> &vec, const ST &strides, long c0, long c1,
+                             int width, int height)
+{
+    std::array<char, 256> fn;
+    int                   numChars = std::snprintf(fn.data(), fn.size(), filename, c1, c0);
+    NVCV_ASSERT(numChars >= 0 && static_cast<size_t>(numChars) < fn.size());
+
+    std::ofstream ofs(fn.data());
+
+    ofs << "P2\n" << width << " " << height << " 255\n";
+
+    WritePGMValues<VT>(ofs, vec, strides, c0, c1, width, height);
+
+    ofs.close();
+}
+
 template<typename VT, typename ST>
 inline void WriteImagesToPGM(const char *filename, const std::vector<uint8_t> &vec, const ST &strides, const ST &shape)
 {
@@ -757,7 +871,8 @@ inline void WriteImagesToPGM(const char *filename, const std::vector<uint8_t> &v
     int width     = nvcv::cuda::GetElement(shape, widthIdx);
     int height    = nvcv::cuda::GetElement(shape, heightIdx);
 
-    int c0size = 1, c1size = 1;
+    int c0size = 1;
+    int c1size = 1;
     if constexpr (nvcv::cuda::NumElements<ST> == 4)
     {
         c0size = nvcv::cuda::GetElement(shape, 0);
@@ -768,52 +883,11 @@ inline void WriteImagesToPGM(const char *filename, const std::vector<uint8_t> &v
         c1size = nvcv::cuda::GetElement(shape, 0);
     }
 
-    auto stripCoord = [](long4_16a coord)
-    {
-        if constexpr (nvcv::cuda::NumElements<ST> == 4)
-            return ST{coord};
-        else if constexpr (nvcv::cuda::NumElements<ST> == 3)
-            return ST{coord.y, coord.z, coord.w};
-        return ST{coord.z, coord.w};
-    };
-
-    auto convertValue = [](VT val)
-    {
-        if constexpr (std::is_same_v<VT, uint8_t>)
-            return val;
-        else if constexpr (std::is_integral_v<VT> && !std::is_signed_v<VT>)
-            return std::min((VT)255, std::max((VT)0, val));
-        else if constexpr (std::is_integral_v<VT> && std::is_signed_v<VT>)
-            return std::min((VT)255, std::max((VT)0, (VT)std::abs(val)));
-        else
-            return std::min((VT)255, std::max((VT)0, (VT)std::round(std::abs(val))));
-    };
-
-    char fn[256];
-
     for (long c0 = 0; c0 < c0size; ++c0)
     {
         for (long c1 = 0; c1 < c1size; ++c1)
         {
-            sprintf(fn, filename, c1, c0);
-
-            std::ofstream ofs(fn);
-
-            ofs << "P2\n" << width << " " << height << " 255\n";
-
-            for (long i = 0; i < height; ++i)
-            {
-                for (long j = 0; j < width; ++j)
-                {
-                    ST coord = stripCoord(long4_16a{c0, c1, i, j});
-
-                    VT val = util::ValueAt<VT>(vec, strides, coord);
-
-                    ofs << convertValue(val) << ((j == width - 1) ? "\n" : " ");
-                }
-            }
-
-            ofs.close();
+            WriteOnePGMImage<VT>(filename, vec, strides, c0, c1, width, height);
         }
     }
 }
@@ -829,7 +903,8 @@ inline void WritePyramidToPGM(const char *header, const std::vector<std::vector<
     {
         for (int l = 0; l < (int)pyr[o].size(); ++l)
         {
-            std::string filename = h + std::to_string(o) + "_" + std::to_string(l) + ".pgm";
+            std::string filename
+                = h + std::to_string(o) + "_" + std::to_string(l) + ".pgm"; // NOSONAR: std::format is C++20.
 
             WriteImagesToPGM<VT>(filename.c_str(), pyr[o][l], strides[o], shape[o]);
         }
@@ -845,7 +920,7 @@ inline void WritePyramidToPGM(const char *header, const std::vector<std::vector<
 
     for (int o = 0; o < (int)pyr.size(); ++o)
     {
-        std::string filename = h + std::to_string(o) + "_%ld" + ".pgm";
+        std::string filename = h + std::to_string(o) + "_%ld" + ".pgm"; // NOSONAR: std::format is C++20.
 
         WriteImagesToPGM<VT>(filename.c_str(), pyr[o], strides[o], shape[o]);
     }

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -44,6 +44,159 @@ constexpr auto RGBA8   = NVCV_IMAGE_FORMAT_RGBA8;
 constexpr auto RGBf32  = NVCV_IMAGE_FORMAT_RGBf32;
 constexpr auto RGBAf32 = NVCV_IMAGE_FORMAT_RGBAf32;
 
+template<int N, typename BorderWrap>
+auto BorderValueAt(BorderWrap &borderWrap, int x, int y, int z = 0, int k = 0)
+{
+    return borderWrap[test::GetCoord<N>(x, y, z, k)];
+}
+
+template<int N, typename ValueType, typename BorderWrap>
+ValueType HostGoldInterpCubic(BorderWrap &borderWrap, float2 coord, int z = 0, int k = 0)
+{
+    int ix = cuda::round<cuda::RoundMode::DOWN, int>(coord.x);
+    int iy = cuda::round<cuda::RoundMode::DOWN, int>(coord.y);
+
+    using FT = cuda::ConvertBaseTypeTo<float, ValueType>;
+    auto sum = cuda::SetAll<FT>(0);
+
+    std::array<float, 4> wx;
+    test::GetBicubicCoeffs(coord.x - static_cast<float>(ix), wx[0], wx[1], wx[2], wx[3]);
+    std::array<float, 4> wy;
+    test::GetBicubicCoeffs(coord.y - static_cast<float>(iy), wy[0], wy[1], wy[2], wy[3]);
+
+    for (int i = 0; i < 16; ++i)
+    {
+        int cx = i % 4 - 1;
+        int cy = i / 4 - 1;
+        sum += BorderValueAt<N>(borderWrap, ix + cx, iy + cy, z, k) * (wx[cx + 1] * wy[cy + 1]);
+    }
+
+    return cuda::SaturateCast<ValueType>(sum);
+}
+
+template<int N, typename ValueType, typename BorderWrap>
+ValueType HostGoldInterpArea(BorderWrap &borderWrap, float2 scale, float2 coord, int z = 0, int k = 0)
+{
+    int xmin = cuda::round<cuda::RoundMode::UP, int>(coord.x * scale.x);
+    int xmax = cuda::round<cuda::RoundMode::DOWN, int>((coord.x + 1) * scale.x);
+    int ymin = cuda::round<cuda::RoundMode::UP, int>(coord.y * scale.y);
+    int ymax = cuda::round<cuda::RoundMode::DOWN, int>((coord.y + 1) * scale.y);
+
+    auto out = cuda::SetAll<cuda::ConvertBaseTypeTo<float, ValueType>>(0);
+
+    int width  = std::max(0, xmax - xmin);
+    int height = std::max(0, ymax - ymin);
+
+    for (int i = 0; i < width * height; ++i)
+    {
+        int cx = xmin + i % width;
+        int cy = ymin + i / width;
+        out += BorderValueAt<N>(borderWrap, cx, cy, z, k) * (1.f / (scale.x * scale.y));
+    }
+
+    return cuda::SaturateCast<ValueType>(out);
+}
+
+template<int N, NVCVInterpolationType I, typename ValueType, typename BorderWrap>
+ValueType HostGoldInterp(BorderWrap &borderWrap, float2 scale, float2 coord, int z = 0, int k = 0)
+{
+    if constexpr (I == NVCV_INTERP_NEAREST)
+    {
+        int2 c = cuda::round<cuda::RoundMode::DOWN, int>(coord + .5f);
+        return BorderValueAt<N>(borderWrap, c.x, c.y, z, k);
+    }
+    else if constexpr (I == NVCV_INTERP_LINEAR)
+    {
+        int2 c1 = cuda::round<cuda::RoundMode::DOWN, int>(coord);
+        int2 c2 = c1 + 1;
+
+        auto out = cuda::SetAll<cuda::ConvertBaseTypeTo<float, ValueType>>(0);
+
+        const auto c1x = static_cast<float>(c1.x);
+        const auto c1y = static_cast<float>(c1.y);
+        const auto c2x = static_cast<float>(c2.x);
+        const auto c2y = static_cast<float>(c2.y);
+
+        out += BorderValueAt<N>(borderWrap, c1.x, c1.y, z, k) * (c2x - coord.x) * (c2y - coord.y);
+        out += BorderValueAt<N>(borderWrap, c2.x, c1.y, z, k) * (coord.x - c1x) * (c2y - coord.y);
+        out += BorderValueAt<N>(borderWrap, c1.x, c2.y, z, k) * (c2x - coord.x) * (coord.y - c1y);
+        out += BorderValueAt<N>(borderWrap, c2.x, c2.y, z, k) * (coord.x - c1x) * (coord.y - c1y);
+
+        return cuda::SaturateCast<ValueType>(out);
+    }
+    else if constexpr (I == NVCV_INTERP_CUBIC)
+    {
+        return HostGoldInterpCubic<N, ValueType>(borderWrap, coord, z, k);
+    }
+    else if constexpr (I == NVCV_INTERP_AREA)
+    {
+        return HostGoldInterpArea<N, ValueType>(borderWrap, scale, coord, z, k);
+    }
+}
+
+template<NVCVBorderType B, typename TensorWrap, typename BorderWrap, typename InterpWrap, typename InputType,
+         typename ValueType>
+void ExpectGridAligned3D(TensorWrap &tensorWrap, BorderWrap &borderWrap, InterpWrap &interpWrap, const InputType &input,
+                         const ValueType &borderValue, int3 shapes, int x, int y, int z)
+{
+    int2   inCoord{x, y};
+    int3   intCoord{x, y, z};
+    float3 floatCoord = cuda::StaticCast<float>(intCoord);
+
+    ValueType gold = borderValue;
+
+    if (test::IsInside(inCoord, int2{shapes.x, shapes.y}, B))
+    {
+        intCoord.x = inCoord.x;
+        intCoord.y = inCoord.y;
+
+        EXPECT_TRUE(std::is_reference_v<decltype(tensorWrap[intCoord])>);
+
+        gold = input[intCoord.z * InputType::kShapes[2] * InputType::kShapes[1] + intCoord.y * InputType::kShapes[2]
+                     + intCoord.x];
+
+        EXPECT_EQ(tensorWrap[intCoord], gold);
+    }
+
+    EXPECT_TRUE(std::is_reference_v<decltype(borderWrap[intCoord])>);
+    EXPECT_FALSE(std::is_reference_v<decltype(interpWrap[floatCoord])>);
+
+    EXPECT_EQ(borderWrap[intCoord], gold);
+    EXPECT_EQ(interpWrap[floatCoord], gold);
+}
+
+template<NVCVBorderType B, typename TensorWrap, typename BorderWrap, typename InterpWrap, typename InputType,
+         typename ValueType>
+void ExpectGridAligned4D(TensorWrap &tensorWrap, BorderWrap &borderWrap, InterpWrap &interpWrap, const InputType &input,
+                         const ValueType &borderValue, int4 shapes, int x, int y, int z, int c)
+{
+    int2   inCoord{x, y};
+    int4   intCoord{c, x, y, z};
+    float4 floatCoord = cuda::StaticCast<float>(intCoord);
+
+    ValueType gold = borderValue;
+
+    if (test::IsInside(inCoord, int2{shapes.x, shapes.y}, B))
+    {
+        intCoord.y = inCoord.x;
+        intCoord.z = inCoord.y;
+
+        EXPECT_TRUE(std::is_reference_v<decltype(tensorWrap[intCoord])>);
+
+        gold = input[intCoord.w * InputType::kShapes[1] * InputType::kShapes[2] * InputType::kShapes[3]
+                     + intCoord.z * InputType::kShapes[2] * InputType::kShapes[3] + intCoord.y * InputType::kShapes[3]
+                     + intCoord.x];
+
+        EXPECT_EQ(tensorWrap[intCoord], gold);
+    }
+
+    EXPECT_TRUE(std::is_reference_v<decltype(borderWrap[intCoord])>);
+    EXPECT_FALSE(std::is_reference_v<decltype(interpWrap[floatCoord])>);
+
+    EXPECT_EQ(borderWrap[intCoord], gold);
+    EXPECT_EQ(interpWrap[floatCoord], gold);
+}
+
 // -------------------- Testing GetIndexForInterpolation -----------------------
 
 #define NVCV_TEST_ROW(INTERP_TYPE, POSITION, INPUT, GOLD) \
@@ -68,7 +221,7 @@ TYPED_TEST(GetIndexForInterpolationTests, correct_index)
     const float in   = ttype::GetValue<TypeParam, 2>;
     const int   gold = ttype::GetValue<TypeParam, 3>;
 
-    int test = cuda::GetIndexForInterpolation<kInterpType, kPosition>(in);
+    auto test = static_cast<int>(cuda::GetIndexForInterpolation<kInterpType, kPosition>(in));
 
     EXPECT_EQ(test, gold);
 }
@@ -132,7 +285,8 @@ TYPED_TEST(InterpolationWrap2DTest, correct_grid_aligned_values_in_host)
     EXPECT_EQ(InterpWrap::kCoordMap.id[0], 0);
     EXPECT_EQ(InterpWrap::kCoordMap.id[1], 1);
 
-    const float scaleX = 1.f, scaleY = 1.f;
+    const float scaleX = 1.f;
+    const float scaleY = 1.f;
 
     TensorWrap tensorWrap(input.data(), InputType::kStrides[0], InputType::kStrides[1]);
     BorderWrap borderWrap(tensorWrap, borderValue, InputType::kShapes[0], InputType::kShapes[1]);
@@ -192,7 +346,8 @@ TYPED_TEST(InterpolationWrap2DTest, correct_grid_unaligned_values_in_host)
     using BorderWrap = cuda::BorderWrap<TensorWrap, kBorderType, true, true>;
     using InterpWrap = cuda::InterpolationWrap<BorderWrap, kInterpType>;
 
-    const float scaleX = 1.f, scaleY = 2.f;
+    const float scaleX = 1.f;
+    const float scaleY = 2.f;
 
     TensorWrap tensorWrap(input.data(), InputType::kStrides[0]);
     BorderWrap borderWrap(tensorWrap, borderValue, InputType::kShapes[0], InputType::kShapes[1]);
@@ -200,79 +355,16 @@ TYPED_TEST(InterpolationWrap2DTest, correct_grid_unaligned_values_in_host)
 
     const int2 shapes{InputType::kShapes[1], InputType::kShapes[0]};
 
-    ValueType gold;
-
     std::default_random_engine            randEng{0};
     std::uniform_real_distribution<float> randCoord{0.f, 1.f};
+    const float2                          scale{scaleX, scaleY};
 
-    for (float y = -2; y < shapes.y + 2; ++y)
+    for (int y = -2; y < shapes.y + 2; ++y)
     {
-        for (float x = -2; x < shapes.x + 2; ++x)
+        for (int x = -2; x < shapes.x + 2; ++x)
         {
-            float2 floatCoord{x + randCoord(randEng), y + randCoord(randEng)};
-
-            if (kInterpType == NVCV_INTERP_NEAREST)
-            {
-                int2 c = cuda::round<cuda::RoundMode::DOWN, int>(floatCoord + .5f);
-
-                gold = borderWrap[c];
-            }
-            else if (kInterpType == NVCV_INTERP_LINEAR)
-            {
-                int2 c1 = cuda::round<cuda::RoundMode::DOWN, int>(floatCoord);
-                int2 c2 = c1 + 1;
-
-                auto out = cuda::SetAll<cuda::ConvertBaseTypeTo<float, ValueType>>(0);
-
-                out += borderWrap[int2{c1.x, c1.y}] * (c2.x - floatCoord.x) * (c2.y - floatCoord.y);
-                out += borderWrap[int2{c2.x, c1.y}] * (floatCoord.x - c1.x) * (c2.y - floatCoord.y);
-                out += borderWrap[int2{c1.x, c2.y}] * (c2.x - floatCoord.x) * (floatCoord.y - c1.y);
-                out += borderWrap[int2{c2.x, c2.y}] * (floatCoord.x - c1.x) * (floatCoord.y - c1.y);
-
-                gold = cuda::SaturateCast<ValueType>(out);
-            }
-            else if (kInterpType == NVCV_INTERP_CUBIC)
-            {
-                int ix = cuda::round<cuda::RoundMode::DOWN, int>(floatCoord.x);
-                int iy = cuda::round<cuda::RoundMode::DOWN, int>(floatCoord.y);
-
-                using FT = cuda::ConvertBaseTypeTo<float, ValueType>;
-                auto sum = cuda::SetAll<FT>(0);
-
-                float wx[4];
-                test::GetBicubicCoeffs(floatCoord.x - ix, wx[0], wx[1], wx[2], wx[3]);
-                float wy[4];
-                test::GetBicubicCoeffs(floatCoord.y - iy, wy[0], wy[1], wy[2], wy[3]);
-
-                for (int cy = -1; cy <= 2; cy++)
-                {
-                    for (int cx = -1; cx <= 2; cx++)
-                    {
-                        sum += borderWrap[int2{ix + cx, iy + cy}] * (wx[cx + 1] * wy[cy + 1]);
-                    }
-                }
-
-                gold = cuda::SaturateCast<ValueType>(sum);
-            }
-            else if (kInterpType == NVCV_INTERP_AREA)
-            {
-                int xmin = cuda::round<cuda::RoundMode::UP, int>(floatCoord.x * scaleX);
-                int xmax = cuda::round<cuda::RoundMode::DOWN, int>((floatCoord.x + 1) * scaleX);
-                int ymin = cuda::round<cuda::RoundMode::UP, int>(floatCoord.y * scaleY);
-                int ymax = cuda::round<cuda::RoundMode::DOWN, int>((floatCoord.y + 1) * scaleY);
-
-                auto out = cuda::SetAll<cuda::ConvertBaseTypeTo<float, ValueType>>(0);
-
-                for (int cy = ymin; cy < ymax; ++cy)
-                {
-                    for (int cx = xmin; cx < xmax; ++cx)
-                    {
-                        out += borderWrap[int2{cx, cy}] * (1.f / (scaleX * scaleY));
-                    }
-                }
-
-                gold = cuda::SaturateCast<ValueType>(out);
-            }
+            float2 floatCoord{static_cast<float>(x) + randCoord(randEng), static_cast<float>(y) + randCoord(randEng)};
+            ValueType gold = HostGoldInterp<2, kInterpType, ValueType>(borderWrap, scale, floatCoord);
 
             EXPECT_EQ(interpWrap[floatCoord], gold);
         }
@@ -327,13 +419,13 @@ TYPED_TEST(InterpolationWrapHWTest, correct_shift_in_device)
             {height, width},
             "HW"
     },
-        nvcv::DataType{format});
+        format.planeDataType(0));
     nvcv::Tensor dstTensor(
         nvcv::TensorShape{
             {height, width},
             "HW"
     },
-        nvcv::DataType{format});
+        format.planeDataType(0));
 
     auto srcDev = srcTensor.exportData<nvcv::TensorDataStridedCuda>();
     auto dstDev = dstTensor.exportData<nvcv::TensorDataStridedCuda>();
@@ -360,7 +452,7 @@ TYPED_TEST(InterpolationWrapHWTest, correct_shift_in_device)
 
     std::default_random_engine             randEng{0};
     std::uniform_int_distribution<uint8_t> srcRand{0u, 255u};
-    std::generate(srcVec.begin(), srcVec.end(), [&]() { return srcRand(randEng); });
+    std::ranges::generate(srcVec, [&srcRand, &randEng]() { return srcRand(randEng); });
 
     ASSERT_EQ(cudaSuccess, cudaMemcpy(srcDev->basePtr(), srcVec.data(), srcVec.size(), cudaMemcpyHostToDevice));
 
@@ -391,11 +483,11 @@ TYPED_TEST(InterpolationWrapHWTest, correct_shift_in_device)
 
     for (int y = 0; y < dstSize.y; ++y)
     {
-        srcCoord.y = y + shiftY;
+        srcCoord.y = static_cast<float>(y) + shiftY;
 
         for (int x = 0; x < dstSize.x; ++x)
         {
-            srcCoord.x = x + shiftX;
+            srcCoord.x = static_cast<float>(x) + shiftX;
 
             test::ValueAt<ValueType>(gold, dstStrides, int2{x, y}) = test::GoldInterp<kInterpType, kBorderType>(
                 srcVec, srcStrides, srcSize2, borderValue, scale, srcCoord);
@@ -470,7 +562,8 @@ TYPED_TEST(InterpolationWrap3DTest, correct_grid_aligned_values_in_host)
     EXPECT_EQ(InterpWrap::kCoordMap.id[1], 1);
     EXPECT_EQ(InterpWrap::kCoordMap.id[2], 2);
 
-    const float scaleX = 1.f, scaleY = 1.f;
+    const float scaleX = 1.f;
+    const float scaleY = 1.f;
 
     TensorWrap tensorWrap(input.data(), InputType::kStrides[0], InputType::kStrides[1], InputType::kStrides[2]);
     BorderWrap borderWrap(tensorWrap, borderValue, InputType::kShapes[1], InputType::kShapes[2]);
@@ -482,42 +575,18 @@ TYPED_TEST(InterpolationWrap3DTest, correct_grid_aligned_values_in_host)
 
     const int3 shapes{InputType::kShapes[2], InputType::kShapes[1], InputType::kShapes[0]};
 
-    ValueType gold;
+    const int xBegin = -2;
+    const int xCount = shapes.x + 4;
+    const int yBegin = -2;
+    const int yCount = shapes.y + 4;
 
-    for (int z = 0; z < shapes.z; ++z)
+    for (int i = 0; i < shapes.z * yCount * xCount; ++i)
     {
-        for (int y = -2; y < shapes.y + 2; ++y)
-        {
-            for (int x = -2; x < shapes.x + 2; ++x)
-            {
-                int2   inCoord{x, y};
-                int3   intCoord{x, y, z};
-                float3 floatCoord = cuda::StaticCast<float>(intCoord);
+        int x = xBegin + i % xCount;
+        int y = yBegin + (i / xCount) % yCount;
+        int z = i / (xCount * yCount);
 
-                if (test::IsInside(inCoord, int2{shapes.x, shapes.y}, kBorderType))
-                {
-                    intCoord.x = inCoord.x;
-                    intCoord.y = inCoord.y;
-
-                    EXPECT_TRUE(std::is_reference_v<decltype(tensorWrap[intCoord])>);
-
-                    gold = input[intCoord.z * InputType::kShapes[2] * InputType::kShapes[1]
-                                 + intCoord.y * InputType::kShapes[2] + intCoord.x];
-
-                    EXPECT_EQ(tensorWrap[intCoord], gold);
-                }
-                else
-                {
-                    gold = borderValue;
-                }
-
-                EXPECT_TRUE(std::is_reference_v<decltype(borderWrap[intCoord])>);
-                EXPECT_FALSE(std::is_reference_v<decltype(interpWrap[floatCoord])>);
-
-                EXPECT_EQ(borderWrap[intCoord], gold);
-                EXPECT_EQ(interpWrap[floatCoord], gold);
-            }
-        }
+        ExpectGridAligned3D<kBorderType>(tensorWrap, borderWrap, interpWrap, input, borderValue, shapes, x, y, z);
     }
 }
 
@@ -538,7 +607,8 @@ TYPED_TEST(InterpolationWrap3DTest, correct_grid_unaligned_values_in_host)
     using BorderWrap = cuda::BorderWrap<TensorWrap, kBorderType, false, true, true>;
     using InterpWrap = cuda::InterpolationWrap<BorderWrap, kInterpType>;
 
-    const float scaleX = 2.f, scaleY = 1.f;
+    const float scaleX = 2.f;
+    const float scaleY = 1.f;
 
     TensorWrap tensorWrap(input.data(), InputType::kStrides[0], InputType::kStrides[1]);
     BorderWrap borderWrap(tensorWrap, borderValue, InputType::kShapes[1], InputType::kShapes[2]);
@@ -546,81 +616,20 @@ TYPED_TEST(InterpolationWrap3DTest, correct_grid_unaligned_values_in_host)
 
     const int3 shapes{InputType::kShapes[2], InputType::kShapes[1], InputType::kShapes[0]};
 
-    ValueType gold;
-
     std::default_random_engine            randEng{0};
     std::uniform_real_distribution<float> randCoord{0.f, 1.f};
+    const float2                          scale{scaleX, scaleY};
 
     for (int z = 0; z < shapes.z; ++z)
     {
-        for (float y = -2; y < shapes.y + 2; ++y)
+        for (int y = -2; y < shapes.y + 2; ++y)
         {
-            for (float x = -2; x < shapes.x + 2; ++x)
+            for (int x = -2; x < shapes.x + 2; ++x)
             {
-                float3 floatCoord{x + randCoord(randEng), y + randCoord(randEng), static_cast<float>(z)};
-
-                if (kInterpType == NVCV_INTERP_NEAREST)
-                {
-                    int2 c = cuda::round<cuda::RoundMode::DOWN, int>(cuda::DropCast<2>(floatCoord + .5f));
-
-                    gold = borderWrap[int3{c.x, c.y, z}];
-                }
-                else if (kInterpType == NVCV_INTERP_LINEAR)
-                {
-                    int2 c1 = cuda::round<cuda::RoundMode::DOWN, int>(cuda::DropCast<2>(floatCoord));
-                    int2 c2 = c1 + 1;
-
-                    auto out = cuda::SetAll<cuda::ConvertBaseTypeTo<float, ValueType>>(0);
-
-                    out += borderWrap[int3{c1.x, c1.y, z}] * (c2.x - floatCoord.x) * (c2.y - floatCoord.y);
-                    out += borderWrap[int3{c2.x, c1.y, z}] * (floatCoord.x - c1.x) * (c2.y - floatCoord.y);
-                    out += borderWrap[int3{c1.x, c2.y, z}] * (c2.x - floatCoord.x) * (floatCoord.y - c1.y);
-                    out += borderWrap[int3{c2.x, c2.y, z}] * (floatCoord.x - c1.x) * (floatCoord.y - c1.y);
-
-                    gold = cuda::SaturateCast<ValueType>(out);
-                }
-                else if (kInterpType == NVCV_INTERP_CUBIC)
-                {
-                    int ix = cuda::round<cuda::RoundMode::DOWN, int>(floatCoord.x);
-                    int iy = cuda::round<cuda::RoundMode::DOWN, int>(floatCoord.y);
-
-                    using FT = cuda::ConvertBaseTypeTo<float, ValueType>;
-                    auto sum = cuda::SetAll<FT>(0);
-
-                    float wx[4];
-                    test::GetBicubicCoeffs(floatCoord.x - ix, wx[0], wx[1], wx[2], wx[3]);
-                    float wy[4];
-                    test::GetBicubicCoeffs(floatCoord.y - iy, wy[0], wy[1], wy[2], wy[3]);
-
-                    for (int cy = -1; cy <= 2; cy++)
-                    {
-                        for (int cx = -1; cx <= 2; cx++)
-                        {
-                            sum += borderWrap[int3{ix + cx, iy + cy, z}] * (wx[cx + 1] * wy[cy + 1]);
-                        }
-                    }
-
-                    gold = cuda::SaturateCast<ValueType>(sum);
-                }
-                else if (kInterpType == NVCV_INTERP_AREA)
-                {
-                    int xmin = cuda::round<cuda::RoundMode::UP, int>(floatCoord.x * scaleX);
-                    int xmax = cuda::round<cuda::RoundMode::DOWN, int>((floatCoord.x + 1) * scaleX);
-                    int ymin = cuda::round<cuda::RoundMode::UP, int>(floatCoord.y * scaleY);
-                    int ymax = cuda::round<cuda::RoundMode::DOWN, int>((floatCoord.y + 1) * scaleY);
-
-                    auto out = cuda::SetAll<cuda::ConvertBaseTypeTo<float, ValueType>>(0);
-
-                    for (int cy = ymin; cy < ymax; ++cy)
-                    {
-                        for (int cx = xmin; cx < xmax; ++cx)
-                        {
-                            out += borderWrap[int3{cx, cy, z}] * (1.f / (scaleX * scaleY));
-                        }
-                    }
-
-                    gold = cuda::SaturateCast<ValueType>(out);
-                }
+                float3    floatCoord{static_cast<float>(x) + randCoord(randEng),
+                                  static_cast<float>(y) + randCoord(randEng), static_cast<float>(z)};
+                ValueType gold
+                    = HostGoldInterp<3, kInterpType, ValueType>(borderWrap, scale, cuda::DropCast<2>(floatCoord), z);
 
                 EXPECT_EQ(interpWrap[floatCoord], gold);
             }
@@ -701,7 +710,7 @@ TYPED_TEST(InterpolationWrapNHWTest, correct_shift_in_device)
 
     std::default_random_engine             randEng{0};
     std::uniform_int_distribution<uint8_t> srcRand{0u, 255u};
-    std::generate(srcVec.begin(), srcVec.end(), [&]() { return srcRand(randEng); });
+    std::ranges::generate(srcVec, [&srcRand, &randEng]() { return srcRand(randEng); });
 
     ASSERT_EQ(cudaSuccess, cudaMemcpy(srcDev->basePtr(), srcVec.data(), srcVec.size(), cudaMemcpyHostToDevice));
 
@@ -731,11 +740,11 @@ TYPED_TEST(InterpolationWrapNHWTest, correct_shift_in_device)
 
         for (int y = 0; y < dstSize.y; ++y)
         {
-            srcCoord.y = y + shiftY;
+            srcCoord.y = static_cast<float>(y) + shiftY;
 
             for (int x = 0; x < dstSize.x; ++x)
             {
-                srcCoord.x = x + shiftX;
+                srcCoord.x = static_cast<float>(x) + shiftX;
 
                 test::ValueAt<ValueType>(gold, dstStrides, int3{x, y, z}) = test::GoldInterp<kInterpType, kBorderType>(
                     srcVec, srcStrides, srcSize2, borderValue, scale, srcCoord, z);
@@ -816,7 +825,8 @@ TYPED_TEST(InterpolationWrap4DTest, correct_grid_aligned_values_in_host)
     EXPECT_EQ(InterpWrap::kCoordMap.id[2], 3);
     EXPECT_EQ(InterpWrap::kCoordMap.id[3], 0);
 
-    const float scaleX = 1.f, scaleY = 1.f;
+    const float scaleX = 1.f;
+    const float scaleY = 1.f;
 
     TensorWrap tensorWrap(input.data(), InputType::kStrides[0], InputType::kStrides[1], InputType::kStrides[2],
                           InputType::kStrides[3]);
@@ -829,46 +839,19 @@ TYPED_TEST(InterpolationWrap4DTest, correct_grid_aligned_values_in_host)
 
     const int4 shapes{InputType::kShapes[2], InputType::kShapes[1], InputType::kShapes[0], InputType::kShapes[3]};
 
-    ValueType gold;
+    const int xBegin = -2;
+    const int xCount = shapes.x + 4;
+    const int yBegin = -2;
+    const int yCount = shapes.y + 4;
 
-    for (int z = 0; z < shapes.z; ++z)
+    for (int i = 0; i < shapes.z * yCount * xCount * shapes.w; ++i)
     {
-        for (int y = -2; y < shapes.y + 2; ++y)
-        {
-            for (int x = -2; x < shapes.x + 2; ++x)
-            {
-                for (int c = 0; c < shapes.w; ++c)
-                {
-                    int2   inCoord{x, y};
-                    int4   intCoord{c, x, y, z};
-                    float4 floatCoord = cuda::StaticCast<float>(intCoord);
+        int c = i % shapes.w;
+        int x = xBegin + (i / shapes.w) % xCount;
+        int y = yBegin + (i / (shapes.w * xCount)) % yCount;
+        int z = i / (shapes.w * xCount * yCount);
 
-                    if (test::IsInside(inCoord, int2{shapes.x, shapes.y}, kBorderType))
-                    {
-                        intCoord.y = inCoord.x;
-                        intCoord.z = inCoord.y;
-
-                        EXPECT_TRUE(std::is_reference_v<decltype(tensorWrap[intCoord])>);
-
-                        gold = input[intCoord.w * InputType::kShapes[1] * InputType::kShapes[2] * InputType::kShapes[3]
-                                     + intCoord.z * InputType::kShapes[2] * InputType::kShapes[3]
-                                     + intCoord.y * InputType::kShapes[3] + intCoord.x];
-
-                        EXPECT_EQ(tensorWrap[intCoord], gold);
-                    }
-                    else
-                    {
-                        gold = borderValue;
-                    }
-
-                    EXPECT_TRUE(std::is_reference_v<decltype(borderWrap[intCoord])>);
-                    EXPECT_FALSE(std::is_reference_v<decltype(interpWrap[floatCoord])>);
-
-                    EXPECT_EQ(borderWrap[intCoord], gold);
-                    EXPECT_EQ(interpWrap[floatCoord], gold);
-                }
-            }
-        }
+        ExpectGridAligned4D<kBorderType>(tensorWrap, borderWrap, interpWrap, input, borderValue, shapes, x, y, z, c);
     }
 }
 
@@ -889,7 +872,8 @@ TYPED_TEST(InterpolationWrap4DTest, correct_grid_unaligned_values_in_host)
     using BorderWrap = cuda::BorderWrap<TensorWrap, kBorderType, false, true, true, false>;
     using InterpWrap = cuda::InterpolationWrap<BorderWrap, kInterpType>;
 
-    const float scaleX = 2.f, scaleY = 2.f;
+    const float scaleX = 2.f;
+    const float scaleY = 2.f;
 
     TensorWrap tensorWrap(input.data(), InputType::kStrides[0], InputType::kStrides[1], InputType::kStrides[2]);
     BorderWrap borderWrap(tensorWrap, borderValue, InputType::kShapes[1], InputType::kShapes[2]);
@@ -897,90 +881,26 @@ TYPED_TEST(InterpolationWrap4DTest, correct_grid_unaligned_values_in_host)
 
     const int4 shapes{InputType::kShapes[2], InputType::kShapes[1], InputType::kShapes[0], InputType::kShapes[3]};
 
-    ValueType gold;
-
     std::default_random_engine            randEng{0};
     std::uniform_real_distribution<float> randCoord{0.f, 1.f};
+    const float2                          scale{scaleX, scaleY};
 
-    for (int z = 0; z < shapes.z; ++z)
+    const int xBegin = -2;
+    const int xCount = shapes.x + 4;
+    const int yBegin = -2;
+    const int yCount = shapes.y + 4;
+
+    for (int i = 0; i < shapes.z * yCount * xCount * shapes.w; ++i)
     {
-        for (float y = -2; y < shapes.y + 2; ++y)
-        {
-            for (float x = -2; x < shapes.x + 2; ++x)
-            {
-                for (int k = 0; k < shapes.w; ++k)
-                {
-                    float2 floatCoord{x + randCoord(randEng), y + randCoord(randEng)};
+        int       k = i % shapes.w;
+        auto      x = static_cast<float>(xBegin + (i / shapes.w) % xCount);
+        auto      y = static_cast<float>(yBegin + (i / (shapes.w * xCount)) % yCount);
+        int       z = i / (shapes.w * xCount * yCount);
+        float2    floatCoord{x + randCoord(randEng), y + randCoord(randEng)};
+        float4    floatCoord4{static_cast<float>(k), floatCoord.x, floatCoord.y, static_cast<float>(z)};
+        ValueType gold = HostGoldInterp<4, kInterpType, ValueType>(borderWrap, scale, floatCoord, z, k);
 
-                    if (kInterpType == NVCV_INTERP_NEAREST)
-                    {
-                        int2 c = cuda::round<cuda::RoundMode::DOWN, int>(floatCoord + .5f);
-
-                        gold = borderWrap[int4{k, c.x, c.y, z}];
-                    }
-                    else if (kInterpType == NVCV_INTERP_LINEAR)
-                    {
-                        int2 c1 = cuda::round<cuda::RoundMode::DOWN, int>(floatCoord);
-                        int2 c2 = c1 + 1;
-
-                        auto out = cuda::SetAll<cuda::ConvertBaseTypeTo<float, ValueType>>(0);
-
-                        out += borderWrap[int4{k, c1.x, c1.y, z}] * (c2.x - floatCoord.x) * (c2.y - floatCoord.y);
-                        out += borderWrap[int4{k, c2.x, c1.y, z}] * (floatCoord.x - c1.x) * (c2.y - floatCoord.y);
-                        out += borderWrap[int4{k, c1.x, c2.y, z}] * (c2.x - floatCoord.x) * (floatCoord.y - c1.y);
-                        out += borderWrap[int4{k, c2.x, c2.y, z}] * (floatCoord.x - c1.x) * (floatCoord.y - c1.y);
-
-                        gold = cuda::SaturateCast<ValueType>(out);
-                    }
-                    else if (kInterpType == NVCV_INTERP_CUBIC)
-                    {
-                        int ix = cuda::round<cuda::RoundMode::DOWN, int>(floatCoord.x);
-                        int iy = cuda::round<cuda::RoundMode::DOWN, int>(floatCoord.y);
-
-                        using FT = cuda::ConvertBaseTypeTo<float, ValueType>;
-                        auto sum = cuda::SetAll<FT>(0);
-
-                        float wx[4];
-                        test::GetBicubicCoeffs(floatCoord.x - ix, wx[0], wx[1], wx[2], wx[3]);
-                        float wy[4];
-                        test::GetBicubicCoeffs(floatCoord.y - iy, wy[0], wy[1], wy[2], wy[3]);
-
-                        for (int cy = -1; cy <= 2; cy++)
-                        {
-                            for (int cx = -1; cx <= 2; cx++)
-                            {
-                                sum += borderWrap[int4{k, ix + cx, iy + cy, z}] * (wx[cx + 1] * wy[cy + 1]);
-                            }
-                        }
-
-                        gold = cuda::SaturateCast<ValueType>(sum);
-                    }
-                    else if (kInterpType == NVCV_INTERP_AREA)
-                    {
-                        int xmin = cuda::round<cuda::RoundMode::UP, int>(floatCoord.x * scaleX);
-                        int xmax = cuda::round<cuda::RoundMode::DOWN, int>((floatCoord.x + 1) * scaleX);
-                        int ymin = cuda::round<cuda::RoundMode::UP, int>(floatCoord.y * scaleY);
-                        int ymax = cuda::round<cuda::RoundMode::DOWN, int>((floatCoord.y + 1) * scaleY);
-
-                        auto out = cuda::SetAll<cuda::ConvertBaseTypeTo<float, ValueType>>(0);
-
-                        for (int cy = ymin; cy < ymax; ++cy)
-                        {
-                            for (int cx = xmin; cx < xmax; ++cx)
-                            {
-                                out += borderWrap[int4{k, cx, cy, z}] * (1.f / (scaleX * scaleY));
-                            }
-                        }
-
-                        gold = cuda::SaturateCast<ValueType>(out);
-                    }
-
-                    float4 floatCoord4{static_cast<float>(k), floatCoord.x, floatCoord.y, static_cast<float>(z)};
-
-                    EXPECT_EQ(interpWrap[floatCoord4], gold);
-                }
-            }
-        }
+        EXPECT_EQ(interpWrap[floatCoord4], gold);
     }
 }
 
@@ -1059,7 +979,7 @@ TYPED_TEST(InterpolationWrapNHWCTest, correct_shift_in_device)
 
     std::default_random_engine             randEng{0};
     std::uniform_int_distribution<uint8_t> srcRand{0u, 255u};
-    std::generate(srcVec.begin(), srcVec.end(), [&]() { return srcRand(randEng); });
+    std::ranges::generate(srcVec, [&srcRand, &randEng]() { return srcRand(randEng); });
 
     ASSERT_EQ(cudaSuccess, cudaMemcpy(srcDev->basePtr(), srcVec.data(), srcVec.size(), cudaMemcpyHostToDevice));
 
@@ -1082,27 +1002,16 @@ TYPED_TEST(InterpolationWrapNHWCTest, correct_shift_in_device)
 
     const int2 srcSize2{srcSize.x, srcSize.y};
 
-    // Run gold interpolation shift
-    for (int z = 0; z < dstSize.z; ++z)
+    for (int i = 0; i < dstSize.z * dstSize.y * dstSize.x * dstSize.w; ++i)
     {
-        float2 srcCoord;
+        int    k        = i % dstSize.w;
+        int    x        = (i / dstSize.w) % dstSize.x;
+        int    y        = (i / (dstSize.w * dstSize.x)) % dstSize.y;
+        int    z        = i / (dstSize.w * dstSize.x * dstSize.y);
+        float2 srcCoord = {x + shiftX, y + shiftY};
 
-        for (int y = 0; y < dstSize.y; ++y)
-        {
-            srcCoord.y = y + shiftY;
-
-            for (int x = 0; x < dstSize.x; ++x)
-            {
-                srcCoord.x = x + shiftX;
-
-                for (int k = 0; k < dstSize.w; ++k)
-                {
-                    test::ValueAt<ValueType>(gold, dstStrides, int4{k, x, y, z})
-                        = test::GoldInterp<kInterpType, kBorderType>(srcVec, srcStrides, srcSize2, borderValue, scale,
-                                                                     srcCoord, z, k);
-                }
-            }
-        }
+        test::ValueAt<ValueType>(gold, dstStrides, int4{k, x, y, z}) = test::GoldInterp<kInterpType, kBorderType>(
+            srcVec, srcStrides, srcSize2, borderValue, scale, srcCoord, z, k);
     }
 
     VEC_EXPECT_NEAR(test, gold, 1);

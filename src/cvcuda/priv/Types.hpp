@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,15 +18,22 @@
 #ifndef CVCUDA_TYPES_HPP
 #define CVCUDA_TYPES_HPP
 
+#include "SafeSize.hpp"
+
+#include <cuda_runtime.h>
 #include <cvcuda/Types.h>
 
 #include <algorithm>
+#include <cstddef>
+#include <memory>
 #include <string>
+#include <type_traits>
+#include <variant>
 #include <vector>
 
 namespace cvcuda::priv {
 
-#define checkERR(call) check_error(call, #call, __LINE__, __FILE__)
+#define checkERR(call) check_error(call, #call, __LINE__, __FILE__) // NOSONAR: std::source_location is C++20.
 
 inline static bool check_error(cudaError_t e, const char *call, int line, const char *file)
 {
@@ -42,83 +49,38 @@ inline static bool check_error(cudaError_t e, const char *call, int line, const 
 // Default font, user can install via below command:
 //      sudo apt-get update
 //      sudo apt-get install ttf-dejavu fonts-dejavu
-#define DEFAULT_OSD_FONT "DejaVuSansMono"
+inline constexpr char DEFAULT_OSD_FONT[] = "DejaVuSansMono";
+
+inline size_t NVCVPolyLinePointCount(int32_t numPoints)
+{
+    return CheckedMulMany({2U, CheckedPositiveToSize(numPoints, "NVCVPolyLine numPoints")},
+                          "NVCVPolyLine point count overflow");
+}
+
+inline size_t NVCVPolyLineByteCount(int32_t numPoints)
+{
+    return CheckedMulMany({NVCVPolyLinePointCount(numPoints), sizeof(int32_t)},
+                          "NVCVPolyLine allocation size overflow");
+}
 
 class NVCVText
 {
 public:
-    const char   *utf8Text = nullptr; // Text to draw in utf8 format.
-    int32_t       fontSize;           // Font size for the text.
-    const char   *fontName = nullptr; // Font name for the text.
-    NVCVPointI    tlPos;              // Top-left corner point for label text, \ref NVCVPointI.
-    NVCVColorRGBA fontColor;          // Font color of the text.
-    NVCVColorRGBA bgColor;            // Background color of text box.
+    std::string   utf8Text;  // Text to draw in utf8 format.
+    int32_t       fontSize;  // Font size for the text.
+    std::string   fontName;  // Font name for the text.
+    NVCVPointI    tlPos;     // Top-left corner point for label text, \ref NVCVPointI.
+    NVCVColorRGBA fontColor; // Font color of the text.
+    NVCVColorRGBA bgColor;   // Background color of text box.
 
     NVCVText(const char *_utf8Text, int32_t _fontSize, const char *_fontName, NVCVPointI _tlPos,
              NVCVColorRGBA _fontColor, NVCVColorRGBA _bgColor)
-        : fontSize(_fontSize)
+        : utf8Text(_utf8Text)
+        , fontSize(_fontSize)
+        , fontName(_fontName)
         , tlPos(_tlPos)
         , fontColor(_fontColor)
-        , bgColor(_bgColor)
-    {
-        size_t len          = std::char_traits<char>::length(_utf8Text);
-        char  *tmp_utf8Text = (char *)malloc(len + 1);
-        std::copy_n(_utf8Text, len + 1, tmp_utf8Text);
-        len                = std::char_traits<char>::length(_fontName);
-        char *tmp_fontName = (char *)malloc(len + 1);
-        std::copy_n(_fontName, len + 1, tmp_fontName);
-        utf8Text = tmp_utf8Text;
-        fontName = tmp_fontName;
-    }
-
-    NVCVText(const NVCVText &text)
-        : fontSize(text.fontSize)
-        , tlPos(text.tlPos)
-        , fontColor(text.fontColor)
-        , bgColor(text.bgColor)
-    {
-        size_t len          = std::char_traits<char>::length(text.utf8Text);
-        char  *tmp_utf8Text = (char *)malloc(len + 1);
-        std::copy_n(text.utf8Text, len + 1, tmp_utf8Text);
-        len                = std::char_traits<char>::length(text.fontName);
-        char *tmp_fontName = (char *)malloc(len + 1);
-        std::copy_n(text.fontName, len + 1, tmp_fontName);
-        utf8Text = tmp_utf8Text;
-        fontName = tmp_fontName;
-    }
-
-    NVCVText &operator=(const NVCVText &text)
-    {
-        if (this != &text)
-        {
-            if (utf8Text != nullptr)
-            {
-                free((void *)utf8Text);
-                utf8Text = nullptr;
-            }
-            if (fontName != nullptr)
-            {
-                free((void *)fontName);
-                fontName = nullptr;
-            }
-            *this = NVCVText(text);
-        }
-        return *this;
-    };
-
-    ~NVCVText()
-    {
-        if (utf8Text != nullptr)
-        {
-            free((void *)utf8Text);
-            utf8Text = nullptr;
-        }
-        if (fontName != nullptr)
-        {
-            free((void *)fontName);
-            fontName = nullptr;
-        }
-    };
+        , bgColor(_bgColor){};
 };
 
 class NVCVSegment
@@ -138,7 +100,7 @@ public:
     NVCVColorRGBA borderColor;    // Line color of segment outter rect.
     NVCVColorRGBA segColor;       // Segment mask color.
 
-    NVCVSegment(NVCVBoxI _box, int32_t _thickness, float *_hSeg, int32_t _segWidth, int32_t _segHeight,
+    NVCVSegment(NVCVBoxI _box, int32_t _thickness, const float *_hSeg, int32_t _segWidth, int32_t _segHeight,
                 float _segThreshold, NVCVColorRGBA _borderColor, NVCVColorRGBA _segColor)
         : box(_box)
         , thickness(_thickness)
@@ -182,19 +144,19 @@ public:
 class NVCVPolyLine
 {
 public:
-    int32_t      *hPoints = nullptr; // Host pointer for polyline points' xy, cannot be nullptr.
-                                     // Array length: 2 * numPoints.
-                                     // Format : X0, Y0, X1, Y1, ..., Xk, Yk, ...
-    int32_t      *dPoints = nullptr; // Device pointer for polyline points' xy.
-                                     // Can be nullptr only if fillColor.a == 0.
-                                     // Array length: 2 * numPoints.
-                                     // Format: X0, Y0, X1, Y1, ..., Xk, Yk, ...
-    int32_t       numPoints;         // Number of polyline points.
-    int32_t       thickness;         // Polyline thickness.
-    bool          isClosed;          // Connect p(0) to p(n-1) or not.
-    NVCVColorRGBA borderColor;       // Line color of polyline border.
-    NVCVColorRGBA fillColor;         // Fill color of poly fill area.
-    bool          interpolation;     // Default: true
+    std::vector<int32_t> hPoints;           // Host polyline points' xy.
+                                            // Array length: 2 * numPoints.
+                                            // Format : X0, Y0, X1, Y1, ..., Xk, Yk, ...
+    int32_t             *dPoints = nullptr; // Device pointer for polyline points' xy.
+                                            // Can be nullptr only if fillColor.a == 0.
+                                            // Array length: 2 * numPoints.
+                                            // Format: X0, Y0, X1, Y1, ..., Xk, Yk, ...
+    int32_t              numPoints;         // Number of polyline points.
+    int32_t              thickness;         // Polyline thickness.
+    bool                 isClosed;          // Connect p(0) to p(n-1) or not.
+    NVCVColorRGBA        borderColor;       // Line color of polyline border.
+    NVCVColorRGBA        fillColor;         // Fill color of poly fill area.
+    bool                 interpolation;     // Default: true
 
     NVCVPolyLine(int32_t *_hPoints, int32_t _numPoints, int32_t _thickness, bool _isClosed, NVCVColorRGBA _borderColor,
                  NVCVColorRGBA _fillColor, bool _interpolation)
@@ -205,37 +167,31 @@ public:
         , fillColor(_fillColor)
         , interpolation(_interpolation)
     {
-        hPoints = (int *)malloc(numPoints * 2 * sizeof(int));
-        checkERR(cudaMalloc(&dPoints, 2 * numPoints * sizeof(int)));
-
-        std::copy_n(_hPoints, 2 * numPoints, hPoints);
-        checkERR(cudaMemcpy(dPoints, _hPoints, 2 * numPoints * sizeof(int), cudaMemcpyHostToDevice));
+        const size_t pointCount = NVCVPolyLinePointCount(numPoints);
+        const size_t pointBytes = NVCVPolyLineByteCount(numPoints);
+        hPoints.assign(_hPoints, _hPoints + pointCount);
+        checkERR(cudaMalloc(&dPoints, pointBytes));
+        checkERR(cudaMemcpy(dPoints, hPoints.data(), pointBytes, cudaMemcpyHostToDevice));
     }
 
     NVCVPolyLine(const NVCVPolyLine &pl)
-        : numPoints(pl.numPoints)
+        : hPoints(pl.hPoints)
+        , numPoints(pl.numPoints)
         , thickness(pl.thickness)
         , isClosed(pl.isClosed)
         , borderColor(pl.borderColor)
         , fillColor(pl.fillColor)
         , interpolation(pl.interpolation)
     {
-        hPoints = (int *)malloc(numPoints * 2 * sizeof(int));
-        checkERR(cudaMalloc(&dPoints, 2 * numPoints * sizeof(int)));
-
-        std::copy_n(pl.hPoints, 2 * numPoints, hPoints);
-        checkERR(cudaMemcpy(dPoints, pl.dPoints, 2 * numPoints * sizeof(int), cudaMemcpyDeviceToDevice));
+        const size_t pointBytes = NVCVPolyLineByteCount(numPoints);
+        checkERR(cudaMalloc(&dPoints, pointBytes));
+        checkERR(cudaMemcpy(dPoints, pl.dPoints, pointBytes, cudaMemcpyDeviceToDevice));
     }
 
     NVCVPolyLine &operator=(const NVCVPolyLine &) = delete;
 
     ~NVCVPolyLine()
     {
-        if (hPoints != nullptr)
-        {
-            free(hPoints);
-            hPoints = nullptr;
-        }
         if (dPoints != nullptr)
         {
             checkERR(cudaFree(dPoints));
@@ -247,80 +203,56 @@ public:
 class NVCVClock
 {
 public:
-    NVCVClockFormat clockFormat;    // Pre-defined clock format.
-    long            time;           // Clock time.
-    int32_t         fontSize;       // Font size.
-    const char     *font = nullptr; // Font name.
-    NVCVPointI      tlPos;          // Top-left corner point, \ref NVCVPointI.
-    NVCVColorRGBA   fontColor;      // Font color of the text.
-    NVCVColorRGBA   bgColor;        // Background color of text box.
+    NVCVClockFormat clockFormat; // Pre-defined clock format.
+    long            time;        // Clock time.
+    int32_t         fontSize;    // Font size.
+    std::string     font;        // Font name.
+    NVCVPointI      tlPos;       // Top-left corner point, \ref NVCVPointI.
+    NVCVColorRGBA   fontColor;   // Font color of the text.
+    NVCVColorRGBA   bgColor;     // Background color of text box.
 
     NVCVClock(NVCVClockFormat _clockFormat, long _time, int32_t _fontSize, const char *_font, NVCVPointI _tlPos,
               NVCVColorRGBA _fontColor, NVCVColorRGBA _bgColor)
         : clockFormat(_clockFormat)
         , time(_time)
         , fontSize(_fontSize)
+        , font(_font)
         , tlPos(_tlPos)
         , fontColor(_fontColor)
-        , bgColor(_bgColor)
-    {
-        const size_t len      = std::char_traits<char>::length(_font);
-        char        *tmp_font = (char *)malloc(len + 1);
-        std::copy_n(_font, len + 1, tmp_font);
-        font = tmp_font;
-    }
-
-    NVCVClock(const NVCVClock &clock)
-        : clockFormat(clock.clockFormat)
-        , time(clock.time)
-        , fontSize(clock.fontSize)
-        , tlPos(clock.tlPos)
-        , fontColor(clock.fontColor)
-        , bgColor(clock.bgColor)
-    {
-        const size_t len      = std::char_traits<char>::length(clock.font);
-        char        *tmp_font = (char *)malloc(len + 1);
-        std::copy_n(clock.font, len + 1, tmp_font);
-        font = tmp_font;
-    }
-
-    NVCVClock &operator=(const NVCVClock &clock)
-    {
-        if (this != &clock)
-        {
-            if (font != nullptr)
-            {
-                free((void *)font);
-                font = nullptr;
-            }
-            *this = NVCVClock(clock);
-        }
-        return *this;
-    };
-
-    ~NVCVClock()
-    {
-        if (font != nullptr)
-        {
-            free((void *)font);
-            font = nullptr;
-        }
-    };
+        , bgColor(_bgColor){};
 };
 
 class NVCVElement
 {
 public:
-    NVCVElement(NVCVOSDType osd_type, const void *src);
+    using Data = std::variant<std::monostate, NVCVBndBoxI, NVCVText, NVCVSegment, NVCVPoint, NVCVLine, NVCVPolyLine,
+                              NVCVRotatedBox, NVCVCircle, NVCVArrow, NVCVClock>;
+
+    explicit NVCVElement(NVCVOSDType osd_type);
+    NVCVElement(NVCVOSDType osd_type, std::nullptr_t);
+
+    template<typename ElementData>
+    NVCVElement(NVCVOSDType osd_type, const ElementData *src);
+
     NVCVElement(const NVCVElement &)            = delete;
     NVCVElement &operator=(const NVCVElement &) = delete;
-    ~NVCVElement();
+    ~NVCVElement()                              = default;
 
-    NVCVOSDType type();
-    void       *ptr();
-    // void assign(const void* src);
+    NVCVOSDType type() const;
+    Data       &data();
 
 private:
+    void setData(const NVCVBndBoxI &src);
+    void setData(const NVCVText &src);
+    void setData(const NVCVSegment &src);
+    void setData(const NVCVPoint &src);
+    void setData(const NVCVLine &src);
+    void setData(const NVCVPolyLine &src);
+    void setData(const NVCVRotatedBox &src);
+    void setData(const NVCVCircle &src);
+    void setData(const NVCVArrow &src);
+    void setData(const NVCVClock &src);
+
     /*
         *  type:
         *      NVCV_OSD_RECT           -   \ref NVCVBndBoxI.
@@ -335,194 +267,115 @@ private:
         *      NVCV_OSD_CLOCK          -   \ref NVCVClock.
         */
     NVCVOSDType m_type; // OSD element type to draw.
-    void       *m_data; // OSD element data pointer.
+    Data        m_data; // OSD element data.
 };
 
-inline NVCVElement::NVCVElement(NVCVOSDType osd_type, const void *src)
+inline NVCVElement::NVCVElement(NVCVOSDType osd_type)
     : m_type(osd_type)
 {
-    switch (m_type)
-    {
-    case NVCVOSDType::NVCV_OSD_RECT:
-    {
-        auto rect = NVCVBndBoxI(*(NVCVBndBoxI *)src);
-        m_data    = new NVCVBndBoxI(rect);
-        break;
-    }
-    case NVCVOSDType::NVCV_OSD_TEXT:
-    {
-        auto text = NVCVText(*(NVCVText *)src);
-        m_data    = new NVCVText(text);
-        break;
-    }
-    case NVCVOSDType::NVCV_OSD_SEGMENT:
-    {
-        auto segment = NVCVSegment(*(NVCVSegment *)src);
-        m_data       = new NVCVSegment(segment);
-        break;
-    }
-    case NVCVOSDType::NVCV_OSD_POINT:
-    {
-        auto point = NVCVPoint(*(NVCVPoint *)src);
-        m_data     = new NVCVPoint(point);
-        break;
-    }
-    case NVCVOSDType::NVCV_OSD_LINE:
-    {
-        auto line = NVCVLine(*(NVCVLine *)src);
-        m_data    = new NVCVLine(line);
-        break;
-    }
-    case NVCVOSDType::NVCV_OSD_POLYLINE:
-    {
-        auto pl = NVCVPolyLine(*(NVCVPolyLine *)src);
-        m_data  = new NVCVPolyLine(pl);
-        break;
-    }
-    case NVCVOSDType::NVCV_OSD_ROTATED_RECT:
-    {
-        auto rb = NVCVRotatedBox(*(NVCVRotatedBox *)src);
-        m_data  = new NVCVRotatedBox(rb);
-        break;
-    }
-    case NVCVOSDType::NVCV_OSD_CIRCLE:
-    {
-        auto circle = NVCVCircle(*(NVCVCircle *)src);
-        m_data      = new NVCVCircle(circle);
-        break;
-    }
-    case NVCVOSDType::NVCV_OSD_ARROW:
-    {
-        auto arrow = NVCVArrow(*(NVCVArrow *)src);
-        m_data     = new NVCVArrow(arrow);
-        break;
-    }
-    case NVCVOSDType::NVCV_OSD_CLOCK:
-    {
-        auto clock = NVCVClock(*(NVCVClock *)src);
-        m_data     = new NVCVClock(clock);
-        break;
-    }
-    default:
-        break;
-    }
 }
 
-inline NVCVElement::~NVCVElement()
+inline NVCVElement::NVCVElement(NVCVOSDType osd_type, std::nullptr_t)
+    : NVCVElement(osd_type)
 {
-    switch (m_type)
+}
+
+template<typename ElementData>
+inline NVCVElement::NVCVElement(NVCVOSDType osd_type, const ElementData *src)
+    : NVCVElement(osd_type)
+{
+    if (src != nullptr)
     {
-    case NVCVOSDType::NVCV_OSD_RECT:
-    {
-        NVCVBndBoxI *bndBox = (NVCVBndBoxI *)m_data;
-        if (bndBox != nullptr)
-        {
-            delete (bndBox);
-            bndBox = nullptr;
-        }
-        break;
-    }
-    case NVCVOSDType::NVCV_OSD_TEXT:
-    {
-        NVCVText *label = (NVCVText *)m_data;
-        if (label != nullptr)
-        {
-            delete (label);
-            label = nullptr;
-        }
-        break;
-    }
-    case NVCVOSDType::NVCV_OSD_SEGMENT:
-    {
-        NVCVSegment *segment = (NVCVSegment *)m_data;
-        if (segment != nullptr)
-        {
-            delete (segment);
-            segment = nullptr;
-        }
-        break;
-    }
-    case NVCVOSDType::NVCV_OSD_POINT:
-    {
-        NVCVPoint *point = (NVCVPoint *)m_data;
-        if (point != nullptr)
-        {
-            delete (point);
-            point = nullptr;
-        }
-        break;
-    }
-    case NVCVOSDType::NVCV_OSD_LINE:
-    {
-        NVCVLine *line = (NVCVLine *)m_data;
-        if (line != nullptr)
-        {
-            delete (line);
-            line = nullptr;
-        }
-        break;
-    }
-    case NVCVOSDType::NVCV_OSD_POLYLINE:
-    {
-        NVCVPolyLine *pl = (NVCVPolyLine *)m_data;
-        if (pl != nullptr)
-        {
-            delete (pl);
-            pl = nullptr;
-        }
-        break;
-    }
-    case NVCVOSDType::NVCV_OSD_ROTATED_RECT:
-    {
-        NVCVRotatedBox *rb = (NVCVRotatedBox *)m_data;
-        if (rb != nullptr)
-        {
-            delete (rb);
-            rb = nullptr;
-        }
-        break;
-    }
-    case NVCVOSDType::NVCV_OSD_CIRCLE:
-    {
-        NVCVCircle *circle = (NVCVCircle *)m_data;
-        if (circle != nullptr)
-        {
-            delete (circle);
-            circle = nullptr;
-        }
-        break;
-    }
-    case NVCVOSDType::NVCV_OSD_ARROW:
-    {
-        NVCVArrow *arrow = (NVCVArrow *)m_data;
-        if (arrow != nullptr)
-        {
-            delete (arrow);
-            arrow = nullptr;
-        }
-        break;
-    }
-    case NVCVOSDType::NVCV_OSD_CLOCK:
-    {
-        NVCVClock *clock = (NVCVClock *)m_data;
-        if (clock != nullptr)
-        {
-            delete (clock);
-            clock = nullptr;
-        }
-        break;
-    }
-    default:
-        break;
+        setData(*src);
     }
 }
 
-inline NVCVOSDType NVCVElement::type()
+inline void NVCVElement::setData(const NVCVBndBoxI &src)
+{
+    if (m_type == NVCVOSDType::NVCV_OSD_RECT)
+    {
+        m_data.emplace<NVCVBndBoxI>(src);
+    }
+}
+
+inline void NVCVElement::setData(const NVCVText &src)
+{
+    if (m_type == NVCVOSDType::NVCV_OSD_TEXT)
+    {
+        m_data.emplace<NVCVText>(src);
+    }
+}
+
+inline void NVCVElement::setData(const NVCVSegment &src)
+{
+    if (m_type == NVCVOSDType::NVCV_OSD_SEGMENT)
+    {
+        m_data.emplace<NVCVSegment>(src);
+    }
+}
+
+inline void NVCVElement::setData(const NVCVPoint &src)
+{
+    if (m_type == NVCVOSDType::NVCV_OSD_POINT)
+    {
+        m_data.emplace<NVCVPoint>(src);
+    }
+}
+
+inline void NVCVElement::setData(const NVCVLine &src)
+{
+    if (m_type == NVCVOSDType::NVCV_OSD_LINE)
+    {
+        m_data.emplace<NVCVLine>(src);
+    }
+}
+
+inline void NVCVElement::setData(const NVCVPolyLine &src)
+{
+    if (m_type == NVCVOSDType::NVCV_OSD_POLYLINE)
+    {
+        m_data.emplace<NVCVPolyLine>(src);
+    }
+}
+
+inline void NVCVElement::setData(const NVCVRotatedBox &src)
+{
+    if (m_type == NVCVOSDType::NVCV_OSD_ROTATED_RECT)
+    {
+        m_data.emplace<NVCVRotatedBox>(src);
+    }
+}
+
+inline void NVCVElement::setData(const NVCVCircle &src)
+{
+    if (m_type == NVCVOSDType::NVCV_OSD_CIRCLE)
+    {
+        m_data.emplace<NVCVCircle>(src);
+    }
+}
+
+inline void NVCVElement::setData(const NVCVArrow &src)
+{
+    if (m_type == NVCVOSDType::NVCV_OSD_ARROW)
+    {
+        m_data.emplace<NVCVArrow>(src);
+    }
+}
+
+inline void NVCVElement::setData(const NVCVClock &src)
+{
+    if (m_type == NVCVOSDType::NVCV_OSD_CLOCK)
+    {
+        m_data.emplace<NVCVClock>(src);
+    }
+}
+
+inline NVCVOSDType NVCVElement::type() const
 {
     return m_type;
 }
 
-inline void *NVCVElement::ptr()
+inline NVCVElement::Data &NVCVElement::data()
 {
     return m_data;
 }
@@ -530,7 +383,7 @@ inline void *NVCVElement::ptr()
 class NVCVBlurBoxesImpl
 {
 public:
-    NVCVBlurBoxesImpl(const std::vector<std::vector<NVCVBlurBoxI>> &blurboxes_vec);
+    explicit NVCVBlurBoxesImpl(const std::vector<std::vector<NVCVBlurBoxI>> &blurboxes_vec);
     NVCVBlurBoxesImpl(const NVCVBlurBoxesImpl &)            = delete;
     NVCVBlurBoxesImpl &operator=(const NVCVBlurBoxesImpl &) = delete;
     ~NVCVBlurBoxesImpl();
@@ -544,8 +397,8 @@ private:
 };
 
 inline NVCVBlurBoxesImpl::NVCVBlurBoxesImpl(const std::vector<std::vector<NVCVBlurBoxI>> &blurboxes_vec)
+    : m_blurboxes_vec(blurboxes_vec)
 {
-    m_blurboxes_vec = blurboxes_vec;
 }
 
 inline NVCVBlurBoxesImpl::~NVCVBlurBoxesImpl()
@@ -556,12 +409,12 @@ inline NVCVBlurBoxesImpl::~NVCVBlurBoxesImpl()
 
 inline int32_t NVCVBlurBoxesImpl::batch() const
 {
-    return m_blurboxes_vec.size();
+    return static_cast<int32_t>(m_blurboxes_vec.size());
 }
 
 inline int32_t NVCVBlurBoxesImpl::numBoxesAt(int32_t b) const
 {
-    return m_blurboxes_vec[b].size();
+    return static_cast<int32_t>(m_blurboxes_vec[b].size());
 }
 
 inline NVCVBlurBoxI NVCVBlurBoxesImpl::boxAt(int32_t b, int32_t i) const
@@ -572,7 +425,7 @@ inline NVCVBlurBoxI NVCVBlurBoxesImpl::boxAt(int32_t b, int32_t i) const
 class NVCVBndBoxesImpl
 {
 public:
-    NVCVBndBoxesImpl(const std::vector<std::vector<NVCVBndBoxI>> &bndboxes_vec);
+    explicit NVCVBndBoxesImpl(const std::vector<std::vector<NVCVBndBoxI>> &bndboxes_vec);
     NVCVBndBoxesImpl(const NVCVBndBoxesImpl &)            = delete;
     NVCVBndBoxesImpl &operator=(const NVCVBndBoxesImpl &) = delete;
     ~NVCVBndBoxesImpl();
@@ -586,8 +439,8 @@ private:
 };
 
 inline NVCVBndBoxesImpl::NVCVBndBoxesImpl(const std::vector<std::vector<NVCVBndBoxI>> &bndboxes_vec)
+    : m_bndboxes_vec(bndboxes_vec)
 {
-    m_bndboxes_vec = bndboxes_vec;
 }
 
 inline NVCVBndBoxesImpl::~NVCVBndBoxesImpl()
@@ -598,12 +451,12 @@ inline NVCVBndBoxesImpl::~NVCVBndBoxesImpl()
 
 inline int32_t NVCVBndBoxesImpl::batch() const
 {
-    return m_bndboxes_vec.size();
+    return static_cast<int32_t>(m_bndboxes_vec.size());
 }
 
 inline int32_t NVCVBndBoxesImpl::numBoxesAt(int32_t b) const
 {
-    return m_bndboxes_vec[b].size();
+    return static_cast<int32_t>(m_bndboxes_vec[b].size());
 }
 
 inline NVCVBndBoxI NVCVBndBoxesImpl::boxAt(int32_t b, int32_t i) const
@@ -614,7 +467,7 @@ inline NVCVBndBoxI NVCVBndBoxesImpl::boxAt(int32_t b, int32_t i) const
 class NVCVElementsImpl
 {
 public:
-    NVCVElementsImpl(const std::vector<std::vector<std::shared_ptr<NVCVElement>>> &elements_vec);
+    explicit NVCVElementsImpl(const std::vector<std::vector<std::shared_ptr<NVCVElement>>> &elements_vec);
     NVCVElementsImpl(const NVCVElementsImpl &)            = delete;
     NVCVElementsImpl &operator=(const NVCVElementsImpl &) = delete;
     ~NVCVElementsImpl();
@@ -628,8 +481,8 @@ private:
 };
 
 inline NVCVElementsImpl::NVCVElementsImpl(const std::vector<std::vector<std::shared_ptr<NVCVElement>>> &elements_vec)
+    : m_elements_vec(elements_vec)
 {
-    m_elements_vec = elements_vec;
 }
 
 inline NVCVElementsImpl::~NVCVElementsImpl()
@@ -640,12 +493,12 @@ inline NVCVElementsImpl::~NVCVElementsImpl()
 
 inline int32_t NVCVElementsImpl::batch() const
 {
-    return m_elements_vec.size();
+    return static_cast<int32_t>(m_elements_vec.size());
 }
 
 inline int32_t NVCVElementsImpl::numElementsAt(int32_t b) const
 {
-    return m_elements_vec[b].size();
+    return static_cast<int32_t>(m_elements_vec[b].size());
 }
 
 inline std::shared_ptr<NVCVElement> NVCVElementsImpl::elementAt(int32_t b, int32_t i) const

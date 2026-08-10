@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -57,11 +57,11 @@ inline Optional<Derived> ImageData::cast() const
 
     if (Derived::IsCompatibleKind(m_data.bufferType))
     {
-        return Derived{m_data};
+        return Optional<Derived>{Derived{m_data}};
     }
     else
     {
-        return NullOpt;
+        return Optional<Derived>{NullOpt};
     }
 }
 
@@ -137,7 +137,7 @@ inline ImageDataCudaArray::ImageDataCudaArray(ImageFormat format, const Buffer &
 {
     NVCVImageData &data = this->cdata();
 
-    data.format           = format;
+    data.format           = static_cast<NVCVImageFormat>(format);
     data.bufferType       = NVCV_IMAGE_BUFFER_CUDA_ARRAY;
     data.buffer.cudaarray = buffer;
 }
@@ -148,7 +148,7 @@ inline ImageDataStridedCuda::ImageDataStridedCuda(ImageFormat format, const Buff
 {
     NVCVImageData &data = this->cdata();
 
-    data.format         = format;
+    data.format         = static_cast<NVCVImageFormat>(format);
     data.bufferType     = NVCV_IMAGE_BUFFER_STRIDED_CUDA;
     data.buffer.strided = buffer;
 }
@@ -169,7 +169,7 @@ inline ImageDataStridedHost::ImageDataStridedHost(ImageFormat format, const Buff
 {
     NVCVImageData &data = this->cdata();
 
-    data.format         = format;
+    data.format         = static_cast<NVCVImageFormat>(format);
     data.bufferType     = NVCV_IMAGE_BUFFER_STRIDED_HOST;
     data.buffer.strided = buffer;
 }

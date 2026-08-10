@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,6 +24,8 @@
 #include <nvcv/util/Compiler.hpp>
 #include <nvcv/util/Size.hpp>
 
+#include <array>
+#include <cstddef>
 #include <unordered_set>
 
 namespace t    = ::testing;
@@ -41,20 +43,57 @@ struct Params
     NVCVMemLayout         memLayout;
     NVCVSwizzle           swizzle;
     NVCVAlphaType         alphaType;
-    NVCVPacking           packing0, packing1, packing2, packing3;
+    NVCVPacking           packing0;
+    NVCVPacking           packing1;
+    NVCVPacking           packing2;
+    NVCVPacking           packing3;
     NVCVDataKind          dataKind;
-    int                   samplesHoriz, samplesVert;
-    NVCVChromaLocation    locHoriz, locVert;
-    int                   bitsPerChannel[4] = {};
+    int                   samplesHoriz;
+    int                   samplesVert;
+    NVCVChromaLocation    locHoriz;
+    NVCVChromaLocation    locVert;
+    std::array<int, 4>    bitsPerChannel = {};
     int                   planeCount;
 
-    struct
+    struct PlaneInfo
     {
         int          bpp       = 0;
         int          channels  = 0;
         NVCVDataType pixFormat = NVCV_DATA_TYPE_NONE;
         NVCVSwizzle  swizzle   = NVCV_SWIZZLE_0000;
-    } planes[4];
+    };
+
+    struct PlaneList
+    {
+        PlaneList() = default;
+
+        PlaneList(std::initializer_list<PlaneInfo> values)
+        {
+            auto it = data.begin();
+            for (const PlaneInfo &value : values)
+            {
+                if (it == data.end())
+                {
+                    break;
+                }
+                *it++ = value;
+            }
+        }
+
+        PlaneInfo &operator[](std::size_t idx)
+        {
+            return data[idx];
+        }
+
+        const PlaneInfo &operator[](std::size_t idx) const
+        {
+            return data[idx];
+        }
+
+        std::array<PlaneInfo, 4> data = {};
+    };
+
+    PlaneList planes;
 
     NVCVExtraChannelInfo exChannelInfo;
 };
@@ -69,6 +108,142 @@ std::ostream &operator<<(std::ostream &out, const Params &p)
                << ", exChannelInfo.bitsPerPixel= " << p.exChannelInfo.bitsPerPixel
                << ", exChannelInfo.datakind= " << p.exChannelInfo.datakind
                << ", exChannelInfo.channelType = " << p.exChannelInfo.channelType << ", alphaType= " << p.alphaType;
+}
+
+int GetTestPlaneChannelCount(int plane)
+{
+    switch (plane)
+    {
+    case 0:
+        return 4;
+    case 1:
+    case 2:
+        return 2;
+    case 3:
+        return 1;
+    default:
+        NVCV_ASSERT(!"Invalid plane");
+        return 0;
+    }
+}
+
+int GetMaxBitsPerPixel(int plane, int nchannels)
+{
+    if (nchannels == 0)
+    {
+        return 0;
+    }
+    if (plane == 0)
+    {
+        return 256;
+    }
+    if (plane <= 2)
+    {
+        return 128;
+    }
+
+    NVCV_ASSERT(plane == 3);
+    // 4th plane can have at most 64 bits as it doesn't have channel count nor pack.
+    return 64;
+}
+
+int GetTestPackingCount(int plane, int bpp)
+{
+    if (bpp <= 4)
+    {
+        return 1;
+    }
+    if (bpp <= 8)
+    {
+        return plane == 3 ? 1 : 3;
+    }
+    return plane == 3 ? 1 : 8;
+}
+
+int NextBitsPerPixel(int bpp)
+{
+    if (bpp <= 8)
+    {
+        return bpp * 2;
+    }
+    if (bpp < 32)
+    {
+        return bpp + 8;
+    }
+    if (bpp < 64)
+    {
+        return bpp + 16;
+    }
+    if (bpp < 128)
+    {
+        return bpp + 32;
+    }
+    return bpp + 64;
+}
+
+int NextTestPack(int pack)
+{
+    return pack == 0 ? pack + 1 : pack << 1;
+}
+
+NVCVImageFormat MakePackingTestFormat(int planes, int plane, NVCVPacking packing)
+{
+    constexpr uint64_t mask = UINT64_MAX;
+
+    std::array<uint64_t, 4> packings = {};
+    for (int p = 0; p < planes; ++p)
+    {
+        packings[p] = mask;
+    }
+    packings[plane] = packing;
+
+    return NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, mask, 4, packings[0], packings[1], packings[2],
+                                        packings[3]);
+}
+
+void TestPlanePackingAndBitsPerPixel(int planes, int plane, int nchannels, int bpp)
+{
+    int packCount = GetTestPackingCount(plane, bpp);
+    for (int pack = 0; pack < packCount; pack = NextTestPack(pack))
+    {
+        auto packing = static_cast<NVCVPacking>(NVCV_DETAIL_BPP_NCH(bpp, nchannels) + pack);
+
+        auto fmt = MakePackingTestFormat(planes, plane, packing);
+
+        NVCVPacking testPacking;
+        ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetPlanePacking(fmt, plane, &testPacking));
+        EXPECT_EQ(packing, testPacking);
+
+        int testBPP;
+        ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetPlaneBitsPerPixel(fmt, plane, &testBPP));
+        EXPECT_EQ(bpp, testBPP);
+
+        int expectedChannels = nchannels;
+        // these represent 4 channels, but comprise 2 pixels, 3 different channels, not 4.
+        if (packing == NVCV_PACKING_X8_Y8__X8_Z8 || packing == NVCV_PACKING_Y8_X8__Z8_X8)
+        {
+            --expectedChannels;
+        }
+
+        int testNChannels;
+        ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetPlaneNumChannels(fmt, plane, &testNChannels));
+        EXPECT_EQ(expectedChannels, testNChannels);
+
+        int testNumPlanes;
+        ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetNumPlanes(fmt, &testNumPlanes));
+        EXPECT_EQ(planes, testNumPlanes);
+
+        for (int p = planes; p < 4; ++p)
+        {
+            ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetPlaneNumChannels(fmt, p, &testNChannels));
+            EXPECT_EQ(0, testNChannels);
+        }
+        if (t::Test::HasFailure())
+        {
+            FAIL() << "#planes=" << planes << ", plane=" << plane << ", #channels=" << nchannels << ", bpp=" << bpp
+                   << ", pack=" << pack;
+        }
+    }
 }
 
 } // namespace
@@ -338,7 +513,7 @@ TEST_P(ImageFormatTests, make_image_format)
 
 TEST(ImageFormatTests, make_image_format_fourth_plane_128bpp_fails)
 {
-    NVCVImageFormat fmt = NVCV_IMAGE_FORMAT_NV12;
+    auto fmt = NVCV_IMAGE_FORMAT_NV12;
 
     ASSERT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
               nvcvMakeColorImageFormat(&fmt, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_BT601, NVCV_MEM_LAYOUT_PL,
@@ -384,7 +559,7 @@ TEST(ImageFormatTests, get_data_type_of_image_format_none)
 
 TEST(ImageFormatTests, set_valid_data_type_of_image_format_none)
 {
-    NVCVImageFormat fmt = NVCV_IMAGE_FORMAT_NONE;
+    auto fmt = NVCV_IMAGE_FORMAT_NONE;
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatSetDataKind(&fmt, NVCV_DATA_KIND_SIGNED));
 }
 
@@ -427,7 +602,7 @@ TEST(ImageFormatTests, get_extra_channel_info_null_output)
 TEST(ImageFormatTests, set_extra_channel_info_image_format_none)
 {
     NVCVExtraChannelInfo exChannelInfo = {2, 8, NVCV_DATA_KIND_UNSIGNED, NVCV_EXTRA_CHANNEL_POS3D};
-    NVCVImageFormat      fmt           = NVCV_IMAGE_FORMAT_NONE;
+    auto                 fmt           = NVCV_IMAGE_FORMAT_NONE;
     ASSERT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatSetExtraChannelInfo(&fmt, &exChannelInfo));
 }
 
@@ -440,7 +615,7 @@ TEST(ImageFormatTests, set_extra_channel_info_null_input_ptr)
 TEST(ImageFormatTests, set_extra_channel_info_max_min_bounds)
 {
     NVCVExtraChannelInfo exChannelInfo = {8, 8, NVCV_DATA_KIND_UNSIGNED, NVCV_EXTRA_CHANNEL_POS3D};
-    NVCVImageFormat      fmt           = NVCV_IMAGE_FORMAT_BGRf32;
+    auto                 fmt           = NVCV_IMAGE_FORMAT_BGRf32;
     ASSERT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatSetExtraChannelInfo(&fmt, &exChannelInfo));
 
     exChannelInfo.numChannels = -1;
@@ -449,14 +624,14 @@ TEST(ImageFormatTests, set_extra_channel_info_max_min_bounds)
 
 TEST(ImageFormatTests, set_extra_channel_info_planar_image_format)
 {
-    NVCVImageFormat      fmt           = NVCV_IMAGE_FORMAT_BGRf32p;
+    auto                 fmt           = NVCV_IMAGE_FORMAT_BGRf32p;
     NVCVExtraChannelInfo exChannelInfo = {2, 8, NVCV_DATA_KIND_UNSIGNED, NVCV_EXTRA_CHANNEL_POS3D};
     ASSERT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatSetExtraChannelInfo(&fmt, &exChannelInfo));
 }
 
 TEST(ImageFormatTests, set_extra_channel_info_256bpp_fails)
 {
-    NVCVImageFormat      fmt           = NVCV_IMAGE_FORMAT_BGRf32;
+    auto                 fmt           = NVCV_IMAGE_FORMAT_BGRf32;
     NVCVExtraChannelInfo exChannelInfo = {2, 256, NVCV_DATA_KIND_UNSIGNED, NVCV_EXTRA_CHANNEL_POS3D};
     ASSERT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatSetExtraChannelInfo(&fmt, &exChannelInfo));
 }
@@ -470,13 +645,13 @@ TEST(ImageFormatTests, get_mem_layout_of_image_format_none)
 
 TEST(ImageFormatTests, set_valid_mem_layout_of_image_format_none)
 {
-    NVCVImageFormat fmt = NVCV_IMAGE_FORMAT_NONE;
+    auto fmt = NVCV_IMAGE_FORMAT_NONE;
     ASSERT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatSetMemLayout(&fmt, NVCV_MEM_LAYOUT_BL));
 }
 
 TEST(ImageFormatTests, set_valid_color_spec_of_image_format_none)
 {
-    NVCVImageFormat fmt = NVCV_IMAGE_FORMAT_NONE;
+    auto fmt = NVCV_IMAGE_FORMAT_NONE;
     ASSERT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatSetColorSpec(&fmt, NVCV_COLOR_SPEC_BT601));
 }
 
@@ -489,7 +664,7 @@ TEST(ImageFormatTests, get_color_spec_of_image_format_none)
 
 TEST(ImageFormatTests, set_valid_raw_pattern_of_image_format_none)
 {
-    NVCVImageFormat fmt = NVCV_IMAGE_FORMAT_NONE;
+    auto fmt = NVCV_IMAGE_FORMAT_NONE;
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatSetRawPattern(&fmt, NVCV_RAW_BAYER_BGGR));
 }
 
@@ -508,7 +683,7 @@ TEST(ImageFormatTests, get_chroma_subsampling_of_image_format_none)
 
 TEST(ImageFormatTests, set_valid_chroma_subsampling_of_image_format_none)
 {
-    NVCVImageFormat fmt = NVCV_IMAGE_FORMAT_NONE;
+    auto fmt = NVCV_IMAGE_FORMAT_NONE;
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatSetChromaSubsampling(&fmt, NVCV_CSS_420));
 }
 
@@ -582,8 +757,8 @@ TEST_P(ImageFormatTests, check_swizzle)
 
 TEST(ImageFormatTests, check_alpha_type)
 {
-    NVCVImageFormat fmt = NVCV_IMAGE_FORMAT_RGBA8_UNASSOCIATED_ALPHA;
-    NVCVAlphaType   alphaType;
+    auto          fmt = NVCV_IMAGE_FORMAT_RGBA8_UNASSOCIATED_ALPHA;
+    NVCVAlphaType alphaType;
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetAlphaType(fmt, &alphaType));
     EXPECT_EQ(NVCV_ALPHA_UNASSOCIATED, alphaType);
 
@@ -701,8 +876,8 @@ TEST_P(ImageFormatTests, get_bits_per_channel)
 {
     const Params &p = GetParam();
 
-    int bits[4];
-    ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetBitsPerChannel(p.imgFormat, bits));
+    std::array<int, 4> bits;
+    ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetBitsPerChannel(p.imgFormat, bits.data()));
 
     EXPECT_EQ(p.bitsPerChannel[0], bits[0]);
     EXPECT_EQ(p.bitsPerChannel[1], bits[1]);
@@ -731,9 +906,9 @@ TEST_P(ImageFormatTests, check_plane_pixel_type)
 TEST(ImageFormatTests, invalid_plane_swizzle)
 {
     // purposedly wrong fmt (more packing channels than swizzle channels)
-    NVCVImageFormat fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(
-        NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_BT601, NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ1,
-        NVCV_ALPHA_ASSOCIATED, 3, NVCV_PACKING_X8, NVCV_PACKING_X8_Y8, NVCV_PACKING_X8);
+    auto fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_BT601, NVCV_MEM_LAYOUT_PL,
+                                            NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ1, NVCV_ALPHA_ASSOCIATED, 3,
+                                            NVCV_PACKING_X8, NVCV_PACKING_X8_Y8, NVCV_PACKING_X8);
 
     NVCVSwizzle sw;
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetPlaneSwizzle(fmt, 0, &sw));
@@ -749,196 +924,26 @@ TEST(ImageFormatTests, invalid_plane_swizzle)
 
 TEST(ImageFormatTests, packing_and_bits_per_pixel)
 {
+    auto testBitsPerPixel = [](int planes, int plane, int nchannels, int begBPP, int maxBPP)
+    {
+        for (int bpp = begBPP; bpp <= maxBPP; bpp = NextBitsPerPixel(bpp))
+        {
+            ASSERT_NO_FATAL_FAILURE(TestPlanePackingAndBitsPerPixel(planes, plane, nchannels, bpp));
+        }
+    };
+
     for (int planes = 1; planes <= 4; ++planes)
     {
         for (int plane = 0; plane < planes; ++plane)
         {
-            int begChannels = plane == 0 ? 1 : 0;
-            int channelCount;
-            switch (plane)
-            {
-            case 0:
-                channelCount = 4;
-                break;
-            case 1:
-                channelCount = 2;
-                break;
-            case 2:
-                channelCount = 2;
-                break;
-            case 3:
-                channelCount = 1;
-                break;
-            default:
-                FAIL() << "Invalid plane";
-            }
+            int begChannels  = plane == 0 ? 1 : 0;
+            int channelCount = GetTestPlaneChannelCount(plane);
 
             for (int nchannels = begChannels; nchannels <= channelCount; ++nchannels)
             {
                 int begBPP = plane == 0 ? 1 : 8;
-                int maxBPP;
-                if (nchannels == 0)
-                {
-                    maxBPP = 0;
-                }
-                else if (plane == 0)
-                {
-                    maxBPP = 256;
-                }
-                else if (plane <= 2)
-                {
-                    maxBPP = 128;
-                }
-                else
-                {
-                    assert(plane == 3);
-                    // 4th plane can have at most 64 bits as it doesn't have channel count nor
-                    // pack.
-                    maxBPP = 64;
-                }
-
-                for (int bpp = begBPP; bpp <= maxBPP;
-                     bpp <= 8
-                         ? (bpp *= 2)
-                         : (bpp < 32 ? (bpp += 8) : (bpp < 64 ? (bpp += 16) : (bpp < 128 ? (bpp += 32) : (bpp += 64)))))
-                {
-                    int packCount;
-                    if (bpp <= 4)
-                    {
-                        packCount = 1;
-                    }
-                    else if (bpp <= 8)
-                    {
-                        if (plane == 3)
-                        {
-                            // 4th plane doesn't have pack code...
-                            packCount = 1;
-                        }
-                        else
-                        {
-                            packCount = 3;
-                        }
-                    }
-                    else
-                    {
-                        switch (plane)
-                        {
-                        case 0:
-                        case 1:
-                        case 2:
-                            packCount = 8;
-                            break;
-                        case 3:
-                            packCount = 1;
-                            break;
-                        default:
-                            FAIL() << "Invalid plane";
-                        }
-                    }
-
-                    for (int pack = 0; pack < packCount; (pack == 0 ? ++pack : pack <<= 1))
-                    {
-                        NVCVPacking packing = (NVCVPacking)(NVCV_DETAIL_BPP_NCH(bpp, nchannels) + pack);
-
-                        uint64_t mask = UINT64_MAX;
-
-                        std::optional<NVCVImageFormat> fmt;
-                        switch (plane)
-                        {
-                        case 0:
-                            switch (planes)
-                            {
-                            case 1:
-                                fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, mask, 4, packing, 0, 0,
-                                                                   0);
-                                break;
-                            case 2:
-                                fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, mask, 4, packing, mask,
-                                                                   0, 0);
-                                break;
-                            case 3:
-                                fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, mask, 4, packing, mask,
-                                                                   mask, 0);
-                                break;
-                            case 4:
-                                fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, mask, 4, packing, mask,
-                                                                   mask, mask);
-                                break;
-                            }
-                            break;
-
-                        case 1:
-                            switch (planes)
-                            {
-                            case 2:
-                                fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, mask, 4, mask, packing,
-                                                                   0, 0);
-                                break;
-                            case 3:
-                                fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, mask, 4, mask, packing,
-                                                                   mask, 0);
-                                break;
-                            case 4:
-                                fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, mask, 4, mask, packing,
-                                                                   mask, mask);
-                                break;
-                            }
-                            break;
-                        case 2:
-                            switch (planes)
-                            {
-                            case 3:
-                                fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, mask, 4, mask, mask,
-                                                                   packing, 0);
-                                break;
-                            case 4:
-                                fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, mask, 4, mask, mask,
-                                                                   packing, mask);
-                                break;
-                            }
-                            break;
-                        case 3:
-                            fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, mask, mask, 4, mask, mask, mask,
-                                                               packing);
-                            break;
-                        }
-
-                        NVCV_ASSERT(fmt);
-
-                        NVCVPacking testPacking;
-                        ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetPlanePacking(*fmt, plane, &testPacking));
-                        EXPECT_EQ(packing, testPacking);
-
-                        int testBPP;
-                        ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetPlaneBitsPerPixel(*fmt, plane, &testBPP));
-                        EXPECT_EQ(bpp, testBPP);
-
-                        // these represent 4 channels, but comprise 2 pixels, 3 different channels, not 4.
-                        if (packing == NVCV_PACKING_X8_Y8__X8_Z8 || packing == NVCV_PACKING_Y8_X8__Z8_X8)
-                        {
-                            nchannels -= 1;
-                        }
-
-                        int testNChannels;
-                        ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetPlaneNumChannels(*fmt, plane, &testNChannels));
-                        EXPECT_EQ(nchannels, testNChannels);
-
-                        int testNumPlanes;
-                        ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetNumPlanes(*fmt, &testNumPlanes));
-                        EXPECT_EQ(planes, testNumPlanes);
-
-                        for (int p = planes; p < 4; ++p)
-                        {
-                            ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetPlaneNumChannels(*fmt, p, &testNChannels));
-                            EXPECT_EQ(0, testNChannels);
-                        }
-                        if (this->HasFailure())
-                        {
-                            FAIL() << "#planes=" << planes << ", plane=" << plane << ", #channels=" << nchannels
-                                   << ", bpp=" << bpp << ", pack=" << pack;
-                        }
-                    }
-                }
+                int maxBPP = GetMaxBitsPerPixel(plane, nchannels);
+                ASSERT_NO_FATAL_FAILURE(testBitsPerPixel(planes, plane, nchannels, begBPP, maxBPP));
             }
         }
     }
@@ -956,8 +961,7 @@ TEST(ImageFormatTests, get_swizzle)
     uint64_t mask = UINT64_MAX;
     for (auto swizzle : swizzleList)
     {
-        NVCVImageFormat fmt
-            = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, swizzle, mask, 4, mask, mask, mask, mask);
+        auto fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, mask, swizzle, mask, 4, mask, mask, mask, mask);
 
         NVCVSwizzle testSwizzle;
         ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetSwizzle(fmt, &testSwizzle));
@@ -971,8 +975,7 @@ TEST(ImageFormatTests, get_data_type)
     {
         uint64_t mask = UINT64_MAX;
 
-        NVCVImageFormat fmt
-            = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, dataKind, mask, mask, 4, mask, mask, mask, mask);
+        auto fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, mask, dataKind, mask, mask, 4, mask, mask, mask, mask);
 
         NVCVDataKind testDataKind;
         ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetDataKind(fmt, &testDataKind));
@@ -986,8 +989,7 @@ TEST(ImageFormatTests, get_raw_pattern)
     {
         uint64_t mask = UINT64_MAX;
 
-        NVCVImageFormat fmt
-            = NVCV_MAKE_RAW_IMAGE_FORMAT(raw_pattern, mask, mask, mask, mask, 4, mask, mask, mask, mask);
+        auto fmt = NVCV_MAKE_RAW_IMAGE_FORMAT(raw_pattern, mask, mask, mask, mask, 4, mask, mask, mask, mask);
 
         NVCVRawPattern testRawPattern;
         ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetRawPattern(fmt, &testRawPattern));
@@ -1001,8 +1003,7 @@ TEST(ImageFormatTests, get_mem_layout)
     {
         uint64_t mask = UINT64_MAX;
 
-        NVCVImageFormat fmt
-            = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, memLayout, mask, mask, mask, 4, mask, mask, mask, mask);
+        auto fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(mask, mask, memLayout, mask, mask, mask, 4, mask, mask, mask, mask);
 
         NVCVMemLayout testMemLayout;
         ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetMemLayout(fmt, &testMemLayout));
@@ -1016,8 +1017,7 @@ TEST(ImageFormatTests, get_color_model)
     {
         uint64_t mask = UINT64_MAX;
 
-        NVCVImageFormat fmt
-            = NVCV_MAKE_COLOR_IMAGE_FORMAT(model, mask, mask, mask, mask, mask, 4, mask, mask, mask, mask);
+        auto fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(model, mask, mask, mask, mask, mask, 4, mask, mask, mask, mask);
 
         NVCVColorModel testColorModel;
         ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetColorModel(fmt, &testColorModel));
@@ -1028,8 +1028,7 @@ TEST(ImageFormatTests, get_color_model)
     {
         uint64_t mask = UINT64_MAX;
 
-        NVCVImageFormat fmt
-            = NVCV_MAKE_COLOR_IMAGE_FORMAT(model + 7 + 2, mask, mask, mask, mask, mask, 4, mask, mask, mask, mask);
+        auto fmt = NVCV_MAKE_COLOR_IMAGE_FORMAT(model + 7 + 2, mask, mask, mask, mask, mask, 4, mask, mask, mask, mask);
 
         NVCVColorModel testColorModel;
         ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetColorModel(fmt, &testColorModel));
@@ -1040,7 +1039,7 @@ TEST(ImageFormatTests, get_color_model)
 
 TEST(ImageFormatTests, make_image_format_null_packing_returns_invalid)
 {
-    NVCVImageFormat imgFormat = NVCV_IMAGE_FORMAT_NV12;
+    auto imgFormat = NVCV_IMAGE_FORMAT_NV12;
 
     ASSERT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
               nvcvMakeColorImageFormat(&imgFormat, NVCV_COLOR_MODEL_RGB, NVCV_COLOR_SPEC_UNDEFINED, NVCV_MEM_LAYOUT_PL,
@@ -1127,7 +1126,7 @@ TEST(ImageFormatTests, set_extra_channel_info)
 
 TEST(ImageFormatTests, set_alphatype_imageformat_none)
 {
-    NVCVImageFormat imgFormat = NVCV_IMAGE_FORMAT_NONE;
+    auto imgFormat = NVCV_IMAGE_FORMAT_NONE;
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatSetAlphaType(&imgFormat, NVCV_ALPHA_UNASSOCIATED));
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageFormatSetAlphaType(nullptr, NVCV_ALPHA_UNASSOCIATED));
 }
@@ -1330,7 +1329,10 @@ struct ParamsPlaneSwizzle
     }
 
     NVCVImageFormat imgFormat;
-    NVCVSwizzle     planeSwizzle0, planeSwizzle1, planeSwizzle2, planeSwizzle3;
+    NVCVSwizzle     planeSwizzle0;
+    NVCVSwizzle     planeSwizzle1;
+    NVCVSwizzle     planeSwizzle2;
+    NVCVSwizzle     planeSwizzle3;
 };
 
 std::ostream &operator<<(std::ostream &out, const ParamsPlaneSwizzle &p)
@@ -1467,7 +1469,7 @@ TEST_P(ImageFormatPlaneSwizzleTests, make_imageformat_from_planes)
 {
     const ParamsPlaneSwizzle &p = GetParam();
 
-    NVCVImageFormat planes[4];
+    std::array<NVCVImageFormat, 4> planes;
     for (int i = 0; i < 4; ++i)
     {
         ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetPlaneFormat(p.imgFormat, i, &planes[i]));
@@ -1539,8 +1541,8 @@ TEST(ImageFormatTests, invalid_make_imageformat_from_planes)
 
 struct SwizzlePacking
 {
-    NVCVSwizzle swizzle;
-    NVCVPacking packing[4] = {};
+    NVCVSwizzle                swizzle;
+    std::array<NVCVPacking, 4> packing = {};
 
     friend std::ostream &operator<<(std::ostream &out, const SwizzlePacking &sp)
     {
@@ -1559,7 +1561,7 @@ class ImageFormatNegativeSwizzlePackingTests : public t::TestWithParam<SwizzlePa
 };
 
 // clang-format off
-static std::vector<SwizzlePacking> g_InvalidSwizzlePacking =
+static const std::vector<SwizzlePacking> g_InvalidSwizzlePacking =
 {
     { NVCV_SWIZZLE_XY00, {NVCV_PACKING_X8} },
     { NVCV_SWIZZLE_X000, {NVCV_PACKING_X8, NVCV_PACKING_X8} },
@@ -1602,9 +1604,9 @@ TEST(ImageFormatTests, make_yuv422_packed_yuyv)
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ1, NVCV_PACKING_X8_Y8__X8_Z8,
                                        NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
-    NVCVImageFormat gold = NVCV_MAKE_YCbCr_IMAGE_FORMAT(
-        NVCV_COLOR_SPEC_SMPTE240M, NVCV_CSS_422, NVCV_MEM_LAYOUT_BLOCK16_LINEAR, NVCV_DATA_KIND_UNSIGNED,
-        NVCV_SWIZZLE_XYZ1, NVCV_ALPHA_ASSOCIATED, 1, NVCV_PACKING_X8_Y8__X8_Z8);
+    auto gold = NVCV_MAKE_YCbCr_IMAGE_FORMAT(NVCV_COLOR_SPEC_SMPTE240M, NVCV_CSS_422, NVCV_MEM_LAYOUT_BLOCK16_LINEAR,
+                                             NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ1, NVCV_ALPHA_ASSOCIATED, 1,
+                                             NVCV_PACKING_X8_Y8__X8_Z8);
 
     EXPECT_EQ(gold, fmt);
 }
@@ -1618,7 +1620,7 @@ TEST(ImageFormatTests, make_yuv422_packed_yuyv_extra_channels)
                                 NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ1, NVCV_PACKING_X8_Y8__X8_Z8, NVCV_PACKING_0,
                                 NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, &exChannelInfo));
 
-    NVCVImageFormat gold = NVCV_MAKE_YCbCr_IMAGE_EXTRA_CHANNELS_FORMAT(
+    auto gold = NVCV_MAKE_YCbCr_IMAGE_EXTRA_CHANNELS_FORMAT(
         NVCV_COLOR_SPEC_SMPTE240M, NVCV_CSS_422, NVCV_MEM_LAYOUT_BLOCK16_LINEAR, NVCV_DATA_KIND_UNSIGNED,
         NVCV_SWIZZLE_XYZ1, NVCV_ALPHA_ASSOCIATED, 3, 16, NVCV_DATA_KIND_SIGNED, NVCV_EXTRA_CHANNEL_U, 1,
         NVCV_PACKING_X8_Y8__X8_Z8);
@@ -1634,9 +1636,9 @@ TEST(ImageFormatTests, make_yuv422_packed_yvyu)
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XZY1, NVCV_PACKING_X8_Y8__X8_Z8,
                                        NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
-    NVCVImageFormat gold = NVCV_MAKE_YCbCr_IMAGE_FORMAT(
-        NVCV_COLOR_SPEC_SMPTE240M, NVCV_CSS_422, NVCV_MEM_LAYOUT_BLOCK16_LINEAR, NVCV_DATA_KIND_UNSIGNED,
-        NVCV_SWIZZLE_XZY1, NVCV_ALPHA_ASSOCIATED, 1, NVCV_PACKING_X8_Y8__X8_Z8);
+    auto gold = NVCV_MAKE_YCbCr_IMAGE_FORMAT(NVCV_COLOR_SPEC_SMPTE240M, NVCV_CSS_422, NVCV_MEM_LAYOUT_BLOCK16_LINEAR,
+                                             NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XZY1, NVCV_ALPHA_ASSOCIATED, 1,
+                                             NVCV_PACKING_X8_Y8__X8_Z8);
 
     EXPECT_EQ(gold, fmt);
 }
@@ -1650,7 +1652,7 @@ TEST(ImageFormatTests, make_yuv422_packed_yvyu_extra_channels)
                                 NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XZY1, NVCV_PACKING_X8_Y8__X8_Z8, NVCV_PACKING_0,
                                 NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, &exChannelInfo));
 
-    NVCVImageFormat gold = NVCV_MAKE_YCbCr_IMAGE_EXTRA_CHANNELS_FORMAT(
+    auto gold = NVCV_MAKE_YCbCr_IMAGE_EXTRA_CHANNELS_FORMAT(
         NVCV_COLOR_SPEC_SMPTE240M, NVCV_CSS_422, NVCV_MEM_LAYOUT_BLOCK16_LINEAR, NVCV_DATA_KIND_UNSIGNED,
         NVCV_SWIZZLE_XZY1, NVCV_ALPHA_ASSOCIATED, 3, 16, NVCV_DATA_KIND_SIGNED, NVCV_EXTRA_CHANNEL_U, 1,
         NVCV_PACKING_X8_Y8__X8_Z8);
@@ -1666,9 +1668,9 @@ TEST(ImageFormatTests, make_yuv422_packed_uyvy)
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ1, NVCV_PACKING_Y8_X8__Z8_X8,
                                        NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
-    NVCVImageFormat gold = NVCV_MAKE_YCbCr_IMAGE_FORMAT(
-        NVCV_COLOR_SPEC_SMPTE240M, NVCV_CSS_422, NVCV_MEM_LAYOUT_BLOCK16_LINEAR, NVCV_DATA_KIND_UNSIGNED,
-        NVCV_SWIZZLE_XYZ1, NVCV_ALPHA_ASSOCIATED, 1, NVCV_PACKING_Y8_X8__Z8_X8);
+    auto gold = NVCV_MAKE_YCbCr_IMAGE_FORMAT(NVCV_COLOR_SPEC_SMPTE240M, NVCV_CSS_422, NVCV_MEM_LAYOUT_BLOCK16_LINEAR,
+                                             NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ1, NVCV_ALPHA_ASSOCIATED, 1,
+                                             NVCV_PACKING_Y8_X8__Z8_X8);
 
     EXPECT_EQ(gold, fmt);
 }
@@ -1681,9 +1683,9 @@ TEST(ImageFormatTests, make_yuv422_packed_vyuy)
                                        NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XZY1, NVCV_PACKING_Y8_X8__Z8_X8,
                                        NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, 0));
 
-    NVCVImageFormat gold = NVCV_MAKE_YCbCr_IMAGE_FORMAT(
-        NVCV_COLOR_SPEC_SMPTE240M, NVCV_CSS_422, NVCV_MEM_LAYOUT_BLOCK16_LINEAR, NVCV_DATA_KIND_UNSIGNED,
-        NVCV_SWIZZLE_XZY1, NVCV_ALPHA_ASSOCIATED, 1, NVCV_PACKING_Y8_X8__Z8_X8);
+    auto gold = NVCV_MAKE_YCbCr_IMAGE_FORMAT(NVCV_COLOR_SPEC_SMPTE240M, NVCV_CSS_422, NVCV_MEM_LAYOUT_BLOCK16_LINEAR,
+                                             NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XZY1, NVCV_ALPHA_ASSOCIATED, 1,
+                                             NVCV_PACKING_Y8_X8__Z8_X8);
 
     EXPECT_EQ(gold, fmt);
 }
@@ -1942,7 +1944,7 @@ TEST(ImageFormatTests, none_image_format_must_be_0)
 
 TEST(ImageFormatTests, set_colorspec_to_undefined_of_fmt_with_undefined_colorspec)
 {
-    NVCVImageFormat fmt = NVCV_IMAGE_FORMAT_U8;
+    auto fmt = NVCV_IMAGE_FORMAT_U8;
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatSetColorSpec(&fmt, NVCV_COLOR_SPEC_UNDEFINED));
     EXPECT_EQ(NVCV_IMAGE_FORMAT_U8, fmt);
 }
@@ -1986,17 +1988,18 @@ TEST(ImageFormatTests, set_raw_fmt_to_undefined_colorspec)
 
 TEST(ImageFormatTests, set_non_color_fmt_to_undefined_colorspec)
 {
-    NVCVImageFormat fmt = NVCV_IMAGE_FORMAT_U8;
+    auto fmt = NVCV_IMAGE_FORMAT_U8;
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatSetColorSpec(&fmt, NVCV_COLOR_SPEC_UNDEFINED));
     EXPECT_EQ(NVCV_IMAGE_FORMAT_U8, fmt);
 }
 
 struct SetSwizzlePackingTestParams
 {
-    NVCVImageFormat input, output;
-    NVCVSwizzle     swizzle;
-    NVCVPacking     packing[4];
-    const char     *msg;
+    NVCVImageFormat            input;
+    NVCVImageFormat            output;
+    NVCVSwizzle                swizzle;
+    std::array<NVCVPacking, 4> packing;
+    const char                *msg;
 
     friend std::ostream &operator<<(std::ostream &out, const SetSwizzlePackingTestParams &p)
     {
@@ -2030,7 +2033,7 @@ struct SetSwizzlePackingTestParams
 
 // clang-format off
 
-static std::vector<SetSwizzlePackingTestParams> g_SSPParamsSuccess = {
+static const std::vector<SetSwizzlePackingTestParams> g_SSPParamsSuccess = {
     {MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, BT601, PL, UNSIGNED, XYZ1, ASSOCIATED, X64, X16, X32),
      MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, BT601, PL, UNSIGNED, ZYX1, ASSOCIATED, X16, X32, X64),
      NVCV_SWIZZLE_ZYX1,
@@ -2056,7 +2059,7 @@ static std::vector<SetSwizzlePackingTestParams> g_SSPParamsSuccess = {
      "Identity, no-op"},
 };
 
-static std::vector<SetSwizzlePackingTestParams> g_SSPParamsFailure = {
+static const std::vector<SetSwizzlePackingTestParams> g_SSPParamsFailure = {
     {MAKE_COLOR_IMAGE_FORMAT_ABBREV4(RGB, BT601, PL, UNSIGNED, XYZW, ASSOCIATED, X16, X32, X8, X16),
      NVCV_IMAGE_FORMAT_NONE,
      NVCV_SWIZZLE_XYZ1,
@@ -2113,7 +2116,8 @@ TEST_P(ImageFormatSetSwizzlePackingTests, run)
 
 struct ImageFormatPair
 {
-    NVCVImageFormat a, b;
+    NVCVImageFormat a;
+    NVCVImageFormat b;
 
     friend std::ostream &operator<<(std::ostream &out, const ImageFormatPair &p)
     {
@@ -2147,7 +2151,7 @@ class ImageFormatDataLayoutTests : public t::TestWithParam<std::tuple<int, Image
                                  NVCV_PACKING_##pack3)
 
 // clang-format off
-static std::vector<ImageFormatPair> g_SameDataLayout = {
+static const std::vector<ImageFormatPair> g_SameDataLayout = {
     {
         MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, UNDEFINED, BL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8, X8),
         MAKE_COLOR_IMAGE_FORMAT_ABBREV3(XYZ, UNDEFINED, BL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8, X8),
@@ -2170,7 +2174,7 @@ static std::vector<ImageFormatPair> g_SameDataLayout = {
     },
 };
 
-static std::vector<ImageFormatPair> g_DifferentDataLayout = {
+static const std::vector<ImageFormatPair> g_DifferentDataLayout = {
     {
         MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, UNDEFINED, BL, UNSIGNED, XYZ0, ASSOCIATED, X8, X8, X8),
         MAKE_COLOR_IMAGE_FORMAT_ABBREV3(RGB, UNDEFINED, BLOCK4_LINEAR, UNSIGNED, XYZ0, ASSOCIATED, X8, X8, X8),
@@ -2209,8 +2213,8 @@ INSTANTIATE_TEST_SUITE_P(Different, ImageFormatDataLayoutTests,
 
 TEST_P(ImageFormatDataLayoutTests, data_layout)
 {
-    int                    res = std::get<0>(GetParam());
-    const ImageFormatPair &fmt = std::get<1>(GetParam());
+    int                    res = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const ImageFormatPair &fmt = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     int8_t has;
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatHasSameDataLayout(fmt.a, fmt.b, &has));
@@ -2340,7 +2344,7 @@ TEST(ImageFormatTests, get_valid_plane_size)
 {
     int32_t outPlaneWidth;
     int32_t outPlaneHeight;
-    auto    reset_output = [&outPlaneWidth, &outPlaneHeight]() -> void
+    auto    reset_output = [&outPlaneWidth, &outPlaneHeight]()
     {
         outPlaneWidth  = -1;
         outPlaneHeight = -1;
@@ -2447,7 +2451,7 @@ public:
         m_code[3] = d;
     }
 
-    operator uint32_t() const
+    explicit operator uint32_t() const
     {
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
         return static_cast<uint32_t>(((int)m_code[3] << 24) | ((int)m_code[2] << 16) | ((int)m_code[1] << 8)
@@ -2460,13 +2464,23 @@ public:
 #endif
     }
 
+    friend bool operator==(FCC lhs, FCC rhs)
+    {
+        return static_cast<uint32_t>(lhs) == static_cast<uint32_t>(rhs);
+    }
+
+    friend bool operator<(FCC lhs, FCC rhs)
+    {
+        return static_cast<uint32_t>(lhs) < static_cast<uint32_t>(rhs);
+    }
+
     friend std::ostream &operator<<(std::ostream &out, FCC fcc)
     {
         return out << fcc.m_code[0] << fcc.m_code[1] << fcc.m_code[2] << fcc.m_code[3];
     }
 
 private:
-    char m_code[4];
+    std::array<char, 4> m_code;
 };
 
 static const test::ValueList<FCC, nvcv::ImageFormat> g_FromFourCCParams = {
@@ -2499,16 +2513,20 @@ static const test::ValueList<nvcv::ImageFormat, FCC> g_ToFourCCParams = {
 
 class ImageFormatFromFourCCTests : public t::TestWithParam<std::tuple<FCC, nvcv::ImageFormat>>
 {
-public:
-    ImageFormatFromFourCCTests()
-        : m_fourcc(std::get<0>(GetParam()))
-        , m_fmt(std::get<1>(GetParam()))
+protected:
+    FCC fourcc() const
     {
+        return m_fourcc;
     }
 
-protected:
-    FCC             m_fourcc;
-    NVCVImageFormat m_fmt;
+    NVCVImageFormat format() const
+    {
+        return m_fmt;
+    }
+
+private:
+    FCC             m_fourcc = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    NVCVImageFormat m_fmt{::nvcv::test::ParamValue(std::get<1>(GetParam()))};
 };
 
 NVCV_INSTANTIATE_TEST_SUITE_P(_, ImageFormatFromFourCCTests, g_FromFourCCParams);
@@ -2516,69 +2534,76 @@ NVCV_INSTANTIATE_TEST_SUITE_P(_, ImageFormatFromFourCCTests, g_FromFourCCParams)
 TEST_P(ImageFormatFromFourCCTests, conversion_works)
 {
     NVCVColorSpec cspec;
-    ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetColorSpec(m_fmt, &cspec));
+    ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetColorSpec(format(), &cspec));
 
     NVCVImageFormat test;
-    ASSERT_EQ(NVCV_SUCCESS, nvcvMakeImageFormatFromFourCC(&test, m_fourcc, cspec, NVCV_MEM_LAYOUT_PL));
-    EXPECT_EQ(m_fmt, test);
+    ASSERT_EQ(NVCV_SUCCESS,
+              nvcvMakeImageFormatFromFourCC(&test, static_cast<uint32_t>(fourcc()), cspec, NVCV_MEM_LAYOUT_PL));
+    EXPECT_EQ(format(), test);
 }
 
 TEST_P(ImageFormatFromFourCCTests, conversion_with_undefined_colorspec_works)
 {
-    NVCVImageFormat gold = m_fmt;
+    NVCVImageFormat gold = format();
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatSetColorSpec(&gold, NVCV_COLOR_SPEC_UNDEFINED));
 
     NVCVImageFormat test;
-    ASSERT_EQ(NVCV_SUCCESS,
-              nvcvMakeImageFormatFromFourCC(&test, m_fourcc, NVCV_COLOR_SPEC_UNDEFINED, NVCV_MEM_LAYOUT_PL));
+    ASSERT_EQ(NVCV_SUCCESS, nvcvMakeImageFormatFromFourCC(&test, static_cast<uint32_t>(fourcc()),
+                                                          NVCV_COLOR_SPEC_UNDEFINED, NVCV_MEM_LAYOUT_PL));
     EXPECT_EQ(gold, test);
 }
 
 TEST_P(ImageFormatFromFourCCTests, conversion_works_while_forcing_mem_layout_works)
 {
-    NVCVImageFormat gold = m_fmt;
+    NVCVImageFormat gold = format();
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatSetMemLayout(&gold, NVCV_MEM_LAYOUT_BL));
 
     NVCVColorSpec cspec;
-    ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetColorSpec(m_fmt, &cspec));
+    ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetColorSpec(format(), &cspec));
 
     NVCVImageFormat test;
-    ASSERT_EQ(NVCV_SUCCESS, nvcvMakeImageFormatFromFourCC(&test, m_fourcc, cspec, NVCV_MEM_LAYOUT_BL));
+    ASSERT_EQ(NVCV_SUCCESS,
+              nvcvMakeImageFormatFromFourCC(&test, static_cast<uint32_t>(fourcc()), cspec, NVCV_MEM_LAYOUT_BL));
     EXPECT_EQ(gold, test);
 }
 
 TEST_P(ImageFormatFromFourCCTests, conversion_works_while_forcing_colorspec_works)
 {
-    NVCVImageFormat gold = m_fmt;
+    NVCVImageFormat gold = format();
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatSetColorSpec(&gold, NVCV_COLOR_SPEC_BT2020));
 
     NVCVImageFormat test;
-    ASSERT_EQ(NVCV_SUCCESS, nvcvMakeImageFormatFromFourCC(&test, m_fourcc, NVCV_COLOR_SPEC_BT2020, NVCV_MEM_LAYOUT_PL));
+    ASSERT_EQ(NVCV_SUCCESS, nvcvMakeImageFormatFromFourCC(&test, static_cast<uint32_t>(fourcc()),
+                                                          NVCV_COLOR_SPEC_BT2020, NVCV_MEM_LAYOUT_PL));
     EXPECT_EQ(gold, test);
 }
 
 class ImageFormatToFourCCTests : public t::TestWithParam<std::tuple<nvcv::ImageFormat, FCC>>
 {
-public:
-    ImageFormatToFourCCTests()
-        : m_fmt(std::get<0>(GetParam()))
-        , m_fourcc(std::get<1>(GetParam()))
+protected:
+    NVCVImageFormat format() const
     {
+        return m_fmt;
     }
 
-protected:
-    NVCVImageFormat m_fmt;
-    FCC             m_fourcc;
+    FCC fourcc() const
+    {
+        return m_fourcc;
+    }
+
+private:
+    NVCVImageFormat m_fmt{::nvcv::test::ParamValue(std::get<0>(GetParam()))};
+    FCC             m_fourcc = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 };
 
 NVCV_INSTANTIATE_TEST_SUITE_P(_, ImageFormatToFourCCTests, g_ToFourCCParams);
 
 TEST_P(ImageFormatToFourCCTests, conversion_works)
 {
-    uint32_t fourcc;
-    ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatToFourCC(m_fmt, &fourcc));
+    uint32_t rawFourcc;
+    ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatToFourCC(format(), &rawFourcc));
 
-    EXPECT_EQ(m_fourcc, FCC{fourcc});
+    EXPECT_EQ(fourcc(), FCC{rawFourcc});
 }
 
 TEST(ImageFormatFourCCTests, image_doesnt_have_fourcc_return_0)
@@ -2591,7 +2616,8 @@ TEST(ImageFormatFourCCTests, invalid_fourcc_returns_invalid_imageformat)
 {
     NVCVImageFormat fmt;
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-              nvcvMakeImageFormatFromFourCC(&fmt, FCC('R', 'O', 'D', 'S'), NVCV_COLOR_SPEC_BT601, NVCV_MEM_LAYOUT_PL));
+              nvcvMakeImageFormatFromFourCC(&fmt, static_cast<uint32_t>(FCC('R', 'O', 'D', 'S')), NVCV_COLOR_SPEC_BT601,
+                                            NVCV_MEM_LAYOUT_PL));
 }
 
 class ImageFormatPlanePixelStrideBytesExecTests
@@ -2619,9 +2645,9 @@ NVCV_INSTANTIATE_TEST_SUITE_P(_,ImageFormatPlanePixelStrideBytesExecTests,
 
 TEST_P(ImageFormatPlanePixelStrideBytesExecTests, works)
 {
-    const NVCVImageFormat dtype      = std::get<0>(GetParam());
-    const int             plane      = std::get<1>(GetParam());
-    const int             goldStride = std::get<2>(GetParam());
+    const NVCVImageFormat dtype      = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const int             plane      = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
+    const int             goldStride = ::nvcv::test::ParamValue(std::get<2>(GetParam()));
 
     int32_t testStride;
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetPlanePixelStrideBytes(dtype, plane, &testStride));

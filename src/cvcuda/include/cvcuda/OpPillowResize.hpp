@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,6 +37,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class PillowResize final : public IOperator
@@ -44,75 +46,74 @@ class PillowResize final : public IOperator
 public:
     PillowResize();
 
-    ~PillowResize();
-
     WorkspaceRequirements getWorkspaceRequirements(int batchSize, const nvcv::Size2D *in_sizes,
-                                                   const nvcv::Size2D *out_sizes, nvcv::ImageFormat fmt);
+                                                   const nvcv::Size2D *out_sizes, nvcv::ImageFormat fmt) const;
 
     WorkspaceRequirements getWorkspaceRequirements(int maxBatchSize, nvcv::Size2D maxInSize, nvcv::Size2D maxOutSize,
-                                                   nvcv::ImageFormat fmt);
+                                                   nvcv::ImageFormat fmt) const;
 
     void operator()(cudaStream_t stream, const Workspace &ws, const nvcv::Tensor &in, const nvcv::Tensor &out,
-                    const NVCVInterpolationType interpolation);
+                    const NVCVInterpolationType interpolation) const;
 
     void operator()(cudaStream_t stream, const Workspace &ws, const nvcv::ImageBatchVarShape &in,
-                    const nvcv::ImageBatchVarShape &out, const NVCVInterpolationType interpolation);
+                    const nvcv::ImageBatchVarShape &out, const NVCVInterpolationType interpolation) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline PillowResize::PillowResize()
 {
-    nvcv::detail::CheckThrow(cvcudaPillowResizeCreate(&m_handle));
-    assert(m_handle);
-}
-
-inline PillowResize::~PillowResize()
-{
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaPillowResizeCreate(&h));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline WorkspaceRequirements PillowResize::getWorkspaceRequirements(int batchSize, const nvcv::Size2D *in_sizes,
                                                                     const nvcv::Size2D *out_sizes,
-                                                                    nvcv::ImageFormat   fmt)
+                                                                    nvcv::ImageFormat   fmt) const
 {
     WorkspaceRequirements req{};
-    nvcv::detail::CheckThrow(cvcudaPillowResizeVarShapeGetWorkspaceRequirements(m_handle, batchSize, in_sizes,
+    nvcv::detail::CheckThrow(cvcudaPillowResizeVarShapeGetWorkspaceRequirements(m_handle.get(), batchSize, in_sizes,
                                                                                 out_sizes, fmt.cvalue(), &req));
     return req;
 }
 
 inline WorkspaceRequirements PillowResize::getWorkspaceRequirements(int maxBatchSize, nvcv::Size2D maxInSize,
-                                                                    nvcv::Size2D maxOutSize, nvcv::ImageFormat fmt)
+                                                                    nvcv::Size2D      maxOutSize,
+                                                                    nvcv::ImageFormat fmt) const
 {
     WorkspaceRequirements req{};
     nvcv::detail::CheckThrow(cvcudaPillowResizeGetWorkspaceRequirements(
-        m_handle, maxBatchSize, maxInSize.w, maxInSize.h, maxOutSize.w, maxOutSize.h, fmt.cvalue(), &req));
+        m_handle.get(), maxBatchSize, maxInSize.w, maxInSize.h, maxOutSize.w, maxOutSize.h, fmt.cvalue(), &req));
     return req;
 }
 
 inline void PillowResize::operator()(cudaStream_t stream, const Workspace &ws, const nvcv::Tensor &in,
-                                     const nvcv::Tensor &out, const NVCVInterpolationType interpolation)
+                                     const nvcv::Tensor &out, const NVCVInterpolationType interpolation) const
 {
-    nvcv::detail::CheckThrow(cvcudaPillowResizeSubmit(m_handle, stream, &ws, in.handle(), out.handle(), interpolation));
+    nvcv::detail::CheckThrow(
+        cvcudaPillowResizeSubmit(m_handle.get(), stream, &ws, in.handle(), out.handle(), interpolation));
 }
 
 inline void PillowResize::operator()(cudaStream_t stream, const Workspace &ws, const nvcv::ImageBatchVarShape &in,
-                                     const nvcv::ImageBatchVarShape &out, const NVCVInterpolationType interpolation)
+                                     const nvcv::ImageBatchVarShape &out,
+                                     const NVCVInterpolationType     interpolation) const
 {
     nvcv::detail::CheckThrow(
-        cvcudaPillowResizeVarShapeSubmit(m_handle, stream, &ws, in.handle(), out.handle(), interpolation));
+        cvcudaPillowResizeVarShapeSubmit(m_handle.get(), stream, &ws, in.handle(), out.handle(), interpolation));
 }
 
 inline NVCVOperatorHandle PillowResize::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA_PILLOW_RESIZE_HPP

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,6 +30,8 @@ set(PYTHON_TEST_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 string(REPLACE ";" " " PYTHON_TEST_VERSIONS "${PYTHON_VERSIONS}")
 
 set(PYTHON_MODULE_DIR ${CMAKE_BINARY_DIR}/python3)
+# Probe path in the build tree (target cvcuda_nvtx_probe in ../nvtx_probe).
+set(NVTX_PROBE_PATH "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/${CMAKE_SHARED_MODULE_PREFIX}cvcuda_nvtx_probe${CMAKE_SHARED_MODULE_SUFFIX}")
 configure_file(cvcuda_test_python.in ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/cvcuda_test_python @ONLY)
 
 set(PYTHON_TEST_INSTDIR "${CMAKE_INSTALL_DATADIR}/python/cvcuda")
@@ -40,6 +42,8 @@ install(FILES ${SOURCES}
 
 # create the test script that will get installed
 set(PYTHON_TEST_DIR ${CMAKE_INSTALL_PREFIX}/${PYTHON_TEST_INSTDIR})
+# Probe is installed alongside the python tests (see ../nvtx_probe/CMakeLists.txt).
+set(NVTX_PROBE_PATH "${CMAKE_INSTALL_PREFIX}/${PYTHON_TEST_INSTDIR}/${CMAKE_SHARED_MODULE_PREFIX}cvcuda_nvtx_probe${CMAKE_SHARED_MODULE_SUFFIX}")
 # CRITICAL: Python modules are installed to ${CMAKE_INSTALL_LIBDIR}/python/, not just ${CMAKE_INSTALL_LIBDIR}/
 # The /python suffix is required for the test script to correctly set PYTHONPATH and find cvcuda/nvcv modules.
 # Without this suffix, Python will fail with "ModuleNotFoundError: No module named 'cvcuda'"

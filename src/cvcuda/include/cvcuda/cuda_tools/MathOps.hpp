@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -176,16 +176,16 @@ template<typename T, typename U, class = nvcv::cuda::Require<nvcv::cuda::detail:
 inline __host__ __device__ bool operator==(T a, U b)
 {
     if constexpr (nvcv::cuda::NumElements<T> >= 1)
-        if (a.x != b.x)
+        if (a.x != b.x) // NOSONAR: comparison intentionally follows CUDA vector component types.
             return false;
     if constexpr (nvcv::cuda::NumElements<T> >= 2)
-        if (a.y != b.y)
+        if (a.y != b.y) // NOSONAR: comparison intentionally follows CUDA vector component types.
             return false;
     if constexpr (nvcv::cuda::NumElements<T> >= 3)
-        if (a.z != b.z)
+        if (a.z != b.z) // NOSONAR: comparison intentionally follows CUDA vector component types.
             return false;
     if constexpr (nvcv::cuda::NumElements<T> == 4)
-        if (a.w != b.w)
+        if (a.w != b.w) // NOSONAR: comparison intentionally follows CUDA vector component types.
             return false;
     return true;
 }

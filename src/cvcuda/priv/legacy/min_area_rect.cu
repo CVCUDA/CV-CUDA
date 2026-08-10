@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -75,24 +75,18 @@ void calculateRotateCoefCUDA(cuda::Tensor2DWrap<float> rotateCoefBuf, const int 
 template<typename T>
 __global__ void calculateRotateArea(cuda::Tensor3DWrap<T>   inContourPointsData,
                                     cuda::Tensor3DWrap<int> rotatedPointsTensor, cuda::Tensor2DWrap<float> rotateCoeffs,
-                                    cuda::Tensor2DWrap<int> numPointsInContourBuf)
+                                    cuda::Tensor2DWrap<int> numPointsInContourBuf, int maxNumPointsInContour)
 {
     int pointIdx   = blockIdx.x * blockDim.x + threadIdx.x;
     int contourIdx = blockIdx.y;
 
-    int                     angleIdx = blockIdx.z;
-    extern __shared__ float rotateCoeffs_sm[];
-    rotateCoeffs_sm[2 * angleIdx]     = *rotateCoeffs.ptr(angleIdx, 0);
-    rotateCoeffs_sm[2 * angleIdx + 1] = *rotateCoeffs.ptr(angleIdx, 1);
-
-    __syncthreads();
-
-    if (pointIdx < *numPointsInContourBuf.ptr(0, contourIdx))
+    if (pointIdx < min(*numPointsInContourBuf.ptr(0, contourIdx), maxNumPointsInContour))
     {
+        int   angleIdx  = blockIdx.z;
         T     px        = *inContourPointsData.ptr(contourIdx, pointIdx, 0);
         T     py        = *inContourPointsData.ptr(contourIdx, pointIdx, 1);
-        float cos_coeff = rotateCoeffs_sm[2 * angleIdx];
-        float sin_coeff = rotateCoeffs_sm[2 * angleIdx + 1];
+        float cos_coeff = *rotateCoeffs.ptr(angleIdx, 0);
+        float sin_coeff = *rotateCoeffs.ptr(angleIdx, 1);
         int   px_rot    = (px * cos_coeff) - (py * sin_coeff);
         int   py_rot    = (px * sin_coeff) + (py * cos_coeff);
         //xmin
@@ -126,19 +120,16 @@ __global__ void findMinAreaAndAngle(TensorWrapper rotatedPointsTensor, cuda::Ten
     // Determine the angle index from the thread's X-dimension index.
     int angleIdx = threadIdx.x;
 
-    // If the angle index exceeds the number of degrees, exit the thread to avoid out-of-bounds access.
-    if (angleIdx > numOfDegrees)
-    {
-        return;
-    }
-
     // Determine the rectangle index from the block's X-dimension index.
     int                   rectIdx = blockIdx.x;
     extern __shared__ int areaAngleBuf_sm[];
-    // Load area and angle data from the input tensor into shared memory for efficient access.
-    // rotatedPointsTensor is a 3D tensor with dimensions <int>(rectIdx (N), angleIdx (0-90), 6).
-    areaAngleBuf_sm[2 * angleIdx]       = *rotatedPointsTensor.ptr(rectIdx, angleIdx, 4);
-    areaAngleBuf_sm[(2 * angleIdx) + 1] = *rotatedPointsTensor.ptr(rectIdx, angleIdx, 5);
+    if (angleIdx < numOfDegrees)
+    {
+        // Load area and angle data from the input tensor into shared memory for efficient access.
+        // rotatedPointsTensor is a 3D tensor with dimensions <int>(rectIdx (N), angleIdx (0-90), 6).
+        areaAngleBuf_sm[2 * angleIdx]       = *rotatedPointsTensor.ptr(rectIdx, angleIdx, 4);
+        areaAngleBuf_sm[(2 * angleIdx) + 1] = *rotatedPointsTensor.ptr(rectIdx, angleIdx, 5);
+    }
 
     // Synchronize threads within a block to ensure shared memory is fully populated.
     __syncthreads();
@@ -168,7 +159,7 @@ __global__ void findMinAreaAndAngle(TensorWrapper rotatedPointsTensor, cuda::Ten
         __syncthreads();
 
         // Handle the case when stride is odd, ensuring the first element is the minimum.
-        if (stride % 2 == 1 && areaAngleBuf_sm[0] > areaAngleBuf_sm[2 * (stride - 1)])
+        if (angleIdx == 0 && stride % 2 == 1 && areaAngleBuf_sm[0] > areaAngleBuf_sm[2 * (stride - 1)])
         {
             areaAngleBuf_sm[0] = areaAngleBuf_sm[2 * (stride - 1)];
             areaAngleBuf_sm[1] = areaAngleBuf_sm[2 * (stride - 1) + 1];
@@ -179,7 +170,7 @@ __global__ void findMinAreaAndAngle(TensorWrapper rotatedPointsTensor, cuda::Ten
     }
 
     // Handle the case for odd number of degrees.
-    if (numOfDegrees % 2 == 1 && areaAngleBuf_sm[0] > areaAngleBuf_sm[2 * (numOfDegrees - 1)])
+    if (angleIdx == 0 && numOfDegrees % 2 == 1 && areaAngleBuf_sm[0] > areaAngleBuf_sm[2 * (numOfDegrees - 1)])
     {
         areaAngleBuf_sm[0] = areaAngleBuf_sm[2 * (numOfDegrees - 1)];
         areaAngleBuf_sm[1] = areaAngleBuf_sm[2 * (numOfDegrees - 1) + 1];
@@ -222,7 +213,7 @@ __global__ void findMinAreaAndAngle(TensorWrapper rotatedPointsTensor, cuda::Ten
 }
 
 template<typename T>
-void minAreaRect(const TensorDataStridedCuda &inData, void *rotatedPointsDev,
+void minAreaRect(const TensorDataStridedCuda &inData, int *rotatedPointsDev,
                  const cuda::Tensor2DWrap<float> rotateCoeffsData, const TensorDataStridedCuda &numPointsInContour,
                  const TensorDataStridedCuda &outData, int contourBatch, int maxNumPointsInContour, cudaStream_t stream)
 {
@@ -242,18 +233,19 @@ void minAreaRect(const TensorDataStridedCuda &inData, void *rotatedPointsDev,
     resetRotatedPointsBuf<<<grid1, block1, 0, stream>>>(rotatedPointsTensor, _MAX_ROTATE_DEGREES);
     checkKernelErrors();
 
-    dim3   block2(256);
-    dim3   grid2(divUp(maxNumPointsInContour, block2.x), contourBatch, _MAX_ROTATE_DEGREES);
-    // Shared mem should be ((2 * (_MAX_ROTATE_DEGREES + 1))* sizeof(int) since there are 2 entries per angle and its inclusive (0-90)
-    size_t smem_size = (2 * (_MAX_ROTATE_DEGREES + 1)) * sizeof(int);
-    calculateRotateArea<<<grid2, block2, smem_size, stream>>>(inContourPointsData, rotatedPointsTensor,
-                                                              rotateCoeffsData, pointsInContourData);
+    dim3 block2(maxNumPointsInContour <= 512 ? 128 : 256);
+    dim3 grid2(divUp(maxNumPointsInContour, block2.x), contourBatch, _MAX_ROTATE_DEGREES);
+    calculateRotateArea<<<grid2, block2, 0, stream>>>(inContourPointsData, rotatedPointsTensor, rotateCoeffsData,
+                                                      pointsInContourData, maxNumPointsInContour);
     checkKernelErrors();
     cudaStreamSynchronize(stream);
 
+    dim3 block3(128);
     dim3 grid3(contourBatch);
 
-    findMinAreaAndAngle<<<grid3, block2, smem_size, stream>>>(rotatedPointsTensor, outMinAreaRectData,
+    // The reduction stores an area and angle for every produced angle.
+    size_t smem_size = 2 * _MAX_ROTATE_DEGREES * sizeof(int);
+    findMinAreaAndAngle<<<grid3, block3, smem_size, stream>>>(rotatedPointsTensor, outMinAreaRectData,
                                                               _MAX_ROTATE_DEGREES);
     checkKernelErrors();
 }
@@ -306,7 +298,7 @@ ErrorCode MinAreaRect::infer(const TensorDataStridedCuda &inData, const TensorDa
     cuda::Tensor2DWrap<float> rotateCoeffsData(mRotateCoeffsBufDev, static_cast<int>(2 * sizeof(float)));
     calculateRotateCoefCUDA(rotateCoeffsData, _MAX_ROTATE_DEGREES, stream);
 
-    typedef void (*minAreaRect_t)(const TensorDataStridedCuda &inData, void *rotatedPointsDev,
+    typedef void (*minAreaRect_t)(const TensorDataStridedCuda &inData, int *rotatedPointsDev,
                                   const cuda::Tensor2DWrap<float> rotateCoeffsData,
                                   const TensorDataStridedCuda &numPointsInContour, const TensorDataStridedCuda &outData,
                                   int batch, int maxNumPointsInContour, cudaStream_t stream);

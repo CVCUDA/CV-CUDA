@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -58,9 +58,12 @@ CVCUDA_PUBLIC NVCVStatus cvcudaFindHomographyCreate(NVCVOperatorHandle *handle, 
  *
  *  Limitations:
  *
- *  Input:
- *       Data Layout:    [NW]
- *       Channel count:  [1]
+ *  Planar image layouts: Not applicable
+ *       Reason: Inputs are point-coordinate tensors and outputs are transformation matrices, not images.
+ *
+ *  Input (srcPts, dstPts):
+ *       Data Layout:    [NW] with dtype 2F32, or [NWC] with dtype F32 and C=2
+ *       Channels:       [2] (packed as 2F32 or explicit dimension)
  *
  *       Data Type      | Allowed
  *       -------------- | -------------
@@ -70,12 +73,13 @@ CVCUDA_PUBLIC NVCVStatus cvcudaFindHomographyCreate(NVCVOperatorHandle *handle, 
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
- *       32bit Float    | Yes
+ *       16bit Float    | No
+ *       32bit Float    | Yes (F32 or 2F32)
  *       64bit Float    | No
  *
- *  Output:
+ *  Output (models):
  *       Data Layout:    [NHW]
- *       Channel count:  [1]
+ *       Shape:          [N, 3, 3]
  *
  *       Data Type      | Allowed
  *       -------------- | -------------
@@ -85,6 +89,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaFindHomographyCreate(NVCVOperatorHandle *handle, 
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | Yes
  *       64bit Float    | No
  *
@@ -93,7 +98,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaFindHomographyCreate(NVCVOperatorHandle *handle, 
  *       Property      |  Input == Output
  *      -------------- | -------------
  *       Data Layout   | No
- *       Data Type     | Yes
+ *       Data Type     | Yes (base type F32)
  *       Batches (N)   | Yes
  *       Channels      | No
  *
@@ -108,18 +113,18 @@ CVCUDA_PUBLIC NVCVStatus cvcudaFindHomographyCreate(NVCVOperatorHandle *handle, 
  *                + Must have data type 2F32 or F32
  *                + Must have rank 2 or 3
  *
- * * @param [in] dstPts Input tensor, dstPts[i, j] is the set of coordinates for the destination image where i ranges
+ * @param [in] dstPts Input tensor, dstPts[i, j] is the set of coordinates for the destination image where i ranges
  *                from 0 to batch-1, j ranges from 4 to number of coordinates per image, and the data type being
  *                float2 for (x=x, y=y)
  *                + Number of coordinates must be >= 4
  *                + Must have data type 2F32 or F32
  *                + Must have rank 2 or 3
  *
- * @param [out] out Output tensor, models[i, j, k] is the output model tensor which maps the src points to dst points
- *                  in image i, where i ranges from 0 to batch-1, j ranges from 0 to 2 and k ranges from 0 to 2, and
- *                  the data type being F32.
- *                  + Must have data type F32
- *                  + Must have rank 3
+ * @param [out] models Output tensor, models[i, j, k] is the output model tensor which maps the src points to dst
+ *                     points in image i, where i ranges from 0 to batch-1, j ranges from 0 to 2 and k ranges from
+ *                     0 to 2, and the data type being F32.
+ *                     + Must have data type F32
+ *                     + Must have rank 3
  *
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
  * @retval #NVCV_ERROR_INTERNAL         Internal error in the operator, invalid types passed in.
@@ -131,13 +136,13 @@ CVCUDA_PUBLIC NVCVStatus cvcudaFindHomographySubmit(NVCVOperatorHandle handle, c
                                                     NVCVTensorHandle models);
 
 /**
- * Executes the FindHomography operation on a batch of images.
+ * Executes the FindHomography operation on tensor batches.
  *
- * Apart from input and output image batches, all parameters are the same as \ref cvcudaFindHomographySubmit.
+ * Apart from using tensor batches, all parameters are the same as \ref cvcudaFindHomographySubmit.
  *
- * @param[in] srcPts batch of coordinates in the source image.
- * @param[out] dstPts batch of coordinates in the destination image.
- * @param [in] models model tensor batch.
+ * @param[in] srcPts Input tensor batch of coordinates in the source image.
+ * @param[in] dstPts Input tensor batch of coordinates in the destination image.
+ * @param[out] models Output model tensor batch.
  *
  */
 CVCUDA_PUBLIC NVCVStatus cvcudaFindHomographyVarShapeSubmit(NVCVOperatorHandle handle, cudaStream_t stream,
@@ -147,5 +152,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaFindHomographyVarShapeSubmit(NVCVOperatorHandle h
 #ifdef __cplusplus
 }
 #endif
+
+/** @} */
 
 #endif /* CVCUDA__FIND_HOMOGRAPHY_H */

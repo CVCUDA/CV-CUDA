@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -84,11 +84,11 @@ inline Optional<Derived> ArrayData::cast() const
 
     if (IsCompatible<Derived>())
     {
-        return Derived{this->cdata()};
+        return Optional<Derived>{Derived{this->cdata()}};
     }
     else
     {
-        return NullOpt;
+        return Optional<Derived>{NullOpt};
     }
 }
 
@@ -121,7 +121,7 @@ inline ArrayDataCuda::ArrayDataCuda(int64_t length, const DataType &dtype, const
 
     data.length   = length;
     data.capacity = length;
-    data.dtype    = dtype;
+    data.dtype    = static_cast<NVCVDataType>(dtype);
 
     data.bufferType     = NVCV_ARRAY_BUFFER_CUDA;
     data.buffer.strided = buffer;
@@ -143,7 +143,7 @@ inline ArrayDataHost::ArrayDataHost(int64_t length, const DataType &dtype, const
 
     data.length   = length;
     data.capacity = length;
-    data.dtype    = dtype;
+    data.dtype    = static_cast<NVCVDataType>(dtype);
 
     data.bufferType     = NVCV_ARRAY_BUFFER_HOST;
     data.buffer.strided = buffer;
@@ -165,7 +165,7 @@ inline ArrayDataHostPinned::ArrayDataHostPinned(int64_t length, const DataType &
 
     data.length   = length;
     data.capacity = length;
-    data.dtype    = dtype;
+    data.dtype    = static_cast<NVCVDataType>(dtype);
 
     data.bufferType     = NVCV_ARRAY_BUFFER_HOST_PINNED;
     data.buffer.strided = buffer;

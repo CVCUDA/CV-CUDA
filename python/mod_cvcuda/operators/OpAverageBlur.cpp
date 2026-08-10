@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,7 @@
  */
 
 #include "Operators.hpp"
+#include "VarShapeUtils.hpp"
 
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
@@ -49,7 +50,8 @@ Tensor AverageBlurInto(Tensor &output, Tensor &input, const std::tuple<int, int>
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_WRITE, {*averageBlur});
 
-    averageBlur->submit(pstream->cudaHandle(), input, output, kernelSizeArg, kernelAnchorArg, border);
+    guard.run([&averageBlur, &pstream, &input, &output, &kernelSizeArg, &kernelAnchorArg, &border]()
+              { averageBlur->submit(pstream->cudaHandle(), input, output, kernelSizeArg, kernelAnchorArg, border); });
 
     return output;
 }
@@ -80,7 +82,8 @@ ImageBatchVarShape AverageBlurVarShapeInto(ImageBatchVarShape &output, ImageBatc
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*averageBlur});
 
-    averageBlur->submit(pstream->cudaHandle(), input, output, kernel_size, kernel_anchor, border);
+    guard.run([&averageBlur, &pstream, &input, &output, &kernel_size, &kernel_anchor, &border]()
+              { averageBlur->submit(pstream->cudaHandle(), input, output, kernel_size, kernel_anchor, border); });
 
     return output;
 }
@@ -89,15 +92,7 @@ ImageBatchVarShape AverageBlurVarShape(ImageBatchVarShape &input, const std::tup
                                        Tensor &kernel_size, Tensor &kernel_anchor, NVCVBorderType border,
                                        std::optional<Stream> pstream)
 {
-    ImageBatchVarShape output = ImageBatchVarShape::Create(input.capacity());
-
-    for (int i = 0; i < input.numImages(); ++i)
-    {
-        nvcv::ImageFormat format = input[i].format();
-        nvcv::Size2D      size   = input[i].size();
-        auto              image  = Image::Create(size, format);
-        output.pushBack(image);
-    }
+    ImageBatchVarShape output = CreateSameShapeImageBatch(input);
 
     return AverageBlurVarShapeInto(output, input, max_kernel_size, kernel_size, kernel_anchor, border, pstream);
 }
@@ -107,20 +102,14 @@ ImageBatchVarShape AverageBlurVarShape(ImageBatchVarShape &input, const std::tup
 void ExportOpAverageBlur(py::module &m)
 {
     using namespace pybind11::literals;
-    py::options options;
-    options.disable_function_signatures();
 
     const std::tuple<int, int> def_anchor{-1, -1};
 
-    m.def("averageblur", &AverageBlur, "src"_a, "kernel_size"_a, "kernel_anchor"_a = def_anchor,
-          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-	cvcuda.averageblur(src: cvcuda.Tensor, kernel_size: Tuple[int, int], kernel_anchor: Tuple[int, int], border: cvcuda.Border = cvcuda.Border.CONSTANT, stream: Optional[cvcuda.Stream] = None) -> cvcuda.Tensor
+    m.def("averageblur", NvtxTrace("cvcuda.averageblur", &AverageBlur), "src"_a, "kernel_size"_a,
+          "kernel_anchor"_a = def_anchor, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(),
+          "stream"_a = nullptr, R"pbdoc(
+        Executes the AverageBlur operation on the given cuda stream.
 
-	Executes the AverageBlur operation on the given cuda stream.
-
-        See also:
-            Refer to the CV-CUDA C API reference for the AverageBlur operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.Tensor): Input tensor containing one or more images.
@@ -129,27 +118,17 @@ void ExportOpAverageBlur(py::module &m)
             border (cvcuda.Border, optional): Border mode to be used when accessing elements outside input image.
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the AverageBlur operator
-            for more details and usage examples.
 
         Returns:
             cvcuda.Tensor: The output tensor.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("averageblur_into", &AverageBlurInto, "dst"_a, "src"_a, "kernel_size"_a, "kernel_anchor"_a = def_anchor,
-          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-	cvcuda.averageblur_into(dst: cvcuda.Tensor, src: cvcuda.Tensor, kernel_size: Tuple[int, int], kernel_anchor: Tuple[int, int], border: cvcuda.Border = cvcuda.Border.CONSTANT, stream: Optional[cvcuda.Stream] = None)
-
+    m.def("averageblur_into", NvtxTrace("cvcuda.averageblur_into", &AverageBlurInto), "dst"_a, "src"_a, "kernel_size"_a,
+          "kernel_anchor"_a = def_anchor, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(),
+          "stream"_a = nullptr, R"pbdoc(
         Executes the AverageBlur operation on the given cuda stream and writes the result into the 'dst' tensor.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the AverageBlur operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.Tensor): Output tensor to store the result of the operation.
@@ -160,17 +139,12 @@ void ExportOpAverageBlur(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 
-    m.def("averageblur", &AverageBlurVarShape, "src"_a, "max_kernel_size"_a, "kernel_size"_a, "kernel_anchor"_a,
-          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-	cvcuda.averageblur(src: cvcuda.ImageBatchVarShape, kernel_size: Tuple[int, int], kernel_anchor: Tuple[int, int], border: cvcuda.Border = cvcuda.Border.CONSTANT, stream: Optional[cvcuda.Stream] = None) -> cvcuda.ImageBatchVarShape
-
+    m.def("averageblur", NvtxTrace("cvcuda.averageblur", &AverageBlurVarShape), "src"_a, "max_kernel_size"_a,
+          "kernel_size"_a, "kernel_anchor"_a, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(),
+          "stream"_a = nullptr, R"pbdoc(
         Executes the AverageBlur operation with a variable shape tensors on the given cuda stream.
 
         Args:
@@ -184,16 +158,12 @@ void ExportOpAverageBlur(py::module &m)
         Returns:
             cvcuda.ImageBatchVarShape: The output image batch.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("averageblur_into", &AverageBlurVarShapeInto, "dst"_a, "src"_a, "max_kernel_size"_a, "kernel_size"_a,
-          "kernel_anchor"_a, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr,
+    m.def("averageblur_into", NvtxTrace("cvcuda.averageblur_into", &AverageBlurVarShapeInto), "dst"_a, "src"_a,
+          "max_kernel_size"_a, "kernel_size"_a, "kernel_anchor"_a, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT,
+          py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
-	cvcuda.averageblur_into(dst: cvcuda.ImageBatchVarShape, src: cvcuda.ImageBatchVarShape, kernel_size: Tuple[int, int], kernel_anchor: Tuple[int, int], border: cvcuda.Border = cvcuda.Border.CONSTANT, stream: Optional[cvcuda.Stream] = None)
-
         Executes the AverageBlur operation with a variable shape tensors on the given cuda stream.
 
         Args:
@@ -206,11 +176,7 @@ void ExportOpAverageBlur(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.ImageBatchVarShape: The output image batch (same as dst).
     )pbdoc");
 }
 

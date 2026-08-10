@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -60,7 +60,7 @@ private:
 };
 
 template<class IFACE, class H>
-void SetObjectAssociation(NVCVStatus (*setUserPointer)(H, void *), IFACE *obj, H handle)
+void SetObjectAssociation(NVCVStatus (*setUserPointer)(H, NVCVUserPointer), IFACE *obj, H handle)
 {
     static_assert(std::is_same<typename IFACE::HandleType, H>::value, "handle type must match interface's");
 
@@ -69,7 +69,8 @@ void SetObjectAssociation(NVCVStatus (*setUserPointer)(H, void *), IFACE *obj, H
 }
 
 template<class IFACE, class H>
-IFACE *CastImpl(NVCVStatus (*getUserPointer)(H, void **), NVCVStatus (*setUserPointer)(H, void *), H handle)
+IFACE *CastImpl(NVCVStatus (*getUserPointer)(H, NVCVUserPointer *), NVCVStatus (*setUserPointer)(H, NVCVUserPointer),
+                H handle)
 {
     static_assert(std::is_same<typename IFACE::HandleType, H>::value, "handle type must matchinterface's");
     assert(getUserPointer != nullptr);

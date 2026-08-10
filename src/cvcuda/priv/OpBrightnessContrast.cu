@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +15,9 @@
  * limitations under the License.
  */
 
+#include "BrightnessContrastPolicy.hpp"
+#include "CudaDeviceUtils.hpp"
+#include "Nvtx.hpp"
 #include "OpBrightnessContrast.hpp"
 
 #include <cvcuda/cuda_tools/DropCast.hpp>
@@ -23,6 +26,7 @@
 #include <cvcuda/cuda_tools/SaturateCast.hpp>
 #include <cvcuda/cuda_tools/StaticCast.hpp>
 #include <cvcuda/cuda_tools/TensorWrap.hpp>
+#include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/DataType.hpp>
 #include <nvcv/Exception.hpp>
 #include <nvcv/TensorData.hpp>
@@ -58,10 +62,11 @@ using ArgWrapper = cuda::Tensor1DWrap<const ArgT, int32_t>;
 template<typename BT>
 struct SampleArgs
 {
-    BT brightness;
-    BT contrast;
-    BT brightnessShift;
-    BT contrastCenter;
+    BT   brightness;
+    BT   contrast;
+    BT   brightnessShift;
+    BT   contrastCenter;
+    bool clamp;
 };
 
 template<typename BT>
@@ -72,12 +77,21 @@ struct BatchArgsWrap
     const ArgWrapper<BT> contrast;
     const ArgWrapper<BT> brightnessShift;
     const ArgWrapper<BT> contrastCenter;
+    BT                   scalarBrightness;
+    BT                   scalarContrast;
+    BT                   scalarBrightnessShift;
+    BT                   scalarContrastCenter;
+    bool                 clamp;
 };
 
 template<typename BT>
-inline __device__ BT GetArg(const ArgWrapper<BT> &tensorArg, int argLen, int sampleIdx, BT defaultVal)
+inline __device__ BT GetArg(const ArgWrapper<BT> &tensorArg, int argLen, int sampleIdx, BT defaultVal, BT scalarVal)
 {
-    if (argLen == 0)
+    if (argLen < 0)
+    {
+        return scalarVal;
+    }
+    else if (argLen == 0)
     {
         return defaultVal;
     }
@@ -94,10 +108,33 @@ inline __device__ BT GetArg(const ArgWrapper<BT> &tensorArg, int argLen, int sam
 template<typename SrcBT, typename BT>
 inline __device__ SampleArgs<BT> GetBrightnessContrastArg(const BatchArgsWrap<BT> &args, int sampleIdx)
 {
-    return {GetArg(args.brightness, args.brightnessLen, sampleIdx, BT{1}),
-            GetArg(args.contrast, args.contrastLen, sampleIdx, BT{1}),
-            GetArg(args.brightnessShift, args.brightnessShiftLen, sampleIdx, BT{0}),
-            GetArg(args.contrastCenter, args.contrastCenterLen, sampleIdx, HalfRange<SrcBT, BT>())};
+    return {GetArg(args.brightness, args.brightnessLen, sampleIdx, BT{1}, args.scalarBrightness),
+            GetArg(args.contrast, args.contrastLen, sampleIdx, BT{1}, args.scalarContrast),
+            GetArg(args.brightnessShift, args.brightnessShiftLen, sampleIdx, BT{0}, args.scalarBrightnessShift),
+            GetArg(args.contrastCenter, args.contrastCenterLen, sampleIdx, HalfRange<SrcBT, BT>(),
+                   args.scalarContrastCenter),
+            args.clamp};
+}
+
+template<typename DstT, typename T>
+inline __device__ T ClampToImageRange(T value, bool clamp)
+{
+    if (!clamp)
+    {
+        return value;
+    }
+
+    using BT                         = cuda::BaseType<T>;
+    using DstBT                      = cuda::BaseType<DstT>;
+    static constexpr int numElements = cuda::NumElements<T>;
+    const BT bound = std::is_floating_point_v<DstBT> ? BT{1} : static_cast<BT>(cuda::TypeTraits<DstBT>::max);
+#pragma unroll
+    for (int c = 0; c < numElements; ++c)
+    {
+        auto &v = cuda::GetElement(value, c);
+        v       = v < BT{0} ? BT{0} : (v > bound ? bound : v);
+    }
+    return value;
 }
 
 template<bool IsPlanar>
@@ -138,7 +175,125 @@ inline __device__ void DoBrightnessContrast(SrcWrapper src, DstWrapper dst, cons
     auto coord = GetCoordForLayout<IsPlanar>(nhwCoord, p);
     auto pixel = cuda::StaticCast<BI>(src[coord]);
     pixel = arg.brightnessShift + arg.brightness * (arg.contrastCenter + arg.contrast * (pixel - arg.contrastCenter));
+    pixel = ClampToImageRange<DstT>(pixel, arg.clamp);
     dst[coord] = cuda::SaturateCast<DstT>(pixel);
+}
+
+// Per-pixel affine, factored out so the scalar and vectorized paths share byte-identical math.
+template<typename DstT, typename SrcT, typename ArgT>
+inline __device__ DstT ApplyBrightnessContrast(SrcT v, const SampleArgs<ArgT> &arg)
+{
+    using IntermediateT = decltype(std::declval<ArgT>() * std::declval<SrcT>());
+    using BI            = cuda::BaseType<IntermediateT>;
+    auto pixel          = cuda::StaticCast<BI>(v);
+    pixel = arg.brightnessShift + arg.brightness * (arg.contrastCenter + arg.contrast * (pixel - arg.contrastCenter));
+    pixel = ClampToImageRange<DstT>(pixel, arg.clamp);
+    return cuda::SaturateCast<DstT>(pixel);
+}
+
+// Vector pack type for T: uint3 (12B) for 3-element T, else uint4 (16B). BC_NIX = pixels/thread.
+template<typename T>
+using BC_DPT = std::conditional_t<cuda::NumElements<T> == 3, uint3, uint4>;
+template<typename T>
+constexpr int BC_NIX = sizeof(BC_DPT<T>) / sizeof(T);
+template<typename T>
+using BC_BATCH_DPT = std::conditional_t<std::is_same_v<cuda::BaseType<T>, unsigned char> && cuda::NumElements<T> == 1,
+                                        uint2, BC_DPT<T>>;
+template<typename PackT>
+constexpr uintptr_t BC_PACK_MSK = (sizeof(PackT) == sizeof(uint3) ? sizeof(uint) : sizeof(PackT)) - 1;
+template<typename T>
+constexpr uintptr_t BC_MSK = BC_PACK_MSK<BC_DPT<T>>;
+
+// Vectorized interleaved (NHWC) brightness/contrast. Keep this path separate from planar batching so
+// that the existing one-plane kernel does not pay for runtime plane selection.
+template<class SrcWrapper, class DstWrapper, typename ArgT>
+__global__ void BrightnessContrastVec(SrcWrapper src, DstWrapper dst, BatchArgsWrap<ArgT> batchArgs, int2 size)
+{
+    using SrcT             = std::remove_const_t<typename SrcWrapper::ValueType>;
+    using DstT             = typename DstWrapper::ValueType;
+    using SrcBT            = cuda::BaseType<SrcT>;
+    static constexpr int N = BC_NIX<SrcT>;
+
+    const int z = blockIdx.z;
+    const int y = blockIdx.y * blockDim.y + threadIdx.y;
+    if (y >= size.y)
+        return;
+    const int x0 = (blockIdx.x * blockDim.x + threadIdx.x) * N;
+    if (x0 >= size.x)
+        return;
+
+    const auto  arg = GetBrightnessContrastArg<SrcBT>(batchArgs, z);
+    const SrcT *sp  = &src[int3{x0, y, z}];
+    DstT       *dp  = &dst[int3{x0, y, z}];
+
+    if (x0 + N - 1 < size.x && (reinterpret_cast<uintptr_t>(sp) & BC_MSK<SrcT>) == 0
+        && (reinterpret_cast<uintptr_t>(dp) & BC_MSK<DstT>) == 0)
+    {
+        alignas(BC_DPT<SrcT>) SrcT in[N];
+        *reinterpret_cast<BC_DPT<SrcT> *>(in) = *reinterpret_cast<const BC_DPT<SrcT> *>(sp);
+        alignas(BC_DPT<DstT>) DstT out[N];
+#pragma unroll
+        for (int i = 0; i < N; ++i) out[i] = ApplyBrightnessContrast<DstT>(in[i], arg);
+        *reinterpret_cast<BC_DPT<DstT> *>(dp) = *reinterpret_cast<const BC_DPT<DstT> *>(out);
+    }
+    else
+    {
+#pragma unroll
+        for (int i = 0; i < N; ++i)
+            if (x0 + i < size.x)
+                dp[i] = ApplyBrightnessContrast<DstT>(sp[i], arg);
+    }
+}
+
+// Batch adjacent planar or var-shape elements while reusing wrapper lookups and per-image arguments.
+template<bool IsPlanar, bool IsVarShape, typename PackT, class SrcWrapper, class DstWrapper, typename ArgT>
+__global__ void BrightnessContrastBatchVec(SrcWrapper src, DstWrapper dst, BatchArgsWrap<ArgT> batchArgs,
+                                           int2 tensorSize, int numPlanes)
+{
+    using SrcT             = std::remove_const_t<typename SrcWrapper::ValueType>;
+    using DstT             = typename DstWrapper::ValueType;
+    using SrcBT            = cuda::BaseType<SrcT>;
+    static constexpr int N = sizeof(PackT) / sizeof(SrcT);
+
+    const int z = blockIdx.z;
+    int2      size{tensorSize};
+    if constexpr (IsVarShape)
+    {
+        size = {dst.width(z), dst.height(z)};
+    }
+    const int y = blockIdx.y * blockDim.y + threadIdx.y;
+    if (y >= size.y)
+        return;
+    const int x0 = (blockIdx.x * blockDim.x + threadIdx.x) * N;
+    if (x0 >= size.x)
+        return;
+
+    const auto arg = GetBrightnessContrastArg<SrcBT>(batchArgs, z);
+    assert(IsPlanar || numPlanes == 1);
+    for (int p = 0; p < numPlanes; ++p)
+    {
+        auto        coord = GetCoordForLayout<IsPlanar>(int3{x0, y, z}, p);
+        const SrcT *sp    = &src[coord];
+        DstT       *dp    = &dst[coord];
+
+        if (x0 + N - 1 < size.x && (reinterpret_cast<uintptr_t>(sp) & BC_PACK_MSK<PackT>) == 0
+            && (reinterpret_cast<uintptr_t>(dp) & BC_PACK_MSK<PackT>) == 0)
+        {
+            alignas(PackT) SrcT in[N];
+            *reinterpret_cast<PackT *>(in) = *reinterpret_cast<const PackT *>(sp);
+            alignas(PackT) DstT out[N];
+#pragma unroll
+            for (int i = 0; i < N; ++i) out[i] = ApplyBrightnessContrast<DstT>(in[i], arg);
+            *reinterpret_cast<PackT *>(dp) = *reinterpret_cast<const PackT *>(out);
+        }
+        else
+        {
+#pragma unroll
+            for (int i = 0; i < N; ++i)
+                if (x0 + i < size.x)
+                    dp[i] = ApplyBrightnessContrast<DstT>(sp[i], arg);
+        }
+    }
 }
 
 // BrightnessContrast kernel --------------------------------------------------------------
@@ -195,6 +350,12 @@ template<bool isPlanar, typename SrcValueT, typename DstValueT, typename ArgT, c
 inline void RunBrightnessContrast(cudaStream_t stream, const SrcData &srcData, const DstData &dstData,
                                   const BatchArgsWrap<ArgT> &batchArgs)
 {
+    using SrcBT                        = cuda::BaseType<SrcValueT>;
+    static constexpr int  kNix         = BC_NIX<SrcValueT>;
+    static constexpr int  kBatchNix    = sizeof(BC_BATCH_DPT<SrcValueT>) / sizeof(SrcValueT);
+    static constexpr int  kNumElements = cuda::NumElements<SrcValueT>;
+    static constexpr bool kUseBatchedPath
+        = kNix > 1 && std::is_same_v<SrcBT, unsigned char> && (kNumElements == 1 || kNumElements == 3);
     dim3 block(32, 4, 1);
     if constexpr (std::is_same_v<SrcData, nvcv::TensorDataStridedCuda>)
     {
@@ -216,7 +377,30 @@ inline void RunBrightnessContrast(cudaStream_t stream, const SrcData &srcData, c
         {
             auto src = cuda::CreateTensorWrapNHW<const SrcValueT, StrideType>(srcData);
             auto dst = cuda::CreateTensorWrapNHW<DstValueT, StrideType>(dstData);
-            BrightnessContrast<isPlanar><<<grid, block, 0, stream>>>(src, dst, batchArgs, size, 1);
+            if constexpr (std::is_same_v<SrcValueT, DstValueT>)
+            {
+                // Vectorized interleaved path (BC_NIX pixels/thread). Same-type only so the load/store
+                // pack widths match; mixed in/out types keep the scalar kernel.
+                int sm = 0;
+                NVCV_CHECK_THROW(cvcuda::priv::GetCurrentDeviceSM(sm));
+                constexpr bool kIsUnsignedByte = std::is_same_v<SrcBT, unsigned char>;
+                auto           policy
+                    = cvcuda::priv::BrightnessContrastTensorKernelPolicyForSM(sm, kIsUnsignedByte, kNumElements);
+                if (policy == cvcuda::priv::BrightnessContrastTensorKernelPolicy::kScalar)
+                {
+                    BrightnessContrast<isPlanar><<<grid, block, 0, stream>>>(src, dst, batchArgs, size, 1);
+                }
+                else
+                {
+                    dim3 gridV(util::DivUp(size.x, block.x * kNix), util::DivUp(size.y, block.y),
+                               srcAccess->numSamples());
+                    BrightnessContrastVec<<<gridV, block, 0, stream>>>(src, dst, batchArgs, size);
+                }
+            }
+            else
+            {
+                BrightnessContrast<isPlanar><<<grid, block, 0, stream>>>(src, dst, batchArgs, size, 1);
+            }
         }
         else
         {
@@ -227,7 +411,17 @@ inline void RunBrightnessContrast(cudaStream_t stream, const SrcData &srcData, c
                 dstData.basePtr(), static_cast<int>(dstAccess->sampleStride()),
                 static_cast<int>(dstAccess->planeStride()), static_cast<int>(dstAccess->rowStride()));
             int numPlanes = srcAccess->numPlanes();
-            BrightnessContrast<isPlanar><<<grid, block, 0, stream>>>(src, dst, batchArgs, size, numPlanes);
+            if constexpr (std::is_same_v<SrcValueT, DstValueT> && kUseBatchedPath)
+            {
+                dim3 gridV(util::DivUp(size.x, block.x * kBatchNix), util::DivUp(size.y, block.y),
+                           srcAccess->numSamples());
+                BrightnessContrastBatchVec<true, false, BC_BATCH_DPT<SrcValueT>>
+                    <<<gridV, block, 0, stream>>>(src, dst, batchArgs, size, numPlanes);
+            }
+            else
+            {
+                BrightnessContrast<isPlanar><<<grid, block, 0, stream>>>(src, dst, batchArgs, size, numPlanes);
+            }
         }
         NVCV_CHECK_THROW(cudaGetLastError());
     }
@@ -241,7 +435,17 @@ inline void RunBrightnessContrast(cudaStream_t stream, const SrcData &srcData, c
         cuda::ImageBatchVarShapeWrap<DstValueT>       dst(dstData);
 
         int numPlanes = dstData.uniqueFormat().numPlanes();
-        BrightnessContrast<isPlanar><<<grid, block, 0, stream>>>(src, dst, batchArgs, numPlanes);
+        if constexpr (std::is_same_v<SrcValueT, DstValueT> && kUseBatchedPath)
+        {
+            dim3 gridV(util::DivUp(dstMaxSize.x, block.x * kBatchNix), util::DivUp(dstMaxSize.y, block.y),
+                       dstMaxSize.z);
+            BrightnessContrastBatchVec<isPlanar, true, BC_BATCH_DPT<SrcValueT>>
+                <<<gridV, block, 0, stream>>>(src, dst, batchArgs, int2{}, numPlanes);
+        }
+        else
+        {
+            BrightnessContrast<isPlanar><<<grid, block, 0, stream>>>(src, dst, batchArgs, numPlanes);
+        }
 
         NVCV_CHECK_THROW(cudaGetLastError());
     }
@@ -285,12 +489,12 @@ inline void RunTypeSwitch(int numChannels, int numPlanes, nvcv::DataType srcType
 
     RunTypeSwitch(
         srcType,
-        [&](auto dummySrcVal)
+        [&dstType, &argType, &numChannels, &numPlanes, &cb](auto dummySrcVal)
         {
             using SrcValBase = decltype(dummySrcVal);
             RunTypeSwitch(
                 dstType,
-                [&](auto dummyDstVal)
+                [&argType, &numChannels, &numPlanes, &cb](auto dummyDstVal)
                 {
                     using DstValBase = decltype(dummyDstVal);
                     using ArgT       = GetArgType<SrcValBase, DstValBase>;
@@ -360,6 +564,18 @@ inline void ValidateSrcDstTensors(int &numSamples, int &numInterleavedChannels, 
                               "Output must be cuda-accessible, pitch-linear tensor");
     }
 
+    // Check layout before creating TensorDataAccessStridedImagePlanar, as Create() will fail for unsupported layouts
+    if (srcData->layout() != dstData->layout())
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input and output must have the same layout");
+    }
+
+    if (!(srcData->layout() == nvcv::TENSOR_HWC || srcData->layout() == nvcv::TENSOR_NHWC
+          || srcData->layout() == nvcv::TENSOR_CHW || srcData->layout() == nvcv::TENSOR_NCHW))
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input must have (N)HWC or (N)CHW layout");
+    }
+
     auto srcAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcData);
     auto dstAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstData);
     NVCV_ASSERT(srcAccess && dstAccess);
@@ -375,22 +591,25 @@ inline void ValidateSrcDstTensors(int &numSamples, int &numInterleavedChannels, 
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of channels");
     }
+    if (numChannels > 4)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid channel number %d", numChannels);
+    }
 
     numPlanes = srcAccess->numPlanes();
     if (numPlanes != dstAccess->numPlanes())
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of planes");
     }
+    if (numPlanes > 1 && numChannels == 2)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "2-channel planar images are not supported");
+    }
 
     if (srcAccess->numCols() != dstAccess->numCols() || srcAccess->numRows() != dstAccess->numRows())
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "Input and output must have matching width and height");
-    }
-
-    if (srcData->layout() != dstData->layout())
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input and output must have the same layout");
     }
 
     srcDtype               = srcData->dtype();
@@ -434,7 +653,31 @@ inline BatchArgsWrap<ArgT> GetBatchArgsWrap(nvcv::Optional<nvcv::TensorDataStrid
             brightnessLen == 0 ? ArgWrapper<ArgT>{} : ArgWrapper<ArgT>(*brightnessData),
             contrastLen == 0 ? ArgWrapper<ArgT>{} : ArgWrapper<ArgT>(*contrastData),
             brightnessShiftLen == 0 ? ArgWrapper<ArgT>{} : ArgWrapper<ArgT>(*brightnessShiftData),
-            constrastCenterLen == 0 ? ArgWrapper<ArgT>{} : ArgWrapper<ArgT>(*contrastCenterData)};
+            constrastCenterLen == 0 ? ArgWrapper<ArgT>{} : ArgWrapper<ArgT>(*contrastCenterData),
+            ArgT{},
+            ArgT{},
+            ArgT{},
+            ArgT{},
+            false};
+}
+
+template<typename ArgT>
+inline BatchArgsWrap<ArgT> GetScalarBatchArgsWrap(double brightness, double contrast, double brightnessShift,
+                                                  double contrastCenter, bool clamp)
+{
+    return {-1,
+            -1,
+            -1,
+            -1,
+            ArgWrapper<ArgT>{},
+            ArgWrapper<ArgT>{},
+            ArgWrapper<ArgT>{},
+            ArgWrapper<ArgT>{},
+            static_cast<ArgT>(brightness),
+            static_cast<ArgT>(contrast),
+            static_cast<ArgT>(brightnessShift),
+            static_cast<ArgT>(contrastCenter),
+            clamp};
 }
 
 inline auto validateSrcDstVarBatch(int &numSamples, int &numInterleavedChannels, int &numPlanes,
@@ -478,11 +721,19 @@ inline auto validateSrcDstVarBatch(int &numSamples, int &numInterleavedChannels,
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of channels");
     }
+    if (numChannels > 4)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Invalid channel number %d", numChannels);
+    }
 
     numPlanes = srcFormat.numPlanes();
     if (numPlanes != dstFormat.numPlanes())
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Incompatible input/output number of planes");
+    }
+    if (numPlanes > 1 && numChannels == 2)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "2-channel planar images are not supported");
     }
 
     srcDtype = srcFormat.planeDataType(0);
@@ -538,8 +789,9 @@ inline void ValidateTensorArgs(nvcv::DataType &argDType, nvcv::Optional<nvcv::Te
                                const nvcv::Tensor &brightness, const nvcv::Tensor &contrast,
                                const nvcv::Tensor &brightnessShift, const nvcv::Tensor &contrastCenter)
 {
-    auto validateArgData = [&](const std::string &argName, nvcv::Optional<nvcv::TensorDataStridedCuda> &argData,
-                               const nvcv::Tensor &argTensor)
+    auto validateArgData
+        = [&argDType, &numSamples](const std::string &argName, nvcv::Optional<nvcv::TensorDataStridedCuda> &argData,
+                                   const nvcv::Tensor &argTensor)
     {
         if (argTensor)
         {
@@ -605,6 +857,7 @@ void BrightnessContrast::operator()(cudaStream_t stream, const nvcv::Tensor &src
                                     const nvcv::Tensor &brightness, const nvcv::Tensor &contrast,
                                     const nvcv::Tensor &brightnessShift, const nvcv::Tensor &contrastCenter) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::BrightnessContrast::operator()[Tensor]");
     int            numSamples;
     int            numInterleavedChannels;
     int            numPlanes;
@@ -621,7 +874,8 @@ void BrightnessContrast::operator()(cudaStream_t stream, const nvcv::Tensor &src
     ValidateTensorArgs(argDType, brightnessData, contrastData, brightnessShiftData, contrastCenterData, numSamples,
                        brightness, contrast, brightnessShift, contrastCenter);
     RunTypeSwitch(numInterleavedChannels, numPlanes, srcDtype, dstDtype, argDType,
-                  [&](auto dummySrcVal, auto dummyDstVal, auto dummyArg, auto isPlanar)
+                  [&brightnessData, &contrastData, &brightnessShiftData, &contrastCenterData, &stream, &srcData,
+                   &dstData](auto dummySrcVal, auto dummyDstVal, auto dummyArg, auto isPlanar)
                   {
                       using InT      = decltype(dummySrcVal);
                       using OutT     = decltype(dummyDstVal);
@@ -639,6 +893,7 @@ void BrightnessContrast::operator()(cudaStream_t stream, const nvcv::ImageBatchV
                                     const nvcv::Tensor &contrast, const nvcv::Tensor &brightnessShift,
                                     const nvcv::Tensor &contrastCenter) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::BrightnessContrast::operator()[ImageBatchVarShape]");
     int            numSamples;
     int            numInterleavedChannels;
     int            numPlanes;
@@ -654,7 +909,8 @@ void BrightnessContrast::operator()(cudaStream_t stream, const nvcv::ImageBatchV
     ValidateTensorArgs(argDType, brightnessData, contrastData, brightnessShiftData, contrastCenterData, numSamples,
                        brightness, contrast, brightnessShift, contrastCenter);
     RunTypeSwitch(numInterleavedChannels, numPlanes, srcDtype, dstDtype, argDType,
-                  [&](auto dummySrcVal, auto dummyDstVal, auto dummyArg, auto isPlanar)
+                  [&brightnessData, &contrastData, &brightnessShiftData, &contrastCenterData, &stream, &srcDstData](
+                      auto dummySrcVal, auto dummyDstVal, auto dummyArg, auto isPlanar)
                   {
                       using InT      = decltype(dummySrcVal);
                       using OutT     = decltype(dummyDstVal);
@@ -662,6 +918,60 @@ void BrightnessContrast::operator()(cudaStream_t stream, const nvcv::ImageBatchV
                       using IsPlanar = decltype(isPlanar);
                       auto args      = GetBatchArgsWrap<ArgT>(brightnessData, contrastData, brightnessShiftData,
                                                          contrastCenterData);
+                      auto &[srcData, dstData] = srcDstData;
+                      RunBrightnessContrast<IsPlanar::value, InT, OutT>(stream, *srcData, *dstData, args);
+                  });
+}
+
+void BrightnessContrast::operator()(cudaStream_t stream, const nvcv::Tensor &src, const nvcv::Tensor &dst,
+                                    double brightness, double contrast, double brightnessShift, double contrastCenter,
+                                    bool clamp) const
+{
+    CVCUDA_NVTX_RANGE("cvcuda::BrightnessContrast::operator()[Tensor,Scalar]");
+    int            numSamples;
+    int            numInterleavedChannels;
+    int            numPlanes;
+    nvcv::DataType srcDtype;
+    nvcv::DataType dstDtype;
+    auto           srcData = src.exportData<nvcv::TensorDataStridedCuda>();
+    auto           dstData = dst.exportData<nvcv::TensorDataStridedCuda>();
+    ValidateSrcDstTensors(numSamples, numInterleavedChannels, numPlanes, srcDtype, dstDtype, srcData, dstData);
+    RunTypeSwitch(numInterleavedChannels, numPlanes, srcDtype, dstDtype, nvcv::DataType{},
+                  [&, brightness, contrast, brightnessShift, contrastCenter, clamp](auto dummySrcVal, auto dummyDstVal,
+                                                                                    auto dummyArg, auto isPlanar)
+                  {
+                      using InT      = decltype(dummySrcVal);
+                      using OutT     = decltype(dummyDstVal);
+                      using ArgT     = decltype(dummyArg);
+                      using IsPlanar = decltype(isPlanar);
+                      auto args
+                          = GetScalarBatchArgsWrap<ArgT>(brightness, contrast, brightnessShift, contrastCenter, clamp);
+                      RunBrightnessContrast<IsPlanar::value, InT, OutT>(stream, *srcData, *dstData, args);
+                  });
+}
+
+void BrightnessContrast::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &src,
+                                    const nvcv::ImageBatchVarShape &dst, double brightness, double contrast,
+                                    double brightnessShift, double contrastCenter, bool clamp) const
+{
+    CVCUDA_NVTX_RANGE("cvcuda::BrightnessContrast::operator()[ImageBatchVarShape,Scalar]");
+    int            numSamples;
+    int            numInterleavedChannels;
+    int            numPlanes;
+    nvcv::DataType srcDtype;
+    nvcv::DataType dstDtype;
+    auto           srcDstData
+        = validateSrcDstVarBatch(numSamples, numInterleavedChannels, numPlanes, srcDtype, dstDtype, stream, src, dst);
+    RunTypeSwitch(numInterleavedChannels, numPlanes, srcDtype, dstDtype, nvcv::DataType{},
+                  [&, brightness, contrast, brightnessShift, contrastCenter, clamp](auto dummySrcVal, auto dummyDstVal,
+                                                                                    auto dummyArg, auto isPlanar)
+                  {
+                      using InT      = decltype(dummySrcVal);
+                      using OutT     = decltype(dummyDstVal);
+                      using ArgT     = decltype(dummyArg);
+                      using IsPlanar = decltype(isPlanar);
+                      auto args
+                          = GetScalarBatchArgsWrap<ArgT>(brightness, contrast, brightnessShift, contrastCenter, clamp);
                       auto &[srcData, dstData] = srcDstData;
                       RunBrightnessContrast<IsPlanar::value, InT, OutT>(stream, *srcData, *dstData, args);
                   });

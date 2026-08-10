@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -42,8 +42,8 @@ NVCV_TEST_SUITE_P(TensorShapeInfo_NumBatch_ExecTests,
 
 TEST_P(TensorShapeInfo_NumBatch_ExecTests, works)
 {
-    const nvcv::TensorShape input{std::get<0>(GetParam())};
-    const int              &gold = std::get<1>(GetParam());
+    const nvcv::TensorShape input{::nvcv::test::ParamValue(std::get<0>(GetParam()))};
+    const int              &gold = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     auto info = nvcv::TensorShapeInfo::Create(input);
     ASSERT_TRUE(info);
@@ -69,8 +69,8 @@ NVCV_TEST_SUITE_P(TensorShapeInfoImage_NumChannels_ExecTest,
 
 TEST_P(TensorShapeInfoImage_NumChannels_ExecTest, works)
 {
-    const nvcv::TensorShape input{std::get<0>(GetParam())};
-    const int              &gold = std::get<1>(GetParam());
+    const nvcv::TensorShape input{::nvcv::test::ParamValue(std::get<0>(GetParam()))};
+    const int              &gold = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     auto info = nvcv::TensorShapeInfoImage::Create(input);
     ASSERT_TRUE(info);
@@ -95,8 +95,8 @@ NVCV_TEST_SUITE_P(TensorShapeInfoImage_NumCols_ExecTest,
 
 TEST_P(TensorShapeInfoImage_NumCols_ExecTest, works)
 {
-    const nvcv::TensorShape input{std::get<0>(GetParam())};
-    const int              &gold = std::get<1>(GetParam());
+    const nvcv::TensorShape input{::nvcv::test::ParamValue(std::get<0>(GetParam()))};
+    const int              &gold = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     auto info = nvcv::TensorShapeInfoImage::Create(input);
     ASSERT_TRUE(info);
@@ -124,8 +124,8 @@ NVCV_TEST_SUITE_P(TensorShapeInfoImage_NumRows_ExecTest,
 
 TEST_P(TensorShapeInfoImage_NumRows_ExecTest, works)
 {
-    const nvcv::TensorShape input{std::get<0>(GetParam())};
-    const int              &gold = std::get<1>(GetParam());
+    const nvcv::TensorShape input{::nvcv::test::ParamValue(std::get<0>(GetParam()))};
+    const int              &gold = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     auto info = nvcv::TensorShapeInfoImage::Create(input);
     ASSERT_TRUE(info);
@@ -152,8 +152,8 @@ NVCV_TEST_SUITE_P(TensorShapeInfoImage_Size_ExecTest,
 
 TEST_P(TensorShapeInfoImage_Size_ExecTest, works)
 {
-    const nvcv::TensorShape input{std::get<0>(GetParam())};
-    const nvcv::Size2D     &gold = std::get<1>(GetParam());
+    const nvcv::TensorShape input{::nvcv::test::ParamValue(std::get<0>(GetParam()))};
+    const nvcv::Size2D     &gold = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     auto info = nvcv::TensorShapeInfoImage::Create(input);
     ASSERT_TRUE(info);
@@ -209,8 +209,8 @@ NVCV_TEST_SUITE_P(TensorShapeInfoImagePlanar_IsCompatible_ExecTest,
 
 TEST_P(TensorShapeInfoImagePlanar_IsCompatible_ExecTest, works)
 {
-    const nvcv::TensorShape input{std::get<0>(GetParam())};
-    const bool             &gold = std::get<1>(GetParam());
+    const nvcv::TensorShape input{::nvcv::test::ParamValue(std::get<0>(GetParam()))};
+    const bool             &gold = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     EXPECT_EQ(gold, nvcv::TensorShapeInfoImagePlanar::IsCompatible(input));
 }
@@ -243,8 +243,8 @@ NVCV_TEST_SUITE_P(TensorShapeInfoImagePlanar_NumPlanes_ExecTest,
 
 TEST_P(TensorShapeInfoImagePlanar_NumPlanes_ExecTest, works)
 {
-    const nvcv::TensorShape input{std::get<0>(GetParam())};
-    const int              &gold = std::get<1>(GetParam());
+    const nvcv::TensorShape input{::nvcv::test::ParamValue(std::get<0>(GetParam()))};
+    const int              &gold = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     auto info = nvcv::TensorShapeInfoImagePlanar::Create(input);
     ASSERT_TRUE(info);

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -56,7 +56,7 @@ public:
      */
     static Optional<TensorLayoutInfo> Create(const TensorLayout &layout)
     {
-        return TensorLayoutInfo{layout};
+        return Optional<TensorLayoutInfo>{TensorLayoutInfo{layout}};
     }
 
     /**
@@ -101,7 +101,7 @@ public:
     }
 
 protected:
-    TensorLayoutInfo(const TensorLayout &layout)
+    explicit TensorLayoutInfo(const TensorLayout &layout)
         : m_layout(layout)
     {
         // isBatch ----------------
@@ -168,11 +168,11 @@ public:
     {
         if (IsCompatible(layout))
         {
-            return TensorLayoutInfoImage{layout};
+            return Optional<TensorLayoutInfoImage>{TensorLayoutInfoImage{layout}};
         }
         else
         {
-            return NullOpt;
+            return Optional<TensorLayoutInfoImage>{NullOpt};
         }
     }
 
@@ -258,22 +258,23 @@ public:
     }
 
 protected:
-    TensorLayoutInfoImage(const TensorLayout &layout)
+    explicit TensorLayoutInfoImage(const TensorLayout &layout)
         : TensorLayoutInfo(layout)
     {
-        m_cacheNumSpatialDims = std::count_if(layout.begin(), layout.end(),
-                                              [](char v)
-                                              {
-                                                  switch (v)
-                                                  {
-                                                  case LABEL_WIDTH:
-                                                  case LABEL_HEIGHT:
-                                                  case LABEL_DEPTH:
-                                                      return true;
-                                                  default:
-                                                      return false;
-                                                  }
-                                              });
+        m_cacheNumSpatialDims = static_cast<int>(std::count_if( // NOSONAR: std::ranges::count_if is C++20.
+            layout.begin(), layout.end(),
+            [](char v)
+            {
+                switch (v)
+                {
+                case LABEL_WIDTH:
+                case LABEL_HEIGHT:
+                case LABEL_DEPTH:
+                    return true;
+                default:
+                    return false;
+                }
+            }));
 
         m_cacheIsRowMajor = layout.endsWith(TENSOR_W) || layout.endsWith(TENSOR_WC);
         m_cacheIdxChannel = layout.find(LABEL_CHANNEL);

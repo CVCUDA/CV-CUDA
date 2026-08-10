@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -22,12 +22,15 @@
 #include "CvCudaLegacyHelpers.hpp"
 
 #include "CvCudaUtils.cuh"
+#include "random_resized_crop_common.cuh"
 
 #include <cvcuda/cuda_tools/Compat.hpp>
 #include <cvcuda/cuda_tools/MathWrappers.hpp>
 
 #include <cmath>
+#include <cstdlib>
 #include <random>
+#include <type_traits>
 
 using namespace nvcv;
 using namespace nvcv::legacy::cuda_op;
@@ -36,58 +39,6 @@ using namespace nvcv::legacy::helpers;
 namespace nvcv::legacy::cuda_op {
 
 #define BLOCK 32
-
-#define MAX_BUFFER_BYTES 128 //multiple of 4 for word-aligned read, multiple of 16 for cacheline alignment (float4)
-#define MAX_BUFFER_WORDS (MAX_BUFFER_BYTES / 4) //extra bytes for cache alignment
-
-#define LEGACY_BICUBIC_MATH //apparently the legacy code has an abs() that needs to be matched
-
-// Replaced below 15 to 0 due to a reported regression
-#define CACHE_MEMORY_ALIGNMENT 0 //this is 'M' for _cacheAlignedBufferedRead
-
-//legal values for CACHE_MEMORY_ALIGNMENT are:
-// 31: 256-bit alignment
-// 15: 128-bit alignment <-- should be ideal for Ampere
-//  7:  64-bit alignment
-//  3:  32-bit alignment (word)
-//  0:  disable buffering
-template<size_t M, class SrcWrapper, typename ValueType = typename SrcWrapper::ValueType>
-inline const __device__ ValueType *_cacheAlignedBufferedRead(SrcWrapper srcImage, int width, uint *pReadBuffer,
-                                                             uint nReadBufferWordsMax, int nBatch, int nYPos,
-                                                             int nXPosMin, int nXPosMax)
-{
-    const ValueType *lineStartPtr = srcImage.ptr(nBatch, nYPos); //do not access prior to this address
-    const ValueType *pixSrcPtr    = &lineStartPtr[nXPosMin];
-    if (M == 0)
-        return pixSrcPtr; //return GMEM pointer instead
-    else
-    {
-        uint            *memSrcPtr       = (uint *)(((size_t)pixSrcPtr) & (~M)); //(M+1) byte alignment
-        const ValueType *pixBeyondPtr    = &lineStartPtr[nXPosMax + 1];
-        const int        functionalWidth = ((size_t)pixBeyondPtr + M) & (~M) - ((size_t)lineStartPtr);
-        const int        nWordsToRead    = (((size_t)pixBeyondPtr + M) & (~M) - (size_t)memSrcPtr) / 4;
-
-        if (((size_t)memSrcPtr < (size_t)lineStartPtr) || (width * sizeof(ValueType) < functionalWidth)
-            || (nWordsToRead > nReadBufferWordsMax))
-            return pixSrcPtr; //return GMEM pointer instead if running off the image
-        else
-        {                                             //copy out source data, aligned based upon M (31, 15, 7, 3)
-            const int skew = ((size_t)pixSrcPtr) & M; //byte offset for nXPosMin
-            int       i    = 0;
-            if (M >= 31) //256-bit align, 32 bytes at a time
-                for (; i < nWordsToRead; i += 8)
-                    *((double4_16a *)(&pReadBuffer[i])) = *((double4_16a *)(&memSrcPtr[i]));
-            if (M == 15) //128-bit align, 16 bytes at a time
-                for (; i < nWordsToRead; i += 4) *((float4 *)(&pReadBuffer[i])) = *((float4 *)(&memSrcPtr[i]));
-            if (M == 7) //64-bit align, 8 bytes at a time
-                for (; i < nWordsToRead; i += 2) *((float2 *)(&pReadBuffer[i])) = *((float2 *)(&memSrcPtr[i]));
-            //32-bit align, 4 bytes at a time
-            for (; i < nWordsToRead; ++i) pReadBuffer[i] = memSrcPtr[i];
-
-            return (const ValueType *)(((size_t)pReadBuffer) + skew); //buffered pixel data
-        }
-    }
-} //_cacheAlignedBufferedRead
 
 template<typename SrcWrapper, typename DstWrapper, typename T = typename DstWrapper::ValueType>
 __global__ void resize_linear_v1(const SrcWrapper src, DstWrapper dst, int2 srcSize, int2 dstSize, const int *top_,
@@ -133,6 +84,70 @@ __global__ void resize_linear_v1(const SrcWrapper src, DstWrapper dst, int2 srcS
     }
 }
 
+template<int NIX, typename SrcWrapper, typename DstWrapper, typename T = typename DstWrapper::ValueType>
+__global__ void resize_linear_nix(const SrcWrapper src, DstWrapper dst, int2 srcSize, int2 dstSize, const int *top_,
+                                  const int *left_, const float *scale_x_, const float *scale_y_)
+{
+    const int dst_x0    = (blockIdx.x * blockDim.x + threadIdx.x) * NIX;
+    const int dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
+    const int batch_idx = get_batch_idx();
+    int       height = srcSize.y, width = srcSize.x, out_height = dstSize.y, out_width = dstSize.x;
+
+    if (dst_y < out_height)
+    {
+        const float scale_x = scale_x_[batch_idx];
+        const float scale_y = scale_y_[batch_idx];
+        const int   top     = top_[batch_idx];
+        const int   left    = left_[batch_idx];
+
+        float fy = (float)((dst_y + 0.5f) * scale_y - 0.5f + top);
+        int   sy = cuda::round<cuda::RoundMode::DOWN, int>(fy);
+
+        fy = ((sy < 0) ? 0 : ((sy > height - 2) ? 1 : fy - sy));
+        sy = cuda::max(0, cuda::min(sy, height - 2));
+
+        const T *aPtr = src.ptr(batch_idx, sy, 0);
+        const T *bPtr = src.ptr(batch_idx, sy + 1, 0);
+
+        T dstPack[NIX];
+#pragma unroll
+        for (int i = 0; i < NIX; ++i)
+        {
+            const int dst_x = dst_x0 + i;
+            if (dst_x < out_width)
+            {
+                float fx = (float)((dst_x + 0.5f) * scale_x - 0.5f + left);
+                int   sx = cuda::round<cuda::RoundMode::DOWN, int>(fx);
+
+                fx = ((sx < 0) ? 0 : ((sx > width - 2) ? 1 : fx - sx));
+                sx = cuda::max(0, cuda::min(sx, width - 2));
+
+                dstPack[i] = cuda::SaturateCast<T>((1.0f - fx) * (aPtr[sx] * (1.0f - fy) + bPtr[sx] * fy)
+                                                   + fx * (aPtr[sx + 1] * (1.0f - fy) + bPtr[sx + 1] * fy));
+            }
+        }
+
+        T *dstRow = dst.ptr(batch_idx, dst_y, 0);
+        // dst_x0 advances by NIX, so an aligned row base keeps the packed write aligned.
+        if (dst_x0 + NIX - 1 < out_width && RRCCheckRowAlign(dstRow))
+        {
+            RRCWritePack(dstRow[dst_x0], dstPack);
+        }
+        else
+        {
+#pragma unroll
+            for (int i = 0; i < NIX; ++i)
+            {
+                const int dst_x = dst_x0 + i;
+                if (dst_x < out_width)
+                {
+                    dstRow[dst_x] = dstPack[i];
+                }
+            }
+        }
+    }
+}
+
 template<typename SrcWrapper, typename DstWrapper>
 __global__ void resize_nearest_v1(const SrcWrapper src, DstWrapper dst, int2 srcSize, int2 dstSize, const int *top_,
                                   const int *left_, const float *scale_x_, const float *scale_y_)
@@ -172,16 +187,11 @@ __global__ void resize_cubic_v1(const SrcWrapper src, DstWrapper dst, int2 srcSi
         const int   top     = top_[batch_idx];
         const int   left    = left_[batch_idx];
 
-        //float space for weighted addition
         using work_type = cuda::ConvertBaseTypeTo<float, T>;
 
-        uint readBuffer[MAX_BUFFER_WORDS];
-
-        //y coordinate
         float fy = (float)((dst_y + 0.5f) * scale_y - 0.5f + top);
         int   sy = cuda::round<cuda::RoundMode::DOWN, int>(fy);
         fy -= sy;
-        sy = cuda::max(1, cuda::min(sy, height - 3));
 
         const float A = -0.75f;
 
@@ -191,37 +201,56 @@ __global__ void resize_cubic_v1(const SrcWrapper src, DstWrapper dst, int2 srcSi
         cY[2] = ((A + 2) * (1 - fy) - (A + 3)) * (1 - fy) * (1 - fy) + 1;
         cY[3] = 1.f - cY[0] - cY[1] - cY[2];
 
-        work_type accum = cuda::SetAll<work_type>(0);
-
         float fx = (float)((dst_x + 0.5f) * scale_x - 0.5f + left);
         int   sx = cuda::round<cuda::RoundMode::DOWN, int>(fx);
         fx -= sx;
-        fx *= ((sx >= 1) && (sx < width - 3));
-        sx = cuda::max(1, cuda::min(sx, width - 3));
 
         float cX[4];
         cX[0] = ((A * (fx + 1.0f) - 5.0f * A) * (fx + 1.0f) + 8.0f * A) * (fx + 1.0f) - 4.0f * A;
         cX[1] = ((A + 2.0f) * fx - (A + 3.0f)) * fx * fx + 1.0f;
         cX[2] = ((A + 2.0f) * (1.0f - fx) - (A + 3.0f)) * (1.0f - fx) * (1.0f - fx) + 1.0f;
         cX[3] = 1.0f - cX[0] - cX[1] - cX[2];
-#pragma unroll
-        for (int row = 0; row < 4; ++row)
-        {
-            //1 - load each sub row from sx-1 to sx+3 inclusive, aligned
-            //const T * aPtr = src.ptr(batch_idx, sy + row - 1, sx-1);
-            const T *aPtr = _cacheAlignedBufferedRead<CACHE_MEMORY_ALIGNMENT>(
-                src, srcSize.x, readBuffer, MAX_BUFFER_WORDS, batch_idx, sy + row - 1, sx - 1, sx + 2);
 
-            //2 - do a pixel's partial on this row
-            accum += cY[row] * (cX[0] * aPtr[0] + cX[1] * aPtr[1] + cX[2] * aPtr[2] + cX[3] * aPtr[3]);
-        } //for row
-#ifndef LEGACY_BICUBIC_MATH
-        //correct math
+        work_type accum = cuda::SetAll<work_type>(0);
+
+        if constexpr (RRC_USE_NIX<T>)
+        {
+            int csy[4];
+            int csx[4];
+#pragma unroll
+            for (int k = 0; k < 4; ++k)
+            {
+                csy[k] = cuda::clamp(sy + k - 1, 0, height - 1);
+                csx[k] = cuda::clamp(sx + k - 1, 0, width - 1);
+            }
+
+#pragma unroll
+            for (int ky = 0; ky < 4; ++ky)
+            {
+                const T *srcRow = src.ptr(batch_idx, csy[ky], 0);
+#pragma unroll
+                for (int kx = 0; kx < 4; ++kx)
+                {
+                    accum += cY[ky] * cX[kx] * srcRow[csx[kx]];
+                }
+            }
+        }
+        else
+        {
+#pragma unroll
+            for (int ky = 0; ky < 4; ++ky)
+            {
+                int csy = cuda::clamp(sy + ky - 1, 0, height - 1);
+#pragma unroll
+                for (int kx = 0; kx < 4; ++kx)
+                {
+                    int csx = cuda::clamp(sx + kx - 1, 0, width - 1);
+                    accum += cY[ky] * cX[kx] * *src.ptr(batch_idx, csy, csx);
+                }
+            }
+        }
+
         *dst.ptr(batch_idx, dst_y, dst_x) = cuda::SaturateCast<T>(accum);
-#else
-        //abs() needed to match legacy operator.
-        *dst.ptr(batch_idx, dst_y, dst_x) = cuda::SaturateCast<T>(cuda::abs(accum));
-#endif
     }
 }
 
@@ -233,9 +262,22 @@ void resize(const SrcWrapper &src, const DstWrapper &dst, const NVCVInterpolatio
     dim3 blockSize(BLOCK, BLOCK / 4, 1);
     dim3 gridSize(divUp(dstSize.x, blockSize.x), divUp(dstSize.y, blockSize.y), batchSize);
 
+    using T = typename DstWrapper::ValueType;
+
     if (interpolation == NVCV_INTERP_LINEAR)
     {
-        resize_linear_v1<<<gridSize, blockSize, 0, stream>>>(src, dst, srcSize, dstSize, top, left, scale_x, scale_y);
+        constexpr int INIX = RRC_USE_NIX<T> ? RRC_NIX<T> : 1;
+        if constexpr (INIX > 1)
+        {
+            dim3 linearGrid(divUp(dstSize.x, blockSize.x * INIX), divUp(dstSize.y, blockSize.y), batchSize);
+            resize_linear_nix<INIX>
+                <<<linearGrid, blockSize, 0, stream>>>(src, dst, srcSize, dstSize, top, left, scale_x, scale_y);
+        }
+        else
+        {
+            resize_linear_v1<<<gridSize, blockSize, 0, stream>>>(src, dst, srcSize, dstSize, top, left, scale_x,
+                                                                 scale_y);
+        }
         checkKernelErrors();
     }
     else if (interpolation == NVCV_INTERP_NEAREST)
@@ -253,6 +295,276 @@ void resize(const SrcWrapper &src, const DstWrapper &dst, const NVCVInterpolatio
     checkCudaErrors(cudaStreamSynchronize(stream));
     checkCudaErrors(cudaGetLastError());
 #endif
+}
+
+template<typename SrcWrapper, typename DstWrapper, typename T = typename DstWrapper::ValueType>
+__global__ void resize_linear_planar(const SrcWrapper src, DstWrapper dst, int2 srcSize, int2 dstSize, const int *top_,
+                                     const int *left_, const float *scale_x_, const float *scale_y_, int channels)
+{
+    const int dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
+    const int dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
+    const int batch_idx = get_batch_idx();
+    int       height = srcSize.y, width = srcSize.x, out_height = dstSize.y, out_width = dstSize.x;
+
+    if ((dst_x < out_width) && (dst_y < out_height))
+    {
+        const float scale_x = scale_x_[batch_idx];
+        const float scale_y = scale_y_[batch_idx];
+        const int   top     = top_[batch_idx];
+        const int   left    = left_[batch_idx];
+
+        using work_type = cuda::ConvertBaseTypeTo<float, T>;
+
+        float fy = (float)((dst_y + 0.5f) * scale_y - 0.5f + top);
+        int   sy = cuda::round<cuda::RoundMode::DOWN, int>(fy);
+
+        fy = ((sy < 0) ? 0 : ((sy > height - 2) ? 1 : fy - sy));
+        sy = cuda::max(0, cuda::min(sy, height - 2));
+
+        float fx = (float)((dst_x + 0.5f) * scale_x - 0.5f + left);
+        int   sx = cuda::round<cuda::RoundMode::DOWN, int>(fx);
+
+        fx = ((sx < 0) ? 0 : ((sx > width - 2) ? 1 : fx - sx));
+        sx = cuda::max(0, cuda::min(sx, width - 2));
+
+        for (int plane = 0; plane < channels; ++plane)
+        {
+            const T *aPtr = src.ptr(batch_idx, plane, sy, 0);
+            const T *bPtr = src.ptr(batch_idx, plane, sy + 1, 0);
+
+            *dst.ptr(batch_idx, plane, dst_y, dst_x)
+                = cuda::SaturateCast<T>((1.0f - fx) * (aPtr[sx] * (1.0f - fy) + bPtr[sx] * fy)
+                                        + fx * (aPtr[sx + 1] * (1.0f - fy) + bPtr[sx + 1] * fy));
+        }
+    }
+}
+
+template<int NIX, typename SrcWrapper, typename DstWrapper, typename T = typename DstWrapper::ValueType>
+__global__ void resize_linear_planar_nix(const SrcWrapper src, DstWrapper dst, int2 srcSize, int2 dstSize,
+                                         const int *top_, const int *left_, const float *scale_x_,
+                                         const float *scale_y_, int channels)
+{
+    const int dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
+    const int batch_idx = get_batch_idx();
+    int       height = srcSize.y, width = srcSize.x, out_height = dstSize.y, out_width = dstSize.x;
+
+    if (dst_y < out_height)
+    {
+        const float scale_x = scale_x_[batch_idx];
+        const float scale_y = scale_y_[batch_idx];
+        const int   top     = top_[batch_idx];
+        const int   left    = left_[batch_idx];
+
+        float fy = (float)((dst_y + 0.5f) * scale_y - 0.5f + top);
+        int   sy = cuda::round<cuda::RoundMode::DOWN, int>(fy);
+
+        fy = ((sy < 0) ? 0 : ((sy > height - 2) ? 1 : fy - sy));
+        sy = cuda::max(0, cuda::min(sy, height - 2));
+
+        const int xBase = blockIdx.x * blockDim.x * NIX + threadIdx.x;
+
+        int   dx[NIX], sxA[NIX];
+        float fxA[NIX];
+#pragma unroll
+        for (int i = 0; i < NIX; ++i)
+        {
+            dx[i]    = xBase + i * static_cast<int>(blockDim.x);
+            float fx = (float)((dx[i] + 0.5f) * scale_x - 0.5f + left);
+            int   sx = cuda::round<cuda::RoundMode::DOWN, int>(fx);
+
+            fxA[i] = ((sx < 0) ? 0 : ((sx > width - 2) ? 1 : fx - sx));
+            sxA[i] = cuda::max(0, cuda::min(sx, width - 2));
+        }
+
+        for (int plane = 0; plane < channels; ++plane)
+        {
+            const T *aPtr = src.ptr(batch_idx, plane, sy, 0);
+            const T *bPtr = src.ptr(batch_idx, plane, sy + 1, 0);
+
+#pragma unroll
+            for (int i = 0; i < NIX; ++i)
+            {
+                if (dx[i] >= out_width)
+                    continue;
+
+                const int   sx = sxA[i];
+                const float fx = fxA[i];
+
+                *dst.ptr(batch_idx, plane, dst_y, dx[i])
+                    = cuda::SaturateCast<T>((1.0f - fx) * (aPtr[sx] * (1.0f - fy) + bPtr[sx] * fy)
+                                            + fx * (aPtr[sx + 1] * (1.0f - fy) + bPtr[sx + 1] * fy));
+            }
+        }
+    }
+}
+
+template<typename SrcWrapper, typename DstWrapper>
+__global__ void resize_nearest_planar(const SrcWrapper src, DstWrapper dst, int2 srcSize, int2 dstSize, const int *top_,
+                                      const int *left_, const float *scale_x_, const float *scale_y_, int channels)
+{
+    const int dst_x      = blockIdx.x * blockDim.x + threadIdx.x;
+    const int dst_y      = blockIdx.y * blockDim.y + threadIdx.y;
+    const int batch_idx  = get_batch_idx();
+    int       out_height = dstSize.y, out_width = dstSize.x;
+
+    if ((dst_x < out_width) && (dst_y < out_height))
+    {
+        const float scale_x = scale_x_[batch_idx];
+        const float scale_y = scale_y_[batch_idx];
+        const int   top     = top_[batch_idx];
+        const int   left    = left_[batch_idx];
+
+        const int sx = cuda::min(__float2int_rd((dst_x + 0.5f) * scale_x) + left, srcSize.x - 1);
+        const int sy = cuda::min(__float2int_rd((dst_y + 0.5f) * scale_y) + top, srcSize.y - 1);
+
+        for (int plane = 0; plane < channels; ++plane)
+        {
+            *dst.ptr(batch_idx, plane, dst_y, dst_x) = *src.ptr(batch_idx, plane, sy, sx);
+        }
+    }
+}
+
+template<typename SrcWrapper, typename DstWrapper, typename T = typename DstWrapper::ValueType>
+__global__ void resize_cubic_planar(const SrcWrapper src, DstWrapper dst, int2 srcSize, int2 dstSize, const int *top_,
+                                    const int *left_, const float *scale_x_, const float *scale_y_, int channels)
+{
+    const int dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
+    const int dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
+    const int batch_idx = get_batch_idx();
+    int       height = srcSize.y, width = srcSize.x, out_height = dstSize.y, out_width = dstSize.x;
+
+    if ((dst_x < out_width) & (dst_y < out_height))
+    {
+        const float scale_x = scale_x_[batch_idx];
+        const float scale_y = scale_y_[batch_idx];
+        const int   top     = top_[batch_idx];
+        const int   left    = left_[batch_idx];
+
+        using work_type = cuda::ConvertBaseTypeTo<float, T>;
+
+        float fy = (float)((dst_y + 0.5f) * scale_y - 0.5f + top);
+        int   sy = cuda::round<cuda::RoundMode::DOWN, int>(fy);
+        fy -= sy;
+
+        const float A = -0.75f;
+
+        float cY[4];
+        cY[0] = ((A * (fy + 1) - 5 * A) * (fy + 1) + 8 * A) * (fy + 1) - 4 * A;
+        cY[1] = ((A + 2) * fy - (A + 3)) * fy * fy + 1;
+        cY[2] = ((A + 2) * (1 - fy) - (A + 3)) * (1 - fy) * (1 - fy) + 1;
+        cY[3] = 1.f - cY[0] - cY[1] - cY[2];
+
+        float fx = (float)((dst_x + 0.5f) * scale_x - 0.5f + left);
+        int   sx = cuda::round<cuda::RoundMode::DOWN, int>(fx);
+        fx -= sx;
+
+        float cX[4];
+        cX[0] = ((A * (fx + 1.0f) - 5.0f * A) * (fx + 1.0f) + 8.0f * A) * (fx + 1.0f) - 4.0f * A;
+        cX[1] = ((A + 2.0f) * fx - (A + 3.0f)) * fx * fx + 1.0f;
+        cX[2] = ((A + 2.0f) * (1.0f - fx) - (A + 3.0f)) * (1.0f - fx) * (1.0f - fx) + 1.0f;
+        cX[3] = 1.0f - cX[0] - cX[1] - cX[2];
+
+        int csy[4];
+        int csx[4];
+#pragma unroll
+        for (int k = 0; k < 4; ++k)
+        {
+            csy[k] = cuda::clamp(sy + k - 1, 0, height - 1);
+            csx[k] = cuda::clamp(sx + k - 1, 0, width - 1);
+        }
+
+        for (int plane = 0; plane < channels; ++plane)
+        {
+            work_type accum = cuda::SetAll<work_type>(0);
+
+#pragma unroll
+            for (int ky = 0; ky < 4; ++ky)
+            {
+#pragma unroll
+                for (int kx = 0; kx < 4; ++kx)
+                {
+                    accum += cY[ky] * cX[kx] * *src.ptr(batch_idx, plane, csy[ky], csx[kx]);
+                }
+            }
+
+            *dst.ptr(batch_idx, plane, dst_y, dst_x) = cuda::SaturateCast<T>(accum);
+        }
+    }
+}
+
+template<typename T>
+ErrorCode resize_planar(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                        const NVCVInterpolationType interpolation, cudaStream_t stream, const int *top, const int *left,
+                        const float *scale_x, const float *scale_y)
+{
+    auto inAccess = TensorDataAccessStridedImagePlanar::Create(inData);
+    NVCV_ASSERT(inAccess);
+
+    auto outAccess = TensorDataAccessStridedImagePlanar::Create(outData);
+    NVCV_ASSERT(outAccess);
+
+    const int2 srcSize{inAccess->numCols(), inAccess->numRows()};
+    const int2 dstSize{outAccess->numCols(), outAccess->numRows()};
+    const int  batchSize{static_cast<int>(outAccess->numSamples())};
+    const int  channels{inAccess->numChannels()};
+
+    int64_t srcMaxStride = inAccess->sampleStride() * inAccess->numSamples();
+    int64_t dstMaxStride = outAccess->sampleStride() * outAccess->numSamples();
+
+    if (std::max(srcMaxStride, dstMaxStride) > cuda::TypeTraits<int32_t>::max)
+    {
+        LOG_ERROR("Input or output size exceeds " << cuda::TypeTraits<int32_t>::max << ". Tensor is too large.");
+        return ErrorCode::INVALID_PARAMETER;
+    }
+
+    auto src = cuda::CreateTensorWrapNCHW<T, int32_t>(inData);
+    auto dst = cuda::CreateTensorWrapNCHW<T, int32_t>(outData);
+
+    const int THREADS_PER_BLOCK = 256;
+    int       planarWidth       = 32 / static_cast<int>(sizeof(T));
+    if (planarWidth < 1)
+    {
+        planarWidth = 1;
+    }
+
+    dim3 blockSize(planarWidth, THREADS_PER_BLOCK / planarWidth, 1);
+    dim3 gridSize(divUp(dstSize.x, blockSize.x), divUp(dstSize.y, blockSize.y), batchSize);
+
+    if (interpolation == NVCV_INTERP_LINEAR)
+    {
+        constexpr int PNIX = (sizeof(T) == 1) ? 4 : 1;
+        if constexpr (PNIX > 1)
+        {
+            dim3 linearGrid(divUp(dstSize.x, blockSize.x * PNIX), divUp(dstSize.y, blockSize.y), batchSize);
+            resize_linear_planar_nix<PNIX><<<linearGrid, blockSize, 0, stream>>>(src, dst, srcSize, dstSize, top, left,
+                                                                                 scale_x, scale_y, channels);
+        }
+        else
+        {
+            resize_linear_planar<<<gridSize, blockSize, 0, stream>>>(src, dst, srcSize, dstSize, top, left, scale_x,
+                                                                     scale_y, channels);
+        }
+        checkKernelErrors();
+    }
+    else if (interpolation == NVCV_INTERP_NEAREST)
+    {
+        resize_nearest_planar<<<gridSize, blockSize, 0, stream>>>(src, dst, srcSize, dstSize, top, left, scale_x,
+                                                                  scale_y, channels);
+        checkKernelErrors();
+    }
+    else
+    {
+        resize_cubic_planar<<<gridSize, blockSize, 0, stream>>>(src, dst, srcSize, dstSize, top, left, scale_x, scale_y,
+                                                                channels);
+        checkKernelErrors();
+    }
+
+#ifdef CUDA_DEBUG_LOG
+    checkCudaErrors(cudaStreamSynchronize(stream));
+    checkCudaErrors(cudaGetLastError());
+#endif
+
+    return ErrorCode::SUCCESS;
 }
 
 template<typename T>
@@ -305,12 +617,12 @@ RandomResizedCrop::RandomResizedCrop(DataShape max_input_shape, DataShape max_ou
     if (maxBatchSize > 0)
     {
         size_t bufferSize = (sizeof(int) * 2 + sizeof(float) * 2) * maxBatchSize;
-        NVCV_CHECK_LOG(cudaMalloc(&m_gpuCropParams, bufferSize));
-        m_cpuCropParams = malloc(bufferSize);
+        NVCV_CHECK_LOG(cudaMalloc(reinterpret_cast<void **>(&m_gpuCropParams), bufferSize));
+        m_cpuCropParams = static_cast<std::byte *>(std::malloc(bufferSize));
         if (!m_cpuCropParams)
         {
             LOG_ERROR("Memory allocation error of size: " << bufferSize);
-            throw std::runtime_error("Memory allocation error!");
+            throw LegacyCudaAllocationError("Memory allocation error!");
         }
     }
     if (seed == 0)
@@ -327,13 +639,48 @@ RandomResizedCrop::RandomResizedCrop(DataShape max_input_shape, DataShape max_ou
 RandomResizedCrop::~RandomResizedCrop()
 {
     NVCV_CHECK_LOG(cudaFree(m_gpuCropParams));
-    free(m_cpuCropParams);
+    std::free(m_cpuCropParams);
 }
 
 size_t RandomResizedCrop::calBufferSize(int batch_size)
 {
     // buffer size for batch oftop index, left index, scale y, scale x
     return (sizeof(int) * 2 + sizeof(float) * 2) * batch_size;
+}
+
+int32_t RandomResizedCrop::maxBatchSize() const noexcept
+{
+    return m_maxBatchSize;
+}
+
+RandomResizedCrop::CropParamBuffers RandomResizedCrop::hostCropParams(int batch) noexcept
+{
+    return {
+        reinterpret_cast<float *>(m_cpuCropParams),
+        reinterpret_cast<float *>(m_cpuCropParams + sizeof(float) * batch),
+        reinterpret_cast<int *>(m_cpuCropParams + sizeof(float) * 2 * batch),
+        reinterpret_cast<int *>(m_cpuCropParams + (sizeof(float) * 2 + sizeof(int)) * batch),
+    };
+}
+
+RandomResizedCrop::CropParamBuffers RandomResizedCrop::deviceCropParams(int batch) noexcept
+{
+    return {
+        reinterpret_cast<float *>(m_gpuCropParams),
+        reinterpret_cast<float *>(m_gpuCropParams + sizeof(float) * batch),
+        reinterpret_cast<int *>(m_gpuCropParams + sizeof(float) * 2 * batch),
+        reinterpret_cast<int *>(m_gpuCropParams + (sizeof(float) * 2 + sizeof(int)) * batch),
+    };
+}
+
+std::byte *RandomResizedCrop::hostCropParamStorage() noexcept
+{
+    return m_cpuCropParams;
+}
+
+std::byte *RandomResizedCrop::deviceCropParamStorage() noexcept
+{
+    return m_gpuCropParams;
 }
 
 void RandomResizedCrop::getCropParams(int input_rows, int input_cols, int *top_indices, int *left_indices,
@@ -404,11 +751,14 @@ ErrorCode RandomResizedCrop::infer(const TensorDataStridedCuda &inData, const Te
 
     DataFormat format = input_format;
 
-    if (!(format == kNHWC || format == kHWC))
+    if (!(format == kNHWC || format == kHWC || format == kNCHW || format == kCHW))
     {
-        LOG_ERROR("Invalid input DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
+        LOG_ERROR("Invalid input DataFormat " << format
+                                              << ", the valid DataFormats are: \"NHWC\", \"HWC\", \"NCHW\", \"CHW\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
+
+    const bool isPlanar = (format == kNCHW || format == kCHW);
 
     auto inAccess = TensorDataAccessStridedImagePlanar::Create(inData);
     NVCV_ASSERT(inAccess);
@@ -419,7 +769,7 @@ ErrorCode RandomResizedCrop::infer(const TensorDataStridedCuda &inData, const Te
 
     int channels = input_shape.C;
 
-    if (channels > 4)
+    if (channels > 4 || channels == 2)
     {
         LOG_ERROR("Invalid channel number " << channels);
         return ErrorCode::INVALID_DATA_SHAPE;
@@ -454,29 +804,29 @@ ErrorCode RandomResizedCrop::infer(const TensorDataStridedCuda &inData, const Te
     int in_cols = inAccess->numCols();
     int in_rows = inAccess->numRows();
 
-    float *scale_y = (float *)(m_cpuCropParams);
-    float *scale_x = (float *)((char *)scale_y + sizeof(float) * batch);
-    int   *tops    = (int *)((char *)scale_x + sizeof(float) * batch);
-    int   *lefts   = (int *)((char *)tops + sizeof(int) * batch);
+    if (maxBatchSize() <= 0 || batch > maxBatchSize())
+    {
+        LOG_ERROR("Invalid maximum batch size " << maxBatchSize());
+        return ErrorCode::INVALID_PARAMETER;
+    }
+
+    CropParamBuffers hostParams = hostCropParams(batch);
 
     for (int i = 0; i < batch; ++i)
     {
         int top, left, crop_rows, crop_cols;
         getCropParams(in_rows, in_cols, &top, &left, &crop_rows, &crop_cols);
-        scale_x[i] = ((float)crop_cols) / out_cols;
-        scale_y[i] = ((float)crop_rows) / out_rows;
-        tops[i]    = top;
-        lefts[i]   = left;
+        hostParams.scaleX[i] = ((float)crop_cols) / out_cols;
+        hostParams.scaleY[i] = ((float)crop_rows) / out_rows;
+        hostParams.tops[i]   = top;
+        hostParams.lefts[i]  = left;
     }
 
-    float *scale_y_gpu = (float *)(m_gpuCropParams);
-    float *scale_x_gpu = (float *)((char *)scale_y_gpu + sizeof(float) * batch);
-    int   *tops_gpu    = (int *)((char *)scale_x_gpu + sizeof(float) * batch);
-    int   *lefts_gpu   = (int *)((char *)tops_gpu + sizeof(int) * batch);
+    CropParamBuffers deviceParams = deviceCropParams(batch);
 
     size_t buffer_size = calBufferSize(batch);
     checkCudaErrors(
-        cudaMemcpyAsync((void *)m_gpuCropParams, (void *)m_cpuCropParams, buffer_size, cudaMemcpyHostToDevice, stream));
+        cudaMemcpyAsync(deviceCropParamStorage(), hostCropParamStorage(), buffer_size, cudaMemcpyHostToDevice, stream));
 
     typedef ErrorCode (*func_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                                 const NVCVInterpolationType interpolation, cudaStream_t stream, const int *top,
@@ -491,8 +841,28 @@ ErrorCode RandomResizedCrop::infer(const TensorDataStridedCuda &inData, const Te
         {      resize<float>,  0 /*resize<float2>*/,      resize<float3>,      resize<float4>}
     };
 
+    if (isPlanar)
+    {
+        if (static_cast<int64_t>(batch) > 65535)
+        {
+            LOG_ERROR("Planar random resized crop requires numSamples <= 65535 (CUDA grid-z limit)");
+            return ErrorCode::INVALID_DATA_SHAPE;
+        }
+        static const func_t planar_funcs[6] = {
+            resize_planar<uchar>, 0 /*resize_planar<schar>*/, resize_planar<ushort>,
+            resize_planar<short>, 0 /*resize_planar<int>*/,   resize_planar<float>,
+        };
+
+        const func_t planar_func = planar_funcs[in_data_type];
+        NVCV_ASSERT(planar_func != 0);
+        return planar_func(inData, outData, interpolation, stream, deviceParams.tops, deviceParams.lefts,
+                           deviceParams.scaleX, deviceParams.scaleY);
+    }
+
     const func_t func = funcs[in_data_type][channels - 1];
-    return func(inData, outData, interpolation, stream, tops_gpu, lefts_gpu, scale_x_gpu, scale_y_gpu);
+    NVCV_ASSERT(func != 0);
+    return func(inData, outData, interpolation, stream, deviceParams.tops, deviceParams.lefts, deviceParams.scaleX,
+                deviceParams.scaleY);
 }
 
 } // namespace nvcv::legacy::cuda_op

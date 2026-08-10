@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,6 +20,7 @@
 #include <nvcv/ImageFormat.hpp>
 
 #include <sstream>
+#include <string_view>
 
 // So that pybind can export nvcv::ImageFormat as python enum
 namespace std {
@@ -42,24 +43,26 @@ namespace nvcvpy::priv {
 
 static std::string ImageFormatToString(nvcv::ImageFormat fmt)
 {
-    const char *str = nvcvImageFormatGetName(fmt);
+    const char *str = nvcvImageFormatGetName(static_cast<NVCVImageFormat>(fmt));
 
-    std::string_view prefix = "NVCV_IMAGE_FORMAT_";
+    auto starts_with = [](const char *s, std::string_view p)
+    {
+        return std::string_view{s}.compare(0, p.size(), p) == 0;
+    };
 
     std::ostringstream out;
-
     out << "nvcv.";
 
-    if (prefix == str)
+    if (constexpr std::string_view nvcvPrefix = "NVCV_IMAGE_FORMAT_"; starts_with(str, nvcvPrefix))
     {
-        out << "Format." << str + prefix.length();
+        out << "Format." << str + nvcvPrefix.length();
     }
     else
     {
-        prefix = "ImageFormat";
-        if (prefix == str)
+        constexpr std::string_view cppPrefix = "ImageFormat";
+        if (starts_with(str, cppPrefix))
         {
-            out << "Format" << str + prefix.length();
+            out << "Format" << str + cppPrefix.length();
         }
         else
         {
@@ -80,6 +83,12 @@ void ExportImageFormat(py::module &m)
 #define DEF_NUM(F) fmt.value("_" #F, nvcv::FMT_##F);
 
 #include "NVCVPythonImageFormatDefs.inc"
+
+    // FMT_NONE is a sentinel ("no format"), not part of the generated defs.
+    // Expose it so signature defaults like `format=FMT_NONE` render as the
+    // valid Python expression `nvcv.Format.NONE` instead of an unrepresentable
+    // `<Unknown image format>` string.
+    fmt.value("NONE", nvcv::FMT_NONE);
 
 #undef DEF
 #undef DEF_NUM

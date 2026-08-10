@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -56,7 +56,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaBndBoxCreate(NVCVOperatorHandle *handle);
  *  Limitations:
  *
  *  Input:
- *       Data Layout:    [kNHWC, kHWC]
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
  *       Channels:       [3, 4]
  *
  *       Data Type      | Allowed
@@ -67,11 +67,12 @@ CVCUDA_PUBLIC NVCVStatus cvcudaBndBoxCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | No
  *       64bit Float    | No
  *
  *  Output:
- *       Data Layout:    [kNHWC, kHWC]
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
  *       Channels:       [3, 4]
  *
  *       Data Type      | Allowed
@@ -82,6 +83,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaBndBoxCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | No
  *       64bit Float    | No
  *
@@ -116,5 +118,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaBndBoxSubmit(NVCVOperatorHandle handle, cudaStrea
 #ifdef __cplusplus
 }
 #endif
+
+/** @} */
 
 #endif /* CVCUDA__BND_BOX_H */

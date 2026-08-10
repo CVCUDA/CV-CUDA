@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,7 +27,7 @@ NVCV_TEST_SUITE_P(ValueTestsTests, test::ValueList{1, 2} * test::ValueList{'c', 
 TEST_P(ValueTestsTests, test)
 {
     // For now we're concerned if typed tests will compile.
-    // TODO: How to test if the tests were correctly generated?
+    // REVISIT: How to test if the tests were correctly generated?
     int  p1 = GetParamValue<0>();
     char p2 = GetParamValue<1>();
 
@@ -38,7 +38,7 @@ TEST_P(ValueTestsTests, test)
 namespace {
 struct Foo
 {
-    Foo(int value_)
+    explicit Foo(int value_)
         : value(value_)
     {
     }
@@ -50,7 +50,7 @@ struct Foo
         return value < that.value;
     }
 
-    bool operator==(const Foo &that) const
+    bool operator==(const Foo &that) const // NOSONAR: defaulted comparisons are C++20.
     {
         return value == that.value;
     }
@@ -83,8 +83,8 @@ NVCV_INSTANTIATE_TEST_SUITE_P(_, ValueTestsNamedParameterTests, test::ValueList{
 
 TEST_P(ValueTestsNamedParameterTests, test)
 {
-    int  pi = std::get<0>(GetParam());
-    char pc = std::get<1>(GetParam());
+    int  pi = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    char pc = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     EXPECT_THAT(pi, t::AnyOf(1, 2));
     EXPECT_THAT(pc, t::AnyOf('a', 'b'));
@@ -101,8 +101,8 @@ NVCV_INSTANTIATE_TEST_SUITE_P(_, ValueTestsNamedDefaultExplicitParameterTests,
 
 TEST_P(ValueTestsNamedDefaultExplicitParameterTests, test)
 {
-    int  pi = std::get<0>(GetParam());
-    char pc = std::get<1>(GetParam());
+    int  pi = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    char pc = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     EXPECT_THAT(pi, t::AnyOf(1, 2));
     EXPECT_THAT(pc, 'c');
@@ -119,8 +119,8 @@ NVCV_INSTANTIATE_TEST_SUITE_P(_, ValueTestsNamedDefaultImplicitParameterTests,
 
 TEST_P(ValueTestsNamedDefaultImplicitParameterTests, test)
 {
-    int  pi = std::get<0>(GetParam());
-    char pc = std::get<1>(GetParam());
+    int  pi = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    char pc = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     EXPECT_THAT(pi, 0);
     EXPECT_THAT(pc, t::AnyOf('a', 'b'));
@@ -131,12 +131,13 @@ class ValueTestsNamedNoDefaultParameterTests
 {
 };
 
-NVCV_INSTANTIATE_TEST_SUITE_P(_, ValueTestsNamedNoDefaultParameterTests, test::Value(123) * test::ValueList{'a', 'b'});
+NVCV_INSTANTIATE_TEST_SUITE_P(_, ValueTestsNamedNoDefaultParameterTests,
+                              test::Value(Foo{123}) * test::ValueList{'a', 'b'});
 
 TEST_P(ValueTestsNamedNoDefaultParameterTests, test)
 {
-    Foo  pf = std::get<0>(GetParam());
-    char pc = std::get<1>(GetParam());
+    Foo  pf = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    char pc = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     EXPECT_THAT(pf.value, 123);
     EXPECT_THAT(pc, t::AnyOf('a', 'b'));
@@ -157,8 +158,8 @@ NVCV_INSTANTIATE_TEST_SUITE_P(_, ValueTestsInferParameterTypesTests,
 
 TEST_P(ValueTestsInferParameterTypesTests, test)
 {
-    Foo  pf = std::get<0>(GetParam());
-    char pc = std::get<1>(GetParam());
+    Foo  pf = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    char pc = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     test::ValueList<Foo, char> params =
     {

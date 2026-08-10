@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,7 +37,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvAllocatorConstructCustom,
                  NVCVAllocatorHandle *handle))
 {
     return priv::ProtectCall(
-        [&]
+        [&handle, &numCustomAllocators, &customAllocators]
         {
             if (handle == nullptr)
             {
@@ -58,7 +58,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvAllocatorConstructCustom,
 NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvAllocatorDecRef, (NVCVAllocatorHandle handle, int *newRefCount))
 {
     return priv::ProtectCall(
-        [&]
+        [&handle, &newRefCount]
         {
             int newRef = priv::CoreObjectDecRef(handle);
             if (newRefCount)
@@ -69,7 +69,7 @@ NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvAllocatorDecRef, (NVCVAllocatorHandle hand
 NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvAllocatorIncRef, (NVCVAllocatorHandle handle, int *newRefCount))
 {
     return priv::ProtectCall(
-        [&]
+        [&handle, &newRefCount]
         {
             int newRef = priv::CoreObjectIncRef(handle);
             if (newRefCount)
@@ -79,23 +79,24 @@ NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvAllocatorIncRef, (NVCVAllocatorHandle hand
 
 NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvAllocatorRefCount, (NVCVAllocatorHandle handle, int *refCount))
 {
-    return priv::ProtectCall([&] { *refCount = priv::CoreObjectRefCount(handle); });
+    return priv::ProtectCall([&refCount, &handle] { *refCount = priv::CoreObjectRefCount(handle); });
 }
 
-NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvAllocatorSetUserPointer, (NVCVAllocatorHandle handle, void *userPtr))
+NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvAllocatorSetUserPointer, (NVCVAllocatorHandle handle, NVCVUserPointer userPtr))
 {
     return priv::ProtectCall(
-        [&]
+        [&handle, &userPtr]
         {
             auto &img = priv::ToStaticRef<priv::IAllocator>(handle);
             img.setUserPointer(userPtr);
         });
 }
 
-NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvAllocatorGetUserPointer, (NVCVAllocatorHandle handle, void **outUserPtr))
+NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvAllocatorGetUserPointer,
+                (NVCVAllocatorHandle handle, NVCVUserPointer *outUserPtr))
 {
     return priv::ProtectCall(
-        [&]
+        [&outUserPtr, &handle]
         {
             if (outUserPtr == nullptr)
             {
@@ -111,7 +112,7 @@ NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvAllocatorGet,
                 (NVCVAllocatorHandle halloc, NVCVResourceType resType, NVCVResourceAllocator *result))
 {
     return priv::ProtectCall(
-        [&]
+        [&halloc, &result, &resType]
         {
             auto &alloc = priv::ToStaticRef<priv::IAllocator>(halloc);
             *result     = alloc.get(resType);
@@ -119,10 +120,10 @@ NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvAllocatorGet,
 }
 
 NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvAllocatorAllocHostMemory,
-                (NVCVAllocatorHandle halloc, void **ptr, int64_t sizeBytes, int32_t alignBytes))
+                (NVCVAllocatorHandle halloc, NVCVMemoryBuffer *ptr, int64_t sizeBytes, int32_t alignBytes))
 {
     return priv::ProtectCall(
-        [&]
+        [&ptr, &halloc, &sizeBytes, &alignBytes]
         {
             if (ptr == nullptr)
             {
@@ -134,10 +135,10 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvAllocatorAllocHostMemory,
 }
 
 NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvAllocatorFreeHostMemory,
-                (NVCVAllocatorHandle halloc, void *ptr, int64_t sizeBytes, int32_t alignBytes))
+                (NVCVAllocatorHandle halloc, NVCVMemoryBuffer ptr, int64_t sizeBytes, int32_t alignBytes))
 {
     return priv::ProtectCall(
-        [&]
+        [&ptr, &halloc, &sizeBytes, &alignBytes]
         {
             if (ptr != nullptr)
             {
@@ -147,10 +148,10 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvAllocatorFreeHostMemory,
 }
 
 NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvAllocatorAllocHostPinnedMemory,
-                (NVCVAllocatorHandle halloc, void **ptr, int64_t sizeBytes, int32_t alignBytes))
+                (NVCVAllocatorHandle halloc, NVCVMemoryBuffer *ptr, int64_t sizeBytes, int32_t alignBytes))
 {
     return priv::ProtectCall(
-        [&]
+        [&ptr, &halloc, &sizeBytes, &alignBytes]
         {
             if (ptr == nullptr)
             {
@@ -162,10 +163,10 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvAllocatorAllocHostPinnedMemory,
 }
 
 NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvAllocatorFreeHostPinnedMemory,
-                (NVCVAllocatorHandle halloc, void *ptr, int64_t sizeBytes, int32_t alignBytes))
+                (NVCVAllocatorHandle halloc, NVCVMemoryBuffer ptr, int64_t sizeBytes, int32_t alignBytes))
 {
     return priv::ProtectCall(
-        [&]
+        [&ptr, &halloc, &sizeBytes, &alignBytes]
         {
             if (ptr != nullptr)
             {
@@ -175,10 +176,10 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvAllocatorFreeHostPinnedMemory,
 }
 
 NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvAllocatorAllocCudaMemory,
-                (NVCVAllocatorHandle halloc, void **ptr, int64_t sizeBytes, int32_t alignBytes))
+                (NVCVAllocatorHandle halloc, NVCVMemoryBuffer *ptr, int64_t sizeBytes, int32_t alignBytes))
 {
     return priv::ProtectCall(
-        [&]
+        [&ptr, &halloc, &sizeBytes, &alignBytes]
         {
             if (ptr == nullptr)
             {
@@ -190,10 +191,10 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvAllocatorAllocCudaMemory,
 }
 
 NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvAllocatorFreeCudaMemory,
-                (NVCVAllocatorHandle halloc, void *ptr, int64_t sizeBytes, int32_t alignBytes))
+                (NVCVAllocatorHandle halloc, NVCVMemoryBuffer ptr, int64_t sizeBytes, int32_t alignBytes))
 {
     return priv::ProtectCall(
-        [&]
+        [&ptr, &halloc, &sizeBytes, &alignBytes]
         {
             if (ptr != nullptr)
             {
@@ -206,8 +207,8 @@ NVCV_DEFINE_API(0, 4, const char *, nvcvResourceTypeGetName, (NVCVResourceType r
 {
     priv::CoreTLS &tls = priv::GetCoreTLS();
 
-    char         *buffer  = tls.bufResourceTypeName;
-    constexpr int bufSize = sizeof(tls.bufResourceTypeName);
+    char *buffer  = tls.bufResourceTypeName.data();
+    auto  bufSize = static_cast<int>(tls.bufResourceTypeName.size());
 
     try
     {

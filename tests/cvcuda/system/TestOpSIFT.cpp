@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "ConvUtils.hpp"
 #include "Definitions.hpp"
+#include "PlanarParityUtils.hpp"
 
 #include <common/InterpUtils.hpp>
 #include <common/TensorDataUtils.hpp>
@@ -32,6 +33,9 @@
 #include <array>
 #include <bitset>
 #include <random>
+#include <stdexcept>
+#include <string>
+#include <string_view>
 #include <tuple>
 #include <vector>
 
@@ -57,7 +61,7 @@ struct DescriptorType
         int hammingDist = 0;
         for (int i = 0; i < static_cast<int>(data.size()); i++)
         {
-            hammingDist += std::bitset<8>(data[i] ^ other.data[i]).count();
+            hammingDist += std::bitset<8>(data[i] ^ other.data[i]).count(); // NOSONAR: SIFT descriptors are bytes.
         }
         return (hammingDist < static_cast<int>((data.size() * sizeof(uint8_t) * 8) / 100));
     }
@@ -66,9 +70,10 @@ struct DescriptorType
     {
         std::ios_base::fmtflags f{out.flags()};
         out << "0x";
-        for (int i = 0; i < (int)desc.data.size(); i++)
+        for (uint8_t byte : desc.data)
         {
-            out << std::hex << std::setfill('0') << std::setw(2) << static_cast<unsigned int>(desc.data[i]);
+            out << std::hex << std::setfill('0') << std::setw(2) // NOSONAR: std::format is C++20.
+                << static_cast<unsigned int>(byte);
         }
         out.flags(f);
         return out;
@@ -95,23 +100,76 @@ constexpr int   kHistogramBins         = 36;
 constexpr int   kDescHistBins          = 8;
 constexpr int   kDescOriRadius         = 3;
 constexpr int   kDescWidth             = 4;
-constexpr float kDescWidthToRadius     = M_SQRT2 * (kDescWidth + 1) * .5f;
+constexpr float kDescWidthToRadius     = static_cast<float>(M_SQRT2) * static_cast<float>(kDescWidth + 1) * .5f;
 constexpr int   kDescMaxRadius         = 51;
 constexpr float kDescWeightScale       = -1.f / (kDescWidth * kDescWidth * .5f);
 constexpr float kDescHistPeakRatio     = .2f;
+constexpr int   kDescHistSize          = (kDescWidth + 2) * (kDescWidth + 2) * (kDescHistBins + 2);
 
-static std::default_random_engine g_rng(0); // seed 0 to fix pseudo-randomness
+using DescriptorHistogram  = std::array<float, kDescHistSize>;
+using OrientationHistogram = std::array<float, kHistogramBins>;
+
+static nvcv::Tensor CreateSIFTInputTensor(int3 inShape, std::string_view layout)
+{
+    if (layout == "HWC")
+    {
+        EXPECT_EQ(inShape.z, 1);
+        return nvcv::Tensor(
+            {
+                {inShape.y, inShape.x, 1},
+                "HWC"
+        },
+            nvcv::TYPE_U8);
+    }
+    if (layout == "CHW")
+    {
+        EXPECT_EQ(inShape.z, 1);
+        return nvcv::Tensor(
+            {
+                {1, inShape.y, inShape.x},
+                "CHW"
+        },
+            nvcv::TYPE_U8);
+    }
+    if (layout == "NCHW")
+    {
+        return nvcv::Tensor(
+            {
+                {inShape.z, 1, inShape.y, inShape.x},
+                "NCHW"
+        },
+            nvcv::TYPE_U8);
+    }
+
+    if (layout == "NHWC")
+    {
+        return nvcv::Tensor(
+            {
+                {inShape.z, inShape.y, inShape.x, 1},
+                "NHWC"
+        },
+            nvcv::TYPE_U8);
+    }
+
+    throw std::invalid_argument("Unsupported SIFT input layout: " + std::string(layout));
+}
+
+static std::default_random_engine &Rng()
+{
+    static std::default_random_engine rng(0); // seed 0 to fix pseudo-randomness
+    return rng;
+}
 
 // --------------------- Gold (reference) definitions --------------------------
 
 inline int GoldNumberOfOctaves(int width, int height)
 {
-    return std::floor(std::log2(std::min(width, height))) - 2;
+    return static_cast<int>(std::floor(std::log2(std::min(width, height)))) - 2;
 }
 
 inline nvcv::Size2D GoldKernelSize(float sigma)
 {
-    int ksize = std::min((int)std::round(sigma * 8 + 1) | 1, kMaxKernelSize.x);
+    int ksize = std::min(static_cast<int>(std::round(sigma * 8.f + 1.f)) | 1, kMaxKernelSize.x);
 
     return nvcv::Size2D{ksize, ksize};
 }
@@ -120,15 +178,45 @@ inline void GoldGaussianSigmas(std::vector<float> &layerSigmas, float initSigma,
 {
     layerSigmas[0] = initSigma;
 
-    float k = std::pow(2.0, 1.0 / numOctaveLayers);
-    float prevSigma, totalSigma;
+    float k = std::pow(2.f, 1.f / static_cast<float>(numOctaveLayers));
+    float prevSigma;
+    float totalSigma;
 
     for (int i = 1; i < numOctaveLayers + 3; i++)
     {
-        prevSigma  = std::pow(k, i - 1) * initSigma;
+        prevSigma  = std::pow(k, static_cast<float>(i - 1)) * initSigma;
         totalSigma = k * prevSigma;
 
         layerSigmas[i] = std::sqrt(totalSigma * totalSigma - prevSigma * prevSigma);
+    }
+}
+
+template<typename T, typename U>
+inline void GoldCopyPixel(RawBufferType &dstVec, const long3 &dstStrides, const RawBufferType &srcVec,
+                          const long3 &srcStrides, const long3 &srcShape, const float2 &srcScale, long x, long y,
+                          long z)
+{
+    float2 srcCoord;
+
+    if (srcScale.x >= 1.f)
+    {
+        srcCoord.x = static_cast<float>(z) * srcScale.x;
+        srcCoord.y = static_cast<float>(y) * srcScale.y;
+
+        util::ValueAt<T>(dstVec, dstStrides, long3{x, y, z})
+            = test::GoldInterp<NVCV_INTERP_NEAREST, NVCV_BORDER_REPLICATE>(
+                srcVec, srcStrides, int2{static_cast<int>(srcShape.z), static_cast<int>(srcShape.y)}, U{}, kScale,
+                srcCoord, static_cast<int>(x));
+    }
+    else
+    {
+        srcCoord.x = (static_cast<float>(z) + .5f) * srcScale.x - .5f;
+        srcCoord.y = (static_cast<float>(y) + .5f) * srcScale.y - .5f;
+
+        util::ValueAt<T>(dstVec, dstStrides, long3{x, y, z})
+            = test::GoldInterp<NVCV_INTERP_LINEAR, NVCV_BORDER_REPLICATE>(
+                srcVec, srcStrides, int2{static_cast<int>(srcShape.z), static_cast<int>(srcShape.y)}, U{}, kScale,
+                srcCoord, static_cast<int>(x));
     }
 }
 
@@ -146,26 +234,7 @@ inline void GoldCopy(RawBufferType &dstVec, const long3 &dstStrides, const long3
         {
             for (long z = 0; z < dstShape.z; z++)
             {
-                float2 srcCoord;
-
-                if (srcScale.x >= 1.f)
-                {
-                    srcCoord.x = z * srcScale.x;
-                    srcCoord.y = y * srcScale.y;
-
-                    util::ValueAt<T>(dstVec, dstStrides, long3{x, y, z})
-                        = test::GoldInterp<NVCV_INTERP_NEAREST, NVCV_BORDER_REPLICATE>(
-                            srcVec, srcStrides, int2{(int)srcShape.z, (int)srcShape.y}, U{}, kScale, srcCoord, x);
-                }
-                else
-                {
-                    srcCoord.x = (z + .5f) * srcScale.x - .5f;
-                    srcCoord.y = (y + .5f) * srcScale.y - .5f;
-
-                    util::ValueAt<T>(dstVec, dstStrides, long3{x, y, z})
-                        = test::GoldInterp<NVCV_INTERP_LINEAR, NVCV_BORDER_REPLICATE>(
-                            srcVec, srcStrides, int2{(int)srcShape.z, (int)srcShape.y}, U{}, kScale, srcCoord, x);
-                }
+                GoldCopyPixel<T, U>(dstVec, dstStrides, srcVec, srcStrides, srcShape, srcScale, x, y, z);
             }
         }
     }
@@ -190,12 +259,14 @@ inline void GoldSubtract(RawBufferType &dstVec, const RawBufferType &aVec, const
 
 inline long3 GoldStrides(const long3 &shape)
 {
-    return long3(shape.y * shape.z * sizeof(WT), shape.z * sizeof(WT), sizeof(WT));
+    const auto elemStride = static_cast<long>(sizeof(WT));
+    return long3{shape.y * shape.z * elemStride, shape.z * elemStride, elemStride};
 }
 
 inline int3 ConvolveShape(const long3 &shape)
 {
-    return int3(shape.z, shape.y, shape.x); // test::Convolve expects shape as WHN int3 instead of NHW long3
+    return int3{static_cast<int>(shape.z), static_cast<int>(shape.y),
+                static_cast<int>(shape.x)}; // test::Convolve expects shape as WHN int3 instead of NHW long3
 }
 
 inline void GoldGeneratePyramids(RawPyramidType &dstGaussianPyramid, RawPyramidType &dstDoGPyramid, long3 &baseStrides,
@@ -205,7 +276,7 @@ inline void GoldGeneratePyramids(RawPyramidType &dstGaussianPyramid, RawPyramidT
 {
     baseShape = expandInput ? long3{srcShape.x, srcShape.y * 2, srcShape.z * 2} : srcShape;
 
-    numOctaves = GoldNumberOfOctaves(baseShape.z, baseShape.y);
+    numOctaves = GoldNumberOfOctaves(static_cast<int>(baseShape.z), static_cast<int>(baseShape.y));
 
     baseStrides = GoldStrides(baseShape);
 
@@ -222,7 +293,7 @@ inline void GoldGeneratePyramids(RawPyramidType &dstGaussianPyramid, RawPyramidT
     int   srcScale = expandInput ? 4 : 1;
     float sigma    = layerSigmas[0];
 
-    sigma = std::sqrt(std::max(sigma * sigma - kPrevSigma * kPrevSigma * srcScale, kMinSigma));
+    sigma = std::sqrt(std::max(sigma * sigma - kPrevSigma * kPrevSigma * static_cast<float>(srcScale), kMinSigma));
 
     double2 sigma2{sigma, sigma};
 
@@ -286,6 +357,171 @@ inline void GoldGeneratePyramids(RawPyramidType &dstGaussianPyramid, RawPyramidT
     }
 }
 
+inline int GoldWrapBin(int bin, int numBins)
+{
+    if (bin >= numBins)
+    {
+        return bin - numBins;
+    }
+    if (bin < 0)
+    {
+        return bin + numBins;
+    }
+    return bin;
+}
+
+inline float GoldWrapAngle(float angle)
+{
+    if (angle < 0.f)
+    {
+        return angle + 360.f;
+    }
+    if (angle >= 360.f)
+    {
+        return angle - 360.f;
+    }
+    return angle;
+}
+
+inline int GoldDescriptorHistIndex(int row, int col, int bin)
+{
+    return ((row + 1) * (kDescWidth + 2) + (col + 1)) * (kDescHistBins + 2) + bin;
+}
+
+template<typename GaussValue>
+inline void GoldAccumulateDescriptorSample(DescriptorHistogram &histogram, const GaussValue &gaussVal, float angle,
+                                           float cos_a, float sin_a, const long3 &currShape, int r, int c, int i, int j)
+{
+    if (r + i <= 0 || r + i >= currShape.y - 1 || c + j <= 0 || c + j >= currShape.z - 1)
+    {
+        return;
+    }
+
+    auto  r_rot  = static_cast<float>(j) * sin_a + static_cast<float>(i) * cos_a;
+    auto  c_rot  = static_cast<float>(j) * cos_a - static_cast<float>(i) * sin_a;
+    float weight = r_rot * r_rot + c_rot * c_rot;
+
+    r_rot += kDescWidth / 2 - .5f;
+    c_rot += kDescWidth / 2 - .5f;
+
+    if (r_rot <= -1 || r_rot >= kDescWidth || c_rot <= -1 || c_rot >= kDescWidth)
+    {
+        return;
+    }
+
+    auto iHist = static_cast<int>(std::floor(r_rot));
+    auto jHist = static_cast<int>(std::floor(c_rot));
+
+    r_rot -= static_cast<float>(iHist);
+    c_rot -= static_cast<float>(jHist);
+
+    float dx = gaussVal(r + i + 0, c + j + 1) - gaussVal(r + i + 0, c + j - 1);
+    float dy = gaussVal(r + i - 1, c + j + 0) - gaussVal(r + i + 1, c + j + 0);
+
+    float o_rot = (GoldWrapAngle(std::atan2(dy, dx) * 180.f / static_cast<float>(M_PI)) - angle)
+                * static_cast<float>(kDescHistBins) / 360.f;
+    auto bin = static_cast<int>(std::floor(o_rot));
+
+    o_rot -= static_cast<float>(bin);
+    bin = GoldWrapBin(bin, kDescHistBins);
+
+    weight = std::exp2f(weight * kDescWeightScale);
+
+    float magnitude = std::sqrt(dx * dx + dy * dy) * weight;
+
+    float v_r1     = magnitude * r_rot;
+    float v_r0     = magnitude - v_r1;
+    float v_rc11   = v_r1 * c_rot;
+    float v_rc10   = v_r1 - v_rc11;
+    float v_rc01   = v_r0 * c_rot;
+    float v_rc00   = v_r0 - v_rc01;
+    float v_rco111 = v_rc11 * o_rot;
+    float v_rco110 = v_rc11 - v_rco111;
+    float v_rco101 = v_rc10 * o_rot;
+    float v_rco100 = v_rc10 - v_rco101;
+    float v_rco011 = v_rc01 * o_rot;
+    float v_rco010 = v_rc01 - v_rco011;
+    float v_rco001 = v_rc00 * o_rot;
+    float v_rco000 = v_rc00 - v_rco001;
+
+    int idx = GoldDescriptorHistIndex(iHist, jHist, bin);
+
+    histogram[idx] += v_rco000;
+    histogram[idx + 1] += v_rco001;
+    histogram[idx + (kDescHistBins + 2)] += v_rco010;
+    histogram[idx + (kDescHistBins + 3)] += v_rco011;
+    histogram[idx + (kDescWidth + 2) * (kDescHistBins + 2)] += v_rco100;
+    histogram[idx + (kDescWidth + 2) * (kDescHistBins + 2) + 1] += v_rco101;
+    histogram[idx + (kDescWidth + 3) * (kDescHistBins + 2)] += v_rco110;
+    histogram[idx + (kDescWidth + 3) * (kDescHistBins + 2) + 1] += v_rco111;
+}
+
+inline float GoldDescriptorNorm(DescriptorHistogram &histogram)
+{
+    float norm = 0.f;
+
+    for (int i = 0; i < kDescWidth; i++)
+    {
+        for (int j = 0; j < kDescWidth; j++)
+        {
+            int histIdx = GoldDescriptorHistIndex(i, j, 0);
+
+            histogram[histIdx] += histogram[histIdx + kDescHistBins];
+            histogram[histIdx + 1] += histogram[histIdx + kDescHistBins + 1];
+
+            for (int bin = 0; bin < kDescHistBins; bin++)
+            {
+                float magnitude = histogram[histIdx + bin];
+                norm += magnitude * magnitude;
+            }
+        }
+    }
+
+    return norm;
+}
+
+inline float GoldClampDescriptorHistogram(DescriptorHistogram &histogram, float histMax)
+{
+    float norm = 0.f;
+
+    for (int i = 0; i < kDescWidth; i++)
+    {
+        for (int j = 0; j < kDescWidth; j++)
+        {
+            int histIdx = GoldDescriptorHistIndex(i, j, 0);
+
+            for (int bin = 0; bin < kDescHistBins; bin++)
+            {
+                float magnitude = std::min(histogram[histIdx + bin], histMax);
+
+                norm += magnitude * magnitude;
+                histogram[histIdx + bin] = magnitude;
+            }
+        }
+    }
+
+    return norm;
+}
+
+inline void GoldWriteDescriptor(DescriptorType &descriptor, DescriptorHistogram &histogram, float norm)
+{
+    for (int i = 0; i < kDescWidth; i++)
+    {
+        for (int j = 0; j < kDescWidth; j++)
+        {
+            int histIdx = GoldDescriptorHistIndex(i, j, 0);
+
+            for (int bin = 0; bin < kDescHistBins; bin++)
+            {
+                float magnitude = histogram[histIdx + bin];
+                int   descIdx   = (i * kDescWidth + j) * kDescHistBins + bin;
+
+                descriptor.data[descIdx] = cuda::SaturateCast<uint8_t>(magnitude * norm);
+            }
+        }
+    }
+}
+
 inline void GoldComputeDescriptor(DescriptorType &descriptor, float angle, float featRadius,
                                   const RawPyramidType &srcGaussianPyramid, const long3 &currStrides,
                                   const long3 &currShape, int octave, int layer, int currBatch, int r, int c)
@@ -311,166 +547,32 @@ inline void GoldComputeDescriptor(DescriptorType &descriptor, float angle, float
         return util::ValueAt<WT>(srcGaussianPyramid[octave][layer], currStrides, long3{currBatch, row, col});
     };
 
-    float histogram[(kDescWidth + 2) * (kDescWidth + 2) * (kDescHistBins + 2)] = {0.f};
-
-    float magnitude;
+    DescriptorHistogram histogram{};
 
     for (int i = -radius; i <= radius; i++)
     {
-        if (r + i <= 0 || r + i >= currShape.y - 1)
-        {
-            continue;
-        }
-
         for (int j = -radius; j <= radius; j++)
         {
-            if (c + j <= 0 || c + j >= currShape.z - 1)
-            {
-                continue;
-            }
-
-            float r_rot = j * sin_a + i * cos_a;
-            float c_rot = j * cos_a - i * sin_a;
-
-            float weight = r_rot * r_rot + c_rot * c_rot;
-
-            r_rot += kDescWidth / 2 - .5f;
-            c_rot += kDescWidth / 2 - .5f;
-
-            if (r_rot <= -1 || r_rot >= kDescWidth || c_rot <= -1 || c_rot >= kDescWidth)
-            {
-                continue;
-            }
-
-            int iHist = std::floor(r_rot);
-            int jHist = std::floor(c_rot);
-
-            r_rot -= iHist;
-            c_rot -= jHist;
-
-            float dx = gaussVal(r + i + 0, c + j + 1) - gaussVal(r + i + 0, c + j - 1);
-            float dy = gaussVal(r + i - 1, c + j + 0) - gaussVal(r + i + 1, c + j + 0);
-
-            float o_rot = std::atan2(dy, dx) * 180.f / M_PI;
-
-            if (o_rot < 0.f)
-                o_rot += 360.f;
-            if (o_rot >= 360.f)
-                o_rot -= 360.f;
-
-            o_rot = (o_rot - angle) * kDescHistBins / 360.f;
-
-            int bin = std::floor(o_rot);
-
-            o_rot -= bin;
-
-            if (bin < 0)
-                bin += kDescHistBins;
-            if (bin >= kDescHistBins)
-                bin -= kDescHistBins;
-
-            weight = std::exp2f(weight * kDescWeightScale);
-
-            magnitude = std::sqrt(dx * dx + dy * dy) * weight;
-
-            float v_r1     = magnitude * r_rot;
-            float v_r0     = magnitude - v_r1;
-            float v_rc11   = v_r1 * c_rot;
-            float v_rc10   = v_r1 - v_rc11;
-            float v_rc01   = v_r0 * c_rot;
-            float v_rc00   = v_r0 - v_rc01;
-            float v_rco111 = v_rc11 * o_rot;
-            float v_rco110 = v_rc11 - v_rco111;
-            float v_rco101 = v_rc10 * o_rot;
-            float v_rco100 = v_rc10 - v_rco101;
-            float v_rco011 = v_rc01 * o_rot;
-            float v_rco010 = v_rc01 - v_rco011;
-            float v_rco001 = v_rc00 * o_rot;
-            float v_rco000 = v_rc00 - v_rco001;
-
-            int idx = ((iHist + 1) * (kDescWidth + 2) + (jHist + 1)) * (kDescHistBins + 2) + bin;
-
-            histogram[idx] += v_rco000;
-            histogram[idx + 1] += v_rco001;
-            histogram[idx + (kDescHistBins + 2)] += v_rco010;
-            histogram[idx + (kDescHistBins + 3)] += v_rco011;
-            histogram[idx + (kDescWidth + 2) * (kDescHistBins + 2)] += v_rco100;
-            histogram[idx + (kDescWidth + 2) * (kDescHistBins + 2) + 1] += v_rco101;
-            histogram[idx + (kDescWidth + 3) * (kDescHistBins + 2)] += v_rco110;
-            histogram[idx + (kDescWidth + 3) * (kDescHistBins + 2) + 1] += v_rco111;
+            GoldAccumulateDescriptorSample(histogram, gaussVal, angle, cos_a, sin_a, currShape, r, c, i, j);
         }
     }
 
-    float norm = 0.f;
-
-    for (int i = 0; i < kDescWidth; i++)
-    {
-        for (int j = 0; j < kDescWidth; j++)
-        {
-            int histIdx = ((i + 1) * (kDescWidth + 2) + (j + 1)) * (kDescHistBins + 2);
-
-            histogram[histIdx] += histogram[histIdx + kDescHistBins];
-            histogram[histIdx + 1] += histogram[histIdx + kDescHistBins + 1];
-
-            for (int bin = 0; bin < kDescHistBins; bin++)
-            {
-                magnitude = histogram[histIdx + bin];
-
-                norm += magnitude * magnitude;
-            }
-        }
-    }
-
+    float norm    = GoldDescriptorNorm(histogram);
     float histMax = std::sqrt(norm) * kDescHistPeakRatio;
 
-    norm = 0.f;
-
-    for (int i = 0; i < kDescWidth; i++)
-    {
-        for (int j = 0; j < kDescWidth; j++)
-        {
-            int histIdx = ((i + 1) * (kDescWidth + 2) + (j + 1)) * (kDescHistBins + 2);
-
-            for (int bin = 0; bin < kDescHistBins; bin++)
-            {
-                magnitude = histogram[histIdx + bin];
-
-                magnitude = std::min(magnitude, histMax);
-
-                norm += magnitude * magnitude;
-
-                histogram[histIdx + bin] = magnitude;
-            }
-        }
-    }
-
+    norm = GoldClampDescriptorHistogram(histogram, histMax);
     norm = 512 / std::max(std::sqrt(norm), 1e-5f);
 
-    for (int i = 0; i < kDescWidth; i++)
-    {
-        for (int j = 0; j < kDescWidth; j++)
-        {
-            int histIdx = ((i + 1) * (kDescWidth + 2) + (j + 1)) * (kDescHistBins + 2);
-
-            for (int bin = 0; bin < kDescHistBins; bin++)
-            {
-                magnitude = histogram[histIdx + bin];
-
-                int descIdx = (i * kDescWidth + j) * kDescHistBins + bin;
-
-                descriptor.data[descIdx] = cuda::SaturateCast<uint8_t>(magnitude * norm);
-            }
-        }
-    }
+    GoldWriteDescriptor(descriptor, histogram, norm);
 }
 
-inline void GoldComputeHistogram(float (&histogram)[kHistogramBins], float featRadius,
+inline void GoldComputeHistogram(OrientationHistogram &histogram, float featRadius,
                                  const RawPyramidType &srcGaussianPyramid, const long3 &currStrides,
                                  const long3 &currShape, int octave, int layer, int currBatch, int r, int c)
 {
     std::vector<float> tempHistogram(kHistogramBins + 4, 0.f);
 
-    int radius = std::round(featRadius * kOrientationRadius);
+    auto radius = static_cast<int>(std::round(featRadius * kOrientationRadius));
 
     float weightScale = -1.f / (2.f * (featRadius * kOrientationSigma) * (featRadius * kOrientationSigma));
 
@@ -496,13 +598,12 @@ inline void GoldComputeHistogram(float (&histogram)[kHistogramBins], float featR
             float dx = gaussVal(r + i + 0, c + j + 1) - gaussVal(r + i + 0, c + j - 1);
             float dy = gaussVal(r + i - 1, c + j + 0) - gaussVal(r + i + 1, c + j + 0);
 
-            float angle     = std::atan2(dy, dx) * 180.f / M_PI;
-            float weight    = std::exp2f((i * i + j * j) * weightScale);
+            float angle     = std::atan2(dy, dx) * 180.f / static_cast<float>(M_PI);
+            float weight    = std::exp2f(static_cast<float>(i * i + j * j) * weightScale);
             float magnitude = std::sqrt(dx * dx + dy * dy);
 
-            int bin = std::round(angle * kHistogramBins / 360.f);
-
-            bin = (bin >= kHistogramBins ? bin - kHistogramBins : (bin < 0 ? bin + kHistogramBins : bin));
+            int bin = GoldWrapBin(static_cast<int>(std::round(angle * static_cast<float>(kHistogramBins) / 360.f)),
+                                  kHistogramBins);
 
             tempHistogram[2 + bin] += weight * magnitude;
         }
@@ -522,6 +623,167 @@ inline void GoldComputeHistogram(float (&histogram)[kHistogramBins], float featR
     }
 }
 
+inline void GoldAddFeatureOrientation(RawBufferType &featCoords, const long2 &featCoordsStrides,
+                                      RawBufferType &featMetadata, const long2 &featMetadataStrides,
+                                      RawBufferType &featDescriptors, const long2 &featDescriptorsStrides,
+                                      int maxCapacity, RawBufferType &numFeatures, const long1 &numFeaturesStrides,
+                                      const RawPyramidType &srcGaussianPyramid, const long3 &currStrides,
+                                      const long3 &currShape, int octave, int l, int currBatch, int r, int c,
+                                      const float4 &keypoint, float3 metadata, float featRadius, float descAngle)
+{
+    DescriptorType descriptor;
+    GoldComputeDescriptor(descriptor, descAngle, featRadius, srcGaussianPyramid, currStrides, currShape, octave, l,
+                          currBatch, r, c);
+
+    int &featIdx = util::ValueAt<int>(numFeatures, numFeaturesStrides, long1{currBatch});
+
+    if (featIdx < maxCapacity)
+    {
+        util::ValueAt<float4>(featCoords, featCoordsStrides, long2{currBatch, featIdx})                   = keypoint;
+        util::ValueAt<float3>(featMetadata, featMetadataStrides, long2{currBatch, featIdx})               = metadata;
+        util::ValueAt<DescriptorType>(featDescriptors, featDescriptorsStrides, long2{currBatch, featIdx}) = descriptor;
+    }
+
+    featIdx += 1;
+}
+
+struct GoldFeatureLocation
+{
+    int layer;
+    int row;
+    int col;
+
+    WT                              value{};
+    cuda::math::Vector<float, 3>    derivative{};
+    cuda::math::Vector<float, 3>    offset{};
+    cuda::math::Matrix<float, 3, 3> hessian{};
+};
+
+template<typename DogValue>
+inline void GoldComputeFeatureSystem(GoldFeatureLocation &feature, const DogValue &dogVal)
+{
+    constexpr float kImageScale = 1.f / cuda::TypeTraits<VT>::max; // source images data type scale
+    constexpr float kDScale1    = kImageScale * .5f;               // first derivative scale
+    constexpr float kDScale2    = kImageScale;                     // second derivative scale
+    constexpr float kDScaleC    = kImageScale * .25f;              // cross derivative scale
+
+    const int l = feature.layer;
+    const int r = feature.row;
+    const int c = feature.col;
+
+    auto &dD = feature.derivative;
+    auto &H  = feature.hessian;
+
+    // clang-format off
+    dD[0] = (dogVal(l + 0, r + 0, c + 1) - dogVal(l + 0, r + 0, c - 1)) * kDScale1;
+    dD[1] = (dogVal(l + 0, r + 1, c + 0) - dogVal(l + 0, r - 1, c + 0)) * kDScale1;
+    dD[2] = (dogVal(l + 1, r + 0, c + 0) - dogVal(l - 1, r + 0, c + 0)) * kDScale1;
+
+    feature.value = dogVal(l, r, c);
+
+    H[0][0] = (dogVal(l + 0, r + 0, c + 1) + dogVal(l + 0, r + 0, c - 1) - 2 * feature.value) * kDScale2;
+    H[1][1] = (dogVal(l + 0, r + 1, c + 0) + dogVal(l + 0, r - 1, c + 0) - 2 * feature.value) * kDScale2;
+    H[2][2] = (dogVal(l + 1, r + 0, c + 0) + dogVal(l - 1, r + 0, c + 0) - 2 * feature.value) * kDScale2;
+
+    H[0][1] = H[1][0] = (dogVal(l + 0, r + 1, c + 1) - dogVal(l + 0, r + 1, c - 1) -
+                         dogVal(l + 0, r - 1, c + 1) + dogVal(l + 0, r - 1, c - 1)) * kDScaleC;
+    H[0][2] = H[2][0] = (dogVal(l + 1, r + 0, c + 1) - dogVal(l + 1, r + 0, c - 1) -
+                         dogVal(l - 1, r + 0, c + 1) + dogVal(l - 1, r + 0, c - 1)) * kDScaleC;
+    H[1][2] = H[2][1] = (dogVal(l + 1, r + 1, c + 0) - dogVal(l + 1, r - 1, c + 0) -
+                         dogVal(l - 1, r + 1, c + 0) + dogVal(l - 1, r - 1, c + 0)) * kDScaleC;
+    // clang-format on
+}
+
+inline bool GoldOffsetIsSmall(const cuda::math::Vector<float, 3> &offset)
+{
+    return std::abs(offset[2]) < 0.5f && std::abs(offset[1]) < 0.5f && std::abs(offset[0]) < 0.5f;
+}
+
+inline bool GoldOffsetIsInRange(const cuda::math::Vector<float, 3> &offset)
+{
+    constexpr float kMaxStep = static_cast<float>(std::numeric_limits<int>::max()) / 3.f;
+    return std::abs(offset[2]) <= kMaxStep && std::abs(offset[1]) <= kMaxStep && std::abs(offset[0]) <= kMaxStep;
+}
+
+inline void GoldApplyOffset(GoldFeatureLocation &feature)
+{
+    feature.col += static_cast<int>(std::round(feature.offset[0]));
+    feature.row += static_cast<int>(std::round(feature.offset[1]));
+    feature.layer += static_cast<int>(std::round(feature.offset[2]));
+}
+
+inline bool GoldLocationIsInRange(const GoldFeatureLocation &feature, const long3 &currShape, int numOctaveLayers)
+{
+    return feature.layer >= 1 && feature.layer <= numOctaveLayers && feature.col >= kImageBorder
+        && feature.col < currShape.z - kImageBorder && feature.row >= kImageBorder
+        && feature.row < currShape.y - kImageBorder;
+}
+
+template<typename DogValue>
+inline bool GoldLocalizeFeature(GoldFeatureLocation &feature, const DogValue &dogVal, const long3 &currShape,
+                                int numOctaveLayers)
+{
+    for (int i = 0; i < kMaxInterpolationSteps; i++)
+    {
+        GoldComputeFeatureSystem(feature, dogVal);
+
+        feature.offset = feature.derivative;
+        if (!cuda::math::solve_inplace(feature.hessian, feature.offset))
+        {
+            return false;
+        }
+
+        feature.offset = -feature.offset;
+        if (GoldOffsetIsSmall(feature.offset))
+        {
+            return true;
+        }
+
+        if (!GoldOffsetIsInRange(feature.offset))
+        {
+            return false;
+        }
+
+        GoldApplyOffset(feature);
+        if (!GoldLocationIsInRange(feature, currShape, numOctaveLayers))
+        {
+            return false;
+        }
+    }
+
+    return false;
+}
+
+inline bool GoldFeaturePassesResponse(float3 &metadata, const GoldFeatureLocation &feature, int numOctaveLayers,
+                                      float contrastThreshold, float edgeThreshold)
+{
+    constexpr float kImageScale = 1.f / cuda::TypeTraits<VT>::max; // source images data type scale
+
+    const auto &dD = feature.derivative;
+    const auto &H  = feature.hessian;
+
+    metadata.y = std::abs(feature.value * kImageScale + cuda::math::dot(dD, feature.offset) * .5f);
+    if (metadata.y * static_cast<float>(numOctaveLayers) < contrastThreshold)
+    {
+        return false;
+    }
+
+    float trace       = H[0][0] + H[1][1];
+    float determinant = H[0][0] * H[1][1] - H[0][1] * H[1][0];
+    return determinant > 0
+        && trace * trace * edgeThreshold < (edgeThreshold + 1.f) * (edgeThreshold + 1.f) * determinant;
+}
+
+inline float4 GoldMakeKeypoint(const GoldFeatureLocation &feature, int currOctave)
+{
+    float4 keypoint;
+    keypoint.x = (static_cast<float>(feature.col) + feature.offset[0]) * std::pow(2.f, static_cast<float>(currOctave));
+    keypoint.y = (static_cast<float>(feature.row) + feature.offset[1]) * std::pow(2.f, static_cast<float>(currOctave));
+    keypoint.w = static_cast<float>(feature.layer) + feature.offset[2];
+    keypoint.z = static_cast<float>(currOctave);
+    return keypoint;
+}
+
 inline void GoldAddFeatures(RawBufferType &featCoords, const long2 &featCoordsStrides, RawBufferType &featMetadata,
                             const long2 &featMetadataStrides, RawBufferType &featDescriptors,
                             const long2 &featDescriptorsStrides, int maxCapacity, RawBufferType &numFeatures,
@@ -530,114 +792,35 @@ inline void GoldAddFeatures(RawBufferType &featCoords, const long2 &featCoordsSt
                             int octave, int firstOctave, int numOctaveLayers, float contrastThreshold,
                             float edgeThreshold, float initSigma, int l, int currBatch, int r, int c)
 {
-    constexpr float kImageScale = 1.f / cuda::TypeTraits<VT>::max; // source images data type scale
-    constexpr float kDScale1    = kImageScale * .5f;               // first derivative scale
-    constexpr float kDScale2    = kImageScale;                     // second derivative scale
-    constexpr float kDScaleC    = kImageScale * .25f;              // cross derivative scale
-
-    float                           cv;      // central value
-    cuda::math::Vector<float, 3>    dD, sol; // derivative distances and solver solution
-    cuda::math::Matrix<float, 3, 3> H;       // Hessian matrix
-
     auto dogVal = [&srcDoGPyramid, &currStrides, &octave, &currBatch](int layer, int row, int col)
     {
         return util::ValueAt<WT>(srcDoGPyramid[octave][layer], currStrides, long3{currBatch, row, col});
     };
 
-    bool converged = false;
-
-    for (int i = 0; i < kMaxInterpolationSteps; i++)
-    {
-        // clang-format off
-        dD[0] = (dogVal(l + 0, r + 0, c + 1) - dogVal(l + 0, r + 0, c - 1)) * kDScale1;
-        dD[1] = (dogVal(l + 0, r + 1, c + 0) - dogVal(l + 0, r - 1, c + 0)) * kDScale1;
-        dD[2] = (dogVal(l + 1, r + 0, c + 0) - dogVal(l - 1, r + 0, c + 0)) * kDScale1;
-
-        cv = dogVal(l, r, c);
-
-        H[0][0] = (dogVal(l + 0, r + 0, c + 1) + dogVal(l + 0, r + 0, c - 1) - 2 * cv) * kDScale2;
-        H[1][1] = (dogVal(l + 0, r + 1, c + 0) + dogVal(l + 0, r - 1, c + 0) - 2 * cv) * kDScale2;
-        H[2][2] = (dogVal(l + 1, r + 0, c + 0) + dogVal(l - 1, r + 0, c + 0) - 2 * cv) * kDScale2;
-
-        H[0][1] = H[1][0] = (dogVal(l + 0, r + 1, c + 1) - dogVal(l + 0, r + 1, c - 1) -
-                             dogVal(l + 0, r - 1, c + 1) + dogVal(l + 0, r - 1, c - 1)) * kDScaleC;
-        H[0][2] = H[2][0] = (dogVal(l + 1, r + 0, c + 1) - dogVal(l + 1, r + 0, c - 1) -
-                             dogVal(l - 1, r + 0, c + 1) + dogVal(l - 1, r + 0, c - 1)) * kDScaleC;
-        H[1][2] = H[2][1] = (dogVal(l + 1, r + 1, c + 0) - dogVal(l + 1, r - 1, c + 0) -
-                             dogVal(l - 1, r + 1, c + 0) + dogVal(l - 1, r - 1, c + 0)) * kDScaleC;
-        // clang-format on
-
-        sol = dD;
-
-        if (!cuda::math::solve_inplace(H, sol))
-        {
-            return;
-        }
-
-        sol = -sol;
-
-        if (std::abs(sol[2]) < 0.5f && std::abs(sol[1]) < 0.5f && std::abs(sol[0]) < 0.5f)
-        {
-            converged = true;
-            break;
-        }
-
-        if (std::abs(sol[2]) > std::numeric_limits<int>::max() / 3.f
-            || std::abs(sol[1]) > std::numeric_limits<int>::max() / 3.f
-            || std::abs(sol[0]) > std::numeric_limits<int>::max() / 3.f)
-        {
-            return;
-        }
-
-        c += std::round(sol[0]);
-        r += std::round(sol[1]);
-        l += std::round(sol[2]);
-
-        if (l < 1 || l > numOctaveLayers || c < kImageBorder || c >= currShape.z - kImageBorder || r < kImageBorder
-            || r >= currShape.y - kImageBorder)
-        {
-            return;
-        }
-    }
-
-    if (!converged)
+    GoldFeatureLocation feature{l, r, c};
+    if (!GoldLocalizeFeature(feature, dogVal, currShape, numOctaveLayers))
     {
         return;
     }
 
     float3 metadata;
 
-    metadata.y = std::abs(cv * kImageScale + cuda::math::dot(dD, sol) * .5f);
-
-    if (metadata.y * numOctaveLayers < contrastThreshold)
-    {
-        return;
-    }
-
-    float trace       = H[0][0] + H[1][1];
-    float determinant = H[0][0] * H[1][1] - H[0][1] * H[1][0];
-
-    if (determinant <= 0 || trace * trace * edgeThreshold >= (edgeThreshold + 1) * (edgeThreshold + 1) * determinant)
+    if (!GoldFeaturePassesResponse(metadata, feature, numOctaveLayers, contrastThreshold, edgeThreshold))
     {
         return;
     }
 
     int currOctave = octave + firstOctave;
 
-    float4 keypoint;
+    float4 keypoint   = GoldMakeKeypoint(feature, currOctave);
+    float  featRadius = initSigma * std::pow(2.f, keypoint.w / static_cast<float>(numOctaveLayers));
 
-    keypoint.x = (c + sol[0]) * std::pow(2, currOctave);
-    keypoint.y = (r + sol[1]) * std::pow(2, currOctave);
-    keypoint.w = (l + sol[2]);
-    keypoint.z = currOctave;
+    OrientationHistogram hist{};
 
-    float featRadius = initSigma * std::pow(2, keypoint.w / numOctaveLayers);
+    GoldComputeHistogram(hist, featRadius, srcGaussianPyramid, currStrides, currShape, octave, feature.layer, currBatch,
+                         feature.row, feature.col);
 
-    float hist[kHistogramBins];
-
-    GoldComputeHistogram(hist, featRadius, srcGaussianPyramid, currStrides, currShape, octave, l, currBatch, r, c);
-
-    metadata.z = featRadius * 2.f * std::pow(2, currOctave);
+    metadata.z = featRadius * 2.f * std::pow(2.f, static_cast<float>(currOctave));
 
     float histPeak = hist[0];
 
@@ -653,43 +836,66 @@ inline void GoldAddFeatures(RawBufferType &featCoords, const long2 &featCoordsSt
         int prologue = i > 0 ? i - 1 : kHistogramBins - 1;
         int epilogue = i < kHistogramBins - 1 ? i + 1 : 0;
 
-        if (hist[i] > hist[prologue] && hist[i] > hist[epilogue] && hist[i] >= histPeak)
+        if (hist[i] <= hist[prologue] || hist[i] <= hist[epilogue] || hist[i] < histPeak)
         {
-            float bin = i + .5f * (hist[prologue] - hist[epilogue]) / (hist[prologue] - 2 * hist[i] + hist[epilogue]);
+            continue;
+        }
 
-            bin = (bin < 0 ? kHistogramBins + bin : (bin >= kHistogramBins ? bin - kHistogramBins : bin));
+        auto bin = static_cast<float>(i)
+                 + .5f * (hist[prologue] - hist[epilogue]) / (hist[prologue] - 2.f * hist[i] + hist[epilogue]);
 
-            metadata.x = 360.f - (360.f / kHistogramBins) * bin;
+        if (bin < 0)
+        {
+            bin += kHistogramBins;
+        }
+        else if (bin >= kHistogramBins)
+        {
+            bin -= kHistogramBins;
+        }
 
-            if (cuda::abs(metadata.x - 360.f) < 1e-5)
-                metadata.x = 0.f;
+        metadata.x = 360.f - (360.f / kHistogramBins) * bin;
 
-            ASSERT_TRUE(metadata.x >= 0.f && metadata.x <= 360.f);
+        if (cuda::abs(metadata.x - 360.f) < 1e-5)
+            metadata.x = 0.f;
 
-            float descAngle = 360.f - metadata.x;
+        ASSERT_TRUE(metadata.x >= 0.f && metadata.x <= 360.f);
 
-            if (cuda::abs(descAngle - 360.f) < 1e-5)
-                descAngle = 0.f;
+        float descAngle = 360.f - metadata.x;
 
-            ASSERT_TRUE(descAngle >= 0.f && descAngle <= 360.f);
+        if (cuda::abs(descAngle - 360.f) < 1e-5)
+            descAngle = 0.f;
 
-            DescriptorType descriptor;
-            GoldComputeDescriptor(descriptor, descAngle, featRadius, srcGaussianPyramid, currStrides, currShape, octave,
-                                  l, currBatch, r, c);
+        ASSERT_TRUE(descAngle >= 0.f && descAngle <= 360.f);
 
-            int &featIdx = util::ValueAt<int>(numFeatures, numFeaturesStrides, long1{currBatch});
+        GoldAddFeatureOrientation(featCoords, featCoordsStrides, featMetadata, featMetadataStrides, featDescriptors,
+                                  featDescriptorsStrides, maxCapacity, numFeatures, numFeaturesStrides,
+                                  srcGaussianPyramid, currStrides, currShape, octave, feature.layer, currBatch,
+                                  feature.row, feature.col, keypoint, metadata, featRadius, descAngle);
+    }
+}
 
-            if (featIdx < maxCapacity)
-            {
-                util::ValueAt<float4>(featCoords, featCoordsStrides, long2{currBatch, featIdx})     = keypoint;
-                util::ValueAt<float3>(featMetadata, featMetadataStrides, long2{currBatch, featIdx}) = metadata;
-                util::ValueAt<DescriptorType>(featDescriptors, featDescriptorsStrides, long2{currBatch, featIdx})
-                    = descriptor;
-            }
+template<typename DogValue>
+inline bool GoldIsDoGExtremum(const DogValue &dogVal, int octave, int layer, long batch, long row, long col, WT val)
+{
+    for (int i = 0; i < 27; ++i)
+    {
+        int dl = i / 9 - 1;
+        int dr = (i / 3) % 3 - 1;
+        int dc = i % 3 - 1;
 
-            featIdx += 1;
+        if (dl == 0 && dr == 0 && dc == 0)
+        {
+            continue;
+        }
+
+        WT neighbor = dogVal(octave, layer + dl, batch, row + dr, col + dc);
+        if ((val > 0 && val < neighbor) || (val < 0 && val > neighbor))
+        {
+            return false;
         }
     }
+
+    return true;
 }
 
 inline void GoldFindExtrema(RawBufferType &featCoords, const long2 &featCoordsStrides, const long2 &featCoordsShape,
@@ -701,7 +907,8 @@ inline void GoldFindExtrema(RawBufferType &featCoords, const long2 &featCoordsSt
                             int firstOctave, int numOctaves, int numOctaveLayers, float contrastThreshold,
                             float edgeThreshold, float initSigma)
 {
-    int threshold = std::floor(.5f * contrastThreshold / numOctaveLayers * 255);
+    auto threshold
+        = static_cast<int>(std::floor(.5f * contrastThreshold / static_cast<float>(numOctaveLayers) * 255.f));
 
     long3 currShape   = baseShape;
     long3 currStrides = baseStrides;
@@ -711,68 +918,48 @@ inline void GoldFindExtrema(RawBufferType &featCoords, const long2 &featCoordsSt
         return util::ValueAt<WT>(srcDoGPyramid[octave][layer], currStrides, long3{batch, row, col});
     };
 
-    long maxCapacity = featCoordsShape.y;
+    auto maxCapacity = static_cast<int>(featCoordsShape.y);
 
     ASSERT_TRUE(featCoordsShape.x == currShape.x && featMetadataShape.x == currShape.x
                 && featCoordsShape.y == featMetadataShape.y && numFeaturesShape.x == currShape.x);
+
+    auto addFeatureIfExtremum
+        = [&featCoords, &featCoordsStrides, &featDescriptors, &featDescriptorsStrides, &featMetadata,
+           &featMetadataStrides, &numFeatures, &numFeaturesStrides, &srcDoGPyramid, &srcGaussianPyramid,
+           contrastThreshold, edgeThreshold, firstOctave, initSigma, maxCapacity, numOctaveLayers, threshold,
+           &currShape, &currStrides, &dogVal](int o, int l, long b, int r, int c)
+    {
+        if (WT val = dogVal(o, l, b, r, c);
+            std::abs(val) <= static_cast<WT>(threshold) || !GoldIsDoGExtremum(dogVal, o, l, b, r, c, val))
+        {
+            return;
+        }
+
+        GoldAddFeatures(featCoords, featCoordsStrides, featMetadata, featMetadataStrides, featDescriptors,
+                        featDescriptorsStrides, maxCapacity, numFeatures, numFeaturesStrides, srcGaussianPyramid,
+                        srcDoGPyramid, currStrides, currShape, o, firstOctave, numOctaveLayers, contrastThreshold,
+                        edgeThreshold, initSigma, l, static_cast<int>(b), r, c);
+    };
 
     for (int o = 0; o < numOctaves; o++)
     {
         for (int l = 1; l <= numOctaveLayers; l++)
         {
-            for (long b = 0; b < currShape.x; b++)
+            const long width        = currShape.z - 2 * kImageBorder;
+            const long height       = currShape.y - 2 * kImageBorder;
+            const long numPositions = currShape.x * height * width;
+
+            for (long p = 0; p < numPositions; ++p)
             {
-                for (long r = kImageBorder; r < currShape.y - kImageBorder; r++)
-                {
-                    for (long c = kImageBorder; c < currShape.z - kImageBorder; c++)
-                    {
-                        WT val = dogVal(o, l, b, r, c);
+                long rest = p;
+                int  c    = kImageBorder + static_cast<int>(rest % width);
+                rest /= width;
+                int r = kImageBorder + static_cast<int>(rest % height);
+                rest /= height;
 
-                        // clang-format off
-                        if (std::abs(val) > threshold &&
-                            ((val > 0 &&
-                              val >= dogVal(o, l, b, r + 0, c - 1) && val >= dogVal(o, l, b, r + 0, c + 1) &&
-                              val >= dogVal(o, l, b, r - 1, c - 1) && val >= dogVal(o, l, b, r - 1, c + 0) &&
-                              val >= dogVal(o, l, b, r - 1, c + 1) && val >= dogVal(o, l, b, r + 1, c - 1) &&
-                              val >= dogVal(o, l, b, r + 1, c + 0) && val >= dogVal(o, l, b, r + 1, c + 1) &&
-                              val >= dogVal(o, l + 1, b, r + 0, c + 0) &&
-                              val >= dogVal(o, l + 1, b, r + 0, c - 1) && val >= dogVal(o, l + 1, b, r + 0, c + 1) &&
-                              val >= dogVal(o, l + 1, b, r - 1, c - 1) && val >= dogVal(o, l + 1, b, r - 1, c + 0) &&
-                              val >= dogVal(o, l + 1, b, r - 1, c + 1) && val >= dogVal(o, l + 1, b, r + 1, c - 1) &&
-                              val >= dogVal(o, l + 1, b, r + 1, c + 0) && val >= dogVal(o, l + 1, b, r + 1, c + 1) &&
-                              val >= dogVal(o, l - 1, b, r + 0, c + 0) &&
-                              val >= dogVal(o, l - 1, b, r + 0, c - 1) && val >= dogVal(o, l - 1, b, r + 0, c + 1) &&
-                              val >= dogVal(o, l - 1, b, r - 1, c - 1) && val >= dogVal(o, l - 1, b, r - 1, c + 0) &&
-                              val >= dogVal(o, l - 1, b, r - 1, c + 1) && val >= dogVal(o, l - 1, b, r + 1, c - 1) &&
-                              val >= dogVal(o, l - 1, b, r + 1, c + 0) && val >= dogVal(o, l - 1, b, r + 1, c + 1)) ||
-                             (val < 0 &&
-                              val <= dogVal(o, l, b, r + 0, c - 1) && val <= dogVal(o, l, b, r + 0, c + 1) &&
-                              val <= dogVal(o, l, b, r - 1, c - 1) && val <= dogVal(o, l, b, r - 1, c + 0) &&
-                              val <= dogVal(o, l, b, r - 1, c + 1) && val <= dogVal(o, l, b, r + 1, c - 1) &&
-                              val <= dogVal(o, l, b, r + 1, c + 0) && val <= dogVal(o, l, b, r + 1, c + 1) &&
-                              val <= dogVal(o, l + 1, b, r + 0, c + 0) &&
-                              val <= dogVal(o, l + 1, b, r + 0, c - 1) && val <= dogVal(o, l + 1, b, r + 0, c + 1) &&
-                              val <= dogVal(o, l + 1, b, r - 1, c - 1) && val <= dogVal(o, l + 1, b, r - 1, c + 0) &&
-                              val <= dogVal(o, l + 1, b, r - 1, c + 1) && val <= dogVal(o, l + 1, b, r + 1, c - 1) &&
-                              val <= dogVal(o, l + 1, b, r + 1, c + 0) && val <= dogVal(o, l + 1, b, r + 1, c + 1) &&
-                              val <= dogVal(o, l - 1, b, r + 0, c + 0) &&
-                              val <= dogVal(o, l - 1, b, r + 0, c - 1) && val <= dogVal(o, l - 1, b, r + 0, c + 1) &&
-                              val <= dogVal(o, l - 1, b, r - 1, c - 1) && val <= dogVal(o, l - 1, b, r - 1, c + 0) &&
-                              val <= dogVal(o, l - 1, b, r - 1, c + 1) && val <= dogVal(o, l - 1, b, r + 1, c - 1) &&
-                              val <= dogVal(o, l - 1, b, r + 1, c + 0) && val <= dogVal(o, l - 1, b, r + 1, c + 1))))
-                        {
-                            // clang-format on
-
-                            GoldAddFeatures(featCoords, featCoordsStrides, featMetadata, featMetadataStrides,
-                                            featDescriptors, featDescriptorsStrides, maxCapacity, numFeatures,
-                                            numFeaturesStrides, srcGaussianPyramid, srcDoGPyramid, currStrides,
-                                            currShape, o, firstOctave, numOctaveLayers, contrastThreshold,
-                                            edgeThreshold, initSigma, l, b, r, c);
-                        }
-                    } // for each column
-                }     // for each row
-            }         // for each batch image
-        }             // for each layer
+                addFeatureIfExtremum(o, l, rest, r, c);
+            } // for each batch image, row, and column
+        }     // for each layer
 
         currShape.y /= 2;
         currShape.z /= 2;
@@ -785,9 +972,11 @@ struct SIFTResults
 {
     using TupleType = std::tuple<float4, float3, DescriptorType>; // float4 coordinates, float3 metadata, descriptor
 
-    std::vector<std::vector<TupleType>> testFeatures, goldFeatures;
+    std::vector<std::vector<TupleType>> testFeatures;
+    std::vector<std::vector<TupleType>> goldFeatures;
 
-    std::vector<int> testNumFeatures, goldNumFeatures;
+    std::vector<int> testNumFeatures;
+    std::vector<int> goldNumFeatures;
 };
 
 // Gold (CPU reference) computation of SIFT
@@ -845,8 +1034,10 @@ inline void GoldSIFT(SIFTResults &outResults, const nvcv::Tensor &featCoords, co
 
 #undef NVCV_TEST_CUDA_COPY
 
-    RawPyramidType pyrGaussian, pyrDoG;
-    long3          baseShape, baseStrides;
+    RawPyramidType pyrGaussian;
+    RawPyramidType pyrDoG;
+    long3          baseShape;
+    long3          baseStrides;
 
     int numOctaves;
 
@@ -909,8 +1100,8 @@ inline void GoldSIFT(SIFTResults &outResults, const nvcv::Tensor &featCoords, co
 
         // Need to sort both CPU and CUDA results due to extrema interpolation in add features
 
-        std::sort(outResults.testFeatures[x].begin(), outResults.testFeatures[x].end(), featureLower);
-        std::sort(outResults.goldFeatures[x].begin(), outResults.goldFeatures[x].end(), featureLower);
+        std::ranges::sort(outResults.testFeatures[x], featureLower);
+        std::ranges::sort(outResults.goldFeatures[x], featureLower);
     }
 }
 
@@ -939,23 +1130,16 @@ NVCV_TYPED_TEST_SUITE(OpSIFT, type::Types<
 
 // clang-format on
 
-TYPED_TEST(OpSIFT, correct_output)
+static void RunSIFTCorrectOutput(int3 inShape, long capacity, int numOctaveLayers, float contrastThreshold,
+                                 float edgeThreshold, float initSigma, bool expandInput, std::string_view layout)
 {
-    int3  inShape           = type::GetValue<TypeParam, 0>;
-    long  capacity          = type::GetValue<TypeParam, 1>;
-    int   numOctaveLayers   = type::GetValue<TypeParam, 2>;
-    float contrastThreshold = type::GetValue<TypeParam, 3>;
-    float edgeThreshold     = type::GetValue<TypeParam, 4>;
-    float initSigma         = type::GetValue<TypeParam, 5>;
-    bool  expandInput       = type::GetValue<TypeParam, 6>;
-
     NVCVSIFTFlagType flags = expandInput ? NVCV_SIFT_USE_EXPANDED_INPUT : NVCV_SIFT_USE_ORIGINAL_INPUT;
 
     // Increasing inShape and numOctaveLayers to test bigger maxShape and maxOctaveLayers
     int3 maxShape        = (inShape + 3) * (expandInput ? 2 : 1);
     int  maxOctaveLayers = numOctaveLayers + 1;
 
-    nvcv::Tensor src = nvcv::util::CreateTensor(inShape.z, inShape.x, inShape.y, kInFormat);
+    nvcv::Tensor src = CreateSIFTInputTensor(inShape, layout);
 
     auto srcData = src.exportData<nvcv::TensorDataStridedCuda>();
     ASSERT_TRUE(srcData);
@@ -968,6 +1152,8 @@ TYPED_TEST(OpSIFT, correct_output)
     // While inShape is WHN, srcShape is NHW to match srcStrides
     ASSERT_TRUE(inShape.z == srcShape.x && inShape.y == srcShape.y && inShape.x == srcShape.z);
 
+    // CHW/HWC tensors have no explicit N dimension, so compute the
+    // per-sample stride from height and row stride before using the accessor.
     srcStrides.x = (srcData->rank() == 3) ? srcShape.y * srcStrides.y : srcStrides.x;
 
     long srcBufSize = srcStrides.x * srcShape.x;
@@ -981,7 +1167,7 @@ TYPED_TEST(OpSIFT, correct_output)
     for (long x = 0; x < srcShape.x; ++x)
         for (long y = 0; y < srcShape.y; ++y)
             for (long z = 0; z < srcShape.z; ++z)
-                util::ValueAt<VT>(srcVec, srcStrides, long3{x, y, z}) = rg(g_rng);
+                util::ValueAt<VT>(srcVec, srcStrides, long3{x, y, z}) = rg(Rng());
 
     nvcv::Tensor featCoords({{srcShape.x, capacity}, "NM"}, nvcv::TYPE_4F32);
     nvcv::Tensor featMetadata({{srcShape.x, capacity}, "NM"}, nvcv::TYPE_3F32);
@@ -1010,6 +1196,152 @@ TYPED_TEST(OpSIFT, correct_output)
 
     EXPECT_EQ(results.testNumFeatures, results.goldNumFeatures);
     EXPECT_EQ(results.testFeatures, results.goldFeatures);
+}
+
+TYPED_TEST(OpSIFT, correct_output)
+{
+    int3  inShape           = type::GetValue<TypeParam, 0>;
+    long  capacity          = type::GetValue<TypeParam, 1>;
+    int   numOctaveLayers   = type::GetValue<TypeParam, 2>;
+    float contrastThreshold = type::GetValue<TypeParam, 3>;
+    float edgeThreshold     = type::GetValue<TypeParam, 4>;
+    float initSigma         = type::GetValue<TypeParam, 5>;
+    bool  expandInput       = type::GetValue<TypeParam, 6>;
+
+    RunSIFTCorrectOutput(inShape, capacity, numOctaveLayers, contrastThreshold, edgeThreshold, initSigma, expandInput,
+                         "NHWC");
+}
+
+TEST(OpSIFT, planar_correct_output)
+{
+    RunSIFTCorrectOutput(int3{32, 32, 2}, 64, 3, 0.02f, 12.f, 1.0f, false, "NCHW");
+    RunSIFTCorrectOutput(int3{32, 32, 1}, 64, 3, 0.02f, 12.f, 1.0f, true, "CHW");
+}
+
+static void RunSIFTPlanarParity(int3 inShape, std::string_view interleavedLayout, std::string_view planarLayout)
+{
+    constexpr long  capacity          = 256;
+    constexpr int   numOctaveLayers   = 3;
+    constexpr float contrastThreshold = 0.02f;
+    constexpr float edgeThreshold     = 12.f;
+    constexpr float initSigma         = 1.f;
+
+    nvcv::Tensor srcInterleaved = CreateSIFTInputTensor(inShape, interleavedLayout);
+    nvcv::Tensor srcPlanar      = CreateSIFTInputTensor(inShape, planarLayout);
+
+    auto srcInterleavedData = srcInterleaved.exportData<nvcv::TensorDataStridedCuda>();
+    auto srcPlanarData      = srcPlanar.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(srcInterleavedData && srcPlanarData);
+
+    auto srcInterleavedAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcInterleavedData);
+    auto srcPlanarAccess      = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcPlanarData);
+    ASSERT_TRUE(srcInterleavedAccess && srcPlanarAccess);
+
+    for (int sample = 0; sample < inShape.z; ++sample)
+    {
+        std::vector<uint8_t> input(inShape.x * inShape.y);
+        test::planar::FillDeterministicValues(input, static_cast<size_t>(sample) * 101 + 1, nvcv::TYPE_U8);
+        test::planar::UploadInterleavedSample(*srcInterleavedAccess, sample, input, inShape.x, inShape.y, inShape.x);
+        test::planar::UploadPlanarSample(*srcPlanarAccess, sample, input, inShape.x, inShape.y, 1, sizeof(uint8_t));
+    }
+
+    nvcv::Tensor featCoordsInterleaved(
+        {
+            {inShape.z, capacity},
+            "NM"
+    },
+        nvcv::TYPE_4F32);
+    nvcv::Tensor featMetadataInterleaved(
+        {
+            {inShape.z, capacity},
+            "NM"
+    },
+        nvcv::TYPE_3F32);
+    nvcv::Tensor featDescriptorsInterleaved(
+        {
+            {inShape.z, capacity, 128},
+            "NMD"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor numFeaturesInterleaved({{inShape.z}, "N"}, nvcv::TYPE_S32);
+    nvcv::Tensor featCoordsPlanar(
+        {
+            {inShape.z, capacity},
+            "NM"
+    },
+        nvcv::TYPE_4F32);
+    nvcv::Tensor featMetadataPlanar(
+        {
+            {inShape.z, capacity},
+            "NM"
+    },
+        nvcv::TYPE_3F32);
+    nvcv::Tensor featDescriptorsPlanar(
+        {
+            {inShape.z, capacity, 128},
+            "NMD"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor numFeaturesPlanar({{inShape.z}, "N"}, nvcv::TYPE_S32);
+
+    std::array<nvcv::Tensor *, 8> outputs{
+        &featCoordsInterleaved, &featMetadataInterleaved, &featDescriptorsInterleaved, &numFeaturesInterleaved,
+        &featCoordsPlanar,      &featMetadataPlanar,      &featDescriptorsPlanar,      &numFeaturesPlanar,
+    };
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    for (const nvcv::Tensor *output : outputs)
+    {
+        auto data = output->exportData<nvcv::TensorDataStridedCuda>();
+        ASSERT_TRUE(data);
+        ASSERT_EQ(cudaSuccess, cudaMemsetAsync(data->basePtr(), 0, data->shape(0) * data->stride(0), stream));
+    }
+
+    cvcuda::SIFT op(inShape + 3, numOctaveLayers + 1);
+    EXPECT_NO_THROW(op(stream, srcInterleaved, featCoordsInterleaved, featMetadataInterleaved,
+                       featDescriptorsInterleaved, numFeaturesInterleaved, numOctaveLayers, contrastThreshold,
+                       edgeThreshold, initSigma, NVCV_SIFT_USE_ORIGINAL_INPUT));
+    EXPECT_NO_THROW(op(stream, srcPlanar, featCoordsPlanar, featMetadataPlanar, featDescriptorsPlanar,
+                       numFeaturesPlanar, numOctaveLayers, contrastThreshold, edgeThreshold, initSigma,
+                       NVCV_SIFT_USE_ORIGINAL_INPUT));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    auto expectExactTensor = [](const nvcv::Tensor &interleaved, const nvcv::Tensor &planar)
+    {
+        auto interleavedData = interleaved.exportData<nvcv::TensorDataStridedCuda>();
+        auto planarData      = planar.exportData<nvcv::TensorDataStridedCuda>();
+        ASSERT_TRUE(interleavedData && planarData);
+
+        const long numBytes = interleavedData->shape(0) * interleavedData->stride(0);
+        ASSERT_EQ(numBytes, planarData->shape(0) * planarData->stride(0));
+
+        RawBufferType interleavedBuffer(numBytes);
+        RawBufferType planarBuffer(numBytes);
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy(interleavedBuffer.data(), interleavedData->basePtr(), numBytes, cudaMemcpyDeviceToHost));
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy(planarBuffer.data(), planarData->basePtr(), numBytes, cudaMemcpyDeviceToHost));
+        EXPECT_EQ(interleavedBuffer, planarBuffer);
+    };
+
+    expectExactTensor(numFeaturesInterleaved, numFeaturesPlanar);
+    expectExactTensor(featCoordsInterleaved, featCoordsPlanar);
+    expectExactTensor(featMetadataInterleaved, featMetadataPlanar);
+    expectExactTensor(featDescriptorsInterleaved, featDescriptorsPlanar);
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpSIFTPlanar, tensor_nchw_matches_interleaved)
+{
+    RunSIFTPlanarParity(int3{67, 53, 2}, "NHWC", "NCHW");
+}
+
+TEST(OpSIFTPlanar, tensor_chw_matches_interleaved)
+{
+    RunSIFTPlanarParity(int3{43, 37, 1}, "HWC", "CHW");
 }
 
 TEST(OpSIFT, no_linear_system_solution)
@@ -1063,7 +1395,7 @@ TEST(OpSIFT, no_linear_system_solution)
 
 // clang-format off
 NVCV_TEST_SUITE_P(OpSIFT_Negative, test::ValueList<nvcv::ImageFormat, int, int, int, float, float, float, int, int, int, nvcv::DataType, int, int, nvcv::DataType, int, int, int, nvcv::DataType, int, nvcv::DataType>{
-    // inFmt            ,inShape     , initSigma, contrastThreshold, edgeThreshold, numOctaveLayers, {featCoords}          , {featMetadata}        , {featDescriptors}        , {numFeatures}
+    // Negative cases vary image format, shape, SIFT thresholds, output tensors, and feature counts.
     // invalid input
     {  nvcv::FMT_RGB8p , 32, 32, 8   , 0.5f     , 0.01f            , 20.f         , 2              , 8, 55, nvcv::TYPE_4F32, 8, 55, nvcv::TYPE_3F32, 8, 55, 128, nvcv::TYPE_U8, 8, nvcv::TYPE_S32},
     {  nvcv::FMT_F32   , 32, 32, 8   , 0.5f     , 0.01f            , 20.f         , 2              , 8, 55, nvcv::TYPE_4F32, 8, 55, nvcv::TYPE_3F32, 8, 55, 128, nvcv::TYPE_U8, 8, nvcv::TYPE_S32},
@@ -1147,13 +1479,14 @@ TEST_P(OpSIFT_Negative, invalid_parameters)
 
     cvcuda::SIFT op(maxShape, maxOctaveLayers);
 
-    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall(
-                                               [&]
-                                               {
-                                                   op(stream, src, featCoords, featMetadata, featDescriptors,
-                                                      numFeatures, numOctaveLayers, contrastThreshold, edgeThreshold,
-                                                      initSigma, flags);
-                                               }));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall(
+                  [&op, &stream, &src, &featCoords, &featMetadata, &featDescriptors, &numFeatures, &numOctaveLayers,
+                   &contrastThreshold, &edgeThreshold, &initSigma, &flags]
+                  {
+                      op(stream, src, featCoords, featMetadata, featDescriptors, numFeatures, numOctaveLayers,
+                         contrastThreshold, edgeThreshold, initSigma, flags);
+                  }));
 
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));

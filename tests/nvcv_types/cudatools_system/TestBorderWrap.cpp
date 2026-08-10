@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -90,8 +90,9 @@ TYPED_TEST(GetIndexWithBorderTests, correct_index)
 
     std::iota(test.begin(), test.end(), kBase);
 
-    std::transform(test.cbegin(), test.cend(), test.begin(),
-                   [](const int &coord) { return cuda::GetIndexWithBorder<BorderType>(coord, kInputSize); });
+    std::transform( // NOSONAR: std::ranges::transform is C++20.
+        test.cbegin(), test.cend(), test.begin(),
+        [](const int &coord) { return cuda::GetIndexWithBorder<BorderType>(coord, kInputSize); });
 
     EXPECT_EQ(test, gold);
 }
@@ -153,7 +154,8 @@ TYPED_TEST(BorderWrapNHWTest, correct_fill)
     ASSERT_TRUE(srcAccess);
     ASSERT_TRUE(dstAccess);
 
-    DimType srcSize, dstSize;
+    DimType srcSize;
+    DimType dstSize;
 
     srcSize.x = srcAccess->numCols();
     dstSize.x = dstAccess->numCols();
@@ -161,8 +163,8 @@ TYPED_TEST(BorderWrapNHWTest, correct_fill)
     srcSize.y = srcAccess->numRows();
     dstSize.y = dstAccess->numRows();
 
-    srcSize.z = srcAccess->numSamples();
-    dstSize.z = dstAccess->numSamples();
+    srcSize.z = static_cast<int>(srcAccess->numSamples());
+    dstSize.z = static_cast<int>(dstAccess->numSamples());
 
     long3 srcStrides{srcAccess->sampleStride(), srcAccess->rowStride(), srcAccess->colStride()};
     long3 dstStrides{dstAccess->sampleStride(), dstAccess->rowStride(), dstAccess->colStride()};
@@ -173,14 +175,14 @@ TYPED_TEST(BorderWrapNHWTest, correct_fill)
         dstStrides.x = dstAccess->numRows() * dstAccess->rowStride();
     }
 
-    int srcSizeBytes = srcStrides.x * srcSize.z;
-    int dstSizeBytes = dstStrides.x * dstSize.z;
+    auto srcSizeBytes = static_cast<int>(srcStrides.x * srcSize.z);
+    auto dstSizeBytes = static_cast<int>(dstStrides.x * dstSize.z);
 
     std::vector<uint8_t> srcVec(srcSizeBytes);
 
     std::default_random_engine             randEng{0};
     std::uniform_int_distribution<uint8_t> srcRand{0u, 255u};
-    std::generate(srcVec.begin(), srcVec.end(), [&]() { return srcRand(randEng); });
+    std::ranges::generate(srcVec, [&srcRand, &randEng]() { return srcRand(randEng); });
 
     ASSERT_EQ(cudaSuccess, cudaMemcpy(srcDev->basePtr(), srcVec.data(), srcVec.size(), cudaMemcpyHostToDevice));
 

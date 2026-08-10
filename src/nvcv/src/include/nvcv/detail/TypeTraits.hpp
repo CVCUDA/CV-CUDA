@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,6 +25,16 @@ namespace nvcv { namespace detail {
 
 template<bool Cond, typename T = void>
 using EnableIf_t = typename std::enable_if<Cond, T>::type;
+
+template<typename T, typename U>
+constexpr bool IsSameType()
+{
+#if __cplusplus >= 201703L
+    return std::is_same_v<T, U>;
+#else
+    return std::is_same<T, U>::value;
+#endif
+}
 
 template<bool Cond, typename If, typename Else>
 using Conditional_t = typename std::conditional<Cond, If, Else>::type;

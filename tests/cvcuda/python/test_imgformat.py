@@ -13,8 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import cvcuda as cvcuda
 import pytest as t
+
+import cvcuda as cvcuda
 
 
 @t.mark.parametrize(
@@ -25,6 +26,7 @@ import pytest as t
         (cvcuda.Format._2S16, 2),
         (cvcuda.Format.S8, 1),
         (cvcuda.Format.NV12, 3),
+        (cvcuda.Format.F16, 1),
     ],
 )
 def test_imgformat_numchannels(format, gold_channels):
@@ -39,6 +41,7 @@ def test_imgformat_numchannels(format, gold_channels):
         (cvcuda.Format._2S16, 1),
         (cvcuda.Format.S8, 1),
         (cvcuda.Format.NV12, 2),
+        (cvcuda.Format.F16, 1),
     ],
 )
 def test_imgformat_planes(format, gold_planes):

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -56,8 +56,9 @@ CVCUDA_PUBLIC NVCVStatus cvcudaAdvCvtColorCreate(NVCVOperatorHandle *handle);
  *  Limitations:
  *
  *  Input:
- *       Data Layout:    [kNHWC, kHWC]
- *       Channels:       [1, 3] kNWHC/KHWC semi planar 420 tensors are allowed
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
+ *       Channels:       [1, 3, 4] kNHWC/kHWC/kNCHW/kCHW semi planar 420 tensors are allowed
+ *                       (2-channel tensors are not supported)
  *
  *       Data Type      | Allowed
  *       -------------- | -------------
@@ -67,12 +68,14 @@ CVCUDA_PUBLIC NVCVStatus cvcudaAdvCvtColorCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | No
  *       64bit Float    | No
  *
  *  Output:
- *       Data Layout:    [kNHWC, kHWC]
- *       Channels:       [1, 3] kNWHC/KHWC semi planar 420 tensors are allowed
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
+ *       Channels:       [1, 3, 4] kNHWC/kHWC/kNCHW/kCHW semi planar 420 tensors are allowed
+ *                       (2-channel tensors are not supported)
  *
  *       Data Type      | Allowed
  *       -------------- | -------------
@@ -82,6 +85,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaAdvCvtColorCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | No
  *       64bit Float    | No
  *
@@ -89,7 +93,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaAdvCvtColorCreate(NVCVOperatorHandle *handle);
  *
  *       Property      |  Input == Output
  *      -------------- | -------------
- *       Data Layout   | No
+ *       Data Layout   | Yes
  *       Data Type     | Yes
  *       Number        | Yes
  *       Channels      | Yes (No for semi planar 420 tensors conversion)
@@ -107,14 +111,19 @@ CVCUDA_PUBLIC NVCVStatus cvcudaAdvCvtColorCreate(NVCVOperatorHandle *handle);
  * @param [in] code  color conversion code see \p NVCVColorConversionCode group.
  *                   The following conversion codes are available for this operator:
  *
- *                  Interleaved Y,U,V <-> R,G,B tensors are (n)HWC with C = 3 for YUV/RGB components
+ *                  Packed 4:4:4 Y,U,V <-> R,G,B tensors use kNHWC/kHWC with C = 3.
+ *                  Planar 4:4:4 tensors use kNCHW/kCHW with C = 3, one color
+ *                  component per channel plane. The output keeps the input layout.
  *                       NVCV_COLOR_YUV2BGR
  *                       NVCV_COLOR_YUV2RGB
  *                       NVCV_COLOR_BGR2YUV
  *                       NVCV_COLOR_RGB2YUV
  *
- *                  Semi planar Y,U,V <-> R,G,B tensors are (n)HWC with C = 3 for RGB and C = 1.
- *                  For YUV NV12/21 tensors H = (pixel height) * 3/2, w = (pixel width) and bottom 1/3 of the tensor contains interlaced VU data.
+ *                  Semi planar Y,U,V <-> R,G,B tensors use kNHWC/kHWC with C = 3 or
+ *                  C = 4 for RGB/BGR(A), or kNCHW/kCHW with C = 3 or C = 4 for planar
+ *                  RGB/BGR(A). NV12/21 tensors are single-channel tensors in the same
+ *                  layout family. For NV12/21, H = (pixel height) * 3/2, W = pixel
+ *                  width, and the bottom 1/3 of the tensor contains interleaved UV/VU data.
  *                       NVCV_COLOR_YUV2RGB_NV12
  *                       NVCV_COLOR_YUV2BGR_NV12
  *                       NVCV_COLOR_YUV2RGB_NV21
@@ -142,5 +151,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaAdvCvtColorSubmit(NVCVOperatorHandle handle, cuda
 #ifdef __cplusplus
 }
 #endif
+
+/** @} */
 
 #endif /* CVCUDA__ADV_CVT_COLOR_H */

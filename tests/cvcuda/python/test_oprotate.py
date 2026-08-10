@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,14 +15,15 @@
 
 import cvcuda
 
-import pytest as t
+import pytest
 import numpy as np
+import cvcuda_tools as cv_tools
 import cvcuda_util as util
 
 RNG = np.random.default_rng(0)
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "input_args, angle_deg, shift, interpolation",
     [
         (
@@ -87,7 +88,7 @@ def test_op_rotate(input_args, angle_deg, shift, interpolation):
     assert out.dtype == input.dtype
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "nimages, format, max_size, max_pixel, max_angle_deg, max_shift, interpolation",
     [
         (
@@ -168,3 +169,39 @@ def test_op_rotatevarshape(
     assert out.capacity == input.capacity
     assert out.uniqueformat == input.uniqueformat
     assert out.maxsize == input.maxsize
+
+
+def _rotate_params(dtype, layout, channels):
+    return {
+        "angle_deg": 45.0,
+        "shift": [0, 0],
+        "interpolation": cvcuda.Interp.LINEAR,
+    }
+
+
+def _rotate_varshape_params(dtype, layout, channels):
+    return {
+        "angle_deg": util.create_tensor((2,), np.float64, "N", max_random=180, rng=RNG),
+        "shift": util.create_tensor((2, 2), np.float64, "NC", max_random=5, rng=RNG),
+        "interpolation": cvcuda.Interp.LINEAR,
+    }
+
+
+globals().update(
+    cv_tools.make_op_tests(
+        name="rotate",
+        runner_info=[
+            ("tensor", cvcuda.rotate, _rotate_params),
+            ("image_batch", cvcuda.rotate, _rotate_varshape_params),
+        ],
+        keystone_dlc=(cvcuda.Type.U8, "NHWC", 3),
+        supported_dtypes={
+            cvcuda.Type.U8,
+            cvcuda.Type.U16,
+            cvcuda.Type.S16,
+            cvcuda.Type.F32,
+        },
+        supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
+        supported_channels={1, 3, 4},
+    )
+)

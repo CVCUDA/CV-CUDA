@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "priv/OpHistogram.hpp"
 
+#include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <nvcv/Exception.hpp>
@@ -28,7 +29,7 @@ namespace priv = cvcuda::priv;
 CVCUDA_DEFINE_API(0, 4, NVCVStatus, cvcudaHistogramCreate, (NVCVOperatorHandle * handle))
 {
     return nvcv::ProtectCall(
-        [&]
+        [&handle]
         {
             if (handle == nullptr)
             {
@@ -36,7 +37,7 @@ CVCUDA_DEFINE_API(0, 4, NVCVStatus, cvcudaHistogramCreate, (NVCVOperatorHandle *
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            *handle = reinterpret_cast<NVCVOperatorHandle>(new priv::Histogram());
+            *handle = priv::CreateOperatorHandle<priv::Histogram>();
         });
 }
 
@@ -44,10 +45,13 @@ CVCUDA_DEFINE_API(0, 4, NVCVStatus, cvcudaHistogramSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in, NVCVTensorHandle mask,
                    NVCVTensorHandle histogram))
 {
+    CVCUDA_NVTX_RANGE("cvcudaHistogramSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&in, &histogram, &handle, &stream, &mask]
         {
-            nvcv::TensorWrapHandle input(in), output(histogram);
-            priv::ToDynamicRef<priv::Histogram>(handle)(stream, input, NVCV_TENSOR_HANDLE_TO_OPTIONAL(mask), output);
+            nvcv::TensorWrapHandle input(in);
+            nvcv::TensorWrapHandle output(histogram);
+            priv::ToDynamicRef<priv::Histogram>(handle)(stream, input.resource(), NVCV_TENSOR_HANDLE_TO_OPTIONAL(mask),
+                                                        output.resource());
         });
 }

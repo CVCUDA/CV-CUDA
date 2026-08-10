@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +15,13 @@
 
 # Setup Doxygen input/output
 find_package(Doxygen)
+
+if(DOXYGEN_DOT_FOUND)
+    set(DOXYGEN_HAVE_DOT YES)
+else()
+    message(STATUS "Graphviz dot not found — disabling Doxygen graph generation")
+    set(DOXYGEN_HAVE_DOT NO)
+endif()
 
 get_target_property(CORE_SRCPATH nvcv_types SOURCE_DIR)
 get_target_property(OPS_SRCPATH cvcuda SOURCE_DIR)
@@ -69,19 +76,15 @@ add_custom_target(cvcuda_doxygen ALL DEPENDS ${DOXYGEN_INDEX_FILE})
 set(SPHINX_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/sphinx)
 set(SPHINX_BUILD ${CMAKE_CURRENT_BINARY_DIR}/sphinx)
 set(SPHINX_INDEX_FILE ${SPHINX_BUILD}/index.html)
-set(C_API_RST ${SPHINX_SOURCE}/_c_api)
-set(CPP_API_RST ${SPHINX_SOURCE}/_cpp_api)
+set(C_CPP_API_RST ${SPHINX_SOURCE}/_c_cpp_api)
 
 # Start from clean directory for rst files, otherwise build could be affected due to old files
-if(EXISTS ${C_API_RST})
-    file(REMOVE_RECURSE ${C_API_RST})
-endif()
-if(EXISTS ${CPP_API_RST})
-    file(REMOVE_RECURSE ${CPP_API_RST})
+if(EXISTS ${C_CPP_API_RST})
+    file(REMOVE_RECURSE ${C_CPP_API_RST})
 endif()
 
 # Generate rst files for groups from doxygen index.xml
-add_custom_target(cvcuda_groups ALL ${PYTHON_EXECUTABLE} ${SPHINX_SOURCE}/generate_groups.py ${C_API_RST} ${CPP_API_RST} ${DOXYGEN_OUTPUT_DIR}/xml
+add_custom_target(cvcuda_groups ALL ${PYTHON_EXECUTABLE} ${SPHINX_SOURCE}/generate_groups.py ${C_CPP_API_RST} ${DOXYGEN_OUTPUT_DIR}/xml
                     DEPENDS cvcuda_doxygen)
 
 # Create virtual environment and install wheel for documentation
@@ -105,7 +108,7 @@ list(GET WHEEL_FILES 0 WHEEL_FILE)
 message(STATUS \"Installing wheel: \${WHEEL_FILE}\")
 
 execute_process(
-    COMMAND \"\${VENV_PYTHON}\" -m pip install --force-reinstall \"\${WHEEL_FILE}\"
+    COMMAND \"\${VENV_PYTHON}\" -m pip install --force-reinstall --no-deps \"\${WHEEL_FILE}\"
     RESULT_VARIABLE INSTALL_RESULT
 )
 
@@ -126,7 +129,7 @@ file(TOUCH \"\${MARKER_FILE}\")
         # this will skip packages installed via the system-site-packages flag
         # in existing CI setup this will do nothing, on local it may install packages if venv creator
         # does not properly support system-site-packages flag
-        COMMAND ${DOC_VENV_PYTHON} -m pip install -r ${CMAKE_SOURCE_DIR}/docker/requirements.sys_python.txt
+        COMMAND ${DOC_VENV_PYTHON} -m pip install -r ${CMAKE_SOURCE_DIR}/docs/requirements.docs.txt
         # Find the wheel file dynamically and install it using CMake script
         COMMAND ${CMAKE_COMMAND}
                 -DWHEEL_DIR=${CMAKE_BINARY_DIR}/python3/repaired_wheels
@@ -154,10 +157,16 @@ endif()
 find_package(CUDAToolkit REQUIRED)
 get_filename_component(CUDA_LIB_DIR "${CUDAToolkit_LIBRARY_DIR}" ABSOLUTE)
 
+# NOTE: use `-j 1` (serial) rather than `-j auto`.  With `-j auto`, each
+# worker builds its own C++ domain symbol tree and the main process then
+# merges them back, which is O(n^2) in the symbol count.  CV-CUDA exposes a
+# large C++ API (nvcv::, cvcuda::, enums, macros), and this merge step takes
+# longer than the whole serial build would.  Single-process is faster here
+# and avoids that wart.
 add_custom_command(OUTPUT ${SPHINX_INDEX_FILE}
                     COMMAND ${CMAKE_COMMAND} -E env
                             "LD_LIBRARY_PATH=${CUDA_LIB_DIR}:$ENV{LD_LIBRARY_PATH}"
-                            ${SPHINX_PYTHON} -m sphinx -j auto -b html
+                            ${SPHINX_PYTHON} -m sphinx -j 1 -b html
                             # Tell Breathe where to find the Doxygen's xml output. Needed to have c/cpp documentation.
                             -Dbreathe_projects.cvcuda=${DOXYGEN_OUTPUT_DIR}/xml
                             ${SPHINX_SOURCE} ${SPHINX_BUILD}

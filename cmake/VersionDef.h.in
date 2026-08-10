@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -45,7 +45,7 @@ extern "C" {
  * @returns The numeric version representation.
  */
 #define @LIBPREFIX@_MAKE_VERSION4(major, minor, patch, tweak) \
-    ((uint32_t)((major)*1000000 + (minor)*10000 + (patch)*100 + (tweak)))
+    ((major)*1000000 + (minor)*10000 + (patch)*100 + (tweak))
 
 /** Make a @LIBPREFIX@ version identifier with three components.
  *

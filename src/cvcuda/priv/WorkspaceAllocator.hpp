@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,9 +20,18 @@
 
 #include <cvcuda/Workspace.hpp>
 
+#include <cstdio>
+#include <exception>
 #include <optional>
+#include <stdexcept>
 
 namespace cvcuda {
+
+class WorkspaceAllocatorError : public std::logic_error
+{
+public:
+    using std::logic_error::logic_error;
+};
 
 class WorkspaceMemAllocator
 {
@@ -43,7 +52,8 @@ public:
      * @param mem Workspace memory
      * @param acquireReleaseStream A stream on which the data will be used (or nullopt to denote host usage)
      */
-    WorkspaceMemAllocator(const WorkspaceMem &mem, std::optional<cudaStream_t> acquireReleaseStream = std::nullopt)
+    explicit WorkspaceMemAllocator(const WorkspaceMem         &mem,
+                                   std::optional<cudaStream_t> acquireReleaseStream = std::nullopt)
         : WorkspaceMemAllocator(mem, acquireReleaseStream, acquireReleaseStream)
     {
     }
@@ -70,10 +80,23 @@ public:
     {
     }
 
-    ~WorkspaceMemAllocator()
+    ~WorkspaceMemAllocator() noexcept
     {
         if (!m_released)
-            release(m_releaseStream);
+        {
+            try
+            {
+                release(m_releaseStream);
+            }
+            catch (const std::exception &e)
+            {
+                std::fprintf(stderr, "WorkspaceMemAllocator release failed during destruction: %s\n", e.what());
+            }
+            catch (...)
+            {
+                std::fprintf(stderr, "WorkspaceMemAllocator release failed during destruction\n");
+            }
+        }
     }
 
     /**
@@ -92,7 +115,7 @@ public:
         assert(alignment >= alignof(T));
 
         if (m_released)
-            throw std::logic_error("This workspace memory has been released.");
+            throw WorkspaceAllocatorError("This workspace memory has been released.");
 
         if (!m_acquired && count > 0)
             acquire(m_acquireStream);
@@ -105,7 +128,7 @@ public:
         }
 
         size_t offset    = nvcv::detail::AlignUp(m_offset, alignment);
-        T     *ret       = reinterpret_cast<T *>(static_cast<char *>(m_mem.data) + offset);
+        auto  *ret       = reinterpret_cast<T *>(static_cast<char *>(m_mem.data) + offset);
         size_t real_size = nvcv::detail::AlignUp(count * sizeof(T), alignment);
         offset += real_size;
         if (offset > m_mem.req.size)
@@ -130,14 +153,14 @@ public:
     void acquire(std::optional<cudaStream_t> stream)
     {
         if (m_acquired)
-            throw std::logic_error("Acquire called multiple times");
+            throw WorkspaceAllocatorError("Acquire called multiple times");
 
         if (m_released)
-            throw std::logic_error("This workspace memory has been released.");
+            throw WorkspaceAllocatorError("This workspace memory has been released.");
 
         if (m_mem.ready)
         {
-            if (stream)
+            if (stream.has_value())
             {
                 if (cudaStreamWaitEvent(*stream, m_mem.ready) != cudaSuccess)
                     throw nvcv::Exception(nvcv::Status::ERROR_INTERNAL, "cudaStreamWairEvent failed");
@@ -157,15 +180,14 @@ public:
     void release(std::optional<cudaStream_t> stream)
     {
         if (m_released)
-            throw std::logic_error("Release called multiple times");
+            throw WorkspaceAllocatorError("Release called multiple times");
 
         if (m_mem.ready && m_offset)
         {
             assert(m_acquired);
 
-            if (stream)
-                if (cudaEventRecord(m_mem.ready, *stream) != cudaSuccess)
-                    throw nvcv::Exception(nvcv::Status::ERROR_INTERNAL, "cudaEventRecord failed");
+            if (stream.has_value() && cudaEventRecord(m_mem.ready, *stream) != cudaSuccess)
+                throw nvcv::Exception(nvcv::Status::ERROR_INTERNAL, "cudaEventRecord failed");
         }
         m_released = true;
     }
@@ -173,9 +195,11 @@ public:
 private:
     WorkspaceMem m_mem;
     size_t       m_offset   = 0;
-    bool         m_acquired = false, m_released = false;
+    bool         m_acquired = false;
+    bool         m_released = false;
 
-    std::optional<cudaStream_t> m_acquireStream, m_releaseStream;
+    std::optional<cudaStream_t> m_acquireStream;
+    std::optional<cudaStream_t> m_releaseStream;
 };
 
 struct WorkspaceAllocator

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,6 +46,8 @@
  */
 
 #include "Assert.h"
+#include "CudaDeviceUtils.hpp"
+#include "Nvtx.hpp"
 #include "OpLabel.hpp"
 
 #include <cvcuda/Types.h>
@@ -62,6 +64,7 @@
 #include <nvcv/util/Math.hpp>
 
 #include <sstream>
+#include <type_traits>
 
 namespace cuda = nvcv::cuda;
 namespace util = nvcv::util;
@@ -71,6 +74,18 @@ namespace {
 constexpr int REGION_NOT_MARKED  = 0;
 constexpr int REGION_REMOVED     = 1;
 constexpr int REGION_INSIDE_MASK = 2;
+
+constexpr int kLabelDefault2DBlockHeight = 4;
+constexpr int kLabelU32Tall2DBlockHeight = 16;
+
+constexpr int LabelU32BlockHeightForSM(int sm)
+{
+    return sm == 75 ? kLabelDefault2DBlockHeight : kLabelU32Tall2DBlockHeight;
+}
+
+static_assert(LabelU32BlockHeightForSM(75) == kLabelDefault2DBlockHeight);
+static_assert(LabelU32BlockHeightForSM(80) == kLabelU32Tall2DBlockHeight);
+static_assert(LabelU32BlockHeightForSM(90) == kLabelU32Tall2DBlockHeight);
 
 template<typename T>
 using ArgWrap = cuda::Tensor1DWrap<T, int32_t>;
@@ -384,9 +399,9 @@ __global__ void ReplaceBgLabels2D(DstWrap dst, SrcWrap src, ArgWrap<ST> bgLabel,
     }
 }
 
-template<typename DstWrap, typename StatsWrap, typename ST, typename DT = typename DstWrap::ValueType>
-__global__ void CountLabels2D(ArgWrap<DT> count, StatsWrap stats, DstWrap dst, ArgWrap<ST> bgLabel, int2 size,
-                              int maxCapacity)
+template<typename DstWrap, typename StatsWrap, typename SrcWrap, typename ST, typename DT = typename DstWrap::ValueType>
+__global__ void CountLabels2D(ArgWrap<DT> count, StatsWrap stats, DstWrap dst, SrcWrap src, ArgWrap<ST> bgLabel,
+                              ArgWrap<ST> minThresh, ArgWrap<ST> maxThresh, int2 size, int maxCapacity)
 {
     int3 gc;
     gc.x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -398,14 +413,43 @@ __global__ void CountLabels2D(ArgWrap<DT> count, StatsWrap stats, DstWrap dst, A
         return;
     }
 
-    bool hasBgLabel      = (bgLabel.ptr(0) != nullptr);
+    bool hasBgLabel      = bgLabel.ptr(0) != nullptr;
     ST   backgroundLabel = hasBgLabel ? bgLabel[gc.z] : 0;
+    DT   label           = dst[gc];
 
-    DT label = dst[gc];
-
-    if (hasBgLabel && label == (DT)backgroundLabel)
+    if (hasBgLabel)
     {
-        return; // do not count background labels
+        bool hasMinThresh = minThresh.ptr(0) != nullptr;
+        bool hasMaxThresh = maxThresh.ptr(0) != nullptr;
+        ST   minThreshold = hasMinThresh ? minThresh[gc.z] : 0;
+        ST   maxThreshold = hasMaxThresh ? maxThresh[gc.z] : 0;
+        ST   pyx          = src[gc];
+
+        if (hasMinThresh && hasMaxThresh)
+        {
+            pyx = pyx < minThreshold || pyx > maxThreshold ? 0 : 1;
+        }
+        else if (hasMinThresh)
+        {
+            pyx = pyx < minThreshold ? 0 : 1;
+        }
+        else if (hasMaxThresh)
+        {
+            pyx = pyx > maxThreshold ? 0 : 1;
+        }
+
+        if (pyx == backgroundLabel)
+        {
+            dst[gc] = backgroundLabel;
+            return;
+        }
+
+        DT endLabel = dst.strides()[0] / sizeof(DT);
+        if (label == (DT)backgroundLabel)
+        {
+            label   = endLabel;
+            dst[gc] = endLabel;
+        }
     }
 
     DT posLabel = gc.y * dst.strides()[1] / sizeof(DT) + gc.x;
@@ -1414,7 +1458,7 @@ __global__ void Relabel3D(StatsWrap stats, DstWrap dst, ArgWrap<ST> bgLabel, Arg
 
 // Run functions ---------------------------------------------------------------
 
-template<typename SrcT, typename DstT = uint32_t, typename MskT = uint8_t>
+template<typename SrcT, int BH2D = kLabelDefault2DBlockHeight, typename DstT = uint32_t, typename MskT = uint8_t>
 inline void RunLabelForType(cudaStream_t stream, const nvcv::TensorDataStridedCuda &srcData,
                             const nvcv::TensorDataStridedCuda &dstData, const int4 &shapeWHDN,
                             const nvcv::Tensor &bgLabel, const nvcv::Tensor &minThresh, const nvcv::Tensor &maxThresh,
@@ -1422,6 +1466,7 @@ inline void RunLabelForType(cudaStream_t stream, const nvcv::TensorDataStridedCu
                             const nvcv::Tensor &mask, int numDim, bool relabel)
 {
     constexpr int BW = 32, BH = 4, BD = 2; // block width, height and depth
+    static_assert(BH2D == kLabelDefault2DBlockHeight || BH2D == kLabelU32Tall2DBlockHeight);
 
     int4 idsNDHW{srcData.layout().find('N'), srcData.layout().find('D'), srcData.layout().find('H'),
                  srcData.layout().find('W')};
@@ -1533,10 +1578,10 @@ inline void RunLabelForType(cudaStream_t stream, const nvcv::TensorDataStridedCu
         srcStridesNH.x = idsNDHW.x == -1 ? srcStridesNH.y * shapeWHDN.y : (int)srcData.stride(idsNDHW.x);
         dstStridesNH.x = idsNDHW.x == -1 ? dstStridesNH.y * shapeWHDN.y : (int)dstData.stride(idsNDHW.x);
 
-        dim3 larThreads(BW, BH, 1);
-        dim3 labBlocks(util::DivUp(sizeWH.x, BW), util::DivUp(sizeWH.y, BH), shapeWHDN.w);
-        dim3 redBlocksX(util::DivUp(sizeWH.y, BW), util::DivUp((int)labBlocks.x, BH), shapeWHDN.w);
-        dim3 redBlocksY(util::DivUp(sizeWH.x, BW), util::DivUp((int)labBlocks.y, BH), shapeWHDN.w);
+        dim3 larThreads(BW, BH2D, 1);
+        dim3 labBlocks(util::DivUp(sizeWH.x, BW), util::DivUp(sizeWH.y, BH2D), shapeWHDN.w);
+        dim3 redBlocksX(util::DivUp(sizeWH.y, BW), util::DivUp((int)labBlocks.x, BH2D), shapeWHDN.w);
+        dim3 redBlocksY(util::DivUp(sizeWH.x, BW), util::DivUp((int)labBlocks.y, BH2D), shapeWHDN.w);
 
         cuda::Tensor3DWrap<SrcT, SType> srcWrap(srcData.basePtr(), srcStridesNH.x, srcStridesNH.y);
         cuda::Tensor3DWrap<DstT, SType> dstWrap(dstData.basePtr(), dstStridesNH.x, dstStridesNH.y);
@@ -1550,7 +1595,7 @@ inline void RunLabelForType(cudaStream_t stream, const nvcv::TensorDataStridedCu
             mskWrap = cuda::Tensor3DWrap<MskT, SType>(mskData->basePtr(), mskStridesNH.x, mskStridesNH.y);
         }
 
-        BlockLabel2D<BW, BH>
+        BlockLabel2D<BW, BH2D>
             <<<labBlocks, larThreads, 0, stream>>>(dstWrap, srcWrap, minThreshWrap, maxThreshWrap, sizeWH);
 
         YLabelReduction2D<<<redBlocksY, larThreads, 0, stream>>>(dstWrap, srcWrap, minThreshWrap, maxThreshWrap,
@@ -1561,15 +1606,15 @@ inline void RunLabelForType(cudaStream_t stream, const nvcv::TensorDataStridedCu
 
         ResolveLabels2D<<<labBlocks, larThreads, 0, stream>>>(dstWrap, sizeWH);
 
-        if (bgLabel)
+        if (bgLabel && !count)
         {
             ReplaceBgLabels2D<<<labBlocks, larThreads, 0, stream>>>(dstWrap, srcWrap, bgLabelWrap, minThreshWrap,
                                                                     maxThreshWrap, sizeWH);
         }
         if (count)
         {
-            CountLabels2D<<<labBlocks, larThreads, 0, stream>>>(countWrap, statsWrap, dstWrap, bgLabelWrap, sizeWH,
-                                                                maxCapacity);
+            CountLabels2D<<<labBlocks, larThreads, 0, stream>>>(countWrap, statsWrap, dstWrap, srcWrap, bgLabelWrap,
+                                                                minThreshWrap, maxThreshWrap, sizeWH, maxCapacity);
 
             if (stats)
             {
@@ -1662,20 +1707,36 @@ inline void RunLabel(cudaStream_t stream, const nvcv::TensorDataStridedCuda &src
                      const nvcv::Tensor &minSize, const nvcv::Tensor &count, const nvcv::Tensor &stats,
                      const nvcv::Tensor &mask, int numDim, bool relabel)
 {
-    switch (srcDataType)
+    switch (static_cast<NVCVDataType>(srcDataType))
     {
 #define CVCUDA_LABEL_CASE(DT, T)                                                                                     \
-    case nvcv::TYPE_##DT:                                                                                            \
+    case static_cast<NVCVDataType>(nvcv::TYPE_##DT):                                                                 \
         RunLabelForType<T>(stream, srcData, dstData, srcShape, bgLabel, minThresh, maxThresh, minSize, count, stats, \
                            mask, numDim, relabel);                                                                   \
         break
 
         CVCUDA_LABEL_CASE(U8, uint8_t);
         CVCUDA_LABEL_CASE(U16, uint16_t);
-        CVCUDA_LABEL_CASE(U32, uint32_t);
         CVCUDA_LABEL_CASE(S8, int8_t);
         CVCUDA_LABEL_CASE(S16, int16_t);
         CVCUDA_LABEL_CASE(S32, int32_t);
+
+    case static_cast<NVCVDataType>(nvcv::TYPE_U32):
+        if (numDim == 2)
+        {
+            int sm = 0;
+            NVCV_CHECK_THROW(cvcuda::priv::GetCurrentDeviceSM(sm));
+            if (LabelU32BlockHeightForSM(sm) == kLabelDefault2DBlockHeight)
+            {
+                RunLabelForType<uint32_t, kLabelDefault2DBlockHeight>(stream, srcData, dstData, srcShape, bgLabel,
+                                                                      minThresh, maxThresh, minSize, count, stats, mask,
+                                                                      numDim, relabel);
+                break;
+            }
+        }
+        RunLabelForType<uint32_t, kLabelU32Tall2DBlockHeight>(stream, srcData, dstData, srcShape, bgLabel, minThresh,
+                                                              maxThresh, minSize, count, stats, mask, numDim, relabel);
+        break;
 
 #undef CVCUDA_LABEL_CASE
 
@@ -1700,12 +1761,15 @@ void Label::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::
                        const nvcv::Tensor &mask, NVCVConnectivityType connectivity, NVCVLabelType assignLabels,
                        NVCVLabelMaskType maskType) const
 {
-    if (!(in.shape().layout() == nvcv::TENSOR_HW || in.shape().layout() == nvcv::TENSOR_HWC
-          || in.shape().layout() == nvcv::TENSOR_NHW || in.shape().layout() == nvcv::TENSOR_NHWC
-          || in.shape().layout() == nvcv::TENSOR_DHW || in.shape().layout() == nvcv::TENSOR_DHWC
-          || in.shape().layout() == nvcv::TENSOR_NDHW || in.shape().layout() == nvcv::TENSOR_NDHWC))
+    CVCUDA_NVTX_RANGE("cvcuda::Label::operator()[Tensor]");
+    const auto layout   = in.shape().layout();
+    const bool isPlanar = layout == nvcv::TENSOR_CHW || layout == nvcv::TENSOR_NCHW;
+    if (!(layout == nvcv::TENSOR_HW || layout == nvcv::TENSOR_HWC || isPlanar || layout == nvcv::TENSOR_NHW
+          || layout == nvcv::TENSOR_NHWC || layout == nvcv::TENSOR_DHW || layout == nvcv::TENSOR_DHWC
+          || layout == nvcv::TENSOR_NDHW || layout == nvcv::TENSOR_NDHWC))
     {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input tensor must have [N][D]HW[C] layout");
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "Input tensor must have [N][D]HW[C] or [N]CHW layout");
     }
 
     // We expect input and output shape to be the same as TensorShape contains TensorLayout

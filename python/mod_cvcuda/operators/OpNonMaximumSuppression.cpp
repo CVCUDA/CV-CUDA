@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,7 +46,8 @@ Tensor NonMaximumSuppressionInto(Tensor &dst, Tensor &src, Tensor &scores, float
     guard.add(LockMode::LOCK_MODE_WRITE, {dst});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
-    op->submit(pstream->cudaHandle(), src, dst, scores, scoreThreshold, iouThreshold);
+    guard.run([&op, &pstream, &src, &dst, &scores, &scoreThreshold, &iouThreshold]()
+              { op->submit(pstream->cudaHandle(), src, dst, scores, scoreThreshold, iouThreshold); });
 
     return std::move(dst);
 }
@@ -70,18 +71,14 @@ void ExportOpNonMaximumSuppression(py::module &m)
 {
     using namespace pybind11::literals;
 
-    m.def("nms", &NonMaximumSuppression, "src"_a, "scores"_a,
+    m.def("nms", NvtxTrace("cvcuda.nms", &NonMaximumSuppression), "src"_a, "scores"_a,
           "score_threshold"_a = std::numeric_limits<float>::epsilon(), "iou_threshold"_a = 1.0, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
-
         Executes NMS.
 
         The Non-Maximum Suppression (NMS) operation reads a set of input bounding boxes (bboxes) proposals and
         their scores and writes an output boolean mask with suppressed bboxes as zeros and selected bboxes as ones.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Non-Maximum Suppression operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.Tensor): src[i, j] is the set of input bounding box proposals
@@ -100,22 +97,15 @@ void ExportOpNonMaximumSuppression(py::module &m)
         Returns:
             cvcuda.Tensor: The output tensor of selected bounding boxes.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
-    m.def("nms_into", &NonMaximumSuppressionInto, "dst"_a, "src"_a, "scores"_a,
+    m.def("nms_into", NvtxTrace("cvcuda.nms_into", &NonMaximumSuppressionInto), "dst"_a, "src"_a, "scores"_a,
           "score_threshold"_a = std::numeric_limits<float>::epsilon(), "iou_threshold"_a = 1.0, py::kw_only(),
           "stream"_a = nullptr, R"pbdoc(
-
         Executes NMS.
 
         The Non-Maximum Suppression (NMS) operation reads a set of input bounding boxes (bboxes) proposals and
         their scores and writes an output boolean mask with suppressed bboxes as zeros and selected bboxes as ones.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Non-Maximum Suppression operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.Tensor): dst[i, j] is the output boolean mask marking selected
@@ -136,11 +126,7 @@ void ExportOpNonMaximumSuppression(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 }
 

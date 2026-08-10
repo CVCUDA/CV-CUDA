@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,8 @@
  */
 #ifndef CVCUDA_PRIV_HQ_RESIZE_FILTER_CUH
 #define CVCUDA_PRIV_HQ_RESIZE_FILTER_CUH
+
+#include "PerDeviceResource.hpp"
 
 #include <cuda_runtime.h>
 #include <cvcuda/Types.h> // for NVCVInterpolationType, etc.
@@ -203,7 +205,7 @@ inline void InitTriangularFilter(ResamplingFilter filter)
 inline void InitGaussianFilter(ResamplingFilter filter)
 {
     InitFilter(filter,
-               [&](int i)
+               [&filter](int i)
                {
                    float x = 4 * (i - (filter.numCoeffs - 1) * 0.5f) / (filter.numCoeffs - 1);
                    return expf(-x * x);
@@ -213,7 +215,7 @@ inline void InitGaussianFilter(ResamplingFilter filter)
 inline void InitLanczosFilter(ResamplingFilter filter, float a)
 {
     InitFilter(filter,
-               [&](int i)
+               [&filter, &a](int i)
                {
                    float x = 2 * a * (i - (filter.numCoeffs - 1) * 0.5f) / (filter.numCoeffs - 1);
                    return LanczosWindow(x, a);
@@ -224,7 +226,7 @@ inline void InitLanczosFilter(ResamplingFilter filter, float a)
 inline void InitCubicFilter(ResamplingFilter filter)
 {
     InitFilter(filter,
-               [&](int i)
+               [&filter](int i)
                {
                    float x = 4 * (i - (filter.numCoeffs - 1) * 0.5f) / (filter.numCoeffs - 1);
                    return CubicWindow(x);
@@ -255,106 +257,101 @@ public:
     static constexpr int kTotalSize = kTriangularSize + kGaussianSize + kCubicSize + kLanczosSize;
 
     ResamplingFiltersFactory()
-        : m_deviceId{[]()
-                     {
-                         int deviceId;
-                         NVCV_CHECK_THROW(cudaGetDevice(&deviceId));
-                         return deviceId;
-                     }()}
-
+        : m_state([](int deviceId) { return std::make_unique<DeviceFilterState>(deviceId); })
     {
-        // Pinned memory is needed for proper synchronization of the synchronous copy
-        std::unique_ptr<float, std::function<void(void *)>> filterDataPinned;
-        {
-            float *ptr = nullptr;
-            NVCV_CHECK_THROW(cudaMallocHost(&ptr, kTotalSize * sizeof(float)));
-            filterDataPinned = {ptr, [](void *ptr)
-                                {
-                                    NVCV_CHECK_THROW(cudaFreeHost(ptr));
-                                }};
-        }
-        {
-            float *ptr = nullptr;
-            NVCV_CHECK_THROW(cudaMalloc(&ptr, kTotalSize * sizeof(float)));
-            m_filterDataGpu = {ptr, [](void *ptr)
-                               {
-                                   NVCV_CHECK_THROW(cudaFree(ptr));
-                               }};
-        }
-        auto addFilter = [&](FilterIdx filterIdx, int size)
-        {
-            float *base          = filterIdx == 0 ? filterDataPinned.get()
-                                                  : m_filters[filterIdx - 1].coeffs + m_filters[filterIdx - 1].numCoeffs;
-            m_filters[filterIdx] = {base, size, 1, (size - 1) * 0.5f};
-        };
-        addFilter(Idx_Triangular, kTriangularSize);
-        InitTriangularFilter(m_filters[Idx_Triangular]);
-        addFilter(Idx_Gaussian, kGaussianSize);
-        InitGaussianFilter(m_filters[Idx_Gaussian]);
-        addFilter(Idx_Lanczos3, kLanczosSize);
-        InitLanczosFilter(m_filters[Idx_Lanczos3], kLanczosA);
-        addFilter(Idx_Cubic, kCubicSize);
-        InitCubicFilter(m_filters[Idx_Cubic]);
-
-        // According to cuda-driver-api: For transfers from pinned host memory to device memory,
-        // the cudaMemcpy is synchronous with respect to the host.
-        NVCV_CHECK_THROW(cudaMemcpy(m_filterDataGpu.get(), filterDataPinned.get(), kTotalSize * sizeof(float),
-                                    cudaMemcpyHostToDevice));
-        // Set the pointers to the corresponding offsets in m_filterDataGpu
-        ptrdiff_t diff = m_filterDataGpu.get() - filterDataPinned.get();
-        for (auto &f : m_filters)
-        {
-            f.coeffs += diff;
-        }
     }
 
-    ResamplingFilter CreateCubic(float radius = 2.0f) const noexcept
+    int GetDeviceComputeCapability() const
     {
-        validateDeviceId();
-        auto flt = m_filters[Idx_Cubic];
+        return m_state.get().computeCapability;
+    }
+
+    ResamplingFilter CreateCubic(float radius = 2.0f) const
+    {
+        auto flt = m_state.get().filters[Idx_Cubic];
         flt.rescale(2.0f * std::max(2.0f, radius));
         return flt;
     }
 
-    ResamplingFilter CreateGaussian(float sigma) const noexcept
+    ResamplingFilter CreateGaussian(float sigma) const
     {
-        validateDeviceId();
-        auto flt = m_filters[Idx_Gaussian];
+        auto flt = m_state.get().filters[Idx_Gaussian];
         flt.rescale(std::max(1.0f, static_cast<float>(4 * M_SQRT2) * sigma));
         return flt;
     }
 
-    ResamplingFilter CreateLanczos3(float radius = 3.0f) const noexcept
+    ResamplingFilter CreateLanczos3(float radius = 3.0f) const
     {
-        validateDeviceId();
-        auto flt = m_filters[Idx_Lanczos3];
+        auto flt = m_state.get().filters[Idx_Lanczos3];
         flt.rescale(2.0f * std::max(3.0f, radius));
         return flt;
     }
 
-    ResamplingFilter CreateTriangular(float radius) const noexcept
+    ResamplingFilter CreateTriangular(float radius) const
     {
-        validateDeviceId();
-        auto flt = m_filters[Idx_Triangular];
+        auto flt = m_state.get().filters[Idx_Triangular];
         flt.rescale(std::max(1.0f, 2 * radius));
         return flt;
     }
 
 private:
-    void validateDeviceId() const
+    struct DeviceFilterState
     {
-        int deviceId;
-        NVCV_CHECK_THROW(cudaGetDevice(&deviceId));
-        if (deviceId != m_deviceId)
-        {
-            throw nvcv::Exception(nvcv::Status::ERROR_DEVICE,
-                                  "The HQ resize operator was initialized and called with different current device.");
-        }
-    }
+        std::unique_ptr<float, std::function<void(void *)>> filterDataGpu;
+        ResamplingFilter                                    filters[kNumFilters];
+        int                                                 computeCapability{};
 
-    int                                                 m_deviceId;
-    std::unique_ptr<float, std::function<void(void *)>> m_filterDataGpu;
-    ResamplingFilter                                    m_filters[kNumFilters];
+        explicit DeviceFilterState(int deviceId)
+        {
+            int major{};
+            int minor{};
+            NVCV_CHECK_THROW(cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, deviceId));
+            NVCV_CHECK_THROW(cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, deviceId));
+            computeCapability = major * 10 + minor;
+
+            std::unique_ptr<float, std::function<void(void *)>> filterDataPinned;
+            {
+                float *ptr = nullptr;
+                NVCV_CHECK_THROW(cudaMallocHost(&ptr, kTotalSize * sizeof(float)));
+                filterDataPinned = {ptr, [](void *ptr)
+                                    {
+                                        NVCV_CHECK_THROW(cudaFreeHost(ptr));
+                                    }};
+            }
+            {
+                float *ptr = nullptr;
+                NVCV_CHECK_THROW(cudaMalloc(&ptr, kTotalSize * sizeof(float)));
+                filterDataGpu = {ptr, [](void *ptr)
+                                 {
+                                     NVCV_CHECK_THROW(cudaFree(ptr));
+                                 }};
+            }
+            auto addFilter = [this, &filterDataPinned](FilterIdx filterIdx, int size)
+            {
+                float *base        = filterIdx == 0 ? filterDataPinned.get()
+                                                    : filters[filterIdx - 1].coeffs + filters[filterIdx - 1].numCoeffs;
+                filters[filterIdx] = {base, size, 1, (size - 1) * 0.5f};
+            };
+            addFilter(Idx_Triangular, kTriangularSize);
+            InitTriangularFilter(filters[Idx_Triangular]);
+            addFilter(Idx_Gaussian, kGaussianSize);
+            InitGaussianFilter(filters[Idx_Gaussian]);
+            addFilter(Idx_Lanczos3, kLanczosSize);
+            InitLanczosFilter(filters[Idx_Lanczos3], kLanczosA);
+            addFilter(Idx_Cubic, kCubicSize);
+            InitCubicFilter(filters[Idx_Cubic]);
+
+            NVCV_CHECK_THROW(cudaMemcpy(filterDataGpu.get(), filterDataPinned.get(), kTotalSize * sizeof(float),
+                                        cudaMemcpyHostToDevice));
+            ptrdiff_t diff = filterDataGpu.get() - filterDataPinned.get();
+            for (auto &f : filters)
+            {
+                f.coeffs += diff;
+            }
+        }
+    };
+
+    mutable cvcuda::priv::PerDeviceResource<DeviceFilterState> m_state;
 };
 
 inline ResamplingFilter GetResamplingFilter(const ResamplingFiltersFactory &filtersFactory,

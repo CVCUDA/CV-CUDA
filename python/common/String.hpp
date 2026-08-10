@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,10 +20,23 @@
 
 #include <sstream>
 #include <string>
+#include <utility>
 
 namespace nvcvpy::util {
 
-std::string FormatString(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+template<typename... Args>
+void AppendToStream(std::ostringstream &ss, Args &&...args)
+{
+    ((void)(ss << std::forward<Args>(args)), ...);
+}
+
+template<typename... Args>
+std::string ConcatString(Args &&...args)
+{
+    std::ostringstream ss;
+    AppendToStream(ss, std::forward<Args>(args)...);
+    return ss.str();
+}
 
 // Make it easier to use ostreams to define __repr__
 template<class T>

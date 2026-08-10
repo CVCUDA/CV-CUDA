@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,6 +32,8 @@
 #include <nvcv/TensorData.hpp>       // for TensorDataStridedCuda, etc.
 #include <nvcv/TensorDataAccess.hpp> // for TensorDataAccessStridedImagePlanar, etc.
 
+#include <cassert>
+
 namespace nvcv::cuda {
 
 /**
@@ -51,7 +53,7 @@ namespace nvcv::cuda {
  * @return True if given coordinate is outside given size.
  */
 template<bool Active = true, typename T>
-constexpr inline bool __host__ __device__ IsOutside(T c, T s)
+constexpr bool __host__ __device__ IsOutside(T c, T s)
 {
     if constexpr (Active)
     {
@@ -59,6 +61,53 @@ constexpr inline bool __host__ __device__ IsOutside(T c, T s)
     }
     return false;
 }
+
+namespace detail {
+
+template<typename T>
+constexpr T __host__ __device__ ReplicateBorderIndex(T c, T s)
+{
+    if (c < 0)
+    {
+        return 0;
+    }
+
+    if (c >= s)
+    {
+        return s - 1;
+    }
+
+    return c;
+}
+
+template<typename T>
+constexpr T __host__ __device__ WrapBorderIndex(T c, T s)
+{
+    c = c % s;
+    return (c < 0) ? c + s : c;
+}
+
+template<typename T>
+constexpr T __host__ __device__ ReflectBorderIndex(T c, T s)
+{
+    T s2 = s * 2;
+    c    = WrapBorderIndex(c, s2);
+    return s - 1 - (abs(2 * c + 1 - s2) >> 1);
+}
+
+template<typename T>
+constexpr T __host__ __device__ Reflect101BorderIndex(T c, T s)
+{
+    if (s == 1)
+    {
+        return 0;
+    }
+
+    c = WrapBorderIndex(c, 2 * s - 2);
+    return s - 1 - abs(s - 1 - c);
+}
+
+} // namespace detail
 
 /**
  * Function to get a border-aware index considering the range defined by given size.
@@ -73,7 +122,7 @@ constexpr inline bool __host__ __device__ IsOutside(T c, T s)
  * @param[in] s Size that defines the valid range [0, s).
  */
 template<NVCVBorderType B, bool Active = true, typename T>
-constexpr inline T __host__ __device__ GetIndexWithBorder(T c, T s)
+constexpr T __host__ __device__ GetIndexWithBorder(T c, T s)
 {
     static_assert(B != NVCV_BORDER_CONSTANT, "GetIndexWithBorder cannot be used with NVCV_BORDER_CONSTANT");
 
@@ -83,41 +132,19 @@ constexpr inline T __host__ __device__ GetIndexWithBorder(T c, T s)
 
         if constexpr (B == NVCV_BORDER_REPLICATE)
         {
-            c = (c < 0) ? 0 : (c >= s ? s - 1 : c);
+            c = detail::ReplicateBorderIndex(c, s);
         }
         else if constexpr (B == NVCV_BORDER_WRAP)
         {
-            c = c % s;
-            if (c < 0)
-            {
-                c += s;
-            }
+            c = detail::WrapBorderIndex(c, s);
         }
         else if constexpr (B == NVCV_BORDER_REFLECT)
         {
-            T s2 = s * 2;
-            c    = c % s2;
-            if (c < 0)
-            {
-                c += s2;
-            }
-            c = s - 1 - (abs(2 * c + 1 - s2) >> 1);
+            c = detail::ReflectBorderIndex(c, s);
         }
         else if constexpr (B == NVCV_BORDER_REFLECT101)
         {
-            if (s == 1)
-            {
-                c = 0;
-            }
-            else
-            {
-                c = c % (2 * s - 2);
-                if (c < 0)
-                {
-                    c += 2 * s - 2;
-                }
-                c = s - 1 - abs(s - 1 - c);
-            }
+            c = detail::Reflect101BorderIndex(c, s);
         }
 
         assert(c >= 0 && c < s);
@@ -143,15 +170,14 @@ public:
 
     static_assert(kNumDimensions == sizeof...(ActiveDimensions));
 
-    static constexpr bool kActiveDimensions[]  = {ActiveDimensions...};
+    static constexpr bool kActiveDimensions[]  = {ActiveDimensions...}; // NOSONAR: device metadata.
     static constexpr int  kNumActiveDimensions = ((ActiveDimensions ? 1 : 0) + ...);
 
     struct ActiveMap
     {
-        int from[kNumDimensions];
+        int from[kNumDimensions] = {}; // NOSONAR: constexpr device lookup table.
 
         constexpr ActiveMap()
-            : from()
         {
             int j = 0;
             for (int i = 0; i < kNumDimensions; ++i)
@@ -171,7 +197,7 @@ public:
     template<typename... Args>
     explicit __host__ __device__ BorderWrapImpl(TensorWrapper tensorWrap, Args... tensorShape)
         : m_tensorWrap(tensorWrap)
-        , m_tensorShape{std::forward<StrideType>(tensorShape)...}
+        , m_tensorShape{static_cast<StrideType>(tensorShape)...}
     {
         if constexpr (sizeof...(Args) == 0)
         {
@@ -226,9 +252,9 @@ public:
         return ValueType{};
     }
 
-protected:
+private:
     const TensorWrapper m_tensorWrap                        = {};
-    StrideType          m_tensorShape[kNumActiveDimensions] = {0};
+    StrideType          m_tensorShape[kNumActiveDimensions] = {0}; // NOSONAR: device storage exposed as pointer.
 };
 
 } // namespace detail
@@ -367,15 +393,15 @@ public:
     template<typename... Args>
     inline __host__ __device__ ValueType *ptr(Args... c) const
     {
-        return doGetPtr(std::index_sequence_for<Args...>{}, std::forward<Args>(c)...);
+        return doGetPtr(std::index_sequence_for<Args...>{}, c...);
     }
 
 private:
     template<typename... Args, std::size_t... Is>
     inline __host__ __device__ ValueType *doGetPtr(std::index_sequence<Is...>, Args... c) const
     {
-        return Base::m_tensorWrap.ptr(GetIndexWithBorder<kBorderType, kActiveDimensions[Is]>(
-            static_cast<StrideType>(c), Base::m_tensorShape[kMap.from[Is]])...);
+        return Base::tensorWrap().ptr(GetIndexWithBorder<kBorderType, kActiveDimensions[Is]>(
+            static_cast<StrideType>(c), Base::tensorShape()[kMap.from[Is]])...);
     }
 };
 
@@ -509,18 +535,18 @@ public:
     template<typename... Args>
     inline __host__ __device__ ValueType *ptr(Args... c) const
     {
-        return doGetPtr(std::index_sequence_for<Args...>{}, std::forward<Args>(c)...);
+        return doGetPtr(std::index_sequence_for<Args...>{}, c...);
     }
 
 private:
     template<typename... Args, std::size_t... Is>
     inline __host__ __device__ ValueType *doGetPtr(std::index_sequence<Is...>, Args... c) const
     {
-        if ((IsOutside<kActiveDimensions[Is]>(static_cast<StrideType>(c), Base::m_tensorShape[kMap.from[Is]]) || ...))
+        if ((IsOutside<kActiveDimensions[Is]>(static_cast<StrideType>(c), Base::tensorShape()[kMap.from[Is]]) || ...))
         {
             return nullptr;
         }
-        return Base::m_tensorWrap.ptr(c...);
+        return Base::tensorWrap().ptr(c...);
     }
 
     const ValueType m_borderValue = SetAll<ValueType>(0);

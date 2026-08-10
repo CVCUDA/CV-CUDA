@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
@@ -16,10 +16,10 @@
 
 namespace cvcuda::priv {
 
-IOperator *ToOperatorPtr(void *handle)
+IOperator *ToOperatorPtr(NVCVOperatorHandle handle)
 {
     // First cast to the operator interface, this must always succeed.
-    if (IOperator *op = reinterpret_cast<IOperator *>(handle))
+    if (auto *op = reinterpret_cast<IOperator *>(handle))
     {
         // If major version are the same,
         if (op->version().major() == CURRENT_VERSION.major())

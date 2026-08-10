@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,21 +16,31 @@
  */
 
 #include "Operators.hpp"
+#include "VarShapeUtils.hpp"
 
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
 #include <cvcuda/OpInpaint.hpp>
+#include <nvcv/TensorLayoutInfo.hpp>
 #include <nvcv/python/ImageBatchVarShape.hpp>
 #include <nvcv/python/ResourceGuard.hpp>
 #include <nvcv/python/Stream.hpp>
 #include <nvcv/python/Tensor.hpp>
 #include <pybind11/stl.h>
 
+#include <stdexcept>
+
 namespace cvcudapy {
 
 namespace {
 
-class PyOpInpaint : public nvcvpy::Container
+class InpaintError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
+
+class PyOpInpaint : public nvcvpy::Container // NOSONAR: operator wrappers share the Python cache hierarchy.
 {
 public:
     class Key : public nvcvpy::IKey
@@ -55,7 +65,7 @@ public:
 
         bool doIsCompatible(const nvcvpy::IKey &that_) const override
         {
-            const Key &that = static_cast<const Key &>(that_);
+            const auto &that = static_cast<const Key &>(that_);
             return this->payloadSize() <= that.payloadSize();
         }
 
@@ -77,7 +87,7 @@ public:
 
     py::object container() const override
     {
-        return *this;
+        return py::reinterpret_borrow<py::object>(this->ptr());
     }
 
     const nvcvpy::IKey &key() const override
@@ -89,13 +99,14 @@ public:
     {
         assert(!cache.empty());
 
+        // Find the operator with the largest workspace (can handle any smaller request)
         std::shared_ptr<nvcvpy::ICacheItem> retItem        = cache[0];
         size_t                              maxPayloadSize = 0;
 
         for (const auto &item : cache)
         {
-            const Key &key            = static_cast<const Key &>(item.get()->key());
-            size_t     keyPayloadSize = key.payloadSize();
+            const auto &key            = static_cast<const Key &>(item.get()->key());
+            auto        keyPayloadSize = key.payloadSize();
 
             if (keyPayloadSize > maxPayloadSize)
             {
@@ -104,9 +115,8 @@ public:
             }
         }
 
-        cache.clear();
-
-        nvcvpy::Cache::removeAllNotInUseMatching(retItem.get()->key());
+        // Note: Removed removeAllNotInUseMatching() call to reduce per-call overhead.
+        // The cache will naturally evict unused operators when memory pressure occurs.
 
         return retItem;
     }
@@ -123,16 +133,27 @@ Tensor InpaintInto(Tensor &output, Tensor &input, Tensor &masks, double inpaintR
         pstream = Stream::Current();
     }
 
-    nvcv::TensorShape shape = input.shape();
-    nvcv::Size2D      maxShape{(int)shape[2], (int)shape[1]};
-    auto              inpaint = CreateOperatorEx<PyOpInpaint>((int)shape[0], maxShape);
+    auto info = nvcv::TensorLayoutInfoImage::Create(input.layout());
+    if (!info)
+    {
+        throw InpaintError("Non-supported tensor layout");
+    }
+
+    auto         shape     = input.shape();
+    auto         batchSize = info->idxSample() >= 0 ? (int)shape[info->idxSample()] : 1;
+    auto         h         = (int)shape[info->idxHeight()];
+    auto         w         = (int)shape[info->idxWidth()];
+    nvcv::Size2D maxShape{w, h};
+
+    auto inpaint = CreateOperator<cvcuda::Inpaint>(batchSize, maxShape);
 
     ResourceGuard guard(*pstream);
     guard.add(LockMode::LOCK_MODE_READ, {input, masks});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*inpaint});
 
-    inpaint->submit(pstream->cudaHandle(), input, masks, output, inpaintRadius);
+    guard.run([&inpaint, &pstream, &input, &masks, &output, &inpaintRadius]()
+              { inpaint->submit(pstream->cudaHandle(), input, masks, output, inpaintRadius); });
 
     return output;
 }
@@ -152,14 +173,17 @@ ImageBatchVarShape InpaintVarShapeInto(ImageBatchVarShape &output, ImageBatchVar
         pstream = Stream::Current();
     }
     nvcv::Size2D maxShape = input.maxSize();
-    auto         inpaint  = CreateOperatorEx<PyOpInpaint>(input.numImages(), maxShape);
+
+    // Use simple CreateOperator (like Flip/Gaussian)
+    auto inpaint = CreateOperator<cvcuda::Inpaint>(input.numImages(), maxShape);
 
     ResourceGuard guard(*pstream);
     guard.add(LockMode::LOCK_MODE_READ, {input, masks});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*inpaint});
 
-    inpaint->submit(pstream->cudaHandle(), input, masks, output, inpaintRadius);
+    guard.run([&inpaint, &pstream, &input, &masks, &output, &inpaintRadius]()
+              { inpaint->submit(pstream->cudaHandle(), input, masks, output, inpaintRadius); });
 
     return output;
 }
@@ -167,19 +191,13 @@ ImageBatchVarShape InpaintVarShapeInto(ImageBatchVarShape &output, ImageBatchVar
 ImageBatchVarShape InpaintVarShape(ImageBatchVarShape &input, ImageBatchVarShape &masks, double inpaintRadius,
                                    std::optional<Stream> pstream)
 {
-    ImageBatchVarShape output = ImageBatchVarShape::Create(input.numImages());
-
     auto format = input.uniqueFormat();
     if (!format)
     {
-        throw std::runtime_error("All images in input must have the same format.");
+        throw InpaintError("All images in input must have the same format.");
     }
 
-    for (auto img = input.begin(); img != input.end(); ++img)
-    {
-        auto newimg = Image::Create(img->size(), format);
-        output.pushBack(newimg);
-    }
+    ImageBatchVarShape output = CreateSameShapeImageBatch(input, format, input.numImages());
 
     return InpaintVarShapeInto(output, input, masks, inpaintRadius, pstream);
 }
@@ -189,19 +207,12 @@ ImageBatchVarShape InpaintVarShape(ImageBatchVarShape &input, ImageBatchVarShape
 void ExportOpInpaint(py::module &m)
 {
     using namespace pybind11::literals;
-    py::options options;
-    options.disable_function_signatures();
 
-    m.def("inpaint", &Inpaint, "src"_a, "masks"_a, "inpaintRadius"_a, py::kw_only(), "stream"_a = nullptr,
+    m.def("inpaint", NvtxTrace("cvcuda.inpaint", &Inpaint), "src"_a, "masks"_a, "inpaintRadius"_a, py::kw_only(),
+          "stream"_a = nullptr,
           R"pbdoc(
-
-	cvcuda.inpaint(src: cvcuda.Tensor, masks: Tensor, inpaintRadius: float, stream: Optional[cvcuda.Stream] = None) -> cvcuda.Tensor
-
         Executes the Inpaint operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Inpaint operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.Tensor): Input tensor containing one or more images.
@@ -212,21 +223,12 @@ void ExportOpInpaint(py::module &m)
         Returns:
             cvcuda.Tensor: The output tensor.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("inpaint_into", &InpaintInto, "dst"_a, "src"_a, "masks"_a, "inpaintRadius"_a, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
+    m.def("inpaint_into", NvtxTrace("cvcuda.inpaint_into", &InpaintInto), "dst"_a, "src"_a, "masks"_a,
+          "inpaintRadius"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+        Executes the Inpaint operation on the given cuda stream.
 
-	cvcuda.inpaint_into(dst: cvcuda.Tensor, src: cvcuda.Tensor, masks: Tensor, inpaintRadius: float, stream: Optional[cvcuda.Stream] = None)
-
-	Executes the Inpaint operation on the given cuda stream.
-
-        See also:
-            Refer to the CV-CUDA C API reference for the Inpaint operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.Tensor): Output tensor to store the result of the operation.
@@ -236,23 +238,14 @@ void ExportOpInpaint(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 
-    m.def("inpaint", &InpaintVarShape, "src"_a, "masks"_a, "inpaintRadius"_a, py::kw_only(), "stream"_a = nullptr,
+    m.def("inpaint", NvtxTrace("cvcuda.inpaint", &InpaintVarShape), "src"_a, "masks"_a, "inpaintRadius"_a,
+          py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
+        Executes the Inpaint operation on the given cuda stream.
 
-	cvcuda.inpaint(src: cvcuda.ImageBatchVarShape, masks:ImageBatchVarShape, inpaintRadius: float, stream: Optional[cvcuda.Stream] = None) -> cvcuda.ImageBatchVarShape
-
-	Executes the Inpaint operation on the given cuda stream.
-
-        See also:
-            Refer to the CV-CUDA C API reference for the Inpaint operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
@@ -263,22 +256,12 @@ void ExportOpInpaint(py::module &m)
         Returns:
             cvcuda.ImageBatchVarShape: The output image batch.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("inpaint_into", &InpaintVarShapeInto, "dst"_a, "src"_a, "masks"_a, "inpaintRadius"_a, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
+    m.def("inpaint_into", NvtxTrace("cvcuda.inpaint_into", &InpaintVarShapeInto), "dst"_a, "src"_a, "masks"_a,
+          "inpaintRadius"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+        Executes the Inpaint operation on the given cuda stream.
 
-
-	cvcuda.inpaint_into(dst: cvcuda.ImageBatchVarShape, src: cvcuda.ImageBatchVarShape, masks:ImageBatchVarShape, inpaintRadius: float, stream: Optional[cvcuda.Stream] = None)
-
-	Executes the Inpaint operation on the given cuda stream.
-
-        See also:
-            Refer to the CV-CUDA C API reference for the Inpaint operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.ImageBatchVarShape): Output image batch to store the result of the operation.
@@ -288,11 +271,7 @@ void ExportOpInpaint(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.ImageBatchVarShape: The output image batch (same as dst).
     )pbdoc");
 }
 

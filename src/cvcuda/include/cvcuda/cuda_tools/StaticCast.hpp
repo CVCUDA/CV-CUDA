@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,7 +24,7 @@
 #ifndef NVCV_CUDA_STATIC_CAST_HPP
 #define NVCV_CUDA_STATIC_CAST_HPP
 
-#include "TypeTraits.hpp" // for Require, etc.
+#include "TypeTraits.hpp"
 
 namespace nvcv::cuda {
 
@@ -53,9 +53,11 @@ namespace nvcv::cuda {
  *
  * @return The compound value with all components static casted to type \p T.
  */
-template<typename T, typename U, class = Require<HasTypeTraits<T, U> && !IsCompound<T>>>
+template<typename T, typename U>
 __host__ __device__ auto StaticCast(U u)
 {
+    static_assert(HasTypeTraits<T, U> && !IsCompound<T>, "StaticCast requires a regular C target type");
+
     using RT = ConvertBaseTypeTo<T, U>;
     if constexpr (std::is_same_v<U, RT>)
     {

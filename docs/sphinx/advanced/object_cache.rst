@@ -1,5 +1,5 @@
 ..
-   # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+   # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
    # SPDX-License-Identifier: Apache-2.0
    #
    # Licensed under the Apache License, Version 2.0 (the "License");
@@ -128,7 +128,7 @@ The cache uses thread-local storage internally. Objects created in one thread ca
 You can clear the cache for the current thread using :py:func:`cvcuda.clear_cache` with :py:class:`cvcuda.ThreadScope`.LOCAL
 and query the thread-local cache size with :py:func:`cvcuda.cache_size` with :py:class:`cvcuda.ThreadScope`.LOCAL:
 
-.. literalinclude:: ../../../samples/object_cache/threading.py
+.. literalinclude:: ../../../samples/object_cache/threads.py
    :language: python
    :start-after: # docs-start: main
    :end-before: # docs-end: main

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "../CvtColorUtil.hpp"
 #include "Operators.hpp"
+#include "VarShapeUtils.hpp"
 
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
@@ -30,10 +31,17 @@
 #include <pybind11/stl.h>
 
 #include <map>
+#include <stdexcept>
 
 namespace cvcudapy {
 
 namespace {
+
+class CvtColorOpError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
 
 Tensor CvtColorInto(Tensor &output, Tensor &input, NVCVColorConversionCode code, std::optional<Stream> pstream)
 {
@@ -45,11 +53,12 @@ Tensor CvtColorInto(Tensor &output, Tensor &input, NVCVColorConversionCode code,
     auto cvtColor = CreateOperator<cvcuda::CvtColor>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_MODE_READWRITE, {input});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*cvtColor});
 
-    cvtColor->submit(pstream->cudaHandle(), input, output, code);
+    guard.run([&cvtColor, &pstream, &input, &output, &code]()
+              { cvtColor->submit(pstream->cudaHandle(), input, output, code); });
 
     return output;
 }
@@ -74,6 +83,65 @@ Tensor CvtColor(Tensor &input, NVCVColorConversionCode code, std::optional<Strea
     return CvtColorInto(output, input, code, pstream);
 }
 
+bool IsPlanarVarShapeFormat(nvcv::ImageFormat format)
+{
+    return format.numPlanes() > 1 && format.numPlanes() == format.numChannels();
+}
+
+nvcv::ImageFormat PlanarRGBOutputFormat(nvcv::ImageFormat outputFormat)
+{
+    if (nvcv::DataType channelType = outputFormat.planeDataType(0).channelType(0); channelType != nvcv::TYPE_U8)
+    {
+        throw CvtColorOpError{"Unsupported planar var-shape CvtColor output data type"};
+    }
+
+    switch (outputFormat.swizzle())
+    {
+    case nvcv::Swizzle::S_XYZ1:
+    case nvcv::Swizzle::S_XYZ0:
+        return nvcv::ImageFormat{NVCV_IMAGE_FORMAT_RGB8p};
+    case nvcv::Swizzle::S_ZYX1:
+    case nvcv::Swizzle::S_ZYX0:
+        return nvcv::ImageFormat{NVCV_IMAGE_FORMAT_BGR8p};
+    case nvcv::Swizzle::S_XYZW:
+        return nvcv::ImageFormat{NVCV_IMAGE_FORMAT_RGBA8p};
+    case nvcv::Swizzle::S_ZYXW:
+        return nvcv::ImageFormat{NVCV_IMAGE_FORMAT_BGRA8p};
+    default:
+        return outputFormat;
+    }
+}
+
+nvcv::ImageFormat PreservePlanarVarShapeOutput(nvcv::ImageFormat inputFormat, nvcv::ImageFormat outputFormat)
+{
+    if (!IsPlanarVarShapeFormat(inputFormat))
+    {
+        return outputFormat;
+    }
+
+    if (outputFormat.numPlanes() != 1)
+    {
+        return outputFormat;
+    }
+
+    if (outputFormat.colorModel() == nvcv::ColorModel::RGB)
+    {
+        return PlanarRGBOutputFormat(outputFormat);
+    }
+
+    if (outputFormat.colorModel() == nvcv::ColorModel::YCbCr
+        && outputFormat.chromaSubsampling() == nvcv::ChromaSubsampling::NONE && outputFormat.numChannels() == 3)
+    {
+        if (nvcv::DataType channelType = outputFormat.planeDataType(0).channelType(0); channelType == nvcv::TYPE_U8)
+        {
+            return nvcv::ImageFormat{NVCV_IMAGE_FORMAT_YUV8p};
+        }
+        throw CvtColorOpError{"Unsupported planar var-shape CvtColor YUV output data type"};
+    }
+
+    return outputFormat;
+}
+
 ImageBatchVarShape CvtColorVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input,
                                         NVCVColorConversionCode code, std::optional<Stream> pstream)
 {
@@ -85,11 +153,12 @@ ImageBatchVarShape CvtColorVarShapeInto(ImageBatchVarShape &output, ImageBatchVa
     auto cvtColor = CreateOperator<cvcuda::CvtColor>();
 
     ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_MODE_READWRITE, {input});
-    guard.add(LockMode::LOCK_MODE_READWRITE, {output});
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*cvtColor});
 
-    cvtColor->submit(pstream->cudaHandle(), input, output, code);
+    guard.run([&cvtColor, &pstream, &input, &output, &code]()
+              { cvtColor->submit(pstream->cudaHandle(), input, output, code); });
 
     return output;
 }
@@ -98,21 +167,14 @@ ImageBatchVarShape CvtColorVarShape(ImageBatchVarShape &input, NVCVColorConversi
                                     std::optional<Stream> pstream)
 {
     auto inFormat = input.uniqueFormat();
-    if (!inFormat || inFormat.numPlanes() != 1)
+    if (!inFormat)
     {
-        throw std::runtime_error("All images in input must have the same single-plane format");
+        throw CvtColorOpError("All images in input must have the same format");
     }
     auto outFormat = GetOutputFormat(inFormat.planeDataType(0), code);
+    outFormat      = PreservePlanarVarShapeOutput(inFormat, outFormat);
 
-    ImageBatchVarShape output = ImageBatchVarShape::Create(input.capacity());
-
-    for (int i = 0; i < input.numImages(); ++i)
-    {
-        nvcv::Size2D size = input[i].size();
-
-        auto img = Image::Create(size, outFormat);
-        output.pushBack(img);
-    }
+    ImageBatchVarShape output = CreateSameShapeImageBatch(input, outFormat);
 
     return CvtColorVarShapeInto(output, input, code, pstream);
 }
@@ -122,18 +184,11 @@ ImageBatchVarShape CvtColorVarShape(ImageBatchVarShape &input, NVCVColorConversi
 void ExportOpCvtColor(py::module &m)
 {
     using namespace pybind11::literals;
-    py::options options;
-    options.disable_function_signatures();
 
-    m.def("cvtcolor", &CvtColor, "src"_a, "code"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+    m.def("cvtcolor", NvtxTrace("cvcuda.cvtcolor", &CvtColor), "src"_a, "code"_a, py::kw_only(), "stream"_a = nullptr,
+          R"pbdoc(
+        Executes the CVT Color operation on the given cuda stream.
 
-        cvcuda.cvtcolor(src: cvcuda.Tensor, code: cvcuda.ColorConversion, stream: Optional[cvcuda.Stream] = None) -> cvcuda.Tensor
-
-	Executes the CVT Color operation on the given cuda stream.
-
-        See also:
-            Refer to the CV-CUDA C API reference for the CVT Color operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.Tensor): Input tensor containing one or more images.
@@ -143,20 +198,12 @@ void ExportOpCvtColor(py::module &m)
         Returns:
             cvcuda.Tensor: The output tensor.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("cvtcolor_into", &CvtColorInto, "dst"_a, "src"_a, "code"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+    m.def("cvtcolor_into", NvtxTrace("cvcuda.cvtcolor_into", &CvtColorInto), "dst"_a, "src"_a, "code"_a, py::kw_only(),
+          "stream"_a = nullptr, R"pbdoc(
+        Executes the CVT Color operation on the given cuda stream.
 
-        cvcuda.cvtcolor_into(dst: cvcuda.Tensor, src: cvcuda.Tensor, code: cvcuda.ColorConversion, stream: Optional[cvcuda.Stream] = None)
-
-	Executes the CVT Color operation on the given cuda stream.
-
-        See also:
-            Refer to the CV-CUDA C API reference for the CVT Color operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.Tensor): Output tensor to store the result of the operation.
@@ -165,22 +212,13 @@ void ExportOpCvtColor(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 
-    m.def("cvtcolor", &CvtColorVarShape, "src"_a, "code"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+    m.def("cvtcolor", NvtxTrace("cvcuda.cvtcolor", &CvtColorVarShape), "src"_a, "code"_a, py::kw_only(),
+          "stream"_a = nullptr, R"pbdoc(
+        Executes the CVT Color operation on the given cuda stream.
 
-        cvcuda.cvtcolor(src: cvcuda.ImageBatchVarShape, code: cvcuda.ColorConversion, stream: Optional[cvcuda.Stream] = None) -> cvcuda.ImageBatchVarShape
-
-	Executes the CVT Color operation on the given cuda stream.
-
-        See also:
-            Refer to the CV-CUDA C API reference for the CVT Color operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
@@ -190,21 +228,13 @@ void ExportOpCvtColor(py::module &m)
         Returns:
             cvcuda.ImageBatchVarShape: The output image batch.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("cvtcolor_into", &CvtColorVarShapeInto, "dst"_a, "src"_a, "code"_a, py::kw_only(), "stream"_a = nullptr,
+    m.def("cvtcolor_into", NvtxTrace("cvcuda.cvtcolor_into", &CvtColorVarShapeInto), "dst"_a, "src"_a, "code"_a,
+          py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
+        Executes the CVT Color operation on the given cuda stream.
 
-        cvcuda.cvtcolor_into(dst: cvcuda.ImageBatchVarShape, src: cvcuda.ImageBatchVarShape, code: cvcuda.ColorConversion, stream: Optional[cvcuda.Stream] = None)
-
-	Executes the CVT Color operation on the given cuda stream.
-
-        See also:
-            Refer to the CV-CUDA C API reference for the CVT Color operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
@@ -213,11 +243,7 @@ void ExportOpCvtColor(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.ImageBatchVarShape: The output image batch (same as dst).
     )pbdoc");
 }
 

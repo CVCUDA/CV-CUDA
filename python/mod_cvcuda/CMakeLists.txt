@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,13 +16,18 @@
 find_package(cvcuda REQUIRED)
 find_package(CUDAToolkit REQUIRED)
 
-# Set up dlpack (needed for NVCV types)
-set(save_policy_0077 ${CMAKE_POLICY_DEFAULT_CMP0077})
-set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
-set(BUILD_MOCK OFF)
-set(BUILD_DOCS OFF)
-add_subdirectory(${DLPACK_SOURCE_DIR} dlpack)
-set(CMAKE_POLICY_DEFAULT_CMP0077 ${save_policy_0077})
+find_package(dlpack CONFIG REQUIRED)
+
+# dlpack's CMake project version is stuck at 0.6 regardless of release,
+# so check the actual version from header macros.
+get_target_property(_dlpack_inc dlpack::dlpack INTERFACE_INCLUDE_DIRECTORIES)
+file(STRINGS "${_dlpack_inc}/dlpack/dlpack.h" _dlpack_major REGEX "#define DLPACK_MAJOR_VERSION")
+file(STRINGS "${_dlpack_inc}/dlpack/dlpack.h" _dlpack_minor REGEX "#define DLPACK_MINOR_VERSION")
+string(REGEX MATCH "[0-9]+" _dlpack_major "${_dlpack_major}")
+string(REGEX MATCH "[0-9]+" _dlpack_minor "${_dlpack_minor}")
+if(_dlpack_major LESS 1 OR (_dlpack_major EQUAL 1 AND _dlpack_minor LESS 3))
+    message(FATAL_ERROR "DLPack >= 1.3 required, found ${_dlpack_major}.${_dlpack_minor}")
+endif()
 
 # Generate NVCV type definitions
 set(imgformat_defs ${CMAKE_CURRENT_BINARY_DIR}/NVCVPythonImageFormatDefs.inc)
@@ -47,6 +52,15 @@ cvcuda_python_add_module(
     PACKAGE_DIR cvcuda
     SOURCES
         # NVCV core types
+        operators/OpJpegCompressionDistortion.cpp
+        operators/OpAdjustHue.cpp
+        operators/OpAdjustSaturation.cpp
+        operators/OpAdjustSharpness.cpp
+        operators/OpAdjustContrast.cpp
+        operators/OpInvert.cpp
+        operators/OpSolarize.cpp
+        operators/OpPosterize.cpp
+        operators/OpAutoContrast.cpp
         ${imgformat_defs}
         ${dtype_defs}
         nvcv/ImageFormat.cpp
@@ -82,6 +96,7 @@ cvcuda_python_add_module(
         RemapMapValueType.cpp
         InterpolationType.cpp
         BorderType.cpp
+        RoundMode.cpp
         ColorConversionCode.cpp
         MorphologyType.cpp
         ThresholdType.cpp
@@ -139,6 +154,7 @@ cvcuda_python_add_module(
         operators/OpGaussianNoise.cpp
         operators/OpInpaint.cpp
         operators/OpFindHomography.cpp
+        operators/OpCLAHE.cpp
 )
 
 target_include_directories(cvcuda_module_python

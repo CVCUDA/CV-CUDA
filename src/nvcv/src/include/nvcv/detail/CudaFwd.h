@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
@@ -13,7 +13,7 @@
 #ifndef NVCV_DETAIL_FWD_CUDA_H
 #define NVCV_DETAIL_FWD_CUDA_H
 
-typedef struct CUstream_st *CUstream;
-typedef struct cudaArray   *cudaArray_t;
+typedef struct CUstream_st *CUstream;    // NOSONAR: C-compatible forward declaration.
+typedef struct cudaArray   *cudaArray_t; // NOSONAR: C-compatible forward declaration.
 
 #endif // NVCV_DETAIL_FWD_CUDA_H

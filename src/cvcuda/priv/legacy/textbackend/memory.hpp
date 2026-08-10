@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -49,6 +49,13 @@ template<typename T>
 class Memory
 {
 public:
+    Memory() = default;
+
+    Memory(const Memory &)            = delete;
+    Memory(Memory &&)                 = delete;
+    Memory &operator=(const Memory &) = delete;
+    Memory &operator=(Memory &&)      = delete;
+
     T *host() const
     {
         return host_;

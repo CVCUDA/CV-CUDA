@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "priv/OpCopyMakeBorder.hpp"
 
+#include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <nvcv/Exception.hpp>
@@ -29,7 +30,7 @@ namespace priv = cvcuda::priv;
 CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaCopyMakeBorderCreate, (NVCVOperatorHandle * handle))
 {
     return nvcv::ProtectCall(
-        [&]
+        [&handle]
         {
             if (handle == nullptr)
             {
@@ -37,7 +38,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaCopyMakeBorderCreate, (NVCVOperatorHan
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            *handle = reinterpret_cast<NVCVOperatorHandle>(new priv::CopyMakeBorder());
+            *handle = priv::CreateOperatorHandle<priv::CopyMakeBorder>();
         });
 }
 
@@ -45,11 +46,14 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaCopyMakeBorderSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in, NVCVTensorHandle out,
                    int32_t top, int32_t left, NVCVBorderType borderMode, const float4 borderValue))
 {
+    CVCUDA_NVTX_RANGE("cvcudaCopyMakeBorderSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&out, &in, &handle, &stream, &top, &left, &borderMode, &borderValue]
         {
-            nvcv::TensorWrapHandle output(out), input(in);
-            priv::ToDynamicRef<priv::CopyMakeBorder>(handle)(stream, input, output, top, left, borderMode, borderValue);
+            nvcv::TensorWrapHandle output(out);
+            nvcv::TensorWrapHandle input(in);
+            priv::ToDynamicRef<priv::CopyMakeBorder>(handle)(stream, input.resource(), output.resource(), top, left,
+                                                             borderMode, borderValue);
         });
 }
 
@@ -57,12 +61,16 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaCopyMakeBorderVarShapeSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVImageBatchHandle in, NVCVImageBatchHandle out,
                    NVCVTensorHandle top, NVCVTensorHandle left, NVCVBorderType borderMode, const float4 borderValue))
 {
+    CVCUDA_NVTX_RANGE("cvcudaCopyMakeBorderVarShapeSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&out, &in, &top, &left, &handle, &stream, &borderMode, &borderValue]
         {
-            nvcv::ImageBatchWrapHandle output(out), input(in);
-            nvcv::TensorWrapHandle     topVec(top), leftVec(left);
-            priv::ToDynamicRef<priv::CopyMakeBorder>(handle)(stream, input, output, topVec, leftVec, borderMode,
+            nvcv::ImageBatchWrapHandle output(out);
+            nvcv::ImageBatchWrapHandle input(in);
+            nvcv::TensorWrapHandle     topVec(top);
+            nvcv::TensorWrapHandle     leftVec(left);
+            priv::ToDynamicRef<priv::CopyMakeBorder>(handle)(stream, input.resource(), output.resource(),
+                                                             topVec.resource(), leftVec.resource(), borderMode,
                                                              borderValue);
         });
 }
@@ -71,12 +79,16 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaCopyMakeBorderVarShapeStackSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVImageBatchHandle in, NVCVTensorHandle out,
                    NVCVTensorHandle top, NVCVTensorHandle left, NVCVBorderType borderMode, const float4 borderValue))
 {
+    CVCUDA_NVTX_RANGE("cvcudaCopyMakeBorderVarShapeStackSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&in, &out, &top, &left, &handle, &stream, &borderMode, &borderValue]
         {
             nvcv::ImageBatchWrapHandle input(in);
-            nvcv::TensorWrapHandle     output(out), topVec(top), leftVec(left);
-            priv::ToDynamicRef<priv::CopyMakeBorder>(handle)(stream, input, output, topVec, leftVec, borderMode,
+            nvcv::TensorWrapHandle     output(out);
+            nvcv::TensorWrapHandle     topVec(top);
+            nvcv::TensorWrapHandle     leftVec(left);
+            priv::ToDynamicRef<priv::CopyMakeBorder>(handle)(stream, input.resource(), output.resource(),
+                                                             topVec.resource(), leftVec.resource(), borderMode,
                                                              borderValue);
         });
 }

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,6 +35,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class MedianBlur final : public IOperator
@@ -42,49 +44,47 @@ class MedianBlur final : public IOperator
 public:
     explicit MedianBlur(const int maxVarShapeBatchSize);
 
-    ~MedianBlur();
-
-    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const nvcv::Size2D ksize);
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                    const nvcv::Size2D ksize) const;
 
     void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
-                    const nvcv::Tensor &ksize);
+                    const nvcv::Tensor &ksize) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline MedianBlur::MedianBlur(const int maxVarShapeBatchSize)
 {
-    nvcv::detail::CheckThrow(cvcudaMedianBlurCreate(&m_handle, maxVarShapeBatchSize));
-    assert(m_handle);
-}
-
-inline MedianBlur::~MedianBlur()
-{
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaMedianBlurCreate(&h, maxVarShapeBatchSize));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void MedianBlur::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
-                                   const nvcv::Size2D ksize)
+                                   const nvcv::Size2D ksize) const
 {
-    nvcv::detail::CheckThrow(cvcudaMedianBlurSubmit(m_handle, stream, in.handle(), out.handle(), ksize.w, ksize.h));
+    nvcv::detail::CheckThrow(
+        cvcudaMedianBlurSubmit(m_handle.get(), stream, in.handle(), out.handle(), ksize.w, ksize.h));
 }
 
 inline void MedianBlur::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
-                                   const nvcv::ImageBatchVarShape &out, const nvcv::Tensor &ksize)
+                                   const nvcv::ImageBatchVarShape &out, const nvcv::Tensor &ksize) const
 {
     nvcv::detail::CheckThrow(
-        cvcudaMedianBlurVarShapeSubmit(m_handle, stream, in.handle(), out.handle(), ksize.handle()));
+        cvcudaMedianBlurVarShapeSubmit(m_handle.get(), stream, in.handle(), out.handle(), ksize.handle()));
 }
 
 inline NVCVOperatorHandle MedianBlur::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA_MEDIAN_BLUR_HPP

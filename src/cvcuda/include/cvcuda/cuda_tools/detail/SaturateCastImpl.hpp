@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,54 +28,104 @@ namespace nvcv::cuda::detail {
 
 // The base saturate cast implementation can be used by host- or device-side calls
 
+template<typename T, typename U, typename Min, typename Max>
+inline __host__ __device__ T BoundedCast(U u, Min minValue, Max maxValue)
+{
+    if (u <= minValue)
+    {
+        return static_cast<T>(minValue);
+    }
+    else if (u >= maxValue)
+    {
+        return static_cast<T>(maxValue);
+    }
+    else
+    {
+        return static_cast<T>(u);
+    }
+}
+
+template<typename T, typename U>
+inline __host__ __device__ T SaturateFloatingToIntegral(U u)
+{
+    constexpr auto minT = static_cast<U>(TypeTraits<T>::min);
+    constexpr auto maxT = static_cast<U>(TypeTraits<T>::max);
+
+    U out = ClampImpl(RoundImpl<U, U>(u), minT, maxT);
+
+    return static_cast<T>(out);
+}
+
+template<typename T, typename U>
+inline __host__ __device__ T SaturateSignedSmallToUnsigned(U u)
+{
+    return u <= 0 ? 0 : static_cast<T>(u);
+}
+
+template<typename T, typename U>
+inline __host__ __device__ T SaturateIntegralNarrowSameSign(U u)
+{
+    return BoundedCast<T>(u, TypeTraits<T>::min, TypeTraits<T>::max);
+}
+
+template<typename T, typename U>
+inline __host__ __device__ T SaturateUnsignedToSigned(U u)
+{
+    return u >= TypeTraits<T>::max ? TypeTraits<T>::max : static_cast<T>(u);
+}
+
+template<typename T, typename U>
+inline __host__ __device__ T SaturateSignedBigToUnsigned(U u)
+{
+    return BoundedCast<T>(u, static_cast<U>(TypeTraits<T>::min), static_cast<U>(TypeTraits<T>::max));
+}
+
 template<typename T, typename U>
 inline __host__ __device__ T BaseSaturateCastImpl(U u)
 {
-    constexpr bool SmallToBig = sizeof(U) <= sizeof(T);
-    constexpr bool BigToSmall = sizeof(U) > sizeof(T);
+    constexpr bool SmallToBig          = sizeof(U) <= sizeof(T);
+    constexpr bool BigToSmall          = sizeof(U) > sizeof(T);
+    constexpr bool kFloatingToIntegral = std::is_floating_point_v<U> && std::is_integral_v<T>;
+    constexpr bool kSignedSmallToUnsigned
+        = std::is_integral_v<U> && std::is_signed_v<U> && std::is_integral_v<T> && std::is_unsigned_v<T> && SmallToBig;
+    constexpr bool kNarrowSameSign
+        = std::is_integral_v<
+              U> && std::is_integral_v<T> && ((std::is_signed_v<U> && std::is_signed_v<T>) || (std::is_unsigned_v<U> && std::is_unsigned_v<T>))
+       && BigToSmall;
+    constexpr bool kUnsignedToSigned
+        = std::is_integral_v<U> && std::is_unsigned_v<U> && std::is_integral_v<T> && std::is_signed_v<T>;
+    constexpr bool kSignedBigToUnsigned
+        = std::is_integral_v<U> && std::is_signed_v<U> && std::is_integral_v<T> && std::is_unsigned_v<T> && BigToSmall;
 
     // To silence spurious warnings with gcc-11.1 (-Wunused-but-set-variable)
     (void)SmallToBig;
     (void)BigToSmall;
 
-    if constexpr (std::is_floating_point_v<U> && std::is_integral_v<T>)
+    if constexpr (kFloatingToIntegral)
     {
         // any-float -> any-integral
-        constexpr U minT = static_cast<U>(TypeTraits<T>::min);
-        constexpr U maxT = static_cast<U>(TypeTraits<T>::max);
-
-        U out = ClampImpl(RoundImpl<U, U>(u), minT, maxT);
-
-        return static_cast<T>(out);
+        return SaturateFloatingToIntegral<T>(u);
     }
-    else if constexpr (std::is_integral_v<
-                           U> && std::is_signed_v<U> && std::is_integral_v<T> && std::is_unsigned_v<T> && SmallToBig)
+    else if constexpr (kSignedSmallToUnsigned)
     {
         // any-integral-signed -> any-integral-unsigned, small -> big and equal
-        return u <= 0 ? 0 : static_cast<T>(u);
+        return SaturateSignedSmallToUnsigned<T>(u);
     }
-    else if constexpr (
-        std::is_integral_v<
-            U> && std::is_integral_v<T> && ((std::is_signed_v<U> && std::is_signed_v<T>) || (std::is_unsigned_v<U> && std::is_unsigned_v<T>))
-        && BigToSmall)
+    else if constexpr (kNarrowSameSign)
     {
         // any-integral-signed -> any-integral-signed, big -> small
         // any-integral-unsigned -> any-integral-unsigned, big -> small
-        return u <= TypeTraits<T>::min ? TypeTraits<T>::min
-                                       : (u >= TypeTraits<T>::max ? TypeTraits<T>::max : static_cast<T>(u));
+        return SaturateIntegralNarrowSameSign<T>(u);
     }
-    else if constexpr (std::is_integral_v<U> && std::is_unsigned_v<U> && std::is_integral_v<T> && std::is_signed_v<T>)
+    else if constexpr (kUnsignedToSigned)
     {
         // any-integral-unsigned -> any-integral-signed
-        return u >= TypeTraits<T>::max ? TypeTraits<T>::max : static_cast<T>(u);
+        return SaturateUnsignedToSigned<T>(u);
     }
-    else if constexpr (std::is_integral_v<
-                           U> && std::is_signed_v<U> && std::is_integral_v<T> && std::is_unsigned_v<T> && BigToSmall)
+    else if constexpr (kSignedBigToUnsigned)
     {
         // any-integral-signed -> any-integral-unsigned, big -> small
-        return u <= static_cast<U>(TypeTraits<T>::min)
-                 ? TypeTraits<T>::min
-                 : (u >= static_cast<U>(TypeTraits<T>::max) ? TypeTraits<T>::max : static_cast<T>(u));
+        return SaturateSignedBigToUnsigned<T>(u);
     }
     else
     {
@@ -83,7 +133,7 @@ inline __host__ __device__ T BaseSaturateCastImpl(U u)
         // any-integral-signed -> any-integral-signed, small -> big and equal
         // any-integral-unsigned -> any-integral-unsigned, small -> big and equal
         // any -> any-float
-        return u;
+        return static_cast<T>(u);
     }
 }
 

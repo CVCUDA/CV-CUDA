@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,7 @@
  */
 
 #include "Operators.hpp"
+#include "VarShapeUtils.hpp"
 
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
@@ -26,9 +27,18 @@
 #include <nvcv/python/Tensor.hpp>
 #include <pybind11/stl.h>
 
+#include <stdexcept>
+
 namespace cvcudapy {
 
 namespace {
+
+class EraseError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
+
 Tensor EraseInto(Tensor &output, Tensor &input, Tensor &anchor, Tensor &erasing, Tensor &values, Tensor &imgIdx,
                  bool random, unsigned int seed, std::optional<Stream> pstream)
 {
@@ -39,7 +49,7 @@ Tensor EraseInto(Tensor &output, Tensor &input, Tensor &anchor, Tensor &erasing,
 
     if (anchor.layout().rank() != 1 || anchor.layout()[0] != 'N')
     {
-        throw std::runtime_error("Layout of anchor must be 'N'.");
+        throw EraseError("Layout of anchor must be 'N'.");
     }
 
     nvcv::TensorShape shape = anchor.shape();
@@ -51,7 +61,8 @@ Tensor EraseInto(Tensor &output, Tensor &input, Tensor &anchor, Tensor &erasing,
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*erase});
 
-    erase->submit(pstream->cudaHandle(), input, output, anchor, erasing, values, imgIdx, random, seed);
+    guard.run([&erase, &pstream, &input, &output, &anchor, &erasing, &values, &imgIdx, &random, &seed]()
+              { erase->submit(pstream->cudaHandle(), input, output, anchor, erasing, values, imgIdx, random, seed); });
 
     return output;
 }
@@ -62,6 +73,42 @@ Tensor Erase(Tensor &input, Tensor &anchor, Tensor &erasing, Tensor &values, Ten
     Tensor output = Tensor::Create(input.shape(), input.dtype());
 
     return EraseInto(output, input, anchor, erasing, values, imgIdx, random, seed, pstream);
+}
+
+Tensor EraseRegionInto(Tensor &output, Tensor &input, int64_t i, int64_t j, int64_t h, int64_t w, Tensor &values,
+                       std::optional<Stream> pstream)
+{
+    if (!pstream)
+    {
+        pstream = Stream::Current();
+    }
+
+    auto erase = CreateOperator<cvcuda::Erase>(0);
+
+    ResourceGuard guard(*pstream);
+    if (static_cast<const nvcv::Tensor &>(input).handle() == static_cast<const nvcv::Tensor &>(output).handle())
+    {
+        guard.add(LockMode::LOCK_MODE_READWRITE, {input});
+    }
+    else
+    {
+        guard.add(LockMode::LOCK_MODE_READ, {input});
+        guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    }
+    guard.add(LockMode::LOCK_MODE_READ, {values});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {*erase});
+
+    guard.run([&erase, &pstream, &input, &output, i, j, h, w, &values]
+              { erase->submit(pstream->cudaHandle(), input, output, i, j, h, w, values); });
+
+    return output;
+}
+
+Tensor EraseRegion(Tensor &input, int64_t i, int64_t j, int64_t h, int64_t w, Tensor &values,
+                   std::optional<Stream> pstream)
+{
+    Tensor output = Tensor::Create(input.shape(), input.dtype());
+    return EraseRegionInto(output, input, i, j, h, w, values, pstream);
 }
 
 ImageBatchVarShape EraseVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input, Tensor &anchor,
@@ -75,7 +122,7 @@ ImageBatchVarShape EraseVarShapeInto(ImageBatchVarShape &output, ImageBatchVarSh
 
     if (anchor.layout().rank() != 1 || anchor.layout()[0] != 'N')
     {
-        throw std::runtime_error("Layout of anchor must be 'N'.");
+        throw EraseError("Layout of anchor must be 'N'.");
     }
 
     nvcv::TensorShape shape = anchor.shape();
@@ -87,7 +134,8 @@ ImageBatchVarShape EraseVarShapeInto(ImageBatchVarShape &output, ImageBatchVarSh
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*erase});
 
-    erase->submit(pstream->cudaHandle(), input, output, anchor, erasing, values, imgIdx, random, seed);
+    guard.run([&erase, &pstream, &input, &output, &anchor, &erasing, &values, &imgIdx, &random, &seed]()
+              { erase->submit(pstream->cudaHandle(), input, output, anchor, erasing, values, imgIdx, random, seed); });
 
     return output;
 }
@@ -95,19 +143,13 @@ ImageBatchVarShape EraseVarShapeInto(ImageBatchVarShape &output, ImageBatchVarSh
 ImageBatchVarShape EraseVarShape(ImageBatchVarShape &input, Tensor &anchor, Tensor &erasing, Tensor &values,
                                  Tensor &imgIdx, bool random, unsigned int seed, std::optional<Stream> pstream)
 {
-    ImageBatchVarShape output = ImageBatchVarShape::Create(input.numImages());
-
     auto format = input.uniqueFormat();
     if (!format)
     {
-        throw std::runtime_error("All images in input must have the same format.");
+        throw EraseError("All images in input must have the same format.");
     }
 
-    for (auto img = input.begin(); img != input.end(); ++img)
-    {
-        auto newimg = Image::Create(img->size(), format);
-        output.pushBack(newimg);
-    }
+    ImageBatchVarShape output = CreateSameShapeImageBatch(input, format, input.numImages());
 
     return EraseVarShapeInto(output, input, anchor, erasing, values, imgIdx, random, seed, pstream);
 }
@@ -117,19 +159,52 @@ ImageBatchVarShape EraseVarShape(ImageBatchVarShape &input, Tensor &anchor, Tens
 void ExportOpErase(py::module &m)
 {
     using namespace pybind11::literals;
-    py::options options;
-    options.disable_function_signatures();
 
-    m.def("erase", &Erase, "src"_a, "anchor"_a, "erasing"_a, "values"_a, "imgIdx"_a, py::kw_only(), "random"_a = false,
-          "seed"_a = 0, "stream"_a = nullptr, R"pbdoc(
+    m.def("erase", NvtxTrace("cvcuda.erase", &EraseRegion), "src"_a, "i"_a, "j"_a, "h"_a, "w"_a, "v"_a, py::kw_only(),
+          "stream"_a = nullptr, R"pbdoc(
+        Erases one rectangular region with torchvision-compatible slice and broadcast semantics.
 
-	cvcuda.erase(src: cvcuda.Tensor, anchor: cvcuda.Tensor, erasing: cvcuda.Tensor, values: cvcuda.Tensor, imgIdx: cvcuda.Tensor, random: int, seed: int, stream: Optional[cvcuda.Stream] = None) -> cvcuda.Tensor
+        The logical operation is ``out = src.clone(); out[..., i:i+h, j:j+w] = v``. For HWC/NHWC
+        inputs, ``v`` is still interpreted in logical planar order. The value dtype must match
+        ``src`` or be float32.
 
-	Executes the Erase operation on the given cuda stream.
+        Args:
+            src (cvcuda.Tensor): Input image tensor.
+            i (int): Vertical slice start.
+            j (int): Horizontal slice start.
+            h (int): Vertical slice extent.
+            w (int): Horizontal slice extent.
+            v (cvcuda.Tensor): Broadcastable value tensor.
+            stream (cvcuda.Stream, optional): CUDA stream on which to submit the operation.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Erase operator
-            for more details and usage examples.
+        Returns:
+            cvcuda.Tensor: A new erased tensor with the same metadata as ``src``.
+    )pbdoc");
+
+    m.def("erase_into", NvtxTrace("cvcuda.erase_into", &EraseRegionInto), "dst"_a, "src"_a, "i"_a, "j"_a, "h"_a, "w"_a,
+          "v"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+        Writes the torchvision-compatible single-region erase result into ``dst``.
+
+        Passing the same tensor as ``src`` and ``dst`` performs the operation in place.
+
+        Args:
+            dst (cvcuda.Tensor): Output tensor with the same shape, layout, and dtype as ``src``.
+            src (cvcuda.Tensor): Input image tensor.
+            i (int): Vertical slice start.
+            j (int): Horizontal slice start.
+            h (int): Vertical slice extent.
+            w (int): Horizontal slice extent.
+            v (cvcuda.Tensor): Broadcastable value tensor.
+            stream (cvcuda.Stream, optional): CUDA stream on which to submit the operation.
+
+        Returns:
+            cvcuda.Tensor: ``dst``.
+    )pbdoc");
+
+    m.def("erase", NvtxTrace("cvcuda.erase", &Erase), "src"_a, "anchor"_a, "erasing"_a, "values"_a, "imgIdx"_a,
+          py::kw_only(), "random"_a = false, "seed"_a = 0, "stream"_a = nullptr, R"pbdoc(
+        Executes the Erase operation on the given cuda stream.
+
 
         Args:
             src (cvcuda.Tensor): Input tensor containing one or more images.
@@ -147,21 +222,12 @@ void ExportOpErase(py::module &m)
         Returns:
             cvcuda.Tensor: The output tensor.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("erase_into", &EraseInto, "dst"_a, "src"_a, "anchor"_a, "erasing"_a, "values"_a, "imgIdx"_a, py::kw_only(),
-          "random"_a = false, "seed"_a = 0, "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.erase_into(dst: cvcuda.Tensor, src: cvcuda.Tensor, anchor: cvcuda.Tensor, erasing: cvcuda.Tensor, values: cvcuda.Tensor, imgIdx: cvcuda.Tensor, random: int, seed: int, stream: Optional[cvcuda.Stream] = None)
-
+    m.def("erase_into", NvtxTrace("cvcuda.erase_into", &EraseInto), "dst"_a, "src"_a, "anchor"_a, "erasing"_a,
+          "values"_a, "imgIdx"_a, py::kw_only(), "random"_a = false, "seed"_a = 0, "stream"_a = nullptr, R"pbdoc(
         Executes the Erase operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Erase operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.Tensor): Output tensor to store the result of the operation.
@@ -178,23 +244,13 @@ void ExportOpErase(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 
-    m.def("erase", &EraseVarShape, "src"_a, "anchor"_a, "erasing"_a, "values"_a, "imgIdx"_a, py::kw_only(),
-          "random"_a = false, "seed"_a = 0, "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.erase(src: cvcuda.ImageBatchVarShape, anchor: cvcuda.Tensor, erasing: cvcuda.Tensor, values: cvcuda.Tensor, imgIdx: cvcuda.Tensor, random: int, seed: int, stream: Optional[cvcuda.Stream] = None) -> cvcuda.ImageBatchVarShape
-
+    m.def("erase", NvtxTrace("cvcuda.erase", &EraseVarShape), "src"_a, "anchor"_a, "erasing"_a, "values"_a, "imgIdx"_a,
+          py::kw_only(), "random"_a = false, "seed"_a = 0, "stream"_a = nullptr, R"pbdoc(
         Executes the Erase operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Erase operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
@@ -213,21 +269,12 @@ void ExportOpErase(py::module &m)
         Returns:
             cvcuda.ImageBatchVarShape: The output image batch.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("erase_into", &EraseVarShapeInto, "dst"_a, "src"_a, "anchor"_a, "erasing"_a, "values"_a, "imgIdx"_a,
-          py::kw_only(), "random"_a = false, "seed"_a = 0, "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.erase_into(dst: cvcuda.ImageBatchVarShape, src: cvcuda.ImageBatchVarShape, anchor: cvcuda.Tensor, erasing: cvcuda.Tensor, values: cvcuda.Tensor, imgIdx: cvcuda.Tensor, random: int, seed: int, stream: Optional[cvcuda.Stream] = None)
-
+    m.def("erase_into", NvtxTrace("cvcuda.erase_into", &EraseVarShapeInto), "dst"_a, "src"_a, "anchor"_a, "erasing"_a,
+          "values"_a, "imgIdx"_a, py::kw_only(), "random"_a = false, "seed"_a = 0, "stream"_a = nullptr, R"pbdoc(
         Executes the Erase operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Erase operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
@@ -243,11 +290,7 @@ void ExportOpErase(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.ImageBatchVarShape: The output image batch (same as dst).
     )pbdoc");
 }
 

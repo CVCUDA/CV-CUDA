@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,40 +28,102 @@
 namespace nvcv::cuda::detail {
 
 template<typename T, typename U>
+inline __host__ __device__ T RangeCastFloatingNarrow(U u)
+{
+    return BoundedCast<T>(u, -TypeTraits<T>::max, TypeTraits<T>::max);
+}
+
+template<typename T, typename U>
+inline __host__ __device__ T RangeCastFloatingToSignedIntegral(U u)
+{
+    if (u >= U{1})
+    {
+        return TypeTraits<T>::max;
+    }
+    else if (u <= U{-1})
+    {
+        return -TypeTraits<T>::max;
+    }
+    else
+    {
+        return RoundImpl<T, U>(static_cast<U>(TypeTraits<T>::max) * u);
+    }
+}
+
+template<typename T, typename U>
+inline __host__ __device__ T RangeCastSignedIntegralToFloating(U u)
+{
+    constexpr T invmax = T{1} / static_cast<T>(TypeTraits<U>::max);
+
+    T out = static_cast<T>(u) * invmax;
+    return out < T{-1} ? T{-1} : out;
+}
+
+template<typename T, typename U>
+inline __host__ __device__ T RangeCastFloatingToUnsignedIntegral(U u)
+{
+    if (u >= U{1})
+    {
+        return TypeTraits<T>::max;
+    }
+    else if (u <= U{0})
+    {
+        return T{0};
+    }
+    else
+    {
+        return RoundImpl<T, U>(static_cast<U>(TypeTraits<T>::max) * u);
+    }
+}
+
+template<typename T, typename U>
+inline __host__ __device__ T RangeCastUnsignedIntegralToFloating(U u)
+{
+    constexpr T invmax = T{1} / static_cast<T>(TypeTraits<U>::max);
+    return static_cast<T>(u) * invmax;
+}
+
+template<typename T, typename U>
 inline __host__ __device__ T RangeCastImpl(U u)
 {
-    if constexpr (std::is_floating_point_v<U> && std::is_floating_point_v<T> && sizeof(U) > sizeof(T))
+    constexpr bool kFloatingToFloatingNarrow
+        = std::is_floating_point_v<U> && std::is_floating_point_v<T> && sizeof(U) > sizeof(T);
+    constexpr bool kFloatingToSignedIntegral
+        = std::is_floating_point_v<U> && std::is_integral_v<T> && std::is_signed_v<T>;
+    constexpr bool kSignedIntegralToFloating
+        = std::is_integral_v<U> && std::is_signed_v<U> && std::is_floating_point_v<T>;
+    constexpr bool kFloatingToUnsignedIntegral
+        = std::is_floating_point_v<U> && std::is_integral_v<T> && std::is_unsigned_v<T>;
+    constexpr bool kUnsignedIntegralToFloating
+        = std::is_integral_v<U> && std::is_unsigned_v<U> && std::is_floating_point_v<T>;
+    constexpr bool kIntegralToIntegral = std::is_integral_v<U> && std::is_integral_v<T>;
+
+    if constexpr (kFloatingToFloatingNarrow)
     {
         // any-float -> any-float, big -> small
-        return u <= -TypeTraits<T>::max ? -TypeTraits<T>::max
-                                        : (u >= TypeTraits<T>::max ? TypeTraits<T>::max : static_cast<T>(u));
+        return RangeCastFloatingNarrow<T>(u);
     }
-    else if constexpr (std::is_floating_point_v<U> && std::is_integral_v<T> && std::is_signed_v<T>)
+    else if constexpr (kFloatingToSignedIntegral)
     {
         // any-float -> any-integral-signed
-        return u >= U{1} ? TypeTraits<T>::max
-                         : (u <= U{-1} ? -TypeTraits<T>::max : RoundImpl<T, U>(TypeTraits<T>::max * u));
+        return RangeCastFloatingToSignedIntegral<T>(u);
     }
-    else if constexpr (std::is_integral_v<U> && std::is_signed_v<U> && std::is_floating_point_v<T>)
+    else if constexpr (kSignedIntegralToFloating)
     {
         // any-integral-signed -> any-float
-        constexpr T invmax = T{1} / TypeTraits<U>::max;
-
-        T out = static_cast<T>(u) * invmax;
-        return out < T{-1} ? T{-1} : out;
+        return RangeCastSignedIntegralToFloating<T>(u);
     }
-    else if constexpr (std::is_floating_point_v<U> && std::is_integral_v<T> && std::is_unsigned_v<T>)
+    else if constexpr (kFloatingToUnsignedIntegral)
     {
         // any-float -> any-integral-unsigned
-        return u >= U{1} ? TypeTraits<T>::max : (u <= U{0} ? T{0} : RoundImpl<T, U>(TypeTraits<T>::max * u));
+        return RangeCastFloatingToUnsignedIntegral<T>(u);
     }
-    else if constexpr (std::is_integral_v<U> && std::is_unsigned_v<U> && std::is_floating_point_v<T>)
+    else if constexpr (kUnsignedIntegralToFloating)
     {
         // any-integral-unsigned -> any-float
-        constexpr T invmax = T{1} / TypeTraits<U>::max;
-        return static_cast<T>(u) * invmax;
+        return RangeCastUnsignedIntegralToFloating<T>(u);
     }
-    else if constexpr (std::is_integral_v<U> && std::is_integral_v<T>)
+    else if constexpr (kIntegralToIntegral)
     {
         // any-integral -> any-integral, range cast reduces to saturate cast
         return BaseSaturateCastImpl<T, U>(u);

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "TensorBatch.hpp"
 
+#include "../NvtxRange.hpp"
 #include "CastUtils.hpp"
 #include "DataType.hpp"
 #include "ExternalBuffer.hpp"
@@ -25,7 +26,19 @@
 #include <common/Assert.hpp>
 #include <common/CheckError.hpp>
 
+#include <stdexcept>
+
 namespace nvcvpy::priv {
+
+namespace {
+
+class TensorBatchError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
+
+} // namespace
 
 size_t TensorBatch::Key::doGetHash() const
 {
@@ -46,7 +59,7 @@ std::shared_ptr<TensorBatch> TensorBatch::Create(int capacity)
     // None found?
     if (vcont.empty())
     {
-        std::shared_ptr<TensorBatch> batch(new TensorBatch(capacity));
+        std::shared_ptr<TensorBatch> batch(new TensorBatch(capacity)); // NOSONAR: constructor is private.
         Cache::Instance().add(*batch);
         return batch;
     }
@@ -69,12 +82,12 @@ std::shared_ptr<TensorBatch> TensorBatch::WrapExternalBufferVector(std::vector<p
         std::shared_ptr<ExternalBuffer> buffer = cast_py_object_as<ExternalBuffer>(obj);
         if (!buffer)
         {
-            throw std::runtime_error("Input buffer doesn't provide cuda_array_interface or DLPack interfaces.");
+            throw TensorBatchError("Input buffer doesn't provide cuda_array_interface or DLPack interfaces.");
         }
         auto tensor = Tensor::Wrap(*buffer, layout);
         list.push_back(tensor);
     }
-    auto batch = Create(buffers.size());
+    auto batch = Create(static_cast<int>(buffers.size()));
     batch->pushBackMany(list);
     return batch;
 }
@@ -87,7 +100,7 @@ TensorBatch::TensorBatch(int capacity)
     m_list.reserve(capacity);
 }
 
-int64_t TensorBatch::doComputeSizeInBytes(const NVCVTensorBatchRequirements &reqs)
+int64_t TensorBatch::doComputeSizeInBytes(const NVCVTensorBatchRequirements &reqs) const
 {
     int64_t size_inbytes;
     util::CheckThrow(nvcvMemRequirementsCalcTotalSizeBytes(&(reqs.mem.cudaMem), &size_inbytes));
@@ -157,14 +170,14 @@ std::optional<nvcv::TensorLayout> TensorBatch::layout() const
 void TensorBatch::pushBack(Tensor &tensor)
 {
     m_impl.pushBack(tensor.impl());
-    m_list.push_back(tensor.shared_from_this());
+    m_list.push_back(SharedContainerFrom(tensor));
 }
 
 void TensorBatch::pushBackMany(std::vector<std::shared_ptr<Tensor>> &tensorList)
 {
     std::vector<nvcv::Tensor> nvcvTensors;
     nvcvTensors.reserve(tensorList.size());
-    for (auto &tensor : tensorList)
+    for (const auto &tensor : tensorList)
     {
         m_list.push_back(tensor);
         if (tensor)
@@ -191,12 +204,12 @@ std::shared_ptr<Tensor> TensorBatch::at(int64_t idx) const
 {
     if (idx < 0)
     {
-        throw std::runtime_error("Invalid index: " + std::to_string(idx));
+        throw TensorBatchError("Invalid index: " + std::to_string(idx));
     }
     else if (idx >= static_cast<int64_t>(m_list.size()))
     {
-        throw std::runtime_error("Cannot get tensor at index " + std::to_string(idx) + ". Batch has only "
-                                 + std::to_string(m_list.size()) + " elements.");
+        throw TensorBatchError("Cannot get tensor at index " + std::to_string(idx) + ". Batch has only "
+                               + std::to_string(m_list.size()) + " elements.");
     }
     return m_list[idx];
 }
@@ -205,12 +218,12 @@ void TensorBatch::set_at(int64_t idx, std::shared_ptr<Tensor> tensor)
 {
     if (idx < 0)
     {
-        throw std::runtime_error("Invalid index: " + std::to_string(idx));
+        throw TensorBatchError("Invalid index: " + std::to_string(idx));
     }
     else if (idx >= static_cast<int64_t>(m_list.size()))
     {
-        throw std::runtime_error("Cannot set tensor at index " + std::to_string(idx) + ". Batch has only "
-                                 + std::to_string(m_list.size()) + " elements.");
+        throw TensorBatchError("Cannot set tensor at index " + std::to_string(idx) + ". Batch has only "
+                               + std::to_string(m_list.size()) + " elements.");
     }
     m_impl.setTensor(static_cast<int32_t>(idx), tensor->impl());
     m_list[idx] = tensor;
@@ -224,16 +237,6 @@ auto TensorBatch::begin() const -> TensorList::const_iterator
 auto TensorBatch::end() const -> TensorList::const_iterator
 {
     return m_list.end();
-}
-
-std::shared_ptr<TensorBatch> TensorBatch::shared_from_this()
-{
-    return std::static_pointer_cast<TensorBatch>(Container::shared_from_this());
-}
-
-std::shared_ptr<const TensorBatch> TensorBatch::shared_from_this() const
-{
-    return std::static_pointer_cast<const TensorBatch>(Container::shared_from_this());
 }
 
 void TensorBatch::Export(py::module &m)
@@ -269,8 +272,8 @@ void TensorBatch::Export(py::module &m)
              "Remove one or more images from the end of the TensorBatch.")
         .def("clear", &TensorBatch::clear, "Remove all images from the TensorBatch.");
 
-    m.def("as_tensors", &TensorBatch::WrapExternalBufferVector, "buffers"_a = std::vector<py::object>{},
-          "layout"_a = std::nullopt, py::keep_alive<0, 1>(),
+    m.def("as_tensors", ::cvcudapy::NvtxTrace("cvcuda.as_tensors", &TensorBatch::WrapExternalBufferVector),
+          "buffers"_a = std::vector<py::object>{}, "layout"_a = std::nullopt, py::keep_alive<0, 1>(),
           "Wrap a list of external buffers as a batch of tensors, and tie the buffers lifetime to it");
 }
 

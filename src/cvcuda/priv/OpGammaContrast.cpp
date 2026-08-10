@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "OpGammaContrast.hpp"
 
+#include "Nvtx.hpp"
 #include "legacy/CvCudaLegacy.h"
 #include "legacy/CvCudaLegacyHelpers.hpp"
 
@@ -28,13 +29,84 @@ namespace cvcuda::priv {
 namespace legacy = nvcv::legacy::cuda_op;
 
 GammaContrast::GammaContrast(const int32_t maxVarShapeBatchSize, const int32_t maxVarShapeChannelCount)
+    // Legacy operators are single-device by design. PerDeviceResource creates
+    // one instance per CUDA device for transparent multi-GPU support. The same max
+    // batch/channel limits bound both the tensor and var-shape paths' gamma scratch.
+    : m_legacyOp([maxVarShapeBatchSize, maxVarShapeChannelCount](int)
+                 { return std::make_unique<legacy::GammaContrast>(maxVarShapeBatchSize, maxVarShapeChannelCount); })
+    , m_legacyOpVarShape(
+          [maxVarShapeBatchSize, maxVarShapeChannelCount](int)
+          { return std::make_unique<legacy::GammaContrastVarShape>(maxVarShapeBatchSize, maxVarShapeChannelCount); })
 {
-    m_legacyOpVarShape = std::make_unique<legacy::GammaContrastVarShape>(maxVarShapeBatchSize, maxVarShapeChannelCount);
+}
+
+void GammaContrast::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                               const nvcv::Tensor &gamma) const
+{
+    auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
+    if (inData == nullptr)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "Input must be device-acessible, pitch-linear tensor");
+    }
+
+    auto outData = out.exportData<nvcv::TensorDataStridedCuda>();
+    if (outData == nullptr)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "Output must be device-acessible, pitch-linear tensor");
+    }
+
+    auto gammaData = gamma.exportData<nvcv::TensorDataStridedCuda>();
+    if (gammaData == nullptr)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "Gamma must be device-acessible, pitch-linear tensor");
+    }
+
+    NVCV_CHECK_THROW(m_legacyOp.get().infer(*inData, *outData, *gammaData, stream));
+}
+
+void GammaContrast::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, float gamma,
+                               float gain, NVCVRoundMode roundMode) const
+{
+    auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
+    if (inData == nullptr)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "Input must be device-accessible, pitch-linear tensor");
+    }
+
+    auto outData = out.exportData<nvcv::TensorDataStridedCuda>();
+    if (outData == nullptr)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "Output must be device-accessible, pitch-linear tensor");
+    }
+
+    NVCV_CHECK_THROW(m_legacyOp.get().infer(*inData, *outData, gamma, gain, roundMode, stream));
 }
 
 void GammaContrast::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
                                const nvcv::ImageBatchVarShape &out, const nvcv::Tensor &gamma) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::GammaContrast::operator()[ImageBatchVarShape]");
+
+    if (in.numImages() != out.numImages())
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "Input and output must have the same number of images");
+    }
+
+    for (int i = 0; i < in.numImages(); ++i)
+    {
+        if (in[i].size() != out[i].size())
+        {
+            throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                                  "Input and output images must have matching width and height");
+        }
+    }
+
     auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (inData == nullptr)
     {
@@ -56,7 +128,7 @@ void GammaContrast::operator()(cudaStream_t stream, const nvcv::ImageBatchVarSha
                               "Gamma must be device-acessible, pitch-linear tensor");
     }
 
-    NVCV_CHECK_THROW(m_legacyOpVarShape->infer(*inData, *outData, *gammaData, stream));
+    NVCV_CHECK_THROW(m_legacyOpVarShape.get().infer(*inData, *outData, *gammaData, stream));
 }
 
 } // namespace cvcuda::priv

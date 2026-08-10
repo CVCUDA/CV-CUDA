@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -43,14 +43,14 @@ inline const TensorShape &TensorData::shape() const &
     if (!m_cacheShape)
     {
         const NVCVTensorData &data = this->cdata();
-        // coverity[overrun-buffer-val] - data.rank validated below, cannot exceed NVCV_TENSOR_MAX_RANK
+        // coverity[overrun-buffer-val] - data.rank validated below, cannot exceed NVCV_TENSOR_MAX_RANK // NOSONAR
         if (data.rank < 0 || data.rank > NVCV_TENSOR_MAX_RANK)
         {
             throw Exception(Status::ERROR_INVALID_ARGUMENT, "Tensor rank %d is out of valid range [0,%d]", data.rank,
                             NVCV_TENSOR_MAX_RANK);
         }
-        // coverity[overrun-buffer-val] - data.rank validated above, cannot exceed NVCV_TENSOR_MAX_RANK
-        m_cacheShape.emplace(data.shape, data.rank, data.layout);
+        // coverity[overrun-buffer-val] - data.rank validated above, cannot exceed NVCV_TENSOR_MAX_RANK // NOSONAR
+        m_cacheShape.emplace(data.shape, data.rank, TensorLayout{data.layout});
     }
 
     return *m_cacheShape;
@@ -106,11 +106,11 @@ inline Optional<Derived> TensorData::cast() const
 
     if (IsCompatible<Derived>())
     {
-        return Derived(m_data);
+        return Optional<Derived>{Derived{m_data}};
     }
     else
     {
-        return NullOpt;
+        return Optional<Derived>{NullOpt};
     }
 }
 
@@ -140,10 +140,10 @@ inline TensorDataStridedCuda::TensorDataStridedCuda(const TensorShape &tshape, c
 {
     NVCVTensorData &data = this->data();
 
-    std::copy(tshape.shape().begin(), tshape.shape().end(), data.shape);
+    std::copy(tshape.shape().begin(), tshape.shape().end(), data.shape); // NOSONAR: std::ranges::copy is C++20.
     data.rank   = tshape.rank();
-    data.dtype  = dtype;
-    data.layout = tshape.layout();
+    data.dtype  = static_cast<NVCVDataType>(dtype);
+    data.layout = static_cast<NVCVTensorLayout>(tshape.layout());
 
     data.bufferType     = NVCV_TENSOR_BUFFER_STRIDED_CUDA;
     data.buffer.strided = buffer;

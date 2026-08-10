@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -53,7 +53,9 @@ jobs:
         git git-lfs gcc-11 g++-11 ninja-build ccache libgtest-dev libgmock-dev \
         shellcheck curl doxygen python3 python3-pip python3-dev python3-distutils \
         texlive-latex-extra ghostscript graphviz \
-        && curl -L https://cmake.org/files/v3.20/cmake-3.20.1-linux-x86_64.tar.gz --output /tmp/cmake-3.20.1.tar.gz \
+        && curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
+        https://cmake.org/files/v3.20/cmake-3.20.1-linux-x86_64.tar.gz \
+        --output /tmp/cmake-3.20.1.tar.gz \
         && tar -xzf /tmp/cmake-3.20.1.tar.gz -C /tmp/ && sudo cp -r /tmp/cmake-3.20.1-linux-x86_64/bin/ /usr/local/ \
         && sudo cp -r /tmp/cmake-3.20.1-linux-x86_64/share/ /usr/local/ && sudo cp -r /tmp/cmake-3.20.1-linux-x86_64/doc/ /usr/local/ \
         && rm -rf /tmp/cmake-3.20.1*
@@ -68,7 +70,7 @@ jobs:
 
     - if: matrix.language == 'c-cpp'
       name: Install CUDA Toolkit
-      uses: Jimver/cuda-toolkit@v0.2.16
+      uses: Jimver/cuda-toolkit@9b295696791d75d658d8de64c4a85097ad8abeaf
       id: cuda-toolkit
       with:
         cuda: '12.2.0'
@@ -97,7 +99,7 @@ jobs:
       name: Build CMake project
       run: |
         echo "Running CMake project build script"
-        ./ci/build.sh debug build "-DBUILD_SAMPLES=OFF -DBUILD_TESTS=OFF -DBUILD_PYTHON=ON" $*
+        ./build.sh debug build "-DBUILD_SAMPLES=OFF -DBUILD_TESTS=OFF -DBUILD_PYTHON=ON" $*
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3

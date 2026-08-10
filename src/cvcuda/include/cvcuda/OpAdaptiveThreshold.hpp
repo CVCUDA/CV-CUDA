@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,6 +35,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class AdaptiveThreshold final : public IOperator
@@ -42,56 +44,52 @@ class AdaptiveThreshold final : public IOperator
 public:
     explicit AdaptiveThreshold(int32_t maxBlockSize, int32_t maxVarShapeBatchSize);
 
-    ~AdaptiveThreshold();
-
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, double maxValue,
                     NVCVAdaptiveThresholdType adaptiveMethod, NVCVThresholdType thresholdType, int32_t blockSize,
-                    double c);
+                    double c) const;
     void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
                     const nvcv::Tensor &maxValue, NVCVAdaptiveThresholdType adaptiveMethod,
-                    NVCVThresholdType thresholdType, const nvcv::Tensor &blockSize, const nvcv::Tensor &c);
+                    NVCVThresholdType thresholdType, const nvcv::Tensor &blockSize, const nvcv::Tensor &c) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline AdaptiveThreshold::AdaptiveThreshold(int32_t maxBlockSize, int32_t maxVarShapeBatchSize)
 {
-    nvcv::detail::CheckThrow(cvcudaAdaptiveThresholdCreate(&m_handle, maxBlockSize, maxVarShapeBatchSize));
-    assert(m_handle);
-}
-
-inline AdaptiveThreshold::~AdaptiveThreshold()
-{
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaAdaptiveThresholdCreate(&h, maxBlockSize, maxVarShapeBatchSize));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void AdaptiveThreshold::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                                           double maxValue, NVCVAdaptiveThresholdType adaptiveMethod,
-                                          NVCVThresholdType thresholdType, int32_t blockSize, double c)
+                                          NVCVThresholdType thresholdType, int32_t blockSize, double c) const
 {
-    nvcv::detail::CheckThrow(cvcudaAdaptiveThresholdSubmit(m_handle, stream, in.handle(), out.handle(), maxValue,
+    nvcv::detail::CheckThrow(cvcudaAdaptiveThresholdSubmit(m_handle.get(), stream, in.handle(), out.handle(), maxValue,
                                                            adaptiveMethod, thresholdType, blockSize, c));
 }
 
 inline void AdaptiveThreshold::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
                                           const nvcv::ImageBatchVarShape &out, const nvcv::Tensor &maxValue,
                                           NVCVAdaptiveThresholdType adaptiveMethod, NVCVThresholdType thresholdType,
-                                          const nvcv::Tensor &blockSize, const nvcv::Tensor &c)
+                                          const nvcv::Tensor &blockSize, const nvcv::Tensor &c) const
 {
-    nvcv::detail::CheckThrow(cvcudaAdaptiveThresholdVarShapeSubmit(m_handle, stream, in.handle(), out.handle(),
+    nvcv::detail::CheckThrow(cvcudaAdaptiveThresholdVarShapeSubmit(m_handle.get(), stream, in.handle(), out.handle(),
                                                                    maxValue.handle(), adaptiveMethod, thresholdType,
                                                                    blockSize.handle(), c.handle()));
 }
 
 inline NVCVOperatorHandle AdaptiveThreshold::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA_ADAPTIVETHRESHOLD_HPP

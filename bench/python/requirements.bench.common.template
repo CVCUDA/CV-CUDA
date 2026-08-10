@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Template for requirements.bench.common.txt — to regenerate, run from the repo root:
+#   bash generate_requirements.sh
+
+# Common Python packages for CV-CUDA nvbench-based benchmarking
+# Used by both CUDA 12 and CUDA 13 benchmarks
+
+# Python benchmark runner dependencies
+pandas==${pandas}
+
+# pynvbench dependency for finding CUDA libraries
+cuda-pathfinder==${cuda_pathfinder}
+
+# NumPy 2 with version constraints based on Python version
+numpy==${numpy_v2_py310}; python_version=="3.10"
+numpy==${numpy_v2_py311plus}; python_version>="3.11"
+
+# Benchmarking dependencies
+pycuda==${pycuda}
+nvtx==${nvtx}; python_version < "3.14"
+
+# NOTE: CUPTI libraries are provided by the system CUDA Toolkit installation
+# (typically /usr/local/cuda/lib64/libcupti.so), not via pip packages.
+# Ensure CUDA Toolkit is installed and LD_LIBRARY_PATH includes:
+#   export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+#
+# We do NOT install nvidia-cuda-cupti-cu12/cu13 packages to avoid version conflicts
+# between CUDA 12 and CUDA 13, and to ensure we use the correct CUPTI version
+# that matches the system's installed CUDA Toolkit.

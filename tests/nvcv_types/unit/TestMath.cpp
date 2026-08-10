@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -65,9 +65,9 @@ NVCV_INSTANTIATE_TEST_SUITE_P(_, MathRoundUpTests,
 
 TEST_P(MathRoundUpTests, works)
 {
-    const uint64_t input = std::get<0>(GetParam());
-    const int      next  = std::get<1>(GetParam());
-    const uint64_t gold  = std::get<2>(GetParam());
+    const uint64_t input = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const int      next  = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
+    const uint64_t gold  = ::nvcv::test::ParamValue(std::get<2>(GetParam()));
 
     EXPECT_EQ(gold, util::RoundUp(input, next));
 }
@@ -105,8 +105,8 @@ NVCV_INSTANTIATE_TEST_SUITE_P(_, MathIsPowerOfTwoTests,
 
 TEST_P(MathIsPowerOfTwoTests, works)
 {
-    const uint64_t input = std::get<0>(GetParam());
-    const bool     gold  = std::get<1>(GetParam());
+    const uint64_t input = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const bool     gold  = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     EXPECT_EQ(gold, util::IsPowerOfTwo(input));
 }
@@ -146,8 +146,8 @@ NVCV_INSTANTIATE_TEST_SUITE_P(_, MathRoundUpNextPowerOfTwoTests,
 
 TEST_P(MathRoundUpNextPowerOfTwoTests, works)
 {
-    const int64_t input = std::get<0>(GetParam());
-    const int64_t gold  = std::get<1>(GetParam());
+    const int64_t input = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const int64_t gold  = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     if (input < 128)
     {
@@ -191,9 +191,9 @@ NVCV_INSTANTIATE_TEST_SUITE_P(_, MathDivUpTests,
 
 TEST_P(MathDivUpTests, works)
 {
-    const int64_t num  = std::get<0>(GetParam());
-    const int64_t den  = std::get<1>(GetParam());
-    const int64_t gold = std::get<2>(GetParam());
+    const int64_t num  = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const int64_t den  = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
+    const int64_t gold = ::nvcv::test::ParamValue(std::get<2>(GetParam()));
 
     EXPECT_EQ(gold, util::DivUp(num, den));
 }
@@ -222,9 +222,9 @@ NVCV_INSTANTIATE_TEST_SUITE_P(_, MathRoundUpPowerOfTwoTests,
 
 TEST_P(MathRoundUpPowerOfTwoTests, works)
 {
-    const int64_t value    = std::get<0>(GetParam());
-    const int64_t multiple = std::get<1>(GetParam());
-    const int64_t gold     = std::get<2>(GetParam());
+    const int64_t value    = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const int64_t multiple = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
+    const int64_t gold     = ::nvcv::test::ParamValue(std::get<2>(GetParam()));
 
     EXPECT_EQ(gold, util::RoundUpPowerOfTwo(value, multiple));
 }
@@ -252,8 +252,8 @@ NVCV_INSTANTIATE_TEST_SUITE_P(_, MathILog2Tests,
 
 TEST_P(MathILog2Tests, works)
 {
-    const int64_t value = std::get<0>(GetParam());
-    const int64_t gold  = std::get<1>(GetParam());
+    const int64_t value = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const int64_t gold  = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     EXPECT_EQ(gold, util::ILog2(value));
 }
@@ -284,9 +284,9 @@ NVCV_INSTANTIATE_TEST_SUITE_P(_, MathDivUpPowerOfTwoTests,
 
 TEST_P(MathDivUpPowerOfTwoTests, works)
 {
-    const int64_t num  = std::get<0>(GetParam());
-    const int64_t den  = std::get<1>(GetParam());
-    const int64_t gold = std::get<2>(GetParam());
+    const int64_t num  = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const int64_t den  = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
+    const int64_t gold = ::nvcv::test::ParamValue(std::get<2>(GetParam()));
 
     EXPECT_EQ(gold, util::DivUpPowerOfTwo(num, den));
 }
@@ -309,8 +309,8 @@ NVCV_INSTANTIATE_TEST_SUITE_P(_, MathSincTests,
 
 TEST_P(MathSincTests, works)
 {
-    const float value = std::get<0>(GetParam());
-    const float gold  = std::get<1>(GetParam());
+    const float value = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const float gold  = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     EXPECT_NEAR(gold, util::sinc(value), 1e-7f);
 }

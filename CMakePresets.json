@@ -1,0 +1,75 @@
+{
+    "version": 6,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 24,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "dev",
+            "displayName": "Developer (native GPU, Release)",
+            "description":
+                "Fast build for local development: detects the installed GPU and compiles only for that architecture.",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build-dev",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_CUDA_ARCHITECTURES": "native",
+                "BUILD_TESTS": "ON",
+                "BUILD_PYTHON": "OFF",
+                "BUILD_BENCH": "OFF",
+                "BUILD_SAMPLES": "OFF",
+                "BUILD_DOCS": "OFF"
+            }
+        },
+        {
+            "name": "dev-debug",
+            "inherits": "dev",
+            "displayName": "Developer (native GPU, Debug)",
+            "binaryDir": "${sourceDir}/build-dev-dbg",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "dev-py",
+            "inherits": "dev",
+            "displayName": "Developer (native GPU, Release, Python)",
+            "description": "Like 'dev' but also builds Python bindings.",
+            "binaryDir": "${sourceDir}/build-dev-py",
+            "cacheVariables": {
+                "BUILD_PYTHON": "ON"
+            }
+        },
+        {
+            "name": "dev-bench",
+            "inherits": "dev",
+            "displayName": "Developer (native GPU, Release, Benchmarks)",
+            "description":
+                "Like 'dev' but also builds C++ and Python benchmarks. Requires nvbench installed system-wide.",
+            "binaryDir": "${sourceDir}/build-dev-bench",
+            "cacheVariables": {
+                "BUILD_BENCH": "ON"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "dev",
+            "configurePreset": "dev"
+        },
+        {
+            "name": "dev-debug",
+            "configurePreset": "dev-debug"
+        },
+        {
+            "name": "dev-py",
+            "configurePreset": "dev-py"
+        },
+        {
+            "name": "dev-bench",
+            "configurePreset": "dev-bench"
+        }
+    ]
+}

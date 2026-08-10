@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Template for requirements.tests.numpy1.txt — to regenerate, run from the repo root:
+#   bash generate_requirements.sh
+
+# NumPy 1 Python packages for the Docker images, builder and devel
+# - requirements are installed across Python versions (3.10-3.14)
+# - using the same requirements for Manylinux builders, Ubuntu 22.04 and Ubuntu 26.04
+
+# NumPy 1 with version constraints based on Python version and wheel availability
+# - Python 3.10-3.12: NumPy ${numpy_v1} is the last stable 1.x release with precompiled wheels on x86_64/aarch64
+# - Python 3.13+: NumPy 1.x does NOT support Python 3.13 or newer
+numpy==${numpy_v1}; python_version>="3.10" and python_version<"3.13"

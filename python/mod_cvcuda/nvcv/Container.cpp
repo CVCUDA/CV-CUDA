@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,16 +18,6 @@
 #include "Container.hpp"
 
 namespace nvcvpy::priv {
-
-std::shared_ptr<Container> Container::shared_from_this()
-{
-    return std::static_pointer_cast<Container>(Resource::shared_from_this());
-}
-
-std::shared_ptr<const Container> Container::shared_from_this() const
-{
-    return std::static_pointer_cast<const Container>(Resource::shared_from_this());
-}
 
 void Container::Export(py::module &m)
 {

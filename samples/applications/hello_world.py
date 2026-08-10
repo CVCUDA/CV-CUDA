@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -184,7 +184,7 @@ def main() -> None:
         # 1. Load the images into CV-CUDA
         decoder = nvimgcodec.Decoder()
         images: list[nvimgcodec.Image] = [
-            decoder.decode(str(i_path)) for i_path in input_paths
+            decoder.read(str(i_path)) for i_path in input_paths
         ]
         tensors: list[cvcuda.Tensor] = [
             cvcuda.as_tensor(image, "HWC") for image in images

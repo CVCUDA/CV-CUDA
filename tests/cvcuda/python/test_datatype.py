@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,42 +13,64 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import cvcuda
-import pytest as t
 import numpy as np
+import pytest as t
+
+import cvcuda
+
+import cvcuda_types as cv_types
 
 
-@t.mark.parametrize(
-    "type,dt",
-    [
-        (cvcuda.Type.U8, np.uint8),
-        (cvcuda.Type.U8, np.dtype(np.uint8)),
-        (cvcuda.Type.S8, np.int8),
-        (cvcuda.Type.U16, np.uint16),
-        (cvcuda.Type.S16, np.int16),
-        (cvcuda.Type.U32, np.uint32),
-        (cvcuda.Type.S32, np.int32),
-        (cvcuda.Type.U64, np.uint64),
-        (cvcuda.Type.S64, np.int64),
-        (cvcuda.Type.F32, np.float32),
-        (cvcuda.Type.F64, np.float64),
-        (cvcuda.Type.C64, np.complex64),
-        (cvcuda.Type._2C64, np.dtype("2F")),
-        (cvcuda.Type.C128, np.complex128),
-        (cvcuda.Type._2C128, np.dtype("2D")),
-        (cvcuda.Type._3S8, np.dtype("3i1")),
-        (cvcuda.Type._4S32, np.dtype("4i")),
-    ],
-)
-def test_datatype_dtype(type, dt):
-    assert type == dt
+def sub_check_type(cv_type: cvcuda.Type, dtype: np.dtype):
+    assert dtype == cv_type
+    t = cvcuda.Type(dtype)
+    assert t == cv_type
+    assert t == dtype
 
-    t = cvcuda.Type(dt)
-    assert t == type
-    assert t == dt
+
+@t.mark.parametrize("cv_type", cv_types.TYPES)
+def test_datatype_dtype(cv_type):
+    dtype = cv_types.as_np_dtype(cv_type)
+    sub_check_type(cv_type, dtype)
+
+
+def test_datatype_repr_uses_public_type_name():
+    assert repr(cvcuda.Type(np.uint8)) == "nvcv.Type.U8"
+
+
+@t.mark.parametrize("cv_type1", cv_types.TYPES)
+@t.mark.parametrize("cv_type2", cv_types.TYPES)
+def test_datatype_dtype_conv(cv_type1, cv_type2):
+    if cv_type1 == cv_type2:
+        sub_check_type(cv_type1, cv_types.as_np_dtype(cv_type2))
+        sub_check_type(cv_types.as_np_dtype(cv_type1), cv_type2)
+    else:
+        with t.raises(AssertionError):
+            sub_check_type(cv_type1, cv_types.as_np_dtype(cv_type2))
+        with t.raises(AssertionError):
+            sub_check_type(cv_types.as_np_dtype(cv_type1), cv_type2)
 
 
 @t.mark.parametrize("dt", [np.dtype([("f1", np.uint64), ("f2", np.int32)]), "invalid"])
 def test_datatype_dtype_conv_error(dt):
     with t.raises(TypeError):
         cvcuda.Type(dt)
+
+
+def test_datatype_is_hashable_and_value_consistent():
+    # A Type constructed via Type(...) must hash identically to the equivalent
+    # numpy.dtype form that Type.U8 (and friends) surface as, so that all three
+    # representations are interchangeable equal-and-hash-equal dict keys.
+    wrapper = cvcuda.Type(np.uint8)
+    named = cvcuda.Type.U8
+    npdt = np.dtype("uint8")
+
+    assert wrapper == named == npdt
+    assert hash(wrapper) == hash(named) == hash(npdt)
+
+    d = {wrapper: "u8"}
+    assert d[named] == "u8"
+    assert d[npdt] == "u8"
+
+    assert len({wrapper, named, npdt}) == 1
+    assert len({cvcuda.Type.U8, cvcuda.Type.S8}) == 2

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,9 +18,19 @@ add_subdirectory(util)
 # cvcuda private implementation
 add_subdirectory(priv)
 
-set(CV_CUDA_LIB_FILES Operator.cpp)
+set(CV_CUDA_LIB_FILES Operator.cpp Types.cpp)
 
 set(CV_CUDA_OP_FILES
+    OpJpegCompressionDistortion.cpp
+    OpAdjustHue.cpp
+    OpAdjustSaturation.cpp
+    OpAdjustSharpness.cpp
+    OpAdjustContrast.cpp
+    OpInvert.cpp
+    OpSolarize.cpp
+    OpPosterize.cpp
+    OpAutoContrast.cpp
+    OpCLAHE.cpp
     OpOSD.cpp
     OpHistogramEq.cpp
     OpAdvCvtColor.cpp
@@ -106,6 +116,7 @@ target_link_libraries(cvcuda
         nvcv_util
         nvcv_util_symver
         cvcuda_priv
+        cvcuda_nvtx_config
 )
 
 target_include_directories(cvcuda

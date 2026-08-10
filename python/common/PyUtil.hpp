@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -39,7 +39,7 @@ void DefClassMethod(const char *name, Func &&f, const Extra &...extra)
     // got from pt::class_<...>::def
     py::cpp_function cf(py::method_adaptor<py::type>(std::forward<Func>(f)), py::name(name), py::is_method(class_),
                         py::sibling(py::getattr(class_, name, py::none())), extra...);
-    py::detail::add_class_method(class_, name, std::move(cf));
+    py::detail::add_class_method(class_, name, cf);
 }
 
 // Adds a static method to an existing class

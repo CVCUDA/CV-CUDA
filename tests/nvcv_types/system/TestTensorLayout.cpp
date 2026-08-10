@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,8 +41,8 @@ NVCV_TEST_SUITE_P(TensorLayoutMakeExecTests,
 
 TEST_P(TensorLayoutMakeExecTests, from_string)
 {
-    const char             *input = std::get<0>(GetParam());
-    const NVCVTensorLayout &gold  = std::get<1>(GetParam());
+    const char             *input = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const NVCVTensorLayout &gold  = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     NVCVTensorLayout test;
     ASSERT_EQ(NVCV_SUCCESS, nvcvTensorLayoutMake(input, &test));
@@ -51,8 +51,8 @@ TEST_P(TensorLayoutMakeExecTests, from_string)
 
 TEST_P(TensorLayoutMakeExecTests, from_range)
 {
-    const char             *input = std::get<0>(GetParam());
-    const NVCVTensorLayout &gold  = std::get<1>(GetParam());
+    const char             *input = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const NVCVTensorLayout &gold  = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
     if (!input)
     {
         GTEST_SKIP();
@@ -86,9 +86,9 @@ NVCV_TEST_SUITE_P(TensorLayoutMakeFirstExecTests,
 
 TEST_P(TensorLayoutMakeFirstExecTests, works)
 {
-    const NVCVTensorLayout &input = std::get<0>(GetParam());
-    const int              &n     = std::get<1>(GetParam());
-    const NVCVTensorLayout &gold  = std::get<2>(GetParam());
+    const NVCVTensorLayout &input = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const int              &n     = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
+    const NVCVTensorLayout &gold  = ::nvcv::test::ParamValue(std::get<2>(GetParam()));
 
     NVCVTensorLayout test;
     ASSERT_EQ(NVCV_SUCCESS, nvcvTensorLayoutMakeFirst(input, n, &test));
@@ -118,9 +118,9 @@ NVCV_TEST_SUITE_P(TensorLayoutMakeLastExecTests,
 
 TEST_P(TensorLayoutMakeLastExecTests, works)
 {
-    const NVCVTensorLayout &input = std::get<0>(GetParam());
-    const int              &n     = std::get<1>(GetParam());
-    const NVCVTensorLayout &gold  = std::get<2>(GetParam());
+    const NVCVTensorLayout &input = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const int              &n     = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
+    const NVCVTensorLayout &gold  = ::nvcv::test::ParamValue(std::get<2>(GetParam()));
 
     NVCVTensorLayout test;
     ASSERT_EQ(NVCV_SUCCESS, nvcvTensorLayoutMakeLast(input, n, &test));
@@ -171,10 +171,10 @@ NVCV_TEST_SUITE_P(TensorLayoutMakeSubRangeExecTests,
 
 TEST_P(TensorLayoutMakeSubRangeExecTests, works)
 {
-    const NVCVTensorLayout &input = std::get<0>(GetParam());
-    const int              &beg   = std::get<1>(GetParam());
-    const int              &end   = std::get<2>(GetParam());
-    const NVCVTensorLayout &gold  = std::get<3>(GetParam());
+    const NVCVTensorLayout &input = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const int              &beg   = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
+    const int              &end   = ::nvcv::test::ParamValue(std::get<2>(GetParam()));
+    const NVCVTensorLayout &gold  = ::nvcv::test::ParamValue(std::get<3>(GetParam()));
 
     NVCVTensorLayout test;
     ASSERT_EQ(NVCV_SUCCESS, nvcvTensorLayoutMakeSubRange(input, beg, end, &test));
@@ -205,10 +205,10 @@ NVCV_TEST_SUITE_P(TensorLayoutFindDimIndexExecTests,
 
 TEST_P(TensorLayoutFindDimIndexExecTests, works)
 {
-    const NVCVTensorLayout &input = std::get<0>(GetParam());
-    const int              &label = std::get<1>(GetParam());
-    const int              &start = std::get<2>(GetParam());
-    const int              &gold  = std::get<3>(GetParam());
+    const NVCVTensorLayout &input = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const int              &label = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
+    const int              &start = ::nvcv::test::ParamValue(std::get<2>(GetParam()));
+    const int              &gold  = ::nvcv::test::ParamValue(std::get<3>(GetParam()));
 
     EXPECT_EQ(gold, nvcvTensorLayoutFindDimIndex(input, label, start));
 }
@@ -237,9 +237,9 @@ NVCV_TEST_SUITE_P(TensorLayoutGetLabelExecTests,
 
 TEST_P(TensorLayoutGetLabelExecTests, works)
 {
-    const NVCVTensorLayout &input = std::get<0>(GetParam());
-    const int              &idx   = std::get<1>(GetParam());
-    const char             &gold  = std::get<2>(GetParam());
+    const NVCVTensorLayout &input = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const int              &idx   = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
+    const char             &gold  = ::nvcv::test::ParamValue(std::get<2>(GetParam()));
 
     EXPECT_EQ(gold, nvcvTensorLayoutGetLabel(input, idx));
 }
@@ -262,8 +262,8 @@ NVCV_TEST_SUITE_P(TensorLayoutGetNumDimExecTests,
 
 TEST_P(TensorLayoutGetNumDimExecTests, works)
 {
-    const NVCVTensorLayout &input = std::get<0>(GetParam());
-    const int              &gold  = std::get<1>(GetParam());
+    const NVCVTensorLayout &input = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const int              &gold  = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     EXPECT_EQ(gold, nvcvTensorLayoutGetNumDim(input));
 }
@@ -292,9 +292,9 @@ NVCV_TEST_SUITE_P(TensorLayoutCompareExecTests,
 
 TEST_P(TensorLayoutCompareExecTests, works)
 {
-    const NVCVTensorLayout &a    = std::get<0>(GetParam());
-    const NVCVTensorLayout &b    = std::get<1>(GetParam());
-    const int              &gold = std::get<2>(GetParam());
+    const NVCVTensorLayout &a    = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const NVCVTensorLayout &b    = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
+    const int              &gold = ::nvcv::test::ParamValue(std::get<2>(GetParam()));
 
     EXPECT_EQ(gold, nvcvTensorLayoutCompare(a, b));
 }
@@ -321,8 +321,8 @@ NVCV_TEST_SUITE_P(TensorLayoutGetNameExecTests,
 
 TEST_P(TensorLayoutGetNameExecTests, works)
 {
-    const NVCVTensorLayout &layout = std::get<0>(GetParam());
-    const char             *gold   = std::get<1>(GetParam());
+    const NVCVTensorLayout &layout = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const char             *gold   = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     EXPECT_STREQ(gold, nvcvTensorLayoutGetName(&layout));
 }
@@ -353,9 +353,9 @@ NVCV_TEST_SUITE_P(TensorLayoutStartsWithExecTests,
 
 TEST_P(TensorLayoutStartsWithExecTests, works)
 {
-    const NVCVTensorLayout &a    = std::get<0>(GetParam());
-    const NVCVTensorLayout &b    = std::get<1>(GetParam());
-    const bool             &gold = std::get<2>(GetParam());
+    const NVCVTensorLayout &a    = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const NVCVTensorLayout &b    = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
+    const bool             &gold = ::nvcv::test::ParamValue(std::get<2>(GetParam()));
 
     EXPECT_EQ(gold, (bool)nvcvTensorLayoutStartsWith(a, b));
 }
@@ -387,9 +387,9 @@ NVCV_TEST_SUITE_P(TensorLayoutEndsWithExecTests,
 
 TEST_P(TensorLayoutEndsWithExecTests, works)
 {
-    const NVCVTensorLayout &a    = std::get<0>(GetParam());
-    const NVCVTensorLayout &b    = std::get<1>(GetParam());
-    const bool             &gold = std::get<2>(GetParam());
+    const NVCVTensorLayout &a    = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const NVCVTensorLayout &b    = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
+    const bool             &gold = ::nvcv::test::ParamValue(std::get<2>(GetParam()));
 
     EXPECT_EQ(gold, (bool)nvcvTensorLayoutEndsWith(a, b));
 }
@@ -416,8 +416,8 @@ NVCV_TEST_SUITE_P(TensorLayoutOStreamExecTests,
 
 TEST_P(TensorLayoutOStreamExecTests, works)
 {
-    const nvcv::TensorLayout &layout = std::get<0>(GetParam());
-    const char               *gold   = std::get<1>(GetParam());
+    const nvcv::TensorLayout &layout = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const char               *gold   = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     std::ostringstream ss;
     ss << layout;

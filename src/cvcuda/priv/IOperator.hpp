@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
@@ -24,6 +24,9 @@
 #include <cvcuda/Operator.h>
 #include <nvcv/Exception.hpp>
 
+#include <memory>
+#include <utility>
+
 namespace cvcuda::priv {
 
 class IOperator
@@ -34,18 +37,31 @@ public:
 
     virtual ~IOperator() = default;
 
-    HandleType handle() const
+    HandleType handle()
     {
-        return reinterpret_cast<HandleType>(const_cast<IOperator *>(static_cast<const IOperator *>(this)));
+        return reinterpret_cast<HandleType>(this);
     }
 
-    Version version()
+    Version version() const
     {
         return CURRENT_VERSION;
     }
 };
 
-IOperator *ToOperatorPtr(void *handle);
+IOperator *ToOperatorPtr(NVCVOperatorHandle handle);
+
+template<class T, class... Args>
+inline NVCVOperatorHandle CreateOperatorHandle(Args &&...args)
+{
+    auto op = std::make_unique<T>(std::forward<Args>(args)...);
+    return reinterpret_cast<NVCVOperatorHandle>(op.release());
+}
+
+inline void DestroyOperatorHandle(NVCVOperatorHandle handle)
+{
+    std::unique_ptr<IOperator> op(ToOperatorPtr(handle));
+    (void)op;
+}
 
 template<class T>
 inline T *ToDynamicPtr(NVCVOperatorHandle h)

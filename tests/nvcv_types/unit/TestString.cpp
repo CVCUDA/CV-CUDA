@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,6 +20,10 @@
 #include <common/ValueTests.hpp>
 #include <nvcv/util/Assert.h>
 #include <nvcv/util/String.hpp>
+
+#include <algorithm>
+#include <array>
+#include <string>
 
 namespace util = nvcv::util;
 namespace test = nvcv::test;
@@ -68,57 +72,97 @@ TEST_P(ReplaceAllInlineTests, test)
     const char *replace = GetParamValue<3>();
     const char *gold    = GetParamValue<4>();
 
-    char buffer[256];
-    // +1 for sentinel
-    NVCV_ASSERT(sizeof(buffer) + 1 >= strlen(input));
-    NVCV_ASSERT(sizeof(buffer) + 1 >= strlen(gold));
+    const std::string inputText{input};
+    const std::string goldText{gold};
 
-    strncpy(buffer, input, sizeof(buffer));
-    char *sentinel = buffer + std::max(strlen(input), strlen(gold)) + 1;
-    *sentinel      = '\xFF';
+    std::array<char, 256> buffer{};
+    NVCV_ASSERT(buffer.size() > std::max(inputText.size(), goldText.size()) + 1);
 
-    ASSERT_NO_THROW(util::ReplaceAllInline(buffer, bufSize, what, replace));
-    EXPECT_STREQ(gold, buffer);
+    std::ranges::copy(inputText, buffer.begin());
+    buffer[inputText.size()] = '\0';
+    char *sentinel           = buffer.data() + std::max(inputText.size(), goldText.size()) + 1;
+    *sentinel                = '\xFF';
+
+    ASSERT_NO_THROW(util::ReplaceAllInline(buffer.data(), bufSize, what, replace));
+    EXPECT_STREQ(gold, buffer.data());
     EXPECT_EQ('\xFF', *sentinel) << "buffer overrun";
 }
 
 TEST(BufferOStreamTests, is_zero_terminated_on_dtor)
 {
-    char buf[] = "rod";
+    std::array<char, 4> buf = {"rod"};
 
     {
-        util::BufferOStream str(buf, sizeof(buf));
+        util::BufferOStream str(buf.data(), buf.size());
     }
     EXPECT_EQ('\0', buf[0]);
 }
 
 TEST(BufferOStreamTests, is_flushed_on_dtor)
 {
-    char buf[] = "rod";
+    std::array<char, 4> buf = {"rod"};
 
     {
-        util::BufferOStream str(buf, sizeof(buf));
+        util::BufferOStream str(buf.data(), buf.size());
         str << 'x';
     }
-    EXPECT_STREQ("x", buf);
+    EXPECT_STREQ("x", buf.data());
 }
 
 TEST(BufferOStreamTests, data_is_written)
 {
-    char buf[] = "rod";
+    std::array<char, 4> buf = {"rod"};
 
-    util::BufferOStream str(buf, sizeof(buf));
+    util::BufferOStream str(buf.data(), buf.size());
     str << "123" << '\0' << std::flush;
-    EXPECT_STREQ("123", buf);
+    EXPECT_STREQ("123", buf.data());
 }
 
 TEST(BufferOStreamTests, overflow)
 {
-    char buf[] = "rodlima";
+    std::array<char, 8> buf = {"rodlima"};
 
-    util::BufferOStream str(buf, sizeof(buf) - 1);
+    util::BufferOStream str(buf.data(), buf.size() - 1);
     str << "12345678\0" << std::flush;
     EXPECT_FALSE(str.good());
     EXPECT_TRUE(str.fail());
-    EXPECT_STREQ("1234567", buf);
+    EXPECT_STREQ("1234567", buf.data());
+}
+
+TEST(ReplaceAllInlineTests, unterminated_buffer_is_terminated)
+{
+    std::array<char, 4> buf = {'a', 'b', 'c', 'd'};
+
+    util::ReplaceAllInline(buf.data(), buf.size(), "missing", "replacement");
+
+    EXPECT_EQ((std::array<char, 4>{'a', 'b', 'c', '\0'}), buf);
+}
+
+TEST(FixedBufferStreamBufTests, invalid_reset_and_seek)
+{
+    std::array<char, 4>        buf{};
+    util::FixedBufferStreamBuf streamBuf(nullptr, 0);
+
+    EXPECT_EQ(std::streampos{std::streamoff{-1}}, streamBuf.pubseekpos(0, std::ios_base::out));
+
+    streamBuf.reset(buf.data(), buf.size());
+    EXPECT_EQ(std::streampos{std::streamoff{-1}}, streamBuf.pubseekpos(0, std::ios_base::in));
+    EXPECT_EQ(std::streampos{std::streamoff{-1}}, streamBuf.pubseekpos(-1, std::ios_base::out));
+    EXPECT_EQ(std::streampos{std::streamoff{-1}}, streamBuf.pubseekpos(buf.size(), std::ios_base::out));
+}
+
+TEST(FixedBufferStreamBufTests, eof_overflow_is_not_an_error)
+{
+    class TestStreamBuf : public util::FixedBufferStreamBuf
+    {
+    public:
+        using FixedBufferStreamBuf::FixedBufferStreamBuf;
+        using FixedBufferStreamBuf::overflow;
+    };
+
+    std::array<char, 1> buf{};
+    TestStreamBuf       streamBuf(buf.data(), buf.size());
+
+    EXPECT_FALSE(TestStreamBuf::traits_type::eq_int_type(streamBuf.overflow(TestStreamBuf::traits_type::eof()),
+                                                         TestStreamBuf::traits_type::eof()));
 }

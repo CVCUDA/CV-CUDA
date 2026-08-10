@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -40,7 +40,7 @@ Tensor ReformatInto(Tensor &output, Tensor &input, std::optional<Stream> pstream
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*reformat});
 
-    reformat->submit(pstream->cudaHandle(), input, output);
+    guard.run([&reformat, &pstream, &input, &output]() { reformat->submit(pstream->cudaHandle(), input, output); });
 
     return std::move(output);
 }
@@ -60,13 +60,10 @@ void ExportOpReformat(py::module &m)
 {
     using namespace pybind11::literals;
 
-    m.def("reformat", &Reformat, "src"_a, "layout"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
+    m.def("reformat", NvtxTrace("cvcuda.reformat", &Reformat), "src"_a, "layout"_a, py::kw_only(), "stream"_a = nullptr,
+          R"pbdoc(
         Executes the Reformat operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Reformat operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.Tensor): Input tensor containing one or more images.
@@ -76,18 +73,12 @@ void ExportOpReformat(py::module &m)
         Returns:
             cvcuda.Tensor: The output tensor.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("reformat_into", &ReformatInto, "dst"_a, "src"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
+    m.def("reformat_into", NvtxTrace("cvcuda.reformat_into", &ReformatInto), "dst"_a, "src"_a, py::kw_only(),
+          "stream"_a = nullptr, R"pbdoc(
         Executes the Reformat operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Reformat operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.Tensor): Output tensor to store the result of the operation.
@@ -95,11 +86,7 @@ void ExportOpReformat(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 }
 

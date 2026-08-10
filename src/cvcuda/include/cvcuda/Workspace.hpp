@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,6 +25,7 @@
 
 #include <cassert>
 #include <functional>
+#include <stdexcept>
 #include <utility>
 
 namespace cvcuda {
@@ -33,6 +34,12 @@ using Workspace                = NVCVWorkspace;
 using WorkspaceMem             = NVCVWorkspaceMem;
 using WorkspaceRequirements    = NVCVWorkspaceRequirements;
 using WorkspaceMemRequirements = NVCVWorkspaceMemRequirements;
+
+class WorkspaceError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
 
 /** Computes memory requirements that can cover both input requirements.
  *
@@ -71,6 +78,27 @@ inline void AlignUp(WorkspaceRequirements &ws)
     ws.cudaMem.size   = nvcv::detail::AlignUp(ws.cudaMem.size, ws.cudaMem.alignment);
 }
 
+inline void SynchronizeWorkspaceMem(const WorkspaceMem &mem)
+{
+    if (mem.ready && cudaEventSynchronize(mem.ready) != cudaSuccess)
+    {
+        throw WorkspaceError("cudaEventSynchronize failed");
+    }
+}
+
+template<class Allocator>
+inline void FreeWorkspaceMem(WorkspaceMem &mem, Allocator alloc)
+{
+    if (!mem.data)
+    {
+        return;
+    }
+
+    SynchronizeWorkspaceMem(mem);
+    alloc.free(mem.data, static_cast<int64_t>(mem.req.size), static_cast<int32_t>(mem.req.alignment));
+    mem.data = nullptr;
+}
+
 /** A helper class that manages the lifetime of resources stored in a Workspace structure.
  *
  * This class works in a way similar to unique_ptr with a custom deleter.
@@ -85,7 +113,7 @@ public:
 
     UniqueWorkspace(const UniqueWorkspace &) = delete;
 
-    UniqueWorkspace(UniqueWorkspace &&ws)
+    UniqueWorkspace(UniqueWorkspace &&ws) noexcept
     {
         swap(ws);
     }
@@ -95,28 +123,39 @@ public:
     UniqueWorkspace &operator=(UniqueWorkspace &&ws) noexcept
     {
         swap(ws);
-        ws.reset();
+        ws.resetNoThrow();
         return *this;
     }
 
-    UniqueWorkspace(Workspace workspace, Deleter del = {})
+    explicit UniqueWorkspace(const Workspace &workspace, Deleter del = {})
         : m_impl(workspace)
         , m_del(std::move(del))
     {
     }
 
-    UniqueWorkspace(WorkspaceMem host, WorkspaceMem pinned, WorkspaceMem cuda, Deleter del = {})
+    UniqueWorkspace(const WorkspaceMem &host, const WorkspaceMem &pinned, const WorkspaceMem &cuda, Deleter del = {})
         : m_impl{host, pinned, cuda}
         , m_del(std::move(del))
     {
     }
 
-    ~UniqueWorkspace()
+    ~UniqueWorkspace() noexcept
     {
-        reset();
+        resetNoThrow();
     }
 
     void reset() noexcept
+    {
+        resetNoThrow();
+    }
+
+    const Workspace &get() const
+    {
+        return m_impl;
+    }
+
+private:
+    void resetImpl()
     {
         if (m_del)
         {
@@ -126,13 +165,20 @@ public:
         }
     }
 
-    const Workspace &get() const
+    void resetNoThrow() noexcept
     {
-        return m_impl;
+        try
+        {
+            resetImpl();
+        }
+        catch (...)
+        {
+            m_del  = {};
+            m_impl = {};
+        }
     }
 
-private:
-    void swap(UniqueWorkspace &ws)
+    void swap(UniqueWorkspace &ws) noexcept
     {
         std::swap(m_impl, ws.m_impl);
         std::swap(m_del, ws.m_del);
@@ -148,7 +194,7 @@ private:
  * may degrade performance due to excessive allocations and deallocations.
  * For code used in tight loops, some workspace reuse scheme and/or resource pools are recommended.
  */
-inline UniqueWorkspace AllocateWorkspace(WorkspaceRequirements req, nvcv::Allocator alloc = {})
+inline UniqueWorkspace AllocateWorkspace(const WorkspaceRequirements &req, nvcv::Allocator alloc = {})
 {
     if (!alloc)
     {
@@ -157,31 +203,10 @@ inline UniqueWorkspace AllocateWorkspace(WorkspaceRequirements req, nvcv::Alloca
     }
     auto del = [alloc](NVCVWorkspace &ws)
     {
-        // TODO(michalz): Add proper CUDA error handling in public API
-        if (ws.hostMem.data)
-        {
-            if (ws.hostMem.ready)
-                if (cudaEventSynchronize(ws.hostMem.ready) != cudaSuccess)
-                    throw std::runtime_error("cudaEventSynchronize failed");
-            alloc.hostMem().free(ws.hostMem.data, ws.hostMem.req.size, ws.hostMem.req.alignment);
-            ws.hostMem.data = nullptr;
-        }
-        if (ws.pinnedMem.data)
-        {
-            if (ws.pinnedMem.ready)
-                if (cudaEventSynchronize(ws.pinnedMem.ready) != cudaSuccess)
-                    throw std::runtime_error("cudaEventSynchronize failed");
-            alloc.hostPinnedMem().free(ws.pinnedMem.data, ws.pinnedMem.req.size, ws.pinnedMem.req.alignment);
-            ws.pinnedMem.data = nullptr;
-        }
-        if (ws.cudaMem.data)
-        {
-            if (ws.cudaMem.ready)
-                if (cudaEventSynchronize(ws.cudaMem.ready) != cudaSuccess)
-                    throw std::runtime_error("cudaEventSynchronize failed");
-            alloc.cudaMem().free(ws.cudaMem.data, ws.cudaMem.req.size, ws.cudaMem.req.alignment);
-            ws.cudaMem.data = nullptr;
-        }
+        // REVISIT(michalz): Add proper CUDA error handling in public API
+        FreeWorkspaceMem(ws.hostMem, alloc.hostMem());
+        FreeWorkspaceMem(ws.pinnedMem, alloc.hostPinnedMem());
+        FreeWorkspaceMem(ws.cudaMem, alloc.cudaMem());
     };
     NVCVWorkspace ws = {};
     try
@@ -191,11 +216,14 @@ inline UniqueWorkspace AllocateWorkspace(WorkspaceRequirements req, nvcv::Alloca
         ws.cudaMem.req   = req.cudaMem;
 
         if (req.hostMem.size)
-            ws.hostMem.data = alloc.hostMem().alloc(req.hostMem.size, req.hostMem.alignment);
+            ws.hostMem.data = alloc.hostMem().alloc(static_cast<int64_t>(req.hostMem.size),
+                                                    static_cast<int32_t>(req.hostMem.alignment));
         if (req.pinnedMem.size)
-            ws.pinnedMem.data = alloc.hostPinnedMem().alloc(req.pinnedMem.size, req.pinnedMem.alignment);
+            ws.pinnedMem.data = alloc.hostPinnedMem().alloc(static_cast<int64_t>(req.pinnedMem.size),
+                                                            static_cast<int32_t>(req.pinnedMem.alignment));
         if (req.cudaMem.size)
-            ws.cudaMem.data = alloc.cudaMem().alloc(req.cudaMem.size, req.cudaMem.alignment);
+            ws.cudaMem.data = alloc.cudaMem().alloc(static_cast<int64_t>(req.cudaMem.size),
+                                                    static_cast<int32_t>(req.cudaMem.alignment));
         return UniqueWorkspace(ws, std::move(del));
     }
     catch (...)

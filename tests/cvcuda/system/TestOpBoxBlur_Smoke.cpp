@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -59,18 +59,18 @@ TEST(OpBoxBlur_Smoke, basic_functionality_rgb8)
     // This creates sharp edges that will be smoothed by blur
     auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*input);
     ASSERT_TRUE(inAccess);
-    long                 sampleStride = inAccess->numRows() * inAccess->rowStride();
+    const auto sampleStride = static_cast<size_t>(inAccess->numRows()) * static_cast<size_t>(inAccess->rowStride());
     std::vector<uint8_t> inData(sampleStride * N, 0);
 
     // Create white squares in the center for each batch
-    int rowStride = inAccess->rowStride();
+    auto rowStride = static_cast<int>(inAccess->rowStride());
     for (int n = 0; n < N; n++)
     {
         for (int y = 80; y < 150; y++)
         {
             for (int x = 80; x < 150; x++)
             {
-                int offset         = n * sampleStride + y * rowStride + x * 3;
+                auto offset        = static_cast<size_t>(n) * sampleStride + y * rowStride + x * 3;
                 inData[offset]     = 255; // R
                 inData[offset + 1] = 255; // G
                 inData[offset + 2] = 255; // B
@@ -95,7 +95,7 @@ TEST(OpBoxBlur_Smoke, basic_functionality_rgb8)
         blurBoxVec.push_back(boxes);
     }
 
-    std::shared_ptr<NVCVBlurBoxesImpl> blurBoxes = std::make_shared<NVCVBlurBoxesImpl>(blurBoxVec);
+    auto blurBoxes = std::make_shared<NVCVBlurBoxesImpl>(blurBoxVec);
 
     // Run operator
     cvcuda::BoxBlur op;
@@ -150,9 +150,9 @@ TEST(OpBoxBlur_Smoke, basic_functionality_rgba8)
     // This creates sharp color transitions that will be smoothed by blur
     auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*input);
     ASSERT_TRUE(inAccess);
-    long                 sampleStride = inAccess->numRows() * inAccess->rowStride();
+    const auto sampleStride = static_cast<size_t>(inAccess->numRows()) * static_cast<size_t>(inAccess->rowStride());
     std::vector<uint8_t> inData(sampleStride * N);
-    int                  rowStride = inAccess->rowStride();
+    auto                 rowStride = static_cast<int>(inAccess->rowStride());
 
     // Fill with blue background (0, 0, 255, 255)
     for (size_t i = 0; i < inData.size(); i += 4)
@@ -191,7 +191,7 @@ TEST(OpBoxBlur_Smoke, basic_functionality_rgba8)
     boxes.push_back(box);
     blurBoxVec.push_back(boxes);
 
-    std::shared_ptr<NVCVBlurBoxesImpl> blurBoxes = std::make_shared<NVCVBlurBoxesImpl>(blurBoxVec);
+    auto blurBoxes = std::make_shared<NVCVBlurBoxesImpl>(blurBoxVec);
 
     cvcuda::BoxBlur op;
     EXPECT_NO_THROW(op(stream, imgIn, imgOut, (NVCVBlurBoxesI)blurBoxes.get()));
@@ -240,7 +240,7 @@ TEST(OpBoxBlur_Smoke, multiple_boxes)
     }
     blurBoxVec.push_back(boxes);
 
-    std::shared_ptr<NVCVBlurBoxesImpl> blurBoxes = std::make_shared<NVCVBlurBoxesImpl>(blurBoxVec);
+    auto blurBoxes = std::make_shared<NVCVBlurBoxesImpl>(blurBoxVec);
 
     cvcuda::BoxBlur op;
     EXPECT_NO_THROW(op(stream, imgIn, imgOut, (NVCVBlurBoxesI)blurBoxes.get()));
@@ -258,7 +258,7 @@ TEST(OpBoxBlur_Smoke, various_kernel_sizes)
     // Test different kernel sizes
     std::vector<int> kernelSizes = {1, 3, 5, 7, 11, 15, 21};
 
-    for (int ks : kernelSizes)
+    for (int ks : kernelSizes) // NOSONAR
     {
         nvcv::Tensor imgIn  = nvcv::util::CreateTensor(1, 224, 224, nvcv::FMT_RGB8);
         nvcv::Tensor imgOut = nvcv::util::CreateTensor(1, 224, 224, nvcv::FMT_RGB8);
@@ -274,7 +274,7 @@ TEST(OpBoxBlur_Smoke, various_kernel_sizes)
         boxes.push_back(box);
         blurBoxVec.push_back(boxes);
 
-        std::shared_ptr<NVCVBlurBoxesImpl> blurBoxes = std::make_shared<NVCVBlurBoxesImpl>(blurBoxVec);
+        auto blurBoxes = std::make_shared<NVCVBlurBoxesImpl>(blurBoxVec);
 
         EXPECT_NO_THROW(op(stream, imgIn, imgOut, (NVCVBlurBoxesI)blurBoxes.get())) << "Failed with kernel size " << ks;
         EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
@@ -291,7 +291,7 @@ TEST(OpBoxBlur_Smoke, memory_management)
 
     cvcuda::BoxBlur op;
 
-    for (int iter = 0; iter < 5; iter++)
+    for (int iter = 0; iter < 5; iter++) // NOSONAR
     {
         nvcv::Tensor imgIn  = nvcv::util::CreateTensor(1, 320, 240, nvcv::FMT_RGB8);
         nvcv::Tensor imgOut = nvcv::util::CreateTensor(1, 320, 240, nvcv::FMT_RGB8);
@@ -307,7 +307,7 @@ TEST(OpBoxBlur_Smoke, memory_management)
         boxes.push_back(box);
         blurBoxVec.push_back(boxes);
 
-        std::shared_ptr<NVCVBlurBoxesImpl> blurBoxes = std::make_shared<NVCVBlurBoxesImpl>(blurBoxVec);
+        auto blurBoxes = std::make_shared<NVCVBlurBoxesImpl>(blurBoxVec);
 
         EXPECT_NO_THROW(op(stream, imgIn, imgOut, (NVCVBlurBoxesI)blurBoxes.get()));
         EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
@@ -331,7 +331,7 @@ TEST(OpBoxBlur_Smoke, edge_cases)
         std::vector<std::vector<NVCVBlurBoxI>> blurBoxVec;
         std::vector<NVCVBlurBoxI>              boxes; // Empty
         blurBoxVec.push_back(boxes);
-        std::shared_ptr<NVCVBlurBoxesImpl> blurBoxes = std::make_shared<NVCVBlurBoxesImpl>(blurBoxVec);
+        auto blurBoxes = std::make_shared<NVCVBlurBoxesImpl>(blurBoxVec);
         EXPECT_NO_THROW(op(stream, imgIn, imgOut, (NVCVBlurBoxesI)blurBoxes.get()));
     }
 
@@ -347,7 +347,7 @@ TEST(OpBoxBlur_Smoke, edge_cases)
         box.kernelSize = 5;
         boxes.push_back(box);
         blurBoxVec.push_back(boxes);
-        std::shared_ptr<NVCVBlurBoxesImpl> blurBoxes = std::make_shared<NVCVBlurBoxesImpl>(blurBoxVec);
+        auto blurBoxes = std::make_shared<NVCVBlurBoxesImpl>(blurBoxVec);
         EXPECT_NO_THROW(op(stream, imgIn, imgOut, (NVCVBlurBoxesI)blurBoxes.get()));
     }
 
@@ -363,7 +363,7 @@ TEST(OpBoxBlur_Smoke, edge_cases)
         box.kernelSize = 3;
         boxes.push_back(box);
         blurBoxVec.push_back(boxes);
-        std::shared_ptr<NVCVBlurBoxesImpl> blurBoxes = std::make_shared<NVCVBlurBoxesImpl>(blurBoxVec);
+        auto blurBoxes = std::make_shared<NVCVBlurBoxesImpl>(blurBoxVec);
         EXPECT_NO_THROW(op(stream, imgIn, imgOut, (NVCVBlurBoxesI)blurBoxes.get()));
     }
 
@@ -395,7 +395,7 @@ TEST(OpBoxBlur_Smoke, batch_processing)
         blurBoxVec.push_back(boxes);
     }
 
-    std::shared_ptr<NVCVBlurBoxesImpl> blurBoxes = std::make_shared<NVCVBlurBoxesImpl>(blurBoxVec);
+    auto blurBoxes = std::make_shared<NVCVBlurBoxesImpl>(blurBoxVec);
 
     cvcuda::BoxBlur op;
     EXPECT_NO_THROW(op(stream, imgIn, imgOut, (NVCVBlurBoxesI)blurBoxes.get()));

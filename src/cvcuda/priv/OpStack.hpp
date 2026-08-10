@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,6 +27,9 @@
 #include "IOperator.hpp"
 
 #include <cuda_runtime.h>
+#include <nvcv/Image.hpp>
+#include <nvcv/ImageBatch.hpp>
+#include <nvcv/ImageData.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorBatch.hpp>
 
@@ -38,10 +41,13 @@ class Stack final : public IOperator
 {
 public:
     void operator()(cudaStream_t stream, const nvcv::TensorBatch &in, const nvcv::Tensor &out) const;
+    void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::Tensor &out) const;
 
 private:
     int copyTensorToNTensor(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,
                             uint32_t outIndex, cudaStream_t stream) const;
+    int copyImageToNTensor(const NVCVImageBufferStrided &inData, const nvcv::TensorDataStridedCuda &outData,
+                           uint32_t outIndex, cudaStream_t stream) const;
 };
 
 } // namespace cvcuda::priv

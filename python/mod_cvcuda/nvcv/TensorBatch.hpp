@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -40,9 +40,6 @@ public:
     static std::shared_ptr<TensorBatch> WrapExternalBufferVector(std::vector<py::object>           buffers,
                                                                  std::optional<nvcv::TensorLayout> layout);
 
-    std::shared_ptr<TensorBatch>       shared_from_this();
-    std::shared_ptr<const TensorBatch> shared_from_this() const;
-
     const nvcv::TensorBatch &impl() const;
     nvcv::TensorBatch       &impl();
 
@@ -69,7 +66,7 @@ public:
     class Key final : public IKey
     {
     public:
-        Key(int capacity)
+        explicit Key(int capacity)
             : m_capacity(capacity)
         {
         }
@@ -77,19 +74,19 @@ public:
     private:
         int m_capacity;
 
-        virtual size_t doGetHash() const override;
-        virtual bool   doIsCompatible(const IKey &that) const override;
+        size_t doGetHash() const override;
+        bool   doIsCompatible(const IKey &that) const override;
     };
 
-    virtual const Key &key() const override
+    const Key &key() const override
     {
         return m_key;
     }
 
 private:
-    TensorBatch(int capacity);
+    explicit TensorBatch(int capacity);
 
-    int64_t doComputeSizeInBytes(const NVCVTensorBatchRequirements &reqs);
+    int64_t doComputeSizeInBytes(const NVCVTensorBatchRequirements &reqs) const;
 
     Key               m_key;
     nvcv::TensorBatch m_impl;

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,12 +25,11 @@
 #define CVCUDA_PRIV_THRESHOLD_HPP
 
 #include "IOperator.hpp"
+#include "PerDeviceResource.hpp"
 #include "legacy/CvCudaLegacy.h"
 
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
-
-#include <memory>
 
 namespace cvcuda::priv {
 
@@ -46,8 +45,8 @@ public:
                     const nvcv::Tensor &thresh, const nvcv::Tensor &maxval) const;
 
 private:
-    std::unique_ptr<nvcv::legacy::cuda_op::Threshold>         m_legacyOp;
-    std::unique_ptr<nvcv::legacy::cuda_op::ThresholdVarShape> m_legacyOpVarShape;
+    mutable PerDeviceResource<nvcv::legacy::cuda_op::Threshold>         m_legacyOp;
+    mutable PerDeviceResource<nvcv::legacy::cuda_op::ThresholdVarShape> m_legacyOpVarShape;
 };
 
 } // namespace cvcuda::priv

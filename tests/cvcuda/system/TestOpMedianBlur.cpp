@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,7 @@
  */
 
 #include "Definitions.hpp"
+#include "PlanarParityUtils.hpp"
 
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpMedianBlur.hpp>
@@ -26,13 +27,21 @@
 
 #include <cmath>
 #include <random>
+#include <string_view>
 
 namespace test = nvcv::test;
 namespace t    = ::testing;
 
 // #define DBG_MEDIAN_BLUR 1
 
-static void printVec(std::vector<uint8_t> &vec, int height, int rowStride, int bytesPerPixel, std::string name)
+static int ScaledSize(int size, double scale)
+{
+    return static_cast<int>(static_cast<double>(size) * scale);
+}
+
+static void printVec([[maybe_unused]] std::vector<uint8_t> &vec, [[maybe_unused]] int height,
+                     [[maybe_unused]] int rowStride, [[maybe_unused]] int bytesPerPixel,
+                     [[maybe_unused]] std::string_view name)
 {
 #if DBG_MEDIAN_BLUR
     for (int i = 0; i < bytesPerPixel; i++)
@@ -52,7 +61,7 @@ static void printVec(std::vector<uint8_t> &vec, int height, int rowStride, int b
 #endif
 }
 
-static uint8_t computeMedianInSubsetMatrix(const std::vector<uint8_t> &hSrc, int srcRowStride, nvcv::Size2D srcSize,
+static uint8_t computeMedianInSubsetMatrix(const std::vector<uint8_t> &hSrc, int srcRowStride, nvcv::Size2D,
                                            nvcv::Size2D ksize, nvcv::ImageFormat fmt, int x, int y, int z)
 {
     assert(fmt.numPlanes() == 1);
@@ -88,7 +97,7 @@ static uint8_t computeMedianInSubsetMatrix(const std::vector<uint8_t> &hSrc, int
     std::cout << std::endl;
 #endif
 
-    sort(samples.begin(), samples.end());
+    std::ranges::sort(samples);
     return samples[samples.size() / 2];
 }
 
@@ -121,6 +130,46 @@ static void GenerateMedianBlurGoldenOutput(std::vector<uint8_t> &hDst, int dstRo
     }
 }
 
+static int ReplicatedOffset(int dstCoord, int offset, int srcLimit)
+{
+    int srcCoord = dstCoord - offset;
+    if (srcCoord <= 0)
+    {
+        return 0;
+    }
+
+    if (srcCoord >= srcLimit)
+    {
+        return srcLimit - 1;
+    }
+
+    return srcCoord;
+}
+
+struct ReplicateBorderData
+{
+    uint8_t       *dstPtr;
+    const uint8_t *srcPtr;
+    int            dstRowStride;
+    int            srcRowStride;
+    int            elementsPerPixel;
+    int            offsetWidth;
+    int            offsetHeight;
+    nvcv::Size2D   srcSize;
+};
+
+static void GenerateReplicatedPixel(const ReplicateBorderData &ref, int dst_x, int dst_y)
+{
+    int srcX = ReplicatedOffset(dst_x, ref.offsetWidth, ref.srcSize.w);
+    int srcY = ReplicatedOffset(dst_y, ref.offsetHeight, ref.srcSize.h);
+
+    for (int k = 0; k < ref.elementsPerPixel; k++)
+    {
+        ref.dstPtr[dst_y * ref.dstRowStride + dst_x * ref.elementsPerPixel + k]
+            = ref.srcPtr[srcY * ref.srcRowStride + srcX * ref.elementsPerPixel + k];
+    }
+}
+
 static void GenerateInputWithBorderReplicate(std::vector<uint8_t> &hDst, int dstRowStride, nvcv::Size2D dstSize,
                                              std::vector<uint8_t> &hSrc, int srcRowStride, nvcv::Size2D srcSize,
                                              nvcv::ImageFormat fmt, nvcv::Size2D ksize)
@@ -129,11 +178,8 @@ static void GenerateInputWithBorderReplicate(std::vector<uint8_t> &hDst, int dst
 
     int elementsPerPixel = fmt.numChannels();
 
-    uint8_t *srcPtr = hSrc.data();
-    uint8_t *dstPtr = hDst.data();
-
-    int srcWidth  = srcSize.w;
-    int srcHeight = srcSize.h;
+    const uint8_t *srcPtr = hSrc.data();
+    uint8_t       *dstPtr = hDst.data();
 
     int dstWidth  = dstSize.w;
     int dstHeight = dstSize.h;
@@ -141,34 +187,14 @@ static void GenerateInputWithBorderReplicate(std::vector<uint8_t> &hDst, int dst
     int offsetWidth  = ksize.w / 2;
     int offsetHeight = ksize.h / 2;
 
+    ReplicateBorderData ref{dstPtr,           srcPtr,      dstRowStride, srcRowStride,
+                            elementsPerPixel, offsetWidth, offsetHeight, srcSize};
+
     for (int dst_y = 0; dst_y < dstHeight; dst_y++)
     {
         for (int dst_x = 0; dst_x < dstWidth; dst_x++)
         {
-            for (int k = 0; k < elementsPerPixel; k++)
-            {
-                int reducedOffsetX = dst_x - offsetWidth;
-                int reducedOffsetY = dst_y - offsetHeight;
-                if (reducedOffsetX <= 0)
-                {
-                    reducedOffsetX = 0;
-                }
-                else if (reducedOffsetX >= srcWidth)
-                {
-                    reducedOffsetX = srcWidth - 1;
-                }
-
-                if (reducedOffsetY <= 0)
-                {
-                    reducedOffsetY = 0;
-                }
-                else if (reducedOffsetY >= srcHeight)
-                {
-                    reducedOffsetY = srcHeight - 1;
-                }
-                dstPtr[dst_y * dstRowStride + dst_x * elementsPerPixel + k]
-                    = srcPtr[reducedOffsetY * srcRowStride + reducedOffsetX * elementsPerPixel + k];
-            }
+            GenerateReplicatedPixel(ref, dst_x, dst_y);
         }
     }
 }
@@ -178,8 +204,14 @@ static void GenerateInputWithBorderReplicate(std::vector<uint8_t> &hDst, int dst
 NVCV_TEST_SUITE_P(OpMedianBlur, test::ValueList<int, int, nvcv::Size2D, int>
 {
     // width,       height,  kernel size, numberImages
+    {         9,         9,        {3,3},           1},
+    {         9,         9,        {3,3},           4},
+
     {         9,         9,        {5,5},           1},
     {         9,         9,        {5,5},           4},
+
+    {        13,        13,        {7,7},           1},
+    {        13,        13,        {7,7},           4},
 
     {        21,        21,      {15,15},           1},
     {        21,        21,      {15,15},           4},
@@ -228,7 +260,7 @@ TEST_P(OpMedianBlur, tensor_correct_output)
         std::uniform_int_distribution<uint8_t> rand(0, 255);
 
         srcVec[i].resize(srcHeight * srcVecRowStride);
-        std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return rand(randEng); });
+        std::ranges::generate(srcVec[i], [&rand, &randEng]() { return rand(randEng); });
 
         // Copy input data to the GPU
         ASSERT_EQ(cudaSuccess,
@@ -316,13 +348,17 @@ TEST_P(OpMedianBlur, varshape_correct_output)
     ASSERT_TRUE(ksizeTensorDataAccess);
 
     // Create input and output
-    std::default_random_engine         randEng;
-    std::uniform_int_distribution<int> rndSrcWidth(srcWidthBase * 0.8, srcWidthBase * 1.1);
-    std::uniform_int_distribution<int> rndSrcHeight(srcHeightBase * 0.8, srcHeightBase * 1.1);
-    std::uniform_int_distribution<int> rndSrcKSizeWidth(ksize.w * 0.8, ksize.w * 1.1);
-    std::uniform_int_distribution<int> rndSrcKSizeHeight(ksize.h * 0.8, ksize.h * 1.1);
+    std::default_random_engine    randEng;
+    std::uniform_int_distribution rndSrcWidth(ScaledSize(srcWidthBase, 0.8), ScaledSize(srcWidthBase, 1.1));
+    std::uniform_int_distribution rndSrcHeight(ScaledSize(srcHeightBase, 0.8), ScaledSize(srcHeightBase, 1.1));
+    std::uniform_int_distribution rndSrcKSizeWidth(ScaledSize(ksize.w, 0.8), ScaledSize(ksize.w, 1.1));
+    std::uniform_int_distribution rndSrcKSizeHeight(ScaledSize(ksize.h, 0.8), ScaledSize(ksize.h, 1.1));
 
-    std::vector<nvcv::Image>  imgSrc, imgSrcBrdReplicate, imgDst;
+    std::vector<nvcv::Image> imgSrc;
+
+    std::vector<nvcv::Image> imgSrcBrdReplicate;
+
+    std::vector<nvcv::Image>  imgDst;
     std::vector<nvcv::Size2D> ksizeVecs;
 
     for (int i = 0; i < numberOfImages; ++i)
@@ -380,7 +416,7 @@ TEST_P(OpMedianBlur, varshape_correct_output)
         std::uniform_int_distribution<uint8_t> rand(0, 255);
 
         srcVec[i].resize(srcHeight * srcVecRowStride[i]);
-        std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return rand(randEng); });
+        std::ranges::generate(srcVec[i], [&rand, &randEng]() { return rand(randEng); });
 
         printVec(srcVec[i], srcHeight, srcVecRowStride[i], bytesPerPixel, "input");
 
@@ -435,8 +471,8 @@ TEST_P(OpMedianBlur, varshape_correct_output)
         int dstWidth  = dstData->plane(0).width;
         int dstHeight = dstData->plane(0).height;
 
-        int dstRowStride                = dstWidth * fmt.planePixelStrideBytes(0);
-        int srcBrdReplicateVecRowStride = srcBrdReplicateWidth * fmt.planePixelStrideBytes(0);
+        int dstRowStride        = dstWidth * fmt.planePixelStrideBytes(0);
+        int srcBrdReplicateStep = srcBrdReplicateWidth * fmt.planePixelStrideBytes(0);
 
         std::vector<uint8_t> testVec(dstHeight * dstRowStride);
 
@@ -447,11 +483,11 @@ TEST_P(OpMedianBlur, varshape_correct_output)
                                dstHeight, cudaMemcpyDeviceToHost));
 
         std::vector<uint8_t> goldVec(dstHeight * dstRowStride);
-        std::generate(goldVec.begin(), goldVec.end(), [&]() { return 0; });
+        std::ranges::generate(goldVec, []() { return 0; });
 
         // Generate gold result
         GenerateMedianBlurGoldenOutput(goldVec, dstRowStride, {dstWidth, dstHeight}, srcBrdReplicateVec[i],
-                                       srcBrdReplicateVecRowStride, {srcBrdReplicateWidth, srcBrdReplicateHeight}, fmt,
+                                       srcBrdReplicateStep, {srcBrdReplicateWidth, srcBrdReplicateHeight}, fmt,
                                        ksizeVecs[i]);
 
         printVec(goldVec, dstHeight, dstRowStride, bytesPerPixel, "golden output");
@@ -462,13 +498,76 @@ TEST_P(OpMedianBlur, varshape_correct_output)
     }
 }
 
+// Planar (NCHW/CHW) layout support
+
+static void RunMedianBlurPlanarParityTensorCase(nvcv::ImageFormat planarFmt, nvcv::ImageFormat interleavedFmt, int w,
+                                                int h, nvcv::Size2D ksize, int numImages)
+{
+    cvcuda::MedianBlur medianBlurOp(0);
+
+    test::planar::RunTensorParity(
+        planarFmt, interleavedFmt, w, h, w, h, numImages,
+        [&medianBlurOp, ksize](cudaStream_t stream, const nvcv::Tensor &src, const nvcv::Tensor &dst, nvcv::ImageFormat)
+        { medianBlurOp(stream, src, dst, ksize); });
+}
+
+static void RunMedianBlurPlanarParityVarShapeCase(nvcv::ImageFormat planarFmt, nvcv::ImageFormat interleavedFmt, int w,
+                                                  int h, nvcv::Size2D ksize, int numImages)
+{
+    nvcv::Tensor ksizeTensor(nvcv::TensorShape({numImages}, "N"), nvcv::TYPE_2S32);
+    auto         ksizeTensorData = ksizeTensor.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_NE(nullptr, ksizeTensorData);
+
+    auto ksizeTensorDataAccess = nvcv::TensorDataAccessStrided::Create(*ksizeTensorData);
+    ASSERT_TRUE(ksizeTensorDataAccess);
+
+    std::vector<nvcv::Size2D> ksizeVec(numImages, ksize);
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy2D(ksizeTensorDataAccess->sampleData(0), ksizeTensorDataAccess->sampleStride(), ksizeVec.data(),
+                           sizeof(int2), sizeof(int2), numImages, cudaMemcpyHostToDevice));
+
+    cvcuda::MedianBlur medianBlurOp(numImages);
+
+    test::planar::RunVarShapeParity(
+        planarFmt, interleavedFmt, w, h, w, h, numImages,
+        [&medianBlurOp, &ksizeTensor](cudaStream_t stream, const nvcv::ImageBatchVarShape &src,
+                                      const nvcv::ImageBatchVarShape &dst, nvcv::ImageFormat)
+        { medianBlurOp(stream, src, dst, ksizeTensor); });
+}
+
+// clang-format off
+NVCV_TEST_SUITE_P(OpMedianBlurPlanar,
+                  test::ValueList<int, int, nvcv::Size2D, int, nvcv::ImageFormat, nvcv::ImageFormat>
+{
+    // width, height, ksize, numImages, planar format, interleaved format
+    {    31,     25, {3, 3},         2,       nvcv::FMT_RGB8p,       nvcv::FMT_RGB8},
+    {    33,     29, {3, 5},         2,       nvcv::FMT_RGB8p,       nvcv::FMT_RGB8},
+    {    29,     27, {5, 5},         1,      nvcv::FMT_RGBA8p,      nvcv::FMT_RGBA8},
+    {    17,     13, {3, 3},         2,    nvcv::FMT_RGBf32p,    nvcv::FMT_RGBf32},
+    {    15,     11, {3, 3},         1,   nvcv::FMT_RGBAf32p,   nvcv::FMT_RGBAf32},
+});
+
+// clang-format on
+
+TEST_P(OpMedianBlurPlanar, tensor_matches_interleaved)
+{
+    RunMedianBlurPlanarParityTensorCase(GetParamValue<4>(), GetParamValue<5>(), GetParamValue<0>(), GetParamValue<1>(),
+                                        GetParamValue<2>(), GetParamValue<3>());
+}
+
+TEST_P(OpMedianBlurPlanar, varshape_matches_interleaved)
+{
+    RunMedianBlurPlanarParityVarShapeCase(GetParamValue<4>(), GetParamValue<5>(), GetParamValue<0>(),
+                                          GetParamValue<1>(), GetParamValue<2>(), GetParamValue<3>());
+}
+
 // clang-format off
 NVCV_TEST_SUITE_P(OpMedianBlur_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat, nvcv::Size2D>{
     // inFmt, outFmt, kernelSize
     {nvcv::FMT_RGB8p, nvcv::FMT_RGB8, {3, 3}},
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8p, {3, 3}},
-    {nvcv::FMT_RGB8p, nvcv::FMT_RGB8p, {3, 3}},
     {nvcv::FMT_RGBf16, nvcv::FMT_RGBf16, {3, 3}},
+    {nvcv::FMT_2F32, nvcv::FMT_2F32, {3, 3}},
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8, {4, 3}},
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8, {3, 4}},
 });
@@ -476,9 +575,9 @@ NVCV_TEST_SUITE_P(OpMedianBlur_Negative, test::ValueList<nvcv::ImageFormat, nvcv
 NVCV_TEST_SUITE_P(OpMedianBlurVarshape_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat, nvcv::Size2D, int, int>{
     // inFmt, outFmt, kernelSize, maxBatchSize, numImages
     {nvcv::FMT_RGB8p, nvcv::FMT_RGB8, {3, 3}, 2, 2},
-    {nvcv::FMT_RGB8p, nvcv::FMT_RGB8p, {3, 3}, 2, 2},
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8p, {3, 3}, 2, 2},
     {nvcv::FMT_RGBf16, nvcv::FMT_RGBf16, {3, 3}, 2, 2},
+    {nvcv::FMT_2F32, nvcv::FMT_2F32, {3, 3}, 2, 2},
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8, {4, 3}, 2, 2},
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8, {3, 4}, 2, 2},
     {nvcv::FMT_RGB8, nvcv::FMT_RGB8, {3, 3}, 0, 2},
@@ -501,7 +600,8 @@ TEST_P(OpMedianBlur_Negative, op)
     nvcv::Tensor imgDst(2, {24, 24}, outFmt);
 
     cvcuda::MedianBlur medianBlurOp(0);
-    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { medianBlurOp(stream, imgSrc, imgDst, ksize); }));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&medianBlurOp, &stream, &imgSrc, &imgDst, &ksize]
+                                                             { medianBlurOp(stream, imgSrc, imgDst, ksize); }));
 
     EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
@@ -530,13 +630,17 @@ TEST_P(OpMedianBlurVarshape_Negative, op)
     ASSERT_TRUE(ksizeTensorDataAccess);
 
     // Create input and output
-    std::default_random_engine         randEng;
-    std::uniform_int_distribution<int> rndSrcWidth(srcWidthBase * 0.8, srcWidthBase * 1.1);
-    std::uniform_int_distribution<int> rndSrcHeight(srcHeightBase * 0.8, srcHeightBase * 1.1);
-    std::uniform_int_distribution<int> rndSrcKSizeWidth(ksize.w * 0.8, ksize.w * 1.1);
-    std::uniform_int_distribution<int> rndSrcKSizeHeight(ksize.h * 0.8, ksize.h * 1.1);
+    std::default_random_engine    randEng;
+    std::uniform_int_distribution rndSrcWidth(ScaledSize(srcWidthBase, 0.8), ScaledSize(srcWidthBase, 1.1));
+    std::uniform_int_distribution rndSrcHeight(ScaledSize(srcHeightBase, 0.8), ScaledSize(srcHeightBase, 1.1));
+    std::uniform_int_distribution rndSrcKSizeWidth(ScaledSize(ksize.w, 0.8), ScaledSize(ksize.w, 1.1));
+    std::uniform_int_distribution rndSrcKSizeHeight(ScaledSize(ksize.h, 0.8), ScaledSize(ksize.h, 1.1));
 
-    std::vector<nvcv::Image>  imgSrc, imgSrcBrdReplicate, imgDst;
+    std::vector<nvcv::Image> imgSrc;
+
+    std::vector<nvcv::Image> imgSrcBrdReplicate;
+
+    std::vector<nvcv::Image>  imgDst;
     std::vector<nvcv::Size2D> ksizeVecs;
 
     for (int i = 0; i < numberOfImages; ++i)
@@ -563,7 +667,8 @@ TEST_P(OpMedianBlurVarshape_Negative, op)
 
     cvcuda::MedianBlur medianBlurOp(maxBatchSize);
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-              nvcv::ProtectCall([&] { medianBlurOp(stream, batchSrc, batchDst, ksizeTensor); }));
+              nvcv::ProtectCall([&medianBlurOp, &stream, &batchSrc, &batchDst, &ksizeTensor]
+                                { medianBlurOp(stream, batchSrc, batchDst, ksizeTensor); }));
 
     // Get test data back
     EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -60,8 +60,9 @@ typedef void (*NVCVImageDataCleanupFunc)(void *ctx, const NVCVImageData *data);
 /** Stores the requirements of an image. */
 typedef struct NVCVImageRequirementsRec
 {
-    int32_t         width, height; /*< Image dimensions. */
-    NVCVImageFormat format;        /*< Image format. */
+    int32_t         width;  /*< Image width. */
+    int32_t         height; /*< Image height. */
+    NVCVImageFormat format; /*< Image format. */
 
     /** Row stride of each plane, in bytes */
     int32_t planeRowStride[NVCV_MAX_PLANE_COUNT];
@@ -203,7 +204,7 @@ NVCV_PUBLIC NVCVStatus nvcvImageRefCount(NVCVImageHandle handle, int *newRefCoun
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
  * @retval #NVCV_SUCCESS                Operation executed successfully.
  */
-NVCV_PUBLIC NVCVStatus nvcvImageSetUserPointer(NVCVImageHandle handle, void *userPtr);
+NVCV_PUBLIC NVCVStatus nvcvImageSetUserPointer(NVCVImageHandle handle, NVCVUserPointer userPtr);
 
 /** Returns the user pointer associated with the image handle.
  *
@@ -217,7 +218,7 @@ NVCV_PUBLIC NVCVStatus nvcvImageSetUserPointer(NVCVImageHandle handle, void *use
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
  * @retval #NVCV_SUCCESS                Operation executed successfully.
  */
-NVCV_PUBLIC NVCVStatus nvcvImageGetUserPointer(NVCVImageHandle handle, void **outUserPtr);
+NVCV_PUBLIC NVCVStatus nvcvImageGetUserPointer(NVCVImageHandle handle, NVCVUserPointer *outUserPtr);
 
 /** Returns the underlying image type.
  *

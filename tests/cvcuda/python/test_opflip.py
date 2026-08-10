@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,14 +15,16 @@
 
 import cvcuda
 
-import pytest as t
+import pytest
 import numpy as np
+
 import cvcuda_util as util
+import cvcuda_tools as cv_tools
 
 RNG = np.random.default_rng(0)
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "tensor_params, flip_code",
     [
         (
@@ -69,7 +71,7 @@ def test_op_flip(tensor_params, flip_code):
     assert out.dtype == input.dtype
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "num_images, img_format, img_size, max_pixel, flip_code",
     [
         (
@@ -138,3 +140,51 @@ def test_op_flipvarshape(num_images, img_format, img_size, max_pixel, flip_code)
     assert out.capacity == input.capacity
     assert out.uniqueformat == input.uniqueformat
     assert out.maxsize == input.maxsize
+
+
+def _flip_params(dtype, layout, channels):
+    return {"flipCode": 0}
+
+
+def _flip_varshape_params(dtype, layout, channels):
+    return {"flipCode": util.to_cvcuda_tensor(np.array([0, 0], dtype=np.int32), "N")}
+
+
+# Tensor and varshape flip do not share the same dtype contract: the tensor path
+# rejects S16, while the varshape path still supports it via flip_or_copy_var_shape.
+globals().update(
+    cv_tools.make_op_tests(
+        name="flip_tensor",
+        runner_info=[
+            ("tensor", cvcuda.flip, _flip_params),
+        ],
+        keystone_dlc=(cvcuda.Type.U8, "NHWC", 3),
+        supported_dtypes={
+            cvcuda.Type.U8,
+            cvcuda.Type.U16,
+            cvcuda.Type.S32,
+            cvcuda.Type.F32,
+        },
+        supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
+        supported_channels={1, 3, 4},
+    )
+)
+
+globals().update(
+    cv_tools.make_op_tests(
+        name="flip_varshape",
+        runner_info=[
+            ("image_batch", cvcuda.flip, _flip_varshape_params),
+        ],
+        keystone_dlc=(cvcuda.Type.U8, "NHWC", 3),
+        supported_dtypes={
+            cvcuda.Type.U8,
+            cvcuda.Type.U16,
+            cvcuda.Type.S16,
+            cvcuda.Type.S32,
+            cvcuda.Type.F32,
+        },
+        supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
+        supported_channels={1, 3, 4},
+    )
+)

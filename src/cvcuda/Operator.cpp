@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,5 +25,5 @@ namespace priv = cvcuda::priv;
 
 CVCUDA_DEFINE_API(0, 3, void, nvcvOperatorDestroy, (NVCVOperatorHandle handle))
 {
-    nvcv::ProtectCall([&] { delete priv::ToOperatorPtr(handle); });
+    nvcv::ProtectCall([&handle] { priv::DestroyOperatorHandle(handle); });
 }

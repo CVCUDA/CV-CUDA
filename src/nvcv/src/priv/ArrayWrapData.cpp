@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,8 +34,7 @@ static NVCVResourceType ValidateArrayBuffer(const NVCVArrayData &data)
 {
     NVCVResourceType resource = NVCV_RESOURCE_MEM_CUDA;
 
-    const auto &buffer = data.buffer.strided;
-    if (buffer.basePtr == nullptr)
+    if (const auto &buffer = data.buffer.strided; buffer.basePtr == nullptr)
     {
         throw Exception(NVCV_ERROR_INVALID_ARGUMENT) << "Memory buffer must not be NULL";
     }
@@ -68,7 +67,7 @@ static NVCVResourceType ValidateArrayBuffer(const NVCVArrayData &data)
     return resource;
 }
 
-ArrayWrapData::ArrayWrapData(const NVCVArrayData &data, NVCVArrayDataCleanupFunc cleanup, void *ctxCleanup)
+ArrayWrapData::ArrayWrapData(const NVCVArrayData &data, NVCVArrayDataCleanupFunc cleanup, NVCVUserPointer ctxCleanup)
     : m_data{data}
     , m_cleanup{cleanup}
     , m_ctxCleanup{ctxCleanup}
@@ -106,7 +105,7 @@ DataType ArrayWrapData::dtype() const
 
 SharedCoreObj<IAllocator> ArrayWrapData::alloc() const
 {
-    return GetDefaultAllocator();
+    return SharedCoreObj<IAllocator>{GetDefaultAllocator()};
 }
 
 NVCVResourceType ArrayWrapData::target() const

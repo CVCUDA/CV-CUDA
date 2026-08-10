@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "ConvUtils.hpp"
 #include "Definitions.hpp"
+#include "PlanarParityUtils.hpp"
 
 #include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
@@ -27,13 +28,36 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
 
+#include <array>
 #include <random>
 
 namespace test = nvcv::test;
 namespace cuda = nvcv::cuda;
 
-static const float kLaplacianKernel1[] = {0.0f, 1.0f, 0.0f, 1.0f, -4.0f, 1.0f, 0.0f, 1.0f, 0.0f};
-static const float kLaplacianKernel3[] = {2.0f, 0.0f, 2.0f, 0.0f, -8.0f, 0.0f, 2.0f, 0.0f, 2.0f};
+namespace {
+
+// Negative cases intentionally vary parameter-tensor lengths to exercise validation.
+inline void InvokeLaplacianVarShapeNegative(cudaStream_t stream, const nvcv::ImageBatchVarShape &src,
+                                            const nvcv::ImageBatchVarShape &dst, int maxBatches,
+                                            NVCVBorderType borderMode)
+{
+    const int         ksize       = 3;
+    const int         numParams   = maxBatches < 0 ? 0 : maxBatches;
+    auto              ksizeTensor = test::planar::MakePerImageTensor(numParams, nvcv::TYPE_S32, ksize);
+    auto              scaleTensor = test::planar::MakePerImageTensor(numParams, nvcv::TYPE_F32, 1.0f);
+    cvcuda::Laplacian op;
+    op(stream, src, dst, ksizeTensor, scaleTensor, borderMode);
+}
+
+} // namespace
+
+static int ScaledSize(int size, double scale)
+{
+    return static_cast<int>(size * scale);
+}
+
+static constexpr std::array<float, 9> kLaplacianKernel1 = {0.0f, 1.0f, 0.0f, 1.0f, -4.0f, 1.0f, 0.0f, 1.0f, 0.0f};
+static constexpr std::array<float, 9> kLaplacianKernel3 = {2.0f, 0.0f, 2.0f, 0.0f, -8.0f, 0.0f, 2.0f, 0.0f, 2.0f};
 
 // clang-format off
 
@@ -103,7 +127,7 @@ TEST_P(OpLaplacian, correct_output)
     std::default_random_engine    randEng(0);
     std::uniform_int_distribution rand(0u, 255u);
 
-    std::generate(inVec.begin(), inVec.end(), [&]() { return rand(randEng); });
+    std::ranges::generate(inVec, [&rand, &randEng]() { return rand(randEng); });
 
     // copy random input to device
     ASSERT_EQ(cudaSuccess, cudaMemcpy(inData->basePtr(), inVec.data(), inBufSize, cudaMemcpyHostToDevice));
@@ -165,9 +189,9 @@ TEST_P(OpLaplacian, varshape_correct_output)
     float4 borderValue = cuda::SetAll<float4>(0);
 
     // Create input varshape
-    std::default_random_engine         rng;
-    std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
-    std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
+    std::default_random_engine    rng;
+    std::uniform_int_distribution udistWidth(ScaledSize(width, 0.8), ScaledSize(width, 1.1));
+    std::uniform_int_distribution udistHeight(ScaledSize(height, 0.8), ScaledSize(height, 1.1));
 
     std::vector<nvcv::Image> imgSrc;
 
@@ -184,7 +208,7 @@ TEST_P(OpLaplacian, varshape_correct_output)
         std::uniform_int_distribution<uint8_t> udist(0, 255);
 
         srcVec[i].resize(imgSrc[i].size().h * srcRowStride);
-        std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return udist(rng); });
+        std::ranges::generate(srcVec[i], [&udist, &rng]() { return udist(rng); });
 
         auto imgData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_NE(imgData, nvcv::NullOpt);
@@ -267,15 +291,15 @@ TEST_P(OpLaplacian, varshape_correct_output)
         nvcv::Size2D       kernelSize{3, 3};
         int2               kernelAnchor{kernelSize.w / 2, kernelSize.h / 2};
 
-        for (int i = 0; i < 9; ++i)
+        for (int kernelIndex = 0; kernelIndex < 9; ++kernelIndex)
         {
             if (ksize == 1)
             {
-                kernel[i] = kLaplacianKernel1[i] * scale;
+                kernel[kernelIndex] = kLaplacianKernel1[kernelIndex] * scale;
             }
             else if (ksize == 3)
             {
-                kernel[i] = kLaplacianKernel3[i] * scale;
+                kernel[kernelIndex] = kLaplacianKernel3[kernelIndex] * scale;
             }
         }
 
@@ -288,19 +312,84 @@ TEST_P(OpLaplacian, varshape_correct_output)
     }
 }
 
+// Laplacian filters each channel independently, so a planar input is filtered plane-by-plane and
+// must produce exactly the same pixels as the interleaved path. These tests feed identical data
+// through cvcuda::Laplacian in both layouts and require the re-interleaved planar output to match
+// the interleaved output bit-for-bit.
+// =============================================================================
+
+// Parameters: width, height, ksize, scale, borderMode, numImages, planarFmt, interleavedFmt
 // clang-format off
-NVCV_TEST_SUITE_P(OpLaplacian_Negative, nvcv::test::ValueList<NVCVStatus, nvcv::ImageFormat, nvcv::ImageFormat, int, float, NVCVBorderType>{
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, 7, 0.5, NVCV_BORDER_CONSTANT}, // invalid kernel size
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U16, 3, 0.5, NVCV_BORDER_CONSTANT}, // data type is different
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8, nvcv::FMT_RGB8p, 3, 0.5, NVCV_BORDER_CONSTANT}, // data format is different
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8p, nvcv::FMT_RGB8p, 3, 0.5, NVCV_BORDER_CONSTANT}, // data format is not kNHWC/kHWC
-#ifndef ENABLE_SANITIZER
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, 3, 0.5, static_cast<NVCVBorderType>(255)}, // invalid borderType
-#endif
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F16, nvcv::FMT_F16, 3, 0.5, NVCV_BORDER_CONSTANT}, // invalid data type
+NVCV_TEST_SUITE_P(OpLaplacianPlanar,
+                  test::ValueList<int, int, int, float, NVCVBorderType, int, nvcv::ImageFormat, nvcv::ImageFormat>{
+    { 64, 48, 1, 1.0f,   NVCV_BORDER_CONSTANT, 2,  nvcv::FMT_RGB8p,   nvcv::FMT_RGB8},
+    { 67, 51, 3, 2.0f,    NVCV_BORDER_REFLECT, 1,  nvcv::FMT_RGB8p,   nvcv::FMT_RGB8},
+    { 50, 40, 1, 1.0f,  NVCV_BORDER_REPLICATE, 2, nvcv::FMT_RGBA8p,  nvcv::FMT_RGBA8},
+    { 64, 48, 3, 1.0f, NVCV_BORDER_REFLECT101, 1, nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+    { 32, 28, 1, 3.0f,       NVCV_BORDER_WRAP, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+    { 40, 33, 3, 1.0f,   NVCV_BORDER_CONSTANT, 2,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
 });
 
 // clang-format on
+
+TEST_P(OpLaplacianPlanar, tensor_matches_interleaved)
+{
+    int            ksize      = GetParamValue<2>();
+    float          scale      = GetParamValue<3>();
+    NVCVBorderType borderMode = GetParamValue<4>();
+    int            numImages  = GetParamValue<5>();
+
+    test::planar::RunTensorParity(
+        GetParamValue<6>(), GetParamValue<7>(), GetParamValue<0>(), GetParamValue<1>(), GetParamValue<0>(),
+        GetParamValue<1>(), numImages,
+        [ksize, scale, borderMode](cudaStream_t s, const nvcv::Tensor &src, const nvcv::Tensor &dst, nvcv::ImageFormat)
+        {
+            cvcuda::Laplacian op;
+            EXPECT_NO_THROW(op(s, src, dst, ksize, scale, borderMode));
+        });
+}
+
+TEST_P(OpLaplacianPlanar, varshape_matches_interleaved)
+{
+    int            ksize      = GetParamValue<2>();
+    float          scale      = GetParamValue<3>();
+    NVCVBorderType borderMode = GetParamValue<4>();
+    int            numImages  = GetParamValue<5>();
+
+    auto ksizeTensor = test::planar::MakePerImageTensor(numImages, nvcv::TYPE_S32, ksize);
+    auto scaleTensor = test::planar::MakePerImageTensor(numImages, nvcv::TYPE_F32, scale);
+
+    test::planar::RunVarShapeParity(
+        GetParamValue<6>(), GetParamValue<7>(), GetParamValue<0>(), GetParamValue<1>(), GetParamValue<0>(),
+        GetParamValue<1>(), numImages,
+        [&ksizeTensor, &scaleTensor, borderMode](cudaStream_t s, const nvcv::ImageBatchVarShape &src,
+                                                 const nvcv::ImageBatchVarShape &dst, nvcv::ImageFormat)
+        {
+            cvcuda::Laplacian op;
+            EXPECT_NO_THROW(op(s, src, dst, ksizeTensor, scaleTensor, borderMode));
+        });
+}
+
+static auto OpLaplacianNegativeParams()
+{
+    nvcv::test::ValueList<NVCVStatus, nvcv::ImageFormat, nvcv::ImageFormat, int, float, NVCVBorderType> params{
+        {NVCV_ERROR_INVALID_ARGUMENT,    nvcv::FMT_U8,    nvcv::FMT_U8, 7, 0.5,NVCV_BORDER_CONSTANT        }, // invalid kernel size
+        {NVCV_ERROR_INVALID_ARGUMENT,    nvcv::FMT_U8,   nvcv::FMT_U16, 3, 0.5,
+         NVCV_BORDER_CONSTANT}, // data type is different
+        {NVCV_ERROR_INVALID_ARGUMENT,  nvcv::FMT_RGB8, nvcv::FMT_RGB8p, 3, 0.5,
+         NVCV_BORDER_CONSTANT}, // interleaved in, planar out
+        {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8p,  nvcv::FMT_RGB8, 3, 0.5,
+         NVCV_BORDER_CONSTANT}, // planar in, interleaved out
+    };
+#ifndef ENABLE_SANITIZER
+    params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, 3, 0.5,
+                        static_cast<NVCVBorderType>(255));
+#endif
+    params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F16, nvcv::FMT_F16, 3, 0.5, NVCV_BORDER_CONSTANT);
+    return params;
+}
+
+NVCV_TEST_SUITE_P(OpLaplacian_Negative, OpLaplacianNegativeParams());
 
 TEST_P(OpLaplacian_Negative, op)
 {
@@ -324,133 +413,25 @@ TEST_P(OpLaplacian_Negative, op)
     // run operator
     cvcuda::Laplacian laplacianOp;
     EXPECT_EQ(expectedReturnCode,
-              nvcv::ProtectCall([&] { laplacianOp(stream, inTensor, outTensor, ksize, scale, borderMode); }));
+              nvcv::ProtectCall([&laplacianOp, &stream, &inTensor, &outTensor, &ksize, &scale, &borderMode]
+                                { laplacianOp(stream, inTensor, outTensor, ksize, scale, borderMode); }));
 
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
-// clang-format off
-NVCV_TEST_SUITE_P(OpLaplacianVarshape_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat, NVCVBorderType>{
-    {nvcv::FMT_RGB8, nvcv::FMT_RGB8p, NVCV_BORDER_CONSTANT},
-    {nvcv::FMT_RGB8p, nvcv::FMT_RGB8p, NVCV_BORDER_CONSTANT},
-    {nvcv::FMT_RGBf16, nvcv::FMT_RGBf16, NVCV_BORDER_CONSTANT},
-#ifndef ENABLE_SANITIZER
-    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, static_cast<NVCVBorderType>(255)},
-#endif
-});
-// clang-format on
+NVCV_TEST_SUITE_P(OpLaplacianVarshape_Negative, test::PlanarFilterVarShapeNegativeParams());
 
 TEST_P(OpLaplacianVarshape_Negative, op)
 {
-    cudaStream_t stream;
-    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
-
-    int width   = 32;
-    int height  = 32;
-    int batches = 3;
-
-    nvcv::ImageFormat inputFmt   = GetParamValue<0>();
-    nvcv::ImageFormat outputFmt  = GetParamValue<1>();
-    NVCVBorderType    borderMode = GetParamValue<2>();
-
-    // Create input varshape
-    std::default_random_engine         rng;
-    std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
-    std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
-
-    std::vector<nvcv::Image> imgSrc;
-    std::vector<nvcv::Image> imgDst;
-
-    for (int i = 0; i < batches; ++i)
-    {
-        imgSrc.emplace_back(nvcv::Size2D{udistWidth(rng), udistHeight(rng)}, inputFmt);
-        imgDst.emplace_back(imgSrc[i].size(), outputFmt);
-    }
-
-    nvcv::ImageBatchVarShape batchSrc(batches);
-    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
-    nvcv::ImageBatchVarShape batchDst(batches);
-    batchDst.pushBack(imgDst.begin(), imgDst.end());
-
-    // Create kernel aperture size tensor
-    nvcv::Tensor ksizeTensor({{batches}, "N"}, nvcv::TYPE_S32);
-
-    // Create scale tensor
-    nvcv::Tensor scaleTensor({{batches}, "N"}, nvcv::TYPE_F32);
-
-    // Run operator
-    cvcuda::Laplacian laplacianOp;
-
-    EXPECT_EQ(
-        NVCV_ERROR_INVALID_ARGUMENT,
-        nvcv::ProtectCall([&] { laplacianOp(stream, batchSrc, batchDst, ksizeTensor, scaleTensor, borderMode); }));
-
-    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
-    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+    test::planar::ExpectVarShapeUniformFormatRejected(GetParamValue<0>(), GetParamValue<1>(), GetParamValue<3>(),
+                                                      GetParamValue<4>(), GetParamValue<2>(),
+                                                      InvokeLaplacianVarShapeNegative);
 }
 
 TEST(OpLaplacianVarshape_Negative, varshape_hasDifferentFormat)
 {
-    cudaStream_t stream;
-    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
-
-    nvcv::ImageFormat fmt = nvcv::FMT_RGB8;
-
-    std::vector<std::tuple<nvcv::ImageFormat, nvcv::ImageFormat>> testSet{
-        {nvcv::FMT_U8,          fmt},
-        {         fmt, nvcv::FMT_U8}
-    };
-
-    for (auto testCase : testSet)
-    {
-        nvcv::ImageFormat inputFmtExtra  = std::get<0>(testCase);
-        nvcv::ImageFormat outputFmtExtra = std::get<1>(testCase);
-
-        int width   = 32;
-        int height  = 32;
-        int batches = 3;
-
-        NVCVBorderType borderMode = NVCV_BORDER_CONSTANT;
-
-        // Create input varshape
-        std::default_random_engine         rng;
-        std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
-        std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
-
-        std::vector<nvcv::Image> imgSrc;
-        std::vector<nvcv::Image> imgDst;
-
-        for (int i = 0; i < batches - 1; ++i)
-        {
-            imgSrc.emplace_back(nvcv::Size2D{udistWidth(rng), udistHeight(rng)}, fmt);
-            imgDst.emplace_back(imgSrc[i].size(), fmt);
-        }
-        imgSrc.emplace_back(nvcv::Size2D{udistWidth(rng), udistHeight(rng)}, inputFmtExtra);
-        imgDst.emplace_back(imgSrc.back().size(), outputFmtExtra);
-
-        nvcv::ImageBatchVarShape batchSrc(batches);
-        batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
-        nvcv::ImageBatchVarShape batchDst(batches);
-        batchDst.pushBack(imgDst.begin(), imgDst.end());
-
-        // Create kernel aperture size tensor
-        nvcv::Tensor ksizeTensor({{batches}, "N"}, nvcv::TYPE_S32);
-
-        // Create scale tensor
-        nvcv::Tensor scaleTensor({{batches}, "N"}, nvcv::TYPE_F32);
-
-        // Run operator
-        cvcuda::Laplacian laplacianOp;
-
-        EXPECT_EQ(
-            NVCV_ERROR_INVALID_ARGUMENT,
-            nvcv::ProtectCall([&] { laplacianOp(stream, batchSrc, batchDst, ksizeTensor, scaleTensor, borderMode); }));
-
-        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
-    }
-
-    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+    test::planar::ExpectVarShapeMixedFormatRejected(InvokeLaplacianVarShapeNegative);
 }
 
 TEST(OpLaplacian_Negative, create_null_handle)

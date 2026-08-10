@@ -1,6 +1,6 @@
 #!/bin/bash -e
 #
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,15 +37,15 @@ if [ ! -f "$tests_dir/cvcuda_util.py" ]; then
 fi
 
 # Verify if correct package dependencies are installed --------
-pip_depends="pytest torch numpy==1.26"
+pip_depends="pytest cupy numpy"
 
 # Collect all python versions that are indeed installed and have proper dependencies installed
 # Two behaviors:
-# - default: skip Python versions that are not installed or don't have pytest and torch installed
+# - default: skip Python versions that are not installed or don't have pytest, cuda-python and numpy installed
 # - if FORCE_PYTHON_TESTS is set: exit with error
 for ver in $python_versions_tentative; do
 
-    if ! python$ver -c "import pytest, torch, numpy" > /dev/null 2>&1; then
+    if ! python$ver -c "import pytest, cupy, numpy" > /dev/null 2>&1; then
         echo "WARNING: Python version $ver not installed or missing proper dependencies"
         echo "Please install Python version $ver and run the following commands before running tests: python$ver -m pip install $pip_depends"
         if [[ "$FORCE_PYTHON_TESTS" == 1 || "$FORCE_PYTHON_TESTS" == yes ]]; then
@@ -72,6 +72,17 @@ trap 'on_exit' EXIT
 
 export PYTHONPATH="$PYTHONPATH:@PYTHON_MODULE_DIR@"
 
+# The NVTX marker test needs the probe injected via NVTX_INJECTION64_PATH, which NVTX reads once at
+# process start. Injecting it for the whole suite would route every operator call -- and cupy's own
+# NVTX ranges -- through the probe for the entire session, growing its recorded-name buffer without
+# bound (only the marker test resets it) and risking host-memory exhaustion. So run the marker test
+# in its own pytest process with the probe injected, and run the rest of the suite without it.
+nvtx_marker_test="$tests_dir/test_nvtx_markers.py"
+nvtx_probe="@NVTX_PROBE_PATH@"
+
+# Never let an inherited NVTX_INJECTION64_PATH leak into the main (uninjected) suite run.
+unset NVTX_INJECTION64_PATH
+
 for ver in $python_versions; do
 
     if [[ "$FORCE_PYTHON_TESTS" != 1 && "$FORCE_PYTHON_TESTS" != yes ]]; then
@@ -95,6 +106,16 @@ for ver in $python_versions; do
         exit 4
     fi
 
-    # Run python tests
-    CVCUDA_VERSION="@CVCUDA_VERSION_FULL@" python$ver -m pytest -v --tb=line -o cache_dir="$tmpdir" "$@" "$tests_dir"
+    # Run python tests. The marker test is excluded here and run separately below with the probe
+    # injected, so the probe is never installed for this (much larger) uninjected pass.
+    CVCUDA_VERSION="@CVCUDA_VERSION_FULL@" python$ver -m pytest -v --tb=short -o cache_dir="$tmpdir" \
+        --ignore="$nvtx_marker_test" "$@" "$tests_dir"
+
+    # Run the NVTX marker test in its own process, with the probe injected only for that process.
+    if [ -f "$nvtx_probe" ]; then
+        CVCUDA_VERSION="@CVCUDA_VERSION_FULL@" NVTX_INJECTION64_PATH="$nvtx_probe" \
+            python$ver -m pytest -v --tb=short -o cache_dir="$tmpdir" "$nvtx_marker_test"
+    else
+        echo "Skipping NVTX marker test for python-$ver: probe not found at $nvtx_probe"
+    fi
 done

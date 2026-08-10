@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,8 +37,6 @@ list(APPEND PYPROJ_COMMON_ARGS
     -DCMAKE_MODULE_PATH=${CMAKE_CURRENT_BINARY_DIR}/cmake
     -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=${CMAKE_LIBRARY_OUTPUT_DIRECTORY}
     -DNVCV_TYPES_SOURCE_DIR=${NVCV_TYPES_SOURCE_DIR}
-    -DPYBIND11_SOURCE_DIR=${PYBIND11_SOURCE_DIR}
-    -DDLPACK_SOURCE_DIR=${DLPACK_SOURCE_DIR}
     -DWARNINGS_AS_ERRORS=${WARNINGS_AS_ERRORS}
     -DENABLE_COMPAT_OLD_GLIBC=${ENABLE_COMPAT_OLD_GLIBC}
     -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
@@ -55,6 +53,30 @@ if (CMAKE_CROSSCOMPILING)
     )
 endif()
 
+# The Python wheels build as concurrent ExternalProjects that each default to a
+# full host-core Ninja, so their combined fan-out (versions x cores) can
+# oversubscribe memory and stall or OOM large builds. Split the outer job budget
+# (CVCUDA_BUILD_JOBS from build.sh; host cores otherwise) across them.
+list(LENGTH PYTHON_VERSIONS _NUM_PY_VERSIONS)
+if(DEFINED CVCUDA_BUILD_JOBS AND CVCUDA_BUILD_JOBS GREATER 0)
+    set(_PY_TOTAL_JOBS ${CVCUDA_BUILD_JOBS})
+else()
+    include(ProcessorCount)
+    ProcessorCount(_PY_TOTAL_JOBS)
+    if(_PY_TOTAL_JOBS EQUAL 0)
+        set(_PY_TOTAL_JOBS 1)
+    endif()
+endif()
+if(_NUM_PY_VERSIONS GREATER 0)
+    math(EXPR _PY_BUILD_JOBS "${_PY_TOTAL_JOBS} / ${_NUM_PY_VERSIONS}")
+else()
+    set(_PY_BUILD_JOBS ${_PY_TOTAL_JOBS})
+endif()
+if(_PY_BUILD_JOBS LESS 1)
+    set(_PY_BUILD_JOBS 1)
+endif()
+message(STATUS "Python wheel sub-builds: ${_NUM_PY_VERSIONS} x -j${_PY_BUILD_JOBS} (budget ${_PY_TOTAL_JOBS})")
+
 foreach(VER ${PYTHON_VERSIONS})
     set(BASEDIR ${CMAKE_CURRENT_BINARY_DIR}/python${VER})
 
@@ -66,31 +88,69 @@ foreach(VER ${PYTHON_VERSIONS})
         TMP_DIR ${BASEDIR}/tmp
         STAMP_DIR ${BASEDIR}/stamp
         BUILD_ALWAYS true
+        BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --parallel ${_PY_BUILD_JOBS}
         DEPENDS nvcv_types cvcuda
         INSTALL_COMMAND ""
     )
 endforeach()
 
+# Enum classes exposed under `cvcuda.`.  pybind11_stubgen emits warnings and
+# falls back to ugly default-value reprs like `<Border.CONSTANT: 0>` unless
+# it knows where each enum class lives.  Keep this list in sync with enums
+# registered via py::enum_ under the cvcuda module.
+set(CVCUDA_STUBGEN_ENUM_LOCATIONS
+    --enum-class-locations Border:cvcuda.Border
+    --enum-class-locations Interp:cvcuda.Interp
+    --enum-class-locations ThresholdType:cvcuda.ThresholdType
+    --enum-class-locations AdaptiveThresholdType:cvcuda.AdaptiveThresholdType
+    --enum-class-locations Remap:cvcuda.Remap
+    --enum-class-locations ChannelManip:cvcuda.ChannelManip
+    --enum-class-locations LabelMaskType:cvcuda.LabelMaskType
+    --enum-class-locations ThreadScope:cvcuda.ThreadScope
+    --enum-class-locations LABEL:cvcuda.LABEL
+    --enum-class-locations SIFT:cvcuda.SIFT
+    --enum-class-locations Matcher:cvcuda.Matcher
+    --enum-class-locations ConnectivityType:cvcuda.ConnectivityType
+)
+
+# pybind11_stubgen must run against a Python that (a) can import the just-built
+# cvcuda extension and (b) has pybind11-stubgen installed.  Prefer the first
+# version in PYTHON_VERSIONS (always paired with a pybind11-stubgen install in
+# our Docker images), and fall back to the generic Python3 interpreter CMake
+# discovered.  Without this, CMake's `find_package(Python3)` may pick a newer
+# system Python (e.g. /usr/bin/python3.12) that has no pybind11-stubgen and
+# breaks the `wheel` target.
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(PYTHON_VERSIONS)
+    list(GET PYTHON_VERSIONS 0 _STUBGEN_PY_VER)
+    set(STUBGEN_PYTHON "python${_STUBGEN_PY_VER}")
+    unset(_STUBGEN_PY_VER)
+elseif(Python3_FOUND)
+    set(STUBGEN_PYTHON ${Python3_EXECUTABLE})
+endif()
+
+if(STUBGEN_PYTHON)
+    add_custom_target(generate_stubs
+        COMMAND ${CMAKE_COMMAND} -E env
+                PYTHONPATH=${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/python
+                ${STUBGEN_PYTHON} -m pybind11_stubgen cvcuda
+                ${CVCUDA_STUBGEN_ENUM_LOCATIONS}
+                --output-dir ${CMAKE_BINARY_DIR}/python3
+        COMMENT "Generating Python type stubs (dev target)"
+        VERBATIM
+    )
+endif()
+
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    set(PACKAGE_LIB_DIR ${CMAKE_BINARY_DIR}/python3/lib)
-
-    file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/python3)
-    file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/python3/lib)
     file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/python3/cvcuda)
-
-    # Configure Python packaging files
-    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/python/setup.py.in" "${CMAKE_BINARY_DIR}/python3/setup.py")
-    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/python/pyproject.toml.in" "${CMAKE_BINARY_DIR}/python3/pyproject.toml")
-    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/python/README.md.in" "${CMAKE_BINARY_DIR}/python3/README.md")
-    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/python/MANIFEST.in" "${CMAKE_BINARY_DIR}/python3/MANIFEST.in")
 
     # Configure __init__.py for each package with the appropriate module name
 
     # cvcuda: all types and operators in single module
     set(PACKAGE_NAME "cvcuda")
     set(EXTRA_IMPORTS "
-# Explicitly export C API capsule (not included in 'import *' since it starts with _)
-from ._cvcuda import _C_API  # noqa: F401")
+# Explicitly export private attributes not included in 'import *'.
+from ._cvcuda import _C_API, _test  # noqa: F401")
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/python/__init__.py.in" "${CMAKE_BINARY_DIR}/python3/cvcuda/__init__.py")
 
     # Install __init__.py files for package structure in Debian packages
@@ -98,6 +158,20 @@ from ._cvcuda import _C_API  # noqa: F401")
     install(FILES "${CMAKE_BINARY_DIR}/python3/cvcuda/__init__.py"
             DESTINATION ${CMAKE_INSTALL_LIBDIR}/python/cvcuda
             COMPONENT lib)
+
+endif()
+
+if(CMAKE_BUILD_TYPE STREQUAL "Release" AND BUILD_PYTHON_WHEEL)
+    set(PACKAGE_LIB_DIR ${CMAKE_BINARY_DIR}/python3/lib)
+
+    file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/python3/lib)
+
+    # Configure Python packaging files
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/python/setup.py.in" "${CMAKE_BINARY_DIR}/python3/setup.py")
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/python/pyproject.toml.in" "${CMAKE_BINARY_DIR}/python3/pyproject.toml")
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/python/README.md.in" "${CMAKE_BINARY_DIR}/python3/README.md")
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/python/MANIFEST.in" "${CMAKE_BINARY_DIR}/python3/MANIFEST.in")
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/python/py.typed" "${CMAKE_BINARY_DIR}/python3/cvcuda/py.typed" COPYONLY)
 
     add_custom_target(wheel ALL)
 
@@ -110,6 +184,31 @@ from ._cvcuda import _C_API  # noqa: F401")
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:cvcuda> ${CMAKE_BINARY_DIR}/python3/lib
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:nvcv_types> ${CMAKE_BINARY_DIR}/python3/lib
         COMMAND sh -c "cp ${CMAKE_BINARY_DIR}/lib/python/_cvcuda*.so ${CMAKE_BINARY_DIR}/python3/cvcuda/"
+    )
+
+    # Ensure numpy is importable by the stubgen Python before pybind11_stubgen
+    # runs: stubgen imports cvcuda, and _cvcuda.so pulls numpy via pybind11's
+    # npy_api at module init.  The manylinux :v11 builder image ships without
+    # numpy for cp3{10..14}, so without this the wheel target fails with
+    # "ModuleNotFoundError: No module named 'numpy'".  On images that already
+    # have numpy (Ubuntu devel, Jetson edge venv) this is a fast no-op.
+    # TODO: drop this COMMAND once the manylinux builder image is rebuilt with
+    # numpy preinstalled (see docker/Dockerfile.builder.deps).
+    add_custom_command(
+        TARGET wheel
+        COMMAND sh -c "${STUBGEN_PYTHON} -c 'import numpy' >/dev/null 2>&1 || ${STUBGEN_PYTHON} -m pip install --quiet --disable-pip-version-check -r ${CMAKE_SOURCE_DIR}/tests/requirements.tests.numpy2.txt"
+        COMMENT "Ensuring numpy is available for pybind11_stubgen"
+        VERBATIM
+    )
+
+    add_custom_command(
+        TARGET wheel
+        COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_BINARY_DIR}/python3
+                ${STUBGEN_PYTHON} -m pybind11_stubgen cvcuda
+                ${CVCUDA_STUBGEN_ENUM_LOCATIONS}
+                --output-dir ${CMAKE_BINARY_DIR}/python3
+        COMMENT "Generating Python type stubs for cvcuda"
+        VERBATIM
     )
 
     add_custom_command(

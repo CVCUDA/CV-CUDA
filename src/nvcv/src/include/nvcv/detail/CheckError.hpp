@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,22 +21,23 @@
 #include "../Exception.hpp"
 #include "../Status.h"
 
+#include <array>
 #include <cassert>
 
 namespace nvcv { namespace detail {
 
-inline void ThrowException(NVCVStatus status)
+[[noreturn]] inline void ThrowException(NVCVStatus status)
 {
     // Because of this stack allocation, compiler might
     // not inline this call. This it happens only in
     // error cases, it's ok.
-    char msg[NVCV_MAX_STATUS_MESSAGE_LENGTH];
+    std::array<char, NVCV_MAX_STATUS_MESSAGE_LENGTH> msg;
 
-    NVCVStatus tmp = nvcvGetLastErrorMessage(msg, sizeof(msg));
+    NVCVStatus tmp = nvcvGetLastErrorMessage(msg.data(), static_cast<int32_t>(msg.size()));
     (void)tmp;
     assert(tmp == status);
 
-    throw Exception(Exception::InternalCtorTag{}, static_cast<Status>(status), "%s", msg);
+    throw Exception(Exception::InternalCtorTag{}, static_cast<Status>(status), "%s", msg.data());
 }
 
 inline void CheckThrow(NVCVStatus status)

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,12 +21,14 @@
 #include <nvcv/util/Math.hpp>
 
 #include <algorithm>
+#include <array>
+#include <memory>
 
 namespace util = nvcv::util;
 
 static void AssertEq(const NVCVRequirements &reqGold, const nvcv::Requirements &req)
 {
-    for (int i = 0; i < nvcv::Requirements::Memory::size(); ++i)
+    for (int i = 0; i < nvcv::Requirements::Memory::size(); ++i) // NOSONAR
     {
         SCOPED_TRACE("log2 BlockSize: " + std::to_string(i));
 
@@ -38,10 +40,12 @@ static void AssertEq(const NVCVRequirements &reqGold, const nvcv::Requirements &
 
 TEST(Requirements, init)
 {
-    std::byte buf[sizeof(nvcv::Requirements)];
-    memset(&buf, 123, sizeof(buf));
+    alignas(nvcv::Requirements) std::array<std::byte, sizeof(nvcv::Requirements)> buf;
+    memset(buf.data(), 123, buf.size());
 
-    auto *reqs = new (buf) nvcv::Requirements;
+    std::allocator<nvcv::Requirements> alloc;
+    auto                              *reqs = static_cast<nvcv::Requirements *>(static_cast<void *>(buf.data()));
+    std::allocator_traits<decltype(alloc)>::construct(alloc, reqs);
 
     NVCVRequirements reqGold = {};
 
@@ -51,7 +55,7 @@ TEST(Requirements, init)
     EXPECT_EQ(0, CalcTotalSizeBytes(reqs->hostMem()));
     EXPECT_EQ(0, CalcTotalSizeBytes(reqs->hostPinnedMem()));
 
-    reqs->~Requirements();
+    std::allocator_traits<decltype(alloc)>::destroy(alloc, reqs);
 }
 
 TEST(MemRequirements, add_buffer)
@@ -103,7 +107,6 @@ TEST(MemRequirements, sub_buffer)
     ASSERT_NO_THROW(reqs.cudaMem().addBuffer(bufSize2, bufAlign2));
 
     ASSERT_NO_THROW(reqs.cudaMem().addBuffer(-bufSize2 * 5, bufAlign2));
-    bufSize2 = 0;
 
     for (int i = 0; i < reqs.cudaMem().size(); ++i)
     {
@@ -124,7 +127,7 @@ TEST(Requirements, add)
     NVCVRequirements   reqGold = {};
 
     nvcv::Requirements reqA;
-    for (int i = 0; i < nvcv::Requirements::Memory::size(); ++i)
+    for (int i = 0; i < nvcv::Requirements::Memory::size(); ++i) // NOSONAR
     {
         int64_t bufAlign = ((int64_t)1) << i;
 
@@ -146,7 +149,7 @@ TEST(Requirements, add)
     ASSERT_NO_FATAL_FAILURE(AssertEq(reqGold, reqSum));
 
     nvcv::Requirements reqB;
-    for (int i = 0; i < nvcv::Requirements::Memory::size(); ++i)
+    for (int i = 0; i < nvcv::Requirements::Memory::size(); ++i) // NOSONAR
     {
         int64_t bufAlign = ((int64_t)1) << i;
 

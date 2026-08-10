@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,7 @@
  */
 
 #include "Operators.hpp"
+#include "VarShapeUtils.hpp"
 
 #include <common/PyUtil.hpp>
 #include <cvcuda/OpResize.hpp>
@@ -26,9 +27,18 @@
 #include <nvcv/python/Tensor.hpp>
 #include <pybind11/stl.h>
 
+#include <stdexcept>
+
 namespace cvcudapy {
 
 namespace {
+
+class ResizeError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
+
 Tensor ResizeInto(Tensor &output, Tensor &input, NVCVInterpolationType interp, std::optional<Stream> pstream)
 {
     if (!pstream)
@@ -43,7 +53,8 @@ Tensor ResizeInto(Tensor &output, Tensor &input, NVCVInterpolationType interp, s
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*resize});
 
-    resize->submit(pstream->cudaHandle(), input, output, interp);
+    guard.run([&resize, &pstream, &input, &output, &interp]()
+              { resize->submit(pstream->cudaHandle(), input, output, interp); });
 
     return std::move(output);
 }
@@ -70,7 +81,8 @@ ImageBatchVarShape ResizeVarShapeInto(ImageBatchVarShape &output, ImageBatchVarS
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*resize});
 
-    resize->submit(pstream->cudaHandle(), input, output, interp);
+    guard.run([&resize, &pstream, &input, &output, &interp]()
+              { resize->submit(pstream->cudaHandle(), input, output, interp); });
 
     return output;
 }
@@ -80,18 +92,10 @@ ImageBatchVarShape ResizeVarShape(ImageBatchVarShape &input, const std::vector<s
 {
     if (input.numImages() != (int)out_size.size())
     {
-        throw std::runtime_error("Number of input images must be equal to the number of elements in output size list ");
+        throw ResizeError("Number of input images must be equal to the number of elements in output size list ");
     }
 
-    ImageBatchVarShape output = ImageBatchVarShape::Create(input.capacity());
-
-    for (int i = 0; i < input.numImages(); ++i)
-    {
-        nvcv::ImageFormat format = input[i].format();
-        auto              size   = out_size[i];
-        auto              image  = Image::Create({std::get<0>(size), std::get<1>(size)}, format);
-        output.pushBack(image);
-    }
+    ImageBatchVarShape output = CreateSizedImageBatch(input, out_size);
 
     return ResizeVarShapeInto(output, input, interp, pstream);
 }
@@ -102,19 +106,11 @@ void ExportOpResize(py::module &m)
 {
     using namespace pybind11::literals;
 
-    py::options options;
-    options.disable_function_signatures();
-
-    m.def("resize", &Resize, "src"_a, "shape"_a, "interp"_a = NVCV_INTERP_LINEAR, py::kw_only(), "stream"_a = nullptr,
+    m.def("resize", NvtxTrace("cvcuda.resize", &Resize), "src"_a, "shape"_a, "interp"_a = NVCV_INTERP_LINEAR,
+          py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
-
-	cvcuda.resize(src: cvcuda.Tensor, shape: Tuple[int], interp: cvcuda.Interp = cvcuda.Interp.LINEAR, stream: Optional[cvcuda.Stream] = None) -> cvcuda.Tensor
-
         Executes the Resize operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Resize operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.Tensor): Input tensor containing one or more images.
@@ -125,21 +121,12 @@ void ExportOpResize(py::module &m)
         Returns:
             cvcuda.Tensor: The output tensor.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("resize_into", &ResizeInto, "dst"_a, "src"_a, "interp"_a = NVCV_INTERP_LINEAR, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.resize_into(dst: cvcuda.Tensor, src: cvcuda.Tensor, interp: cvcuda.Interp = cvcuda.Interp.LINEAR, stream: Optional[cvcuda.Stream] = None)
-
+    m.def("resize_into", NvtxTrace("cvcuda.resize_into", &ResizeInto), "dst"_a, "src"_a,
+          "interp"_a = NVCV_INTERP_LINEAR, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the Resize operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Resize operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.Tensor): Output tensor to store the result of the operation.
@@ -148,23 +135,13 @@ void ExportOpResize(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 
-    m.def("resize", &ResizeVarShape, "src"_a, "sizes"_a, "interp"_a = NVCV_INTERP_LINEAR, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.resize(src: cvcuda.ImageBatchVarShape, interp: cvcuda.Interp = cvcuda.Interp.LINEAR, stream: Optional[cvcuda.Stream] = None) -> cvcuda.ImageBatchVarShape
-
+    m.def("resize", NvtxTrace("cvcuda.resize", &ResizeVarShape), "src"_a, "sizes"_a, "interp"_a = NVCV_INTERP_LINEAR,
+          py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the Resize operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Resize operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
@@ -175,21 +152,12 @@ void ExportOpResize(py::module &m)
         Returns:
             cvcuda.ImageBatchVarShape: The output image batch.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("resize_into", &ResizeVarShapeInto, "dst"_a, "src"_a, "interp"_a = NVCV_INTERP_LINEAR, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.resize_into(dst: cvcuda.ImageBatchVarShape, src: cvcuda.ImageBatchVarShape, interp: cvcuda.Interp = cvcuda.Interp.LINEAR, stream: Optional[cvcuda.Stream] = None)
-
+    m.def("resize_into", NvtxTrace("cvcuda.resize_into", &ResizeVarShapeInto), "dst"_a, "src"_a,
+          "interp"_a = NVCV_INTERP_LINEAR, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the Resize operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Resize operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
@@ -198,11 +166,7 @@ void ExportOpResize(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.ImageBatchVarShape: The output image batch (same as dst).
     )pbdoc");
 }
 

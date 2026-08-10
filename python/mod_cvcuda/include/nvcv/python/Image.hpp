@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -58,7 +58,6 @@ public:
 
 private:
     friend struct py::detail::type_caster<Image>;
-    NVCVImageHandle m_handle;
 
     Image() = default;
 
@@ -83,7 +82,7 @@ struct type_caster<cvpy::Image> : type_caster_base<cvpy::Image>
     bool load(handle src, bool)
     {
         // Does it have the correct object type?
-        PyTypeObject *srctype = Py_TYPE(src.ptr());
+        const PyTypeObject *srctype = Py_TYPE(src.ptr());
         if (strcmp(name.text, srctype->tp_name) == 0)
         {
             value = cvpy::Image(reinterpret_borrow<object>(src));
@@ -97,8 +96,7 @@ struct type_caster<cvpy::Image> : type_caster_base<cvpy::Image>
 
     static handle cast(cvpy::Image tensor, return_value_policy /* policy */, handle /*parent */)
     {
-        tensor.inc_ref(); // for some reason this is needed
-        return tensor;
+        return static_cast<object &>(tensor).release();
     }
 };
 

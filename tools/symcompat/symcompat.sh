@@ -1,6 +1,6 @@
 #!/bin/bash -e
 
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,7 +20,7 @@
 
 # It outputs a list of missing symbol in A that could and could not be found in B.
 
-if [ $# -lt 1 ]; then
+if [[ $# -lt 1 ]]; then
     echo "Invalid args. Usage: $(basename $0) <target exec> [old lib,...]"
     exit 1
 fi
@@ -44,7 +44,7 @@ for lib in $oldlibs; do
     libsyms="$(readelf -sW $lib | awk '$4 ~ /FUNC/ && $5 ~ /(GLOBAL|WEAK)/ && $6 ~ /DEFAULT/ && $7 !~ /UND/ && $8 ~ /.*@@/ { print $8 }' | sort | uniq)"
     found="$(echo "$libsyms" | egrep "$misspattern" | sed 's/@@/@/g' || true)"
     echo "------ $lib" 1>&2
-    if [ "$found" ]; then
+    if [[ "$found" ]]; then
         #if [ "$total_found" ]; then
         #    total_found+="\n"
         #fi
@@ -56,12 +56,12 @@ total_found="$(echo -e "$total_found" | egrep -v "^[[:space:]]*$" | sort | uniq)
 
 notfound="$(diff <( echo "$missingsyms" ) <( echo "$total_found" | awk -F '@' '{ print $1 }') || true)"
 
-if [ "$notfound" ]; then
+if [[ "$notfound" ]]; then
     echo -e "\nSymbols not found:"
     echo "$notfound" | awk '/^</ { print $2 }'
 fi
 
-if [ "$total_found" ]; then
+if [[ "$total_found" ]]; then
     echo -e "\nSymbols to be added:"
     echo -e "$total_found"
 fi

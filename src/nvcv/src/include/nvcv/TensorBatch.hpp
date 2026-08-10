@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,11 +46,39 @@ public:
 
     static Requirements CalcRequirements(int32_t capacity);
 
-    NVCV_IMPLEMENT_SHARED_RESOURCE(TensorBatch, Base);
+    using Base::Base;
+    using Base::operator=;
 
-    TensorBatch(const Requirements &reqs, const Allocator &alloc = nullptr);
+    TensorBatch(const TensorBatch &other)
+        : Base(other)
+    {
+    }
 
-    TensorBatch(int32_t capacity, const Allocator &alloc = nullptr);
+    TensorBatch(TensorBatch &&other) noexcept
+        : Base(std::move(other))
+    {
+    }
+
+    TensorBatch &operator=(const TensorBatch &other)
+    {
+        Base::operator=(other);
+        return *this;
+    }
+
+    TensorBatch &operator=(TensorBatch &&other) noexcept
+    {
+        Base::operator=(std::move(other));
+        return *this;
+    }
+
+    ~TensorBatch()
+    {
+        this->reset();
+    }
+
+    explicit TensorBatch(const Requirements &reqs, const Allocator &alloc = Allocator{nullptr});
+
+    explicit TensorBatch(int32_t capacity, const Allocator &alloc = Allocator{nullptr});
 
     /**
      * @brief Return the maximal number of tensors the tensor batch can hold.
@@ -122,7 +150,7 @@ public:
      *
      * @param stream CUDA stream on which the buffers copy will be scheduled.
      */
-    TensorBatchData exportData(CUstream stream);
+    TensorBatchData exportData(CUstream stream) const;
 
     void clear();
 
@@ -131,13 +159,13 @@ public:
      *
      * @param ptr User pointer
      */
-    void setUserPointer(void *ptr);
+    void setUserPointer(NVCVUserPointer ptr);
 
     /**
      * @brief Get the user pointer that was previously assciated to the tensor batch
-     * with the setUserPointer(void*) method. Returns nullptr if no pointer was set.
+     * with the setUserPointer(NVCVUserPointer) method. Returns nullptr if no pointer was set.
      */
-    void *getUserPointer() const;
+    NVCVUserPointer getUserPointer() const;
 
     /**
      * @brief Return a handle to a tensor at a given positon.
@@ -187,33 +215,13 @@ public:
     bool operator<=(const Iterator &rhs) const;
     bool operator>=(const Iterator &rhs) const;
 
-    Iterator(Iterator &other)
-        : Iterator()
-    {
-        *this = other;
-    }
+    Iterator(const Iterator &other)     = default;
+    Iterator(Iterator &&other) noexcept = default;
 
-    Iterator(Iterator &&other)
-        : Iterator()
-    {
-        *this = std::move(other);
-    }
+    Iterator &operator=(const Iterator &other)     = default;
+    Iterator &operator=(Iterator &&other) noexcept = default;
 
-    Iterator &operator=(Iterator &other)
-    {
-        m_tensorBatch   = other.m_tensorBatch;
-        m_idx           = other.m_idx;
-        m_currentTensor = other.m_currentTensor;
-        return *this;
-    }
-
-    Iterator &operator=(Iterator &&other)
-    {
-        m_tensorBatch   = other.m_tensorBatch;
-        m_idx           = other.m_idx;
-        m_currentTensor = std::move(other.m_currentTensor);
-        return *this;
-    }
+    ~Iterator() = default;
 
 private:
     friend class TensorBatch;
@@ -223,7 +231,6 @@ private:
     Iterator(const TensorBatch *tensorBatch, int32_t idx)
         : m_tensorBatch(tensorBatch)
         , m_idx(idx)
-        , m_currentTensor{}
     {
         UpdateCurrentTensor();
     }
@@ -239,6 +246,6 @@ using TensorBatchWrapHandle = NonOwningResource<TensorBatch>;
 
 } // namespace nvcv
 
-#include "detail/TensorBatchImpl.hpp"
+#include "detail/TensorBatchImpl.hpp" // NOSONAR: inline definitions require the declarations above.
 
 #endif // NVCV_TENSORBATCH_HPP

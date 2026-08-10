@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -89,7 +89,7 @@ NVCVArrayRequirements Array::CalcRequirements(int64_t capacity, const DataType &
                 throw Exception(NVCV_ERROR_INVALID_ARGUMENT) << "Unknown Resource type " << target;
             }
 
-            align = std::lcm(align, util::RoundUpNextPowerOfTwo(dtype.strideBytes()));
+            align = static_cast<int>(std::lcm(align, util::RoundUpNextPowerOfTwo(dtype.strideBytes())));
         }
         else
         {
@@ -136,15 +136,16 @@ Array::Array(NVCVArrayRequirements reqs, IAllocator &alloc, NVCVResourceType tar
     {
     case NVCV_RESOURCE_MEM_CUDA:
         bufSize     = CalcTotalSizeBytes(m_reqs.mem.cudaMem);
-        m_memBuffer = m_alloc->allocCudaMem(bufSize, m_reqs.alignBytes);
+        m_memBuffer = static_cast<NVCVByte *>(static_cast<void *>(m_alloc->allocCudaMem(bufSize, m_reqs.alignBytes)));
         break;
     case NVCV_RESOURCE_MEM_HOST:
         bufSize     = CalcTotalSizeBytes(m_reqs.mem.hostMem);
-        m_memBuffer = m_alloc->allocHostMem(bufSize, m_reqs.alignBytes);
+        m_memBuffer = static_cast<NVCVByte *>(static_cast<void *>(m_alloc->allocHostMem(bufSize, m_reqs.alignBytes)));
         break;
     case NVCV_RESOURCE_MEM_HOST_PINNED:
-        bufSize     = CalcTotalSizeBytes(m_reqs.mem.hostPinnedMem);
-        m_memBuffer = m_alloc->allocHostPinnedMem(bufSize, m_reqs.alignBytes);
+        bufSize = CalcTotalSizeBytes(m_reqs.mem.hostPinnedMem);
+        m_memBuffer
+            = static_cast<NVCVByte *>(static_cast<void *>(m_alloc->allocHostPinnedMem(bufSize, m_reqs.alignBytes)));
         break;
     default:
         throw Exception(NVCV_ERROR_INVALID_ARGUMENT) << "Unknown Resource type " << m_target;
@@ -162,13 +163,16 @@ Array::~Array()
     switch (m_target)
     {
     case NVCV_RESOURCE_MEM_CUDA:
-        m_alloc->freeCudaMem(m_memBuffer, CalcTotalSizeBytes(m_reqs.mem.cudaMem), m_reqs.alignBytes);
+        m_alloc->freeCudaMem(static_cast<NVCVMemoryBuffer>(static_cast<void *>(m_memBuffer)),
+                             CalcTotalSizeBytes(m_reqs.mem.cudaMem), m_reqs.alignBytes);
         break;
     case NVCV_RESOURCE_MEM_HOST:
-        m_alloc->freeHostMem(m_memBuffer, CalcTotalSizeBytes(m_reqs.mem.hostMem), m_reqs.alignBytes);
+        m_alloc->freeHostMem(static_cast<NVCVMemoryBuffer>(static_cast<void *>(m_memBuffer)),
+                             CalcTotalSizeBytes(m_reqs.mem.hostMem), m_reqs.alignBytes);
         break;
     case NVCV_RESOURCE_MEM_HOST_PINNED:
-        m_alloc->freeHostPinnedMem(m_memBuffer, CalcTotalSizeBytes(m_reqs.mem.hostPinnedMem), m_reqs.alignBytes);
+        m_alloc->freeHostPinnedMem(static_cast<NVCVMemoryBuffer>(static_cast<void *>(m_memBuffer)),
+                                   CalcTotalSizeBytes(m_reqs.mem.hostPinnedMem), m_reqs.alignBytes);
         break;
     default:
         break;
@@ -217,7 +221,7 @@ void Array::exportData(NVCVArrayData &data) const
     auto &buf = data.buffer.strided;
     {
         buf.stride  = m_reqs.stride;
-        buf.basePtr = reinterpret_cast<NVCVByte *>(m_memBuffer);
+        buf.basePtr = m_memBuffer;
     }
 }
 

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,6 +30,7 @@
 #include "detail/Export.h"
 
 #include <cuda_runtime.h>
+#include <nvcv/ImageBatch.h>
 #include <nvcv/Status.h>
 #include <nvcv/Tensor.h>
 
@@ -59,7 +60,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaStackCreate(NVCVOperatorHandle *handle);
  *  Limitations:
  *
  *  Input:
- *       Data Layout:    [NHWC, NCHW, CHW, HWC]
+ *       Data Layout:    [kNHWC, kNCHW, kCHW, kHWC]
  *       Channels:       [1,2,3,4]
  *
  *       Data Type      | Allowed
@@ -70,11 +71,12 @@ CVCUDA_PUBLIC NVCVStatus cvcudaStackCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | Yes
  *       32bit Unsigned | Yes
  *       32bit Signed   | Yes
+ *       16bit Float    | Yes
  *       32bit Float    | Yes
  *       64bit Float    | Yes
  *
  *  Output:
- *       Data Layout:    [NHWC, NCHW]
+ *       Data Layout:    [kNHWC, kNCHW]
  *       Channels:       [1,2,3,4]
  *
  *       Data Type      | Allowed
@@ -85,6 +87,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaStackCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | Yes
  *       32bit Unsigned | Yes
  *       32bit Signed   | Yes
+ *       16bit Float    | Yes
  *       32bit Float    | Yes
  *       64bit Float    | Yes
  *
@@ -105,7 +108,8 @@ CVCUDA_PUBLIC NVCVStatus cvcudaStackCreate(NVCVOperatorHandle *handle);
  *
  * @param [in] in input tensors batch.
  *
- * @param [out] out output tensor NHWC/CHW where N is equal to the number of all input tensors.
+ * @param [out] out output tensor in NHWC or NCHW layout, where N is equal to
+ *                  the total number of samples across all input tensors.
  *
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
  * @retval #NVCV_ERROR_INTERNAL         Internal error in the operator, invalid types passed in.
@@ -114,8 +118,31 @@ CVCUDA_PUBLIC NVCVStatus cvcudaStackCreate(NVCVOperatorHandle *handle);
 CVCUDA_PUBLIC NVCVStatus cvcudaStackSubmit(NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorBatchHandle in,
                                            NVCVTensorHandle out);
 
+/**
+ *  Executes the Stack operation on the given cuda stream using a variable shape image batch as input.
+ *  This operation does not wait for completion. The stack operation copies source images into an output tensor.
+ *  The output tensor is a concatenation of the source images. All of the source images must have the same
+ *  format (data type and number of channels) and dimensions (width and height).
+ *
+ * @param [in] handle Handle to the operator.
+ *                    + Must not be NULL.
+ * @param [in] stream Handle to a valid CUDA stream.
+ *
+ * @param [in] in input varshape image batch.
+ *
+ * @param [out] out output tensor NHWC/NCHW where N is equal to the number of input images.
+ *
+ * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
+ * @retval #NVCV_ERROR_INTERNAL         Internal error in the operator, invalid types passed in.
+ * @retval #NVCV_SUCCESS                Operation executed successfully.
+ */
+CVCUDA_PUBLIC NVCVStatus cvcudaStackVarShapeSubmit(NVCVOperatorHandle handle, cudaStream_t stream,
+                                                   NVCVImageBatchHandle in, NVCVTensorHandle out);
+
 #ifdef __cplusplus
 }
 #endif
+
+/** @} */
 
 #endif /* CVCUDA__STACK_H */

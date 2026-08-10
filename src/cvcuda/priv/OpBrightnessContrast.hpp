@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -43,6 +43,13 @@ public:
     void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &src, const nvcv::ImageBatchVarShape &dst,
                     const nvcv::Tensor &brightness, const nvcv::Tensor &contrast, const nvcv::Tensor &brightnessShift,
                     const nvcv::Tensor &contrastCenter) const;
+
+    void operator()(cudaStream_t stream, const nvcv::Tensor &src, const nvcv::Tensor &dst, double brightness,
+                    double contrast, double brightnessShift, double contrastCenter, bool clamp) const;
+
+    void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &src, const nvcv::ImageBatchVarShape &dst,
+                    double brightness, double contrast, double brightnessShift, double contrastCenter,
+                    bool clamp) const;
 };
 
 } // namespace cvcuda::priv

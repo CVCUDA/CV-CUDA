@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "OpJointBilateralFilter.hpp"
 
+#include "Nvtx.hpp"
 #include "legacy/CvCudaLegacy.h"
 #include "legacy/CvCudaLegacyHelpers.hpp"
 
@@ -29,7 +30,8 @@ namespace legacy = nvcv::legacy::cuda_op;
 
 JointBilateralFilter::JointBilateralFilter()
 {
-    legacy::DataShape maxIn, maxOut;
+    legacy::DataShape maxIn;
+    legacy::DataShape maxOut;
     //maxIn/maxOut not used by op.
     m_legacyOp         = std::make_unique<legacy::JointBilateralFilter>(maxIn, maxOut);
     m_legacyOpVarShape = std::make_unique<legacy::JointBilateralFilterVarShape>(maxIn, maxOut);
@@ -39,6 +41,7 @@ void JointBilateralFilter::operator()(cudaStream_t stream, const nvcv::Tensor &i
                                       const nvcv::Tensor &out, int diameter, float sigmaColor, float sigmaSpace,
                                       NVCVBorderType borderMode) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::JointBilateralFilter::operator()[Tensor]");
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
     if (inData == nullptr)
     {
@@ -69,6 +72,7 @@ void JointBilateralFilter::operator()(cudaStream_t stream, const nvcv::ImageBatc
                                       const nvcv::Tensor &diameter, const nvcv::Tensor &sigmaColor,
                                       const nvcv::Tensor &sigmaSpace, NVCVBorderType borderMode) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::JointBilateralFilter::operator()[ImageBatchVarShape]");
     auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (inData == nullptr)
     {

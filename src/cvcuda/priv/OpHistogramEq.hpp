@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,11 +25,10 @@
 #define CVCUDA_PRIV__HISTOGRAM_EQ_HPP
 
 #include "IOperator.hpp"
+#include "PerDeviceResource.hpp"
 #include "legacy/CvCudaLegacy.h"
 
 #include <nvcv/Tensor.hpp>
-
-#include <memory>
 
 namespace cvcuda::priv {
 
@@ -43,8 +42,9 @@ public:
     void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out) const;
 
 private:
-    std::unique_ptr<nvcv::legacy::cuda_op::HistogramEq>         m_legacyOp;
-    std::unique_ptr<nvcv::legacy::cuda_op::HistogramEqVarShape> m_legacyOpVarShape;
+    int32_t                                                               m_maxBatchSize;
+    mutable PerDeviceResource<nvcv::legacy::cuda_op::HistogramEq>         m_legacyOp;
+    mutable PerDeviceResource<nvcv::legacy::cuda_op::HistogramEqVarShape> m_legacyOpVarShape;
 };
 
 } // namespace cvcuda::priv

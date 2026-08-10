@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,39 +26,74 @@
 namespace nvcv::priv {
 
 Exception::Exception(NVCVStatus code)
-    : Exception(code, "%s", "")
+    : Exception(code, "")
 {
 }
 
 Exception::Exception(NVCVStatus code, const char *fmt, va_list va)
     : m_code(code)
-    , m_strbuf{m_buffer, sizeof(m_buffer), m_buffer}
 {
-    snprintf(m_buffer, sizeof(m_buffer) - 1, "%s: ", GetName(code));
+    initStreamBuffer();
 
-    size_t len = std::char_traits<char>::length(m_buffer);
-    vsnprintf(m_buffer + len, sizeof(m_buffer) - len - 1, fmt, va);
+    detail::FormatTo(m_buffer.data(), m_buffer.size(), "%s: ", GetName(code));
+
+    size_t len = std::char_traits<char>::length(m_buffer.data());
+    detail::VFormatTo(m_buffer.data() + len, m_buffer.size() - len, fmt, va);
 
     // Next character written will be appended to m_buffer
-    m_strbuf.seekpos(std::char_traits<char>::length(m_buffer), std::ios_base::out);
+    m_strbuf.seekpos(std::char_traits<char>::length(m_buffer.data()), std::ios_base::out);
 }
 
-Exception::Exception(NVCVStatus code, const char *fmt, ...)
+Exception::Exception(NVCVStatus code, const char *msg)
     : m_code(code)
-    , m_strbuf{m_buffer, sizeof(m_buffer), m_buffer}
 {
-    va_list va;
-    va_start(va, fmt);
+    initStreamBuffer();
+    formatMessage("%s", msg != nullptr ? msg : "");
+}
 
-    snprintf(m_buffer, sizeof(m_buffer) - 1, "%s: ", GetName(code));
+Exception::Exception(const Exception &that) noexcept
+{
+    initStreamBuffer();
+    copyFrom(that);
+}
 
-    size_t len = std::char_traits<char>::length(m_buffer);
-    vsnprintf(m_buffer + len, sizeof(m_buffer) - len - 1, fmt, va);
+Exception::Exception(Exception &&that) noexcept
+    : Exception(static_cast<const Exception &>(that))
+{
+}
 
-    va_end(va);
+Exception &Exception::operator=(const Exception &that) noexcept
+{
+    copyFrom(that);
+    return *this;
+}
 
-    // Next character written will be appended to m_buffer
-    m_strbuf.seekpos(std::char_traits<char>::length(m_buffer), std::ios_base::out);
+Exception &Exception::operator=(Exception &&that) noexcept
+{
+    copyFrom(that);
+    return *this;
+}
+
+Exception::~Exception() noexcept
+{
+    m_buffer.back() = '\0';
+}
+
+void Exception::copyFrom(const Exception &that) noexcept
+{
+    m_code = that.m_code;
+    std::memcpy(m_buffer.data(), that.m_buffer.data(), m_buffer.size());
+    resetStreamPosition();
+}
+
+void Exception::initStreamBuffer() noexcept
+{
+    m_strbuf.reset(m_buffer.data(), static_cast<std::streamsize>(m_buffer.size()));
+}
+
+void Exception::resetStreamPosition() noexcept
+{
+    m_strbuf.seekpos(std::char_traits<char>::length(m_buffer.data()), std::ios_base::out);
 }
 
 NVCVStatus Exception::code() const
@@ -69,15 +104,15 @@ NVCVStatus Exception::code() const
 const char *Exception::msg() const
 {
     // Only return the message part
-    const char *out = strchr(m_buffer, ':');
+    const char *out = strchr(m_buffer.data(), ':');
     NVCV_ASSERT(out != nullptr);
 
-    return out += 2; // skip ': '
+    return out + 2; // skip ': '
 }
 
 const char *Exception::what() const noexcept
 {
-    return m_buffer;
+    return m_buffer.data();
 }
 
 } // namespace nvcv::priv

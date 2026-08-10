@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "priv/OpAverageBlur.hpp"
 
+#include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <nvcv/Exception.hpp>
@@ -31,7 +32,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaAverageBlurCreate,
                    int32_t maxVarShapeBatchSize))
 {
     return nvcv::ProtectCall(
-        [&]
+        [&handle, &maxKernelWidth, &maxKernelHeight, &maxVarShapeBatchSize]
         {
             if (handle == nullptr)
             {
@@ -39,8 +40,8 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaAverageBlurCreate,
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            *handle = reinterpret_cast<NVCVOperatorHandle>(
-                new priv::AverageBlur(nvcv::Size2D{maxKernelWidth, maxKernelHeight}, maxVarShapeBatchSize));
+            *handle = priv::CreateOperatorHandle<priv::AverageBlur>(nvcv::Size2D{maxKernelWidth, maxKernelHeight},
+                                                                    maxVarShapeBatchSize);
         });
 }
 
@@ -49,11 +50,13 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaAverageBlurSubmit,
                    int32_t kernelWidth, int32_t kernelHeight, int32_t kernelAnchorX, int32_t kernelAnchorY,
                    NVCVBorderType borderMode))
 {
+    CVCUDA_NVTX_RANGE("cvcudaAverageBlurSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&out, &in, &handle, &stream, &kernelWidth, &kernelHeight, &kernelAnchorX, &kernelAnchorY, &borderMode]
         {
-            nvcv::TensorWrapHandle output(out), input(in);
-            priv::ToDynamicRef<priv::AverageBlur>(handle)(stream, input, output,
+            nvcv::TensorWrapHandle output(out);
+            nvcv::TensorWrapHandle input(in);
+            priv::ToDynamicRef<priv::AverageBlur>(handle)(stream, input.resource(), output.resource(),
                                                           nvcv::Size2D{kernelWidth, kernelHeight},
                                                           int2{kernelAnchorX, kernelAnchorY}, borderMode);
         });
@@ -63,12 +66,16 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaAverageBlurVarShapeSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVImageBatchHandle in, NVCVImageBatchHandle out,
                    NVCVTensorHandle kernelSize, NVCVTensorHandle kernelAnchor, NVCVBorderType borderMode))
 {
+    CVCUDA_NVTX_RANGE("cvcudaAverageBlurVarShapeSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&in, &out, &kernelSize, &kernelAnchor, &handle, &stream, &borderMode]
         {
-            nvcv::ImageBatchVarShapeWrapHandle inWrap(in), outWrap(out);
-            nvcv::TensorWrapHandle             kernelSizeWrap(kernelSize), kernelAnchorWrap(kernelAnchor);
-            priv::ToDynamicRef<priv::AverageBlur>(handle)(stream, inWrap, outWrap, kernelSizeWrap, kernelAnchorWrap,
+            nvcv::ImageBatchVarShapeWrapHandle inWrap(in);
+            nvcv::ImageBatchVarShapeWrapHandle outWrap(out);
+            nvcv::TensorWrapHandle             kernelSizeWrap(kernelSize);
+            nvcv::TensorWrapHandle             kernelAnchorWrap(kernelAnchor);
+            priv::ToDynamicRef<priv::AverageBlur>(handle)(stream, inWrap.resource(), outWrap.resource(),
+                                                          kernelSizeWrap.resource(), kernelAnchorWrap.resource(),
                                                           borderMode);
         });
 }

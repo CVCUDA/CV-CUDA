@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+#include "Nvtx.hpp"
 #include "OpSIFT.hpp"
 
 #include <cvcuda/cuda_tools/InterpolationWrap.hpp>
@@ -53,6 +54,7 @@ constexpr NVCVInterpolationType kInterpUp{NVCV_INTERP_LINEAR};        // default
 constexpr float kMinSigma              = 0.01f;      // minimum sigma to be used as base sigma
 constexpr float kPrevSigma             = 0.5f;       // previous sigma before base image
 constexpr int   kMaxKernelSize         = 59;         // maximum Gaussian kernel size
+constexpr int   kDescriptorOctaveBatch = 2;          // octaves handled by one descriptor launch
 constexpr int2  kBorderSize            = int2{5, 5}; // ignore keypoints close to the border
 constexpr int   kMaxInterpolationSteps = 5;          // max. steps of keypoint interpolation before failure
 
@@ -107,7 +109,7 @@ inline __host__ nvcv::Tensor GetViewFrom(const nvcv::TensorDataStridedCuda  &par
         viewData.shape[r] = viewShape[r];
     }
 
-    return nvcv::TensorWrapData(viewData);
+    return nvcv::TensorWrapData(nvcv::TensorData{viewData});
 }
 
 // Function to compute number of octaves for an WxH image with W=width and H=height
@@ -177,20 +179,22 @@ __global__ void DoComputePyramids(BorderWrapLNHW<float> prevGauss, TensorWrapLNH
                                   TensorWrapLNHW<float> currDoG, int3 currShape, int currLayer, int currKernelSize,
                                   cuda::math::Vector<float, kMaxKernelSize> gaussSepKernel)
 {
-    constexpr int SW = BW + kMaxKernelSize; // block width with kernel maximum support (halo) for Gaussian filtering
-    constexpr int SH = BH + kMaxKernelSize; // block height with kernel maximum support (halo) for Gaussian filtering
-
-    // Based on kMaxKernelSize = 59 and kDataTile = 32x32x1
+    // Based on kMaxKernelSize = 59 and kDataTile = 32x32x1. The launch reserves only the space required by the
+    // current Gaussian kernel, up to this maximum.
     // Registers used: 40
     // SMEM usage (max. 48KB): 44772 B = ((32 + 59) * (32 + 59)) * 4 + (32 * (32 + 59)) * 4
     // CMEM usage (max. 4KB): 688 B = 59 * 4 + 4 + 4 + 4 + 4 * 3 + (4 * 3 + 8) * 2 + (4 * 3 + 4 * 2 + 8) + (360)
 
-    __shared__ float gaussInData[SH * SW];  // plain 1D Gaussian input data in shared memory (SMEM)
-    __shared__ float gaussOutData[SH * BW]; // plain 1D Gaussian output (intermediary) data in SMEM
+    extern __shared__ float sharedData[];
 
-    // Using TensorWrap with compile-time strides for easy multi-dimensional access of Gaussian data in SMEM
-    cuda::TensorWrap32<float, SW * sizeof(float), sizeof(float)> gaussIn(&gaussInData[0]);
-    cuda::TensorWrap32<float, BW * sizeof(float), sizeof(float)> gaussOut(&gaussOutData[0]);
+    const int gaussInWidth = BW + currKernelSize;
+    float    *gaussInData  = sharedData;
+    float    *gaussOutData = gaussInData + (BH + currKernelSize) * gaussInWidth;
+
+    // The input row stride follows the current kernel support instead of the maximum supported one.
+    cuda::TensorWrap32<float, -1, sizeof(float)>                 gaussIn(gaussInData,
+                                                                         static_cast<int32_t>(gaussInWidth * sizeof(float)));
+    cuda::TensorWrap32<float, BW * sizeof(float), sizeof(float)> gaussOut(gaussOutData);
 
     int half = currKernelSize / 2; // i.e. the halo or support data outside block to compute Gaussian filter
 
@@ -320,8 +324,9 @@ __global__ void DoComputeDescriptors(TensorWrapForDescriptor             featDes
                                      cuda::Tensor2DWrap<float4, int32_t> featCoords,
                                      cuda::Tensor2DWrap<float3, int32_t> featMetadata,
                                      cuda::Tensor1DWrap<int, int32_t>    numFeatures,
-                                     TensorWrapLNHW<const float> currGauss, int3 currShape, int featOctave,
-                                     float unscaleOctave)
+                                     TensorWrapLNHW<const float> firstGauss, int3 firstShape, int firstOctave,
+                                     float firstScale, TensorWrapLNHW<const float> secondGauss, int3 secondShape,
+                                     int secondOctave, float secondScale, bool hasSecondOctave)
 {
     constexpr int BW = (kDescMaxRadius + 1) * 2 + 1; // block width with maximum support radius for descriptor
     constexpr int BH = (kDescMaxRadius + 1) * 2 + 1; // block height with maximum support radius for descriptor
@@ -346,10 +351,21 @@ __global__ void DoComputeDescriptors(TensorWrapForDescriptor             featDes
         return; // each kernel invocation handles only valid features
     }
 
-    float *pFeatCoords = reinterpret_cast<float *>(featCoords.ptr(sampleIdx, featIdx));
-    if (pFeatCoords[2] != featOctave)
+    float                      *pFeatCoords   = reinterpret_cast<float *>(featCoords.ptr(sampleIdx, featIdx));
+    TensorWrapLNHW<const float> currGauss     = firstGauss;
+    int3                        currShape     = firstShape;
+    float                       unscaleOctave = firstScale;
+
+    if (pFeatCoords[2] != firstOctave)
     {
-        return; // each kernel invocation handles only features of the current octave
+        if (!hasSecondOctave || pFeatCoords[2] != secondOctave)
+        {
+            return;
+        }
+
+        currGauss     = secondGauss;
+        currShape     = secondShape;
+        unscaleOctave = secondScale;
     }
 
     // The coordinate (x, y) and layer of the feature to compute descriptor from
@@ -575,9 +591,10 @@ __global__ void DoFindExtrema(cuda::Tensor2DWrap<float4, int32_t> featCoords,
     // CMEM usage (max. 4KB): 488 B = (4 * 1 + 8) * 2 + 4 + 8 + (4 * 3 + 8) * 2 + 4 * 3 + 4 * 7 + (372)
     // ! 218072 bytes gmem ! 208 Bytes stack frame
 
-    float                           cv;      // central value
-    cuda::math::Vector<float, 3>    dD, sol; // derivative distances and solver solution
-    cuda::math::Matrix<float, 3, 3> H;       // Hessian matrix
+    float                           cv;  // central value
+    cuda::math::Vector<float, 3>    dD;  // derivative distances
+    cuda::math::Vector<float, 3>    sol; // solver solution
+    cuda::math::Matrix<float, 3, 3> H;   // Hessian matrix
 
     float hist[kHistogramBins]; // histogram for angle computation
 
@@ -887,6 +904,11 @@ void SIFT::FindExtrema(const nvcv::TensorDataStridedCuda &featCoordsData,
     dim3 compBlocks1;
     dim3 compBlocks2(maxCapacity, 1, currShape.z);
 
+    TensorWrapLNHW<const float> firstDescriptorGauss;
+    int3                        firstDescriptorShape;
+    int                         firstDescriptorOctave = 0;
+    float                       firstDescriptorScale  = 1.f;
+
     cuda::Tensor2DWrap<float4, int32_t> featCoordsWrap(featCoordsData.basePtr(), (int)featCoordsData.stride(0));
     cuda::Tensor2DWrap<float3, int32_t> featMetadataWrap(featMetadataData.basePtr(), (int)featMetadataData.stride(0));
     cuda::Tensor1DWrap<int, int32_t>    numFeaturesWrap(numFeaturesData.basePtr());
@@ -917,17 +939,30 @@ void SIFT::FindExtrema(const nvcv::TensorDataStridedCuda &featCoordsData,
         float scaleOctave   = ::pow(2, featOctave); // scale feature coordinate or size back to base image
         float unscaleOctave = 1.f / scaleOctave;    // un-scale feature coordinate or size back to current octave
 
+        int descriptorOctaveIndex = octave % kDescriptorOctaveBatch;
+        if (descriptorOctaveIndex == 0)
+        {
+            firstDescriptorGauss  = currGaussWrap;
+            firstDescriptorShape  = currShape;
+            firstDescriptorOctave = featOctave;
+            firstDescriptorScale  = unscaleOctave;
+        }
+
         // First run the DoFindExtrema kernel to find extrema points (the features) and compute their metadata
 
         DoFindExtrema<BW, BH, DT><<<compBlocks1, compThreads1, 0, stream>>>(
             featCoordsWrap, featMetadataWrap, maxCapacity, numFeaturesWrap, currGaussWrap, currDoGWrap, currShape,
             featOctave, scaleOctave, numOctaveLayers, intThreshold, contrastThreshold, edgeThreshold, initSigma);
 
-        // Second run the DoComputeDescriptors kernel to compute the descriptor of each feature found
+        if (descriptorOctaveIndex == kDescriptorOctaveBatch - 1 || octave == numOctaves - 1)
+        {
+            bool hasSecondOctave = descriptorOctaveIndex == kDescriptorOctaveBatch - 1;
 
-        DoComputeDescriptors<<<compBlocks2, compThreads2, 0, stream>>>(featDescriptorsWrap, featCoordsWrap,
-                                                                       featMetadataWrap, numFeaturesWrap, currGaussWrap,
-                                                                       currShape, featOctave, unscaleOctave);
+            DoComputeDescriptors<<<compBlocks2, compThreads2, 0, stream>>>(
+                featDescriptorsWrap, featCoordsWrap, featMetadataWrap, numFeaturesWrap, firstDescriptorGauss,
+                firstDescriptorShape, firstDescriptorOctave, firstDescriptorScale, currGaussWrap, currShape, featOctave,
+                unscaleOctave, hasSecondOctave);
+        }
 
         currShape.x /= 2;
         currShape.y /= 2;
@@ -1028,11 +1063,12 @@ void SIFT::ComputePyramids(const nvcv::TensorDataStridedCuda &inData, int3 currS
                 }
 
                 // Compute the separable Gaussian filter kernel for the Gaussian pyramid
-                int   ksize = ComputeGaussianKernelSize(currSigma);
-                int   half  = ksize / 2;
-                float ss2   = currSigma * currSigma * 2;
-                float sp2   = currSigma * cuda::sqrt(M_PI * 2);
-                float sum   = 0.f;
+                int   ksize    = ComputeGaussianKernelSize(currSigma);
+                int   half     = ksize / 2;
+                int   smemSize = ((BW + ksize) * (BH + ksize) + BW * (BH + ksize)) * sizeof(float);
+                float ss2      = currSigma * currSigma * 2;
+                float sp2      = currSigma * cuda::sqrt(M_PI * 2);
+                float sum      = 0.f;
 
                 for (int kx = -half; kx <= half; ++kx)
                 {
@@ -1053,13 +1089,13 @@ void SIFT::ComputePyramids(const nvcv::TensorDataStridedCuda &inData, int3 currS
                 if (octave == 0 && layer == 0)
                 {
                     // Only for the first octave and first layer the base level previous Gaussian data is used
-                    DoComputePyramids<BW, BH><<<compBlocks, compThreads, 0, stream>>>(
+                    DoComputePyramids<BW, BH><<<compBlocks, compThreads, smemSize, stream>>>(
                         prevGaussBW, currGaussTW, currDoGTW, currShape, layer, ksize, gaussSepKernel);
                 }
                 else
                 {
                     // For every other octave and layer the current Gaussian data (border-aware) is used
-                    DoComputePyramids<BW, BH><<<compBlocks, compThreads, 0, stream>>>(
+                    DoComputePyramids<BW, BH><<<compBlocks, compThreads, smemSize, stream>>>(
                         currGaussBW, currGaussTW, currDoGTW, currShape, layer, ksize, gaussSepKernel);
                 }
             }
@@ -1186,11 +1222,14 @@ void SIFT::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::T
                       const nvcv::Tensor &numFeatures, int numOctaveLayers, float contrastThreshold,
                       float edgeThreshold, float initSigma, NVCVSIFTFlagType flags) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::SIFT::operator()[Tensor]");
     // Check each tensor layout, strides, shape and data type if it is conforming to what is expected
 
-    if (!(in.layout() == nvcv::TENSOR_HWC || in.layout() == nvcv::TENSOR_NHWC))
+    if (!(in.layout() == nvcv::TENSOR_HWC || in.layout() == nvcv::TENSOR_NHWC || in.layout() == nvcv::TENSOR_CHW
+          || in.layout() == nvcv::TENSOR_NCHW))
     {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input tensor layout must be HWC or NHWC");
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "Input tensor layout must be HWC, NHWC, CHW or NCHW");
     }
 
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();

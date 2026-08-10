@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -53,6 +53,82 @@ struct IsComplex<std::complex<T>> : std::true_type
 {
 };
 
+// Marker type for numpy float16 (no native C++ 16-bit float equivalent)
+struct Float16Tag
+{
+};
+
+// Type traits to abstract differences between standard types and Float16Tag
+template<class T>
+struct DTypeTraits
+{
+    static bool matches(const py::dtype &dtbase)
+    {
+        return dtbase.equal(py::dtype::of<T>());
+    }
+
+    static py::dtype create()
+    {
+        return py::dtype::of<T>();
+    }
+
+    static constexpr int itemsize()
+    {
+        return sizeof(T);
+    }
+
+    static int bits_per_component(int itemsize_param)
+    {
+        return itemsize_param * 8;
+    }
+
+    static nvcv::DataKind infer_kind()
+    {
+        if (IsComplex<T>::value)
+            return nvcv::DataKind::COMPLEX;
+        else if (std::is_floating_point_v<T>)
+            return nvcv::DataKind::FLOAT;
+        else if (std::is_signed_v<T>)
+            return nvcv::DataKind::SIGNED;
+        else if (std::is_unsigned_v<T>)
+            return nvcv::DataKind::UNSIGNED;
+        else
+        {
+            NVCV_ASSERT(!"Invalid type");
+        }
+    }
+};
+
+// Specialization for Float16Tag
+template<>
+struct DTypeTraits<Float16Tag>
+{
+    static bool matches(const py::dtype &dtbase)
+    {
+        return dtbase.itemsize() == 2 && dtbase.kind() == 'f';
+    }
+
+    static py::dtype create()
+    {
+        return py::dtype("e");
+    }
+
+    static constexpr int itemsize()
+    {
+        return 2;
+    }
+
+    static int bits_per_component(int /*itemsize_param*/)
+    {
+        return 16;
+    }
+
+    static nvcv::DataKind infer_kind()
+    {
+        return nvcv::DataKind::FLOAT;
+    }
+};
+
 template<class T>
 bool FindDataType(const py::dtype &dt, nvcv::DataType *dtype)
 {
@@ -82,73 +158,54 @@ bool FindDataType(const py::dtype &dt, nvcv::DataType *dtype)
         }
     }
 
-    int itemsize = dtbase.itemsize();
+    auto itemsize = static_cast<int>(dtbase.itemsize());
 
-    if (dtbase.equal(py::dtype::of<T>()))
-    {
-        nvcv::DataKind dataKind;
-        if (IsComplex<T>::value)
-        {
-            dataKind = nvcv::DataKind::COMPLEX;
-        }
-        else if (std::is_floating_point<T>::value)
-        {
-            dataKind = nvcv::DataKind::FLOAT;
-        }
-        else if (std::is_signed<T>::value)
-        {
-            dataKind = nvcv::DataKind::SIGNED;
-        }
-        else if (std::is_unsigned<T>::value)
-        {
-            dataKind = nvcv::DataKind::UNSIGNED;
-        }
-        else
-        {
-            NVCV_ASSERT(!"Invalid type");
-        }
-
-        // Infer the packing
-        nvcv::PackingParams pp = {};
-
-        pp.byteOrder = nvcv::ByteOrder::MSB;
-
-        switch (nchannels)
-        {
-        case 1:
-            pp.swizzle = nvcv::Swizzle::S_X000;
-            break;
-        case 2:
-            pp.swizzle = nvcv::Swizzle::S_XY00;
-            break;
-        case 3:
-            pp.swizzle = nvcv::Swizzle::S_XYZ0;
-            break;
-        case 4:
-            pp.swizzle = nvcv::Swizzle::S_XYZW;
-            break;
-        default:
-            NVCV_ASSERT(!"Invalid number of channels");
-        }
-        for (int i = 0; i < nchannels; ++i)
-        {
-            pp.bits[i] = static_cast<int>(itemsize * 8);
-        }
-        nvcv::Packing packing = MakePacking(pp);
-
-        // Finally, infer the data type
-        NVCV_ASSERT(dtype != nullptr);
-        *dtype = nvcv::DataType{dataKind, packing};
-        return true;
-    }
-    else
+    // Use traits to check if this type matches
+    if (!DTypeTraits<T>::matches(dtbase))
     {
         return false;
     }
+
+    // get the data kind from the traits
+    auto                dataKind = DTypeTraits<T>::infer_kind();
+    nvcv::PackingParams pp       = {};
+    pp.byteOrder                 = nvcv::ByteOrder::MSB;
+
+    switch (nchannels)
+    {
+    case 1:
+        pp.swizzle = nvcv::Swizzle::S_X000;
+        break;
+    case 2:
+        pp.swizzle = nvcv::Swizzle::S_XY00;
+        break;
+    case 3:
+        pp.swizzle = nvcv::Swizzle::S_XYZ0;
+        break;
+    case 4:
+        pp.swizzle = nvcv::Swizzle::S_XYZW;
+        break;
+    default:
+        NVCV_ASSERT(!"Invalid number of channels");
+    }
+
+    // Use traits to get bits per component
+    for (int i = 0; i < nchannels; ++i)
+    {
+        pp.bits[i] = DTypeTraits<T>::bits_per_component(itemsize);
+    }
+
+    nvcv::Packing packing = MakePacking(pp);
+
+    // Finally, infer the data type
+    NVCV_ASSERT(dtype != nullptr);
+    *dtype = nvcv::DataType{dataKind, packing};
+    return true;
 }
 
 // clang-format off
 using SupportedBaseTypes = std::tuple<
+      Float16Tag,  // Explicit marker for numpy float16
       std::complex<float>,
       std::complex<double>,
       float, double,
@@ -178,37 +235,28 @@ std::optional<nvcv::DataType> SelectDataType(std::tuple<TT...>, const py::dtype 
 template<class T>
 bool FindDType(T *, const nvcv::DataType &dtype, py::dtype *dt)
 {
-    int nchannels = dtype.numChannels();
-    int itemsize  = dtype.bitsPerPixel() / 8;
+    int            nchannels = dtype.numChannels();
+    int            itemsize  = dtype.bitsPerPixel() / 8;
+    nvcv::DataKind dataKind  = dtype.dataKind();
 
-    if (sizeof(T) != itemsize / nchannels)
+    if (DTypeTraits<T>::itemsize() != itemsize / nchannels)
     {
         return false;
     }
 
-    nvcv::DataKind dataKind = dtype.dataKind();
-
-    if ((std::is_floating_point_v<T> && dataKind == nvcv::DataKind::FLOAT)
-        || (IsComplex<T>::value && dataKind == nvcv::DataKind::COMPLEX)
-        || (std::is_integral_v<T> && std::is_signed_v<T> && dataKind == nvcv::DataKind::SIGNED)
-        || (std::is_integral_v<T> && std::is_unsigned_v<T> && dataKind == nvcv::DataKind::UNSIGNED))
-    {
-        NVCV_ASSERT(dt != nullptr);
-
-        *dt = py::dtype::of<T>();
-
-        // data type has multiple components?
-        if (nchannels > 1)
-        {
-            // Create a dtype with multiple components too, with shape argument
-            *dt = py::dtype(util::FormatString("%d%c", nchannels, dt->char_()));
-        }
-        return true;
-    }
-    else
+    if (DTypeTraits<T>::infer_kind() != dataKind)
     {
         return false;
     }
+
+    NVCV_ASSERT(dt != nullptr);
+    *dt = DTypeTraits<T>::create();
+
+    if (nchannels > 1)
+    {
+        *dt = py::dtype(util::ConcatString(nchannels, dt->char_()));
+    }
+    return true;
 }
 
 template<class... TT>
@@ -245,14 +293,19 @@ static std::string DataTypeToString(nvcv::DataType type)
 
     out << "nvcv.";
 
-    if (prefix == str)
+    auto starts_with = [](const char *s, std::string_view p)
+    {
+        return std::string_view{s}.rfind(p, 0) == 0;
+    };
+
+    if (starts_with(str, prefix))
     {
         out << "Type." << str + prefix.length();
     }
     else
     {
         prefix = "DataType";
-        if (prefix == str)
+        if (starts_with(str, prefix))
         {
             out << "Type" << str + prefix.length();
         }
@@ -284,9 +337,28 @@ void ExportDataType(py::module &m)
     type.def(py::init<>());
 
     type.def("__repr__", &DataTypeToString);
-    type.def(py::self == py::self);
-    type.def(py::self != py::self);
-    type.def(py::self < py::self);
+    type.def(
+        "__eq__", [](const nvcv::DataType &a, const nvcv::DataType &b) { return a == b; }, py::is_operator());
+    type.def(
+        "__ne__", [](const nvcv::DataType &a, const nvcv::DataType &b) { return a != b; }, py::is_operator());
+    type.def(
+        "__lt__", [](const nvcv::DataType &a, const nvcv::DataType &b) { return a < b; }, py::is_operator());
+    // Type values surface to Python as numpy.dtype (see the DataType type_caster
+    // below), so a Type constructed via Type(...) must hash identically to the
+    // equivalent numpy.dtype to stay consistent with __eq__ across both forms.
+    // Fall back to the packed value for the no-dtype sentinel so hashing never
+    // dereferences a null object.
+    type.def(
+        "__hash__",
+        [](const nvcv::DataType &a)
+        {
+            if (py::dtype dt = ToDType(a))
+            {
+                return PyObject_Hash(dt.ptr());
+            }
+            return static_cast<Py_hash_t>(std::hash<uint64_t>{}(static_cast<uint64_t>(a)));
+        },
+        "Return a value-based hash matching the equivalent numpy.dtype, so Type can be used as a dict key.");
 
     py::implicitly_convertible<py::dtype, nvcv::DataType>();
 }

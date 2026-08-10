@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -29,7 +29,20 @@
 using namespace nvcv::legacy::cuda_op;
 using namespace nvcv::legacy::helpers;
 
-template<class SrcWrapper, class DstWrapper>
+template<bool IsPlanar>
+__device__ __forceinline__ int4 imageCoord(int batch, int y, int x, int ch)
+{
+    if constexpr (IsPlanar)
+    {
+        return int4{x, y, ch, batch};
+    }
+    else
+    {
+        return int4{batch, y, x, ch};
+    }
+}
+
+template<bool IsPlanar, class SrcWrapper, class DstWrapper>
 __global__ void hist_kernel(const SrcWrapper src, DstWrapper histogram, int channels)
 {
     const int src_x     = blockIdx.x * blockDim.x + threadIdx.x;
@@ -51,9 +64,9 @@ __global__ void hist_kernel(const SrcWrapper src, DstWrapper histogram, int chan
     {
         for (int ch = 0; ch < channels; ch++)
         {
-            int4  coordImg{batch_idx, src_y, src_x, ch};
-            uchar out = src[coordImg];
-            int   idx = out + (256 * ch);
+            int4  coordImg = imageCoord<IsPlanar>(batch_idx, src_y, src_x, ch);
+            uchar out      = src[coordImg];
+            int   idx      = out + (256 * ch);
             atomicAdd(&shist[idx], 1);
         }
     }
@@ -135,7 +148,7 @@ __global__ void prefix_sum_with_norm_kernel(CdfWrapper histogram, SrcWrapper dst
     }
 }
 
-template<class SrcWrapper, class DstWrapper, class CdfWrapper>
+template<bool IsPlanar, class SrcWrapper, class DstWrapper, class CdfWrapper>
 __global__ void lookup(const SrcWrapper src, DstWrapper dst, CdfWrapper cdf, int channels)
 
 {
@@ -159,9 +172,8 @@ __global__ void lookup(const SrcWrapper src, DstWrapper dst, CdfWrapper cdf, int
         int offset = 0;
         for (int ch = 0; ch < channels; ch++)
         {
-            offset = 256 * ch;
-            int4 coordImg{batch_idx, src_y, src_x, ch};
-            int2 coordHisto{src[coordImg] + offset, batch_idx};
+            offset        = 256 * ch;
+            int4 coordImg = imageCoord<IsPlanar>(batch_idx, src_y, src_x, ch);
             dst[coordImg] = nvcv::cuda::SaturateCast<uchar>((temp[src[coordImg] + offset]));
         }
     }
@@ -222,11 +234,12 @@ ErrorCode HistogramEqVarShape::infer(const nvcv::ImageBatchVarShapeDataStridedCu
 
     DataFormat format = input_format;
 
-    if (!(format == kNHWC || format == kHWC))
+    if (!(format == kNHWC || format == kHWC || format == kNCHW || format == kCHW))
     {
         LOG_ERROR("Invliad DataFormat " << format);
         return ErrorCode::INVALID_DATA_FORMAT;
     }
+    const bool isPlanar = (format == kNCHW || format == kCHW);
 
     DataType data_type     = helpers::GetLegacyDataType(inData.uniqueFormat());
     DataType out_data_type = helpers::GetLegacyDataType(outData.uniqueFormat());
@@ -250,6 +263,11 @@ ErrorCode HistogramEqVarShape::infer(const nvcv::ImageBatchVarShapeDataStridedCu
         LOG_ERROR("Invalid channel number " << channels);
         return ErrorCode::INVALID_DATA_SHAPE;
     }
+    if (isPlanar && channels == 2)
+    {
+        LOG_ERROR("2-channel planar HistogramEq is unsupported");
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
 
     if (inData.numImages() != outData.numImages())
     {
@@ -257,9 +275,79 @@ ErrorCode HistogramEqVarShape::infer(const nvcv::ImageBatchVarShapeDataStridedCu
         return ErrorCode::INVALID_DATA_SHAPE;
     }
 
+    if (m_maxBatchSize <= 0 || batch > m_maxBatchSize)
+    {
+        LOG_ERROR("Invalid maximum batch size " << m_maxBatchSize << " for input batch " << batch);
+        return ErrorCode::INVALID_PARAMETER;
+    }
+
+    if (batch > 65535)
+    {
+        LOG_ERROR("HistogramEq input exceeds the 65535 batch launch limit");
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+    auto histo = nvcv::cuda::Tensor2DWrap<int, int32_t>(m_histoArray, (int)(256 * channels * sizeof(int)));
+
+    checkCudaErrors(cudaMemsetAsync(m_histoArray, 0, m_sizeOfHisto, stream));
+
+    if (isPlanar)
+    {
+        cuda::ImageBatchVarShapeWrap<uchar> dst(outData);
+        cuda::ImageBatchVarShapeWrap<uchar> src(inData);
+
+        {
+            //compute the histogram for each image in the batch into m_histoArray
+            int bsX = 32; //1024 ( 4 ch of 256 bins)
+            int bsY = 32;
+
+            switch (channels)
+            {
+            case 1:
+                bsX = 16; // 256 (1 ch)
+                bsY = 16;
+                break;
+            case 3:
+                bsX = 32; // 768 (3 ch)
+                bsY = 24;
+                break;
+            default:
+                break;
+            }
+
+            // each block is going to be 256bins * channels = threads
+            dim3   histBlockSize(bsX, bsY, 1);
+            dim3   histGridSize(divUp(inData.maxSize().w, histBlockSize.x), divUp(inData.maxSize().h, histBlockSize.y),
+                                batch);
+            size_t sharedMemSize = 256 * channels * sizeof(int);
+            hist_kernel<true><<<histGridSize, histBlockSize, sharedMemSize, stream>>>(src, histo, channels);
+            checkKernelErrors();
+        }
+        //compute cfd
+        {
+            int  bsX = 256;
+            int  bsY = 1;
+            int  bsZ = 1;
+            dim3 prefixSumBlockSize(bsX, bsY, bsZ);
+            dim3 prefixSumGridSize(channels, 1, batch);
+            prefix_sum_with_norm_kernel<<<prefixSumGridSize, prefixSumBlockSize, 0, stream>>>(histo, dst);
+            checkKernelErrors();
+        }
+        //lookup
+        {
+            dim3 lookupBlockSize(32, 32, 1);
+            dim3 lookupGridSize(divUp(inData.maxSize().w, lookupBlockSize.x),
+                                divUp(inData.maxSize().h, lookupBlockSize.y), batch);
+            lookup<true>
+                <<<lookupGridSize, lookupBlockSize, 256 * channels * sizeof(int), stream>>>(src, dst, histo, channels);
+            checkKernelErrors();
+        }
+
+        return ErrorCode::SUCCESS;
+    }
+
     cuda::ImageBatchVarShapeWrapNHWC<uchar> dst(outData, channels);
     cuda::ImageBatchVarShapeWrapNHWC<uchar> src(inData, channels);
-    auto histo = nvcv::cuda::Tensor2DWrap<int, int32_t>(m_histoArray, (int)(256 * channels * sizeof(int)));
 
     {
         //compute the histogram for each image in the batch into m_histoArray
@@ -289,7 +377,7 @@ ErrorCode HistogramEqVarShape::infer(const nvcv::ImageBatchVarShapeDataStridedCu
         dim3   histGridSize(divUp(inData.maxSize().w, histBlockSize.x), divUp(inData.maxSize().h, histBlockSize.y),
                             batch);
         size_t sharedMemSize = 256 * channels * sizeof(int);
-        hist_kernel<<<histGridSize, histBlockSize, sharedMemSize, stream>>>(src, histo, channels);
+        hist_kernel<false><<<histGridSize, histBlockSize, sharedMemSize, stream>>>(src, histo, channels);
         checkKernelErrors();
     }
     //compute cfd
@@ -307,7 +395,8 @@ ErrorCode HistogramEqVarShape::infer(const nvcv::ImageBatchVarShapeDataStridedCu
         dim3 lookupBlockSize(32, 32, 1);
         dim3 lookupGridSize(divUp(inData.maxSize().w, lookupBlockSize.x), divUp(inData.maxSize().h, lookupBlockSize.y),
                             batch);
-        lookup<<<lookupGridSize, lookupBlockSize, 256 * channels * sizeof(int), stream>>>(src, dst, histo, channels);
+        lookup<false>
+            <<<lookupGridSize, lookupBlockSize, 256 * channels * sizeof(int), stream>>>(src, dst, histo, channels);
         checkKernelErrors();
     }
 

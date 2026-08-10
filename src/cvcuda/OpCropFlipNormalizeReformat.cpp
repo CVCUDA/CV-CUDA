@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "priv/OpCropFlipNormalizeReformat.hpp"
 
+#include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <nvcv/Exception.hpp>
@@ -29,7 +30,7 @@ namespace priv = cvcuda::priv;
 CVCUDA_DEFINE_API(0, 3, NVCVStatus, cvcudaCropFlipNormalizeReformatCreate, (NVCVOperatorHandle * handle))
 {
     return nvcv::ProtectCall(
-        [&]
+        [&handle]
         {
             if (handle == nullptr)
             {
@@ -37,7 +38,7 @@ CVCUDA_DEFINE_API(0, 3, NVCVStatus, cvcudaCropFlipNormalizeReformatCreate, (NVCV
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            *handle = reinterpret_cast<NVCVOperatorHandle>(new priv::CropFlipNormalizeReformat());
+            *handle = priv::CreateOperatorHandle<priv::CropFlipNormalizeReformat>();
         });
 }
 
@@ -47,14 +48,20 @@ CVCUDA_DEFINE_API(0, 3, NVCVStatus, cvcudaCropFlipNormalizeReformatSubmit,
                    NVCVTensorHandle base, NVCVTensorHandle scale, float global_scale, float shift, float epsilon,
                    uint32_t flags))
 {
+    CVCUDA_NVTX_RANGE("cvcudaCropFlipNormalizeReformatSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&base, &scale, &flipCode, &cropRect, &out, &in, &handle, &stream, &borderMode, &borderValue, &global_scale,
+         &shift, &epsilon, &flags]
         {
-            nvcv::TensorWrapHandle baseWrap(base), scaleWrap(scale), flipCodeWrap(flipCode), cropRectWrap(cropRect);
-            nvcv::TensorWrapHandle outWrap(out);
+            nvcv::TensorWrapHandle             baseWrap(base);
+            nvcv::TensorWrapHandle             scaleWrap(scale);
+            nvcv::TensorWrapHandle             flipCodeWrap(flipCode);
+            nvcv::TensorWrapHandle             cropRectWrap(cropRect);
+            nvcv::TensorWrapHandle             outWrap(out);
             nvcv::ImageBatchVarShapeWrapHandle inWrap(in);
-            priv::ToDynamicRef<priv::CropFlipNormalizeReformat>(handle)(stream, inWrap, outWrap, cropRectWrap,
-                                                                        borderMode, borderValue, flipCodeWrap, baseWrap,
-                                                                        scaleWrap, global_scale, shift, epsilon, flags);
+            priv::ToDynamicRef<priv::CropFlipNormalizeReformat>(handle)(
+                stream, inWrap.resource(), outWrap.resource(), cropRectWrap.resource(), borderMode, borderValue,
+                flipCodeWrap.resource(), baseWrap.resource(), scaleWrap.resource(), global_scale, shift, epsilon,
+                flags);
         });
 }

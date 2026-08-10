@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,14 +15,16 @@
 
 import cvcuda
 
-import pytest as t
+import pytest
 import numpy as np
+
 import cvcuda_util as util
+import cvcuda_tools as cv_tools
 
 RNG = np.random.default_rng(0)
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "input_args, kernel_args, kernel_anchor_args, border",
     [
         (
@@ -53,6 +55,18 @@ RNG = np.random.default_rng(0)
             (9, cvcuda.Format.S32, (0, 0), (128, 128), 12345, RNG),
             (9, cvcuda.Format.F32, (0, 0), (4, 4), 2, RNG),
             ((9, 2), np.int32, "NC", (4, 4), RNG, None),
+            cvcuda.Border.REFLECT101,
+        ),
+        (
+            (3, cvcuda.Format.RGB8p, (0, 0), (64, 64), 255, RNG),
+            (3, cvcuda.Format.F32, (3, 3), (64, 64), 1, RNG),
+            ((3, 2), np.int32, "NC", (3, 3), RNG, None),
+            cvcuda.Border.REPLICATE,
+        ),
+        (
+            (2, cvcuda.Format.RGBf32p, (0, 0), (32, 32), 1, RNG),
+            (2, cvcuda.Format.F32, (5, 5), (32, 32), 1, RNG),
+            ((2, 2), np.int32, "NC", (5, 5), RNG, None),
             cvcuda.Border.REFLECT101,
         ),
     ],
@@ -88,3 +102,41 @@ def test_op_conv2dvarshape(input_args, kernel_args, kernel_anchor_args, border):
     assert out.capacity == input.capacity
     assert out.uniqueformat == input.uniqueformat
     assert out.maxsize == input.maxsize
+
+
+def _conv2d(src: cvcuda.ImageBatchVarShape) -> cvcuda.ImageBatchVarShape:
+    num_images = len(src)
+    kernel = util.create_image_batch(
+        num_images, cvcuda.Format.F32, size=(3, 3), max_random=1, rng=RNG
+    )
+    kernel_anchor = util.create_tensor(
+        (num_images, 2), np.int32, "NC", max_random=(-1, -1), rng=None
+    )
+    return cvcuda.conv2d(src, kernel, kernel_anchor, cvcuda.Border.CONSTANT)
+
+
+globals().update(
+    cv_tools.make_op_tests(
+        name="conv2d",
+        runner_info=[("image_batch", _conv2d, None)],
+        supported_formats={
+            cvcuda.Format.U8,
+            cvcuda.Format.U16,
+            cvcuda.Format.S16,
+            cvcuda.Format.S32,
+            cvcuda.Format.F32,
+            cvcuda.Format.RGB8,
+            cvcuda.Format.BGR8,
+            cvcuda.Format.RGBf32,
+            cvcuda.Format.BGRf32,
+            cvcuda.Format.RGBA8,
+            cvcuda.Format.BGRA8,
+            cvcuda.Format.RGBAf32,
+            cvcuda.Format.BGRAf32,
+            cvcuda.Format.RGB8p,
+            cvcuda.Format.RGBA8p,
+            cvcuda.Format.RGBf32p,
+            cvcuda.Format.RGBAf32p,
+        },
+    )
+)

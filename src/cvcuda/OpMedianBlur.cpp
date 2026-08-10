@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "priv/OpMedianBlur.hpp"
 
+#include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <nvcv/Exception.hpp>
@@ -30,7 +31,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaMedianBlurCreate,
                   (NVCVOperatorHandle * handle, const int32_t maxVarShapeBatchSize))
 {
     return nvcv::ProtectCall(
-        [&]
+        [&handle, &maxVarShapeBatchSize]
         {
             if (handle == nullptr)
             {
@@ -38,7 +39,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaMedianBlurCreate,
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            *handle = reinterpret_cast<NVCVOperatorHandle>(new priv::MedianBlur(maxVarShapeBatchSize));
+            *handle = priv::CreateOperatorHandle<priv::MedianBlur>(maxVarShapeBatchSize);
         });
 }
 
@@ -46,11 +47,13 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaMedianBlurSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in, NVCVTensorHandle out,
                    const int32_t kernelWidth, const int32_t kernelHeight))
 {
+    CVCUDA_NVTX_RANGE("cvcudaMedianBlurSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&in, &out, &handle, &stream, &kernelWidth, &kernelHeight]
         {
-            nvcv::TensorWrapHandle input(in), output(out);
-            priv::ToDynamicRef<priv::MedianBlur>(handle)(stream, input, output,
+            nvcv::TensorWrapHandle input(in);
+            nvcv::TensorWrapHandle output(out);
+            priv::ToDynamicRef<priv::MedianBlur>(handle)(stream, input.resource(), output.resource(),
                                                          nvcv::Size2D{kernelWidth, kernelHeight});
         });
 }
@@ -59,11 +62,14 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaMedianBlurVarShapeSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVImageBatchHandle in, NVCVImageBatchHandle out,
                    NVCVTensorHandle ksize))
 {
+    CVCUDA_NVTX_RANGE("cvcudaMedianBlurVarShapeSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&in, &out, &ksize, &handle, &stream]
         {
-            nvcv::ImageBatchVarShapeWrapHandle input(in), output(out);
+            nvcv::ImageBatchVarShapeWrapHandle input(in);
+            nvcv::ImageBatchVarShapeWrapHandle output(out);
             nvcv::TensorWrapHandle             ksizeWrap(ksize);
-            priv::ToDynamicRef<priv::MedianBlur>(handle)(stream, input, output, ksizeWrap);
+            priv::ToDynamicRef<priv::MedianBlur>(handle)(stream, input.resource(), output.resource(),
+                                                         ksizeWrap.resource());
         });
 }

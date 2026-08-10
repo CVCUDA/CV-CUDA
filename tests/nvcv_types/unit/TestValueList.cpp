@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,29 +33,29 @@ TEST(JoinTupleTests, only_values)
 
 TEST(JoinTupleTests, all_tuples)
 {
-    std::tuple<int, float, char, long, signed, double> gold{1, 3.2f, 'a', 43l, 1, 3.2};
+    std::tuple<int, float, char, long, signed, double> gold{1, 3.2f, 'a', 43L, 1, 3.2};
 
     EXPECT_EQ(gold,
-              test::detail::JoinTuple(std::make_tuple(1, 3.2f), std::make_tuple('a'), std::make_tuple(43l, 1, 3.2)));
+              test::detail::JoinTuple(std::make_tuple(1, 3.2f), std::make_tuple('a'), std::make_tuple(43L, 1, 3.2)));
 }
 
 TEST(JoinTupleTests, tuples_and_values_value_first)
 {
-    std::tuple<int, float, char, long, signed, double> gold{1, 3.2f, 'a', 43l, 1, 3.2};
+    std::tuple<int, float, char, long, signed, double> gold{1, 3.2f, 'a', 43L, 1, 3.2};
 
-    EXPECT_EQ(gold, test::detail::JoinTuple(1, std::make_tuple(3.2f, 'a'), std::make_tuple(43l, 1, 3.2)));
+    EXPECT_EQ(gold, test::detail::JoinTuple(1, std::make_tuple(3.2f, 'a'), std::make_tuple(43L, 1, 3.2)));
 }
 
 TEST(JoinTupleTests, tuples_and_values_tuple_first)
 {
-    std::tuple<int, float, char, long, signed, double> gold{1, 3.2f, 'a', 43l, 1, 3.2};
+    std::tuple<int, float, char, long, signed, double> gold{1, 3.2f, 'a', 43L, 1, 3.2};
 
-    EXPECT_EQ(gold, test::detail::JoinTuple(std::make_tuple(1, 3.2f), 'a', std::make_tuple(43l, 1, 3.2)));
+    EXPECT_EQ(gold, test::detail::JoinTuple(std::make_tuple(1, 3.2f), 'a', std::make_tuple(43L, 1, 3.2)));
 }
 
 TEST(ExtractTupleTests, extract_first_element_of_tuple_with_many)
 {
-    std::tuple<int, float, char, long, signed, double> input{1, 3.2f, 'a', 43l, 1, 3.2};
+    std::tuple<int, float, char, long, signed, double> input{1, 3.2f, 'a', 43L, 1, 3.2};
     std::tuple<int>                                    gold{1};
 
     EXPECT_EQ(gold, test::detail::ExtractTuple<0>(input));
@@ -63,7 +63,7 @@ TEST(ExtractTupleTests, extract_first_element_of_tuple_with_many)
 
 TEST(ExtractTupleTests, extract_middle_element_of_tuple_with_many)
 {
-    std::tuple<int, float, char, long, signed, double> input{1, 3.2f, 'a', 43l, 1, 3.2};
+    std::tuple<int, float, char, long, signed, double> input{1, 3.2f, 'a', 43L, 1, 3.2};
     std::tuple<char>                                   gold{'a'};
 
     EXPECT_EQ(gold, test::detail::ExtractTuple<2>(input));
@@ -71,7 +71,7 @@ TEST(ExtractTupleTests, extract_middle_element_of_tuple_with_many)
 
 TEST(ExtractTupleTests, extract_last_element_of_tuple_with_many)
 {
-    std::tuple<int, float, char, long, signed, double> input{1, 3.2f, 'a', 43l, 1, 3.2};
+    std::tuple<int, float, char, long, signed, double> input{1, 3.2f, 'a', 43L, 1, 3.2};
     std::tuple<double>                                 gold{3.2};
 
     EXPECT_EQ(gold, test::detail::ExtractTuple<5>(input));
@@ -79,7 +79,7 @@ TEST(ExtractTupleTests, extract_last_element_of_tuple_with_many)
 
 TEST(ExtractTupleTests, extract_first_few_elements_of_tuple_with_many)
 {
-    std::tuple<int, float, char, long, signed, double> input{1, 3.2f, 'a', 43l, 1, 3.2};
+    std::tuple<int, float, char, long, signed, double> input{1, 3.2f, 'a', 43L, 1, 3.2};
     std::tuple<int, float, char>                       gold{1, 3.2f, 'a'};
 
     EXPECT_EQ(gold, (test::detail::ExtractTuple<0, 1, 2>(input)));
@@ -87,23 +87,23 @@ TEST(ExtractTupleTests, extract_first_few_elements_of_tuple_with_many)
 
 TEST(ExtractTupleTests, extract_middle_few_elements_of_tuple_with_many)
 {
-    std::tuple<int, float, char, long, signed, double> input{1, 3.2f, 'a', 43l, 1, 3.2};
-    std::tuple<char, long, signed>                     gold{'a', 43l, 1};
+    std::tuple<int, float, char, long, signed, double> input{1, 3.2f, 'a', 43L, 1, 3.2};
+    std::tuple<char, long, signed>                     gold{'a', 43L, 1};
 
     EXPECT_EQ(gold, (test::detail::ExtractTuple<2, 3, 4>(input)));
 }
 
 TEST(ExtractTupleTests, extract_last_few_elements_of_tuple_with_many)
 {
-    std::tuple<int, float, char, long, signed, double> input{1, 3.2f, 'a', 43l, 1, 3.2};
-    std::tuple<long, signed, double>                   gold{43l, 1, 3.2};
+    std::tuple<int, float, char, long, signed, double> input{1, 3.2f, 'a', 43L, 1, 3.2};
+    std::tuple<long, signed, double>                   gold{43L, 1, 3.2};
 
     EXPECT_EQ(gold, (test::detail::ExtractTuple<3, 4, 5>(input)));
 }
 
 TEST(ExtractTupleTests, extract_all_elements_of_tuple_with_many)
 {
-    std::tuple<int, float, char, long, signed, double> input{1, 3.2f, 'a', 43l, 1, 3.2};
+    std::tuple<int, float, char, long, signed, double> input{1, 3.2f, 'a', 43L, 1, 3.2};
 
     EXPECT_EQ(input, (test::detail::ExtractTuple<0, 1, 2, 3, 4, 5>(input)));
 }
@@ -117,7 +117,7 @@ TEST(ExtractTupleTests, extract_element_of_tuple_with_one)
 
 TEST(ExtractTupleTests, extract_no_elements_of_tuple_with_many)
 {
-    std::tuple<int, float, char, long, signed, double> input{1, 3.2f, 'a', 43l, 1, 3.2};
+    std::tuple<int, float, char, long, signed, double> input{1, 3.2f, 'a', 43L, 1, 3.2};
     std::tuple<>                                       gold;
 
     EXPECT_EQ(gold, test::detail::ExtractTuple<>(input));
@@ -141,7 +141,7 @@ TEST(ExtractTupleTests, extract_same_element_multiple_times_from_tuple_with_one)
 
 TEST(ExtractTupleTests, extract_same_element_multiple_times_from_tuple_with_many)
 {
-    std::tuple<int, float, char, long, signed, double> input{1, 3.2f, 'a', 43l, 1, 3.2};
+    std::tuple<int, float, char, long, signed, double> input{1, 3.2f, 'a', 43L, 1, 3.2};
     std::tuple<char, char, char>                       gold{'a', 'a', 'a'};
 
     EXPECT_EQ(gold, (test::detail::ExtractTuple<2, 2, 2>(input)));
@@ -149,8 +149,8 @@ TEST(ExtractTupleTests, extract_same_element_multiple_times_from_tuple_with_many
 
 TEST(ExtractTupleTests, extract_multiple_elements_with_repetition_from_tuple_with_many)
 {
-    std::tuple<int, float, char, long, signed, double> input{1, 3.2f, 'a', 43l, 1, 3.2};
-    std::tuple<char, long, char>                       gold{'a', 43l, 'a'};
+    std::tuple<int, float, char, long, signed, double> input{1, 3.2f, 'a', 43L, 1, 3.2};
+    std::tuple<char, long, char>                       gold{'a', 43L, 'a'};
 
     EXPECT_EQ(gold, (test::detail::ExtractTuple<2, 3, 2>(input)));
 }
@@ -356,11 +356,11 @@ TEST(ValueListTests, nested_parameters)
 
     for (int b1 : b)
     {
-        for (std::tuple<int, int> a2 : aa)
+        for (const auto &[a20, a21] : aa)
         {
-            for (std::tuple<int, int> b2 : bb)
+            for (const auto &[b20, b21] : bb)
             {
-                gold.emplace_back(b1, std::get<0>(a2), std::get<1>(a2), std::get<0>(b2), std::get<1>(b2));
+                gold.emplace_back(b1, a20, a21, b20, b21);
             }
         }
     }
@@ -1169,7 +1169,7 @@ TEST(ValueListTests, conversion_from_vector_multiple_parameters)
 TEST(ValueListTests, lists_are_not_sorted)
 {
     std::vector<int>     gold = {3, 1, 2, 7, 1};
-    test::ValueList<int> a    = gold;
+    test::ValueList<int> a(gold);
 
     EXPECT_THAT(a, t::ElementsAreArray(gold));
 }
@@ -1248,7 +1248,7 @@ TEST(ValueListTests, unique_sort_with_extractor)
         {7, 'c', 1.7}
     };
 
-    auto extractor = [](int i, char c, float f)
+    auto extractor = [](int i, char, float f)
     {
         return std::make_tuple(i, f);
     };
@@ -1299,7 +1299,7 @@ TEST(ValueListTests, unique_sort_subset_complex_with_extractor_simple)
         {7, 'c', 1.7}
     };
 
-    auto extractor = [](char c, float f)
+    auto extractor = [](char c, float)
     {
         return c;
     };
@@ -1429,9 +1429,9 @@ TEST(ValueListTests, extract_single_from_non_empty_homogeneous_multi_list)
 
 TEST(ValueListTests, extract_single_from_non_empty_heterogeneous_multi_list)
 {
-    test::ValueList<int, float> list = {std::make_tuple(4, 2.1), std::make_tuple(4, 4.2), std::make_tuple(2, 4.3)};
+    test::ValueList<int, float> list = {std::make_tuple(4, 2.1f), std::make_tuple(4, 4.2f), std::make_tuple(2, 4.3f)};
     test::ValueList<int>        a    = {4, 4, 2};
-    test::ValueList<float>      b    = {2.1, 4.2, 4.3};
+    test::ValueList<float>      b    = {2.1f, 4.2f, 4.3f};
 
     EXPECT_EQ(a, test::Extract<0>(list));
     EXPECT_EQ(b, test::Extract<1>(list));
@@ -1627,7 +1627,7 @@ TEST(ValueListTests, make_struct)
         int   a;
         float b;
 
-        bool operator==(const Foo &f) const
+        bool operator==(const Foo &f) const // NOSONAR: defaulted comparisons are C++20.
         {
             return a == f.a && b == f.b;
         };
@@ -1661,7 +1661,7 @@ TEST(ValueListTests, make_struct_implicit_ctor)
         int   a;
         float b;
 
-        bool operator==(const Foo &f) const
+        bool operator==(const Foo &f) const // NOSONAR: defaulted comparisons are C++20.
         {
             return a == f.a && b == f.b;
         };
@@ -1674,9 +1674,9 @@ TEST(ValueListTests, make_struct_implicit_ctor)
     };
 
     test::ValueList<Foo> gold = {
-        Foo{1,  4.3},
-        Foo{4, -2.4},
-        Foo{5,    8}
+        Foo{1,  4.3f},
+        Foo{4, -2.4f},
+        Foo{5,     8}
     };
 
     EXPECT_EQ(gold, test::Make<Foo>(a));
@@ -1695,7 +1695,7 @@ TEST(ValueListTests, make_struct_explicit_ctor)
         int   a;
         float b;
 
-        bool operator==(const Foo &f) const
+        bool operator==(const Foo &f) const // NOSONAR: defaulted comparisons are C++20.
         {
             return a == f.a && b == f.b;
         };
@@ -1729,7 +1729,7 @@ TEST(ValueListTests, make_optional_struct_implicit_ctor)
         int   a;
         float b;
 
-        bool operator==(const Foo &f) const
+        bool operator==(const Foo &f) const // NOSONAR: defaulted comparisons are C++20.
         {
             return a == f.a && b == f.b;
         };
@@ -1763,7 +1763,7 @@ TEST(ValueListTests, make_optional_struct_explicit_ctor)
         int   a;
         float b;
 
-        bool operator==(const Foo &f) const
+        bool operator==(const Foo &f) const // NOSONAR: defaulted comparisons are C++20.
         {
             return a == f.a && b == f.b;
         };
@@ -1791,7 +1791,7 @@ TEST(ValueListTests, make_optional_struct_no_ctor)
         int   a;
         float b;
 
-        bool operator==(const Foo &f) const
+        bool operator==(const Foo &f) const // NOSONAR: defaulted comparisons are C++20.
         {
             return a == f.a && b == f.b;
         };
@@ -1834,11 +1834,11 @@ TEST(ValueListTests, or_works)
     EXPECT_FALSE(test::Or([](int a, int b) { return a == 4; }, [](int a, int b) { return b == 3; })(5, 6));
 }
 
-TEST(ValueListTests, implicit_conversion_different_types_multiple)
+TEST(ValueListTests, conversion_different_types_multiple)
 {
     struct Foo
     {
-        Foo(int value_)
+        explicit Foo(int value_)
             : value(value_)
         {
         }
@@ -1870,11 +1870,11 @@ TEST(ValueListTests, explicit_conversion_different_types_multiple)
     EXPECT_EQ('c', std::get<1>(*list.begin()));
 }
 
-TEST(ValueListTests, implicit_conversion_different_types_single)
+TEST(ValueListTests, conversion_different_types_single)
 {
     struct Foo
     {
-        Foo(int value_)
+        explicit Foo(int value_)
             : value(value_)
         {
         }
@@ -1887,7 +1887,7 @@ TEST(ValueListTests, implicit_conversion_different_types_single)
     EXPECT_EQ(5, list.begin()->value);
 }
 
-TEST(ValueListTests, default_ctor_implicit_conversion_different_types_single)
+TEST(ValueListTests, default_ctor_conversion_different_types_single)
 {
     struct Foo
     {
@@ -1896,7 +1896,7 @@ TEST(ValueListTests, default_ctor_implicit_conversion_different_types_single)
         {
         }
 
-        Foo(int value_)
+        explicit Foo(int value_)
             : value(value_)
         {
         }
@@ -1952,12 +1952,9 @@ TEST(ValueListTests, create_with_default_parameters)
 {
     struct Foo
     {
-        Foo()
-            : value(123)
-        {
-        }
+        Foo() = default;
 
-        int value;
+        int value = 123;
     };
 
     test::ValueList<Foo> list{test::ValueDefault()};
@@ -1971,12 +1968,9 @@ TEST(ValueListTests, create_with_default_parameters_mixed)
 {
     struct Foo
     {
-        Foo()
-            : value(123)
-        {
-        }
+        Foo() = default;
 
-        int value;
+        int value = 123;
     };
 
     test::ValueList<int, Foo, char> list{5 * test::ValueDefault() * 'r'};

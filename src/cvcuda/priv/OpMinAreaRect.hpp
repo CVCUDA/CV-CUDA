@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,11 +25,10 @@
 #define CVCUDA_PRIV__MIN_AREA_RECT_HPP
 
 #include "IOperator.hpp"
+#include "PerDeviceResource.hpp"
 #include "legacy/CvCudaLegacy.h"
 
 #include <nvcv/Tensor.hpp>
-
-#include <memory>
 
 namespace cvcuda::priv {
 
@@ -42,7 +41,7 @@ public:
                     const nvcv::Tensor &numPointsInContour, const int totalContours) const;
 
 private:
-    std::unique_ptr<nvcv::legacy::cuda_op::MinAreaRect> m_legacyOp;
+    mutable PerDeviceResource<nvcv::legacy::cuda_op::MinAreaRect> m_legacyOp;
 };
 
 } // namespace cvcuda::priv

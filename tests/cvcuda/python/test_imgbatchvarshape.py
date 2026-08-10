@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,10 +14,11 @@
 # limitations under the License.
 
 import numpy as np
-import cvcuda as cvcuda
-import cvcuda_util as util
 import pytest as t
-import torch
+
+import cvcuda
+import cvcuda_util as util
+import cupy
 
 
 def test_imgbatchvarshape_are_cached():
@@ -26,7 +27,7 @@ def test_imgbatchvarshape_are_cached():
     # Create first VarShape
     pt_imgs = []
     for n in range(2):
-        pt_img = torch.rand((1 + n, 2 + n), dtype=torch.float32, device="cuda")
+        pt_img = cupy.asarray(np.random.rand(1 + n, 2 + n).astype(np.float32))
         pt_imgs.append(pt_img)
 
     batch = cvcuda.as_images(pt_imgs)
@@ -40,7 +41,7 @@ def test_imgbatchvarshape_are_cached():
     for i in range(50):
         pt_imgs = []
         for _ in range(2):
-            pt_img = torch.rand((1 + i, 2 + i), dtype=torch.float32, device="cuda")
+            pt_img = cupy.asarray(np.random.rand(1 + i, 2 + i).astype(np.float32))
             pt_imgs.append(pt_img)
 
         batch = cvcuda.as_images(pt_imgs)
@@ -141,9 +142,10 @@ buffmt_common = [
     ([5, 7, 1], np.uint8, cvcuda.Format.U8),
     ([5, 7], np.uint8, cvcuda.Format.U8),
     ([5, 7, 1], np.int8, cvcuda.Format.S8),
-    ([5, 7, 1], np.uint16, cvcuda.Format.U16),
     ([5, 7, 1], np.int16, cvcuda.Format.S16),
+    ([5, 7, 1], np.float16, cvcuda.Format.F16),
     ([5, 7, 2], np.int16, cvcuda.Format._2S16),
+    ([5, 7, 2], np.float16, cvcuda.Format._2F16),
     ([5, 7, 1], np.float32, cvcuda.Format.F32),
     ([5, 7, 1], np.float64, cvcuda.Format.F64),
     ([5, 7, 2], np.float32, cvcuda.Format._2F32),
@@ -152,6 +154,8 @@ buffmt_common = [
     ([5, 7], np.csingle, cvcuda.Format.C64),
     ([5, 7], np.cdouble, cvcuda.Format.C128),
     ([5, 7], np.dtype("2f"), cvcuda.Format._2F32),
+    ([5, 7], np.dtype("2e"), cvcuda.Format._2F16),
+    ([5, 7, 1], np.uint16, cvcuda.Format.U16),
 ]
 
 
@@ -193,13 +197,13 @@ def test_imgbatchvarshape_wrapper_nodeletion():
     # run twice, first run is without cache re-usage, second is with cache re-usage
     for i in range(2):
         np_img = np.random.rand(1 + i, 2 + i).astype(np.float32)
-        pt_img = torch.from_numpy(np_img).cuda()
+        pt_img = cupy.asarray(np_img)
 
         batch = cvcuda.as_images([pt_img])
         del batch
 
         try:
-            assert (pt_img.cpu().numpy() == np_img).all()
+            assert (pt_img.get() == np_img).all()
         except RuntimeError:
             assert False, "Invalid memory"
 
@@ -211,6 +215,6 @@ def test_imagebatchvarshape_size_in_bytes():
     batch_create = cvcuda.ImageBatchVarShape(5)
     assert cvcuda.internal.nbytes_in_cache(batch_create) > 0
 
-    pt_img = torch.as_tensor(np.ndarray((16, 32, 4), dtype=np.float32), device="cuda")
+    pt_img = cupy.asarray(np.ndarray((16, 32, 4), dtype=np.float32))
     batch_as_images = cvcuda.as_images([pt_img])
     assert cvcuda.internal.nbytes_in_cache(batch_as_images) > 0

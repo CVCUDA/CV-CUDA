@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,7 @@
  */
 
 #include "Operators.hpp"
+#include "VarShapeUtils.hpp"
 
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
@@ -50,7 +51,8 @@ Tensor GaussianInto(Tensor &output, Tensor &input, const std::tuple<int, int> &k
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*gaussian});
 
-    gaussian->submit(pstream->cudaHandle(), input, output, kernelSizeArg, sigmaArg, border);
+    guard.run([&gaussian, &pstream, &input, &output, &kernelSizeArg, &sigmaArg, &border]()
+              { gaussian->submit(pstream->cudaHandle(), input, output, kernelSizeArg, sigmaArg, border); });
 
     return output;
 }
@@ -81,7 +83,8 @@ ImageBatchVarShape VarShapeGaussianInto(ImageBatchVarShape &output, ImageBatchVa
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*gaussian});
 
-    gaussian->submit(pstream->cudaHandle(), input, output, ksize, sigma, border);
+    guard.run([&gaussian, &pstream, &input, &output, &ksize, &sigma, &border]()
+              { gaussian->submit(pstream->cudaHandle(), input, output, ksize, sigma, border); });
 
     return output;
 }
@@ -89,12 +92,7 @@ ImageBatchVarShape VarShapeGaussianInto(ImageBatchVarShape &output, ImageBatchVa
 ImageBatchVarShape VarShapeGaussian(ImageBatchVarShape &input, const std::tuple<int, int> &max_kernel_size,
                                     Tensor &ksize, Tensor &sigma, NVCVBorderType border, std::optional<Stream> pstream)
 {
-    ImageBatchVarShape output = ImageBatchVarShape::Create(input.capacity());
-
-    for (int i = 0; i < input.numImages(); ++i)
-    {
-        output.pushBack(Image::Create(input[i].size(), input[i].format()));
-    }
+    ImageBatchVarShape output = CreateSameShapeImageBatch(input);
 
     return VarShapeGaussianInto(output, input, max_kernel_size, ksize, sigma, border, pstream);
 }
@@ -104,18 +102,11 @@ ImageBatchVarShape VarShapeGaussian(ImageBatchVarShape &input, const std::tuple<
 void ExportOpGaussian(py::module &m)
 {
     using namespace pybind11::literals;
-    py::options options;
-    options.disable_function_signatures();
 
-    m.def("gaussian", &Gaussian, "src"_a, "kernel_size"_a, "sigma"_a, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT,
-          py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
-        cvcuda.gaussian(src: cvcuda.Tensor, kernel_size: Tuple[int, int], sigma: Tuple[double, double], border: border_mode: cvcuda.Border, stream: Optional[cvcuda.Stream] = None) -> cvcuda.Tensor
+    m.def("gaussian", NvtxTrace("cvcuda.gaussian", &Gaussian), "src"_a, "kernel_size"_a, "sigma"_a,
+          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the Gaussian operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Gaussian operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.Tensor): Input tensor containing one or more images.
@@ -127,20 +118,12 @@ void ExportOpGaussian(py::module &m)
         Returns:
             cvcuda.Tensor: The output tensor.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("gaussian_into", &GaussianInto, "dst"_a, "src"_a, "kernel_size"_a, "sigma"_a,
-          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
-        cvcuda.gaussian_into(dst: cvcuda.Tensor, src:  Tensor, kernel_size: Tuple[int, int], sigma: Tuple[double, double], border: border_mode: cvcuda.Border, stream: Optional[cvcuda.Stream] = None)
+    m.def("gaussian_into", NvtxTrace("cvcuda.gaussian_into", &GaussianInto), "dst"_a, "src"_a, "kernel_size"_a,
+          "sigma"_a, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the Gaussian operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Gaussian operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.Tensor): Output tensor to store the result of the operation.
@@ -151,23 +134,13 @@ void ExportOpGaussian(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 
-    m.def("gaussian", &VarShapeGaussian, "src"_a, "max_kernel_size"_a, "kernel_size"_a, "sigma"_a,
-          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
-        cvcuda.gaussian(src: cvcuda.ImageBatchVarShape, kernel_size: cvcuda.Tensor, sigma: cvcuda.Tensor, border: border_mode: cvcuda.Border, stream: Optional[cvcuda.Stream] = None) -> cvcuda.ImageBatchVarShape
-
+    m.def("gaussian", NvtxTrace("cvcuda.gaussian", &VarShapeGaussian), "src"_a, "max_kernel_size"_a, "kernel_size"_a,
+          "sigma"_a, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the Gaussian operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Gaussian operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
@@ -179,21 +152,13 @@ void ExportOpGaussian(py::module &m)
         Returns:
             cvcuda.ImageBatchVarShape: The output image batch.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("gaussian_into", &VarShapeGaussianInto, "dst"_a, "src"_a, "max_kernel_size"_a, "kernel_size"_a, "sigma"_a,
-          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+    m.def("gaussian_into", NvtxTrace("cvcuda.gaussian_into", &VarShapeGaussianInto), "dst"_a, "src"_a,
+          "max_kernel_size"_a, "kernel_size"_a, "sigma"_a, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT,
+          py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+        Executes the Gaussian operation on the given cuda stream.
 
-        cvcuda.gaussian_into(dst: cvcuda.ImageBatchVarShape, src: cvcuda.ImageBatchVarShape, kernel_size: cvcuda.Tensor, sigma: cvcuda.Tensor, border: border_mode: cvcuda.Border, stream: Optional[cvcuda.Stream] = None)
-
-	Executes the Gaussian operation on the given cuda stream.
-
-        See also:
-            Refer to the CV-CUDA C API reference for the Gaussian operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
@@ -204,11 +169,7 @@ void ExportOpGaussian(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.ImageBatchVarShape: The output image batch (same as dst).
     )pbdoc");
 }
 

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,14 +22,25 @@
 #include "../detail/Callback.hpp"
 #include "../detail/CompilerUtils.h"
 #include "../detail/TypeTraits.hpp"
+#include "../detail/UniqueObj.hpp"
 #include "Allocator.h"
 
+#include <array>
 #include <cassert>
 #include <cstddef>
 #include <cstring>
 #include <functional>
+#include <initializer_list>
+#include <stdexcept>
+#include <utility>
 
 namespace nvcv {
+
+class CustomAllocatorError : public std::logic_error
+{
+public:
+    using std::logic_error::logic_error;
+};
 
 // Helper class to explicitly assign
 // address alignments.
@@ -120,6 +131,7 @@ protected:
         return m_data;
     }
 
+private:
     NVCVResourceAllocator m_data{};
 };
 
@@ -134,16 +146,22 @@ public:
 
     /** Calls the allocation function from the underlying descriptor
      */
-    void *alloc(int64_t size, int32_t align = DEFAULT_ALIGN)
+    NVCVMemoryBuffer alloc(int64_t size, int32_t align = DEFAULT_ALIGN)
     {
-        return m_data.res.mem.fnAlloc(m_data.ctx, size, align);
+        return data().res.mem.fnAlloc(data().ctx, size, align);
     }
 
     /** Calls the deallocation function from the underlying descriptor
      */
-    void free(void *ptr, int64_t size, int32_t align = DEFAULT_ALIGN) noexcept
+    void free(NVCVMemoryBuffer ptr, int64_t size, int32_t align = DEFAULT_ALIGN) noexcept
     {
-        m_data.res.mem.fnFree(m_data.ctx, ptr, size, align);
+        data().res.mem.fnFree(data().ctx, ptr, size, align);
+    }
+
+    template<typename T>
+    void free(T *ptr, int64_t size, int32_t align = DEFAULT_ALIGN) noexcept
+    {
+        free(static_cast<NVCVMemoryBuffer>(static_cast<void *>(ptr)), size, align);
     }
 
     static constexpr bool IsCompatibleKind(NVCVResourceType resType)
@@ -165,7 +183,7 @@ public:
 
     MemAllocatorWithKind() = default;
 
-    MemAllocatorWithKind(const NVCVResourceAllocator &data);
+    explicit MemAllocatorWithKind(const NVCVResourceAllocator &data);
 
     static constexpr bool IsCompatibleKind(NVCVResourceType resType)
     {
@@ -211,7 +229,37 @@ NVCV_IMPL_SHARED_HANDLE(Allocator);
 class Allocator : public CoreResource<NVCVAllocatorHandle, Allocator>
 {
 public:
-    using CoreResource<NVCVAllocatorHandle, Allocator>::CoreResource;
+    using Base = CoreResource<NVCVAllocatorHandle, Allocator>;
+
+    using Base::Base;
+    using Base::operator=;
+
+    Allocator(const Allocator &other)
+        : Base(other)
+    {
+    }
+
+    Allocator(Allocator &&other) noexcept
+        : Base(std::move(other))
+    {
+    }
+
+    Allocator &operator=(const Allocator &other)
+    {
+        Base::operator=(other);
+        return *this;
+    }
+
+    Allocator &operator=(Allocator &&other) noexcept
+    {
+        Base::operator=(std::move(other));
+        return *this;
+    }
+
+    ~Allocator()
+    {
+        reset();
+    }
 
     HostMemAllocator       hostMem() const;
     HostPinnedMemAllocator hostPinnedMem() const;
@@ -251,8 +299,8 @@ private:
     template<typename Callable>
     struct by_value
         : std::integral_constant<bool, has_trivial_copy_and_destruction<Callable>::value
-                                           && sizeof(Callable) <= sizeof(void *)
-                                           && alignof(Callable) <= alignof(void *)>
+                                           && sizeof(Callable) <= sizeof(NVCVResourceContext)
+                                           && alignof(Callable) <= alignof(NVCVResourceContext)>
     {
     };
 
@@ -260,6 +308,22 @@ private:
     static constexpr size_t DataSize()
     {
         return std::is_empty<T>::value ? 0 : sizeof(T);
+    }
+
+    static NVCVMemoryBuffer ToMemoryBuffer(std::nullptr_t) noexcept
+    {
+        return nullptr;
+    }
+
+    static NVCVMemoryBuffer ToMemoryBuffer(NVCVMemoryBuffer ptr) noexcept
+    {
+        return ptr;
+    }
+
+    template<typename T>
+    static NVCVMemoryBuffer ToMemoryBuffer(T *ptr) noexcept
+    {
+        return static_cast<NVCVMemoryBuffer>(static_cast<void *>(ptr));
     }
 
 public:
@@ -273,7 +337,7 @@ public:
      *     {
      *         return alloc.allocate(size, align);
      *     },
-     *     [&alloc](void *mem, int64_t size, int32_t align)
+     *     [&alloc](NVCVMemoryBuffer mem, int64_t size, int32_t align)
      *     {
      *         alloc.free(mem, size, align);
      *     });
@@ -284,13 +348,14 @@ public:
      */
     template<typename AllocFunction, typename FreeFunction,
              typename = detail::EnableIf_t<detail::IsInvocableR<void *, AllocFunction, int64_t, int32_t>::value>,
-             typename = detail::EnableIf_t<detail::IsInvocableR<void, FreeFunction, void *, int64_t, int32_t>::value>>
+             typename
+             = detail::EnableIf_t<detail::IsInvocableR<void, FreeFunction, NVCVMemoryBuffer, int64_t, int32_t>::value>>
     CustomMemAllocator(AllocFunction &&alloc, FreeFunction &&free);
 
-    // TODO(michalz): Add a way of constructing a custom allocator without using lambdas/captures, e.g.
+    // REVISIT(michalz): Add a way of constructing a custom allocator without using lambdas/captures, e.g.
     //                from an object that matches the allocator concept.
 
-    CustomMemAllocator(CustomMemAllocator &&other)
+    CustomMemAllocator(CustomMemAllocator &&other) noexcept
     {
         *this = std::move(other);
     }
@@ -328,16 +393,19 @@ public:
     void reset(NVCVResourceAllocator &&alloc) noexcept
     {
         reset();
-        std::swap(m_data, alloc);
+        m_data = std::move(alloc);
+        alloc  = {};
     }
 
     /** Clears the allocator descriptor, performing cleanup, if necessary.
      */
     void reset() noexcept
     {
-        if (m_data.cleanup)
-            m_data.cleanup(m_data.ctx, &m_data);
-        m_data = {};
+        NVCVResourceAllocator data = release();
+        if (data.cleanup)
+        {
+            data.cleanup(data.ctx, &data);
+        }
     }
 
     /** Moves the descriptor from another CustomMemAllocator to this one.
@@ -362,7 +430,7 @@ private:
     void Construct(AllocFunction &&alloc, FreeFunction &&free, std::false_type);
 
     template<typename AllocFunction, typename FreeFunction>
-    void ConstructFromDuplicateValues(AllocFunction &&alloc, FreeFunction &&free, std::true_type);
+    void ConstructFromDuplicateValues(const AllocFunction &alloc, const FreeFunction &free, std::true_type);
 
 #if __cplusplus < 201703L
     template<typename AllocFunction, typename FreeFunction>
@@ -394,6 +462,20 @@ class CustomAllocator final : public Allocator
 public:
     explicit CustomAllocator(ResourceAllocators &&...allocators);
 
+    CustomAllocator(const CustomAllocator &)            = delete;
+    CustomAllocator &operator=(const CustomAllocator &) = delete;
+
+    CustomAllocator(CustomAllocator &&other) noexcept
+        : Allocator(std::move(other))
+    {
+    }
+
+    CustomAllocator &operator=(CustomAllocator &&other) noexcept
+    {
+        Allocator::operator=(std::move(other));
+        return *this;
+    }
+
     ~CustomAllocator()
     {
         preDestroy();
@@ -404,16 +486,17 @@ private:
         = detail::Disjunction<detail::IsRefWrapper<detail::RemoveRef_t<ResourceAllocators>>...>::value;
 
     template<bool hasReferences = kHasReferences>
-    detail::EnableIf_t<hasReferences> preDestroy()
+    detail::EnableIf_t<hasReferences> preDestroy() // NOSONAR: this public header is validated with C++11.
     {
         if (this->reset() != 0)
-            throw std::logic_error(
+            throw CustomAllocatorError(
                 "The allocator context contains references. The handle must not outlive the context.");
     }
 
     template<bool hasReferences = kHasReferences>
-    detail::EnableIf_t<!hasReferences> preDestroy() noexcept
+    detail::EnableIf_t<!hasReferences> preDestroy() noexcept // NOSONAR: keep overload pair C++11-compatible.
     {
+        // No external references are held, so there is nothing to release early.
     }
 };
 
@@ -422,11 +505,11 @@ private:
 template<typename... ResourceAllocators>
 CustomAllocator<ResourceAllocators...> CreateCustomAllocator(ResourceAllocators &&...allocators)
 {
-    return CustomAllocator<ResourceAllocators...>{std::move(allocators)...};
+    return CustomAllocator<ResourceAllocators...>{std::forward<ResourceAllocators>(allocators)...};
 }
 
 } // namespace nvcv
 
-#include "AllocatorImpl.hpp"
+#include "AllocatorImpl.hpp" // NOSONAR: inline definitions require the declarations above.
 
 #endif // NVCV_ALLOC_ALLOCATOR_HPP

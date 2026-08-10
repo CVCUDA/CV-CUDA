@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,19 +15,19 @@
  * limitations under the License.
  */
 
+#include "priv/Nvtx.hpp"
 #include "priv/Op__OPNAME__.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <nvcv/Exception.hpp>
 #include <nvcv/Tensor.hpp>
-#include <util/Assert.h>
 
 namespace priv = cvcuda::priv;
 
 CVCUDA_DEFINE_API(0, 0, NVCVStatus, cvcuda__OPNAME__Create, (NVCVOperatorHandle * handle))
 {
     return nvcv::ProtectCall(
-        [&]
+        [handle]
         {
             if (handle == nullptr)
             {
@@ -35,17 +35,21 @@ CVCUDA_DEFINE_API(0, 0, NVCVStatus, cvcuda__OPNAME__Create, (NVCVOperatorHandle 
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            *handle = reinterpret_cast<NVCVOperatorHandle>(new priv::__OPNAME__());
+            // Ownership of the operator is transferred to the C handle and released by
+            // cvcudaOperatorDestroy; this matches every other operator's Create entry point.
+            *handle = reinterpret_cast<NVCVOperatorHandle>(new priv::__OPNAME__()); // NOSONAR
         });
 }
 
 CVCUDA_DEFINE_API(0, 0, NVCVStatus, cvcuda__OPNAME__Submit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in, NVCVTensorHandle out))
 {
+    CVCUDA_NVTX_RANGE("cvcuda__OPNAME__Submit");
     return nvcv::ProtectCall(
-        [&]
+        [handle, stream, in, out]
         {
-            nvcv::TensorWrapHandle input(in), output(out);
-            priv::ToDynamicRef<priv::__OPNAME__>(handle)(stream, input, output);
+            nvcv::TensorWrapHandle input(in);
+            nvcv::TensorWrapHandle output(out);
+            priv::ToDynamicRef<priv::__OPNAME__>(handle)(stream, input.resource(), output.resource());
         });
 }

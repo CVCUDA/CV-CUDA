@@ -1,0 +1,309 @@
+{
+    "operators": {
+        "adaptivethreshold": {
+            "config": "operators/adaptivethreshold.json",
+            "cpp": "bench_adaptivethreshold",
+            "python": "bench_adaptivethreshold.py"
+        },
+        "adjustcontrast": {
+            "config": "operators/adjustcontrast.json",
+            "cpp": "bench_adjustcontrast",
+            "python": "bench_adjustcontrast.py"
+        },
+        "adjusthue": {
+            "config": "operators/adjusthue.json",
+            "cpp": "bench_adjusthue",
+            "python": "bench_adjusthue.py"
+        },
+        "adjustsaturation": {
+            "config": "operators/adjustsaturation.json",
+            "cpp": "bench_adjustsaturation",
+            "python": "bench_adjustsaturation.py"
+        },
+        "adjustsharpness": {
+            "config": "operators/adjustsharpness.json",
+            "cpp": "bench_adjustsharpness",
+            "python": "bench_adjustsharpness.py"
+        },
+        "advcvtcolor": {
+            "config": "operators/advcvtcolor.json",
+            "cpp": "bench_advcvtcolor",
+            "python": "bench_advcvtcolor.py"
+        },
+        "autocontrast": {
+            "config": "operators/autocontrast.json",
+            "cpp": "bench_autocontrast",
+            "python": "bench_autocontrast.py"
+        },
+        "averageblur": {
+            "config": "operators/averageblur.json",
+            "cpp": "bench_averageblur",
+            "python": "bench_averageblur.py"
+        },
+        "bilateralfilter": {
+            "config": "operators/bilateralfilter.json",
+            "cpp": "bench_bilateralfilter",
+            "python": "bench_bilateralfilter.py"
+        },
+        "bndbox": {
+            "config": "operators/bndbox.json",
+            "cpp": "bench_bndbox",
+            "python": "bench_bndbox.py"
+        },
+        "boxblur": {
+            "config": "operators/boxblur.json",
+            "cpp": "bench_boxblur",
+            "python": "bench_boxblur.py"
+        },
+        "brightnesscontrast": {
+            "config": "operators/brightnesscontrast.json",
+            "cpp": "bench_brightnesscontrast",
+            "python": "bench_brightnesscontrast.py"
+        },
+        "centercrop": {
+            "config": "operators/centercrop.json",
+            "cpp": "bench_centercrop",
+            "python": "bench_centercrop.py"
+        },
+        "channelreorder": {
+            "config": "operators/channelreorder.json",
+            "cpp": "bench_channelreorder",
+            "python": "bench_channelreorder.py"
+        },
+        "clahe": {
+            "config": "operators/clahe.json",
+            "cpp": "bench_clahe",
+            "python": "bench_clahe.py"
+        },
+        "colortwist": {
+            "config": "operators/colortwist.json",
+            "cpp": "bench_colortwist",
+            "python": "bench_colortwist.py"
+        },
+        "composite": {
+            "config": "operators/composite.json",
+            "cpp": "bench_composite",
+            "python": "bench_composite.py"
+        },
+        "conv2d": {
+            "config": "operators/conv2d.json",
+            "cpp": "bench_conv2d",
+            "python": "bench_conv2d.py"
+        },
+        "convertto": {
+            "config": "operators/convertto.json",
+            "cpp": "bench_convertto",
+            "python": "bench_convertto.py"
+        },
+        "copymakeborder": {
+            "config": "operators/copymakeborder.json",
+            "cpp": "bench_copymakeborder",
+            "python": "bench_copymakeborder.py"
+        },
+        "cropflipnormalizereformat": {
+            "config": "operators/cropflipnormalizereformat.json",
+            "cpp": "bench_cropflipnormalizereformat",
+            "python": "bench_cropflipnormalizereformat.py"
+        },
+        "customcrop": {
+            "config": "operators/customcrop.json",
+            "cpp": "bench_customcrop",
+            "python": "bench_customcrop.py"
+        },
+        "cvtcolor": {
+            "config": "operators/cvtcolor.json",
+            "cpp": "bench_cvtcolor",
+            "python": "bench_cvtcolor.py"
+        },
+        "erase": {
+            "config": "operators/erase.json",
+            "cpp": "bench_erase",
+            "python": "bench_erase.py"
+        },
+        "findhomography": {
+            "config": "operators/findhomography.json",
+            "cpp": "bench_findhomography",
+            "python": "bench_findhomography.py"
+        },
+        "flip": {
+            "config": "operators/flip.json",
+            "cpp": "bench_flip",
+            "python": "bench_flip.py"
+        },
+        "gammacontrast": {
+            "config": "operators/gammacontrast.json",
+            "cpp": "bench_gammacontrast",
+            "python": "bench_gammacontrast.py"
+        },
+        "gaussian": {
+            "config": "operators/gaussian.json",
+            "cpp": "bench_gaussian",
+            "python": "bench_gaussian.py"
+        },
+        "gaussiannoise": {
+            "config": "operators/gaussiannoise.json",
+            "cpp": "bench_gaussiannoise",
+            "python": "bench_gaussiannoise.py"
+        },
+        "histogram": {
+            "config": "operators/histogram.json",
+            "cpp": "bench_histogram",
+            "python": "bench_histogram.py"
+        },
+        "histogrameq": {
+            "config": "operators/histogrameq.json",
+            "cpp": "bench_histogrameq",
+            "python": "bench_histogrameq.py"
+        },
+        "hqresize": {
+            "config": "operators/hqresize.json",
+            "cpp": "bench_hqresize",
+            "python": "bench_hqresize.py"
+        },
+        "inpaint": {
+            "config": "operators/inpaint.json",
+            "cpp": "bench_inpaint",
+            "python": "bench_inpaint.py"
+        },
+        "invert": {
+            "config": "operators/invert.json",
+            "cpp": "bench_invert",
+            "python": "bench_invert.py"
+        },
+        "jointbilateralfilter": {
+            "config": "operators/jointbilateralfilter.json",
+            "cpp": "bench_jointbilateralfilter",
+            "python": "bench_jointbilateralfilter.py"
+        },
+        "jpegcompressiondistortion": {
+            "config": "operators/jpegcompressiondistortion.json",
+            "cpp": "bench_jpegcompressiondistortion",
+            "python": "bench_jpegcompressiondistortion.py"
+        },
+        "label": {
+            "config": "operators/label.json",
+            "cpp": "bench_label",
+            "python": "bench_label.py"
+        },
+        "laplacian": {
+            "config": "operators/laplacian.json",
+            "cpp": "bench_laplacian",
+            "python": "bench_laplacian.py"
+        },
+        "medianblur": {
+            "config": "operators/medianblur.json",
+            "cpp": "bench_medianblur",
+            "python": "bench_medianblur.py"
+        },
+        "minarearect": {
+            "config": "operators/minarearect.json",
+            "cpp": "bench_minarearect",
+            "python": "bench_minarearect.py"
+        },
+        "minmaxloc": {
+            "config": "operators/minmaxloc.json",
+            "cpp": "bench_minmaxloc",
+            "python": "bench_minmaxloc.py"
+        },
+        "morphology": {
+            "config": "operators/morphology.json",
+            "cpp": "bench_morphology",
+            "python": "bench_morphology.py"
+        },
+        "nonmaximumsuppression": {
+            "config": "operators/nonmaximumsuppression.json",
+            "cpp": "bench_nonmaximumsuppression",
+            "python": "bench_nonmaximumsuppression.py"
+        },
+        "normalize": {
+            "config": "operators/normalize.json",
+            "cpp": "bench_normalize",
+            "python": "bench_normalize.py"
+        },
+        "osd": {
+            "config": "operators/osd.json",
+            "cpp": "bench_osd",
+            "python": "bench_osd.py"
+        },
+        "padandstack": {
+            "config": "operators/padandstack.json",
+            "cpp": "bench_padandstack",
+            "python": "bench_padandstack.py"
+        },
+        "pairwisematcher": {
+            "config": "operators/pairwisematcher.json",
+            "cpp": "bench_pairwisematcher",
+            "python": "bench_pairwisematcher.py"
+        },
+        "pillowresize": {
+            "config": "operators/pillowresize.json",
+            "cpp": "bench_pillowresize",
+            "python": "bench_pillowresize.py"
+        },
+        "posterize": {
+            "config": "operators/posterize.json",
+            "cpp": "bench_posterize",
+            "python": "bench_posterize.py"
+        },
+        "randomresizedcrop": {
+            "config": "operators/randomresizedcrop.json",
+            "cpp": "bench_randomresizedcrop",
+            "python": "bench_randomresizedcrop.py"
+        },
+        "reformat": {
+            "config": "operators/reformat.json",
+            "cpp": "bench_reformat",
+            "python": "bench_reformat.py"
+        },
+        "remap": {
+            "config": "operators/remap.json",
+            "cpp": "bench_remap",
+            "python": "bench_remap.py"
+        },
+        "resize": {
+            "config": "operators/resize.json",
+            "cpp": "bench_resize",
+            "python": "bench_resize.py"
+        },
+        "resizecropconvertreformat": {
+            "config": "operators/resizecropconvertreformat.json",
+            "cpp": "bench_resizecropconvertreformat",
+            "python": "bench_resizecropconvertreformat.py"
+        },
+        "rotate": {
+            "config": "operators/rotate.json",
+            "cpp": "bench_rotate",
+            "python": "bench_rotate.py"
+        },
+        "sift": {
+            "config": "operators/sift.json",
+            "cpp": "bench_sift",
+            "python": "bench_sift.py"
+        },
+        "solarize": {
+            "config": "operators/solarize.json",
+            "cpp": "bench_solarize",
+            "python": "bench_solarize.py"
+        },
+        "stack": {
+            "config": "operators/stack.json",
+            "cpp": "bench_stack",
+            "python": "bench_stack.py"
+        },
+        "threshold": {
+            "config": "operators/threshold.json",
+            "cpp": "bench_threshold",
+            "python": "bench_threshold.py"
+        },
+        "warpaffine": {
+            "config": "operators/warpaffine.json",
+            "cpp": "bench_warpaffine",
+            "python": "bench_warpaffine.py"
+        },
+        "warpperspective": {
+            "config": "operators/warpperspective.json",
+            "cpp": "bench_warpperspective",
+            "python": "bench_warpperspective.py"
+        }
+    }
+}

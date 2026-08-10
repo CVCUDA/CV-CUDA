@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,15 +21,27 @@
 #include <nvcv/src/priv/HandleManager.hpp>
 #include <nvcv/src/priv/HandleManagerImpl.hpp>
 
+#include <stdexcept>
+
 namespace {
 
 class alignas(nvcv::priv::kResourceAlignment) IObject
 {
 public:
+    using HandleType = struct NVCVDummy *;
+
+    virtual ~IObject() = default;
+
     virtual int value() const = 0;
 };
 
 constexpr int kThrowAtConstruction = 0xBADF00D;
+
+class HandleWrapperTestError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
 
 class DummyResource : public IObject
 {
@@ -39,11 +51,11 @@ public:
     {
         if (val == kThrowAtConstruction)
         {
-            throw std::runtime_error("Forced failure");
+            throw HandleWrapperTestError("Forced failure");
         }
     }
 
-    virtual int value() const override
+    int value() const override
     {
         return m_value;
     }
@@ -64,7 +76,7 @@ struct ResourceStorage<IObject>
 
 namespace {
 
-typedef struct NVCVDummy *NVCVDummyHandle;
+using NVCVDummyHandle = NVCVDummy *;
 
 auto &ManagerInst()
 {
@@ -74,13 +86,13 @@ auto &ManagerInst()
 
 NVCVStatus nvcvDummyCreate(int k, NVCVDummyHandle *out)
 {
-    return nvcv::priv::ProtectCall([&]() { *out = (NVCVDummyHandle)ManagerInst().create<DummyResource>(k).first; });
+    return nvcv::priv::ProtectCall([out, k]() { *out = ManagerInst().create<DummyResource>(k).first; });
 }
 
 NVCVStatus nvcvDummyIncRef(NVCVDummyHandle handle, int *ref)
 {
     return nvcv::priv::ProtectCall(
-        [&]()
+        [handle, ref]()
         {
             int r = ManagerInst().incRef(handle);
             if (ref)
@@ -91,7 +103,7 @@ NVCVStatus nvcvDummyIncRef(NVCVDummyHandle handle, int *ref)
 NVCVStatus nvcvDummyDecRef(NVCVDummyHandle handle, int *ref)
 {
     return nvcv::priv::ProtectCall(
-        [&]()
+        [handle, ref]()
         {
             int r = ManagerInst().decRef(handle);
             if (ref)
@@ -107,7 +119,7 @@ NVCVStatus nvcvDummyDestroy(NVCVDummyHandle handle)
 NVCVStatus nvcvDummyRefCount(NVCVDummyHandle handle, int *ref)
 {
     return nvcv::ProtectCall(
-        [&]()
+        [handle, ref]()
         {
             int r = ManagerInst().refCount(handle);
             *ref  = r;
@@ -140,8 +152,7 @@ TEST(HandleWrapperTest, TestHandleOps)
     EXPECT_EQ(shared_ops.IncRef(handle), 3);
     EXPECT_EQ(shared_ops.RefCount(handle), 3);
     EXPECT_EQ(shared_ops.DecRef(handle), 2);
-    nvcv::detail::UniqueHandleOps<NVCVDummyHandle> unique_ops;
-    unique_ops.Destroy(handle);
+    nvcv::detail::UniqueHandleOps<NVCVDummyHandle>::Destroy(handle);
     EXPECT_EQ(shared_ops.RefCount(handle), 1); // destroy should call DecRef (that's how this Dummy works)
 
     EXPECT_EQ(shared_ops.DecRef(handle), 0);           // object destroyed
@@ -183,7 +194,8 @@ TEST(UniqueHandleTest, ResetRelease)
 
 TEST(UniqueHandleTest, Overwrite)
 {
-    NVCVDummyHandle h1, h2;
+    NVCVDummyHandle h1;
+    NVCVDummyHandle h2;
     ASSERT_EQ(NVCV_SUCCESS, nvcvDummyCreate(0, &h1));
     ASSERT_EQ(NVCV_SUCCESS, nvcvDummyCreate(0, &h2));
 
@@ -198,7 +210,7 @@ TEST(UniqueHandleTest, Overwrite)
     EXPECT_NE(nullptr, ManagerInst().validate(backup2));
 
     uh1 = std::move(uh2);
-    EXPECT_EQ(uh2.get(), nullptr);
+    EXPECT_EQ(uh2.get(), nullptr); // NOSONAR: this test verifies moved-from state.
     EXPECT_EQ(uh1.get(), backup2);
 
     EXPECT_NE(nullptr, ManagerInst().validate(backup2));
@@ -240,7 +252,8 @@ TEST(SharedHandleTest, ResetRelease)
 
 TEST(SharedHandleTest, CopyMove)
 {
-    NVCVDummyHandle h1, h2;
+    NVCVDummyHandle h1;
+    NVCVDummyHandle h2;
     ASSERT_EQ(NVCV_SUCCESS, nvcvDummyCreate(0, &h1));
     ASSERT_EQ(NVCV_SUCCESS, nvcvDummyCreate(0, &h2));
 

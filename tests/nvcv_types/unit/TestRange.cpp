@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,6 +20,7 @@
 #include <common/TypedTests.hpp>
 #include <nvcv/util/Ranges.hpp>
 
+#include <array>
 #include <list>
 #include <map>
 #include <vector>
@@ -34,7 +35,7 @@ constexpr int DEFAULT_RANGE_SIZE = 5;
 class RangeMember
 {
 public:
-    RangeMember(int len = DEFAULT_RANGE_SIZE)
+    explicit RangeMember(int len = DEFAULT_RANGE_SIZE)
         : m_length(len)
     {
     }
@@ -56,54 +57,36 @@ private:
 class NotRangeBegin
 {
 public:
-    NotRangeBegin(int len = DEFAULT_RANGE_SIZE)
-        : m_length(len)
-    {
-    }
+    explicit NotRangeBegin(int = DEFAULT_RANGE_SIZE) {}
 
     int *begin() const
     {
         return nullptr;
     }
-
-private:
-    int m_length;
 };
 
 class NotRangeEnd
 {
 public:
-    NotRangeEnd(int len = DEFAULT_RANGE_SIZE)
-        : m_length(len)
-    {
-    }
+    explicit NotRangeEnd(int = DEFAULT_RANGE_SIZE) {}
 
     int *end() const
     {
         return nullptr;
     }
-
-private:
-    int m_length;
 };
 
 class NotRange
 {
 public:
-    NotRange(int len = DEFAULT_RANGE_SIZE)
-        : m_length(len)
-    {
-    }
-
-private:
-    int m_length;
+    explicit NotRange(int = DEFAULT_RANGE_SIZE) {}
 };
 
 namespace range {
 class RangeGlobal
 {
 public:
-    RangeGlobal(int len = DEFAULT_RANGE_SIZE)
+    explicit RangeGlobal(int len = DEFAULT_RANGE_SIZE)
         : m_length(len)
     {
     }
@@ -122,12 +105,12 @@ private:
     int m_length;
 };
 
-static int *begin(const RangeGlobal &r)
+int *begin(const RangeGlobal &r)
 {
     return r.my_begin();
 }
 
-static int *end(const RangeGlobal &r)
+int *end(const RangeGlobal &r)
 {
     return r.my_end();
 }
@@ -198,8 +181,7 @@ TYPED_TEST(RangeValueTest, works)
     ASSERT_TRUE((std::is_same_v<util::ranges::RangeValue<Range>, Value>));
 }
 
-NVCV_TYPED_TEST_SUITE(RangeRandomAccessPositiveTest,
-                      ttest::Types</*std::vector<float>, std::array<float,5>,*/ int[10]>);
+NVCV_TYPED_TEST_SUITE(RangeRandomAccessPositiveTest, ttest::Types<std::vector<float>, std::array<float, 5>, int[10]>);
 
 TYPED_TEST(RangeRandomAccessPositiveTest, works)
 {

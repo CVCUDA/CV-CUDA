@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,9 +26,17 @@
 #include <nvcv/python/Stream.hpp>
 #include <nvcv/python/Tensor.hpp>
 
+#include <stdexcept>
+
 namespace cvcudapy {
 
 namespace {
+
+class RemapError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
 
 // Tensor into -----------------------------------------------------------------
 
@@ -50,8 +58,12 @@ Tensor RemapInto(Tensor &dst, Tensor &src, Tensor &map, NVCVInterpolationType sr
     guard.add(LockMode::LOCK_MODE_WRITE, {dst});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
-    op->submit(pstream->cudaHandle(), src, dst, map, srcInterp, mapInterp, mapValueType, alignCorners, borderMode,
-               bValue);
+    guard.run(
+        [&op, &pstream, &src, &dst, &map, &srcInterp, &mapInterp, &mapValueType, &alignCorners, &borderMode, &bValue]()
+        {
+            op->submit(pstream->cudaHandle(), src, dst, map, srcInterp, mapInterp, mapValueType, alignCorners,
+                       borderMode, bValue);
+        });
 
     return std::move(dst);
 }
@@ -65,7 +77,7 @@ Tensor Remap(Tensor &src, Tensor &map, NVCVInterpolationType srcInterp, NVCVInte
 
     if (srcShape.rank() != mapShape.rank())
     {
-        throw std::runtime_error("Input src and map tensors must have the same rank");
+        throw RemapError("Input src and map tensors must have the same rank");
     }
 
     Shape dstShape = nvcvpy::CreateShape(srcShape);
@@ -82,9 +94,21 @@ Tensor Remap(Tensor &src, Tensor &map, NVCVInterpolationType srcInterp, NVCVInte
             dstShape[1] = mapShape[1];
             dstShape[2] = mapShape[2];
         }
+        else if (src.layout() == nvcv::TENSOR_CHW)
+        {
+            // Planar (CHW): spatial dims follow the channel dimension; map is rank-3 (HWC).
+            dstShape[1] = mapShape[0];
+            dstShape[2] = mapShape[1];
+        }
+        else if (src.layout() == nvcv::TENSOR_NCHW)
+        {
+            // Planar (NCHW): spatial dims are the last two; map is rank-4 (NHWC).
+            dstShape[2] = mapShape[1];
+            dstShape[3] = mapShape[2];
+        }
         else
         {
-            throw std::runtime_error("Input src tensor must have either HWC or NHWC layout");
+            throw RemapError("Input src tensor must have HWC, NHWC, CHW, or NCHW layout");
         }
     }
 
@@ -114,8 +138,12 @@ ImageBatchVarShape VarShapeRemapInto(ImageBatchVarShape &dst, ImageBatchVarShape
     guard.add(LockMode::LOCK_MODE_WRITE, {dst});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
-    op->submit(pstream->cudaHandle(), src, dst, map, srcInterp, mapInterp, mapValueType, alignCorners, borderMode,
-               bValue);
+    guard.run(
+        [&op, &pstream, &src, &dst, &map, &srcInterp, &mapInterp, &mapValueType, &alignCorners, &borderMode, &bValue]()
+        {
+            op->submit(pstream->cudaHandle(), src, dst, map, srcInterp, mapInterp, mapValueType, alignCorners,
+                       borderMode, bValue);
+        });
 
     return std::move(dst);
 }
@@ -133,7 +161,7 @@ ImageBatchVarShape VarShapeRemap(ImageBatchVarShape &src, Tensor &map, NVCVInter
         auto mapAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(map.exportData());
         if (!mapAccess)
         {
-            throw std::runtime_error("Incompatible map tensor layout");
+            throw RemapError("Incompatible map tensor layout");
         }
 
         mapSize.w = mapAccess->numCols();
@@ -144,11 +172,11 @@ ImageBatchVarShape VarShapeRemap(ImageBatchVarShape &src, Tensor &map, NVCVInter
     {
         if (mapValueType == NVCV_REMAP_ABSOLUTE || mapValueType == NVCV_REMAP_ABSOLUTE_NORMALIZED)
         {
-            dst.pushBack(Image::Create(mapSize, src[i].format()));
+            dst.pushBackImage(Image::Create(mapSize, src[i].format()));
         }
         else
         {
-            dst.pushBack(Image::Create(src[i].size(), src[i].format()));
+            dst.pushBackImage(Image::Create(src[i].size(), src[i].format()));
         }
     }
 
@@ -162,17 +190,11 @@ void ExportOpRemap(py::module &m)
 {
     using namespace pybind11::literals;
 
-    m.def("remap", &Remap, "src"_a, "map"_a, "src_interp"_a = NVCV_INTERP_NEAREST, "map_interp"_a = NVCV_INTERP_NEAREST,
-          "map_type"_a = NVCV_REMAP_ABSOLUTE, "align_corners"_a = false, "border"_a = NVCV_BORDER_CONSTANT,
-          "border_value"_a = pyarray{}, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
-        cvcuda.remap(src: cvcuda.Tensor, map: cvcuda.Tensor, src_interp: cvcuda.Interp = cvcuda.Interp.NEAREST, map_interp: cvcuda.Interp = cvcuda.Interp.NEAREST, map_type: cvcuda.Remap = cvcuda.Remap.ABSOLUTE, align_corners: bool = False, border: cvcuda.Border = cvcuda.Border.CONSTANT, border_value: numpy.ndarray = np.ndarray((0,)), stream: Optional[cvcuda.Stream] = None) -> cvcuda.Tensor
-
+    m.def("remap", NvtxTrace("cvcuda.remap", &Remap), "src"_a, "map"_a, "src_interp"_a = NVCV_INTERP_NEAREST,
+          "map_interp"_a = NVCV_INTERP_NEAREST, "map_type"_a = NVCV_REMAP_ABSOLUTE, "align_corners"_a = false,
+          "border"_a = NVCV_BORDER_CONSTANT, "border_value"_a = pyarray{}, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the Warp Perspective operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Remap operator for more details and usage
-            examples.
 
         Args:
             src (cvcuda.Tensor): Input tensor.
@@ -203,21 +225,13 @@ void ExportOpRemap(py::module &m)
         Returns:
             cvcuda.Tensor: The output tensor.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C API references of the CV-CUDA
-            operator.
     )pbdoc");
-    m.def("remap_into", &RemapInto, "dst"_a, "src"_a, "map"_a, "src_interp"_a = NVCV_INTERP_NEAREST,
-          "map_interp"_a = NVCV_INTERP_NEAREST, "map_type"_a = NVCV_REMAP_ABSOLUTE, "align_corners"_a = false,
-          "border"_a = NVCV_BORDER_CONSTANT, "border_value"_a = pyarray{}, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
-        cvcuda.remap_into(dst: cvcuda.Tensor, src: cvcuda.Tensor, map: cvcuda.Tensor, src_interp: cvcuda.Interp = cvcuda.Interp.NEAREST, map_interp: cvcuda.Interp = cvcuda.Interp.NEAREST, map_type: cvcuda.Remap = cvcuda.Remap.ABSOLUTE, align_corners: bool = False, border: cvcuda.Border = cvcuda.Border.CONSTANT, border_value: numpy.ndarray = np.ndarray((0,)), stream: Optional[cvcuda.Stream] = None)
-
+    m.def("remap_into", NvtxTrace("cvcuda.remap_into", &RemapInto), "dst"_a, "src"_a, "map"_a,
+          "src_interp"_a = NVCV_INTERP_NEAREST, "map_interp"_a = NVCV_INTERP_NEAREST,
+          "map_type"_a = NVCV_REMAP_ABSOLUTE, "align_corners"_a = false, "border"_a = NVCV_BORDER_CONSTANT,
+          "border_value"_a = pyarray{}, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the Warp Perspective operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Remap operator for more details and usage
-            examples.
 
         Args:
             dst (cvcuda.Tensor): Output tensor.
@@ -247,23 +261,13 @@ void ExportOpRemap(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C API references of the CV-CUDA
-            operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
-    m.def("remap", &VarShapeRemap, "src"_a, "map"_a, "src_interp"_a = NVCV_INTERP_NEAREST,
+    m.def("remap", NvtxTrace("cvcuda.remap", &VarShapeRemap), "src"_a, "map"_a, "src_interp"_a = NVCV_INTERP_NEAREST,
           "map_interp"_a = NVCV_INTERP_NEAREST, "map_type"_a = NVCV_REMAP_ABSOLUTE, "align_corners"_a = false,
           "border"_a = NVCV_BORDER_CONSTANT, "border_value"_a = pyarray{}, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
-        cvcuda.remap(src: cvcuda.ImageBatchVarShape, map: cvcuda.Tensor, src_interp: cvcuda.Interp = cvcuda.Interp.NEAREST, map_interp: cvcuda.Interp = cvcuda.Interp.NEAREST, map_type: cvcuda.Remap = cvcuda.Remap.ABSOLUTE, align_corners: bool = False, border: cvcuda.Border = cvcuda.Border.CONSTANT, border_value: numpy.ndarray = np.ndarray((0,)), stream: Optional[cvcuda.Stream] = None) -> cvcuda.ImageBatchVarShape
-
         Executes the Warp Perspective operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Remap operator for more details and usage
-            examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch.
@@ -294,21 +298,13 @@ void ExportOpRemap(py::module &m)
         Returns:
             cvcuda.ImageBatchVarShape: The output image batch.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C API references of the CV-CUDA
-            operator.
     )pbdoc");
-    m.def("remap_into", &VarShapeRemapInto, "dst"_a, "src"_a, "map"_a, "src_interp"_a = NVCV_INTERP_NEAREST,
-          "map_interp"_a = NVCV_INTERP_NEAREST, "map_type"_a = NVCV_REMAP_ABSOLUTE, "align_corners"_a = false,
-          "border"_a = NVCV_BORDER_CONSTANT, "border_value"_a = pyarray{}, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
-        cvcuda.remap_into(dst: cvcuda.ImageBatchVarShape, src: cvcuda.ImageBatchVarShape, map: cvcuda.Tensor, src_interp: cvcuda.Interp = cvcuda.Interp.NEAREST, map_interp: cvcuda.Interp = cvcuda.Interp.NEAREST, map_type: cvcuda.Remap = cvcuda.Remap.ABSOLUTE, align_corners: bool = False, border: cvcuda.Border = cvcuda.Border.CONSTANT, border_value: numpy.ndarray = np.ndarray((0,)), stream: Optional[cvcuda.Stream] = None)
-
+    m.def("remap_into", NvtxTrace("cvcuda.remap_into", &VarShapeRemapInto), "dst"_a, "src"_a, "map"_a,
+          "src_interp"_a = NVCV_INTERP_NEAREST, "map_interp"_a = NVCV_INTERP_NEAREST,
+          "map_type"_a = NVCV_REMAP_ABSOLUTE, "align_corners"_a = false, "border"_a = NVCV_BORDER_CONSTANT,
+          "border_value"_a = pyarray{}, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the Warp Perspective operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Remap operator for more details and usage
-            examples.
 
         Args:
             dst (cvcuda.ImageBatchVarShape): Output image batch.
@@ -338,11 +334,7 @@ void ExportOpRemap(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C API references of the CV-CUDA
-            operator.
+            cvcuda.ImageBatchVarShape: The output image batch (same as dst).
     )pbdoc");
 }
 

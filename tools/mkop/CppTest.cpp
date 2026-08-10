@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +15,12 @@
  * limitations under the License.
  */
 
+// NOTE (make-op): if __OPNAME__ is a unary element-wise operator that preserves shape/dtype/layout
+// (like Invert / Solarize / Posterize), build the bit-exact test on the shared harness in
+// "ElementwiseOpHarness.hpp" instead of the hand-rolled scaffold below — it centralizes the
+// tensor/varshape/negative structure so each operator only supplies its gold + invoke callables
+// (removing the copy-paste that otherwise trips SonarQube's duplication gate per op). See
+// TestOpInvert.cpp for the pattern. Keep the generic scaffold below for non-element-wise operators.
 #include "Definitions.hpp"
 
 #include <common/TensorDataUtils.hpp>

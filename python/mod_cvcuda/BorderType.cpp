@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +23,7 @@ namespace cvcudapy {
 
 void ExportBorderType(py::module &m)
 {
-    py::enum_<NVCVBorderType>(m, "Border")
+    py::enum_<NVCVBorderType>(m, "Border", "Border padding modes for image operations.")
         .value("CONSTANT", NVCV_BORDER_CONSTANT, "Constant border")
         .value("REPLICATE", NVCV_BORDER_REPLICATE, "Replicate border")
         .value("REFLECT", NVCV_BORDER_REFLECT, "Reflect border")

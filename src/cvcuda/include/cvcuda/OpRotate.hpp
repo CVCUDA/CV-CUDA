@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,6 +35,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class Rotate final : public IOperator
@@ -42,52 +44,50 @@ class Rotate final : public IOperator
 public:
     explicit Rotate(const int maxVarShapeBatchSize);
 
-    ~Rotate();
-
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const double angleDeg,
-                    const double2 shift, const NVCVInterpolationType interpolation);
+                    const double2 shift, const NVCVInterpolationType interpolation) const;
 
     void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
-                    const nvcv::Tensor &angleDeg, const nvcv::Tensor &shift, const NVCVInterpolationType interpolation);
+                    const nvcv::Tensor &angleDeg, const nvcv::Tensor &shift,
+                    const NVCVInterpolationType interpolation) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline Rotate::Rotate(const int maxVarShapeBatchSize)
 {
-    nvcv::detail::CheckThrow(cvcudaRotateCreate(&m_handle, maxVarShapeBatchSize));
-    assert(m_handle);
-}
-
-inline Rotate::~Rotate()
-{
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaRotateCreate(&h, maxVarShapeBatchSize));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void Rotate::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
-                               const double angleDeg, const double2 shift, const NVCVInterpolationType interpolation)
+                               const double angleDeg, const double2 shift,
+                               const NVCVInterpolationType interpolation) const
 {
     nvcv::detail::CheckThrow(
-        cvcudaRotateSubmit(m_handle, stream, in.handle(), out.handle(), angleDeg, shift, interpolation));
+        cvcudaRotateSubmit(m_handle.get(), stream, in.handle(), out.handle(), angleDeg, shift, interpolation));
 }
 
 inline void Rotate::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
                                const nvcv::ImageBatchVarShape &out, const nvcv::Tensor &angleDeg,
-                               const nvcv::Tensor &shift, const NVCVInterpolationType interpolation)
+                               const nvcv::Tensor &shift, const NVCVInterpolationType interpolation) const
 {
-    nvcv::detail::CheckThrow(cvcudaRotateVarShapeSubmit(m_handle, stream, in.handle(), out.handle(), angleDeg.handle(),
-                                                        shift.handle(), interpolation));
+    nvcv::detail::CheckThrow(cvcudaRotateVarShapeSubmit(m_handle.get(), stream, in.handle(), out.handle(),
+                                                        angleDeg.handle(), shift.handle(), interpolation));
 }
 
 inline NVCVOperatorHandle Rotate::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA_ROTATE_HPP

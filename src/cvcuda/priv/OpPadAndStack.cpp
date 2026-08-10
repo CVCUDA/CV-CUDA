@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "OpPadAndStack.hpp"
 
+#include "Nvtx.hpp"
 #include "legacy/CvCudaLegacy.h"
 #include "legacy/CvCudaLegacyHelpers.hpp"
 
@@ -29,7 +30,8 @@ namespace legacy = nvcv::legacy::cuda_op;
 
 PadAndStack::PadAndStack()
 {
-    legacy::DataShape maxIn, maxOut;
+    legacy::DataShape maxIn;
+    legacy::DataShape maxOut;
     //maxIn/maxOut not used by op.
     m_legacyOp = std::make_unique<legacy::PadAndStack>(maxIn, maxOut);
 }
@@ -38,6 +40,7 @@ void PadAndStack::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape
                              const nvcv::Tensor &top, const nvcv::Tensor &left, const NVCVBorderType borderMode,
                              const float borderValue) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::PadAndStack::operator()[ImageBatchVarShape]");
     auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (inData == nullptr)
     {

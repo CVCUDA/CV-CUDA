@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -22,7 +22,39 @@
 #define THRESHOLD_UTILS_CUH
 
 #include "CvCudaUtils.cuh"
-#include "cub/cub.cuh"
+
+#include <cstdint>
+
+template<typename P, typename T>
+__device__ __forceinline__ P LoadPacked(const T *ptr)
+{
+    static_assert(sizeof(P) % sizeof(T) == 0);
+
+    if (reinterpret_cast<std::uintptr_t>(ptr) % alignof(P) == 0)
+        return *reinterpret_cast<const P *>(ptr);
+
+    P  value;
+    T *elements = reinterpret_cast<T *>(&value);
+#pragma unroll
+    for (int i = 0; i < sizeof(P) / sizeof(T); ++i) elements[i] = ptr[i];
+    return value;
+}
+
+template<typename P, typename T>
+__device__ __forceinline__ void StorePacked(T *ptr, P value)
+{
+    static_assert(sizeof(P) % sizeof(T) == 0);
+
+    if (reinterpret_cast<std::uintptr_t>(ptr) % alignof(P) == 0)
+    {
+        *reinterpret_cast<P *>(ptr) = value;
+        return;
+    }
+
+    const T *elements = reinterpret_cast<const T *>(&value);
+#pragma unroll
+    for (int i = 0; i < sizeof(P) / sizeof(T); ++i) ptr[i] = elements[i];
+}
 
 __global__ void triangle_cal(int *histogram, nvcv::cuda::Tensor1DWrap<double, int32_t> thresh);
 

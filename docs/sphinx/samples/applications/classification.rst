@@ -131,7 +131,7 @@ Preprocessing Pipeline
 The preprocessing steps:
 
 1. **Setup Normalization Parameters**: ImageNet mean and std deviation
-2. **Add Batch Dimension**: Convert HWC → NHWC using :py:func:`cvcuda.stack`
+2. **Add Batch Dimension**: Convert HWC → NHWC using :pyfunc:`cvcuda.stack`
 3. **Resize**: Scale to target size (default 224×224)
 4. **Convert to Float**: Convert uint8 [0,255] → float32 [0.0,1.0]
 5. **Normalize**: Apply ImageNet normalization: ``(x - mean) / std``

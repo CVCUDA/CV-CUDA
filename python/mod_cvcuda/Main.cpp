@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,6 +46,7 @@
 #include "OsdElement.hpp"
 #include "PairwiseMatcherType.hpp"
 #include "RemapMapValueType.hpp"
+#include "RoundMode.hpp"
 #include "SIFTFlagType.hpp"
 #include "ThresholdType.hpp"
 
@@ -53,6 +54,7 @@
 #include "operators/Operators.hpp"
 
 #include <cvcuda/Version.h>
+#include <nvcv/python/ResourceGuard.hpp>
 #include <pybind11/pybind11.h>
 
 namespace py = pybind11;
@@ -88,20 +90,41 @@ PYBIND11_MODULE(_cvcuda, m)
         ExportDataType(m);
         ExportRect(m);
         ExportThreadScope(m);
+        ExportTensorLayout(m); // Image::cpu/cuda take a TensorLayout — must be registered before Image::Export.
 
         // Core Entities
+        // Registration order matters: (a) base classes must be registered
+        // before derived ones (Resource, CacheItem → Container → Tensor/Image/...);
+        // (b) when a method signature references another pybind11 type, that
+        // type must be registered first, or pybind11 emits the raw C++
+        // typename (e.g. `nvcvpy::priv::Stream`) in stubs and reprs.
         ExportCAPI(m);
-        Resource::Export(m);
-        Cache::Export(m);
-        Container::Export(m);
+        Resource::Export(m);  // base of Container (no stream methods yet)
+        Cache::Export(m);     // exports CacheItem (base of Container, Stream)
+        Container::Export(m); // depends on Resource + CacheItem
         ExternalBuffer::Export(m);
 
         // Objects
+        Image::Export(m); // before Tensor (as_tensor takes Image&)
         Tensor::Export(m);
         TensorBatch::Export(m);
-        Image::Export(m);
         ImageBatchVarShape::Export(m);
         Stream::Export(m);
+
+        // Deferred method bindings: add methods that reference Stream now
+        // that Stream is a known pybind11 type.
+        Resource::ExportStreamMethods(m);
+
+        py::module_ test = m.def_submodule("_test");
+        test.def("resourceguard_destructor_error",
+                 []()
+                 {
+                     nvcvpy::Stream        stream = nvcvpy::Stream::Current();
+                     nvcvpy::ResourceGuard guard(stream);
+
+                     PyErr_SetString(PyExc_RuntimeError, "injected ResourceGuard commit failure");
+                 });
+        ExportCAPITestHooks(test);
     }
 
     {
@@ -122,11 +145,21 @@ PYBIND11_MODULE(_cvcuda, m)
         ExportMorphologyType(m);
         ExportNormType(m);
         ExportRemapMapValueType(m);
+        ExportRoundMode(m);
         ExportSIFTFlagType(m);
         ExportThresholdType(m);
 
         // doctag: Operators
         // CV-CUDA Operators
+        ExportOpJpegCompressionDistortion(m);
+        ExportOpAdjustHue(m);
+        ExportOpAdjustSaturation(m);
+        ExportOpAdjustSharpness(m);
+        ExportOpAdjustContrast(m);
+        ExportOpInvert(m);
+        ExportOpSolarize(m);
+        ExportOpPosterize(m);
+        ExportOpAutoContrast(m);
         ExportOpResizeCropConvertReformat(m);
         ExportOpPairwiseMatcher(m);
         ExportOpLabel(m);
@@ -178,5 +211,6 @@ PYBIND11_MODULE(_cvcuda, m)
         ExportOpInpaint(m);
         ExportOpStack(m);
         ExportOpFindHomography(m);
+        ExportOpCLAHE(m);
     }
 }

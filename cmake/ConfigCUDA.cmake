@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,74 +29,22 @@ endif()
 
 set(CMAKE_CUDA_STANDARD ${CMAKE_CXX_STANDARD})
 
-# Compress kernels to generate smaller executables
+# Compress kernels to generate smaller executables. NVCC supports compression
+# modes starting with CUDA 12.8, so older supported toolkits retain the default.
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xfatbin=--compress-all")
+if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "12.8")
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --compress-mode=size")
+endif()
 
 # Enable device lambdas
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --extended-lambda")
 
+# Compile multiple GPU architectures in parallel within each nvcc invocation.
+# Cap at 4 threads per nvcc process to avoid oversaturating with outer build parallelism.
+set(CVCUDA_NVCC_THREADS 4 CACHE STRING "Max threads per nvcc invocation for multi-arch builds")
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --threads ${CVCUDA_NVCC_THREADS}")
+
 # see https://developer.nvidia.com/cuda-gpus
-if(NOT USE_CMAKE_CUDA_ARCHITECTURES)
-    set(CMAKE_CUDA_ARCHITECTURES "$ENV{CUDAARCHS}")
+option(CVCUDA_AARCH64_JETSON "Build for Jetson Orin platforms only (aarch64)" OFF)
 
-    if(ARCH_X86_64)
-        if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "13.0")
-            list(APPEND CMAKE_CUDA_ARCHITECTURES
-                70-real # Volta  - gv100/Tesla
-            )
-        endif()
-        if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "11.8")
-            list(APPEND CMAKE_CUDA_ARCHITECTURES
-                75-real # Turing - tu10x/GeForce
-                80-real # Ampere - ga100/Tesla
-                86-real # Ampere - ga10x/GeForce
-                89-real # Ada    - ad102/GeForce
-                90-real # Hopper - gh100/Tesla
-            )
-        endif()
-        if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "12.8")
-            list(APPEND CMAKE_CUDA_ARCHITECTURES
-                100-real # Blackwell B200, B300
-                120-real # RTX Pro 6000, RTX 50**
-            )
-        endif()
-    elseif(ARCH_AARCH64)
-        list(APPEND CMAKE_CUDA_ARCHITECTURES
-            80-real # Ampere - ga100/Tesla
-            86-real # Jetson IGX Orin with optional Ampere RTX A6000
-            87-real # Ampere - ga10b,ga10c/Tegra (Jetson AGX Orin)
-        )
-        if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "13.0")
-            list(APPEND CMAKE_CUDA_ARCHITECTURES
-                72-real # Volta  - gv11b/Tegra (Jetson AGX Xavier)
-            )
-        endif()
-        if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "11.8")
-            list(APPEND CMAKE_CUDA_ARCHITECTURES
-                89-real # Jetson IGX Orin with optional RTX 6000 Ada
-                90-real # Grace Hopper - gh100/Tesla
-            )
-        endif()
-        if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "12.8")
-            list(APPEND CMAKE_CUDA_ARCHITECTURES
-                100-real # Blackwell GB200, GB300
-            )
-        endif()
-        if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "13.0")
-            list(APPEND CMAKE_CUDA_ARCHITECTURES
-                110-real # Thor
-                121-real # DGX Spark
-            )
-        endif()
-    endif()
-
-    if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "13.0")
-        # Required compute capability:
-        # * compute_70: fast fp16 support + PTX for forward compatibility
-        list(APPEND CMAKE_CUDA_ARCHITECTURES 70-virtual)
-    endif()
-
-    # We must set the cache to the correct values, or else cmake will write its default there,
-    # which is the old architecture supported by nvcc. We don't want that.
-    set(CMAKE_CUDA_ARCHITECTURES "${CMAKE_CUDA_ARCHITECTURES}" CACHE STRING "CUDA architectures to build for" FORCE)
-endif()
+cvcuda_configure_cuda_architecture_policy()

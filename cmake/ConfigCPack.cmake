@@ -92,6 +92,10 @@ if(BUILD_TESTS OR BUILD_TESTS_CPP OR BUILD_TESTS_WHEELS OR BUILD_TESTS_PYTHON)
     include(InstallTests)
 endif()
 
+if(BUILD_BENCH)
+    include(InstallBench)
+endif()
+
 if(BUILD_PYTHON)
     include(InstallPython)
 endif()

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "ConvUtils.hpp"
 #include "Definitions.hpp"
+#include "PlanarParityUtils.hpp"
 
 #include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
@@ -32,6 +33,29 @@
 
 namespace test = nvcv::test;
 namespace cuda = nvcv::cuda;
+
+namespace {
+
+// builds Gaussian and its per-image parameter tensors for a var-shape negative case
+inline void InvokeGaussianVarShapeNegative(cudaStream_t stream, const nvcv::ImageBatchVarShape &src,
+                                           const nvcv::ImageBatchVarShape &dst, int maxBatches,
+                                           NVCVBorderType borderMode)
+{
+    const nvcv::Size2D kernelSize(3, 3);
+    const int          numImages = src.numImages();
+    auto               kernelSizeTensor
+        = test::planar::MakePerImageTensor(numImages, nvcv::TYPE_2S32, int2{kernelSize.w, kernelSize.h});
+    auto             sigmaTensor = test::planar::MakePerImageTensor(numImages, nvcv::TYPE_2F64, double2{0.5, 0.5});
+    cvcuda::Gaussian op(kernelSize, maxBatches);
+    op(stream, src, dst, kernelSizeTensor, sigmaTensor, borderMode);
+}
+
+} // namespace
+
+static int ScaledSize(int size, double scale)
+{
+    return static_cast<int>(size * scale);
+}
 
 // clang-format off
 
@@ -124,7 +148,7 @@ TEST_P(OpGaussian, correct_output)
     std::default_random_engine    randEng(0);
     std::uniform_int_distribution rand(0u, 255u);
 
-    std::generate(inVec.begin(), inVec.end(), [&]() { return rand(randEng); });
+    std::ranges::generate(inVec, [&rand, &randEng]() { return rand(randEng); });
 
     // copy random input to device
     ASSERT_EQ(cudaSuccess, cudaMemcpy(inData->basePtr(), inVec.data(), inBufSize, cudaMemcpyHostToDevice));
@@ -192,9 +216,9 @@ TEST_P(OpGaussian, varshape_correct_output)
     nvcv::Size2D kernelSize(newKsizeX, newKsizeY);
 
     // Create input varshape
-    std::default_random_engine         rng;
-    std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
-    std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
+    std::default_random_engine    rng;
+    std::uniform_int_distribution udistWidth(ScaledSize(width, 0.8), ScaledSize(width, 1.1));
+    std::uniform_int_distribution udistHeight(ScaledSize(height, 0.8), ScaledSize(height, 1.1));
 
     std::vector<nvcv::Image> imgSrc;
 
@@ -211,7 +235,7 @@ TEST_P(OpGaussian, varshape_correct_output)
         std::uniform_int_distribution<uint8_t> udist(0, 255);
 
         srcVec[i].resize(imgSrc[i].size().h * srcRowStride);
-        std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return udist(rng); });
+        std::ranges::generate(srcVec[i], [&udist, &rng]() { return udist(rng); });
 
         auto imgData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_NE(imgData, nvcv::NullOpt);
@@ -301,20 +325,106 @@ TEST_P(OpGaussian, varshape_correct_output)
     }
 }
 
+// =============================================================================
+// Planar (NCHW/CHW) layout support
+//
+// Gaussian filters each channel independently, so a planar input is filtered plane-by-plane and
+// must produce exactly the same pixels as the interleaved path. These tests feed identical uint8
+// data through cvcuda::Gaussian in both layouts and require the (re-interleaved) planar output to
+// match the interleaved output bit-for-bit.
+// =============================================================================
+
+// Parameters: width, height, kernelWidth, kernelHeight, sigmaX, sigmaY, borderMode, numImages, planarFmt, interleavedFmt
 // clang-format off
-NVCV_TEST_SUITE_P(OpGaussian_Negative, nvcv::test::ValueList<NVCVStatus, nvcv::ImageFormat, nvcv::ImageFormat, int, int, double, double, NVCVBorderType>{
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U16, 3, 3, 0.5, 0.5, NVCV_BORDER_CONSTANT}, // data type is different
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8, nvcv::FMT_RGB8p, 3, 3, 0.5, 0.5, NVCV_BORDER_CONSTANT}, // data format is different
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8p, nvcv::FMT_RGB8p, 3, 3, 0.5, 0.5, NVCV_BORDER_CONSTANT}, // data format is not kNHWC/kHWC
-#ifndef ENABLE_SANITIZER
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, 3, 3, 0.5, 0.5, static_cast<NVCVBorderType>(255)}, // invalid borderType
-#endif
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F16, nvcv::FMT_F16, 3, 3, 0.5, 0.5, NVCV_BORDER_CONSTANT}, // invalid data type
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, 4, 3, 0.5, 0.5, NVCV_BORDER_CONSTANT}, // invalid kernel size
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, 3, 4, 0.5, 0.5, NVCV_BORDER_CONSTANT}, // invalid kernel size
+NVCV_TEST_SUITE_P(OpGaussianPlanar,
+                  test::ValueList<int, int, int, int, double, double, NVCVBorderType, int, nvcv::ImageFormat, nvcv::ImageFormat>{
+    { 64, 48, 3, 3, 0.5, 0.5, NVCV_BORDER_CONSTANT,  2,  nvcv::FMT_RGB8p,  nvcv::FMT_RGB8},
+    { 67, 51, 5, 3, 0.9, 0.7,   NVCV_BORDER_REFLECT, 1,  nvcv::FMT_RGB8p,  nvcv::FMT_RGB8},
+    { 50, 40, 7, 7, 1.2, 1.2, NVCV_BORDER_REPLICATE, 2, nvcv::FMT_RGBA8p, nvcv::FMT_RGBA8},
+    { 64, 48, 9, 5, 1.4, 0.8, NVCV_BORDER_REFLECT101, 1, nvcv::FMT_RGB8p, nvcv::FMT_RGB8},
+    { 32, 28, 3, 5, 0.6, 1.1,      NVCV_BORDER_WRAP, 1, nvcv::FMT_RGBA8p, nvcv::FMT_RGBA8},
+    { 33, 29, 67, 67, 14.0, 14.0,  NVCV_BORDER_CONSTANT, 1, nvcv::FMT_RGB8p, nvcv::FMT_RGB8},
+    { 33, 29, 75, 75, 16.0, 16.0, NVCV_BORDER_REPLICATE, 1, nvcv::FMT_RGB8p, nvcv::FMT_RGB8},
+    { 33, 29, -1, -1, 15.0, 15.0,  NVCV_BORDER_CONSTANT, 1, nvcv::FMT_RGB8p, nvcv::FMT_RGB8},
+    { 33, 29, 95, 95, 18.0, 18.0,   NVCV_BORDER_REFLECT, 1, nvcv::FMT_RGB8p, nvcv::FMT_RGB8},
+    { 33, 29, -1, -1, 16.0, 16.0, NVCV_BORDER_REPLICATE, 1, nvcv::FMT_RGB8p, nvcv::FMT_RGB8},
 });
 
 // clang-format on
+
+TEST_P(OpGaussianPlanar, tensor_matches_interleaved)
+{
+    nvcv::Size2D kernelSize{GetParamValue<2>(), GetParamValue<3>()};
+    double2      sigma{GetParamValue<4>(), GetParamValue<5>()};
+    nvcv::Size2D maxKernelSize = kernelSize;
+    if (maxKernelSize.w <= 0)
+        maxKernelSize.w = nvcv::cuda::round<int>(sigma.x * 3 * 2 + 1) | 1;
+    if (maxKernelSize.h <= 0)
+        maxKernelSize.h = nvcv::cuda::round<int>(sigma.y * 3 * 2 + 1) | 1;
+    NVCVBorderType borderMode = GetParamValue<6>();
+    int            numImages  = GetParamValue<7>();
+
+    test::planar::RunTensorParity(
+        GetParamValue<8>(), GetParamValue<9>(), GetParamValue<0>(), GetParamValue<1>(), GetParamValue<0>(),
+        GetParamValue<1>(), numImages,
+        [kernelSize, maxKernelSize, sigma, borderMode, numImages](cudaStream_t s, const nvcv::Tensor &src,
+                                                                  const nvcv::Tensor &dst, nvcv::ImageFormat)
+        {
+            cvcuda::Gaussian op(maxKernelSize, numImages);
+            EXPECT_NO_THROW(op(s, src, dst, kernelSize, sigma, borderMode));
+        });
+}
+
+TEST_P(OpGaussianPlanar, varshape_matches_interleaved)
+{
+    nvcv::Size2D kernelSize{GetParamValue<2>(), GetParamValue<3>()};
+    double2      sigma{GetParamValue<4>(), GetParamValue<5>()};
+    nvcv::Size2D maxKernelSize = kernelSize;
+    if (maxKernelSize.w <= 0)
+        maxKernelSize.w = nvcv::cuda::round<int>(sigma.x * 3 * 2 + 1) | 1;
+    if (maxKernelSize.h <= 0)
+        maxKernelSize.h = nvcv::cuda::round<int>(sigma.y * 3 * 2 + 1) | 1;
+    NVCVBorderType borderMode = GetParamValue<6>();
+    int            numImages  = GetParamValue<7>();
+
+    auto kernelSizeTensor
+        = test::planar::MakePerImageTensor(numImages, nvcv::TYPE_2S32, int2{kernelSize.w, kernelSize.h});
+    auto sigmaTensor = test::planar::MakePerImageTensor(numImages, nvcv::TYPE_2F64, sigma);
+
+    test::planar::RunVarShapeParity(
+        GetParamValue<8>(), GetParamValue<9>(), GetParamValue<0>(), GetParamValue<1>(), GetParamValue<0>(),
+        GetParamValue<1>(), numImages,
+        [&kernelSizeTensor, &sigmaTensor, maxKernelSize, borderMode, numImages](
+            cudaStream_t s, const nvcv::ImageBatchVarShape &src, const nvcv::ImageBatchVarShape &dst, nvcv::ImageFormat)
+        {
+            cvcuda::Gaussian op(maxKernelSize, numImages);
+            EXPECT_NO_THROW(op(s, src, dst, kernelSizeTensor, sigmaTensor, borderMode));
+        });
+}
+
+static auto OpGaussianNegativeParams()
+{
+    nvcv::test::ValueList<NVCVStatus, nvcv::ImageFormat, nvcv::ImageFormat, int, int, double, double, NVCVBorderType>
+        params{
+            {NVCV_ERROR_INVALID_ARGUMENT,    nvcv::FMT_U8,   nvcv::FMT_U16, 3, 3, 0.5, 0.5,
+             NVCV_BORDER_CONSTANT}, // data type is different
+            {NVCV_ERROR_INVALID_ARGUMENT,  nvcv::FMT_RGB8, nvcv::FMT_RGB8p, 3, 3, 0.5, 0.5,
+             NVCV_BORDER_CONSTANT}, // data format is different
+            {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8p,  nvcv::FMT_RGB8, 3, 3, 0.5, 0.5,
+             NVCV_BORDER_CONSTANT}, // data format is different
+    };
+#ifndef ENABLE_SANITIZER
+    params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, 3, 3, 0.5, 0.5,
+                        static_cast<NVCVBorderType>(255));
+#endif
+    params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F16, nvcv::FMT_F16, 3, 3, 0.5, 0.5,
+                        NVCV_BORDER_CONSTANT);
+    params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, 4, 3, 0.5, 0.5, NVCV_BORDER_CONSTANT);
+    params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, 3, 4, 0.5, 0.5, NVCV_BORDER_CONSTANT);
+    return params;
+}
+
+NVCV_TEST_SUITE_P(OpGaussian_Negative, OpGaussianNegativeParams());
 
 TEST_P(OpGaussian_Negative, op)
 {
@@ -344,134 +454,22 @@ TEST_P(OpGaussian_Negative, op)
     cvcuda::Gaussian gaussianOp({11, 11}, 1);
 
     EXPECT_EQ(expectedReturnCode,
-              nvcv::ProtectCall([&] { gaussianOp(stream, inTensor, outTensor, kernelSize, sigma, borderMode); }));
+              nvcv::ProtectCall([&gaussianOp, &stream, &inTensor, &outTensor, &kernelSize, &sigma, &borderMode]
+                                { gaussianOp(stream, inTensor, outTensor, kernelSize, sigma, borderMode); }));
 }
 
-// clang-format off
-NVCV_TEST_SUITE_P(OpGaussianVarshape_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat, NVCVBorderType, int, int>{
-    {nvcv::FMT_RGB8, nvcv::FMT_RGB8p, NVCV_BORDER_CONSTANT, 3, 3},
-    {nvcv::FMT_RGB8p, nvcv::FMT_RGB8p, NVCV_BORDER_CONSTANT, 3, 3},
-    {nvcv::FMT_RGBf16, nvcv::FMT_RGBf16, NVCV_BORDER_CONSTANT, 3, 3},
-    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, NVCV_BORDER_CONSTANT, 3, -1},
-    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, NVCV_BORDER_CONSTANT, 5, 3},
-#ifndef ENABLE_SANITIZER
-    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, static_cast<NVCVBorderType>(255), 3, 3},
-#endif
-});
-// clang-format on
+NVCV_TEST_SUITE_P(OpGaussianVarshape_Negative, test::PlanarFilterVarShapeNegativeParams());
 
 TEST_P(OpGaussianVarshape_Negative, op)
 {
-    cudaStream_t stream;
-    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
-
-    int          width  = 32;
-    int          height = 32;
-    nvcv::Size2D kernelSize(3, 3);
-
-    nvcv::ImageFormat inputFmt   = GetParamValue<0>();
-    nvcv::ImageFormat outputFmt  = GetParamValue<1>();
-    NVCVBorderType    borderMode = GetParamValue<2>();
-    int               batches    = GetParamValue<3>();
-    int               maxBatches = GetParamValue<4>();
-
-    // Create input varshape
-    std::default_random_engine         rng;
-    std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
-    std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
-
-    std::vector<nvcv::Image> imgSrc;
-    std::vector<nvcv::Image> imgDst;
-
-    for (int i = 0; i < batches; ++i)
-    {
-        imgSrc.emplace_back(nvcv::Size2D{udistWidth(rng), udistHeight(rng)}, inputFmt);
-        imgDst.emplace_back(imgSrc[i].size(), outputFmt);
-    }
-
-    nvcv::ImageBatchVarShape batchSrc(batches);
-    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
-    nvcv::ImageBatchVarShape batchDst(batches);
-    batchDst.pushBack(imgDst.begin(), imgDst.end());
-
-    // Create kernel size tensor
-    nvcv::Tensor kernelSizeTensor({{batches}, "N"}, nvcv::TYPE_2S32);
-
-    // Create sigma tensor
-    nvcv::Tensor sigmaTensor({{batches}, "N"}, nvcv::TYPE_2F64);
-
-    // Run operator
-    cvcuda::Gaussian gaussianOp(kernelSize, maxBatches);
-
-    EXPECT_EQ(
-        NVCV_ERROR_INVALID_ARGUMENT,
-        nvcv::ProtectCall([&] { gaussianOp(stream, batchSrc, batchDst, kernelSizeTensor, sigmaTensor, borderMode); }));
-
-    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
-    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+    test::planar::ExpectVarShapeUniformFormatRejected(GetParamValue<0>(), GetParamValue<1>(), GetParamValue<3>(),
+                                                      GetParamValue<4>(), GetParamValue<2>(),
+                                                      InvokeGaussianVarShapeNegative);
 }
 
 TEST(OpGaussianVarshape_Negative, varshape_hasDifferentFormat)
 {
-    cudaStream_t stream;
-    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
-
-    nvcv::ImageFormat fmt = nvcv::FMT_RGB8;
-
-    std::vector<std::tuple<nvcv::ImageFormat, nvcv::ImageFormat>> testSet{
-        {nvcv::FMT_U8,          fmt},
-        {         fmt, nvcv::FMT_U8}
-    };
-
-    for (auto testCase : testSet)
-    {
-        nvcv::ImageFormat inputFmtExtra  = std::get<0>(testCase);
-        nvcv::ImageFormat outputFmtExtra = std::get<1>(testCase);
-
-        int            width   = 32;
-        int            height  = 32;
-        int            batches = 3;
-        nvcv::Size2D   kernelSize(3, 3);
-        NVCVBorderType borderMode = NVCV_BORDER_CONSTANT;
-
-        // Create input varshape
-        std::default_random_engine         rng;
-        std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
-        std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
-
-        std::vector<nvcv::Image> imgSrc;
-        std::vector<nvcv::Image> imgDst;
-
-        for (int i = 0; i < batches - 1; ++i)
-        {
-            imgSrc.emplace_back(nvcv::Size2D{udistWidth(rng), udistHeight(rng)}, fmt);
-            imgDst.emplace_back(imgSrc[i].size(), fmt);
-        }
-        imgSrc.emplace_back(nvcv::Size2D{udistWidth(rng), udistHeight(rng)}, inputFmtExtra);
-        imgDst.emplace_back(imgSrc.back().size(), outputFmtExtra);
-
-        nvcv::ImageBatchVarShape batchSrc(batches);
-        batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
-        nvcv::ImageBatchVarShape batchDst(batches);
-        batchDst.pushBack(imgDst.begin(), imgDst.end());
-
-        // Create kernel size tensor
-        nvcv::Tensor kernelSizeTensor({{batches}, "N"}, nvcv::TYPE_2S32);
-
-        // Create sigma tensor
-        nvcv::Tensor sigmaTensor({{batches}, "N"}, nvcv::TYPE_2F64);
-
-        // Run operator
-        cvcuda::Gaussian gaussianOp(kernelSize, batches);
-
-        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-                  nvcv::ProtectCall(
-                      [&] { gaussianOp(stream, batchSrc, batchDst, kernelSizeTensor, sigmaTensor, borderMode); }));
-
-        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
-    }
-
-    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+    test::planar::ExpectVarShapeMixedFormatRejected(InvokeGaussianVarShapeNegative);
 }
 
 TEST(OpGaussian_Negative, create_null_handle)

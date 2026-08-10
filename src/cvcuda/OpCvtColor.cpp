@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "priv/OpCvtColor.hpp"
 
+#include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <nvcv/Exception.hpp>
@@ -29,7 +30,7 @@ namespace priv = cvcuda::priv;
 CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaCvtColorCreate, (NVCVOperatorHandle * handle))
 {
     return nvcv::ProtectCall(
-        [&]
+        [&handle]
         {
             if (handle == nullptr)
             {
@@ -37,7 +38,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaCvtColorCreate, (NVCVOperatorHandle * 
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            *handle = reinterpret_cast<NVCVOperatorHandle>(new priv::CvtColor());
+            *handle = priv::CreateOperatorHandle<priv::CvtColor>();
         });
 }
 
@@ -45,11 +46,13 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaCvtColorSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in, NVCVTensorHandle out,
                    NVCVColorConversionCode code))
 {
+    CVCUDA_NVTX_RANGE("cvcudaCvtColorSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&out, &in, &handle, &stream, &code]
         {
-            nvcv::TensorWrapHandle output(out), input(in);
-            priv::ToDynamicRef<priv::CvtColor>(handle)(stream, input, output, code);
+            nvcv::TensorWrapHandle output(out);
+            nvcv::TensorWrapHandle input(in);
+            priv::ToDynamicRef<priv::CvtColor>(handle)(stream, input.resource(), output.resource(), code);
         });
 }
 
@@ -57,10 +60,12 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaCvtColorVarShapeSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVImageBatchHandle in, NVCVImageBatchHandle out,
                    NVCVColorConversionCode code))
 {
+    CVCUDA_NVTX_RANGE("cvcudaCvtColorVarShapeSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&in, &out, &handle, &stream, &code]
         {
-            nvcv::ImageBatchVarShapeWrapHandle inWrap(in), outWrap(out);
-            priv::ToDynamicRef<priv::CvtColor>(handle)(stream, inWrap, outWrap, code);
+            nvcv::ImageBatchVarShapeWrapHandle inWrap(in);
+            nvcv::ImageBatchVarShapeWrapHandle outWrap(out);
+            priv::ToDynamicRef<priv::CvtColor>(handle)(stream, inWrap.resource(), outWrap.resource(), code);
         });
 }

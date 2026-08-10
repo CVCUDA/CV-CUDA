@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,6 +34,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class AdvCvtColor final : public IOperator
@@ -41,40 +43,37 @@ class AdvCvtColor final : public IOperator
 public:
     explicit AdvCvtColor();
 
-    ~AdvCvtColor();
-
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, NVCVColorConversionCode code,
-                    nvcv::ColorSpec spec);
+                    nvcv::ColorSpec spec) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline AdvCvtColor::AdvCvtColor()
 {
-    nvcv::detail::CheckThrow(cvcudaAdvCvtColorCreate(&m_handle));
-    assert(m_handle);
-}
-
-inline AdvCvtColor::~AdvCvtColor()
-{
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaAdvCvtColorCreate(&h));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void AdvCvtColor::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
-                                    NVCVColorConversionCode code, nvcv::ColorSpec spec)
+                                    NVCVColorConversionCode code, nvcv::ColorSpec spec) const
 {
-    nvcv::detail::CheckThrow(cvcudaAdvCvtColorSubmit(m_handle, stream, in.handle(), out.handle(), code, spec));
+    nvcv::detail::CheckThrow(cvcudaAdvCvtColorSubmit(m_handle.get(), stream, in.handle(), out.handle(), code,
+                                                     static_cast<NVCVColorSpec>(spec)));
 }
 
 inline NVCVOperatorHandle AdvCvtColor::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA__ADV_CVT_COLOR_HPP

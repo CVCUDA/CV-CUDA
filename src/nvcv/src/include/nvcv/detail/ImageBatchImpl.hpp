@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +21,8 @@
 #ifndef NVCV_IMAGEBATCH_IMPL_HPP
 #    error "You must not include this header directly"
 #endif
+
+#include "Callback.hpp"
 
 namespace nvcv {
 
@@ -69,14 +71,14 @@ Optional<DATA> ImageBatch::exportData(CUstream stream) const
     return exportData(stream).cast<DATA>();
 }
 
-inline void ImageBatch::setUserPointer(void *ptr)
+inline void ImageBatch::setUserPointer(NVCVUserPointer ptr) // NOSONAR: mutates state through the wrapped C handle.
 {
     detail::CheckThrow(nvcvImageBatchSetUserPointer(this->handle(), ptr));
 }
 
-inline void *ImageBatch::userPointer() const
+inline NVCVUserPointer ImageBatch::userPointer() const
 {
-    void *ptr;
+    NVCVUserPointer ptr;
     detail::CheckThrow(nvcvImageBatchGetUserPointer(this->handle(), &ptr));
     return ptr;
 }
@@ -134,7 +136,7 @@ inline ImageBatchVarShape &ImageBatchVarShape::operator=(ImageBatch &&batch)
 }
 
 template<class IT>
-void ImageBatchVarShape::pushBack(IT itBeg, IT itEnd)
+void ImageBatchVarShape::pushBack(IT itBeg, IT itEnd) // NOSONAR: accepts input iterators and consumes the range once.
 {
     auto cb = [itBeg, &itEnd]() mutable
     {
@@ -151,24 +153,28 @@ void ImageBatchVarShape::pushBack(IT itBeg, IT itEnd)
     pushBack(cb);
 }
 
-inline void ImageBatchVarShape::pushBack(const Image &img)
+inline void ImageBatchVarShape::pushBack(const Image &img) // NOSONAR: mutates state through the wrapped C handle.
 {
     NVCVImageHandle himg = img.handle();
     detail::CheckThrow(nvcvImageBatchVarShapePushImages(this->handle(), &himg, 1));
 }
 
 template<class F, class>
-inline void ImageBatchVarShape::pushBack(F &&cb)
+inline void ImageBatchVarShape::pushBack(F &&cb) // NOSONAR: mutates state through the wrapped C handle.
 {
-    auto *pcb = &cb;
-    auto  ccb = [](void *ctx) -> NVCVImageHandle
+    F &&forwardedCb = std::forward<F>(cb);
+
+    auto cbPushImage = [&forwardedCb]() -> NVCVImageHandle
     {
-        return detail::GetImageHandleForPushBack((*decltype(pcb)(ctx))());
+        return detail::GetImageHandleForPushBack(forwardedCb());
     };
-    detail::CheckThrow(nvcvImageBatchVarShapePushImagesCallback(this->handle(), ccb, pcb));
+
+    using PushBackCallback = Callback<NVCVImageHandle(), detail::RemovePointer_t<NVCVPushImageFunc>>;
+    PushBackCallback ccb{cbPushImage};
+    detail::CheckThrow(nvcvImageBatchVarShapePushImagesCallback(this->handle(), ccb.targetFunc(), ccb.targetHandle()));
 }
 
-inline void ImageBatchVarShape::popBack(int32_t imgCount)
+inline void ImageBatchVarShape::popBack(int32_t imgCount) // NOSONAR: mutates state through the wrapped C handle.
 {
     detail::CheckThrow(nvcvImageBatchVarShapePopImages(this->handle(), imgCount));
 }
@@ -176,11 +182,11 @@ inline void ImageBatchVarShape::popBack(int32_t imgCount)
 inline Image ImageBatchVarShape::operator[](ptrdiff_t n) const
 {
     NVCVImageHandle himg;
-    detail::CheckThrow(nvcvImageBatchVarShapeGetImages(this->handle(), n, &himg, 1));
+    detail::CheckThrow(nvcvImageBatchVarShapeGetImages(this->handle(), static_cast<int32_t>(n), &himg, 1));
     return Image(std::move(himg));
 }
 
-inline void ImageBatchVarShape::clear()
+inline void ImageBatchVarShape::clear() // NOSONAR: mutates state through the wrapped C handle.
 {
     detail::CheckThrow(nvcvImageBatchVarShapeClear(this->handle()));
 }

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,12 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
-
 import cvcuda
-import pytest as t
+import pytest
 import numpy as np
+
 import cvcuda_util as util
+import cvcuda_types as cv_types
+import cvcuda_tools as cv_tools
+import cupy
+
 
 RNG = np.random.default_rng(0)
 MAPS = {
@@ -66,7 +69,7 @@ REF_SHAPE = {
 REF_SHAPE["default"] = REF_SHAPE["absolute"]
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "src_args, map_args",
     [
         (
@@ -131,7 +134,20 @@ def test_op_remap_api(src_args, map_args):
     assert t_tmp is t_dst
 
 
-@t.mark.parametrize(
+def test_op_remap_rejects_border_value_longer_than_float4():
+    t_src = cvcuda.Tensor((1, 4, 4, 3), cvcuda.Type.U8, "NHWC")
+    t_map = cvcuda.Tensor((1, 4, 4, 1), cvcuda.Type._2F32, "NHWC")
+
+    with pytest.raises(RuntimeError):
+        cvcuda.remap(
+            t_src,
+            t_map,
+            border=cvcuda.Border.CONSTANT,
+            border_value=np.arange(5, dtype=np.float32),
+        )
+
+
+@pytest.mark.parametrize(
     "map_type, map_kind, num_maps, num_imgs, img_size, img_format",
     [
         (
@@ -177,14 +193,14 @@ def test_op_remap_content(map_type, map_kind, num_maps, num_imgs, img_size, img_
 
     t_dst = cvcuda.remap(t_src, t_map, map_type=map_type)
 
-    a_dst = torch.as_tensor(t_dst.cuda()).cpu().numpy()
+    a_dst = cupy.asarray(t_dst.cuda()).get()
 
     a_ref = CALC_REF[map_kind](a_src)
 
     np.testing.assert_array_equal(a_dst, a_ref)
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "num_images, img_format, max_size",
     [
         (4, cvcuda.Format.Y8, (73, 98)),
@@ -220,7 +236,7 @@ def test_op_remapvarshape_api(num_images, img_format, max_size):
     assert b_tmp is b_dst
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "map_type, img_size, img_format",
     [
         (cvcuda.Remap.ABSOLUTE, (33, 65), cvcuda.Format.RGB8),
@@ -234,7 +250,7 @@ def test_op_remapvarshape_content(map_type, img_size, img_format):
 
     b_src = cvcuda.ImageBatchVarShape(num_imgs)
 
-    for i in range(num_imgs):
+    for _ in range(num_imgs):
         b_src.pushback(util.to_cvcuda_image(a_img))
 
     a_map = np.stack(
@@ -254,3 +270,37 @@ def test_op_remapvarshape_content(map_type, img_size, img_format):
         a_ref = CALC_REF[map_kind](a_src)
 
         np.testing.assert_array_equal(a_dst, a_ref)
+
+
+def _remap_params(dtype, layout, channels):
+    map_layout = "NHWC" if "N" in layout else "HWC"
+    map_shape = cv_types.resolve_shape(
+        map_layout, channels=1, size=(24, 24), batch_size=1
+    )
+    map_tensor = cvcuda.Tensor(map_shape, cvcuda.Type._2F32, map_layout)
+    return {"map": map_tensor}
+
+
+def _remap_varshape_params(dtype, layout, channels):
+    map_tensor = cvcuda.Tensor((1, 24, 24, 1), cvcuda.Type._2F32, "NHWC")
+    return {"map": map_tensor}
+
+
+globals().update(
+    cv_tools.make_op_tests(
+        name="remap",
+        runner_info=[
+            ("tensor", cvcuda.remap, _remap_params),
+            ("image_batch", cvcuda.remap, _remap_varshape_params),
+        ],
+        keystone_dlc=(cvcuda.Type.U8, "NHWC", 3),
+        supported_dtypes={cvcuda.Type.U8, cvcuda.Type.F32},
+        supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
+        supported_channels={1, 3, 4},
+        # F32 only supports channel 1
+        exclude_dlc=[
+            (cvcuda.Type.F32, None, 3),
+            (cvcuda.Type.F32, None, 4),
+        ],
+    )
+)

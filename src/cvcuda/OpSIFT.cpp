@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "priv/OpSIFT.hpp"
 
+#include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <nvcv/Exception.hpp>
@@ -28,7 +29,7 @@ namespace priv = cvcuda::priv;
 CVCUDA_DEFINE_API(0, 4, NVCVStatus, cvcudaSIFTCreate, (NVCVOperatorHandle * handle, int3 maxShape, int maxOctaveLayers))
 {
     return nvcv::ProtectCall(
-        [&]
+        [&handle, &maxShape, &maxOctaveLayers]
         {
             if (handle == nullptr)
             {
@@ -36,7 +37,7 @@ CVCUDA_DEFINE_API(0, 4, NVCVStatus, cvcudaSIFTCreate, (NVCVOperatorHandle * hand
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            *handle = reinterpret_cast<NVCVOperatorHandle>(new priv::SIFT(maxShape, maxOctaveLayers));
+            *handle = priv::CreateOperatorHandle<priv::SIFT>(maxShape, maxOctaveLayers);
         });
 }
 
@@ -46,13 +47,18 @@ CVCUDA_DEFINE_API(0, 4, NVCVStatus, cvcudaSIFTSubmit,
                    int numOctaveLayers, float contrastThreshold, float edgeThreshold, float initSigma,
                    NVCVSIFTFlagType flags))
 {
+    CVCUDA_NVTX_RANGE("cvcudaSIFTSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&in, &featCoords, &featMetadata, &featDescriptors, &numFeatures, &handle, &stream, &numOctaveLayers,
+         &contrastThreshold, &edgeThreshold, &initSigma, &flags]
         {
-            nvcv::TensorWrapHandle _in(in), _featCoords(featCoords), _featMetadata(featMetadata),
-                _featDescriptors(featDescriptors), _numFeatures(numFeatures);
-            priv::ToDynamicRef<priv::SIFT>(handle)(stream, _in, _featCoords, _featMetadata, _featDescriptors,
-                                                   _numFeatures, numOctaveLayers, contrastThreshold, edgeThreshold,
-                                                   initSigma, flags);
+            nvcv::TensorWrapHandle _in(in);
+            nvcv::TensorWrapHandle _featCoords(featCoords);
+            nvcv::TensorWrapHandle _featMetadata(featMetadata);
+            nvcv::TensorWrapHandle _featDescriptors(featDescriptors);
+            nvcv::TensorWrapHandle _numFeatures(numFeatures);
+            priv::ToDynamicRef<priv::SIFT>(handle)(
+                stream, _in.resource(), _featCoords.resource(), _featMetadata.resource(), _featDescriptors.resource(),
+                _numFeatures.resource(), numOctaveLayers, contrastThreshold, edgeThreshold, initSigma, flags);
         });
 }

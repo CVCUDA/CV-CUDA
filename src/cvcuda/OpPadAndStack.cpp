@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "priv/OpPadAndStack.hpp"
 
+#include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <nvcv/Exception.hpp>
@@ -29,7 +30,7 @@ namespace priv = cvcuda::priv;
 CVCUDA_DEFINE_API(0, 0, NVCVStatus, cvcudaPadAndStackCreate, (NVCVOperatorHandle * handle))
 {
     return nvcv::ProtectCall(
-        [&]
+        [&handle]
         {
             if (handle == nullptr)
             {
@@ -37,7 +38,7 @@ CVCUDA_DEFINE_API(0, 0, NVCVStatus, cvcudaPadAndStackCreate, (NVCVOperatorHandle
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            *handle = reinterpret_cast<NVCVOperatorHandle>(new priv::PadAndStack());
+            *handle = priv::CreateOperatorHandle<priv::PadAndStack>();
         });
 }
 
@@ -45,12 +46,16 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaPadAndStackSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVImageBatchHandle in, NVCVTensorHandle out,
                    NVCVTensorHandle top, NVCVTensorHandle left, NVCVBorderType borderMode, float borderValue))
 {
+    CVCUDA_NVTX_RANGE("cvcudaPadAndStackSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&in, &out, &top, &left, &handle, &stream, &borderMode, &borderValue]
         {
             nvcv::ImageBatchVarShapeWrapHandle input(in);
-            nvcv::TensorWrapHandle             output(out), topWrap(top), leftWrap(left);
-            priv::ToDynamicRef<priv::PadAndStack>(handle)(stream, input, output, topWrap, leftWrap, borderMode,
+            nvcv::TensorWrapHandle             output(out);
+            nvcv::TensorWrapHandle             topWrap(top);
+            nvcv::TensorWrapHandle             leftWrap(left);
+            priv::ToDynamicRef<priv::PadAndStack>(handle)(stream, input.resource(), output.resource(),
+                                                          topWrap.resource(), leftWrap.resource(), borderMode,
                                                           borderValue);
         });
 }

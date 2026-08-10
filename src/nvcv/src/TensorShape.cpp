@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,5 +27,6 @@ namespace priv = nvcv::priv;
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvTensorShapePermute,
                 (NVCVTensorLayout srcLayout, const int64_t *srcShape, NVCVTensorLayout dstLayout, int64_t *dstShape))
 {
-    return priv::ProtectCall([&] { priv::PermuteShape(srcLayout, srcShape, dstLayout, dstShape); });
+    return priv::ProtectCall([&srcLayout, &srcShape, &dstLayout, &dstShape]
+                             { priv::PermuteShape(srcLayout, srcShape, dstLayout, dstShape); });
 }

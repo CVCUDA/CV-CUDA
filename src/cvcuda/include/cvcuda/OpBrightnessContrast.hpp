@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,6 +34,8 @@
 #include <nvcv/ImageFormat.hpp>
 #include <nvcv/Tensor.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class BrightnessContrast final : public IOperator
@@ -41,56 +43,79 @@ class BrightnessContrast final : public IOperator
 public:
     explicit BrightnessContrast();
 
-    ~BrightnessContrast();
-
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                     const nvcv::Tensor &brightness, const nvcv::Tensor &contrast, const nvcv::Tensor &brightnessShift,
-                    const nvcv::Tensor &contrastCenter);
+                    const nvcv::Tensor &contrastCenter) const;
 
     void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
                     const nvcv::Tensor &brightness, const nvcv::Tensor &contrast, const nvcv::Tensor &brightnessShift,
-                    const nvcv::Tensor &contrastCenter);
+                    const nvcv::Tensor &contrastCenter) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, double brightness,
+                    double contrast, double brightnessShift, double contrastCenter, bool clamp = false) const;
+
+    void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out, double brightness,
+                    double contrast, double brightnessShift, double contrastCenter, bool clamp = false) const;
+
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline BrightnessContrast::BrightnessContrast()
 {
-    nvcv::detail::CheckThrow(cvcudaBrightnessContrastCreate(&m_handle));
-    assert(m_handle);
-}
-
-inline BrightnessContrast::~BrightnessContrast()
-{
-    nvcvOperatorDestroy(m_handle);
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaBrightnessContrastCreate(&h));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void BrightnessContrast::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                                            const nvcv::Tensor &brightness, const nvcv::Tensor &contrast,
-                                           const nvcv::Tensor &brightnessShift, const nvcv::Tensor &contrastCenter)
+                                           const nvcv::Tensor &brightnessShift,
+                                           const nvcv::Tensor &contrastCenter) const
 {
-    nvcv::detail::CheckThrow(cvcudaBrightnessContrastSubmit(m_handle, stream, in.handle(), out.handle(),
+    nvcv::detail::CheckThrow(cvcudaBrightnessContrastSubmit(m_handle.get(), stream, in.handle(), out.handle(),
                                                             brightness.handle(), contrast.handle(),
                                                             brightnessShift.handle(), contrastCenter.handle()));
 }
 
 inline void BrightnessContrast::operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
                                            const nvcv::Tensor &brightness, const nvcv::Tensor &contrast,
-                                           const nvcv::Tensor &brightnessShift, const nvcv::Tensor &contrastCenter)
+                                           const nvcv::Tensor &brightnessShift,
+                                           const nvcv::Tensor &contrastCenter) const
 {
-    nvcv::detail::CheckThrow(cvcudaBrightnessContrastVarShapeSubmit(m_handle, stream, in.handle(), out.handle(),
+    nvcv::detail::CheckThrow(cvcudaBrightnessContrastVarShapeSubmit(m_handle.get(), stream, in.handle(), out.handle(),
                                                                     brightness.handle(), contrast.handle(),
                                                                     brightnessShift.handle(), contrastCenter.handle()));
 }
 
+inline void BrightnessContrast::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                                           double brightness, double contrast, double brightnessShift,
+                                           double contrastCenter, bool clamp) const
+{
+    nvcv::detail::CheckThrow(cvcudaBrightnessContrastScalarSubmit(m_handle.get(), stream, in.handle(), out.handle(),
+                                                                  brightness, contrast, brightnessShift, contrastCenter,
+                                                                  clamp));
+}
+
+inline void BrightnessContrast::operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
+                                           double brightness, double contrast, double brightnessShift,
+                                           double contrastCenter, bool clamp) const
+{
+    nvcv::detail::CheckThrow(cvcudaBrightnessContrastVarShapeScalarSubmit(m_handle.get(), stream, in.handle(),
+                                                                          out.handle(), brightness, contrast,
+                                                                          brightnessShift, contrastCenter, clamp));
+}
+
 inline NVCVOperatorHandle BrightnessContrast::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA__BRIGHTNESS_CONTRAST_HPP

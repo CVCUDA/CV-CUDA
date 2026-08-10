@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -48,7 +48,7 @@ public:
                     const nvcv::Tensor &masks, const nvcv::Tensor &anchors, int32_t iteration,
                     NVCVBorderType borderMode) const;
 
-protected:
+private:
     std::unique_ptr<nvcv::legacy::cuda_op::Morphology>         m_legacyOp;
     std::unique_ptr<nvcv::legacy::cuda_op::MorphologyVarShape> m_legacyOpVarShape;
 };

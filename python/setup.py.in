@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the 'License');
@@ -53,11 +53,19 @@ setup(
     license='Apache-2.0',
     packages=find_packages(include=["cvcuda"]),
     package_data={
-        'cvcuda': ['*.so'],
+        # Keep in sync with pyproject.toml.in [tool.setuptools.package-data]
+        # and MANIFEST.in: ship the pybind11-stubgen .pyi stubs and the
+        # PEP 561 py.typed marker so this legacy bdist_wheel fallback path
+        # produces wheels with the same inline typing as `python -m build`.
+        'cvcuda': [
+            '*.so',
+            '*.pyi',
+            'py.typed',
+        ],
         'cvcuda_cu${CUDA_VERSION_MAJOR}.libs': ['*.*'],
     },
     include_package_data=True,
-    python_requires='>=3.9, <3.15',
+    python_requires='>=3.10, <3.15',
     install_requires=['numpy>=1.23.5'],
     cmdclass={'build_ext': NoBuildExtension},
     ext_modules=[Extension(name='_unused', sources=[])],

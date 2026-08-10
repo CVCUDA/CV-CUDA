@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "priv/OpAdaptiveThreshold.hpp"
 
+#include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <nvcv/Exception.hpp>
@@ -30,7 +31,7 @@ CVCUDA_DEFINE_API(0, 3, NVCVStatus, cvcudaAdaptiveThresholdCreate,
                   (NVCVOperatorHandle * handle, int32_t maxBlockSize, int32_t maxVarShapeBatchSize))
 {
     return nvcv::ProtectCall(
-        [&]
+        [&handle, &maxBlockSize, &maxVarShapeBatchSize]
         {
             if (handle == nullptr)
             {
@@ -38,8 +39,7 @@ CVCUDA_DEFINE_API(0, 3, NVCVStatus, cvcudaAdaptiveThresholdCreate,
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            *handle
-                = reinterpret_cast<NVCVOperatorHandle>(new priv::AdaptiveThreshold(maxBlockSize, maxVarShapeBatchSize));
+            *handle = priv::CreateOperatorHandle<priv::AdaptiveThreshold>(maxBlockSize, maxVarShapeBatchSize);
         });
 }
 
@@ -48,12 +48,14 @@ CVCUDA_DEFINE_API(0, 3, NVCVStatus, cvcudaAdaptiveThresholdSubmit,
                    double maxValue, NVCVAdaptiveThresholdType adaptiveMethod, NVCVThresholdType thresholdType,
                    int32_t blockSize, double c))
 {
+    CVCUDA_NVTX_RANGE("cvcudaAdaptiveThresholdSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&out, &in, &handle, &stream, &maxValue, &adaptiveMethod, &thresholdType, &blockSize, &c]
         {
-            nvcv::TensorWrapHandle output(out), input(in);
-            priv::ToDynamicRef<priv::AdaptiveThreshold>(handle)(stream, input, output, maxValue, adaptiveMethod,
-                                                                thresholdType, blockSize, c);
+            nvcv::TensorWrapHandle output(out);
+            nvcv::TensorWrapHandle input(in);
+            priv::ToDynamicRef<priv::AdaptiveThreshold>(handle)(stream, input.resource(), output.resource(), maxValue,
+                                                                adaptiveMethod, thresholdType, blockSize, c);
         });
 }
 
@@ -62,12 +64,17 @@ CVCUDA_DEFINE_API(0, 3, NVCVStatus, cvcudaAdaptiveThresholdVarShapeSubmit,
                    NVCVTensorHandle maxValue, NVCVAdaptiveThresholdType adaptiveMethod, NVCVThresholdType thresholdType,
                    NVCVTensorHandle blockSize, NVCVTensorHandle c))
 {
+    CVCUDA_NVTX_RANGE("cvcudaAdaptiveThresholdVarShapeSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&out, &in, &maxValue, &blockSize, &c, &handle, &stream, &adaptiveMethod, &thresholdType]
         {
-            nvcv::ImageBatchVarShapeWrapHandle output(out), input(in);
-            nvcv::TensorWrapHandle             maxvalueVec(maxValue), blocksizeVec(blockSize), cVec(c);
-            priv::ToDynamicRef<priv::AdaptiveThreshold>(handle)(stream, input, output, maxvalueVec, adaptiveMethod,
-                                                                thresholdType, blocksizeVec, cVec);
+            nvcv::ImageBatchVarShapeWrapHandle output(out);
+            nvcv::ImageBatchVarShapeWrapHandle input(in);
+            nvcv::TensorWrapHandle             maxvalueVec(maxValue);
+            nvcv::TensorWrapHandle             blocksizeVec(blockSize);
+            nvcv::TensorWrapHandle             cVec(c);
+            priv::ToDynamicRef<priv::AdaptiveThreshold>(handle)(stream, input.resource(), output.resource(),
+                                                                maxvalueVec.resource(), adaptiveMethod, thresholdType,
+                                                                blocksizeVec.resource(), cVec.resource());
         });
 }

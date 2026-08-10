@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,6 +35,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class Threshold final : public IOperator
@@ -42,52 +44,48 @@ class Threshold final : public IOperator
 public:
     explicit Threshold(uint32_t type, int32_t maxBatchSize);
 
-    ~Threshold();
-
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const nvcv::Tensor &thresh,
-                    const nvcv::Tensor &maxval);
+                    const nvcv::Tensor &maxval) const;
 
     void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
-                    const nvcv::Tensor &thresh, const nvcv::Tensor &maxval);
+                    const nvcv::Tensor &thresh, const nvcv::Tensor &maxval) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline Threshold::Threshold(uint32_t type, int32_t maxBatchSize)
 {
-    nvcv::detail::CheckThrow(cvcudaThresholdCreate(&m_handle, type, maxBatchSize));
-    assert(m_handle);
-}
-
-inline Threshold::~Threshold()
-{
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaThresholdCreate(&h, type, maxBatchSize));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void Threshold::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
-                                  const nvcv::Tensor &thresh, const nvcv::Tensor &maxval)
+                                  const nvcv::Tensor &thresh, const nvcv::Tensor &maxval) const
 {
     nvcv::detail::CheckThrow(
-        cvcudaThresholdSubmit(m_handle, stream, in.handle(), out.handle(), thresh.handle(), maxval.handle()));
+        cvcudaThresholdSubmit(m_handle.get(), stream, in.handle(), out.handle(), thresh.handle(), maxval.handle()));
 }
 
 inline void Threshold::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
                                   const nvcv::ImageBatchVarShape &out, const nvcv::Tensor &thresh,
-                                  const nvcv::Tensor &maxval)
+                                  const nvcv::Tensor &maxval) const
 {
-    nvcv::detail::CheckThrow(
-        cvcudaThresholdVarShapeSubmit(m_handle, stream, in.handle(), out.handle(), thresh.handle(), maxval.handle()));
+    nvcv::detail::CheckThrow(cvcudaThresholdVarShapeSubmit(m_handle.get(), stream, in.handle(), out.handle(),
+                                                           thresh.handle(), maxval.handle()));
 }
 
 inline NVCVOperatorHandle Threshold::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA_THRESHOLD_HPP

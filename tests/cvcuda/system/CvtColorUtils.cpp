@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,11 +17,15 @@
 
 #include "CvtColorUtils.hpp"
 
+#include "TestUtils.hpp"
+
 #include <cvcuda/cuda_tools/SaturateCast.hpp>
 #include <cvcuda/cuda_tools/math/LinAlg.hpp>
 
+#include <array>
 #include <cmath>   // For std::floor
 #include <cstring> // For std::memcpy
+#include <utility>
 
 namespace cuda = nvcv::cuda;
 
@@ -66,11 +70,7 @@ static constexpr double Red2Cr_601 = 0.71310298; // 1.0 / 1.402322 Cr/V
 
 // clang-format off
 
-// Coefficients to convert chromaticity (U and V) components to RGB .
-// static constexpr double U2Blu =  2.03211;
-// static constexpr double U2Grn = -0.39465;
-// static constexpr double V2Grn = -0.58060;
-// static constexpr double V2Red =  1.13983;
+// Coefficients to convert chromaticity (U and V) components to RGB.
 static constexpr double U2Blu =  2.032;
 static constexpr double U2Grn = -0.395;
 static constexpr double V2Grn = -0.581;
@@ -112,12 +112,155 @@ static constexpr double Add2V_NV12 = 128.0;
 template<typename T, typename BT = cuda::BaseType<T>>
 constexpr BT Alpha = std::is_floating_point_v<BT> ? 1 : cuda::TypeTraits<BT>::max;
 
+template<typename T>
+struct RgbPixel
+{
+    T r;
+    T g;
+    T b;
+};
+
+struct YuvPair
+{
+    double y0;
+    double y1;
+    double u;
+    double v;
+};
+
+template<typename T>
+RgbPixel<T> ReadRgbPixel(const T *rgb, bool bgr)
+{
+    RgbPixel<T> pixel{rgb[0], rgb[1], rgb[2]};
+    if (bgr)
+    {
+        std::swap(pixel.r, pixel.b);
+    }
+    return pixel;
+}
+
+template<typename T>
+void StoreRgbPixel(T *&rgb, T r, T g, T b, bool rgba, bool bgr)
+{
+    if (bgr)
+    {
+        std::swap(r, b);
+    }
+
+    *rgb++ = r;
+    *rgb++ = g;
+    *rgb++ = b;
+    if (rgba)
+    {
+        *rgb++ = Alpha<T>;
+    }
+}
+
+inline double ClampedLuma(double y)
+{
+    y -= Add2Y_NV12;
+    return y < 0.0 ? 0.0 : y;
+}
+
+template<typename T>
+void StoreNv12RgbPixel(T *&rgb, double y, double u, double v, bool rgba, bool bgr)
+{
+    T r = cuda::SaturateCast<T>(Y2R_NV12 * y + U2R_NV12 * u + V2R_NV12 * v);
+    T g = cuda::SaturateCast<T>(Y2G_NV12 * y + U2G_NV12 * u + V2G_NV12 * v);
+    T b = cuda::SaturateCast<T>(Y2B_NV12 * y + U2B_NV12 * u + V2B_NV12 * v);
+
+    StoreRgbPixel(rgb, r, g, b, rgba, bgr);
+}
+
+template<typename T>
+void StoreYuv420ChromaIfNeeded(T *&u, T *&v, const RgbPixel<T> &rgb, unsigned int w, unsigned int h)
+{
+    if ((w & 1) != 0 || (h & 1) != 0)
+    {
+        return;
+    }
+
+    double chromaU = R2U_NV12 * rgb.r + G2U_NV12 * rgb.g + B2U_NV12 * rgb.b + Add2U_NV12;
+    double chromaV = R2V_NV12 * rgb.r + G2V_NV12 * rgb.g + B2V_NV12 * rgb.b + Add2V_NV12;
+
+    *u++ = cuda::SaturateCast<T>(chromaU);
+    *v++ = cuda::SaturateCast<T>(chromaV);
+}
+
+template<typename T>
+void StoreNv12ChromaIfNeeded(T *&uv, const RgbPixel<T> &rgb, unsigned int w, unsigned int h, bool yvu)
+{
+    if ((w & 1) != 0 || (h & 1) != 0)
+    {
+        return;
+    }
+
+    double u = R2U_NV12 * rgb.r + G2U_NV12 * rgb.g + B2U_NV12 * rgb.b + Add2U_NV12;
+    double v = R2V_NV12 * rgb.r + G2V_NV12 * rgb.g + B2V_NV12 * rgb.b + Add2V_NV12;
+    if (yvu)
+    {
+        std::swap(u, v);
+    }
+
+    *uv++ = cuda::SaturateCast<T>(u);
+    *uv++ = cuda::SaturateCast<T>(v);
+}
+
+template<typename T>
+std::pair<double, double> ReadNv12Chroma(const T *uv, bool yvu)
+{
+    double u = uv[0];
+    double v = uv[1];
+    if (yvu)
+    {
+        std::swap(u, v);
+    }
+    return {u - Add2U_NV12, v - Add2V_NV12};
+}
+
+template<typename T>
+std::pair<const T *, const T *> Yuv420ChromaRows(const T *src, size_t imgPixels, unsigned int wdth, unsigned int h,
+                                                 bool yvu)
+{
+    // NOTE: when computing subsampled row index, h needs to be integer divided by 4 before multiplying by width.
+    const T *u = src + imgPixels + (h / 4) * wdth + ((h / 2) & 1) * (wdth / 2);
+    const T *v = u + imgPixels / 4;
+    if (yvu)
+    {
+        std::swap(u, v);
+    }
+    return {u, v};
+}
+
+template<typename T, bool LumaFirst>
+YuvPair ReadYuv422Pair(const T *img, bool yvu)
+{
+    constexpr unsigned int idx0 = (LumaFirst ? 0 : 1); // First  luma value index.
+    constexpr unsigned int idx1 = idx0 + 2;            // Second luma value index.
+    constexpr unsigned int idxU = (LumaFirst ? 1 : 0); // U chroma value index.
+    constexpr unsigned int idxV = idxU + 2;            // V chroma value index.
+
+    YuvPair pair{ClampedLuma(img[idx0]), ClampedLuma(img[idx1]), img[idxU] - Add2U_NV12, img[idxV] - Add2V_NV12};
+    if (yvu)
+    {
+        std::swap(pair.u, pair.v);
+    }
+    return pair;
+}
+
+template<typename T>
+void StoreYuv422RgbPair(T *&rgb, const YuvPair &pair, bool rgba, bool bgr)
+{
+    StoreNv12RgbPixel(rgb, pair.y0, pair.u, pair.v, rgba, bgr);
+    StoreNv12RgbPixel(rgb, pair.y1, pair.u, pair.v, rgba, bgr);
+}
+
 //-==================================================================================================================-//
 // Set AlphaOnly to true to add/remove alpha channel to RGB/BGR image (without switching between RGB and BGR).
 template<typename T, bool AlphaOnly>
 static void convertRGBtoBGR(T *dst, const T *src, size_t numPixels, bool srcRGBA, bool dstRGBA)
 {
-    const unsigned int incr = 3 + srcRGBA;
+    const unsigned int incr = srcRGBA ? 4 : 3;
 
     for (size_t i = 0; i < numPixels; i++, src += incr)
     {
@@ -173,7 +316,7 @@ MAKE_CHANGE_ALPHA(double);
 template<typename T>
 void convertRGBtoGray(T *dst, const T *src, size_t numPixels, bool rgba, bool bgr)
 {
-    const int incr = 3 + rgba;
+    const int incr = rgba ? 4 : 3;
 
     for (size_t i = 0; i < numPixels; i++, dst++, src += incr)
     {
@@ -244,7 +387,7 @@ template<typename T, bool FullRange>
 void convertRGBtoHSV(T *dst, const T *src, size_t numPixels, bool rgba, bool bgr)
 {
     // Set the hue range (e.g., 0-360 for float types) and scale factor (to convert the final value to output hue value).
-    constexpr double range = (sizeof(T) > 1) ? 360.0 : (FullRange ? 256.0 : 180.0);
+    constexpr double range = HsvHueRange<T, FullRange>();
     constexpr double scale = range / 360.0;
     constexpr double norm  = std::is_floating_point_v<T> ? 1 : cuda::TypeTraits<T>::max;
     constexpr double round = std::is_floating_point_v<T> ? 0 : 0.5;
@@ -263,9 +406,9 @@ void convertRGBtoHSV(T *dst, const T *src, size_t numPixels, bool rgba, bool bgr
         double Vmin = std::min(R, std::min(G, B));
         double V    = std::max(R, std::max(G, B));
 
-        double diff = static_cast<double>(V - Vmin);
+        auto diff = V - Vmin;
 
-        double S = static_cast<double>(V) > DBL_EPSILON ? diff / V : 0.0;
+        double S = V > DBL_EPSILON ? diff / V : 0.0;
         double H = 0.0;
 
         if (diff > DBL_EPSILON)
@@ -336,60 +479,60 @@ MAKE_RGBtoHSV(double);
     2) H' = H / 60
     3) C  = V * S
     4) I  = (int)H
-    5) h  = H' - I  // Fractional part of H'
+    5) h  = H' - I  (fractional part of H')
     6) X  = C * (1 - fabs(fmod(H', 2.0) - 1.0))
           = C * (1 - fabs(H' - (I & ~1) - 1.0))
           = C * ((I & 1) ? 1 - h : h)
     5) m  = V - C
           = V - V * S
           = V * (1 - S)
-    7) p  = X + m      // When I is even: (I & 1) == 0 (I = 0, 2, or 4)
+    7) p  = X + m      (when I is even: (I & 1) == 0 (I = 0, 2, or 4))
           = C * h + V - C
           = V * S * h + V * (1 - S)
           = V * (S * h + 1 - S)
           = V * (1 - S + S * h)
           = V * (1 - S * (1 - h))
-    8) q  = X + m      // When I is odd: (I & 1) == 1 (I = 1, 3, or 5)
+    8) q  = X + m      (when I is odd: (I & 1) == 1 (I = 1, 3, or 5))
           = C * (1 - h) + V - C
           = V * S * (1 - h) + V * (1 - S)
           = V * (S - S * h + 1 - S)
           = V * (1 - S * h)
-    9) Cases: // Note: C + m = C + V - C = V
+    9) Cases: C + m = C + V - C = V
            I == 0: R = C + m = V
-                   G = X + m = p  // Even case
+                   G = X + m = p  (even case)
                    B =     m
 
-           I == 1: R = X + m = q  // Odd case
+           I == 1: R = X + m = q  (odd case)
                    G = C + m = V
                    B =     m
 
            I == 2: R =     m
                    G = C + m = V
-                   B = X + m = p  // Even case
+                   B = X + m = p  (even case)
 
            I == 3: R =     m
-                   G = X + m = q  // Odd case
+                   G = X + m = q  (odd case)
                    B = C + m = V
 
-           I == 4: R = X + m = p  // Even case
+           I == 4: R = X + m = p  (even case)
                    G =     m
                    B = C + m = V
 
            I == 5: R = C + m = V
                    G =     m
-                   B = X + m = q  // Odd case
+                   B = X + m = q  (odd case)
 */
 template<typename T, bool FullRange>
 void convertHSVtoRGB(T *dst, const T *src, size_t numPixels, bool rgba, bool bgr)
 {
-    constexpr double range = (sizeof(T) > 1) ? 360.0 : (FullRange ? 256.0 : 180.0);
+    constexpr double range = HsvHueRange<T, FullRange>();
     constexpr double scale = 6.0 / range;
     constexpr double norm  = std::is_floating_point_v<T> ? 1 : cuda::TypeTraits<T>::max;
     constexpr double round = std::is_floating_point_v<T> ? 0 : 0.5;
 
-    constexpr unsigned int mapR[6] = {0, 2, 1, 1, 3, 0};
-    constexpr unsigned int mapG[6] = {3, 0, 0, 2, 1, 1};
-    constexpr unsigned int mapB[6] = {1, 1, 3, 0, 0, 2};
+    constexpr std::array<unsigned int, 6> mapR = {0, 2, 1, 1, 3, 0};
+    constexpr std::array<unsigned int, 6> mapG = {3, 0, 0, 2, 1, 1};
+    constexpr std::array<unsigned int, 6> mapB = {1, 1, 3, 0, 0, 2};
 
     for (size_t i = 0; i < numPixels; i++)
     {
@@ -397,7 +540,7 @@ void convertHSVtoRGB(T *dst, const T *src, size_t numPixels, bool rgba, bool bgr
         double S = *src++ / norm;  // 0 <= S <= 1
         double V = *src++ / norm;  // 0 <= V <= 1
 
-        int idx = static_cast<int>(std::floor(H));
+        auto idx = static_cast<int>(std::floor(H));
 
         H -= idx;
 
@@ -405,10 +548,7 @@ void convertHSVtoRGB(T *dst, const T *src, size_t numPixels, bool rgba, bool bgr
         idx %= 6;
         if (idx < 0) idx += 6;
 
-        double val[] = {V,
-                        V * (1 - S),
-                        V * (1 - S * H),
-                        V * (1 - S * (1 - H))};
+        std::array<double, 4> val = {V, V * (1 - S), V * (1 - S * H), V * (1 - S * (1 - H))};
 
         unsigned int r = mapR[idx];
         unsigned int g = mapG[idx];
@@ -561,7 +701,7 @@ void convertRGBtoYUV_420(T *dst, const T *src, unsigned int wdth, unsigned int h
     assert(wdth % 2 == 0 && hght % 2 == 0);
 
     const size_t imgPixels = (size_t)hght * (size_t)wdth;
-    const size_t incrPix   = 3 + rgba;
+    const size_t incrPix   = rgba ? 4 : 3;
     const size_t incrSrc   = imgPixels * incrPix;
     const size_t incrDst   = imgPixels * 3 / 2;
 
@@ -581,25 +721,9 @@ void convertRGBtoYUV_420(T *dst, const T *src, unsigned int wdth, unsigned int h
         {
             for (unsigned int w = 0; w < wdth; w++, rgb += incrPix)
             {
-                T R = rgb[0];
-                T G = rgb[1];
-                T B = rgb[2];
-
-                // Convert all RGB values to Y values and store them.
-                // clang-format off
-                if (bgr) std::swap(R, B);
-                *y++ = cuda::SaturateCast<T>(R2Y_NV12 * R + G2Y_NV12 * G + B2Y_NV12 * B + Add2Y_NV12);
-                // clang-format on
-
-                // Convert only even pixels (in width and height) to U and V values and store them.
-                if ((w & 1) == 0 && (h & 1) == 0)
-                {
-                    double U = R2U_NV12 * R + G2U_NV12 * G + B2U_NV12 * B + Add2U_NV12;
-                    double V = R2V_NV12 * R + G2V_NV12 * G + B2V_NV12 * B + Add2V_NV12;
-
-                    *u++ = cuda::SaturateCast<T>(U);
-                    *v++ = cuda::SaturateCast<T>(V);
-                }
+                RgbPixel<T> pixel = ReadRgbPixel(rgb, bgr);
+                *y++ = cuda::SaturateCast<T>(R2Y_NV12 * pixel.r + G2Y_NV12 * pixel.g + B2Y_NV12 * pixel.b + Add2Y_NV12);
+                StoreYuv420ChromaIfNeeded(u, v, pixel, w, h);
             }
         }
     }
@@ -611,7 +735,7 @@ void convertRGBtoYUV_420(vector<T> &dst, const vector<T> &src, unsigned int wdth
                          unsigned int numImgs, bool rgba, bool bgr, bool yvu)
 {
     // Ensure input data has sets of 3 or 4 (RGB/BGA with or w/o alpha) values for the given width and height and batch size.
-    assert(src.size() == (size_t)numImgs * (size_t)hght * (size_t)wdth * (size_t)(3 + rgba));
+    assert(src.size() == (size_t)numImgs * (size_t)hght * (size_t)wdth * (size_t)(rgba ? 4 : 3));
 
     // YUV 420 needs 3 elements for each two RGB pixels.
     assert(dst.size() == (size_t)numImgs * (size_t)hght * (size_t)wdth * 3 / 2);
@@ -644,7 +768,7 @@ void convertYUVtoRGB_420(T *dst, const T *src, unsigned int wdth, unsigned int h
 
     const size_t imgPixels = (size_t)hght * (size_t)wdth;
     const size_t incrSrc   = imgPixels * 3 / 2;
-    const size_t incrDst   = imgPixels * (3 + rgba);
+    const size_t incrDst   = imgPixels * (rgba ? 4 : 3);
 
     for (unsigned int n = 0; n < numImgs; n++, src += incrSrc, dst += incrDst)
     {
@@ -654,36 +778,15 @@ void convertYUVtoRGB_420(T *dst, const T *src, unsigned int wdth, unsigned int h
 
         for (unsigned int h = 0; h < hght; h++)
         {
-            // clang-format off
-            // NOTE: when computing subsampled row index, h needs to be integer divided by 4 before multiplying by width.
-            const T *u = src + imgPixels + (h / 4) * wdth + ((h / 2) & 1) * (wdth / 2);
-            const T *v = u   + imgPixels / 4;
-
-            if (yvu) std::swap(u, v);
-            // clang-format on
+            auto [u, v] = Yuv420ChromaRows(src, imgPixels, wdth, h, yvu);
 
             for (unsigned int w = 0; w < wdth; w++)
             {
-                double Y = *y++;
-                double U = *u;
-                double V = *v;
+                double Y = ClampedLuma(*y++);
+                double U = *u - Add2U_NV12;
+                double V = *v - Add2V_NV12;
 
-                // Convert all YUV (ITU Rec.601) values to RGB values and store them.
-                Y -= Add2Y_NV12;
-                U -= Add2U_NV12;
-                V -= Add2V_NV12;
-
-                // clang-format off
-                if (Y < 0.0) Y = 0.0;
-                T R = cuda::SaturateCast<T>(Y2R_NV12 * Y + U2R_NV12 * U + V2R_NV12 * V);
-                T G = cuda::SaturateCast<T>(Y2G_NV12 * Y + U2G_NV12 * U + V2G_NV12 * V);
-                T B = cuda::SaturateCast<T>(Y2B_NV12 * Y + U2B_NV12 * U + V2B_NV12 * V);
-                if (bgr) std::swap(R, B);
-                *rgb++ = R;
-                *rgb++ = G;
-                *rgb++ = B;
-                if (rgba) *rgb++ = Alpha<T>;
-                // clang-format on
+                StoreNv12RgbPixel(rgb, Y, U, V, rgba, bgr);
 
                 u += (w & 1);
                 v += (w & 1);
@@ -698,7 +801,7 @@ void convertYUVtoRGB_420(vector<T> &dst, const vector<T> &src, unsigned int wdth
                          unsigned int numImgs, bool rgba, bool bgr, bool yvu)
 {
     // Ensure output data has sets of 3 or 4 (RGB/BGA with or w/o alpha) values for the given width and height and batch size.
-    assert(dst.size() == (size_t)numImgs * (size_t)hght * (size_t)wdth * (size_t)(3 + rgba));
+    assert(dst.size() == (size_t)numImgs * (size_t)hght * (size_t)wdth * (size_t)(rgba ? 4 : 3));
 
     // YUV 420 needs 3 elements for each two RGB pixels.
     assert(src.size() == (size_t)numImgs * (size_t)hght * (size_t)wdth * 3 / 2);
@@ -774,7 +877,7 @@ void convertRGBtoNV12(T *dst, const T *src, unsigned int wdth, unsigned int hght
     assert(wdth % 2 == 0 && hght % 2 == 0);
 
     const size_t imgPixels = (size_t)hght * (size_t)wdth;
-    const size_t incrPix   = 3 + rgba;
+    const size_t incrPix   = rgba ? 4 : 3;
     const size_t incrSrc   = imgPixels * incrPix;
     const size_t incrDst   = imgPixels * 3 / 2;
 
@@ -789,28 +892,9 @@ void convertRGBtoNV12(T *dst, const T *src, unsigned int wdth, unsigned int hght
         {
             for (unsigned int w = 0; w < wdth; w++, rgb += incrPix)
             {
-                T R = rgb[0];
-                T G = rgb[1];
-                T B = rgb[2];
-
-                // Convert all RGB values to Y values and store them.
-                // clang-format off
-                if (bgr) std::swap(R, B);
-                *y++ = cuda::SaturateCast<T>(R2Y_NV12 * R + G2Y_NV12 * G + B2Y_NV12 * B + Add2Y_NV12);
-                // clang-format on
-
-                // Convert only even pixels (in width and height) to U and V values and store them.
-                if ((w & 1) == 0 && (h & 1) == 0)
-                {
-                    double U = R2U_NV12 * R + G2U_NV12 * G + B2U_NV12 * B + Add2U_NV12;
-                    double V = R2V_NV12 * R + G2V_NV12 * G + B2V_NV12 * B + Add2V_NV12;
-
-                    // clang-format off
-                    if (yvu) std::swap(U, V);
-                    // clang-format on
-                    *uv++ = cuda::SaturateCast<T>(U);
-                    *uv++ = cuda::SaturateCast<T>(V);
-                }
+                RgbPixel<T> pixel = ReadRgbPixel(rgb, bgr);
+                *y++ = cuda::SaturateCast<T>(R2Y_NV12 * pixel.r + G2Y_NV12 * pixel.g + B2Y_NV12 * pixel.b + Add2Y_NV12);
+                StoreNv12ChromaIfNeeded(uv, pixel, w, h, yvu);
             }
         }
     }
@@ -822,7 +906,7 @@ void convertRGBtoNV12(vector<T> &dst, const vector<T> &src, unsigned int wdth, u
                       bool rgba, bool bgr, bool yvu)
 {
     // Ensure input data has sets of 3 or 4 (RGB/BGA with or w/o alpha) values for the given width and height and batch size.
-    assert(src.size() == (size_t)numImgs * (size_t)hght * (size_t)wdth * (size_t)(3 + rgba));
+    assert(src.size() == (size_t)numImgs * (size_t)hght * (size_t)wdth * (size_t)(rgba ? 4 : 3));
 
     // YUV NV12 needs 3 elements for each two RGB pixels.
     assert(dst.size() == (size_t)numImgs * (size_t)hght * (size_t)wdth * 3 / 2);
@@ -855,7 +939,7 @@ void convertNV12toRGB(T *dst, const T *src, unsigned int wdth, unsigned int hght
 
     const size_t imgPixels = (size_t)hght * (size_t)wdth;
     const size_t incrSrc   = imgPixels * 3 / 2;
-    const size_t incrDst   = imgPixels * (3 + rgba);
+    const size_t incrDst   = imgPixels * (rgba ? 4 : 3);
 
     for (unsigned int n = 0; n < numImgs; n++, src += incrSrc, dst += incrDst)
     {
@@ -870,31 +954,12 @@ void convertNV12toRGB(T *dst, const T *src, unsigned int wdth, unsigned int hght
 
             for (unsigned int w = 0; w < wdth; w++)
             {
-                double Y = *y++;
-                double U = uv[0];
-                double V = uv[1];
+                double Y    = ClampedLuma(*y++);
+                auto [U, V] = ReadNv12Chroma(uv, yvu);
 
-                // clang-format off
-                if (yvu) std::swap(U, V);
+                StoreNv12RgbPixel(rgb, Y, U, V, rgba, bgr);
 
-                // Convert all YUV (ITU Rec.601) values to RGB values and store them.
-                Y -= Add2Y_NV12;
-                U -= Add2U_NV12;
-                V -= Add2V_NV12;
-                if (Y < 0.0) Y = 0.0;
-
-                T R = cuda::SaturateCast<T>(Y2R_NV12 * Y + U2R_NV12 * U + V2R_NV12 * V);
-                T G = cuda::SaturateCast<T>(Y2G_NV12 * Y + U2G_NV12 * U + V2G_NV12 * V);
-                T B = cuda::SaturateCast<T>(Y2B_NV12 * Y + U2B_NV12 * U + V2B_NV12 * V);
-
-                if (bgr) std::swap(R, B);
-                *rgb++ = R;
-                *rgb++ = G;
-                *rgb++ = B;
-                if (rgba) *rgb++ = Alpha<T>;
-
-                if (w & 1) uv += 2;
-                // clang-format on
+                uv += (w & 1) * 2;
             }
         }
     }
@@ -906,7 +971,7 @@ void convertNV12toRGB(vector<T> &dst, const vector<T> &src, unsigned int wdth, u
                       bool rgba, bool bgr, bool yvu)
 {
     // Ensure output data has sets of 3 or 4 (RGB/BGA with or w/o alpha) values for the given width and height and batch size.
-    assert(dst.size() == (size_t)numImgs * (size_t)hght * (size_t)wdth * (size_t)(3 + rgba));
+    assert(dst.size() == (size_t)numImgs * (size_t)hght * (size_t)wdth * (size_t)(rgba ? 4 : 3));
 
     // YUV NV12 needs 3 elements for each two RGB pixels.
     assert(src.size() == (size_t)numImgs * (size_t)hght * (size_t)wdth * 3 / 2);
@@ -937,14 +1002,9 @@ void convertYUVtoRGB_422(T *dst, const T *src, unsigned int wdth, unsigned int h
     // Ensure width is a multiple of 2.
     assert(wdth % 2 == 0);
 
-    constexpr unsigned int idx0 = (LumaFirst ? 0 : 1); // First  luma value index.
-    constexpr unsigned int idx1 = idx0 + 2;            // Second luma value index.
-    constexpr unsigned int idxU = (LumaFirst ? 1 : 0); // U chroma value index.
-    constexpr unsigned int idxV = idxU + 2;            // V chroma value index.
-
     const size_t imgPixels = (size_t)hght * (size_t)wdth;
     const size_t incrSrc   = imgPixels * 2;
-    const size_t incrDst   = imgPixels * (3 + rgba);
+    const size_t incrDst   = imgPixels * (rgba ? 4 : 3);
 
     for (unsigned int n = 0; n < numImgs; n++, src += incrSrc, dst += incrDst)
     {
@@ -956,51 +1016,7 @@ void convertYUVtoRGB_422(T *dst, const T *src, unsigned int wdth, unsigned int h
         {
             for (unsigned int w = 0; w < wdth; w += 2, img += 4)
             {
-                T R, G, B;
-
-                // clang-format off
-                double U  = img[idxU],
-                       V  = img[idxV],
-                       Y0 = img[idx0],
-                       Y1 = img[idx1];
-
-                if (yvu) std::swap(U, V);
-
-                // Convert all YUV (ITU Rec.601) values to RGB values and store them.
-                Y0 -= Add2Y_NV12;
-                Y1 -= Add2Y_NV12;
-                U  -= Add2U_NV12;
-                V  -= Add2V_NV12;
-
-                if (Y0 < 0.0) Y0 = 0.0;
-                if (Y1 < 0.0) Y1 = 0.0;
-                // clang-format on
-
-                double Y_0  = Y2R_NV12 * Y0; // NOTE: Y2R_NV12 == Y2G_NV12 == Y2B_NV12.
-                double Y_1  = Y2R_NV12 * Y1;
-                double UV_r = U2R_NV12 * U + V2R_NV12 * V;
-                double UV_g = U2G_NV12 * U + V2G_NV12 * V;
-                double UV_b = U2B_NV12 * U + V2B_NV12 * V;
-
-                R = cuda::SaturateCast<T>(Y_0 + UV_r);
-                G = cuda::SaturateCast<T>(Y_0 + UV_g);
-                B = cuda::SaturateCast<T>(Y_0 + UV_b);
-
-                // clang-format off
-                if (bgr) std::swap(R, B);
-                *rgb++ = R;  *rgb++ = G;  *rgb++ = B;
-                if (rgba) *rgb++ = Alpha<T>;
-                // clang-format on
-
-                R = cuda::SaturateCast<T>(Y_1 + UV_r);
-                G = cuda::SaturateCast<T>(Y_1 + UV_g);
-                B = cuda::SaturateCast<T>(Y_1 + UV_b);
-
-                // clang-format off
-                if (bgr) std::swap(R, B);
-                *rgb++ = R;  *rgb++ = G;  *rgb++ = B;
-                if (rgba) *rgb++ = Alpha<T>;
-                // clang-format on
+                StoreYuv422RgbPair(rgb, ReadYuv422Pair<T, LumaFirst>(img, yvu), rgba, bgr);
             }
         }
     }
@@ -1012,7 +1028,7 @@ void convertYUVtoRGB_422(vector<T> &dst, const vector<T> &src, unsigned int wdth
                          unsigned int numImgs, bool rgba, bool bgr, bool yvu)
 {
     // Ensure output data has sets of 3 or 4 (RGB/BGA w/ or w/o alpha) values for the given width, height, & batch size.
-    assert(dst.size() == (size_t)numImgs * (size_t)hght * (size_t)wdth * (size_t)(3 + rgba));
+    assert(dst.size() == (size_t)numImgs * (size_t)hght * (size_t)wdth * (size_t)(rgba ? 4 : 3));
     assert(src.size() == (size_t)numImgs * (size_t)hght * (size_t)wdth * 2); // 4 values for each two RGB pixels.
 
     convertYUVtoRGB_422<T, LumaFirst>(dst.data(), src.data(), wdth, hght, numImgs, rgba, bgr, yvu);
@@ -1049,7 +1065,7 @@ MAKE_422toRGB(double);
 template<typename T, bool LumaFirst>
 void convertYUVtoGray_422(T *dst, const T *src, size_t numPixels)
 {
-    src += (1 - LumaFirst); // Increment to first Y value if luma not first.
+    src += (LumaFirst ? 0 : 1); // Increment to first Y value if luma not first.
 
     for (size_t i = 0; i < numPixels; i++, src += 2) *dst++ = *src;
 }

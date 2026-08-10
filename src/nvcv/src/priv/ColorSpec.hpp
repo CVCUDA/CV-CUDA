@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,13 +26,14 @@ namespace nvcv::priv {
 
 struct ChromaLoc
 {
-    NVCVChromaLocation horiz, vert;
+    NVCVChromaLocation horiz;
+    NVCVChromaLocation vert;
 };
 
 class ColorSpec
 {
 public:
-    constexpr ColorSpec(NVCVColorSpec cspec)
+    explicit constexpr ColorSpec(NVCVColorSpec cspec)
         : m_cspec{cspec}
     {
     }
@@ -40,7 +41,7 @@ public:
     ColorSpec(NVCVColorSpace cspace, NVCVYCbCrEncoding encoding, NVCVColorTransferFunction xferfunc,
               NVCVColorRange range, const ChromaLoc &loc) noexcept;
 
-    operator NVCVColorSpec() const noexcept;
+    explicit operator NVCVColorSpec() const noexcept;
 
     ChromaLoc chromaLoc() const noexcept;
     ColorSpec chromaLoc(const ChromaLoc &newLoc) const;

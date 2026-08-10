@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,5 +28,18 @@
 typedef struct NVCVAllocator *NVCVAllocatorHandle;
 
 typedef struct NVCVResourceAllocatorRec NVCVResourceAllocator;
+
+typedef struct NVCVResourceContextRec NVCVResourceContextRec;
+typedef struct NVCVMemoryBufferRec    NVCVMemoryBufferRec;
+typedef struct NVCVUserPointerRec     NVCVUserPointerRec;
+
+/** Opaque user context passed to custom allocator callbacks. */
+typedef NVCVResourceContextRec *NVCVResourceContext;
+
+/** Opaque memory buffer returned by allocator callbacks. */
+typedef NVCVMemoryBufferRec *NVCVMemoryBuffer;
+
+/** Opaque user pointer associated with NVCV resources. */
+typedef NVCVUserPointerRec *NVCVUserPointer;
 
 #endif // NVCV_ALLOC_FWD_H

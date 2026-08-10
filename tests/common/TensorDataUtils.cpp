@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -93,7 +93,6 @@ void PrintImageFromByteVector(const uint8_t *data, int width, int height, int ro
 }
 
 TensorImageData::TensorImageData(const TensorData &tensorData, int sampleIndex)
-    : m_planeStride(0)
 {
     if (!nvcv::TensorDataAccessStridedImage::IsCompatible(tensorData))
         throw Exception(Status::ERROR_INVALID_ARGUMENT, "Tensor Data not compatible with Pitch Access");
@@ -111,7 +110,7 @@ TensorImageData::TensorImageData(const TensorData &tensorData, int sampleIndex)
     if (m_layout != NVCV_TENSOR_CHW && m_layout != NVCV_TENSOR_NCHW && m_layout != NVCV_TENSOR_HWC
         && m_layout != NVCV_TENSOR_NHWC)
     {
-        throw std::runtime_error("Tensor layout unknown");
+        throw TensorDataUtilsError("Tensor layout unknown");
     }
 
     long sampleStride = tDataAc->sampleStride();
@@ -132,7 +131,7 @@ TensorImageData::TensorImageData(const TensorData &tensorData, int sampleIndex)
     if (m_planar)
     {
         if (!nvcv::TensorDataAccessStridedImagePlanar::IsCompatible(tensorData))
-            throw std::runtime_error("Tensor Data not compatible with Pitch Planar Access");
+            throw TensorDataUtilsError("Tensor Data not compatible with Pitch Planar Access");
 
         auto tDataACp = nvcv::TensorDataAccessStridedImagePlanar::Create(tensorData);
         m_planeStride = tDataACp->planeStride();
@@ -150,16 +149,16 @@ std::ostream &operator<<(std::ostream &out, const TensorImageData &cvImageData)
 
     if (!cvImageData.m_planar)
     {
-        printPlane(&cvImageData.m_data[0], cvImageData.m_size.w, cvImageData.m_size.h, cvImageData.m_rowStride,
-                   cvImageData.m_bytesPerC, cvImageData.m_numC);
+        printPlane(&cvImageData.m_data[0], cvImageData.m_size.w, cvImageData.m_size.h,
+                   static_cast<int>(cvImageData.m_rowStride), cvImageData.m_bytesPerC, cvImageData.m_numC);
     }
     else
     {
         for (int i = 0; i < cvImageData.m_numC; i++)
         {
             out << "\nPlane = " << i << "\n";
-            printPlane(&cvImageData.m_data[cvImageData.m_planeStride * i], cvImageData.m_size.w, cvImageData.m_size.h,
-                       cvImageData.m_rowStride, cvImageData.m_bytesPerC, 1);
+            printPlane(&cvImageData.m_data[static_cast<size_t>(cvImageData.m_planeStride * i)], cvImageData.m_size.w,
+                       cvImageData.m_size.h, static_cast<int>(cvImageData.m_rowStride), cvImageData.m_bytesPerC, 1);
         }
     }
     return out << "\n";
@@ -265,10 +264,10 @@ static void GetImageByteVectorFromTensorPlanar(const TensorData &tensorData, int
     Optional<TensorDataAccessStridedImagePlanar> tDataAc = nvcv::TensorDataAccessStridedImagePlanar::Create(tensorData);
 
     if (!tDataAc)
-        throw std::runtime_error("Tensor Data not compatible with planar access.");
+        throw TensorDataUtilsError("Tensor Data not compatible with planar access.");
 
     if (tDataAc->numSamples() <= sample || sample < 0)
-        throw std::runtime_error("Number of samples smaller than requested sample.");
+        throw TensorDataUtilsError("Number of samples smaller than requested sample.");
 
     // in a planar tensor the dtype represents each plane so the total bytes per pixel must be calculated
     int bytesPerC       = tDataAc->dtype().bitsPerPixel() / 8;
@@ -276,15 +275,15 @@ static void GetImageByteVectorFromTensorPlanar(const TensorData &tensorData, int
 
     // Make sure we have the right size.
     outData.resize(outputSizeBytes);
-    Byte  *basePtr  = tDataAc->sampleData(sample);
-    size_t dstWidth = tDataAc->numCols() * bytesPerC;
+    const Byte *basePtr  = tDataAc->sampleData(sample);
+    size_t      dstWidth = tDataAc->numCols() * bytesPerC;
     for (int i = 0; i < tDataAc->numChannels(); ++i)
     {
         if (cudaSuccess
             != cudaMemcpy2D(outData.data() + (i * (tDataAc->numCols() * tDataAc->numRows()) * bytesPerC), dstWidth,
                             basePtr, tDataAc->rowStride(), dstWidth, tDataAc->numRows(), cudaMemcpyDeviceToHost))
         {
-            throw std::runtime_error("CudaMemcpy failed on copy of channel plane from device to host.");
+            throw TensorDataUtilsError("CudaMemcpy failed on copy of channel plane from device to host.");
         }
         basePtr += tDataAc->planeStride();
     }
@@ -296,12 +295,12 @@ void GetImageByteVectorFromTensor(const TensorData &tensorData, int sample, std:
     Optional<TensorDataAccessStridedImage> tDataAc = nvcv::TensorDataAccessStridedImage::Create(tensorData);
 
     if (!tDataAc)
-        throw std::runtime_error("Tensor Data not compatible with pitch access.");
+        throw TensorDataUtilsError("Tensor Data not compatible with pitch access.");
     if (tDataAc->infoLayout().isChannelFirst())
         return GetImageByteVectorFromTensorPlanar(tensorData, sample, outData);
 
     if (tDataAc->numSamples() <= sample || sample < 0)
-        throw std::runtime_error("Number of samples smaller than requested sample.");
+        throw TensorDataUtilsError("Number of samples smaller than requested sample.");
 
     int bytesPerPixel   = (tDataAc->dtype().bitsPerPixel() / 8) * tDataAc->numChannels();
     int outputSizeBytes = tDataAc->numRows() * tDataAc->numCols() * bytesPerPixel;
@@ -314,7 +313,7 @@ void GetImageByteVectorFromTensor(const TensorData &tensorData, int sample, std:
                         tDataAc->rowStride(), tDataAc->numCols() * bytesPerPixel, tDataAc->numRows(),
                         cudaMemcpyDeviceToHost))
     {
-        throw std::runtime_error("CudaMemcpy failed");
+        throw TensorDataUtilsError("CudaMemcpy failed");
     }
     return;
 }
@@ -324,31 +323,31 @@ static void SetImageTensorFromByteVectorPlanar(const TensorData &tensorData, std
     Optional<TensorDataAccessStridedImagePlanar> tDataAc = nvcv::TensorDataAccessStridedImagePlanar::Create(tensorData);
 
     if (!tDataAc)
-        throw std::runtime_error("Tensor Data not compatible with planar image access.");
+        throw TensorDataUtilsError("Tensor Data not compatible with planar image access.");
 
     if (tDataAc->numSamples() <= sample)
-        throw std::runtime_error("Number of samples smaller than requested sample.");
+        throw TensorDataUtilsError("Number of samples smaller than requested sample.");
 
     if ((int64_t)data.size()
         != tDataAc->numCols() * tDataAc->numRows() * (tDataAc->dtype().bitsPerPixel() / 8) * tDataAc->numChannels())
-        throw std::runtime_error("Data vector is incorrect size, size must be W*H*bytesPerPixel.");
+        throw TensorDataUtilsError("Data vector is incorrect size, size must be W*H*bytesPerPixel.");
 
     int bytesPerC = (tDataAc->dtype().bitsPerPixel() / 8);
 
-    auto copyToGpu = [&](int j)
+    auto copyToGpu = [&tDataAc, &data, &bytesPerC](int j)
     {
         Byte *basePtr = tDataAc->sampleData(j);
 
         for (int i = 0; i < tDataAc->numChannels(); ++i)
         {
-            Byte  *srcPtr        = data.data() + (i * (tDataAc->numCols() * tDataAc->numRows() * bytesPerC));
-            size_t srcPitch      = tDataAc->numCols() * bytesPerC;
-            size_t srcWidthBytes = tDataAc->numCols() * bytesPerC;
-            if (cudaSuccess
+            const Byte *srcPtr   = data.data() + (i * (tDataAc->numCols() * tDataAc->numRows() * bytesPerC));
+            size_t      srcPitch = tDataAc->numCols() * bytesPerC;
+            if (size_t srcWidthBytes = tDataAc->numCols() * bytesPerC;
+                cudaSuccess
                 != cudaMemcpy2D(basePtr, tDataAc->rowStride(), srcPtr, srcPitch, srcWidthBytes, tDataAc->numRows(),
                                 cudaMemcpyHostToDevice))
             {
-                throw std::runtime_error("CudaMemcpy failed for channel plane copy from host to device.");
+                throw TensorDataUtilsError("CudaMemcpy failed for channel plane copy from host to device.");
             }
             basePtr += tDataAc->planeStride();
         }
@@ -368,32 +367,32 @@ void SetImageTensorFromByteVector(const TensorData &tensorData, std::vector<nvcv
     Optional<TensorDataAccessStridedImage> tDataAc = nvcv::TensorDataAccessStridedImage::Create(tensorData);
 
     if (!tDataAc)
-        throw std::runtime_error("Tensor Data not compatible with pitch access.");
+        throw TensorDataUtilsError("Tensor Data not compatible with pitch access.");
 
     if (tDataAc->infoLayout().isChannelFirst()) // planar case
         return SetImageTensorFromByteVectorPlanar(tensorData, data, sample);
 
     if (tDataAc->numSamples() <= sample)
-        throw std::runtime_error("Number of samples smaller than requested sample.");
+        throw TensorDataUtilsError("Number of samples smaller than requested sample.");
 
     if ((int64_t)data.size()
         != tDataAc->numCols() * tDataAc->numRows() * (tDataAc->dtype().bitsPerPixel() / 8) * tDataAc->numChannels())
-        throw std::runtime_error("Data vector is incorrect size, size must be N*W*sizeof(pixel).");
+        throw TensorDataUtilsError("Data vector is incorrect size, size must be N*W*sizeof(pixel).");
 
     int bytesPerC = (tDataAc->dtype().bitsPerPixel() / 8);
 
-    auto copyToGpu = [&](int i)
+    auto copyToGpu = [&tDataAc, &data, &bytesPerC](int i)
     {
-        Byte  *basePtr       = tDataAc->sampleData(i);
-        Byte  *srcPtr        = data.data();
-        size_t srcPitch      = tDataAc->numCols() * bytesPerC * tDataAc->numChannels();
-        size_t srcWidthBytes = tDataAc->numCols() * bytesPerC * tDataAc->numChannels();
+        Byte       *basePtr       = tDataAc->sampleData(i);
+        const Byte *srcPtr        = data.data();
+        size_t      srcPitch      = tDataAc->numCols() * bytesPerC * tDataAc->numChannels();
+        size_t      srcWidthBytes = tDataAc->numCols() * bytesPerC * tDataAc->numChannels();
 
         if (cudaSuccess
             != cudaMemcpy2D(basePtr, tDataAc->rowStride(), srcPtr, srcPitch, srcWidthBytes, tDataAc->numRows(),
                             cudaMemcpyHostToDevice))
         {
-            throw std::runtime_error("CudaMemcpy failed on copy of image from host to device.");
+            throw TensorDataUtilsError("CudaMemcpy failed on copy of image from host to device.");
         }
     };
 

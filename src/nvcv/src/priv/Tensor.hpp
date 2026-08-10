@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,7 +30,7 @@ class Tensor final : public CoreObjectBase<ITensor>
 {
 public:
     explicit Tensor(NVCVTensorRequirements reqs, IAllocator &alloc);
-    ~Tensor();
+    ~Tensor() override;
 
     static NVCVTensorRequirements CalcRequirements(int32_t numImages, Size2D imgSize, ImageFormat fmt,
                                                    int32_t baseAlign, int32_t rowAlign);
@@ -49,12 +49,12 @@ public:
     void exportData(NVCVTensorData &data) const override;
 
 private:
-    static void *AllocateBuffer(IAllocator &alloc, const NVCVTensorRequirements &reqs);
+    static NVCVByte *AllocateBuffer(IAllocator &alloc, const NVCVTensorRequirements &reqs);
 
     SharedCoreObj<IAllocator> m_alloc;
     NVCVTensorRequirements    m_reqs;
 
-    void *m_memBuffer;
+    NVCVByte *m_memBuffer;
 };
 
 } // namespace nvcv::priv

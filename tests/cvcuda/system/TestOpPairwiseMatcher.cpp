@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -83,16 +83,85 @@ void ComputeDistance(DT &dist, ST p1, ST p2, NVCVNormType normType)
     {
         if constexpr (!std::is_floating_point_v<ST>)
         {
-            dist += std::bitset<sizeof(ST) * 8>(p1 ^ p2).count();
+            dist = static_cast<DT>(dist + static_cast<DT>(std::bitset<sizeof(ST) * 8>(p1 ^ p2).count()));
         }
     }
     else if (normType == NVCV_NORM_L1)
     {
-        dist += absdiff(p1, p2);
+        dist = static_cast<DT>(dist + static_cast<DT>(absdiff(p1, p2)));
     }
     else if (normType == NVCV_NORM_L2)
     {
-        dist += std::pow(absdiff(p1, p2), 2);
+        dist = static_cast<DT>(dist + std::pow(absdiff(p1, p2), 2));
+    }
+}
+
+template<typename ST>
+float DescriptorDistance(const RawBufferType &set1Vec, const RawBufferType &set2Vec, const long3 &set1Strides,
+                         const long3 &set2Strides, int sampleIdx, int set1Idx, int set2Idx, int numDim,
+                         NVCVNormType normType)
+{
+    float dist = 0.f;
+
+    for (int coordIdx = 0; coordIdx < numDim; coordIdx++)
+    {
+        ST p1 = util::ValueAt<ST>(set1Vec, set1Strides, long3{sampleIdx, set1Idx, coordIdx});
+        ST p2 = util::ValueAt<ST>(set2Vec, set2Strides, long3{sampleIdx, set2Idx, coordIdx});
+
+        ComputeDistance(dist, p1, p2, normType);
+    }
+
+    return normType == NVCV_NORM_L2 ? std::sqrt(dist) : dist;
+}
+
+template<typename ST>
+void ComputeSortedDistances(std::vector<std::tuple<float, int>> &distIdx, const RawBufferType &set1Vec,
+                            const RawBufferType &set2Vec, const long3 &set1Strides, const long3 &set2Strides,
+                            int sampleIdx, int set1Idx, int numDim, NVCVNormType normType)
+{
+    for (int set2Idx = 0; set2Idx < static_cast<int>(distIdx.size()); set2Idx++)
+    {
+        distIdx[set2Idx] = std::make_tuple(DescriptorDistance<ST>(set1Vec, set2Vec, set1Strides, set2Strides, sampleIdx,
+                                                                  set1Idx, set2Idx, numDim, normType),
+                                           set2Idx);
+    }
+
+    std::ranges::sort(distIdx);
+}
+
+template<typename ST>
+int FindCrossCheckMatch(std::vector<std::tuple<float, int>> &cckDistIdx, const RawBufferType &set1Vec,
+                        const RawBufferType &set2Vec, const long3 &set1Strides, const long3 &set2Strides, int sampleIdx,
+                        int set2Idx, int numDim, NVCVNormType normType)
+{
+    for (int cck1Idx = 0; cck1Idx < static_cast<int>(cckDistIdx.size()); cck1Idx++)
+    {
+        cckDistIdx[cck1Idx] = std::make_tuple(DescriptorDistance<ST>(set1Vec, set2Vec, set1Strides, set2Strides,
+                                                                     sampleIdx, cck1Idx, set2Idx, numDim, normType),
+                                              cck1Idx);
+    }
+
+    std::ranges::sort(cckDistIdx);
+    return std::get<1>(cckDistIdx[0]);
+}
+
+inline void StoreMatch(RawBufferType &mchVec, RawBufferType &nmVec, RawBufferType &dVec, const long3 &mchStrides,
+                       const long1 &nmStrides, const long2 &dStrides, int sampleIdx, int &mchIdx, int set1Idx,
+                       int set2Idx, float distance)
+{
+    util::ValueAt<int>(mchVec, mchStrides, long3{sampleIdx, mchIdx, 0}) = set1Idx;
+    util::ValueAt<int>(mchVec, mchStrides, long3{sampleIdx, mchIdx, 1}) = set2Idx;
+
+    if (dStrides.x > 0)
+    {
+        util::ValueAt<float>(dVec, dStrides, long2{sampleIdx, mchIdx}) = distance;
+    }
+
+    mchIdx++;
+
+    if (nmStrides.x > 0)
+    {
+        util::ValueAt<int>(nmVec, nmStrides, long1{sampleIdx}) = mchIdx;
     }
 }
 
@@ -106,91 +175,49 @@ void BruteForceMatcher(RawBufferType &mchVec, RawBufferType &nmVec, RawBufferTyp
     std::vector<std::tuple<float, int>> distIdx(set2Size);
     std::vector<std::tuple<float, int>> cckDistIdx(set1Size);
 
+    auto storeCrossCheckMatch
+        = [&cckDistIdx, &dStrides, &dVec, &mchStrides, &mchVec, &nmStrides, &nmVec, &set1Strides, &set1Vec,
+           &set2Strides, &set2Vec, numDim, normType](int sampleIdx, int &mchIdx, int set1Idx,
+                                                     const std::vector<std::tuple<float, int>> &sortedDistances)
+    {
+        int set2Idx = std::get<1>(sortedDistances[0]);
+
+        if (FindCrossCheckMatch<ST>(cckDistIdx, set1Vec, set2Vec, set1Strides, set2Strides, sampleIdx, set2Idx, numDim,
+                                    normType)
+            == set1Idx)
+        {
+            StoreMatch(mchVec, nmVec, dVec, mchStrides, nmStrides, dStrides, sampleIdx, mchIdx, set1Idx, set2Idx,
+                       std::get<0>(sortedDistances[0]));
+        }
+    };
+
+    auto storeBestMatches
+        = [&dStrides, &dVec, &mchStrides, &mchVec, &nmStrides, &nmVec, matchesPerPoint](
+              int sampleIdx, int &mchIdx, int set1Idx, const std::vector<std::tuple<float, int>> &sortedDistances)
+    {
+        for (int m = 0; m < matchesPerPoint; m++)
+        {
+            StoreMatch(mchVec, nmVec, dVec, mchStrides, nmStrides, dStrides, sampleIdx, mchIdx, set1Idx,
+                       std::get<1>(sortedDistances[m]), std::get<0>(sortedDistances[m]));
+        }
+    };
+
     for (int sampleIdx = 0; sampleIdx < numSamples; sampleIdx++)
     {
         int mchIdx = 0;
 
         for (int set1Idx = 0; set1Idx < set1Size; set1Idx++)
         {
-            for (int set2Idx = 0; set2Idx < set2Size; set2Idx++)
-            {
-                float dist = 0.f;
-
-                for (int coordIdx = 0; coordIdx < numDim; coordIdx++)
-                {
-                    ST p1 = util::ValueAt<ST>(set1Vec, set1Strides, long3{sampleIdx, set1Idx, coordIdx});
-                    ST p2 = util::ValueAt<ST>(set2Vec, set2Strides, long3{sampleIdx, set2Idx, coordIdx});
-
-                    ComputeDistance(dist, p1, p2, normType);
-                }
-                if (normType == NVCV_NORM_L2)
-                {
-                    dist = std::sqrt(dist);
-                }
-
-                distIdx[set2Idx] = std::tie(dist, set2Idx);
-            }
-
-            std::sort(distIdx.begin(), distIdx.end());
+            ComputeSortedDistances<ST>(distIdx, set1Vec, set2Vec, set1Strides, set2Strides, sampleIdx, set1Idx, numDim,
+                                       normType);
 
             if (crossCheck)
             {
-                int set2Idx = std::get<1>(distIdx[0]);
-
-                for (int cck1Idx = 0; cck1Idx < set1Size; cck1Idx++)
-                {
-                    float dist = 0.f;
-
-                    for (int coordIdx = 0; coordIdx < numDim; coordIdx++)
-                    {
-                        ST p1 = util::ValueAt<ST>(set1Vec, set1Strides, long3{sampleIdx, cck1Idx, coordIdx});
-                        ST p2 = util::ValueAt<ST>(set2Vec, set2Strides, long3{sampleIdx, set2Idx, coordIdx});
-
-                        ComputeDistance(dist, p1, p2, normType);
-                    }
-                    if (normType == NVCV_NORM_L2)
-                    {
-                        dist = std::sqrt(dist);
-                    }
-
-                    cckDistIdx[cck1Idx] = std::tie(dist, cck1Idx);
-                }
-
-                std::sort(cckDistIdx.begin(), cckDistIdx.end());
-
-                if (std::get<1>(cckDistIdx[0]) == set1Idx)
-                {
-                    util::ValueAt<int>(mchVec, mchStrides, long3{sampleIdx, mchIdx, 0}) = set1Idx;
-                    util::ValueAt<int>(mchVec, mchStrides, long3{sampleIdx, mchIdx, 1}) = std::get<1>(distIdx[0]);
-                    if (dStrides.x > 0)
-                    {
-                        util::ValueAt<float>(dVec, dStrides, long2{sampleIdx, mchIdx}) = std::get<0>(distIdx[0]);
-                    }
-
-                    mchIdx++;
-                    if (nmStrides.x > 0)
-                    {
-                        util::ValueAt<int>(nmVec, nmStrides, long1{sampleIdx}) = mchIdx;
-                    }
-                }
+                storeCrossCheckMatch(sampleIdx, mchIdx, set1Idx, distIdx);
             }
             else
             {
-                for (int m = 0; m < matchesPerPoint; m++)
-                {
-                    util::ValueAt<int>(mchVec, mchStrides, long3{sampleIdx, mchIdx, 0}) = set1Idx;
-                    util::ValueAt<int>(mchVec, mchStrides, long3{sampleIdx, mchIdx, 1}) = std::get<1>(distIdx[m]);
-                    if (dStrides.x > 0)
-                    {
-                        util::ValueAt<float>(dVec, dStrides, long2{sampleIdx, mchIdx}) = std::get<0>(distIdx[m]);
-                    }
-
-                    mchIdx++;
-                    if (nmStrides.x > 0)
-                    {
-                        util::ValueAt<int>(nmVec, nmStrides, long1{sampleIdx}) = mchIdx;
-                    }
-                }
+                storeBestMatches(sampleIdx, mchIdx, set1Idx, distIdx);
             }
         }
     }
@@ -235,7 +262,7 @@ inline void SortOutput(std::vector<std::tuple<int, int, int, float>> &outIdsDist
         }
     }
 
-    std::sort(outIdsDist.begin(), outIdsDist.end());
+    std::ranges::sort(outIdsDist);
 }
 
 } // namespace ref
@@ -253,6 +280,7 @@ inline void SortOutput(std::vector<std::tuple<int, int, int, float>> &outIdsDist
 NVCV_TYPED_TEST_SUITE(OpPairwiseMatcher, type::Types<
     NVCV_TEST_ROW(1, 2, 2, 1, 1, false, false, NVCV_BRUTE_FORCE, NVCV_NORM_HAMMING, uint8_t),
     NVCV_TEST_ROW(2, 3, 4, 5, 1, false, true, NVCV_BRUTE_FORCE, NVCV_NORM_HAMMING, uint8_t),
+    NVCV_TEST_ROW(2, 13, 14, 32, 1, true, true, NVCV_BRUTE_FORCE, NVCV_NORM_HAMMING, uint8_t),
     NVCV_TEST_ROW(3, 4, 3, 32, 1, false, true, NVCV_BRUTE_FORCE, NVCV_NORM_HAMMING, uint32_t),
     NVCV_TEST_ROW(4, 11, 12, 128, 2, false, true, NVCV_BRUTE_FORCE, NVCV_NORM_HAMMING, uint8_t),
     NVCV_TEST_ROW(3, 17, 16, 128, 3, false, true, NVCV_BRUTE_FORCE, NVCV_NORM_HAMMING, uint8_t),
@@ -347,8 +375,8 @@ TYPED_TEST(OpPairwiseMatcher, CorrectOutput)
     long1 ns1Strides{ns1Data->stride(0)};
     long1 ns2Strides{ns2Data->stride(0)};
     long3 mchStrides{mchData->stride(0), mchData->stride(1), mchData->stride(2)};
-    long1 nmStrides = (numMatches) ? long1{nmData->stride(0)} : long1{0};
-    long2 dStrides  = (distances) ? long2{dData->stride(0), dData->stride(1)} : long2{0, 0};
+    long1 nmStrides = numMatches ? long1{nmData->stride(0)} : long1{0};
+    long2 dStrides  = distances ? long2{dData->stride(0), dData->stride(1)} : long2{0, 0};
 
     long set1BufSize = set1Strides.x * numSamples;
     long set2BufSize = set2Strides.x * numSamples;
@@ -438,10 +466,10 @@ TYPED_TEST(OpPairwiseMatcher, CorrectOutput)
     EXPECT_EQ(testIdsDist, goldIdsDist);
 }
 
-static void pairwiseMatcherNegative(nvcv::Tensor &set1, nvcv::Tensor &set2, nvcv::Tensor &numSet1,
-                                    nvcv::Tensor &numSet2, nvcv::Tensor &matches, nvcv::Tensor &numMatches,
-                                    nvcv::Tensor &distances, bool crossCheck, int matchesPerPoint,
-                                    NVCVNormType normType, NVCVPairwiseMatcherType algoChoice)
+static void pairwiseMatcherNegative(const nvcv::Tensor &set1, const nvcv::Tensor &set2, const nvcv::Tensor &numSet1,
+                                    const nvcv::Tensor &numSet2, const nvcv::Tensor &matches,
+                                    const nvcv::Tensor &numMatches, const nvcv::Tensor &distances, bool crossCheck,
+                                    int matchesPerPoint, NVCVNormType normType, NVCVPairwiseMatcherType algoChoice)
 {
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
@@ -449,7 +477,8 @@ static void pairwiseMatcherNegative(nvcv::Tensor &set1, nvcv::Tensor &set2, nvcv
     cvcuda::PairwiseMatcher op(algoChoice);
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall(
-                                               [&] {
+                                               [&op, &stream, &set1, &set2, &numSet1, &numSet2, &matches, &numMatches,
+                                                &distances, &crossCheck, &matchesPerPoint, &normType] {
                                                    op(stream, set1, set2, numSet1, numSet2, matches, numMatches,
                                                       distances, crossCheck, matchesPerPoint, normType);
                                                }));

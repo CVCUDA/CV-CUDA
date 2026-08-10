@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -71,10 +71,11 @@ CustomMemAllocator<AllocatorType>::CustomMemAllocator(AllocFunction &&alloc, Fre
     const bool trivial = has_trivial_copy_and_destruction<AllocFunction>::value
                       && has_trivial_copy_and_destruction<FreeFunction>::value;
 
-    const bool tuple_by_value = trivial && sizeof(T) <= sizeof(void *) && alignof(T) <= alignof(void *);
+    const bool tuple_by_value
+        = trivial && sizeof(T) <= sizeof(NVCVResourceContext) && alignof(T) <= alignof(NVCVResourceContext);
 
-    const bool construct_from_one_value_if_equal = trivial && by_value<AllocFunction>::value
-                                                && by_value<FreeFunction>::value
+    const bool construct_from_one_value_if_equal = trivial && std::is_same<AllocFunction, FreeFunction>::value
+                                                && by_value<AllocFunction>::value && by_value<FreeFunction>::value
                                                 && sizeof(AllocFunction) == sizeof(FreeFunction);
 
     // Can we fit the tuple inside a single pointer? If yes, go for it!
@@ -83,8 +84,8 @@ CustomMemAllocator<AllocatorType>::CustomMemAllocator(AllocFunction &&alloc, Fre
         Construct(std::forward<AllocFunction>(alloc), std::forward<FreeFunction>(free),
                   std::integral_constant<bool, tuple_by_value>());
     }
-    // Are the two callables trivial and do they context objects coincide? If yes, use that object and reinterpret the data
-    // This might be useful in a common case where both alloc and free are lambdas that capture only one - and the same - pointer-like value.
+    // Are the same-type callables trivial and do their context objects coincide? If yes, use that object.
+    // Different callable types must not share bytes because that would interpret one object as another type.
     else if NVCV_IF_CONSTEXPR (construct_from_one_value_if_equal)
     {
         if (!std::memcmp(&alloc, &free, std::min(DataSize<AllocFunction>(), DataSize<FreeFunction>())))
@@ -109,20 +110,26 @@ template<typename AllocatorType>
 template<typename AllocFunction, typename FreeFunction>
 void CustomMemAllocator<AllocatorType>::Construct(AllocFunction &&alloc, FreeFunction &&free, std::true_type)
 {
-    using T = std::tuple<AllocFunction, FreeFunction>; // TODO - use something that's trivially copyable
-    T ctx{std::move(alloc), std::move(free)};
-    static_assert(sizeof(T) <= sizeof(void *), "Internal error - this should never be invoked with a type that large.");
-
-    m_data.res.mem.fnAlloc = [](void *c, int64_t size, int32_t align) -> void *
+    struct T
     {
-        T     *target   = reinterpret_cast<T *>(&c);
-        auto &&callable = std::get<0>(*target);
-        return callable(size, align);
+        AllocFunction alloc;
+        FreeFunction  free;
     };
-    m_data.res.mem.fnFree = [](void *c, void *ptr, int64_t size, int32_t align)
+
+    T ctx{std::forward<AllocFunction>(alloc), std::forward<FreeFunction>(free)};
+    static_assert(sizeof(T) <= sizeof(NVCVResourceContext),
+                  "Internal error - this should never be invoked with a type that large.");
+
+    m_data.res.mem.fnAlloc = [](NVCVResourceContext c, int64_t size, int32_t align) -> NVCVMemoryBuffer
     {
-        T     *target   = reinterpret_cast<T *>(&c);
-        auto &&callable = std::get<1>(*target);
+        auto  *target   = reinterpret_cast<T *>(&c);
+        auto &&callable = target->alloc;
+        return CustomMemAllocator<AllocatorType>::ToMemoryBuffer(callable(size, align));
+    };
+    m_data.res.mem.fnFree = [](NVCVResourceContext c, NVCVMemoryBuffer ptr, int64_t size, int32_t align)
+    {
+        auto  *target   = reinterpret_cast<T *>(&c);
+        auto &&callable = target->free;
         callable(ptr, size, align);
     };
 
@@ -136,43 +143,46 @@ template<typename AllocatorType>
 template<typename AllocFunction, typename FreeFunction>
 void CustomMemAllocator<AllocatorType>::Construct(AllocFunction &&alloc, FreeFunction &&free, std::false_type)
 {
-    using T = std::tuple<AllocFunction, FreeFunction>;
-    std::unique_ptr<T> ctx(new T{std::move(alloc), std::move(free)});
-    auto               cleanup = [](void *ctx, NVCVResourceAllocator *) noexcept
+    using T      = std::tuple<AllocFunction, FreeFunction>;
+    auto ctx     = detail::MakeUniqueObj<T>(std::forward<AllocFunction>(alloc), std::forward<FreeFunction>(free));
+    auto cleanup = [](NVCVResourceContext ctx, NVCVResourceAllocator *) noexcept
     {
-        delete (T *)ctx;
+        detail::UniqueObj<T> storage(static_cast<T *>(static_cast<void *>(ctx)));
+        (void)storage;
     };
 
-    m_data.res.mem.fnAlloc = [](void *c, int64_t size, int32_t align) -> void *
+    m_data.res.mem.fnAlloc = [](NVCVResourceContext c, int64_t size, int32_t align) -> NVCVMemoryBuffer
     {
-        return std::get<0>(*static_cast<T *>(c))(size, align);
+        auto *ctx = static_cast<T *>(static_cast<void *>(c));
+        return CustomMemAllocator<AllocatorType>::ToMemoryBuffer(std::get<0>(*ctx)(size, align));
     };
-    m_data.res.mem.fnFree = [](void *c, void *ptr, int64_t size, int32_t align)
+    m_data.res.mem.fnFree = [](NVCVResourceContext c, NVCVMemoryBuffer ptr, int64_t size, int32_t align)
     {
-        std::get<1> (*static_cast<T *>(c))(ptr, size, align);
+        auto *ctx = static_cast<T *>(static_cast<void *>(c));
+        std::get<1> (*ctx)(ptr, size, align);
     };
 
     m_data.cleanup = cleanup;
-    m_data.ctx     = ctx.release();
+    m_data.ctx     = static_cast<NVCVResourceContext>(static_cast<void *>(ctx.release()));
 }
 
 template<typename AllocatorType>
 template<typename AllocFunction, typename FreeFunction>
-void CustomMemAllocator<AllocatorType>::ConstructFromDuplicateValues(AllocFunction &&alloc, FreeFunction &&free,
-                                                                     std::true_type)
+void CustomMemAllocator<AllocatorType>::ConstructFromDuplicateValues(const AllocFunction &alloc,
+                                                                     const FreeFunction  &free, std::true_type)
 {
     static_assert(std::is_trivially_copyable<AllocFunction>::value || std::is_empty<AllocFunction>::value,
                   "Internal error - should not pick this overload");
     static_assert(std::is_trivially_copyable<FreeFunction>::value || std::is_empty<FreeFunction>::value,
                   "Internal error - should not pick this overload");
-    m_data.res.mem.fnAlloc = [](void *c, int64_t size, int32_t align) -> void *
+    m_data.res.mem.fnAlloc = [](NVCVResourceContext c, int64_t size, int32_t align) -> NVCVMemoryBuffer
     {
-        AllocFunction *alloc = reinterpret_cast<AllocFunction *>(&c);
-        return (*alloc)(size, align);
+        auto *alloc = reinterpret_cast<AllocFunction *>(&c);
+        return CustomMemAllocator<AllocatorType>::ToMemoryBuffer((*alloc)(size, align));
     };
-    m_data.res.mem.fnFree = [](void *c, void *ptr, int64_t size, int32_t align)
+    m_data.res.mem.fnFree = [](NVCVResourceContext c, NVCVMemoryBuffer ptr, int64_t size, int32_t align)
     {
-        FreeFunction *free = reinterpret_cast<FreeFunction *>(&c);
+        auto *free = reinterpret_cast<FreeFunction *>(&c);
         (*free)(ptr, size, align);
     };
 
@@ -190,12 +200,11 @@ void CustomMemAllocator<AllocatorType>::ConstructFromDuplicateValues(AllocFuncti
 template<typename... ResourceAllocators>
 inline CustomAllocator<ResourceAllocators...>::CustomAllocator(ResourceAllocators &&...allocators)
 {
-    NVCVResourceAllocator data[] = {allocators.cdata()...};
-    NVCVAllocatorHandle   h      = {};
-    detail::CheckThrow(nvcvAllocatorConstructCustom(data, sizeof...(allocators), &h));
+    std::array<NVCVResourceAllocator, sizeof...(allocators)> data = {allocators.cdata()...};
+    NVCVAllocatorHandle                                      h    = {};
+    detail::CheckThrow(nvcvAllocatorConstructCustom(data.data(), static_cast<int32_t>(data.size()), &h));
     // void-cast the (nodiscard) result of the allocators - we know what we're doing here...
-    int dummy[] = {((void)allocators.release(), 0)...};
-    (void)dummy;
+    (void)std::initializer_list<int>{((void)allocators.release(), 0)...};
     reset(std::move(h));
 }
 

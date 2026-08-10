@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -61,6 +61,9 @@ CVCUDA_PUBLIC NVCVStatus cvcudaNonMaximumSuppressionCreate(NVCVOperatorHandle *h
  *
  *  Limitations:
  *
+ *  Planar image layouts: Not applicable
+ *       Reason: Inputs are bounding-box and score tensors and outputs are selection masks, not images.
+ *
  *  Input:
  *       Data Layout:    [NW]
  *       Channel count:  [4]
@@ -73,6 +76,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaNonMaximumSuppressionCreate(NVCVOperatorHandle *h
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | No
  *       64bit Float    | No
  *
@@ -88,6 +92,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaNonMaximumSuppressionCreate(NVCVOperatorHandle *h
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | No
  *       64bit Float    | No
  *
@@ -140,5 +145,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaNonMaximumSuppressionSubmit(NVCVOperatorHandle ha
 #ifdef __cplusplus
 }
 #endif
+
+/** @} */
 
 #endif /* CVCUDA__NON_MAXIMUM_SUPPRESSION_H */

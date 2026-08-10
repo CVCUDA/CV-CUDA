@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,7 @@
  */
 
 #include "Operators.hpp"
+#include "VarShapeUtils.hpp"
 
 #include <common/PyUtil.hpp>
 #include <cvcuda/OpRandomResizedCrop.hpp>
@@ -26,9 +27,18 @@
 #include <nvcv/python/Tensor.hpp>
 #include <pybind11/stl.h>
 
+#include <stdexcept>
+
 namespace cvcudapy {
 
 namespace {
+
+class RandomResizedCropError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
+
 Tensor RandomResizedCropInto(Tensor &output, Tensor &input, double min_scale, double max_scale, double min_ratio,
                              double max_ratio, NVCVInterpolationType interp, uint32_t seed,
                              std::optional<Stream> pstream)
@@ -38,7 +48,8 @@ Tensor RandomResizedCropInto(Tensor &output, Tensor &input, double min_scale, do
         pstream = Stream::Current();
     }
 
-    int32_t batchSize = static_cast<int32_t>(input.shape()[0]);
+    // HWC inputs (rank 3) have no N dim, so shape[0] is H — fall back to 1.
+    int32_t batchSize = (input.shape().size() == 4) ? static_cast<int32_t>(input.shape()[0]) : 1;
     auto    randomResizedCrop
         = CreateOperator<cvcuda::RandomResizedCrop>(min_scale, max_scale, min_ratio, max_ratio, batchSize, seed);
 
@@ -47,7 +58,8 @@ Tensor RandomResizedCropInto(Tensor &output, Tensor &input, double min_scale, do
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*randomResizedCrop});
 
-    randomResizedCrop->submit(pstream->cudaHandle(), input, output, interp);
+    guard.run([&randomResizedCrop, &pstream, &input, &output, &interp]()
+              { randomResizedCrop->submit(pstream->cudaHandle(), input, output, interp); });
 
     return std::move(output);
 }
@@ -78,7 +90,8 @@ ImageBatchVarShape RandomResizedCropVarShapeInto(ImageBatchVarShape &output, Ima
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*randomResizedCrop});
 
-    randomResizedCrop->submit(pstream->cudaHandle(), input, output, interp);
+    guard.run([&randomResizedCrop, &pstream, &input, &output, &interp]()
+              { randomResizedCrop->submit(pstream->cudaHandle(), input, output, interp); });
 
     return output;
 }
@@ -90,18 +103,11 @@ ImageBatchVarShape RandomResizedCropVarShape(ImageBatchVarShape                 
 {
     if (input.numImages() != (int)out_size.size())
     {
-        throw std::runtime_error("Number of input images must be equal to the number of elements in output size list ");
+        throw RandomResizedCropError(
+            "Number of input images must be equal to the number of elements in output size list ");
     }
 
-    ImageBatchVarShape output = ImageBatchVarShape::Create(input.capacity());
-
-    for (int i = 0; i < input.numImages(); ++i)
-    {
-        nvcv::ImageFormat format = input[i].format();
-        auto              size   = out_size[i];
-        auto              image  = Image::Create({std::get<0>(size), std::get<1>(size)}, format);
-        output.pushBack(image);
-    }
+    ImageBatchVarShape output = CreateSizedImageBatch(input, out_size);
 
     return RandomResizedCropVarShapeInto(output, input, min_scale, max_scale, min_ratio, max_ratio, interp, seed,
                                          pstream);
@@ -113,21 +119,12 @@ void ExportOpRandomResizedCrop(py::module &m)
 {
     using namespace pybind11::literals;
 
-    py::options options;
-    options.disable_function_signatures();
-
-    m.def("random_resized_crop", &RandomResizedCrop, "src"_a, "shape"_a, "min_scale"_a = 0.08, "max_scale"_a = 1.0,
-          "min_ratio"_a = 0.75, "max_ratio"_a = 1.3333333333333333, "interp"_a = NVCV_INTERP_LINEAR, "seed"_a = 0,
-          py::kw_only(), "stream"_a = nullptr,
+    m.def("random_resized_crop", NvtxTrace("cvcuda.random_resized_crop", &RandomResizedCrop), "src"_a, "shape"_a,
+          "min_scale"_a = 0.08, "max_scale"_a = 1.0, "min_ratio"_a = 0.75, "max_ratio"_a = 1.3333333333333333,
+          "interp"_a = NVCV_INTERP_LINEAR, "seed"_a = 0, py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
-
-	cvcuda.random_resized_crop(src: cvcuda.Tensor, shape: Tuple, min_scale: double, max_scale: double, min_ratio: double, max_ratio: double, interp: Interp = cvcuda.Interp.LINEAR, seed: int, stream: Optional[cvcuda.Stream] = None) -> cvcuda.Tensor
-
         Executes the RandomResizedCrop operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the RandomResizedCrop operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.Tensor): Input tensor containing one or more images.
@@ -143,22 +140,13 @@ void ExportOpRandomResizedCrop(py::module &m)
         Returns:
             cvcuda.Tensor: The output tensor.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("random_resized_crop_into", &RandomResizedCropInto, "dst"_a, "src"_a, "min_scale"_a = 0.08,
-          "max_scale"_a = 1.0, "min_ratio"_a = 0.75, "max_ratio"_a = 1.3333333333333333,
+    m.def("random_resized_crop_into", NvtxTrace("cvcuda.random_resized_crop_into", &RandomResizedCropInto), "dst"_a,
+          "src"_a, "min_scale"_a = 0.08, "max_scale"_a = 1.0, "min_ratio"_a = 0.75, "max_ratio"_a = 1.3333333333333333,
           "interp"_a = NVCV_INTERP_LINEAR, "seed"_a = 0, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.random_resized_crop_into(dst: cvcuda.Tensor, src: cvcuda.Tensor, shape: Tuple, min_scale: double, max_scale: double, min_ratio: double, max_ratio: double, interp: Interp = cvcuda.Interp.LINEAR, seed: int, stream: Optional[cvcuda.Stream] = None)
-
         Executes the RandomResizedCrop operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the RandomResizedCrop operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.Tensor): Output tensor to store the result of the operation.
@@ -172,24 +160,15 @@ void ExportOpRandomResizedCrop(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 
-    m.def("random_resized_crop", &RandomResizedCropVarShape, "src"_a, "sizes"_a, "min_scale"_a = 0.08,
-          "max_scale"_a = 1.0, "min_ratio"_a = 0.75, "max_ratio"_a = 1.3333333333333333,
-          "interp"_a = NVCV_INTERP_LINEAR, "seed"_a = 0, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.random_resized_crop(src: cvcuda.ImageBatchVarShape, shape: Tuple, min_scale: double, max_scale: double, min_ratio: double, max_ratio: double, interp: Interp = cvcuda.Interp.LINEAR, seed: int, stream: Optional[cvcuda.Stream] = None) -> cvcuda.ImageBatchVarShape
-
+    m.def("random_resized_crop", NvtxTrace("cvcuda.random_resized_crop", &RandomResizedCropVarShape), "src"_a,
+          "sizes"_a, "min_scale"_a = 0.08, "max_scale"_a = 1.0, "min_ratio"_a = 0.75,
+          "max_ratio"_a = 1.3333333333333333, "interp"_a = NVCV_INTERP_LINEAR, "seed"_a = 0, py::kw_only(),
+          "stream"_a = nullptr, R"pbdoc(
         Executes the RandomResizedCrop operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the RandomResizedCrop operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
@@ -205,22 +184,14 @@ void ExportOpRandomResizedCrop(py::module &m)
         Returns:
             cvcuda.Tensor: The output tensor.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("random_resized_crop_into", &RandomResizedCropVarShapeInto, "dst"_a, "src"_a, "min_scale"_a = 0.08,
-          "max_scale"_a = 1.0, "min_ratio"_a = 0.75, "max_ratio"_a = 1.3333333333333333,
-          "interp"_a = NVCV_INTERP_LINEAR, "seed"_a = 0, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.random_resized_crop_into(dst: cvcuda.ImageBatchVarShape, src: cvcuda.ImageBatchVarShape, shape: Tuple, min_scale: double, max_scale: double, min_ratio: double, max_ratio: double, interp: Interp = cvcuda.Interp.LINEAR, seed: int, stream: Optional[cvcuda.Stream] = None)
-
+    m.def("random_resized_crop_into", NvtxTrace("cvcuda.random_resized_crop_into", &RandomResizedCropVarShapeInto),
+          "dst"_a, "src"_a, "min_scale"_a = 0.08, "max_scale"_a = 1.0, "min_ratio"_a = 0.75,
+          "max_ratio"_a = 1.3333333333333333, "interp"_a = NVCV_INTERP_LINEAR, "seed"_a = 0, py::kw_only(),
+          "stream"_a = nullptr, R"pbdoc(
         Executes the RandomResizedCrop operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the RandomResizedCrop operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
@@ -234,11 +205,7 @@ void ExportOpRandomResizedCrop(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.ImageBatchVarShape: The output image batch (same as dst).
     )pbdoc");
 }
 

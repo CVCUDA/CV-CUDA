@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +15,8 @@
  * limitations under the License.
  */
 
+#include "CudaDeviceUtils.hpp"
+#include "Nvtx.hpp"
 #include "OpAdvCvtColor.hpp"
 #include "legacy/CvCudaLegacy.h"
 #include "legacy/CvCudaLegacyHelpers.hpp"
@@ -29,6 +31,18 @@
 #include <nvcv/util/CheckError.hpp>
 
 #define BLOCK 32
+
+constexpr int kPlanar444RowsPerThread     = 4;
+constexpr int kPlanar444SM89RowsPerThread = 1;
+
+constexpr int Planar444RowsPerThreadForSM(int sm)
+{
+    return sm == 89 ? kPlanar444SM89RowsPerThread : kPlanar444RowsPerThread;
+}
+
+static_assert(Planar444RowsPerThreadForSM(89) == 1);
+static_assert(Planar444RowsPerThreadForSM(86) == 4);
+static_assert(Planar444RowsPerThreadForSM(90) == 4);
 
 namespace legacy = nvcv::legacy::cuda_op;
 namespace cuda   = nvcv::cuda;
@@ -169,6 +183,53 @@ __global__ void yuv_to_bgr_char_nhwc(SrcWrapper src, DstWrapper dst, int2 dstSiz
     *dst.ptr(batch_idx, dst_y, dst_x, bidx ^ 2) = cuda::SaturateCast<T>(r);
 }
 
+template<int RowsPerThread, class SrcWrapper, class DstWrapper, typename T = typename DstWrapper::ValueType>
+__global__ void yuv_to_bgr_char_nchw(SrcWrapper src, DstWrapper dst, int2 dstSize, int bidx,
+                                     const YUV2RGBConstants cooef)
+{
+    int dst_x  = blockIdx.x * blockDim.x + threadIdx.x;
+    int dst_y0 = blockIdx.y * blockDim.y * RowsPerThread + threadIdx.y;
+
+    if (dst_x >= dstSize.x || dst_y0 >= dstSize.y)
+        return;
+    const int batch_idx = get_batch_idx();
+
+    T Y[RowsPerThread];
+    T Cb[RowsPerThread];
+    T Cr[RowsPerThread];
+
+#pragma unroll
+    for (int i = 0; i < RowsPerThread; ++i)
+    {
+        int dst_y = dst_y0 + i * blockDim.y;
+        if (dst_y < dstSize.y)
+        {
+            Y[i]  = *src.ptr(batch_idx, 0, dst_y, dst_x);
+            Cb[i] = *src.ptr(batch_idx, 1, dst_y, dst_x);
+            Cr[i] = *src.ptr(batch_idx, 2, dst_y, dst_x);
+        }
+    }
+
+    int C0 = cooef.V2R, C1 = cooef.V2G, C2 = cooef.U2G, C3 = cooef.U2B;
+    int delta = ((T)(cuda::TypeTraits<T>::max / 2 + 1));
+
+#pragma unroll
+    for (int i = 0; i < RowsPerThread; ++i)
+    {
+        int dst_y = dst_y0 + i * blockDim.y;
+        if (dst_y < dstSize.y)
+        {
+            int b = Y[i] + CV_DESCALE((Cb[i] - delta) * C3, yuv_shift);
+            int g = Y[i] + CV_DESCALE((Cb[i] - delta) * C2 + (Cr[i] - delta) * C1, yuv_shift);
+            int r = Y[i] + CV_DESCALE((Cr[i] - delta) * C0, yuv_shift);
+
+            *dst.ptr(batch_idx, bidx, dst_y, dst_x)     = cuda::SaturateCast<T>(b);
+            *dst.ptr(batch_idx, 1, dst_y, dst_x)        = cuda::SaturateCast<T>(g);
+            *dst.ptr(batch_idx, bidx ^ 2, dst_y, dst_x) = cuda::SaturateCast<T>(r);
+        }
+    }
+}
+
 template<class SrcWrapper, class DstWrapper, typename T = typename DstWrapper::ValueType>
 __global__ void bgr_to_yuv_char_nhwc(SrcWrapper src, DstWrapper dst, int2 dstSize, int bidx,
                                      const RGB2YUVConstants cooef)
@@ -191,6 +252,52 @@ __global__ void bgr_to_yuv_char_nhwc(SrcWrapper src, DstWrapper dst, int2 dstSiz
     *dst.ptr(batch_idx, dst_y, dst_x, 0) = cuda::SaturateCast<T>(Y);
     *dst.ptr(batch_idx, dst_y, dst_x, 1) = cuda::SaturateCast<T>(U);
     *dst.ptr(batch_idx, dst_y, dst_x, 2) = cuda::SaturateCast<T>(V);
+}
+
+template<int RowsPerThread, class SrcWrapper, class DstWrapper, typename T = typename DstWrapper::ValueType>
+__global__ void bgr_to_yuv_char_nchw(SrcWrapper src, DstWrapper dst, int2 dstSize, int bidx,
+                                     const RGB2YUVConstants cooef)
+{
+    int dst_x  = blockIdx.x * blockDim.x + threadIdx.x;
+    int dst_y0 = blockIdx.y * blockDim.y * RowsPerThread + threadIdx.y;
+    if (dst_x >= dstSize.x || dst_y0 >= dstSize.y)
+        return;
+    const int batch_idx = get_batch_idx();
+
+    int B[RowsPerThread];
+    int G[RowsPerThread];
+    int R[RowsPerThread];
+
+#pragma unroll
+    for (int i = 0; i < RowsPerThread; ++i)
+    {
+        int dst_y = dst_y0 + i * blockDim.y;
+        if (dst_y < dstSize.y)
+        {
+            B[i] = *src.ptr(batch_idx, bidx, dst_y, dst_x);
+            G[i] = *src.ptr(batch_idx, 1, dst_y, dst_x);
+            R[i] = *src.ptr(batch_idx, bidx ^ 2, dst_y, dst_x);
+        }
+    }
+
+    int C0 = cooef.R2Y, C1 = cooef.G2Y, C2 = cooef.B2Y, C3 = cooef.R2V, C4 = cooef.B2U;
+    int delta = ((T)(cuda::TypeTraits<T>::max / 2 + 1)) * (1 << yuv_shift);
+
+#pragma unroll
+    for (int i = 0; i < RowsPerThread; ++i)
+    {
+        int dst_y = dst_y0 + i * blockDim.y;
+        if (dst_y < dstSize.y)
+        {
+            int Y = CV_DESCALE(R[i] * C0 + G[i] * C1 + B[i] * C2, yuv_shift);
+            int V = CV_DESCALE((R[i] - Y) * C3 + delta, yuv_shift); //Cr
+            int U = CV_DESCALE((B[i] - Y) * C4 + delta, yuv_shift); //Cb
+
+            *dst.ptr(batch_idx, 0, dst_y, dst_x) = cuda::SaturateCast<T>(Y);
+            *dst.ptr(batch_idx, 1, dst_y, dst_x) = cuda::SaturateCast<T>(U);
+            *dst.ptr(batch_idx, 2, dst_y, dst_x) = cuda::SaturateCast<T>(V);
+        }
+    }
 }
 
 template<typename T>
@@ -219,9 +326,69 @@ __device__ __forceinline__ void bgr_to_yuv420_kernel(const T &r, const T &g, con
     u = CV_DESCALE((b - y) * C4, yuv_shift); //Cb
 }
 
+__device__ __forceinline__ void store_rgb_pair(uint8_t *dst, const uchar3 &pixel0, const uchar3 &pixel1)
+{
+    if ((reinterpret_cast<uintptr_t>(dst) & (alignof(uchar4) - 1)) == 0)
+    {
+        *reinterpret_cast<uchar4 *>(dst)                  = make_uchar4(pixel0.x, pixel0.y, pixel0.z, pixel1.x);
+        *reinterpret_cast<uchar2 *>(dst + sizeof(uchar4)) = make_uchar2(pixel1.y, pixel1.z);
+    }
+    else
+    {
+        *reinterpret_cast<uchar2 *>(dst)                  = make_uchar2(pixel0.x, pixel0.y);
+        *reinterpret_cast<uchar4 *>(dst + sizeof(uchar2)) = make_uchar4(pixel0.z, pixel1.x, pixel1.y, pixel1.z);
+    }
+}
+
 template<class SrcWrapper, class DstWrapper, typename T = typename DstWrapper::ValueType>
 __global__ void yuv420sp_to_bgr_char_nhwc(SrcWrapper src, DstWrapper dst, int2 dstSize, int dcn, int bidx, int uidx,
-                                          const YUV2RGBConstants cooef)
+                                          const YUV2RGBConstants cooef, bool packedOutput)
+{
+    int dst_x = 2 * (blockIdx.x * blockDim.x + threadIdx.x);
+    int dst_y = 2 * (blockIdx.y * blockDim.y + threadIdx.y);
+    if (dst_x >= dstSize.x || dst_y >= dstSize.y)
+        return;
+    const int batch_idx = get_batch_idx();
+
+    // The four luma pixels in this tile share one subsampled chroma pair.
+    T U = *src.ptr(batch_idx, dstSize.y + dst_y / 2, dst_x + uidx);
+    T V = *src.ptr(batch_idx, dstSize.y + dst_y / 2, dst_x + 1 - uidx);
+
+#pragma unroll
+    for (int dy = 0; dy < 2; ++dy)
+    {
+        uchar3 pixels[2];
+#pragma unroll
+        for (int dx = 0; dx < 2; ++dx)
+        {
+            T       Y = *src.ptr(batch_idx, dst_y + dy, dst_x + dx, 0);
+            uint8_t r{0}, g{0}, b{0};
+            yuv_to_bgr_kernel<T>(Y, U, V, r, g, b, cooef);
+
+            pixels[dx] = bidx == 0 ? make_uchar3(b, g, r) : make_uchar3(r, g, b);
+        }
+
+        uint8_t *dstPtr = dst.ptr(batch_idx, dst_y + dy, dst_x, 0);
+        if (dcn == 3 && packedOutput && (reinterpret_cast<uintptr_t>(dstPtr) & (alignof(uchar2) - 1)) == 0)
+        {
+            store_rgb_pair(dstPtr, pixels[0], pixels[1]);
+        }
+        else
+        {
+#pragma unroll
+            for (int dx = 0; dx < 2; ++dx)
+            {
+                *dst.ptr(batch_idx, dst_y + dy, dst_x + dx, 0) = pixels[dx].x;
+                *dst.ptr(batch_idx, dst_y + dy, dst_x + dx, 1) = pixels[dx].y;
+                *dst.ptr(batch_idx, dst_y + dy, dst_x + dx, 2) = pixels[dx].z;
+            }
+        }
+    }
+}
+
+template<class SrcWrapper, class DstWrapper, typename T = typename DstWrapper::ValueType>
+__global__ void yuv420sp_to_bgra_char_nhwc(SrcWrapper src, DstWrapper dst, int2 dstSize, int bidx, int uidx,
+                                           const YUV2RGBConstants cooef)
 {
     int dst_x = blockIdx.x * blockDim.x + threadIdx.x;
     int dst_y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -234,15 +401,47 @@ __global__ void yuv420sp_to_bgr_char_nhwc(SrcWrapper src, DstWrapper dst, int2 d
     T U = *src.ptr(batch_idx, dstSize.y + dst_y / 2, uv_x + uidx);
     T V = *src.ptr(batch_idx, dstSize.y + dst_y / 2, uv_x + 1 - uidx);
 
-    uint8_t r{0}, g{0}, b{0}, a{0xff};
+    uint8_t r{0}, g{0}, b{0};
     yuv_to_bgr_kernel<T>(Y, U, V, r, g, b, cooef);
 
     *dst.ptr(batch_idx, dst_y, dst_x, bidx)     = b;
     *dst.ptr(batch_idx, dst_y, dst_x, 1)        = g;
     *dst.ptr(batch_idx, dst_y, dst_x, bidx ^ 2) = r;
-    if (dcn == 4)
+    *dst.ptr(batch_idx, dst_y, dst_x, 3)        = 0xff;
+}
+
+template<class SrcWrapper, class DstWrapper, typename T = typename DstWrapper::ValueType>
+__global__ void yuv420sp_to_bgr_char_nchw(SrcWrapper src, DstWrapper dst, int2 dstSize, int dcn, int bidx, int uidx,
+                                          const YUV2RGBConstants cooef)
+{
+    int dst_x = 2 * (blockIdx.x * blockDim.x + threadIdx.x);
+    int dst_y = 2 * (blockIdx.y * blockDim.y + threadIdx.y);
+    if (dst_x >= dstSize.x || dst_y >= dstSize.y)
+        return;
+    const int batch_idx = get_batch_idx();
+
+    // The four luma pixels in this tile share one subsampled chroma pair.
+    T U = *src.ptr(batch_idx, 0, dstSize.y + dst_y / 2, dst_x + uidx);
+    T V = *src.ptr(batch_idx, 0, dstSize.y + dst_y / 2, dst_x + 1 - uidx);
+
+#pragma unroll
+    for (int dy = 0; dy < 2; ++dy)
     {
-        *dst.ptr(batch_idx, dst_y, dst_x, 3) = a;
+#pragma unroll
+        for (int dx = 0; dx < 2; ++dx)
+        {
+            T       Y = *src.ptr(batch_idx, 0, dst_y + dy, dst_x + dx);
+            uint8_t r{0}, g{0}, b{0};
+            yuv_to_bgr_kernel<T>(Y, U, V, r, g, b, cooef);
+
+            *dst.ptr(batch_idx, bidx, dst_y + dy, dst_x + dx)     = b;
+            *dst.ptr(batch_idx, 1, dst_y + dy, dst_x + dx)        = g;
+            *dst.ptr(batch_idx, bidx ^ 2, dst_y + dy, dst_x + dx) = r;
+            if (dcn == 4)
+            {
+                *dst.ptr(batch_idx, 3, dst_y + dy, dst_x + dx) = 0xff;
+            }
+        }
     }
 }
 
@@ -250,41 +449,29 @@ template<class SrcWrapper, class DstWrapper, typename T = typename DstWrapper::V
 __global__ void bgr_to_yuv420sp_char_nhwc(SrcWrapper src, DstWrapper dst, int2 srcSize, int scn, int bidx, int uidx,
                                           const RGB2YUVConstants cooef)
 {
-    int src_x = blockIdx.x * blockDim.x + threadIdx.x;
-    int src_y = blockIdx.y * blockDim.y + threadIdx.y;
+    int src_x = 2 * (blockIdx.x * blockDim.x + threadIdx.x);
+    int src_y = 2 * (blockIdx.y * blockDim.y + threadIdx.y);
     if (src_x >= srcSize.x || src_y >= srcSize.y)
         return;
     const int batch_idx = get_batch_idx();
-    int       uv_x      = (src_x % 2 == 0) ? src_x : (src_x - 1);
 
+    // A single thread owns the tile so the four luma values and averaged chroma pair reuse the same pixel loads.
     uint8_t b0 = static_cast<uint8_t>(*src.ptr(batch_idx, src_y, src_x, bidx));
     uint8_t g0 = static_cast<uint8_t>(*src.ptr(batch_idx, src_y, src_x, 1));
     uint8_t r0 = static_cast<uint8_t>(*src.ptr(batch_idx, src_y, src_x, bidx ^ 2));
-
-    // compute Y for every pixel
-    int Y0{0}, U0{0}, V0{0};
+    int     Y0{0}, U0{0}, V0{0};
     bgr_to_yuv420_kernel<T>(r0, g0, b0, Y0, U0, V0, cooef);
 
-    // Write the Y plane
-    *dst.ptr(batch_idx, src_y, src_x, 0) = cuda::SaturateCast<T>(Y0);
-
-    // compute U and V for every 2x2 block
-    if (src_x >= srcSize.x - 1 || src_y >= srcSize.y - 1)
-        return; //bail out since we need 2x2 block to compute U and V
-
-    if (src_x % 2 || src_y % 2)
-        return; //bail out since we need 2x2 block to compute U and V skip all odd pixels for u and v
-
-    uint8_t b1 = static_cast<uint8_t>(*src.ptr(batch_idx, src_y + 0, src_x + 1, bidx));
-    uint8_t g1 = static_cast<uint8_t>(*src.ptr(batch_idx, src_y + 0, src_x + 1, 1));
-    uint8_t r1 = static_cast<uint8_t>(*src.ptr(batch_idx, src_y + 0, src_x + 1, bidx ^ 2));
+    uint8_t b1 = static_cast<uint8_t>(*src.ptr(batch_idx, src_y, src_x + 1, bidx));
+    uint8_t g1 = static_cast<uint8_t>(*src.ptr(batch_idx, src_y, src_x + 1, 1));
+    uint8_t r1 = static_cast<uint8_t>(*src.ptr(batch_idx, src_y, src_x + 1, bidx ^ 2));
 
     int Y1{0}, U1{0}, V1{0};
     bgr_to_yuv420_kernel<T>(r1, g1, b1, Y1, U1, V1, cooef);
 
-    uint8_t b2 = static_cast<uint8_t>(*src.ptr(batch_idx, src_y + 1, src_x + 0, bidx));
-    uint8_t g2 = static_cast<uint8_t>(*src.ptr(batch_idx, src_y + 1, src_x + 0, 1));
-    uint8_t r2 = static_cast<uint8_t>(*src.ptr(batch_idx, src_y + 1, src_x + 0, bidx ^ 2));
+    uint8_t b2 = static_cast<uint8_t>(*src.ptr(batch_idx, src_y + 1, src_x, bidx));
+    uint8_t g2 = static_cast<uint8_t>(*src.ptr(batch_idx, src_y + 1, src_x, 1));
+    uint8_t r2 = static_cast<uint8_t>(*src.ptr(batch_idx, src_y + 1, src_x, bidx ^ 2));
 
     int Y2{0}, U2{0}, V2{0};
     bgr_to_yuv420_kernel<T>(r2, g2, b2, Y2, U2, V2, cooef);
@@ -296,10 +483,66 @@ __global__ void bgr_to_yuv420sp_char_nhwc(SrcWrapper src, DstWrapper dst, int2 s
     int Y3{0}, U3{0}, V3{0};
     bgr_to_yuv420_kernel<T>(r3, g3, b3, Y3, U3, V3, cooef);
 
+    *dst.ptr(batch_idx, src_y, src_x, 0)         = cuda::SaturateCast<T>(Y0);
+    *dst.ptr(batch_idx, src_y, src_x + 1, 0)     = cuda::SaturateCast<T>(Y1);
+    *dst.ptr(batch_idx, src_y + 1, src_x, 0)     = cuda::SaturateCast<T>(Y2);
+    *dst.ptr(batch_idx, src_y + 1, src_x + 1, 0) = cuda::SaturateCast<T>(Y3);
+
     int delta = ((T)(cuda::TypeTraits<T>::max / 2 + 1)); // non scaled delta in this kernel
 
-    *dst.ptr(batch_idx, srcSize.y + src_y / 2, uv_x + uidx) = cuda::SaturateCast<T>((U0 + U1 + U2 + U3) / 4 + delta);
-    *dst.ptr(batch_idx, srcSize.y + src_y / 2, uv_x + (1 - uidx))
+    *dst.ptr(batch_idx, srcSize.y + src_y / 2, src_x + uidx) = cuda::SaturateCast<T>((U0 + U1 + U2 + U3) / 4 + delta);
+    *dst.ptr(batch_idx, srcSize.y + src_y / 2, src_x + (1 - uidx))
+        = cuda::SaturateCast<T>((V0 + V1 + V2 + V3) / 4 + delta);
+}
+
+template<class SrcWrapper, class DstWrapper, typename T = typename DstWrapper::ValueType>
+__global__ void bgr_to_yuv420sp_char_nchw(SrcWrapper src, DstWrapper dst, int2 srcSize, int scn, int bidx, int uidx,
+                                          const RGB2YUVConstants cooef)
+{
+    int src_x = 2 * (blockIdx.x * blockDim.x + threadIdx.x);
+    int src_y = 2 * (blockIdx.y * blockDim.y + threadIdx.y);
+    if (src_x >= srcSize.x || src_y >= srcSize.y)
+        return;
+    const int batch_idx = get_batch_idx();
+
+    // A single thread owns the tile so the four luma values and averaged chroma pair reuse the same pixel loads.
+    uint8_t b0 = static_cast<uint8_t>(*src.ptr(batch_idx, bidx, src_y, src_x));
+    uint8_t g0 = static_cast<uint8_t>(*src.ptr(batch_idx, 1, src_y, src_x));
+    uint8_t r0 = static_cast<uint8_t>(*src.ptr(batch_idx, bidx ^ 2, src_y, src_x));
+    int     Y0{0}, U0{0}, V0{0};
+    bgr_to_yuv420_kernel<T>(r0, g0, b0, Y0, U0, V0, cooef);
+
+    uint8_t b1 = static_cast<uint8_t>(*src.ptr(batch_idx, bidx, src_y, src_x + 1));
+    uint8_t g1 = static_cast<uint8_t>(*src.ptr(batch_idx, 1, src_y, src_x + 1));
+    uint8_t r1 = static_cast<uint8_t>(*src.ptr(batch_idx, bidx ^ 2, src_y, src_x + 1));
+
+    int Y1{0}, U1{0}, V1{0};
+    bgr_to_yuv420_kernel<T>(r1, g1, b1, Y1, U1, V1, cooef);
+
+    uint8_t b2 = static_cast<uint8_t>(*src.ptr(batch_idx, bidx, src_y + 1, src_x));
+    uint8_t g2 = static_cast<uint8_t>(*src.ptr(batch_idx, 1, src_y + 1, src_x));
+    uint8_t r2 = static_cast<uint8_t>(*src.ptr(batch_idx, bidx ^ 2, src_y + 1, src_x));
+
+    int Y2{0}, U2{0}, V2{0};
+    bgr_to_yuv420_kernel<T>(r2, g2, b2, Y2, U2, V2, cooef);
+
+    uint8_t b3 = static_cast<uint8_t>(*src.ptr(batch_idx, bidx, src_y + 1, src_x + 1));
+    uint8_t g3 = static_cast<uint8_t>(*src.ptr(batch_idx, 1, src_y + 1, src_x + 1));
+    uint8_t r3 = static_cast<uint8_t>(*src.ptr(batch_idx, bidx ^ 2, src_y + 1, src_x + 1));
+
+    int Y3{0}, U3{0}, V3{0};
+    bgr_to_yuv420_kernel<T>(r3, g3, b3, Y3, U3, V3, cooef);
+
+    *dst.ptr(batch_idx, 0, src_y, src_x)         = cuda::SaturateCast<T>(Y0);
+    *dst.ptr(batch_idx, 0, src_y, src_x + 1)     = cuda::SaturateCast<T>(Y1);
+    *dst.ptr(batch_idx, 0, src_y + 1, src_x)     = cuda::SaturateCast<T>(Y2);
+    *dst.ptr(batch_idx, 0, src_y + 1, src_x + 1) = cuda::SaturateCast<T>(Y3);
+
+    int delta = ((T)(cuda::TypeTraits<T>::max / 2 + 1)); // non scaled delta in this kernel
+
+    *dst.ptr(batch_idx, 0, srcSize.y + src_y / 2, src_x + uidx)
+        = cuda::SaturateCast<T>((U0 + U1 + U2 + U3) / 4 + delta);
+    *dst.ptr(batch_idx, 0, srcSize.y + src_y / 2, src_x + (1 - uidx))
         = cuda::SaturateCast<T>((V0 + V1 + V2 + V3) / 4 + delta);
 }
 
@@ -356,7 +599,7 @@ static bool isSupportedConversionCode(NVCVColorConversionCode code)
 static bool isSupportedColorSpec(nvcv::ColorSpec spec)
 {
     //may need to be extended to check for conversion type
-    switch (spec)
+    switch (static_cast<NVCVColorSpec>(spec))
     {
     case NVCV_COLOR_SPEC_BT601:
     case NVCV_COLOR_SPEC_BT709:
@@ -402,11 +645,24 @@ static bool areCorrectSizes(const NVCVColorConversionCode code, const nvcv::Tens
     return true;
 }
 
+static bool isInterleavedTensorLayout(nvcv::TensorLayout layout)
+{
+    return layout == nvcv::TENSOR_NHWC || layout == nvcv::TENSOR_HWC;
+}
+
+static bool isPlanarTensorLayout(nvcv::TensorLayout layout)
+{
+    return layout == nvcv::TENSOR_NCHW || layout == nvcv::TENSOR_CHW;
+}
+
 static bool checkInputOutputTensors(NVCVColorConversionCode code, const nvcv::TensorDataStridedCuda &in,
                                     const nvcv::TensorDataStridedCuda &out)
 {
-    if ((in.layout() == nvcv::TENSOR_NHWC || in.layout() == nvcv::TENSOR_HWC)
-        && (out.layout() == nvcv::TENSOR_HWC || out.layout() == nvcv::TENSOR_NHWC))
+    if (isInterleavedTensorLayout(in.layout()) && isInterleavedTensorLayout(out.layout()))
+    {
+        return true;
+    }
+    if (isPlanarTensorLayout(in.layout()) && isPlanarTensorLayout(out.layout()))
     {
         return true;
     }
@@ -415,7 +671,7 @@ static bool checkInputOutputTensors(NVCVColorConversionCode code, const nvcv::Te
 
 static const RGB2YUVConstants &getRGB2YUVCooef(nvcv::ColorSpec spec)
 {
-    switch (spec)
+    switch (static_cast<NVCVColorSpec>(spec))
     {
     case NVCV_COLOR_SPEC_BT601:
         return rgb2yuv_601;
@@ -430,7 +686,7 @@ static const RGB2YUVConstants &getRGB2YUVCooef(nvcv::ColorSpec spec)
 
 static const YUV2RGBConstants &getYUV2RGBCooef(nvcv::ColorSpec spec)
 {
-    switch (spec)
+    switch (static_cast<NVCVColorSpec>(spec))
     {
     case NVCV_COLOR_SPEC_BT601:
         return yuv2rgb_601;
@@ -450,6 +706,7 @@ AdvCvtColor::AdvCvtColor() {}
 void AdvCvtColor::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                              NVCVColorConversionCode code, nvcv::ColorSpec spec) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::AdvCvtColor::operator()[Tensor]");
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
     if (inData == nullptr)
     {
@@ -462,6 +719,18 @@ void AdvCvtColor::operator()(cudaStream_t stream, const nvcv::Tensor &in, const 
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "Output must be cuda-accessible, pitch-linear tensor");
+    }
+
+    if (inData->dtype() != nvcv::TYPE_U8)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "Input data type must be U8. Unsupported data type.");
+    }
+
+    if (outData->dtype() != nvcv::TYPE_U8)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "Output data type must be U8. Unsupported data type.");
     }
 
     //check compatibility
@@ -540,11 +809,34 @@ void AdvCvtColor::Yuv2Bgr(cudaStream_t stream, const nvcv::TensorDataStridedCuda
         const YUV2RGBConstants &cooef        = getYUV2RGBCooef(spec);
         auto                    outMaxStride = outAccess->sampleStride() * outAccess->numSamples();
         auto                    inMaxStride  = inAccess->sampleStride() * inAccess->numSamples();
+        bool                    isPlanar     = isPlanarTensorLayout(in.layout());
         if (std::max(outMaxStride, inMaxStride) <= cuda::TypeTraits<int32_t>::max)
         {
-            auto srcWrap = cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(in);
-            auto dstWrap = cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(out);
-            yuv_to_bgr_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx, cooef);
+            if (isPlanar)
+            {
+                auto srcWrap = cuda::CreateTensorWrapNCHW<uint8_t, int32_t>(in);
+                auto dstWrap = cuda::CreateTensorWrapNCHW<uint8_t, int32_t>(out);
+                int  sm;
+                NVCV_CHECK_THROW(GetCurrentDeviceSM(sm));
+                int  rowsPerThread = Planar444RowsPerThreadForSM(sm);
+                dim3 planarGridSize(gridSize.x, legacy::divUp(inputShape.H, blockSize.y * rowsPerThread), gridSize.z);
+                if (rowsPerThread == kPlanar444SM89RowsPerThread)
+                {
+                    yuv_to_bgr_char_nchw<kPlanar444SM89RowsPerThread>
+                        <<<planarGridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx, cooef);
+                }
+                else
+                {
+                    yuv_to_bgr_char_nchw<kPlanar444RowsPerThread>
+                        <<<planarGridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx, cooef);
+                }
+            }
+            else
+            {
+                auto srcWrap = cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(in);
+                auto dstWrap = cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(out);
+                yuv_to_bgr_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx, cooef);
+            }
         }
         else
         {
@@ -587,11 +879,34 @@ void AdvCvtColor::Bgr2Yuv(cudaStream_t stream, const nvcv::TensorDataStridedCuda
         const RGB2YUVConstants &cooef        = getRGB2YUVCooef(spec);
         auto                    outMaxStride = outAccess->sampleStride() * outAccess->numSamples();
         auto                    inMaxStride  = inAccess->sampleStride() * inAccess->numSamples();
+        bool                    isPlanar     = isPlanarTensorLayout(in.layout());
         if (std::max(outMaxStride, inMaxStride) <= cuda::TypeTraits<int32_t>::max)
         {
-            auto srcWrap = cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(in);
-            auto dstWrap = cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(out);
-            bgr_to_yuv_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx, cooef);
+            if (isPlanar)
+            {
+                auto srcWrap = cuda::CreateTensorWrapNCHW<uint8_t, int32_t>(in);
+                auto dstWrap = cuda::CreateTensorWrapNCHW<uint8_t, int32_t>(out);
+                int  sm;
+                NVCV_CHECK_THROW(GetCurrentDeviceSM(sm));
+                int  rowsPerThread = Planar444RowsPerThreadForSM(sm);
+                dim3 planarGridSize(gridSize.x, legacy::divUp(inputShape.H, blockSize.y * rowsPerThread), gridSize.z);
+                if (rowsPerThread == kPlanar444SM89RowsPerThread)
+                {
+                    bgr_to_yuv_char_nchw<kPlanar444SM89RowsPerThread>
+                        <<<planarGridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx, cooef);
+                }
+                else
+                {
+                    bgr_to_yuv_char_nchw<kPlanar444RowsPerThread>
+                        <<<planarGridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx, cooef);
+                }
+            }
+            else
+            {
+                auto srcWrap = cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(in);
+                auto dstWrap = cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(out);
+                bgr_to_yuv_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx, cooef);
+            }
         }
         else
         {
@@ -647,8 +962,9 @@ void AdvCvtColor::NvYuv2Bgr(cudaStream_t stream, const nvcv::TensorDataStridedCu
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "invalid output shape given input");
     }
 
-    dim3 blockSize(BLOCK, BLOCK / 1, 1);
-    dim3 gridSize(legacy::divUp(rgb_width, blockSize.x), legacy::divUp(rgb_height, blockSize.y), inputShape.N);
+    dim3 tiledBlockSize(BLOCK, BLOCK / 4, 1);
+    dim3 tiledGridSize(legacy::divUp(rgb_width, tiledBlockSize.x * 2), legacy::divUp(rgb_height, tiledBlockSize.y * 2),
+                       inputShape.N);
     int2 dstSize{outputShape.W, outputShape.H};
     int  dcn = outputShape.C;
 
@@ -659,12 +975,35 @@ void AdvCvtColor::NvYuv2Bgr(cudaStream_t stream, const nvcv::TensorDataStridedCu
         const YUV2RGBConstants &cooef        = getYUV2RGBCooef(spec);
         auto                    outMaxStride = outAccess->sampleStride() * outAccess->numSamples();
         auto                    inMaxStride  = inAccess->sampleStride() * inAccess->numSamples();
+        bool                    isPlanar     = isPlanarTensorLayout(in.layout());
         if (std::max(outMaxStride, inMaxStride) <= cuda::TypeTraits<int32_t>::max)
         {
-            auto srcWrap = cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(in);
-            auto dstWrap = cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(out);
-            yuv420sp_to_bgr_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, dcn, bidx, uidx,
-                                                                          cooef);
+            if (isPlanar)
+            {
+                auto srcWrap = cuda::CreateTensorWrapNCHW<uint8_t, int32_t>(in);
+                auto dstWrap = cuda::CreateTensorWrapNCHW<uint8_t, int32_t>(out);
+                yuv420sp_to_bgr_char_nchw<<<tiledGridSize, tiledBlockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, dcn,
+                                                                                        bidx, uidx, cooef);
+            }
+            else
+            {
+                auto srcWrap = cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(in);
+                auto dstWrap = cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(out);
+                if (dcn == 4)
+                {
+                    dim3 blockSize(BLOCK, BLOCK / 4, 1);
+                    dim3 gridSize(legacy::divUp(rgb_width, blockSize.x), legacy::divUp(rgb_height, blockSize.y),
+                                  inputShape.N);
+                    yuv420sp_to_bgra_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx,
+                                                                                   uidx, cooef);
+                }
+                else
+                {
+                    const bool packedOutput = outAccess->chStride() == 1 && outAccess->colStride() == dcn;
+                    yuv420sp_to_bgr_char_nhwc<<<tiledGridSize, tiledBlockSize, 0, stream>>>(
+                        srcWrap, dstWrap, dstSize, dcn, bidx, uidx, cooef, packedOutput);
+                }
+            }
         }
         else
         {
@@ -717,8 +1056,9 @@ void AdvCvtColor::Bgr2NvYuv(cudaStream_t stream, const nvcv::TensorDataStridedCu
     }
 
     int2 srcSize{inputShape.W, inputShape.H};
-    dim3 blockSize(BLOCK, BLOCK / 1, 1);
-    dim3 gridSize(legacy::divUp(inputShape.W, blockSize.x), legacy::divUp(inputShape.H, blockSize.y), inputShape.N);
+    dim3 blockSize(BLOCK, BLOCK / 4, 1);
+    dim3 gridSize(legacy::divUp(inputShape.W, blockSize.x * 2), legacy::divUp(inputShape.H, blockSize.y * 2),
+                  inputShape.N);
 
     switch (inDataType)
     {
@@ -727,12 +1067,23 @@ void AdvCvtColor::Bgr2NvYuv(cudaStream_t stream, const nvcv::TensorDataStridedCu
         const RGB2YUVConstants &cooef        = getRGB2YUVCooef(spec);
         auto                    outMaxStride = outAccess->sampleStride() * outAccess->numSamples();
         auto                    inMaxStride  = inAccess->sampleStride() * inAccess->numSamples();
+        bool                    isPlanar     = isPlanarTensorLayout(in.layout());
         if (std::max(outMaxStride, inMaxStride) <= cuda::TypeTraits<int32_t>::max)
         {
-            auto srcWrap = cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(in);
-            auto dstWrap = cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(out);
-            bgr_to_yuv420sp_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, srcSize, inputShape.C, bidx,
-                                                                          uidx, cooef);
+            if (isPlanar)
+            {
+                auto srcWrap = cuda::CreateTensorWrapNCHW<uint8_t, int32_t>(in);
+                auto dstWrap = cuda::CreateTensorWrapNCHW<uint8_t, int32_t>(out);
+                bgr_to_yuv420sp_char_nchw<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, srcSize, inputShape.C,
+                                                                              bidx, uidx, cooef);
+            }
+            else
+            {
+                auto srcWrap = cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(in);
+                auto dstWrap = cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(out);
+                bgr_to_yuv420sp_char_nhwc<<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, srcSize, inputShape.C,
+                                                                              bidx, uidx, cooef);
+            }
         }
         else
         {

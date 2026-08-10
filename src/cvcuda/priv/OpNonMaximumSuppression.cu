@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +15,7 @@
  * limitations under the License.
 **/
 
+#include "Nvtx.hpp"
 #include "OpNonMaximumSuppression.hpp"
 
 #include <cvcuda/cuda_tools/DropCast.hpp>
@@ -86,32 +87,31 @@ __global__ void NonMaximumSuppression(cuda::Tensor2DWrap<const T, int32_t>     i
         return;
     }
 
-    const T srcX    = inBBoxes[coordX];
-    bool    discard = false;
+    const T srcX = inBBoxes[coordX];
 
+#pragma unroll 2
     for (int bboxY = 0; bboxY < numBBoxes; ++bboxY)
     {
-        if (bboxX == bboxY)
+        const int2  coordY{bboxY, batchIdx};
+        const float scoreY = inScores[coordY];
+        if (scoreY < scoreX)
         {
             continue;
         }
 
-        const int2 coordY{bboxY, batchIdx};
-        const T    srcY = inBBoxes[coordY];
+        const T srcY = inBBoxes[coordY];
 
         if (ComputeIoU(srcX, srcY) > iouThreshold)
         {
-            const float scoreY = inScores[coordY];
-
             if (scoreX < scoreY || (scoreX == scoreY && ComputeArea(srcX) < ComputeArea(srcY)))
             {
-                discard = true;
-                break;
+                dst = 0;
+                return;
             }
         }
     }
 
-    dst = discard ? 0 : 1;
+    dst = 1;
 }
 
 inline __host__ void RunNonMaximumSuppresion(const nvcv::TensorDataStridedCuda &in,
@@ -126,7 +126,7 @@ inline __host__ void RunNonMaximumSuppresion(const nvcv::TensorDataStridedCuda &
     int numSamples = in.shape(0);
     int numBBoxes  = in.shape(1);
 
-    dim3 block(256, 1, 1);
+    dim3 block(128, 1, 1);
     dim3 grid((numBBoxes + block.x - 1) / block.x, 1, numSamples);
 
     NonMaximumSuppression<<<grid, block, 0, stream>>>(inWrap, outWrap, scoresWrap, numBBoxes, scThresh, iouThresh);
@@ -145,6 +145,7 @@ NonMaximumSuppression::NonMaximumSuppression() {}
 void NonMaximumSuppression::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                                        const nvcv::Tensor &scores, float scoreThreshold, float iouThreshold) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::NonMaximumSuppression::operator()[Tensor]");
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
     if (!inData)
     {

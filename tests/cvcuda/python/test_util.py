@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,11 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import cvcuda
-import torch
-
 import numpy as np
+
+import cvcuda
 import cvcuda_util as util
+import cupy
+
 
 RNG = np.random.default_rng(0)
 
@@ -31,7 +32,7 @@ def test_create_tensor_odd():
     tensor = util.create_tensor(
         [10], np.uint8, None, max_random=255, rng=RNG, transform_dist=util.dist_odd
     )
-    h_data = torch.as_tensor(tensor.cuda(), device="cuda").cpu()
+    h_data = cupy.asarray(tensor.cuda()).get()
     assert all([bool(val % 2 == 1) for val in h_data])
 
 

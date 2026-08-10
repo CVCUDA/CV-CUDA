@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -94,7 +94,7 @@ inline Allocator TensorBatch::alloc() const
 }
 
 template<typename It>
-inline void TensorBatch::pushBack(It begin, It end)
+inline void TensorBatch::pushBack(It begin, It end) // NOSONAR: accepts input iterators and consumes the range once.
 {
     std::vector<NVCVTensorHandle> handles;
     handles.reserve(capacity() - numTensors());
@@ -102,45 +102,45 @@ inline void TensorBatch::pushBack(It begin, It end)
     {
         handles.push_back(it->handle());
     }
-    detail::CheckThrow(nvcvTensorBatchPushTensors(handle(), handles.data(), handles.size()));
+    detail::CheckThrow(nvcvTensorBatchPushTensors(handle(), handles.data(), static_cast<int32_t>(handles.size())));
 }
 
-inline void TensorBatch::pushBack(const Tensor &tensor)
+inline void TensorBatch::pushBack(const Tensor &tensor) // NOSONAR: mutates state through the wrapped C handle.
 {
     auto hTensor = tensor.handle();
     detail::CheckThrow(nvcvTensorBatchPushTensors(handle(), &hTensor, 1));
 }
 
-inline void TensorBatch::popTensors(int32_t numTensors)
+inline void TensorBatch::popTensors(int32_t numTensors) // NOSONAR: mutates state through the wrapped C handle.
 {
     detail::CheckThrow(nvcvTensorBatchPopTensors(handle(), numTensors));
 }
 
-inline void TensorBatch::popTensor()
+inline void TensorBatch::popTensor() // NOSONAR: mutates state through the wrapped C handle.
 {
     detail::CheckThrow(nvcvTensorBatchPopTensors(handle(), 1));
 }
 
-inline TensorBatchData TensorBatch::exportData(CUstream stream)
+inline TensorBatchData TensorBatch::exportData(CUstream stream) const
 {
     NVCVTensorBatchData output = {};
     detail::CheckThrow(nvcvTensorBatchExportData(handle(), stream, &output));
     return TensorBatchData(output);
 }
 
-inline void TensorBatch::clear()
+inline void TensorBatch::clear() // NOSONAR: mutates state through the wrapped C handle.
 {
     detail::CheckThrow(nvcvTensorBatchClear(handle()));
 }
 
-inline void TensorBatch::setUserPointer(void *ptr)
+inline void TensorBatch::setUserPointer(NVCVUserPointer ptr) // NOSONAR: mutates state through the wrapped C handle.
 {
     detail::CheckThrow(nvcvTensorBatchSetUserPointer(handle(), ptr));
 }
 
-inline void *TensorBatch::getUserPointer() const
+inline NVCVUserPointer TensorBatch::getUserPointer() const
 {
-    void *outPtr = nullptr;
+    NVCVUserPointer outPtr = nullptr;
     detail::CheckThrow(nvcvTensorBatchGetUserPointer(handle(), &outPtr));
     return outPtr;
 }
@@ -152,7 +152,7 @@ inline Tensor TensorBatch::operator[](int32_t idx) const
     return Tensor(std::move(hTensor));
 }
 
-inline void TensorBatch::setTensor(int32_t idx, const Tensor &tensor)
+inline void TensorBatch::setTensor(int32_t idx, const Tensor &tensor) // NOSONAR: mutates through the wrapped C handle.
 {
     auto hTensor = tensor.handle();
     detail::CheckThrow(nvcvTensorBatchSetTensors(handle(), idx, &hTensor, 1));

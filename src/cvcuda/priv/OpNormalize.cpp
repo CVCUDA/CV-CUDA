@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "OpNormalize.hpp"
 
+#include "Nvtx.hpp"
 #include "legacy/CvCudaLegacy.h"
 #include "legacy/CvCudaLegacyHelpers.hpp"
 
@@ -29,7 +30,8 @@ namespace legacy = nvcv::legacy::cuda_op;
 
 Normalize::Normalize()
 {
-    legacy::DataShape maxIn, maxOut;
+    legacy::DataShape maxIn;
+    legacy::DataShape maxOut;
     //maxIn/maxOut not used by op.
     m_legacyOp         = std::make_unique<legacy::Normalize>(maxIn, maxOut);
     m_legacyOpVarShape = std::make_unique<legacy::NormalizeVarShape>(maxIn, maxOut);
@@ -39,6 +41,7 @@ void Normalize::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nv
                            const nvcv::Tensor &scale, const nvcv::Tensor &out, const float global_scale,
                            const float shift, const float epsilon, const uint32_t flags) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::Normalize::operator()[Tensor]");
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
     if (inData == nullptr)
     {
@@ -71,10 +74,34 @@ void Normalize::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nv
         m_legacyOp->infer(*inData, *baseData, *scaleData, *outData, global_scale, shift, epsilon, flags, stream));
 }
 
+void Normalize::operator()(cudaStream_t stream, const nvcv::Tensor &in, const float4 base, const float4 scale,
+                           const int baseCount, const int scaleCount, const nvcv::Tensor &out, const float global_scale,
+                           const float shift, const float epsilon, const uint32_t flags) const
+{
+    CVCUDA_NVTX_RANGE("cvcuda::Normalize::operator()[Tensor scalar]");
+    auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
+    if (inData == nullptr)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "Input must be cuda-accessible, pitch-linear tensor");
+    }
+
+    auto outData = out.exportData<nvcv::TensorDataStridedCuda>();
+    if (outData == nullptr)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "Output must be cuda-accessible, pitch-linear tensor");
+    }
+
+    NVCV_CHECK_THROW(m_legacyOp->infer(*inData, base, scale, baseCount, scaleCount, *outData, global_scale, shift,
+                                       epsilon, flags, stream));
+}
+
 void Normalize::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::Tensor &base,
                            const nvcv::Tensor &scale, const nvcv::ImageBatchVarShape &out, const float global_scale,
                            const float shift, const float epsilon, const uint32_t flags) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::Normalize::operator()[ImageBatchVarShape]");
     auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (inData == nullptr)
     {

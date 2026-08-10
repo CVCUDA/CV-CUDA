@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,10 +17,13 @@
 
 #include "OpCustomCrop.hpp"
 
+#include "Nvtx.hpp"
+#include "PlanarTensorView.hpp"
 #include "legacy/CvCudaLegacy.h"
 #include "legacy/CvCudaLegacyHelpers.hpp"
 
 #include <nvcv/Exception.hpp>
+#include <nvcv/TensorDataAccess.hpp>
 #include <nvcv/util/CheckError.hpp>
 
 namespace cvcuda::priv {
@@ -29,7 +32,8 @@ namespace legacy = nvcv::legacy::cuda_op;
 
 CustomCrop::CustomCrop()
 {
-    legacy::DataShape maxIn, maxOut;
+    legacy::DataShape maxIn;
+    legacy::DataShape maxOut;
     //maxIn/maxOut not used by op.
     m_legacyOp = std::make_unique<legacy::CustomCrop>(maxIn, maxOut);
 }
@@ -37,6 +41,7 @@ CustomCrop::CustomCrop()
 void CustomCrop::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                             const NVCVRectI &cropRect) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::CustomCrop::operator()[Tensor]");
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
     if (inData == nullptr)
     {
@@ -49,6 +54,15 @@ void CustomCrop::operator()(cudaStream_t stream, const nvcv::Tensor &in, const n
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "Output must be cuda-accessible, pitch-linear tensor");
+    }
+
+    // Cropping copies each channel plane independently and identically, so a planar (NCHW/CHW) image
+    // is just N*C single-channel planes: flatten them into the sample dimension and reuse the
+    // interleaved single-channel copy kernel unchanged, producing bit-exact planar output.
+    if (auto planarViews = PlanarSingleChannelViews(*inData, *outData))
+    {
+        NVCV_CHECK_THROW(m_legacyOp->infer(planarViews->first, planarViews->second, cropRect, stream));
+        return;
     }
 
     NVCV_CHECK_THROW(m_legacyOp->infer(*inData, *outData, cropRect, stream));

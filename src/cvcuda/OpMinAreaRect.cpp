@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "priv/OpMinAreaRect.hpp"
 
+#include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <nvcv/Exception.hpp>
@@ -28,7 +29,7 @@ namespace priv = cvcuda::priv;
 CVCUDA_DEFINE_API(0, 4, NVCVStatus, cvcudaMinAreaRectCreate, (NVCVOperatorHandle * handle, int maxContourNum))
 {
     return nvcv::ProtectCall(
-        [&]
+        [&handle, &maxContourNum]
         {
             if (handle == nullptr)
             {
@@ -36,7 +37,7 @@ CVCUDA_DEFINE_API(0, 4, NVCVStatus, cvcudaMinAreaRectCreate, (NVCVOperatorHandle
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            *handle = reinterpret_cast<NVCVOperatorHandle>(new priv::MinAreaRect(maxContourNum));
+            *handle = priv::CreateOperatorHandle<priv::MinAreaRect>(maxContourNum);
         });
 }
 
@@ -44,10 +45,14 @@ CVCUDA_DEFINE_API(0, 4, NVCVStatus, cvcudaMinAreaRectSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in, NVCVTensorHandle out,
                    NVCVTensorHandle numPointsInContour, const int totalContours))
 {
+    CVCUDA_NVTX_RANGE("cvcudaMinAreaRectSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&in, &out, &numPointsInContour, &handle, &stream, &totalContours]
         {
-            nvcv::TensorWrapHandle input(in), output(out), _numPointsInContour(numPointsInContour);
-            priv::ToDynamicRef<priv::MinAreaRect>(handle)(stream, input, output, _numPointsInContour, totalContours);
+            nvcv::TensorWrapHandle input(in);
+            nvcv::TensorWrapHandle output(out);
+            nvcv::TensorWrapHandle _numPointsInContour(numPointsInContour);
+            priv::ToDynamicRef<priv::MinAreaRect>(handle)(stream, input.resource(), output.resource(),
+                                                          _numPointsInContour.resource(), totalContours);
         });
 }

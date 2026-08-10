@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,11 +21,13 @@
 #include <cuda_runtime.h>
 #include <cvcuda/util/StreamId.hpp>
 
+#include <cstddef>
 #include <thread>
 
 TEST(StreamIdTest, RegularAndDefault)
 {
-    cudaStream_t stream1 = 0, stream2 = 0;
+    cudaStream_t stream1 = nullptr;
+    cudaStream_t stream2 = nullptr;
     (void)cudaStreamCreateWithFlags(&stream1, cudaStreamNonBlocking);
     (void)cudaStreamCreateWithFlags(&stream2, cudaStreamNonBlocking);
     if (!stream1 || !stream2)
@@ -39,7 +41,7 @@ TEST(StreamIdTest, RegularAndDefault)
 
     uint64_t id1 = nvcv::util::GetCudaStreamIdHint(stream1);
     uint64_t id2 = nvcv::util::GetCudaStreamIdHint(stream2);
-    uint64_t id3 = nvcv::util::GetCudaStreamIdHint(0);
+    uint64_t id3 = nvcv::util::GetCudaStreamIdHint(nullptr);
     EXPECT_NE(id1, id2);
     EXPECT_NE(id1, id3);
     EXPECT_NE(id2, id3);
@@ -56,7 +58,7 @@ TEST(StreamIdTest, HandleReuse)
 
     struct CudaDeleter
     {
-        void operator()(void *p)
+        void operator()(std::byte *p) const
         {
             cudaFree(p);
         }
@@ -66,11 +68,11 @@ TEST(StreamIdTest, HandleReuse)
     {
         void *ret = nullptr;
         cudaMalloc(&ret, size);
-        return ret;
+        return static_cast<std::byte *>(ret);
     };
 
-    size_t                             bufSize = 256 << 20; // 256MiB
-    std::unique_ptr<void, CudaDeleter> mem(CudaAlloc(bufSize));
+    size_t                                  bufSize = 256 << 20; // 256MiB
+    std::unique_ptr<std::byte, CudaDeleter> mem(CudaAlloc(bufSize));
 
     cudaEvent_t e;
     (void)cudaEventCreateWithFlags(&e, cudaEventDisableTiming);
@@ -80,10 +82,11 @@ TEST(StreamIdTest, HandleReuse)
     for (int i = 0; i < maxAttempts; i++)
     {
         (void)cudaDeviceSynchronize();
-        cudaStream_t stream1 = 0, stream2 = 0;
+        cudaStream_t stream1 = nullptr;
+        cudaStream_t stream2 = nullptr;
         (void)cudaStreamCreateWithFlags(&stream1, cudaStreamNonBlocking);
         uint64_t id1 = nvcv::util::GetCudaStreamIdHint(stream1);
-        for (int i = 0; i < 10; i++) cudaMemsetAsync(mem.get(), i, bufSize, stream1);
+        for (int fillValue = 0; fillValue < 10; fillValue++) cudaMemsetAsync(mem.get(), fillValue, bufSize, stream1);
         cudaEventRecord(e, stream1);
         if (stream1)
             (void)cudaStreamDestroy(stream1);
@@ -110,14 +113,14 @@ TEST(StreamIdTest, HandleReuse)
 TEST(StreamIdTest, PerThreadDefault)
 {
     const int                N = 4;
-    std::vector<std::thread> threads(N);
+    std::vector<std::thread> threads(N); // NOSONAR: std::jthread is C++20.
     std::vector<uint64_t>    ids(N);
     for (int i = 0; i < N; i++)
     {
-        threads[i] = std::thread(
-            [&, i]()
+        threads[i] = std::thread( // NOSONAR: std::jthread is C++20.
+            [&ids, i]()
             {
-                (void)cudaFree(0); // create/assign a context
+                (void)cudaFree(nullptr); // create/assign a context
                 ids[i] = nvcv::util::GetCudaStreamIdHint(cudaStreamPerThread);
             });
     }

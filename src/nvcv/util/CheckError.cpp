@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,7 +19,6 @@
 
 #include <cuda_runtime.h>
 
-#include <cstdarg>
 #include <regex>
 #include <sstream>
 
@@ -42,7 +41,7 @@ static std::string_view GetFunctionName(const std::string_view &stmt)
 }
 
 namespace detail {
-const char *GetCheckMessage(char *buf, int bufsize)
+const char *GetCheckMessage(const char *buf, int bufsize)
 {
     NVCV_ASSERT(buf != nullptr);
     (void)buf;
@@ -51,27 +50,12 @@ const char *GetCheckMessage(char *buf, int bufsize)
     return "";
 }
 
-char *GetCheckMessage(char *buf, int bufsize, const char *fmt, ...)
-{
-    NVCV_ASSERT(buf != nullptr);
-    NVCV_ASSERT(fmt != nullptr);
-
-    va_list va;
-    va_start(va, fmt);
-
-    vsnprintf(buf, bufsize - 1, fmt, va);
-
-    va_end(va);
-
-    return buf;
-}
-
 std::string FormatErrorMessage(const std::string_view &errname, const std::string_view &callstr,
                                const std::string_view &msg)
 {
     std::string_view funcName = GetFunctionName(callstr);
 
-    // TODO: avoid heap memory allocation here
+    // REVISIT: avoid heap memory allocation here
     std::ostringstream ss;
     ss << '(';
     if (!funcName.empty())
@@ -108,7 +92,7 @@ NVCVStatus TranslateError(cudaError_t err)
     }
 }
 
-void PreprocessError(cudaError_t err)
+void PreprocessError(cudaError_t)
 {
     // consume the error
     cudaGetLastError();

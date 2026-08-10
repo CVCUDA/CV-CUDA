@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,8 +32,8 @@ using TupleTensor3 = std::tuple<Tensor, std::optional<Tensor>, std::optional<Ten
 namespace {
 
 TupleTensor3 PairwiseMatcherInto(Tensor &matches, std::optional<Tensor> numMatches, std::optional<Tensor> distances,
-                                 Tensor &set1, Tensor &set2, std::optional<Tensor> numSet1,
-                                 std::optional<Tensor> numSet2, bool crossCheck, int matchesPerPoint,
+                                 Tensor &set1, Tensor &set2, const std::optional<Tensor> &numSet1,
+                                 const std::optional<Tensor> &numSet2, bool crossCheck, int matchesPerPoint,
                                  std::optional<NVCVNormType> normType, NVCVPairwiseMatcherType algoChoice,
                                  std::optional<Stream> pstream)
 {
@@ -71,18 +71,23 @@ TupleTensor3 PairwiseMatcherInto(Tensor &matches, std::optional<Tensor> numMatch
         guard.add(LockMode::LOCK_MODE_WRITE, {*distances});
     }
 
-    op->submit(pstream->cudaHandle(), set1, set2, (numSet1 ? *numSet1 : nvcv::Tensor{nullptr}),
-               (numSet2 ? *numSet2 : nvcv::Tensor{nullptr}), matches,
-               (numMatches ? *numMatches : nvcv::Tensor{nullptr}), (distances ? *distances : nvcv::Tensor{nullptr}),
-               crossCheck, matchesPerPoint, *normType);
+    guard.run(
+        [&numSet1, &numSet2, &numMatches, &distances, &op, &pstream, &set1, &set2, &matches, &crossCheck,
+         &matchesPerPoint, &normType]()
+        {
+            const nvcv::Tensor nullTensor{nullptr};
+            op->submit(pstream->cudaHandle(), set1, set2, AsNvcvTensor(numSet1, nullTensor),
+                       AsNvcvTensor(numSet2, nullTensor), matches, AsNvcvTensor(numMatches, nullTensor),
+                       AsNvcvTensor(distances, nullTensor), crossCheck, matchesPerPoint, *normType);
+        });
 
     return TupleTensor3(std::move(matches), numMatches, distances);
 }
 
-TupleTensor3 PairwiseMatcher(Tensor &set1, Tensor &set2, std::optional<Tensor> numSet1, std::optional<Tensor> numSet2,
-                             std::optional<bool> numMatches, bool distances, bool crossCheck, int matchesPerPoint,
-                             std::optional<NVCVNormType> normType, NVCVPairwiseMatcherType algoChoice,
-                             std::optional<Stream> pstream)
+TupleTensor3 PairwiseMatcher(Tensor &set1, Tensor &set2, const std::optional<Tensor> &numSet1,
+                             const std::optional<Tensor> &numSet2, std::optional<bool> numMatches, bool distances,
+                             bool crossCheck, int matchesPerPoint, std::optional<NVCVNormType> normType,
+                             NVCVPairwiseMatcherType algoChoice, std::optional<Stream> pstream)
 {
     nvcv::TensorShape set1Shape = set1.shape();
     nvcv::TensorShape set2Shape = set2.shape();
@@ -95,7 +100,7 @@ TupleTensor3 PairwiseMatcher(Tensor &set1, Tensor &set2, std::optional<Tensor> n
     int64_t numSamples = set1Shape[0];
     int64_t maxMatches = std::max(set1Shape[1], set2Shape[1]) * matchesPerPoint;
 
-    if (!numMatches)
+    if (!numMatches.has_value())
     {
         numMatches = crossCheck;
     }
@@ -104,7 +109,8 @@ TupleTensor3 PairwiseMatcher(Tensor &set1, Tensor &set2, std::optional<Tensor> n
 
     Tensor matches = Tensor::Create({{numSamples, maxMatches, 2}, "NMA"}, nvcv::TYPE_S32);
 
-    std::optional<Tensor> numMatchesTensor, distancesTensor;
+    std::optional<Tensor> numMatchesTensor;
+    std::optional<Tensor> distancesTensor;
 
     if (*numMatches)
     {
@@ -127,14 +133,12 @@ void ExportOpPairwiseMatcher(py::module &m)
 {
     using namespace pybind11::literals;
 
-    m.def("match", &PairwiseMatcher, "set1"_a, "set2"_a, "num_set1"_a = nullptr, "num_set2"_a = nullptr,
-          "num_matches"_a = nullptr, "distances"_a = false, "cross_check"_a = false, "matches_per_point"_a = 1,
-          "norm_type"_a = nullptr, "algo_choice"_a = NVCV_BRUTE_FORCE, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
+    m.def("match", NvtxTrace("cvcuda.match", &PairwiseMatcher), "set1"_a, "set2"_a, "num_set1"_a = nullptr,
+          "num_set2"_a = nullptr, "num_matches"_a = nullptr, "distances"_a = false, "cross_check"_a = false,
+          "matches_per_point"_a = 1, "norm_type"_a = nullptr, "algo_choice"_a = NVCV_BRUTE_FORCE, py::kw_only(),
+          "stream"_a = nullptr, R"pbdoc(
         Executes the Pairwise matcher operation on the given CUDA stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for this operator for more details and usage examples.
 
         Args:
             set1 (cvcuda.Tensor): Input tensor with 1st set of points.
@@ -158,19 +162,15 @@ void ExportOpPairwiseMatcher(py::module &m)
                                            The number of matches tensor may be None if its argument is False.
                                            The distances tensor may be None if its argument is False.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("match_into", &PairwiseMatcherInto, "matches"_a, "num_matches"_a = nullptr, "distances"_a = nullptr, "set1"_a,
-          "set2"_a, "num_set1"_a = nullptr, "num_set2"_a = nullptr, "cross_check"_a = false, "matches_per_point"_a = 1,
-          "norm_type"_a = nullptr, "algo_choice"_a = NVCV_BRUTE_FORCE, py::kw_only(), "stream"_a = nullptr,
+    m.def("match_into", NvtxTrace("cvcuda.match_into", &PairwiseMatcherInto), "matches"_a, "num_matches"_a = nullptr,
+          "distances"_a = nullptr, "set1"_a, "set2"_a, "num_set1"_a = nullptr, "num_set2"_a = nullptr,
+          "cross_check"_a = false, "matches_per_point"_a = 1, "norm_type"_a = nullptr,
+          "algo_choice"_a = NVCV_BRUTE_FORCE, py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
-
         Executes the Pairwise matcher operation on the given CUDA stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for this operator for more details and usage examples.
 
         Args:
             matches (cvcuda.Tensor): Output tensor with matches.
@@ -194,8 +194,6 @@ void ExportOpPairwiseMatcher(py::module &m)
                                            The number of matches tensor may be None if its argument is None.
                                            The distances tensor may be None if its argument is None.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C API references of the CV-CUDA operator.
     )pbdoc");
 }
 

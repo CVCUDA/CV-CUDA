@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,6 +28,7 @@
 #include <initializer_list>
 #include <memory>
 #include <mutex>
+#include <shared_mutex>
 #include <unordered_map>
 #include <vector>
 
@@ -38,6 +39,8 @@ class Resource;
 class IExternalStream
 {
 public:
+    virtual ~IExternalStream() = default;
+
     virtual cudaStream_t handle() const        = 0;
     virtual py::object   wrappedObject() const = 0;
 };
@@ -53,25 +56,29 @@ public:
 
     static std::shared_ptr<Stream> Create();
 
-    virtual ~Stream();
+    ~Stream() override;
 
-    std::shared_ptr<Stream>       shared_from_this();
-    std::shared_ptr<const Stream> shared_from_this() const;
+    std::shared_ptr<Stream>       sharedStream();
+    std::shared_ptr<const Stream> sharedStream() const;
 
     void activate();
-    void deactivate(py::object exc_type, py::object exc_value, py::object exc_tb);
+    void deactivate(py::object exc_type, py::object exc_value, py::object exc_tb) const;
 
     void holdResources(LockResources usedResources);
+
+    static void SynchronizeAndClearGCBag();
 
     int64_t GetSizeInBytes() const override;
 
     void         sync();
+    void         wait_stream(std::shared_ptr<Stream> other);
     cudaStream_t handle() const;
+    int          deviceId() const;
 
     // Returns the cuda handle in python
     intptr_t pyhandle() const;
 
-    Stream(IExternalStream &extStream);
+    explicit Stream(IExternalStream &extStream);
 
     friend std::ostream &operator<<(std::ostream &out, const Stream &stream);
 
@@ -79,45 +86,48 @@ private:
     Stream(Stream &&) = delete;
     Stream();
 
-    int64_t doComputeSizeInBytes();
+    int64_t doComputeSizeInBytes() const;
 
     // Singleton access to the auxiliary CUDA stream
 
     class Key final : public IKey
     {
     private:
-        virtual size_t doGetHash() const override;
-        virtual bool   doIsCompatible(const IKey &that) const override;
+        size_t doGetHash() const override;
+        bool   doIsCompatible(const IKey &that) const override;
     };
 
-    virtual const Key &key() const override
+    const Key &key() const override
     {
-        static Key key;
-        return key;
+        return m_key;
     }
 
-    void destroy();
+    void        destroy();
+    cudaEvent_t getEvent();
 
-    bool         m_owns   = false;
-    cudaStream_t m_handle = nullptr;
-    cudaEvent_t  m_event  = nullptr;
-    py::object   m_wrappedObj;
-    int64_t      m_size_inbytes = -1;
+    Key                                  m_key;
+    bool                                 m_owns   = false;
+    cudaStream_t                         m_handle = nullptr;
+    std::unordered_map<int, cudaEvent_t> m_events;
+    std::shared_mutex                    m_eventMutex;
+    py::object                           m_wrappedObj;
+    int64_t                              m_size_inbytes = -1;
 
-    // TODO: these don't have to be static members, but simply defined
+    // REVISIT: these don't have to be static members, but simply defined
     // as local entities in Stream.cpp, thereby minimizing code coupling and
     // unnecessary rebuilds.
 
-    //singleton aux stream and protection. this a a bit overkill
+    //per-device aux streams and protection. this is a bit overkill
     //for now as python is single threaded, but it is a good practice
-    static std::mutex       m_auxStreamMutex;
-    static std::atomic<int> m_instanceCount;
-    static cudaStream_t     m_auxStream;
+    static std::shared_mutex                     m_auxStreamMutex;
+    static std::atomic<int>                      m_instanceCount;
+    static std::unordered_map<int, cudaStream_t> m_auxStreams;
 
-    static void          incrementInstanceCount();
-    static int           decrementInstanceCount();
-    static cudaStream_t &GetAuxStream();
-    static void          SyncAuxStream();
+    static void         incrementInstanceCount();
+    static int          decrementInstanceCount();
+    static cudaStream_t GetAuxStream();
+    static void         SyncAuxStream();
+    static void         CleanupAtExit(const std::shared_ptr<Stream> &globalStream);
 
     // Adds the object to the garbage-collector's bag to delay its destruction
     // until it's safe to destroy it.

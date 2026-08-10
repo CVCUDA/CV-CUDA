@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -54,8 +54,7 @@ public:
     constexpr static int MAX_RANK = N;
 
     // Constructors
-    Shape();
-    Shape(const Shape &that);
+    Shape() = default;
 
     /**
      * @brief Construct with a given rank, sizes default to 0.
@@ -100,30 +99,17 @@ public:
     bool operator<(const Shape &that) const;
 
 private:
-    Data      m_data;
-    size_type m_size;
+    Data      m_data{};
+    size_type m_size = 0;
 };
 
 // Implementation
 
 template<class T, int N>
-Shape<T, N>::Shape()
-    : m_size(0)
-{
-}
-
-template<class T, int N>
 Shape<T, N>::Shape(int size)
     : m_size(size)
 {
-    std::fill(this->begin(), this->end(), 0);
-}
-
-template<class T, int N>
-Shape<T, N>::Shape(const Shape &that)
-    : m_size(that.m_size)
-{
-    std::copy(that.begin(), that.end(), m_data.begin());
+    std::fill(this->begin(), this->end(), 0); // NOSONAR: std::ranges::fill is C++20.
 }
 
 template<class T, int N>
@@ -134,7 +120,6 @@ Shape<T, N>::Shape(std::initializer_list<value_type> shape)
 
 template<class T, int N>
 Shape<T, N>::Shape(const T *data, size_t n)
-    : m_size(n)
 {
     if (data == nullptr)
     {
@@ -146,6 +131,7 @@ Shape<T, N>::Shape(const T *data, size_t n)
         throw Exception(Status::ERROR_INVALID_ARGUMENT, "Shape ranks is too big");
     }
 
+    m_size = static_cast<size_type>(n);
     std::copy_n(data, n, m_data.begin());
 }
 
@@ -185,7 +171,8 @@ bool Shape<T, N>::operator!=(const Shape &that) const
 template<class T, int N>
 bool Shape<T, N>::operator<(const Shape &that) const
 {
-    return std::lexicographical_compare(this->begin(), this->end(), that.begin(), that.end());
+    return std::lexicographical_compare( // NOSONAR: std::ranges::lexicographical_compare is C++20.
+        this->begin(), this->end(), that.begin(), that.end());
 }
 
 template<class T, int N>

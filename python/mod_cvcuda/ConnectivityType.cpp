@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,11 +23,13 @@ namespace cvcudapy {
 
 void ExportConnectivityType(py::module &m)
 {
-    py::enum_<NVCVConnectivityType>(m, "ConnectivityType", py::arithmetic())
-        .value("CONNECTIVITY_4_2D", NVCV_CONNECTIVITY_4_2D)
-        .value("CONNECTIVITY_6_3D", NVCV_CONNECTIVITY_6_3D)
-        .value("CONNECTIVITY_8_2D", NVCV_CONNECTIVITY_8_2D)
-        .value("CONNECTIVITY_26_2D", NVCV_CONNECTIVITY_26_3D)
+    py::enum_<NVCVConnectivityType>(
+        m, "ConnectivityType", "Pixel/voxel connectivity types for connected-component labeling.", py::arithmetic())
+        .value("CONNECTIVITY_4_2D", NVCV_CONNECTIVITY_4_2D, "4-connected: pixels sharing an edge in 2D.")
+        .value("CONNECTIVITY_6_3D", NVCV_CONNECTIVITY_6_3D, "6-connected: voxels sharing a face in 3D.")
+        .value("CONNECTIVITY_8_2D", NVCV_CONNECTIVITY_8_2D, "8-connected: pixels sharing an edge or corner in 2D.")
+        .value("CONNECTIVITY_26_3D", NVCV_CONNECTIVITY_26_3D,
+               "26-connected: voxels sharing a face, edge, or corner in 3D.")
         .export_values();
 }
 

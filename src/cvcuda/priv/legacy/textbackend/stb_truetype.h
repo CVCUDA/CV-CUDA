@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -2081,7 +2081,18 @@ static int stbtt__run_charstring(const stbtt_fontinfo *info, int glyph_index, st
         case 0x07: // vlineto
             if (sp < 1)
                 return STBTT__CSERR("vlineto stack");
-            goto vlineto;
+            for (;;)
+            {
+                if (i >= sp)
+                    break;
+                stbtt__csctx_rline_to(c, 0, s[i]);
+                i++;
+                if (i >= sp)
+                    break;
+                stbtt__csctx_rline_to(c, s[i], 0);
+                i++;
+            }
+            break;
         case 0x06: // hlineto
             if (sp < 1)
                 return STBTT__CSERR("hlineto stack");
@@ -2091,7 +2102,6 @@ static int stbtt__run_charstring(const stbtt_fontinfo *info, int glyph_index, st
                     break;
                 stbtt__csctx_rline_to(c, s[i], 0);
                 i++;
-vlineto:
                 if (i >= sp)
                     break;
                 stbtt__csctx_rline_to(c, 0, s[i]);
@@ -2102,7 +2112,18 @@ vlineto:
         case 0x1F: // hvcurveto
             if (sp < 4)
                 return STBTT__CSERR("hvcurveto stack");
-            goto hvcurveto;
+            for (;;)
+            {
+                if (i + 3 >= sp)
+                    break;
+                stbtt__csctx_rccurve_to(c, s[i], 0, s[i + 1], s[i + 2], (sp - i == 5) ? s[i + 4] : 0.0f, s[i + 3]);
+                i += 4;
+                if (i + 3 >= sp)
+                    break;
+                stbtt__csctx_rccurve_to(c, 0, s[i], s[i + 1], s[i + 2], s[i + 3], (sp - i == 5) ? s[i + 4] : 0.0f);
+                i += 4;
+            }
+            break;
         case 0x1E: // vhcurveto
             if (sp < 4)
                 return STBTT__CSERR("vhcurveto stack");
@@ -2112,7 +2133,6 @@ vlineto:
                     break;
                 stbtt__csctx_rccurve_to(c, 0, s[i], s[i + 1], s[i + 2], s[i + 3], (sp - i == 5) ? s[i + 4] : 0.0f);
                 i += 4;
-hvcurveto:
                 if (i + 3 >= sp)
                     break;
                 stbtt__csctx_rccurve_to(c, s[i], 0, s[i + 1], s[i + 2], (sp - i == 5) ? s[i + 4] : 0.0f, s[i + 3]);
@@ -3074,7 +3094,15 @@ static void stbtt__rasterize_sorted_edges(stbtt__bitmap *result, stbtt__edge *e,
     STBTT__NOTUSED(vsubsample);
 
     if (result->w > 64)
-        scanline = (float *)STBTT_malloc((result->w * 2 + 1) * sizeof(float), userdata);
+    {
+        size_t scanline_len = (size_t)result->w * 2 + 1;
+        if (scanline_len > ((size_t)-1) / sizeof(float))
+            return;
+
+        scanline = (float *)STBTT_malloc(scanline_len * sizeof(float), userdata);
+        if (scanline == NULL)
+            return;
+    }
     else
         scanline = scanline_data;
 

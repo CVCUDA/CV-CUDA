@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,7 +33,7 @@ namespace nvcv {
 class TensorBatchData
 {
 public:
-    TensorBatchData(const NVCVTensorBatchData &data)
+    explicit TensorBatchData(const NVCVTensorBatchData &data)
         : m_data(data)
     {
     }
@@ -51,7 +51,7 @@ public:
      */
     TensorLayout layout() const
     {
-        return m_data.layout;
+        return TensorLayout{m_data.layout};
     }
 
     /**
@@ -96,11 +96,11 @@ public:
 
         if (IsCompatible<Derived>())
         {
-            return {Derived(m_data)};
+            return Optional<Derived>{Derived{m_data}};
         }
         else
         {
-            return {};
+            return Optional<Derived>{};
         }
     }
 

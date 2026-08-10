@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,7 +27,7 @@
 #include "Config.h"
 #include "detail/CheckError.hpp"
 
-namespace nvcv { namespace cfg {
+namespace nvcv { namespace cfg { // NOSONAR: public header compatibility is validated with C++11.
 
 /**
  * @brief Sets the maximum number of image handles that can be created.

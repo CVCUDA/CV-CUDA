@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -103,7 +103,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaResizeCropConvertReformatCreate(NVCVOperatorHandl
  *  Limitations:
  *
  *  Input:
- *       + Data Layout: [NVCV_TENSOR_HWC, NVCV_TENSOR_NHWC]
+ *       + Data Layout: [NVCV_TENSOR_HWC, NVCV_TENSOR_NHWC, NVCV_TENSOR_CHW, NVCV_TENSOR_NCHW]
  *       + Channels: [1, 3]
  *
  *       Data Type      | Allowed
@@ -114,12 +114,12 @@ CVCUDA_PUBLIC NVCVStatus cvcudaResizeCropConvertReformatCreate(NVCVOperatorHandl
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | No
  *       64bit Float    | No
  *
  *  Output:
- *       + Data Layout: [NVCV_TENSOR_NHWC, NVCV_TENSOR_HWC,
- *                       NVCV_TENSOR_NCHW, NVCV_TENSOR_CHW]
+ *       + Data Layout: [NVCV_TENSOR_NHWC, NVCV_TENSOR_HWC, NVCV_TENSOR_NCHW, NVCV_TENSOR_CHW]
  *       + Channels: [1, 3]
  *
  *       Data Type      | Allowed
@@ -130,6 +130,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaResizeCropConvertReformatCreate(NVCVOperatorHandl
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | Yes
  *       64bit Float    | No
  *

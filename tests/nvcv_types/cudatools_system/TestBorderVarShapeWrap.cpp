@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -84,7 +84,7 @@ TYPED_TEST(BorderVarShapeWrapTest, correct_fill)
     nvcv::ImageBatchVarShape dstImageBatch(samples);
 
     std::default_random_engine             randEng{0};
-    std::uniform_int_distribution<int>     randSize{-varSize, varSize};
+    std::uniform_int_distribution          randSize{-varSize, varSize};
     std::uniform_int_distribution<uint8_t> randValues{0, 255};
 
     std::vector<nvcv::Image>          srcImageList;
@@ -101,7 +101,7 @@ TYPED_TEST(BorderVarShapeWrapTest, correct_fill)
         int srcHeight    = srcImageList[i].size().h;
 
         srcVec[i].resize(srcHeight * srcRowStride);
-        std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return randValues(randEng); });
+        std::ranges::generate(srcVec[i], [&randValues, &randEng]() { return randValues(randEng); });
 
         ASSERT_EQ(cudaSuccess,
                   cudaMemcpy2DAsync(srcData->plane(0).basePtr, srcRowStride, srcVec[i].data(), srcRowStride,
@@ -203,6 +203,45 @@ NVCV_TYPED_TEST_SUITE(BorderVarShapeWrapNHWCTest,
 
 #undef NVCV_TEST_ROW
 
+template<typename ValueType>
+ValueType &GoldNHWCValueAt(std::vector<uint8_t> &buffer, int rowStride, int numChannels, int x, int y, int c)
+{
+    return *reinterpret_cast<ValueType *>(
+        &buffer[y * rowStride + x * sizeof(ValueType) * numChannels + c * sizeof(ValueType)]);
+}
+
+template<typename ValueType, NVCVBorderType BorderType>
+void GoldFillNHWCPixel(std::vector<uint8_t> &goldVec, int dstRowStride, int numChannels,
+                       const std::vector<uint8_t> &srcVec, int srcRowStride, nvcv::Size2D srcSize, int borderSize,
+                       ValueType borderValue, int x, int y)
+{
+    int2 srcCoord{x - borderSize, y - borderSize};
+    bool isInside = test::IsInside(srcCoord, {srcSize.w, srcSize.h}, BorderType);
+
+    for (int c = 0; c < numChannels; ++c)
+    {
+        GoldNHWCValueAt<ValueType>(goldVec, dstRowStride, numChannels, x, y, c)
+            = isInside ? *reinterpret_cast<const ValueType *>(
+                  &srcVec[srcCoord.y * srcRowStride + srcCoord.x * sizeof(ValueType) * numChannels
+                          + c * sizeof(ValueType)])
+                       : borderValue;
+    }
+}
+
+template<typename ValueType, NVCVBorderType BorderType>
+void GoldFillNHWC(std::vector<uint8_t> &goldVec, int dstRowStride, int numChannels, const std::vector<uint8_t> &srcVec,
+                  int srcRowStride, nvcv::Size2D srcSize, nvcv::Size2D dstSize, int borderSize, ValueType borderValue)
+{
+    for (int y = 0; y < dstSize.h; ++y)
+    {
+        for (int x = 0; x < dstSize.w; ++x)
+        {
+            GoldFillNHWCPixel<ValueType, BorderType>(goldVec, dstRowStride, numChannels, srcVec, srcRowStride, srcSize,
+                                                     borderSize, borderValue, x, y);
+        }
+    }
+}
+
 TYPED_TEST(BorderVarShapeWrapNHWCTest, correct_fill)
 {
     cudaStream_t stream;
@@ -226,7 +265,7 @@ TYPED_TEST(BorderVarShapeWrapNHWCTest, correct_fill)
     nvcv::ImageBatchVarShape dstImageBatch(samples);
 
     std::default_random_engine             randEng{0};
-    std::uniform_int_distribution<int>     randSize{-varSize, varSize};
+    std::uniform_int_distribution          randSize{-varSize, varSize};
     std::uniform_int_distribution<uint8_t> randValues{0, 255};
 
     std::vector<nvcv::Image>          srcImageList;
@@ -243,7 +282,7 @@ TYPED_TEST(BorderVarShapeWrapNHWCTest, correct_fill)
         int srcHeight    = srcImageList[i].size().h;
 
         srcVec[i].resize(srcHeight * srcRowStride);
-        std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return randValues(randEng); });
+        std::ranges::generate(srcVec[i], [&randValues, &randEng]() { return randValues(randEng); });
 
         ASSERT_EQ(cudaSuccess,
                   cudaMemcpy2DAsync(srcData->plane(0).basePtr, srcRowStride, srcVec[i].data(), srcRowStride,
@@ -305,28 +344,8 @@ TYPED_TEST(BorderVarShapeWrapNHWCTest, correct_fill)
         std::vector<uint8_t> goldVec(dstSize.h * dstRowStride);
 
         // Run gold fill border
-        int2 srcCoord;
-
-        for (int y = 0; y < dstSize.h; ++y)
-        {
-            srcCoord.y = y - borderSize;
-
-            for (int x = 0; x < dstSize.w; ++x)
-            {
-                srcCoord.x = x - borderSize;
-
-                bool isInside = test::IsInside(srcCoord, {srcSize.w, srcSize.h}, kBorderType);
-                for (int c = 0; c < numChannels; ++c)
-                {
-                    *reinterpret_cast<ValueType *>(
-                        &goldVec[y * dstRowStride + x * sizeof(ValueType) * numChannels + c * sizeof(ValueType)])
-                        = isInside ? *reinterpret_cast<ValueType *>(
-                              &srcVec[i][srcCoord.y * srcRowStride + srcCoord.x * sizeof(ValueType) * numChannels
-                                         + c * sizeof(ValueType)])
-                                   : borderValue;
-                }
-            }
-        }
+        GoldFillNHWC<ValueType, kBorderType>(goldVec, dstRowStride, numChannels, srcVec[i], srcRowStride, srcSize,
+                                             dstSize, borderSize, borderValue);
 
         EXPECT_EQ(testVec, goldVec);
     }

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,6 +31,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class NonMaximumSuppression final : public IOperator
@@ -38,38 +40,34 @@ class NonMaximumSuppression final : public IOperator
 public:
     explicit NonMaximumSuppression();
 
-    ~NonMaximumSuppression();
-
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const nvcv::Tensor &scores,
-                    float scoreThreshold, float iouThreshold);
+                    float scoreThreshold, float iouThreshold) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline NonMaximumSuppression::NonMaximumSuppression()
 {
-    nvcv::detail::CheckThrow(cvcudaNonMaximumSuppressionCreate(&m_handle));
-    assert(m_handle);
-}
-
-inline NonMaximumSuppression::~NonMaximumSuppression()
-{
-    nvcvOperatorDestroy(m_handle);
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaNonMaximumSuppressionCreate(&h));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void NonMaximumSuppression::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
-                                              const nvcv::Tensor &scores, float scoreThreshold, float iouThreshold)
+                                              const nvcv::Tensor &scores, float scoreThreshold,
+                                              float iouThreshold) const
 {
-    nvcv::detail::CheckThrow(cvcudaNonMaximumSuppressionSubmit(m_handle, stream, in.handle(), out.handle(),
+    nvcv::detail::CheckThrow(cvcudaNonMaximumSuppressionSubmit(m_handle.get(), stream, in.handle(), out.handle(),
                                                                scores.handle(), scoreThreshold, iouThreshold));
 }
 
 inline NVCVOperatorHandle NonMaximumSuppression::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda

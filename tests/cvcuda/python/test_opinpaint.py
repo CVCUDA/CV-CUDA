@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,13 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import cvcuda
-
-import pytest as t
 from random import randint
 
+import cvcuda
+import pytest
+import cvcuda_tools as cv_tools
+import cvcuda_types as cv_types
 
-@t.mark.parametrize(
+
+@pytest.mark.parametrize(
     "input_args, mask_args, inpaintRadius",
     [
         (
@@ -73,7 +75,7 @@ def test_op_inpaint(input_args, mask_args, inpaintRadius):
     assert tmp is out
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "num_images, format, min_size, max_size, inpaintRadius",
     [
         (
@@ -145,3 +147,36 @@ def test_op_inpaint_varshape(num_images, format, min_size, max_size, inpaintRadi
         stream=stream,
     )
     assert tmp is output
+
+
+def _inpaint_params(dtype, layout, channels):
+    mask_shape = cv_types.resolve_shape(layout, 1)
+    return {
+        "masks": cvcuda.Tensor(mask_shape, cvcuda.Type.U8, layout),
+        "inpaintRadius": 5.0,
+    }
+
+
+def _inpaint_varshape(src: cvcuda.ImageBatchVarShape):
+    num_images = len(src)
+    masks = cvcuda.ImageBatchVarShape(num_images)
+    for img in src:
+        mask = cvcuda.Image(img.size, cvcuda.Format.U8)
+        masks.pushback(mask)
+    return cvcuda.inpaint(src, masks, inpaintRadius=5.0)
+
+
+globals().update(
+    cv_tools.make_op_tests(
+        name="inpaint",
+        runner_info=[
+            ("tensor", cvcuda.inpaint, _inpaint_params),
+            ("image_batch", _inpaint_varshape, None),
+        ],
+        keystone_dlc=(cvcuda.Type.U8, "NHWC", 3),
+        supported_dtypes={cvcuda.Type.U8, cvcuda.Type.S32, cvcuda.Type.F32},
+        supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
+        supported_channels={1, 2, 3, 4},
+        exclude_dlc=[(None, "NCHW", 2), (None, "CHW", 2)],
+    )
+)

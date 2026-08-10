@@ -79,6 +79,11 @@ static constexpr int ITUR_BT_601_CBV = -74448;
 
 namespace nvcv::legacy::cuda_op {
 
+static bool IsPlanar(DataFormat format)
+{
+    return format == kNCHW || format == kCHW;
+}
+
 inline __device__ bool checkShapeFromYUV420(int rows, int cols, NVCVColorConversionCode code)
 {
     int valid_row = 1, valid_col = 1;
@@ -133,6 +138,29 @@ inline __device__ bool checkShapeFromYUV420(int rows, int cols, NVCVColorConvers
     return true;
 }
 
+template<class SrcWrapper, typename T>
+__device__ __forceinline__ void load_bgra_chw(SrcWrapper src, T &B, T &G, T &R, T &A, int batch_idx, int x, int y,
+                                              int bidx, int srcChannels)
+{
+    B = *src.ptr(batch_idx, bidx, y, x);
+    G = *src.ptr(batch_idx, 1, y, x);
+    R = *src.ptr(batch_idx, bidx ^ 2, y, x);
+    A = srcChannels == 4 ? *src.ptr(batch_idx, 3, y, x) : cuda::TypeTraits<T>::max;
+}
+
+template<class DstWrapper, typename T>
+__device__ __forceinline__ void store_bgra_chw(DstWrapper dst, T B, T G, T R, T A, int batch_idx, int x, int y,
+                                               int bidx, int dstChannels)
+{
+    *dst.ptr(batch_idx, bidx, y, x)     = B;
+    *dst.ptr(batch_idx, 1, y, x)        = G;
+    *dst.ptr(batch_idx, bidx ^ 2, y, x) = R;
+    if (dstChannels == 4)
+    {
+        *dst.ptr(batch_idx, 3, y, x) = A;
+    }
+}
+
 template<class T>
 __global__ void rgb_to_bgr_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
                                 int bidx)
@@ -159,6 +187,21 @@ __global__ void rgb_to_bgr_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::I
 }
 
 template<class T>
+__global__ void rgb_to_bgr_chw(cuda::ImageBatchVarShapeWrap<T> src, cuda::ImageBatchVarShapeWrap<T> dst, int bidx,
+                               int srcChannels, int dstChannels)
+{
+    int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
+    int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
+    const int batch_idx = get_batch_idx();
+    if (dst_x >= dst.width(batch_idx, 0) || dst_y >= dst.height(batch_idx, 0))
+        return;
+
+    T b, g, r, a;
+    load_bgra_chw(src, b, g, r, a, batch_idx, dst_x, dst_y, bidx, srcChannels);
+    store_bgra_chw(dst, b, g, r, a, batch_idx, dst_x, dst_y, 0, dstChannels);
+}
+
+template<class T>
 __global__ void gray_to_bgr_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst)
 {
     int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
@@ -179,21 +222,69 @@ __global__ void gray_to_bgr_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::
 }
 
 template<class T>
-__global__ void bgr_to_gray_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
-                                      int bidx)
+__global__ void gray_to_bgr_chw(cuda::ImageBatchVarShapeWrap<T> src, cuda::ImageBatchVarShapeWrap<T> dst,
+                                int dstChannels)
 {
     int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
     int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
-    if (dst_x >= dst.width(batch_idx) || dst_y >= dst.height(batch_idx))
+    if (dst_x >= dst.width(batch_idx, 0) || dst_y >= dst.height(batch_idx, 0))
         return;
 
-    int b = *src.ptr(batch_idx, dst_y, dst_x, bidx);
-    int g = *src.ptr(batch_idx, dst_y, dst_x, 1);
-    int r = *src.ptr(batch_idx, dst_y, dst_x, bidx ^ 2);
+    T g = *src.ptr(batch_idx, 0, dst_y, dst_x);
+
+    *dst.ptr(batch_idx, 0, dst_y, dst_x) = g;
+    *dst.ptr(batch_idx, 1, dst_y, dst_x) = g;
+    *dst.ptr(batch_idx, 2, dst_y, dst_x) = g;
+    if (dstChannels == 4)
+    {
+        *dst.ptr(batch_idx, 3, dst_y, dst_x) = g;
+    }
+}
+
+template<int NIX, class T>
+__global__ void bgr_to_gray_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
+                                      int bidx)
+{
+    int       dst_x0    = (blockIdx.x * blockDim.x + threadIdx.x) * NIX;
+    int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
+    const int batch_idx = get_batch_idx();
+    const int dst_width = dst.width(batch_idx);
+    if (dst_x0 >= dst_width || dst_y >= dst.height(batch_idx))
+        return;
+
+#pragma unroll
+    for (int i = 0; i < NIX; ++i)
+    {
+        int dst_x = dst_x0 + i;
+        if (dst_x >= dst_width)
+            break;
+
+        int b = *src.ptr(batch_idx, dst_y, dst_x, bidx);
+        int g = *src.ptr(batch_idx, dst_y, dst_x, 1);
+        int r = *src.ptr(batch_idx, dst_y, dst_x, bidx ^ 2);
+
+        T gray                               = (T)CV_DESCALE(b * BY15 + g * GY15 + r * RY15, gray_shift);
+        *dst.ptr(batch_idx, dst_y, dst_x, 0) = gray;
+    }
+}
+
+template<class T>
+__global__ void bgr_to_gray_char_chw(cuda::ImageBatchVarShapeWrap<T> src, cuda::ImageBatchVarShapeWrap<T> dst, int bidx,
+                                     int srcChannels)
+{
+    int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
+    int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
+    const int batch_idx = get_batch_idx();
+    if (dst_x >= dst.width(batch_idx, 0) || dst_y >= dst.height(batch_idx, 0))
+        return;
+
+    T unusedA;
+    T b, g, r;
+    load_bgra_chw(src, b, g, r, unusedA, batch_idx, dst_x, dst_y, bidx, srcChannels);
 
     T gray                               = (T)CV_DESCALE(b * BY15 + g * GY15 + r * RY15, gray_shift);
-    *dst.ptr(batch_idx, dst_y, dst_x, 0) = gray;
+    *dst.ptr(batch_idx, 0, dst_y, dst_x) = gray;
 }
 
 template<class T>
@@ -212,6 +303,24 @@ __global__ void bgr_to_gray_float_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, 
 
     T gray                               = (T)(b * B2YF + g * G2YF + r * R2YF);
     *dst.ptr(batch_idx, dst_y, dst_x, 0) = gray;
+}
+
+template<class T>
+__global__ void bgr_to_gray_float_chw(cuda::ImageBatchVarShapeWrap<T> src, cuda::ImageBatchVarShapeWrap<T> dst,
+                                      int bidx, int srcChannels)
+{
+    int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
+    int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
+    const int batch_idx = get_batch_idx();
+    if (dst_x >= dst.width(batch_idx, 0) || dst_y >= dst.height(batch_idx, 0))
+        return;
+
+    T unusedA;
+    T b, g, r;
+    load_bgra_chw(src, b, g, r, unusedA, batch_idx, dst_x, dst_y, bidx, srcChannels);
+
+    T gray                               = (T)(b * B2YF + g * G2YF + r * R2YF);
+    *dst.ptr(batch_idx, 0, dst_y, dst_x) = gray;
 }
 
 template<class T>
@@ -240,6 +349,31 @@ __global__ void bgr_to_yuv_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, cu
 }
 
 template<class T>
+__global__ void bgr_to_yuv_char_chw(cuda::ImageBatchVarShapeWrap<T> src, cuda::ImageBatchVarShapeWrap<T> dst, int bidx,
+                                    int srcChannels)
+{
+    int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
+    int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
+    const int batch_idx = get_batch_idx();
+    if (dst_x >= dst.width(batch_idx, 0) || dst_y >= dst.height(batch_idx, 0))
+        return;
+
+    T unusedA;
+    T B, G, R;
+    load_bgra_chw(src, B, G, R, unusedA, batch_idx, dst_x, dst_y, bidx, srcChannels);
+
+    int C0 = R2Y, C1 = G2Y, C2 = B2Y, C3 = R2VI, C4 = B2UI;
+    int delta = ((T)(cuda::TypeTraits<T>::max / 2 + 1)) * (1 << yuv_shift);
+    int Y     = CV_DESCALE(R * C0 + G * C1 + B * C2, yuv_shift);
+    int Cr    = CV_DESCALE((R - Y) * C3 + delta, yuv_shift);
+    int Cb    = CV_DESCALE((B - Y) * C4 + delta, yuv_shift);
+
+    *dst.ptr(batch_idx, 0, dst_y, dst_x) = cuda::SaturateCast<T>(Y);
+    *dst.ptr(batch_idx, 1, dst_y, dst_x) = cuda::SaturateCast<T>(Cb);
+    *dst.ptr(batch_idx, 2, dst_y, dst_x) = cuda::SaturateCast<T>(Cr);
+}
+
+template<class T>
 __global__ void bgr_to_yuv_float_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
                                       int bidx)
 {
@@ -261,6 +395,31 @@ __global__ void bgr_to_yuv_float_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, c
     *dst.ptr(batch_idx, dst_y, dst_x, 0) = Y;
     *dst.ptr(batch_idx, dst_y, dst_x, 1) = Cb;
     *dst.ptr(batch_idx, dst_y, dst_x, 2) = Cr;
+}
+
+template<class T>
+__global__ void bgr_to_yuv_float_chw(cuda::ImageBatchVarShapeWrap<T> src, cuda::ImageBatchVarShapeWrap<T> dst, int bidx,
+                                     int srcChannels)
+{
+    int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
+    int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
+    const int batch_idx = get_batch_idx();
+    if (dst_x >= dst.width(batch_idx, 0) || dst_y >= dst.height(batch_idx, 0))
+        return;
+
+    T unusedA;
+    T B, G, R;
+    load_bgra_chw(src, B, G, R, unusedA, batch_idx, dst_x, dst_y, bidx, srcChannels);
+
+    T C0 = R2YF, C1 = G2YF, C2 = B2YF, C3 = R2VF, C4 = B2UF;
+    T delta = 0.5f;
+    T Y     = R * C0 + G * C1 + B * C2;
+    T Cr    = (R - Y) * C3 + delta;
+    T Cb    = (B - Y) * C4 + delta;
+
+    *dst.ptr(batch_idx, 0, dst_y, dst_x) = Y;
+    *dst.ptr(batch_idx, 1, dst_y, dst_x) = Cb;
+    *dst.ptr(batch_idx, 2, dst_y, dst_x) = Cr;
 }
 
 template<class T>
@@ -289,6 +448,30 @@ __global__ void yuv_to_bgr_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, cu
 }
 
 template<class T>
+__global__ void yuv_to_bgr_char_chw(cuda::ImageBatchVarShapeWrap<T> src, cuda::ImageBatchVarShapeWrap<T> dst, int bidx,
+                                    int dstChannels)
+{
+    int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
+    int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
+    const int batch_idx = get_batch_idx();
+    if (dst_x >= dst.width(batch_idx, 0) || dst_y >= dst.height(batch_idx, 0))
+        return;
+
+    T Y  = *src.ptr(batch_idx, 0, dst_y, dst_x);
+    T Cb = *src.ptr(batch_idx, 1, dst_y, dst_x);
+    T Cr = *src.ptr(batch_idx, 2, dst_y, dst_x);
+
+    int C0 = V2RI, C1 = V2GI, C2 = U2GI, C3 = U2BI;
+    int delta = ((T)(cuda::TypeTraits<T>::max / 2 + 1));
+    int b     = Y + CV_DESCALE((Cb - delta) * C3, yuv_shift);
+    int g     = Y + CV_DESCALE((Cb - delta) * C2 + (Cr - delta) * C1, yuv_shift);
+    int r     = Y + CV_DESCALE((Cr - delta) * C0, yuv_shift);
+
+    store_bgra_chw(dst, cuda::SaturateCast<T>(b), cuda::SaturateCast<T>(g), cuda::SaturateCast<T>(r),
+                   cuda::TypeTraits<T>::max, batch_idx, dst_x, dst_y, bidx, dstChannels);
+}
+
+template<class T>
 __global__ void yuv_to_bgr_float_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
                                       int bidx)
 {
@@ -311,6 +494,29 @@ __global__ void yuv_to_bgr_float_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, c
     *dst.ptr(batch_idx, dst_y, dst_x, bidx)     = b;
     *dst.ptr(batch_idx, dst_y, dst_x, 1)        = g;
     *dst.ptr(batch_idx, dst_y, dst_x, bidx ^ 2) = r;
+}
+
+template<class T>
+__global__ void yuv_to_bgr_float_chw(cuda::ImageBatchVarShapeWrap<T> src, cuda::ImageBatchVarShapeWrap<T> dst, int bidx,
+                                     int dstChannels)
+{
+    int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
+    int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
+    const int batch_idx = get_batch_idx();
+    if (dst_x >= dst.width(batch_idx, 0) || dst_y >= dst.height(batch_idx, 0))
+        return;
+
+    T Y  = *src.ptr(batch_idx, 0, dst_y, dst_x);
+    T Cb = *src.ptr(batch_idx, 1, dst_y, dst_x);
+    T Cr = *src.ptr(batch_idx, 2, dst_y, dst_x);
+
+    T C0 = V2RF, C1 = V2GF, C2 = U2GF, C3 = U2BF;
+    T delta = 0.5f;
+    T b     = Y + (Cb - delta) * C3;
+    T g     = Y + (Cb - delta) * C2 + (Cr - delta) * C1;
+    T r     = Y + (Cr - delta) * C0;
+
+    store_bgra_chw(dst, b, g, r, cuda::TypeTraits<T>::max, batch_idx, dst_x, dst_y, bidx, dstChannels);
 }
 
 template<class T>
@@ -352,6 +558,51 @@ __global__ void bgr_to_hsv_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, cu
     *dst.ptr(batch_idx, dst_y, dst_x, 0) = cuda::SaturateCast<uint8_t>(h);
     *dst.ptr(batch_idx, dst_y, dst_x, 1) = (uint8_t)s;
     *dst.ptr(batch_idx, dst_y, dst_x, 2) = (uint8_t)v;
+}
+
+template<class T>
+__global__ void bgr_to_hsv_char_chw(cuda::ImageBatchVarShapeWrap<T> src, cuda::ImageBatchVarShapeWrap<T> dst, int bidx,
+                                    bool isFullRange, int srcChannels)
+{
+    int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
+    int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
+    const int batch_idx = get_batch_idx();
+    if (dst_x >= dst.width(batch_idx, 0) || dst_y >= dst.height(batch_idx, 0))
+        return;
+
+    T unusedA;
+    T b8, g8, r8;
+    load_bgra_chw(src, b8, g8, r8, unusedA, batch_idx, dst_x, dst_y, bidx, srcChannels);
+
+    int       b         = b8;
+    int       g         = g8;
+    int       r         = r8;
+    int       hrange    = isFullRange ? 256 : 180;
+    int       hr        = hrange;
+    const int hsv_shift = 12;
+    int       h, s, v = b;
+    int       vmin = b;
+    int       vr, vg;
+
+    v    = cuda::max(v, g);
+    v    = cuda::max(v, r);
+    vmin = min(vmin, g);
+    vmin = min(vmin, r);
+
+    uint8_t diff = cuda::SaturateCast<uint8_t>(v - vmin);
+    vr           = v == r ? -1 : 0;
+    vg           = v == g ? -1 : 0;
+
+    int hdiv_table = diff == 0 ? 0 : cuda::SaturateCast<int>((hrange << hsv_shift) / (6. * diff));
+    int sdiv_table = v == 0 ? 0 : cuda::SaturateCast<int>((255 << hsv_shift) / (1. * v));
+    s              = (diff * sdiv_table + (1 << (hsv_shift - 1))) >> hsv_shift;
+    h              = (vr & (g - b)) + (~vr & ((vg & (b - r + 2 * diff)) + ((~vg) & (r - g + 4 * diff))));
+    h              = (h * hdiv_table + (1 << (hsv_shift - 1))) >> hsv_shift;
+    h += h < 0 ? hr : 0;
+
+    *dst.ptr(batch_idx, 0, dst_y, dst_x) = cuda::SaturateCast<uint8_t>(h);
+    *dst.ptr(batch_idx, 1, dst_y, dst_x) = (uint8_t)s;
+    *dst.ptr(batch_idx, 2, dst_y, dst_x) = (uint8_t)v;
 }
 
 template<class T>
@@ -401,65 +652,163 @@ __global__ void bgr_to_hsv_float_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, c
     *dst.ptr(batch_idx, dst_y, dst_x, 2) = v;
 }
 
+template<class T>
+__global__ void bgr_to_hsv_float_chw(cuda::ImageBatchVarShapeWrap<T> src, cuda::ImageBatchVarShapeWrap<T> dst, int bidx,
+                                     int srcChannels)
+{
+    int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
+    int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
+    const int batch_idx = get_batch_idx();
+    if (dst_x >= dst.width(batch_idx, 0) || dst_y >= dst.height(batch_idx, 0))
+        return;
+
+    T unusedA;
+    T b, g, r;
+    load_bgra_chw(src, b, g, r, unusedA, batch_idx, dst_x, dst_y, bidx, srcChannels);
+    float h, s, v;
+    float hrange = 360.0;
+    float hscale = hrange * (1.f / 360.f);
+
+    float vmin, diff;
+
+    v = vmin = r;
+    if (v < g)
+        v = g;
+    if (v < b)
+        v = b;
+    if (vmin > g)
+        vmin = g;
+    if (vmin > b)
+        vmin = b;
+
+    diff = v - vmin;
+    s    = diff / (float)(fabs(v) + FLT_EPSILON);
+    diff = (float)(60. / (diff + FLT_EPSILON));
+    if (v == r)
+        h = (g - b) * diff;
+    else if (v == g)
+        h = (b - r) * diff + 120.f;
+    else
+        h = (r - g) * diff + 240.f;
+
+    if (h < 0)
+        h += 360.f;
+
+    *dst.ptr(batch_idx, 0, dst_y, dst_x) = h * hscale;
+    *dst.ptr(batch_idx, 1, dst_y, dst_x) = s;
+    *dst.ptr(batch_idx, 2, dst_y, dst_x) = v;
+}
+
 inline __device__ void HSV2RGB_native_var_shape(float h, float s, float v, float &b, float &g, float &r)
 {
     if (s == 0)
         b = g = r = v;
     else
     {
-        static const int sector_data[][3] = {
-            {1, 3, 0},
-            {1, 0, 2},
-            {3, 0, 1},
-            {0, 2, 1},
-            {0, 1, 3},
-            {2, 1, 0}
-        };
-
         h += 6 * (h < 0);              // Add 6 if h < 0.
         int idx = static_cast<int>(h); // Sector index.
         h -= idx;                      // Fractional part of h.
         idx %= 6;                      // Make sure index is in valid range.
 
-        // clang-format off
-        const float tab[4] {v,
-                            v * (1 - s),
-                            v * (1 - s * h),
-                            v * (1 - s * (1 - h))};
-        // clang-format on
-
-        b = tab[sector_data[idx][0]];
-        g = tab[sector_data[idx][1]];
-        r = tab[sector_data[idx][2]];
+        const float p = v * (1 - s);
+        const float q = v * (1 - s * h);
+        const float t = v * (1 - s * (1 - h));
+        switch (idx)
+        {
+        case 0:
+            b = p;
+            g = t;
+            r = v;
+            break;
+        case 1:
+            b = p;
+            g = v;
+            r = q;
+            break;
+        case 2:
+            b = t;
+            g = v;
+            r = p;
+            break;
+        case 3:
+            b = v;
+            g = q;
+            r = p;
+            break;
+        case 4:
+            b = v;
+            g = p;
+            r = t;
+            break;
+        default:
+            b = q;
+            g = p;
+            r = v;
+            break;
+        }
     }
 }
 
-template<class T>
+template<int NIX, class T>
 __global__ void hsv_to_bgr_char_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
                                      int bidx, bool isFullRange)
 {
-    int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
+    int       dst_x0    = (blockIdx.x * blockDim.x + threadIdx.x) * NIX;
     int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
-    if (dst_x >= dst.width(batch_idx) || dst_y >= dst.height(batch_idx))
+    const int dst_width = dst.width(batch_idx);
+    if (dst_x0 >= dst_width || dst_y >= dst.height(batch_idx))
         return;
 
     const float     scaleH  = 6.f / (isFullRange ? 256 : 180);
     constexpr float scaleSV = 1.0f / 255.0f;
     constexpr T     alpha   = cuda::TypeTraits<T>::max;
 
-    float h = *src.ptr(batch_idx, dst_y, dst_x, 0) * scaleH;
-    float s = *src.ptr(batch_idx, dst_y, dst_x, 1) * scaleSV;
-    float v = *src.ptr(batch_idx, dst_y, dst_x, 2) * scaleSV;
+#pragma unroll
+    for (int i = 0; i < NIX; ++i)
+    {
+        int dst_x = dst_x0 + i;
+        if (dst_x >= dst_width)
+            break;
+
+        float h = *src.ptr(batch_idx, dst_y, dst_x, 0) * scaleH;
+        float s = *src.ptr(batch_idx, dst_y, dst_x, 1) * scaleSV;
+        float v = *src.ptr(batch_idx, dst_y, dst_x, 2) * scaleSV;
+
+        float b, g, r;
+        HSV2RGB_native_var_shape(h, s, v, b, g, r);
+
+        *dst.ptr(batch_idx, dst_y, dst_x, bidx)     = cuda::SaturateCast<uchar>(b * 255.0f);
+        *dst.ptr(batch_idx, dst_y, dst_x, 1)        = cuda::SaturateCast<uchar>(g * 255.0f);
+        *dst.ptr(batch_idx, dst_y, dst_x, bidx ^ 2) = cuda::SaturateCast<uchar>(r * 255.0f);
+        if (dst.numChannels() == 4)
+            *dst.ptr(batch_idx, dst_y, dst_x, 3) = alpha;
+    }
+}
+
+template<class T>
+__global__ void hsv_to_bgr_char_chw(cuda::ImageBatchVarShapeWrap<T> src, cuda::ImageBatchVarShapeWrap<T> dst, int bidx,
+                                    bool isFullRange, int dstChannels)
+{
+    int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
+    int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
+    const int batch_idx = get_batch_idx();
+    if (dst_x >= dst.width(batch_idx, 0) || dst_y >= dst.height(batch_idx, 0))
+        return;
+
+    const float     scaleH  = 6.f / (isFullRange ? 256 : 180);
+    constexpr float scaleSV = 1.0f / 255.0f;
+    constexpr T     alpha   = cuda::TypeTraits<T>::max;
+
+    float h = *src.ptr(batch_idx, 0, dst_y, dst_x) * scaleH;
+    float s = *src.ptr(batch_idx, 1, dst_y, dst_x) * scaleSV;
+    float v = *src.ptr(batch_idx, 2, dst_y, dst_x) * scaleSV;
 
     float b, g, r;
     HSV2RGB_native_var_shape(h, s, v, b, g, r);
 
-    *dst.ptr(batch_idx, dst_y, dst_x, bidx)     = cuda::SaturateCast<uchar>(b * 255.0f);
-    *dst.ptr(batch_idx, dst_y, dst_x, 1)        = cuda::SaturateCast<uchar>(g * 255.0f);
-    *dst.ptr(batch_idx, dst_y, dst_x, bidx ^ 2) = cuda::SaturateCast<uchar>(r * 255.0f);
-    if (dst.numChannels() == 4)
-        *dst.ptr(batch_idx, dst_y, dst_x, 3) = alpha;
+    store_bgra_chw(dst, cuda::SaturateCast<uchar>(b * 255.0f), cuda::SaturateCast<uchar>(g * 255.0f),
+                   cuda::SaturateCast<uchar>(r * 255.0f), alpha, batch_idx, dst_x, dst_y, bidx, dstChannels);
 }
 
 template<class T>
@@ -487,6 +836,30 @@ __global__ void hsv_to_bgr_float_nhwc(cuda::ImageBatchVarShapeWrapNHWC<T> src, c
     *dst.ptr(batch_idx, dst_y, dst_x, bidx ^ 2) = r;
     if (dst.numChannels() == 4)
         *dst.ptr(batch_idx, dst_y, dst_x, 3) = alpha;
+}
+
+template<class T>
+__global__ void hsv_to_bgr_float_chw(cuda::ImageBatchVarShapeWrap<T> src, cuda::ImageBatchVarShapeWrap<T> dst, int bidx,
+                                     int dstChannels)
+{
+    int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
+    int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
+    const int batch_idx = get_batch_idx();
+    if (dst_x >= dst.width(batch_idx, 0) || dst_y >= dst.height(batch_idx, 0))
+        return;
+
+    constexpr float scaleH = 6.0f / 360.0f;
+    constexpr float alpha  = 1.0f;
+
+    float h = *src.ptr(batch_idx, 0, dst_y, dst_x) * scaleH;
+    float s = *src.ptr(batch_idx, 1, dst_y, dst_x);
+    float v = *src.ptr(batch_idx, 2, dst_y, dst_x);
+
+    float b, g, r;
+    HSV2RGB_native_var_shape(h, s, v, b, g, r);
+
+    store_bgra_chw(dst, static_cast<T>(b), static_cast<T>(g), static_cast<T>(r), static_cast<T>(alpha), batch_idx,
+                   dst_x, dst_y, bidx, dstChannels);
 }
 
 __device__ __forceinline__ void yuv42xxp_to_bgr_kernel(const int &Y, const int &U, const int &V, uchar &r, uchar &g,
@@ -809,6 +1182,7 @@ inline ErrorCode BGR_to_RGB(const ImageBatchVarShapeDataStridedCuda &inData,
     int      channels      = inData.uniqueFormat().numChannels();
     DataType data_type     = helpers::GetLegacyDataType(inData.uniqueFormat());
     DataType out_data_type = helpers::GetLegacyDataType(outData.uniqueFormat());
+    bool     isPlanar      = IsPlanar(helpers::GetLegacyDataFormat(inData));
 
     if (channels != sch)
     {
@@ -839,56 +1213,66 @@ inline ErrorCode BGR_to_RGB(const ImageBatchVarShapeDataStridedCuda &inData,
     int max_width  = inData.maxSize().w;
     int max_height = inData.maxSize().h;
     int batch_size = inData.numImages();
+    if (isPlanar && batch_size > 65535)
+    {
+        LOG_ERROR("Planar CvtColor requires numImages <= 65535 (CUDA grid-z limit)");
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
 
     dim3 blockSize(BLOCK, BLOCK / 4, 1);
     dim3 gridSize(divUp(max_width, blockSize.x), divUp(max_height, blockSize.y), batch_size);
+
+#define CVCUDA_RUN_BGR2RGB(T)                                                                        \
+    do                                                                                               \
+    {                                                                                                \
+        if (isPlanar)                                                                                \
+        {                                                                                            \
+            cuda::ImageBatchVarShapeWrap<T> src_ptr(inData);                                         \
+            cuda::ImageBatchVarShapeWrap<T> dst_ptr(outData);                                        \
+            rgb_to_bgr_chw<T><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx, sch, dch); \
+        }                                                                                            \
+        else                                                                                         \
+        {                                                                                            \
+            cuda::ImageBatchVarShapeWrapNHWC<T> src_ptr(inData, sch);                                \
+            cuda::ImageBatchVarShapeWrapNHWC<T> dst_ptr(outData, dch);                               \
+            rgb_to_bgr_nhwc<T><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);          \
+        }                                                                                            \
+        checkKernelErrors();                                                                         \
+    }                                                                                                \
+    while (0)
 
     switch (data_type)
     {
     case kCV_8U:
     case kCV_8S:
     {
-        cuda::ImageBatchVarShapeWrapNHWC<unsigned char> src_ptr(inData, sch);
-        cuda::ImageBatchVarShapeWrapNHWC<unsigned char> dst_ptr(outData, dch);
-        rgb_to_bgr_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
-        checkKernelErrors();
+        CVCUDA_RUN_BGR2RGB(unsigned char);
     }
     break;
     case kCV_16F: // Not properly handled when adding alpha to the destination.
     case kCV_16U:
     case kCV_16S:
     {
-        cuda::ImageBatchVarShapeWrapNHWC<uint16_t> src_ptr(inData, sch);
-        cuda::ImageBatchVarShapeWrapNHWC<uint16_t> dst_ptr(outData, dch);
-        rgb_to_bgr_nhwc<uint16_t><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
-        checkKernelErrors();
+        CVCUDA_RUN_BGR2RGB(uint16_t);
     }
     break;
     case kCV_32S:
     {
-        cuda::ImageBatchVarShapeWrapNHWC<int32_t> src_ptr(inData, sch);
-        cuda::ImageBatchVarShapeWrapNHWC<int32_t> dst_ptr(outData, dch);
-        rgb_to_bgr_nhwc<int32_t><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
-        checkKernelErrors();
+        CVCUDA_RUN_BGR2RGB(int32_t);
     }
     break;
     case kCV_32F:
     {
-        cuda::ImageBatchVarShapeWrapNHWC<float> src_ptr(inData, sch);
-        cuda::ImageBatchVarShapeWrapNHWC<float> dst_ptr(outData, dch);
-        rgb_to_bgr_nhwc<float><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
-        checkKernelErrors();
+        CVCUDA_RUN_BGR2RGB(float);
     }
     break;
     case kCV_64F:
     {
-        cuda::ImageBatchVarShapeWrapNHWC<double> src_ptr(inData, sch);
-        cuda::ImageBatchVarShapeWrapNHWC<double> dst_ptr(outData, dch);
-        rgb_to_bgr_nhwc<double><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
-        checkKernelErrors();
+        CVCUDA_RUN_BGR2RGB(double);
     }
     break;
     }
+#undef CVCUDA_RUN_BGR2RGB
     return ErrorCode::SUCCESS;
 }
 
@@ -901,6 +1285,7 @@ inline ErrorCode GRAY_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData,
     int      channels      = inData.uniqueFormat().numChannels();
     DataType data_type     = helpers::GetLegacyDataType(inData.uniqueFormat());
     DataType out_data_type = helpers::GetLegacyDataType(outData.uniqueFormat());
+    bool     isPlanar      = IsPlanar(helpers::GetLegacyDataFormat(inData));
 
     if (channels != 1)
     {
@@ -931,56 +1316,66 @@ inline ErrorCode GRAY_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData,
     int max_width  = inData.maxSize().w;
     int max_height = inData.maxSize().h;
     int batch_size = inData.numImages();
+    if (isPlanar && batch_size > 65535)
+    {
+        LOG_ERROR("Planar CvtColor requires numImages <= 65535 (CUDA grid-z limit)");
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
 
     dim3 blockSize(BLOCK, BLOCK / 4, 1);
     dim3 gridSize(divUp(max_width, blockSize.x), divUp(max_height, blockSize.y), batch_size);
+
+#define CVCUDA_RUN_GRAY2BGR(T)                                                             \
+    do                                                                                     \
+    {                                                                                      \
+        if (isPlanar)                                                                      \
+        {                                                                                  \
+            cuda::ImageBatchVarShapeWrap<T> src_ptr(inData);                               \
+            cuda::ImageBatchVarShapeWrap<T> dst_ptr(outData);                              \
+            gray_to_bgr_chw<T><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, dch); \
+        }                                                                                  \
+        else                                                                               \
+        {                                                                                  \
+            cuda::ImageBatchVarShapeWrapNHWC<T> src_ptr(inData, channels);                 \
+            cuda::ImageBatchVarShapeWrapNHWC<T> dst_ptr(outData, dch);                     \
+            gray_to_bgr_nhwc<T><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr);     \
+        }                                                                                  \
+        checkKernelErrors();                                                               \
+    }                                                                                      \
+    while (0)
 
     switch (data_type)
     {
     case kCV_8U:
     case kCV_8S:
     {
-        cuda::ImageBatchVarShapeWrapNHWC<unsigned char> src_ptr(inData, channels);
-        cuda::ImageBatchVarShapeWrapNHWC<unsigned char> dst_ptr(outData, dch);
-        gray_to_bgr_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr);
-        checkKernelErrors();
+        CVCUDA_RUN_GRAY2BGR(unsigned char);
     }
     break;
     case kCV_16F: // Not properly handled when adding alpha to the destination.
     case kCV_16U:
     case kCV_16S:
     {
-        cuda::ImageBatchVarShapeWrapNHWC<uint16_t> src_ptr(inData, channels);
-        cuda::ImageBatchVarShapeWrapNHWC<uint16_t> dst_ptr(outData, dch);
-        gray_to_bgr_nhwc<uint16_t><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr);
-        checkKernelErrors();
+        CVCUDA_RUN_GRAY2BGR(uint16_t);
     }
     break;
     case kCV_32S:
     {
-        cuda::ImageBatchVarShapeWrapNHWC<int32_t> src_ptr(inData, channels);
-        cuda::ImageBatchVarShapeWrapNHWC<int32_t> dst_ptr(outData, dch);
-        gray_to_bgr_nhwc<int32_t><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr);
-        checkKernelErrors();
+        CVCUDA_RUN_GRAY2BGR(int32_t);
     }
     break;
     case kCV_32F:
     {
-        cuda::ImageBatchVarShapeWrapNHWC<float> src_ptr(inData, channels);
-        cuda::ImageBatchVarShapeWrapNHWC<float> dst_ptr(outData, dch);
-        gray_to_bgr_nhwc<float><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr);
-        checkKernelErrors();
+        CVCUDA_RUN_GRAY2BGR(float);
     }
     break;
     case kCV_64F:
     {
-        cuda::ImageBatchVarShapeWrapNHWC<double> src_ptr(inData, channels);
-        cuda::ImageBatchVarShapeWrapNHWC<double> dst_ptr(outData, dch);
-        gray_to_bgr_nhwc<double><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr);
-        checkKernelErrors();
+        CVCUDA_RUN_GRAY2BGR(double);
     }
     break;
     }
+#undef CVCUDA_RUN_GRAY2BGR
     return ErrorCode::SUCCESS;
 }
 
@@ -994,6 +1389,7 @@ inline ErrorCode BGR_to_GRAY(const ImageBatchVarShapeDataStridedCuda &inData,
     int      channels      = inData.uniqueFormat().numChannels();
     DataType data_type     = helpers::GetLegacyDataType(inData.uniqueFormat());
     DataType out_data_type = helpers::GetLegacyDataType(outData.uniqueFormat());
+    bool     isPlanar      = IsPlanar(helpers::GetLegacyDataFormat(inData));
 
     if (channels != sch)
     {
@@ -1018,40 +1414,78 @@ inline ErrorCode BGR_to_GRAY(const ImageBatchVarShapeDataStridedCuda &inData,
     int max_width  = inData.maxSize().w;
     int max_height = inData.maxSize().h;
     int batch_size = inData.numImages();
+    if (isPlanar && batch_size > 65535)
+    {
+        LOG_ERROR("Planar CvtColor requires numImages <= 65535 (CUDA grid-z limit)");
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
 
     dim3 blockSize(BLOCK, BLOCK / 4, 1);
     dim3 gridSize(divUp(max_width, blockSize.x), divUp(max_height, blockSize.y), batch_size);
+    dim3 gridSize4(divUp(max_width, blockSize.x * 4), gridSize.y, gridSize.z);
+
+#define CVCUDA_RUN_BGR2GRAY_CHAR(T, NIX)                                                              \
+    do                                                                                                \
+    {                                                                                                 \
+        if (isPlanar)                                                                                 \
+        {                                                                                             \
+            cuda::ImageBatchVarShapeWrap<T> src_ptr(inData);                                          \
+            cuda::ImageBatchVarShapeWrap<T> dst_ptr(outData);                                         \
+            bgr_to_gray_char_chw<T><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx, sch); \
+        }                                                                                             \
+        else                                                                                          \
+        {                                                                                             \
+            cuda::ImageBatchVarShapeWrapNHWC<T> src_ptr(inData, channels);                            \
+            cuda::ImageBatchVarShapeWrapNHWC<T> dst_ptr(outData, dcn);                                \
+            bgr_to_gray_char_nhwc<NIX, T>                                                             \
+                <<<NIX == 4 ? gridSize4 : gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);  \
+        }                                                                                             \
+        checkKernelErrors();                                                                          \
+    }                                                                                                 \
+    while (0)
+
+#define CVCUDA_RUN_BGR2GRAY_FLOAT(T)                                                                   \
+    do                                                                                                 \
+    {                                                                                                  \
+        if (isPlanar)                                                                                  \
+        {                                                                                              \
+            cuda::ImageBatchVarShapeWrap<T> src_ptr(inData);                                           \
+            cuda::ImageBatchVarShapeWrap<T> dst_ptr(outData);                                          \
+            bgr_to_gray_float_chw<T><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx, sch); \
+        }                                                                                              \
+        else                                                                                           \
+        {                                                                                              \
+            cuda::ImageBatchVarShapeWrapNHWC<T> src_ptr(inData, channels);                             \
+            cuda::ImageBatchVarShapeWrapNHWC<T> dst_ptr(outData, dcn);                                 \
+            bgr_to_gray_float_nhwc<T><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);     \
+        }                                                                                              \
+        checkKernelErrors();                                                                           \
+    }                                                                                                  \
+    while (0)
 
     switch (data_type)
     {
     case kCV_8U:
     {
-        cuda::ImageBatchVarShapeWrapNHWC<unsigned char> src_ptr(inData, channels);
-        cuda::ImageBatchVarShapeWrapNHWC<unsigned char> dst_ptr(outData, dcn);
-        bgr_to_gray_char_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
-        checkKernelErrors();
+        CVCUDA_RUN_BGR2GRAY_CHAR(unsigned char, 4);
     }
     break;
     case kCV_16U:
     {
-        cuda::ImageBatchVarShapeWrapNHWC<unsigned short> src_ptr(inData, channels);
-        cuda::ImageBatchVarShapeWrapNHWC<unsigned short> dst_ptr(outData, dcn);
-        bgr_to_gray_char_nhwc<unsigned short><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
-        checkKernelErrors();
+        CVCUDA_RUN_BGR2GRAY_CHAR(unsigned short, 1);
     }
     break;
     case kCV_32F:
     {
-        cuda::ImageBatchVarShapeWrapNHWC<float> src_ptr(inData, channels);
-        cuda::ImageBatchVarShapeWrapNHWC<float> dst_ptr(outData, dcn);
-        bgr_to_gray_float_nhwc<float><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
-        checkKernelErrors();
+        CVCUDA_RUN_BGR2GRAY_FLOAT(float);
     }
     break;
     default:
         LOG_ERROR("Unsupported DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
     }
+#undef CVCUDA_RUN_BGR2GRAY_FLOAT
+#undef CVCUDA_RUN_BGR2GRAY_CHAR
     return ErrorCode::SUCCESS;
 }
 
@@ -1064,6 +1498,7 @@ inline ErrorCode BGR_to_YUV(const ImageBatchVarShapeDataStridedCuda &inData,
     int      channels      = inData.uniqueFormat().numChannels();
     DataType data_type     = helpers::GetLegacyDataType(inData.uniqueFormat());
     DataType out_data_type = helpers::GetLegacyDataType(outData.uniqueFormat());
+    bool     isPlanar      = IsPlanar(helpers::GetLegacyDataFormat(inData));
 
     if (channels != 3)
     {
@@ -1088,40 +1523,76 @@ inline ErrorCode BGR_to_YUV(const ImageBatchVarShapeDataStridedCuda &inData,
     int max_width  = inData.maxSize().w;
     int max_height = inData.maxSize().h;
     int batch_size = inData.numImages();
+    if (isPlanar && batch_size > 65535)
+    {
+        LOG_ERROR("Planar CvtColor requires numImages <= 65535 (CUDA grid-z limit)");
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
 
     dim3 blockSize(BLOCK, BLOCK / 4, 1);
     dim3 gridSize(divUp(max_width, blockSize.x), divUp(max_height, blockSize.y), batch_size);
+
+#define CVCUDA_RUN_BGR2YUV_CHAR(T)                                                                        \
+    do                                                                                                    \
+    {                                                                                                     \
+        if (isPlanar)                                                                                     \
+        {                                                                                                 \
+            cuda::ImageBatchVarShapeWrap<T> src_ptr(inData);                                              \
+            cuda::ImageBatchVarShapeWrap<T> dst_ptr(outData);                                             \
+            bgr_to_yuv_char_chw<T><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx, channels); \
+        }                                                                                                 \
+        else                                                                                              \
+        {                                                                                                 \
+            cuda::ImageBatchVarShapeWrapNHWC<T> src_ptr(inData, channels);                                \
+            cuda::ImageBatchVarShapeWrapNHWC<T> dst_ptr(outData, dcn);                                    \
+            bgr_to_yuv_char_nhwc<T><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);          \
+        }                                                                                                 \
+        checkKernelErrors();                                                                              \
+    }                                                                                                     \
+    while (0)
+
+#define CVCUDA_RUN_BGR2YUV_FLOAT(T)                                                                        \
+    do                                                                                                     \
+    {                                                                                                      \
+        if (isPlanar)                                                                                      \
+        {                                                                                                  \
+            cuda::ImageBatchVarShapeWrap<T> src_ptr(inData);                                               \
+            cuda::ImageBatchVarShapeWrap<T> dst_ptr(outData);                                              \
+            bgr_to_yuv_float_chw<T><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx, channels); \
+        }                                                                                                  \
+        else                                                                                               \
+        {                                                                                                  \
+            cuda::ImageBatchVarShapeWrapNHWC<T> src_ptr(inData, channels);                                 \
+            cuda::ImageBatchVarShapeWrapNHWC<T> dst_ptr(outData, dcn);                                     \
+            bgr_to_yuv_float_nhwc<T><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);          \
+        }                                                                                                  \
+        checkKernelErrors();                                                                               \
+    }                                                                                                      \
+    while (0)
 
     switch (data_type)
     {
     case kCV_8U:
     {
-        cuda::ImageBatchVarShapeWrapNHWC<unsigned char> src_ptr(inData, channels);
-        cuda::ImageBatchVarShapeWrapNHWC<unsigned char> dst_ptr(outData, dcn);
-        bgr_to_yuv_char_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
-        checkKernelErrors();
+        CVCUDA_RUN_BGR2YUV_CHAR(unsigned char);
     }
     break;
     case kCV_16U:
     {
-        cuda::ImageBatchVarShapeWrapNHWC<unsigned short> src_ptr(inData, channels);
-        cuda::ImageBatchVarShapeWrapNHWC<unsigned short> dst_ptr(outData, dcn);
-        bgr_to_yuv_char_nhwc<unsigned short><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
-        checkKernelErrors();
+        CVCUDA_RUN_BGR2YUV_CHAR(unsigned short);
     }
     break;
     case kCV_32F:
     {
-        cuda::ImageBatchVarShapeWrapNHWC<float> src_ptr(inData, channels);
-        cuda::ImageBatchVarShapeWrapNHWC<float> dst_ptr(outData, dcn);
-        bgr_to_yuv_float_nhwc<float><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
-        checkKernelErrors();
+        CVCUDA_RUN_BGR2YUV_FLOAT(float);
     }
     break;
     default:
         LOG_ERROR("Unsupported DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
     }
+#undef CVCUDA_RUN_BGR2YUV_FLOAT
+#undef CVCUDA_RUN_BGR2YUV_CHAR
     return ErrorCode::SUCCESS;
 }
 
@@ -1134,6 +1605,7 @@ inline ErrorCode YUV_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData,
     int      channels      = inData.uniqueFormat().numChannels();
     DataType data_type     = helpers::GetLegacyDataType(inData.uniqueFormat());
     DataType out_data_type = helpers::GetLegacyDataType(outData.uniqueFormat());
+    bool     isPlanar      = IsPlanar(helpers::GetLegacyDataFormat(inData));
 
     if (channels != 3)
     {
@@ -1158,40 +1630,76 @@ inline ErrorCode YUV_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData,
     int max_width  = inData.maxSize().w;
     int max_height = inData.maxSize().h;
     int batch_size = inData.numImages();
+    if (isPlanar && batch_size > 65535)
+    {
+        LOG_ERROR("Planar CvtColor requires numImages <= 65535 (CUDA grid-z limit)");
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
 
     dim3 blockSize(BLOCK, BLOCK / 4, 1);
     dim3 gridSize(divUp(max_width, blockSize.x), divUp(max_height, blockSize.y), batch_size);
+
+#define CVCUDA_RUN_YUV2BGR_CHAR(T)                                                                   \
+    do                                                                                               \
+    {                                                                                                \
+        if (isPlanar)                                                                                \
+        {                                                                                            \
+            cuda::ImageBatchVarShapeWrap<T> src_ptr(inData);                                         \
+            cuda::ImageBatchVarShapeWrap<T> dst_ptr(outData);                                        \
+            yuv_to_bgr_char_chw<T><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx, dcn); \
+        }                                                                                            \
+        else                                                                                         \
+        {                                                                                            \
+            cuda::ImageBatchVarShapeWrapNHWC<T> src_ptr(inData, channels);                           \
+            cuda::ImageBatchVarShapeWrapNHWC<T> dst_ptr(outData, dcn);                               \
+            yuv_to_bgr_char_nhwc<T><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);     \
+        }                                                                                            \
+        checkKernelErrors();                                                                         \
+    }                                                                                                \
+    while (0)
+
+#define CVCUDA_RUN_YUV2BGR_FLOAT(T)                                                                   \
+    do                                                                                                \
+    {                                                                                                 \
+        if (isPlanar)                                                                                 \
+        {                                                                                             \
+            cuda::ImageBatchVarShapeWrap<T> src_ptr(inData);                                          \
+            cuda::ImageBatchVarShapeWrap<T> dst_ptr(outData);                                         \
+            yuv_to_bgr_float_chw<T><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx, dcn); \
+        }                                                                                             \
+        else                                                                                          \
+        {                                                                                             \
+            cuda::ImageBatchVarShapeWrapNHWC<T> src_ptr(inData, channels);                            \
+            cuda::ImageBatchVarShapeWrapNHWC<T> dst_ptr(outData, dcn);                                \
+            yuv_to_bgr_float_nhwc<T><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);     \
+        }                                                                                             \
+        checkKernelErrors();                                                                          \
+    }                                                                                                 \
+    while (0)
 
     switch (data_type)
     {
     case kCV_8U:
     {
-        cuda::ImageBatchVarShapeWrapNHWC<unsigned char> src_ptr(inData, channels);
-        cuda::ImageBatchVarShapeWrapNHWC<unsigned char> dst_ptr(outData, dcn);
-        yuv_to_bgr_char_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
-        checkKernelErrors();
+        CVCUDA_RUN_YUV2BGR_CHAR(unsigned char);
     }
     break;
     case kCV_16U:
     {
-        cuda::ImageBatchVarShapeWrapNHWC<unsigned short> src_ptr(inData, channels);
-        cuda::ImageBatchVarShapeWrapNHWC<unsigned short> dst_ptr(outData, dcn);
-        yuv_to_bgr_char_nhwc<unsigned short><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
-        checkKernelErrors();
+        CVCUDA_RUN_YUV2BGR_CHAR(unsigned short);
     }
     break;
     case kCV_32F:
     {
-        cuda::ImageBatchVarShapeWrapNHWC<float> src_ptr(inData, channels);
-        cuda::ImageBatchVarShapeWrapNHWC<float> dst_ptr(outData, dcn);
-        yuv_to_bgr_float_nhwc<float><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
-        checkKernelErrors();
+        CVCUDA_RUN_YUV2BGR_FLOAT(float);
     }
     break;
     default:
         LOG_ERROR("Unsupported DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
     }
+#undef CVCUDA_RUN_YUV2BGR_FLOAT
+#undef CVCUDA_RUN_YUV2BGR_CHAR
     return ErrorCode::SUCCESS;
 }
 
@@ -1205,6 +1713,7 @@ inline ErrorCode BGR_to_HSV(const ImageBatchVarShapeDataStridedCuda &inData,
     int      channels      = inData.uniqueFormat().numChannels();
     DataType data_type     = helpers::GetLegacyDataType(inData.uniqueFormat());
     DataType out_data_type = helpers::GetLegacyDataType(outData.uniqueFormat());
+    bool     isPlanar      = IsPlanar(helpers::GetLegacyDataFormat(inData));
 
     if (channels != 3)
     {
@@ -1229,32 +1738,71 @@ inline ErrorCode BGR_to_HSV(const ImageBatchVarShapeDataStridedCuda &inData,
     int max_width  = inData.maxSize().w;
     int max_height = inData.maxSize().h;
     int batch_size = inData.numImages();
+    if (isPlanar && batch_size > 65535)
+    {
+        LOG_ERROR("Planar CvtColor requires numImages <= 65535 (CUDA grid-z limit)");
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
 
     dim3 blockSize(BLOCK, BLOCK / 4, 1);
     dim3 gridSize(divUp(max_width, blockSize.x), divUp(max_height, blockSize.y), batch_size);
+
+#define CVCUDA_RUN_BGR2HSV_CHAR(T)                                                                                     \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        if (isPlanar)                                                                                                  \
+        {                                                                                                              \
+            cuda::ImageBatchVarShapeWrap<T> src_ptr(inData);                                                           \
+            cuda::ImageBatchVarShapeWrap<T> dst_ptr(outData);                                                          \
+            bgr_to_hsv_char_chw<T><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx, isFullRange, channels); \
+        }                                                                                                              \
+        else                                                                                                           \
+        {                                                                                                              \
+            cuda::ImageBatchVarShapeWrapNHWC<T> src_ptr(inData, channels);                                             \
+            cuda::ImageBatchVarShapeWrapNHWC<T> dst_ptr(outData, dcn);                                                 \
+            bgr_to_hsv_char_nhwc<T><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx, isFullRange);          \
+        }                                                                                                              \
+        checkKernelErrors();                                                                                           \
+    }                                                                                                                  \
+    while (0)
+
+#define CVCUDA_RUN_BGR2HSV_FLOAT(T)                                                                        \
+    do                                                                                                     \
+    {                                                                                                      \
+        if (isPlanar)                                                                                      \
+        {                                                                                                  \
+            cuda::ImageBatchVarShapeWrap<T> src_ptr(inData);                                               \
+            cuda::ImageBatchVarShapeWrap<T> dst_ptr(outData);                                              \
+            bgr_to_hsv_float_chw<T><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx, channels); \
+        }                                                                                                  \
+        else                                                                                               \
+        {                                                                                                  \
+            cuda::ImageBatchVarShapeWrapNHWC<T> src_ptr(inData, channels);                                 \
+            cuda::ImageBatchVarShapeWrapNHWC<T> dst_ptr(outData, dcn);                                     \
+            bgr_to_hsv_float_nhwc<T><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);          \
+        }                                                                                                  \
+        checkKernelErrors();                                                                               \
+    }                                                                                                      \
+    while (0)
 
     switch (data_type)
     {
     case kCV_8U:
     {
-        cuda::ImageBatchVarShapeWrapNHWC<unsigned char> src_ptr(inData, channels);
-        cuda::ImageBatchVarShapeWrapNHWC<unsigned char> dst_ptr(outData, dcn);
-        bgr_to_hsv_char_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx, isFullRange);
-        checkKernelErrors();
+        CVCUDA_RUN_BGR2HSV_CHAR(unsigned char);
     }
     break;
     case kCV_32F:
     {
-        cuda::ImageBatchVarShapeWrapNHWC<float> src_ptr(inData, channels);
-        cuda::ImageBatchVarShapeWrapNHWC<float> dst_ptr(outData, dcn);
-        bgr_to_hsv_float_nhwc<float><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
-        checkKernelErrors();
+        CVCUDA_RUN_BGR2HSV_FLOAT(float);
     }
     break;
     default:
         LOG_ERROR("Unsupported DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
     }
+#undef CVCUDA_RUN_BGR2HSV_FLOAT
+#undef CVCUDA_RUN_BGR2HSV_CHAR
     return ErrorCode::SUCCESS;
 }
 
@@ -1268,6 +1816,7 @@ inline ErrorCode HSV_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData,
     int      channels      = inData.uniqueFormat().numChannels();
     DataType data_type     = helpers::GetLegacyDataType(inData.uniqueFormat());
     DataType out_data_type = helpers::GetLegacyDataType(outData.uniqueFormat());
+    bool     isPlanar      = IsPlanar(helpers::GetLegacyDataFormat(inData));
 
     if (channels != 3)
     {
@@ -1292,32 +1841,72 @@ inline ErrorCode HSV_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData,
     int max_width  = inData.maxSize().w;
     int max_height = inData.maxSize().h;
     int batch_size = inData.numImages();
+    if (isPlanar && batch_size > 65535)
+    {
+        LOG_ERROR("Planar CvtColor requires numImages <= 65535 (CUDA grid-z limit)");
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
 
     dim3 blockSize(BLOCK, BLOCK / 4, 1);
     dim3 gridSize(divUp(max_width, blockSize.x), divUp(max_height, blockSize.y), batch_size);
+    dim3 gridSize2(divUp(max_width, blockSize.x * 2), gridSize.y, gridSize.z);
+
+#define CVCUDA_RUN_HSV2BGR_CHAR(T)                                                                                \
+    do                                                                                                            \
+    {                                                                                                             \
+        if (isPlanar)                                                                                             \
+        {                                                                                                         \
+            cuda::ImageBatchVarShapeWrap<T> src_ptr(inData);                                                      \
+            cuda::ImageBatchVarShapeWrap<T> dst_ptr(outData);                                                     \
+            hsv_to_bgr_char_chw<T><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx, isFullRange, dcn); \
+        }                                                                                                         \
+        else                                                                                                      \
+        {                                                                                                         \
+            cuda::ImageBatchVarShapeWrapNHWC<T> src_ptr(inData, channels);                                        \
+            cuda::ImageBatchVarShapeWrapNHWC<T> dst_ptr(outData, dcn);                                            \
+            hsv_to_bgr_char_nhwc<2, T><<<gridSize2, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx, isFullRange); \
+        }                                                                                                         \
+        checkKernelErrors();                                                                                      \
+    }                                                                                                             \
+    while (0)
+
+#define CVCUDA_RUN_HSV2BGR_FLOAT(T)                                                                   \
+    do                                                                                                \
+    {                                                                                                 \
+        if (isPlanar)                                                                                 \
+        {                                                                                             \
+            cuda::ImageBatchVarShapeWrap<T> src_ptr(inData);                                          \
+            cuda::ImageBatchVarShapeWrap<T> dst_ptr(outData);                                         \
+            hsv_to_bgr_float_chw<T><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx, dcn); \
+        }                                                                                             \
+        else                                                                                          \
+        {                                                                                             \
+            cuda::ImageBatchVarShapeWrapNHWC<T> src_ptr(inData, channels);                            \
+            cuda::ImageBatchVarShapeWrapNHWC<T> dst_ptr(outData, dcn);                                \
+            hsv_to_bgr_float_nhwc<T><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);     \
+        }                                                                                             \
+        checkKernelErrors();                                                                          \
+    }                                                                                                 \
+    while (0)
 
     switch (data_type)
     {
     case kCV_8U:
     {
-        cuda::ImageBatchVarShapeWrapNHWC<unsigned char> src_ptr(inData, channels);
-        cuda::ImageBatchVarShapeWrapNHWC<unsigned char> dst_ptr(outData, dcn);
-        hsv_to_bgr_char_nhwc<unsigned char><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx, isFullRange);
-        checkKernelErrors();
+        CVCUDA_RUN_HSV2BGR_CHAR(unsigned char);
     }
     break;
     case kCV_32F:
     {
-        cuda::ImageBatchVarShapeWrapNHWC<float> src_ptr(inData, channels);
-        cuda::ImageBatchVarShapeWrapNHWC<float> dst_ptr(outData, dcn);
-        hsv_to_bgr_float_nhwc<float><<<gridSize, blockSize, 0, stream>>>(src_ptr, dst_ptr, bidx);
-        checkKernelErrors();
+        CVCUDA_RUN_HSV2BGR_FLOAT(float);
     }
     break;
     default:
         LOG_ERROR("Unsupported DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
     }
+#undef CVCUDA_RUN_HSV2BGR_FLOAT
+#undef CVCUDA_RUN_HSV2BGR_CHAR
     return ErrorCode::SUCCESS;
 }
 
@@ -1325,6 +1914,12 @@ inline ErrorCode YUV420xp_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData
                                  const ImageBatchVarShapeDataStridedCuda &outData, NVCVColorConversionCode code,
                                  cudaStream_t stream)
 {
+    if (IsPlanar(helpers::GetLegacyDataFormat(inData)) || IsPlanar(helpers::GetLegacyDataFormat(outData)))
+    {
+        LOG_ERROR("Planar CvtColor does not support subsampled YUV420 conversion codes");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
+
     int bidx
         = (code == NVCV_COLOR_YUV2BGR_NV12 || code == NVCV_COLOR_YUV2BGRA_NV12 || code == NVCV_COLOR_YUV2BGR_NV21
            || code == NVCV_COLOR_YUV2BGRA_NV21 || code == NVCV_COLOR_YUV2BGR_YV12 || code == NVCV_COLOR_YUV2BGRA_YV12
@@ -1417,6 +2012,12 @@ inline ErrorCode YUV422_to_BGR(const ImageBatchVarShapeDataStridedCuda &inData,
                                const ImageBatchVarShapeDataStridedCuda &outData, NVCVColorConversionCode code,
                                cudaStream_t stream)
 {
+    if (IsPlanar(helpers::GetLegacyDataFormat(inData)) || IsPlanar(helpers::GetLegacyDataFormat(outData)))
+    {
+        LOG_ERROR("Planar CvtColor does not support packed YUV422 conversion codes");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
+
     int bidx
         = (code == NVCV_COLOR_YUV2BGR_YUY2 || code == NVCV_COLOR_YUV2BGRA_YUY2 || code == NVCV_COLOR_YUV2BGR_YVYU
            || code == NVCV_COLOR_YUV2BGRA_YVYU || code == NVCV_COLOR_YUV2BGR_UYVY || code == NVCV_COLOR_YUV2BGRA_UYVY)
@@ -1560,6 +2161,12 @@ inline ErrorCode BGR_to_YUV420xp(const ImageBatchVarShapeDataStridedCuda &inData
                                  const ImageBatchVarShapeDataStridedCuda &outData, NVCVColorConversionCode code,
                                  cudaStream_t stream)
 {
+    if (IsPlanar(helpers::GetLegacyDataFormat(inData)) || IsPlanar(helpers::GetLegacyDataFormat(outData)))
+    {
+        LOG_ERROR("Planar CvtColor does not support subsampled YUV420 conversion codes");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
+
     int bidx
         = (code == NVCV_COLOR_BGR2YUV_NV12 || code == NVCV_COLOR_BGRA2YUV_NV12 || code == NVCV_COLOR_BGR2YUV_NV21
            || code == NVCV_COLOR_BGRA2YUV_NV21 || code == NVCV_COLOR_BGR2YUV_YV12 || code == NVCV_COLOR_BGRA2YUV_YV12
@@ -1659,9 +2266,10 @@ ErrorCode CvtColorVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inDat
 
     DataFormat format = input_format;
 
-    if (!(format == kNHWC || format == kHWC))
+    if (!(format == kNHWC || format == kHWC || format == kNCHW || format == kCHW))
     {
-        LOG_ERROR("Invalid input DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
+        LOG_ERROR("Invalid input DataFormat " << format
+                                              << ", the valid DataFormats are: \"NHWC\", \"HWC\", \"NCHW\", \"CHW\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
@@ -1875,9 +2483,19 @@ ErrorCode CvtColorVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inDat
         0, // CV_COLORCVT_MAX  = 148
     };
 
+    if (code < 0 || static_cast<size_t>(code) >= sizeof(funcs) / sizeof(funcs[0]))
+    {
+        LOG_ERROR("Invalid convert color code: " << code);
+        return ErrorCode::INVALID_PARAMETER;
+    }
+
     func_t func = funcs[code];
 
-    NVCV_ASSERT(func != 0);
+    if (func == 0)
+    {
+        LOG_ERROR("Invalid convert color code: " << code);
+        return ErrorCode::INVALID_PARAMETER;
+    }
 
     return func(inData, outData, code, stream);
 }

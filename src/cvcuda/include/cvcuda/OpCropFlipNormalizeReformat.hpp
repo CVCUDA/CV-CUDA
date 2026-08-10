@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,6 +35,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class CropFlipNormalizeReformat final : public IOperator
@@ -42,29 +44,23 @@ class CropFlipNormalizeReformat final : public IOperator
 public:
     explicit CropFlipNormalizeReformat();
 
-    ~CropFlipNormalizeReformat();
-
     void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::Tensor &out,
                     const nvcv::Tensor &cropRect, NVCVBorderType borderMode, float borderValue,
                     const nvcv::Tensor &flipCode, const nvcv::Tensor &base, const nvcv::Tensor &scale,
-                    float global_scale, float shift, float epsilon, uint32_t flags = 0);
+                    float global_scale, float shift, float epsilon, uint32_t flags = 0) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline CropFlipNormalizeReformat::CropFlipNormalizeReformat()
 {
-    nvcv::detail::CheckThrow(cvcudaCropFlipNormalizeReformatCreate(&m_handle));
-    assert(m_handle);
-}
-
-inline CropFlipNormalizeReformat::~CropFlipNormalizeReformat()
-{
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaCropFlipNormalizeReformatCreate(&h));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void CropFlipNormalizeReformat::operator()(cudaStream_t stream, const nvcv::ImageBatch &in,
@@ -72,18 +68,20 @@ inline void CropFlipNormalizeReformat::operator()(cudaStream_t stream, const nvc
                                                   NVCVBorderType borderMode, float borderValue,
                                                   const nvcv::Tensor &flipCode, const nvcv::Tensor &base,
                                                   const nvcv::Tensor &scale, float global_scale, float shift,
-                                                  float epsilon, uint32_t flags)
+                                                  float epsilon, uint32_t flags) const
 {
     nvcv::detail::CheckThrow(cvcudaCropFlipNormalizeReformatSubmit(
-        m_handle, stream, in.handle(), out.handle(), cropRect.handle(), borderMode, borderValue, flipCode.handle(),
-        base.handle(), scale.handle(), global_scale, shift, epsilon, flags));
+        m_handle.get(), stream, in.handle(), out.handle(), cropRect.handle(), borderMode, borderValue,
+        flipCode.handle(), base.handle(), scale.handle(), global_scale, shift, epsilon, flags));
 }
 
 inline NVCVOperatorHandle CropFlipNormalizeReformat::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA_CROP_FLIP_NORMALIZE_REFORMAT_HPP

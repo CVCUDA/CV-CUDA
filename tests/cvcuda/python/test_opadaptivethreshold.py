@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,17 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch  # noqa(F401)
 import cvcuda
 
-import pytest as t
+import pytest
 import numpy as np
+
 import cvcuda_util as util
+import cvcuda_tools as cv_tools
 
 RNG = np.random.default_rng(0)
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "tensor_args, adaptive_method, threshold_type",
     [
         (
@@ -50,6 +51,16 @@ RNG = np.random.default_rng(0)
             ((360, 640, 1), cvcuda.Type.U8, "HWC"),
             cvcuda.AdaptiveThresholdType.MEAN_C,
             cvcuda.ThresholdType.BINARY,
+        ),
+        (
+            ((4, 1, 360, 640), cvcuda.Type.U8, "NCHW"),
+            cvcuda.AdaptiveThresholdType.MEAN_C,
+            cvcuda.ThresholdType.BINARY,
+        ),
+        (
+            ((1, 360, 640), cvcuda.Type.U8, "CHW"),
+            cvcuda.AdaptiveThresholdType.GAUSSIAN_C,
+            cvcuda.ThresholdType.BINARY_INV,
         ),
     ],
 )
@@ -98,7 +109,7 @@ def test_op_adaptivethreshold(tensor_args, adaptive_method, threshold_type):
     assert tmp is out
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "num_images, img_size, adaptive_method, threshold_type, max_block_size",
     [
         (
@@ -139,13 +150,19 @@ def test_op_adaptivethresholdvarshape(
         num_images, cvcuda.Format.U8, size=img_size, max_random=256, rng=RNG
     )
 
-    block_size = util.create_tensor(
-        (num_images),
-        np.int32,
+    max_odd_block_size = (
+        max_block_size if max_block_size % 2 == 1 else max_block_size - 1
+    )
+    block_size = util.to_cvcuda_tensor(
+        RNG.integers(
+            1,
+            (max_odd_block_size + 1) // 2,
+            size=(num_images),
+            dtype=np.int32,
+        )
+        * 2
+        + 1,
         "N",
-        max_random=max_block_size,
-        rng=RNG,
-        transform_dist=util.dist_odd,
     )
 
     max_value = util.create_tensor(
@@ -190,3 +207,45 @@ def test_op_adaptivethresholdvarshape(
     assert out.capacity == input.capacity
     assert out.uniqueformat == input.uniqueformat
     assert out.maxsize == input.maxsize
+
+
+def _adaptivethreshold_params(dtype, layout, channels):
+    return {
+        "max_value": 127.0,
+        "adaptive_method": cvcuda.AdaptiveThresholdType.MEAN_C,
+        "threshold_type": cvcuda.ThresholdType.BINARY,
+        "block_size": 3,
+        "c": 2,
+    }
+
+
+def _adaptivethreshold_varshape_params(dtype, layout, channels):
+    return {
+        "max_value": util.to_cvcuda_tensor(
+            np.array([127.0, 127.0], dtype=np.float64), "N"
+        ),
+        "adaptive_method": cvcuda.AdaptiveThresholdType.MEAN_C,
+        "threshold_type": cvcuda.ThresholdType.BINARY,
+        "max_block_size": 3,
+        "block_size": util.to_cvcuda_tensor(np.array([3, 3], dtype=np.int32), "N"),
+        "c": util.to_cvcuda_tensor(np.array([2.0, 2.0], dtype=np.float64), "N"),
+    }
+
+
+globals().update(
+    cv_tools.make_op_tests(
+        name="adaptivethreshold",
+        runner_info=[
+            ("tensor", cvcuda.adaptivethreshold, _adaptivethreshold_params),
+            (
+                "image_batch",
+                cvcuda.adaptivethreshold,
+                _adaptivethreshold_varshape_params,
+            ),
+        ],
+        keystone_dlc=(cvcuda.Type.U8, "NHWC", 1),
+        supported_dtypes={cvcuda.Type.U8},
+        supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
+        supported_channels={1},
+    )
+)

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,14 +15,16 @@
 
 import cvcuda
 
-import pytest as t
+import pytest
 import numpy as np
+
 import cvcuda_util as util
+import cvcuda_tools as cv_tools
 
 RNG = np.random.default_rng(0)
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "tensor_args, kernel_size, kernel_anchor, border",
     [
         (
@@ -80,7 +82,7 @@ def test_op_averageblur(tensor_args, kernel_size, kernel_anchor, border):
     assert out.dtype == input.dtype
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "num_images, img_format, img_size, max_pixel, max_kernel_size, border",
     [
         (
@@ -174,3 +176,45 @@ def test_op_averageblurvarshape(
     assert out.capacity == input.capacity
     assert out.uniqueformat == input.uniqueformat
     assert out.maxsize == input.maxsize
+
+
+def _averageblur_params(dtype, layout, channels):
+    return {
+        "kernel_size": (3, 3),
+        "kernel_anchor": (-1, -1),
+        "border": cvcuda.Border.CONSTANT,
+    }
+
+
+def _averageblur_varshape_params(dtype, layout, channels):
+    return {
+        "max_kernel_size": (5, 5),
+        "kernel_size": util.to_cvcuda_tensor(
+            np.array([[3, 3], [3, 3]], dtype=np.int32), "NC"
+        ),
+        "kernel_anchor": util.to_cvcuda_tensor(
+            np.array([[-1, -1], [-1, -1]], dtype=np.int32), "NC"
+        ),
+        "border": cvcuda.Border.CONSTANT,
+    }
+
+
+globals().update(
+    cv_tools.make_op_tests(
+        name="averageblur",
+        runner_info=[
+            ("tensor", cvcuda.averageblur, _averageblur_params),
+            ("image_batch", cvcuda.averageblur, _averageblur_varshape_params),
+        ],
+        keystone_dlc=(cvcuda.Type.U8, "NHWC", 3),
+        supported_dtypes={
+            cvcuda.Type.U8,
+            cvcuda.Type.U16,
+            cvcuda.Type.S16,
+            cvcuda.Type.S32,
+            cvcuda.Type.F32,
+        },
+        supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
+        supported_channels={1, 3, 4},
+    )
+)

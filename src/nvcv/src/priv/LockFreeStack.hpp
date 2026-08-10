@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,7 +27,19 @@ namespace nvcv::priv {
 template<class T>
 constexpr bool IsForwardListNode = std::is_convertible_v<decltype(std::declval<T>().next), T *>;
 
-template<class Node, std::enable_if_t<IsForwardListNode<Node>, int> = 0>
+template<bool B, typename T = void>
+struct LockFreeStackRequirement;
+
+template<typename T>
+struct LockFreeStackRequirement<true, T>
+{
+    using type = T;
+};
+
+template<bool B, typename T = void>
+using LockFreeStackRequire = typename LockFreeStackRequirement<B, T>::type;
+
+template<class Node, LockFreeStackRequire<IsForwardListNode<Node>, int> = 0>
 class LockFreeStack
 {
 public:
@@ -51,7 +63,8 @@ public:
         }
 
         // Set the newHead to oldHead->next and return oldHead
-        Node *oldHead, *newHead;
+        Node *oldHead;
+        Node *newHead;
         do
         {
             oldHead = m_head.load(std::memory_order_relaxed);
@@ -80,6 +93,7 @@ public:
         Node *h = m_head.load(std::memory_order_relaxed);
         while (!m_head.compare_exchange_weak(h, nullptr, std::memory_order_relaxed, std::memory_order_release))
         {
+            // Retry until the observed head is released.
         }
 
         return h;

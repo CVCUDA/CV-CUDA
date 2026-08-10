@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,7 @@
  */
 
 #include "Operators.hpp"
+#include "VarShapeUtils.hpp"
 
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
@@ -47,7 +48,8 @@ Tensor LaplacianInto(Tensor &output, Tensor &input, const int &ksize, const floa
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*laplacian});
 
-    laplacian->submit(pstream->cudaHandle(), input, output, ksize, scale, border);
+    guard.run([&laplacian, &pstream, &input, &output, &ksize, &scale, &border]()
+              { laplacian->submit(pstream->cudaHandle(), input, output, ksize, scale, border); });
 
     return output;
 }
@@ -75,7 +77,8 @@ ImageBatchVarShape LaplacianVarShapeInto(ImageBatchVarShape &output, ImageBatchV
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*laplacian});
 
-    laplacian->submit(pstream->cudaHandle(), input, output, ksize, scale, border);
+    guard.run([&laplacian, &pstream, &input, &output, &ksize, &scale, &border]()
+              { laplacian->submit(pstream->cudaHandle(), input, output, ksize, scale, border); });
 
     return output;
 }
@@ -83,15 +86,7 @@ ImageBatchVarShape LaplacianVarShapeInto(ImageBatchVarShape &output, ImageBatchV
 ImageBatchVarShape LaplacianVarShape(ImageBatchVarShape &input, Tensor &ksize, Tensor &scale, NVCVBorderType border,
                                      std::optional<Stream> pstream)
 {
-    ImageBatchVarShape output = ImageBatchVarShape::Create(input.numImages());
-
-    for (int i = 0; i < input.numImages(); ++i)
-    {
-        nvcv::ImageFormat format = input[i].format();
-        nvcv::Size2D      size   = input[i].size();
-        auto              image  = Image::Create(size, format);
-        output.pushBack(image);
-    }
+    ImageBatchVarShape output = CreateSameShapeImageBatch(input, input.numImages());
 
     return LaplacianVarShapeInto(output, input, ksize, scale, border, pstream);
 }
@@ -101,19 +96,11 @@ ImageBatchVarShape LaplacianVarShape(ImageBatchVarShape &input, Tensor &ksize, T
 void ExportOpLaplacian(py::module &m)
 {
     using namespace pybind11::literals;
-    py::options options;
-    options.disable_function_signatures();
 
-    m.def("laplacian", &Laplacian, "src"_a, "ksize"_a, "scale"_a = 1.f,
+    m.def("laplacian", NvtxTrace("cvcuda.laplacian", &Laplacian), "src"_a, "ksize"_a, "scale"_a = 1.f,
           "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.laplacian(src: cvcuda.Tensor, ksize: int, scale: float, stream: Optional[cvcuda.Stream] = None) -> cvcuda.Tensor
-
         Executes the Laplacian operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Laplacian operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.Tensor): Input tensor containing one or more images.
@@ -124,21 +111,13 @@ void ExportOpLaplacian(py::module &m)
         Returns:
             cvcuda.Tensor: The output tensor.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("laplacian_into", &LaplacianInto, "dst"_a, "src"_a, "ksize"_a, "scale"_a = 1.f,
-          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.laplacian_into(dst: cvcuda.Tensor, src: cvcuda.Tensor, ksize: int, scale: float, stream: Optional[cvcuda.Stream] = None)
-
+    m.def("laplacian_into", NvtxTrace("cvcuda.laplacian_into", &LaplacianInto), "dst"_a, "src"_a, "ksize"_a,
+          "scale"_a = 1.f, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr,
+          R"pbdoc(
         Executes the Laplacian operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Laplacian operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.Tensor): Output tensor to store the result of the operation.
@@ -148,23 +127,13 @@ void ExportOpLaplacian(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 
-    m.def("laplacian", &LaplacianVarShape, "src"_a, "ksize"_a, "scale"_a,
+    m.def("laplacian", NvtxTrace("cvcuda.laplacian", &LaplacianVarShape), "src"_a, "ksize"_a, "scale"_a,
           "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.laplacian(src: cvcuda.ImageBatchVarShape, ksize: cvcuda.Tensor, scale: cvcuda.Tensor, stream: Optional[cvcuda.Stream] = None) -> cvcuda.ImageBatchVarShape
-
         Executes the Laplacian operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Laplacian operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
@@ -175,21 +144,12 @@ void ExportOpLaplacian(py::module &m)
         Returns:
             cvcuda.ImageBatchVarShape: The output image batch.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("laplacian_into", &LaplacianVarShapeInto, "dst"_a, "src"_a, "ksize"_a, "scale"_a,
-          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.laplacian_into(dst: cvcuda.ImageBatchVarShape, src: cvcuda.ImageBatchVarShape, ksize: cvcuda.Tensor, scale: cvcuda.Tensor, stream: Optional[cvcuda.Stream] = None)
-
+    m.def("laplacian_into", NvtxTrace("cvcuda.laplacian_into", &LaplacianVarShapeInto), "dst"_a, "src"_a, "ksize"_a,
+          "scale"_a, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the Laplacian operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Laplacian operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
@@ -199,11 +159,7 @@ void ExportOpLaplacian(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.ImageBatchVarShape: The output image batch (same as dst).
     )pbdoc");
 }
 

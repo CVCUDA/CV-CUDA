@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,74 +19,106 @@
 
 #include "Assert.h"
 
+#include <algorithm>
 #include <cstring>
+#include <ios>
 
 namespace nvcv::util {
 
-void ReplaceAllInline(char *strBuffer, int bufferSize, const char *what, const char *replace) noexcept
+void ReplaceAllInline(char *strBuffer, int bufferSize, std::string_view what, std::string_view replace) noexcept
 {
-    if (strBuffer == nullptr || what == nullptr || replace == nullptr || bufferSize <= 0)
+    if (strBuffer == nullptr || what.empty() || bufferSize <= 0)
     {
         return;
     }
 
-    size_t whatSize    = std::strlen(what);
-    size_t replaceSize = std::strlen(replace);
-    size_t strSize     = std::strlen(strBuffer);
-
-    char *searchStart    = strBuffer;
-    char *writePos       = nullptr;
-    char *endOfNewString = nullptr;
-    char *endPos         = strBuffer + bufferSize - 1; //to make sure we do not overflow.
-
-    while (searchStart < strBuffer + strSize)
+    auto *bufferEnd = strBuffer + bufferSize;
+    auto *nulPos    = std::find(strBuffer, bufferEnd, '\0');
+    if (nulPos == bufferEnd)
     {
-        char *foundPos = std::strstr(searchStart, what);
-        if (foundPos == nullptr)
+        nulPos  = bufferEnd - 1;
+        *nulPos = '\0';
+    }
+
+    char *searchStart = strBuffer;
+    while (searchStart < nulPos)
+    {
+        auto *foundPos = std::search(searchStart, nulPos, what.begin(), what.end());
+        if (foundPos == nulPos)
         {
-            // No more occurrences of 'what' found
             return;
         }
-        searchStart += replaceSize; // update for next token
 
-        ptrdiff_t sizeOfRest = 0;
-        // Move string after token only if there is data after the token.
-        if (foundPos + (replaceSize - 1) < endPos)
-        {
-            char     *restOfString = (foundPos + whatSize); // string after the what token.
-            ptrdiff_t moveAmount   = static_cast<std::size_t>(
-                replaceSize);                     // how far from beginning of token to move the rest of the string.
-            writePos   = foundPos + moveAmount;     // where to start writing the rest of the string.
-            sizeOfRest = std::strlen(restOfString); //size of rest of string.
+        const char *tailStart       = foundPos + what.size();
+        auto        tailSize        = nulPos - tailStart;
+        auto        replacementRoom = bufferEnd - foundPos - 1;
+        size_t      replacementSize = std::min(replace.size(), static_cast<size_t>(replacementRoom));
+        char       *tailWritePos    = foundPos + replacementSize;
+        auto        tailRoom        = bufferEnd - tailWritePos - 1;
+        auto        movedTailSize   = std::min(tailSize, tailRoom);
 
-            // Move string after token
-            // check for overflow we just want to write to buffer size
-            if (writePos + sizeOfRest > endPos)
-            {
-                sizeOfRest = endPos - writePos;
-            }
-            NVCV_ASSERT(writePos <= endPos);
-            NVCV_ASSERT(writePos + (sizeOfRest - 1) <= endPos);
-            std::memmove(writePos, restOfString,
-                         sizeOfRest); // move the remainder of the string to allow for replacement of what.
-        }
-        // Replace token
-        // check for overflow
-        if (foundPos + replaceSize > endPos)
+        std::memmove(tailWritePos, tailStart, movedTailSize);
+        if (replacementSize > 0)
         {
-            replaceSize = endPos - foundPos;
+            std::memcpy(foundPos, replace.data(), replacementSize);
         }
-        NVCV_ASSERT(foundPos <= endPos);
-        NVCV_ASSERT(foundPos + (replaceSize - 1) <= endPos);
-        std::memmove(foundPos, replace, replaceSize); // replace the found token with the replacement string.
-        endOfNewString  = std::max(foundPos + replaceSize,
-                                   writePos + sizeOfRest); // update the end position to the new end of the string.
-        *endOfNewString = '\0';                            // Null-terminate the output in case token is last.
+        nulPos      = tailWritePos + movedTailSize;
+        *nulPos     = '\0';
+        searchStart = tailWritePos;
     }
 }
 
+FixedBufferStreamBuf::FixedBufferStreamBuf(char *buffer, std::streamsize bufferSize)
+{
+    reset(buffer, bufferSize);
+}
+
+void FixedBufferStreamBuf::reset(char *buffer, std::streamsize bufferSize) noexcept
+{
+    m_buffer     = buffer;
+    m_bufferSize = bufferSize;
+
+    if (m_buffer != nullptr && m_bufferSize > 0)
+    {
+        setp(m_buffer, m_buffer + m_bufferSize);
+        *m_buffer = '\0';
+    }
+}
+
+std::streampos FixedBufferStreamBuf::seekpos(std::streampos pos, std::ios_base::openmode which) noexcept
+{
+    auto offset = static_cast<std::streamoff>(pos);
+    if ((which & std::ios_base::out) == 0 || m_buffer == nullptr || offset < 0 || offset >= m_bufferSize)
+    {
+        return std::streampos{std::streamoff{-1}};
+    }
+
+    setp(m_buffer, m_buffer + m_bufferSize);
+    pbump(static_cast<int>(offset));
+    return std::streampos{offset};
+}
+
+FixedBufferStreamBuf::int_type FixedBufferStreamBuf::overflow(int_type ch) noexcept
+{
+    if (traits_type::eq_int_type(ch, traits_type::eof()))
+    {
+        return traits_type::not_eof(ch);
+    }
+
+    return traits_type::eof();
+}
+
+int FixedBufferStreamBuf::sync() noexcept
+{
+    if (m_buffer != nullptr && m_bufferSize > 0 && pptr() < epptr())
+    {
+        *pptr() = '\0';
+    }
+    return 0;
+}
+
 BufferOStream::BufferOStream(char *buffer, int len)
-    : m_buf(buffer, len, buffer)
+    : m_buf(buffer, len)
 {
     this->init(&m_buf);
 }

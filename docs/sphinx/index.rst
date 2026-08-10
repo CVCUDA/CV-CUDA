@@ -1,5 +1,5 @@
 ..
-  # SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  # SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
   # SPDX-License-Identifier: Apache-2.0
   #
   # Licensed under the Apache License, Version 2.0 (the "License");
@@ -58,7 +58,7 @@ CV-CUDA Pre- and Post-Processing Operators
 
 CV-CUDA offers a comprehensive collection of Computer Vision and Image Processing operators. Click any operator name to view its detailed API documentation.
 
-.. include:: content/cvcuda_op.rst
+.. include:: operator_list.rst
 
 
 Where Are the Release Notes?
@@ -126,7 +126,6 @@ Copyright
     Docker <docker_images>
     Data Types <datatypes>
     Samples <samples>
-    Interoperability <interoperability>
 
 .. toctree::
     :caption: Advanced Topics
@@ -134,6 +133,7 @@ Copyright
     :hidden:
 
     Object Cache <advanced/object_cache>
+    Operator Variants <advanced/operator_variants>
     Make Operator Tool <advanced/make_operator>
 
 .. toctree::
@@ -142,14 +142,14 @@ Copyright
     :hidden:
 
     Python API <modules/python/index>
-    C API <modules/c_api>
-    C++ API <modules/cpp_api>
+    C/C++ API <modules/c_cpp_api>
 
 .. toctree::
     :caption: Release Notes
     :maxdepth: 1
     :hidden:
 
+    v0.17.0-beta <relnotes/v0.17.0-beta>
     v0.16.0-beta <relnotes/v0.16.0-beta>
     v0.15.0-beta <relnotes/v0.15.0-beta>
     v0.14.0-beta <relnotes/v0.14.0-beta>

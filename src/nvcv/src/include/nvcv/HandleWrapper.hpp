@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -127,7 +127,7 @@ public:
      *                  emphasize the transfer of ownership.
      */
     explicit UniqueHandle(HandleType &&handle)
-        : m_handle(handle)
+        : m_handle(std::move(handle))
     {
         handle = HandleOps::Null();
     }
@@ -135,7 +135,7 @@ public:
     UniqueHandle()                          = default;
     UniqueHandle(const UniqueHandle &other) = delete;
 
-    UniqueHandle(UniqueHandle &&other)
+    UniqueHandle(UniqueHandle &&other) noexcept
         : m_handle(std::move(other.m_handle))
     {
         other.m_handle = HandleOps::Null();
@@ -143,7 +143,7 @@ public:
 
     /** Moves the handle owned by `other` into this object and releases the old handle.
      */
-    UniqueHandle &operator=(UniqueHandle &&other)
+    UniqueHandle &operator=(UniqueHandle &&other) noexcept
     {
         if (&other == this)
             return *this; // avoid self-reset in self-move
@@ -168,7 +168,7 @@ public:
      * @remarks Passing a non-empty handle that's already owned by this UniqueHandle is forbidden and will
      *          result in double destruction of the handle.
      */
-    void reset(HandleType &&handle = HandleOps::Null())
+    void reset(HandleType &&handle = HandleOps::Null()) noexcept
     {
         assert(HandleOps::IsNull(handle) || handle != m_handle);
         if (*this)
@@ -197,7 +197,7 @@ public:
      *
      * @return The managed handle.
      */
-    constexpr const HandleType get() const noexcept
+    constexpr HandleType get() const noexcept
     {
         return m_handle;
     }
@@ -212,7 +212,7 @@ public:
         return !empty();
     }
 
-    bool operator==(const UniqueHandle &other) const
+    bool operator==(const UniqueHandle &other) const // NOSONAR: defaulted comparisons are C++20.
     {
         return m_handle == other.m_handle;
     }
@@ -255,7 +255,7 @@ public:
      * The reference count on the handle is _not_ incremented.
      */
     explicit SharedHandle(HandleType &&handle) noexcept
-        : m_handle(handle)
+        : m_handle(std::move(handle))
     {
         handle = HandleOps::Null();
     }
@@ -275,7 +275,7 @@ public:
 
     /** Moves the handle owned by `other` into this object and releases the old handle.
      */
-    SharedHandle &operator=(SharedHandle &&other)
+    SharedHandle &operator=(SharedHandle &&other) noexcept
     {
         if (&other == this)
             return *this; // we must not reset the "other" in case of self-move
@@ -327,7 +327,7 @@ public:
      *         the object was destroyed or the handle was already null. If it's >0, the object
      *         still had some live references.
      */
-    int reset(HandleType &&handle = HandleOps::Null())
+    int reset(HandleType &&handle = HandleOps::Null()) noexcept
     {
         auto old = m_handle;
         m_handle = std::move(handle);
@@ -353,7 +353,7 @@ public:
 
     /** Returns the currently managed handle.
      */
-    constexpr const HandleType get() const noexcept
+    constexpr HandleType get() const noexcept
     {
         return m_handle;
     }
@@ -374,7 +374,7 @@ public:
         return !empty();
     }
 
-    bool operator==(const SharedHandle &other) const
+    bool operator==(const SharedHandle &other) const // NOSONAR: defaulted comparisons are C++20.
     {
         return m_handle == other.m_handle;
     }

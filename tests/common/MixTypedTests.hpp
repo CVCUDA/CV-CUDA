@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -253,14 +253,17 @@ struct WrapParams<Types<T...>>
 
 // Register at run time all the values for a given TYPE.
 template<template<class> class FIXTURE, int... IDX, class TYPE, class TUPLE>
-void RegisterTests(const ParamInfo<TYPE, TUPLE> &data, const char *casename, const char *testname, const char *file,
-                   int line, int &base)
+void RegisterTests(const ParamInfo<TYPE, TUPLE> &data, const char *casename, const char *testname, const char *, int,
+                   int &base)
 {
     for (size_t i = 0; i < data.values.size(); ++i)
     {
         std::ostringstream ss;
-        ss << testname << '/' << base++;
-        ::testing::RegisterTest(casename, ss.str().c_str(), nullptr, data.values[i].second.c_str(), __FILE__, __LINE__,
+        ss << testname << '/' << base;
+        ++base;
+        ::testing::RegisterTest(casename, ss.str().c_str(), nullptr, data.values[i].second.c_str(),
+                                __FILE__, // NOSONAR: std::source_location is C++20.
+                                __LINE__, // NOSONAR: std::source_location is C++20.
                                 [value = data.values[i].first]() -> typename FIXTURE<TYPE>::BaseFixture *
                                 {
                                     auto fix = std::make_unique<FIXTURE<TYPE>>(value);
@@ -269,16 +272,16 @@ void RegisterTests(const ParamInfo<TYPE, TUPLE> &data, const char *casename, con
                                         class Skip final : public FIXTURE<TYPE>::BaseFixture
                                         {
                                         public:
-                                            virtual void SetUp() override
+                                            void SetUp() override
                                             {
                                                 GTEST_SKIP();
                                             };
-                                            virtual void TestBody() override
+                                            void TestBody() override
                                             {
                                                 FAIL() << "Should not be executed";
                                             }
                                         };
-                                        return new Skip;
+                                        return std::make_unique<Skip>().release();
                                     }
                                     else
                                     {
@@ -326,7 +329,7 @@ struct MakeDependent
     };                                          \
     NVCV_MIXTYPED_TEST_SUITE_F(CaseName, __VA_ARGS__)
 
-#define NVCV_MIXTYPED_TEST(CaseName, TestName)                                                                    \
+#define NVCV_MIXTYPED_TEST(CaseName, TestName) /* NOSONAR: std::source_location is C++20. */                      \
     template<class T>                                                                                             \
     class CaseName##TestName##_Fixture final : public CaseName                                                    \
     {                                                                                                             \
@@ -338,7 +341,7 @@ struct MakeDependent
             : m_params(p)                                                                                         \
         {                                                                                                         \
         }                                                                                                         \
-        virtual void TestBody() override;                                                                         \
+        void TestBody() override;                                                                                 \
         template<int I>                                                                                           \
         using GetType = typename ::nvcv::test::type::detail::GetTypeImpl<TypeParam, I>::type;                     \
         template<int I>                                                                                           \

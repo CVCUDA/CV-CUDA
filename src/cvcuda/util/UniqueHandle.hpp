@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2020-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -53,7 +53,7 @@ class UniqueHandle
 public:
     using handle_type = HandleType;
 
-    constexpr inline UniqueHandle()
+    constexpr UniqueHandle()
         : handle_(Actual::null_handle())
     {
     }
@@ -68,13 +68,13 @@ public:
 
     UniqueHandle &operator=(const UniqueHandle &) = delete;
 
-    inline UniqueHandle(UniqueHandle &&other)
+    inline UniqueHandle(UniqueHandle &&other) noexcept
         : handle_(other.handle_)
     {
         other.handle_ = Actual::null_handle();
     }
 
-    inline UniqueHandle &operator=(UniqueHandle &&other)
+    inline UniqueHandle &operator=(UniqueHandle &&other) noexcept
     {
         std::swap(handle_, other.handle_);
         other.reset();
@@ -101,7 +101,7 @@ public:
     constexpr handle_type get() && = delete;
 
     /// @brief Make the wrapper usable in most context in which the handle type can be used
-    constexpr operator handle_type() const &noexcept
+    explicit constexpr operator handle_type() const &noexcept
     {
         return get();
     }
@@ -116,7 +116,7 @@ public:
    * * If the handle is already null, this function is a no-op.
    * * The null value to replace the handle with, is taken from `Actual::null_value()`.
    */
-    inline void reset()
+    inline void reset() noexcept
     {
         if (!Actual::is_null_handle(handle_))
         {
@@ -129,7 +129,7 @@ public:
    * @brief Replaces the managed handle by the new one and destroying the old handle.
    * @remarks If `handle` is equal to the currently managed handle, this function is no-op
    */
-    inline void reset(handle_type handle)
+    inline void reset(handle_type handle) noexcept
     {
         if (handle != handle_)
         {
@@ -175,6 +175,7 @@ protected:
         reset();
     }
 
+private:
     handle_type handle_;
 };
 

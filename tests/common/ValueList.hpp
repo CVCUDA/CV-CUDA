@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,8 +27,15 @@
 #include <stdexcept>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 
 namespace nvcv::test {
+
+class ValueListError : public std::logic_error
+{
+public:
+    using std::logic_error::logic_error;
+};
 
 namespace detail {
 
@@ -98,7 +105,7 @@ struct Identity
 };
 
 template<class... TT>
-inline std::tuple<> ExtractTuple(std::tuple<TT...> t)
+inline std::tuple<> ExtractTuple(std::tuple<TT...>)
 {
     return {};
 }
@@ -118,7 +125,7 @@ auto ExtractTuple(T t)
 }
 
 template<class T>
-auto ExtractTuple(T t)
+auto ExtractTuple(T)
 {
     return std::tuple<>();
 }
@@ -138,12 +145,12 @@ auto MaybeExtractTuple(T t)
 
 struct Default
 {
-    bool operator<(const Default &that) const
+    bool operator<(const Default &) const
     {
         return false;
     }
 
-    bool operator==(const Default &that) const
+    bool operator==(const Default &) const // NOSONAR: defaulted comparisons are C++20.
     {
         return true;
     }
@@ -152,8 +159,8 @@ struct Default
 template<int IDX, class T, class U>
 void ReplaceDefaultsImpl(U &out, const T &in)
 {
-    using SRC = typename std::tuple_element<IDX, T>::type;
-    using DST = typename std::tuple_element<IDX, U>::type;
+    using SRC = std::tuple_element_t<IDX, T>;
+    using DST = std::tuple_element_t<IDX, U>;
 
     if constexpr (!std::is_same_v<SRC, Default>)
     {
@@ -168,7 +175,7 @@ void ReplaceDefaultsImpl(U &out, const T &in, std::index_sequence<IDX...>)
 }
 
 template<class... UU, class... TT>
-std::enable_if_t<std::is_default_constructible_v<std::tuple<UU...>>, std::tuple<UU...>> ReplaceDefaults(
+requires std::is_default_constructible_v<std::tuple<UU...>> std::tuple<UU...> ReplaceDefaults(
     const std::tuple<TT...> &in)
 {
     static_assert(sizeof...(TT) == sizeof...(UU));
@@ -179,7 +186,7 @@ std::enable_if_t<std::is_default_constructible_v<std::tuple<UU...>>, std::tuple<
 }
 
 template<class U, class... UU, class T, class... TT>
-std::enable_if_t<!std::is_default_constructible_v<std::tuple<U, UU...>>, std::tuple<U, UU...>> ReplaceDefaults(
+requires(!std::is_default_constructible_v<std::tuple<U, UU...>>) std::tuple<U, UU...> ReplaceDefaults(
     const std::tuple<T, TT...> &in)
 {
     static_assert(sizeof...(TT) == sizeof...(UU));
@@ -220,8 +227,8 @@ public:
     {
     }
 
-    template<class... UU, std::enable_if_t<!std::is_same_v<tuple_value_type, std::tuple<UU...>>, int> = 0>
-    explicit ValueList(const ValueList<UU...> &that)
+    template<class... UU>
+    requires(!std::is_same_v<tuple_value_type, std::tuple<UU...>>) explicit ValueList(const ValueList<UU...> &that)
     {
         for (auto &v : that)
         {
@@ -236,7 +243,7 @@ public:
         }
     }
 
-    ValueList(const std::vector<value_type> &v)
+    explicit ValueList(const std::vector<value_type> &v)
     {
         m_list.insert(m_list.end(), v.begin(), v.end());
     }
@@ -292,8 +299,8 @@ public:
         return m_list.emplace_back(std::move(v));
     }
 
-    template<class X = void, std::enable_if_t<sizeof(X) != 0 && !std::is_same_v<tuple_value_type, value_type>, int> = 0>
-    auto push_back(tuple_value_type v)
+    template<class X = void>
+    requires(sizeof(X) != 0 && !std::is_same_v<tuple_value_type, value_type>) auto push_back(tuple_value_type v)
     {
         return std::apply([this](auto &...args) { m_list.emplace_back(args...); }, v);
     }
@@ -330,7 +337,7 @@ public:
         return removedAtLeastOne;
     }
 
-    bool operator==(const ValueList<TT...> &that) const
+    bool operator==(const ValueList<TT...> &that) const // NOSONAR: defaulted comparisons are C++20.
     {
         return m_list == that.m_list;
     }
@@ -342,7 +349,7 @@ public:
 
     bool exists(const value_type &v) const
     {
-        return std::find(m_list.begin(), m_list.end(), v) != m_list.end();
+        return std::find(m_list.begin(), m_list.end(), v) != m_list.end(); // NOSONAR: std::ranges::find is C++20.
     }
 
     template<int... NN, class F, class... UU>
@@ -495,7 +502,7 @@ ValueList<TT...> Difference(ValueList<TT...> a, ValueList<TT...> b)
 
     for (auto it = a.begin(); it != a.end();)
     {
-        if (binary_search(b.begin(), b.end(), *it))
+        if (binary_search(b.begin(), b.end(), *it)) // NOSONAR: std::ranges::binary_search is C++20.
         {
             a.erase(it++);
         }
@@ -560,7 +567,7 @@ ValueList<TT...> Intersection(ValueList<TT...> a, ValueList<TT...> b, TAIL &&...
 
     for (auto it = a.begin(); it != a.end();)
     {
-        if (binary_search(tmp.begin(), tmp.end(), *it))
+        if (binary_search(tmp.begin(), tmp.end(), *it)) // NOSONAR: std::ranges::binary_search is C++20.
         {
             ++it;
         }
@@ -625,7 +632,7 @@ struct HasValueType : std::false_type
 };
 
 template<class T>
-struct HasValueType<T, std::enable_if_t<sizeof(typename T::value_type) != 0>> : std::true_type
+struct HasValueType<T, std::void_t<typename T::value_type>> : std::true_type
 {
 };
 
@@ -673,13 +680,13 @@ auto Combine(ValueList<TT...> a)
 template<class T>
 ValueList<std::decay_t<T>> Combine(T &&v)
 {
-    return {v};
+    return {std::forward<T>(v)};
 }
 
 template<class... TT>
 ValueList<std::decay_t<TT>...> Combine(TT &&...v)
 {
-    return {std::make_tuple(v...)};
+    return {std::make_tuple(std::forward<TT>(v)...)};
 }
 
 template<class... TT, class... TAIL>
@@ -687,14 +694,15 @@ auto Combine(ValueList<TT...> a, TAIL &&...tail)
 {
     auto rest = Combine(std::forward<TAIL>(tail)...);
 
-    typename detail::NormalizeValueList<
-        ValueList<decltype(tuple_cat(std::tuple<TT...>(), typename decltype(rest)::tuple_value_type()))>>::type r;
+    using CombinedTuple = decltype(tuple_cat(std::declval<std::tuple<TT...>>(),
+                                             std::declval<typename decltype(rest)::tuple_value_type>()));
+    typename detail::NormalizeValueList<ValueList<CombinedTuple>>::type r;
 
-    for (auto ita = a.begin(); ita != a.end(); ++ita)
+    for (const auto &item : a)
     {
-        for (auto itr = rest.begin(); itr != rest.end(); ++itr)
+        for (const auto &restItem : rest)
         {
-            r.push_back(detail::JoinTuple(*ita, *itr));
+            r.push_back(detail::JoinTuple(item, restItem));
         }
     }
 
@@ -704,7 +712,7 @@ auto Combine(ValueList<TT...> a, TAIL &&...tail)
 template<class T, class... TAIL>
 auto Combine(T &&a, TAIL &&...tail)
 {
-    return Combine(ValueList<std::decay_t<T>>{a}, std::forward<TAIL>(tail)...);
+    return Combine(ValueList<std::decay_t<T>>{std::forward<T>(a)}, std::forward<TAIL>(tail)...);
 }
 
 // Zip  ----------------------------
@@ -718,13 +726,13 @@ auto Zip(ValueList<TT...> a)
 template<class T>
 ValueList<std::decay_t<T>> Zip(T &&v)
 {
-    return {v};
+    return {std::forward<T>(v)};
 }
 
 template<class... TT>
 ValueList<std::decay_t<TT>...> Zip(TT &&...v)
 {
-    return {std::make_tuple(v...)};
+    return {std::make_tuple(std::forward<TT>(v)...)};
 }
 
 template<class... TT, class... TAIL>
@@ -732,8 +740,9 @@ auto Zip(ValueList<TT...> a, TAIL &&...tail)
 {
     auto rest = Zip(std::forward<TAIL>(tail)...);
 
-    typename detail::NormalizeValueList<
-        ValueList<decltype(tuple_cat(std::tuple<TT...>(), typename decltype(rest)::tuple_value_type()))>>::type r;
+    using CombinedTuple = decltype(tuple_cat(std::declval<std::tuple<TT...>>(),
+                                             std::declval<typename decltype(rest)::tuple_value_type>()));
+    typename detail::NormalizeValueList<ValueList<CombinedTuple>>::type r;
 
     if (a.size() == rest.size())
     {
@@ -744,7 +753,7 @@ auto Zip(ValueList<TT...> a, TAIL &&...tail)
     }
     else
     {
-        throw std::logic_error("Zip: value lists can't have different sizes");
+        throw ValueListError("Zip: value lists can't have different sizes");
     }
 
     return r;
@@ -753,26 +762,26 @@ auto Zip(ValueList<TT...> a, TAIL &&...tail)
 template<class T, class... TAIL>
 auto Zip(T &&a, TAIL &&...tail)
 {
-    return Zip(ValueList<T>{a}, std::forward<TAIL>(tail)...);
+    return Zip(ValueList<std::decay_t<T>>{std::forward<T>(a)}, std::forward<TAIL>(tail)...);
 }
 
 struct IsSameArgsFunctor
 {
 private:
     template<class T>
-    static bool isSameArgs(T &&)
+    static bool isSameArgs(const T &)
     {
         return false;
     }
 
     template<class T, class U>
-    static bool isSameArgs(T &&a, U &&b)
+    static bool isSameArgs(const T &a, const U &b)
     {
         return a == b;
     }
 
     template<class T, class U, class... TAIL>
-    static bool isSameArgs(T &&a, U &&b, TAIL &&...tail)
+    static bool isSameArgs(const T &a, const U &b, const TAIL &...tail)
     {
         if (a == b)
         {
@@ -802,7 +811,7 @@ struct MatchHelper
 private:
     // Termination criteria, nothing more to check.
     template<int IDX, class T, class U>
-    static bool match(std::integer_sequence<int>, const T &item, const U &needle)
+    static bool match(std::integer_sequence<int>, const T &, const U &)
     {
         static_assert(IDX == SEQ::size());
         return true;
@@ -818,13 +827,13 @@ private:
     ValueList<TT...> m_needle;
 
 public:
-    MatchHelper(TT &&...needle)
-        : m_needle({typename ValueList<TT...>::value_type{std::forward<TT>(needle)...}})
+    explicit MatchHelper(TT &&...needle)
+        : m_needle({typename ValueList<TT...>::value_type{static_cast<TT &&>(needle)...}})
     {
     }
 
     // Matches any value in needle.
-    MatchHelper(ValueList<TT...> needle)
+    explicit MatchHelper(ValueList<TT...> needle)
         : m_needle(std::move(needle))
     {
     }
@@ -1078,8 +1087,8 @@ namespace detail {
 template<class LHS, class RHS>
 struct Or
 {
-    LHS lhs;
-    RHS rhs;
+    LHS lhs; // NOSONAR: [[no_unique_address]] is C++20.
+    RHS rhs; // NOSONAR: [[no_unique_address]] is C++20.
 
     template<class... Args>
     constexpr auto operator()(Args &&...args) &noexcept(noexcept(std::invoke(lhs, args...)
@@ -1121,8 +1130,8 @@ namespace detail {
 template<class LHS, class RHS>
 struct And
 {
-    LHS lhs;
-    RHS rhs;
+    LHS lhs; // NOSONAR: [[no_unique_address]] is C++20.
+    RHS rhs; // NOSONAR: [[no_unique_address]] is C++20.
 
     template<class... Args>
     constexpr auto operator()(Args &&...args) &noexcept(noexcept(std::invoke(lhs, args...)

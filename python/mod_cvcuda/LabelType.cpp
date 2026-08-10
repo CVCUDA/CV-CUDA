@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,9 +23,10 @@ namespace cvcudapy {
 
 void ExportLabelType(py::module &m)
 {
-    py::enum_<NVCVLabelType>(m, "LABEL", py::arithmetic())
-        .value("FAST", NVCV_LABEL_FAST)
-        .value("SEQUENTIAL", NVCV_LABEL_SEQUENTIAL);
+    py::enum_<NVCVLabelType>(m, "LABEL", "Label assignment modes for connected-component output.", py::arithmetic())
+        .value("FAST", NVCV_LABEL_FAST,
+               "Labels assigned using a fast parallel algorithm; values may not be sequential.")
+        .value("SEQUENTIAL", NVCV_LABEL_SEQUENTIAL, "Labels assigned sequentially starting from 1.");
 }
 
 } // namespace cvcudapy

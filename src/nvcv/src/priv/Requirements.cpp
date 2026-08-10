@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 
 namespace nvcv::priv {
 
@@ -38,7 +39,7 @@ void Add(NVCVRequirements &reqSum, const NVCVRequirements &req)
     const NVCVMemRequirements &reqHostMem       = req.hostMem;
     const NVCVMemRequirements &reqHostPinnedMem = req.hostPinnedMem;
 
-    for (size_t i = 0; i < sizeof(NVCVMemRequirements::numBlocks) / sizeof(NVCVMemRequirements::numBlocks[0]); ++i)
+    for (size_t i = 0; i < std::size(reqCudaMem.numBlocks); ++i)
     {
         reqSum.cudaMem.numBlocks[i] += reqCudaMem.numBlocks[i];
         reqSum.hostMem.numBlocks[i] += reqHostMem.numBlocks[i];
@@ -70,8 +71,8 @@ void AddBuffer(NVCVMemRequirements &memReq, int64_t bufSize, int64_t bufAlignmen
 
     if (bufSize >= 0)
     {
-        int64_t maxBlocks = std::numeric_limits<std::remove_reference_t<decltype(memReq.numBlocks[0])>>::max();
-        if (memReq.numBlocks[log2Align]
+        if (int64_t maxBlocks = std::numeric_limits<std::remove_reference_t<decltype(memReq.numBlocks[0])>>::max();
+            memReq.numBlocks[log2Align]
             > maxBlocks - numBlocks) // codeQL findings: Testing for signed overflow may produce undefined results.
         {
             throw Exception(NVCV_ERROR_OVERFLOW,
@@ -90,9 +91,9 @@ void AddBuffer(NVCVMemRequirements &memReq, int64_t bufSize, int64_t bufAlignmen
 int64_t CalcTotalSizeBytes(const NVCVMemRequirements &memReq)
 {
     uint64_t total = 0;
-    for (size_t i = 0; i < sizeof(memReq.numBlocks) / sizeof(memReq.numBlocks[0]); ++i)
+    for (size_t i = 0; i < std::size(memReq.numBlocks); ++i)
     {
-        uint64_t cur = memReq.numBlocks[i] * (1ull << i);
+        uint64_t cur = memReq.numBlocks[i] * (1ULL << i);
         if (total + cur < total)
         {
             throw Exception(NVCV_ERROR_INVALID_ARGUMENT, "Memory size overflow");

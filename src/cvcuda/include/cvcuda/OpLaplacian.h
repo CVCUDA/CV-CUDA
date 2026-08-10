@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -57,8 +57,9 @@ CVCUDA_PUBLIC NVCVStatus cvcudaLaplacianCreate(NVCVOperatorHandle *handle);
  * Limitations:
  *
  * Input:
- *      Data Layout:    [kNHWC, kHWC]
- *      Channels:       [1, 3, 4]
+ *      Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
+ *      Channels:       [1, 3, 4] (planar kNCHW/kCHW: [1, 3, 4])
+ *      Planar tensors must be tightly packed with N*C <= 65535.
  *
  *      Data Type      | Allowed
  *      -------------- | -------------
@@ -68,12 +69,14 @@ CVCUDA_PUBLIC NVCVStatus cvcudaLaplacianCreate(NVCVOperatorHandle *handle);
  *      16bit Signed   | No
  *      32bit Unsigned | No
  *      32bit Signed   | No
+ *      16bit Float    | No
  *      32bit Float    | Yes
  *      64bit Float    | No
  *
  * Output:
- *      Data Layout:    [kNHWC, kHWC]
- *      Channels:       [1, 3, 4]
+ *      Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
+ *      Channels:       [1, 3, 4] (planar kNCHW/kCHW: [1, 3, 4])
+ *      Planar tensors must be tightly packed with N*C <= 65535.
  *
  *      Data Type      | Allowed
  *      -------------- | -------------
@@ -83,6 +86,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaLaplacianCreate(NVCVOperatorHandle *handle);
  *      16bit Signed   | No
  *      32bit Unsigned | No
  *      32bit Signed   | No
+ *      16bit Float    | No
  *      32bit Float    | Yes
  *      64bit Float    | No
  *
@@ -138,5 +142,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaLaplacianVarShapeSubmit(NVCVOperatorHandle handle
 #ifdef __cplusplus
 }
 #endif
+
+/** @} */
 
 #endif /* CVCUDA_LAPLACIAN_H */

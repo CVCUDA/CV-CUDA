@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -76,7 +76,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaLabelCreate(NVCVOperatorHandle *handle);
  *  Limitations:
  *
  *  Input:
- *       Data Layout:    [HWC], [NHWC], [DHWC], [NDHWC]
+ *       Data Layout:    [kHWC, kNHWC, kCHW, kNCHW, kDHWC, kNDHWC] and C-less HW/NHW/DHW/NDHW
  *       Channels:       [1]
  *
  *       Data Type      | Allowed
@@ -87,11 +87,12 @@ CVCUDA_PUBLIC NVCVStatus cvcudaLabelCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | Yes
  *       32bit Unsigned | Yes
  *       32bit Signed   | Yes
+ *       16bit Float    | No
  *       32bit Float    | No
  *       64bit Float    | No
  *
  *  Output:
- *       Data Layout:    [HWC], [NHWC], [DHWC], [NDHWC]
+ *       Data Layout:    [kHWC, kNHWC, kCHW, kNCHW, kDHWC, kNDHWC] and C-less HW/NHW/DHW/NDHW
  *       Channels:       [1]
  *
  *       Data Type      | Allowed
@@ -102,6 +103,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaLabelCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | No
  *       32bit Unsigned | Yes
  *       32bit Signed   | Yes
+ *       16bit Float    | No
  *       32bit Float    | No
  *       64bit Float    | No
  *
@@ -122,14 +124,14 @@ CVCUDA_PUBLIC NVCVStatus cvcudaLabelCreate(NVCVOperatorHandle *handle);
  *                    + Must not be NULL.
  * @param [in] stream Handle to a valid CUDA stream.
  *
- * @param [in] in Input tensor.  The expected layout is [HWC] or [NHWC] for 2D labeling or [DHWC] or [NDHWC] for
+ * @param [in] in Input tensor.  The expected layout is [HWC], [NHWC], [CHW] or [NCHW] for 2D labeling or [DHWC] or [NDHWC] for
  *                3D labeling, with either explicit C dimension or missing C with channels embedded in the data type.
  *                The N dimension is the number of samples, i.e. either 2D images with height H and width W or
  *                3D volumes with depth D and height H and width W, inside the tensor.  This operator labels
  *                regions, i.e. connected components, of each input image or volume read from the \ref in tensor.
  *                + Check above limitations table to the input tensor data layout, number of channels and data type.
  *
- * @param [out] out Output tensor.  The expected layout is [HWC] or [NHWC] for 2D labeling or [DHWC] or [NDHWC] for
+ * @param [out] out Output tensor.  The expected layout is [HWC], [NHWC], [CHW] or [NCHW] for 2D labeling or [DHWC] or [NDHWC] for
  *                  3D labeling, with either explicit C dimension or missing C with channels embedded in the data type.
  *                  The N dimension is the number of samples, i.e. either 2D images with height H and width W or
  *                  3D volumes with depth D and height H and width W, inside the tensor.  This operator labels
@@ -220,7 +222,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaLabelCreate(NVCVOperatorHandle *handle);
  *                      the sequential labels are up to the maximum capacity M
  *                    + If not NULL, the \ref count tensor must not be NULL as well.
  *
- * @param [in] mask Mask tensor.  The expected layout is [HWC] or [NHWC] for 2D masking or [DHWC] or [NDHWC] for 3D
+ * @param [in] mask Mask tensor.  The expected layout is [HWC], [NHWC], [CHW] or [NCHW] for 2D masking or [DHWC] or [NDHWC] for 3D
  *                  masking, with either explicit C dimension or missing C with channels embedded in the data type.
  *                  The N dimension is the number of samples, if missing it is considered to be N=1, in case N=1
  *                  and \ref in and \ref out tensors have N>1 the same mask is to be applied to all images (2D) or
@@ -237,7 +239,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaLabelCreate(NVCVOperatorHandle *handle);
  *
  * @param [in] connectivity Specify connectivity of elements for the operator, see \ref NVCVConnectivityType.
  *                          + It must conform with \ref in and \ref out tensors, i.e. 3D labeling requires [DHWC]
- *                            or [NDHWC] tensor layouts and 2D labeling requires [HWC] or [NHWC], where the C
+ *                            or [NDHWC] tensor layouts and 2D labeling requires [HWC], [NHWC], [CHW] or [NCHW], where the C
  *                            channel may be missing as embedded in data type.
  *
  * @param [in] assignLabels Specify how labels are assigned by the operator, see \ref NVCVLabelType.  Use
@@ -262,5 +264,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaLabelSubmit(NVCVOperatorHandle handle, cudaStream
 #ifdef __cplusplus
 }
 #endif
+
+/** @} */
 
 #endif /* CVCUDA_LABEL_H */

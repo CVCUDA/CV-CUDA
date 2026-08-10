@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,6 +25,11 @@ namespace nvcvpy::priv {
 namespace py = pybind11;
 
 void ExportCAPI(py::module &m);
+
+// Registers the deterministic C API failure-injection toggles used by the
+// ResourceGuard lifetime regressions. Bound under the private cvcuda._test
+// submodule; not part of the public API.
+void ExportCAPITestHooks(py::module &m);
 
 } // namespace nvcvpy::priv
 

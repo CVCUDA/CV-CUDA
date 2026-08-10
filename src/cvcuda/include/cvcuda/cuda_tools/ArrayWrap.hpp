@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -55,7 +55,7 @@ public:
         assert(length > 0 && stride >= static_cast<size_type>(sizeof(value_type)));
     }
 
-    __host__ ArrayWrap(const ArrayData &data)
+    explicit __host__ ArrayWrap(const ArrayData &data)
         : m_data{reinterpret_cast<std::byte *>(data.basePtr())}
         , m_length{static_cast<size_type>(data.capacity())}
         , m_stride{static_cast<size_type>(data.stride())}
@@ -82,7 +82,7 @@ public:
         return doGetPtr(c);
     }
 
-    inline __host__ __device__ operator pointer() const
+    explicit inline __host__ __device__ operator pointer() const
     {
         return reinterpret_cast<pointer>(m_data);
     }
@@ -100,7 +100,7 @@ protected:
 private:
     std::byte *m_data{nullptr};
     size_type  m_length{0};
-    size_type  m_stride;
+    size_type  m_stride{0};
 };
 
 } // namespace nvcv::cuda

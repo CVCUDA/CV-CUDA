@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,12 +25,11 @@
 #define CVCUDA_PRIV_INPAINT_HPP
 
 #include "IOperator.hpp"
+#include "PerDeviceResource.hpp"
 #include "legacy/CvCudaLegacy.h"
 
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
-
-#include <memory>
 
 namespace cvcuda::priv {
 
@@ -45,8 +44,10 @@ public:
                     const nvcv::ImageBatchVarShape &out, double inpaintRadius) const;
 
 private:
-    std::unique_ptr<nvcv::legacy::cuda_op::Inpaint>         m_legacyOp;
-    std::unique_ptr<nvcv::legacy::cuda_op::InpaintVarShape> m_legacyOpVarShape;
+    int32_t                                                           m_maxBatchSize;
+    nvcv::Size2D                                                      m_maxShape;
+    mutable PerDeviceResource<nvcv::legacy::cuda_op::Inpaint>         m_legacyOp;
+    mutable PerDeviceResource<nvcv::legacy::cuda_op::InpaintVarShape> m_legacyOpVarShape;
 };
 
 } // namespace cvcuda::priv

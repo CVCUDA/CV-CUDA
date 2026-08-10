@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -105,9 +105,7 @@ public:
     }
 
 protected:
-    ArrayType m_data;
-
-    ArrayDataAccessImpl(const ArrayType &data)
+    explicit ArrayDataAccessImpl(const ArrayType &data)
         : m_data{data}
         , m_length{data.length()}
         , m_idxShift{0}
@@ -147,6 +145,7 @@ protected:
     }
 
 private:
+    ArrayType       m_data;
     int64_t         m_length;
     int64_t         m_idxShift;
     difference_type m_memShift;
@@ -168,11 +167,13 @@ public:
         auto castData = data.cast<ArrayData>();
         if (castData)
         {
-            return ArrayDataAccess{castData.value(), length, start};
+            return Optional<ArrayDataAccess>{
+                ArrayDataAccess{castData.value(), length, start}
+            };
         }
         else
         {
-            return NullOpt;
+            return Optional<ArrayDataAccess>{NullOpt};
         }
     }
 
@@ -199,11 +200,13 @@ public:
         auto castData = data.cast<ArrayDataHost>();
         if (castData)
         {
-            return ArrayDataAccessHost{castData.value(), length, start};
+            return Optional<ArrayDataAccessHost>{
+                ArrayDataAccessHost{castData.value(), length, start}
+            };
         }
         else
         {
-            return NullOpt;
+            return Optional<ArrayDataAccessHost>{NullOpt};
         }
     }
 
@@ -230,11 +233,13 @@ public:
         auto castData = data.cast<ArrayDataHostPinned>();
         if (castData)
         {
-            return ArrayDataAccessHostPinned{castData.value(), length, start};
+            return Optional<ArrayDataAccessHostPinned>{
+                ArrayDataAccessHostPinned{castData.value(), length, start}
+            };
         }
         else
         {
-            return NullOpt;
+            return Optional<ArrayDataAccessHostPinned>{NullOpt};
         }
     }
 
@@ -261,11 +266,13 @@ public:
         auto castData = data.cast<ArrayDataCuda>();
         if (castData)
         {
-            return ArrayDataAccessCuda{castData.value(), length, start};
+            return Optional<ArrayDataAccessCuda>{
+                ArrayDataAccessCuda{castData.value(), length, start}
+            };
         }
         else
         {
-            return NullOpt;
+            return Optional<ArrayDataAccessCuda>{NullOpt};
         }
     }
 

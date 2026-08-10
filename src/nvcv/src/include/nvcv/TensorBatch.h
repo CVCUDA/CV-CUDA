@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -203,7 +203,7 @@ NVCV_PUBLIC NVCVStatus nvcvTensorBatchRefCount(NVCVTensorBatchHandle handle, int
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
  * @retval #NVCV_SUCCESS                Operation executed successfully.
  */
-NVCV_PUBLIC NVCVStatus nvcvTensorBatchSetUserPointer(NVCVTensorBatchHandle handle, void *userPtr);
+NVCV_PUBLIC NVCVStatus nvcvTensorBatchSetUserPointer(NVCVTensorBatchHandle handle, NVCVUserPointer userPtr);
 
 /** Returns the user pointer associated with the Tensor batch handle.
  *
@@ -217,7 +217,7 @@ NVCV_PUBLIC NVCVStatus nvcvTensorBatchSetUserPointer(NVCVTensorBatchHandle handl
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
  * @retval #NVCV_SUCCESS                Operation executed successfully.
  */
-NVCV_PUBLIC NVCVStatus nvcvTensorBatchGetUserPointer(NVCVTensorBatchHandle handle, void **outUserPtr);
+NVCV_PUBLIC NVCVStatus nvcvTensorBatchGetUserPointer(NVCVTensorBatchHandle handle, NVCVUserPointer *outUserPtr);
 
 /** Returns the capacity of the Tensor batch handle.
  *

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,6 +28,7 @@
 
 #include <nvcv/TensorData.hpp> // for TensorDataStridedCuda, etc.
 
+#include <cassert>
 #include <type_traits>
 
 namespace nvcv::cuda {
@@ -99,18 +100,17 @@ public:
      *
      * @param[in] tensor Tensor reference to the tensor that will be wrapped.
      */
-    __host__ FullTensorWrap(const TensorDataStridedCuda &tensor)
+    explicit __host__ FullTensorWrap(const TensorDataStridedCuda &tensor)
+        : m_data(reinterpret_cast<const std::byte *>(tensor.basePtr()))
     {
-        m_data = reinterpret_cast<const std::byte *>(tensor.basePtr());
-
 #pragma unroll
         for (int i = 0; i < kNumDimensions; ++i)
         {
             assert(tensor.stride(i) <= TypeTraits<int>::max);
             assert(tensor.shape(i) <= TypeTraits<int>::max);
 
-            m_strides[i] = tensor.stride(i);
-            m_shapes[i]  = tensor.shape(i);
+            m_strides[i] = static_cast<int>(tensor.stride(i));
+            m_shapes[i]  = static_cast<int>(tensor.shape(i));
         }
     }
 
@@ -184,12 +184,12 @@ public:
 
 protected:
     template<typename... Args>
-    inline const __host__ __device__ T *doGetPtr(Args... c) const
+    inline __host__ __device__ int doGetOffset(Args... c) const
     {
         static_assert(std::conjunction_v<std::is_same<int, Args>...>);
         static_assert(sizeof...(Args) <= kNumDimensions);
 
-        int coords[] = {std::forward<int>(c)...};
+        int coords[] = {static_cast<int>(c)...}; // NOSONAR: CUDA code indexes parameter-pack values.
 
         // Computing offset first potentially postpones or avoids 64-bit math during addressing
         int offset = 0;
@@ -199,13 +199,19 @@ protected:
             offset += coords[i] * m_strides[i];
         }
 
-        return reinterpret_cast<const T *>(m_data + offset);
+        return offset;
+    }
+
+    template<typename... Args>
+    inline const __host__ __device__ T *doGetPtr(Args... c) const
+    {
+        return reinterpret_cast<const T *>(m_data + doGetOffset(c...));
     }
 
 private:
     const std::byte *m_data                    = nullptr;
-    int              m_strides[kNumDimensions] = {};
-    int              m_shapes[kNumDimensions]  = {};
+    int              m_strides[kNumDimensions] = {}; // NOSONAR: device storage exposed as pointer.
+    int              m_shapes[kNumDimensions]  = {}; // NOSONAR: device storage exposed as pointer.
 };
 
 /**
@@ -241,6 +247,7 @@ public:
     template<typename DataType>
     explicit __host__ __device__ FullTensorWrap(DataType *data, const int (&strides)[N], const int (&shapes)[N])
         : Base(data, strides, shapes)
+        , m_data(reinterpret_cast<std::byte *>(data))
     {
     }
 
@@ -249,8 +256,9 @@ public:
      *
      * @param[in] tensor Tensor reference to the tensor that will be wrapped.
      */
-    __host__ FullTensorWrap(const TensorDataStridedCuda &tensor)
+    explicit __host__ FullTensorWrap(const TensorDataStridedCuda &tensor)
         : Base(tensor)
+        , m_data(reinterpret_cast<std::byte *>(tensor.basePtr()))
     {
     }
 
@@ -312,8 +320,11 @@ protected:
     template<typename... Args>
     inline __host__ __device__ T *doGetPtr(Args... c) const
     {
-        return const_cast<T *>(Base::doGetPtr(c...));
+        return reinterpret_cast<T *>(m_data + Base::doGetOffset(c...));
     }
+
+private:
+    std::byte *m_data = nullptr;
 };
 
 /**@}*/

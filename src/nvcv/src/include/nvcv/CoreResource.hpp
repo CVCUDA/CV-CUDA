@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,7 +46,7 @@ public:
     /**
     * @brief A constructor that constructs an empty `CoreResource` from a nullptr.
     */
-    CoreResource(std::nullptr_t) {}
+    explicit CoreResource(std::nullptr_t) {}
 
     /** Wraps and assumes ownership of a handle.
      *
@@ -56,7 +56,7 @@ public:
      *
      * @param handle The handle to the resource.
      */
-    explicit CoreResource(HandleType &&handle)
+    explicit CoreResource(HandleType &&handle) noexcept
         : Base(std::move(handle))
     {
     }
@@ -80,7 +80,7 @@ public:
      *
      * @param other The other instance to copy from.
      */
-    CoreResource(const Actual &other)
+    explicit CoreResource(const Actual &other)
         : Base(other)
     {
     }
@@ -90,7 +90,7 @@ public:
      *
      * @param other The other instance to move from.
      */
-    CoreResource(Actual &&other)
+    explicit CoreResource(Actual &&other) noexcept
         : Base(std::move(other))
     {
     }
@@ -113,7 +113,7 @@ public:
      * @param other The other instance to move from.
      * @return This instance after the move.
      */
-    CoreResource &operator=(Actual &&other)
+    CoreResource &operator=(Actual &&other) noexcept
     {
         Base::operator=(std::move(other));
         return *this;
@@ -124,7 +124,7 @@ public:
      *
      * @return The handle to the resource.
      */
-    const HandleType handle() const noexcept
+    HandleType handle() const noexcept
     {
         return this->get();
     }
@@ -199,7 +199,7 @@ private:
         : BaseClassName(other)                                   \
     {                                                            \
     }                                                            \
-    ClassName(ClassName &&other)                                 \
+    ClassName(ClassName &&other) noexcept                        \
         : BaseClassName(std::move(other))                        \
     {                                                            \
     }                                                            \
@@ -208,10 +208,14 @@ private:
         BaseClassName::operator=(other);                         \
         return *this;                                            \
     }                                                            \
-    ClassName &operator=(ClassName &&other)                      \
+    ClassName &operator=(ClassName &&other) noexcept             \
     {                                                            \
         BaseClassName::operator=(std::move(other));              \
         return *this;                                            \
+    }                                                            \
+    ~ClassName()                                                 \
+    {                                                            \
+        this->reset();                                           \
     }
 
 /** A non-owning wrapper around a handle which can be trivially converted to a reference-counting wrapper
@@ -252,7 +256,7 @@ public:
      *
      * @param handle The handle to the resource.
      */
-    NonOwningResource(HandleType handle)
+    explicit NonOwningResource(HandleType handle)
         : m_resource(std::move(handle))
     {
     }
@@ -263,9 +267,12 @@ public:
     NonOwningResource(const NonOwningResource &) = delete;
 
     /**
-    * @brief The move constructor is defaulted.
+    * @brief Moves a non-owning resource wrapper.
     */
-    NonOwningResource(NonOwningResource &&) = default;
+    NonOwningResource(NonOwningResource &&other) noexcept
+        : m_resource(std::move(other.m_resource))
+    {
+    }
 
     /**
      * @brief The copy assignment operator is deleted to prevent copying.
@@ -273,16 +280,24 @@ public:
     NonOwningResource &operator=(const NonOwningResource &) = delete;
 
     /**
-    * @brief The move assignment operator is defaulted.
+    * @brief Moves a non-owning resource wrapper.
     */
-    NonOwningResource &operator=(NonOwningResource &&) = default;
+    NonOwningResource &operator=(NonOwningResource &&other) noexcept
+    {
+        if (this != &other)
+        {
+            (void)m_resource.release();
+            m_resource = std::move(other.m_resource);
+        }
+        return *this;
+    }
 
     /**
      * @brief Returns the handle to the resource.
      *
      * @return The handle to the resource.
      */
-    const HandleType handle() const
+    HandleType handle() const
     {
         return m_resource.handle();
     }
@@ -296,13 +311,23 @@ public:
     }
 
     /**
+     * @brief Returns the underlying resource.
+     *
+     * @return A const reference to the underlying resource.
+     */
+    const Resource &resource() const &
+    {
+        return m_resource;
+    }
+
+    /**
      * @brief Conversion operator to the underlying resource type.
      *
      * @return A const reference to the underlying resource.
      */
-    operator const Resource &() const &
+    explicit operator const Resource &() const &
     {
-        return m_resource;
+        return resource();
     }
 
 private:

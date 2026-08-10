@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "priv/OpComposite.hpp"
 
+#include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <nvcv/Exception.hpp>
@@ -29,7 +30,7 @@ namespace priv = cvcuda::priv;
 CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaCompositeCreate, (NVCVOperatorHandle * handle))
 {
     return nvcv::ProtectCall(
-        [&]
+        [&handle]
         {
             if (handle == nullptr)
             {
@@ -37,7 +38,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaCompositeCreate, (NVCVOperatorHandle *
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            *handle = reinterpret_cast<NVCVOperatorHandle>(new priv::Composite());
+            *handle = priv::CreateOperatorHandle<priv::Composite>();
         });
 }
 
@@ -45,11 +46,16 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaCompositeSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle fg, NVCVTensorHandle bg,
                    NVCVTensorHandle fgMask, NVCVTensorHandle out))
 {
+    CVCUDA_NVTX_RANGE("cvcudaCompositeSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&fg, &bg, &fgMask, &out, &handle, &stream]
         {
-            nvcv::TensorWrapHandle foreground(fg), background(bg), mask(fgMask), output(out);
-            priv::ToDynamicRef<priv::Composite>(handle)(stream, foreground, background, mask, output);
+            nvcv::TensorWrapHandle foreground(fg);
+            nvcv::TensorWrapHandle background(bg);
+            nvcv::TensorWrapHandle mask(fgMask);
+            nvcv::TensorWrapHandle output(out);
+            priv::ToDynamicRef<priv::Composite>(handle)(stream, foreground.resource(), background.resource(),
+                                                        mask.resource(), output.resource());
         });
 }
 
@@ -57,10 +63,15 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaCompositeVarShapeSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVImageBatchHandle fg, NVCVImageBatchHandle bg,
                    NVCVImageBatchHandle fgMask, NVCVImageBatchHandle out))
 {
+    CVCUDA_NVTX_RANGE("cvcudaCompositeVarShapeSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&fg, &bg, &fgMask, &out, &handle, &stream]
         {
-            nvcv::ImageBatchVarShapeWrapHandle foreground(fg), background(bg), mask(fgMask), output(out);
-            priv::ToDynamicRef<priv::Composite>(handle)(stream, foreground, background, mask, output);
+            nvcv::ImageBatchVarShapeWrapHandle foreground(fg);
+            nvcv::ImageBatchVarShapeWrapHandle background(bg);
+            nvcv::ImageBatchVarShapeWrapHandle mask(fgMask);
+            nvcv::ImageBatchVarShapeWrapHandle output(out);
+            priv::ToDynamicRef<priv::Composite>(handle)(stream, foreground.resource(), background.resource(),
+                                                        mask.resource(), output.resource());
         });
 }

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,32 +19,108 @@
 #include "CvCudaLegacyHelpers.hpp"
 
 #include "CvCudaUtils.cuh"
+#include "warp_cubic.cuh"
+
+#include <type_traits>
 
 #define BLOCK 32
 
 namespace nvcv::legacy::cuda_op {
 
-template<class Transform, class SrcWrapper, class DstWrapper, typename T = typename DstWrapper::ValueType>
-__global__ void warp(SrcWrapper src, DstWrapper dst, int2 dstSize, Transform transform)
+template<bool UseSharedTransform, class Transform, class SrcWrapper, class DstWrapper>
+__global__ void warp(SrcWrapper src, DstWrapper dst, int2 dstSize, int2 srcSize, Transform transform)
 {
-    int3      dstCoord = cuda::StaticCast<int>(blockDim * blockIdx + threadIdx);
-    const int lid      = threadIdx.y * blockDim.x + threadIdx.x;
+    using SrcValueT       = std::remove_cv_t<typename SrcWrapper::ValueType>;
+    constexpr bool kCubic = SrcWrapper::kInterpolationType == NVCV_INTERP_CUBIC;
+    // The restructured sampler pays off for affine maps (the scatter-heavy case); perspective
+    // maps keep the wrap path, whose per-tap loads coalesce well and carry no extra registers.
+    constexpr bool kFast = kCubic && kCubicFastSampler<SrcValueT> && std::is_same_v<Transform, WarpAffineTransform>;
 
-    extern __shared__ float coeff[];
+    int3 dstCoord = cuda::StaticCast<int>(blockDim * blockIdx + threadIdx);
 
-    if (lid < 9)
+    if constexpr (UseSharedTransform)
     {
-        coeff[lid] = transform.xform[lid];
-    }
+        extern __shared__ float coeff[];
 
-    __syncthreads();
+        const int lid = threadIdx.y * blockDim.x + threadIdx.x;
+        if (lid < 9)
+        {
+            coeff[lid] = transform.xform[lid];
+        }
+
+        __syncthreads();
+
+        if (dstCoord.x < dstSize.x && dstCoord.y < dstSize.y)
+        {
+            const float2 coord = Transform::calcCoord(coeff, dstCoord.x, dstCoord.y);
+
+            if constexpr (kFast)
+            {
+                dst[dstCoord] = CubicSampleTensor(src, dstCoord.z, coord, srcSize);
+            }
+            else
+            {
+                dst[dstCoord] = src[float3{coord.x, coord.y, static_cast<float>(dstCoord.z)}];
+            }
+        }
+    }
+    else if (dstCoord.x < dstSize.x && dstCoord.y < dstSize.y)
+    {
+        const float2 coord = Transform::calcCoord(transform.xform, dstCoord.x, dstCoord.y);
+
+        if constexpr (kFast)
+        {
+            dst[dstCoord] = CubicSampleTensor(src, dstCoord.z, coord, srcSize);
+        }
+        else
+        {
+            dst[dstCoord] = src[float3{coord.x, coord.y, static_cast<float>(dstCoord.z)}];
+        }
+    }
+}
+
+// Fused planar (NCHW/CHW) CUBIC warp: one launch covers every channel plane, sharing the
+// transformed coordinate, cubic weights, and border resolution across planes instead of
+// relaunching the single-channel kernel per plane. src/dst wrap plane 0; the other planes are
+// addressed by the plane byte stride.
+template<bool UseSharedTransform, class Transform, typename BT, NVCVBorderType B, int NP, class SrcWrapper,
+         class DstWrapper>
+__global__ void warp_planar_fused(SrcWrapper src, DstWrapper dst, int2 dstSize, int2 srcSize, int64_t srcPlaneStride,
+                                  int64_t dstPlaneStride, float4 borderValue, Transform transform)
+{
+    const int3 dstCoord = cuda::StaticCast<int>(blockDim * blockIdx + threadIdx);
+
+    const float *xform = transform.xform;
+    if constexpr (UseSharedTransform)
+    {
+        extern __shared__ float coeff[];
+
+        const int lid = threadIdx.y * blockDim.x + threadIdx.x;
+        if (lid < 9)
+        {
+            coeff[lid] = transform.xform[lid];
+        }
+
+        __syncthreads();
+        xform = coeff;
+    }
 
     if (dstCoord.x < dstSize.x && dstCoord.y < dstSize.y)
     {
-        const float2 coord = Transform::calcCoord(coeff, dstCoord.x, dstCoord.y);
-        const float3 srcCoord{coord.x, coord.y, static_cast<float>(dstCoord.z)};
+        const float2 coord = Transform::calcCoord(xform, dstCoord.x, dstCoord.y);
 
-        dst[dstCoord] = src[srcCoord];
+        CubicWarpPlanes<BT, B, NP, int32_t>(
+            [&](int p, int yy) {
+                return reinterpret_cast<const BT *>(reinterpret_cast<const char *>(src.ptr(dstCoord.z, yy))
+                                                    + p * srcPlaneStride);
+            },
+            [&](int p, BT v)
+            {
+                *(reinterpret_cast<BT *>(reinterpret_cast<char *>(dst.ptr(dstCoord.z, dstCoord.y)) + p * dstPlaneStride)
+                  + dstCoord.x)
+                    = v;
+            },
+            borderValue, srcSize, coord);
     }
 }
 
@@ -57,7 +133,7 @@ struct WarpDispatcher
         auto outAccess = TensorDataAccessStridedImagePlanar::Create(outData);
         NVCV_ASSERT(outAccess);
 
-        auto inAccess = TensorDataAccessStridedImagePlanar::Create(outData);
+        auto inAccess = TensorDataAccessStridedImagePlanar::Create(inData);
         NVCV_ASSERT(inAccess);
 
         const int2 dstSize{outAccess->numCols(), outAccess->numRows()};
@@ -68,8 +144,6 @@ struct WarpDispatcher
 
         auto bVal = cuda::StaticCast<cuda::BaseType<T>>(cuda::DropCast<cuda::NumElements<T>>(borderValue));
 
-        int smem_size = 9 * sizeof(float);
-
         int64_t srcMaxStride = inAccess->sampleStride() * batchSize;
         int64_t dstMaxStride = outAccess->sampleStride() * batchSize;
 
@@ -78,7 +152,16 @@ struct WarpDispatcher
             auto src = cuda::CreateInterpolationWrapNHW<const T, B, I, int32_t>(inData, bVal);
             auto dst = cuda::CreateTensorWrapNHW<T, int32_t>(outData);
 
-            warp<Transform><<<grid, block, smem_size, stream>>>(src, dst, dstSize, transform);
+            const int2 srcSize{inAccess->numCols(), inAccess->numRows()};
+
+            // PerspectiveTransform is already passed by value, so only WarpAffine's measured
+            // specializations need the shared-memory copy.
+            constexpr bool useSharedTransform
+                = std::is_same_v<Transform,
+                                 WarpAffineTransform> && (cuda::NumElements<T> == 3 || I == NVCV_INTERP_CUBIC);
+            constexpr int smemSize = useSharedTransform ? 9 * sizeof(float) : 0;
+            warp<useSharedTransform, Transform>
+                <<<grid, block, smemSize, stream>>>(src, dst, dstSize, srcSize, transform);
         }
         else
         {
@@ -149,6 +232,133 @@ static void invertMat(const float *M, float *h_aCoeffs)
     h_aCoeffs[5] = (float)(M[3] * M[2] - M[0] * M[5]) * den;
 }
 
+// Build a single-channel (N, H, W, 1) NHWC view of channel plane `plane` of a packed planar
+// (NCHW/CHW) tensor. Warp samples each channel at the same transformed coordinate, so plane (n, c)
+// is an independent single-channel image: viewing one plane across all N samples (sample stride
+// unchanged, base offset by plane*chStride) lets the existing single-channel warp kernel handle it,
+// bit-exact with the equivalent NHWC single-channel warp. One such view is processed per plane.
+static nvcv::TensorDataStridedCuda PlanarChannelView(const nvcv::TensorDataStridedCuda              &data,
+                                                     const nvcv::TensorDataAccessStridedImagePlanar &access, int plane)
+{
+    nvcv::TensorDataStridedCuda::Buffer buf;
+    buf.basePtr    = reinterpret_cast<NVCVByte *>(data.basePtr()) + plane * access.chStride();
+    buf.strides[0] = access.sampleStride(); // N
+    buf.strides[1] = access.rowStride();    // H
+    buf.strides[2] = access.colStride();    // W
+    buf.strides[3] = access.colStride();    // C == 1
+    return nvcv::TensorDataStridedCuda{
+        nvcv::TensorShape{{access.numSamples(), access.numRows(), access.numCols(), 1}, "NHWC"},
+        data.dtype(), buf
+    };
+}
+
+// Select the constant-border component for a given channel plane. The interleaved path fills the
+// border with (x, y, z, w) per channel; a single-channel plane uses only component `plane` (the
+// single-channel kernel reads borderValue.x), so it is replicated into .x.
+static float4 PlanarBorderValue(const float4 &borderValue, int plane)
+{
+    const float c = plane == 0 ? borderValue.x
+                  : plane == 1 ? borderValue.y
+                  : plane == 2 ? borderValue.z
+                               : borderValue.w;
+    return float4{c, c, c, c};
+}
+
+template<class Transform, typename BT, NVCVBorderType B>
+struct WarpPlanarFusedDispatcher
+{
+    static ErrorCode call(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                          Transform transform, const float4 &borderValue, int numPlanes, cudaStream_t stream)
+    {
+        auto inAccess = TensorDataAccessStridedImagePlanar::Create(inData);
+        NVCV_ASSERT(inAccess);
+        auto outAccess = TensorDataAccessStridedImagePlanar::Create(outData);
+        NVCV_ASSERT(outAccess);
+
+        const int2 dstSize{outAccess->numCols(), outAccess->numRows()};
+        const int2 srcSize{inAccess->numCols(), inAccess->numRows()};
+        const int  batchSize{static_cast<int>(outAccess->numSamples())};
+
+        dim3 block(BLOCK, BLOCK / 4);
+        dim3 grid(divUp(dstSize.x, block.x), divUp(dstSize.y, block.y), batchSize);
+
+        const int64_t srcMaxStride = inAccess->sampleStride() * batchSize;
+        const int64_t dstMaxStride = outAccess->sampleStride() * batchSize;
+        if (std::max(srcMaxStride, dstMaxStride) > cuda::TypeTraits<int32_t>::max)
+        {
+            LOG_ERROR("Input or output size exceeds " << cuda::TypeTraits<int32_t>::max << ". Tensor is too large.");
+            return ErrorCode::INVALID_PARAMETER;
+        }
+
+        auto planeIn  = PlanarChannelView(inData, *inAccess, 0);
+        auto planeOut = PlanarChannelView(outData, *outAccess, 0);
+
+        auto src = cuda::CreateTensorWrapNHW<const BT, int32_t>(planeIn);
+        auto dst = cuda::CreateTensorWrapNHW<BT, int32_t>(planeOut);
+
+        constexpr bool useSharedTransform = std::is_same_v<Transform, WarpAffineTransform>;
+        constexpr int  smemSize           = useSharedTransform ? 9 * sizeof(float) : 0;
+
+        switch (numPlanes)
+        {
+        case 1:
+            warp_planar_fused<useSharedTransform, Transform, BT, B, 1><<<grid, block, smemSize, stream>>>(
+                src, dst, dstSize, srcSize, inAccess->chStride(), outAccess->chStride(), borderValue, transform);
+            break;
+        case 3:
+            warp_planar_fused<useSharedTransform, Transform, BT, B, 3><<<grid, block, smemSize, stream>>>(
+                src, dst, dstSize, srcSize, inAccess->chStride(), outAccess->chStride(), borderValue, transform);
+            break;
+        case 4:
+            warp_planar_fused<useSharedTransform, Transform, BT, B, 4><<<grid, block, smemSize, stream>>>(
+                src, dst, dstSize, srcSize, inAccess->chStride(), outAccess->chStride(), borderValue, transform);
+            break;
+        default:
+            LOG_ERROR("Invalid planar channel number " << numPlanes);
+            return ErrorCode::INVALID_DATA_SHAPE;
+        }
+        checkKernelErrors();
+        return ErrorCode::SUCCESS;
+    }
+};
+
+template<class Transform, typename BT>
+ErrorCode warpPlanarFusedCubic(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                               Transform transform, int borderMode, const float4 &borderValue, int numPlanes,
+                               cudaStream_t stream)
+{
+    typedef ErrorCode (*func_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                                Transform transform, const float4 &borderValue, int numPlanes, cudaStream_t stream);
+
+    static const func_t funcs[5] = {
+        WarpPlanarFusedDispatcher<Transform, BT, NVCV_BORDER_CONSTANT>::call,
+        WarpPlanarFusedDispatcher<Transform, BT, NVCV_BORDER_REPLICATE>::call,
+        WarpPlanarFusedDispatcher<Transform, BT, NVCV_BORDER_REFLECT>::call,
+        WarpPlanarFusedDispatcher<Transform, BT, NVCV_BORDER_WRAP>::call,
+        WarpPlanarFusedDispatcher<Transform, BT, NVCV_BORDER_REFLECT101>::call,
+    };
+
+    return funcs[borderMode](inData, outData, transform, borderValue, numPlanes, stream);
+}
+
+template<class Transform>
+ErrorCode warpPlanarFusedCubicCaller(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                                     Transform transform, int dataType, int borderMode, const float4 &borderValue,
+                                     int numPlanes, cudaStream_t stream)
+{
+    typedef ErrorCode (*func_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                                Transform transform, int borderMode, const float4 &borderValue, int numPlanes,
+                                cudaStream_t stream);
+
+    static const func_t funcs[6] = {warpPlanarFusedCubic<Transform, uchar>, 0, warpPlanarFusedCubic<Transform, ushort>,
+                                    warpPlanarFusedCubic<Transform, short>, 0, warpPlanarFusedCubic<Transform, float>};
+
+    const func_t func = funcs[dataType];
+    NVCV_ASSERT(func != 0);
+
+    return func(inData, outData, transform, borderMode, borderValue, numPlanes, stream);
+}
+
 ErrorCode WarpAffine::infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                             const float *xform, const int32_t flags, const NVCVBorderType borderMode,
                             const float4 borderValue, cudaStream_t stream)
@@ -164,11 +374,14 @@ ErrorCode WarpAffine::infer(const TensorDataStridedCuda &inData, const TensorDat
 
     DataFormat format = input_format;
 
-    if (!(format == kNHWC || format == kHWC))
+    if (!(format == kNHWC || format == kHWC || format == kNCHW || format == kCHW))
     {
-        LOG_ERROR("Invalid input DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
+        LOG_ERROR("Invalid input DataFormat " << format
+                                              << ", the valid DataFormats are: \"NHWC\", \"HWC\", \"NCHW\", \"CHW\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
+
+    const bool isPlanar = (format == kNCHW || format == kCHW);
 
     auto inAccess = TensorDataAccessStridedImagePlanar::Create(inData);
     NVCV_ASSERT(inAccess);
@@ -179,24 +392,30 @@ ErrorCode WarpAffine::infer(const TensorDataStridedCuda &inData, const TensorDat
     int       channels      = input_shape.C;
     const int interpolation = flags & NVCV_INTERP_MAX;
 
-    if (channels > 4)
+    if (channels > 4 || channels == 2)
     {
         LOG_ERROR("Invalid channel number " << channels);
         return ErrorCode::INVALID_DATA_SHAPE;
     }
 
-    if (!(data_type == kCV_8U || data_type == kCV_8S || data_type == kCV_16U || data_type == kCV_16S
-          || data_type == kCV_32S || data_type == kCV_32F))
+    if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32F))
     {
         LOG_ERROR("Invalid DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
     }
 
-    NVCV_ASSERT(interpolation == NVCV_INTERP_NEAREST || interpolation == NVCV_INTERP_LINEAR
-                || interpolation == NVCV_INTERP_CUBIC);
-    NVCV_ASSERT(borderMode == NVCV_BORDER_REFLECT101 || borderMode == NVCV_BORDER_REPLICATE
-                || borderMode == NVCV_BORDER_CONSTANT || borderMode == NVCV_BORDER_REFLECT
-                || borderMode == NVCV_BORDER_WRAP);
+    if (!(interpolation == NVCV_INTERP_NEAREST || interpolation == NVCV_INTERP_LINEAR
+          || interpolation == NVCV_INTERP_CUBIC))
+    {
+        LOG_ERROR("Invalid interpolation " << interpolation);
+        return ErrorCode::INVALID_PARAMETER;
+    }
+    if (!(borderMode == NVCV_BORDER_CONSTANT || borderMode == NVCV_BORDER_REPLICATE || borderMode == NVCV_BORDER_REFLECT
+          || borderMode == NVCV_BORDER_WRAP || borderMode == NVCV_BORDER_REFLECT101))
+    {
+        LOG_ERROR("Invalid borderMode " << borderMode);
+        return ErrorCode::INVALID_PARAMETER;
+    }
 
     typedef ErrorCode (*func_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                                 WarpAffineTransform transform, const int interpolation, int borderMode,
@@ -211,9 +430,6 @@ ErrorCode WarpAffine::infer(const TensorDataStridedCuda &inData, const TensorDat
         { warpAffine<float1>, 0,  warpAffine<float3>,  warpAffine<float4>}
     };
 
-    const func_t func = funcs[data_type][channels - 1];
-    NVCV_ASSERT(func != 0);
-
     WarpAffineTransform transform;
 
     if (flags & NVCV_WARP_INVERSE_MAP)
@@ -227,6 +443,43 @@ ErrorCode WarpAffine::infer(const TensorDataStridedCuda &inData, const TensorDat
     {
         invertMat(xform, transform.xform);
     }
+
+    if (isPlanar)
+    {
+        // Fused planar only pays for byte-based types; other dtypes keep per-plane launches
+        // (each already using the fast CUBIC sampler).
+        if (interpolation == NVCV_INTERP_CUBIC && data_type == kCV_8U)
+        {
+            return warpPlanarFusedCubicCaller(inData, outData, transform, data_type, borderMode, borderValue, channels,
+                                              stream);
+        }
+
+        // Warp each channel plane as an independent single-channel image (same transform, per-channel
+        // border value), reusing the interleaved single-channel kernel (funcs column 0). This is
+        // bit-exact with warping the equivalent NHWC single-channel data. The planar layout carries a
+        // per-channel border value, so each plane is given its own.
+        const func_t planarFunc = funcs[data_type][0];
+        NVCV_ASSERT(planarFunc != 0);
+
+        auto outAccess = TensorDataAccessStridedImagePlanar::Create(outData);
+        NVCV_ASSERT(outAccess);
+
+        for (int c = 0; c < channels; ++c)
+        {
+            auto      planeIn  = PlanarChannelView(inData, *inAccess, c);
+            auto      planeOut = PlanarChannelView(outData, *outAccess, c);
+            ErrorCode ec       = planarFunc(planeIn, planeOut, transform, interpolation, borderMode,
+                                            PlanarBorderValue(borderValue, c), stream);
+            if (ec != ErrorCode::SUCCESS)
+            {
+                return ec;
+            }
+        }
+        return ErrorCode::SUCCESS;
+    }
+
+    const func_t func = funcs[data_type][channels - 1];
+    NVCV_ASSERT(func != 0);
 
     return func(inData, outData, transform, interpolation, borderMode, borderValue, stream);
 }
@@ -246,11 +499,14 @@ ErrorCode WarpPerspective::infer(const TensorDataStridedCuda &inData, const Tens
 
     DataFormat format = input_format;
 
-    if (!(format == kNHWC || format == kHWC))
+    if (!(format == kNHWC || format == kHWC || format == kNCHW || format == kCHW))
     {
-        LOG_ERROR("Invalid input DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
+        LOG_ERROR("Invalid input DataFormat " << format
+                                              << ", the valid DataFormats are: \"NHWC\", \"HWC\", \"NCHW\", \"CHW\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
+
+    const bool isPlanar = (format == kNCHW || format == kCHW);
 
     auto inAccess = TensorDataAccessStridedImagePlanar::Create(inData);
     NVCV_ASSERT(inAccess);
@@ -261,24 +517,30 @@ ErrorCode WarpPerspective::infer(const TensorDataStridedCuda &inData, const Tens
     int       channels      = input_shape.C;
     const int interpolation = flags & NVCV_INTERP_MAX;
 
-    if (channels > 4)
+    if (channels > 4 || channels == 2)
     {
         LOG_ERROR("Invalid channel number " << channels);
         return ErrorCode::INVALID_DATA_SHAPE;
     }
 
-    if (!(data_type == kCV_8U || data_type == kCV_8S || data_type == kCV_16U || data_type == kCV_16S
-          || data_type == kCV_32S || data_type == kCV_32F))
+    if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_16S || data_type == kCV_32F))
     {
         LOG_ERROR("Invalid DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
     }
 
-    NVCV_ASSERT(interpolation == NVCV_INTERP_NEAREST || interpolation == NVCV_INTERP_LINEAR
-                || interpolation == NVCV_INTERP_CUBIC);
-    NVCV_ASSERT(borderMode == NVCV_BORDER_REFLECT101 || borderMode == NVCV_BORDER_REPLICATE
-                || borderMode == NVCV_BORDER_CONSTANT || borderMode == NVCV_BORDER_REFLECT
-                || borderMode == NVCV_BORDER_WRAP);
+    if (!(interpolation == NVCV_INTERP_NEAREST || interpolation == NVCV_INTERP_LINEAR
+          || interpolation == NVCV_INTERP_CUBIC))
+    {
+        LOG_ERROR("Invalid interpolation " << interpolation);
+        return ErrorCode::INVALID_PARAMETER;
+    }
+    if (!(borderMode == NVCV_BORDER_CONSTANT || borderMode == NVCV_BORDER_REPLICATE || borderMode == NVCV_BORDER_REFLECT
+          || borderMode == NVCV_BORDER_WRAP || borderMode == NVCV_BORDER_REFLECT101))
+    {
+        LOG_ERROR("Invalid borderMode " << borderMode);
+        return ErrorCode::INVALID_PARAMETER;
+    }
 
     typedef ErrorCode (*func_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                                 PerspectiveTransform transform, const int interpolation, int borderMode,
@@ -295,9 +557,6 @@ ErrorCode WarpPerspective::infer(const TensorDataStridedCuda &inData, const Tens
         {      warpPerspective<float1>,  0 /*warpPerspective<float2>*/,      warpPerspective<float3>,  warpPerspective<float4>}
     };
 
-    const func_t func = funcs[data_type][channels - 1];
-    NVCV_ASSERT(func != 0);
-
     PerspectiveTransform transform(transMatrix);
 
     if (!(flags & NVCV_WARP_INVERSE_MAP))
@@ -310,6 +569,42 @@ ErrorCode WarpPerspective::infer(const TensorDataStridedCuda &inData, const Tens
 
         tempMatrixForInverse.store(transform.xform);
     }
+
+    if (isPlanar)
+    {
+        // Fused planar only pays for byte-based types; other dtypes keep per-plane launches
+        // (each already using the fast CUBIC sampler).
+        if (interpolation == NVCV_INTERP_CUBIC && data_type == kCV_8U)
+        {
+            return warpPlanarFusedCubicCaller(inData, outData, transform, data_type, borderMode, borderValue, channels,
+                                              stream);
+        }
+
+        // Warp each channel plane as an independent single-channel image (same transform, per-channel
+        // border value), reusing the interleaved single-channel kernel (funcs column 0). This is
+        // bit-exact with warping the equivalent NHWC single-channel data, and matches WarpAffine.
+        const func_t planarFunc = funcs[data_type][0];
+        NVCV_ASSERT(planarFunc != 0);
+
+        auto outAccess = TensorDataAccessStridedImagePlanar::Create(outData);
+        NVCV_ASSERT(outAccess);
+
+        for (int c = 0; c < channels; ++c)
+        {
+            auto      planeIn  = PlanarChannelView(inData, *inAccess, c);
+            auto      planeOut = PlanarChannelView(outData, *outAccess, c);
+            ErrorCode ec       = planarFunc(planeIn, planeOut, transform, interpolation, borderMode,
+                                            PlanarBorderValue(borderValue, c), stream);
+            if (ec != ErrorCode::SUCCESS)
+            {
+                return ec;
+            }
+        }
+        return ErrorCode::SUCCESS;
+    }
+
+    const func_t func = funcs[data_type][channels - 1];
+    NVCV_ASSERT(func != 0);
 
     return func(inData, outData, transform, interpolation, borderMode, borderValue, stream);
 }

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -64,6 +64,8 @@ CVCUDA_PUBLIC NVCVStatus cvcudaBrightnessContrastCreate(NVCVOperatorHandle *hand
  *  Limitations:
  *
  *  Input:
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
+ *       Channels:       [1, 2, 3, 4]
  *
  *       Data Type      | Allowed
  *       -------------- | -------------
@@ -73,10 +75,13 @@ CVCUDA_PUBLIC NVCVStatus cvcudaBrightnessContrastCreate(NVCVOperatorHandle *hand
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | Yes
+ *       16bit Float    | No
  *       32bit Float    | Yes
  *       64bit Float    | No
  *
  *  Output:
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
+ *       Channels:       [1, 2, 3, 4]
  *
  *       Data Type      | Allowed
  *       -------------- | -------------
@@ -86,6 +91,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaBrightnessContrastCreate(NVCVOperatorHandle *hand
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | Yes
+ *       16bit Float    | No
  *       32bit Float    | Yes
  *       64bit Float    | No
  *
@@ -162,8 +168,43 @@ CVCUDA_PUBLIC NVCVStatus cvcudaBrightnessContrastVarShapeSubmit(NVCVOperatorHand
                                                                 NVCVTensorHandle brightnessShift,
                                                                 NVCVTensorHandle contrastCenter);
 
+/** Executes BrightnessContrast with one set of parameters supplied by value for every input image.
+ *
+ * The affine formula and input/output limitations are the same as \ref cvcudaBrightnessContrastSubmit. Unlike the
+ * tensor-parameter entry point, this path requires no parameter tensors or host-to-device copies.
+ *
+ * @param [in] handle Handle to the operator.
+ * @param [in] stream Handle to a valid CUDA stream.
+ * @param [in] in Input tensor.
+ * @param [out] out Output tensor.
+ * @param [in] brightness Brightness multiplier.
+ * @param [in] contrast Contrast multiplier.
+ * @param [in] brightnessShift Brightness shift.
+ * @param [in] contrastCenter Contrast center.
+ * @param [in] clamp If true, clamp to the nominal image range before conversion: `[0, 1]` for floating-point output
+ *                   and `[0, max]` for integer output. If false, preserve the existing BrightnessContrast behavior.
+ */
+CVCUDA_PUBLIC NVCVStatus cvcudaBrightnessContrastScalarSubmit(NVCVOperatorHandle handle, cudaStream_t stream,
+                                                              NVCVTensorHandle in, NVCVTensorHandle out,
+                                                              double brightness, double contrast,
+                                                              double brightnessShift, double contrastCenter,
+                                                              bool clamp);
+
+/** Executes the by-value BrightnessContrast path on a variable-shape image batch.
+ *
+ * Apart from input and output image batches, all parameters are the same as
+ * \ref cvcudaBrightnessContrastScalarSubmit.
+ */
+CVCUDA_PUBLIC NVCVStatus cvcudaBrightnessContrastVarShapeScalarSubmit(NVCVOperatorHandle handle, cudaStream_t stream,
+                                                                      NVCVImageBatchHandle in, NVCVImageBatchHandle out,
+                                                                      double brightness, double contrast,
+                                                                      double brightnessShift, double contrastCenter,
+                                                                      bool clamp);
+
 #ifdef __cplusplus
 }
 #endif
+
+/** @} */
 
 #endif /* CVCUDA_BRIGHTNESS_CONTRAST_H */

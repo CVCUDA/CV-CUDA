@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "priv/OpMinMaxLoc.hpp"
 
+#include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <nvcv/Exception.hpp>
@@ -28,7 +29,7 @@ namespace priv = cvcuda::priv;
 CVCUDA_DEFINE_API(0, 4, NVCVStatus, cvcudaMinMaxLocCreate, (NVCVOperatorHandle * handle))
 {
     return nvcv::ProtectCall(
-        [&]
+        [&handle]
         {
             if (handle == nullptr)
             {
@@ -36,7 +37,7 @@ CVCUDA_DEFINE_API(0, 4, NVCVStatus, cvcudaMinMaxLocCreate, (NVCVOperatorHandle *
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            *handle = reinterpret_cast<NVCVOperatorHandle>(new priv::MinMaxLoc());
+            *handle = priv::CreateOperatorHandle<priv::MinMaxLoc>();
         });
 }
 
@@ -45,15 +46,17 @@ CVCUDA_DEFINE_API(0, 4, NVCVStatus, cvcudaMinMaxLocSubmit,
                    NVCVTensorHandle minLoc, NVCVTensorHandle numMin, NVCVTensorHandle maxVal, NVCVTensorHandle maxLoc,
                    NVCVTensorHandle numMax))
 {
+    CVCUDA_NVTX_RANGE("cvcudaMinMaxLocSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&in, &handle, &stream, &minVal, &minLoc, &numMin, &maxVal, &maxLoc, &numMax]
         {
             nvcv::TensorWrapHandle input(in);
 
-            priv::ToDynamicRef<priv::MinMaxLoc>(handle)(stream, input, nvcv::TensorWrapHandle{minVal},
-                                                        nvcv::TensorWrapHandle{minLoc}, nvcv::TensorWrapHandle{numMin},
-                                                        nvcv::TensorWrapHandle{maxVal}, nvcv::TensorWrapHandle{maxLoc},
-                                                        nvcv::TensorWrapHandle{numMax});
+            priv::ToDynamicRef<priv::MinMaxLoc>(handle)(
+                stream, input.resource(), nvcv::TensorWrapHandle{minVal}.resource(),
+                nvcv::TensorWrapHandle{minLoc}.resource(), nvcv::TensorWrapHandle{numMin}.resource(),
+                nvcv::TensorWrapHandle{maxVal}.resource(), nvcv::TensorWrapHandle{maxLoc}.resource(),
+                nvcv::TensorWrapHandle{numMax}.resource());
         });
 }
 
@@ -62,14 +65,16 @@ CVCUDA_DEFINE_API(0, 4, NVCVStatus, cvcudaMinMaxLocVarShapeSubmit,
                    NVCVTensorHandle minLoc, NVCVTensorHandle numMin, NVCVTensorHandle maxVal, NVCVTensorHandle maxLoc,
                    NVCVTensorHandle numMax))
 {
+    CVCUDA_NVTX_RANGE("cvcudaMinMaxLocVarShapeSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&in, &handle, &stream, &minVal, &minLoc, &numMin, &maxVal, &maxLoc, &numMax]
         {
             nvcv::ImageBatchVarShapeWrapHandle input(in);
 
-            priv::ToDynamicRef<priv::MinMaxLoc>(handle)(stream, input, nvcv::TensorWrapHandle{minVal},
-                                                        nvcv::TensorWrapHandle{minLoc}, nvcv::TensorWrapHandle{numMin},
-                                                        nvcv::TensorWrapHandle{maxVal}, nvcv::TensorWrapHandle{maxLoc},
-                                                        nvcv::TensorWrapHandle{numMax});
+            priv::ToDynamicRef<priv::MinMaxLoc>(handle)(
+                stream, input.resource(), nvcv::TensorWrapHandle{minVal}.resource(),
+                nvcv::TensorWrapHandle{minLoc}.resource(), nvcv::TensorWrapHandle{numMin}.resource(),
+                nvcv::TensorWrapHandle{maxVal}.resource(), nvcv::TensorWrapHandle{maxLoc}.resource(),
+                nvcv::TensorWrapHandle{numMax}.resource());
         });
 }

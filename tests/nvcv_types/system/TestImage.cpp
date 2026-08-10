@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,7 +20,16 @@
 #include <nvcv/Image.hpp>
 #include <nvcv/alloc/Allocator.hpp>
 
+#include <array>
+#include <stdexcept>
+
 #include <nvcv/Fwd.hpp>
+
+class ImageTestError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
 
 TEST(Image, smoke_create)
 {
@@ -77,15 +86,17 @@ TEST(Image, smoke_user_pointer)
     nvcv::Image img({163, 117}, nvcv::FMT_RGBA8);
     EXPECT_EQ(nullptr, img.userPointer());
 
-    void *userPtr;
+    NVCVUserPointer userPtr;
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageGetUserPointer(img.handle(), &userPtr));
     EXPECT_EQ(nullptr, userPtr);
 
-    img.setUserPointer((void *)0x123);
-    EXPECT_EQ((void *)0x123, img.userPointer());
+    int  userValue    = 0;
+    auto userValuePtr = static_cast<NVCVUserPointer>(static_cast<void *>(&userValue));
+    img.setUserPointer(userValuePtr);
+    EXPECT_EQ(userValuePtr, img.userPointer());
 
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageGetUserPointer(img.handle(), &userPtr));
-    EXPECT_EQ((void *)0x123, userPtr);
+    EXPECT_EQ(static_cast<NVCVUserPointer>(static_cast<void *>(&userValue)), userPtr);
 
     img.setUserPointer(nullptr);
     EXPECT_EQ(nullptr, img.userPointer());
@@ -96,8 +107,6 @@ TEST(Image, smoke_user_pointer)
 
 TEST(Image, smoke_create_managed)
 {
-    ;
-
     int64_t setBufLen   = 0;
     int32_t setBufAlign = 0;
 
@@ -111,11 +120,11 @@ TEST(Image, smoke_create_managed)
                 setBufLen = size;
                 setBufAlign = bufAlign;
 
-                 void *ptr = nullptr;
+                 NVCVMemoryBuffer ptr = nullptr;
                  cudaMallocManaged(&ptr, size);
                  return ptr;
             },
-            [](void *ptr, int64_t bufLen, int32_t bufAlign)
+            [](NVCVMemoryBuffer ptr, int64_t, int32_t)
             {
                 cudaFree(ptr);
             }
@@ -127,7 +136,7 @@ TEST(Image, smoke_create_managed)
                     nvcv::MemAlignment{}.rowAddr(1).baseAddr(32)); // packed rows
     EXPECT_EQ(32, setBufAlign);
 
-    nvcv::Optional<nvcv::ImageData> data = img.exportData();
+    nvcv::Optional<nvcv::ImageData> data{img.exportData()};
     ASSERT_NE(nvcv::NullOpt, data);
 
     auto devdata = data->cast<nvcv::ImageDataStridedCuda>();
@@ -158,7 +167,8 @@ TEST(ImageWrapData, smoke_create)
     buf.planes[0].width     = 173;
     buf.planes[0].height    = 79;
     buf.planes[0].rowStride = 190;
-    buf.planes[0].basePtr   = reinterpret_cast<NVCVByte *>(678);
+    std::array<NVCVByte, 1> buffer{};
+    buf.planes[0].basePtr = buffer.data();
 
     auto img = nvcv::ImageWrapData(nvcv::ImageDataStridedCuda{nvcv::FMT_U8, buf});
 
@@ -170,7 +180,7 @@ TEST(ImageWrapData, smoke_create)
     ASSERT_EQ(NVCV_SUCCESS, nvcvImageGetType(img.handle(), &type));
     EXPECT_EQ(NVCV_TYPE_IMAGE_WRAPDATA, type);
 
-    nvcv::Optional<nvcv::ImageData> data = img.exportData();
+    nvcv::Optional<nvcv::ImageData> data{img.exportData()};
     ASSERT_NE(nvcv::NullOpt, data);
 
     auto devdata = data->cast<nvcv::ImageDataStridedCuda>();
@@ -198,8 +208,10 @@ TEST(ImageWrapData, smoke_user_pointer)
 
     EXPECT_EQ(nullptr, img.userPointer());
 
-    img.setUserPointer((void *)0x123);
-    EXPECT_EQ((void *)0x123, img.userPointer());
+    int  userValue = 0;
+    auto userPtr   = static_cast<NVCVUserPointer>(static_cast<void *>(&userValue));
+    img.setUserPointer(userPtr);
+    EXPECT_EQ(userPtr, img.userPointer());
 
     img.setUserPointer(nullptr);
     EXPECT_EQ(nullptr, img.userPointer());
@@ -207,8 +219,6 @@ TEST(ImageWrapData, smoke_user_pointer)
 
 TEST(Image, smoke_operator)
 {
-    ;
-
     nvcv::Image in{
         {512, 256},
         nvcv::FMT_RGBA8
@@ -223,15 +233,15 @@ TEST(Image, smoke_operator)
 
     if (!inData || !outData)
     {
-        throw std::runtime_error("Input and output images must have cuda-accessible pitch-linear memory");
+        throw ImageTestError("Input and output images must have cuda-accessible pitch-linear memory");
     }
     if (inData->format() != outData->format())
     {
-        throw std::runtime_error("Input and output images must have same format");
+        throw ImageTestError("Input and output images must have same format");
     }
     if (inData->size() != outData->size())
     {
-        throw std::runtime_error("Input and output images must have same size");
+        throw ImageTestError("Input and output images must have same size");
     }
 
     assert(inData->numPlanes() == outData->numPlanes());
@@ -252,7 +262,7 @@ TEST(Image, valid_get_allocator)
     int                   tmp = 1;
     NVCVImageHandle       handle;
     NVCVImageRequirements reqs;
-    NVCVAllocatorHandle   alloc = reinterpret_cast<NVCVAllocatorHandle>(&tmp);
+    auto                  alloc = reinterpret_cast<NVCVAllocatorHandle>(&tmp);
     EXPECT_NE(alloc, nullptr);
 
     EXPECT_EQ(NVCV_SUCCESS, nvcvImageCalcRequirements(224, 224, NVCV_IMAGE_FORMAT_RGBA8, 0, 0, &reqs));
@@ -309,7 +319,8 @@ TEST(Image, get_null_parameter)
     NVCVImageRequirements reqs;
     NVCVImageFormat       fmt;
     NVCVTypeImage         imageType;
-    int32_t               width, height;
+    int32_t               width;
+    int32_t               height;
 
     EXPECT_EQ(NVCV_SUCCESS, nvcvImageCalcRequirements(224, 224, NVCV_IMAGE_FORMAT_U8, 0, 0, &reqs));
     EXPECT_EQ(NVCV_SUCCESS, nvcvImageConstruct(&reqs, nullptr, &handle));
@@ -330,6 +341,19 @@ TEST(Image, get_null_parameter)
     EXPECT_EQ(NVCV_SUCCESS, nvcvImageDecRef(handle, nullptr));
 }
 
+TEST(Image, invalid_refcount_null_out_parameter)
+{
+    NVCVImageHandle       handle;
+    NVCVImageRequirements reqs;
+
+    ASSERT_EQ(NVCV_SUCCESS, nvcvImageCalcRequirements(224, 224, NVCV_IMAGE_FORMAT_U8, 0, 0, &reqs));
+    ASSERT_EQ(NVCV_SUCCESS, nvcvImageConstruct(&reqs, nullptr, &handle));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvImageRefCount(handle, nullptr));
+
+    EXPECT_EQ(NVCV_SUCCESS, nvcvImageDecRef(handle, nullptr));
+}
+
 TEST(ImageWrapData, smoke_cleanup)
 {
     nvcv::ImageDataStridedCuda::Buffer buf;
@@ -340,13 +364,14 @@ TEST(ImageWrapData, smoke_cleanup)
     buf.planes[0].basePtr   = reinterpret_cast<NVCVByte *>(678);
 
     int  cleanupCalled = 0;
-    auto cleanup       = [&cleanupCalled](const nvcv::ImageData &data)
+    auto cleanup       = [&cleanupCalled](const nvcv::ImageData &)
     {
         ++cleanupCalled;
     };
 
     {
-        auto img = nvcv::ImageWrapData(nvcv::ImageDataStridedCuda{nvcv::FMT_U8, buf}, cleanup);
+        auto img = nvcv::ImageWrapData(nvcv::ImageDataStridedCuda{nvcv::FMT_U8, buf},
+                                       nvcv::ImageDataCleanupCallback{cleanup});
         EXPECT_EQ(0, cleanupCalled);
     }
     EXPECT_EQ(1, cleanupCalled) << "Cleanup must have been called when img got destroyed";
@@ -386,10 +411,11 @@ TEST(ImageWrapData, smoke_mem_reqs)
 TEST(ImageWrapData, valid_get_allocator)
 {
     int                   tmp = 1;
-    NVCVImageHandle       handle, warpHandle;
+    NVCVImageHandle       handle;
+    NVCVImageHandle       warpHandle;
     NVCVImageData         imageData;
     NVCVImageRequirements reqs;
-    NVCVAllocatorHandle   alloc = reinterpret_cast<NVCVAllocatorHandle>(&tmp);
+    auto                  alloc = reinterpret_cast<NVCVAllocatorHandle>(&tmp);
     EXPECT_NE(alloc, nullptr);
 
     EXPECT_EQ(NVCV_SUCCESS, nvcvImageCalcRequirements(224, 224, NVCV_IMAGE_FORMAT_RGBA8, 0, 0, &reqs));
@@ -434,6 +460,85 @@ TEST(ImageWrapData, construct_invalid_buffer_numPlanes)
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
               nvcvImageWrapDataConstruct(&(nvcv::ImageDataStridedCuda{nvcv::FMT_U8, buf}.cdata()),
                                          callBackFunc.targetFunc(), callBackFunc.targetHandle(), &handle));
+}
+
+TEST(ImageWrapData, construct_invalid_buffer_numPlanes_too_large)
+{
+    // Reserve one extra plane after NVCVImageData so this testcase stays deterministic
+    // even before the implementation validates numPlanes upper bound.
+    struct ImageDataWithExtraPlane
+    {
+        NVCVImageData         data{};
+        NVCVImagePlaneStrided extraPlane{};
+    };
+
+    ImageDataWithExtraPlane payload;
+    payload.data.format                   = static_cast<NVCVImageFormat>(nvcv::FMT_U8);
+    payload.data.bufferType               = NVCV_IMAGE_BUFFER_STRIDED_CUDA;
+    payload.data.buffer.strided.numPlanes = NVCV_MAX_PLANE_COUNT + 1;
+    payload.extraPlane.width              = 173;
+    payload.extraPlane.height             = 79;
+    payload.extraPlane.rowStride          = 190;
+    payload.extraPlane.basePtr            = reinterpret_cast<NVCVByte *>(678);
+
+    for (int p = 0; p < NVCV_MAX_PLANE_COUNT; ++p)
+    {
+        payload.data.buffer.strided.planes[p].width     = 173;
+        payload.data.buffer.strided.planes[p].height    = 79;
+        payload.data.buffer.strided.planes[p].rowStride = 190;
+        payload.data.buffer.strided.planes[p].basePtr   = reinterpret_cast<NVCVByte *>(678 + p);
+    }
+
+    NVCVImageHandle                handle = nullptr;
+    nvcv::ImageDataCleanupCallback callBackFunc{};
+
+    NVCVStatus st
+        = nvcvImageWrapDataConstruct(&payload.data, callBackFunc.targetFunc(), callBackFunc.targetHandle(), &handle);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, st);
+    if (st == NVCV_SUCCESS && handle != nullptr)
+    {
+        EXPECT_EQ(NVCV_SUCCESS, nvcvImageDecRef(handle, nullptr));
+    }
+}
+
+TEST(ImageWrapData, construct_invalid_buffer_rowStride_negative)
+{
+    nvcv::ImageDataStridedCuda::Buffer buf;
+    buf.numPlanes                         = 1;
+    buf.planes[0].width                   = 173;
+    buf.planes[0].height                  = 79;
+    buf.planes[0].rowStride               = -190;
+    buf.planes[0].basePtr                 = reinterpret_cast<NVCVByte *>(678);
+    NVCVImageHandle                handle = nullptr;
+    nvcv::ImageDataCleanupCallback callBackFunc{};
+
+    NVCVStatus st = nvcvImageWrapDataConstruct(&(nvcv::ImageDataStridedCuda{nvcv::FMT_U8, buf}.cdata()),
+                                               callBackFunc.targetFunc(), callBackFunc.targetHandle(), &handle);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, st);
+    if (st == NVCV_SUCCESS && handle != nullptr)
+    {
+        EXPECT_EQ(NVCV_SUCCESS, nvcvImageDecRef(handle, nullptr));
+    }
+}
+
+TEST(ImageWrapData, construct_invalid_buffer_rowStride_too_small)
+{
+    nvcv::ImageDataStridedCuda::Buffer buf;
+    buf.numPlanes                         = 1;
+    buf.planes[0].width                   = 173;
+    buf.planes[0].height                  = 79;
+    buf.planes[0].rowStride               = 172;
+    buf.planes[0].basePtr                 = reinterpret_cast<NVCVByte *>(678);
+    NVCVImageHandle                handle = nullptr;
+    nvcv::ImageDataCleanupCallback callBackFunc{};
+
+    NVCVStatus st = nvcvImageWrapDataConstruct(&(nvcv::ImageDataStridedCuda{nvcv::FMT_U8, buf}.cdata()),
+                                               callBackFunc.targetFunc(), callBackFunc.targetHandle(), &handle);
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, st);
+    if (st == NVCV_SUCCESS && handle != nullptr)
+    {
+        EXPECT_EQ(NVCV_SUCCESS, nvcvImageDecRef(handle, nullptr));
+    }
 }
 
 TEST(ImageWrapData, construct_null_parameters)
@@ -522,11 +627,11 @@ TEST(Image, smoke_image_managed_memory)
         {
             [](int64_t size, int32_t)
             {
-                void *ptr = nullptr;
+                NVCVMemoryBuffer ptr = nullptr;
                 cudaMallocManaged(&ptr, size);
                 return ptr;
             },
-            [](void *ptr, int64_t, int32_t)
+            [](NVCVMemoryBuffer ptr, int64_t, int32_t)
             {
                 cudaFree(ptr);
             }

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,6 +25,7 @@
 #include <nvcv/Tensor.hpp>               // for Tensor, etc.
 #include <nvcv/TensorDataAccess.hpp>     // for TensorDataAccessStridedImagePlanar, etc.
 
+#include <cstddef>
 #include <limits>
 
 namespace t     = ::testing;
@@ -175,9 +176,9 @@ TYPED_TEST(Tensor1DWrapTensorTest, correct_with_tensor)
 
     cuda::Tensor1DWrap<ValueType> wrap(*dev);
 
-    const ValueType *ptr0 = reinterpret_cast<const ValueType *>(dev->basePtr());
-    const ValueType *ptr1
-        = reinterpret_cast<const ValueType *>(reinterpret_cast<const uint8_t *>(dev->basePtr()) + dev->stride(0));
+    auto ptr0 = reinterpret_cast<const ValueType *>(dev->basePtr());
+    auto ptr1
+        = reinterpret_cast<const ValueType *>(reinterpret_cast<const std::byte *>(dev->basePtr()) + dev->stride(0));
 
     EXPECT_EQ(wrap.ptr(0), ptr0);
     EXPECT_EQ(wrap.ptr(1), ptr1);
@@ -421,8 +422,8 @@ TYPED_TEST(Tensor2DWrapImageTest, correct_with_image)
     auto strides = wrap.strides();
     EXPECT_EQ(strides[0], dev->plane(0).rowStride);
 
-    const ValueType *ptr0 = reinterpret_cast<const ValueType *>(dev->plane(0).basePtr);
-    const ValueType *ptr1 = reinterpret_cast<const ValueType *>(dev->plane(0).basePtr + dev->plane(0).rowStride);
+    auto ptr0 = reinterpret_cast<const ValueType *>(dev->plane(0).basePtr);
+    auto ptr1 = reinterpret_cast<const ValueType *>(dev->plane(0).basePtr + dev->plane(0).rowStride);
 
     EXPECT_EQ(wrap.ptr(0), ptr0);
     EXPECT_EQ(wrap.ptr(1), ptr1);
@@ -738,9 +739,9 @@ TYPED_TEST(Tensor3DWrapTensorTest, correct_with_tensor)
         EXPECT_EQ(strides[i], dev->stride(i));
     }
 
-    const ValueType *ptr0  = reinterpret_cast<const ValueType *>(dev->basePtr());
-    const ValueType *ptr1  = reinterpret_cast<const ValueType *>(dev->basePtr() + dev->stride(0));
-    const ValueType *ptr12 = reinterpret_cast<const ValueType *>(dev->basePtr() + dev->stride(0) + 2 * dev->stride(1));
+    auto ptr0  = reinterpret_cast<const ValueType *>(dev->basePtr());
+    auto ptr1  = reinterpret_cast<const ValueType *>(dev->basePtr() + dev->stride(0));
+    auto ptr12 = reinterpret_cast<const ValueType *>(dev->basePtr() + dev->stride(0) + 2 * dev->stride(1));
 
     EXPECT_EQ(wrap.ptr(0), ptr0);
     EXPECT_EQ(wrap.ptr(1), ptr1);
@@ -840,53 +841,40 @@ TYPED_TEST(Tensor4DWrapTest, correct_content_and_is_const)
 
     EXPECT_EQ(wrap.ptr(), input.data());
 
-    for (int b = 0; b < InputType::kShapes[0]; ++b)
-    {
-        EXPECT_TRUE(std::is_pointer_v<decltype(wrap.ptr(b))>);
-        EXPECT_TRUE(std::is_const_v<std::remove_pointer_t<decltype(wrap.ptr(b))>>);
-
-        EXPECT_EQ(wrap.ptr(b), &input[b * InputType::kShapes[1] * InputType::kShapes[2] * InputType::kShapes[3]]);
-
-        for (int y = 0; y < InputType::kShapes[1]; ++y)
+    ForEach4D(
+        InputType::kShapes[0], InputType::kShapes[1], InputType::kShapes[2], InputType::kShapes[3],
+        [&input, &wrap](int b, int y, int x, int k)
         {
+            EXPECT_TRUE(std::is_pointer_v<decltype(wrap.ptr(b))>);
+            EXPECT_TRUE(std::is_const_v<std::remove_pointer_t<decltype(wrap.ptr(b))>>);
+
+            EXPECT_EQ(wrap.ptr(b), &input[b * InputType::kShapes[1] * InputType::kShapes[2] * InputType::kShapes[3]]);
+
             EXPECT_TRUE(std::is_pointer_v<decltype(wrap.ptr(b, y))>);
             EXPECT_TRUE(std::is_const_v<std::remove_pointer_t<decltype(wrap.ptr(b, y))>>);
 
             EXPECT_EQ(wrap.ptr(b, y), &input[b * InputType::kShapes[1] * InputType::kShapes[2] * InputType::kShapes[3]
                                              + y * InputType::kShapes[2] * InputType::kShapes[3]]);
 
-            for (int x = 0; x < InputType::kShapes[2]; ++x)
-            {
-                EXPECT_TRUE(std::is_pointer_v<decltype(wrap.ptr(b, y, x))>);
-                EXPECT_TRUE(std::is_const_v<std::remove_pointer_t<decltype(wrap.ptr(b, y, x))>>);
+            EXPECT_TRUE(std::is_pointer_v<decltype(wrap.ptr(b, y, x))>);
+            EXPECT_TRUE(std::is_const_v<std::remove_pointer_t<decltype(wrap.ptr(b, y, x))>>);
 
-                EXPECT_EQ(wrap.ptr(b, y, x),
-                          &input[b * InputType::kShapes[1] * InputType::kShapes[2] * InputType::kShapes[3]
-                                 + y * InputType::kShapes[2] * InputType::kShapes[3] + x * InputType::kShapes[3]]);
+            EXPECT_EQ(wrap.ptr(b, y, x),
+                      &input[b * InputType::kShapes[1] * InputType::kShapes[2] * InputType::kShapes[3]
+                             + y * InputType::kShapes[2] * InputType::kShapes[3] + x * InputType::kShapes[3]]);
 
-                for (int k = 0; k < InputType::kShapes[3]; ++k)
-                {
-                    EXPECT_TRUE(std::is_pointer_v<decltype(wrap.ptr(b, y, x, k))>);
-                    EXPECT_TRUE(std::is_const_v<std::remove_pointer_t<decltype(wrap.ptr(b, y, x, k))>>);
+            EXPECT_TRUE(std::is_pointer_v<decltype(wrap.ptr(b, y, x, k))>);
+            EXPECT_TRUE(std::is_const_v<std::remove_pointer_t<decltype(wrap.ptr(b, y, x, k))>>);
 
-                    EXPECT_EQ(
-                        wrap.ptr(b, y, x, k),
-                        &input[b * InputType::kShapes[1] * InputType::kShapes[2] * InputType::kShapes[3]
-                               + y * InputType::kShapes[2] * InputType::kShapes[3] + x * InputType::kShapes[3] + k]);
+            EXPECT_EQ(wrap.ptr(b, y, x, k), &input[PackedOffset4D<InputType>(b, y, x, k)]);
 
-                    int4 c4{k, x, y, b};
+            int4 c4{k, x, y, b};
 
-                    EXPECT_TRUE(std::is_reference_v<decltype(wrap[c4])>);
-                    EXPECT_TRUE(std::is_const_v<std::remove_reference_t<decltype(wrap[c4])>>);
+            EXPECT_TRUE(std::is_reference_v<decltype(wrap[c4])>);
+            EXPECT_TRUE(std::is_const_v<std::remove_reference_t<decltype(wrap[c4])>>);
 
-                    EXPECT_EQ(
-                        wrap[c4],
-                        input[b * InputType::kShapes[1] * InputType::kShapes[2] * InputType::kShapes[3]
-                              + y * InputType::kShapes[2] * InputType::kShapes[3] + x * InputType::kShapes[3] + k]);
-                }
-            }
-        }
-    }
+            EXPECT_EQ(wrap[c4], input[PackedOffset4D<InputType>(b, y, x, k)]);
+        });
 }
 
 TYPED_TEST(Tensor4DWrapTest, it_works_in_device)
@@ -932,22 +920,13 @@ TYPED_TEST(Tensor4DWrapCopyTest, can_change_content)
         ASSERT_EQ(InputType::kShapes[i], decltype(gold)::kShapes[i]);
     }
 
-    for (int b = 0; b < InputType::kShapes[0]; ++b)
-    {
-        for (int y = 0; y < InputType::kShapes[1]; ++y)
-        {
-            for (int x = 0; x < InputType::kShapes[2]; ++x)
-            {
-                for (int k = 0; k < InputType::kShapes[3]; ++k)
-                {
-                    int4 c{k, x, y, b};
+    ForEach4D(InputType::kShapes[0], InputType::kShapes[1], InputType::kShapes[2], InputType::kShapes[3],
+              [&gold, &wrap](int b, int y, int x, int k)
+              {
+                  int4 c{k, x, y, b};
 
-                    wrap[c] = gold[b * InputType::kShapes[1] * InputType::kShapes[2] * InputType::kShapes[3]
-                                   + y * InputType::kShapes[2] * InputType::kShapes[3] + x * InputType::kShapes[3] + k];
-                }
-            }
-        }
-    }
+                  wrap[c] = gold[PackedOffset4D<InputType>(b, y, x, k)];
+              });
 
     EXPECT_EQ(test, gold);
 }
@@ -1009,23 +988,14 @@ TYPED_TEST(Tensor4DWrapTensorWrapTest, correct_with_tensor_wrap)
         EXPECT_EQ(strides[i], InputType::kStrides[i]);
     }
 
-    for (int b = 0; b < N; ++b)
-    {
-        for (int y = 0; y < H; ++y)
-        {
-            for (int x = 0; x < W; ++x)
-            {
-                for (int k = 0; k < C; ++k)
-                {
-                    int4 c4{k, x, y, b};
+    ForEach4D(N, H, W, C,
+              [&dev, &wrap](int b, int y, int x, int k)
+              {
+                  int4 c4{k, x, y, b};
 
-                    EXPECT_EQ(wrap[c4],
-                              *reinterpret_cast<ValueType *>(dev->basePtr() + b * dev->stride(0) + y * dev->stride(1)
-                                                             + x * dev->stride(2) + k * dev->stride(3)));
-                }
-            }
-        }
-    }
+                  EXPECT_EQ(wrap[c4],
+                            *reinterpret_cast<ValueType *>(dev->basePtr() + StridedOffset4D(*dev, b, y, x, k)));
+              });
 }
 
 // clang-format off
@@ -1065,11 +1035,11 @@ TYPED_TEST(Tensor4DWrapTensorTest, correct_with_tensor)
         EXPECT_EQ(strides[i], dev->stride(i));
     }
 
-    const ValueType *ptr0   = reinterpret_cast<const ValueType *>(dev->basePtr());
-    const ValueType *ptr1   = reinterpret_cast<const ValueType *>(dev->basePtr() + dev->stride(0));
-    const ValueType *ptr12  = reinterpret_cast<const ValueType *>(dev->basePtr() + dev->stride(0) + 2 * dev->stride(1));
-    const ValueType *ptr123 = reinterpret_cast<const ValueType *>(dev->basePtr() + dev->stride(0) + 2 * dev->stride(1)
-                                                                  + 3 * dev->stride(2));
+    auto ptr0   = reinterpret_cast<const ValueType *>(dev->basePtr());
+    auto ptr1   = reinterpret_cast<const ValueType *>(dev->basePtr() + dev->stride(0));
+    auto ptr12  = reinterpret_cast<const ValueType *>(dev->basePtr() + dev->stride(0) + 2 * dev->stride(1));
+    auto ptr123 = reinterpret_cast<const ValueType *>(dev->basePtr() + dev->stride(0) + 2 * dev->stride(1)
+                                                      + 3 * dev->stride(2));
 
     EXPECT_EQ(wrap.ptr(0), ptr0);
     EXPECT_EQ(wrap.ptr(1), ptr1);
@@ -1113,21 +1083,11 @@ TYPED_TEST(Tensor4DWrapTensorTest, it_works_in_device)
     std::vector<uint8_t> test(sizeBytes);
     std::vector<uint8_t> gold(sizeBytes);
 
-    for (int b = 0; b < dev->shape(0); b++)
-    {
-        for (int i = 0; i < dev->shape(1); i++)
-        {
-            for (int j = 0; j < dev->shape(2); j++)
-            {
-                for (int k = 0; k < dev->shape(3); k++)
-                {
-                    *reinterpret_cast<ValueType *>(
-                        &gold[b * dev->stride(0) + i * dev->stride(1) + j * dev->stride(2) + k * dev->stride(3)])
-                        = cuda::SetAll<ValueType>(1);
-                }
-            }
-        }
-    }
+    ForEach4D(static_cast<int>(dev->shape(0)), static_cast<int>(dev->shape(1)), static_cast<int>(dev->shape(2)),
+              static_cast<int>(dev->shape(3)),
+              [&dev, &gold](int b, int i, int j, int k) {
+                  *reinterpret_cast<ValueType *>(&gold[StridedOffset4D(*dev, b, i, j, k)]) = cuda::SetAll<ValueType>(1);
+              });
 
     // Get test data back
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
@@ -1181,8 +1141,8 @@ NVCV_INSTANTIATE_TEST_SUITE_P(_, CreateTensorWrapNHWxTests,
 
 TEST_P(CreateTensorWrapNHWxTests, correct_properties_in_nhw)
 {
-    auto tensorShape    = std::get<0>(GetParam());
-    auto tensorDataType = std::get<1>(GetParam());
+    const auto &tensorShape    = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const auto &tensorDataType = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     nvcv::Tensor tensor(tensorShape, tensorDataType);
 
@@ -1208,8 +1168,8 @@ TEST_P(CreateTensorWrapNHWxTests, correct_properties_in_nhw)
 
 TEST_P(CreateTensorWrapNHWxTests, correct_properties_in_nhwc)
 {
-    auto tensorShape    = std::get<0>(GetParam());
-    auto tensorDataType = std::get<1>(GetParam());
+    const auto &tensorShape    = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const auto &tensorDataType = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     nvcv::Tensor tensor(tensorShape, tensorDataType);
 

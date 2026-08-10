@@ -1,6 +1,6 @@
 #!/bin/bash -e
 
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +21,20 @@ shopt -s extglob
 test_set="all"
 curdir=$(dirname "$(readlink -f "$0")")
 failure_sets=""
+
+# Some test binaries (notably nvcv_test_standalone, built via ExternalProject_Add
+# and installed via install(PROGRAMS ...) which doesn't fix up RPATHs) carry a
+# stale build-tree RPATH. When the artifact is consumed in a separate test pod,
+# that path no longer exists. Pre-pending the install layout's parallel lib dir
+# makes the dynamic linker find libnvcv_types.so / libcvcuda.so via the install
+# layout instead. Harmless for binaries with proper INSTALL_RPATH.
+#
+# CMAKE_INSTALL_LIBDIR is "lib/${CMAKE_LIBRARY_ARCHITECTURE}" (e.g.
+# lib/x86_64-linux-gnu, lib/aarch64-linux-gnu) — not plain lib. We add both the
+# arch-specific dir (where libnvcv_types.so / libcvcuda.so actually live) and
+# plain lib (defensive, for any builder that omits the arch suffix).
+arch_triplet="$(uname -m)-linux-gnu"
+export LD_LIBRARY_PATH="$curdir/../lib/$arch_triplet:$curdir/../lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 if [[ $# -ge 1 ]]; then
     test_set=$1

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,6 +23,7 @@
 #include <nvcv/util/Algorithm.hpp>
 #include <nvcv/util/Assert.h>
 
+#include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -36,7 +37,7 @@ namespace detail {
 template<class, class = void>
 struct GetHandleType
 {
-    using type = void *;
+    using type = NVCVUserPointer;
 };
 
 template<class T>
@@ -89,7 +90,7 @@ class HandleManager
             static_assert(alignof(Storage) % alignof(T) == 0);
 
             NVCV_ASSERT(!this->live());
-            T *obj         = new (getStorage()) T{std::forward<Args>(args)...};
+            auto *obj      = new (getStorage()) T{std::forward<Args>(args)...};
             this->m_ptrObj = obj;
             this->generation++;
 
@@ -110,7 +111,7 @@ class HandleManager
             return ++m_refCount;
         }
 
-        int refCount()
+        int refCount() const
         {
             return m_refCount;
         }
@@ -125,18 +126,20 @@ class HandleManager
             return m_ptrObj != nullptr;
         }
 
-    protected:
-        void *getStorage();
+    private:
+        std::byte *getStorage();
 
-        ~ResourceBase();
         Interface      *m_ptrObj = nullptr;
         std::atomic_int m_refCount{0};
+
+    protected:
+        ~ResourceBase();
     };
 
 public:
     using HandleType = GetHandleType<Interface>;
 
-    HandleManager(const char *name);
+    explicit HandleManager(const char *name);
     ~HandleManager();
 
     template<class T, typename... Args>
@@ -202,7 +205,7 @@ private:
 template<class... AA>
 struct alignas(util::Max(alignof(AA)...)) CompatibleStorage
 {
-    std::byte storage[util::Max(sizeof(AA)...)];
+    std::array<std::byte, util::Max(sizeof(AA)...)> storage;
 };
 
 } // namespace nvcv::priv

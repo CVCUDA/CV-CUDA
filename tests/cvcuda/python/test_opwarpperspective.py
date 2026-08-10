@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,14 +15,16 @@
 
 import cvcuda
 
-import pytest as t
+import pytest
 import numpy as np
+
 import cvcuda_util as util
+import cvcuda_tools as cv_tools
 
 RNG = np.random.default_rng(0)
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "input_args, xform, flags, border_mode, border_value",
     [
         (
@@ -141,7 +143,33 @@ def test_op_warp_perspective(input_args, xform, flags, border_mode, border_value
     assert out.dtype == input.dtype
 
 
-@t.mark.parametrize(
+def test_op_warp_perspective_extreme_projection_replicate_issue_249():
+    # Regression test for CVCUDA issue #249: warp_perspective with a projective
+    # matrix whose singular line falls inside the destination image produces
+    # source coordinates near +/-INT32_MAX. With BORDER_REPLICATE this used to
+    # trigger an illegal CUDA memory access. Syncing the stream is required to
+    # surface the kernel error as a test failure.
+    xform = [
+        [8.08776838e-02, 2.36326631e00, -4.08795000e02],
+        [-1.28514739e-02, 2.55201343e-01, -8.45896673e01],
+        [-2.68404432e-04, -6.57235630e-04, 1.00000000e00],
+    ]
+    input = cvcuda.Tensor((1208, 1928, 3), np.uint8, "HWC")
+    out = cvcuda.Tensor(input.shape, input.dtype, input.layout)
+    stream = cvcuda.Stream()
+    cvcuda.warp_perspective_into(
+        src=input,
+        dst=out,
+        xform=xform,
+        flags=cvcuda.Interp.LINEAR,
+        border_mode=cvcuda.Border.REPLICATE,
+        border_value=[0],
+        stream=stream,
+    )
+    stream.sync()
+
+
+@pytest.mark.parametrize(
     "nimages, format, max_size, max_pixel, max_xval, flags, bmode, border_value",
     [
         (
@@ -187,7 +215,14 @@ def test_op_warp_perspective(input_args, xform, flags, border_mode, border_value
     ],
 )
 def test_op_warp_perspectivevarshape(
-    nimages, format, max_size, max_pixel, max_xval, flags, bmode, border_value
+    nimages,
+    format,
+    max_size,
+    max_pixel,
+    max_xval,
+    flags,
+    bmode,
+    border_value,
 ):
 
     input = util.create_image_batch(
@@ -223,3 +258,41 @@ def test_op_warp_perspectivevarshape(
     assert out.capacity == input.capacity
     assert out.uniqueformat == input.uniqueformat
     assert out.maxsize == input.maxsize
+
+
+def _warp_perspective_params(dtype, layout, channels):
+    return {
+        "xform": np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float32),
+        "flags": int(cvcuda.Interp.NEAREST),
+        "border_mode": cvcuda.Border.CONSTANT,
+        "border_value": np.array([], dtype=np.float32),
+    }
+
+
+def _warp_perspective_varshape_params(dtype, layout, channels):
+    return {
+        "xform": util.create_tensor((2, 9), np.float32, "NC", max_random=1, rng=RNG),
+        "flags": int(cvcuda.Interp.NEAREST),
+        "border_mode": cvcuda.Border.CONSTANT,
+        "border_value": np.array([], dtype=np.float32),
+    }
+
+
+globals().update(
+    cv_tools.make_op_tests(
+        name="warp_perspective",
+        runner_info=[
+            ("tensor", cvcuda.warp_perspective, _warp_perspective_params),
+            ("image_batch", cvcuda.warp_perspective, _warp_perspective_varshape_params),
+        ],
+        keystone_dlc=(cvcuda.Type.U8, "NHWC", 3),
+        supported_dtypes={
+            cvcuda.Type.U8,
+            cvcuda.Type.U16,
+            cvcuda.Type.S16,
+            cvcuda.Type.F32,
+        },
+        supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
+        supported_channels={1, 3, 4},
+    )
+)

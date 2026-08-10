@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,11 +21,20 @@
 #include <cvcuda/Types.h>
 #include <cvcuda/cuda_tools/TypeTraits.hpp>
 
+#include <array>
 #include <map>
+#include <stdexcept>
 #include <unordered_map>
 
-// All commented mappings below "// {...}" are not implemented in legacy code
-// All commented codes below "//NVCV..." do not have clear output format
+namespace {
+
+class CvtColorError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
+
+} // namespace
 
 const std::unordered_map<NVCVColorConversionCode, NVCVImageFormat> kOutputFormat = {
     {     NVCV_COLOR_BGR2BGRA, NVCV_IMAGE_FORMAT_BGRA8},
@@ -44,70 +53,14 @@ const std::unordered_map<NVCVColorConversionCode, NVCVImageFormat> kOutputFormat
     {     NVCV_COLOR_RGB2GRAY, NVCV_IMAGE_FORMAT_Y8_ER},
     {     NVCV_COLOR_GRAY2BGR,  NVCV_IMAGE_FORMAT_BGR8},
     {     NVCV_COLOR_GRAY2RGB,  NVCV_IMAGE_FORMAT_RGB8},
- //    {      NVCV_COLOR_GRAY2BGRA, NVCV_IMAGE_FORMAT_BGRA8},
-  //    {      NVCV_COLOR_GRAY2RGBA, NVCV_IMAGE_FORMAT_RGBA8},
-  //    {      NVCV_COLOR_BGRA2GRAY, NVCV_IMAGE_FORMAT_Y8_ER},
-  //    {      NVCV_COLOR_RGBA2GRAY, NVCV_IMAGE_FORMAT_Y8_ER},
-  //NVCV_COLOR_BGR2BGR565
-  //NVCV_COLOR_RGB2BGR565
-  //    {     NVCV_COLOR_BGR5652BGR,  NVCV_IMAGE_FORMAT_BGR8},
-  //    {     NVCV_COLOR_BGR5652RGB,  NVCV_IMAGE_FORMAT_RGB8},
-  //NVCV_COLOR_BGRA2BGR565
-  //NVCV_COLOR_RGBA2BGR565
-  //    {    NVCV_COLOR_BGR5652BGRA, NVCV_IMAGE_FORMAT_BGRA8},
-  //    {    NVCV_COLOR_BGR5652RGBA, NVCV_IMAGE_FORMAT_RGBA8},
-  //NVCV_COLOR_GRAY2BGR565
-  //    {    NVCV_COLOR_BGR5652GRAY, NVCV_IMAGE_FORMAT_Y8_ER},
-  //NVCV_COLOR_BGR2BGR555
-  //NVCV_COLOR_RGB2BGR555
-  //    {     NVCV_COLOR_BGR5552BGR,  NVCV_IMAGE_FORMAT_BGR8},
-  //    {     NVCV_COLOR_BGR5552RGB,  NVCV_IMAGE_FORMAT_RGB8},
-  //NVCV_COLOR_BGRA2BGR555
-  //NVCV_COLOR_RGBA2BGR555
-  //    {    NVCV_COLOR_BGR5552BGRA, NVCV_IMAGE_FORMAT_BGRA8},
-  //    {    NVCV_COLOR_BGR5552RGBA, NVCV_IMAGE_FORMAT_RGBA8},
-  //NVCV_COLOR_GRAY2BGR555
-  //    {    NVCV_COLOR_BGR5552GRAY, NVCV_IMAGE_FORMAT_Y8_ER},
-  //NVCV_COLOR_BGR2XYZ
-  //NVCV_COLOR_RGB2XYZ
-  //    {        NVCV_COLOR_XYZ2BGR,  NVCV_IMAGE_FORMAT_BGR8},
-  //    {        NVCV_COLOR_XYZ2RGB,  NVCV_IMAGE_FORMAT_RGB8},
-  //NVCV_COLOR_BGR2YCrCb
-  //NVCV_COLOR_RGB2YCrCb
-  //    {      NVCV_COLOR_YCrCb2BGR,  NVCV_IMAGE_FORMAT_BGR8},
-  //    {      NVCV_COLOR_YCrCb2RGB,  NVCV_IMAGE_FORMAT_RGB8},
     {      NVCV_COLOR_BGR2HSV,  NVCV_IMAGE_FORMAT_HSV8},
     {      NVCV_COLOR_RGB2HSV,  NVCV_IMAGE_FORMAT_HSV8},
- //NVCV_COLOR_BGR2Lab
-  //NVCV_COLOR_RGB2Lab
-  //NVCV_COLOR_BGR2Luv
-  //NVCV_COLOR_RGB2Luv
-  //NVCV_COLOR_BGR2HLS
-  //NVCV_COLOR_RGB2HLS
     {      NVCV_COLOR_HSV2BGR,  NVCV_IMAGE_FORMAT_BGR8},
     {      NVCV_COLOR_HSV2RGB,  NVCV_IMAGE_FORMAT_RGB8},
- //    {        NVCV_COLOR_Lab2BGR,  NVCV_IMAGE_FORMAT_BGR8},
-  //    {        NVCV_COLOR_Lab2RGB,  NVCV_IMAGE_FORMAT_RGB8},
-  //    {        NVCV_COLOR_Luv2BGR,  NVCV_IMAGE_FORMAT_BGR8},
-  //    {        NVCV_COLOR_Luv2RGB,  NVCV_IMAGE_FORMAT_RGB8},
-  //    {        NVCV_COLOR_HLS2BGR,  NVCV_IMAGE_FORMAT_BGR8},
-  //    {        NVCV_COLOR_HLS2RGB,  NVCV_IMAGE_FORMAT_RGB8},
     { NVCV_COLOR_BGR2HSV_FULL,  NVCV_IMAGE_FORMAT_HSV8},
     { NVCV_COLOR_RGB2HSV_FULL,  NVCV_IMAGE_FORMAT_HSV8},
- //NVCV_COLOR_BGR2HLS_FULL
-  //NVCV_COLOR_RGB2HLS_FULL
     { NVCV_COLOR_HSV2BGR_FULL,  NVCV_IMAGE_FORMAT_BGR8},
     { NVCV_COLOR_HSV2RGB_FULL,  NVCV_IMAGE_FORMAT_RGB8},
- //    {   NVCV_COLOR_HLS2BGR_FULL,  NVCV_IMAGE_FORMAT_BGR8},
-  //    {   NVCV_COLOR_HLS2RGB_FULL,  NVCV_IMAGE_FORMAT_RGB8},
-  //NVCV_COLOR_LBGR2Lab
-  //NVCV_COLOR_LRGB2Lab
-  //NVCV_COLOR_LBGR2Luv
-  //NVCV_COLOR_LRGB2Luv
-  //    {       NVCV_COLOR_Lab2LBGR,  NVCV_IMAGE_FORMAT_BGR8},
-  //    {       NVCV_COLOR_Lab2LRGB,  NVCV_IMAGE_FORMAT_RGB8},
-  //    {       NVCV_COLOR_Luv2LBGR,  NVCV_IMAGE_FORMAT_BGR8},
-  //    {       NVCV_COLOR_Luv2LRGB,  NVCV_IMAGE_FORMAT_RGB8},
     {      NVCV_COLOR_BGR2YUV,  NVCV_IMAGE_FORMAT_YUV8},
     {      NVCV_COLOR_RGB2YUV,  NVCV_IMAGE_FORMAT_YUV8},
     {      NVCV_COLOR_YUV2BGR,  NVCV_IMAGE_FORMAT_BGR8},
@@ -183,62 +136,12 @@ const std::unordered_map<NVCVColorConversionCode, NVCVImageFormat> kOutputFormat
     {NVCV_COLOR_YUV2GRAY_YVYU, NVCV_IMAGE_FORMAT_Y8_ER},
     {NVCV_COLOR_YUV2GRAY_YUYV, NVCV_IMAGE_FORMAT_Y8_ER},
     {NVCV_COLOR_YUV2GRAY_YUNV, NVCV_IMAGE_FORMAT_Y8_ER},
- //    {     NVCV_COLOR_RGBA2mRGBA, NVCV_IMAGE_FORMAT_RGBA8},
-  //    {     NVCV_COLOR_mRGBA2RGBA, NVCV_IMAGE_FORMAT_RGBA8},
-  //NVCV_COLOR_RGB2YUV_I420
-  //NVCV_COLOR_BGR2YUV_I420
-  //NVCV_COLOR_RGB2YUV_IYUV
-  //NVCV_COLOR_BGR2YUV_IYUV
-  //NVCV_COLOR_RGBA2YUV_I420
-  //NVCV_COLOR_BGRA2YUV_I420
-  //NVCV_COLOR_RGBA2YUV_IYUV
-  //NVCV_COLOR_BGRA2YUV_IYUV
-  //NVCV_COLOR_RGB2YUV_YV12
-  //NVCV_COLOR_BGR2YUV_YV12
-  //NVCV_COLOR_RGBA2YUV_YV12
-  //NVCV_COLOR_BGRA2YUV_YV12
-  //    {    NVCV_COLOR_BayerBG2BGR,  NVCV_IMAGE_FORMAT_BGR8},
-  //    {    NVCV_COLOR_BayerGB2BGR,  NVCV_IMAGE_FORMAT_BGR8},
-  //    {    NVCV_COLOR_BayerRG2BGR,  NVCV_IMAGE_FORMAT_BGR8},
-  //    {    NVCV_COLOR_BayerGR2BGR,  NVCV_IMAGE_FORMAT_BGR8},
-  //    {    NVCV_COLOR_BayerBG2RGB,  NVCV_IMAGE_FORMAT_RGB8},
-  //   {    NVCV_COLOR_BayerGB2RGB,  NVCV_IMAGE_FORMAT_RGB8},
-  //    {    NVCV_COLOR_BayerRG2RGB,  NVCV_IMAGE_FORMAT_RGB8},
-  //    {    NVCV_COLOR_BayerGR2RGB,  NVCV_IMAGE_FORMAT_RGB8},
-  //    {   NVCV_COLOR_BayerBG2GRAY, NVCV_IMAGE_FORMAT_Y8_ER},
-  //    {   NVCV_COLOR_BayerGB2GRAY, NVCV_IMAGE_FORMAT_Y8_ER},
-  //    {   NVCV_COLOR_BayerRG2GRAY, NVCV_IMAGE_FORMAT_Y8_ER},
-  //    {   NVCV_COLOR_BayerGR2GRAY, NVCV_IMAGE_FORMAT_Y8_ER},
-  //    {NVCV_COLOR_BayerBG2BGR_VNG,  NVCV_IMAGE_FORMAT_BGR8},
-  //    {NVCV_COLOR_BayerGB2BGR_VNG,  NVCV_IMAGE_FORMAT_BGR8},
-  //    {NVCV_COLOR_BayerRG2BGR_VNG,  NVCV_IMAGE_FORMAT_BGR8},
-  //    {NVCV_COLOR_BayerGR2BGR_VNG,  NVCV_IMAGE_FORMAT_BGR8},
-  //    {NVCV_COLOR_BayerBG2RGB_VNG,  NVCV_IMAGE_FORMAT_RGB8},
-  //    {NVCV_COLOR_BayerGB2RGB_VNG,  NVCV_IMAGE_FORMAT_RGB8},
-  //    {NVCV_COLOR_BayerRG2RGB_VNG,  NVCV_IMAGE_FORMAT_RGB8},
-  //    {NVCV_COLOR_BayerGR2RGB_VNG,  NVCV_IMAGE_FORMAT_RGB8},
-  //    { NVCV_COLOR_BayerBG2BGR_EA,  NVCV_IMAGE_FORMAT_BGR8},
-  //    { NVCV_COLOR_BayerGB2BGR_EA,  NVCV_IMAGE_FORMAT_BGR8},
-  //    { NVCV_COLOR_BayerRG2BGR_EA,  NVCV_IMAGE_FORMAT_BGR8},
-  //    { NVCV_COLOR_BayerGR2BGR_EA,  NVCV_IMAGE_FORMAT_BGR8},
-  //    { NVCV_COLOR_BayerBG2RGB_EA,  NVCV_IMAGE_FORMAT_RGB8},
-  //    { NVCV_COLOR_BayerGB2RGB_EA,  NVCV_IMAGE_FORMAT_RGB8},
-  //    { NVCV_COLOR_BayerRG2RGB_EA,  NVCV_IMAGE_FORMAT_RGB8},
-  //    { NVCV_COLOR_BayerGR2RGB_EA,  NVCV_IMAGE_FORMAT_RGB8},
-  //NVCV_COLOR_COLORCVT_MAX
     { NVCV_COLOR_RGB2YUV_NV12,    NVCV_IMAGE_FORMAT_Y8},
     { NVCV_COLOR_BGR2YUV_NV12,    NVCV_IMAGE_FORMAT_Y8},
     { NVCV_COLOR_RGB2YUV_NV21,    NVCV_IMAGE_FORMAT_Y8},
     { NVCV_COLOR_BGR2YUV_NV21,    NVCV_IMAGE_FORMAT_Y8},
- //NVCV_COLOR_RGB2YUV420sp
-  //NVCV_COLOR_BGR2YUV420sp
     {NVCV_COLOR_RGBA2YUV_NV12,    NVCV_IMAGE_FORMAT_Y8},
     {NVCV_COLOR_BGRA2YUV_NV12,    NVCV_IMAGE_FORMAT_Y8},
- //NVCV_COLOR_RGBA2YUV_NV21
-  //NVCV_COLOR_RGBA2YUV420sp
-  //NVCV_COLOR_BGRA2YUV_NV21
-  //NVCV_COLOR_BGRA2YUV420sp
-  //NVCV_COLORCVT_MAX = 148,
 };
 
 nvcv::ImageFormat GetOutputFormat(nvcv::DataType in, NVCVColorConversionCode code)
@@ -246,7 +149,7 @@ nvcv::ImageFormat GetOutputFormat(nvcv::DataType in, NVCVColorConversionCode cod
     auto outFormatIt = kOutputFormat.find(code);
     if (outFormatIt == kOutputFormat.end())
     {
-        throw std::runtime_error("Invalid color conversion code");
+        throw CvtColorError("Invalid color conversion code");
     }
     nvcv::ImageFormat outFormat{outFormatIt->second};
 
@@ -259,7 +162,7 @@ nvcv::ImageFormat GetOutputFormat(nvcv::DataType in, NVCVColorConversionCode cod
             inNumBits = (inNumBits == 0) ? numBits : inNumBits;
             if (numBits != inNumBits)
             {
-                throw std::runtime_error("Invalid input format, all channels must have the same bit-depth");
+                throw CvtColorError("Invalid input format, all channels must have the same bit-depth");
             }
         }
     }
@@ -301,28 +204,25 @@ nvcv::TensorShape GetOutputTensorShape(const nvcv::TensorShape &inputShape, nvcv
 {
     if (inputShape.rank() < 3 || inputShape.rank() > 4)
     {
-        throw std::runtime_error("Invalid input tensor shape, only NHWC or HWC are supported");
+        throw CvtColorError("Invalid input tensor shape, only NHWC, HWC, NCHW, or CHW are supported");
     }
 
-    int64_t outputShape[4] = {};
-    bool    heightIndex    = inputShape.rank() == 4 ? 1 : 0;
+    std::array<int64_t, 4> outputShape  = {};
+    auto                   layout       = inputShape.layout();
+    int                    heightIndex  = layout.find('H');
+    int                    channelIndex = layout.find('C');
+    if (heightIndex < 0 || channelIndex < 0)
+    {
+        throw CvtColorError("Invalid input tensor shape, layout must contain H and C axes");
+    }
+
     for (int i = 0; i < inputShape.rank(); i++)
     {
         outputShape[i] = inputShape[i];
     }
-    int channelIndex = inputShape.rank() == 4 ? 3 : 2;
 
     outputShape[heightIndex]  = GetOutputHeight(outputShape[heightIndex], code);
     outputShape[channelIndex] = outputFormat.numChannels();
 
-    if (inputShape.rank() == 4)
-    {
-        return nvcv::TensorShape({outputShape[0], outputShape[1], outputShape[2], outputShape[3]}, "NHWC");
-    }
-    else
-    {
-        assert(inputShape.rank() == 3);
-
-        return nvcv::TensorShape({outputShape[0], outputShape[1], outputShape[2]}, "HWC");
-    }
+    return nvcv::TensorShape(outputShape.data(), inputShape.rank(), layout);
 }

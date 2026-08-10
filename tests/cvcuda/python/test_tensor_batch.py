@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,28 +13,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import cvcuda
-import pytest as t
-import numpy as np
-import cvcuda_util as util
-import torch
 import re
+
+import numpy as np
+import pytest as t
+
+import cvcuda
+import cvcuda_util as util
+import cupy
 
 
 def rand_shape(rank, low=1, high=10):
-    return np.random.randint(low=1, high=10, size=rank)
+    return np.random.randint(low=low, high=high, size=rank)
 
 
-def rand_torch_tensor(dtype, rank):
-    return torch.as_tensor(
-        np.random.random(size=rand_shape(rank)).astype(dtype), device="cuda"
-    )
+def rand_cuda_buffer(dtype, rank):
+    return cupy.asarray(np.random.random(size=rand_shape(rank)).astype(dtype))
 
 
 def random_tensors(n, dtype, rank, layout):
     return [
-        cvcuda.as_tensor(rand_torch_tensor(dtype, rank), layout=layout)
-        for _ in range(n)
+        cvcuda.as_tensor(rand_cuda_buffer(dtype, rank), layout=layout) for _ in range(n)
     ]
 
 
@@ -164,8 +163,8 @@ def test_tensorbatch_wrap_buffers():
     assert batch.layout is None
     assert batch.ndim == 3
 
-    # from torch tensor, with layout
-    buffers = [rand_torch_tensor(np.int16, 4) for i in range(5)]
+    # from CUDA buffer, with layout
+    buffers = [rand_cuda_buffer(np.int16, 4) for i in range(5)]
     batch = cvcuda.as_tensors(buffers, layout="NHWC")
     assert batch.capacity == len(buffers)
     assert len(batch) == len(buffers)
@@ -179,7 +178,7 @@ def test_tensorbatch_wrap_buffers():
         match="NVCV_ERROR_INVALID_ARGUMENT: "
         "Trying to add a tensor to a tensor batch with an inconsistent rank.",
     ):
-        buffers = [rand_torch_tensor(np.int16, 3), rand_torch_tensor(np.int16, 4)]
+        buffers = [rand_cuda_buffer(np.int16, 3), rand_cuda_buffer(np.int16, 4)]
         cvcuda.as_tensors(buffers)
 
     # mismatching dtype
@@ -188,7 +187,7 @@ def test_tensorbatch_wrap_buffers():
         match="NVCV_ERROR_INVALID_ARGUMENT: "
         "Trying to add a tensor to a tensor batch with an inconsistent type.",
     ):
-        buffers = [rand_torch_tensor(np.int16, 3), rand_torch_tensor(np.int32, 3)]
+        buffers = [rand_cuda_buffer(np.int16, 3), rand_cuda_buffer(np.int32, 3)]
         cvcuda.as_tensors(buffers)
 
     # invalid types
@@ -236,6 +235,6 @@ def test_tensorbatch_size_in_bytes():
     batch_create = cvcuda.TensorBatch(10)
     assert cvcuda.internal.nbytes_in_cache(batch_create) > 0
 
-    pt_img = torch.as_tensor(np.ndarray((16, 32, 4), dtype=np.float32), device="cuda")
+    pt_img = cupy.asarray(np.ndarray((16, 32, 4), dtype=np.float32))
     batch_as_tensors = cvcuda.as_tensors([pt_img])
     assert cvcuda.internal.nbytes_in_cache(batch_as_tensors) > 0

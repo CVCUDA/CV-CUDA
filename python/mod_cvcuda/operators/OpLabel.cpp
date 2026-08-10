@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,8 +34,9 @@ namespace {
 
 TupleTensor3 LabelInto(Tensor &output, std::optional<Tensor> count, std::optional<Tensor> stats, Tensor &input,
                        NVCVConnectivityType connectivity, NVCVLabelType assignLabels, NVCVLabelMaskType maskType,
-                       std::optional<Tensor> bgLabel, std::optional<Tensor> minThresh, std::optional<Tensor> maxThresh,
-                       std::optional<Tensor> minSize, std::optional<Tensor> mask, std::optional<Stream> pstream)
+                       const std::optional<Tensor> &bgLabel, const std::optional<Tensor> &minThresh,
+                       const std::optional<Tensor> &maxThresh, const std::optional<Tensor> &minSize,
+                       const std::optional<Tensor> &mask, std::optional<Stream> pstream)
 {
     if (!pstream)
     {
@@ -78,19 +79,26 @@ TupleTensor3 LabelInto(Tensor &output, std::optional<Tensor> count, std::optiona
         guard.add(LockMode::LOCK_MODE_READ, {*mask});
     }
 
-    op->submit(pstream->cudaHandle(), input, output, (bgLabel ? *bgLabel : nvcv::Tensor{nullptr}),
-               (minThresh ? *minThresh : nvcv::Tensor{nullptr}), (maxThresh ? *maxThresh : nvcv::Tensor{nullptr}),
-               (minSize ? *minSize : nvcv::Tensor{nullptr}), (count ? *count : nvcv::Tensor{nullptr}),
-               (stats ? *stats : nvcv::Tensor{nullptr}), (mask ? *mask : nvcv::Tensor{nullptr}), connectivity,
-               assignLabels, maskType);
+    guard.run(
+        [&bgLabel, &minThresh, &maxThresh, &minSize, &count, &stats, &mask, &op, &pstream, &input, &output,
+         &connectivity, &assignLabels, &maskType]()
+        {
+            const nvcv::Tensor nullTensor{nullptr};
+            op->submit(pstream->cudaHandle(), input, output, AsNvcvTensor(bgLabel, nullTensor),
+                       AsNvcvTensor(minThresh, nullTensor), AsNvcvTensor(maxThresh, nullTensor),
+                       AsNvcvTensor(minSize, nullTensor), AsNvcvTensor(count, nullTensor),
+                       AsNvcvTensor(stats, nullTensor), AsNvcvTensor(mask, nullTensor), connectivity, assignLabels,
+                       maskType);
+        });
 
     return TupleTensor3(std::move(output), count, stats);
 }
 
 TupleTensor3 Label(Tensor &input, NVCVConnectivityType connectivity, NVCVLabelType assignLabels,
-                   NVCVLabelMaskType maskType, bool count, bool stats, int maxLabels, std::optional<Tensor> bgLabel,
-                   std::optional<Tensor> minThresh, std::optional<Tensor> maxThresh, std::optional<Tensor> minSize,
-                   std::optional<Tensor> mask, std::optional<Stream> pstream)
+                   NVCVLabelMaskType maskType, bool count, bool stats, int maxLabels,
+                   const std::optional<Tensor> &bgLabel, const std::optional<Tensor> &minThresh,
+                   const std::optional<Tensor> &maxThresh, const std::optional<Tensor> &minSize,
+                   const std::optional<Tensor> &mask, std::optional<Stream> pstream)
 {
     constexpr nvcv::DataType outType = nvcv::TYPE_S32;
 
@@ -104,10 +112,11 @@ TupleTensor3 Label(Tensor &input, NVCVConnectivityType connectivity, NVCVLabelTy
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input must be a valid image-based tensor");
     }
-    int numSamples = inAccess->numSamples();
+    auto numSamples = static_cast<int>(inAccess->numSamples());
 
     Tensor                output = Tensor::Create(input.shape(), outType);
-    std::optional<Tensor> countTensor, statsTensor;
+    std::optional<Tensor> countTensor;
+    std::optional<Tensor> statsTensor;
 
     if (count)
     {
@@ -147,15 +156,13 @@ void ExportOpLabel(py::module &m)
         .value("REMOVE_ISLANDS_OUTSIDE_MASK_ONLY", NVCV_REMOVE_ISLANDS_OUTSIDE_MASK_ONLY)
         .export_values();
 
-    m.def("label", &Label, "src"_a, "connectivity"_a = NVCV_CONNECTIVITY_4_2D, "assign_labels"_a = NVCV_LABEL_FAST,
-          "mask_type"_a = NVCV_REMOVE_ISLANDS_OUTSIDE_MASK_ONLY, py::kw_only(), "count"_a = false, "stats"_a = false,
-          "max_labels"_a = 10000, "bg_label"_a = nullptr, "min_thresh"_a = nullptr, "max_thresh"_a = nullptr,
-          "min_size"_a = nullptr, "mask"_a = nullptr, "stream"_a = nullptr, R"pbdoc(
-
+    m.def("label", NvtxTrace("cvcuda.label", &Label), "src"_a, "connectivity"_a = NVCV_CONNECTIVITY_4_2D,
+          "assign_labels"_a = NVCV_LABEL_FAST, "mask_type"_a = NVCV_REMOVE_ISLANDS_OUTSIDE_MASK_ONLY, py::kw_only(),
+          "count"_a = false, "stats"_a = false, "max_labels"_a = 10000, "bg_label"_a = nullptr,
+          "min_thresh"_a = nullptr, "max_thresh"_a = nullptr, "min_size"_a = nullptr, "mask"_a = nullptr,
+          "stream"_a = nullptr, R"pbdoc(
         Executes the Label operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Label operator for more details and usage examples.
 
         Args:
             src (cvcuda.Tensor): Input tensor to label connected-component regions.
@@ -184,20 +191,15 @@ void ExportOpLabel(py::module &m)
             Tuple[cvcuda.Tensor, cvcuda.Tensor, cvcuda.Tensor]: A tuple with output labels, count of regions and their statistics.
                                            The count or stats tensors may be None if theirs arguments are False.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("label_into", &LabelInto, "dst"_a, "count"_a = nullptr, "stats"_a = nullptr, "src"_a,
-          "connectivity"_a = NVCV_CONNECTIVITY_4_2D, "assign_labels"_a = NVCV_LABEL_FAST,
+    m.def("label_into", NvtxTrace("cvcuda.label_into", &LabelInto), "dst"_a, "count"_a = nullptr, "stats"_a = nullptr,
+          "src"_a, "connectivity"_a = NVCV_CONNECTIVITY_4_2D, "assign_labels"_a = NVCV_LABEL_FAST,
           "mask_type"_a = NVCV_REMOVE_ISLANDS_OUTSIDE_MASK_ONLY, py::kw_only(), "bg_label"_a = nullptr,
           "min_thresh"_a = nullptr, "max_thresh"_a = nullptr, "min_size"_a = nullptr, "mask"_a = nullptr,
           "stream"_a = nullptr, R"pbdoc(
-
         Executes the Label operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Label operator for more details and usage examples.
 
         Args:
             dst (cvcuda.Tensor): Output tensor with labels.
@@ -226,8 +228,6 @@ void ExportOpLabel(py::module &m)
             Tuple[cvcuda.Tensor, cvcuda.Tensor, cvcuda.Tensor]: A tuple with output labels, count of regions and their statistics.
                                            The count or stats tensors may be None if theirs arguments are None.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C API references of the CV-CUDA operator.
     )pbdoc");
 }
 

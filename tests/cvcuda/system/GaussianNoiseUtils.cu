@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,15 +28,31 @@ __global__ void setup_states(curandState *state, unsigned long long seed, int ba
     curand_init(seed, id, 0, &state[threadIdx.x]);
 }
 
-__global__ void rand_kernel(curandState *state, float *rand, int size, int per_channel)
+__global__ void rand_kernel(curandState *state, float *rand, int size, int per_channel, int channels, int call_index)
 {
     int         offset     = threadIdx.x;
     curandState localState = state[threadIdx.x];
+    for (int call = 0; call < call_index; ++call)
+    {
+        int skip_offset = offset;
+        while (skip_offset < size)
+        {
+            if (per_channel)
+            {
+                for (int i = 0; i < channels; i++) (void)curand_normal(&localState);
+            }
+            else
+            {
+                (void)curand_normal(&localState);
+            }
+            skip_offset += blockDim.x;
+        }
+    }
     while (offset < size)
     {
         if (per_channel)
         {
-            for (int i = 0; i < 3; i++) rand[offset * 3 + i] = curand_normal(&localState);
+            for (int i = 0; i < channels; i++) rand[offset * channels + i] = curand_normal(&localState);
         }
         else
             rand[offset] = curand_normal(&localState);
@@ -44,7 +60,7 @@ __global__ void rand_kernel(curandState *state, float *rand, int size, int per_c
     }
 }
 
-void get_random(float *rand_h, bool per_channel, int batch, int mem_size)
+void get_random(float *rand_h, bool per_channel, int batch, int mem_size, int channels, int call_index)
 {
     curandState *states;
     cudaMalloc((void **)&states, sizeof(curandState) * BLOCK);
@@ -54,8 +70,8 @@ void get_random(float *rand_h, bool per_channel, int batch, int mem_size)
     cudaMalloc((void **)&rand_d, sizeof(float) * mem_size);
     int img_size = mem_size;
     if (per_channel)
-        img_size /= 3;
-    rand_kernel<<<1, BLOCK>>>(states, rand_d, img_size, per_channel);
+        img_size /= channels;
+    rand_kernel<<<1, BLOCK>>>(states, rand_d, img_size, per_channel, channels, call_index);
     cudaMemcpy(rand_h, rand_d, mem_size * sizeof(float), cudaMemcpyDeviceToHost);
     cudaFree(states);
     cudaFree(rand_d);

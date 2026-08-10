@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,6 +30,7 @@
 #include "detail/Export.h"
 
 #include <cuda_runtime.h>
+#include <nvcv/RoundMode.h>
 #include <nvcv/Status.h>
 #include <nvcv/Tensor.h>
 
@@ -54,10 +55,15 @@ CVCUDA_PUBLIC NVCVStatus cvcudaConvertToCreate(NVCVOperatorHandle *handle);
  *
  *  outputs(x,y) = saturate_cast<out_type>(α * inputs(x, y) + β)
  *
+ *  When the output type is integral, @p roundMode selects how the floating-point result is rounded
+ *  before the saturating cast: NVCV_ROUND_NEAREST (round to nearest, ties to even — the default and
+ *  historical behavior) or NVCV_ROUND_TRUNCATE (truncate toward zero). The mode has no effect when
+ *  the output type is floating-point.
+ *
  *  Limitations:
  *
  *  Input:
- *       Data Layout:    [kNHWC, kHWC]
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
  *       Channels:       [1-4]
  *
  *       Data Type      | Allowed
@@ -68,11 +74,12 @@ CVCUDA_PUBLIC NVCVStatus cvcudaConvertToCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | Yes
+ *       16bit Float    | No
  *       32bit Float    | Yes
  *       64bit Float    | Yes
  *
  *  Output:
- *       Data Layout:    [kNHWC, kHWC]
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
  *       Channels:       [1-4]
  *
  *       Data Type      | Allowed
@@ -83,6 +90,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaConvertToCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | Yes
+ *       16bit Float    | No
  *       32bit Float    | Yes
  *       64bit Float    | Yes
  *
@@ -109,15 +117,21 @@ CVCUDA_PUBLIC NVCVStatus cvcudaConvertToCreate(NVCVOperatorHandle *handle);
  *
  * @param [in] beta Offset for the data.
  *
+ * @param [in] roundMode Rounding mode used for float-to-integer outputs, cf. \ref NVCVRoundMode.
+ *                       Use NVCV_ROUND_NEAREST to preserve the historical behavior.
+ *
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
  * @retval #NVCV_ERROR_INTERNAL         Internal error in the operator, invalid types passed in.
  * @retval #NVCV_SUCCESS                Operation executed successfully.
  */
 CVCUDA_PUBLIC NVCVStatus cvcudaConvertToSubmit(NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in,
-                                               NVCVTensorHandle out, const double alpha, const double beta);
+                                               NVCVTensorHandle out, const double alpha, const double beta,
+                                               NVCVRoundMode roundMode);
 
 #ifdef __cplusplus
 }
 #endif
+
+/** @} */
 
 #endif /* CVCUDA_CONVERT_TO_H */

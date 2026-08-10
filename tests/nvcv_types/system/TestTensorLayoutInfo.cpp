@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,8 +41,8 @@ NVCV_TEST_SUITE_P(TensorLayoutInfo_IsBatch_ExecTests,
 
 TEST_P(TensorLayoutInfo_IsBatch_ExecTests, works)
 {
-    const nvcv::TensorLayout input{std::get<0>(GetParam())};
-    const bool              &gold = std::get<1>(GetParam());
+    const nvcv::TensorLayout input{::nvcv::test::ParamValue(std::get<0>(GetParam()))};
+    const bool              &gold = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     auto info = nvcv::TensorLayoutInfo::Create(input);
     ASSERT_TRUE(info);
@@ -71,8 +71,8 @@ NVCV_TEST_SUITE_P(TensorLayoutInfo_IdxSample_ExecTests,
 
 TEST_P(TensorLayoutInfo_IdxSample_ExecTests, works)
 {
-    const nvcv::TensorLayout input{std::get<0>(GetParam())};
-    const int               &gold = std::get<1>(GetParam());
+    const nvcv::TensorLayout input{::nvcv::test::ParamValue(std::get<0>(GetParam()))};
+    const int               &gold = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     auto info = nvcv::TensorLayoutInfo::Create(input);
     ASSERT_TRUE(info);
@@ -97,8 +97,8 @@ NVCV_TEST_SUITE_P(TensorLayoutInfo_IsImage_ExecTests,
 
 TEST_P(TensorLayoutInfo_IsImage_ExecTests, works)
 {
-    const nvcv::TensorLayout input{std::get<0>(GetParam())};
-    const bool              &gold = std::get<1>(GetParam());
+    const nvcv::TensorLayout input{::nvcv::test::ParamValue(std::get<0>(GetParam()))};
+    const bool              &gold = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     auto info = nvcv::TensorLayoutInfo::Create(input);
     ASSERT_TRUE(info);
@@ -128,8 +128,8 @@ NVCV_TEST_SUITE_P(TensorLayoutInfoImage_NumSpatialDims_ExecTests,
 
 TEST_P(TensorLayoutInfoImage_NumSpatialDims_ExecTests, works)
 {
-    const nvcv::TensorLayout input{std::get<0>(GetParam())};
-    const int               &gold = std::get<1>(GetParam());
+    const nvcv::TensorLayout input{::nvcv::test::ParamValue(std::get<0>(GetParam()))};
+    const int               &gold = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     auto info = nvcv::TensorLayoutInfoImage::Create(input);
     ASSERT_TRUE(info);
@@ -172,8 +172,8 @@ NVCV_TEST_SUITE_P(TensorLayoutInfoImage_IsRowMajor_ExecTests,
 
 TEST_P(TensorLayoutInfoImage_IsRowMajor_ExecTests, works)
 {
-    const nvcv::TensorLayout input{std::get<0>(GetParam())};
-    const bool              &gold = std::get<1>(GetParam());
+    const nvcv::TensorLayout input{::nvcv::test::ParamValue(std::get<0>(GetParam()))};
+    const bool              &gold = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     auto info = nvcv::TensorLayoutInfoImage::Create(input);
     ASSERT_TRUE(info);
@@ -200,8 +200,8 @@ NVCV_TEST_SUITE_P(TensorLayoutInfoImage_IdxChannel_ExecTests,
 
 TEST_P(TensorLayoutInfoImage_IdxChannel_ExecTests, works)
 {
-    const nvcv::TensorLayout input{std::get<0>(GetParam())};
-    const int               &gold = std::get<1>(GetParam());
+    const nvcv::TensorLayout input{::nvcv::test::ParamValue(std::get<0>(GetParam()))};
+    const int               &gold = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     auto info = nvcv::TensorLayoutInfoImage::Create(input);
     ASSERT_TRUE(info);
@@ -228,8 +228,8 @@ NVCV_TEST_SUITE_P(TensorLayoutInfoImage_IdxWidth_ExecTests,
 
 TEST_P(TensorLayoutInfoImage_IdxWidth_ExecTests, works)
 {
-    const nvcv::TensorLayout input{std::get<0>(GetParam())};
-    const int               &gold = std::get<1>(GetParam());
+    const nvcv::TensorLayout input{::nvcv::test::ParamValue(std::get<0>(GetParam()))};
+    const int               &gold = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     auto info = nvcv::TensorLayoutInfoImage::Create(input);
     ASSERT_TRUE(info);
@@ -256,8 +256,8 @@ NVCV_TEST_SUITE_P(TensorLayoutInfoImage_IdxHeight_ExecTests,
 
 TEST_P(TensorLayoutInfoImage_IdxHeight_ExecTests, works)
 {
-    const nvcv::TensorLayout input{std::get<0>(GetParam())};
-    const int               &gold = std::get<1>(GetParam());
+    const nvcv::TensorLayout input{::nvcv::test::ParamValue(std::get<0>(GetParam()))};
+    const int               &gold = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     auto info = nvcv::TensorLayoutInfoImage::Create(input);
     ASSERT_TRUE(info);
@@ -284,8 +284,8 @@ NVCV_TEST_SUITE_P(TensorLayoutInfoImage_IdxDepth_ExecTests,
 
 TEST_P(TensorLayoutInfoImage_IdxDepth_ExecTests, works)
 {
-    const nvcv::TensorLayout input{std::get<0>(GetParam())};
-    const int               &gold = std::get<1>(GetParam());
+    const nvcv::TensorLayout input{::nvcv::test::ParamValue(std::get<0>(GetParam()))};
+    const int               &gold = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     auto info = nvcv::TensorLayoutInfoImage::Create(input);
     ASSERT_TRUE(info);
@@ -310,8 +310,8 @@ NVCV_TEST_SUITE_P(TensorLayoutInfoImage_IsChannelFirst_ExecTests,
 
 TEST_P(TensorLayoutInfoImage_IsChannelFirst_ExecTests, works)
 {
-    const nvcv::TensorLayout input{std::get<0>(GetParam())};
-    const int               &gold = std::get<1>(GetParam());
+    const nvcv::TensorLayout input{::nvcv::test::ParamValue(std::get<0>(GetParam()))};
+    const int               &gold = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     auto info = nvcv::TensorLayoutInfoImage::Create(input);
     ASSERT_TRUE(info);
@@ -339,8 +339,8 @@ NVCV_TEST_SUITE_P(TensorLayoutInfoImage_IsChannelLast_ExecTests,
 
 TEST_P(TensorLayoutInfoImage_IsChannelLast_ExecTests, works)
 {
-    const nvcv::TensorLayout input{std::get<0>(GetParam())};
-    const int               &gold = std::get<1>(GetParam());
+    const nvcv::TensorLayout input{::nvcv::test::ParamValue(std::get<0>(GetParam()))};
+    const int               &gold = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     auto info = nvcv::TensorLayoutInfoImage::Create(input);
     ASSERT_TRUE(info);

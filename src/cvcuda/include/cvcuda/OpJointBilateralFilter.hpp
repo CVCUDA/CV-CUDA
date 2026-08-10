@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -36,6 +36,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class JointBilateralFilter final : public IOperator
@@ -43,56 +45,53 @@ class JointBilateralFilter final : public IOperator
 public:
     explicit JointBilateralFilter();
 
-    ~JointBilateralFilter();
-
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &inColor, const nvcv::Tensor &out,
-                    int diameter, float sigmaColor, float sigmaSpace, NVCVBorderType borderMode);
+                    int diameter, float sigmaColor, float sigmaSpace, NVCVBorderType borderMode) const;
 
     void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &inColor,
                     const nvcv::ImageBatch &out, const nvcv::Tensor &diameterData, const nvcv::Tensor &sigmaColorData,
-                    const nvcv::Tensor &sigmaSpace, NVCVBorderType borderMode);
+                    const nvcv::Tensor &sigmaSpace, NVCVBorderType borderMode) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline JointBilateralFilter::JointBilateralFilter()
 {
-    nvcv::detail::CheckThrow(cvcudaJointBilateralFilterCreate(&m_handle));
-    assert(m_handle);
-}
-
-inline JointBilateralFilter::~JointBilateralFilter()
-{
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaJointBilateralFilterCreate(&h));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void JointBilateralFilter::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &inColor,
                                              const nvcv::Tensor &out, int diameter, float sigmaColor, float sigmaSpace,
-                                             NVCVBorderType borderMode)
+                                             NVCVBorderType borderMode) const
 {
-    nvcv::detail::CheckThrow(cvcudaJointBilateralFilterSubmit(
-        m_handle, stream, in.handle(), inColor.handle(), out.handle(), diameter, sigmaColor, sigmaSpace, borderMode));
+    nvcv::detail::CheckThrow(cvcudaJointBilateralFilterSubmit(m_handle.get(), stream, in.handle(), inColor.handle(),
+                                                              out.handle(), diameter, sigmaColor, sigmaSpace,
+                                                              borderMode));
 }
 
 inline void JointBilateralFilter::operator()(cudaStream_t stream, const nvcv::ImageBatch &in,
                                              const nvcv::ImageBatch &inColor, const nvcv::ImageBatch &out,
                                              const nvcv::Tensor &diameterData, const nvcv::Tensor &sigmaColorData,
-                                             const nvcv::Tensor &sigmaSpaceData, NVCVBorderType borderMode)
+                                             const nvcv::Tensor &sigmaSpaceData, NVCVBorderType borderMode) const
 {
     nvcv::detail::CheckThrow(cvcudaJointBilateralFilterVarShapeSubmit(
-        m_handle, stream, in.handle(), inColor.handle(), out.handle(), diameterData.handle(), sigmaColorData.handle(),
-        sigmaSpaceData.handle(), borderMode));
+        m_handle.get(), stream, in.handle(), inColor.handle(), out.handle(), diameterData.handle(),
+        sigmaColorData.handle(), sigmaSpaceData.handle(), borderMode));
 }
 
 inline NVCVOperatorHandle JointBilateralFilter::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA_JOINT_BILATERAL_FILTER_HPP

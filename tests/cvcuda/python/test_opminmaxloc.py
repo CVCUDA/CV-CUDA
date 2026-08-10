@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,9 +15,11 @@
 
 import cvcuda
 
-import pytest as t
+import pytest
 import numpy as np
+
 import cvcuda_util as util
+import cvcuda_tools as cv_tools
 
 RNG = np.random.default_rng(0)
 
@@ -35,14 +37,14 @@ def gold_num_dtype():
     return cvcuda.Type.S32
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "operator",
     [
         cvcuda.min_loc_into,
         cvcuda.max_loc_into,
     ],
 )
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "val_args,loc_args,num_args",
     [
         (
@@ -69,7 +71,7 @@ def test_opminmaxloc_output_api(operator, val_args, loc_args, num_args):
     assert rets[2] is t_min
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "src_args",
     [
         ((2, 16, 23, 1), np.uint8, "NHWC"),
@@ -188,7 +190,7 @@ def test_opminmaxloc_tensor_api(src_args):
         assert ret is out
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "num_images, img_format, max_size",
     [
         (1, cvcuda.Format.U8, (73, 98)),
@@ -293,7 +295,7 @@ def test_opminmaxloc_varshape_api(num_images, img_format, max_size):
         assert ret is out
 
 
-@t.mark.parametrize("input_type", ["tensor", "image_batch"])
+@pytest.mark.parametrize("input_type", ["tensor", "image_batch"])
 def test_opminmaxloc_content(input_type):
     # Test with fixed number of images and lists of minimum and maximum locations,
     # the lists must be in ascending order in x dimension for comparisons
@@ -356,3 +358,31 @@ def test_opminmaxloc_content(input_type):
     np.testing.assert_array_equal(a_test_max_val, np.full([n_img, 1], 255))
     np.testing.assert_array_equal(a_test_max_loc, a_gold_max_loc)
     np.testing.assert_array_equal(a_test_num_max, np.full([n_img, 1], len(l_max_loc)))
+
+
+def _minmaxloc_params(dtype, layout, channels):
+    return {"max_locations": 10}
+
+
+globals().update(
+    cv_tools.make_op_tests(
+        name="minmaxloc",
+        runner_info=[
+            ("tensor", cvcuda.min_max_loc, _minmaxloc_params),
+            ("image_batch", cvcuda.min_max_loc, _minmaxloc_params),
+        ],
+        keystone_dlc=(cvcuda.Type.U8, "NHWC", 1),
+        supported_dtypes={
+            cvcuda.Type.U8,
+            cvcuda.Type.U16,
+            cvcuda.Type.U32,
+            cvcuda.Type.S8,
+            cvcuda.Type.S16,
+            cvcuda.Type.S32,
+            cvcuda.Type.F32,
+            cvcuda.Type.F64,
+        },
+        supported_layouts={"NHWC", "HW", "NHW", "HWC", "CHW", "NCHW"},
+        supported_channels={1},
+    )
+)

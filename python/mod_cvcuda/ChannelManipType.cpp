@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +23,7 @@ namespace cvcudapy {
 
 void ExportChannelManipType(py::module &m)
 {
-    py::enum_<NVCVChannelManip>(m, "ChannelManip")
+    py::enum_<NVCVChannelManip>(m, "ChannelManip", "Channel manipulation modes for color conversion.")
         .value("NO_OP", NVCV_CHANNEL_NO_OP, "No manipulation (i.e., channels are unchanged)")
         .value("REVERSE", NVCV_CHANNEL_REVERSE, "Reverse channel order (e.g., RGB to BGR, RGBA to ABGR, etc.)");
 }

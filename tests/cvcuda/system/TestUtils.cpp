@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,14 +21,42 @@
 
 #include <cvcuda/cuda_tools/TypeTraits.hpp>
 
+#include <array>
+
 namespace cuda = nvcv::cuda;
 
 using std::vector;
 
+template<typename T>
+struct RgbStoreParams
+{
+    T    alpha;
+    bool rgba;
+    bool bga;
+};
+
+template<typename T>
+void StoreRgb(T *&dst, T red, T grn, T blu, const RgbStoreParams<T> &params)
+{
+    if (params.bga)
+    {
+        std::swap(red, blu);
+    }
+
+    *dst++ = red;
+    *dst++ = grn;
+    *dst++ = blu;
+    if (params.rgba)
+    {
+        *dst++ = params.alpha;
+    }
+}
+
 //-==================================================================================================================-//
 // Generate an random image image vector.
 template<typename T>
-void generateRandVec(T *dst, size_t size, RandEng &eng)
+void generateRandVec( // NOSONAR: std::span is C++20.
+    T *dst, size_t size, RandEng &eng)
 {
     RandInt<T> rand(0, cuda::TypeTraits<T>::max);
 
@@ -38,7 +66,8 @@ void generateRandVec(T *dst, size_t size, RandEng &eng)
 }
 
 template<>
-void generateRandVec(float *dst, size_t size, RandEng &eng)
+void generateRandVec( // NOSONAR: std::span is C++20.
+    float *dst, size_t size, RandEng &eng)
 {
     RandFlt<float> rand(0.0f, 1.0f);
 
@@ -48,9 +77,10 @@ void generateRandVec(float *dst, size_t size, RandEng &eng)
 }
 
 template<>
-void generateRandVec(double *dst, size_t size, RandEng &eng)
+void generateRandVec( // NOSONAR: std::span is C++20.
+    double *dst, size_t size, RandEng &eng)
 {
-    RandFlt<double> rand(0.0, 1.0);
+    std::uniform_real_distribution rand(0.0, 1.0);
 
     // clang-format off
     for (size_t i = 0; i < size; i++) dst[i] = rand(eng);
@@ -74,35 +104,32 @@ MAKE_RAND_VEC(double);
 template<typename T>
 void generateRandTestRGB(T *dst, size_t size, RandEng &eng, bool rgba, bool bga)
 {
-    constexpr T max    = std::is_floating_point_v<T> ? 1 : cuda::TypeTraits<T>::max;
-    constexpr T val[3] = {0, max / 2, max};
+    constexpr T                max = std::is_floating_point_v<T> ? 1 : cuda::TypeTraits<T>::max;
+    constexpr std::array<T, 3> val = {0, max / 2, max};
 
-    const size_t minSize = 3 * 3 * 3 * (3 + rgba);
+    const size_t minSize = 3 * 3 * 3 * (rgba ? 4 : 3);
 
     generateRandVec(dst, size, eng);
 
-    if (size > minSize)
+    if (size <= minSize)
     {
-        size_t idx = 0;
+        return;
+    }
 
-        for (unsigned int r = 0; r < 3; r++)
+    RgbStoreParams<T> params{max, rgba, bga};
+    T                *out = dst;
+
+    for (unsigned int r = 0; r < 3; r++)
+    {
+        const T red = val[r];
+
+        for (unsigned int g = 0; g < 3; g++)
         {
-            const T red = val[r];
+            const T grn = val[g];
 
-            for (unsigned int g = 0; g < 3; g++)
+            for (unsigned int b = 0; b < 3; b++)
             {
-                const T grn = val[g];
-
-                for (unsigned int b = 0; b < 3; b++)
-                {
-                    const T blu = val[b];
-
-                    // clang-format off
-                    if (bga) { dst[idx++] = blu;  dst[idx++] = grn;  dst[idx++] = red; }
-                    else     { dst[idx++] = red;  dst[idx++] = grn;  dst[idx++] = blu; }
-                    if (rgba)  dst[idx++] = max;
-                    // clang-format on
-                }
+                StoreRgb(out, red, grn, val[b], params);
             }
         }
     }
@@ -138,10 +165,12 @@ void generateAllRGB(T *dst, unsigned int wdth, unsigned int hght, unsigned int n
     constexpr double round = std::is_floating_point_v<T> ? 0 : 0.5;
     constexpr double scale = (double)max / 255.0;
 
-    const size_t incrH = wdth * (3 + rgba);
+    const size_t incrH = wdth * (rgba ? 4 : 3);
     const size_t incrN = hght * incrH;
 
     unsigned int addB = 0;
+
+    RgbStoreParams<T> params{max, rgba, bga};
 
     for (unsigned int i = 0; i < num; i++)
     {
@@ -151,20 +180,15 @@ void generateAllRGB(T *dst, unsigned int wdth, unsigned int hght, unsigned int n
         {
             T *row = img + y * incrH;
 
-            uint8_t grn = static_cast<uint8_t>(y & 255);
+            auto grn = static_cast<uint8_t>(y & 255);
 
             for (unsigned int x = 0; x < wdth; x++)
             {
-                uint8_t red = static_cast<uint8_t>(x & 255);
-                uint8_t blu = static_cast<uint8_t>(((x >> 8) + addB) & 255);
+                auto red = static_cast<uint8_t>(x & 255);
+                auto blu = static_cast<uint8_t>(((x >> 8) + addB) & 255);
 
-                // clang-format off
-                if (bga) std::swap(red, blu);
-                *row++ = static_cast<T>(red * scale + round);
-                *row++ = static_cast<T>(grn * scale + round);
-                *row++ = static_cast<T>(blu * scale + round);
-                if (rgba) *row++ = max;
-                // clang-format on
+                StoreRgb(row, static_cast<T>(red * scale + round), static_cast<T>(grn * scale + round),
+                         static_cast<T>(blu * scale + round), params);
             }
             // clang-format off
             if (grn == 255) addB += ((wdth + 255) >> 8);
@@ -198,7 +222,7 @@ void generateRandHSV(T *dst, size_t size, RandEng &eng, double minHueMult, doubl
     ASSERT_EQ(size % 3, 0);
 
     constexpr T            max   = std::is_floating_point_v<T> ? 1 : cuda::TypeTraits<T>::max;
-    constexpr unsigned int range = (sizeof(T) > 1) ? 360 : (FullRange ? 256 : 180);
+    constexpr unsigned int range = HsvHueRange<T, FullRange>();
     constexpr double       scale = (double)range / 360.0;
     constexpr double       round = std::is_floating_point_v<T> ? 0 : 0.5;
 
@@ -210,8 +234,8 @@ void generateRandHSV(T *dst, size_t size, RandEng &eng, double minHueMult, doubl
     double minHue = minHueMult * range;
     double maxHue = maxHueMult * range;
 
-    RandFlt<double> randHue(minHue, maxHue);
-    RandFlt<double> randSV(0.0, 1.0);
+    std::uniform_real_distribution randHue(minHue, maxHue);
+    std::uniform_real_distribution randSV(0.0, 1.0);
 
     for (size_t i = 0; i < size; i += 3)
     {
@@ -266,7 +290,7 @@ template<typename T, bool FullRange>
 void generateAllHSV(T *dst, unsigned int wdth, unsigned int hght, unsigned int num)
 {
     constexpr T            max   = std::is_floating_point_v<T> ? 1 : cuda::TypeTraits<T>::max;
-    constexpr unsigned int range = (sizeof(T) > 1) ? 360 : (FullRange ? 256 : 180);
+    constexpr unsigned int range = HsvHueRange<T, FullRange>();
     constexpr double       scale = (double)range / 360.0;
     constexpr double       norm  = (double)max / 255.0;
     constexpr double       round = std::is_floating_point_v<T> ? 0 : 0.5;
@@ -287,13 +311,13 @@ void generateAllHSV(T *dst, unsigned int wdth, unsigned int hght, unsigned int n
         {
             T *row = img + y * incrH;
 
-            uint8_t S = static_cast<uint8_t>(y & 255);
+            auto S = static_cast<uint8_t>(y & 255);
 
             // clang-format off
             for (unsigned int x = 0; x < wdth; x++)
             {
-                uint8_t H = static_cast<uint8_t>(x % range);
-                uint8_t V = static_cast<uint8_t>((((unsigned int)(x / range) + addV) * stepV) & 255);
+                auto H = static_cast<uint8_t>(x % range);
+                auto V = static_cast<uint8_t>((((unsigned int)(x / range) + addV) * stepV) & 255);
 
                 *row++ = static_cast<T>(H * scale + round);
                 *row++ = static_cast<T>(S * norm  + round);

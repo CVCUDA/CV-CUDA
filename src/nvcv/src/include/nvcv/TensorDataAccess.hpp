@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -55,6 +55,12 @@ public:
         , m_infoShape(infoShape)
     {
     }
+
+    TensorDataAccessStridedImpl(const TensorDataAccessStridedImpl &)     = default;
+    TensorDataAccessStridedImpl(TensorDataAccessStridedImpl &&) noexcept = default;
+
+    TensorDataAccessStridedImpl &operator=(const TensorDataAccessStridedImpl &)     = default;
+    TensorDataAccessStridedImpl &operator=(TensorDataAccessStridedImpl &&) noexcept = default;
 
     /**
      * @brief Returns the number of samples in the tensor.
@@ -169,7 +175,10 @@ public:
     }
 
 protected:
-    TensorDataStrided m_tdata;
+    const TensorDataStrided &tensorData() const
+    {
+        return m_tdata;
+    }
 
     TensorDataAccessStridedImpl(const TensorDataAccessStridedImpl &that, const TensorShapeInfo &infoShape)
         : m_tdata(that.m_tdata)
@@ -178,7 +187,8 @@ protected:
     }
 
 private:
-    ShapeInfo m_infoShape;
+    TensorDataStrided m_tdata;
+    ShapeInfo         m_infoShape;
 };
 
 /**
@@ -208,6 +218,12 @@ public:
         : Base(tdata, infoShape)
     {
     }
+
+    TensorDataAccessStridedImageImpl(const TensorDataAccessStridedImageImpl &)     = default;
+    TensorDataAccessStridedImageImpl(TensorDataAccessStridedImageImpl &&) noexcept = default;
+
+    TensorDataAccessStridedImageImpl &operator=(const TensorDataAccessStridedImageImpl &)     = default;
+    TensorDataAccessStridedImageImpl &operator=(TensorDataAccessStridedImageImpl &&) noexcept = default;
 
     /**
      * @brief Returns the number of columns in the image tensor.
@@ -259,7 +275,7 @@ public:
         int idx = this->infoLayout().idxChannel();
         if (idx >= 0)
         {
-            return this->m_tdata.stride(idx);
+            return this->tensorData().stride(idx);
         }
         else
         {
@@ -277,7 +293,7 @@ public:
         int idx = this->infoLayout().idxWidth();
         if (idx >= 0)
         {
-            return this->m_tdata.stride(idx);
+            return this->tensorData().stride(idx);
         }
         else
         {
@@ -295,7 +311,7 @@ public:
         int idx = this->infoLayout().idxHeight();
         if (idx >= 0)
         {
-            return this->m_tdata.stride(idx);
+            return this->tensorData().stride(idx);
         }
         else
         {
@@ -313,7 +329,7 @@ public:
         int idx = this->infoLayout().idxDepth();
         if (idx >= 0)
         {
-            return this->m_tdata.stride(idx);
+            return this->tensorData().stride(idx);
         }
         else
         {
@@ -329,7 +345,7 @@ public:
      */
     Byte *rowData(int y) const
     {
-        return rowData(y, this->m_tdata.basePtr());
+        return rowData(y, this->tensorData().basePtr());
     }
 
     /**
@@ -353,7 +369,7 @@ public:
      */
     Byte *chData(int c) const
     {
-        return chData(c, this->m_tdata.basePtr());
+        return chData(c, this->tensorData().basePtr());
     }
 
     /**
@@ -403,6 +419,12 @@ public:
     {
     }
 
+    TensorDataAccessStridedImagePlanarImpl(const TensorDataAccessStridedImagePlanarImpl &)     = default;
+    TensorDataAccessStridedImagePlanarImpl(TensorDataAccessStridedImagePlanarImpl &&) noexcept = default;
+
+    TensorDataAccessStridedImagePlanarImpl &operator=(const TensorDataAccessStridedImagePlanarImpl &)     = default;
+    TensorDataAccessStridedImagePlanarImpl &operator=(TensorDataAccessStridedImagePlanarImpl &&) noexcept = default;
+
     /**
      * @brief Returns the number of planes in the planar image tensor.
      *
@@ -424,7 +446,7 @@ public:
         {
             int ichannel = this->infoLayout().idxChannel();
             assert(ichannel >= 0);
-            return this->m_tdata.stride(ichannel);
+            return this->tensorData().stride(ichannel);
         }
         else
         {
@@ -440,7 +462,7 @@ public:
      */
     Byte *planeData(int p) const
     {
-        return planeData(p, this->m_tdata.basePtr());
+        return planeData(p, this->tensorData().basePtr());
     }
 
     /**
@@ -471,6 +493,12 @@ class TensorDataAccessStrided : public detail::TensorDataAccessStridedImpl<Tenso
     using Base = detail::TensorDataAccessStridedImpl<TensorShapeInfo>;
 
 public:
+    TensorDataAccessStrided(const TensorDataAccessStrided &)     = default;
+    TensorDataAccessStrided(TensorDataAccessStrided &&) noexcept = default;
+
+    TensorDataAccessStrided &operator=(const TensorDataAccessStrided &)     = default;
+    TensorDataAccessStrided &operator=(TensorDataAccessStrided &&) noexcept = default;
+
     /**
      * @brief Checks if the provided tensor data is compatible with a strided layout.
      *
@@ -492,16 +520,16 @@ public:
     {
         if (Optional<TensorDataStrided> dataStrided = data.cast<TensorDataStrided>())
         {
-            return TensorDataAccessStrided(dataStrided.value());
+            return Optional<TensorDataAccessStrided>{TensorDataAccessStrided{dataStrided.value()}};
         }
         else
         {
-            return NullOpt;
+            return Optional<TensorDataAccessStrided>{NullOpt};
         }
     }
 
 private:
-    TensorDataAccessStrided(const TensorDataStrided &data)
+    explicit TensorDataAccessStrided(const TensorDataStrided &data)
         : Base(data, *TensorShapeInfo::Create(data.shape()))
     {
     }
@@ -518,6 +546,12 @@ class TensorDataAccessStridedImage : public detail::TensorDataAccessStridedImage
     using Base = detail::TensorDataAccessStridedImageImpl<TensorShapeInfoImage>;
 
 public:
+    TensorDataAccessStridedImage(const TensorDataAccessStridedImage &)     = default;
+    TensorDataAccessStridedImage(TensorDataAccessStridedImage &&) noexcept = default;
+
+    TensorDataAccessStridedImage &operator=(const TensorDataAccessStridedImage &)     = default;
+    TensorDataAccessStridedImage &operator=(TensorDataAccessStridedImage &&) noexcept = default;
+
     /**
      * @brief Checks if the provided tensor data is compatible with an image tensor layout.
      *
@@ -539,16 +573,17 @@ public:
     {
         if (IsCompatible(data))
         {
-            return TensorDataAccessStridedImage(data.cast<TensorDataStrided>().value());
+            return Optional<TensorDataAccessStridedImage>{
+                TensorDataAccessStridedImage{data.cast<TensorDataStrided>().value()}};
         }
         else
         {
-            return NullOpt;
+            return Optional<TensorDataAccessStridedImage>{NullOpt};
         }
     }
 
 protected:
-    TensorDataAccessStridedImage(const TensorDataStrided &data)
+    explicit TensorDataAccessStridedImage(const TensorDataStrided &data)
         : Base(data, *TensorShapeInfoImage::Create(data.shape()))
     {
     }
@@ -567,6 +602,12 @@ class TensorDataAccessStridedImagePlanar
     using Base = detail::TensorDataAccessStridedImagePlanarImpl<TensorShapeInfoImagePlanar>;
 
 public:
+    TensorDataAccessStridedImagePlanar(const TensorDataAccessStridedImagePlanar &)     = default;
+    TensorDataAccessStridedImagePlanar(TensorDataAccessStridedImagePlanar &&) noexcept = default;
+
+    TensorDataAccessStridedImagePlanar &operator=(const TensorDataAccessStridedImagePlanar &)     = default;
+    TensorDataAccessStridedImagePlanar &operator=(TensorDataAccessStridedImagePlanar &&) noexcept = default;
+
     /**
      * @brief Checks if the provided tensor data is compatible with a planar image tensor layout.
      *
@@ -589,16 +630,17 @@ public:
     {
         if (IsCompatible(data))
         {
-            return TensorDataAccessStridedImagePlanar(data.cast<TensorDataStrided>().value());
+            return Optional<TensorDataAccessStridedImagePlanar>{
+                TensorDataAccessStridedImagePlanar{data.cast<TensorDataStrided>().value()}};
         }
         else
         {
-            return NullOpt;
+            return Optional<TensorDataAccessStridedImagePlanar>{NullOpt};
         }
     }
 
 protected:
-    TensorDataAccessStridedImagePlanar(const TensorDataStrided &data)
+    explicit TensorDataAccessStridedImagePlanar(const TensorDataStrided &data)
         : Base(data, *TensorShapeInfoImagePlanar::Create(data.shape()))
     {
     }

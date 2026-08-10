@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,8 +27,8 @@ namespace nvcv::priv {
 class ArrayWrapData final : public CoreObjectBase<IArray>
 {
 public:
-    explicit ArrayWrapData(const NVCVArrayData &data, NVCVArrayDataCleanupFunc cleanup, void *ctxCleanup);
-    ~ArrayWrapData();
+    explicit ArrayWrapData(const NVCVArrayData &data, NVCVArrayDataCleanupFunc cleanup, NVCVUserPointer ctxCleanup);
+    ~ArrayWrapData() override;
 
     int32_t rank() const override;
     int64_t capacity() const override;
@@ -49,7 +49,7 @@ private:
     NVCVResourceType m_target;
 
     NVCVArrayDataCleanupFunc m_cleanup;
-    void                    *m_ctxCleanup;
+    NVCVUserPointer          m_ctxCleanup;
 };
 
 } // namespace nvcv::priv

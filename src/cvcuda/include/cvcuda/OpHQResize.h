@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -53,10 +53,10 @@ typedef struct
 
 typedef struct
 {
-    HQResizeTensorShapeI *shape;
-    int32_t               size;        // the number of valid elements in the `shape` array
-    int32_t               ndim;        // the number of spatial extents in each `shapes` element
-    int32_t               numChannels; // the number of innermost channels, -1 if they differ between samples
+    const HQResizeTensorShapeI *shape;
+    int32_t                     size;        // the number of valid elements in the `shape` array
+    int32_t                     ndim;        // the number of spatial extents in each `shapes` element
+    int32_t                     numChannels; // the number of innermost channels, -1 if they differ between samples
 } HQResizeTensorShapesI;
 
 typedef struct
@@ -67,9 +67,9 @@ typedef struct
 
 typedef struct
 {
-    int32_t       size; // the number of valid elements in the `roi` array
-    int32_t       ndim; // the number of valid extents in each `roi` element
-    HQResizeRoiF *roi;
+    int32_t             size; // the number of valid elements in the `roi` array
+    int32_t             ndim; // the number of valid extents in each `roi` element
+    const HQResizeRoiF *roi;
 } HQResizeRoisF;
 
 /** Constructs an instance of the HQResize operator.
@@ -190,7 +190,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaHQResizeGetMaxWorkspaceRequirements(NVCVOperatorH
  *  Limitations:
  *
  *  Input, Output:
- *       Data Layout:         NVCV_TENSOR_[N][D]HW[C]
+ *       Data Layout:         NVCV_TENSOR_[N][D]HW[C] (interleaved); NVCV_TENSOR_[N]CHW (planar, 2D only)
  *
  *       Number of channels:  Positive integer
  *
@@ -202,6 +202,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaHQResizeGetMaxWorkspaceRequirements(NVCVOperatorH
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | Yes
  *       64bit Float    | No
  *
@@ -260,7 +261,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaHQResizeSubmit(NVCVOperatorHandle handle, cudaStr
  *  Limitations:
  *
  *  Input, Output:
- *       Data Layout:    NVCV_TENSOR_HWC
+ *       Data Layout:    NVCV_TENSOR_HWC (interleaved); planar multi-plane formats (e.g. RGB8p) are also supported
  *
  *       Number of channels: [1, 2, 3, 4]
  *
@@ -272,6 +273,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaHQResizeSubmit(NVCVOperatorHandle handle, cudaStr
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | Yes
  *       64bit Float    | No
  *
@@ -332,7 +334,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaHQResizeImageBatchSubmit(NVCVOperatorHandle handl
  *  Limitations:
  *
  *  Input, Output:
- *       Data Layout:         NVCV_TENSOR_[D]HW[C]
+ *       Data Layout:         NVCV_TENSOR_[D]HW[C] (interleaved); NVCV_TENSOR_CHW (planar, 2D only)
  *
  *       Number of channels:  Positive integer
  *
@@ -344,6 +346,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaHQResizeImageBatchSubmit(NVCVOperatorHandle handl
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | Yes
  *       64bit Float    | No
  *
@@ -402,5 +405,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaHQResizeTensorBatchSubmit(NVCVOperatorHandle hand
 #ifdef __cplusplus
 }
 #endif
+
+/** @} */
 
 #endif /* CVCUDA_HQ_RESIZE_H */

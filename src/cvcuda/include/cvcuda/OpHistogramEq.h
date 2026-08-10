@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -56,8 +56,8 @@ CVCUDA_PUBLIC NVCVStatus cvcudaHistogramEqCreate(NVCVOperatorHandle *handle, uin
  *  Limitations:
  *
  *  Input:
- *       Data Layout:    [kNHWC, kHWC]
- *       Channels:       [1, 2, 3, 4]
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
+ *       Channels:       [1, 2, 3, 4] (kNCHW/kCHW support [1, 3, 4])
  *
  *       Data Type      | Allowed
  *       -------------- | -------------
@@ -67,12 +67,13 @@ CVCUDA_PUBLIC NVCVStatus cvcudaHistogramEqCreate(NVCVOperatorHandle *handle, uin
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | No
  *       64bit Float    | No
  *
  *  Output:
- *       Data Layout:    [kNHWC, kHWC]
- *       Channels:       [1, 2, 3, 4]
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
+ *       Channels:       [1, 2, 3, 4] (kNCHW/kCHW support [1, 3, 4])
  *
  *       Data Type      | Allowed
  *       -------------- | -------------
@@ -82,6 +83,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaHistogramEqCreate(NVCVOperatorHandle *handle, uin
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | No
  *       64bit Float    | No
  *
@@ -111,7 +113,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaHistogramEqCreate(NVCVOperatorHandle *handle, uin
 CVCUDA_PUBLIC NVCVStatus cvcudaHistogramEqSubmit(NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in,
                                                  NVCVTensorHandle out);
 /**
- * Executes the Gaussian operation on a batch of images.
+ * Executes the HistogramEq operation on a batch of images.
  *
  * @param[in] in Input image batch.
  * @param[out] out Output image batch.
@@ -123,5 +125,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaHistogramEqVarShapeSubmit(NVCVOperatorHandle hand
 #ifdef __cplusplus
 }
 #endif
+
+/** @} */
 
 #endif /* CVCUDA__HISTOGRAM_EQ_H */

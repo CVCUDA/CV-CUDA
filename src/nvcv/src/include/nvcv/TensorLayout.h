@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -181,16 +181,29 @@ inline static int32_t nvcvTensorLayoutFindDimIndex(NVCVTensorLayout layout, char
         idxStart = layout.rank + idxStart;
     }
 
-    int n = layout.rank - idxStart;
-    if (n > 0)
+    int n = layout.rank - idxStart; // NOSONAR: this public C header cannot use a C++ if init-statement.
+    if (n > 0)                      // NOSONAR: this public C header cannot use a C++ if init-statement.
     {
         void *p = memchr(layout.data + idxStart, dimLabel, n);
+#ifdef __cplusplus
+        if (p != nullptr)
+#else
         if (p != NULL)
+#endif
         {
             return (int32_t)((char *)p - (char *)layout.data);
         }
     }
     return -1;
+}
+
+#ifdef __cplusplus
+constexpr static int32_t nvcvTensorLayoutNormalizeIndex(NVCVTensorLayout layout, int idx)
+#else
+inline static int32_t nvcvTensorLayoutNormalizeIndex(NVCVTensorLayout layout, int idx)
+#endif
+{
+    return idx < 0 ? layout.rank + idx : idx;
 }
 
 /** Returns the layout label at the given index.
@@ -201,11 +214,13 @@ inline static int32_t nvcvTensorLayoutFindDimIndex(NVCVTensorLayout layout, char
  * @returns If @p idx >= 0 and < layout size, returns the correspondign label.
  *          Returns '\0' otherwise.
  */
-NVCV_CONSTEXPR inline static char nvcvTensorLayoutGetLabel(NVCVTensorLayout layout, int idx)
+NVCV_CONSTEXPR inline static char
+    nvcvTensorLayoutGetLabel( // NOSONAR: inline is required when this public header is compiled as C.
+        NVCVTensorLayout layout, int idx)
 {
-    // Must be all a single statement for C++11 compatibility
-    return idx < 0 ? (0 <= layout.rank + idx && layout.rank + idx < layout.rank ? layout.data[layout.rank + idx] : '\0')
-                   : (0 <= idx && idx < layout.rank ? layout.data[idx] : '\0');
+    return 0 <= nvcvTensorLayoutNormalizeIndex(layout, idx) && nvcvTensorLayoutNormalizeIndex(layout, idx) < layout.rank
+             ? layout.data[nvcvTensorLayoutNormalizeIndex(layout, idx)]
+             : '\0';
 }
 
 /** Returns the number of dimensions of the tensor layout
@@ -214,7 +229,9 @@ NVCV_CONSTEXPR inline static char nvcvTensorLayoutGetLabel(NVCVTensorLayout layo
  *
  * @returns Number of dimensions.
  */
-NVCV_CONSTEXPR inline static int32_t nvcvTensorLayoutGetNumDim(NVCVTensorLayout layout)
+NVCV_CONSTEXPR inline static int32_t
+    nvcvTensorLayoutGetNumDim( // NOSONAR: inline is required when this public header is compiled as C.
+        NVCVTensorLayout layout)
 {
     return layout.rank;
 }
@@ -285,9 +302,15 @@ inline static int32_t nvcvTensorLayoutEndsWith(NVCVTensorLayout layout, NVCVTens
  *
  * @returns Null-terminated string with the layout name.
  */
-NVCV_CONSTEXPR inline static const char *nvcvTensorLayoutGetName(const NVCVTensorLayout *layout)
+NVCV_CONSTEXPR inline static const char *
+    nvcvTensorLayoutGetName( // NOSONAR: inline is required when this public header is compiled as C.
+        const NVCVTensorLayout *layout)
 {
+#ifdef __cplusplus
+    return layout == nullptr ? "" : layout->data;
+#else
     return layout == NULL ? "" : layout->data;
+#endif
 }
 
 #ifdef __cplusplus

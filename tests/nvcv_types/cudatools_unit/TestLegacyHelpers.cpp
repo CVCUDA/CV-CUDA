@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
@@ -14,6 +14,8 @@
 
 #include <common/ValueTests.hpp>
 #include <cvcuda/priv/legacy/CvCudaLegacyHelpers.hpp>
+
+#include <array>
 
 namespace gt      = ::testing;
 namespace test    = nvcv::test;
@@ -236,9 +238,9 @@ TEST_P(CheckLegacyToString, check_error_to_string_conversion)
     std::string      expectedErrorName = GetParamValue<1>();
     std::string      expectedDescr     = GetParamValue<2>();
 
-    char        bufferDesc[256];
-    const char *bufferDescPtr = bufferDesc;
-    const char *buffer        = nvcv::util::ToString(err, &bufferDescPtr);
+    std::array<char, 256> bufferDesc;
+    const char           *bufferDescPtr = bufferDesc.data();
+    const char           *buffer        = nvcv::util::ToString(err, &bufferDescPtr);
 
     EXPECT_STREQ(bufferDescPtr, expectedDescr.c_str());
     EXPECT_STREQ(buffer, expectedErrorName.c_str());

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,6 +23,8 @@
 #include <nvcv/python/Stream.hpp>
 #include <nvcv/python/Tensor.hpp>
 
+#include <array>
+
 namespace cvcudapy {
 
 namespace {
@@ -34,12 +36,9 @@ Tensor HistogramInto(Tensor &histogram, Tensor &input, std::optional<Tensor> mas
         pstream = Stream::Current();
     }
 
-    if (mask)
+    if (mask && mask->shape() != input.shape())
     {
-        if (mask->shape() != input.shape())
-        {
-            throw std::invalid_argument("Mask must have the same shape as input");
-        }
+        throw std::invalid_argument("Mask must have the same shape as input");
     }
 
     auto op = CreateOperator<cvcuda::Histogram>();
@@ -52,18 +51,21 @@ Tensor HistogramInto(Tensor &histogram, Tensor &input, std::optional<Tensor> mas
     if (mask)
     {
         guard.add(LockMode::LOCK_MODE_READ, {*mask});
-        op->submit(pstream->cudaHandle(), input, *mask, histogram);
+        guard.run([&op, &pstream, &input, &mask, &histogram]()
+                  { op->submit(pstream->cudaHandle(), input, nvcv::OptionalTensorConstRef{*mask}, histogram); });
     }
     else
     {
-        op->submit(pstream->cudaHandle(), input, nvcv::NullOpt, histogram);
+        guard.run(
+            [&op, &pstream, &input, &histogram]()
+            { op->submit(pstream->cudaHandle(), input, nvcv::OptionalTensorConstRef{nvcv::NullOpt}, histogram); });
     }
     return std::move(histogram);
 }
 
-Tensor Histogram(Tensor &input, std::optional<Tensor> mask, std::optional<Stream> pstream)
+Tensor Histogram(Tensor &input, const std::optional<Tensor> &mask, std::optional<Stream> pstream)
 {
-    ssize_t shape[3];
+    std::array<ssize_t, 3> shape;
     // check for non batched tensors
     if (input.shape().size() == 3)
     {
@@ -79,10 +81,10 @@ Tensor Histogram(Tensor &input, std::optional<Tensor> mask, std::optional<Stream
     }
     else
     {
-        throw std::invalid_argument("Input tensor must be HWC or NHWC");
+        throw std::invalid_argument("Input tensor must be HWC, NHWC, CHW, or NCHW");
     }
 
-    Tensor histogram = Tensor::Create(nvcv::TensorShape(shape, 3, nvcv::TENSOR_HWC), nvcv::TYPE_S32);
+    Tensor histogram = Tensor::Create(nvcv::TensorShape(shape.data(), shape.size(), nvcv::TENSOR_HWC), nvcv::TYPE_S32);
     return HistogramInto(histogram, input, mask, pstream);
 }
 
@@ -92,48 +94,35 @@ void ExportOpHistogram(py::module &m)
 {
     using namespace pybind11::literals;
 
-    m.def("histogram", &Histogram, "src"_a, "mask"_a = nullptr, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
+    m.def("histogram", NvtxTrace("cvcuda.histogram", &Histogram), "src"_a, "mask"_a = nullptr, py::kw_only(),
+          "stream"_a = nullptr, R"pbdoc(
         Executes an histogram operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Histogram operator
-            for more details and usage examples.
 
         Args:
-            src (cvcuda.Tensor): Input tensor containing one or more images, input tensor must be (N)HWC, currently only grayscale uint8 is supported.
+            src (cvcuda.Tensor): Input tensor containing one or more images, input tensor must be (N)HWC or (N)CHW, currently only grayscale uint8 is supported.
             mask (cvcuda.Tensor, optional): Input tensor containing the mask of the pixels to be considered for the histogram, must be the same shape as src.
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             cvcuda.Tensor: The output tensor containing the histogram. The tensor is formatted as HWC with W = 256 and H = number of input tensors, and C = 1.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("histogram_into", &HistogramInto, "histogram"_a, "src"_a, "mask"_a = nullptr, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
-
+    m.def("histogram_into", NvtxTrace("cvcuda.histogram_into", &HistogramInto), "histogram"_a, "src"_a,
+          "mask"_a = nullptr, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes an histogram operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Histogram operator
-            for more details and usage examples.
 
         Args:
             histogram (cvcuda.Tensor): Output tensor containing the histogram. The tensor is formatted as HWC with W = 256 and H = number of input tensors, and C = 1.
-            src (cvcuda.Tensor): Input tensor containing one or more images, input tensor must be (N)HWC, currently only grayscale uint8 is supported.
+            src (cvcuda.Tensor): Input tensor containing one or more images, input tensor must be (N)HWC or (N)CHW, currently only grayscale uint8 is supported.
             mask (cvcuda.Tensor, optional): Input tensor containing the bit mask of the pixels to be considered for the histogram, must be the same shape as src.
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None.
+            cvcuda.Tensor: The output tensor (same as histogram).
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 }
 

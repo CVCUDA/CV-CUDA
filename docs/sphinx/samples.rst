@@ -1,5 +1,5 @@
 ..
-   # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+   # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
    # SPDX-License-Identifier: Apache-2.0
    #
    # Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,6 +35,9 @@ Sample Categories
 **Applications**
   Complete end-to-end pipelines combining preprocessing, inference, and post-processing.
 
+**Interoperability**
+  Examples demonstrating how CV-CUDA works with other GPU frameworks (PyTorch, CuPy, PyCUDA, etc.) through zero-copy data exchange.
+
 Walkthrough Guide
 -----------------
 
@@ -64,8 +67,6 @@ After installation, activate the virtual environment:
 .. code-block:: bash
 
    source venv_samples/bin/activate
-
-For interoperability samples, see :ref:`interoperability_venv_installation`.
 
 **Option 2: Build from Source**
 
@@ -113,8 +114,8 @@ See the complete :ref:`Hello World documentation <sample_hello_world>` for detai
 
 .. _running_the_samples:
 
-Running Operator and Application Samples
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Running Samples
+^^^^^^^^^^^^^^^
 
 To test all samples at once:
 
@@ -123,7 +124,6 @@ To test all samples at once:
    ./samples/run_samples.sh
 
 This script runs every sample with default parameters.
-
 Next Steps
 ^^^^^^^^^^
 
@@ -134,6 +134,8 @@ Now that you've explored the basics:
 3. **Read the API Documentation**: Explore the full :ref:`Python API <python_api>`
 4. **Build Your Pipelines**: Use sample patterns in your applications
 
+.. _sample_index:
+
 Sample Index
 ------------
 
@@ -142,9 +144,12 @@ Quick access to all CV-CUDA sample documentation.
 Applications
 ^^^^^^^^^^^^
 
+See :ref:`Applications Overview <sample_applications>` for an overview of the application samples.
+
 .. toctree::
    :maxdepth: 1
 
+   samples/applications
    samples/applications/hello_world
    samples/applications/classification
    samples/applications/object_detection
@@ -156,11 +161,67 @@ Operators
 .. toctree::
    :maxdepth: 1
 
-   samples/operators/gaussian
-   samples/operators/resize
-   samples/operators/reformat
-   samples/operators/stack
-   samples/operators/label
+   adaptivethreshold <samples/operators/adaptivethreshold>
+   advcvtcolor <samples/operators/advcvtcolor>
+   averageblur <samples/operators/averageblur>
+   bilateral_filter <samples/operators/bilateral_filter>
+   bndbox <samples/operators/bndbox>
+   boxblur <samples/operators/boxblur>
+   brightness_contrast <samples/operators/brightness_contrast>
+   center_crop <samples/operators/center_crop>
+   channelreorder <samples/operators/channelreorder>
+   clahe <samples/operators/clahe>
+   color_twist <samples/operators/color_twist>
+   composite <samples/operators/composite>
+   conv2d <samples/operators/conv2d>
+   convertto <samples/operators/convertto>
+   copymakeborder <samples/operators/copymakeborder>
+   crop_flip_normalize_reformat <samples/operators/crop_flip_normalize_reformat>
+   customcrop <samples/operators/customcrop>
+   cvtcolor <samples/operators/cvtcolor>
+   erase <samples/operators/erase>
+   flip <samples/operators/flip>
+   gamma_contrast <samples/operators/gamma_contrast>
+   gaussian <samples/operators/gaussian>
+   gaussiannoise <samples/operators/gaussiannoise>
+   histogrameq <samples/operators/histogrameq>
+   hq_resize <samples/operators/hq_resize>
+   inpaint <samples/operators/inpaint>
+   joint_bilateral_filter <samples/operators/joint_bilateral_filter>
+   label <samples/operators/label>
+   laplacian <samples/operators/laplacian>
+   median_blur <samples/operators/median_blur>
+   morphology <samples/operators/morphology>
+   normalize <samples/operators/normalize>
+   osd <samples/operators/osd>
+   pillowresize <samples/operators/pillowresize>
+   random_resized_crop <samples/operators/random_resized_crop>
+   reformat <samples/operators/reformat>
+   remap <samples/operators/remap>
+   resize <samples/operators/resize>
+   resize_crop_convert_reformat <samples/operators/resize_crop_convert_reformat>
+   rotate <samples/operators/rotate>
+   stack <samples/operators/stack>
+   threshold <samples/operators/threshold>
+   warp_affine <samples/operators/warp_affine>
+   warp_perspective <samples/operators/warp_perspective>
+
+Interoperability
+^^^^^^^^^^^^^^^^
+
+See :ref:`Interoperability Overview <sample_interoperability>` for an overview of the interoperability samples.
+
+.. toctree::
+   :maxdepth: 1
+
+   samples/interoperability
+   samples/interoperability/pytorch
+   samples/interoperability/cuda_python
+   samples/interoperability/numpy
+   samples/interoperability/nvimgcodec
+   samples/interoperability/pynvvideocodec
+   samples/interoperability/cupy
+   samples/interoperability/pycuda
 
 Common Utilities
 ----------------
@@ -178,8 +239,3 @@ Additional Resources
 * :ref:`Installation Guide <installation>` - Build and setup instructions
 * `GitHub Repository <https://github.com/CVCUDA/CV-CUDA>`_ - Source code and issue tracker
 * `Discussions <https://github.com/CVCUDA/CV-CUDA/discussions>`_ - Ask questions and share use cases
-
-See Also
---------
-
-* :ref:`Interoperability <interoperability>` - Using CV-CUDA with other libraries

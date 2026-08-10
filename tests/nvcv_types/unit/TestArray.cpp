@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,10 +22,6 @@
 #include <nvcv/Array.hpp>
 #include <nvcv/ArrayData.hpp>
 
-void arrayDataCleanUpFunc(void *ctx, const NVCVArrayData *data);
-
-void arrayDataCleanUpFunc(void *ctx, const NVCVArrayData *data) {}
-
 TEST(ArrayTests, rank)
 {
     NVCVArrayRequirements req;
@@ -47,6 +43,6 @@ TEST(ArrayTests, warp_rank)
     nvcv::priv::Array       array(req, alloc, NVCV_RESOURCE_MEM_HOST);
     array.exportData(data);
 
-    nvcv::priv::ArrayWrapData arrayData(data, &arrayDataCleanUpFunc, nullptr);
+    nvcv::priv::ArrayWrapData arrayData(data, nullptr, nullptr);
     EXPECT_EQ(arrayData.rank(), 1);
 }

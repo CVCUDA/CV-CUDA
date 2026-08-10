@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -48,26 +48,27 @@ inline nvcv::TensorShape CreateNVCVTensorShape(const Shape &shape, nvcv::TensorL
 {
     std::vector<int64_t> dims;
     dims.reserve(shape.size());
-    for (size_t i = 0; i < shape.size(); ++i)
+    for (const pybind11::handle dim : shape)
     {
-        dims.push_back(shape[i].cast<int64_t>());
+        dims.push_back(dim.cast<int64_t>());
     }
 
-    return nvcv::TensorShape(dims.data(), dims.size(), layout);
+    return nvcv::TensorShape(dims.data(), static_cast<int32_t>(dims.size()), layout);
 }
 
 inline int64_t LengthIf1D(const Shape &shape)
 {
     int64_t largest = 1;
-    for (size_t i = 0; i < shape.size(); ++i)
+    for (const pybind11::handle dim : shape)
     {
-        if (shape[i].cast<int64_t>() > 1)
+        int64_t length = dim.cast<int64_t>();
+        if (length > 1)
         {
             if (largest > 1)
             {
                 throw std::invalid_argument("Non-supported array shape");
             }
-            largest = shape[i].cast<int64_t>();
+            largest = length;
         }
     }
 

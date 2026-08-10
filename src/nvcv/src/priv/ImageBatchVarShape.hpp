@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,7 +32,7 @@ class ImageBatchVarShape final : public CoreObjectBase<IImageBatchVarShape>
 {
 public:
     explicit ImageBatchVarShape(NVCVImageBatchVarShapeRequirements reqs, IAllocator &alloc);
-    ~ImageBatchVarShape();
+    ~ImageBatchVarShape() override;
 
     static NVCVImageBatchVarShapeRequirements CalcRequirements(int32_t capacity);
 
@@ -51,7 +51,7 @@ public:
     void exportData(CUstream stream, NVCVImageBatchData &data) const override;
 
     void pushImages(const NVCVImageHandle *images, int32_t numImages) override;
-    void pushImages(NVCVPushImageFunc cbPushImage, void *ctxCallback) override;
+    void pushImages(NVCVPushImageFunc cbPushImage, NVCVUserPointer ctxCallback) override;
     void popImages(int32_t numImages) override;
     void clear() override;
 
@@ -59,26 +59,27 @@ private:
     SharedCoreObj<IAllocator>          m_alloc;
     NVCVImageBatchVarShapeRequirements m_reqs;
 
-    mutable int32_t m_dirtyStartingFromIndex;
+    mutable int32_t m_dirtyStartingFromIndex = 0;
 
-    int32_t                 m_numImages;
-    NVCVImageBufferStrided *m_hostImagesBuffer;
-    NVCVImageBufferStrided *m_devImagesBuffer;
+    int32_t                 m_numImages        = 0;
+    NVCVImageBufferStrided *m_hostImagesBuffer = nullptr;
+    NVCVImageBufferStrided *m_devImagesBuffer  = nullptr;
 
-    NVCVImageFormat *m_hostFormatsBuffer;
-    NVCVImageFormat *m_devFormatsBuffer;
+    NVCVImageFormat *m_hostFormatsBuffer = nullptr;
+    NVCVImageFormat *m_devFormatsBuffer  = nullptr;
 
-    NVCVImageHandle *m_imgHandleBuffer;
+    NVCVImageHandle *m_imgHandleBuffer = nullptr;
 
     // Max width/height up to m_numImages.
     // If nullopt, must be recalculated from the beginning.
-    mutable std::optional<Size2D>      m_cacheMaxSize;
+    mutable std::optional<Size2D>      m_cacheMaxSize = Size2D{0, 0};
     mutable std::optional<ImageFormat> m_cacheUniqueFormat;
 
     void doUpdateCache() const;
+    void freeBuffers() noexcept;
 
-    // TODO: must be retrieved from the resource allocator;
-    cudaEvent_t m_evPostFence;
+    // REVISIT: must be retrieved from the resource allocator;
+    cudaEvent_t m_evPostFence = nullptr;
 
     // Assumes there's enough space for image.
     // Does not update dirty count

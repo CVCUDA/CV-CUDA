@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,7 +29,7 @@ NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchCalcRequirements,
                 (int32_t capacity, NVCVTensorBatchRequirements *reqs))
 {
     return priv::ProtectCall(
-        [&]
+        [&reqs, &capacity]
         {
             if (reqs == nullptr)
             {
@@ -44,7 +44,7 @@ NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchConstruct,
                 (const NVCVTensorBatchRequirements *reqs, NVCVAllocatorHandle halloc, NVCVTensorBatchHandle *outHandle))
 {
     return priv::ProtectCall(
-        [&]
+        [&reqs, &outHandle, &halloc]
         {
             if (reqs == nullptr)
             {
@@ -63,7 +63,7 @@ NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchConstruct,
 NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchClear, (NVCVTensorBatchHandle handle))
 {
     return priv::ProtectCall(
-        [&]
+        [&handle]
         {
             auto &tb = priv::ToStaticRef<priv::ITensorBatch>(handle);
             tb.clear();
@@ -74,7 +74,7 @@ NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchPushTensors,
                 (NVCVTensorBatchHandle handle, const NVCVTensorHandle *tensors, int32_t numTensors))
 {
     return priv::ProtectCall(
-        [&]
+        [&tensors, &handle, &numTensors]
         {
             if (tensors == nullptr)
             {
@@ -88,7 +88,7 @@ NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchPushTensors,
 NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchDecRef, (NVCVTensorBatchHandle handle, int32_t *newRefCount))
 {
     return priv::ProtectCall(
-        [&]
+        [&handle, &newRefCount]
         {
             int32_t newRef = priv::CoreObjectDecRef(handle);
             if (newRefCount)
@@ -99,7 +99,7 @@ NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchDecRef, (NVCVTensorBatchHandle 
 NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchIncRef, (NVCVTensorBatchHandle handle, int32_t *newRefCount))
 {
     return priv::ProtectCall(
-        [&]
+        [&handle, &newRefCount]
         {
             int32_t refCount = priv::CoreObjectIncRef(handle);
             if (newRefCount)
@@ -110,7 +110,7 @@ NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchIncRef, (NVCVTensorBatchHandle 
 NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchRefCount, (NVCVTensorBatchHandle handle, int32_t *outRefCount))
 {
     return priv::ProtectCall(
-        [&]
+        [&outRefCount, &handle]
         {
             if (outRefCount == nullptr)
             {
@@ -123,13 +123,13 @@ NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchRefCount, (NVCVTensorBatchHandl
 NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchGetCapacity, (NVCVTensorBatchHandle handle, int32_t *outCapacityPtr))
 {
     return priv::ProtectCall(
-        [&]
+        [&outCapacityPtr, &handle]
         {
             if (outCapacityPtr == nullptr)
             {
                 throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Pointer to capacity must not be NULL");
             }
-            auto &tb        = priv::ToStaticRef<priv::ITensorBatch>(handle);
+            const auto &tb  = priv::ToStaticRef<priv::ITensorBatch>(handle);
             *outCapacityPtr = tb.capacity();
         });
 }
@@ -137,28 +137,28 @@ NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchGetCapacity, (NVCVTensorBatchHa
 NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchGetRank, (NVCVTensorBatchHandle handle, int32_t *outRankPtr))
 {
     return priv::ProtectCall(
-        [&]
+        [&outRankPtr, &handle]
         {
             if (outRankPtr == nullptr)
             {
                 throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Pointer to rank must not be NULL");
             }
-            auto &tb    = priv::ToStaticRef<priv::ITensorBatch>(handle);
-            *outRankPtr = tb.rank();
+            const auto &tb = priv::ToStaticRef<priv::ITensorBatch>(handle);
+            *outRankPtr    = tb.rank();
         });
 }
 
 NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchGetDType, (NVCVTensorBatchHandle handle, NVCVDataType *outDTypePtr))
 {
     return priv::ProtectCall(
-        [&]
+        [&outDTypePtr, &handle]
         {
             if (outDTypePtr == nullptr)
             {
                 throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Pointer to data type must not be NULL");
             }
-            auto &tb     = priv::ToStaticRef<priv::ITensorBatch>(handle);
-            *outDTypePtr = tb.dtype();
+            const auto &tb = priv::ToStaticRef<priv::ITensorBatch>(handle);
+            *outDTypePtr   = tb.dtype();
         });
 }
 
@@ -166,14 +166,14 @@ NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchGetLayout,
                 (NVCVTensorBatchHandle handle, NVCVTensorLayout *outLayoutPtr))
 {
     return priv::ProtectCall(
-        [&]
+        [&outLayoutPtr, &handle]
         {
             if (outLayoutPtr == nullptr)
             {
                 throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Pointer to layout must not be NULL");
             }
-            auto &tb      = priv::ToStaticRef<priv::ITensorBatch>(handle);
-            *outLayoutPtr = tb.layout();
+            const auto &tb = priv::ToStaticRef<priv::ITensorBatch>(handle);
+            *outLayoutPtr  = tb.layout();
         });
 }
 
@@ -181,14 +181,14 @@ NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchGetType,
                 (NVCVTensorBatchHandle handle, NVCVTensorBufferType *outTypePtr))
 {
     return priv::ProtectCall(
-        [&]
+        [&outTypePtr, &handle]
         {
             if (outTypePtr == nullptr)
             {
                 throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Pointer to buffer type must not be NULL");
             }
-            auto &tb    = priv::ToStaticRef<priv::ITensorBatch>(handle);
-            *outTypePtr = tb.type();
+            const auto &tb = priv::ToStaticRef<priv::ITensorBatch>(handle);
+            *outTypePtr    = tb.type();
         });
 }
 
@@ -196,13 +196,13 @@ NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchGetNumTensors,
                 (NVCVTensorBatchHandle handle, int32_t *outNumTensorsPtr))
 {
     return priv::ProtectCall(
-        [&]
+        [&outNumTensorsPtr, &handle]
         {
             if (outNumTensorsPtr == nullptr)
             {
                 throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Pointer to tensors number must not be NULL");
             }
-            auto &tb          = priv::ToStaticRef<priv::ITensorBatch>(handle);
+            const auto &tb    = priv::ToStaticRef<priv::ITensorBatch>(handle);
             *outNumTensorsPtr = tb.numTensors();
         });
 }
@@ -211,13 +211,13 @@ NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchGetAllocator,
                 (NVCVTensorBatchHandle handle, NVCVAllocatorHandle *outAllocatorPtr))
 {
     return priv::ProtectCall(
-        [&]
+        [&outAllocatorPtr, &handle]
         {
             if (outAllocatorPtr == nullptr)
             {
                 throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Pointer to allocator must not be NULL");
             }
-            auto &tb         = priv::ToStaticRef<priv::ITensorBatch>(handle);
+            const auto &tb   = priv::ToStaticRef<priv::ITensorBatch>(handle);
             *outAllocatorPtr = tb.alloc().release()->handle();
         });
 }
@@ -226,7 +226,7 @@ NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchExportData,
                 (NVCVTensorBatchHandle handle, CUstream stream, NVCVTensorBatchData *data))
 {
     return priv::ProtectCall(
-        [&]
+        [&data, &handle, &stream]
         {
             if (data == nullptr)
             {
@@ -240,7 +240,7 @@ NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchExportData,
 NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchPopTensors, (NVCVTensorBatchHandle handle, int32_t numTensors))
 {
     return priv::ProtectCall(
-        [&]
+        [&handle, &numTensors]
         {
             auto &tb = priv::ToStaticRef<priv::ITensorBatch>(handle);
             tb.popTensors(numTensors);
@@ -251,7 +251,7 @@ NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchGetTensors,
                 (NVCVTensorBatchHandle handle, int32_t index, NVCVTensorHandle *outTensors, int32_t numTensors))
 {
     return priv::ProtectCall(
-        [&]
+        [&outTensors, &index, &numTensors, &handle]
         {
             if (outTensors == nullptr)
             {
@@ -265,7 +265,7 @@ NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchGetTensors,
             {
                 throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Number of tensors cannot be negative");
             }
-            auto &tb = priv::ToStaticRef<priv::ITensorBatch>(handle);
+            const auto &tb = priv::ToStaticRef<priv::ITensorBatch>(handle);
             tb.getTensors(index, outTensors, numTensors);
         });
 }
@@ -274,7 +274,7 @@ NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchSetTensors,
                 (NVCVTensorBatchHandle handle, int32_t index, const NVCVTensorHandle *tensors, int32_t numTensors))
 {
     return priv::ProtectCall(
-        [&]
+        [&tensors, &index, &numTensors, &handle]
         {
             if (tensors == nullptr)
             {
@@ -293,26 +293,28 @@ NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchSetTensors,
         });
 }
 
-NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchSetUserPointer, (NVCVTensorBatchHandle handle, void *userPointer))
+NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchSetUserPointer,
+                (NVCVTensorBatchHandle handle, NVCVUserPointer userPointer))
 {
     return priv::ProtectCall(
-        [&]
+        [&handle, &userPointer]
         {
             auto &tb = priv::ToStaticRef<priv::ITensorBatch>(handle);
             tb.setUserPointer(userPointer);
         });
 }
 
-NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchGetUserPointer, (NVCVTensorBatchHandle handle, void **outUserPointer))
+NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorBatchGetUserPointer,
+                (NVCVTensorBatchHandle handle, NVCVUserPointer *outUserPointer))
 {
     return priv::ProtectCall(
-        [&]
+        [&outUserPointer, &handle]
         {
             if (outUserPointer == nullptr)
             {
                 throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Pointer to user poniter must not be NULL");
             }
-            auto &tb        = priv::ToStaticRef<priv::ITensorBatch>(handle);
+            const auto &tb  = priv::ToStaticRef<priv::ITensorBatch>(handle);
             *outUserPointer = tb.userPointer();
         });
 }

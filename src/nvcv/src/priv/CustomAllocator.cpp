@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -125,14 +125,14 @@ NVCVResourceAllocator CustomAllocator::doGet(NVCVResourceType resType)
 
 // Host Memory ------------------
 
-void *CustomAllocator::doAllocHostMem(int64_t size, int32_t align)
+NVCVMemoryBuffer CustomAllocator::doAllocHostMem(int64_t size, int32_t align)
 {
     NVCVResourceAllocator &custom = m_allocators[NVCV_RESOURCE_MEM_HOST];
     NVCV_ASSERT(custom.res.mem.fnAlloc != nullptr);
     return custom.res.mem.fnAlloc(custom.ctx, size, align);
 }
 
-void CustomAllocator::doFreeHostMem(void *ptr, int64_t size, int32_t align) noexcept
+void CustomAllocator::doFreeHostMem(NVCVMemoryBuffer ptr, int64_t size, int32_t align) noexcept
 {
     NVCVResourceAllocator &custom = m_allocators[NVCV_RESOURCE_MEM_HOST];
     NVCV_ASSERT(custom.res.mem.fnFree != nullptr);
@@ -141,14 +141,14 @@ void CustomAllocator::doFreeHostMem(void *ptr, int64_t size, int32_t align) noex
 
 // Host Pinned Memory ------------------
 
-void *CustomAllocator::doAllocHostPinnedMem(int64_t size, int32_t align)
+NVCVMemoryBuffer CustomAllocator::doAllocHostPinnedMem(int64_t size, int32_t align)
 {
     NVCVResourceAllocator &custom = m_allocators[NVCV_RESOURCE_MEM_HOST_PINNED];
     NVCV_ASSERT(custom.res.mem.fnAlloc != nullptr);
     return custom.res.mem.fnAlloc(custom.ctx, size, align);
 }
 
-void CustomAllocator::doFreeHostPinnedMem(void *ptr, int64_t size, int32_t align) noexcept
+void CustomAllocator::doFreeHostPinnedMem(NVCVMemoryBuffer ptr, int64_t size, int32_t align) noexcept
 {
     NVCVResourceAllocator &custom = m_allocators[NVCV_RESOURCE_MEM_HOST_PINNED];
     NVCV_ASSERT(custom.res.mem.fnFree != nullptr);
@@ -157,14 +157,14 @@ void CustomAllocator::doFreeHostPinnedMem(void *ptr, int64_t size, int32_t align
 
 // Cuda Memory ------------------
 
-void *CustomAllocator::doAllocCudaMem(int64_t size, int32_t align)
+NVCVMemoryBuffer CustomAllocator::doAllocCudaMem(int64_t size, int32_t align)
 {
     NVCVResourceAllocator &custom = m_allocators[NVCV_RESOURCE_MEM_CUDA];
     NVCV_ASSERT(custom.res.mem.fnAlloc != nullptr);
     return custom.res.mem.fnAlloc(custom.ctx, size, align);
 }
 
-void CustomAllocator::doFreeCudaMem(void *ptr, int64_t size, int32_t align) noexcept
+void CustomAllocator::doFreeCudaMem(NVCVMemoryBuffer ptr, int64_t size, int32_t align) noexcept
 {
     NVCVResourceAllocator &custom = m_allocators[NVCV_RESOURCE_MEM_CUDA];
     NVCV_ASSERT(custom.res.mem.fnFree != nullptr);

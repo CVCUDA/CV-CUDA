@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -56,11 +56,11 @@ Optional<Derived> ImageBatchData::cast() const
 
     if (Derived::IsCompatibleKind(m_data.bufferType))
     {
-        return Derived{m_data};
+        return Optional<Derived>{Derived{m_data}};
     }
     else
     {
-        return NullOpt;
+        return Optional<Derived>{NullOpt};
     }
 }
 

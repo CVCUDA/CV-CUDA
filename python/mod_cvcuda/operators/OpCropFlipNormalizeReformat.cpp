@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,23 +30,19 @@
 namespace cvcudapy {
 
 namespace {
-
-} // namespace
-
-namespace {
 Tensor CropFlipNormalizeReformatInto(Tensor &output, ImageBatchVarShape &input, Tensor &cropRect, Tensor &flipCode,
                                      Tensor &base, Tensor &scale, float globalScale, float globalShift, float epsilon,
                                      std::optional<uint32_t> flags, NVCVBorderType borderMode, float borderValue,
                                      std::optional<Stream> pstream)
 {
-    if (!pstream)
+    if (!pstream.has_value())
     {
         pstream = Stream::Current();
     }
 
     auto op = CreateOperator<cvcuda::CropFlipNormalizeReformat>();
 
-    if (!flags)
+    if (!flags.has_value())
     {
         flags = 0;
     }
@@ -55,8 +51,13 @@ Tensor CropFlipNormalizeReformatInto(Tensor &output, ImageBatchVarShape &input, 
     guard.add(LockMode::LOCK_MODE_READ, {input, cropRect, flipCode, base, scale});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
-    op->submit(pstream->cudaHandle(), input, output, cropRect, borderMode, borderValue, flipCode, base, scale,
-               globalScale, globalShift, epsilon, *flags);
+    guard.run(
+        [&op, &pstream, &input, &output, &cropRect, &borderMode, &borderValue, &flipCode, &base, &scale, &globalScale,
+         &globalShift, &epsilon, &flags]()
+        {
+            op->submit(pstream->cudaHandle(), input, output, cropRect, borderMode, borderValue, flipCode, base, scale,
+                       globalScale, globalShift, epsilon, *flags);
+        });
 
     return output;
 }
@@ -83,16 +84,13 @@ void ExportOpCropFlipNormalizeReformat(py::module &m)
     float defGlobalShift = 0;
     float defEpsilon     = 0;
 
-    m.def("crop_flip_normalize_reformat", &CropFlipNormalizeReformat, "src"_a, "out_shape"_a, "out_dtype"_a,
-          "out_layout"_a, "rect"_a, "flip_code"_a, "base"_a, "scale"_a, "globalscale"_a = defGlobalScale,
-          "globalshift"_a = defGlobalShift, "epsilon"_a = defEpsilon, "flags"_a = std::nullopt,
-          "border"_a = NVCV_BORDER_CONSTANT, "bvalue"_a = 0, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
+    m.def("crop_flip_normalize_reformat", NvtxTrace("cvcuda.crop_flip_normalize_reformat", &CropFlipNormalizeReformat),
+          "src"_a, "out_shape"_a, "out_dtype"_a, "out_layout"_a, "rect"_a, "flip_code"_a, "base"_a, "scale"_a,
+          "globalscale"_a = defGlobalScale, "globalshift"_a = defGlobalShift, "epsilon"_a = defEpsilon,
+          "flags"_a = std::nullopt, "border"_a = NVCV_BORDER_CONSTANT, "bvalue"_a = 0, py::kw_only(),
+          "stream"_a = nullptr, R"pbdoc(
         Executes the CropFlipNormalizeReformat operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the CropFlipNormalizeReformat operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
@@ -118,23 +116,17 @@ void ExportOpCropFlipNormalizeReformat(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
+            cvcuda.Tensor: The output tensor.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("crop_flip_normalize_reformat_into", &CropFlipNormalizeReformatInto, "dst"_a, "src"_a, "rect"_a,
-          "flip_code"_a, "base"_a, "scale"_a, "globalscale"_a = defGlobalScale, "globalshift"_a = defGlobalShift,
-          "epsilon"_a = defEpsilon, "flags"_a = std::nullopt, "border"_a = NVCV_BORDER_CONSTANT, "bvalue"_a = 0,
-          py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
+    m.def("crop_flip_normalize_reformat_into",
+          NvtxTrace("cvcuda.crop_flip_normalize_reformat_into", &CropFlipNormalizeReformatInto), "dst"_a, "src"_a,
+          "rect"_a, "flip_code"_a, "base"_a, "scale"_a, "globalscale"_a = defGlobalScale,
+          "globalshift"_a = defGlobalShift, "epsilon"_a = defEpsilon, "flags"_a = std::nullopt,
+          "border"_a = NVCV_BORDER_CONSTANT, "bvalue"_a = 0, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the CropFlipNormalizeReformat operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the CropFlipNormalizeReformat operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.ImageBatchVarShape): Output image batch containing the result of the operation.
@@ -158,11 +150,7 @@ void ExportOpCropFlipNormalizeReformat(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 }
 

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,6 +22,7 @@
 #include <nvcv/util/Assert.h>
 
 #include <algorithm>
+#include <array>
 
 namespace nvcv::priv {
 
@@ -44,7 +45,7 @@ NVCVTensorLayout CreateLayout(const char *beg, const char *end)
     }
 
     NVCVTensorLayout out;
-    out.rank = end - beg;
+    out.rank = static_cast<int32_t>(end - beg);
     std::copy(beg, end, out.data);
 
     return out;
@@ -70,19 +71,19 @@ NVCVTensorLayout CreateLayout(const char *descr)
         {
             // Avoids going through the whole descr buffer, which might pose a
             // security hazard.
-            char buf[32];
-            int  reqs = snprintf(buf, sizeof(buf), "%s", descr);
+            std::array<char, 32> buf;
+            int                  reqs = snprintf(buf.data(), buf.size(), "%s", descr);
             if (reqs < 0)
             {
                 reqs   = 0;
                 buf[0] = '\0';
             }
             throw Exception(NVCV_ERROR_INVALID_ARGUMENT)
-                << "Tensor layout description is too big, must have at most 16 labels: " << buf
-                << (reqs <= static_cast<int>(sizeof(buf)) - 1 ? "" : "...");
+                << "Tensor layout description is too big, must have at most 16 labels: " << buf.data()
+                << (reqs <= static_cast<int>(buf.size()) - 1 ? "" : "...");
         }
 
-        out.rank = cur - descr;
+        out.rank = static_cast<int32_t>(cur - descr);
         NVCV_ASSERT(0 <= out.rank && (size_t)out.rank < sizeof(out.data) / sizeof(out.data[0]));
         out.data[out.rank] = '\0'; // add null terminator
     }
@@ -93,7 +94,8 @@ int FindDimIndex(const NVCVTensorLayout &layout, char dimLabel)
 {
     if (const void *p = memchr(layout.data, dimLabel, layout.rank))
     {
-        return std::distance(reinterpret_cast<const std::byte *>(layout.data), reinterpret_cast<const std::byte *>(p));
+        return static_cast<int>(
+            std::distance(reinterpret_cast<const std::byte *>(layout.data), reinterpret_cast<const std::byte *>(p)));
     }
     else
     {

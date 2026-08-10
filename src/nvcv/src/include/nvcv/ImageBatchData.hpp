@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -63,7 +63,7 @@ public:
      *
      * @param data The NVCVImageBatchData to use for initialization.
      */
-    ImageBatchData(const NVCVImageBatchData &data)
+    explicit ImageBatchData(const NVCVImageBatchData &data)
         : m_data(data)
     {
     }
@@ -212,6 +212,6 @@ public:
 
 } // namespace nvcv
 
-#include "detail/ImageBatchDataImpl.hpp"
+#include "detail/ImageBatchDataImpl.hpp" // NOSONAR: inline definitions require the declarations above.
 
 #endif // NVCV_IMAGEBATCHDATA_HPP

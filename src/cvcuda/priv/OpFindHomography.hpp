@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,6 +24,7 @@
 #ifndef CVCUDA_PRIV__FIND_HOMOGRAPHY_HPP
 #define CVCUDA_PRIV__FIND_HOMOGRAPHY_HPP
 #include "IOperator.hpp"
+#include "PerDeviceResource.hpp"
 
 #include <cublas_v2.h>
 #include <cuda_runtime.h>
@@ -34,7 +35,7 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorBatch.hpp>
 
-typedef struct
+struct BufferOffsets
 {
     float2 *srcMean;
     float2 *dstMean;
@@ -45,16 +46,16 @@ typedef struct
     float  *r;
     float  *J;
     float  *calc_buffer;
-} BufferOffsets;
+};
 
-typedef struct
+struct cuSolver
 {
     int               *cusolverInfo;
     float             *cusolverBuffer;
     cusolverDnHandle_t cusolverH;
     syevjInfo_t        syevj_params;
     int                lwork;
-} cuSolver;
+};
 
 namespace cvcuda::priv {
 
@@ -62,15 +63,28 @@ class FindHomography final : public IOperator
 {
 public:
     explicit FindHomography(int batchSize, int numPoints);
-    ~FindHomography();
     void operator()(cudaStream_t stream, const nvcv::Tensor &src, const nvcv::Tensor &dst,
                     const nvcv::Tensor &models) const;
     void operator()(cudaStream_t stream, const nvcv::TensorBatch &src, const nvcv::TensorBatch &dst,
                     const nvcv::TensorBatch &models) const;
 
 private:
-    BufferOffsets bufferOffset;
-    cuSolver      cusolverData;
+    struct DeviceState
+    {
+        BufferOffsets bufferOffset{};
+        cuSolver      cusolverData{};
+
+        DeviceState(int batchSize, int maxNumPoints);
+        ~DeviceState();
+
+        DeviceState(const DeviceState &)            = delete;
+        DeviceState &operator=(const DeviceState &) = delete;
+
+    private:
+        void cleanup() noexcept;
+    };
+
+    mutable PerDeviceResource<DeviceState> m_state;
 };
 
 } // namespace cvcuda::priv

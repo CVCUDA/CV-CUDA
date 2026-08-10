@@ -1,6 +1,6 @@
 #!/bin/bash -e
 
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,7 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-if [ "$#" -ne 1 ]; then
+if [[ "$#" -ne 1 ]]; then
     echo "Usage: build_wheels.sh <python_build_dir>"
     exit 1
 fi
@@ -26,17 +26,18 @@ WHEEL_DIR="${PYTHON_BUILD_DIR}/dist"
 REPAIRED_WHEEL_DIR="${PYTHON_BUILD_DIR}/repaired_wheels"
 WHEEL_BUILD_DIR="${PYTHON_BUILD_DIR}/build_wheel"
 LIB_DIR="${PYTHON_BUILD_DIR}/cvcuda_cu${CUDA_VERSION_MAJOR}.libs"
-SUPPORTED_PYTHONS=("39" "310" "311" "312" "313" "314")
+SUPPORTED_PYTHONS=("310" "311" "312" "313" "314")
 
 # Option to force universal wheel creation even if not all Python versions are built
 FORCE_UNIVERSAL=${FORCE_UNIVERSAL:-false}
 
 detect_platform_tag() {
-    if [ -n "${AUDITWHEEL_PLAT}" ]; then
+    if [[ -n "${AUDITWHEEL_PLAT}" ]]; then
         echo "${AUDITWHEEL_PLAT}"
     else
         echo "auto"
     fi
+    return 0
 }
 
 PLATFORM_TAG=$(detect_platform_tag)
@@ -53,10 +54,8 @@ mkdir -p "${WHEEL_DIR}" "${REPAIRED_WHEEL_DIR}" "${WHEEL_BUILD_DIR}" "${LIB_DIR}
 AVAILABLE_PYTHONS=()
 for py_ver in "${SUPPORTED_PYTHONS[@]}"; do
     py_exec="python3.${py_ver:1}"
-    if command -v "${py_exec}" &> /dev/null; then
-        if compgen -G "${PYTHON_BUILD_DIR}/cvcuda/*.cpython-${py_ver}-*.so" > /dev/null; then
-            AVAILABLE_PYTHONS+=("cp${py_ver}")
-        fi
+    if command -v "${py_exec}" &> /dev/null && compgen -G "${PYTHON_BUILD_DIR}/cvcuda/*.cpython-${py_ver}-*.so" > /dev/null; then
+        AVAILABLE_PYTHONS+=("cp${py_ver}")
     fi
 done
 PYTHON_EXECUTABLE=python3
@@ -64,8 +63,8 @@ PYTHON_EXECUTABLE=python3
 # Print the available Python bindings
 echo "Available Python Bindings: ${AVAILABLE_PYTHONS[*]}"
 
-if [ "${#AVAILABLE_PYTHONS[@]}" -eq 0 ]; then
-    echo "Error: No Python bindings detected."
+if [[ "${#AVAILABLE_PYTHONS[@]}" -eq 0 ]]; then
+    echo "Error: No Python bindings detected." >&2
     exit 1
 fi
 
@@ -73,7 +72,7 @@ fi
 echo "Copying and patching shared libraries..."
 for lib in "${LIBRARIES[@]}"; do
     src_path="${BUILD_DIR}/lib/${lib}"
-    if [ -f "${src_path}" ]; then
+    if [[ -f "${src_path}" ]]; then
         cp "${src_path}" "${LIB_DIR}/"
         echo "Copied: ${src_path} -> ${LIB_DIR}/"
         patchelf --force-rpath --set-rpath '$ORIGIN/../cvcuda_cu${CUDA_VERSION_MAJOR}.libs' "${LIB_DIR}/${lib}"
@@ -90,7 +89,7 @@ ln -sf "${PYTHON_BUILD_DIR}/MANIFEST.in" "${WHEEL_BUILD_DIR}/"
 ln -sf "${PYTHON_BUILD_DIR}/cvcuda" "${WHEEL_BUILD_DIR}/"
 ln -sf "${LIB_DIR}" "${WHEEL_BUILD_DIR}/cvcuda_cu${CUDA_VERSION_MAJOR}.libs"
 
-echo "Printing currently installed python packages from v-env: $VIRTUAL_ENV and dir: `pwd`."
+echo "Printing currently installed python packages from v-env: $VIRTUAL_ENV and dir: $(pwd)."
 ${PYTHON_EXECUTABLE} -m pip list
 
 # Build wheel
@@ -100,7 +99,7 @@ ${PYTHON_EXECUTABLE} -m build --wheel --outdir="${WHEEL_DIR}" || ${PYTHON_EXECUT
 
 # Modify the wheel's Python and ABI tags for detected versions
 # If all supported Python versions are available or FORCE_UNIVERSAL is set, use py3-none for universal compatibility
-if [ "${#AVAILABLE_PYTHONS[@]}" -eq "${#SUPPORTED_PYTHONS[@]}" ] || [ "${FORCE_UNIVERSAL}" = "true" ]; then
+if [[ "${#AVAILABLE_PYTHONS[@]}" -eq "${#SUPPORTED_PYTHONS[@]}" ]] || [[ "${FORCE_UNIVERSAL}" == "true" ]]; then
     echo "Creating universal py3-none wheel..."
     echo "  Available Python versions: ${AVAILABLE_PYTHONS[*]}"
     echo "  Supported Python versions: ${SUPPORTED_PYTHONS[*]}"
@@ -108,7 +107,7 @@ if [ "${#AVAILABLE_PYTHONS[@]}" -eq "${#SUPPORTED_PYTHONS[@]}" ] || [ "${FORCE_U
     abi_tag="none"
 
     # Verify that we have bindings for the most common Python versions
-    if [ "${FORCE_UNIVERSAL}" = "true" ] && [ "${#AVAILABLE_PYTHONS[@]}" -lt 3 ]; then
+    if [[ "${FORCE_UNIVERSAL}" == "true" ]] && [[ "${#AVAILABLE_PYTHONS[@]}" -lt 3 ]]; then
         echo "Warning: Creating universal wheel with only ${#AVAILABLE_PYTHONS[@]} Python version(s). This may cause compatibility issues."
     fi
 else
@@ -118,29 +117,16 @@ else
     abi_tag="${python_tag}"
 fi
 
-# Ensuring the tag is propagated to the wheel
-for whl in "${WHEEL_DIR}"/*.whl; do
-    ${PYTHON_EXECUTABLE} -m wheel tags --remove \
-                        --python-tag "${python_tag}" \
-                        --abi-tag "${abi_tag}" \
-                        --platform-tag "${PLATFORM_TAG}" \
-                        "${whl}"
-done
-popd > /dev/null
-
-echo "Repairing wheel for compliance..."
-
-# check the auditwheel version
+# Check the auditwheel version and handle "auto" platform tag
 auditwheel_version=$(${PYTHON_EXECUTABLE} -m pip list | grep auditwheel | awk '{print $2}')
 echo "Auditwheel version: ${auditwheel_version}"
 
 version_check() {
     local version1=$1
     local version2=$2
-    local IFS=.
     local i
-    read -ra ver1 <<< "$version1"
-    read -ra ver2 <<< "$version2"
+    IFS=. read -ra ver1 <<< "$version1"
+    IFS=. read -ra ver2 <<< "$version2"
 
     for ((i=${#ver1[@]}; i<${#ver2[@]}; i++)); do
         ver1[i]=0
@@ -163,11 +149,36 @@ version_check() {
     return 0
 }
 
-if ! version_check "${auditwheel_version}" "6.4.0" && [ "${PLATFORM_TAG}" = "auto" ]; then
-    echo "Auditwheel version ${auditwheel_version} is below requirement (>= 6.4.0) and PLATFORM_TAG is auto, set PLATFORM_TAG to linux_$(uname -m)"
-    PLATFORM_TAG="linux_$(uname -m)"
-    export AUDITWHEEL_PLAT="${PLATFORM_TAG}"
+# Handle "auto" platform tag based on auditwheel version
+if [[ "${PLATFORM_TAG}" == "auto" ]]; then
+    if ! version_check "${auditwheel_version}" "6.4.0"; then
+        echo "Auditwheel version ${auditwheel_version} is below requirement (>= 6.4.0) and PLATFORM_TAG is auto, set PLATFORM_TAG to linux_$(uname -m)"
+        PLATFORM_TAG="linux_$(uname -m)"
+    else
+        echo "Auditwheel version ${auditwheel_version} supports auto platform detection - will auto-detect appropriate manylinux/musllinux tag"
+        # Keep PLATFORM_TAG as "auto" for auditwheel >= 6.4.0 to auto-detect the appropriate platform
+    fi
 fi
+
+# Apply Python and ABI tags to the wheel
+# Only set platform-tag if it's not "auto" (auditwheel repair will set it)
+for whl in "${WHEEL_DIR}"/*.whl; do
+    if [[ "${PLATFORM_TAG}" == "auto" ]]; then
+        ${PYTHON_EXECUTABLE} -m wheel tags --remove \
+                            --python-tag "${python_tag}" \
+                            --abi-tag "${abi_tag}" \
+                            "${whl}"
+    else
+        ${PYTHON_EXECUTABLE} -m wheel tags --remove \
+                            --python-tag "${python_tag}" \
+                            --abi-tag "${abi_tag}" \
+                            --platform-tag "${PLATFORM_TAG}" \
+                            "${whl}"
+    fi
+done
+popd > /dev/null
+
+echo "Repairing wheel for compliance..."
 
 for whl in "${WHEEL_DIR}"/*.whl; do
     echo "Auditing wheel: ${whl}"

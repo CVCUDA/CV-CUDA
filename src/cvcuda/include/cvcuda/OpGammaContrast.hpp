@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,6 +34,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class GammaContrast final : public IOperator
@@ -41,40 +43,57 @@ class GammaContrast final : public IOperator
 public:
     explicit GammaContrast(const int32_t maxVarShapeBatchSize, const int32_t maxVarShapeChannelCount);
 
-    ~GammaContrast();
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                    const nvcv::Tensor &gamma) const;
+
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, float gamma, float gain,
+                    NVCVRoundMode roundMode = NVCV_ROUND_NEAREST) const;
 
     void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
-                    const nvcv::Tensor &gamma);
+                    const nvcv::Tensor &gamma) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline GammaContrast::GammaContrast(const int32_t maxVarShapeBatchSize, const int32_t maxVarShapeChannelCount)
 {
-    nvcv::detail::CheckThrow(cvcudaGammaContrastCreate(&m_handle, maxVarShapeBatchSize, maxVarShapeChannelCount));
-    assert(m_handle);
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaGammaContrastCreate(&h, maxVarShapeBatchSize, maxVarShapeChannelCount));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
-inline GammaContrast::~GammaContrast()
+inline void GammaContrast::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                                      const nvcv::Tensor &gamma) const
 {
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    nvcv::detail::CheckThrow(
+        cvcudaGammaContrastSubmit(m_handle.get(), stream, in.handle(), out.handle(), gamma.handle()));
+}
+
+inline void GammaContrast::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, float gamma,
+                                      float gain, NVCVRoundMode roundMode) const
+{
+    nvcv::detail::CheckThrow(
+        cvcudaGammaContrastScalarSubmit(m_handle.get(), stream, in.handle(), out.handle(), gamma, gain, roundMode));
 }
 
 inline void GammaContrast::operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
-                                      const nvcv::Tensor &gamma)
+                                      const nvcv::Tensor &gamma) const
 {
     nvcv::detail::CheckThrow(
-        cvcudaGammaContrastVarShapeSubmit(m_handle, stream, in.handle(), out.handle(), gamma.handle()));
+        cvcudaGammaContrastVarShapeSubmit(m_handle.get(), stream, in.handle(), out.handle(), gamma.handle()));
 }
 
 inline NVCVOperatorHandle GammaContrast::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
+
 #endif // CVCUDA_GAMMA_CONTRAST_HPP

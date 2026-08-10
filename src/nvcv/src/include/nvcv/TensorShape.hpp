@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -39,7 +39,12 @@ public:
     /**
      * @brief Default constructor.
      */
-    TensorShape() = default;
+    TensorShape()                        = default;
+    TensorShape(const TensorShape &)     = default;
+    TensorShape(TensorShape &&) noexcept = default;
+
+    TensorShape &operator=(const TensorShape &)     = default;
+    TensorShape &operator=(TensorShape &&) noexcept = default;
 
     /**
      * @brief Constructs a TensorShape with the given shape and layout.
@@ -180,7 +185,7 @@ public:
      * @param that The TensorShape to compare with.
      * @return True if this TensorShape is equal to `that`, false otherwise.
      */
-    bool operator==(const TensorShape &that) const
+    bool operator==(const TensorShape &that) const // NOSONAR: defaulted comparisons are C++20.
     {
         return std::tie(m_shape, m_layout) == std::tie(that.m_shape, that.m_layout);
     }
@@ -245,7 +250,8 @@ private:
 inline TensorShape Permute(const TensorShape &src, TensorLayout dstLayout)
 {
     TensorShape::ShapeType dst(dstLayout.rank());
-    detail::CheckThrow(nvcvTensorShapePermute(src.layout(), &src[0], dstLayout, &dst[0]));
+    detail::CheckThrow(nvcvTensorShapePermute(static_cast<NVCVTensorLayout>(src.layout()), &src[0],
+                                              static_cast<NVCVTensorLayout>(dstLayout), &dst[0]));
 
     return {std::move(dst), std::move(dstLayout)};
 }

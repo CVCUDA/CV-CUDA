@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,7 +28,7 @@ namespace priv = nvcv::priv;
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvRequirementsInit, (NVCVRequirements * reqs))
 {
     return priv::ProtectCall(
-        [&]
+        [&reqs]
         {
             if (reqs == nullptr)
             {
@@ -42,7 +42,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvRequirementsInit, (NVCVRequirements * reqs
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvRequirementsAdd, (NVCVRequirements * reqSum, const NVCVRequirements *req))
 {
     return priv::ProtectCall(
-        [&]
+        [&reqSum, &req]
         {
             if (reqSum == nullptr)
             {
@@ -62,7 +62,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvMemRequirementsCalcTotalSizeBytes,
                 (const NVCVMemRequirements *memReq, int64_t *sizeBytes))
 {
     return priv::ProtectCall(
-        [&]
+        [&memReq, &sizeBytes]
         {
             if (memReq == nullptr)
             {
@@ -83,7 +83,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvMemRequirementsAddBuffer,
                 (NVCVMemRequirements * memReq, int64_t bufSize, int64_t bufAlignment))
 {
     return priv::ProtectCall(
-        [&]
+        [&memReq, &bufSize, &bufAlignment]
         {
             if (memReq == nullptr)
             {

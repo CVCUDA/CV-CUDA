@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,8 +16,6 @@
  */
 
 #include <nvcv/detail/TypeTraits.hpp>
-//#include "Definitions.hpp"
-
 namespace d = nvcv::detail;
 
 static_assert(d::Conjunction<>::value, "Conjunction tail should evaluate to true");

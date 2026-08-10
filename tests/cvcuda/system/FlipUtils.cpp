@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,6 +27,16 @@ namespace nvcv::test {
 
 namespace detail {
 
+inline int FlippedX(int x, int width, int flipCode)
+{
+    return flipCode == 0 ? x : width - 1 - x;
+}
+
+inline int FlippedY(int y, int height, int flipCode)
+{
+    return flipCode > 0 ? y : height - 1 - y;
+}
+
 template<typename T>
 inline const T &ValueAt(const std::vector<uint8_t> &vec, long3 pitches, int b, int y, int x)
 {
@@ -37,6 +47,13 @@ template<typename T>
 inline T &ValueAt(std::vector<uint8_t> &vec, long3 pitches, int b, int y, int x)
 {
     return *reinterpret_cast<T *>(&vec[b * pitches.x + y * pitches.y + x * pitches.z]);
+}
+
+template<typename T>
+inline T FlippedValue(const std::vector<uint8_t> &hSrc, const long3 &srcStrides, int b, int y, int x, int2 size,
+                      int flipCode)
+{
+    return ValueAt<T>(hSrc, srcStrides, b, FlippedY(y, size.y, flipCode), FlippedX(x, size.x, flipCode));
 }
 
 template<typename T>
@@ -52,21 +69,8 @@ inline void flip(std::vector<uint8_t> &hDst, const long3 &dstStrides, const std:
         {
             for (int x = 0; x < shape.x; ++x)
             {
-                T srcValue;
-                if (flipCode > 0)
-                {
-                    srcValue = ValueAt<T>(hSrc, srcStrides, b, y, (size.x - 1 - x));
-                }
-                else if (flipCode == 0)
-                {
-                    srcValue = ValueAt<T>(hSrc, srcStrides, b, (size.y - 1 - y), x);
-                }
-                else
-                {
-                    srcValue = ValueAt<T>(hSrc, srcStrides, b, (size.y - 1 - y), (size.x - 1 - x));
-                }
-
-                ValueAt<T>(hDst, dstStrides, b, y, x) = cuda::SaturateCast<BT>(srcValue);
+                ValueAt<T>(hDst, dstStrides, b, y, x)
+                    = cuda::SaturateCast<BT>(FlippedValue<T>(hSrc, srcStrides, b, y, x, size, flipCode));
             }
         }
     }
@@ -94,7 +98,7 @@ void FlipCPU(std::vector<uint8_t> &hDst, const long3 &dstStrides, const std::vec
 {
     NVCV_ASSERT(format.numPlanes() == 1);
 
-    switch (format.planeDataType(0))
+    switch (static_cast<NVCVDataType>(format.planeDataType(0)))
     {
 #define NVCV_TEST_CASE(DATATYPE, TYPE)                                           \
     case NVCV_DATA_TYPE_##DATATYPE:                                              \

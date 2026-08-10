@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -51,12 +51,13 @@ NVCV_INSTANTIATE_TEST_SUITE_P(Predefined, ChromaSubsamplingTests,
 
 TEST_P(ChromaSubsamplingTests, predefined_has_correct_definition)
 {
-    NVCVChromaSubsampling css = std::get<0>(GetParam());
+    NVCVChromaSubsampling css = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
 
-    int goldSamplesHoriz = std::get<1>(GetParam());
-    int goldSamplesVert  = std::get<2>(GetParam());
+    int goldSamplesHoriz = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
+    int goldSamplesVert  = ::nvcv::test::ParamValue(std::get<2>(GetParam()));
 
-    int samplesHoriz, samplesVert;
+    int samplesHoriz;
+    int samplesVert;
     ASSERT_EQ(NVCV_SUCCESS, nvcvChromaSubsamplingGetNumSamples(css, &samplesHoriz, &samplesVert));
     EXPECT_EQ(goldSamplesHoriz, samplesHoriz);
     EXPECT_EQ(goldSamplesVert, samplesVert);
@@ -64,10 +65,10 @@ TEST_P(ChromaSubsamplingTests, predefined_has_correct_definition)
 
 TEST_P(ChromaSubsamplingTests, make_chroma_subsampling_function_works)
 {
-    NVCVChromaSubsampling gold = std::get<0>(GetParam());
+    NVCVChromaSubsampling gold = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
 
-    int samplesHoriz = std::get<1>(GetParam());
-    int samplesVert  = std::get<2>(GetParam());
+    int samplesHoriz = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
+    int samplesVert  = ::nvcv::test::ParamValue(std::get<2>(GetParam()));
 
     NVCVChromaSubsampling test;
     ASSERT_EQ(NVCV_SUCCESS, nvcvMakeChromaSubsampling(&test, samplesHoriz, samplesVert));
@@ -77,8 +78,8 @@ TEST_P(ChromaSubsamplingTests, make_chroma_subsampling_function_works)
 
 TEST_P(ChromaSubsamplingTests, get_name)
 {
-    NVCVChromaSubsampling css  = std::get<0>(GetParam());
-    const char           *gold = std::get<3>(GetParam());
+    NVCVChromaSubsampling css  = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const char           *gold = ::nvcv::test::ParamValue(std::get<3>(GetParam()));
 
     EXPECT_STREQ(gold, nvcvChromaSubsamplingGetName(css));
 }
@@ -86,7 +87,8 @@ TEST_P(ChromaSubsamplingTests, get_name)
 TEST(ChromaSubsamplingTests, invalidChromaSubsamplingGetNumSamples)
 {
 #ifndef ENABLE_SANITIZER
-    int32_t outSamplesHoriz, outSamplesVert;
+    int32_t outSamplesHoriz;
+    int32_t outSamplesVert;
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvChromaSubsamplingGetNumSamples(static_cast<NVCVChromaSubsampling>(255),
                                                                               &outSamplesHoriz, &outSamplesVert));
 #endif
@@ -190,8 +192,8 @@ NVCV_INSTANTIATE_TEST_SUITE_P(Limited, ColorSpecColorRangeTests,
 
 TEST_P(ColorSpecColorRangeTests, color_range_correct)
 {
-    const NVCVColorSpec  cspec = std::get<0>(GetParam());
-    const NVCVColorRange gold  = std::get<1>(GetParam());
+    const NVCVColorSpec  cspec = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const NVCVColorRange gold  = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     NVCVColorRange test;
     ASSERT_EQ(NVCV_SUCCESS, nvcvColorSpecGetRange(cspec, &test));
@@ -236,8 +238,8 @@ NVCV_INSTANTIATE_TEST_SUITE_P(sYCC, ColorSpecColorTransferFunctionTests,
 
 TEST_P(ColorSpecColorTransferFunctionTests, color_mapping_correct)
 {
-    const NVCVColorSpec             cspec = std::get<0>(GetParam());
-    const NVCVColorTransferFunction gold  = std::get<1>(GetParam());
+    const NVCVColorSpec             cspec = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const NVCVColorTransferFunction gold  = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     NVCVColorTransferFunction test;
     ASSERT_EQ(NVCV_SUCCESS, nvcvColorSpecGetColorTransferFunction(cspec, &test));
@@ -269,9 +271,9 @@ NVCV_INSTANTIATE_TEST_SUITE_P(Negative, ColorModelNeedsColorSpecTests,
 
 TEST_P(ColorModelNeedsColorSpecTests, run)
 {
-    const NVCVColorModel cmodel     = std::get<0>(GetParam());
-    const bool           goldResult = std::get<1>(GetParam());
-    const NVCVStatus     goldStatus = std::get<2>(GetParam());
+    const NVCVColorModel cmodel     = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const bool           goldResult = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
+    const NVCVStatus     goldStatus = ::nvcv::test::ParamValue(std::get<2>(GetParam()));
 
     int8_t testResult = !goldResult;
     ASSERT_EQ(goldStatus, nvcvColorModelNeedsColorspec(cmodel, &testResult));
@@ -301,9 +303,9 @@ TEST(ColorSpecTests, set_color_space)
     {
         uint64_t mask = UINT64_MAX;
 
-        NVCVColorSpec type = NVCV_MAKE_COLOR_SPEC(cspace == 0 ? 1 : 0, mask, mask, mask, mask, mask);
+        auto type = NVCV_MAKE_COLOR_SPEC(cspace == 0 ? 1 : 0, mask, mask, mask, mask, mask);
 
-        NVCVColorSpec gold = NVCV_MAKE_COLOR_SPEC(cspace, mask, mask, mask, mask, mask);
+        auto gold = NVCV_MAKE_COLOR_SPEC(cspace, mask, mask, mask, mask, mask);
 
         ASSERT_EQ(NVCV_SUCCESS, nvcvColorSpecSetColorSpace(&type, (NVCVColorSpace)cspace));
         EXPECT_EQ(gold, type);
@@ -321,7 +323,7 @@ TEST(ColorSpecTests, get_color_space)
     {
         uint64_t mask = UINT64_MAX;
 
-        NVCVColorSpec type = NVCV_MAKE_COLOR_SPEC(cspace, mask, mask, mask, mask, mask);
+        auto type = NVCV_MAKE_COLOR_SPEC(cspace, mask, mask, mask, mask, mask);
 
         NVCVColorSpace test;
         ASSERT_EQ(NVCV_SUCCESS, nvcvColorSpecGetColorSpace(type, &test));
@@ -333,7 +335,7 @@ TEST(ColorSpecTests, invalid_get_color_space)
 {
     uint64_t mask = UINT64_MAX;
 
-    NVCVColorSpec type = NVCV_MAKE_COLOR_SPEC(mask, mask, mask, mask, mask, mask);
+    auto type = NVCV_MAKE_COLOR_SPEC(mask, mask, mask, mask, mask, mask);
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvColorSpecGetColorSpace(type, nullptr));
 }
@@ -350,9 +352,9 @@ TEST(ColorSpecTests, set_encodings)
 
         uint64_t mask = UINT64_MAX;
 
-        NVCVColorSpec type = NVCV_MAKE_COLOR_SPEC(mask, enc == 0 ? 1 : 0, mask, mask, mask, mask);
+        auto type = NVCV_MAKE_COLOR_SPEC(mask, enc == 0 ? 1 : 0, mask, mask, mask, mask);
 
-        NVCVColorSpec gold = NVCV_MAKE_COLOR_SPEC(mask, enc, mask, mask, mask, mask);
+        auto gold = NVCV_MAKE_COLOR_SPEC(mask, enc, mask, mask, mask, mask);
 
         ASSERT_EQ(NVCV_SUCCESS, nvcvColorSpecSetYCbCrEncoding(&type, (NVCVYCbCrEncoding)enc));
         ASSERT_EQ(gold, type);
@@ -370,7 +372,7 @@ TEST(ColorSpecTests, get_encodings)
     {
         uint64_t mask = UINT64_MAX;
 
-        NVCVColorSpec type = NVCV_MAKE_COLOR_SPEC(mask, enc, mask, mask, mask, mask);
+        auto type = NVCV_MAKE_COLOR_SPEC(mask, enc, mask, mask, mask, mask);
 
         NVCVYCbCrEncoding test;
         ASSERT_EQ(NVCV_SUCCESS, nvcvColorSpecGetYCbCrEncoding(type, &test));
@@ -382,7 +384,7 @@ TEST(ColorSpecTests, invalid_get_encodings)
 {
     uint64_t mask = UINT64_MAX;
 
-    NVCVColorSpec type = NVCV_MAKE_COLOR_SPEC(mask, 0, mask, mask, mask, mask);
+    auto type = NVCV_MAKE_COLOR_SPEC(mask, 0, mask, mask, mask, mask);
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvColorSpecGetYCbCrEncoding(type, nullptr));
 }
@@ -393,9 +395,9 @@ TEST(ColorSpecTests, set_xfer_func)
     {
         uint64_t mask = UINT64_MAX;
 
-        NVCVColorSpec type = NVCV_MAKE_COLOR_SPEC(mask, mask, xfer == 0 ? 1 : 0, mask, mask, mask);
+        auto type = NVCV_MAKE_COLOR_SPEC(mask, mask, xfer == 0 ? 1 : 0, mask, mask, mask);
 
-        NVCVColorSpec gold = NVCV_MAKE_COLOR_SPEC(mask, mask, xfer, mask, mask, mask);
+        auto gold = NVCV_MAKE_COLOR_SPEC(mask, mask, xfer, mask, mask, mask);
 
         ASSERT_EQ(NVCV_SUCCESS, nvcvColorSpecSetColorTransferFunction(&type, (NVCVColorTransferFunction)xfer));
         ASSERT_EQ(gold, type);
@@ -414,7 +416,7 @@ TEST(ColorSpecTests, get_xfer_func)
     {
         uint64_t mask = UINT64_MAX;
 
-        NVCVColorSpec type = NVCV_MAKE_COLOR_SPEC(mask, mask, xfer, mask, mask, mask);
+        auto type = NVCV_MAKE_COLOR_SPEC(mask, mask, xfer, mask, mask, mask);
 
         NVCVColorTransferFunction test;
 
@@ -427,7 +429,7 @@ TEST(ColorSpecTests, invalid_get_xfer_func)
 {
     uint64_t mask = UINT64_MAX;
 
-    NVCVColorSpec type = NVCV_MAKE_COLOR_SPEC(mask, mask, 0, mask, mask, mask);
+    auto type = NVCV_MAKE_COLOR_SPEC(mask, mask, 0, mask, mask, mask);
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvColorSpecGetColorTransferFunction(type, nullptr));
 }
@@ -438,9 +440,9 @@ TEST(ColorSpecTests, set_range)
     {
         uint64_t mask = UINT64_MAX;
 
-        NVCVColorSpec type = NVCV_MAKE_COLOR_SPEC(mask, mask, mask, range == 0 ? 1 : 0, mask, mask);
+        auto type = NVCV_MAKE_COLOR_SPEC(mask, mask, mask, range == 0 ? 1 : 0, mask, mask);
 
-        NVCVColorSpec gold = NVCV_MAKE_COLOR_SPEC(mask, mask, mask, range, mask, mask);
+        auto gold = NVCV_MAKE_COLOR_SPEC(mask, mask, mask, range, mask, mask);
 
         ASSERT_EQ(NVCV_SUCCESS, nvcvColorSpecSetRange(&type, (NVCVColorRange)range));
         ASSERT_EQ(gold, type);
@@ -458,7 +460,7 @@ TEST(ColorSpecTests, get_range)
     {
         uint64_t mask = UINT64_MAX;
 
-        NVCVColorSpec type = NVCV_MAKE_COLOR_SPEC(mask, mask, mask, range, mask, mask);
+        auto type = NVCV_MAKE_COLOR_SPEC(mask, mask, mask, range, mask, mask);
 
         NVCVColorRange test;
         ASSERT_EQ(NVCV_SUCCESS, nvcvColorSpecGetRange(type, &test));
@@ -470,7 +472,7 @@ TEST(ColorSpecTests, invalid_get_range)
 {
     uint64_t mask = UINT64_MAX;
 
-    NVCVColorSpec type = NVCV_MAKE_COLOR_SPEC(mask, mask, mask, mask, mask, mask);
+    auto type = NVCV_MAKE_COLOR_SPEC(mask, mask, mask, mask, mask, mask);
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvColorSpecGetRange(type, nullptr));
 }
@@ -481,9 +483,9 @@ TEST(ColorSpecTests, set_chroma_loc_horiz)
     {
         uint64_t mask = UINT64_MAX;
 
-        NVCVColorSpec type = NVCV_MAKE_COLOR_SPEC(mask, mask, mask, mask, loc == 0 ? 1 : 0, mask);
+        auto type = NVCV_MAKE_COLOR_SPEC(mask, mask, mask, mask, loc == 0 ? 1 : 0, mask);
 
-        NVCVColorSpec gold = NVCV_MAKE_COLOR_SPEC(mask, mask, mask, mask, loc, mask);
+        auto gold = NVCV_MAKE_COLOR_SPEC(mask, mask, mask, mask, loc, mask);
 
         ASSERT_EQ(NVCV_SUCCESS, nvcvColorSpecSetChromaLoc(&type, (NVCVChromaLocation)loc, (NVCVChromaLocation)mask));
         ASSERT_EQ(gold, type);
@@ -504,7 +506,7 @@ TEST(ColorSpecTests, get_chroma_loc_horiz)
     {
         uint64_t mask = UINT64_MAX;
 
-        NVCVColorSpec type = NVCV_MAKE_COLOR_SPEC(mask, mask, mask, mask, loc, mask);
+        auto type = NVCV_MAKE_COLOR_SPEC(mask, mask, mask, mask, loc, mask);
 
         NVCVChromaLocation test;
 
@@ -519,9 +521,9 @@ TEST(ColorSpecTests, set_chroma_loc_vert)
     {
         uint64_t mask = UINT64_MAX;
 
-        NVCVColorSpec type = NVCV_MAKE_COLOR_SPEC(mask, mask, mask, mask, mask, loc == 0 ? 1 : 0);
+        auto type = NVCV_MAKE_COLOR_SPEC(mask, mask, mask, mask, mask, loc == 0 ? 1 : 0);
 
-        NVCVColorSpec gold = NVCV_MAKE_COLOR_SPEC(mask, mask, mask, mask, mask, loc);
+        auto gold = NVCV_MAKE_COLOR_SPEC(mask, mask, mask, mask, mask, loc);
 
         ASSERT_EQ(NVCV_SUCCESS, nvcvColorSpecSetChromaLoc(&type, (NVCVChromaLocation)mask, (NVCVChromaLocation)loc));
         ASSERT_EQ(gold, type);
@@ -534,7 +536,7 @@ TEST(ColorSpecTests, get_chroma_loc_vert)
     {
         uint64_t mask = UINT64_MAX;
 
-        NVCVColorSpec type = NVCV_MAKE_COLOR_SPEC(mask, mask, mask, mask, mask, loc);
+        auto type = NVCV_MAKE_COLOR_SPEC(mask, mask, mask, mask, mask, loc);
 
         NVCVChromaLocation test;
         ASSERT_EQ(NVCV_SUCCESS, nvcvColorSpecGetChromaLoc(type, nullptr, &test));
@@ -548,12 +550,13 @@ TEST(ColorSpecTests, get_chroma_loc_both)
     {
         uint64_t mask = UINT64_MAX;
 
-        NVCVChromaLocation goldHoriz = static_cast<NVCVChromaLocation>(loc & 0b11);
-        NVCVChromaLocation goldVert  = static_cast<NVCVChromaLocation>((~loc) & 0b11);
+        auto goldHoriz = static_cast<NVCVChromaLocation>(loc & 0b11);
+        auto goldVert  = static_cast<NVCVChromaLocation>((~loc) & 0b11);
 
-        NVCVColorSpec type = NVCV_MAKE_COLOR_SPEC(mask, mask, mask, mask, goldHoriz, goldVert);
+        auto type = NVCV_MAKE_COLOR_SPEC(mask, mask, mask, mask, goldHoriz, goldVert);
 
-        NVCVChromaLocation testHoriz, testVert;
+        NVCVChromaLocation testHoriz;
+        NVCVChromaLocation testVert;
         ASSERT_EQ(NVCV_SUCCESS, nvcvColorSpecGetChromaLoc(type, &testHoriz, &testVert));
         EXPECT_EQ(goldHoriz, testHoriz);
         EXPECT_EQ(goldVert, testVert);

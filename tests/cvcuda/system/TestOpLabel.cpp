@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,6 +19,7 @@
 
 #include <common/TensorDataUtils.hpp>
 #include <common/TypedTests.hpp>
+#include <common/ValueTests.hpp>
 #include <cvcuda/OpLabel.hpp>
 #include <cvcuda/cuda_tools/DropCast.hpp>
 #include <cvcuda/cuda_tools/MathOps.hpp>
@@ -27,6 +28,7 @@
 #include <nvcv/TensorDataAccess.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <iostream>
 #include <iterator>
@@ -34,6 +36,7 @@
 #include <optional>
 #include <random>
 #include <set>
+#include <string>
 #include <vector>
 
 // ----------------------- Basic utility definitions ---------------------------
@@ -51,6 +54,52 @@ using RawBufferType = std::vector<U8>;
 
 namespace ref {
 
+inline long NumElements(const long4_16a &shape)
+{
+    return shape.x * shape.y * shape.z * shape.w;
+}
+
+inline long4_16a CoordFromIndex(long idx, const long4_16a &shape)
+{
+    long w = idx % shape.w;
+    idx /= shape.w;
+    long z = idx % shape.z;
+    idx /= shape.z;
+    long y = idx % shape.y;
+    idx /= shape.y;
+    return long4_16a{idx, y, z, w};
+}
+
+template<typename Func>
+void ForEachCoord(const long4_16a &shape, const Func &func)
+{
+    for (long idx = 0; idx < NumElements(shape); ++idx)
+    {
+        func(CoordFromIndex(idx, shape));
+    }
+}
+
+template<typename Func>
+void ForEachSampleCoord(const long4_16a &shape, long sample, const Func &func)
+{
+    long sampleElements = shape.y * shape.z * shape.w;
+    for (long idx = 0; idx < sampleElements; ++idx)
+    {
+        long linear = idx;
+        long w      = linear % shape.w;
+        linear /= shape.w;
+        long z = linear % shape.z;
+        linear /= shape.z;
+        func(long4_16a{sample, linear, z, w});
+    }
+}
+
+template<typename DT>
+DT PositionLabel(const long4_16a &coord, const long4_16a &strides)
+{
+    return static_cast<DT>(coord.y * strides.y / sizeof(DT) + coord.z * strides.z / sizeof(DT) + coord.w);
+}
+
 // Pre-filter step is to binarize srcVec using threshold range [min, max] -> 1, zero otherwise
 template<typename ST>
 inline void Binarize(RawBufferType &srcVec, const RawBufferType &minVec, const RawBufferType &maxVec,
@@ -60,39 +109,50 @@ inline void Binarize(RawBufferType &srcVec, const RawBufferType &minVec, const R
     bool hasMinThresh = minStrides.x > 0;
     bool hasMaxThresh = maxStrides.x > 0;
 
-    for (long x = 0; x < shape.x; ++x)
+    ForEachCoord(shape,
+                 [&srcVec, &minVec, &maxVec, &srcStrides, &minStrides, &maxStrides, hasMinThresh,
+                  hasMaxThresh](const long4_16a &curCoord)
+                 {
+                     ST minThresh = hasMinThresh ? util::ValueAt<ST>(minVec, minStrides, long1{curCoord.x}) : 0;
+                     ST maxThresh = hasMaxThresh ? util::ValueAt<ST>(maxVec, maxStrides, long1{curCoord.x}) : 0;
+                     ST value     = util::ValueAt<ST>(srcVec, srcStrides, curCoord);
+
+                     if (hasMinThresh && hasMaxThresh)
+                     {
+                         value = (value < minThresh || value > maxThresh) ? 0 : 1;
+                     }
+                     else if (hasMinThresh)
+                     {
+                         value = (value < minThresh) ? 0 : 1;
+                     }
+                     else if (hasMaxThresh)
+                     {
+                         value = (value > maxThresh) ? 0 : 1;
+                     }
+
+                     util::ValueAt<ST>(srcVec, srcStrides, curCoord) = value;
+                 });
+}
+
+template<typename ST, typename DT>
+inline void LabelComponent(RawBufferType &tmpVec, RawBufferType &dstVec, const RawBufferType &srcVec,
+                           const long4_16a &tmpStrides, const long4_16a &dstStrides, const long4_16a &srcStrides,
+                           const long4_16a &shape, const long4_16a &curCoord, ST value, DT label);
+
+template<typename ST, typename DT>
+void LabelPixel(RawBufferType &tmpVec, RawBufferType &dstVec, const RawBufferType &srcVec, const long4_16a &tmpStrides,
+                const long4_16a &dstStrides, const long4_16a &srcStrides, const long4_16a &shape,
+                const long4_16a &curCoord)
+{
+    if (util::ValueAt<U8>(tmpVec, tmpStrides, curCoord) == 1)
     {
-        ST minThresh = hasMinThresh ? util::ValueAt<ST>(minVec, minStrides, long1{x}) : 0;
-        ST maxThresh = hasMaxThresh ? util::ValueAt<ST>(maxVec, maxStrides, long1{x}) : 0;
-
-        for (long y = 0; y < shape.y; ++y)
-        {
-            for (long z = 0; z < shape.z; ++z)
-            {
-                for (long w = 0; w < shape.w; ++w)
-                {
-                    long4_16a curCoord{x, y, z, w};
-
-                    ST value = util::ValueAt<ST>(srcVec, srcStrides, curCoord);
-
-                    if (hasMinThresh && hasMaxThresh)
-                    {
-                        value = (value < minThresh || value > maxThresh) ? 0 : 1;
-                    }
-                    else if (hasMinThresh)
-                    {
-                        value = (value < minThresh) ? 0 : 1;
-                    }
-                    else if (hasMaxThresh)
-                    {
-                        value = (value > maxThresh) ? 0 : 1;
-                    }
-
-                    util::ValueAt<ST>(srcVec, srcStrides, curCoord) = value;
-                }
-            }
-        }
+        return;
     }
+
+    ST value = util::ValueAt<ST>(srcVec, srcStrides, curCoord);
+    DT label = PositionLabel<DT>(curCoord, dstStrides);
+
+    LabelComponent(tmpVec, dstVec, srcVec, tmpStrides, dstStrides, srcStrides, shape, curCoord, value, label);
 }
 
 // Label each component with label in dstVec matching value in srcVec, marking labeled elements as 1 in tmpVec
@@ -162,32 +222,9 @@ void Label(RawBufferType &dstVec, const RawBufferType &srcVec, const long4_16a &
     long4_16a tmpStrides{shape.y * shape.z * shape.w, shape.z * shape.w, shape.w, 1};
 
     // For all elements in input tensor
-    for (long x = 0; x < shape.x; ++x)
-    {
-        for (long y = 0; y < shape.y; ++y)
-        {
-            for (long z = 0; z < shape.z; ++z)
-            {
-                for (long w = 0; w < shape.w; ++w)
-                {
-                    long4_16a curCoord{x, y, z, w};
-
-                    if (util::ValueAt<U8>(tmpVec, tmpStrides, curCoord) == 1)
-                    {
-                        continue; // The element was already labeled, skip it
-                    }
-
-                    // Get current value from input tensor and set label as a 1D flattened (global) position
-                    ST value = util::ValueAt<ST>(srcVec, srcStrides, curCoord);
-                    DT label = y * dstStrides.y / sizeof(DT) + z * dstStrides.z / sizeof(DT) + w;
-
-                    // Recursively call to label component
-                    LabelComponent(tmpVec, dstVec, srcVec, tmpStrides, dstStrides, srcStrides, shape, curCoord, value,
-                                   label);
-                }
-            }
-        }
-    }
+    ForEachCoord(shape,
+                 [&tmpVec, &dstVec, &srcVec, &tmpStrides, &dstStrides, &srcStrides, &shape](const long4_16a &curCoord)
+                 { LabelPixel<ST, DT>(tmpVec, dstVec, srcVec, tmpStrides, dstStrides, srcStrides, shape, curCoord); });
 }
 
 // Replace labels assigned to regions marked as background in source, and fix a potential region labeled with
@@ -197,36 +234,25 @@ void ReplaceBgLabels(RawBufferType &dstVec, const RawBufferType &srcVec, const R
                      const long4_16a &dstStrides, const long4_16a &srcStrides, const long1 &bglStrides,
                      const long4_16a &shape)
 {
-    for (long x = 0; x < shape.x; ++x)
-    {
-        ST backgroundLabel = util::ValueAt<ST>(bglVec, bglStrides, long1{x});
+    ForEachCoord(shape,
+                 [&dstVec, &srcVec, &bglVec, &dstStrides, &srcStrides, &bglStrides](const long4_16a &curCoord)
+                 {
+                     ST backgroundLabel = util::ValueAt<ST>(bglVec, bglStrides, long1{curCoord.x});
+                     ST value           = util::ValueAt<ST>(srcVec, srcStrides, curCoord);
+                     DT label           = util::ValueAt<DT>(dstVec, dstStrides, curCoord);
 
-        for (long y = 0; y < shape.y; ++y)
-        {
-            for (long z = 0; z < shape.z; ++z)
-            {
-                for (long w = 0; w < shape.w; ++w)
-                {
-                    long4_16a curCoord{x, y, z, w};
-
-                    ST value = util::ValueAt<ST>(srcVec, srcStrides, curCoord);
-                    DT label = util::ValueAt<DT>(dstVec, dstStrides, curCoord);
-
-                    if (value == backgroundLabel)
-                    {
-                        // The current value is a background label, write it to output
-                        util::ValueAt<DT>(dstVec, dstStrides, curCoord) = (DT)backgroundLabel;
-                    }
-                    else if (label == (DT)backgroundLabel)
-                    {
-                        // If the label assigned happens to be the same as the background label, replace it by
-                        // another label that is never assigned outside the possible offsets
-                        util::ValueAt<DT>(dstVec, dstStrides, curCoord) = dstStrides.x / sizeof(DT);
-                    }
-                }
-            }
-        }
-    }
+                     if (value == backgroundLabel)
+                     {
+                         // The current value is a background label, write it to output
+                         util::ValueAt<DT>(dstVec, dstStrides, curCoord) = static_cast<DT>(backgroundLabel);
+                     }
+                     else if (label == (DT)backgroundLabel)
+                     {
+                         // If the label assigned happens to be the same as the background label, replace it by
+                         // another label that is never assigned outside the possible offsets
+                         util::ValueAt<DT>(dstVec, dstStrides, curCoord) = static_cast<DT>(dstStrides.x / sizeof(DT));
+                     }
+                 });
 }
 
 // Get the unique set of labels from output in dstVec, disregarding background labels
@@ -236,28 +262,19 @@ void GetLabels(std::vector<std::set<DT>> &labels, const RawBufferType &dstVec, c
 {
     bool hasBgLabel = bglStrides.x > 0;
 
-    for (long x = 0; x < dstShape.x; ++x)
-    {
-        ST backgroundLabel = hasBgLabel ? util::ValueAt<ST>(bglVec, bglStrides, long1{x}) : 0;
+    ForEachCoord(dstShape,
+                 [&labels, &dstVec, &bglVec, &dstStrides, &bglStrides, hasBgLabel](const long4_16a &curCoord)
+                 {
+                     ST backgroundLabel = hasBgLabel ? util::ValueAt<ST>(bglVec, bglStrides, long1{curCoord.x}) : 0;
+                     DT label           = util::ValueAt<DT>(dstVec, dstStrides, curCoord);
 
-        for (long y = 0; y < dstShape.y; ++y)
-        {
-            for (long z = 0; z < dstShape.z; ++z)
-            {
-                for (long w = 0; w < dstShape.w; ++w)
-                {
-                    DT label = util::ValueAt<DT>(dstVec, dstStrides, long4_16a{x, y, z, w});
+                     if (hasBgLabel && label == static_cast<DT>(backgroundLabel))
+                     {
+                         return; // ignore (do not get) background labels
+                     }
 
-                    if (hasBgLabel && label == (DT)backgroundLabel)
-                    {
-                        continue; // ignore (do not get) background labels
-                    }
-
-                    labels[x].insert(label);
-                }
-            }
-        }
-    }
+                     labels[curCoord.x].insert(label);
+                 });
 }
 
 // Get the unique set of labels from statistics in staVec
@@ -285,7 +302,7 @@ void CountLabels(RawBufferType &cntVec, const long1 &cntStrides, const std::vect
 {
     for (long x = 0; x < numSamples; ++x)
     {
-        util::ValueAt<DT>(cntVec, cntStrides, long1{x}) = (DT)labels[x].size();
+        util::ValueAt<DT>(cntVec, cntStrides, long1{x}) = static_cast<DT>(labels[x].size());
     }
 }
 
@@ -318,6 +335,84 @@ void SortStats(std::vector<std::vector<std::vector<DT>>> &stats, std::vector<std
     }
 }
 
+template<typename ST, typename DT>
+bool FindLabelRegion(long &regionIdx, DT &label, bool &usesPositionStats, const RawBufferType &dstVec,
+                     const RawBufferType &bglVec, const long4_16a &dstStrides, const long1 &bglStrides,
+                     const std::vector<std::set<DT>> &labels, const long4_16a &curCoord, DT endLabel, bool hasBgLabel)
+{
+    ST backgroundLabel = hasBgLabel ? util::ValueAt<ST>(bglVec, bglStrides, long1{curCoord.x}) : 0;
+
+    label    = util::ValueAt<DT>(dstVec, dstStrides, curCoord);
+    auto fit = labels[curCoord.x].find(label);
+    if (fit == labels[curCoord.x].end())
+    {
+        return false;
+    }
+
+    DT posLabel = PositionLabel<DT>(curCoord, dstStrides);
+    usesPositionStats
+        = (hasBgLabel && label == endLabel && posLabel == static_cast<DT>(backgroundLabel)) || label == posLabel;
+    regionIdx = std::distance(labels[curCoord.x].cbegin(), fit);
+
+    return true;
+}
+
+template<typename MT>
+bool IsInsideMask(const RawBufferType &mskVec, const long4_16a &mskStrides, long maskN, const long4_16a &curCoord)
+{
+    return util::ValueAt<MT>(mskVec, mskStrides,
+                             long4_16a{maskN == 1 ? 0 : curCoord.x, curCoord.y, curCoord.z, curCoord.w})
+        != 0;
+}
+
+template<typename DT>
+void InitializeRegionStats(std::vector<DT> &regionStats, DT label, const long4_16a &curCoord, DT regionMark,
+                           int numStats)
+{
+    regionStats.resize(numStats);
+    regionStats[0] = label;
+    regionStats[1] = static_cast<DT>(curCoord.w);
+    regionStats[2] = static_cast<DT>(curCoord.z);
+
+    if (numStats == 7)
+    {
+        regionStats[3] = 1;
+        regionStats[4] = 1;
+        regionStats[5] = 1;
+        regionStats[6] = regionMark;
+        return;
+    }
+
+    regionStats[3] = static_cast<DT>(curCoord.y);
+    regionStats[4] = 1;
+    regionStats[5] = 1;
+    regionStats[6] = 1;
+    regionStats[7] = 1;
+    regionStats[8] = regionMark;
+}
+
+template<typename DT>
+void UpdateRegionStats(std::vector<DT> &regionStats, const long4_16a &curCoord, int numStats)
+{
+    auto bboxAreaW = static_cast<DT>(std::abs(static_cast<long>(regionStats[1]) - curCoord.w) + 1);
+    auto bboxAreaH = static_cast<DT>(std::abs(static_cast<long>(regionStats[2]) - curCoord.z) + 1);
+
+    if (numStats == 7)
+    {
+        regionStats[3] = std::max(regionStats[3], bboxAreaW);
+        regionStats[4] = std::max(regionStats[4], bboxAreaH);
+        regionStats[5] += 1;
+        return;
+    }
+
+    auto bboxAreaD = static_cast<DT>(std::abs(static_cast<long>(regionStats[3]) - curCoord.y) + 1);
+
+    regionStats[4] = std::max(regionStats[4], bboxAreaW);
+    regionStats[5] = std::max(regionStats[5], bboxAreaH);
+    regionStats[6] = std::max(regionStats[6], bboxAreaD);
+    regionStats[7] += 1;
+}
+
 // Compute statistics of labeled regions
 template<typename ST, typename DT, typename MT>
 void ComputeStats(std::vector<std::vector<std::vector<DT>>> &stats, const RawBufferType &dstVec,
@@ -326,122 +421,74 @@ void ComputeStats(std::vector<std::vector<std::vector<DT>>> &stats, const RawBuf
                   const long4_16a &shape, long maskN, int numStats)
 {
     // One-element-after-the-end label is a special label assigned to a region which got the background label
-    DT endLabel = dstStrides.x / sizeof(DT);
+    auto endLabel = static_cast<DT>(dstStrides.x / sizeof(DT));
 
     bool hasMask    = mskStrides.x > 0;
     bool hasBgLabel = bglStrides.x > 0;
 
     for (long x = 0; x < shape.x; ++x)
     {
-        ST backgroundLabel = hasBgLabel ? util::ValueAt<ST>(bglVec, bglStrides, long1{x}) : 0;
-
         stats[x].resize(labels[x].size());
-
-        for (long y = 0; y < shape.y; ++y)
-        {
-            for (long z = 0; z < shape.z; ++z)
-            {
-                for (long w = 0; w < shape.w; ++w)
-                {
-                    DT   label = util::ValueAt<DT>(dstVec, dstStrides, long4_16a{x, y, z, w});
-                    auto fit   = labels[x].find(label); // result of find iterator
-                    if (fit == labels[x].end())
-                    {
-                        continue; // this label is to be ignored
-                    }
-
-                    DT posLabel = y * dstStrides.y / sizeof(DT) + z * dstStrides.z / sizeof(DT) + w;
-
-                    if ((hasBgLabel && label == endLabel && posLabel == (DT)backgroundLabel) || label == posLabel)
-                    {
-                        long regionIdx  = std::distance(labels[x].cbegin(), fit);
-                        DT   regionMark = 0; // region has no marks
-
-                        // If has mask and the element is inside the mask
-                        if (hasMask
-                            && util::ValueAt<MT>(mskVec, mskStrides, long4_16a{maskN == 1 ? 0 : x, y, z, w}) != 0)
-                        {
-                            regionMark = 2; // mark the region as inside the mask (= 2)
-                        }
-
-                        stats[x][regionIdx].resize(numStats);
-                        stats[x][regionIdx][0] = label;
-                        stats[x][regionIdx][1] = w;
-                        stats[x][regionIdx][2] = z;
-
-                        if (numStats == 7)
-                        {
-                            stats[x][regionIdx][3] = 1;
-                            stats[x][regionIdx][4] = 1;
-                            stats[x][regionIdx][5] = 1;
-                            stats[x][regionIdx][6] = regionMark;
-                        }
-                        else
-                        {
-                            stats[x][regionIdx][3] = y;
-                            stats[x][regionIdx][4] = 1;
-                            stats[x][regionIdx][5] = 1;
-                            stats[x][regionIdx][6] = 1;
-                            stats[x][regionIdx][7] = 1;
-                            stats[x][regionIdx][8] = regionMark;
-                        }
-                    }
-                }
-            }
-        }
-        for (long y = 0; y < shape.y; ++y)
-        {
-            for (long z = 0; z < shape.z; ++z)
-            {
-                for (long w = 0; w < shape.w; ++w)
-                {
-                    DT   label = util::ValueAt<DT>(dstVec, dstStrides, long4_16a{x, y, z, w});
-                    auto fit   = labels[x].find(label);
-                    if (fit == labels[x].end())
-                    {
-                        continue;
-                    }
-
-                    DT posLabel = y * dstStrides.y / sizeof(DT) + z * dstStrides.z / sizeof(DT) + w;
-
-                    if ((hasBgLabel && label == endLabel && posLabel == (DT)backgroundLabel) || label == posLabel)
-                    {
-                        continue; // statistics for this element was already computed
-                    }
-
-                    long regionIdx = std::distance(labels[x].cbegin(), fit);
-                    DT   bboxAreaW = std::abs(stats[x][regionIdx][1] - w) + 1;
-                    DT   bboxAreaH = std::abs(stats[x][regionIdx][2] - z) + 1;
-
-                    // If has mask and the region has no marks (it is no marked as inside mask)
-                    if (hasMask && stats[x][regionIdx][numStats - 1] == 0)
-                    {
-                        // If element is inside mask
-                        if (util::ValueAt<MT>(mskVec, mskStrides, long4_16a{maskN == 1 ? 0 : x, y, z, w}) != 0)
-                        {
-                            stats[x][regionIdx][numStats - 1] = 2; // mark the region as inside mask (= 2)
-                        }
-                    }
-
-                    if (numStats == 7)
-                    {
-                        stats[x][regionIdx][3] = std::max(stats[x][regionIdx][3], bboxAreaW);
-                        stats[x][regionIdx][4] = std::max(stats[x][regionIdx][4], bboxAreaH);
-                        stats[x][regionIdx][5] += 1;
-                    }
-                    else
-                    {
-                        DT bboxAreaD = std::abs(stats[x][regionIdx][3] - y) + 1;
-
-                        stats[x][regionIdx][4] = std::max(stats[x][regionIdx][4], bboxAreaW);
-                        stats[x][regionIdx][5] = std::max(stats[x][regionIdx][5], bboxAreaH);
-                        stats[x][regionIdx][6] = std::max(stats[x][regionIdx][6], bboxAreaD);
-                        stats[x][regionIdx][7] += 1;
-                    }
-                }
-            }
-        }
     }
+
+    ForEachCoord(shape,
+                 [&stats, &dstVec, &mskVec, &bglVec, &dstStrides, &mskStrides, &bglStrides, &labels, endLabel, hasMask,
+                  hasBgLabel, maskN, numStats](const long4_16a &curCoord)
+                 {
+                     long regionIdx;
+                     DT   label;
+                     bool usesPositionStats;
+                     if (!FindLabelRegion<ST>(regionIdx, label, usesPositionStats, dstVec, bglVec, dstStrides,
+                                              bglStrides, labels, curCoord, endLabel, hasBgLabel))
+                     {
+                         return; // this label is to be ignored
+                     }
+
+                     if (!usesPositionStats)
+                     {
+                         return;
+                     }
+
+                     DT regionMark = 0; // region has no marks
+
+                     // If has mask and the element is inside the mask
+                     if (hasMask && IsInsideMask<MT>(mskVec, mskStrides, maskN, curCoord))
+                     {
+                         regionMark = 2; // mark the region as inside the mask (= 2)
+                     }
+
+                     InitializeRegionStats(stats[curCoord.x][regionIdx], label, curCoord, regionMark, numStats);
+                 });
+
+    ForEachCoord(
+        shape,
+        [&stats, &dstVec, &mskVec, &bglVec, &dstStrides, &mskStrides, &bglStrides, &labels, endLabel, hasMask,
+         hasBgLabel, maskN, numStats](const long4_16a &curCoord)
+        {
+            long regionIdx;
+            DT   label;
+            bool usesPositionStats;
+            if (!FindLabelRegion<ST>(regionIdx, label, usesPositionStats, dstVec, bglVec, dstStrides, bglStrides,
+                                     labels, curCoord, endLabel, hasBgLabel))
+            {
+                return;
+            }
+
+            if (usesPositionStats)
+            {
+                return; // statistics for this element was already computed
+            }
+
+            std::vector<DT> &regionStats = stats[curCoord.x][regionIdx];
+
+            // If has mask and the region has no marks (it is no marked as inside mask)
+            if (hasMask && regionStats[numStats - 1] == 0 && IsInsideMask<MT>(mskVec, mskStrides, maskN, curCoord))
+            {
+                regionStats[numStats - 1] = 2; // mark the region as inside mask (= 2)
+            }
+
+            UpdateRegionStats(regionStats, curCoord, numStats);
+        });
 }
 
 // Remove islands (regions with less than minimum size in mszVec) from dstVec based on statistics
@@ -451,41 +498,31 @@ void RemoveIslands(std::vector<std::set<DT>> &labels, RawBufferType &dstVec, con
                    const long1 &mszStrides, std::vector<std::vector<std::vector<DT>>> &stats, const long4_16a &shape,
                    int numStats)
 {
-    for (long x = 0; x < shape.x; ++x)
-    {
-        ST backgroundLabel = util::ValueAt<ST>(bglVec, bglStrides, long1{x});
-        DT minSize         = util::ValueAt<DT>(mszVec, mszStrides, long1{x});
+    ForEachCoord(shape,
+                 [&labels, &dstVec, &bglVec, &mszVec, &dstStrides, &bglStrides, &mszStrides, &stats,
+                  numStats](const long4_16a &curCoord)
+                 {
+                     ST   backgroundLabel = util::ValueAt<ST>(bglVec, bglStrides, long1{curCoord.x});
+                     DT   minSize         = util::ValueAt<DT>(mszVec, mszStrides, long1{curCoord.x});
+                     DT   label           = util::ValueAt<DT>(dstVec, dstStrides, curCoord);
+                     auto fit             = labels[curCoord.x].find(label); // result of find iterator
+                     if (fit == labels[curCoord.x].end())
+                     {
+                         return; // this label is to be ignored
+                     }
 
-        for (long y = 0; y < shape.y; ++y)
-        {
-            for (long z = 0; z < shape.z; ++z)
-            {
-                for (long w = 0; w < shape.w; ++w)
-                {
-                    long4_16a curCoord{x, y, z, w};
+                     long regionIdx  = std::distance(labels[curCoord.x].cbegin(), fit);
+                     DT   regionSize = stats[curCoord.x][regionIdx][numStats - 2];
 
-                    DT   label = util::ValueAt<DT>(dstVec, dstStrides, curCoord);
-                    auto fit   = labels[x].find(label); // result of find iterator
-                    if (fit == labels[x].end())
-                    {
-                        continue; // this label is to be ignored
-                    }
+                     // If region size is smaller than minimum size (it is an island) and the region is not marked
+                     // as inside the mask (= 2), then remove the island and mark it as removed
+                     if (regionSize < minSize && stats[curCoord.x][regionIdx][numStats - 1] != 2)
+                     {
+                         util::ValueAt<DT>(dstVec, dstStrides, curCoord) = backgroundLabel;
 
-                    long regionIdx  = std::distance(labels[x].cbegin(), fit);
-                    DT   regionSize = stats[x][regionIdx][numStats - 2];
-
-                    // If region size is smaller than minimum size (it is an island) and the region is not marked
-                    // as inside the mask (= 2), then remove the island and mark it as removed
-                    if (regionSize < minSize && stats[x][regionIdx][numStats - 1] != 2)
-                    {
-                        util::ValueAt<DT>(dstVec, dstStrides, curCoord) = backgroundLabel;
-
-                        stats[x][regionIdx][numStats - 1] = 1;
-                    }
-                }
-            }
-        }
-    }
+                         stats[curCoord.x][regionIdx][numStats - 1] = 1;
+                     }
+                 });
 }
 
 // Relabel replaces index-based labels by consecutive region indices
@@ -507,30 +544,25 @@ void Relabel(RawBufferType &dstVec, const RawBufferType &bglVec, const RawBuffer
             DT origLabel = util::ValueAt<DT>(staVec, staStrides, long3{x, y, 0});
             origLabelToRegionIdx.insert({origLabel, y});
         }
-        for (long y = 0; y < shape.y; ++y)
-        {
-            for (long z = 0; z < shape.z; ++z)
-            {
-                for (long w = 0; w < shape.w; ++w)
-                {
-                    DT label = util::ValueAt<DT>(dstVec, dstStrides, long4_16a{x, y, z, w});
+        ForEachSampleCoord(shape, x,
+                           [&dstVec, &dstStrides, &origLabelToRegionIdx, backgroundLabel](const long4_16a &curCoord)
+                           {
+                               DT label = util::ValueAt<DT>(dstVec, dstStrides, curCoord);
 
-                    if (label == (DT)backgroundLabel)
-                    {
-                        continue;
-                    }
+                               if (label == (DT)backgroundLabel)
+                               {
+                                   return;
+                               }
 
-                    DT regionIdx = origLabelToRegionIdx[label];
+                               DT regionIdx = origLabelToRegionIdx[label];
 
-                    if (regionIdx >= (DT)backgroundLabel)
-                    {
-                        regionIdx += 1; // increment region indices to skip background labels
-                    }
+                               if (regionIdx >= (DT)backgroundLabel)
+                               {
+                                   regionIdx += 1; // increment region indices to skip background labels
+                               }
 
-                    util::ValueAt<DT>(dstVec, dstStrides, long4_16a{x, y, z, w}) = regionIdx;
-                }
-            }
-        }
+                               util::ValueAt<DT>(dstVec, dstStrides, curCoord) = regionIdx;
+                           });
     }
 }
 
@@ -560,6 +592,7 @@ NVCV_TYPED_TEST_SUITE(OpLabel, type::Types<
     NVCV_TEST_ROW(NVCV_SHAPE(40, 17, 1, 1), NVCV_DATA_TYPE_U8, uint8_t, true, true, true, 4, true),
     NVCV_TEST_ROW(NVCV_SHAPE(28, 73, 1, 3), NVCV_DATA_TYPE_U16, uint16_t, true, true, true, 3, true),
     NVCV_TEST_ROW(NVCV_SHAPE(19, 61, 1, 3), NVCV_DATA_TYPE_U16, uint16_t, true, true, true, 4, true),
+    NVCV_TEST_ROW(NVCV_SHAPE(35, 19, 1, 2), NVCV_DATA_TYPE_U32, uint32_t, false, false, false, 0, false),
     NVCV_TEST_ROW(NVCV_SHAPE(23, 21, 12, 1), NVCV_DATA_TYPE_U32, uint32_t, false, false, false, 0, false),
     NVCV_TEST_ROW(NVCV_SHAPE(33, 41, 22, 1), NVCV_DATA_TYPE_U32, uint32_t, false, false, false, 1, false),
     NVCV_TEST_ROW(NVCV_SHAPE(25, 38, 13, 2), NVCV_DATA_TYPE_S8, int8_t, true, false, false, 2, false),
@@ -570,7 +603,12 @@ NVCV_TYPED_TEST_SUITE(OpLabel, type::Types<
     NVCV_TEST_ROW(NVCV_SHAPE(17, 29, 5, 2), NVCV_DATA_TYPE_U8, uint8_t, true, true, true, 2, false),
     NVCV_TEST_ROW(NVCV_SHAPE(16, 28, 4, 3), NVCV_DATA_TYPE_U8, uint8_t, true, true, true, 3, true),
     NVCV_TEST_ROW(NVCV_SHAPE(17, 27, 5, 2), NVCV_DATA_TYPE_U8, uint8_t, true, true, true, 4, true),
-    NVCV_TEST_ROW(NVCV_SHAPE(40, 17, 5, 2), NVCV_DATA_TYPE_U8, uint8_t, true, true, true, 4, true)
+    NVCV_TEST_ROW(NVCV_SHAPE(40, 17, 5, 2), NVCV_DATA_TYPE_U8, uint8_t, true, true, true, 4, true),
+    // Widths above one CUDA block exercise the X-reduction threshold paths for both 2D and 3D inputs.
+    NVCV_TEST_ROW(NVCV_SHAPE(48, 17, 1, 1), NVCV_DATA_TYPE_U8, uint8_t, false, true, false, 0, false),
+    NVCV_TEST_ROW(NVCV_SHAPE(49, 17, 1, 1), NVCV_DATA_TYPE_U8, uint8_t, false, false, true, 0, false),
+    NVCV_TEST_ROW(NVCV_SHAPE(48, 17, 5, 1), NVCV_DATA_TYPE_U8, uint8_t, false, true, false, 0, false),
+    NVCV_TEST_ROW(NVCV_SHAPE(49, 17, 5, 1), NVCV_DATA_TYPE_U8, uint8_t, false, false, true, 0, false)
 >);
 
 // clang-format on
@@ -602,10 +640,25 @@ TYPED_TEST(OpLabel, correct_output)
     // labels (bgl), minimum threshold (min), maximum threshold (max), minimum size for islands removal (msz),
     // count of labeled regions (count) and statistics computed per labeled region (sta)
 
-    nvcv::Tensor srcTensor, dstTensor, bglTensor, minTensor, maxTensor, mszTensor, cntTensor, staTensor, mskTensor;
+    nvcv::Tensor srcTensor;
+    nvcv::Tensor dstTensor;
+    nvcv::Tensor bglTensor;
+    nvcv::Tensor minTensor;
+    nvcv::Tensor maxTensor;
+    nvcv::Tensor mszTensor;
+    nvcv::Tensor cntTensor;
+    nvcv::Tensor staTensor;
+    nvcv::Tensor mskTensor;
 
-    nvcv::Optional<nvcv::TensorDataStridedCuda> srcData, dstData, bglData, minData, maxData, mszData, cntData, staData,
-        mskData;
+    nvcv::Optional<nvcv::TensorDataStridedCuda> srcData;
+    nvcv::Optional<nvcv::TensorDataStridedCuda> dstData;
+    nvcv::Optional<nvcv::TensorDataStridedCuda> bglData;
+    nvcv::Optional<nvcv::TensorDataStridedCuda> minData;
+    nvcv::Optional<nvcv::TensorDataStridedCuda> maxData;
+    nvcv::Optional<nvcv::TensorDataStridedCuda> mszData;
+    nvcv::Optional<nvcv::TensorDataStridedCuda> cntData;
+    nvcv::Optional<nvcv::TensorDataStridedCuda> staData;
+    nvcv::Optional<nvcv::TensorDataStridedCuda> mskData;
 
     NVCVConnectivityType connectivity = (shape.z == 1) ? NVCV_CONNECTIVITY_4_2D : NVCV_CONNECTIVITY_6_3D;
     NVCVLabelType        assignLabels = doRelabel ? NVCV_LABEL_SEQUENTIAL : NVCV_LABEL_FAST;
@@ -711,12 +764,12 @@ TYPED_TEST(OpLabel, correct_output)
 
     long4_16a srcStrides{0, 0, srcData->stride(ids.z), srcData->stride(ids.w)};
     long4_16a dstStrides{0, 0, dstData->stride(ids.z), dstData->stride(ids.w)};
-    long1     bglStrides{(bglTensor) ? bglData->stride(0) : 0};
-    long1     minStrides{(minTensor) ? minData->stride(0) : 0};
-    long1     maxStrides{(maxTensor) ? maxData->stride(0) : 0};
-    long1     mszStrides{(mszTensor) ? mszData->stride(0) : 0};
-    long1     cntStrides{(cntTensor) ? cntData->stride(0) : 0};
-    long3 staStrides = (staTensor) ? long3{staData->stride(0), staData->stride(1), staData->stride(2)} : long3{0, 0, 0};
+    long1     bglStrides{bglTensor ? bglData->stride(0) : 0};
+    long1     minStrides{minTensor ? minData->stride(0) : 0};
+    long1     maxStrides{maxTensor ? maxData->stride(0) : 0};
+    long1     mszStrides{mszTensor ? mszData->stride(0) : 0};
+    long1     cntStrides{cntTensor ? cntData->stride(0) : 0};
+    long3 staStrides = staTensor ? long3{staData->stride(0), staData->stride(1), staData->stride(2)} : long3{0, 0, 0};
     long4_16a mskStrides{0, 0, 0, 0};
 
     if (mskTensor)
@@ -762,11 +815,11 @@ TYPED_TEST(OpLabel, correct_output)
 
     // clang-format off
 
-    for (long x = 0; x < srcShape.x; ++x)
-        for (long y = 0; y < srcShape.y; ++y)
-            for (long z = 0; z < srcShape.z; ++z)
-                for (long w = 0; w < srcShape.w; ++w)
-                    util::ValueAt<SrcT>(srcVec, srcStrides, long4_16a{x, y, z, w}) = srcRandom(rng);
+    ref::ForEachCoord(srcShape,
+                      [&srcVec, &srcStrides, &srcRandom, &rng](const long4_16a &curCoord)
+                      {
+                          util::ValueAt<SrcT>(srcVec, srcStrides, curCoord) = srcRandom(rng);
+                      });
 
     ASSERT_EQ(cudaSuccess, cudaMemcpy(srcData->basePtr(), srcVec.data(), srcBufSize, cudaMemcpyHostToDevice));
 
@@ -800,11 +853,11 @@ TYPED_TEST(OpLabel, correct_output)
     }
     if (mskTensor)
     {
-        for (long x = 0; x < mskShape.x; ++x)
-            for (long y = 0; y < mskShape.y; ++y)
-                for (long z = 0; z < mskShape.z; ++z)
-                    for (long w = 0; w < mskShape.w; ++w)
-                        util::ValueAt<MskT>(mskVec, mskStrides, long4_16a{x, y, z, w}) = mskRandom(rng);
+        ref::ForEachCoord(mskShape,
+                          [&mskVec, &mskStrides, &mskRandom, &rng](const long4_16a &curCoord)
+                          {
+                              util::ValueAt<MskT>(mskVec, mskStrides, curCoord) = mskRandom(rng);
+                          });
 
         ASSERT_EQ(cudaSuccess, cudaMemcpy(mskData->basePtr(), mskVec.data(), mskBufSize, cudaMemcpyHostToDevice));
     }
@@ -877,7 +930,7 @@ TYPED_TEST(OpLabel, correct_output)
         ASSERT_EQ(cudaSuccess, cudaMemcpy(staTestVec.data(), staData->basePtr(), staBufSize, cudaMemcpyDeviceToHost));
 
         ref::ComputeStats<SrcT, DstT, MskT>(goldStats, labGoldVec, mskVec, bglVec, dstStrides, mskStrides, bglStrides,
-                                            goldLabels, srcShape, maskN, staShape.z);
+                                            goldLabels, srcShape, maskN, static_cast<int>(staShape.z));
 
         ref::GetLabels<DstT>(testLabels, cntTestVec, staTestVec, cntStrides, staStrides, srcShape.x);
     }
@@ -891,7 +944,7 @@ TYPED_TEST(OpLabel, correct_output)
     if (mszTensor)
     {
         ref::RemoveIslands<SrcT, DstT>(goldLabels, labGoldVec, bglVec, mszVec, dstStrides, bglStrides, mszStrides,
-                                       goldStats, srcShape, staShape.z);
+                                       goldStats, srcShape, static_cast<int>(staShape.z));
     }
 
     if (doRelabel)
@@ -910,9 +963,169 @@ TYPED_TEST(OpLabel, correct_output)
     EXPECT_EQ(labTestVec, labGoldVec);
 }
 
-class OpLabel_Negative : public ::testing::Test
+template<typename T>
+void UploadVectorTensor(const nvcv::Tensor &tensor, const std::vector<T> &values)
 {
-protected:
+    auto data = tensor.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(data);
+    ASSERT_EQ(static_cast<int64_t>(values.size()), data->shape(0));
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(data->basePtr(), values.data(), values.size() * sizeof(T), cudaMemcpyHostToDevice));
+}
+
+template<typename T>
+void DownloadVectorTensor(const nvcv::Tensor &tensor, std::vector<T> &values)
+{
+    auto data = tensor.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(data);
+    values.resize(data->shape(0));
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(values.data(), data->basePtr(), values.size() * sizeof(T), cudaMemcpyDeviceToHost));
+}
+
+template<typename T>
+::testing::AssertionResult DownloadImageTensor(const nvcv::Tensor &tensor, int numSamples, std::vector<T> &values)
+{
+    values.clear();
+    int sample = 0;
+    try
+    {
+        for (; sample < numSamples; ++sample)
+        {
+            std::vector<T> sampleValues;
+            util::GetImageVectorFromTensor<T>(tensor.exportData(), sample, sampleValues);
+            values.insert(values.end(), sampleValues.begin(), sampleValues.end());
+        }
+    }
+    catch (const util::TensorDataUtilsError &e)
+    {
+        return ::testing::AssertionFailure() << "sample " << sample << ": " << e.what();
+    }
+    return ::testing::AssertionSuccess();
+}
+
+static std::vector<uint8_t> MakeLabelParityInput(int width, int height)
+{
+    std::vector<uint8_t> values(width * height);
+    for (size_t i = 0; i < values.size(); ++i)
+    {
+        values[i] = static_cast<uint8_t>((i * 7 + 13) % 7);
+    }
+    return values;
+}
+
+static ::testing::AssertionResult UploadLabelParityInputs(nvcv::Tensor &interleaved, nvcv::Tensor &planar,
+                                                          std::vector<uint8_t> &values, int numSamples)
+{
+    int         sample     = 0;
+    const char *tensorName = "interleaved";
+    try
+    {
+        for (; sample < numSamples; ++sample)
+        {
+            tensorName = "interleaved";
+            util::SetImageTensorFromVector<uint8_t>(interleaved.exportData(), values, sample);
+
+            tensorName = "planar";
+            util::SetImageTensorFromVector<uint8_t>(planar.exportData(), values, sample);
+        }
+    }
+    catch (const util::TensorDataUtilsError &e)
+    {
+        return ::testing::AssertionFailure() << tensorName << " sample " << sample << ": " << e.what();
+    }
+    return ::testing::AssertionSuccess();
+}
+
+static nvcv::TensorShape MakeLabelTensorShape(int numSamples, int width, int height, const std::string &layout)
+{
+    if (layout == "HWC" || layout == "CHW")
+    {
+        return layout == "HWC" ? nvcv::TensorShape{{height, width, 1}, layout.c_str()}
+                               : nvcv::TensorShape{{1, height, width}, layout.c_str()};
+    }
+
+    return layout == "NHWC" ? nvcv::TensorShape{{numSamples, height, width, 1}, layout.c_str()}
+                            : nvcv::TensorShape{{numSamples, 1, height, width}, layout.c_str()};
+}
+
+static void RunLabelPlanarParityCase(int numSamples, int width, int height, const std::string &interleavedLayout,
+                                     const std::string &planarLayout)
+{
+    nvcv::TensorShape interleavedShape = MakeLabelTensorShape(numSamples, width, height, interleavedLayout);
+    nvcv::TensorShape planarShape      = MakeLabelTensorShape(numSamples, width, height, planarLayout);
+
+    nvcv::Tensor srcInterleaved(interleavedShape, nvcv::TYPE_U8);
+    nvcv::Tensor dstInterleaved(interleavedShape, nvcv::TYPE_U32);
+    nvcv::Tensor srcPlanar(planarShape, nvcv::TYPE_U8);
+    nvcv::Tensor dstPlanar(planarShape, nvcv::TYPE_U32);
+
+    nvcv::Tensor bgInterleaved({{numSamples}, "N"}, nvcv::TYPE_U8);
+    nvcv::Tensor minInterleaved({{numSamples}, "N"}, nvcv::TYPE_U8);
+    nvcv::Tensor maxInterleaved({{numSamples}, "N"}, nvcv::TYPE_U8);
+    nvcv::Tensor countInterleaved({{numSamples}, "N"}, nvcv::TYPE_U32);
+    nvcv::Tensor bgPlanar({{numSamples}, "N"}, nvcv::TYPE_U8);
+    nvcv::Tensor minPlanar({{numSamples}, "N"}, nvcv::TYPE_U8);
+    nvcv::Tensor maxPlanar({{numSamples}, "N"}, nvcv::TYPE_U8);
+    nvcv::Tensor countPlanar({{numSamples}, "N"}, nvcv::TYPE_U32);
+
+    auto srcValues = MakeLabelParityInput(width, height);
+    ASSERT_TRUE(UploadLabelParityInputs(srcInterleaved, srcPlanar, srcValues, numSamples));
+
+    std::vector<uint8_t> bgValues(numSamples, 0);
+    std::vector<uint8_t> minValues(numSamples, 1);
+    std::vector<uint8_t> maxValues(numSamples, 5);
+    UploadVectorTensor(bgInterleaved, bgValues);
+    UploadVectorTensor(bgPlanar, bgValues);
+    UploadVectorTensor(minInterleaved, minValues);
+    UploadVectorTensor(minPlanar, minValues);
+    UploadVectorTensor(maxInterleaved, maxValues);
+    UploadVectorTensor(maxPlanar, maxValues);
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::Label op;
+    ASSERT_NO_THROW(op(stream, srcInterleaved, dstInterleaved, bgInterleaved, minInterleaved, maxInterleaved,
+                       nvcv::Tensor{nullptr}, countInterleaved, nvcv::Tensor{nullptr}, nvcv::Tensor{nullptr},
+                       NVCV_CONNECTIVITY_4_2D, NVCV_LABEL_FAST, NVCV_REMOVE_ISLANDS_OUTSIDE_MASK_ONLY));
+    ASSERT_NO_THROW(op(stream, srcPlanar, dstPlanar, bgPlanar, minPlanar, maxPlanar, nvcv::Tensor{nullptr}, countPlanar,
+                       nvcv::Tensor{nullptr}, nvcv::Tensor{nullptr}, NVCV_CONNECTIVITY_4_2D, NVCV_LABEL_FAST,
+                       NVCV_REMOVE_ISLANDS_OUTSIDE_MASK_ONLY));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    std::vector<uint32_t> dstInterleavedValues;
+    std::vector<uint32_t> dstPlanarValues;
+    ASSERT_TRUE(DownloadImageTensor(dstInterleaved, numSamples, dstInterleavedValues));
+    ASSERT_TRUE(DownloadImageTensor(dstPlanar, numSamples, dstPlanarValues));
+    EXPECT_EQ(dstInterleavedValues, dstPlanarValues);
+
+    std::vector<uint32_t> countInterleavedValues;
+    std::vector<uint32_t> countPlanarValues;
+    DownloadVectorTensor(countInterleaved, countInterleavedValues);
+    DownloadVectorTensor(countPlanar, countPlanarValues);
+    EXPECT_EQ(countInterleavedValues, countPlanarValues);
+}
+
+// clang-format off
+NVCV_TEST_SUITE_P(OpLabelPlanar, test::ValueList<int, int, int, std::string, std::string>{
+    // samples, width, height, interleavedLayout, planarLayout
+    {1, 19, 17,  "HWC",  "CHW"},
+    {2, 23, 13, "NHWC", "NCHW"},
+});
+
+// clang-format on
+
+TEST_P(OpLabelPlanar, tensor_matches_interleaved)
+{
+    RunLabelPlanarParityCase(GetParamValue<0>(), GetParamValue<1>(), GetParamValue<2>(), GetParamValue<3>(),
+                             GetParamValue<4>());
+}
+
+struct OpLabel_Negative : public ::testing::Test // NOSONAR: negative tests keep shared invalid fixtures together.
+{
     void SetUp() override
     {
         shape = {33, 16, 1, 1};
@@ -951,22 +1164,25 @@ protected:
         ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
     }
 
-    void runOpLabelNegativeTest(nvcv::Tensor srcTensor, nvcv::Tensor dstTensor, nvcv::Tensor bglTensor,
-                                nvcv::Tensor minTensor, nvcv::Tensor maxTensor, nvcv::Tensor mszTensor,
-                                nvcv::Tensor cntTensor, nvcv::Tensor staTensor, nvcv::Tensor mskTensor,
-                                NVCVConnectivityType connectivity, NVCVLabelType assignLabels,
-                                NVCVLabelMaskType maskType)
+    void runOpLabelNegativeTest(const nvcv::Tensor &testSrcTensor, const nvcv::Tensor &testDstTensor,
+                                const nvcv::Tensor &testBglTensor, const nvcv::Tensor &testMinTensor,
+                                const nvcv::Tensor &testMaxTensor, const nvcv::Tensor &testMszTensor,
+                                const nvcv::Tensor &testCntTensor, const nvcv::Tensor &testStaTensor,
+                                const nvcv::Tensor &testMskTensor, NVCVConnectivityType testConnectivity,
+                                NVCVLabelType testAssignLabels, NVCVLabelMaskType testMaskType)
     {
-        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall(
-                                                   [&]
-                                                   {
-                                                       op(stream, srcTensor, dstTensor, bglTensor, minTensor, maxTensor,
-                                                          mszTensor, cntTensor, staTensor, mskTensor, connectivity,
-                                                          assignLabels, maskType);
-                                                   }));
-        char msg[1024];
-        nvcvGetLastErrorMessage(msg, sizeof(msg));
-        std::cout << "\033[33m" << msg << "\033[0m" << std::endl;
+        EXPECT_EQ(
+            NVCV_ERROR_INVALID_ARGUMENT,
+            nvcv::ProtectCall(
+                [this, &testSrcTensor, &testDstTensor, &testBglTensor, &testMinTensor, &testMaxTensor, &testMszTensor,
+                 &testCntTensor, &testStaTensor, &testMskTensor, &testConnectivity, &testAssignLabels, &testMaskType]
+                {
+                    op(stream, testSrcTensor, testDstTensor, testBglTensor, testMinTensor, testMaxTensor, testMszTensor,
+                       testCntTensor, testStaTensor, testMskTensor, testConnectivity, testAssignLabels, testMaskType);
+                }));
+        std::array<char, 1024> msg;
+        nvcvGetLastErrorMessage(msg.data(), msg.size());
+        std::cout << "\033[33m" << msg.data() << "\033[0m" << std::endl;
     }
 
     int4           shape;
@@ -1001,7 +1217,7 @@ protected:
 // clang-format off
 TEST_F(OpLabel_Negative, InvalidSourceLayout)
 {
-    nvcv::Tensor srcTensorInvalidLayout({{1, shape.y, shape.x},"CHW"},srcDT);
+    nvcv::Tensor srcTensorInvalidLayout({{1, shape.y, shape.x},"WHC"},srcDT);
     runOpLabelNegativeTest(srcTensorInvalidLayout, dstTensor, bglTensor, minTensor, maxTensor, mszTensor, cntTensor,
                            staTensor, mskTensor, connectivity, assignLabels, maskType);
 }
@@ -1100,13 +1316,13 @@ TEST_F(OpLabel_Negative, InvalidCountDataType)
 
 TEST_F(OpLabel_Negative, StatusWithoutCount)
 {
-    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensor, minTensor, maxTensor, mszTensor, nullptr, staTensor,
+    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensor, minTensor, maxTensor, mszTensor, nvcv::Tensor{nullptr}, staTensor,
                            mskTensor, connectivity, assignLabels, maskType);
 }
 
 TEST_F(OpLabel_Negative, reLabelWithoutStatus)
 {
-    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensor, minTensor, maxTensor, mszTensor, cntTensor, nullptr,
+    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensor, minTensor, maxTensor, mszTensor, cntTensor, nvcv::Tensor{nullptr},
                            mskTensor, connectivity, assignLabels, maskType);
 }
 
@@ -1126,7 +1342,7 @@ TEST_F(OpLabel_Negative, InvalidStatsDataType)
 
 TEST_F(OpLabel_Negative, minSizeWithoutBgLabel)
 {
-    runOpLabelNegativeTest(srcTensor, dstTensor, nullptr, minTensor, maxTensor, mszTensor, cntTensor, staTensor,
+    runOpLabelNegativeTest(srcTensor, dstTensor, nvcv::Tensor{nullptr}, minTensor, maxTensor, mszTensor, cntTensor, staTensor,
                            mskTensor, connectivity, assignLabels, maskType);
 }
 
@@ -1146,7 +1362,7 @@ TEST_F(OpLabel_Negative, InvalidMinSizeDataType)
 
 TEST_F(OpLabel_Negative, MaskWithoutMinSize)
 {
-    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensor, minTensor, maxTensor, nullptr, cntTensor, staTensor,
+    runOpLabelNegativeTest(srcTensor, dstTensor, bglTensor, minTensor, maxTensor, nvcv::Tensor{nullptr}, cntTensor, staTensor,
                            mskTensor, connectivity, assignLabels, maskType);
 }
 

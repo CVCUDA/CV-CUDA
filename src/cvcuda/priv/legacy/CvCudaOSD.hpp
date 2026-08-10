@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,11 +29,11 @@
 #include <string>
 #include <vector>
 
-namespace nvcv::cuda { namespace osd {
+namespace nvcv::cuda::osd {
 
-#define PREALLOC_CMD_NUM 100
+inline constexpr int PREALLOC_CMD_NUM = 100;
 
-#define checkRuntime(call) check_runtime(call, #call, __LINE__, __FILE__)
+#define checkRuntime(call) check_runtime(call, #call, __LINE__, __FILE__) // NOSONAR: std::source_location is C++20.
 
 inline static bool check_runtime(cudaError_t e, const char *call, int line, const char *file)
 {
@@ -160,16 +160,21 @@ enum class CommandType : int
 
 struct TextLocation
 {
-    int image_x, image_y;
+    int image_x;
+    int image_y;
     int text_x;
-    int text_w, text_h;
+    int text_w;
+    int text_h;
 };
 
 // cuOSDContextCommand includes basic attributes for color and bounding box coordinate
 struct cuOSDContextCommand
 {
     CommandType   type = CommandType::None;
-    unsigned char c0, c1, c2, c3;
+    unsigned char c0;
+    unsigned char c1;
+    unsigned char c2;
+    unsigned char c3;
     int           bounding_left   = 0;
     int           bounding_top    = 0;
     int           bounding_right  = 0;
@@ -183,17 +188,20 @@ struct cuOSDContextCommand
 // thickness: border width in case > 0, -1 stands for fill mode
 struct CircleCommand : cuOSDContextCommand
 {
-    int cx, cy, radius, thickness;
+    int cx;
+    int cy;
+    int radius;
+    int thickness;
 
     CircleCommand(int batch_idx, int cx, int cy, int radius, int thickness, unsigned char c0, unsigned char c1,
                   unsigned char c2, unsigned char c3)
+        : cx(cx)
+        , cy(cy)
+        , radius(radius)
+        , thickness(thickness)
     {
         this->batch_index = batch_idx;
         this->type        = CommandType::Circle;
-        this->cx          = cx;
-        this->cy          = cy;
-        this->radius      = radius;
-        this->thickness   = thickness;
         this->c0          = c0;
         this->c1          = c1;
         this->c2          = c2;
@@ -213,8 +221,10 @@ struct CircleCommand : cuOSDContextCommand
 struct SegmentCommand : cuOSDContextCommand
 {
     float *dSeg;
-    int    segWidth, segHeight;
-    float  scale_x, scale_y;
+    int    segWidth;
+    int    segHeight;
+    float  scale_x;
+    float  scale_y;
     float  segThreshold;
 
     SegmentCommand()
@@ -243,8 +253,22 @@ struct RectangleCommand : cuOSDContextCommand
 {
     int   thickness     = -1;
     bool  interpolation = false;
-    float ax1, ay1, bx1, by1, cx1, cy1, dx1, dy1;
-    float ax2, ay2, bx2, by2, cx2, cy2, dx2, dy2;
+    float ax1;
+    float ay1;
+    float bx1;
+    float by1;
+    float cx1;
+    float cy1;
+    float dx1;
+    float dy1;
+    float ax2;
+    float ay2;
+    float bx2;
+    float by2;
+    float cx2;
+    float cy2;
+    float dx2;
+    float dy2;
 
     RectangleCommand()
     {
@@ -254,7 +278,10 @@ struct RectangleCommand : cuOSDContextCommand
 
 struct BoxBlurCommand
 {
-    uint8_t c0, c1, c2, c3;
+    uint8_t c0;
+    uint8_t c1;
+    uint8_t c2;
+    uint8_t c3;
     int     bounding_left   = 0;
     int     bounding_top    = 0;
     int     bounding_right  = 0;
@@ -275,14 +302,14 @@ struct TextCommand : cuOSDContextCommand
 
     TextCommand(int text_line_size, int ilocation, unsigned char c0, unsigned char c1, unsigned char c2,
                 unsigned char c3)
+        : text_line_size(text_line_size)
+        , ilocation(ilocation)
     {
-        this->text_line_size = text_line_size;
-        this->ilocation      = ilocation;
-        this->type           = CommandType::Text;
-        this->c0             = c0;
-        this->c1             = c1;
-        this->c2             = c2;
-        this->c3             = c3;
+        this->type = CommandType::Text;
+        this->c0   = c0;
+        this->c1   = c1;
+        this->c2   = c2;
+        this->c3   = c3;
     }
 };
 
@@ -292,18 +319,19 @@ struct TextHostCommand : cuOSDContextCommand
     std::vector<unsigned long int> text;
     unsigned short                 font_size;
     std::string                    font_name;
-    int                            x, y;
+    int                            x;
+    int                            y;
 
     TextHostCommand(int batch_idx, const std::vector<unsigned long int> &text, unsigned short font_size,
                     const char *font, int x, int y, unsigned char c0, unsigned char c1, unsigned char c2,
                     unsigned char c3)
+        : text(text)
+        , font_size(font_size)
+        , font_name(font)
+        , x(x)
+        , y(y)
     {
         this->batch_index = batch_idx;
-        this->text        = text;
-        this->font_size   = font_size;
-        this->font_name   = font;
-        this->x           = x;
-        this->y           = y;
         this->c0          = c0;
         this->c1          = c1;
         this->c2          = c2;
@@ -334,8 +362,8 @@ struct cuOSDContext
     int  bounding_bottom  = 0;
 };
 
-typedef cuOSDContext *cuOSDContext_t;
+using cuOSDContext_t = cuOSDContext *;
 
-}} // namespace nvcv::cuda::osd
+} // namespace nvcv::cuda::osd
 
 #endif // CV_CUDA_OSD_HPP

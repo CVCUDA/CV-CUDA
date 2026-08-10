@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,7 +41,12 @@ public:
      *
      * @param data The underlying tensor data representation.
      */
-    TensorData(const NVCVTensorData &data);
+    explicit TensorData(const NVCVTensorData &data);
+    TensorData(const TensorData &)     = default;
+    TensorData(TensorData &&) noexcept = default;
+
+    TensorData &operator=(const TensorData &)     = default;
+    TensorData &operator=(TensorData &&) noexcept = default;
 
     /// @brief Retrieves the rank (number of dimensions) of the tensor.
     int rank() const;
@@ -184,7 +189,12 @@ public:
      *
      * @param data The underlying tensor data representation.
      */
-    TensorDataStridedCuda(const NVCVTensorData &data);
+    explicit TensorDataStridedCuda(const NVCVTensorData &data);
+    TensorDataStridedCuda(const TensorDataStridedCuda &)     = default;
+    TensorDataStridedCuda(TensorDataStridedCuda &&) noexcept = default;
+
+    TensorDataStridedCuda &operator=(const TensorDataStridedCuda &)     = default;
+    TensorDataStridedCuda &operator=(TensorDataStridedCuda &&) noexcept = default;
 
     /**
      * @brief Constructs a `TensorDataStridedCuda` object from tensor shape, data type, and buffer.
@@ -210,6 +220,6 @@ public:
 
 } // namespace nvcv
 
-#include "detail/TensorDataImpl.hpp"
+#include "detail/TensorDataImpl.hpp" // NOSONAR: inline definitions require the declarations above.
 
 #endif // NVCV_TENSORDATA_HPP

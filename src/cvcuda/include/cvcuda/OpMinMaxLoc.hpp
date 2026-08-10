@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -36,14 +36,14 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class MinMaxLoc final : public IOperator
 {
 public:
     explicit MinMaxLoc();
-
-    ~MinMaxLoc();
 
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &minVal, const nvcv::Tensor &minLoc,
                     const nvcv::Tensor &numMin, const nvcv::Tensor &maxVal, const nvcv::Tensor &maxLoc,
@@ -53,46 +53,45 @@ public:
                     const nvcv::Tensor &minLoc, const nvcv::Tensor &numMin, const nvcv::Tensor &maxVal,
                     const nvcv::Tensor &maxLoc, const nvcv::Tensor &numMax) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline MinMaxLoc::MinMaxLoc()
 {
-    nvcv::detail::CheckThrow(cvcudaMinMaxLocCreate(&m_handle));
-    assert(m_handle);
-}
-
-inline MinMaxLoc::~MinMaxLoc()
-{
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaMinMaxLocCreate(&h));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void MinMaxLoc::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &minVal,
                                   const nvcv::Tensor &minLoc, const nvcv::Tensor &numMin, const nvcv::Tensor &maxVal,
                                   const nvcv::Tensor &maxLoc, const nvcv::Tensor &numMax) const
 {
-    nvcv::detail::CheckThrow(cvcudaMinMaxLocSubmit(m_handle, stream, in.handle(), minVal.handle(), minLoc.handle(),
-                                                   numMin.handle(), maxVal.handle(), maxLoc.handle(), numMax.handle()));
+    nvcv::detail::CheckThrow(cvcudaMinMaxLocSubmit(m_handle.get(), stream, in.handle(), minVal.handle(),
+                                                   minLoc.handle(), numMin.handle(), maxVal.handle(), maxLoc.handle(),
+                                                   numMax.handle()));
 }
 
 inline void MinMaxLoc::operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::Tensor &minVal,
                                   const nvcv::Tensor &minLoc, const nvcv::Tensor &numMin, const nvcv::Tensor &maxVal,
                                   const nvcv::Tensor &maxLoc, const nvcv::Tensor &numMax) const
 {
-    nvcv::detail::CheckThrow(cvcudaMinMaxLocVarShapeSubmit(m_handle, stream, in.handle(), minVal.handle(),
+    nvcv::detail::CheckThrow(cvcudaMinMaxLocVarShapeSubmit(m_handle.get(), stream, in.handle(), minVal.handle(),
                                                            minLoc.handle(), numMin.handle(), maxVal.handle(),
                                                            maxLoc.handle(), numMax.handle()));
 }
 
 inline NVCVOperatorHandle MinMaxLoc::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA_MINMAXLOC_HPP

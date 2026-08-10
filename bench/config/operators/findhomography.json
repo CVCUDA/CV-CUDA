@@ -1,0 +1,285 @@
+{
+    "benchmark": "findhomography",
+    "configs": {
+        "findhomography_basic": {
+            "tier": "basic",
+            "dtypes": [
+                "float32"
+            ],
+            "string_axes": {
+                "shape": [
+                    "512x1024"
+                ],
+                "inputKind": [
+                    "Tensor"
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "FindHomography valid non-collinear projective (basic)."
+            },
+            "baselines": {
+                "findhomography_basic[InOutDataType=float32][shape=512x1024][inputKind=Tensor]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1674.1464100419603,
+                        "gpu_time_us_python": 1686.3512093436598,
+                        "gpu_noise_us_cpp": 23.08,
+                        "gpu_noise_us_python": 23.384,
+                        "gpu_bwutil_cpp": 0.0032289906359946005,
+                        "gpu_bwutil_python": 0.00320562170364726
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1634.63361069714,
+                        "gpu_time_us_python": 1642.6961580674001,
+                        "gpu_noise_us_cpp": 23.596,
+                        "gpu_noise_us_python": 22.686,
+                        "gpu_bwutil_cpp": 0.00252269061857548,
+                        "gpu_bwutil_python": 0.00251030317139974
+                    }
+                }
+            }
+        },
+        "findhomography_varshape_basic": {
+            "tier": "basic",
+            "dtypes": [
+                "float32"
+            ],
+            "string_axes": {
+                "shape": [
+                    "16x16"
+                ],
+                "inputKind": [
+                    "VarShape"
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "FindHomography valid projective TensorBatch workload."
+            },
+            "baselines": {
+                "findhomography_varshape_basic[InOutDataType=float32][shape=16x16][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 4449.08624821734,
+                        "gpu_time_us_python": 4458.421250961159,
+                        "gpu_noise_us_cpp": 5.832,
+                        "gpu_noise_us_python": 7.5280000000000005,
+                        "gpu_bwutil_cpp": 6.75240467977025e-07,
+                        "gpu_bwutil_python": 6.738313504051135e-07
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 4461.8497914652,
+                        "gpu_time_us_python": 4473.702727404279,
+                        "gpu_noise_us_cpp": 3.408,
+                        "gpu_noise_us_python": 4.781999999999999,
+                        "gpu_bwutil_cpp": 5.136142346769413e-07,
+                        "gpu_bwutil_python": 5.122623150138726e-07
+                    }
+                }
+            }
+        },
+        "findhomography_4pts_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "float32"
+            ],
+            "string_axes": {
+                "shape": [
+                    "8192x4"
+                ],
+                "inputKind": [
+                    "Tensor"
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "FindHomography valid non-collinear projective 4pts (advanced)."
+            },
+            "baselines": {
+                "findhomography_4pts_advanced[InOutDataType=float32][shape=8192x4][inputKind=Tensor]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 2300.3282288096802,
+                        "gpu_time_us_python": 2311.06650467594,
+                        "gpu_noise_us_cpp": 3.194,
+                        "gpu_noise_us_python": 3.918,
+                        "gpu_bwutil_cpp": 0.00022898995114687998,
+                        "gpu_bwutil_python": 0.00022792614491534002
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 2284.7643418354796,
+                        "gpu_time_us_python": 2294.28390790134,
+                        "gpu_noise_us_cpp": 1.248,
+                        "gpu_noise_us_python": 3.1500000000000004,
+                        "gpu_bwutil_cpp": 0.00017586308504328,
+                        "gpu_bwutil_python": 0.00017513222937726001
+                    }
+                }
+            }
+        },
+        "findhomography_16pts_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "float32"
+            ],
+            "string_axes": {
+                "shape": [
+                    "4096x16"
+                ],
+                "inputKind": [
+                    "Tensor"
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "FindHomography valid non-collinear projective 16pts (advanced)."
+            },
+            "baselines": {
+                "findhomography_16pts_advanced[InOutDataType=float32][shape=4096x16][inputKind=Tensor]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1626.7303196892603,
+                        "gpu_time_us_python": 1638.9062411131,
+                        "gpu_noise_us_cpp": 2.312,
+                        "gpu_noise_us_python": 3.214,
+                        "gpu_bwutil_cpp": 0.00047276560108167997,
+                        "gpu_bwutil_python": 0.0004692528131047599
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1764.57778185458,
+                        "gpu_time_us_python": 1773.5568295149,
+                        "gpu_noise_us_cpp": 1.9440000000000002,
+                        "gpu_noise_us_python": 2.674,
+                        "gpu_bwutil_cpp": 0.0003324537801088,
+                        "gpu_bwutil_python": 0.00033076680858446005
+                    }
+                }
+            }
+        },
+        "findhomography_64pts_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "float32"
+            ],
+            "string_axes": {
+                "shape": [
+                    "4096x64"
+                ],
+                "inputKind": [
+                    "Tensor"
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "FindHomography valid non-collinear projective 64pts (advanced)."
+            },
+            "baselines": {
+                "findhomography_64pts_advanced[InOutDataType=float32][shape=4096x64][inputKind=Tensor]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 2396.06443632214,
+                        "gpu_time_us_python": 2404.1438749421204,
+                        "gpu_noise_us_cpp": 7.797999999999999,
+                        "gpu_noise_us_python": 9.059999999999999,
+                        "gpu_bwutil_cpp": 0.00116515258154572,
+                        "gpu_bwutil_python": 0.00116123879225096
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 2870.54704337648,
+                        "gpu_time_us_python": 2880.0478891631606,
+                        "gpu_noise_us_cpp": 12.496,
+                        "gpu_noise_us_python": 14.376000000000001,
+                        "gpu_bwutil_cpp": 0.00074189230384916,
+                        "gpu_bwutil_python": 0.0007394491040947401
+                    }
+                }
+            }
+        },
+        "findhomography_256pts_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "float32"
+            ],
+            "string_axes": {
+                "shape": [
+                    "2048x256"
+                ],
+                "inputKind": [
+                    "Tensor"
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "FindHomography valid non-collinear projective 256pts (advanced)."
+            },
+            "baselines": {
+                "findhomography_256pts_advanced[InOutDataType=float32][shape=2048x256][inputKind=Tensor]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1667.8467984367599,
+                        "gpu_time_us_python": 1676.7859790330003,
+                        "gpu_noise_us_cpp": 2.992,
+                        "gpu_noise_us_python": 4.69,
+                        "gpu_bwutil_cpp": 0.00326250224835888,
+                        "gpu_bwutil_python": 0.00324512259529516
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 2049.94044896282,
+                        "gpu_time_us_python": 2060.61068106412,
+                        "gpu_noise_us_cpp": 3.37,
+                        "gpu_noise_us_python": 3.6559999999999997,
+                        "gpu_bwutil_cpp": 0.00202483699164824,
+                        "gpu_bwutil_python": 0.0020143712500211002
+                    }
+                }
+            }
+        },
+        "findhomography_1024pts_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "float32"
+            ],
+            "string_axes": {
+                "shape": [
+                    "1024x1024"
+                ],
+                "inputKind": [
+                    "Tensor"
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "FindHomography valid non-collinear projective 1024pts (advanced)."
+            },
+            "baselines": {
+                "findhomography_1024pts_advanced[InOutDataType=float32][shape=1024x1024][inputKind=Tensor]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 2927.1039923955605,
+                        "gpu_time_us_python": 2942.14702792104,
+                        "gpu_noise_us_cpp": 19.216,
+                        "gpu_noise_us_python": 18.94,
+                        "gpu_bwutil_cpp": 0.00369360031070226,
+                        "gpu_bwutil_python": 0.0036747489139883397
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 2956.0247838166597,
+                        "gpu_time_us_python": 2965.6256164030797,
+                        "gpu_noise_us_cpp": 14.828,
+                        "gpu_noise_us_python": 16.796,
+                        "gpu_bwutil_cpp": 0.00278999152596568,
+                        "gpu_bwutil_python": 0.0027809496852598398
+                    }
+                }
+            }
+        }
+    }
+}

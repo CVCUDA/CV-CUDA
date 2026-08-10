@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,6 +34,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class ConvertTo final : public IOperator
@@ -41,40 +43,37 @@ class ConvertTo final : public IOperator
 public:
     explicit ConvertTo();
 
-    ~ConvertTo();
-
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const double alpha,
-                    const double beta);
+                    const double beta, NVCVRoundMode roundMode = NVCV_ROUND_NEAREST) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline ConvertTo::ConvertTo()
 {
-    nvcv::detail::CheckThrow(cvcudaConvertToCreate(&m_handle));
-    assert(m_handle);
-}
-
-inline ConvertTo::~ConvertTo()
-{
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaConvertToCreate(&h));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void ConvertTo::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
-                                  const double alpha, const double beta)
+                                  const double alpha, const double beta, NVCVRoundMode roundMode) const
 {
-    nvcv::detail::CheckThrow(cvcudaConvertToSubmit(m_handle, stream, in.handle(), out.handle(), alpha, beta));
+    nvcv::detail::CheckThrow(
+        cvcudaConvertToSubmit(m_handle.get(), stream, in.handle(), out.handle(), alpha, beta, roundMode));
 }
 
 inline NVCVOperatorHandle ConvertTo::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA_CONVERT_TO_HPP

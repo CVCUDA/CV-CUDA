@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,7 @@
  */
 
 #include "Operators.hpp"
+#include "VarShapeUtils.hpp"
 
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
@@ -26,9 +27,18 @@
 #include <nvcv/python/Tensor.hpp>
 #include <pybind11/stl.h>
 
+#include <stdexcept>
+
 namespace cvcudapy {
 
 namespace {
+
+class ThresholdError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
+
 Tensor ThresholdInto(Tensor &output, Tensor &input, Tensor &thresh, Tensor &maxval, uint32_t type,
                      std::optional<Stream> pstream)
 {
@@ -37,15 +47,17 @@ Tensor ThresholdInto(Tensor &output, Tensor &input, Tensor &thresh, Tensor &maxv
         pstream = Stream::Current();
     }
 
-    nvcv::TensorShape shape     = input.shape();
-    auto              threshold = CreateOperator<cvcuda::Threshold>(type, (int)shape[0]);
+    // HWC inputs (rank 3) have no N dim, so shape[0] is H — fall back to 1.
+    int  batchSize = (input.shape().size() == 4) ? (int)input.shape()[0] : 1;
+    auto threshold = CreateOperator<cvcuda::Threshold>(type, batchSize);
 
     ResourceGuard guard(*pstream);
     guard.add(LockMode::LOCK_MODE_READ, {input, thresh, maxval});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*threshold});
 
-    threshold->submit(pstream->cudaHandle(), input, output, thresh, maxval);
+    guard.run([&thresh, &threshold, &pstream, &input, &output, &maxval]()
+              { threshold->submit(pstream->cudaHandle(), input, output, thresh, maxval); });
 
     return output;
 }
@@ -72,7 +84,8 @@ ImageBatchVarShape ThresholdVarShapeInto(ImageBatchVarShape &output, ImageBatchV
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*threshold});
 
-    threshold->submit(pstream->cudaHandle(), input, output, thresh, maxval);
+    guard.run([&thresh, &threshold, &pstream, &input, &output, &maxval]()
+              { threshold->submit(pstream->cudaHandle(), input, output, thresh, maxval); });
 
     return output;
 }
@@ -80,19 +93,13 @@ ImageBatchVarShape ThresholdVarShapeInto(ImageBatchVarShape &output, ImageBatchV
 ImageBatchVarShape ThresholdVarShape(ImageBatchVarShape &input, Tensor &thresh, Tensor &maxval, uint32_t type,
                                      std::optional<Stream> pstream)
 {
-    ImageBatchVarShape output = ImageBatchVarShape::Create(input.numImages());
-
     auto format = input.uniqueFormat();
     if (!format)
     {
-        throw std::runtime_error("All images in input must have the same format.");
+        throw ThresholdError("All images in input must have the same format.");
     }
 
-    for (auto img = input.begin(); img != input.end(); ++img)
-    {
-        auto newimg = Image::Create(img->size(), format);
-        output.pushBack(newimg);
-    }
+    ImageBatchVarShape output = CreateSameShapeImageBatch(input, format, input.numImages());
 
     return ThresholdVarShapeInto(output, input, thresh, maxval, type, pstream);
 }
@@ -103,19 +110,11 @@ void ExportOpThreshold(py::module &m)
 {
     using namespace pybind11::literals;
 
-    py::options options;
-    options.disable_function_signatures();
-
-    m.def("threshold", &Threshold, "src"_a, "thresh"_a, "maxval"_a, "type"_a, py::kw_only(), "stream"_a = nullptr,
+    m.def("threshold", NvtxTrace("cvcuda.threshold", &Threshold), "src"_a, "thresh"_a, "maxval"_a, "type"_a,
+          py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
-
-	cvcuda.threshold(src: cvcuda.Tensor, thresh: cvcuda.Tensor, maxval: cvcuda.Tensor, type:ThresholdType, stream: Optional[cvcuda.Stream] = None) -> cvcuda.Tensor
-
         Executes the Threshold operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Threshold operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.Tensor): Input tensor containing one or more images.
@@ -129,21 +128,12 @@ void ExportOpThreshold(py::module &m)
         Returns:
             cvcuda.Tensor: The output tensor.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("threshold_into", &ThresholdInto, "dst"_a, "src"_a, "thresh"_a, "maxval"_a, "type"_a, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.threshold_into(dst: cvcuda.Tensor, src: cvcuda.Tensor, thresh: cvcuda.Tensor, maxval: cvcuda.Tensor, type:ThresholdType, stream: Optional[cvcuda.Stream] = None)
-
+    m.def("threshold_into", NvtxTrace("cvcuda.threshold_into", &ThresholdInto), "dst"_a, "src"_a, "thresh"_a,
+          "maxval"_a, "type"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the Threshold operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Threshold operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.Tensor): Output tensor to store the result of the operation.
@@ -156,23 +146,13 @@ void ExportOpThreshold(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 
-    m.def("threshold", &ThresholdVarShape, "src"_a, "thresh"_a, "maxval"_a, "type"_a, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.threshold(src: cvcuda.ImageBatchVarShape, thresh: cvcuda.Tensor, maxval: cvcuda.Tensor, type:ThresholdType, stream: Optional[cvcuda.Stream] = None) -> cvcuda.ImageBatchVarShape
-
+    m.def("threshold", NvtxTrace("cvcuda.threshold", &ThresholdVarShape), "src"_a, "thresh"_a, "maxval"_a, "type"_a,
+          py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the Threshold operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Threshold operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
@@ -186,21 +166,12 @@ void ExportOpThreshold(py::module &m)
         Returns:
             cvcuda.ImageBatchVarShape: The output image batch.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("threshold_into", &ThresholdVarShapeInto, "dst"_a, "src"_a, "thresh"_a, "maxval"_a, "type"_a, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.threshold_into(dst: cvcuda.ImageBatchVarShape, src: cvcuda.ImageBatchVarShape, thresh: cvcuda.Tensor, maxval: cvcuda.Tensor, type:ThresholdType, stream: Optional[cvcuda.Stream] = None)
-
+    m.def("threshold_into", NvtxTrace("cvcuda.threshold_into", &ThresholdVarShapeInto), "dst"_a, "src"_a, "thresh"_a,
+          "maxval"_a, "type"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the Threshold operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Threshold operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.ImageBatchVarShape): Output image batch containing the result of the operation.
@@ -213,11 +184,7 @@ void ExportOpThreshold(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.ImageBatchVarShape: The output image batch (same as dst).
     )pbdoc");
 }
 

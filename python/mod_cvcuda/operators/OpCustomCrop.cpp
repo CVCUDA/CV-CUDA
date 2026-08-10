@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -42,7 +42,8 @@ Tensor CustomCropInto(Tensor &output, Tensor &input, const NVCVRectI &rcCrop, st
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*crop});
 
-    crop->submit(pstream->cudaHandle(), input, output, rcCrop);
+    guard.run([&crop, &pstream, &input, &output, &rcCrop]()
+              { crop->submit(pstream->cudaHandle(), input, output, rcCrop); });
 
     return std::move(output);
 }
@@ -88,13 +89,10 @@ void ExportOpCustomCrop(py::module &m)
 {
     using namespace pybind11::literals;
 
-    m.def("customcrop", &CustomCrop, "src"_a, "rect"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
+    m.def("customcrop", NvtxTrace("cvcuda.customcrop", &CustomCrop), "src"_a, "rect"_a, py::kw_only(),
+          "stream"_a = nullptr, R"pbdoc(
         Executes the Custom Crop operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Custom Crop operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.Tensor): Input tensor containing one or more images.
@@ -104,18 +102,12 @@ void ExportOpCustomCrop(py::module &m)
         Returns:
             cvcuda.Tensor: The output tensor.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("customcrop_into", &CustomCropInto, "dst"_a, "src"_a, "rect"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
+    m.def("customcrop_into", NvtxTrace("cvcuda.customcrop_into", &CustomCropInto), "dst"_a, "src"_a, "rect"_a,
+          py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the Custom Crop operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Custom Crop operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.Tensor): Output tensor to store the result of the operation.
@@ -124,11 +116,7 @@ void ExportOpCustomCrop(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 }
 

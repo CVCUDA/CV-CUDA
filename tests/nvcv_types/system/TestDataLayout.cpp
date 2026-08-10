@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,6 +20,7 @@
 #include <nvcv/ColorSpec.h>
 #include <nvcv/util/Size.hpp>
 
+#include <array>
 #include <unordered_set>
 
 namespace t    = ::testing;
@@ -46,15 +47,6 @@ INSTANTIATE_TEST_SUITE_P(
               MAKE_SWIZZLE(X, 0, 0, Y), MAKE_SWIZZLE(Y, 0, 0, X), MAKE_SWIZZLE(X, 0, 0, 1), MAKE_SWIZZLE(X, Y, 0, 1),
               MAKE_SWIZZLE(X, Y, 0, 0), MAKE_SWIZZLE(0, X, Z, 0), MAKE_SWIZZLE(0, Z, X, 0), MAKE_SWIZZLE(0, Y, X, 1)));
 
-// TEST_P(SwizzleTests, predefined_has_correct_definition)
-// {
-//     NVCVSwizzle gold = std::get<0>(GetParam());
-//     NVCVSwizzle test = NVCV_MAKE_SWIZZLE(std::get<2>(GetParam()), std::get<3>(GetParam()), std::get<4>(GetParam()),
-//                                          std::get<5>(GetParam()));
-
-//     EXPECT_EQ(gold, test);
-// }
-
 TEST_P(SwizzleTests, make_sizzle_function_works)
 {
     NVCVSwizzle gold = std::get<0>(GetParam());
@@ -65,27 +57,12 @@ TEST_P(SwizzleTests, make_sizzle_function_works)
     EXPECT_EQ(gold, test);
 }
 
-// TEST_P(SwizzleTests, make_sizzle_macro_works)
-// {
-//     NVCVSwizzle gold = std::get<0>(GetParam());
-//     NVCVSwizzle test = std::get<1>(GetParam());
-
-//     EXPECT_EQ(gold, test);
-// }
-
-// TEST(SwizzleTests, make_swizzle_macro)
-// {
-//     NVCVSwizzle swzl;
-//     EXPECT_EQ(NVCV_SUCCESS, nvcvMakeSwizzle(&swzl, NVCV_CHANNEL_X, NVCV_CHANNEL_W, NVCV_CHANNEL_Z, NVCV_CHANNEL_1));
-//     EXPECT_EQ(swzl, NVCV_MAKE_SWIZZLE(NVCV_CHANNEL_X, NVCV_CHANNEL_W, NVCV_CHANNEL_Z, NVCV_CHANNEL_1));
-// }
-
 TEST_P(SwizzleTests, get_channel_channels)
 {
     NVCVSwizzle swizzle = std::get<0>(GetParam());
 
-    NVCVChannel channels[4];
-    nvcvSwizzleGetChannels(swizzle, channels);
+    std::array<NVCVChannel, 4> channels;
+    nvcvSwizzleGetChannels(swizzle, channels.data());
 
     EXPECT_EQ(std::get<1>(GetParam()), channels[0]);
     EXPECT_EQ(std::get<2>(GetParam()), channels[1]);
@@ -95,11 +72,11 @@ TEST_P(SwizzleTests, get_channel_channels)
 
 TEST_P(SwizzleTests, get_channel_count)
 {
-    NVCVSwizzle swizzle = std::get<0>(GetParam());
-    NVCVChannel channels[]
+    NVCVSwizzle                swizzle = std::get<0>(GetParam());
+    std::array<NVCVChannel, 4> channels
         = {std::get<1>(GetParam()), std::get<2>(GetParam()), std::get<3>(GetParam()), std::get<4>(GetParam())};
 
-    int hist[4] = {};
+    std::array<int, 4> hist = {};
 
     int gold = 0;
     for (int i = 0; i < 4; ++i)
@@ -133,7 +110,7 @@ struct PackingTestParams
 {
     NVCVPacking packing;
 
-    int bitsPerComponent[4];
+    std::array<int, 4> bitsPerComponent;
 
     NVCVPackingParams params;
 
@@ -171,16 +148,17 @@ struct PackingTestParams
     }
 };
 
-// from boost
-
-inline void hash_combine(std::size_t &seed) {}
-
-template<typename T, typename... Rest>
-inline void hash_combine(std::size_t &seed, const T &v, Rest... rest)
+template<typename T>
+inline void hash_combine_one(std::size_t &seed, const T &v)
 {
     std::hash<T> hasher;
     seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-    hash_combine(seed, rest...);
+}
+
+template<typename... Args>
+inline void hash_combine(std::size_t &seed, const Args &...args)
+{
+    (hash_combine_one(seed, args), ...);
 }
 
 struct HashPackingTestParams
@@ -478,8 +456,8 @@ TEST_P(PackingTests, get_bits_per_component)
 {
     PackingTestParams p = GetParam();
 
-    int bits[4];
-    nvcvPackingGetBitsPerComponent(p.packing, bits);
+    std::array<int, 4> bits;
+    nvcvPackingGetBitsPerComponent(p.packing, bits.data());
 
     EXPECT_EQ(p.bitsPerComponent[0], bits[0]) << p.packing;
     EXPECT_EQ(p.bitsPerComponent[1], bits[1]) << p.packing;
@@ -520,9 +498,9 @@ TEST_P(PackingTests, check_bits_per_pixel)
         break;
 
     default:
-        for (int i = 0; i < 4; ++i)
+        for (int bits : p.params.bits)
         {
-            gold += p.params.bits[i];
+            gold += bits;
         }
         break;
     }
@@ -541,8 +519,80 @@ TEST(PackingTests, valid_values)
     PackingTestParams p;
     p.params.alignment = 0; // don't care
 
-    NVCVChannel swc[4];
-    for (int bitsX = 0; bitsX <= 256; bitsX < 32 ? ++bitsX : (bitsX < 128 ? (bitsX += 8) : (bitsX += 32)))
+    std::array<NVCVChannel, 4> swc;
+    auto                       testPackingForBitsW = [&](int bitsX, int bitsW)
+    {
+        p.params.bits[3] = bitsW;
+        swc[3]           = p.params.bits[3] != 0 ? NVCV_CHANNEL_W : NVCV_CHANNEL_0;
+
+        NVCVStatus status = nvcvMakeSwizzle(&p.params.swizzle, swc[0], swc[1], swc[2], swc[3]);
+        if (p.params.swizzle != NVCV_SWIZZLE_UNSUPPORTED)
+            EXPECT_EQ(status, NVCV_SUCCESS);
+        else
+            return;
+
+        p.params.byteOrder = NVCV_ORDER_MSB;
+
+        auto it = packingList.find(p);
+        if (it != packingList.end())
+        {
+            NVCVPacking packing;
+            ASSERT_EQ(NVCV_SUCCESS, nvcvMakePacking(&packing, &p.params));
+
+            EXPECT_EQ(it->packing, packing) << p;
+            packingList.erase(it);
+        }
+        // to save some time, let's do negative tests in only a subset of the parameter space
+        else if (bitsX == 8)
+        {
+            NVCVPacking packing = NVCV_PACKING_X8_Y8__X8_Z8;
+            ASSERT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvMakePacking(&packing, &p.params)) << p;
+            EXPECT_EQ(packing, NVCV_PACKING_X8_Y8__X8_Z8) << "should not have modified output";
+        }
+
+        p.params.byteOrder = NVCV_ORDER_LSB;
+
+        it = packingList.find(p);
+        if (it != packingList.end())
+        {
+            NVCVPacking packing;
+            ASSERT_EQ(NVCV_SUCCESS, nvcvMakePacking(&packing, &p.params));
+
+            EXPECT_EQ(it->packing, packing) << p;
+            packingList.erase(it);
+        }
+        // to save some time, let's do negative tests in only a subset of the parameter space
+        else if (bitsX == 8)
+        {
+            NVCVPacking packing = NVCV_PACKING_X8_Y8__X8_Z8;
+            EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvMakePacking(&packing, &p.params)) << p;
+            EXPECT_EQ(packing, NVCV_PACKING_X8_Y8__X8_Z8) << "should not have modified output";
+        }
+    };
+    auto testPackingForBitsZ = [&](int bitsX)
+    {
+        for (int bitsW = 0; bitsW <= 128; bitsW < 32 ? ++bitsW : (bitsW += 8))
+        {
+            ASSERT_NO_FATAL_FAILURE(testPackingForBitsW(bitsX, bitsW));
+        }
+    };
+    auto advanceBitsX = [](int &bitsX)
+    {
+        if (bitsX < 32)
+        {
+            ++bitsX;
+        }
+        else if (bitsX < 128)
+        {
+            bitsX += 8;
+        }
+        else
+        {
+            bitsX += 32;
+        }
+    };
+
+    for (int bitsX = 0; bitsX <= 256; advanceBitsX(bitsX))
     {
         p.params.bits[0] = bitsX;
         swc[0]           = p.params.bits[0] != 0 ? NVCV_CHANNEL_X : NVCV_CHANNEL_0;
@@ -554,55 +604,7 @@ TEST(PackingTests, valid_values)
             {
                 p.params.bits[2] = bitsZ;
                 swc[2]           = p.params.bits[2] != 0 ? NVCV_CHANNEL_Z : NVCV_CHANNEL_0;
-                for (int bitsW = 0; bitsW <= 128; bitsW < 32 ? ++bitsW : (bitsW += 8))
-                {
-                    p.params.bits[3] = bitsW;
-                    swc[3]           = p.params.bits[3] != 0 ? NVCV_CHANNEL_W : NVCV_CHANNEL_0;
-
-                    NVCVStatus status = nvcvMakeSwizzle(&p.params.swizzle, swc[0], swc[1], swc[2], swc[3]);
-                    if (p.params.swizzle != NVCV_SWIZZLE_UNSUPPORTED)
-                        EXPECT_EQ(status, NVCV_SUCCESS);
-                    else
-                        continue;
-
-                    p.params.byteOrder = NVCV_ORDER_MSB;
-
-                    auto it = packingList.find(p);
-                    if (it != packingList.end())
-                    {
-                        NVCVPacking packing;
-                        ASSERT_EQ(NVCV_SUCCESS, nvcvMakePacking(&packing, &p.params));
-
-                        EXPECT_EQ(it->packing, packing) << p;
-                        packingList.erase(it);
-                    }
-                    // to save some time, let's do negative tests in only a subset of the parameter space
-                    else if (bitsX == 8)
-                    {
-                        NVCVPacking packing = NVCV_PACKING_X8_Y8__X8_Z8;
-                        ASSERT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvMakePacking(&packing, &p.params)) << p;
-                        EXPECT_EQ(packing, NVCV_PACKING_X8_Y8__X8_Z8) << "should not have modified output";
-                    }
-
-                    p.params.byteOrder = NVCV_ORDER_LSB;
-
-                    it = packingList.find(p);
-                    if (it != packingList.end())
-                    {
-                        NVCVPacking packing;
-                        ASSERT_EQ(NVCV_SUCCESS, nvcvMakePacking(&packing, &p.params));
-
-                        EXPECT_EQ(it->packing, packing) << p;
-                        packingList.erase(it);
-                    }
-                    // to save some time, let's do negative tests in only a subset of the parameter space
-                    else if (bitsX == 8)
-                    {
-                        NVCVPacking packing = NVCV_PACKING_X8_Y8__X8_Z8;
-                        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvMakePacking(&packing, &p.params)) << p;
-                        EXPECT_EQ(packing, NVCV_PACKING_X8_Y8__X8_Z8) << "should not have modified output";
-                    }
-                }
+                ASSERT_NO_FATAL_FAILURE(testPackingForBitsZ(bitsX));
 
                 ++counter;
             }
@@ -664,9 +666,9 @@ TEST(PackingTests, valid_values)
     if (!packingList.empty())
     {
         std::cerr << "Non-matched packings: " << std::endl;
-        for (auto &p : packingList)
+        for (const auto &packing : packingList)
         {
-            std::cerr << "  " << p.packing << std::endl;
+            std::cerr << "  " << packing.packing << std::endl;
         }
     }
 }
@@ -693,11 +695,8 @@ INSTANTIATE_TEST_SUITE_P(
 
 TEST_P(PackingTests_Alignment, get_alignment)
 {
-    auto param = GetParam();
-
-    NVCVPacking   packing           = std::get<0>(param);
-    const int32_t expectedAlignment = std::get<1>(param);
-    int32_t       outAlignment      = -1;
+    const auto [packing, expectedAlignment] = GetParam();
+    int32_t outAlignment                    = -1;
 
     ASSERT_EQ(NVCV_SUCCESS, nvcvPackingGetAlignment(packing, &outAlignment)); // 16 / 8 = 2
     EXPECT_EQ(expectedAlignment, outAlignment);
@@ -727,8 +726,6 @@ TEST(ByteOrderTests, get_name)
 TEST(SwizzleTests, get_name)
 {
     EXPECT_STREQ("XYZ1", nvcvSwizzleGetName(NVCV_SWIZZLE_XYZ1));
-    // EXPECT_STREQ("110X",
-    //              nvcvSwizzleGetName(NVCV_DETAIL_MAKE_SWIZZLE(NVCV_CHANNEL_1, NVCV_CHANNEL_1, NVCV_CHANNEL_0, NVCV_CHANNEL_X)));
 }
 
 TEST(SwizzleTests_Negative, Invalid_parameter)

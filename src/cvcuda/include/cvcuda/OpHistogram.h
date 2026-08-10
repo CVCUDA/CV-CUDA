@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -55,7 +55,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaHistogramCreate(NVCVOperatorHandle *handle);
  *  Limitations:
  *
  *  Input:
- *       Data Layout:    [kNHWC, kHWC]
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
  *       Channels:       [1]
  *
  *       Data Type      | Allowed
@@ -66,11 +66,12 @@ CVCUDA_PUBLIC NVCVStatus cvcudaHistogramCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | No
  *       64bit Float    | No
  *
  *  Output:
- *       Data Layout:    [kHWC]
+ *       Data Layout:    [kNHWC, kHWC]
  *       Channels:       [1]
  *
  *       Data Type      | Allowed
@@ -79,8 +80,9 @@ CVCUDA_PUBLIC NVCVStatus cvcudaHistogramCreate(NVCVOperatorHandle *handle);
  *       8bit  Signed   | No
  *       16bit Unsigned | No
  *       16bit Signed   | No
- *       32bit Unsigned | Yes
+ *       32bit Unsigned | No
  *       32bit Signed   | Yes
+ *       16bit Float    | No
  *       32bit Float    | No
  *       64bit Float    | No
  *
@@ -103,7 +105,8 @@ CVCUDA_PUBLIC NVCVStatus cvcudaHistogramCreate(NVCVOperatorHandle *handle);
  *
  * @param [out] histogram output histogram, with width of 256 and a height = N on input tensor (1 if HWC tensor).
  *
- * @param [in] mask mask tensor, with shape the same as input tensor any value != 0 will be counted in the histogram.
+ * @param [in] mask Mask tensor with the same shape and layout as the input tensor; any non-zero element is counted
+ *                  in the histogram.
  *
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
  * @retval #NVCV_ERROR_INTERNAL         Internal error in the operator, invalid types passed in.
@@ -115,5 +118,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaHistogramSubmit(NVCVOperatorHandle handle, cudaSt
 #ifdef __cplusplus
 }
 #endif
+
+/** @} */
 
 #endif /* CVCUDA__HISTOGRAM_H */

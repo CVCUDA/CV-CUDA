@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "priv/OpPairwiseMatcher.hpp"
 
+#include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <nvcv/Exception.hpp>
@@ -29,7 +30,7 @@ CVCUDA_DEFINE_API(0, 5, NVCVStatus, cvcudaPairwiseMatcherCreate,
                   (NVCVOperatorHandle * handle, NVCVPairwiseMatcherType algoChoice))
 {
     return nvcv::ProtectCall(
-        [&]
+        [&handle, &algoChoice]
         {
             if (handle == nullptr)
             {
@@ -37,7 +38,7 @@ CVCUDA_DEFINE_API(0, 5, NVCVStatus, cvcudaPairwiseMatcherCreate,
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            *handle = reinterpret_cast<NVCVOperatorHandle>(new cvcuda::priv::PairwiseMatcher(algoChoice));
+            *handle = priv::CreateOperatorHandle<cvcuda::priv::PairwiseMatcher>(algoChoice);
         });
 }
 
@@ -47,12 +48,15 @@ CVCUDA_DEFINE_API(0, 5, NVCVStatus, cvcudaPairwiseMatcherSubmit,
                    NVCVTensorHandle numMatches, NVCVTensorHandle distances, bool crossCheck, int matchesPerPoint,
                    NVCVNormType normType))
 {
+    CVCUDA_NVTX_RANGE("cvcudaPairwiseMatcherSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&handle, &stream, &set1, &set2, &numSet1, &numSet2, &matches, &numMatches, &distances, &crossCheck,
+         &matchesPerPoint, &normType]
         {
             cvcuda::priv::ToDynamicRef<cvcuda::priv::PairwiseMatcher>(handle)(
-                stream, nvcv::TensorWrapHandle{set1}, nvcv::TensorWrapHandle{set2}, nvcv::TensorWrapHandle{numSet1},
-                nvcv::TensorWrapHandle{numSet2}, nvcv::TensorWrapHandle{matches}, nvcv::TensorWrapHandle{numMatches},
-                nvcv::TensorWrapHandle{distances}, crossCheck, matchesPerPoint, normType);
+                stream, nvcv::TensorWrapHandle{set1}.resource(), nvcv::TensorWrapHandle{set2}.resource(),
+                nvcv::TensorWrapHandle{numSet1}.resource(), nvcv::TensorWrapHandle{numSet2}.resource(),
+                nvcv::TensorWrapHandle{matches}.resource(), nvcv::TensorWrapHandle{numMatches}.resource(),
+                nvcv::TensorWrapHandle{distances}.resource(), crossCheck, matchesPerPoint, normType);
         });
 }

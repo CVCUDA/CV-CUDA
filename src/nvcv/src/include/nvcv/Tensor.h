@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,8 +21,8 @@
  * @brief Public C interface to NVCV tensor representation.
  */
 
-#ifndef NVCV_TENSOR_H
-#define NVCV_TENSOR_H
+#ifndef NVCV_TENSOR_H_INCLUDED
+#define NVCV_TENSOR_H_INCLUDED
 
 #include "Export.h"
 #include "Fwd.h"
@@ -274,7 +274,7 @@ NVCV_PUBLIC NVCVStatus nvcvTensorRefCount(NVCVTensorHandle handle, int *newRefCo
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
  * @retval #NVCV_SUCCESS                Operation executed successfully.
  */
-NVCV_PUBLIC NVCVStatus nvcvTensorSetUserPointer(NVCVTensorHandle handle, void *userPtr);
+NVCV_PUBLIC NVCVStatus nvcvTensorSetUserPointer(NVCVTensorHandle handle, NVCVUserPointer userPtr);
 
 /** Returns the user pointer associated with the tensor handle.
  *
@@ -288,7 +288,7 @@ NVCV_PUBLIC NVCVStatus nvcvTensorSetUserPointer(NVCVTensorHandle handle, void *u
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
  * @retval #NVCV_SUCCESS                Operation executed successfully.
  */
-NVCV_PUBLIC NVCVStatus nvcvTensorGetUserPointer(NVCVTensorHandle handle, void **outUserPtr);
+NVCV_PUBLIC NVCVStatus nvcvTensorGetUserPointer(NVCVTensorHandle handle, NVCVUserPointer *outUserPtr);
 
 /**
  * Get the type of the tensor elements (its data type).
@@ -400,4 +400,4 @@ NVCV_PUBLIC NVCVStatus nvcvTensorReshape(NVCVTensorHandle handle, int32_t rank, 
 }
 #endif
 
-#endif // NVCV_TENSOR_H
+#endif // NVCV_TENSOR_H_INCLUDED

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -36,6 +36,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class Gaussian final : public IOperator
@@ -43,51 +45,48 @@ class Gaussian final : public IOperator
 public:
     explicit Gaussian(nvcv::Size2D maxKernelSize, int32_t maxVarShapeBatchSize);
 
-    ~Gaussian();
-
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, nvcv::Size2D kernelSize,
-                    double2 sigma, NVCVBorderType borderMode);
+                    double2 sigma, NVCVBorderType borderMode) const;
 
     void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
-                    const nvcv::Tensor &kernelSize, const nvcv::Tensor &sigma, NVCVBorderType borderMode);
+                    const nvcv::Tensor &kernelSize, const nvcv::Tensor &sigma, NVCVBorderType borderMode) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline Gaussian::Gaussian(nvcv::Size2D maxKernelSize, int32_t maxVarShapeBatchSize)
 {
-    nvcv::detail::CheckThrow(cvcudaGaussianCreate(&m_handle, maxKernelSize.w, maxKernelSize.h, maxVarShapeBatchSize));
-    assert(m_handle);
-}
-
-inline Gaussian::~Gaussian()
-{
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaGaussianCreate(&h, maxKernelSize.w, maxKernelSize.h, maxVarShapeBatchSize));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void Gaussian::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
-                                 nvcv::Size2D kernelSize, double2 sigma, NVCVBorderType borderMode)
+                                 nvcv::Size2D kernelSize, double2 sigma, NVCVBorderType borderMode) const
 {
-    nvcv::detail::CheckThrow(cvcudaGaussianSubmit(m_handle, stream, in.handle(), out.handle(), kernelSize.w,
+    nvcv::detail::CheckThrow(cvcudaGaussianSubmit(m_handle.get(), stream, in.handle(), out.handle(), kernelSize.w,
                                                   kernelSize.h, sigma.x, sigma.y, borderMode));
 }
 
 inline void Gaussian::operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
-                                 const nvcv::Tensor &kernelSize, const nvcv::Tensor &sigma, NVCVBorderType borderMode)
+                                 const nvcv::Tensor &kernelSize, const nvcv::Tensor &sigma,
+                                 NVCVBorderType borderMode) const
 {
-    nvcv::detail::CheckThrow(cvcudaGaussianVarShapeSubmit(m_handle, stream, in.handle(), out.handle(),
+    nvcv::detail::CheckThrow(cvcudaGaussianVarShapeSubmit(m_handle.get(), stream, in.handle(), out.handle(),
                                                           kernelSize.handle(), sigma.handle(), borderMode));
 }
 
 inline NVCVOperatorHandle Gaussian::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA_GAUSSIAN_HPP

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,11 +41,11 @@ NVCVImageBatchVarShapeRequirements ImageBatchVarShape::CalcRequirements(int32_t 
     reqs.capacity = capacity;
     reqs.mem      = {};
 
-    reqs.alignBytes = alignof(NVCVImageBufferStrided);
-    reqs.alignBytes = std::lcm(alignof(NVCVImageHandle), reqs.alignBytes);
-    reqs.alignBytes = std::lcm(alignof(NVCVImageFormat), reqs.alignBytes);
+    reqs.alignBytes = static_cast<int32_t>(alignof(NVCVImageBufferStrided));
+    reqs.alignBytes = static_cast<int32_t>(std::lcm(alignof(NVCVImageHandle), static_cast<size_t>(reqs.alignBytes)));
+    reqs.alignBytes = static_cast<int32_t>(std::lcm(alignof(NVCVImageFormat), static_cast<size_t>(reqs.alignBytes)));
 
-    reqs.alignBytes = util::RoundUpNextPowerOfTwo(reqs.alignBytes);
+    reqs.alignBytes = static_cast<int32_t>(util::RoundUpNextPowerOfTwo(reqs.alignBytes));
 
     if (reqs.alignBytes > NVCV_MAX_MEM_REQUIREMENTS_BLOCK_SIZE)
     {
@@ -68,36 +68,31 @@ NVCVImageBatchVarShapeRequirements ImageBatchVarShape::CalcRequirements(int32_t 
 ImageBatchVarShape::ImageBatchVarShape(NVCVImageBatchVarShapeRequirements reqs, IAllocator &alloc)
     : m_alloc{alloc}
     , m_reqs{std::move(reqs)}
-    , m_dirtyStartingFromIndex(0)
-    , m_numImages(0)
-    , m_cacheMaxSize{Size2D{0,0}}
 {
-    m_evPostFence     = nullptr;
-    m_devImagesBuffer = m_hostImagesBuffer = nullptr;
-    m_devFormatsBuffer = m_hostFormatsBuffer = nullptr;
-    m_imgHandleBuffer                        = nullptr;
-
     int64_t bufImagesSize  = m_reqs.capacity * sizeof(NVCVImageBufferStrided);
     int64_t bufFormatsSize = m_reqs.capacity * sizeof(NVCVImageFormat);
     int64_t imgHandlesSize = m_reqs.capacity * sizeof(NVCVImageHandle);
 
     try
     {
-        m_devImagesBuffer
-            = static_cast<NVCVImageBufferStrided *>(m_alloc->allocCudaMem(bufImagesSize, m_reqs.alignBytes));
+        m_devImagesBuffer = static_cast<NVCVImageBufferStrided *>(
+            static_cast<void *>(m_alloc->allocCudaMem(bufImagesSize, m_reqs.alignBytes)));
         NVCV_ASSERT(m_devImagesBuffer != nullptr);
 
-        m_hostImagesBuffer
-            = static_cast<NVCVImageBufferStrided *>(m_alloc->allocHostMem(bufImagesSize, m_reqs.alignBytes));
-        NVCV_ASSERT(m_devImagesBuffer != nullptr);
+        m_hostImagesBuffer = static_cast<NVCVImageBufferStrided *>(
+            static_cast<void *>(m_alloc->allocHostMem(bufImagesSize, m_reqs.alignBytes)));
+        NVCV_ASSERT(m_hostImagesBuffer != nullptr);
 
-        m_devFormatsBuffer = static_cast<NVCVImageFormat *>(m_alloc->allocCudaMem(bufFormatsSize, m_reqs.alignBytes));
+        m_devFormatsBuffer = static_cast<NVCVImageFormat *>(
+            static_cast<void *>(m_alloc->allocCudaMem(bufFormatsSize, m_reqs.alignBytes)));
         NVCV_ASSERT(m_devFormatsBuffer != nullptr);
 
-        m_hostFormatsBuffer = static_cast<NVCVImageFormat *>(m_alloc->allocHostMem(bufFormatsSize, m_reqs.alignBytes));
-        NVCV_ASSERT(m_devFormatsBuffer != nullptr);
+        m_hostFormatsBuffer = static_cast<NVCVImageFormat *>(
+            static_cast<void *>(m_alloc->allocHostMem(bufFormatsSize, m_reqs.alignBytes)));
+        NVCV_ASSERT(m_hostFormatsBuffer != nullptr);
 
-        m_imgHandleBuffer = static_cast<NVCVImageHandle *>(m_alloc->allocHostMem(imgHandlesSize, m_reqs.alignBytes));
+        m_imgHandleBuffer = static_cast<NVCVImageHandle *>(
+            static_cast<void *>(m_alloc->allocHostMem(imgHandlesSize, m_reqs.alignBytes)));
         NVCV_ASSERT(m_imgHandleBuffer != nullptr);
 
         NVCV_CHECK_THROW(cudaEventCreateWithFlags(&m_evPostFence, cudaEventDisableTiming));
@@ -109,13 +104,7 @@ ImageBatchVarShape::ImageBatchVarShape(NVCVImageBatchVarShapeRequirements reqs, 
             NVCV_CHECK_LOG(cudaEventDestroy(m_evPostFence));
         }
 
-        m_alloc->freeCudaMem(m_devImagesBuffer, bufImagesSize, m_reqs.alignBytes);
-        m_alloc->freeHostMem(m_hostImagesBuffer, bufImagesSize, m_reqs.alignBytes);
-
-        m_alloc->freeCudaMem(m_devFormatsBuffer, bufFormatsSize, m_reqs.alignBytes);
-        m_alloc->freeHostMem(m_hostFormatsBuffer, bufFormatsSize, m_reqs.alignBytes);
-
-        m_alloc->freeHostMem(m_imgHandleBuffer, imgHandlesSize, m_reqs.alignBytes);
+        freeBuffers();
         throw;
     }
 }
@@ -125,19 +114,29 @@ ImageBatchVarShape::~ImageBatchVarShape()
     NVCV_CHECK_LOG(cudaEventSynchronize(m_evPostFence));
     clear();
 
+    freeBuffers();
+
+    NVCV_CHECK_LOG(cudaEventDestroy(m_evPostFence));
+}
+
+void ImageBatchVarShape::freeBuffers() noexcept
+{
     int64_t bufImagesSize  = m_reqs.capacity * sizeof(NVCVImageBufferStrided);
     int64_t bufFormatsSize = m_reqs.capacity * sizeof(NVCVImageFormat);
     int64_t imgHandlesSize = m_reqs.capacity * sizeof(NVCVImageHandle);
 
-    m_alloc->freeCudaMem(m_devImagesBuffer, bufImagesSize, m_reqs.alignBytes);
-    m_alloc->freeHostMem(m_hostImagesBuffer, bufImagesSize, m_reqs.alignBytes);
+    m_alloc->freeCudaMem(static_cast<NVCVMemoryBuffer>(static_cast<void *>(m_devImagesBuffer)), bufImagesSize,
+                         m_reqs.alignBytes);
+    m_alloc->freeHostMem(static_cast<NVCVMemoryBuffer>(static_cast<void *>(m_hostImagesBuffer)), bufImagesSize,
+                         m_reqs.alignBytes);
 
-    m_alloc->freeCudaMem(m_devFormatsBuffer, bufFormatsSize, m_reqs.alignBytes);
-    m_alloc->freeHostMem(m_hostFormatsBuffer, bufFormatsSize, m_reqs.alignBytes);
+    m_alloc->freeCudaMem(static_cast<NVCVMemoryBuffer>(static_cast<void *>(m_devFormatsBuffer)), bufFormatsSize,
+                         m_reqs.alignBytes);
+    m_alloc->freeHostMem(static_cast<NVCVMemoryBuffer>(static_cast<void *>(m_hostFormatsBuffer)), bufFormatsSize,
+                         m_reqs.alignBytes);
 
-    m_alloc->freeHostMem(m_imgHandleBuffer, imgHandlesSize, m_reqs.alignBytes);
-
-    NVCV_CHECK_LOG(cudaEventDestroy(m_evPostFence));
+    m_alloc->freeHostMem(static_cast<NVCVMemoryBuffer>(static_cast<void *>(m_imgHandleBuffer)), imgHandlesSize,
+                         m_reqs.alignBytes);
 }
 
 NVCVTypeImageBatch ImageBatchVarShape::type() const
@@ -193,7 +192,7 @@ void ImageBatchVarShape::doUpdateCache() const
             m_cacheMaxSize->h = std::max(m_cacheMaxSize->h, m_hostImagesBuffer[i].planes[0].height);
         }
 
-        constexpr ImageFormat fmt_none = ImageFormat{NVCV_IMAGE_FORMAT_NONE};
+        constexpr auto fmt_none = ImageFormat{NVCV_IMAGE_FORMAT_NONE};
 
         if (!m_cacheUniqueFormat)
         {
@@ -201,7 +200,7 @@ void ImageBatchVarShape::doUpdateCache() const
         }
         else if (*m_cacheUniqueFormat != fmt_none && *m_cacheUniqueFormat != ImageFormat{m_hostFormatsBuffer[i]})
         {
-            *m_cacheUniqueFormat = fmt_none;
+            m_cacheUniqueFormat = fmt_none;
         }
     }
 
@@ -224,10 +223,20 @@ void ImageBatchVarShape::exportData(CUstream stream, NVCVImageBatchData &data) c
 
     NVCV_ASSERT(m_dirtyStartingFromIndex <= m_numImages);
 
-    if (m_dirtyStartingFromIndex < m_numImages)
+    // Gate every reader stream against the most recent producer-stream H2D of
+    // m_devImagesBuffer/m_devFormatsBuffer.  cvcuda Streams are created with
+    // cudaStreamNonBlocking, so a user stream does NOT implicitly synchronize
+    // with the legacy default stream that performed the original copy when
+    // the batch was first exported.  Without this wait, a kernel queued on
+    // user stream can read m_devImagesBuffer before the prior copy is visible
+    // and see garbage basePtr/rowStride/width/height for some image entries.
+    if (m_numImages > 0)
     {
         NVCV_CHECK_THROW(cudaStreamWaitEvent(stream, m_evPostFence));
+    }
 
+    if (m_dirtyStartingFromIndex < m_numImages)
+    {
         NVCV_CHECK_THROW(cudaMemcpyAsync(
             m_devImagesBuffer + m_dirtyStartingFromIndex, m_hostImagesBuffer + m_dirtyStartingFromIndex,
             (m_numImages - m_dirtyStartingFromIndex) * sizeof(*m_devImagesBuffer), cudaMemcpyHostToDevice, stream));
@@ -288,7 +297,7 @@ void ImageBatchVarShape::pushImages(const NVCVImageHandle *images, int32_t numIm
     }
 }
 
-void ImageBatchVarShape::pushImages(NVCVPushImageFunc cbPushImage, void *ctxCallback)
+void ImageBatchVarShape::pushImages(NVCVPushImageFunc cbPushImage, NVCVUserPointer ctxCallback)
 {
     if (cbPushImage == nullptr)
     {
@@ -326,7 +335,7 @@ void ImageBatchVarShape::doPushImage(NVCVImageHandle imgHandle)
 {
     NVCV_ASSERT(m_numImages < m_reqs.capacity);
 
-    auto &img = ToStaticRef<IImage>(imgHandle);
+    const auto &img = ToStaticRef<IImage>(imgHandle);
 
     if (img.format().memLayout() != NVCV_MEM_LAYOUT_PL)
     {

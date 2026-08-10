@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,6 +28,9 @@
 
 #include <atomic>
 #include <cassert>
+#include <cstddef>
+#include <cstdio>
+#include <exception>
 #include <map>
 #include <mutex>
 
@@ -59,12 +62,12 @@ public:
     {
     }
 
-    CachedWorkspaceMem(CachedWorkspaceMem &&mem)
+    CachedWorkspaceMem(CachedWorkspaceMem &&mem) noexcept
     {
         *this = std::move(mem);
     }
 
-    CachedWorkspaceMem &operator=(CachedWorkspaceMem &&mem)
+    CachedWorkspaceMem &operator=(CachedWorkspaceMem &&mem) noexcept
     {
         std::swap(wsMem(), mem.wsMem());
         std::swap(m_destructor, mem.m_destructor);
@@ -72,16 +75,27 @@ public:
         return *this;
     }
 
-    ~CachedWorkspaceMem()
+    ~CachedWorkspaceMem() noexcept
     {
         reset();
     }
 
-    void reset()
+    void reset() noexcept
     {
         if (m_destructor)
         {
-            m_destructor(*this);
+            try
+            {
+                m_destructor(*this);
+            }
+            catch (const std::exception &e)
+            {
+                std::fprintf(stderr, "workspace memory cleanup failed: %s\n", e.what());
+            }
+            catch (...)
+            {
+                std::fputs("workspace memory cleanup failed\n", stderr);
+            }
             m_destructor = {};
         }
         wsMem() = {};
@@ -142,8 +156,7 @@ public:
             return {};
 
         ++m_outstandingAllocs;
-        auto opt = m_memCache.get(req.size, req.alignment, stream);
-        if (opt)
+        if (auto opt = m_memCache.get(req.size, req.alignment, stream); opt)
             return std::move(opt).value();
 
         return create(req);
@@ -162,26 +175,32 @@ public:
     }
 
 private:
-    void *allocateMem(size_t size, size_t alignment) const
+    std::byte *allocateMem(size_t size, size_t alignment) const
     {
+        const auto allocSize      = static_cast<int64_t>(size);
+        const auto allocAlignment = static_cast<int32_t>(alignment);
+
         if constexpr (kind == MemoryKind::Host)
-            return m_alloc.hostMem().alloc(size, alignment);
+            return reinterpret_cast<std::byte *>(m_alloc.hostMem().alloc(allocSize, allocAlignment));
         else if constexpr (kind == MemoryKind::Pinned)
-            return m_alloc.hostPinnedMem().alloc(size, alignment);
+            return reinterpret_cast<std::byte *>(m_alloc.hostPinnedMem().alloc(allocSize, allocAlignment));
         else if constexpr (kind == MemoryKind::Cuda)
-            return m_alloc.cudaMem().alloc(size, alignment);
+            return reinterpret_cast<std::byte *>(m_alloc.cudaMem().alloc(allocSize, allocAlignment));
         else
             return nullptr; // should never happen
     }
 
-    void freeMem(void *mem, size_t size, size_t alignment) const
+    void freeMem(std::byte *mem, size_t size, size_t alignment) const
     {
+        const auto allocSize      = static_cast<int64_t>(size);
+        const auto allocAlignment = static_cast<int32_t>(alignment);
+
         if constexpr (kind == MemoryKind::Host)
-            return m_alloc.hostMem().free(mem, size, alignment);
+            return m_alloc.hostMem().free(mem, allocSize, allocAlignment);
         else if constexpr (kind == MemoryKind::Pinned)
-            return m_alloc.hostPinnedMem().free(mem, size, alignment);
+            return m_alloc.hostPinnedMem().free(mem, allocSize, allocAlignment);
         else if constexpr (kind == MemoryKind::Cuda)
-            return m_alloc.cudaMem().free(mem, size, alignment);
+            return m_alloc.cudaMem().free(mem, allocSize, allocAlignment);
     }
 
     auto getMemDeleter() const
@@ -189,7 +208,7 @@ private:
         return [this](cvcuda::WorkspaceMem &mem)
         {
             // free the memory
-            freeMem(mem.data, mem.req.size, mem.req.alignment);
+            freeMem(static_cast<std::byte *>(mem.data), mem.req.size, mem.req.alignment);
             // return the event to the event cache
             if (mem.ready)
             {
@@ -203,8 +222,8 @@ private:
     {
         WorkspaceMemDestructor_t del = getMemDeleter();
 
-        auto  evt  = nvcv::util::CudaEvent::Create();
-        void *data = allocateMem(req.size, req.alignment);
+        auto       evt  = nvcv::util::CudaEvent::Create();
+        std::byte *data = allocateMem(req.size, req.alignment);
 
         cvcuda::WorkspaceMem wsmem = {req, data, evt.get()};
 
@@ -229,10 +248,11 @@ class WorkspaceLease
 public:
     cvcuda::Workspace get() const
     {
-        return {m_host, m_pinned, m_cuda};
+        return {static_cast<const cvcuda::WorkspaceMem &>(m_host), static_cast<const cvcuda::WorkspaceMem &>(m_pinned),
+                static_cast<const cvcuda::WorkspaceMem &>(m_cuda)};
     }
 
-    ~WorkspaceLease();
+    ~WorkspaceLease() noexcept;
 
 private:
     friend class WorkspaceCache;
@@ -246,7 +266,9 @@ private:
     CachedWorkspaceMem<MemoryKind::Pinned> m_pinned;
     CachedWorkspaceMem<MemoryKind::Cuda>   m_cuda;
 
-    std::optional<cudaStream_t> m_hostReleaseStream, m_pinnedReleaseStream, m_cudaReleaseStream;
+    std::optional<cudaStream_t> m_hostReleaseStream;
+    std::optional<cudaStream_t> m_pinnedReleaseStream;
+    std::optional<cudaStream_t> m_cudaReleaseStream;
 };
 
 class WorkspaceCache
@@ -254,7 +276,7 @@ class WorkspaceCache
 public:
     WorkspaceCache();
 
-    WorkspaceCache(nvcv::Allocator allocator);
+    explicit WorkspaceCache(nvcv::Allocator allocator);
 
     /** Gets a workspace with custom stream semantics
      *
@@ -267,7 +289,7 @@ public:
      * @param cudaAcquireStream   The stream on which device memory will be initialky used
      * @param cudaReleaseStream   The stream on which device memory usage will be completed
      */
-    WorkspaceLease get(cvcuda::WorkspaceRequirements req, std::optional<cudaStream_t> hostAcquireStream,
+    WorkspaceLease get(const cvcuda::WorkspaceRequirements &req, std::optional<cudaStream_t> hostAcquireStream,
                        std::optional<cudaStream_t> hostReleaseStream, std::optional<cudaStream_t> pinnedAcquireStream,
                        std::optional<cudaStream_t> pinnedReleaseStream, std::optional<cudaStream_t> cudaAcquireStream,
                        std::optional<cudaStream_t> cudaReleaseStream);
@@ -281,7 +303,7 @@ public:
      *
      * NOTE: If these semantics are not honored by the user, the code should still be correct, just less efficient.
      */
-    WorkspaceLease get(cvcuda::WorkspaceRequirements req, cudaStream_t stream)
+    WorkspaceLease get(const cvcuda::WorkspaceRequirements &req, cudaStream_t stream)
     {
         return get(req, std::nullopt, std::nullopt, std::nullopt, stream, stream, stream);
     }

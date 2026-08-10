@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,6 +25,8 @@
 #include <nvcv/Tensor.h>
 #include <pybind11/pybind11.h>
 
+#include <stdexcept>
+
 namespace pybind11::detail {
 // to force inclusion of "DataType.hpp" if needed
 struct type_caster<nvcv::DataType>;
@@ -36,7 +38,13 @@ class ICacheItem;
 class IKey;
 class Container;
 
-struct CAPI
+class CAPIError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
+
+struct CAPI // NOSONAR: Python extension ABI table must keep one slot per exported callback.
 {
     PyObject *(*DataType_ToPython)(NVCVDataType p);
     NVCVDataType (*DataType_FromPython)(PyObject *obj);
@@ -85,15 +93,33 @@ struct CAPI
 
     void (*TensorBatch_Clear)(PyObject *tensorBatch);
 
+    // Batched sync-and-hold: takes the full resource list (same shape as
+    // Stream_HoldResources expects — list of (lockmode_str, resource) tuples)
+    // and runs the per-resource submitSync inside C++, then holdResources,
+    // in one C-ABI round trip. Avoids N pybind11 boundary crossings for ops
+    // with many tracked resources (erase, threshold, normalize, ...). Use
+    // this from ResourceGuard::commit() in lieu of N×Resource_SubmitSync +
+    // 1×Stream_HoldResources.
+    void (*Resources_SyncAndHold)(PyObject *stream, PyObject *resourceList);
+
+    // Batched submit-sync only (no hold): inserts producer→consumer wait
+    // events for every resource in the list against `stream`.  This is the
+    // correct point in time to insert sync barriers — it must run BEFORE
+    // `op->submit()` queues the consumer's kernel on `stream`, otherwise
+    // `cudaStreamWaitEvent` is enqueued behind the kernel and provides no
+    // protection.  Pair with `Stream_HoldResources` at scope end (run via
+    // `ResourceGuard::run()` which handles both halves correctly).
+    void (*Resources_SubmitSyncOnly)(PyObject *stream, PyObject *resourceList);
+
     // always add new functions at the end, and never change the function prototypes above.
 };
 
 inline const CAPI &capi()
 {
-    static const CAPI *capi = reinterpret_cast<const CAPI *>(PyCapsule_Import("cvcuda._C_API", 0));
+    static const auto *capi = reinterpret_cast<const CAPI *>(PyCapsule_Import("cvcuda._C_API", 0));
     if (capi == nullptr)
     {
-        throw std::runtime_error("Can't load cvcuda C API");
+        throw CAPIError("Can't load cvcuda C API");
     }
     return *capi;
 }

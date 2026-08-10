@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,7 +24,7 @@
 #ifndef NVCV_CUDA_SATURATE_CAST_HPP
 #define NVCV_CUDA_SATURATE_CAST_HPP
 
-#include "TypeTraits.hpp"              // for Require, etc.
+#include "TypeTraits.hpp"
 #include "detail/SaturateCastImpl.hpp" // for SaturateCastImpl, etc.
 
 namespace nvcv::cuda {
@@ -56,10 +56,12 @@ namespace nvcv::cuda {
  *
  * @return The value with all elements clamped and potentially rounded.
  */
-template<typename T, typename U,
-         class = Require<(NumComponents<T> == NumComponents<U>) || (NumComponents<T> == 0 && HasTypeTraits<U>)>>
+template<typename T, typename U>
 __host__ __device__ auto SaturateCast(U u)
 {
+    static_assert((NumComponents<T> == NumComponents<U>) || (NumComponents<T> == 0 && HasTypeTraits<U>),
+                  "SaturateCast requires matching component counts or a regular C target type");
+
     using BU = BaseType<U>;
     using BT = BaseType<T>;
     using RT = ConvertBaseTypeTo<BT, U>;

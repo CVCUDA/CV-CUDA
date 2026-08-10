@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,7 +15,7 @@
 
 list(APPEND CPACK_COMPONENTS_ALL samples)
 
-set(CPACK_COMPONENT_SAMPLES_DISABLED true)
+set(CPACK_COMPONENT_SAMPLES_DISABLED false)
 set(CPACK_COMPONENT_SAMPLES_DISPLAY_NAME "Samples")
 set(CPACK_COMPONENT_SAMPLES_DESCRIPTION "NVIDIA CV-CUDA Samples")
 

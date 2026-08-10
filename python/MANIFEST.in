@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 # Include README and license files in source distributions
@@ -8,3 +8,7 @@ include pyproject.toml
 # Include all .so files (binary extensions)
 recursive-include cvcuda *.so
 recursive-include cvcuda_cu*.libs *
+
+# Include type stubs and PEP 561 marker
+recursive-include cvcuda *.pyi
+include cvcuda/py.typed

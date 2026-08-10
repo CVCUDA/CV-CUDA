@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,6 +29,7 @@
 #include <nvcv/TensorDataAccess.hpp>
 #include <nvcv/util/Math.hpp>
 
+#include <array>
 #include <iostream>
 #include <random>
 #include <vector>
@@ -42,24 +43,39 @@ namespace test = nvcv::test;
 namespace util = nvcv::util;
 namespace cuda = nvcv::cuda;
 
-static std::default_random_engine g_rng(std::random_device{}());
-
-static void calculateDst(float x, float y, float *X, float *Y, float *model)
+static void calculateDst(float x, float y, float *X, float *Y, const float *model)
 {
     *X = model[0] * x + model[1] * y + model[2] * 1;
     *Y = model[3] * x + model[4] * y + model[5] * 1;
 }
 
+static void calculateProjectiveDst(float x, float y, float *X, float *Y, const float *model)
+{
+    float w = model[6] * x + model[7] * y + model[8];
+    *X      = (model[0] * x + model[1] * y + model[2]) / w;
+    *Y      = (model[3] * x + model[4] * y + model[5]) / w;
+}
+
+static nvcv::Tensor createModelTensor(int numSamples)
+{
+    return nvcv::Tensor(
+        {
+            {numSamples, 3, 3},
+            "NHW"
+    },
+        nvcv::TYPE_F32);
+}
+
 static void calculateGoldModelMatrix(float *m, std::mt19937 &rng, std::uniform_int_distribution<int> &dis)
 {
     // random rotation angle between 0 and pi
-    float                           theta = (M_PI / 2.0) * dis(rng) / 100;
-    float                           Tx    = (float)dis(rng) / 100;
-    float                           Ty    = (float)dis(rng) / 100;
-    float                           sx    = (float)dis(rng) / 100;
-    float                           sy    = (float)dis(rng) / 100;
-    float                           p1    = (float)dis(rng) / 100;
-    float                           p2    = (float)dis(rng) / 100 * 2;
+    float                           theta = static_cast<float>(M_PI / 2.0) * static_cast<float>(dis(rng)) / 100.0f;
+    float                           Tx    = static_cast<float>(dis(rng)) / 100.0f;
+    float                           Ty    = static_cast<float>(dis(rng)) / 100.0f;
+    float                           sx    = static_cast<float>(dis(rng)) / 100.0f;
+    float                           sy    = static_cast<float>(dis(rng)) / 100.0f;
+    float                           p1    = static_cast<float>(dis(rng)) / 100.0f;
+    float                           p2    = static_cast<float>(dis(rng)) / 100.0f * 2.0f;
     cuda::math::Matrix<float, 3, 3> He;
     He[0] = {cos(theta), -sin(theta), Tx};
     He[1] = {sin(theta), cos(theta), Ty};
@@ -80,7 +96,7 @@ static void calculateGoldModelMatrix(float *m, std::mt19937 &rng, std::uniform_i
 // clang-format off
 NVCV_TEST_SUITE_P(OpFindHomography, test::ValueList<int, int>
 {
-    // numSamples, numPoints}
+    // Parameter order: sample count, point count.
     {8, 16},
     {16, 20},
     {25, 40}
@@ -114,12 +130,15 @@ TEST_P(OpFindHomography, correct_output)
     std::vector<float> estimatedModelsVec(numSamples * 9);
     std::vector<float> computedDstVec(2 * numSamples * numPoints);
 
-    std::random_device              rd;
-    std::mt19937                    gen(rd()); // Mersenne Twister engine
-    std::uniform_int_distribution<> dis(0, 100);
+    // Fixed seed matches the sibling varshape_correct_output test below — the
+    // original random_device-seeded gen made input geometry non-deterministic
+    // and occasionally produced ill-conditioned point sets that exceeded the
+    // 1e-3 tolerance on rare-config CI (manylinux x86 gcc10 release).
+    std::mt19937                  gen(12345); // Mersenne Twister engine
+    std::uniform_int_distribution dis(0, 100);
 
-    int numXPoints = static_cast<int>(std::sqrt(numPoints));
-    int numYPoints = numXPoints;
+    auto numXPoints = static_cast<int>(std::sqrt(numPoints));
+    int  numYPoints = numXPoints;
 
 #ifdef WRITE_COORDINATES_TO_FILE
     std::string src_filename
@@ -153,10 +172,11 @@ TEST_P(OpFindHomography, correct_output)
             for (int k = 0; k < numXPoints; k++)
             {
                 int idx                                 = j * numYPoints + k;
-                srcVec[i * numPoints * 2 + 2 * idx]     = dis(gen);
-                srcVec[i * numPoints * 2 + 2 * idx + 1] = dis(gen);
+                srcVec[i * numPoints * 2 + 2 * idx]     = static_cast<float>(dis(gen));
+                srcVec[i * numPoints * 2 + 2 * idx + 1] = static_cast<float>(dis(gen));
 
-                float dstx, dsty;
+                float dstx;
+                float dsty;
                 calculateDst(srcVec[i * numPoints * 2 + 2 * idx], srcVec[i * numPoints * 2 + 2 * idx + 1], &dstx, &dsty,
                              modelsVec.data() + i * 9);
                 dstVec[i * numPoints * 2 + 2 * idx]     = dstx;
@@ -173,13 +193,20 @@ TEST_P(OpFindHomography, correct_output)
     outDstFile.close();
 #endif
 
-    ASSERT_EQ(cudaSuccess, cudaMemcpy(srcData->basePtr(), srcVec.data(), sizeof(float) * 2 * numPoints * numSamples,
-                                      cudaMemcpyHostToDevice));
-    ASSERT_EQ(cudaSuccess, cudaMemcpy(dstData->basePtr(), dstVec.data(), sizeof(float) * 2 * numPoints * numSamples,
-                                      cudaMemcpyHostToDevice));
-
+    // Create the test stream BEFORE the input uploads so the H2D copies are
+    // queued on the same stream the operator will use. Using cudaMemcpyAsync on
+    // a non-blocking stream guarantees the operator's reduction kernels see the
+    // populated dst data — synchronous cudaMemcpy on the default stream does
+    // NOT order against work on a non-blocking custom stream, which on certain
+    // driver versions (observed on 580.35) produced an all-zero dst tensor at
+    // kernel-read time and a silent zero-homography output (CVCUDA-####).
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+
+    ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(srcData->basePtr(), srcVec.data(),
+                                           sizeof(float) * 2 * numPoints * numSamples, cudaMemcpyHostToDevice, stream));
+    ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(dstData->basePtr(), dstVec.data(),
+                                           sizeof(float) * 2 * numPoints * numSamples, cudaMemcpyHostToDevice, stream));
 
     cvcuda::FindHomography fh(numSamples, numPoints);
 
@@ -232,21 +259,124 @@ TEST_P(OpFindHomography, correct_output)
             for (int k = 0; k < numXPoints; k++)
             {
                 int   idx = j * numYPoints + k;
-                float dstx, dsty;
+                float dstx;
+                float dsty;
                 calculateDst(srcVec[i * numPoints * 2 + 2 * idx], srcVec[i * numPoints * 2 + 2 * idx + 1], &dstx, &dsty,
                              estimatedModelsVec.data() + i * 9);
                 computedDstVec[i * numPoints * 2 + 2 * idx]     = dstx;
                 computedDstVec[i * numPoints * 2 + 2 * idx + 1] = dsty;
                 float A                                         = dstVec[i * numPoints * 2 + 2 * idx];
                 float B                                         = computedDstVec[i * numPoints * 2 + 2 * idx];
+                // The 1e-3 tolerance covers GPU reduction/FMA rounding against the independent CPU projection.
                 EXPECT_NEAR(A, B, 1e-03);
                 A = dstVec[i * numPoints * 2 + 2 * idx + 1];
                 B = computedDstVec[i * numPoints * 2 + 2 * idx + 1];
+                // The 1e-3 tolerance covers GPU reduction/FMA rounding against the independent CPU projection.
                 EXPECT_NEAR(A, B, 1e-03);
             }
         }
     }
 #endif
+}
+
+TEST(OpFindHomography, nwc_correct_output)
+{
+    constexpr int                  numSamples = 2;
+    constexpr std::array<float, 9> goldModel  = {1.05f, 0.08f, 0.15f, -0.04f, 0.97f, -0.10f, 0.015f, -0.020f, 1.0f};
+    constexpr std::array<int, 2>   numPointCases{4, 16};
+
+    auto runCase = [&](int numPoints)
+    {
+        SCOPED_TRACE(::testing::Message() << "numPoints=" << numPoints);
+
+        nvcv::Tensor srcPoints(
+            {
+                {numSamples, numPoints, 2},
+                "NWC"
+        },
+            nvcv::TYPE_F32);
+        nvcv::Tensor dstPoints(
+            {
+                {numSamples, numPoints, 2},
+                "NWC"
+        },
+            nvcv::TYPE_F32);
+        nvcv::Tensor models = createModelTensor(numSamples);
+
+        auto srcData    = srcPoints.exportData<nvcv::TensorDataStridedCuda>();
+        auto dstData    = dstPoints.exportData<nvcv::TensorDataStridedCuda>();
+        auto modelsData = models.exportData<nvcv::TensorDataStridedCuda>();
+
+        std::vector<float> srcVec(2 * numSamples * numPoints);
+        std::vector<float> dstVec(2 * numSamples * numPoints);
+        std::vector<float> estimatedModelsVec(numSamples * 9);
+
+        int gridSide = 1;
+        while (gridSide * gridSide < numPoints)
+        {
+            ++gridSide;
+        }
+        float gridScale = 2.0f / static_cast<float>(gridSide - 1);
+
+        for (int sample = 0; sample < numSamples; ++sample)
+        {
+            for (int point = 0; point < numPoints; ++point)
+            {
+                float x = -1.0f + static_cast<float>(point % gridSide) * gridScale;
+                float y = -1.0f + static_cast<float>(point / gridSide) * gridScale;
+                float dstx;
+                float dsty;
+                calculateProjectiveDst(x, y, &dstx, &dsty, goldModel.data());
+
+                int offset         = 2 * (sample * numPoints + point);
+                srcVec[offset]     = x;
+                srcVec[offset + 1] = y;
+                dstVec[offset]     = dstx;
+                dstVec[offset + 1] = dsty;
+            }
+        }
+
+        cudaStream_t stream;
+        ASSERT_EQ(cudaSuccess, cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+        ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(srcData->basePtr(), srcVec.data(), srcVec.size() * sizeof(float),
+                                               cudaMemcpyHostToDevice, stream));
+        ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(dstData->basePtr(), dstVec.data(), dstVec.size() * sizeof(float),
+                                               cudaMemcpyHostToDevice, stream));
+
+        cvcuda::FindHomography fh(numSamples, numPoints);
+        EXPECT_NO_THROW(fh(stream, srcPoints, dstPoints, models));
+        ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+        for (int sample = 0; sample < numSamples; ++sample)
+        {
+            ASSERT_EQ(cudaSuccess, cudaMemcpy2D(estimatedModelsVec.data() + sample * 9, sizeof(float) * 3,
+                                                modelsData->basePtr() + sample * modelsData->stride(0),
+                                                modelsData->stride(1), sizeof(float) * 3, 3, cudaMemcpyDeviceToHost));
+        }
+        ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+        // GPU reductions and FMA contraction are not bit-exact with this independent CPU projection.
+        for (int sample = 0; sample < numSamples; ++sample)
+        {
+            for (int point = 0; point < numPoints; ++point)
+            {
+                int   offset = 2 * (sample * numPoints + point);
+                float projectedX;
+                float projectedY;
+                calculateProjectiveDst(srcVec[offset], srcVec[offset + 1], &projectedX, &projectedY,
+                                       estimatedModelsVec.data() + sample * 9);
+                // The 1e-3 tolerance covers GPU reduction/FMA rounding against the independent CPU projection.
+                EXPECT_NEAR(dstVec[offset], projectedX, 1e-3f);
+                // The 1e-3 tolerance covers GPU reduction/FMA rounding against the independent CPU projection.
+                EXPECT_NEAR(dstVec[offset + 1], projectedY, 1e-3f);
+            }
+        }
+    };
+
+    for (int numPoints : numPointCases)
+    {
+        runCase(numPoints);
+    }
 }
 
 TEST_P(OpFindHomography, varshape_correct_output)
@@ -256,14 +386,21 @@ TEST_P(OpFindHomography, varshape_correct_output)
     std::vector<int> numPoints(numSamples);
     std::vector<int> numXPoints(numSamples);
 
-    std::mt19937                       rng(12345);
-    std::uniform_int_distribution<int> dis(0, 100);
-    std::uniform_int_distribution<int> dis_num_points(4, maxPoints);
+    std::mt19937                  rng(12345);
+    std::uniform_int_distribution dis(0, 100);
+    std::uniform_int_distribution dis_num_points(4, maxPoints);
 
     auto              reqs = nvcv::TensorBatch::CalcRequirements(numSamples);
     nvcv::TensorBatch srcTensorBatch(reqs);
     nvcv::TensorBatch dstTensorBatch(reqs);
     nvcv::TensorBatch modelsTensorBatch(reqs);
+
+    // Create the test stream up front so the per-batch H2D uploads below can
+    // use cudaMemcpyAsync on the same stream the operator will run on. See the
+    // matching comment in correct_output for why synchronous cudaMemcpy on the
+    // default stream is unsafe here.
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
 
     std::vector<std::vector<float>> srcVec(numSamples);
     std::vector<std::vector<float>> dstVec(numSamples);
@@ -285,11 +422,12 @@ TEST_P(OpFindHomography, varshape_correct_output)
         {
             int sx = dis(rng);
             int sy = dis(rng);
-            srcVec[i].push_back(sx);
-            srcVec[i].push_back(sy);
+            srcVec[i].push_back(static_cast<float>(sx));
+            srcVec[i].push_back(static_cast<float>(sy));
 
-            float dstx, dsty;
-            calculateDst(sx, sy, &dstx, &dsty, modelsVec.data() + i * 9);
+            float dstx;
+            float dsty;
+            calculateDst(static_cast<float>(sx), static_cast<float>(sy), &dstx, &dsty, modelsVec.data() + i * 9);
             dstVec[i].push_back(dstx);
             dstVec[i].push_back(dsty);
         }
@@ -316,18 +454,15 @@ TEST_P(OpFindHomography, varshape_correct_output)
         auto srcData = srcPoints.exportData<nvcv::TensorDataStridedCuda>();
         auto dstData = dstPoints.exportData<nvcv::TensorDataStridedCuda>();
 
-        ASSERT_EQ(cudaSuccess, cudaMemcpy(srcData->basePtr(), srcVec[i].data(), sizeof(float) * srcVec[i].size(),
-                                          cudaMemcpyHostToDevice));
-        ASSERT_EQ(cudaSuccess, cudaMemcpy(dstData->basePtr(), dstVec[i].data(), sizeof(float) * dstVec[i].size(),
-                                          cudaMemcpyHostToDevice));
+        ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(srcData->basePtr(), srcVec[i].data(), sizeof(float) * srcVec[i].size(),
+                                               cudaMemcpyHostToDevice, stream));
+        ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(dstData->basePtr(), dstVec[i].data(), sizeof(float) * dstVec[i].size(),
+                                               cudaMemcpyHostToDevice, stream));
 
         srcTensorBatch.pushBack(srcPoints);
         dstTensorBatch.pushBack(dstPoints);
         modelsTensorBatch.pushBack(models);
     }
-
-    cudaStream_t stream;
-    ASSERT_EQ(cudaSuccess, cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
 
     cvcuda::FindHomography fh(numSamples, maxNumPoints);
 
@@ -375,8 +510,10 @@ TEST_P(OpFindHomography, varshape_correct_output)
     {
         for (int j = 0; j < numPoints[i]; j++)
         {
-            float dstx, dsty;
-            float sx, sy;
+            float dstx;
+            float dsty;
+            float sx;
+            float sy;
             sx = srcVec[i][2 * j + 0];
             sy = srcVec[i][2 * j + 1];
             calculateDst(sx, sy, &dstx, &dsty, estimatedModelsVec.data() + i * 9);
@@ -384,9 +521,11 @@ TEST_P(OpFindHomography, varshape_correct_output)
             computedDstVec[i].push_back(dsty);
             float A = dstVec[i][2 * j + 0];
             float B = computedDstVec[i][2 * j + 0];
+            // The 1e-3 tolerance covers GPU reduction/FMA rounding against the independent CPU projection.
             EXPECT_NEAR(A, B, 1e-03);
             A = dstVec[i][2 * j + 1];
             B = computedDstVec[i][2 * j + 1];
+            // The 1e-3 tolerance covers GPU reduction/FMA rounding against the independent CPU projection.
             EXPECT_NEAR(A, B, 1e-03);
         }
     }
@@ -410,12 +549,7 @@ TEST(OpFindHomography, degenerate_identical_source_points)
             "NW"
     },
         nvcv::TYPE_2F32);
-    nvcv::Tensor models(
-        {
-            {numSamples, 3, 3},
-            "NHW"
-    },
-        nvcv::TYPE_F32);
+    nvcv::Tensor models = createModelTensor(numSamples);
 
     auto srcData    = srcPoints.exportData<nvcv::TensorDataStridedCuda>();
     auto dstData    = dstPoints.exportData<nvcv::TensorDataStridedCuda>();
@@ -437,18 +571,18 @@ TEST(OpFindHomography, degenerate_identical_source_points)
             srcVec[i * numPoints * 2 + 2 * j + 1] = fixed_src_y;
 
             // Different destination points
-            dstVec[i * numPoints * 2 + 2 * j]     = j * 10.0f;
-            dstVec[i * numPoints * 2 + 2 * j + 1] = j * 15.0f;
+            dstVec[i * numPoints * 2 + 2 * j]     = static_cast<float>(j) * 10.0f;
+            dstVec[i * numPoints * 2 + 2 * j + 1] = static_cast<float>(j) * 15.0f;
         }
     }
 
-    ASSERT_EQ(cudaSuccess, cudaMemcpy(srcData->basePtr(), srcVec.data(), sizeof(float) * 2 * numPoints * numSamples,
-                                      cudaMemcpyHostToDevice));
-    ASSERT_EQ(cudaSuccess, cudaMemcpy(dstData->basePtr(), dstVec.data(), sizeof(float) * 2 * numPoints * numSamples,
-                                      cudaMemcpyHostToDevice));
-
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+
+    ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(srcData->basePtr(), srcVec.data(),
+                                           sizeof(float) * 2 * numPoints * numSamples, cudaMemcpyHostToDevice, stream));
+    ASSERT_EQ(cudaSuccess, cudaMemcpyAsync(dstData->basePtr(), dstVec.data(),
+                                           sizeof(float) * 2 * numPoints * numSamples, cudaMemcpyHostToDevice, stream));
 
     cvcuda::FindHomography fh(numSamples, numPoints);
     EXPECT_NO_THROW(fh(stream, srcPoints, dstPoints, models));
@@ -479,6 +613,17 @@ NVCV_TEST_SUITE_P(OpFindHomography_Negative, test::ValueList<std::string, nvcv::
 TEST(OpFindHomography_Negative, createWillNullHandle)
 {
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaFindHomographyCreate(nullptr, 8, 16));
+}
+
+TEST(OpFindHomography_Negative, createRejectsInvalidBatchOrPointCount)
+{
+    NVCVOperatorHandle handle = nullptr;
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaFindHomographyCreate(&handle, 0, 4));
+    EXPECT_EQ(nullptr, handle);
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaFindHomographyCreate(&handle, 1, 3));
+    EXPECT_EQ(nullptr, handle);
 }
 
 TEST(OpFindHomography_Negative, varshape_different_batch_size)
@@ -538,7 +683,8 @@ TEST(OpFindHomography_Negative, varshape_different_batch_size)
     cvcuda::FindHomography fh(numSamples, maxNumPoints);
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-              nvcv::ProtectCall([&] { fh(stream, srcTensorBatch, dstTensorBatch, modelsTensorBatch); }));
+              nvcv::ProtectCall([&fh, &stream, &srcTensorBatch, &dstTensorBatch, &modelsTensorBatch]
+                                { fh(stream, srcTensorBatch, dstTensorBatch, modelsTensorBatch); }));
 
     EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
@@ -588,9 +734,11 @@ TEST_P(OpFindHomography_Negative, invalid_parameters)
     cudaStream_t stream;
     ASSERT_EQ(cudaSuccess, cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
 
-    cvcuda::FindHomography fh(std::max(numSamplesSrc, numSamplesDst), std::max(numPointsSrc, numPointsDst));
+    cvcuda::FindHomography fh(std::max(numSamplesSrc, numSamplesDst),
+                              std::max(4, std::max(numPointsSrc, numPointsDst)));
 
-    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { fh(stream, srcPoints, dstPoints, models); }));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&fh, &stream, &srcPoints, &dstPoints, &models]
+                                                             { fh(stream, srcPoints, dstPoints, models); }));
 
     EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));

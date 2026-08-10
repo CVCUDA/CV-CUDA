@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,12 +37,12 @@ struct Payload
         destroyed = true;
     }
 
-    Payload(Payload &&p)
+    Payload(Payload &&p) noexcept
     {
         *this = std::move(p);
     }
 
-    Payload &operator=(Payload &&p)
+    Payload &operator=(Payload &&p) noexcept
     {
         data       = p.data;
         destroyed  = p.destroyed;

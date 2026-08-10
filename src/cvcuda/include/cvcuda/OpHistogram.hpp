@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,6 +34,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class Histogram final : public IOperator
@@ -41,41 +43,37 @@ class Histogram final : public IOperator
 public:
     explicit Histogram();
 
-    ~Histogram();
-
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, nvcv::OptionalTensorConstRef mask,
-                    const nvcv::Tensor &histogram);
+                    const nvcv::Tensor &histogram) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline Histogram::Histogram()
 {
-    nvcv::detail::CheckThrow(cvcudaHistogramCreate(&m_handle));
-    assert(m_handle);
-}
-
-inline Histogram::~Histogram()
-{
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaHistogramCreate(&h));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void Histogram::operator()(cudaStream_t stream, const nvcv::Tensor &in, nvcv::OptionalTensorConstRef mask,
-                                  const nvcv::Tensor &histogram)
+                                  const nvcv::Tensor &histogram) const
 {
     nvcv::detail::CheckThrow(
-        cvcudaHistogramSubmit(m_handle, stream, in.handle(), NVCV_OPTIONAL_TO_HANDLE(mask), histogram.handle()));
+        cvcudaHistogramSubmit(m_handle.get(), stream, in.handle(), NVCV_OPTIONAL_TO_HANDLE(mask), histogram.handle()));
 }
 
 inline NVCVOperatorHandle Histogram::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA__HISTOGRAM_HPP

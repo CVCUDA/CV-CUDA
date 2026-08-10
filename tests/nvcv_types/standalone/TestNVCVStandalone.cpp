@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +21,9 @@
 
 TEST(StandaloneTest, nvcv_can_be_used_standalone)
 {
-    constexpr nvcv::Size2D size12{1, 2}, size21{2, 1}, size22{2, 2};
+    constexpr nvcv::Size2D size12{1, 2};
+    constexpr nvcv::Size2D size21{2, 1};
+    constexpr nvcv::Size2D size22{2, 2};
 
     EXPECT_EQ(nvcv::MaxSize(size12, size21), size22);
 

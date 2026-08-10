@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,6 +24,7 @@
 #include <cvcuda/cuda_tools/MathWrappers.hpp> // for cuda::round, etc.
 #include <cvcuda/cuda_tools/SaturateCast.hpp> // for cuda::SaturateCast, etc.
 
+#include <array>
 #include <vector>
 
 #define VEC_EXPECT_NEAR(vec1, vec2, delta)                              \
@@ -72,14 +73,15 @@ inline const T &ValueAt(const std::vector<uint8_t> &vec, long3 strides, int2 siz
 }
 
 template<typename T>
-inline T &ValueAt(std::vector<uint8_t> &vec, long4_16a strides, int4 coord)
+inline T &ValueAt(std::vector<uint8_t> &vec, const long4_16a &strides, int4 coord)
 {
     return *reinterpret_cast<T *>(
         &vec[coord.w * strides.x + coord.z * strides.y + coord.y * strides.z + coord.x * strides.w]);
 }
 
 template<NVCVBorderType B, typename T>
-inline const T &ValueAt(const std::vector<uint8_t> &vec, long4_16a strides, int2 size, const T &borderValue, int4 coord)
+inline const T &ValueAt(const std::vector<uint8_t> &vec, const long4_16a &strides, int2 size, const T &borderValue,
+                        int4 coord)
 {
     int2 inCoord{coord.y, coord.z};
 
@@ -119,138 +121,253 @@ inline void GetBicubicCoeffs(float delta, float &w0, float &w1, float &w2, float
     w3 = 1 - w0 - w1 - w2;
 }
 
+template<typename StridesType, typename ValueType>
+struct GoldInterpContext
+{
+    const std::vector<uint8_t> &vec;
+    const StridesType          &strides;
+    int2                        size;
+    const ValueType            &bValue;
+    int                         z;
+    int                         k;
+};
+
+struct AreaWindow
+{
+    float fsx1;
+    float fsx2;
+    float fsy1;
+    float fsy2;
+    int   sx1;
+    int   sx2;
+    int   sy1;
+    int   sy2;
+};
+
+inline float AreaDelta(int edge, float fractionalEdge)
+{
+    return static_cast<float>(edge) - fractionalEdge;
+}
+
+inline bool AreaEdgeAfter(int edge, float fractionalEdge)
+{
+    return static_cast<float>(edge) > fractionalEdge;
+}
+
+inline bool AreaEdgeBefore(int edge, float fractionalEdge)
+{
+    return static_cast<float>(edge) < fractionalEdge;
+}
+
+template<int N, NVCVBorderType B, typename StridesType, typename ValueType>
+inline const ValueType &GoldValueAt(const GoldInterpContext<StridesType, ValueType> &ctx, int x, int y)
+{
+    return ValueAt<B>(ctx.vec, ctx.strides, ctx.size, ctx.bValue, GetCoord<N>(x, y, ctx.z, ctx.k));
+}
+
+template<int N, NVCVBorderType B, typename StridesType, typename ValueType>
+inline ValueType GoldInterpNearest(const GoldInterpContext<StridesType, ValueType> &ctx, float2 coord)
+{
+    int2 c = cuda::round<cuda::RoundMode::DOWN, int>(coord + .5f);
+
+    return GoldValueAt<N, B>(ctx, c.x, c.y);
+}
+
+template<int N, NVCVBorderType B, typename StridesType, typename ValueType>
+inline ValueType GoldInterpLinear(const GoldInterpContext<StridesType, ValueType> &ctx, float2 coord)
+{
+    int2 c1 = cuda::round<cuda::RoundMode::DOWN, int>(coord);
+    int2 c2 = c1 + 1;
+
+    ValueType v1 = GoldValueAt<N, B>(ctx, c1.x, c1.y);
+    ValueType v2 = GoldValueAt<N, B>(ctx, c2.x, c1.y);
+    ValueType v3 = GoldValueAt<N, B>(ctx, c1.x, c2.y);
+    ValueType v4 = GoldValueAt<N, B>(ctx, c2.x, c2.y);
+
+    auto out = cuda::SetAll<cuda::ConvertBaseTypeTo<float, ValueType>>(0);
+
+    out += v1 * (static_cast<float>(c2.x) - coord.x) * (static_cast<float>(c2.y) - coord.y);
+    out += v2 * (coord.x - static_cast<float>(c1.x)) * (static_cast<float>(c2.y) - coord.y);
+    out += v3 * (static_cast<float>(c2.x) - coord.x) * (coord.y - static_cast<float>(c1.y));
+    out += v4 * (coord.x - static_cast<float>(c1.x)) * (coord.y - static_cast<float>(c1.y));
+
+    return cuda::SaturateCast<ValueType>(out);
+}
+
+template<int N, NVCVBorderType B, typename StridesType, typename ValueType>
+inline ValueType GoldInterpCubic(const GoldInterpContext<StridesType, ValueType> &ctx, float2 coord)
+{
+    int ix = cuda::round<cuda::RoundMode::DOWN, int>(coord.x);
+    int iy = cuda::round<cuda::RoundMode::DOWN, int>(coord.y);
+
+    using FT = cuda::ConvertBaseTypeTo<float, ValueType>;
+    auto sum = cuda::SetAll<FT>(0);
+
+    std::array<float, 4> wx;
+    test::GetBicubicCoeffs(coord.x - static_cast<float>(ix), wx[0], wx[1], wx[2], wx[3]);
+    std::array<float, 4> wy;
+    test::GetBicubicCoeffs(coord.y - static_cast<float>(iy), wy[0], wy[1], wy[2], wy[3]);
+
+    for (int cy = -1; cy <= 2; cy++)
+    {
+        for (int cx = -1; cx <= 2; cx++)
+        {
+            sum += (wx[cx + 1] * wy[cy + 1]) * GoldValueAt<N, B>(ctx, ix + cx, iy + cy);
+        }
+    }
+
+    return cuda::SaturateCast<ValueType>(sum);
+}
+
+inline AreaWindow GetAreaWindow(float2 scale, float2 coord)
+{
+    float fsx1 = coord.x * scale.x;
+    float fsx2 = fsx1 + scale.x;
+    float fsy1 = coord.y * scale.y;
+    float fsy2 = fsy1 + scale.y;
+
+    return AreaWindow{fsx1,
+                      fsx2,
+                      fsy1,
+                      fsy2,
+                      cuda::round<cuda::RoundMode::UP, int>(fsx1),
+                      cuda::round<cuda::RoundMode::DOWN, int>(fsx2),
+                      cuda::round<cuda::RoundMode::UP, int>(fsy1),
+                      cuda::round<cuda::RoundMode::DOWN, int>(fsy2)};
+}
+
+template<int N, NVCVBorderType B, typename AccumType, typename StridesType, typename ValueType>
+inline void AddAreaBlock(AccumType &out, const GoldInterpContext<StridesType, ValueType> &ctx, int yBegin, int yEnd,
+                         int xBegin, int xEnd, float weight)
+{
+    for (int dy = yBegin; dy < yEnd; ++dy)
+    {
+        for (int dx = xBegin; dx < xEnd; ++dx)
+        {
+            out = out + GoldValueAt<N, B>(ctx, dx, dy) * weight;
+        }
+    }
+}
+
+template<int N, NVCVBorderType B, typename AccumType, typename StridesType, typename ValueType>
+inline void AddAreaSideColumns(AccumType &out, const GoldInterpContext<StridesType, ValueType> &ctx,
+                               const AreaWindow &window, float invscale)
+{
+    for (int dy = window.sy1; dy < window.sy2; ++dy)
+    {
+        if (AreaEdgeAfter(window.sx1, window.fsx1))
+        {
+            out = out + GoldValueAt<N, B>(ctx, window.sx1 - 1, dy) * (AreaDelta(window.sx1, window.fsx1) * invscale);
+        }
+
+        if (AreaEdgeBefore(window.sx2, window.fsx2))
+        {
+            out = out + GoldValueAt<N, B>(ctx, window.sx2, dy) * (-AreaDelta(window.sx2, window.fsx2) * invscale);
+        }
+    }
+}
+
+template<int N, NVCVBorderType B, typename AccumType, typename StridesType, typename ValueType>
+inline void AddAreaSideRows(AccumType &out, const GoldInterpContext<StridesType, ValueType> &ctx,
+                            const AreaWindow &window, float invscale)
+{
+    if (AreaEdgeAfter(window.sy1, window.fsy1))
+    {
+        for (int dx = window.sx1; dx < window.sx2; ++dx)
+        {
+            out = out + GoldValueAt<N, B>(ctx, dx, window.sy1 - 1) * (AreaDelta(window.sy1, window.fsy1) * invscale);
+        }
+    }
+
+    if (AreaEdgeBefore(window.sy2, window.fsy2))
+    {
+        for (int dx = window.sx1; dx < window.sx2; ++dx)
+        {
+            out = out + GoldValueAt<N, B>(ctx, dx, window.sy2) * (-AreaDelta(window.sy2, window.fsy2) * invscale);
+        }
+    }
+}
+
+template<int N, NVCVBorderType B, typename AccumType, typename StridesType, typename ValueType>
+inline void AddAreaCorners(AccumType &out, const GoldInterpContext<StridesType, ValueType> &ctx,
+                           const AreaWindow &window, float invscale)
+{
+    if (AreaEdgeAfter(window.sy1, window.fsy1) && AreaEdgeAfter(window.sx1, window.fsx1))
+    {
+        out = out
+            + GoldValueAt<N, B>(ctx, window.sx1 - 1, window.sy1 - 1)
+                  * (AreaDelta(window.sy1, window.fsy1) * AreaDelta(window.sx1, window.fsx1) * invscale);
+    }
+
+    if (AreaEdgeAfter(window.sy1, window.fsy1) && AreaEdgeBefore(window.sx2, window.fsx2))
+    {
+        out = out
+            + GoldValueAt<N, B>(ctx, window.sx2, window.sy1 - 1)
+                  * (AreaDelta(window.sy1, window.fsy1) * -AreaDelta(window.sx2, window.fsx2) * invscale);
+    }
+
+    if (AreaEdgeBefore(window.sy2, window.fsy2) && AreaEdgeBefore(window.sx2, window.fsx2))
+    {
+        out = out
+            + GoldValueAt<N, B>(ctx, window.sx2, window.sy2)
+                  * (-AreaDelta(window.sy2, window.fsy2) * -AreaDelta(window.sx2, window.fsx2) * invscale);
+    }
+
+    if (AreaEdgeBefore(window.sy2, window.fsy2) && AreaEdgeAfter(window.sx1, window.fsx1))
+    {
+        out = out
+            + GoldValueAt<N, B>(ctx, window.sx1 - 1, window.sy2)
+                  * (-AreaDelta(window.sy2, window.fsy2) * AreaDelta(window.sx1, window.fsx1) * invscale);
+    }
+}
+
+template<int N, NVCVBorderType B, typename StridesType, typename ValueType>
+inline ValueType GoldInterpArea(const GoldInterpContext<StridesType, ValueType> &ctx, float2 scale, float2 coord)
+{
+    AreaWindow window = GetAreaWindow(scale, coord);
+    auto       out    = cuda::SetAll<cuda::ConvertBaseTypeTo<float, ValueType>>(0);
+
+    if (std::ceil(scale.x) == scale.x && std::ceil(scale.y) == scale.y)
+    {
+        AddAreaBlock<N, B>(out, ctx, window.sy1, window.sy2, window.sx1, window.sx2, 1.f / (scale.x * scale.y));
+        return cuda::SaturateCast<ValueType>(out);
+    }
+
+    float invscale = 1.f
+                   / (std::min(scale.x, AreaDelta(ctx.size.x, window.fsx1))
+                      * std::min(scale.y, AreaDelta(ctx.size.y, window.fsy1)));
+
+    AddAreaBlock<N, B>(out, ctx, window.sy1, window.sy2, window.sx1, window.sx2, invscale);
+    AddAreaSideColumns<N, B>(out, ctx, window, invscale);
+    AddAreaSideRows<N, B>(out, ctx, window, invscale);
+    AddAreaCorners<N, B>(out, ctx, window, invscale);
+
+    return cuda::SaturateCast<ValueType>(out);
+}
+
 template<NVCVInterpolationType I, NVCVBorderType B, typename StridesType, typename ValueType>
 inline ValueType GoldInterp(const std::vector<uint8_t> &vec, const StridesType &strides, const int2 &size,
                             const ValueType &bValue, float2 scale, float2 coord, int z = 0, int k = 0)
 {
     constexpr int N = cuda::NumElements<StridesType>;
 
+    GoldInterpContext<StridesType, ValueType> ctx{vec, strides, size, bValue, z, k};
+
     if constexpr (I == NVCV_INTERP_NEAREST)
     {
-        int2 c = cuda::round<cuda::RoundMode::DOWN, int>(coord + .5f);
-
-        return ValueAt<B>(vec, strides, size, bValue, GetCoord<N>(c.x, c.y, z, k));
+        return GoldInterpNearest<N, B>(ctx, coord);
     }
     else if constexpr (I == NVCV_INTERP_LINEAR)
     {
-        int2 c1 = cuda::round<cuda::RoundMode::DOWN, int>(coord);
-        int2 c2 = c1 + 1;
-
-        ValueType v1 = ValueAt<B>(vec, strides, size, bValue, GetCoord<N>(c1.x, c1.y, z, k));
-        ValueType v2 = ValueAt<B>(vec, strides, size, bValue, GetCoord<N>(c2.x, c1.y, z, k));
-        ValueType v3 = ValueAt<B>(vec, strides, size, bValue, GetCoord<N>(c1.x, c2.y, z, k));
-        ValueType v4 = ValueAt<B>(vec, strides, size, bValue, GetCoord<N>(c2.x, c2.y, z, k));
-
-        auto out = cuda::SetAll<cuda::ConvertBaseTypeTo<float, ValueType>>(0);
-
-        out += v1 * (c2.x - coord.x) * (c2.y - coord.y);
-        out += v2 * (coord.x - c1.x) * (c2.y - coord.y);
-        out += v3 * (c2.x - coord.x) * (coord.y - c1.y);
-        out += v4 * (coord.x - c1.x) * (coord.y - c1.y);
-
-        return cuda::SaturateCast<ValueType>(out);
+        return GoldInterpLinear<N, B>(ctx, coord);
     }
     else if constexpr (I == NVCV_INTERP_CUBIC)
     {
-        int ix = cuda::round<cuda::RoundMode::DOWN, int>(coord.x);
-        int iy = cuda::round<cuda::RoundMode::DOWN, int>(coord.y);
-
-        using FT = cuda::ConvertBaseTypeTo<float, ValueType>;
-        auto sum = cuda::SetAll<FT>(0);
-
-        float wx[4];
-        test::GetBicubicCoeffs(coord.x - ix, wx[0], wx[1], wx[2], wx[3]);
-        float wy[4];
-        test::GetBicubicCoeffs(coord.y - iy, wy[0], wy[1], wy[2], wy[3]);
-
-        for (int cy = -1; cy <= 2; cy++)
-        {
-            for (int cx = -1; cx <= 2; cx++)
-            {
-                sum += (wx[cx + 1] * wy[cy + 1])
-                     * ValueAt<B>(vec, strides, size, bValue, GetCoord<N>(ix + cx, iy + cy, z, k));
-            }
-        }
-
-        return cuda::SaturateCast<ValueType>(sum);
+        return GoldInterpCubic<N, B>(ctx, coord);
     }
     else if constexpr (I == NVCV_INTERP_AREA)
     {
-        float fsx1 = coord.x * scale.x;
-        float fsx2 = fsx1 + scale.x;
-        float fsy1 = coord.y * scale.y;
-        float fsy2 = fsy1 + scale.y;
-        int   sx1  = cuda::round<cuda::RoundMode::UP, int>(fsx1);
-        int   sx2  = cuda::round<cuda::RoundMode::DOWN, int>(fsx2);
-        int   sy1  = cuda::round<cuda::RoundMode::UP, int>(fsy1);
-        int   sy2  = cuda::round<cuda::RoundMode::DOWN, int>(fsy2);
-
-        auto out = cuda::SetAll<cuda::ConvertBaseTypeTo<float, ValueType>>(0);
-
-        if (std::ceil(scale.x) == scale.x && std::ceil(scale.y) == scale.y)
-        {
-            float invscale = 1.f / (scale.x * scale.y);
-
-            for (int dy = sy1; dy < sy2; ++dy)
-                for (int dx = sx1; dx < sx2; ++dx)
-                {
-                    out = out + ValueAt<B>(vec, strides, size, bValue, GetCoord<N>(dx, dy, z, k)) * invscale;
-                }
-        }
-        else
-        {
-            float invscale = 1.f / (std::min(scale.x, size.x - fsx1) * std::min(scale.y, size.y - fsy1));
-
-            for (int dy = sy1; dy < sy2; ++dy)
-            {
-                for (int dx = sx1; dx < sx2; ++dx)
-                    out = out + ValueAt<B>(vec, strides, size, bValue, GetCoord<N>(dx, dy, z, k)) * invscale;
-
-                if (sx1 > fsx1)
-                    out = out
-                        + ValueAt<B>(vec, strides, size, bValue, GetCoord<N>(sx1 - 1, dy, z, k))
-                              * ((sx1 - fsx1) * invscale);
-
-                if (sx2 < fsx2)
-                    out = out
-                        + ValueAt<B>(vec, strides, size, bValue, GetCoord<N>(sx2, dy, z, k))
-                              * ((fsx2 - sx2) * invscale);
-            }
-
-            if (sy1 > fsy1)
-                for (int dx = sx1; dx < sx2; ++dx)
-                    out = out
-                        + ValueAt<B>(vec, strides, size, bValue, GetCoord<N>(dx, sy1 - 1, z, k))
-                              * ((sy1 - fsy1) * invscale);
-
-            if (sy2 < fsy2)
-                for (int dx = sx1; dx < sx2; ++dx)
-                    out = out
-                        + ValueAt<B>(vec, strides, size, bValue, GetCoord<N>(dx, sy2, z, k))
-                              * ((fsy2 - sy2) * invscale);
-
-            if ((sy1 > fsy1) && (sx1 > fsx1))
-                out = out
-                    + ValueAt<B>(vec, strides, size, bValue, GetCoord<N>(sx1 - 1, sy1 - 1, z, k))
-                          * ((sy1 - fsy1) * (sx1 - fsx1) * invscale);
-
-            if ((sy1 > fsy1) && (sx2 < fsx2))
-                out = out
-                    + ValueAt<B>(vec, strides, size, bValue, GetCoord<N>(sx2, sy1 - 1, z, k))
-                          * ((sy1 - fsy1) * (fsx2 - sx2) * invscale);
-
-            if ((sy2 < fsy2) && (sx2 < fsx2))
-                out = out
-                    + ValueAt<B>(vec, strides, size, bValue, GetCoord<N>(sx2, sy2, z, k))
-                          * ((fsy2 - sy2) * (fsx2 - sx2) * invscale);
-
-            if ((sy2 < fsy2) && (sx1 > fsx1))
-                out = out
-                    + ValueAt<B>(vec, strides, size, bValue, GetCoord<N>(sx1 - 1, sy2, z, k))
-                          * ((fsy2 - sy2) * (sx1 - fsx1) * invscale);
-        }
-
-        return cuda::SaturateCast<ValueType>(out);
+        return GoldInterpArea<N, B>(ctx, scale, coord);
     }
 }
 

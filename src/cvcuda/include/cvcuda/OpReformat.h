@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -57,8 +57,8 @@ CVCUDA_PUBLIC NVCVStatus cvcudaReformatCreate(NVCVOperatorHandle *handle);
  *  Limitations:
  *
  *  Input:
- *       Data Layout:    [kNHWC, kHWC, kNCHW, KCHW]
- *       Channels:       [1, 3, 4]
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
+ *       Channels:       [1, 2, 3, 4]
  *
  *       Data Type      | Allowed
  *       -------------- | -------------
@@ -68,12 +68,13 @@ CVCUDA_PUBLIC NVCVStatus cvcudaReformatCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | Yes
+ *       16bit Float    | No
  *       32bit Float    | Yes
  *       64bit Float    | Yes
  *
  *  Output:
- *       Data Layout:    [kNHWC, kHWC, kNCHW, KCHW]
- *       Channels:       [1, 3, 4]
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
+ *       Channels:       [1, 2, 3, 4]
  *
  *       Data Type      | Allowed
  *       -------------- | -------------
@@ -83,6 +84,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaReformatCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | Yes
+ *       16bit Float    | No
  *       32bit Float    | Yes
  *       64bit Float    | Yes
  *
@@ -115,5 +117,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaReformatSubmit(NVCVOperatorHandle handle, cudaStr
 #ifdef __cplusplus
 }
 #endif
+
+/** @} */
 
 #endif /* CVCUDA_REFORMAT_H */

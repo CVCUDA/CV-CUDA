@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -24,11 +24,13 @@
 #ifndef TEXT_BACKEND_HPP
 #define TEXT_BACKEND_HPP
 
+#include <cuda_runtime.h>
+
 #include <memory>
 #include <tuple>
 #include <vector>
 
-#define MAX_FONT_SIZE 200
+inline constexpr int MAX_FONT_SIZE = 200;
 
 enum class TextBackendType : int
 {
@@ -39,6 +41,8 @@ enum class TextBackendType : int
 class WordMeta
 {
 public:
+    virtual ~WordMeta() = default;
+
     virtual int width() const                                     = 0;
     virtual int height() const                                    = 0;
     virtual int x_offset_on_bitmap() const                        = 0;
@@ -48,19 +52,23 @@ public:
 class WordMetaMapper
 {
 public:
+    virtual ~WordMetaMapper() = default;
+
     virtual WordMeta *query(unsigned long int word) = 0;
 };
 
 class TextBackend
 {
 public:
+    virtual ~TextBackend() = default;
+
     virtual std::vector<unsigned long int> split_utf8(const char *utf8_text) = 0;
     virtual std::tuple<int, int, int> measure_text(const std::vector<unsigned long int> &words, unsigned int font_size,
                                                    const char *font)
         = 0;
     virtual void add_build_text(const std::vector<unsigned long int> &words, unsigned int font_size, const char *font)
         = 0;
-    virtual void            build_bitmap(void *stream = nullptr)                                               = 0;
+    virtual void            build_bitmap(cudaStream_t stream = nullptr)                                        = 0;
     virtual WordMetaMapper *query(const char *font, int font_size)                                             = 0;
     virtual unsigned char  *bitmap_device_pointer() const                                                      = 0;
     virtual int             bitmap_width() const                                                               = 0;

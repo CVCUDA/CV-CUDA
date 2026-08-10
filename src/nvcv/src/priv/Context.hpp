@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,7 +33,7 @@ class Context final : public IContext
 {
 public:
     Context();
-    ~Context();
+    ~Context() override;
 
     const Managers &managerList() const override;
     IAllocator     &allocDefault() override;
@@ -41,14 +41,15 @@ public:
 private:
     // Order is important due to inter-dependencies
     DefaultAllocator   m_allocDefault;
-    AllocatorManager   m_allocatorManager;
-    ImageManager       m_imageManager;
-    ImageBatchManager  m_imageBatchManager;
-    TensorManager      m_tensorManager;
-    TensorBatchManager m_tensorBatchManager;
-    ArrayManager       m_arrayManager;
+    AllocatorManager   m_allocatorManager{"Allocator"};
+    ImageManager       m_imageManager{"Image"};
+    ImageBatchManager  m_imageBatchManager{"ImageBatch"};
+    TensorManager      m_tensorManager{"Tensor"};
+    TensorBatchManager m_tensorBatchManager{"TensorBatch"};
+    ArrayManager       m_arrayManager{"Array"};
 
-    Managers m_managerList;
+    Managers m_managerList{m_allocatorManager, m_imageManager,       m_imageBatchManager,
+                           m_tensorManager,    m_tensorBatchManager, m_arrayManager};
 };
 
 } // namespace nvcv::priv

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,6 +35,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class HistogramEq final : public IOperator
@@ -42,45 +44,41 @@ class HistogramEq final : public IOperator
 public:
     explicit HistogramEq(uint32_t maxBatchSize);
 
-    ~HistogramEq();
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out) const;
+    void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out) const;
 
-    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out);
-    void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out);
-
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline HistogramEq::HistogramEq(uint32_t maxBatchSize)
 {
-    nvcv::detail::CheckThrow(cvcudaHistogramEqCreate(&m_handle, maxBatchSize));
-    assert(m_handle);
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaHistogramEqCreate(&h, maxBatchSize));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
-inline HistogramEq::~HistogramEq()
+inline void HistogramEq::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out) const
 {
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
-}
-
-inline void HistogramEq::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out)
-{
-    nvcv::detail::CheckThrow(cvcudaHistogramEqSubmit(m_handle, stream, in.handle(), out.handle()));
+    nvcv::detail::CheckThrow(cvcudaHistogramEqSubmit(m_handle.get(), stream, in.handle(), out.handle()));
 }
 
 inline void HistogramEq::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
-                                    const nvcv::ImageBatchVarShape &out)
+                                    const nvcv::ImageBatchVarShape &out) const
 {
-    nvcv::detail::CheckThrow(cvcudaHistogramEqVarShapeSubmit(m_handle, stream, in.handle(), out.handle()));
+    nvcv::detail::CheckThrow(cvcudaHistogramEqVarShapeSubmit(m_handle.get(), stream, in.handle(), out.handle()));
 }
 
 inline NVCVOperatorHandle HistogramEq::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA__HISTOGRAM_EQ_HPP

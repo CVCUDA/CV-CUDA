@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -53,7 +53,7 @@ NVCV_DEFINE_API(0, 0, const char *, nvcvStatusGetName, (NVCVStatus err))
 NVCV_DEFINE_API(0, 2, void, nvcvSetThreadStatusVarArgList, (NVCVStatus status, const char *fmt, va_list va))
 {
     NVCVStatus ret = priv::ProtectCall(
-        [&]
+        [&fmt, &status, &va]
         {
             if (fmt)
             {
@@ -74,7 +74,7 @@ NVCV_DEFINE_API(0, 2, void, nvcvSetThreadStatus, (NVCVStatus status, const char 
     va_start(va, fmt);
 
     NVCVStatus ret = priv::ProtectCall(
-        [&]
+        [&fmt, &status, &va]
         {
             if (fmt)
             {

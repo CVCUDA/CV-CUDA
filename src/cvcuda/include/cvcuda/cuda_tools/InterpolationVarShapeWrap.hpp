@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -317,9 +317,12 @@ public:
                  std::is_same_v<BaseType<DimType>, float> && (NumElements<DimType> == 3 || NumElements<DimType> == 4)>>
     inline __host__ __device__ ValueType operator[](DimType c) const
     {
-        const int x1 = GetIndexForInterpolation<kInterpolationType>(c.x);
+        // IndexType must match the storage width (`int`): letting
+        // GetIndexForInterpolation return the default int64 would bypass its
+        // overflow-prevention clamp and re-expose x1 + 1 to int32 overflow.
+        const int x1 = GetIndexForInterpolation<kInterpolationType, 1, int>(c.x);
         const int x2 = x1 + 1;
-        const int y1 = GetIndexForInterpolation<kInterpolationType>(c.y);
+        const int y1 = GetIndexForInterpolation<kInterpolationType, 1, int>(c.y);
         const int y2 = y1 + 1;
 
         auto out = SetAll<ConvertBaseTypeTo<float, std::remove_cv_t<ValueType>>>(0);
@@ -421,15 +424,16 @@ public:
                  std::is_same_v<BaseType<DimType>, float> && (NumElements<DimType> == 3 || NumElements<DimType> == 4)>>
     inline __host__ __device__ ValueType operator[](DimType c) const
     {
-        const int ix = GetIndexForInterpolation<kInterpolationType, 1>(c.x);
-        const int iy = GetIndexForInterpolation<kInterpolationType, 1>(c.y);
+        // Explicit int IndexType — see note at LINEAR above.
+        const int ix = GetIndexForInterpolation<kInterpolationType, 1, int>(c.x);
+        const int iy = GetIndexForInterpolation<kInterpolationType, 1, int>(c.y);
 
         using FT = ConvertBaseTypeTo<float, std::remove_cv_t<ValueType>>;
         auto sum = SetAll<FT>(0);
 
-        float wx[4];
+        float wx[4]; // NOSONAR: CUDA cubic coefficients are indexed in the unrolled loop.
         GetCubicCoeffs(c.x - ix, wx[0], wx[1], wx[2], wx[3]);
-        float wy[4];
+        float wy[4]; // NOSONAR: CUDA cubic coefficients are indexed in the unrolled loop.
         GetCubicCoeffs(c.y - iy, wy[0], wy[1], wy[2], wy[3]);
 
 #pragma unroll
@@ -552,107 +556,199 @@ public:
                  std::is_same_v<BaseType<DimType>, float> && (NumElements<DimType> == 3 || NumElements<DimType> == 4)>>
     inline __host__ __device__ ValueType operator[](DimType c) const
     {
-        const float fsx1 = c.x * m_scaleX;
-        const float fsy1 = c.y * m_scaleY;
-        const float fsx2 = fsx1 + m_scaleX;
-        const float fsy2 = fsy1 + m_scaleY;
-        const int   xmin = GetIndexForInterpolation<kInterpolationType, 1>(fsx1);
-        const int   xmax = GetIndexForInterpolation<kInterpolationType, 2>(fsx2);
-        const int   ymin = GetIndexForInterpolation<kInterpolationType, 1>(fsy1);
-        const int   ymax = GetIndexForInterpolation<kInterpolationType, 2>(fsy2);
+        const AreaBounds bounds = MakeAreaBounds(c);
 
         auto out = SetAll<ConvertBaseTypeTo<float, std::remove_cv_t<ValueType>>>(0);
 
         if (m_isIntegerArea)
         {
-            const float scale = 1.f / (m_scaleX * m_scaleY);
-
-            for (int cy = ymin; cy < ymax; ++cy)
-            {
-                for (int cx = xmin; cx < xmax; ++cx)
-                {
-                    out += Base::doGetValue(c, cx, cy) * scale;
-                }
-            }
+            AddIntegerArea(c, bounds, out);
         }
         else
         {
-            int w, h;
-
-            if constexpr (NumElements<DimType> == 3)
-                w = Base::m_borderWrap.imageBatchWrap().width(static_cast<int>(c.z));
-            else
-                w = Base::m_borderWrap.imageBatchWrap().width(static_cast<int>(c.w), static_cast<int>(c.z));
-
-            if constexpr (NumElements<DimType> == 3)
-                h = Base::m_borderWrap.imageBatchWrap().height(static_cast<int>(c.z));
-            else
-                h = Base::m_borderWrap.imageBatchWrap().height(static_cast<int>(c.w), static_cast<int>(c.z));
-
-            const float scale = 1.f / (min(m_scaleX, w - fsx1) * min(m_scaleY, h - fsy1));
-
-            for (int cy = ymin; cy < ymax; ++cy)
-            {
-                for (int cx = xmin; cx < xmax; ++cx)
-                {
-                    out += Base::doGetValue(c, cx, cy) * scale;
-                }
-
-                if (xmin > fsx1)
-                {
-                    out += Base::doGetValue(c, (xmin - 1), cy) * ((xmin - fsx1) * scale);
-                }
-
-                if (xmax < fsx2)
-                {
-                    out += Base::doGetValue(c, xmax, cy) * ((fsx2 - xmax) * scale);
-                }
-            }
-
-            if (ymin > fsy1)
-            {
-                for (int cx = xmin; cx < xmax; ++cx)
-                {
-                    out += Base::doGetValue(c, cx, (ymin - 1)) * ((ymin - fsy1) * scale);
-                }
-
-                if (xmin > fsx1)
-                {
-                    out += Base::doGetValue(c, (xmin - 1), (ymin - 1)) * ((ymin - fsy1) * (xmin - fsx1) * scale);
-                }
-
-                if (xmax < fsx2)
-                {
-                    out += Base::doGetValue(c, xmax, (ymin - 1)) * ((ymin - fsy1) * (fsx2 - xmax) * scale);
-                }
-            }
-
-            if (ymax < fsy2)
-            {
-                for (int cx = xmin; cx < xmax; ++cx)
-                {
-                    out += Base::doGetValue(c, cx, ymax) * ((fsy2 - ymax) * scale);
-                }
-
-                if (xmax < fsx2)
-                {
-                    out += Base::doGetValue(c, xmax, ymax) * ((fsy2 - ymax) * (fsx2 - xmax) * scale);
-                }
-
-                if (xmin > fsx1)
-                {
-                    out += Base::doGetValue(c, (xmin - 1), ymax) * ((fsy2 - ymax) * (xmin - fsx1) * scale);
-                }
-            }
+            AddFractionalArea(c, bounds, out);
         }
 
         return SaturateCast<ValueType>(out);
     }
 
 private:
+    struct AreaBounds
+    {
+        float fsx1;
+        float fsy1;
+        float fsx2;
+        float fsy2;
+        int   xmin;
+        int   xmax;
+        int   ymin;
+        int   ymax;
+    };
+
+    template<typename DimType>
+    inline __host__ __device__ AreaBounds MakeAreaBounds(DimType c) const
+    {
+        const float fsx1 = c.x * m_scaleX;
+        const float fsy1 = c.y * m_scaleY;
+        const float fsx2 = fsx1 + m_scaleX;
+        const float fsy2 = fsy1 + m_scaleY;
+
+        // Explicit int IndexType — see note at LINEAR above.
+        return {fsx1,
+                fsy1,
+                fsx2,
+                fsy2,
+                GetIndexForInterpolation<kInterpolationType, 1, int>(fsx1),
+                GetIndexForInterpolation<kInterpolationType, 2, int>(fsx2),
+                GetIndexForInterpolation<kInterpolationType, 1, int>(fsy1),
+                GetIndexForInterpolation<kInterpolationType, 2, int>(fsy2)};
+    }
+
+    template<typename DimType, typename AccumType>
+    inline __host__ __device__ void AddIntegerArea(DimType c, const AreaBounds &bounds, AccumType &out) const
+    {
+        const float scale = 1.f / (m_scaleX * m_scaleY);
+
+        for (int cy = bounds.ymin; cy < bounds.ymax; ++cy)
+        {
+            for (int cx = bounds.xmin; cx < bounds.xmax; ++cx)
+            {
+                out += Base::doGetValue(c, cx, cy) * scale;
+            }
+        }
+    }
+
+    template<typename DimType, typename AccumType>
+    inline __host__ __device__ void AddFractionalArea(DimType c, const AreaBounds &bounds, AccumType &out) const
+    {
+        const float scale = FractionalAreaScale(c, bounds);
+
+        AddInteriorRows(c, bounds, scale, out);
+
+        if (bounds.ymin > bounds.fsy1)
+        {
+            AddTopEdgeRow(c, bounds, scale, out);
+        }
+
+        if (bounds.ymax < bounds.fsy2)
+        {
+            AddBottomEdgeRow(c, bounds, scale, out);
+        }
+    }
+
+    template<typename DimType>
+    inline __host__ __device__ float FractionalAreaScale(DimType c, const AreaBounds &bounds) const
+    {
+        const int w = ImageWidth(c);
+        const int h = ImageHeight(c);
+
+        return 1.f / (min(m_scaleX, w - bounds.fsx1) * min(m_scaleY, h - bounds.fsy1));
+    }
+
+    template<typename DimType>
+    inline __host__ __device__ int ImageWidth(DimType c) const
+    {
+        if constexpr (NumElements<DimType> == 3)
+        {
+            return Base::m_borderWrap.imageBatchWrap().width(static_cast<int>(c.z));
+        }
+        else
+        {
+            return Base::m_borderWrap.imageBatchWrap().width(static_cast<int>(c.w), static_cast<int>(c.z));
+        }
+    }
+
+    template<typename DimType>
+    inline __host__ __device__ int ImageHeight(DimType c) const
+    {
+        if constexpr (NumElements<DimType> == 3)
+        {
+            return Base::m_borderWrap.imageBatchWrap().height(static_cast<int>(c.z));
+        }
+        else
+        {
+            return Base::m_borderWrap.imageBatchWrap().height(static_cast<int>(c.w), static_cast<int>(c.z));
+        }
+    }
+
+    template<typename DimType, typename AccumType>
+    inline __host__ __device__ void AddInteriorRows(DimType c, const AreaBounds &bounds, float scale,
+                                                    AccumType &out) const
+    {
+        for (int cy = bounds.ymin; cy < bounds.ymax; ++cy)
+        {
+            for (int cx = bounds.xmin; cx < bounds.xmax; ++cx)
+            {
+                out += Base::doGetValue(c, cx, cy) * scale;
+            }
+
+            AddHorizontalEdgeCells(c, bounds, cy, scale, out);
+        }
+    }
+
+    template<typename DimType, typename AccumType>
+    inline __host__ __device__ void AddHorizontalEdgeCells(DimType c, const AreaBounds &bounds, int cy, float scale,
+                                                           AccumType &out) const
+    {
+        if (bounds.xmin > bounds.fsx1)
+        {
+            out += Base::doGetValue(c, (bounds.xmin - 1), cy) * ((bounds.xmin - bounds.fsx1) * scale);
+        }
+
+        if (bounds.xmax < bounds.fsx2)
+        {
+            out += Base::doGetValue(c, bounds.xmax, cy) * ((bounds.fsx2 - bounds.xmax) * scale);
+        }
+    }
+
+    template<typename DimType, typename AccumType>
+    inline __host__ __device__ void AddTopEdgeRow(DimType c, const AreaBounds &bounds, float scale,
+                                                  AccumType &out) const
+    {
+        for (int cx = bounds.xmin; cx < bounds.xmax; ++cx)
+        {
+            out += Base::doGetValue(c, cx, (bounds.ymin - 1)) * ((bounds.ymin - bounds.fsy1) * scale);
+        }
+
+        if (bounds.xmin > bounds.fsx1)
+        {
+            out += Base::doGetValue(c, (bounds.xmin - 1), (bounds.ymin - 1))
+                 * ((bounds.ymin - bounds.fsy1) * (bounds.xmin - bounds.fsx1) * scale);
+        }
+
+        if (bounds.xmax < bounds.fsx2)
+        {
+            out += Base::doGetValue(c, bounds.xmax, (bounds.ymin - 1))
+                 * ((bounds.ymin - bounds.fsy1) * (bounds.fsx2 - bounds.xmax) * scale);
+        }
+    }
+
+    template<typename DimType, typename AccumType>
+    inline __host__ __device__ void AddBottomEdgeRow(DimType c, const AreaBounds &bounds, float scale,
+                                                     AccumType &out) const
+    {
+        for (int cx = bounds.xmin; cx < bounds.xmax; ++cx)
+        {
+            out += Base::doGetValue(c, cx, bounds.ymax) * ((bounds.fsy2 - bounds.ymax) * scale);
+        }
+
+        if (bounds.xmax < bounds.fsx2)
+        {
+            out += Base::doGetValue(c, bounds.xmax, bounds.ymax)
+                 * ((bounds.fsy2 - bounds.ymax) * (bounds.fsx2 - bounds.xmax) * scale);
+        }
+
+        if (bounds.xmin > bounds.fsx1)
+        {
+            out += Base::doGetValue(c, (bounds.xmin - 1), bounds.ymax)
+                 * ((bounds.fsy2 - bounds.ymax) * (bounds.xmin - bounds.fsx1) * scale);
+        }
+    }
+
     inline __host__ __device__ bool isIntegerArea(float scaleX, float scaleY) const
     {
-        return cuda::round<RoundMode::UP, int>(scaleX) == scaleX && cuda::round<RoundMode::UP, int>(scaleY) == scaleY;
+        return static_cast<float>(cuda::round<RoundMode::UP, int>(scaleX)) == scaleX
+            && static_cast<float>(cuda::round<RoundMode::UP, int>(scaleY)) == scaleY;
     }
 
     const float m_scaleX        = {};

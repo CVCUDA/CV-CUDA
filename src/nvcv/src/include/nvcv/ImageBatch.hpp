@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,6 +23,10 @@
 #include "ImageBatch.h"
 #include "ImageBatchData.hpp"
 #include "Optional.hpp"
+#include "detail/TypeTraits.hpp"
+
+#include <type_traits>
+#include <utility>
 
 namespace nvcv {
 
@@ -41,7 +45,35 @@ class ImageBatch : public CoreResource<NVCVImageBatchHandle, ImageBatch>
 public:
     using Base = CoreResource<NVCVImageBatchHandle, ImageBatch>;
 
-    NVCV_IMPLEMENT_SHARED_RESOURCE(ImageBatch, Base);
+    using Base::Base;
+    using Base::operator=;
+
+    ImageBatch(const ImageBatch &other)
+        : Base(other)
+    {
+    }
+
+    ImageBatch(ImageBatch &&other) noexcept
+        : Base(std::move(other))
+    {
+    }
+
+    ImageBatch &operator=(const ImageBatch &other)
+    {
+        Base::operator=(other);
+        return *this;
+    }
+
+    ImageBatch &operator=(ImageBatch &&other) noexcept
+    {
+        Base::operator=(std::move(other));
+        return *this;
+    }
+
+    ~ImageBatch()
+    {
+        this->reset();
+    }
 
     using HandleType = NVCVImageBatchHandle;
 
@@ -89,14 +121,14 @@ public:
      *
      * @param ptr The pointer to set.
      */
-    void setUserPointer(void *ptr);
+    void setUserPointer(NVCVUserPointer ptr);
 
     /**
      * @brief Retrieve the user-defined pointer associated with the image batch.
      *
      * @return The user pointer.
      */
-    void *userPointer() const;
+    NVCVUserPointer userPointer() const;
 
     /**
      * @brief Check if a kind is compatible with the ImageBatch class.
@@ -142,15 +174,26 @@ public:
      */
     static Requirements CalcRequirements(int32_t capacity);
 
-    NVCV_IMPLEMENT_SHARED_RESOURCE(ImageBatchVarShape, ImageBatch);
+    using ImageBatch::ImageBatch;
+    using ImageBatch::operator=;
+
+    ImageBatchVarShape(const ImageBatchVarShape &other) = default;
+
+    ImageBatchVarShape(ImageBatchVarShape &&other) noexcept = default;
+
+    ImageBatchVarShape &operator=(const ImageBatchVarShape &other) = default;
+
+    ImageBatchVarShape &operator=(ImageBatchVarShape &&other) noexcept = default;
+
+    ~ImageBatchVarShape() = default;
 
     explicit ImageBatchVarShape(NVCVImageBatchHandle &&handle); ///< Construct from an existing NVCV handle.
-    ImageBatchVarShape(const ImageBatch &batch);                ///< Construct from an existing `ImageBatch`.
-    ImageBatchVarShape(ImageBatch &&batch);                     ///< Move construct from an existing `ImageBatch`.
+    explicit ImageBatchVarShape(const ImageBatch &batch);       ///< Construct from an existing `ImageBatch`.
+    explicit ImageBatchVarShape(ImageBatch &&batch);            ///< Move construct from an existing `ImageBatch`.
     explicit ImageBatchVarShape(const Requirements &reqs,
-                                const Allocator    &alloc = nullptr); ///< Construct with specific requirements.
+                                const Allocator &alloc = Allocator{nullptr}); ///< Construct with specific requirements.
     explicit ImageBatchVarShape(int32_t          capacity,
-                                const Allocator &alloc = nullptr); ///< Construct with a specified capacity.
+                                const Allocator &alloc = Allocator{nullptr}); ///< Construct with a specified capacity.
 
     ImageBatchVarShape &operator=(const ImageBatch &batch);
     ImageBatchVarShape &operator=(ImageBatch &&batch);
@@ -212,17 +255,23 @@ public:
     ConstIterator cbegin() const;
     ConstIterator cend() const;
 
-    using ImageBatch::exportData;
-
     /**
      * @brief Export the underlying data of the image batch.
      *
      * @param stream The CUDA stream.
      * @return The image batch data.
      */
+    template<typename Data                                                               = ImageBatchVarShapeData,
+             detail::EnableIf_t<detail::IsSameType<Data, ImageBatchVarShapeData>(), int> = 0>
     ImageBatchVarShapeData exportData(CUstream stream) const
     {
         return *ImageBatch::template exportData<ImageBatchVarShapeData>(stream);
+    }
+
+    template<typename Data, detail::EnableIf_t<!detail::IsSameType<Data, ImageBatchVarShapeData>(), int> = 0>
+    Optional<Data> exportData(CUstream stream) const
+    {
+        return ImageBatch::template exportData<Data>(stream);
     }
 
     /**
@@ -250,7 +299,12 @@ public:
     using iterator_category = std::random_access_iterator_tag;
     using difference_type   = int32_t;
 
-    Iterator() = default;
+    Iterator()                     = default;
+    Iterator(const Iterator &)     = default;
+    Iterator(Iterator &&) noexcept = default;
+
+    Iterator &operator=(const Iterator &)     = default;
+    Iterator &operator=(Iterator &&) noexcept = default;
 
     reference operator*() const;
     pointer   operator->() const;
@@ -290,11 +344,15 @@ private:
 
 using OptionalImageBatchVarShapeConstRef = nvcv::Optional<std::reference_wrapper<const nvcv::ImageBatchVarShape>>;
 
-#define NVCV_IMAGE_BATCH_VAR_SHAPE_HANDLE_TO_OPTIONAL(X) \
-    X ? nvcv::OptionalImageBatchVarShapeConstRef(nvcv::ImageBatchVarShapeWrapHandle{X}) : nvcv::NullOpt
+#define NVCV_IMAGE_BATCH_VAR_SHAPE_HANDLE_TO_OPTIONAL(X)                                           \
+    X ? nvcv::OptionalImageBatchVarShapeConstRef(nvcv::ImageBatchVarShapeWrapHandle{X}.resource()) \
+      : nvcv::OptionalImageBatchVarShapeConstRef                                                   \
+    {                                                                                              \
+        nvcv::NullOpt                                                                              \
+    }
 
 } // namespace nvcv
 
-#include "detail/ImageBatchImpl.hpp"
+#include "detail/ImageBatchImpl.hpp" // NOSONAR: inline definitions require the declarations above.
 
 #endif // NVCV_IMAGEBATCH_HPP

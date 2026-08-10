@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,24 +25,50 @@
 #define CVCUDA_PRIV__HISTOGRAM_HPP
 
 #include "IOperator.hpp"
+#include "PerDeviceResource.hpp"
 #include "legacy/CvCudaLegacy.h"
 
+#include <cuda_runtime.h>
 #include <nvcv/Tensor.hpp>
 
 #include <memory>
+#include <mutex>
 
 namespace cvcuda::priv {
+
+class Reformat;
+
+struct HistogramPlanarBridgeWorkspace
+{
+    std::mutex   mutex;
+    nvcv::Tensor interleavedIn;
+    nvcv::Tensor interleavedMask;
+    cudaEvent_t  ready = nullptr;
+    bool         busy  = false;
+
+    HistogramPlanarBridgeWorkspace();
+    ~HistogramPlanarBridgeWorkspace();
+
+    void ensure(const nvcv::TensorShape &inShape, nvcv::DataType inDtype, const nvcv::TensorShape *maskShape,
+                nvcv::DataType maskDtype, cudaStream_t stream);
+    void record(cudaStream_t stream);
+};
 
 class Histogram final : public IOperator
 {
 public:
     explicit Histogram();
+    ~Histogram() override;
 
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, nvcv::OptionalTensorConstRef mask,
                     const nvcv::Tensor &histogram) const;
 
 private:
-    std::unique_ptr<nvcv::legacy::cuda_op::Histogram> m_legacyOp;
+    static std::unique_ptr<HistogramPlanarBridgeWorkspace> CreatePlanarBridgeWorkspace(int);
+
+    std::unique_ptr<nvcv::legacy::cuda_op::Histogram>         m_legacyOp;
+    std::unique_ptr<Reformat>                                 m_reformatOp;
+    mutable PerDeviceResource<HistogramPlanarBridgeWorkspace> m_planarWorkspace{CreatePlanarBridgeWorkspace};
 };
 
 } // namespace cvcuda::priv

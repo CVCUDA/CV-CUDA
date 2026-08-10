@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +18,6 @@
 #ifndef NVCV_TEST_GAUSSIAN_NOISE_UTILS_HPP
 #define NVCV_TEST_GAUSSIAN_NOISE_UTILS_HPP
 
-void get_random(float *rand_h, bool per_channel, int batch, int mem_size);
+void get_random(float *rand_h, bool per_channel, int batch, int mem_size, int channels, int call_index = 0);
 
 #endif // NVCV_TEST_GAUSSIAN_NOISE_UTILS_HPP

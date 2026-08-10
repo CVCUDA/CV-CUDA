@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,10 +19,50 @@
 
 #include "DataType.hpp"
 
+#include <common/CheckError.hpp>
 #include <common/PyUtil.hpp>
+#include <cuda_runtime.h>
 #include <nvcv/TensorData.hpp>
 
+#include <cstddef>
+#include <memory>
+#include <stdexcept>
+
 namespace nvcvpy::priv {
+
+namespace {
+
+class DLPackError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
+
+int GetOwningDevice(const nvcv::Byte *ptr)
+{
+    cudaPointerAttributes attrs = {};
+    if (cudaError_t err = cudaPointerGetAttributes(&attrs, ptr);
+        err == cudaSuccess && (attrs.type == cudaMemoryTypeDevice || attrs.type == cudaMemoryTypeManaged))
+    {
+        return attrs.device;
+    }
+    // cudaPointerGetAttributes leaves a sticky error on failure; clear it
+    // so the subsequent cudaGetDevice call doesn't pick it up.
+    cudaGetLastError();
+    int dev = 0;
+    util::CheckThrow(cudaGetDevice(&dev));
+    return dev;
+}
+
+void DeleteShapeAndStrides(DLManagedTensor *self) noexcept
+{
+    std::unique_ptr<int64_t[]> shape(self->dl_tensor.shape);
+    std::unique_ptr<int64_t[]> strides(self->dl_tensor.strides);
+    self->dl_tensor.shape   = nullptr;
+    self->dl_tensor.strides = nullptr;
+}
+
+} // namespace
 
 DLPackTensor::DLPackTensor() noexcept
     : m_tensor{}
@@ -52,36 +92,31 @@ DLPackTensor::DLPackTensor(const py::buffer_info &info, const DLDevice &dev)
     }
     else
     {
-        throw std::runtime_error("Cannot wrap buffer with given format");
+        throw DLPackError("Cannot wrap buffer with given format");
     }
-    dlTensor.ndim        = info.ndim;
+    dlTensor.ndim        = static_cast<int32_t>(info.ndim);
     dlTensor.device      = dev;
     dlTensor.byte_offset = 0;
 
-    m_tensor.deleter = [](DLManagedTensor *self)
-    {
-        delete[] self->dl_tensor.shape;
-        self->dl_tensor.shape = nullptr;
-
-        delete[] self->dl_tensor.strides;
-        self->dl_tensor.strides = nullptr;
-    };
+    m_tensor.deleter = DeleteShapeAndStrides;
 
     try
     {
-        dlTensor.shape = new int64_t[info.ndim];
-        std::copy_n(info.shape.begin(), info.shape.size(), dlTensor.shape);
+        auto shape = std::make_unique<int64_t[]>(info.ndim);
+        std::copy_n(info.shape.begin(), info.shape.size(), shape.get());
+        dlTensor.shape = shape.release();
 
-        dlTensor.strides = new int64_t[info.ndim];
+        auto strides = std::make_unique<int64_t[]>(info.ndim);
         for (int i = 0; i < info.ndim; ++i)
         {
             if (info.strides[i] % info.itemsize != 0)
             {
-                throw std::runtime_error("Stride must be a multiple of the element size in bytes");
+                throw DLPackError("Stride must be a multiple of the element size in bytes");
             }
 
-            dlTensor.strides[i] = info.strides[i] / info.itemsize;
+            strides[i] = info.strides[i] / info.itemsize;
         }
+        dlTensor.strides = strides.release();
     }
     catch (...)
     {
@@ -91,13 +126,9 @@ DLPackTensor::DLPackTensor(const py::buffer_info &info, const DLDevice &dev)
 }
 
 DLPackTensor::DLPackTensor(const nvcv::TensorDataStrided &tensorData)
+    : m_tensor{}
 {
-    m_tensor         = {};
-    m_tensor.deleter = [](DLManagedTensor *self)
-    {
-        delete[] self->dl_tensor.shape;
-        delete[] self->dl_tensor.strides;
-    };
+    m_tensor.deleter = DeleteShapeAndStrides;
 
     try
     {
@@ -106,14 +137,12 @@ DLPackTensor::DLPackTensor(const nvcv::TensorDataStrided &tensorData)
         // Set up device
         if (tensorData.IsCompatible<nvcv::TensorDataStridedCuda>())
         {
-            // TODO: detect correct device_type from memory buffer
             tensor.device.device_type = kDLCUDA;
-            // TODO: detect correct device_id from memory buffer (if possible)
-            tensor.device.device_id = 0;
+            tensor.device.device_id   = GetOwningDevice(tensorData.basePtr());
         }
         else
         {
-            throw std::runtime_error("Tensor buffer type not supported, must be either CUDA or Host (CPU)");
+            throw DLPackError("Tensor buffer type not supported, must be either CUDA or Host (CPU)");
         }
 
         // Set up ndim
@@ -124,24 +153,26 @@ DLPackTensor::DLPackTensor(const nvcv::TensorDataStrided &tensorData)
         tensor.byte_offset = 0;
 
         // Set up shape
-        tensor.shape = new int64_t[tensor.ndim];
-        std::copy_n(tensorData.shape().shape().begin(), tensor.ndim, tensor.shape);
+        auto shape = std::make_unique<int64_t[]>(tensor.ndim);
+        std::copy_n(tensorData.shape().shape().begin(), tensor.ndim, shape.get());
+        tensor.shape = shape.release();
 
         // Set up dtype
         tensor.dtype = ToDLDataType(tensorData.dtype());
 
         // Set up strides
-        tensor.strides = new int64_t[tensor.ndim];
+        auto strides = std::make_unique<int64_t[]>(tensor.ndim);
         for (int i = 0; i < tensor.ndim; ++i)
         {
-            int64_t stride = tensorData.cdata().buffer.strided.strides[i];
-            if (stride % tensorData.dtype().strideBytes() != 0)
+            if (int64_t stride = tensorData.cdata().buffer.strided.strides[i];
+                stride % tensorData.dtype().strideBytes() != 0)
             {
-                throw std::runtime_error("Stride must be a multiple of the element size in bytes");
+                throw DLPackError("Stride must be a multiple of the element size in bytes");
             }
 
-            tensor.strides[i] = tensorData.cdata().buffer.strided.strides[i] / tensorData.dtype().strideBytes();
+            strides[i] = tensorData.cdata().buffer.strided.strides[i] / tensorData.dtype().strideBytes();
         }
+        tensor.strides = strides.release();
     }
     catch (...)
     {
@@ -151,13 +182,9 @@ DLPackTensor::DLPackTensor(const nvcv::TensorDataStrided &tensorData)
 }
 
 DLPackTensor::DLPackTensor(const nvcv::ArrayData &arrayData)
+    : m_tensor{}
 {
-    m_tensor         = {};
-    m_tensor.deleter = [](DLManagedTensor *self)
-    {
-        delete[] self->dl_tensor.shape;
-        delete[] self->dl_tensor.strides;
-    };
+    m_tensor.deleter = DeleteShapeAndStrides;
 
     try
     {
@@ -166,14 +193,12 @@ DLPackTensor::DLPackTensor(const nvcv::ArrayData &arrayData)
         // Set up device
         if (arrayData.IsCompatible<nvcv::ArrayDataCuda>())
         {
-            // TODO: detect correct device_type from memory buffer
             tensor.device.device_type = kDLCUDA;
-            // TODO: detect correct device_id from memory buffer (if possible)
-            tensor.device.device_id = 0;
+            tensor.device.device_id   = GetOwningDevice(arrayData.basePtr());
         }
         else
         {
-            throw std::runtime_error("Array buffer type not supported, must be either CUDA");
+            throw DLPackError("Array buffer type not supported, must be either CUDA");
         }
 
         // Set up ndim
@@ -184,15 +209,17 @@ DLPackTensor::DLPackTensor(const nvcv::ArrayData &arrayData)
         tensor.byte_offset = 0;
 
         // Set up shape
-        tensor.shape    = new int64_t[tensor.ndim];
-        tensor.shape[0] = arrayData.capacity();
+        auto shape   = std::make_unique<int64_t[]>(tensor.ndim);
+        shape[0]     = arrayData.capacity();
+        tensor.shape = shape.release();
 
         // Set up dtype
         tensor.dtype = ToDLDataType(arrayData.dtype());
 
         // Set up strides
-        tensor.strides    = new int64_t[tensor.ndim];
-        tensor.strides[0] = arrayData.stride();
+        auto strides   = std::make_unique<int64_t[]>(tensor.ndim);
+        strides[0]     = arrayData.stride();
+        tensor.strides = strides.release();
     }
     catch (...)
     {
@@ -286,7 +313,7 @@ nvcv::DataType ToNVCVDataType(const DLDataType &dtype)
         pp.swizzle = nvcv::Swizzle::S_XYZW;
         break;
     default:
-        throw std::runtime_error("DLPack buffer's data type must have at most 4 lanes");
+        throw DLPackError("DLPack buffer's data type must have at most 4 lanes");
     }
 
     for (int i = 0; i < lanes; ++i)
@@ -318,7 +345,7 @@ nvcv::DataType ToNVCVDataType(const DLDataType &dtype)
         kind = nvcv::DataKind::FLOAT;
         break;
     default:
-        throw std::runtime_error("Data type code not supported, must be Int, UInt, Float, Complex or Bool");
+        throw DLPackError("Data type code not supported, must be Int, UInt, Float, Complex or Bool");
     }
 
     return nvcv::DataType(kind, packing);
@@ -327,7 +354,7 @@ nvcv::DataType ToNVCVDataType(const DLDataType &dtype)
 DLDataType ToDLDataType(const nvcv::DataType &dataType)
 {
     DLDataType dt = {};
-    dt.lanes      = dataType.numChannels();
+    dt.lanes      = static_cast<uint16_t>(dataType.numChannels());
 
     switch (dataType.dataKind())
     {
@@ -344,7 +371,7 @@ DLDataType ToDLDataType(const nvcv::DataType &dataType)
         dt.code = kDLComplex;
         break;
     default:
-        throw std::runtime_error("Data kind not supported, must be UNSIGNED, SIGNED, FLOAT or COMPLEX");
+        throw DLPackError("Data kind not supported, must be UNSIGNED, SIGNED, FLOAT or COMPLEX");
     }
 
     std::array<int32_t, 4> bpc = dataType.bitsPerChannel();
@@ -353,11 +380,11 @@ DLDataType ToDLDataType(const nvcv::DataType &dataType)
     {
         if (bpc[i] != bpc[0])
         {
-            throw std::runtime_error("All lanes must have the same bit depth");
+            throw DLPackError("All lanes must have the same bit depth");
         }
     }
 
-    dt.bits = bpc[0];
+    dt.bits = static_cast<uint8_t>(bpc[0]);
 
     return dt;
 }

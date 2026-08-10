@@ -97,6 +97,11 @@ using TensorWrap3D = nvcv::cuda::Tensor3DWrap<T, StrideT>;
 template<typename T, typename StrideT>
 using TensorWrap4D = nvcv::cuda::Tensor4DWrap<T, StrideT>;
 
+static bool IsPlanar(DataFormat format)
+{
+    return format == kNCHW || format == kCHW;
+}
+
 template<int BlockWidth_, int BlockHeight_, int RowsPerThread_>
 struct CvtKernelPolicy
 {
@@ -213,6 +218,47 @@ DEVICE_INLINE void store_bgra_nhwc(const TensorWrap3D<DstT, StrideT> &dst, EltT 
     *dst.ptr(batch_idx, y, x) = vec;
 }
 
+template<typename SrcT, typename EltT, typename StrideT>
+DEVICE_INLINE void load3_nchw(const TensorWrap4D<const SrcT, StrideT> &src, EltT &C0, EltT &C1, EltT &C2, int batch_idx,
+                              int x, int y)
+{
+    C0 = *src.ptr(batch_idx, 0, y, x);
+    C1 = *src.ptr(batch_idx, 1, y, x);
+    C2 = *src.ptr(batch_idx, 2, y, x);
+}
+
+template<typename DstT, typename EltT, typename StrideT>
+DEVICE_INLINE void store3_nchw(const TensorWrap4D<DstT, StrideT> &dst, EltT C0, EltT C1, EltT C2, int batch_idx, int x,
+                               int y)
+{
+    *dst.ptr(batch_idx, 0, y, x) = C0;
+    *dst.ptr(batch_idx, 1, y, x) = C1;
+    *dst.ptr(batch_idx, 2, y, x) = C2;
+}
+
+template<typename SrcT, typename EltT, typename StrideT>
+DEVICE_INLINE void load_bgra_nchw(const TensorWrap4D<const SrcT, StrideT> &src, EltT &B, EltT &G, EltT &R, EltT &A,
+                                  int batch_idx, int x, int y, int bidx, int srcChannels)
+{
+    B = *src.ptr(batch_idx, bidx, y, x);
+    G = *src.ptr(batch_idx, 1, y, x);
+    R = *src.ptr(batch_idx, bidx ^ 2, y, x);
+    A = srcChannels == 4 ? *src.ptr(batch_idx, 3, y, x) : Alpha<EltT>;
+}
+
+template<typename DstT, typename EltT, typename StrideT>
+DEVICE_INLINE void store_bgra_nchw(const TensorWrap4D<DstT, StrideT> &dst, EltT B, EltT G, EltT R, EltT A,
+                                   int batch_idx, int x, int y, int bidx, int dstChannels)
+{
+    *dst.ptr(batch_idx, bidx, y, x)     = B;
+    *dst.ptr(batch_idx, 1, y, x)        = G;
+    *dst.ptr(batch_idx, bidx ^ 2, y, x) = R;
+    if (dstChannels == 4)
+    {
+        *dst.ptr(batch_idx, 3, y, x) = A;
+    }
+}
+
 template<typename Policy, typename SrcT, typename DstT, typename StrideT>
 GLOBAL_BOUNDS void rgb_to_bgr_nhwc(const TensorWrap3D<const SrcT, StrideT> src, const TensorWrap3D<DstT, StrideT> dst,
                                    int2 dstSize, int bidx)
@@ -232,6 +278,24 @@ GLOBAL_BOUNDS void rgb_to_bgr_nhwc(const TensorWrap3D<const SrcT, StrideT> src, 
 }
 
 template<typename Policy, typename SrcT, typename DstT, typename StrideT>
+GLOBAL_BOUNDS void rgb_to_bgr_nchw(const TensorWrap4D<const SrcT, StrideT> src, const TensorWrap4D<DstT, StrideT> dst,
+                                   int2 dstSize, int bidx, int srcChannels, int dstChannels)
+{
+    using EltT = nvcv::cuda::BaseType<SrcT>;
+    color_conversion_common<Policy, 4, 4, EltT>(
+        [&src, bidx, srcChannels] __device__(EltT(&r_in)[4], int batch_idx, int x, int y)
+        { load_bgra_nchw(src, r_in[0], r_in[1], r_in[2], r_in[3], batch_idx, x, y, bidx, srcChannels); },
+        [] __device__(const EltT(&r_in)[4], EltT(&r_out)[4])
+        {
+#pragma unroll
+            for (int i = 0; i < 4; i++) r_out[i] = r_in[i];
+        },
+        [&dst, dstChannels] __device__(const EltT(&r_out)[4], int batch_idx, int x, int y)
+        { store_bgra_nchw(dst, r_out[0], r_out[1], r_out[2], r_out[3], batch_idx, x, y, 0, dstChannels); },
+        dstSize);
+}
+
+template<typename Policy, typename SrcT, typename DstT, typename StrideT>
 GLOBAL_BOUNDS void gray_to_bgr_nhwc(const TensorWrap3D<const SrcT, StrideT> src, const TensorWrap3D<DstT, StrideT> dst,
                                     int2 dstSize)
 {
@@ -245,6 +309,23 @@ GLOBAL_BOUNDS void gray_to_bgr_nhwc(const TensorWrap3D<const SrcT, StrideT> src,
         },
         [&dst] __device__(const EltT(&r_BGRA)[4], int batch_idx, int x, int y)
         { store_bgra_nhwc(dst, r_BGRA[0], r_BGRA[1], r_BGRA[2], r_BGRA[3], batch_idx, x, y, 0); },
+        dstSize);
+}
+
+template<typename Policy, typename SrcT, typename DstT, typename StrideT>
+GLOBAL_BOUNDS void gray_to_bgr_nchw(const TensorWrap4D<const SrcT, StrideT> src, const TensorWrap4D<DstT, StrideT> dst,
+                                    int2 dstSize, int dstChannels)
+{
+    using EltT = nvcv::cuda::BaseType<SrcT>;
+    color_conversion_common<Policy, 1, 4, EltT>(
+        [&src] __device__(EltT(&r_gray)[1], int batch_idx, int x, int y) { r_gray[0] = *src.ptr(batch_idx, 0, y, x); },
+        [] __device__(const EltT(&r_gray)[1], EltT(&r_BGRA)[4])
+        {
+#pragma unroll
+            for (int i = 0; i < 4; i++) r_BGRA[i] = r_gray[0];
+        },
+        [&dst, dstChannels] __device__(const EltT(&r_BGRA)[4], int batch_idx, int x, int y)
+        { store_bgra_nchw(dst, r_BGRA[0], r_BGRA[1], r_BGRA[2], r_BGRA[3], batch_idx, x, y, 0, dstChannels); },
         dstSize);
 }
 
@@ -269,6 +350,30 @@ GLOBAL_BOUNDS void bgr_to_gray_nhwc(const TensorWrap3D<const SrcT, StrideT> src,
         },
         [&dst] __device__(const EltT(&r_gray)[1], int batch_idx, int x, int y)
         { *dst.ptr(batch_idx, y, x) = r_gray[0]; },
+        dstSize);
+}
+
+template<typename Policy, typename SrcT, typename DstT, typename StrideT>
+GLOBAL_BOUNDS void bgr_to_gray_nchw(const TensorWrap4D<const SrcT, StrideT> src, const TensorWrap4D<DstT, StrideT> dst,
+                                    int2 dstSize, int bidx, int srcChannels)
+{
+    using EltT = nvcv::cuda::BaseType<SrcT>;
+    color_conversion_common<Policy, 3, 1, EltT>(
+        [&src, bidx, srcChannels] __device__(EltT(&r_BGR)[3], int batch_idx, int x, int y)
+        {
+            EltT A;
+            load_bgra_nchw(src, r_BGR[0], r_BGR[1], r_BGR[2], A, batch_idx, x, y, bidx, srcChannels);
+        },
+        [] __device__(const EltT(&r_BGR)[3], EltT(&r_gray)[1])
+        {
+            if constexpr (std::is_integral_v<EltT>)
+                r_gray[0]
+                    = (EltT)CV_DESCALE((int)r_BGR[0] * BY15 + (int)r_BGR[1] * GY15 + (int)r_BGR[2] * RY15, gray_shift);
+            else
+                r_gray[0] = (EltT)(r_BGR[0] * B2YF + r_BGR[1] * G2YF + r_BGR[2] * R2YF);
+        },
+        [&dst] __device__(const EltT(&r_gray)[1], int batch_idx, int x, int y)
+        { *dst.ptr(batch_idx, 0, y, x) = r_gray[0]; },
         dstSize);
 }
 
@@ -322,6 +427,29 @@ GLOBAL_BOUNDS void bgr_to_yuv_nhwc(const TensorWrap3D<const SrcT, StrideT> src, 
         dstSize);
 }
 
+template<typename Policy, typename SrcT, typename DstT, typename StrideT>
+GLOBAL_BOUNDS void bgr_to_yuv_nchw(const TensorWrap4D<const SrcT, StrideT> src, const TensorWrap4D<DstT, StrideT> dst,
+                                   int2 dstSize, int bidx, int srcChannels)
+{
+    using EltT = nvcv::cuda::BaseType<SrcT>;
+    color_conversion_common<Policy, 3, 3, EltT>(
+        [&src, bidx, srcChannels] __device__(EltT(&r_BGR)[3], int batch_idx, int x, int y)
+        {
+            EltT A;
+            load_bgra_nchw(src, r_BGR[0], r_BGR[1], r_BGR[2], A, batch_idx, x, y, bidx, srcChannels);
+        },
+        [] __device__(const EltT(&r_BGR)[3], EltT(&r_YCbCr)[3])
+        {
+            if constexpr (std::is_integral_v<EltT>)
+                bgr_to_yuv_int(r_BGR[0], r_BGR[1], r_BGR[2], r_YCbCr[0], r_YCbCr[1], r_YCbCr[2]);
+            else
+                bgr_to_yuv_float(r_BGR[0], r_BGR[1], r_BGR[2], r_YCbCr[0], r_YCbCr[1], r_YCbCr[2]);
+        },
+        [&dst] __device__(const EltT(&r_YCbCr)[3], int batch_idx, int x, int y)
+        { store3_nchw(dst, r_YCbCr[0], r_YCbCr[1], r_YCbCr[2], batch_idx, x, y); },
+        dstSize);
+}
+
 template<typename T>
 DEVICE_INLINE void yuv_to_bgr_int(T Y_, T Cb_, T Cr_, T &B_, T &G_, T &R_)
 {
@@ -365,6 +493,26 @@ GLOBAL_BOUNDS void yuv_to_bgr_nhwc(const TensorWrap3D<const SrcT, StrideT> src, 
         },
         [&dst, bidx] __device__(const EltT(&r_BGR)[3], int batch_idx, int x, int y)
         { store_bgra_nhwc(dst, r_BGR[0], r_BGR[1], r_BGR[2], Alpha<EltT>, batch_idx, x, y, bidx); },
+        dstSize);
+}
+
+template<typename Policy, typename SrcT, typename DstT, typename StrideT>
+GLOBAL_BOUNDS void yuv_to_bgr_nchw(const TensorWrap4D<const SrcT, StrideT> src, const TensorWrap4D<DstT, StrideT> dst,
+                                   int2 dstSize, int bidx, int dstChannels)
+{
+    using EltT = nvcv::cuda::BaseType<SrcT>;
+    color_conversion_common<Policy, 3, 3, EltT>(
+        [&src] __device__(EltT(&r_YCbCr)[3], int batch_idx, int x, int y)
+        { load3_nchw(src, r_YCbCr[0], r_YCbCr[1], r_YCbCr[2], batch_idx, x, y); },
+        [] __device__(const EltT(&r_YCbCr)[3], EltT(&r_BGR)[3])
+        {
+            if constexpr (std::is_integral_v<EltT>)
+                yuv_to_bgr_int(r_YCbCr[0], r_YCbCr[1], r_YCbCr[2], r_BGR[0], r_BGR[1], r_BGR[2]);
+            else
+                yuv_to_bgr_flt(r_YCbCr[0], r_YCbCr[1], r_YCbCr[2], r_BGR[0], r_BGR[1], r_BGR[2]);
+        },
+        [&dst, bidx, dstChannels] __device__(const EltT(&r_BGR)[3], int batch_idx, int x, int y)
+        { store_bgra_nchw(dst, r_BGR[0], r_BGR[1], r_BGR[2], Alpha<EltT>, batch_idx, x, y, bidx, dstChannels); },
         dstSize);
 }
 
@@ -435,6 +583,29 @@ GLOBAL_BOUNDS void bgr_to_hsv_nhwc(const TensorWrap3D<const SrcT, StrideT> src, 
         },
         [&dst] __device__(const EltT(&r_HSV)[3], int batch_idx, int x, int y)
         { store3_nhwc(dst, r_HSV[0], r_HSV[1], r_HSV[2], batch_idx, x, y); },
+        dstSize);
+}
+
+template<typename Policy, typename SrcT, typename DstT, typename StrideT>
+GLOBAL_BOUNDS void bgr_to_hsv_nchw(const TensorWrap4D<const SrcT, StrideT> src, const TensorWrap4D<DstT, StrideT> dst,
+                                   int2 dstSize, int bidx, bool isFullRange, int srcChannels)
+{
+    using EltT = nvcv::cuda::BaseType<SrcT>;
+    color_conversion_common<Policy, 3, 3, EltT>(
+        [&src, bidx, srcChannels] __device__(EltT(&r_BGR)[3], int batch_idx, int x, int y)
+        {
+            EltT A;
+            load_bgra_nchw(src, r_BGR[0], r_BGR[1], r_BGR[2], A, batch_idx, x, y, bidx, srcChannels);
+        },
+        [isFullRange] __device__(const EltT(&r_BGR)[3], EltT(&r_HSV)[3])
+        {
+            if constexpr (std::is_integral_v<EltT>)
+                bgr_to_hsv_uchar(r_BGR[0], r_BGR[1], r_BGR[2], r_HSV[0], r_HSV[1], r_HSV[2], isFullRange);
+            else
+                bgr_to_hsv_float(r_BGR[0], r_BGR[1], r_BGR[2], r_HSV[0], r_HSV[1], r_HSV[2]);
+        },
+        [&dst] __device__(const EltT(&r_HSV)[3], int batch_idx, int x, int y)
+        { store3_nchw(dst, r_HSV[0], r_HSV[1], r_HSV[2], batch_idx, x, y); },
         dstSize);
 }
 
@@ -510,6 +681,41 @@ GLOBAL_BOUNDS void hsv_to_bgr_nhwc(const TensorWrap3D<const SrcT, StrideT> src, 
         },
         [&dst, bidx] __device__(const EltT(&r_BGR)[3], int batch_idx, int x, int y)
         { store_bgra_nhwc(dst, r_BGR[0], r_BGR[1], r_BGR[2], Alpha<EltT>, batch_idx, x, y, bidx); },
+        dstSize);
+}
+
+template<typename Policy, typename SrcT, typename DstT, typename StrideT>
+GLOBAL_BOUNDS void hsv_to_bgr_nchw(const TensorWrap4D<const SrcT, StrideT> src, const TensorWrap4D<DstT, StrideT> dst,
+                                   int2 dstSize, int bidx, bool isFullRange, int dstChannels)
+{
+    using EltT = nvcv::cuda::BaseType<SrcT>;
+    color_conversion_common<Policy, 3, 3, EltT>(
+        [&src] __device__(EltT(&r_HSV)[3], int batch_idx, int x, int y)
+        { load3_nchw(src, r_HSV[0], r_HSV[1], r_HSV[2], batch_idx, x, y); },
+        [isFullRange] __device__(const EltT(&r_HSV)[3], EltT(&r_BGR)[3])
+        {
+            if constexpr (std::is_same_v<EltT, uchar>)
+            {
+                const float     scaleH  = isFullRange ? (6.0f / 256.0f) : (6.0f / 180.0f);
+                constexpr float scaleSV = 1.0f / 255.0f;
+
+                float Bf, Gf, Rf;
+
+                hsv_to_bgr_float((float)r_HSV[0] * scaleH, r_HSV[1] * scaleSV, r_HSV[2] * scaleSV, Bf, Gf, Rf);
+
+                r_BGR[0] = cuda::SaturateCast<uchar>(Bf * 255.0f);
+                r_BGR[1] = cuda::SaturateCast<uchar>(Gf * 255.0f);
+                r_BGR[2] = cuda::SaturateCast<uchar>(Rf * 255.0f);
+            }
+            else
+            {
+                constexpr float scaleH = 6.0f / 360.0f;
+
+                hsv_to_bgr_float(r_HSV[0] * scaleH, r_HSV[1], r_HSV[2], r_BGR[0], r_BGR[1], r_BGR[2]);
+            }
+        },
+        [&dst, bidx, dstChannels] __device__(const EltT(&r_BGR)[3], int batch_idx, int x, int y)
+        { store_bgra_nchw(dst, r_BGR[0], r_BGR[1], r_BGR[2], Alpha<EltT>, batch_idx, x, y, bidx, dstChannels); },
         dstSize);
 }
 
@@ -774,6 +980,32 @@ inline ErrorCode Launch_BGR_to_RGB(const TensorDataStridedCuda &inData, const Te
     return ErrorCode::SUCCESS;
 }
 
+template<typename T>
+inline ErrorCode Launch_BGR_to_RGB_Planar(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                                          cuda_op::DataShape shape, int bidx, int srcChannels, int dstChannels,
+                                          cudaStream_t stream)
+{
+    using Policy = CvtKernelPolicy<32, 4, 4>;
+
+    if (shape.N > 65535)
+    {
+        LOG_ERROR("Planar CvtColor requires numImages <= 65535 (CUDA grid-z limit)");
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+    dim3 blockSize(Policy::BlockWidth, Policy::BlockHeight);
+    dim3 gridSize(divUp(shape.W, Policy::TileWidth), divUp(shape.H, Policy::TileHeight), shape.N);
+    int2 dstSize{shape.W, shape.H};
+
+    auto srcWrap = cuda::CreateTensorWrapNCHW<const T>(inData);
+    auto dstWrap = cuda::CreateTensorWrapNCHW<T>(outData);
+    rgb_to_bgr_nchw<Policy>
+        <<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx, srcChannels, dstChannels);
+    checkKernelErrors();
+
+    return ErrorCode::SUCCESS;
+}
+
 inline ErrorCode BGR_to_RGB(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                             NVCVColorConversionCode code, cudaStream_t stream)
 {
@@ -789,6 +1021,8 @@ inline ErrorCode BGR_to_RGB(const TensorDataStridedCuda &inData, const TensorDat
 
     auto outAccess = TensorDataAccessStridedImagePlanar::Create(outData);
     NVCV_ASSERT(outAccess);
+
+    const bool isPlanar = IsPlanar(helpers::GetLegacyDataFormat(inData.layout()));
 
     cuda_op::DataType  outDataType = helpers::GetLegacyDataType(outData.dtype());
     cuda_op::DataShape outputShape = helpers::GetLegacyDataShape(outAccess->infoShape());
@@ -818,6 +1052,32 @@ inline ErrorCode BGR_to_RGB(const TensorDataStridedCuda &inData, const TensorDat
     {
         LOG_ERROR("Adding alpha to the output is not supported for " << outDataType);
         return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+    if (isPlanar)
+    {
+#define CVCUDA_BGR2RGB_PLANAR_CASE(T) \
+    return Launch_BGR_to_RGB_Planar<T>(inData, outData, inputShape, bidx, sch, dch, stream)
+        switch (inDataType)
+        {
+        case kCV_8U:
+        case kCV_8S:
+            CVCUDA_BGR2RGB_PLANAR_CASE(uchar);
+        case kCV_16F: // Not properly handled when adding alpha to the destination.
+        case kCV_16U:
+        case kCV_16S:
+            CVCUDA_BGR2RGB_PLANAR_CASE(ushort);
+        case kCV_32S:
+            CVCUDA_BGR2RGB_PLANAR_CASE(int);
+        case kCV_32F:
+            CVCUDA_BGR2RGB_PLANAR_CASE(float);
+        case kCV_64F:
+            CVCUDA_BGR2RGB_PLANAR_CASE(double);
+        default:
+            LOG_ERROR("Unsupported DataType " << inDataType);
+            return ErrorCode::INVALID_DATA_TYPE;
+        }
+#undef CVCUDA_BGR2RGB_PLANAR_CASE
     }
 
 #define CVCUDA_BGR2RGB_IF(SCH, DCH, SRC_T, DST_T) \
@@ -874,6 +1134,31 @@ inline ErrorCode Launch_GRAY_to_BGR(const TensorDataStridedCuda &inData, const T
     return ErrorCode::SUCCESS;
 }
 
+template<typename T>
+inline ErrorCode Launch_GRAY_to_BGR_Planar(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                                           cuda_op::DataShape shape, int dstChannels, cudaStream_t stream)
+{
+    using Policy = CvtKernelPolicy<32, 4, 8>;
+
+    if (shape.N > 65535)
+    {
+        LOG_ERROR("Planar CvtColor requires numImages <= 65535 (CUDA grid-z limit)");
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+    dim3 blockSize(Policy::BlockWidth, Policy::BlockHeight);
+    dim3 gridSize(divUp(shape.W, Policy::TileWidth), divUp(shape.H, Policy::TileHeight), shape.N);
+
+    int2 dstSize{shape.W, shape.H};
+
+    auto srcWrap = cuda::CreateTensorWrapNCHW<const T>(inData);
+    auto dstWrap = cuda::CreateTensorWrapNCHW<T>(outData);
+    gray_to_bgr_nchw<Policy><<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, dstChannels);
+    checkKernelErrors();
+
+    return ErrorCode::SUCCESS;
+}
+
 inline ErrorCode GRAY_to_BGR(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                              NVCVColorConversionCode code, cudaStream_t stream)
 {
@@ -887,6 +1172,8 @@ inline ErrorCode GRAY_to_BGR(const TensorDataStridedCuda &inData, const TensorDa
 
     auto outAccess = TensorDataAccessStridedImagePlanar::Create(outData);
     NVCV_ASSERT(outAccess);
+
+    const bool isPlanar = IsPlanar(helpers::GetLegacyDataFormat(inData.layout()));
 
     cuda_op::DataType  outDataType = helpers::GetLegacyDataType(outData.dtype());
     cuda_op::DataShape outputShape = helpers::GetLegacyDataShape(outAccess->infoShape());
@@ -916,6 +1203,31 @@ inline ErrorCode GRAY_to_BGR(const TensorDataStridedCuda &inData, const TensorDa
     {
         LOG_ERROR("Adding alpha to the output is not supported for " << outDataType);
         return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+    if (isPlanar)
+    {
+#define CVCUDA_GRAY2BGR_PLANAR_CASE(T) return Launch_GRAY_to_BGR_Planar<T>(inData, outData, inputShape, dch, stream)
+        switch (inDataType)
+        {
+        case kCV_8U:
+        case kCV_8S:
+            CVCUDA_GRAY2BGR_PLANAR_CASE(uchar);
+        case kCV_16F: // Not properly handled when adding alpha to the destination.
+        case kCV_16U:
+        case kCV_16S:
+            CVCUDA_GRAY2BGR_PLANAR_CASE(ushort);
+        case kCV_32S:
+            CVCUDA_GRAY2BGR_PLANAR_CASE(int);
+        case kCV_32F:
+            CVCUDA_GRAY2BGR_PLANAR_CASE(float);
+        case kCV_64F:
+            CVCUDA_GRAY2BGR_PLANAR_CASE(double);
+        default:
+            LOG_ERROR("Unsupported DataType " << inDataType);
+            return ErrorCode::INVALID_DATA_TYPE;
+        }
+#undef CVCUDA_GRAY2BGR_PLANAR_CASE
     }
 
 #define CVCUDA_GRAY2BGR_IF(DCH, SRC_T, DST_T) \
@@ -970,6 +1282,31 @@ inline ErrorCode Launch_BGR_to_GRAY(const TensorDataStridedCuda &inData, const T
     return ErrorCode::SUCCESS;
 }
 
+template<typename T>
+inline ErrorCode Launch_BGR_to_GRAY_Planar(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                                           cuda_op::DataShape shape, int bidx, int srcChannels, cudaStream_t stream)
+{
+    using Policy = CvtKernelPolicy<32, 4, 4>;
+
+    if (shape.N > 65535)
+    {
+        LOG_ERROR("Planar CvtColor requires numImages <= 65535 (CUDA grid-z limit)");
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+    dim3 blockSize(Policy::BlockWidth, Policy::BlockHeight);
+    dim3 gridSize(divUp(shape.W, Policy::TileWidth), divUp(shape.H, Policy::TileHeight), shape.N);
+
+    int2 dstSize{shape.W, shape.H};
+
+    auto srcWrap = cuda::CreateTensorWrapNCHW<const T>(inData);
+    auto dstWrap = cuda::CreateTensorWrapNCHW<T>(outData);
+    bgr_to_gray_nchw<Policy><<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx, srcChannels);
+    checkKernelErrors();
+
+    return ErrorCode::SUCCESS;
+}
+
 inline ErrorCode BGR_to_GRAY(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                              NVCVColorConversionCode code, cudaStream_t stream)
 {
@@ -984,6 +1321,8 @@ inline ErrorCode BGR_to_GRAY(const TensorDataStridedCuda &inData, const TensorDa
 
     auto outAccess = TensorDataAccessStridedImagePlanar::Create(outData);
     NVCV_ASSERT(outAccess);
+
+    const bool isPlanar = IsPlanar(helpers::GetLegacyDataFormat(inData.layout()));
 
     cuda_op::DataType  outDataType = helpers::GetLegacyDataType(outData.dtype());
     cuda_op::DataShape outputShape = helpers::GetLegacyDataShape(outAccess->infoShape());
@@ -1008,6 +1347,25 @@ inline ErrorCode BGR_to_GRAY(const TensorDataStridedCuda &inData, const TensorDa
         LOG_ERROR("Shape mismatch -- output tensor shape " << outputShape << " doesn't match input tensor shape "
                                                            << inputShape);
         return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+    if (isPlanar)
+    {
+#define CVCUDA_BGR2GRAY_PLANAR_CASE(T) \
+    return Launch_BGR_to_GRAY_Planar<T>(inData, outData, inputShape, bidx, sch, stream)
+        switch (inDataType)
+        {
+        case kCV_8U:
+            CVCUDA_BGR2GRAY_PLANAR_CASE(uchar);
+        case kCV_16U:
+            CVCUDA_BGR2GRAY_PLANAR_CASE(ushort);
+        case kCV_32F:
+            CVCUDA_BGR2GRAY_PLANAR_CASE(float);
+        default:
+            LOG_ERROR("Unsupported DataType " << inDataType);
+            return ErrorCode::INVALID_DATA_TYPE;
+        }
+#undef CVCUDA_BGR2GRAY_PLANAR_CASE
     }
 
 #define CVCUDA_BGR2GRAY_IF(SCH, SRC_T, DST_T) \
@@ -1055,6 +1413,31 @@ inline ErrorCode Launch_BGR_to_YUV(const TensorDataStridedCuda &inData, const Te
     return ErrorCode::SUCCESS;
 }
 
+template<typename T>
+inline ErrorCode Launch_BGR_to_YUV_Planar(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                                          cuda_op::DataShape shape, int bidx, int srcChannels, cudaStream_t stream)
+{
+    using Policy = CvtKernelPolicy<32, 4, 4>;
+
+    if (shape.N > 65535)
+    {
+        LOG_ERROR("Planar CvtColor requires numImages <= 65535 (CUDA grid-z limit)");
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+    dim3 blockSize(Policy::BlockWidth, Policy::BlockHeight);
+    dim3 gridSize(divUp(shape.W, Policy::TileWidth), divUp(shape.H, Policy::TileHeight), shape.N);
+
+    int2 dstSize{shape.W, shape.H};
+
+    auto srcWrap = cuda::CreateTensorWrapNCHW<const T>(inData);
+    auto dstWrap = cuda::CreateTensorWrapNCHW<T>(outData);
+    bgr_to_yuv_nchw<Policy><<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx, srcChannels);
+    checkKernelErrors();
+
+    return ErrorCode::SUCCESS;
+}
+
 inline ErrorCode BGR_to_YUV(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                             NVCVColorConversionCode code, cudaStream_t stream)
 {
@@ -1068,6 +1451,8 @@ inline ErrorCode BGR_to_YUV(const TensorDataStridedCuda &inData, const TensorDat
 
     auto outAccess = TensorDataAccessStridedImagePlanar::Create(outData);
     NVCV_ASSERT(outAccess);
+
+    const bool isPlanar = IsPlanar(helpers::GetLegacyDataFormat(inData.layout()));
 
     cuda_op::DataType  outDataType = helpers::GetLegacyDataType(outData.dtype());
     cuda_op::DataShape outputShape = helpers::GetLegacyDataShape(outAccess->infoShape());
@@ -1086,6 +1471,25 @@ inline ErrorCode BGR_to_YUV(const TensorDataStridedCuda &inData, const TensorDat
     {
         LOG_ERROR("Invalid input shape " << inputShape << " different than output shape " << outputShape);
         return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+    if (isPlanar)
+    {
+#define CVCUDA_BGR2YUV_PLANAR_CASE(T) \
+    return Launch_BGR_to_YUV_Planar<T>(inData, outData, inputShape, bidx, inputShape.C, stream)
+        switch (inDataType)
+        {
+        case kCV_8U:
+            CVCUDA_BGR2YUV_PLANAR_CASE(uchar);
+        case kCV_16U:
+            CVCUDA_BGR2YUV_PLANAR_CASE(ushort);
+        case kCV_32F:
+            CVCUDA_BGR2YUV_PLANAR_CASE(float);
+        default:
+            LOG_ERROR("Unsupported DataType " << inDataType);
+            return ErrorCode::INVALID_DATA_TYPE;
+        }
+#undef CVCUDA_BGR2YUV_PLANAR_CASE
     }
 
 #define CVCUDA_BGR2YUV_CASE(T3) return Launch_BGR_to_YUV<T3, T3>(inData, outData, inputShape, bidx, stream)
@@ -1124,6 +1528,31 @@ inline ErrorCode Launch_YUV_to_BGR(const TensorDataStridedCuda &inData, const Te
     return ErrorCode::SUCCESS;
 }
 
+template<typename T>
+inline ErrorCode Launch_YUV_to_BGR_Planar(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                                          cuda_op::DataShape shape, int bidx, int dstChannels, cudaStream_t stream)
+{
+    using Policy = CvtKernelPolicy<32, 4, 4>;
+
+    if (shape.N > 65535)
+    {
+        LOG_ERROR("Planar CvtColor requires numImages <= 65535 (CUDA grid-z limit)");
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+    dim3 blockSize(Policy::BlockWidth, Policy::BlockHeight);
+    dim3 gridSize(divUp(shape.W, Policy::TileWidth), divUp(shape.H, Policy::TileHeight), shape.N);
+
+    int2 dstSize{shape.W, shape.H};
+
+    auto srcWrap = cuda::CreateTensorWrapNCHW<const T>(inData);
+    auto dstWrap = cuda::CreateTensorWrapNCHW<T>(outData);
+    yuv_to_bgr_nchw<Policy><<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx, dstChannels);
+    checkKernelErrors();
+
+    return ErrorCode::SUCCESS;
+}
+
 inline ErrorCode YUV_to_BGR(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                             NVCVColorConversionCode code, cudaStream_t stream)
 {
@@ -1137,6 +1566,8 @@ inline ErrorCode YUV_to_BGR(const TensorDataStridedCuda &inData, const TensorDat
 
     auto outAccess = TensorDataAccessStridedImagePlanar::Create(outData);
     NVCV_ASSERT(outAccess);
+
+    const bool isPlanar = IsPlanar(helpers::GetLegacyDataFormat(inData.layout()));
 
     cuda_op::DataType  outDataType = helpers::GetLegacyDataType(outData.dtype());
     cuda_op::DataShape outputShape = helpers::GetLegacyDataShape(outAccess->infoShape());
@@ -1155,6 +1586,25 @@ inline ErrorCode YUV_to_BGR(const TensorDataStridedCuda &inData, const TensorDat
     {
         LOG_ERROR("Invalid input shape " << inputShape << " different than output shape " << outputShape);
         return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+    if (isPlanar)
+    {
+#define CVCUDA_YUV2BGR_PLANAR_CASE(T) \
+    return Launch_YUV_to_BGR_Planar<T>(inData, outData, inputShape, bidx, outputShape.C, stream)
+        switch (inDataType)
+        {
+        case kCV_8U:
+            CVCUDA_YUV2BGR_PLANAR_CASE(uchar);
+        case kCV_16U:
+            CVCUDA_YUV2BGR_PLANAR_CASE(ushort);
+        case kCV_32F:
+            CVCUDA_YUV2BGR_PLANAR_CASE(float);
+        default:
+            LOG_ERROR("Unsupported DataType " << inDataType);
+            return ErrorCode::INVALID_DATA_TYPE;
+        }
+#undef CVCUDA_YUV2BGR_PLANAR_CASE
     }
 
 #define CVCUDA_YUV2BGR_CASE(T3) return Launch_YUV_to_BGR<T3, T3>(inData, outData, inputShape, bidx, stream)
@@ -1203,6 +1653,43 @@ inline ErrorCode Launch_BGR_to_HSV(const TensorDataStridedCuda &inData, const Te
     return ErrorCode::SUCCESS;
 }
 
+template<typename T>
+inline ErrorCode Launch_BGR_to_HSV_Planar(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                                          cuda_op::DataShape shape, int bidx, bool isFullRange, bool strides_64b,
+                                          int srcChannels, cudaStream_t stream)
+{
+    using Policy = CvtKernelPolicy<32, 4, 4>;
+
+    if (shape.N > 65535)
+    {
+        LOG_ERROR("Planar CvtColor requires numImages <= 65535 (CUDA grid-z limit)");
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+    dim3 blockSize(Policy::BlockWidth, Policy::BlockHeight);
+    dim3 gridSize(divUp(shape.W, Policy::TileWidth), divUp(shape.H, Policy::TileHeight), shape.N);
+
+    int2 dstSize{shape.W, shape.H};
+
+    if (strides_64b)
+    {
+        auto srcWrap = cuda::CreateTensorWrapNCHW<const T, int64_t>(inData);
+        auto dstWrap = cuda::CreateTensorWrapNCHW<T, int64_t>(outData);
+        bgr_to_hsv_nchw<Policy>
+            <<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx, isFullRange, srcChannels);
+    }
+    else
+    {
+        auto srcWrap = cuda::CreateTensorWrapNCHW<const T, int32_t>(inData);
+        auto dstWrap = cuda::CreateTensorWrapNCHW<T, int32_t>(outData);
+        bgr_to_hsv_nchw<Policy>
+            <<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx, isFullRange, srcChannels);
+    }
+    checkKernelErrors();
+
+    return ErrorCode::SUCCESS;
+}
+
 inline ErrorCode BGR_to_HSV(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                             NVCVColorConversionCode code, cudaStream_t stream)
 {
@@ -1217,6 +1704,8 @@ inline ErrorCode BGR_to_HSV(const TensorDataStridedCuda &inData, const TensorDat
 
     auto outAccess = TensorDataAccessStridedImagePlanar::Create(outData);
     NVCV_ASSERT(outAccess);
+
+    const bool isPlanar = IsPlanar(helpers::GetLegacyDataFormat(inData.layout()));
 
     cuda_op::DataType  outDataType = helpers::GetLegacyDataType(outData.dtype());
     cuda_op::DataShape outputShape = helpers::GetLegacyDataShape(outAccess->infoShape());
@@ -1243,6 +1732,24 @@ inline ErrorCode BGR_to_HSV(const TensorDataStridedCuda &inData, const TensorDat
 
 #define CVCUDA_BGR2HSV_CASE(T3) \
     return Launch_BGR_to_HSV<T3, T3>(inData, outData, inputShape, bidx, isFullRange, strides_64b, stream)
+
+    if (isPlanar)
+    {
+#define CVCUDA_BGR2HSV_PLANAR_CASE(T)                                                                             \
+    return Launch_BGR_to_HSV_Planar<T>(inData, outData, inputShape, bidx, isFullRange, strides_64b, inputShape.C, \
+                                       stream)
+        switch (inDataType)
+        {
+        case kCV_8U:
+            CVCUDA_BGR2HSV_PLANAR_CASE(uchar);
+        case kCV_32F:
+            CVCUDA_BGR2HSV_PLANAR_CASE(float);
+        default:
+            LOG_ERROR("Unsupported DataType " << inDataType);
+            return ErrorCode::INVALID_DATA_TYPE;
+        }
+#undef CVCUDA_BGR2HSV_PLANAR_CASE
+    }
 
     switch (inDataType)
     {
@@ -1287,6 +1794,43 @@ inline ErrorCode Launch_HSV_to_BGR(const TensorDataStridedCuda &inData, const Te
     return ErrorCode::SUCCESS;
 }
 
+template<typename T>
+inline ErrorCode Launch_HSV_to_BGR_Planar(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                                          cuda_op::DataShape shape, int bidx, bool isFullRange, bool strides_64b,
+                                          int dstChannels, cudaStream_t stream)
+{
+    using Policy = CvtKernelPolicy<32, 4, 4>;
+
+    if (shape.N > 65535)
+    {
+        LOG_ERROR("Planar CvtColor requires numImages <= 65535 (CUDA grid-z limit)");
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+    dim3 blockSize(Policy::BlockWidth, Policy::BlockHeight);
+    dim3 gridSize(divUp(shape.W, Policy::TileWidth), divUp(shape.H, Policy::TileHeight), shape.N);
+
+    int2 dstSize{shape.W, shape.H};
+
+    if (strides_64b)
+    {
+        auto srcWrap = cuda::CreateTensorWrapNCHW<const T, int64_t>(inData);
+        auto dstWrap = cuda::CreateTensorWrapNCHW<T, int64_t>(outData);
+        hsv_to_bgr_nchw<Policy>
+            <<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx, isFullRange, dstChannels);
+    }
+    else
+    {
+        auto srcWrap = cuda::CreateTensorWrapNCHW<const T, int32_t>(inData);
+        auto dstWrap = cuda::CreateTensorWrapNCHW<T, int32_t>(outData);
+        hsv_to_bgr_nchw<Policy>
+            <<<gridSize, blockSize, 0, stream>>>(srcWrap, dstWrap, dstSize, bidx, isFullRange, dstChannels);
+    }
+    checkKernelErrors();
+
+    return ErrorCode::SUCCESS;
+}
+
 inline ErrorCode HSV_to_BGR(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                             NVCVColorConversionCode code, cudaStream_t stream)
 {
@@ -1301,6 +1845,8 @@ inline ErrorCode HSV_to_BGR(const TensorDataStridedCuda &inData, const TensorDat
 
     auto outAccess = TensorDataAccessStridedImagePlanar::Create(outData);
     NVCV_ASSERT(outAccess);
+
+    const bool isPlanar = IsPlanar(helpers::GetLegacyDataFormat(inData.layout()));
 
     cuda_op::DataType  outDataType = helpers::GetLegacyDataType(outData.dtype());
     cuda_op::DataShape outputShape = helpers::GetLegacyDataShape(outAccess->infoShape());
@@ -1336,6 +1882,23 @@ inline ErrorCode HSV_to_BGR(const TensorDataStridedCuda &inData, const TensorDat
         return Launch_HSV_to_BGR<T3, T3>(inData, outData, inputShape, bidx, isFullRange, strides_64b, stream); \
     else                                                                                                       \
         return Launch_HSV_to_BGR<T3, T4>(inData, outData, inputShape, bidx, isFullRange, strides_64b, stream)
+
+    if (isPlanar)
+    {
+#define CVCUDA_HSV2BGR_PLANAR_CASE(T) \
+    return Launch_HSV_to_BGR_Planar<T>(inData, outData, inputShape, bidx, isFullRange, strides_64b, dcn, stream)
+        switch (inDataType)
+        {
+        case kCV_8U:
+            CVCUDA_HSV2BGR_PLANAR_CASE(uchar);
+        case kCV_32F:
+            CVCUDA_HSV2BGR_PLANAR_CASE(float);
+        default:
+            LOG_ERROR("Unsupported DataType " << inDataType);
+            return ErrorCode::INVALID_DATA_TYPE;
+        }
+#undef CVCUDA_HSV2BGR_PLANAR_CASE
+    }
 
     switch (inDataType)
     {
@@ -1389,6 +1952,12 @@ inline ErrorCode Launch_YUV420xp_to_BGR(const TensorDataStridedCuda &inData, con
 inline ErrorCode YUV420xp_to_BGR(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                                  NVCVColorConversionCode code, cudaStream_t stream)
 {
+    if (IsPlanar(helpers::GetLegacyDataFormat(inData.layout())))
+    {
+        LOG_ERROR("Planar CvtColor does not support subsampled YUV420 conversion codes");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
+
     int bidx
         = (code == NVCV_COLOR_YUV2BGR_NV12 || code == NVCV_COLOR_YUV2BGRA_NV12 || code == NVCV_COLOR_YUV2BGR_NV21
            || code == NVCV_COLOR_YUV2BGRA_NV21 || code == NVCV_COLOR_YUV2BGR_YV12 || code == NVCV_COLOR_YUV2BGRA_YV12
@@ -1553,6 +2122,12 @@ inline ErrorCode Launch_BGR_to_YUV420xp(const TensorDataStridedCuda &inData, con
 inline ErrorCode BGR_to_YUV420xp(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                                  NVCVColorConversionCode code, cudaStream_t stream)
 {
+    if (IsPlanar(helpers::GetLegacyDataFormat(inData.layout())))
+    {
+        LOG_ERROR("Planar CvtColor does not support subsampled YUV420 conversion codes");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
+
     int bidx
         = (code == NVCV_COLOR_BGR2YUV_NV12 || code == NVCV_COLOR_BGRA2YUV_NV12 || code == NVCV_COLOR_BGR2YUV_NV21
            || code == NVCV_COLOR_BGRA2YUV_NV21 || code == NVCV_COLOR_BGR2YUV_YV12 || code == NVCV_COLOR_BGRA2YUV_YV12
@@ -1663,6 +2238,12 @@ inline ErrorCode BGR_to_YUV420xp(const TensorDataStridedCuda &inData, const Tens
 inline ErrorCode YUV422_to_BGR(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
                                NVCVColorConversionCode code, cudaStream_t stream)
 {
+    if (IsPlanar(helpers::GetLegacyDataFormat(inData.layout())))
+    {
+        LOG_ERROR("Planar CvtColor does not support packed YUV422 conversion codes");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
+
     int bidx
         = (code == NVCV_COLOR_YUV2BGR_YUY2 || code == NVCV_COLOR_YUV2BGRA_YUY2 || code == NVCV_COLOR_YUV2BGR_YVYU
            || code == NVCV_COLOR_YUV2BGRA_YVYU || code == NVCV_COLOR_YUV2BGR_UYVY || code == NVCV_COLOR_YUV2BGRA_UYVY)
@@ -1781,9 +2362,10 @@ ErrorCode CvtColor::infer(const TensorDataStridedCuda &inData, const TensorDataS
 
     DataFormat format = input_format;
 
-    if (!(format == kNHWC || format == kHWC))
+    if (!(format == kNHWC || format == kHWC || format == kNCHW || format == kCHW))
     {
-        LOG_ERROR("Invalid input DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
+        LOG_ERROR("Invalid input DataFormat " << format
+                                              << ", the valid DataFormats are: \"NHWC\", \"HWC\", \"NCHW\", \"CHW\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
@@ -1995,6 +2577,12 @@ ErrorCode CvtColor::infer(const TensorDataStridedCuda &inData, const TensorDataS
 
         0, // CV_COLORCVT_MAX  = 148
     };
+
+    if (code < 0 || static_cast<size_t>(code) >= sizeof(funcs) / sizeof(funcs[0]))
+    {
+        LOG_ERROR("Invalid convert color code: " << code);
+        return ErrorCode::INVALID_PARAMETER;
+    }
 
     func_t func = funcs[code];
 

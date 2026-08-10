@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,17 +15,18 @@
 
 cmake_minimum_required(VERSION 3.20.1)
 
-# We need to check this variable before starting a CUDA project - otherwise it will appear
-# as set, with the default value pointing to the oldest supported architecture (52 as of CUDA 11.8)
-if(CMAKE_CUDA_ARCHITECTURES)
-    set(USE_CMAKE_CUDA_ARCHITECTURES TRUE)
-endif()
-
 project(cvcuda
         LANGUAGES C CXX
-        VERSION 0.16.0
+        VERSION 0.17.0
         DESCRIPTION "CUDA-accelerated Computer Vision algorithms"
 )
+
+# CUDA initializes CMAKE_CUDA_ARCHITECTURES while enabling the language. Record
+# its provenance after project() loads any toolchain file, but before enabling
+# CUDA, so toolchain/cache values (including false values such as OFF) and
+# CUDAARCHS are distinguishable from CV-CUDA's generated defaults.
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/CUDAArchitecturePolicy.cmake")
+cvcuda_detect_cuda_architecture_source()
 
 # Make sure the cuda host compiler agrees with what we're using,
 # unless user overwrites it (at their own risk).
@@ -34,9 +35,6 @@ if(NOT CMAKE_CUDA_HOST_COMPILER)
 endif()
 
 enable_language(CUDA)
-
-# Used when creating special builds
-set(PROJECT_VERSION_SUFFIX "")
 
 # if user didn't set install prefix,
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
@@ -51,12 +49,15 @@ set(_BUILD_TESTS_WHEELS_CMDLINE ${BUILD_TESTS_WHEELS})
 set(_BUILD_TESTS_PYTHON_CMDLINE ${BUILD_TESTS_PYTHON})
 
 # Options to configure the build tree =======
+option(BUILD_LIB "Build cvcuda + nvcv_types libraries (and their consumers: Python bindings, tests, docs). When OFF, downstream sub-projects (bench, samples) build against an installed cvcuda-dev via find_package." ON)
 option(BUILD_TESTS "Enable testsuite" ON)
 option(BUILD_TESTS_CPP "Build C++ tests" OFF)
 option(BUILD_TESTS_WHEELS "Generate test_wheels.sh script" OFF)
 option(BUILD_TESTS_PYTHON "Build Python tests" OFF)
 option(BUILD_PYTHON "Build python bindings" ON)
+option(BUILD_PYTHON_WHEEL "Package Python bindings into a wheel" ON)
 option(BUILD_BENCH "Build benchmark" OFF)
+option(BUILD_SAMPLES "Build samples" OFF)
 option(BUILD_DOCS "Build documentation" OFF)
 option(ENABLE_SANITIZER "Enabled sanitized build" OFF)
 
@@ -109,34 +110,67 @@ include(ConfigBuildTree)
 include(ConfigCompiler)
 include(ConfigCUDA)
 include(ConfigCCache)
-if(BUILD_PYTHON)
+
+add_library(cvcuda_nvtx_config INTERFACE)
+find_path(CVCUDA_NVTX_INCLUDE_DIR
+    NAMES nvtx3/nvToolsExt.h
+    HINTS
+        ${CUDAToolkit_INCLUDE_DIRS}
+        ${CUDAToolkit_TARGET_DIR}/include
+    NO_DEFAULT_PATH
+)
+if(NOT CVCUDA_NVTX_INCLUDE_DIR)
+    message(FATAL_ERROR "nvtx3/nvToolsExt.h not found in the CUDA Toolkit include path")
+endif()
+target_include_directories(cvcuda_nvtx_config INTERFACE ${CVCUDA_NVTX_INCLUDE_DIR})
+
+if(BUILD_LIB AND BUILD_PYTHON)
+    # ConfigPython generates Find*.cmake files that reference the in-tree
+    # nvcv_types + cvcuda targets via $<TARGET_FILE:...>. Only meaningful when
+    # we're actually building the lib in this tree; with BUILD_LIB=OFF, those
+    # targets don't exist and the generator expressions error out.
     include(ConfigPython)
 endif()
 
 # Define the build tree ====================
 
-add_subdirectory(3rdparty EXCLUDE_FROM_ALL)
+# In-tree library + everything that links against it directly. Skipping this
+# block (BUILD_LIB=OFF) lets a tree configure for downstream-only builds —
+# e.g. a CI test pod that compiles bench against an installed cvcuda-dev
+# without rebuilding the lib itself.
+if(BUILD_LIB)
+    add_subdirectory(src)
 
-add_subdirectory(src)
+    if(BUILD_PYTHON)
+        include(BuildPython)
+    endif()
 
-if(BUILD_PYTHON)
-    include(BuildPython)
+    if(BUILD_TESTS_CPP OR BUILD_TESTS_WHEELS OR BUILD_TESTS_PYTHON)
+        add_subdirectory(tests)
+    endif()
+
+    if(BUILD_DOCS)
+        add_subdirectory(docs)
+    endif()
 endif()
 
-if(BUILD_TESTS_CPP OR BUILD_TESTS_WHEELS OR BUILD_TESTS_PYTHON)
-    add_subdirectory(tests)
-endif()
-
-if(BUILD_DOCS)
-    add_subdirectory(docs)
-endif()
-
+# Bench + samples are downstream consumers — they work whether the lib was
+# built in this tree (BUILD_LIB=ON) or imported from an installed cvcuda-dev
+# (BUILD_LIB=OFF, see bench/cpp/CMakeLists.txt for the find_package fallback).
 if(BUILD_BENCH)
+    find_package(nvbench REQUIRED)
+    add_library(cvcuda::nvbench::main ALIAS nvbench::main)
     add_subdirectory(bench)
 endif()
 
+if(BUILD_SAMPLES)
+    add_subdirectory(samples)
+endif()
+
 # Must be done after build tree is defined
-include(ConfigCPack)
+if(BUILD_LIB)
+    include(ConfigCPack)
+endif()
 
 # Print build tree configuration ===========
 

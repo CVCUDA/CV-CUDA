@@ -30,6 +30,7 @@
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
 
+#include <cstdint>
 #include <memory>
 
 namespace cvcuda::priv {
@@ -38,6 +39,9 @@ class ChannelReorder final : public IOperator
 {
 public:
     explicit ChannelReorder();
+
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const int32_t *order,
+                    int32_t orderLength) const;
 
     void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
                     const nvcv::Tensor &orders) const;

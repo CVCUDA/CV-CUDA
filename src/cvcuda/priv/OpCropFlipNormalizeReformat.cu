@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+#include "Nvtx.hpp"
 #include "OpCropFlipNormalizeReformat.hpp"
 
 #include <cvcuda/cuda_tools/BorderVarShapeWrap.hpp>
@@ -32,6 +33,7 @@
 
 #include <iostream>
 #include <sstream>
+#include <type_traits>
 
 namespace cuda = nvcv::cuda;
 
@@ -134,55 +136,66 @@ __device__ void set_data(DstWrapper dstWrap, int2 dst_idx, int batchidx, int ch,
     }
 }
 
-template<class SrcWrapper, class DstWrapper, class TensorWrapper, class FlipWrapper, class CropRectWrap>
+template<int NIX, class SrcWrapper, class DstWrapper, class TensorWrapper, class FlipWrapper, class CropRectWrap>
 __global__ void slice_flip_normalize(SrcWrapper srcWrap, DstWrapper dstWrap, FlipWrapper flipCodeWrap,
                                      TensorWrapper baseWrap, TensorWrapper scaleWrap, CropRectWrap cropRect,
                                      float global_scale, float global_shift, float epsilon, uint32_t flags,
                                      int input_channels, int base_ch, int scale_ch, int3 out_size, bool dst_planar)
 {
-    int3 dstCoord = cuda::StaticCast<int>(blockIdx * blockDim + threadIdx);
+    const int batch_idx = blockIdx.z;
+    const int dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
+    const int dst_x0    = (blockIdx.x * blockDim.x + threadIdx.x) * NIX;
 
-    int4 *crop_ptr    = reinterpret_cast<int4 *>(cropRect.ptr(dstCoord.z, 0, 0, 0));
+    int4 *crop_ptr    = reinterpret_cast<int4 *>(cropRect.ptr(batch_idx, 0, 0, 0));
     int   crop_val[4] = {(*crop_ptr).x, (*crop_ptr).y, (*crop_ptr).z,
                          (*crop_ptr).w}; // crop_x, crop_y, crop_w, crop_h stored in (x,y,z,w)
 
-    if (dstCoord.x >= out_size.x || dstCoord.y >= out_size.y)
+    if (dst_x0 >= out_size.x || dst_y >= out_size.y)
     {
         return;
     }
-    // out of crop width and height
-    if (dstCoord.x >= crop_val[2] || dstCoord.y >= crop_val[3])
-    {
-        set_data(dstWrap, (int2){dstCoord.x, dstCoord.y}, blockIdx.z, input_channels, 0, dst_planar);
-        return;
-    }
 
-    int  flip_code = flipCodeWrap[dstCoord.z];
-    int2 srcCoord;
+    const int flip_code = flipCodeWrap[batch_idx];
 
-    if (flip_code == 1)
-    { // horizental
-        srcCoord.x = crop_val[2] - 1 - dstCoord.x + crop_val[0];
-        srcCoord.y = dstCoord.y + crop_val[1];
-    }
-    else if (flip_code == 0)
-    { // vertical
-        srcCoord.x = dstCoord.x + crop_val[0];
-        srcCoord.y = crop_val[3] - 1 - dstCoord.y + crop_val[1];
-    }
-    else if (flip_code == -1)
-    { // horizental + vertical
-        srcCoord.x = crop_val[2] - 1 - dstCoord.x + crop_val[0];
-        srcCoord.y = crop_val[3] - 1 - dstCoord.y + crop_val[1];
-    }
-    else
-    { // no flip
-        srcCoord.x = dstCoord.x + crop_val[0];
-        srcCoord.y = dstCoord.y + crop_val[1];
-    }
+#pragma unroll
+    for (int i = 0; i < NIX; ++i)
+    { // horizontal
+        const int dst_x = dst_x0 + i;
+        if (dst_x >= out_size.x)
+            break;
 
-    transfer_data(srcWrap, dstWrap, srcCoord, {dstCoord.x, dstCoord.y}, dstCoord.z, input_channels, baseWrap, scaleWrap,
-                  global_scale, global_shift, epsilon, flags, base_ch, scale_ch, dst_planar);
+        // out of crop width and height
+        if (dst_x >= crop_val[2] || dst_y >= crop_val[3])
+        {
+            set_data(dstWrap, (int2){dst_x, dst_y}, batch_idx, input_channels, 0, dst_planar);
+            continue;
+        }
+
+        int2 srcCoord;
+        if (flip_code == 1)
+        { // horizontal
+            srcCoord.x = crop_val[2] - 1 - dst_x + crop_val[0];
+            srcCoord.y = dst_y + crop_val[1];
+        }
+        else if (flip_code == 0)
+        { // vertical
+            srcCoord.x = dst_x + crop_val[0];
+            srcCoord.y = crop_val[3] - 1 - dst_y + crop_val[1];
+        }
+        else if (flip_code == -1)
+        { // horizental + vertical
+            srcCoord.x = crop_val[2] - 1 - dst_x + crop_val[0];
+            srcCoord.y = crop_val[3] - 1 - dst_y + crop_val[1];
+        }
+        else
+        { // no flip
+            srcCoord.x = dst_x + crop_val[0];
+            srcCoord.y = dst_y + crop_val[1];
+        }
+
+        transfer_data(srcWrap, dstWrap, srcCoord, {dst_x, dst_y}, batch_idx, input_channels, baseWrap, scaleWrap,
+                      global_scale, global_shift, epsilon, flags, base_ch, scale_ch, dst_planar);
+    }
 }
 
 template<class T_Src, class T_Dst, NVCVBorderType B, class StrideType>
@@ -213,42 +226,62 @@ void RunCropFlipNormalizeReformatS(cudaStream_t stream, const nvcv::ImageBatchVa
     cuda::Tensor1DWrap<int, int32_t> flipCodeWrap(flipCodeData);
     auto                             baseWrap  = cuda::CreateTensorWrapNHWC<float, int32_t>(baseData);
     auto                             scaleWrap = cuda::CreateTensorWrapNHWC<float, int32_t>(scaleData);
+    dim3                             grid4((grid.x + 3) / 4, grid.y, grid.z);
+
+    const bool     useScalarWidePath = channel > 1 && (sizeof(T_Src) > 1 || sizeof(T_Dst) > 1);
+    constexpr bool supportsDataType
+        = std::is_same_v<T_Src, T_Dst> && (std::is_same_v<T_Src, unsigned char> || std::is_same_v<T_Src, float>);
+    constexpr bool supportsBorder      = B == NVCV_BORDER_CONSTANT || B == NVCV_BORDER_REFLECT101;
+    constexpr bool supportsBatchedPath = supportsDataType && supportsBorder;
+
+    auto launch = [&](auto &srcBorderWrap, auto &dstWrap)
+    {
+        if constexpr (supportsBatchedPath)
+        {
+            if (useScalarWidePath)
+                slice_flip_normalize<1><<<grid, block, 0, stream>>>(
+                    srcBorderWrap, dstWrap, flipCodeWrap, baseWrap, scaleWrap, cropRectWrap, global_scale, shift,
+                    epsilon, flags, channel, base_channels, scale_channels, out_size, dst_planar);
+            else
+                slice_flip_normalize<4><<<grid4, block, 0, stream>>>(
+                    srcBorderWrap, dstWrap, flipCodeWrap, baseWrap, scaleWrap, cropRectWrap, global_scale, shift,
+                    epsilon, flags, channel, base_channels, scale_channels, out_size, dst_planar);
+        }
+        else
+        {
+            slice_flip_normalize<1><<<grid, block, 0, stream>>>(
+                srcBorderWrap, dstWrap, flipCodeWrap, baseWrap, scaleWrap, cropRectWrap, global_scale, shift, epsilon,
+                flags, channel, base_channels, scale_channels, out_size, dst_planar);
+        }
+    };
 
     if (src_planar && dst_planar)
     {
         cuda::ImageBatchVarShapeWrap<const T_Src> srcWrap(srcData); // planar
         cuda::BorderVarShapeWrap<const T_Src, B>  srcBorderWrap(srcWrap, static_cast<T_Src>(borderValue));
         cuda::Tensor4DWrap<T_Dst, StrideType>     dstWrap(dstData); // planar
-        slice_flip_normalize<<<grid, block, 0, stream>>>(srcBorderWrap, dstWrap, flipCodeWrap, baseWrap, scaleWrap,
-                                                         cropRectWrap, global_scale, shift, epsilon, flags, channel,
-                                                         base_channels, scale_channels, out_size, dst_planar);
+        launch(srcBorderWrap, dstWrap);
     }
     else if (src_planar)
     {
         cuda::ImageBatchVarShapeWrap<const T_Src> srcWrap(srcData); // planar
         cuda::BorderVarShapeWrap<const T_Src, B>  srcBorderWrap(srcWrap, static_cast<T_Src>(borderValue));
         auto dstWrap = cuda::CreateTensorWrapNHWC<T_Dst, StrideType>(dstData); // interleaved
-        slice_flip_normalize<<<grid, block, 0, stream>>>(srcBorderWrap, dstWrap, flipCodeWrap, baseWrap, scaleWrap,
-                                                         cropRectWrap, global_scale, shift, epsilon, flags, channel,
-                                                         base_channels, scale_channels, out_size, dst_planar);
+        launch(srcBorderWrap, dstWrap);
     }
     else if (dst_planar)
     {
         cuda::ImageBatchVarShapeWrapNHWC<const T_Src> srcWrap(srcData, channel); // interleaved
         cuda::BorderVarShapeWrapNHWC<const T_Src, B>  srcBorderWrap(srcWrap, static_cast<T_Src>(borderValue));
         cuda::Tensor4DWrap<T_Dst, StrideType>         dstWrap(dstData); // planar
-        slice_flip_normalize<<<grid, block, 0, stream>>>(srcBorderWrap, dstWrap, flipCodeWrap, baseWrap, scaleWrap,
-                                                         cropRectWrap, global_scale, shift, epsilon, flags, channel,
-                                                         base_channels, scale_channels, out_size, dst_planar);
+        launch(srcBorderWrap, dstWrap);
     }
     else
     {
         cuda::ImageBatchVarShapeWrapNHWC<const T_Src> srcWrap(srcData, channel); // interleaved
         cuda::BorderVarShapeWrapNHWC<const T_Src, B>  srcBorderWrap(srcWrap, static_cast<T_Src>(borderValue));
         auto dstWrap = cuda::CreateTensorWrapNHWC<T_Dst, StrideType>(dstData); // interleaved
-        slice_flip_normalize<<<grid, block, 0, stream>>>(srcBorderWrap, dstWrap, flipCodeWrap, baseWrap, scaleWrap,
-                                                         cropRectWrap, global_scale, shift, epsilon, flags, channel,
-                                                         base_channels, scale_channels, out_size, dst_planar);
+        launch(srcBorderWrap, dstWrap);
     }
 }
 
@@ -266,9 +299,13 @@ void RunCropFlipNormalizeReformat(cudaStream_t stream, const nvcv::ImageBatchVar
     NVCV_ASSERT(outAccess);
     const int3 out_size = {outAccess->numCols(), outAccess->numRows(), num_channels};
 
+    const bool wideInterleavedToPlanar = channel > 1 && (sizeof(T_Src) > 1 || sizeof(T_Dst) > 1)
+                                      && srcData.uniqueFormat().numPlanes() == 1
+                                      && dstData.layout() == nvcv::TENSOR_NCHW;
+
     nvcv::Size2D maxSize   = {outAccess->numCols(), outAccess->numRows()};
     int32_t      batchSize = srcData.numImages();
-    dim3         block(32, 32, 1);
+    dim3         block(32, wideInterleavedToPlanar ? 16 : 8, 1);
     dim3 grid(std::ceil(maxSize.w / static_cast<float>(block.x)), std::ceil(maxSize.h / static_cast<float>(block.y)),
               batchSize);
 
@@ -385,6 +422,7 @@ void CropFlipNormalizeReformat::operator()(cudaStream_t stream, const nvcv::Imag
                                            const nvcv::Tensor &scale, float global_scale, float shift, float epsilon,
                                            uint32_t flags) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::CropFlipNormalizeReformat::operator()[ImageBatchVarShape]");
     auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (inData == nullptr)
     {

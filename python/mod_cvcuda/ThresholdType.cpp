@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +23,8 @@ namespace cvcudapy {
 
 void ExportThresholdType(py::module &m)
 {
-    py::enum_<NVCVThresholdType>(m, "ThresholdType", py::arithmetic())
+    py::enum_<NVCVThresholdType>(m, "ThresholdType", "Thresholding types for binary image segmentation.",
+                                 py::arithmetic())
         .value("BINARY", NVCV_THRESH_BINARY, "Value above threshold is set to maxval, otherwise set to 0")
         .value("BINARY_INV", NVCV_THRESH_BINARY_INV, "Value above threshold is set to 0, otherwise set to maxval")
         .value("TRUNC", NVCV_THRESH_TRUNC, "Value above threshold is set to threshold, otherwise unchanged")

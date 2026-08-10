@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "OpThreshold.hpp"
 
+#include "Nvtx.hpp"
 #include "legacy/CvCudaLegacy.h"
 #include "legacy/CvCudaLegacyHelpers.hpp"
 
@@ -28,16 +29,33 @@ namespace cvcuda::priv {
 namespace legacy = nvcv::legacy::cuda_op;
 
 Threshold::Threshold(uint32_t type, int maxBatchSize)
+    // Legacy operators are single-device by design. PerDeviceResource creates
+    // one instance per CUDA device for transparent multi-GPU support.
+    : m_legacyOp(
+        [type, maxBatchSize](int)
+        {
+            legacy::DataShape maxIn;
+            legacy::DataShape maxOut;
+            return std::make_unique<legacy::Threshold>(maxIn, maxOut, type, maxBatchSize);
+        })
+    , m_legacyOpVarShape(
+          [type, maxBatchSize](int)
+          {
+              legacy::DataShape maxIn;
+              legacy::DataShape maxOut;
+              return std::make_unique<legacy::ThresholdVarShape>(maxIn, maxOut, type, maxBatchSize);
+          })
 {
-    legacy::DataShape maxIn, maxOut;
-    // maxIn/maxOut not used by op.
-    m_legacyOp         = std::make_unique<legacy::Threshold>(maxIn, maxOut, type, maxBatchSize);
-    m_legacyOpVarShape = std::make_unique<legacy::ThresholdVarShape>(maxIn, maxOut, type, maxBatchSize);
+    if (maxBatchSize < 0)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "maxBatchSize must be >= 0");
+    }
 }
 
 void Threshold::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                            const nvcv::Tensor &thresh, const nvcv::Tensor &maxval) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::Threshold::operator()[Tensor]");
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
     if (inData == nullptr)
     {
@@ -66,12 +84,13 @@ void Threshold::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nv
                               "maxval must be cuda-accessible, pitch-linear tensor");
     }
 
-    NVCV_CHECK_THROW(m_legacyOp->infer(*inData, *outData, *threshData, *maxvalData, stream));
+    NVCV_CHECK_THROW(m_legacyOp.get().infer(*inData, *outData, *threshData, *maxvalData, stream));
 }
 
 void Threshold::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
                            const nvcv::Tensor &thresh, const nvcv::Tensor &maxval) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::Threshold::operator()[ImageBatchVarShape]");
     auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (inData == nullptr)
     {
@@ -98,7 +117,7 @@ void Threshold::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &
                               "maxval must be cuda-accessible, pitch-linear tensor");
     }
 
-    NVCV_CHECK_THROW(m_legacyOpVarShape->infer(*inData, *outData, *threshData, *maxvalData, stream));
+    NVCV_CHECK_THROW(m_legacyOpVarShape.get().infer(*inData, *outData, *threshData, *maxvalData, stream));
 }
 
 } // namespace cvcuda::priv

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -39,13 +39,19 @@ NVCV_ASSERT_NORETURN void NvCVAssert(const char *file, int line, const char *con
 #endif
 
 #if NVCV_EXPOSE_CODE
-#    define NVCV_SOURCE_FILE_NAME      __FILE__
-#    define NVCV_SOURCE_FILE_LINENO    __LINE__
+#    define NVCV_SOURCE_FILE_NAME      __FILE__ // NOSONAR: std::source_location is C++20.
+#    define NVCV_SOURCE_FILE_LINENO    __LINE__ // NOSONAR: std::source_location is C++20.
 #    define NVCV_OPTIONAL_STRINGIFY(X) #    X
 #else
-#    define NVCV_SOURCE_FILE_NAME      ""
-#    define NVCV_SOURCE_FILE_LINENO    0
-#    define NVCV_OPTIONAL_STRINGIFY(X) ""
+static const char NVCV_SOURCE_FILE_NAME[]      = "";
+static const char NVCV_HIDDEN_CONDITION_TEXT[] = "";
+
+enum
+{
+    NVCV_SOURCE_FILE_LINENO = 0
+};
+
+#    define NVCV_OPTIONAL_STRINGIFY(X) NVCV_HIDDEN_CONDITION_TEXT
 #endif
 
 // allows overriding of NVCV_ASSERT definition

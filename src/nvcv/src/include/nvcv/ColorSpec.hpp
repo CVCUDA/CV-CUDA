@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -135,7 +135,7 @@ public:
      * @brief Construct a new ColorSpec object.
      * @param cspec Existing NVCVColorSpec object.
      */
-    constexpr ColorSpec(NVCVColorSpec cspec)
+    explicit constexpr ColorSpec(NVCVColorSpec cspec)
         : m_cspec(cspec)
     {
     }
@@ -172,7 +172,7 @@ public:
      *
      * @return NVCVColorSpec object.
      */
-    constexpr operator NVCVColorSpec() const;
+    explicit constexpr operator NVCVColorSpec() const;
 
     /**
      * @brief Set the chroma location and return a new ColorSpec.
@@ -262,26 +262,26 @@ private:
 };
 
 #ifndef DOXYGEN_SHOULD_SKIP_THIS
-constexpr ColorSpec CSPEC_UNDEFINED        = NVCV_COLOR_SPEC_UNDEFINED;
-constexpr ColorSpec CSPEC_BT601            = NVCV_COLOR_SPEC_BT601;
-constexpr ColorSpec CSPEC_BT601_ER         = NVCV_COLOR_SPEC_BT601_ER;
-constexpr ColorSpec CSPEC_BT709            = NVCV_COLOR_SPEC_BT709;
-constexpr ColorSpec CSPEC_BT709_ER         = NVCV_COLOR_SPEC_BT709_ER;
-constexpr ColorSpec CSPEC_BT709_LINEAR     = NVCV_COLOR_SPEC_BT709_LINEAR;
-constexpr ColorSpec CSPEC_BT2020           = NVCV_COLOR_SPEC_BT2020;
-constexpr ColorSpec CSPEC_BT2020_ER        = NVCV_COLOR_SPEC_BT2020_ER;
-constexpr ColorSpec CSPEC_BT2020_LINEAR    = NVCV_COLOR_SPEC_BT2020_LINEAR;
-constexpr ColorSpec CSPEC_BT2020_PQ        = NVCV_COLOR_SPEC_BT2020_PQ;
-constexpr ColorSpec CSPEC_BT2020_PQ_ER     = NVCV_COLOR_SPEC_BT2020_PQ_ER;
-constexpr ColorSpec CSPEC_BT2020c_ER       = NVCV_COLOR_SPEC_BT2020c_ER;
-constexpr ColorSpec CSPEC_MPEG2_BT601      = NVCV_COLOR_SPEC_MPEG2_BT601;
-constexpr ColorSpec CSPEC_MPEG2_BT709      = NVCV_COLOR_SPEC_MPEG2_BT709;
-constexpr ColorSpec CSPEC_MPEG2_SMPTE240M  = NVCV_COLOR_SPEC_MPEG2_SMPTE240M;
-constexpr ColorSpec CSPEC_sRGB             = NVCV_COLOR_SPEC_sRGB;
-constexpr ColorSpec CSPEC_sYCC             = NVCV_COLOR_SPEC_sYCC;
-constexpr ColorSpec CSPEC_SMPTE240M        = NVCV_COLOR_SPEC_SMPTE240M;
-constexpr ColorSpec CSPEC_DISPLAYP3        = NVCV_COLOR_SPEC_DISPLAYP3;
-constexpr ColorSpec CSPEC_DISPLAYP3_LINEAR = NVCV_COLOR_SPEC_DISPLAYP3_LINEAR;
+constexpr ColorSpec CSPEC_UNDEFINED        = ColorSpec{NVCV_COLOR_SPEC_UNDEFINED};
+constexpr ColorSpec CSPEC_BT601            = ColorSpec{NVCV_COLOR_SPEC_BT601};
+constexpr ColorSpec CSPEC_BT601_ER         = ColorSpec{NVCV_COLOR_SPEC_BT601_ER};
+constexpr ColorSpec CSPEC_BT709            = ColorSpec{NVCV_COLOR_SPEC_BT709};
+constexpr ColorSpec CSPEC_BT709_ER         = ColorSpec{NVCV_COLOR_SPEC_BT709_ER};
+constexpr ColorSpec CSPEC_BT709_LINEAR     = ColorSpec{NVCV_COLOR_SPEC_BT709_LINEAR};
+constexpr ColorSpec CSPEC_BT2020           = ColorSpec{NVCV_COLOR_SPEC_BT2020};
+constexpr ColorSpec CSPEC_BT2020_ER        = ColorSpec{NVCV_COLOR_SPEC_BT2020_ER};
+constexpr ColorSpec CSPEC_BT2020_LINEAR    = ColorSpec{NVCV_COLOR_SPEC_BT2020_LINEAR};
+constexpr ColorSpec CSPEC_BT2020_PQ        = ColorSpec{NVCV_COLOR_SPEC_BT2020_PQ};
+constexpr ColorSpec CSPEC_BT2020_PQ_ER     = ColorSpec{NVCV_COLOR_SPEC_BT2020_PQ_ER};
+constexpr ColorSpec CSPEC_BT2020c_ER       = ColorSpec{NVCV_COLOR_SPEC_BT2020c_ER};
+constexpr ColorSpec CSPEC_MPEG2_BT601      = ColorSpec{NVCV_COLOR_SPEC_MPEG2_BT601};
+constexpr ColorSpec CSPEC_MPEG2_BT709      = ColorSpec{NVCV_COLOR_SPEC_MPEG2_BT709};
+constexpr ColorSpec CSPEC_MPEG2_SMPTE240M  = ColorSpec{NVCV_COLOR_SPEC_MPEG2_SMPTE240M};
+constexpr ColorSpec CSPEC_sRGB             = ColorSpec{NVCV_COLOR_SPEC_sRGB};
+constexpr ColorSpec CSPEC_sYCC             = ColorSpec{NVCV_COLOR_SPEC_sYCC};
+constexpr ColorSpec CSPEC_SMPTE240M        = ColorSpec{NVCV_COLOR_SPEC_SMPTE240M};
+constexpr ColorSpec CSPEC_DISPLAYP3        = ColorSpec{NVCV_COLOR_SPEC_DISPLAYP3};
+constexpr ColorSpec CSPEC_DISPLAYP3_LINEAR = ColorSpec{NVCV_COLOR_SPEC_DISPLAYP3_LINEAR};
 #endif
 
 constexpr ColorSpec ColorSpec::ConstCreate(ColorSpace cspace, YCbCrEncoding encoding, ColorTransferFunction xferFunc,
@@ -309,14 +309,16 @@ constexpr ColorSpec::operator NVCVColorSpec() const
 
 inline ChromaLocation ColorSpec::chromaLocHoriz() const
 {
-    NVCVChromaLocation outH, outV;
+    NVCVChromaLocation outH;
+    NVCVChromaLocation outV;
     detail::CheckThrow(nvcvColorSpecGetChromaLoc(m_cspec, &outH, &outV));
     return static_cast<ChromaLocation>(outH);
 }
 
 inline ChromaLocation ColorSpec::chromaLocVert() const
 {
-    NVCVChromaLocation outH, outV;
+    NVCVChromaLocation outH;
+    NVCVChromaLocation outV;
     detail::CheckThrow(nvcvColorSpecGetChromaLoc(m_cspec, &outH, &outV));
     return static_cast<ChromaLocation>(outV);
 }
@@ -450,7 +452,7 @@ inline std::ostream &operator<<(std::ostream &out, WhitePoint whitePoint)
 
 inline std::ostream &operator<<(std::ostream &out, ColorSpace color_space)
 {
-    return out << nvcvColorSpecGetName(static_cast<NVCVColorSpec>(color_space));
+    return out << nvcvColorSpaceGetName(static_cast<NVCVColorSpace>(color_space));
 }
 
 inline std::ostream &operator<<(std::ostream &out, ChromaLocation loc)

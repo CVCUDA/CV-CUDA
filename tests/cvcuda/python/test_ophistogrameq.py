@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,14 +15,15 @@
 
 import cvcuda
 
-import pytest as t
+import pytest
 import numpy as np
+import cvcuda_tools as cv_tools
 import cvcuda_util as util
 
 RNG = np.random.default_rng(0)
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "input",
     [
         (((1, 460, 640, 1), cvcuda.Type.U8, "NHWC")),
@@ -65,7 +66,7 @@ def test_op_histogrameq(input):
     assert out.dtype == inputTensor.dtype
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "num_images, format, max_size",
     [
         (
@@ -145,3 +146,23 @@ def test_op_histogrameq_varshape(num_images, format, max_size):
     assert out.capacity == b_src.capacity
     assert out.uniqueformat == b_src.uniqueformat
     assert out.maxsize <= max_size
+
+
+def _histogrameq_params(dtype, layout, channels):
+    return {"dtype": cvcuda.Type.U8}
+
+
+globals().update(
+    cv_tools.make_op_tests(
+        name="histogrameq",
+        runner_info=[
+            ("tensor", cvcuda.histogrameq, _histogrameq_params),
+            ("image_batch", cvcuda.histogrameq, None),
+        ],
+        keystone_dlc=(cvcuda.Type.U8, "NHWC", 3),
+        supported_dtypes={cvcuda.Type.U8},
+        supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
+        supported_channels={1, 2, 3, 4},
+        exclude_dlc=[(None, "NCHW", 2), (None, "CHW", 2)],
+    )
+)

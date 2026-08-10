@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -42,7 +42,7 @@ public:
      *
      * @param data The NVCVImageData to use for initialization.
      */
-    ImageData(const NVCVImageData &data);
+    explicit ImageData(const NVCVImageData &data);
 
     /**
      * @brief Get the image format.
@@ -262,6 +262,6 @@ public:
 
 } // namespace nvcv
 
-#include "detail/ImageDataImpl.hpp"
+#include "detail/ImageDataImpl.hpp" // NOSONAR: inline definitions require the declarations above.
 
 #endif // NVCV_DETAIL_IMAGEDATA_HPP

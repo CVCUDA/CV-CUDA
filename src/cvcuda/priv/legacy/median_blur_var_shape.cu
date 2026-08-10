@@ -23,6 +23,9 @@
 
 #include "CvCudaUtils.cuh"
 
+#include <cstdint>
+#include <type_traits>
+
 #define GENERAL_KERNEL_BLOCK 32
 #define SMALL_KERNEL_BLOCK   16
 
@@ -30,6 +33,20 @@ using namespace nvcv::legacy::cuda_op;
 using namespace nvcv::legacy::helpers;
 
 namespace nvcv::legacy::cuda_op {
+
+template<typename T>
+__device__ __forceinline__ T *pixelPtr(const cuda::ImageBatchVarShapeWrapNHWC<T> img, int batchIdx, int channel, int y,
+                                       int x)
+{
+    return img.ptr(batchIdx, y, x, channel);
+}
+
+template<typename T>
+__device__ __forceinline__ T *pixelPtr(const cuda::ImageBatchVarShapeWrap<T> img, int batchIdx, int channel, int y,
+                                       int x)
+{
+    return img.ptr(batchIdx, channel, y, x);
+}
 
 /**
  * This function fetches the pixel from the shared if possible.
@@ -49,9 +66,9 @@ namespace nvcv::legacy::cuda_op {
  * @param gy the vertical index of the desired pixel in the image.
  * @return the pixel at given index
  */
-template<typename T>
-__device__ T fetch(T *shared, const cuda::ImageBatchVarShapeWrapNHWC<T> src, int batchIdx, int h, int w, int c,
-                   int sxOffset, int syOffset, int gx, int gy, int block_size)
+template<typename T, class SrcWrapper>
+__device__ T fetch(T *shared, const SrcWrapper src, int batchIdx, int h, int w, int c, int sxOffset, int syOffset,
+                   int gx, int gy, int block_size)
 {
     // check for nvcv::BORDER_REPLICATE.
     if (gx < 0)
@@ -73,7 +90,7 @@ __device__ T fetch(T *shared, const cuda::ImageBatchVarShapeWrapNHWC<T> src, int
     // check if the desired pixel is not in shared memory.
     if (gy - syOffset < 0 || gy - syOffset >= blockDim.y || gx - sxOffset < 0 || gx - sxOffset >= blockDim.x)
     {
-        return *src.ptr(batchIdx, gy, gx, c); // fetch from global memory.
+        return *pixelPtr(src, batchIdx, c, gy, gx); // fetch from global memory.
     }
     else
     {
@@ -89,9 +106,8 @@ __device__ T fetch(T *shared, const cuda::ImageBatchVarShapeWrapNHWC<T> src, int
  * @param kWidth width of the kernel.
  * @param kHeight height of the kernel.
  */
-template<typename T>
-__global__ void median(const cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::ImageBatchVarShapeWrapNHWC<T> dst,
-                       cuda::Tensor1DWrap<const int2> ksize)
+template<typename T, class SrcWrapper, class DstWrapper>
+__global__ void median(const SrcWrapper src, DstWrapper dst, cuda::Tensor1DWrap<const int2> ksize, const int channels)
 {
 #define fetch_(gx, gy, block_size) \
     fetch<T>(tails, src, batchIdx, h, w, channel, blockX, blockY, (gx), (gy), (block_size))
@@ -102,8 +118,8 @@ __global__ void median(const cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::Imag
     int blockY   = blockIdx.y * blockDim.y;
     int x        = blockX + threadIdx.x;
     int y        = blockY + threadIdx.y;
-    int channel  = blockIdx.z % dst.numChannels();
-    int batchIdx = blockIdx.z / dst.numChannels();
+    int channel  = blockIdx.z % channels;
+    int batchIdx = blockIdx.z / channels;
     int h = src.height(batchIdx), w = src.width(batchIdx);
 
     int2 kernelSize = ksize[batchIdx];
@@ -113,7 +129,7 @@ __global__ void median(const cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::Imag
     __shared__ T tails[GENERAL_KERNEL_BLOCK * GENERAL_KERNEL_BLOCK];
     if (x < w && y < h)
     {
-        tails[ty * GENERAL_KERNEL_BLOCK + tx] = *src.ptr(batchIdx, y, x, channel);
+        tails[ty * GENERAL_KERNEL_BLOCK + tx] = *pixelPtr(src, batchIdx, channel, y, x);
     }
     __syncthreads();
 
@@ -227,7 +243,7 @@ __global__ void median(const cuda::ImageBatchVarShapeWrapNHWC<T> src, cuda::Imag
             numOfEq = 0;
             numOfGt = 0;
         }
-        *dst.ptr(batchIdx, y, x, channel) = pivot0;
+        *pixelPtr(dst, batchIdx, channel, y, x) = pivot0;
     }
 }
 
@@ -277,17 +293,17 @@ __inline__ __device__ T placePivot(T *arr, int length)
     return pivot0;
 }
 
-template<typename T>
-__global__ void medianForSmallKernel(const cuda::ImageBatchVarShapeWrapNHWC<T> src,
-                                     cuda::ImageBatchVarShapeWrapNHWC<T> dst, cuda::Tensor1DWrap<const int2> ksize)
+template<typename T, class SrcWrapper, class DstWrapper>
+__global__ void medianForSmallKernel(const SrcWrapper src, DstWrapper dst, cuda::Tensor1DWrap<const int2> ksize,
+                                     const int channels)
 {
     int tx = threadIdx.x, ty = threadIdx.y;
     int blockX   = blockIdx.x * blockDim.x;
     int blockY   = blockIdx.y * blockDim.y;
     int x        = blockX + threadIdx.x;
     int y        = blockY + threadIdx.y;
-    int channel  = blockIdx.z % dst.numChannels();
-    int batchIdx = blockIdx.z / dst.numChannels();
+    int channel  = blockIdx.z % channels;
+    int batchIdx = blockIdx.z / channels;
     int h = src.height(batchIdx), w = src.width(batchIdx);
 
     int2 kernelSize = ksize[batchIdx];
@@ -297,7 +313,7 @@ __global__ void medianForSmallKernel(const cuda::ImageBatchVarShapeWrapNHWC<T> s
     __shared__ T tails[SMALL_KERNEL_BLOCK * SMALL_KERNEL_BLOCK];
     if (x < w && y < h)
     {
-        tails[ty * SMALL_KERNEL_BLOCK + tx] = *src.ptr(batchIdx, y, x, channel);
+        tails[ty * SMALL_KERNEL_BLOCK + tx] = *pixelPtr(src, batchIdx, channel, y, x);
     }
     __syncthreads();
 
@@ -323,7 +339,7 @@ __global__ void medianForSmallKernel(const cuda::ImageBatchVarShapeWrapNHWC<T> s
             }
             else if (k < (middle + numOfEq))
             {
-                *dst.ptr(batchIdx, y, x, channel) = pivot;
+                *pixelPtr(dst, batchIdx, channel, y, x) = pivot;
                 return;
             }
             else
@@ -333,52 +349,175 @@ __global__ void medianForSmallKernel(const cuda::ImageBatchVarShapeWrapNHWC<T> s
                 arr    = arr + middle + 1;
             }
         }
-        *dst.ptr(batchIdx, y, x, channel) = arr[0];
+        *pixelPtr(dst, batchIdx, channel, y, x) = arr[0];
+    }
+}
+
+template<typename T, int LENGTH>
+__device__ __forceinline__ T medianFromSortedWindow(T (&arr)[LENGTH])
+{
+#pragma unroll
+    for (int i = 0; i < LENGTH - 1; ++i)
+    {
+#pragma unroll
+        for (int j = i + 1; j < LENGTH; ++j)
+        {
+            if (arr[j] < arr[i])
+            {
+                T tmp  = arr[i];
+                arr[i] = arr[j];
+                arr[j] = tmp;
+            }
+        }
+    }
+
+    return arr[LENGTH / 2];
+}
+
+template<typename T, class SrcWrapper, class DstWrapper, int KWidth, int KHeight>
+__global__ void medianForFixedSmallKernel(const SrcWrapper src, DstWrapper dst, const int channels)
+{
+    constexpr int kWidth  = KWidth;
+    constexpr int kHeight = KHeight;
+    constexpr int length  = KWidth * KHeight;
+
+    int blockX   = blockIdx.x * blockDim.x;
+    int blockY   = blockIdx.y * blockDim.y;
+    int x        = blockX + threadIdx.x;
+    int y        = blockY + threadIdx.y;
+    int channel  = blockIdx.z % channels;
+    int batchIdx = blockIdx.z / channels;
+    int h = src.height(batchIdx), w = src.width(batchIdx);
+
+    if ((x < w && y < h))
+    {
+        T arr[length];
+#pragma unroll
+        for (int i = 0; i < length; i++)
+        {
+            int gx = x - (kWidth / 2) + (i % kWidth);
+            int gy = y - (kHeight / 2) + (i / kWidth);
+
+            gx = min(max(gx, 0), w - 1);
+            gy = min(max(gy, 0), h - 1);
+
+            arr[i] = *pixelPtr(src, batchIdx, channel, gy, gx);
+        }
+
+        *pixelPtr(dst, batchIdx, channel, y, x) = medianFromSortedWindow(arr);
     }
 }
 
 #undef fetch_
 #undef fetchAs1d
 
-template<typename T>
-void median(const ImageBatchVarShapeDataStridedCuda &in, const ImageBatchVarShapeDataStridedCuda &out,
-            const TensorDataStridedCuda &ksize, int maxKHeight, int maxKWidth, cudaStream_t stream)
+template<typename T, class SrcWrapper, class DstWrapper>
+void medianImpl(const ImageBatchVarShapeDataStridedCuda &out, const TensorDataStridedCuda &ksize, int maxKHeight,
+                int maxKWidth, const int channels, SrcWrapper src, DstWrapper dst, bool hasUniformKernelSize,
+                cudaStream_t stream)
 {
     Size2D outMaxSize = out.maxSize();
 
     int maxWidth  = outMaxSize.w;
     int maxHeight = outMaxSize.h;
 
+    cuda::Tensor1DWrap<const int2> ksizeWrap(ksize);
+
+#ifdef CUDA_DEBUG_LOG
+    checkCudaErrors(cudaStreamSynchronize(stream));
+    checkCudaErrors(cudaGetLastError());
+#endif
+
+    long unsigned int sharedMemSize    = SMALL_KERNEL_BLOCK * SMALL_KERNEL_BLOCK * maxKWidth * maxKHeight * sizeof(T);
+    auto              runDynamicKernel = [&]
+    {
+        if (sharedMemSize < 48 * 1024)
+        {
+            dim3 block(SMALL_KERNEL_BLOCK, SMALL_KERNEL_BLOCK);
+            dim3 grid(divUp(maxWidth, block.x), divUp(maxHeight, block.y), channels * out.numImages());
+            medianForSmallKernel<T><<<grid, block, sharedMemSize, stream>>>(src, dst, ksizeWrap, channels);
+            checkKernelErrors();
+        }
+        else
+        {
+            dim3 block(GENERAL_KERNEL_BLOCK, GENERAL_KERNEL_BLOCK);
+            dim3 grid(divUp(maxWidth, block.x), divUp(maxHeight, block.y), channels * out.numImages());
+            median<T><<<grid, block, 0, stream>>>(src, dst, ksizeWrap, channels);
+            checkKernelErrors();
+        }
+    };
+
+    if (hasUniformKernelSize && maxKWidth == 3 && maxKHeight == 3)
+    {
+        dim3 block(SMALL_KERNEL_BLOCK, SMALL_KERNEL_BLOCK);
+        dim3 grid(divUp(maxWidth, block.x), divUp(maxHeight, block.y), channels * out.numImages());
+        medianForFixedSmallKernel<T, SrcWrapper, DstWrapper, 3, 3><<<grid, block, 0, stream>>>(src, dst, channels);
+        checkKernelErrors();
+    }
+    else if constexpr (std::is_same_v<T, float> || std::is_same_v<T, uchar>)
+    {
+        if (hasUniformKernelSize && maxKWidth == 5 && maxKHeight == 5)
+        {
+            dim3 block(SMALL_KERNEL_BLOCK, SMALL_KERNEL_BLOCK);
+            dim3 grid(divUp(maxWidth, block.x), divUp(maxHeight, block.y), channels * out.numImages());
+            medianForFixedSmallKernel<T, SrcWrapper, DstWrapper, 5, 5><<<grid, block, 0, stream>>>(src, dst, channels);
+            checkKernelErrors();
+        }
+        else if constexpr (std::is_same_v<T, uchar>)
+        {
+            if (hasUniformKernelSize && maxKWidth == 7 && maxKHeight == 7)
+            {
+                dim3 block(SMALL_KERNEL_BLOCK, SMALL_KERNEL_BLOCK);
+                dim3 grid(divUp(maxWidth, block.x), divUp(maxHeight, block.y), channels * out.numImages());
+                medianForFixedSmallKernel<T, SrcWrapper, DstWrapper, 7, 7>
+                    <<<grid, block, 0, stream>>>(src, dst, channels);
+                checkKernelErrors();
+            }
+            else
+            {
+                runDynamicKernel();
+            }
+        }
+        else
+        {
+            runDynamicKernel();
+        }
+    }
+    else
+    {
+        runDynamicKernel();
+    }
+
+#ifdef CUDA_DEBUG_LOG
+    checkCudaErrors(cudaStreamSynchronize(stream));
+    checkCudaErrors(cudaGetLastError());
+#endif
+}
+
+template<typename T>
+void median(const ImageBatchVarShapeDataStridedCuda &in, const ImageBatchVarShapeDataStridedCuda &out,
+            const TensorDataStridedCuda &ksize, int maxKHeight, int maxKWidth, bool hasUniformKernelSize,
+            cudaStream_t stream)
+{
     int channels = in.uniqueFormat().numChannels();
 
     cuda::ImageBatchVarShapeWrapNHWC<T> src(in, channels);
     cuda::ImageBatchVarShapeWrapNHWC<T> dst(out, channels);
 
-#ifdef CUDA_DEBUG_LOG
-    checkCudaErrors(cudaStreamSynchronize(stream));
-    checkCudaErrors(cudaGetLastError());
-#endif
+    medianImpl<T>(out, ksize, maxKHeight, maxKWidth, channels, src, dst, hasUniformKernelSize, stream);
+}
 
-    long unsigned int sharedMemSize = SMALL_KERNEL_BLOCK * SMALL_KERNEL_BLOCK * maxKWidth * maxKHeight * sizeof(T);
-    if (sharedMemSize < 48 * 1024)
-    {
-        dim3 block(SMALL_KERNEL_BLOCK, SMALL_KERNEL_BLOCK);
-        dim3 grid(divUp(maxWidth, block.x), divUp(maxHeight, block.y), channels * out.numImages());
-        medianForSmallKernel<T><<<grid, block, sharedMemSize, stream>>>(src, dst, ksize);
-        checkKernelErrors();
-    }
-    else
-    {
-        dim3 block(GENERAL_KERNEL_BLOCK, GENERAL_KERNEL_BLOCK);
-        dim3 grid(divUp(maxWidth, block.x), divUp(maxHeight, block.y), channels * out.numImages());
-        median<T><<<grid, block, 0, stream>>>(src, dst, ksize);
-        checkKernelErrors();
-    }
+template<typename T>
+void median_planar(const ImageBatchVarShapeDataStridedCuda &in, const ImageBatchVarShapeDataStridedCuda &out,
+                   const TensorDataStridedCuda &ksize, int maxKHeight, int maxKWidth, bool hasUniformKernelSize,
+                   cudaStream_t stream)
+{
+    int channels = in.uniqueFormat().numChannels();
 
-#ifdef CUDA_DEBUG_LOG
-    checkCudaErrors(cudaStreamSynchronize(stream));
-    checkCudaErrors(cudaGetLastError());
-#endif
+    cuda::ImageBatchVarShapeWrap<T> src(in);
+    cuda::ImageBatchVarShapeWrap<T> dst(out);
+
+    medianImpl<T>(out, ksize, maxKHeight, maxKWidth, channels, src, dst, hasUniformKernelSize, stream);
 }
 
 MedianBlurVarShape::MedianBlurVarShape(const int maxBatchSize)
@@ -432,11 +571,13 @@ ErrorCode MedianBlurVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inD
 
     DataFormat format = input_format;
 
-    if (!(format == kNHWC || format == kHWC))
+    if (!(format == kNHWC || format == kHWC || format == kNCHW || format == kCHW))
     {
-        LOG_ERROR("Invalid input DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
+        LOG_ERROR("Invalid input DataFormat " << format
+                                              << ", the valid DataFormats are: \"NHWC\", \"HWC\", \"NCHW\", \"CHW\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
+    const bool isPlanar = (format == kNCHW || format == kCHW);
 
     DataType data_type = helpers::GetLegacyDataType(inData.uniqueFormat());
 
@@ -448,9 +589,15 @@ ErrorCode MedianBlurVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inD
 
     int channels = inData.uniqueFormat().numChannels();
 
-    if (channels > 4)
+    if (channels > 4 || channels == 2)
     {
         LOG_ERROR("Invalid channel number " << channels);
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+    if (isPlanar && static_cast<int64_t>(inData.numImages()) * channels > 65535)
+    {
+        LOG_ERROR("Planar median blur requires numImages * channels <= 65535 (CUDA grid-z limit)");
         return ErrorCode::INVALID_DATA_SHAPE;
     }
 
@@ -464,7 +611,8 @@ ErrorCode MedianBlurVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inD
     checkCudaErrors(cudaStreamSynchronize(stream));
 
     // Compute the max width & height of kernel sizes
-    int maxKHeight = 0, maxKWidth = 0;
+    int  maxKHeight = 0, maxKWidth = 0;
+    bool hasUniformKernelSize = true;
     for (int b = 0; b < inData.numImages(); b++)
     {
         int wIndex = b * 2;
@@ -485,16 +633,35 @@ ErrorCode MedianBlurVarShape::infer(const ImageBatchVarShapeDataStridedCuda &inD
         {
             maxKHeight = m_kernelSizes[hIndex];
         }
+
+        if (b > 0 && (m_kernelSizes[wIndex] != m_kernelSizes[0] || m_kernelSizes[hIndex] != m_kernelSizes[1]))
+        {
+            hasUniformKernelSize = false;
+        }
     }
 
     typedef void (*median_t)(const ImageBatchVarShapeDataStridedCuda &in, const ImageBatchVarShapeDataStridedCuda &out,
-                             const TensorDataStridedCuda &ksize, int maxKHeight, int maxKWidth, cudaStream_t stream);
+                             const TensorDataStridedCuda &ksize, int maxKHeight, int maxKWidth,
+                             bool hasUniformKernelSize, cudaStream_t stream);
 
     static const median_t funcs[6] = {
-        median<uchar>, 0, median<ushort>, 0, median<int>, median<float>,
+        median<uchar>, 0, median<ushort>, 0, 0, median<float>,
 
     };
-    funcs[data_type](inData, outData, ksize, maxKHeight, maxKWidth, stream);
+
+    static const median_t planarFuncs[6] = {
+        median_planar<uchar>, 0, median_planar<ushort>, 0, 0, median_planar<float>,
+
+    };
+
+    if (isPlanar)
+    {
+        planarFuncs[data_type](inData, outData, ksize, maxKHeight, maxKWidth, hasUniformKernelSize, stream);
+    }
+    else
+    {
+        funcs[data_type](inData, outData, ksize, maxKHeight, maxKWidth, hasUniformKernelSize, stream);
+    }
     return SUCCESS;
 }
 

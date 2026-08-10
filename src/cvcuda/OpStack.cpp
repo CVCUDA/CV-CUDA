@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,9 +17,11 @@
 
 #include "priv/OpStack.hpp"
 
+#include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <nvcv/Exception.hpp>
+#include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/util/Assert.h>
 
@@ -28,7 +30,7 @@ namespace priv = cvcuda::priv;
 CVCUDA_DEFINE_API(0, 5, NVCVStatus, cvcudaStackCreate, (NVCVOperatorHandle * handle))
 {
     return nvcv::ProtectCall(
-        [&]
+        [&handle]
         {
             if (handle == nullptr)
             {
@@ -36,18 +38,32 @@ CVCUDA_DEFINE_API(0, 5, NVCVStatus, cvcudaStackCreate, (NVCVOperatorHandle * han
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            *handle = reinterpret_cast<NVCVOperatorHandle>(new priv::Stack());
+            *handle = priv::CreateOperatorHandle<priv::Stack>();
         });
 }
 
 CVCUDA_DEFINE_API(0, 5, NVCVStatus, cvcudaStackSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorBatchHandle in, NVCVTensorHandle out))
 {
+    CVCUDA_NVTX_RANGE("cvcudaStackSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&out, &in, &handle, &stream]
         {
             nvcv::TensorWrapHandle      output(out);
             nvcv::TensorBatchWrapHandle input(in);
-            priv::ToDynamicRef<priv::Stack>(handle)(stream, input, output);
+            priv::ToDynamicRef<priv::Stack>(handle)(stream, input.resource(), output.resource());
+        });
+}
+
+CVCUDA_DEFINE_API(0, 5, NVCVStatus, cvcudaStackVarShapeSubmit,
+                  (NVCVOperatorHandle handle, cudaStream_t stream, NVCVImageBatchHandle in, NVCVTensorHandle out))
+{
+    CVCUDA_NVTX_RANGE("cvcudaStackVarShapeSubmit");
+    return nvcv::ProtectCall(
+        [&out, &in, &handle, &stream]
+        {
+            nvcv::TensorWrapHandle             output(out);
+            nvcv::ImageBatchVarShapeWrapHandle input(in);
+            priv::ToDynamicRef<priv::Stack>(handle)(stream, input.resource(), output.resource());
         });
 }

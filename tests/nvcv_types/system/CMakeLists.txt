@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,6 +19,7 @@ set(CMAKE_FOLDER tests)
 # system core -------------------------------------------------
 add_executable(nvcv_test_types_system
     TestVersion.cpp
+    TestVersionApiOverride.cpp
     TestStatus.cpp
     TestSize.cpp
     TestColorSpec.cpp
@@ -41,6 +42,8 @@ add_executable(nvcv_test_types_system
     TestArray.cpp
     TestTensorBatch.cpp
 )
+
+set_source_files_properties(TestVersionApiOverride.cpp PROPERTIES COMPILE_DEFINITIONS NVCV_VERSION_API=160000)
 
 target_link_libraries(nvcv_test_types_system
     PUBLIC

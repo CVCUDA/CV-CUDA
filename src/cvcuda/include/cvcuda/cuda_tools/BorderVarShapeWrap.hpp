@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -44,7 +44,7 @@ public:
     static constexpr int            kNumDimensions = ImageBatchWrapper::kNumDimensions;
     static constexpr NVCVBorderType kBorderType    = B;
 
-    static constexpr bool kActiveDimensions[]  = {false, false, true, true};
+    static constexpr bool kActiveDimensions[]  = {false, false, true, true}; // NOSONAR: device metadata.
     static constexpr int  kNumActiveDimensions = 2;
 
     BorderIWImpl() = default;

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -49,7 +49,7 @@ constexpr T AlignDown(T value, T alignment_pow2)
 
     // NOTE: This is much more efficient than (value/alignment) * alignment for run-time alignment values, where
     //       the compiler cannot replace the division/multiplication with bit shifts.
-    return value & -alignment_pow2;
+    return value & ~(alignment_pow2 - T{1});
 }
 
 /**
@@ -96,9 +96,10 @@ constexpr bool IsAligned(T value, T alignment_pow2)
  * @return true             if value is a multiple of alignment_pow2
  * @return false            otherwise
  */
-inline bool IsAligned(const void *ptr, uintptr_t alignment_pow2)
+template<typename T>
+inline bool IsAligned(const T *ptr, uintptr_t alignment_pow2)
 {
-    return IsAligned((uintptr_t)ptr, alignment_pow2);
+    return IsAligned(reinterpret_cast<uintptr_t>(ptr), alignment_pow2);
 }
 
 }} // namespace nvcv::detail

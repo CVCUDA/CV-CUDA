@@ -1,6 +1,6 @@
 #!/bin/bash -e
 
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +23,11 @@ distro_ver=$(lsb_release -rs || true)
 
 function version_le()
 {
-    [[ $(echo -e "$1\n$2" | sort -V | head -n1) = "$1" ]] && echo true
+    local version="$1"
+    local limit="$2"
+
+    [[ $(echo -e "$version\n$limit" | sort -V | head -n1) = "$version" ]] && echo true
+    return $?
 }
 
 skip_precommit=0
@@ -52,7 +56,7 @@ if ! which git-lfs ; then
     exit 1
 fi
 
-cd "$SDIR"
+cd "$SDIR"  # repo root
 
 # We use LFS
 git lfs install
@@ -60,10 +64,11 @@ git lfs install
 # Fetch all lfs object
 git lfs fetch && git lfs checkout
 
-# We use submodules
-git submodule update --init
+# Regenerate requirements files from versions.env (single source of truth)
+echo "Regenerating requirements files from versions.env..."
+bash generate_requirements.sh
 
-if [ "$skip_precommit" -ne 1 ]; then
+if [[ "$skip_precommit" -ne 1 ]]; then
     # allow-missing-config is useful when checking out an old commit or a branch that don't have pre-config configuration.
     pre-commit install \
         --allow-missing-config \

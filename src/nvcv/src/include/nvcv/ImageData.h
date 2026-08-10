@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,7 +24,7 @@
 #include <nvcv/ImageFormat.h>
 #include <stdint.h>
 
-typedef struct NVCVImagePlaneStridedRec
+typedef struct NVCVImagePlaneStridedRec // NOSONAR: C ABI typedef.
 {
     /** Width of this plane in pixels.
      *  + It must be >= 1. */
@@ -54,7 +54,7 @@ typedef struct NVCVImagePlaneStridedRec
 #define NVCV_MAX_PLANE_COUNT (6)
 
 /** Stores the image plane contents. */
-typedef struct NVCVImageBufferStridedRec
+typedef struct NVCVImageBufferStridedRec // NOSONAR: C ABI typedef.
 {
     /** Number of planes.
      *  + Must be >= 1. */
@@ -62,10 +62,10 @@ typedef struct NVCVImageBufferStridedRec
 
     /** Data of all image planes in pitch-linear layout.
      *  + Only the first \ref numPlanes elements must have valid data. */
-    NVCVImagePlaneStrided planes[NVCV_MAX_PLANE_COUNT];
+    NVCVImagePlaneStrided planes[NVCV_MAX_PLANE_COUNT]; // NOSONAR: C ABI fixed-capacity plane buffer.
 } NVCVImageBufferStrided;
 
-typedef struct NVCVImageBufferCudaArrayRec
+typedef struct NVCVImageBufferCudaArrayRec // NOSONAR: C ABI typedef.
 {
     /** Number of planes.
      *  + Must be >= 1. */
@@ -73,11 +73,11 @@ typedef struct NVCVImageBufferCudaArrayRec
 
     /** Data of all image planes in pitch-linear layout.
      *  + Only the first \ref numPlanes elements must have valid data. */
-    cudaArray_t planes[NVCV_MAX_PLANE_COUNT];
+    cudaArray_t planes[NVCV_MAX_PLANE_COUNT]; // NOSONAR: C ABI fixed-capacity plane buffer.
 } NVCVImageBufferCudaArray;
 
 /** Represents how the image data is stored. */
-typedef enum
+typedef enum // NOSONAR: C ABI typedef.
 {
     /** Invalid buffer type.
      *  This is commonly used to inform that no buffer type was selected. */
@@ -97,7 +97,7 @@ typedef enum
 
 /** Represents the available methods to access image contents.
  * The correct method depends on \ref NVCVImageData::bufferType. */
-typedef union NVCVImageBufferRec
+typedef union NVCVImageBufferRec // NOSONAR: C ABI typedef.
 {
     /** Image stored in pitch-linear layout.
      * To be used when \ref NVCVImageData::bufferType is:
@@ -114,7 +114,7 @@ typedef union NVCVImageBufferRec
 } NVCVImageBuffer;
 
 /** Stores information about image characteristics and content. */
-typedef struct NVCVImageDataRec
+typedef struct NVCVImageDataRec // NOSONAR: C ABI typedef.
 {
     /** Image format. */
     NVCVImageFormat format;

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "priv/OpMorphology.hpp"
 
+#include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <nvcv/Exception.hpp>
@@ -29,7 +30,7 @@ namespace priv = cvcuda::priv;
 CVCUDA_DEFINE_API(0, 4, NVCVStatus, cvcudaMorphologyCreate, (NVCVOperatorHandle * handle))
 {
     return nvcv::ProtectCall(
-        [&]
+        [&handle]
         {
             if (handle == nullptr)
             {
@@ -37,7 +38,7 @@ CVCUDA_DEFINE_API(0, 4, NVCVStatus, cvcudaMorphologyCreate, (NVCVOperatorHandle 
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            *handle = reinterpret_cast<NVCVOperatorHandle>(new priv::Morphology());
+            *handle = priv::CreateOperatorHandle<priv::Morphology>();
         });
 }
 
@@ -46,13 +47,16 @@ CVCUDA_DEFINE_API(0, 4, NVCVStatus, cvcudaMorphologySubmit,
                    NVCVTensorHandle workspace, NVCVMorphologyType morphType, int32_t maskWidth, int32_t maskHeight,
                    int32_t anchorX, int32_t anchorY, int32_t iteration, const NVCVBorderType borderMode))
 {
+    CVCUDA_NVTX_RANGE("cvcudaMorphologySubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&in, &out, &maskWidth, &maskHeight, &anchorX, &anchorY, &handle, &stream, &workspace, &morphType, &iteration,
+         &borderMode]
         {
-            nvcv::TensorWrapHandle input(in), output(out);
+            nvcv::TensorWrapHandle input(in);
+            nvcv::TensorWrapHandle output(out);
             nvcv::Size2D           maskSize = {maskWidth, maskHeight};
             int2                   anchor   = {anchorX, anchorY};
-            priv::ToDynamicRef<priv::Morphology>(handle)(stream, input, output,
+            priv::ToDynamicRef<priv::Morphology>(handle)(stream, input.resource(), output.resource(),
                                                          NVCV_TENSOR_HANDLE_TO_OPTIONAL(workspace), morphType, maskSize,
                                                          anchor, iteration, borderMode);
         });
@@ -63,13 +67,16 @@ CVCUDA_DEFINE_API(0, 4, NVCVStatus, cvcudaMorphologyVarShapeSubmit,
                    NVCVImageBatchHandle workspace, NVCVMorphologyType morphType, NVCVTensorHandle masks,
                    NVCVTensorHandle anchors, int32_t iteration, const NVCVBorderType borderMode))
 {
+    CVCUDA_NVTX_RANGE("cvcudaMorphologyVarShapeSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&in, &out, &masks, &anchors, &handle, &stream, &workspace, &morphType, &iteration, &borderMode]
         {
-            nvcv::ImageBatchVarShapeWrapHandle input(in), output(out);
-            nvcv::TensorWrapHandle             masksWrap(masks), anchorsWrap(anchors);
-            priv::ToDynamicRef<priv::Morphology>(handle)(stream, input, output,
-                                                         NVCV_IMAGE_BATCH_VAR_SHAPE_HANDLE_TO_OPTIONAL(workspace),
-                                                         morphType, masksWrap, anchorsWrap, iteration, borderMode);
+            nvcv::ImageBatchVarShapeWrapHandle input(in);
+            nvcv::ImageBatchVarShapeWrapHandle output(out);
+            nvcv::TensorWrapHandle             masksWrap(masks);
+            nvcv::TensorWrapHandle             anchorsWrap(anchors);
+            priv::ToDynamicRef<priv::Morphology>(handle)(
+                stream, input.resource(), output.resource(), NVCV_IMAGE_BATCH_VAR_SHAPE_HANDLE_TO_OPTIONAL(workspace),
+                morphType, masksWrap.resource(), anchorsWrap.resource(), iteration, borderMode);
         });
 }

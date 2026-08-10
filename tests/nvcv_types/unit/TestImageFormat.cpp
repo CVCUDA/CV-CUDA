@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -94,13 +94,16 @@ TEST(ImageFormatTests, UpdateColorSpec)
                                              nvcv::priv::ImageFormat{NVCV_IMAGE_FORMAT_NV12}.colorSpec()),
                  nvcv::priv::Exception);
 
-    EXPECT_EQ(UpdateColorSpec(nvcv::priv::ImageFormat{NVCV_IMAGE_FORMAT_U8}, NVCV_COLOR_SPEC_BT601),
-              nvcv::priv::ImageFormat{NVCV_IMAGE_FORMAT_U8});
+    EXPECT_EQ(
+        UpdateColorSpec(nvcv::priv::ImageFormat{NVCV_IMAGE_FORMAT_U8}, nvcv::priv::ColorSpec{NVCV_COLOR_SPEC_BT601}),
+        nvcv::priv::ImageFormat{NVCV_IMAGE_FORMAT_U8});
 
-    EXPECT_EQ(UpdateColorSpec(nvcv::priv::ImageFormat{NVCV_IMAGE_FORMAT_RGB8}, NVCV_COLOR_SPEC_sRGB),
-              nvcv::priv::ImageFormat{NVCV_IMAGE_FORMAT_sRGB8});
+    EXPECT_EQ(
+        UpdateColorSpec(nvcv::priv::ImageFormat{NVCV_IMAGE_FORMAT_RGB8}, nvcv::priv::ColorSpec{NVCV_COLOR_SPEC_sRGB}),
+        nvcv::priv::ImageFormat{NVCV_IMAGE_FORMAT_sRGB8});
 
-    EXPECT_EQ(UpdateColorSpec(nvcv::priv::ImageFormat{NVCV_IMAGE_FORMAT_UYVY_UNDEFINED_SPEC}, NVCV_COLOR_SPEC_BT601),
+    EXPECT_EQ(UpdateColorSpec(nvcv::priv::ImageFormat{NVCV_IMAGE_FORMAT_UYVY_UNDEFINED_SPEC},
+                              nvcv::priv::ColorSpec{NVCV_COLOR_SPEC_BT601}),
               nvcv::priv::ImageFormat{NVCV_IMAGE_FORMAT_UYVY});
 
 #undef NVCV_IMAGE_FORMAT_sRGB8
@@ -279,39 +282,40 @@ TEST(ImageFormatTests, constructor_0)
 
 TEST(ImageFormatTests, constructor_1)
 {
-    EXPECT_THROW(nvcv::priv::ImageFormat(NVCV_COLOR_MODEL_RAW, NVCV_COLOR_SPEC_BT601, NVCV_CSS_420, NVCV_MEM_LAYOUT_PL,
-                                         NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_X000, NVCV_PACKING_X8, NVCV_PACKING_0,
-                                         NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, nullptr),
+    EXPECT_THROW(
+        nvcv::priv::ImageFormat(NVCV_COLOR_MODEL_RAW, nvcv::priv::ColorSpec{NVCV_COLOR_SPEC_BT601}, NVCV_CSS_420,
+                                NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_X000, NVCV_PACKING_X8,
+                                NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, nullptr),
+        nvcv::priv::Exception);
+
+    EXPECT_THROW(
+        nvcv::priv::ImageFormat(NVCV_COLOR_MODEL_UNDEFINED, nvcv::priv::ColorSpec{NVCV_COLOR_SPEC_BT601}, NVCV_CSS_NONE,
+                                NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_X000, NVCV_PACKING_X8,
+                                NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, nullptr),
+        nvcv::priv::Exception);
+
+    EXPECT_THROW(nvcv::priv::ImageFormat(NVCV_COLOR_MODEL_UNDEFINED, nvcv::priv::ColorSpec{NVCV_COLOR_SPEC_UNDEFINED},
+                                         NVCV_CSS_420, NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_X000,
+                                         NVCV_PACKING_X8, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0,
+                                         NVCV_ALPHA_ASSOCIATED, nullptr),
                  nvcv::priv::Exception);
 
     EXPECT_THROW(
-        nvcv::priv::ImageFormat(NVCV_COLOR_MODEL_UNDEFINED, NVCV_COLOR_SPEC_BT601, NVCV_CSS_NONE, NVCV_MEM_LAYOUT_PL,
-                                NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_X000, NVCV_PACKING_X8, NVCV_PACKING_0,
-                                NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, nullptr),
+        nvcv::priv::ImageFormat(NVCV_COLOR_MODEL_HSV, nvcv::priv::ColorSpec{NVCV_COLOR_SPEC_BT601}, NVCV_CSS_NONE,
+                                NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8_Y8_Z8,
+                                NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, nullptr),
         nvcv::priv::Exception);
 
     EXPECT_THROW(
-        nvcv::priv::ImageFormat(NVCV_COLOR_MODEL_UNDEFINED, NVCV_COLOR_SPEC_UNDEFINED, NVCV_CSS_420, NVCV_MEM_LAYOUT_PL,
-                                NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_X000, NVCV_PACKING_X8, NVCV_PACKING_0,
-                                NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, nullptr),
-        nvcv::priv::Exception);
-
-    EXPECT_THROW(
-        nvcv::priv::ImageFormat(NVCV_COLOR_MODEL_HSV, NVCV_COLOR_SPEC_BT601, NVCV_CSS_NONE, NVCV_MEM_LAYOUT_PL,
-                                NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8_Y8_Z8, NVCV_PACKING_0,
-                                NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, nullptr),
-        nvcv::priv::Exception);
-
-    EXPECT_THROW(
-        nvcv::priv::ImageFormat(NVCV_COLOR_MODEL_HSV, NVCV_COLOR_SPEC_UNDEFINED, NVCV_CSS_420, NVCV_MEM_LAYOUT_PL,
-                                NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8_Y8_Z8, NVCV_PACKING_0,
-                                NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, nullptr),
+        nvcv::priv::ImageFormat(NVCV_COLOR_MODEL_HSV, nvcv::priv::ColorSpec{NVCV_COLOR_SPEC_UNDEFINED}, NVCV_CSS_420,
+                                NVCV_MEM_LAYOUT_PL, NVCV_DATA_KIND_UNSIGNED, NVCV_SWIZZLE_XYZ0, NVCV_PACKING_X8_Y8_Z8,
+                                NVCV_PACKING_0, NVCV_PACKING_0, NVCV_PACKING_0, NVCV_ALPHA_ASSOCIATED, nullptr),
         nvcv::priv::Exception);
 }
 
 TEST(ImageFormatTests, operator_insertion)
 {
-    auto testOperatorInsertion = [](std::string expectedStr, NVCVImageFormat fmt) -> void
+    auto testOperatorInsertion = [](const std::string &expectedStr, NVCVImageFormat fmt)
     {
         std::ostringstream ss;
         ss << nvcv::priv::ImageFormat{fmt};

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -75,10 +75,14 @@ class HasTypeTraitsUnsupportedTest : public TypeTraitsBaseTest<T>
 {
 };
 
-typedef struct _float5
+struct float5
 {
-    float a, b, c, d, e;
-} float5;
+    float a;
+    float b;
+    float c;
+    float d;
+    float e;
+};
 
 using UnsupportedBaseTypes = t::Types<void, long double, float5>;
 
@@ -422,11 +426,11 @@ NVCV_TYPED_TEST_SUITE_F(
 
 TYPED_TEST(TypeTraitsVectorTypePrintTest, correct_output_stream)
 {
-    EXPECT_STREQ(nvcv::cuda::GetTypeName<typename TestFixture::Type>(), this->GoldTypeName.value);
+    EXPECT_STREQ(nvcv::cuda::GetTypeName<typename TestFixture::Type>(), this->GoldTypeName.value.data());
 
     std::ostringstream oss;
 
     EXPECT_NO_THROW(oss << this->val);
 
-    EXPECT_STREQ(oss.str().c_str(), this->GoldValueOutput.value);
+    EXPECT_STREQ(oss.str().c_str(), this->GoldValueOutput.value.data());
 }

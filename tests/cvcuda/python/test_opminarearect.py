@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,14 +13,75 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
+import numpy as np
 import cvcuda
 
-import pytest as t
-from torch.nn.utils.rnn import pad_sequence
+import pytest
+import cvcuda_tools as cv_tools
+import cupy
 
 
-@t.mark.parametrize(
+def pad_sequence(sequences, batch_first=False, padding_value=0.0, padding_side="right"):
+    """
+    Pad a list of variable length arrays with padding_value.
+
+    This is a numpy equivalent of PyTorch's nn.utils.rnn.pad_sequence.
+
+    Parameters:
+    -----------
+    sequences : list of array-like
+        List of variable length sequences.
+    batch_first : bool, optional
+        If True, output will be B x T x * format, T x B x * otherwise.
+    padding_value : float, optional
+        Value for padded elements. Default: 0.0.
+    padding_side : str, optional
+        The side to pad sequences on ('right' or 'left'). Default: 'right'.
+
+    Returns:
+    --------
+    numpy.ndarray
+        Padded array of shape T x B x * if batch_first is False,
+        B x T x * otherwise, where B is batch size and T is the length
+        of the longest sequence.
+    """
+    sequences = [np.asarray(seq) for seq in sequences]
+
+    max_len = max(len(seq) for seq in sequences)
+
+    batch_size = len(sequences)
+
+    trailing_dims = sequences[0].shape[1:] if sequences[0].ndim > 1 else ()
+
+    dtype = sequences[0].dtype
+
+    if batch_first:
+        out_shape = (batch_size, max_len) + trailing_dims
+    else:
+        out_shape = (max_len, batch_size) + trailing_dims
+
+    out = np.full(out_shape, padding_value, dtype=dtype)
+
+    for i, seq in enumerate(sequences):
+        length = len(seq)
+        if batch_first:
+            if padding_side == "right":
+                out[i, :length] = seq
+            else:  # left
+                out[i, -length:] = seq
+        else:
+            if padding_side == "right":
+                out[:length, i] = seq
+            else:  # left
+                out[-length:, i] = seq
+
+    return out
+
+
+RNG = np.random.default_rng(0)
+
+
+@pytest.mark.parametrize(
     "contourData, numPointsInContour, openCvRes",
     [
         (
@@ -148,38 +209,35 @@ from torch.nn.utils.rnn import pad_sequence
 def test_op_minarearect(contourData, numPointsInContour, openCvRes):
 
     batchSize = len(contourData)
-    numPointsInContour_torch = (
-        torch.Tensor(numPointsInContour).type(torch.int32).unsqueeze(0)
-    )
-    src_torch = (
-        pad_sequence([torch.Tensor(t) for t in contourData], batch_first=True)
-        .type(torch.int16)
-        .reshape(batchSize, -1, 2)
-    )
-    gold_torch = torch.Tensor(openCvRes).type(torch.float32)
+    numPointsInContour_np = np.asarray(numPointsInContour, dtype=np.int32)[None, :]
+    src_np = pad_sequence(
+        [np.asarray(t, dtype=np.int16) for t in contourData], batch_first=True
+    ).reshape(batchSize, -1, 2)
+    gold_np = np.asarray(openCvRes, dtype=np.float32)
 
-    src_cvcuda = cvcuda.as_tensor(src_torch.contiguous().cuda(), "NWC")
-    pointNumInContour_cvcuda = cvcuda.as_tensor(
-        numPointsInContour_torch.contiguous().cuda(), "NW"
-    )
-    gold_cvcuda = cvcuda.as_tensor(gold_torch.contiguous().cuda(), "NW")
+    src_dev = cupy.asarray(src_np)
+    pointNumInContour_dev = cupy.asarray(numPointsInContour_np)
+    gold_dev = cupy.asarray(gold_np)
+
+    src_cvcuda = cvcuda.as_tensor(src_dev, "NWC")
+    pointNumInContour_cvcuda = cvcuda.as_tensor(pointNumInContour_dev, "NW")
+    gold_cvcuda = cvcuda.as_tensor(gold_dev, "NW")
 
     result_cvcuda = cvcuda.minarearect(
-        src_cvcuda, pointNumInContour_cvcuda, src_torch.shape[0]
+        src_cvcuda, pointNumInContour_cvcuda, src_np.shape[0]
     )
     assert result_cvcuda.layout == gold_cvcuda.layout
     assert result_cvcuda.shape == gold_cvcuda.shape
     assert result_cvcuda.dtype == gold_cvcuda.dtype
-    result_torch, _ = torch.sort(
-        torch.as_tensor(result_cvcuda.cuda()).reshape(batchSize, -1, 2), dim=1
-    )
-    gold_torch, _ = torch.sort(gold_torch.reshape(batchSize, -1, 2), dim=1)
-    assert (gold_torch.cuda() - result_torch.cuda() < 5.0).all()
+    result_host = cupy.asarray(result_cvcuda.cuda()).get().reshape(batchSize, -1, 2)
+    result_sorted = np.sort(result_host, axis=1)
+    gold_sorted = np.sort(gold_np.reshape(batchSize, -1, 2), axis=1)
+    assert np.all(np.abs(gold_sorted - result_sorted) < 5.0)
 
     stream = cvcuda.Stream()
     out = cvcuda.Tensor(gold_cvcuda.shape, gold_cvcuda.dtype, gold_cvcuda.layout)
     tmp = cvcuda.minarearect_into(
-        out, src_cvcuda, pointNumInContour_cvcuda, src_torch.shape[0]
+        out, src_cvcuda, pointNumInContour_cvcuda, src_np.shape[0]
     )
     assert tmp is out
 
@@ -187,7 +245,7 @@ def test_op_minarearect(contourData, numPointsInContour, openCvRes):
     out = cvcuda.minarearect(
         src=src_cvcuda,
         numPointsInContour=pointNumInContour_cvcuda,
-        totalContours=src_torch.shape[0],
+        totalContours=src_np.shape[0],
         stream=stream,
     )
     assert out.layout == gold_cvcuda.layout
@@ -198,7 +256,30 @@ def test_op_minarearect(contourData, numPointsInContour, openCvRes):
         src=src_cvcuda,
         dst=out,
         numPointsInContour=pointNumInContour_cvcuda,
-        totalContours=src_torch.shape[0],
+        totalContours=src_np.shape[0],
         stream=stream,
     )
     assert tmp is out
+
+
+def _minarearect_params(dtype, layout, channels):
+    num_contours = 1
+    points_per_contour = 5
+    num_points = np.array([[points_per_contour] * num_contours], dtype=np.int32)
+    num_points_tensor = cvcuda.as_tensor(cupy.asarray(num_points), "NW")
+    return {
+        "numPointsInContour": num_points_tensor,
+        "totalContours": num_contours,
+    }
+
+
+globals().update(
+    cv_tools.make_op_tests(
+        name="minarearect",
+        runner_info=[("tensor", cvcuda.minarearect, _minarearect_params)],
+        keystone_dlc=(cvcuda.Type.U16, "NWC", 2),
+        supported_dtypes={cvcuda.Type.U16, cvcuda.Type.S16, cvcuda.Type.S32},
+        supported_layouts={"NWC"},
+        supported_channels={2},
+    )
+)

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +15,16 @@
  * limitations under the License.
  */
 
+// NOTE (make-op): if __OPNAME__ is a unary element-wise operator that preserves shape/dtype/layout
+// (like Invert / Solarize / Posterize), prefer the shared binding helpers in
+// "operators/UnaryElementwiseOp.hpp" over the hand-rolled wrappers below — they remove the
+// create/ResourceGuard/submit copy-paste that otherwise trips SonarQube's duplication gate per op:
+//     #include "UnaryElementwiseOp.hpp"
+//     Tensor __OPNAME__Into(Tensor &o, Tensor &i, std::optional<Stream> s)
+//     { return UnaryElementwiseInto<cvcuda::__OPNAME__>(o, i, s /*, extra submit params */); }
+//     Tensor __OPNAME__(Tensor &i, std::optional<Stream> s)
+//     { return UnaryElementwiseTensor<cvcuda::__OPNAME__>(i, s /*, extra submit params */); }
+// Keep the generic wrappers below for operators that change dtype/shape or are not element-wise.
 #include "Operators.hpp"
 
 #include <common/PyUtil.hpp>
@@ -60,7 +70,8 @@ void ExportOp__OPNAME__(py::module &m)
 {
     using namespace pybind11::literals;
 
-    m.def("__OPNAMELOW__", &__OPNAME__, "src"_a, "dtype"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+    m.def("__OPNAMELOW__", NvtxTrace("cvcuda.__OPNAMELOW__", &__OPNAME__), "src"_a, "dtype"_a, py::kw_only(),
+          "stream"_a = nullptr, R"pbdoc(
 
         Executes the __OPNAMESPACE__ operation on the given cuda stream.
 
@@ -80,7 +91,8 @@ void ExportOp__OPNAME__(py::module &m)
             API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("__OPNAMELOW___into", &__OPNAME__Into, "dst"_a, "src"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+    m.def("__OPNAMELOW___into", NvtxTrace("cvcuda.__OPNAMELOW___into", &__OPNAME__Into), "dst"_a, "src"_a,
+          py::kw_only(), "stream"_a = nullptr, R"pbdoc(
 
         Executes the __OPNAMESPACE__ operation on the given cuda stream.
 

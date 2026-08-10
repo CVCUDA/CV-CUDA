@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "priv/OpChannelReorder.hpp"
 
+#include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <nvcv/Exception.hpp>
@@ -29,7 +30,7 @@ namespace priv = cvcuda::priv;
 CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaChannelReorderCreate, (NVCVOperatorHandle * handle))
 {
     return nvcv::ProtectCall(
-        [&]
+        [&handle]
         {
             if (handle == nullptr)
             {
@@ -37,7 +38,26 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaChannelReorderCreate, (NVCVOperatorHan
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            *handle = reinterpret_cast<NVCVOperatorHandle>(new priv::ChannelReorder());
+            *handle = priv::CreateOperatorHandle<priv::ChannelReorder>();
+        });
+}
+
+CVCUDA_DEFINE_API(0, 17, NVCVStatus, cvcudaChannelReorderSubmit,
+                  (NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in, NVCVTensorHandle out,
+                   const int32_t *order, int32_t orderLength))
+{
+    CVCUDA_NVTX_RANGE("cvcudaChannelReorderSubmit");
+    return nvcv::ProtectCall(
+        [handle, stream, in, out, order, orderLength]
+        {
+            if (in == out)
+            {
+                throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input and output tensors must not alias");
+            }
+            nvcv::TensorWrapHandle input(in);
+            nvcv::TensorWrapHandle output(out);
+            priv::ToDynamicRef<priv::ChannelReorder>(handle)(stream, input.resource(), output.resource(), order,
+                                                             orderLength);
         });
 }
 
@@ -45,12 +65,15 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaChannelReorderVarShapeSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVImageBatchHandle in, NVCVImageBatchHandle out,
                    NVCVTensorHandle orders_in))
 {
+    CVCUDA_NVTX_RANGE("cvcudaChannelReorderVarShapeSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&out, &in, &orders_in, &handle, &stream]
         {
-            nvcv::ImageBatchVarShapeWrapHandle output(out), input(in);
+            nvcv::ImageBatchVarShapeWrapHandle output(out);
+            nvcv::ImageBatchVarShapeWrapHandle input(in);
             nvcv::TensorWrapHandle             orders(orders_in);
 
-            priv::ToDynamicRef<priv::ChannelReorder>(handle)(stream, input, output, orders);
+            priv::ToDynamicRef<priv::ChannelReorder>(handle)(stream, input.resource(), output.resource(),
+                                                             orders.resource());
         });
 }

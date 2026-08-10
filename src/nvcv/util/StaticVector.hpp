@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,8 +28,15 @@
 #include <new> // for std::bad_alloc
 #include <stdexcept>
 #include <type_traits>
+#include <utility>
 
 namespace nvcv::util {
+
+class StaticVectorError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
 
 // We want StaticVector<T> to have the same characteristics of
 // T, i.e., if T isn't copiable, so isn't StaticVector<T>. In order
@@ -38,9 +45,9 @@ namespace nvcv::util {
 // where T is copy-constructible and/or copy-assignable.
 
 // Base case, class is move constructible and assignable
-template<class T, int N, bool IS_COPY_CONSTRUCTIBLE = std::is_copy_constructible<T>::value,
-         bool IS_COPY_ASSIGNABLE = std::is_copy_assignable<T>::value>
-class StaticVectorHelper
+template<class T, int N, bool IS_COPY_CONSTRUCTIBLE = std::is_copy_constructible_v<T>,
+         bool IS_COPY_ASSIGNABLE = std::is_copy_assignable_v<T>>
+class StaticVectorHelper // NOSONAR: small-vector helper keeps STL-like operations together.
 {
     static_assert(N >= 0, "StaticVector capacity can't be negative!");
 
@@ -58,14 +65,15 @@ public:
 
     explicit StaticVectorHelper(size_t count)
     {
-        if (count > N)
+        if (count > static_cast<size_t>(N))
         {
             throw std::bad_alloc();
         }
 
-        m_size = count;
+        m_size = static_cast<int>(count);
 
-        std::uninitialized_default_construct(this->begin(), this->end());
+        std::uninitialized_default_construct( // NOSONAR: std::ranges overload is C++20.
+            this->begin(), this->end());
 
         doCheckInvariants();
     }
@@ -76,15 +84,15 @@ public:
         NVCV_ASSERT(beg != nullptr);
         NVCV_ASSERT(end != nullptr);
 
-        int count = std::distance(beg, end);
+        auto count = std::distance(beg, end);
         NVCV_ASSERT(count >= 0);
 
-        if (count > N)
+        if (count > static_cast<decltype(count)>(N))
         {
             throw std::bad_alloc();
         }
 
-        m_size = count;
+        m_size = static_cast<int>(count);
 
         std::uninitialized_copy(beg, end, this->begin());
 
@@ -93,35 +101,35 @@ public:
 
     explicit StaticVectorHelper(size_t count, const T &value)
     {
-        if (count > N)
+        if (count > static_cast<size_t>(N))
         {
             throw std::bad_alloc();
         }
 
-        m_size = count;
+        m_size = static_cast<int>(count);
 
-        std::uninitialized_fill(this->begin(), this->end(), value);
+        std::uninitialized_fill(this->begin(), this->end(), value); // NOSONAR: std::ranges overload is C++20.
 
         doCheckInvariants();
     }
 
     ~StaticVectorHelper()
     {
-        std::destroy(this->begin(), this->end());
+        std::destroy(this->begin(), this->end()); // NOSONAR: std::ranges overload is C++20.
     }
 
-    StaticVectorHelper(StaticVectorHelper &&that) noexcept(std::is_nothrow_move_constructible<T>::value)
+    StaticVectorHelper(StaticVectorHelper &&that) noexcept
         : StaticVectorHelper()
     {
         if constexpr (std::is_trivially_copyable_v<T>)
         {
-            std::copy(that.begin(), that.end(), this->begin());
+            std::copy(that.begin(), that.end(), this->begin()); // NOSONAR: std::ranges overload is C++20.
         }
         else
         {
-            std::uninitialized_move(that.begin(), that.end(), this->end());
+            std::uninitialized_move(that.begin(), that.end(), this->end()); // NOSONAR: std::ranges overload is C++20.
         }
-        m_size = that.size();
+        m_size = static_cast<int>(that.size());
 
         // not setting that's size to 0 on purpose
         // Since we didn't allocate memory for the vector, we're effectively
@@ -130,14 +138,13 @@ public:
         doCheckInvariants();
     }
 
-    StaticVectorHelper &operator=(StaticVectorHelper &&that) noexcept(std::is_nothrow_move_assignable<T>::value)
+    StaticVectorHelper &operator=(StaticVectorHelper &&that) noexcept
     {
         if (this != &that)
         {
-            using std::swap;
             if constexpr (std::is_trivially_copyable_v<T>)
             {
-                std::copy(that.begin(), that.end(), this->begin());
+                std::copy(that.begin(), that.end(), this->begin()); // NOSONAR: std::ranges overload is C++20.
             }
             else if (this->size() <= that.size())
             {
@@ -146,11 +153,11 @@ public:
             }
             else
             {
-                std::move(that.begin(), that.end(), this->begin());
-                std::destroy(this->begin() + that.size(), this->end());
+                std::move(that.begin(), that.end(), this->begin());     // NOSONAR: std::ranges overload is C++20.
+                std::destroy(this->begin() + that.size(), this->end()); // NOSONAR: std::ranges overload is C++20.
             }
 
-            m_size = that.size();
+            m_size = static_cast<int>(that.size());
 
             // not setting that's size to 0 on purpose
             // Since we didn't allocate memory for the vector, we're effectively
@@ -171,16 +178,16 @@ public:
 
         // According to the Holy Standard as of C++17, we
         // can't move an item out of an std::initializer_list<T> /facepalm
-        std::uninitialized_copy(list.begin(), list.end(), this->begin());
+        std::uninitialized_copy(list.begin(), list.end(), this->begin()); // NOSONAR: std::ranges overload is C++20.
 
-        m_size = list.size();
+        m_size = static_cast<int>(list.size());
 
         doCheckInvariants();
     }
 
     void resize(size_t newSize)
     {
-        if (newSize > N)
+        if (newSize > static_cast<size_t>(N))
         {
             throw std::bad_alloc();
         }
@@ -199,11 +206,11 @@ public:
             }
             else
             {
-                throw std::runtime_error("Can't create non-default-constructible type");
-            };
+                throw StaticVectorError("Can't create non-default-constructible type");
+            }
         }
 
-        m_size = newSize;
+        m_size = static_cast<int>(newSize);
 
         doCheckInvariants();
     }
@@ -262,13 +269,13 @@ public:
 
     void clear()
     {
-        std::destroy(this->begin(), this->end());
+        std::destroy(this->begin(), this->end()); // NOSONAR: std::ranges overload is C++20.
         m_size = 0;
 
         doCheckInvariants();
     }
 
-    friend void swap(StaticVectorHelper &a, StaticVectorHelper &b)
+    friend void swap(StaticVectorHelper &a, StaticVectorHelper &b) noexcept
     {
         using std::swap;
         if constexpr (std::is_trivially_copyable_v<T>)
@@ -313,11 +320,12 @@ public:
         NVCV_ASSERT(end <= this->end());
         NVCV_ASSERT(beg <= end);
 
-        int rangeLength = std::distance(beg, end);
+        auto rangeLength = std::distance(beg, end);
+        NVCV_ASSERT(rangeLength >= 0);
 
         std::swap_ranges(this->begin() + std::distance(this->cbegin(), end), this->end(),
                          this->begin() + std::distance(this->cbegin(), beg));
-        this->resize(this->size() - rangeLength);
+        this->resize(this->size() - static_cast<size_type>(rangeLength));
 
         // must return the iterator following the last removed element. If the
         // iterator pos refers to the last element, the end() iterator is
@@ -452,7 +460,7 @@ public:
     }
 
 private:
-    void doCheckInvariants()
+    void doCheckInvariants() const
     {
         NVCV_ASSERT(m_size <= N);
     }
@@ -460,7 +468,7 @@ private:
     int m_size;
 
     // our memory buffer
-    std::aligned_storage_t<sizeof(T), alignof(T)> m_arena[N];
+    std::aligned_storage_t<sizeof(T), alignof(T)> m_arena[N]; // NOSONAR: raw storage for placement-new elements.
 
     // our partial specializations will have initialize m_size
     template<class, int, bool, bool>
@@ -479,13 +487,21 @@ public:
     StaticVectorHelper(const StaticVectorHelper &that)
     {
         Base::m_size = that.size();
-        std::uninitialized_copy(that.begin(), that.end(), this->begin());
+        std::uninitialized_copy(that.begin(), that.end(), this->begin()); // NOSONAR: std::ranges overload is C++20.
     }
 
-    StaticVectorHelper(StaticVectorHelper &&that) = default;
+    StaticVectorHelper(StaticVectorHelper &&that) noexcept
+        : Base(std::move(that))
+    {
+    }
 
     StaticVectorHelper &operator=(const StaticVectorHelper &that) = default;
-    StaticVectorHelper &operator=(StaticVectorHelper &&that)      = default;
+
+    StaticVectorHelper &operator=(StaticVectorHelper &&that) noexcept
+    {
+        Base::operator=(std::move(that));
+        return *this;
+    }
 };
 
 // Partial specialization, class is NOT copy constructible but IS copy assignable
@@ -497,7 +513,16 @@ class StaticVectorHelper<T, N, false, true> : public StaticVectorHelper<T, N, fa
 public:
     using Base::Base;
 
-    StaticVectorHelper &operator=(const StaticVectorHelper &that) noexcept(std::is_nothrow_copy_assignable<T>::value)
+    ~StaticVectorHelper()
+    {
+        this->clear();
+    }
+
+    StaticVectorHelper &operator=(const StaticVectorHelper &that) = delete;
+
+protected:
+    void copyAssignFrom(const StaticVectorHelper &that) noexcept(
+        std::is_nothrow_copy_assignable_v<T> &&std::is_nothrow_copy_constructible_v<T>)
     {
         if (this != &that)
         {
@@ -515,13 +540,21 @@ public:
 
             Base::m_size = that.m_size;
         }
-        return *this;
     }
 
-    StaticVectorHelper(const StaticVectorHelper &that) = default;
-    StaticVectorHelper(StaticVectorHelper &&that)      = default;
+public:
+    StaticVectorHelper(const StaticVectorHelper &that) = delete;
 
-    StaticVectorHelper &operator=(StaticVectorHelper &&that) = default;
+    StaticVectorHelper(StaticVectorHelper &&that) noexcept
+        : Base(std::move(that))
+    {
+    }
+
+    StaticVectorHelper &operator=(StaticVectorHelper &&that) noexcept
+    {
+        Base::operator=(std::move(that));
+        return *this;
+    }
 };
 
 // Partial specialization, class is BOTH copy constructible and assignable
@@ -533,16 +566,34 @@ class StaticVectorHelper<T, N, true, true> : public StaticVectorHelper<T, N, fal
 public:
     using Base::Base;
 
-    StaticVectorHelper(const StaticVectorHelper &that) noexcept(std::is_nothrow_copy_constructible<T>::value)
+    ~StaticVectorHelper()
     {
-        Base::m_size = that.size();
-        std::uninitialized_copy(that.begin(), that.end(), this->begin());
+        this->clear();
     }
 
-    StaticVectorHelper(StaticVectorHelper &&that) = default;
+    StaticVectorHelper(const StaticVectorHelper &that) noexcept(std::is_nothrow_copy_constructible_v<T>)
+    {
+        Base::m_size = static_cast<int>(that.size());
+        std::uninitialized_copy(that.begin(), that.end(), this->begin()); // NOSONAR: std::ranges overload is C++20.
+    }
 
-    StaticVectorHelper &operator=(const StaticVectorHelper &that) = default;
-    StaticVectorHelper &operator=(StaticVectorHelper &&that)      = default;
+    StaticVectorHelper(StaticVectorHelper &&that) noexcept
+        : Base(std::move(that))
+    {
+    }
+
+    StaticVectorHelper &operator=(const StaticVectorHelper &that) noexcept(
+        std::is_nothrow_copy_assignable_v<T> &&std::is_nothrow_copy_constructible_v<T>)
+    {
+        this->copyAssignFrom(that);
+        return *this;
+    }
+
+    StaticVectorHelper &operator=(StaticVectorHelper &&that) noexcept
+    {
+        Base::operator=(std::move(that));
+        return *this;
+    }
 
 private:
     using Base::m_size;

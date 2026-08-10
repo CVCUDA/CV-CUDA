@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -67,7 +67,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaColorTwistCreate(NVCVOperatorHandle *handle);
  *  Limitations:
  *
  *  Input:
- *       Data Layout:    [NVCV_TENSOR_NHWC, NVCV_TENSOR_HWC]
+ *       Data Layout:    [NVCV_TENSOR_NHWC, NVCV_TENSOR_HWC, NVCV_TENSOR_NCHW, NVCV_TENSOR_CHW]
  *       Channels:       [3, 4]
  *
  *       Data Type      | Allowed
@@ -78,11 +78,12 @@ CVCUDA_PUBLIC NVCVStatus cvcudaColorTwistCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | Yes
  *       32bit Unsigned | Yes
  *       32bit Signed   | Yes
+ *       16bit Float    | No
  *       32bit Float    | Yes
  *       64bit Float    | No
  *
  *  Output:
- *       Data Layout:    [NVCV_TENSOR_NHWC, NVCV_TENSOR_HWC]
+ *       Data Layout:    [NVCV_TENSOR_NHWC, NVCV_TENSOR_HWC, NVCV_TENSOR_NCHW, NVCV_TENSOR_CHW]
  *       Channels:       [3, 4]
  *
  *       Data Type      | Allowed
@@ -93,6 +94,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaColorTwistCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | Yes
  *       32bit Unsigned | Yes
  *       32bit Signed   | Yes
+ *       16bit Float    | No
  *       32bit Float    | Yes
  *       64bit Float    | No
  *
@@ -166,5 +168,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaColorTwistVarShapeSubmit(NVCVOperatorHandle handl
 #ifdef __cplusplus
 }
 #endif
+
+/** @} */
 
 #endif /* CVCUDA_COLOR_TWIST_H */

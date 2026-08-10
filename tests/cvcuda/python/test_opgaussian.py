@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,14 +15,15 @@
 
 import cvcuda
 
-import pytest as t
+import pytest
 import numpy as np
+import cvcuda_tools as cv_tools
 import cvcuda_util as util
 
 RNG = np.random.default_rng(0)
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "input_args, kernel_size, sigma, border",
     [
         (
@@ -80,7 +81,7 @@ def test_op_gaussian(input_args, kernel_size, sigma, border):
     assert out.dtype == input.dtype
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "num_images,img_format,img_size,max_pixel,max_kernel_size,max_sigma,border",
     [
         (
@@ -179,3 +180,45 @@ def test_op_gaussianvarshape(
     assert out.capacity == input.capacity
     assert out.uniqueformat == input.uniqueformat
     assert out.maxsize == input.maxsize
+
+
+def _gaussian_params(dtype, layout, channels):
+    return {
+        "kernel_size": [3, 3],
+        "sigma": [0.5, 0.5],
+        "border": cvcuda.Border.CONSTANT,
+    }
+
+
+def _gaussian_varshape_params(dtype, layout, channels):
+    return {
+        "max_kernel_size": (3, 3),
+        "kernel_size": util.to_cvcuda_tensor(
+            np.array([[3, 3], [3, 3]], dtype=np.int32), "NC"
+        ),
+        "sigma": util.to_cvcuda_tensor(
+            np.array([[1.0, 1.0], [1.0, 1.0]], dtype=np.float64), "NC"
+        ),
+        "border": cvcuda.Border.CONSTANT,
+    }
+
+
+globals().update(
+    cv_tools.make_op_tests(
+        name="gaussian",
+        runner_info=[
+            ("tensor", cvcuda.gaussian, _gaussian_params),
+            ("image_batch", cvcuda.gaussian, _gaussian_varshape_params),
+        ],
+        keystone_dlc=(cvcuda.Type.U8, "NHWC", 3),
+        supported_dtypes={
+            cvcuda.Type.U8,
+            cvcuda.Type.U16,
+            cvcuda.Type.S16,
+            cvcuda.Type.S32,
+            cvcuda.Type.F32,
+        },
+        supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
+        supported_channels={1, 3, 4},
+    )
+)
