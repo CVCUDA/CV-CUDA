@@ -168,7 +168,7 @@ Advanced post-processing:
 Joint Bilateral Filter
 ^^^^^^^^^^^^^^^^^^^^^^
 
-The joint bilateral filter (:py:func:`cvcuda.joint_bilateral_filter`) is key to quality:
+The joint bilateral filter (:pyfunc:`cvcuda.joint_bilateral_filter`) is key to quality:
 
 * **Purpose**: Smooth mask while respecting image edges
 * **Joint**: Uses grayscale image to guide filtering

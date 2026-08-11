@@ -1,0 +1,7 @@
+:orphan:
+
+Static Cast
+===========
+
+.. doxygengroup:: NVCV_CPP_CUDATOOLS_STATICCAST
+   :project: cvcuda

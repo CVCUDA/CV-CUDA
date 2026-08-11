@@ -1,0 +1,7 @@
+:orphan:
+
+Linear algebra
+==============
+
+.. doxygengroup:: NVCV_CPP_CUDATOOLS_LINALG
+   :project: cvcuda

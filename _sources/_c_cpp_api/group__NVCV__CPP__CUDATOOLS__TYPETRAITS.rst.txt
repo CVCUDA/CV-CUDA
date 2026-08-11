@@ -1,0 +1,7 @@
+:orphan:
+
+Type Traits
+===========
+
+.. doxygengroup:: NVCV_CPP_CUDATOOLS_TYPETRAITS
+   :project: cvcuda

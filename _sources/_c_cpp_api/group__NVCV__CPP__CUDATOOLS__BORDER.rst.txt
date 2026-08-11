@@ -1,0 +1,7 @@
+:orphan:
+
+Border functions
+================
+
+.. doxygengroup:: NVCV_CPP_CUDATOOLS_BORDER
+   :project: cvcuda

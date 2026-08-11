@@ -1,0 +1,7 @@
+:orphan:
+
+Composite
+=========
+
+.. doxygengroup:: NVCV_CPP_ALGORITHM_COMPOSITE
+   :project: cvcuda

@@ -1,0 +1,7 @@
+:orphan:
+
+HQ Resize
+=========
+
+.. doxygengroup:: NVCV_CPP_ALGORITHM_HQ_RESIZE
+   :project: cvcuda

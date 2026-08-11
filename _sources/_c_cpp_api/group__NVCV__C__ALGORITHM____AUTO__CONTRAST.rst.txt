@@ -1,0 +1,7 @@
+:orphan:
+
+Auto Contrast
+=============
+
+.. doxygengroup:: NVCV_C_ALGORITHM__AUTO_CONTRAST
+   :project: cvcuda

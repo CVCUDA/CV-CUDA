@@ -19,16 +19,6 @@
 Python API
 ==========
 
-The CV-CUDA Python API provides a high-level interface to CV-CUDA functionality.
-
-.. note::
-   For C/C++ developers, see the :ref:`C API documentation <c_api>` and :ref:`C++ API documentation <cpp_api>` for equivalent functionality.
-
-The Python API is available through the ``cvcuda`` module and provides:
-
-* **Zero-copy interoperability** with PyTorch, CuPy, and other Python frameworks
-* **Pythonic interfaces** for all operators and data types
-
 .. toctree::
    :maxdepth: 1
 

@@ -1,5 +1,5 @@
 ..
-  # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  # SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
   # SPDX-License-Identifier: Apache-2.0
   #
   # Licensed under the Apache License, Version 2.0 (the "License");
@@ -49,7 +49,7 @@ For CUDA 12:
 
    python3 -m venv venv_samples
    source venv_samples/bin/activate
-   python3 -m pip install -r samples/requirements_hello_world_cu12.txt
+   python3 -m pip install -r samples/requirements.samples.hello_world_cu12.txt
 
 For CUDA 13:
 
@@ -57,7 +57,7 @@ For CUDA 13:
 
    python3 -m venv venv_samples
    source venv_samples/bin/activate
-   python3 -m pip install -r samples/requirements_hello_world_cu13.txt
+   python3 -m pip install -r samples/requirements.samples.hello_world_cu13.txt
 
 This installs minimal dependencies (CV-CUDA, NumPy, nvImageCodec) needed for the hello_world sample.
 
@@ -73,13 +73,13 @@ Check ``cvcuda/.cache/cat_hw.jpg`` - you just processed an image entirely on GPU
 
 .. note::
 
-   The ``requirements_hello_world_cu12.txt`` and ``requirements_hello_world_cu13.txt`` files are minimal (only 4 packages) for quick testing.
+   The ``requirements.samples.hello_world_cu12.txt`` and ``requirements.samples.hello_world_cu13.txt`` files are minimal (only 4 packages) for quick testing.
    For other samples (operators, applications, interoperability), use the full installation script:
 
    .. code-block:: bash
 
-      cd samples
-      ./install_samples_dependencies.sh
+   cd samples
+   ./install_samples_dependencies.sh
 
 **What's Next?** Continue below to learn the prerequisites and explore more samples.
 
@@ -101,15 +101,18 @@ See the :doc:`Samples Documentation <samples>` for a guided tour of all availabl
 Interoperability
 ----------------
 
-See the :doc:`Interoperability <interoperability>` for information on how to use CV-CUDA with other libraries.
+CV-CUDA seamlessly interoperates with PyTorch, CuPy, PyCUDA, and other GPU frameworks through zero-copy data exchange.
+
+See the :ref:`Interoperability section <interoperability>` in the Samples documentation for detailed information on using CV-CUDA with other libraries.
 
 Advanced Topics
 ---------------
 
 Once you're comfortable with the basics, explore advanced features:
 
-* :doc:`Object Cache <advanced/object_cache>` - Learn about CV-CUDA's memory caching system
-* :doc:`Make Operator Tool <advanced/make_operator>` - Create custom CV-CUDA operators
+* :doc:`Object Cache <advanced/object_cache>`
+* :doc:`Operator Variants <advanced/operator_variants>`
+* :doc:`Make Operator Tool <advanced/make_operator>`
 
 Additional Resources
 --------------------

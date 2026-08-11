@@ -1,5 +1,5 @@
 ..
-  # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
   # SPDX-License-Identifier: Apache-2.0
   #
   # Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,7 +28,7 @@ CV-CUDA v0.16.0 includes the following changes:​
 
   * Added support for Python 3.14​, CUDA 13, GCC-12 to GCC-14 and Blackwell GPU architecture, including Jetson Thor
 
-  * Improved documentation, :doc:`samples <../samples>` and :doc:`framework interoperability <../interoperability>` examples
+  * Improved documentation, :doc:`samples <../samples>` and :doc:`framework interoperability <../samples/interoperability>` examples
 
   * Added new multi-architecture (x86_64, aarch64) Docker images for building (ManyLinux-based) and developing CV-CUDA (Ubuntu-based)
 

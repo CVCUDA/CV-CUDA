@@ -1,0 +1,7 @@
+:orphan:
+
+Normalize
+=========
+
+.. doxygengroup:: NVCV_CPP_ALGORITHM_NORMALIZE
+   :project: cvcuda

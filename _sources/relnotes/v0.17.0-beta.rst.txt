@@ -1,0 +1,151 @@
+..
+  # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  # SPDX-License-Identifier: Apache-2.0
+  #
+  # Licensed under the Apache License, Version 2.0 (the "License");
+  # you may not use this file except in compliance with the License.
+  # You may obtain a copy of the License at
+  #
+  # http://www.apache.org/licenses/LICENSE-2.0
+  #
+  # Unless required by applicable law or agreed to in writing, software
+  # distributed under the License is distributed on an "AS IS" BASIS,
+  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  # See the License for the specific language governing permissions and
+  # limitations under the License.
+
+.. _v0.17.0-beta:
+
+v0.17.0-beta
+==================
+
+
+Release Highlights
+------------------
+
+CV-CUDA v0.17.0-beta includes the following changes:
+
+* **New Features and Enhancements**:
+
+  * Added the ``JpegCompressionDistortion`` operator, a self-contained GPU
+    simulation of JPEG compression artifacts (full-range JFIF YCbCr, 4:2:0
+    chroma subsampling, per-8x8-block DCT quantization; ported from NVIDIA
+    DALI, no codec dependency) with per-image or per-batch quality.
+
+  * Added the ``AdjustContrast``, ``AdjustHue``, ``AdjustSaturation``,
+    ``AdjustSharpness``, ``AutoContrast``, ``CLAHE`` (Contrast Limited Adaptive
+    Histogram Equalization), ``Invert``, ``Posterize``, and ``Solarize``
+    operators.
+
+  * Added native planar (``NCHW``/``CHW``) support across the public image
+    operator catalog, subject to each operator's documented input type,
+    dimensionality, channel, format, and auxiliary-input limitations.
+
+  * Added tensor input support to ``GammaContrast`` and by-value parameter paths
+    to ``BrightnessContrast``, ``GammaContrast``, ``GaussianNoise``, and
+    ``Normalize``, avoiding temporary device parameter tensors and
+    host-to-device copies.
+
+  * Added ``NVCVRoundMode`` (``cvcuda.Round`` in Python), with nearest and
+    truncate modes for integral output conversion in ``ConvertTo`` and the
+    scalar ``GammaContrast`` path.
+
+  * Extended the Python API with ``Stream.wait_stream()``, NumPy ``float16``
+    interoperability, single-dimension and empty ``TensorLayout`` values, and
+    hashable ``TensorLayout`` and ``Type`` objects.
+
+  * Added always-on NVTX ranges to public C and Python operator submissions for
+    improved Nsight profiling visibility.
+
+  * Expanded Python operator samples and documentation, and revamped the Docker
+    build and development images. Source builds no longer use Git submodules.
+
+* **Performance Improvements**:
+
+  * Improved performance across more than 50 operators. 1.8x average speedups (H100).
+
+  * Reduced Python wrapper overhead in ``ResourceGuard`` with batched sync/hold
+    and cached pybind11 reverse casts.
+
+  * Reduced binary and package sizes with size-optimized CUDA fatbinary
+    compression when built with CUDA 12.8 or later.
+
+  * Reduced x86_64 package sizes by removing blanket SM86 and SM89 code
+    generation while retaining performance-sensitive operator cubins and
+    conservative coverage for inconclusive or post-freeze cases.
+
+* **Bug Fixes**:
+
+  * Fixed correctness and robustness issues across operators: ``Composite``,
+    ``Erase``, ``FindHomography``, ``GammaContrast``, ``GaussianNoise``,
+    ``Histogram``, ``HistogramEq``, ``HQResize``, ``Inpaint``,
+    ``PillowResize``, ``RandomResizedCrop``, ``ResizeCropConvertReformat``,
+    ``Rotate``, and ``WarpAffine``/``WarpPerspective``.
+
+  * Fixed cubic interpolation boundary conditions in ``Resize`` and the shared
+    cubic paths used by ``RandomResizedCrop``, and added 1-channel
+    (grayscale/Y8) support to ``ResizeCropConvertReformat``
+    (`issue #285 <https://github.com/CVCUDA/CV-CUDA/issues/285>`_).
+
+  * Fixed multi-GPU workspace and cache handling, CUDA Array Interface and
+    DLPack stream synchronization, device restoration during ``Stream``
+    destruction, and memory growth in the ``as_image`` cache
+    (`issue #258 <https://github.com/CVCUDA/CV-CUDA/issues/258>`_).
+
+  * Strengthened input validation and memory safety across operators, returning
+    clear errors instead of aborting or launching invalid CUDA work. Also fixed
+    ``ResourceGuard`` error paths that could terminate the Python process.
+
+  * Fixed text rendering backend issues and added dedicated unit coverage for
+    the STB text backend.
+
+  * Corrected multi-stream Python test synchronization (community contribution
+    `PR #288 <https://github.com/CVCUDA/CV-CUDA/pull/288>`_ by Daniel Ching).
+
+* **Compatibility Changes**:
+
+  * Dropped official support for Python 3.9.
+
+  * C++ operator wrapper classes are now move-only; copying an operator wrapper
+    no longer compiles.
+
+  * The C ``cvcudaConvertToSubmit`` function now requires an explicit
+    ``NVCVRoundMode`` argument. C++ and Python callers retain nearest rounding
+    as the default; existing C binaries using this entry point must be rebuilt.
+
+  * Public NVCV allocator callbacks and resource user-pointer APIs now use the
+    opaque ``NVCVResourceContext``, ``NVCVMemoryBuffer``, and
+    ``NVCVUserPointer`` types instead of ``void *``. Custom allocators and
+    direct C/C++ callers may require signature updates or explicit casts.
+
+  * Added ``CVCUDA_AARCH64_JETSON`` for Jetson Orin source builds; default
+    aarch64 source builds target SBSA.
+
+
+Compatibility and Known Limitations
+-----------------------------------
+
+For full details, see the main README's
+`compatibility table <https://github.com/CVCUDA/CV-CUDA#compatibility>`_ and
+`known limitations <https://github.com/CVCUDA/CV-CUDA#known-limitations>`_.
+
+License
+-------
+
+CV-CUDA is licensed under the `Apache 2.0 <https://github.com/CVCUDA/CV-CUDA/blob/main/LICENSE.md>`_ license.
+
+Resources
+---------
+
+1. `CV-CUDA GitHub <https://github.com/CVCUDA/CV-CUDA>`_
+2. `Optimizing Microsoft Bing Visual Search with NVIDIA Accelerated Libraries <https://developer.nvidia.com/blog/optimizing-microsoft-bing-visual-search-with-nvidia-accelerated-libraries/>`_
+3. `Accelerating AI Pipelines: Boosting Visual Search Efficiency <https://www.nvidia.com/en-us/on-demand/session/gtc25-s71676/>`_
+4. `Optimize Short-Form Video Processing Toward the Speed of Light <https://www.nvidia.com/en-us/on-demand/session/gtc25-s73178/>`_
+5. `CV-CUDA Increasing Throughput and Reducing Costs for AI-Based Computer Vision with CV-CUDA <https://developer.nvidia.com/blog/increasing-throughput-and-reducing-costs-for-computer-vision-with-cv-cuda/>`_
+6. `NVIDIA Announces Microsoft, Tencent, Baidu Adopting CV-CUDA for Computer Vision AI <https://blogs.nvidia.com/blog/2023/03/21/cv-cuda-ai-computer-vision/>`_
+7. `CV-CUDA helps Tencent Cloud audio and video PaaS platform achieve full-process GPU acceleration for video enhancement AI <https://developer.nvidia.com/zh-cn/blog/cv-cuda-high-performance-image-processing/>`_
+
+Acknowledgements
+----------------
+
+CV-CUDA originated as a collaborative effort between NVIDIA and the ByteDance Machine Learning team.

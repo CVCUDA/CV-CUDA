@@ -1,0 +1,7 @@
+:orphan:
+
+Adjust Saturation
+=================
+
+.. doxygengroup:: NVCV_CPP_ALGORITHM__ADJUST_SATURATION
+   :project: cvcuda

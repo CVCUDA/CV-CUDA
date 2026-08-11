@@ -1,0 +1,7 @@
+:orphan:
+
+Posterize
+=========
+
+.. doxygengroup:: NVCV_CPP_ALGORITHM__POSTERIZE
+   :project: cvcuda

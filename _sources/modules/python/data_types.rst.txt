@@ -1,5 +1,5 @@
 ..
-  # SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  # SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
   # SPDX-License-Identifier: Apache-2.0
   #
   # Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,10 +29,6 @@ Data Types
   :members:
   :undoc-members:
 
-.. autoclass:: cvcuda.ImageBatch
-  :members:
-  :undoc-members:
-
 .. autoclass:: cvcuda.TensorBatch
   :members:
   :undoc-members:
@@ -42,10 +38,6 @@ Data Types
   :undoc-members:
 
 .. autoclass:: cvcuda.ColorSpec
-  :members:
-  :undoc-members:
-
-.. autoclass:: cvcuda.DataType
   :members:
   :undoc-members:
 

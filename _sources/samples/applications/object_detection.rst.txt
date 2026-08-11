@@ -138,7 +138,7 @@ Preprocessing Pipeline
 
 Preprocessing steps:
 
-1. **Add Batch Dimension**: HWC → NHWC using :py:func:`cvcuda.stack`
+1. **Add Batch Dimension**: HWC → NHWC using :pyfunc:`cvcuda.stack`
 2. **Resize**: Scale to target model input size (default 224×224)
 3. **Normalize**: Convert to float32 [0,1] range
 4. **Reformat**: NHWC → NCHW for model input
@@ -175,7 +175,7 @@ Postprocessing:
 1. **Copy to Host**: Transfer detection results to CPU
 2. **Scale Boxes**: Scale from model input size to original image size
 3. **Create Bounding Boxes**: Build CV-CUDA bounding box objects
-4. **Draw Boxes**: Use :py:func:`cvcuda.bndbox` to draw on GPU
+4. **Draw Boxes**: Use :pyfunc:`cvcuda.bndbox` to draw on GPU
 5. **Save Result**: Write annotated image
 
 Expected Output

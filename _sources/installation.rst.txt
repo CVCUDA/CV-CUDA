@@ -1,5 +1,5 @@
 ..
-  # SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  # SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
   # SPDX-License-Identifier: Apache-2.0
   #
   # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,14 +21,6 @@ Installation
 
 CV-CUDA can be installed using pre-built packages or built from source. Choose the installation method that best fits your development workflow and requirements.
 
-.. toctree::
-   :maxdepth: 2
-   :caption: Installation Methods:
-
-   Prerequisites <#prerequisites>
-   Using Pre-built Packages <#using-pre-built-packages>
-   Building from Source <#building-from-source>
-
 .. _prerequisites:
 
 Prerequisites
@@ -38,7 +30,7 @@ Before installing CV-CUDA, ensure your system meets the following requirements:
 
 * **Operating System**: Ubuntu >= 22.04
 * **CUDA Toolkit**: CUDA >= 12.2
-* **NVIDIA Driver**: r525 or later for CUDA 12.x (r535 required for samples), r580 or later for CUDA 13.x
+* **NVIDIA Driver**: r525 or later for CUDA 12.x, r580 or later for CUDA 13.x
 
 If you are using WSL2, follow the instructions in the :ref:`WSL2 Setup <wsl2>`.
 
@@ -211,23 +203,27 @@ The following table summarizes all dependencies needed to build and test CV-CUDA
 
 **Installation Notes:**
 
-- Any version of the 12.x or 13.x CUDA toolkit should work. CV-CUDA was tested with 12.5, 12.9 and 13.0, these versions are thus recommended.
-- For NumPy: Use ``requirements.numpy1.txt`` for Python 3.9-3.12 (NumPy 1.26.4) or ``requirements.numpy2.txt`` for Python 3.9-3.14 (NumPy 2.x with version constraints).
+- Install the CUDA Toolkit and a compatible NVIDIA driver by following NVIDIA's official
+  `CUDA Toolkit Downloads`_ and `CUDA Installation Guide for Linux`_. CUDA package names,
+  repository setup, and driver requirements vary by distribution and toolkit release.
+- CUDA 12.2+ and CUDA 13.x should work. CV-CUDA was tested with 12.5 and 13.3; these versions are recommended.
+- For NumPy: Use ``tests/requirements.tests.numpy1.txt`` for Python 3.10-3.12 (NumPy 1.26.4) or ``tests/requirements.tests.numpy2.txt`` for Python 3.10-3.14 (NumPy 2.2.6 on Python 3.10, NumPy 2.4.4 on Python 3.11+).
 - PyTorch is installed separately and not included in requirements files.
 
 If you are using WSL2, you can follow the instructions in the :ref:`WSL2 Setup <wsl2>`.
 
-To install all Debian build and test dependencies manually:
+After CUDA is installed, install the remaining Debian build and test dependencies manually.
+The following command intentionally excludes CUDA packages:
 
 .. code-block:: shell
 
     sudo apt install -y \
-        g++-11 cmake ninja-build cuda-12-9 \
+        g++-11 cmake ninja-build \
         python3-dev python3-venv python3-pip \
         libgtest-dev libgmock-dev libssl-dev zlib1g-dev \
         fonts-dejavu doxygen graphviz
 
-Python dependencies are specified with exact versions in ``docker/requirements.sys_python.txt``.
+Python dependencies are specified with exact versions in ``docker/requirements.build.sys_python.txt`` (build/packaging tools) and ``docs/requirements.docs.txt`` (documentation tools).
 The recommended method to install these Python dependencies is to use a Python virtual environment, with **venv** or **uv**.
 
 1. Using ``venv``
@@ -236,7 +232,7 @@ The recommended method to install these Python dependencies is to use a Python v
 
     python3 -m venv env
     source env/bin/activate
-    python3 -m pip install -r docker/requirements.sys_python.txt
+    python3 -m pip install -r docker/requirements.build.sys_python.txt -r docs/requirements.docs.txt
 
 2. Using ``uv``, importantly use the ``--seed`` flag to expose pip inside the virtual environment
 
@@ -244,7 +240,7 @@ The recommended method to install these Python dependencies is to use a Python v
 
     uv venv env --seed
     source env/bin/activate
-    uv pip install -r docker/requirements.sys_python.txt
+    uv pip install -r docker/requirements.build.sys_python.txt -r docs/requirements.docs.txt
 
 .. note::
    All these dependencies are pre-configured in our Docker images.
@@ -253,11 +249,11 @@ The recommended method to install these Python dependencies is to use a Python v
 3. Build the Project
 ~~~~~~~~~~~~~~~~~~~~
 
-The central ``ci/build.sh`` script is used to build the project, Python bindings and wheels, tests and documentation by setting the appropriate CMake arguments.
+The central ``build.sh`` script is used to build the project, Python bindings and wheels, tests and documentation by setting the appropriate CMake arguments.
 
 .. code-block:: shell
 
-    ci/build.sh [release|debug] [output build tree path] [additional cmake args]
+    build.sh [release|debug] [output build tree path] [additional cmake args]
 
 **Build Type:**
 
@@ -276,39 +272,56 @@ The central ``ci/build.sh`` script is used to build the project, Python bindings
 - ``-DBUILD_TESTS_CPP=1|0``: Enable/disable building C++ tests (see Known Limitations in README for GCC-10 restrictions)
 - ``-DBUILD_TESTS_WHEELS=1|0``: Enable/disable generation of the wheel testing script
 - ``-DBUILD_TESTS_PYTHON=1|0``: Enable/disable building Python tests
-- ``-DPYTHON_VERSIONS='3.9;3.10;3.11;3.12;3.13;3.14'``: Select Python versions to build bindings and wheels for (default: system Python3 only)
+- ``-DBUILD_BENCH=1|0``: Enable/disable benchmark builds (default: OFF). Requires `nvbench <https://github.com/NVIDIA/nvbench>`_ to be installed (``cmake --install`` or system package). See ``bench/README.md`` for details.
+- ``-DPYTHON_VERSIONS='3.10;3.11;3.12;3.13;3.14'``: Select Python versions to build bindings and wheels for (default: system Python3 only)
 - ``-DPUBLIC_API_COMPILERS='gcc-10;gcc-11;clang-11;clang-14'``: Select compilers for public API compatibility checks (default: gcc-11, clang-11, clang-14)
 - ``-DDOC_PYTHON_VERSION='3.11'``: Override Python version for documentation build (default: system Python)
 - ``-DENABLE_SANITIZER=1|0``: Enable/disable address sanitizer (default: disabled)
 - ``-DCMAKE_CUDA_COMPILER=/path/to/nvcc``: Override CUDA compiler (default: /usr/local/cuda/bin/nvcc)
+- ``-DCMAKE_CUDA_ARCHITECTURES=<list>``: Override the complete CUDA architecture list. On x86_64,
+  the generated default builds native SM75, SM80, and SM90 code (plus SM100 and SM120 with CUDA
+  12.8 or newer). Performance-sensitive SM86 and SM89 kernels are added separately without
+  compiling every CUDA source for those architectures.
+- ``-DCVCUDA_TARGETED_SM8X_CUBINS=AUTO|ON|OFF``: Control the supplemental SM86 and SM89 operator
+  cubins. ``AUTO`` enables them whenever the effective architecture list matches the compact
+  x86_64 default, including an explicitly supplied equivalent list. ``ON`` ensures selected
+  kernels have native images without duplicating globally enabled real targets, and ``OFF``
+  disables them (default: ``AUTO``).
+- ``-DCVCUDA_AARCH64_JETSON=ON|OFF``: aarch64 only -- build for Jetson Orin platforms only, targeting only Orin-relevant GPU architectures (sm_86, sm_87, sm_89) instead of the full SBSA set; package file names carry an ``aarch64-jetson-linux`` token instead of ``aarch64-linux`` so Jetson and SBSA artifacts stay distinguishable (default: OFF)
 
 All boolean options accept both numeric (``0``/``1``) and CMake boolean values (``ON``/``OFF``, ``YES``/``NO``, ``TRUE``/``FALSE``).
 
 **Environment Variables:**
 
 - ``CC``, ``CXX``: Specify C/C++ compilers (default: auto-detected gcc-11 or newer)
+- ``CUDAARCHS``: Set the complete CUDA architecture list when
+  ``CMAKE_CUDA_ARCHITECTURES`` is not already cached. The value is not combined with CV-CUDA's
+  generated defaults.
 
 **Examples:**
 
 .. code-block:: shell
 
     # Basic release build with default Python
-    ci/build.sh
+    build.sh
 
     # Build documentation
-    ci/build.sh release build-rel -DBUILD_DOCS=1 -DBUILD_PYTHON=1
+    build.sh release build-rel -DBUILD_DOCS=1 -DBUILD_PYTHON=1
 
     # Debug build with multiple Python versions
-    ci/build.sh debug build-debug -DPYTHON_VERSIONS='3.10;3.11;3.12'
+    build.sh debug build-debug -DPYTHON_VERSIONS='3.10;3.11;3.12'
 
     # Release build without tests
-    ci/build.sh release -DBUILD_TESTS=0
+    build.sh release -DBUILD_TESTS=0
 
     # Build with specific compiler
-    CC=gcc-12 CXX=g++-12 ci/build.sh
+    CC=gcc-12 CXX=g++-12 build.sh
 
     # Build with specific CUDA 13 version
-    ci/build.sh -DCMAKE_CUDA_COMPILER=/usr/local/cuda-13/bin/nvcc
+    build.sh -DCMAKE_CUDA_COMPILER=/usr/local/cuda-13/bin/nvcc
+
+    # Build for Jetson Orin platforms (aarch64 only)
+    build.sh release build-rel "-DCVCUDA_AARCH64_JETSON=ON"
 
 
 1. Run Tests
@@ -330,39 +343,62 @@ Prerequisite:
 Prerequisites: install system Python dependencies (see step 2).
 On top of that, the following dependencies are required for running the tests:
 
-- **numpy**: dependencies needed by python bindings tests
-- **torch**: dependencies needed by python bindings tests (install separately)
-- **typing-extensions**: dependencies needed by python bindings tests
+- **numpy**: required by python bindings tests
+- **typing-extensions**: required by python bindings tests
 - **pytest**: to run the tests
+- **cupy**: required by the Python test runner and CUDA array tests
 
-Package versions are specified in:
+Package versions are defined in ``versions.env`` at the repository root and auto-generated
+into the requirements files below. To update a version, edit ``versions.env`` and run
+``bash generate_requirements.sh``.
 
-- ``docker/requirements.no_torch_no_numpy.txt`` for pytest and typing-extensions
-- ``docker/requirements.numpy1.txt`` for NumPy 1.x (Python 3.9-3.12)
-- ``docker/requirements.numpy2.txt`` for NumPy 2.x (Python 3.9-3.14)
+- ``tests/requirements.tests.common.txt`` for pytest and typing-extensions (manually maintained)
+- ``tests/requirements.tests.numpy1.txt`` for NumPy 1.x (Python 3.10-3.12) — auto-generated
+- ``tests/requirements.tests.numpy2.txt`` for NumPy 2.x (Python 3.10-3.14) — auto-generated
+- ``tests/requirements.tests.cu12.txt`` for CuPy with CUDA 12.x (compatible with CUDA 12.2+) — auto-generated
+- ``tests/requirements.tests.cu12.numpy1.txt`` for the NumPy 1-compatible CuPy pin with CUDA 12.x — auto-generated
+- ``tests/requirements.tests.cu13.txt`` for CuPy with CUDA 13.x (compatible with CUDA 13.3+) — auto-generated
 
-Install the dependencies into your virtual environment (setup in step 2) using your method of choice.
-The Torch and NumPy version are specified in the commands below.
+The easiest way to install test dependencies is to use the provided script:
+
+.. code-block:: shell
+
+    # For NumPy 2.x + CuPy for CUDA 12.x (CUDA 12.2+)
+    tests/install_test_dependencies.sh numpy2 cu12
+
+    # For NumPy 1.x + CuPy for CUDA 12.x (Python 3.10-3.12)
+    tests/install_test_dependencies.sh numpy1 cu12
+
+    # For NumPy 2.x + CuPy for CUDA 13.x (13.3+)
+    tests/install_test_dependencies.sh numpy2 cu13
+
+Alternatively, install the dependencies manually into your virtual environment (setup in step 2):
 
 1. Using ``venv``
 
 .. code-block:: shell
 
-    # For NumPy 1.x (Python 3.9-3.12)
-    python3 -m pip install -r docker/requirements.no_torch_no_numpy.txt -r docker/requirements.numpy1.txt torch==2.8.*
+    # For CUDA 12.2+, NumPy 2.x
+    python3 -m pip install -r tests/requirements.tests.common.txt -r tests/requirements.tests.numpy2.txt -r tests/requirements.tests.cu12.txt
 
-    # OR for NumPy 2.x (Python 3.9-3.14)
-    python3 -m pip install -r docker/requirements.no_torch_no_numpy.txt -r docker/requirements.numpy2.txt torch==2.8.*
+    # For CUDA 12.2+, NumPy 1.x
+    python3 -m pip install -r tests/requirements.tests.common.txt -r tests/requirements.tests.numpy1.txt -r tests/requirements.tests.cu12.numpy1.txt
+
+    # For CUDA 13.x (13.3+), NumPy 2.x
+    python3 -m pip install -r tests/requirements.tests.common.txt -r tests/requirements.tests.numpy2.txt -r tests/requirements.tests.cu13.txt
 
 2. Using ``uv``:
 
 .. code-block:: shell
 
-    # For NumPy 1.x (Python 3.9-3.12)
-    uv pip install -r docker/requirements.no_torch_no_numpy.txt -r docker/requirements.numpy1.txt torch==2.8.*
+    # For CUDA 12.2+, NumPy 2.x
+    uv pip install -r tests/requirements.tests.common.txt -r tests/requirements.tests.numpy2.txt -r tests/requirements.tests.cu12.txt
 
-    # OR for NumPy 2.x (Python 3.9-3.14)
-    uv pip install -r docker/requirements.no_torch_no_numpy.txt -r docker/requirements.numpy2.txt torch==2.8.*
+    # For CUDA 12.2+, NumPy 1.x
+    uv pip install -r tests/requirements.tests.common.txt -r tests/requirements.tests.numpy1.txt -r tests/requirements.tests.cu12.numpy1.txt
+
+    # For CUDA 13.x (13.3+), NumPy 2.x
+    uv pip install -r tests/requirements.tests.common.txt -r tests/requirements.tests.numpy2.txt -r tests/requirements.tests.cu13.txt
 
 4.2 Run the Tests
 ^^^^^^^^^^^^^^^^^
@@ -463,5 +499,7 @@ The built wheels can still be installed using ``pip``. For example, to install t
 
 
 .. _CV-CUDA GitHub Releases: https://github.com/CVCUDA/CV-CUDA/releases
+.. _CUDA Toolkit Downloads: https://developer.nvidia.com/cuda-downloads
+.. _CUDA Installation Guide for Linux: https://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html
 .. _cvcuda-cu12: https://pypi.org/project/cvcuda-cu12/
 .. _cvcuda-cu13: https://pypi.org/project/cvcuda-cu13/

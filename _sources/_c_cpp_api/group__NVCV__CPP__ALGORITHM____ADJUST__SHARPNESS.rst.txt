@@ -1,0 +1,7 @@
+:orphan:
+
+AdjustSharpness
+===============
+
+.. doxygengroup:: NVCV_CPP_ALGORITHM__ADJUST_SHARPNESS
+   :project: cvcuda

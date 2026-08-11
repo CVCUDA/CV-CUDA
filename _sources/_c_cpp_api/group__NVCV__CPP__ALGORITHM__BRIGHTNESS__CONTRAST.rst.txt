@@ -1,0 +1,7 @@
+:orphan:
+
+Brightness Contrast
+===================
+
+.. doxygengroup:: NVCV_CPP_ALGORITHM_BRIGHTNESS_CONTRAST
+   :project: cvcuda
