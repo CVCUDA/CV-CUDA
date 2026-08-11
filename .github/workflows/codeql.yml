@@ -61,6 +61,14 @@ jobs:
         && rm -rf /tmp/cmake-3.20.1*
 
     - if: matrix.language == 'c-cpp'
+      name: Install dlpack
+      run: |
+        git clone --depth 1 --branch v1.3 https://github.com/dmlc/dlpack.git /tmp/dlpack \
+        && cmake -S /tmp/dlpack -B /tmp/dlpack/build -DBUILD_MOCK=OFF -DBUILD_DOCS=OFF \
+        && sudo cmake --install /tmp/dlpack/build --prefix /usr/local \
+        && rm -rf /tmp/dlpack
+
+    - if: matrix.language == 'c-cpp'
       name: Install Python Dependencies
       run: |
         sudo apt update -y && sudo apt install -y --no-install-recommends \
