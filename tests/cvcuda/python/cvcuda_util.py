@@ -112,6 +112,10 @@ def generate_data(shape, dtype, max_random=None, rng=None):
                 max_random = [1.0 for _ in range(shape[-1])]
             data = rng.random(size=shape, dtype=dtype) * np.array(max_random)
             data = data.astype(dtype)
+        else:
+            raise ValueError(
+                f"Unsupported dtype: {dtype}. Expected an integral or real type."
+            )
     return data
 
 

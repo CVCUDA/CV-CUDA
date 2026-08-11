@@ -68,9 +68,8 @@ def main() -> None:
 
     # Extract the single result image from the batch and convert back to a
     # cvcuda.Tensor in HWC layout so write_image can encode it.
-    for out_image in out_batch:
-        out_tensor: cvcuda.Tensor = cvcuda.as_tensor(out_image.cuda(), "HWC")
-        break
+    out_image: cvcuda.Image = list(out_batch)[0]
+    out_tensor: cvcuda.Tensor = cvcuda.as_tensor(out_image.cuda(), "HWC")
     # docs_tag: end_channelreorder
 
     write_image(out_tensor, args.output)
