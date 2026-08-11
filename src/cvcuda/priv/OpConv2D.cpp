@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "OpConv2D.hpp"
 
+#include "Nvtx.hpp"
 #include "legacy/CvCudaLegacy.h"
 #include "legacy/CvCudaLegacyHelpers.hpp"
 
@@ -29,7 +30,8 @@ namespace legacy = nvcv::legacy::cuda_op;
 
 Conv2D::Conv2D()
 {
-    legacy::DataShape maxIn, maxOut; //maxIn/maxOut not used by op.
+    legacy::DataShape maxIn;
+    legacy::DataShape maxOut; //maxIn/maxOut not used by op.
     m_legacyOpVarShape = std::make_unique<legacy::Conv2DVarShape>(maxIn, maxOut);
 }
 
@@ -37,6 +39,7 @@ void Conv2D::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
                         const nvcv::ImageBatchVarShape &kernel, const nvcv::Tensor &kernelAnchor,
                         NVCVBorderType borderMode) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::Conv2D::operator()[ImageBatchVarShape]");
     auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (inData == nullptr)
     {

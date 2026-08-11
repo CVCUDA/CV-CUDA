@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,7 +37,26 @@ public:
 
     ExternalBuffer(ExternalBuffer &&that) = delete;
 
-    static py::object Create(DLPackTensor &&dlTensor, py::object wrappedObj);
+    /**
+     * @brief Create an ExternalBuffer py::object that wraps a DLPack tensor.
+     *
+     * @param dlTensor       Tensor data to wrap.
+     * @param wrappedObj     Owner Python object kept alive with the buffer.
+     * @param exportStream   Stream handle to advertise via the exported CAI
+     *                       `stream` field.  Use the special value (void*)0x1
+     *                       to skip populating (defaults to legacy default
+     *                       stream), or any valid CUDA stream handle when the
+     *                       producer (typically a cvcuda Tensor) wants
+     *                       downstream consumers to wait on a specific stream.
+     *                       Pass (cudaStream_t)-1 to advertise "no sync
+     *                       needed" (CAI `stream: -1`).
+     * @param setExportStream When true, `exportStream` is used to populate
+     *                       the CAI `stream` field (including the -1
+     *                       opt-out).  When false, the field defaults to
+     *                       `1` (legacy default).
+     */
+    static py::object Create(DLPackTensor &&dlTensor, py::object wrappedObj, cudaStream_t exportStream = nullptr,
+                             bool setExportStream = false);
 
     const DLTensor &dlTensor() const;
 
@@ -45,26 +64,110 @@ public:
     py::tuple  strides() const;
     py::object dtype() const;
 
-    void *data() const;
-
     bool load(PyObject *o);
 
-private:
-    explicit ExternalBuffer(DLPackTensor &&dlTensor);
+    /**
+     * @brief Producer stream handle advertised via CAI `stream` on wrap.
+     *
+     * Returns the CUDA stream on which the producing library (e.g. cupy,
+     * torch) has outstanding work for this buffer, as reported by
+     * `__cuda_array_interface__["stream"]` at `load()` time.
+     *
+     * Returns 0 if:
+     *   - The producer did not populate a stream field (v2 CAI, or absent),
+     *     in which case the legacy default stream is implied.
+     *   - The producer set `stream: None` or `stream: -1` (no sync required).
+     *   - The buffer was constructed locally (not wrapped from Python).
+     *
+     * Valid only after `load()` has populated it; returns 0 otherwise.
+     */
+    cudaStream_t producerStream() const
+    {
+        return m_producerStream;
+    }
 
-    friend py::detail::type_caster<ExternalBuffer>;
+    /**
+     * @brief Whether the wrap-time CAI indicated that no sync is required.
+     *
+     * True when the producer advertised `stream: None` or `stream: -1`.
+     * In that case, `producerStream()` returns 0 and the consumer must
+     * NOT insert any implicit wait.
+     */
+    bool producerIsSynced() const
+    {
+        return m_producerIsSynced;
+    }
+
+    /**
+     * @brief CUDA device on which the producer stream lives.
+     *
+     * Captured from `cudaPointerGetAttributes` on the buffer's device
+     * pointer at wrap time.  Returns -1 if unknown (e.g. local buffer).
+     */
+    int producerDevice() const
+    {
+        return m_producerDevice;
+    }
+
+    /**
+     * @brief Set the stream handle to advertise on CAI export (`cudaArrayInterface`).
+     *
+     * Typically called by Tensor::cuda() / Image::cuda() with the current
+     * cvcuda owning stream of the data so downstream consumers (cupy/torch)
+     * know which stream to synchronize with.
+     */
+    void setExportStream(cudaStream_t handle)
+    {
+        m_exportStream    = handle;
+        m_hasExportStream = true;
+        m_cacheCudaArrayInterface.reset();
+    }
+
+    explicit ExternalBuffer(DLPackTensor &&dlTensor);
     ExternalBuffer() = default;
+
+private:
+    friend py::detail::type_caster<ExternalBuffer>;
 
     DLPackTensor                    m_dlTensor;
     mutable std::optional<py::dict> m_cacheCudaArrayInterface;
     py::object                      m_wrappedObj;
 
+    // Producer stream advertised by the wrapped Python object's CAI dict
+    // (`__cuda_array_interface__["stream"]`).  See accessors above for
+    // semantics of the three fields.
+    cudaStream_t m_producerStream   = nullptr;
+    bool         m_producerIsSynced = false;
+    int          m_producerDevice   = -1;
+
+    // Producer stream to advertise back out via CAI export.  When unset, the
+    // exporter emits the conservative "stream: 1" (legacy default stream).
+    cudaStream_t m_exportStream    = nullptr;
+    bool         m_hasExportStream = false;
+
+    // Owns the DLManagedTensorVersioned for v1.0 imports.
+    // null for v0 imports and locally-created tensors.
+    struct VersionedDeleter
+    {
+        void operator()(DLManagedTensorVersioned *p) const
+        {
+            if (p && p->deleter)
+                p->deleter(p);
+        }
+    };
+
+    std::unique_ptr<DLManagedTensorVersioned, VersionedDeleter> m_dlManagedVersioned;
+
     // Returns the __cuda_array_interface__ if the buffer is cuda-accessible,
     // or std::nullopt if it's not.
     std::optional<py::dict> cudaArrayInterface() const;
 
+    bool loadCudaArrayInterface(const py::object &object);
+    bool loadDLPack(const py::object &object);
+    void loadDLPackCapsule(py::capsule &cap);
+
     // __dlpack__ implementation
-    py::capsule dlpack(py::object stream) const;
+    py::capsule dlpack(py::object stream, py::object maxVersion) const;
 
     // __dlpack_device__ implementation
     py::tuple dlpackDevice() const;
@@ -82,15 +185,14 @@ struct type_caster<priv::ExternalBuffer> : public type_caster_base<priv::Externa
     using type = priv::ExternalBuffer;
     using Base = type_caster_base<type>;
 
-public:
     PYBIND11_TYPE_CASTER(std::shared_ptr<type>, const_name("cvcuda.ExternalBuffer"));
 
-    operator type *()
+    explicit operator type *()
     {
         return value.get();
     }
 
-    operator type &()
+    explicit operator type &()
     {
         return *value;
     }

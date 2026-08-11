@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -101,6 +101,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaCropFlipNormalizeReformatCreate(NVCVOperatorHandl
  *      16bit Signed   | Yes
  *      32bit Unsigned | Yes
  *      32bit Signed   | Yes
+ *      16bit Float    | No
  *      32bit Float    | Yes
  *      64bit Float    | No
  *
@@ -116,6 +117,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaCropFlipNormalizeReformatCreate(NVCVOperatorHandl
  *      16bit Signed   | Yes
  *      32bit Unsigned | Yes
  *      32bit Signed   | Yes
+ *      16bit Float    | No
  *      32bit Float    | Yes
  *      64bit Float    | No
  *
@@ -176,5 +178,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaCropFlipNormalizeReformatSubmit(
 #ifdef __cplusplus
 }
 #endif
+
+/** @} */
 
 #endif /* CVCUDA_CROP_FLIP_NORMALIZE_REFORMAT_H */

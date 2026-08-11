@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,7 @@
  */
 
 #include "Operators.hpp"
+#include "VarShapeUtils.hpp"
 
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
@@ -28,9 +29,17 @@
 #include <nvcv/python/Tensor.hpp>
 #include <pybind11/stl.h>
 
+#include <stdexcept>
+
 namespace cvcudapy {
 
 namespace {
+
+class WarpPerspectiveError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
 
 Tensor WarpPerspectiveInto(Tensor &output, Tensor &input, const pyarray &xform, const int32_t flags,
                            const NVCVBorderType borderMode, const pyarray &borderValue, std::optional<Stream> pstream)
@@ -42,13 +51,11 @@ Tensor WarpPerspectiveInto(Tensor &output, Tensor &input, const pyarray &xform, 
 
     float4 bValue = GetFloat4FromPyArray(borderValue);
 
-    size_t xformDims = xform.ndim();
-    if (!(xformDims == 2 && xform.shape(0) == 3 && xform.shape(1) == 3))
+    if (size_t xformDims = xform.ndim(); !(xformDims == 2 && xform.shape(0) == 3 && xform.shape(1) == 3))
     {
-        throw std::runtime_error(
-            util::FormatString("Details of transformation matrix: nDim == 2, shape == (3, 3) but current is "
-                               "'%lu', ('%lu', '%lu') respectively",
-                               xformDims, xform.shape(0), xform.shape(1)));
+        throw WarpPerspectiveError(
+            util::ConcatString("Details of transformation matrix: nDim == 2, shape == (3, 3) but current is '",
+                               xformDims, "', ('", xform.shape(0), "', '", xform.shape(1), "') respectively"));
     }
 
     NVCVPerspectiveTransform xformOutput;
@@ -67,7 +74,9 @@ Tensor WarpPerspectiveInto(Tensor &output, Tensor &input, const pyarray &xform, 
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*warpPerspective});
 
-    warpPerspective->submit(pstream->cudaHandle(), input, output, xformOutput, flags, borderMode, bValue);
+    guard.run(
+        [&warpPerspective, &pstream, &input, &output, &xformOutput, &flags, &borderMode, &bValue]()
+        { warpPerspective->submit(pstream->cudaHandle(), input, output, xformOutput, flags, borderMode, bValue); });
 
     return output;
 }
@@ -90,17 +99,17 @@ ImageBatchVarShape WarpPerspectiveVarShapeInto(ImageBatchVarShape &output, Image
     }
 
     size_t bValueSize = borderValue.size();
-    size_t bValueDims = borderValue.ndim();
-    if (bValueSize > 4 || bValueDims != 1)
+    if (size_t bValueDims = borderValue.ndim(); bValueSize > 4 || bValueDims != 1)
     {
-        throw std::runtime_error(util::FormatString(
-            "Channels of borderValue should <= 4 and dimension should be 2, current is '%lu', '%lu' respectively",
-            bValueSize, bValueDims));
+        throw py::value_error(
+            util::ConcatString("Channels of borderValue should <= 4 and dimension should be 2, current is '",
+                               bValueSize, "', '", bValueDims, "' respectively"));
     }
     float4 bValue;
-    for (size_t i = 0; i < 4; i++)
+    for (int i = 0; i < 4; i++)
     {
-        nvcv::cuda::GetElement(bValue, i) = bValueSize > i ? *borderValue.data(i) : 0.f;
+        const auto valueIdx               = static_cast<size_t>(i);
+        nvcv::cuda::GetElement(bValue, i) = bValueSize > valueIdx ? *borderValue.data(valueIdx) : 0.f;
     }
 
     auto warpPerspective = CreateOperator<cvcuda::WarpPerspective>(input.capacity());
@@ -110,7 +119,8 @@ ImageBatchVarShape WarpPerspectiveVarShapeInto(ImageBatchVarShape &output, Image
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*warpPerspective});
 
-    warpPerspective->submit(pstream->cudaHandle(), input, output, xform, flags, borderMode, bValue);
+    guard.run([&warpPerspective, &pstream, &input, &output, &xform, &flags, &borderMode, &bValue]()
+              { warpPerspective->submit(pstream->cudaHandle(), input, output, xform, flags, borderMode, bValue); });
 
     return output;
 }
@@ -119,15 +129,7 @@ ImageBatchVarShape WarpPerspectiveVarShape(ImageBatchVarShape &input, Tensor &xf
                                            const NVCVBorderType borderMode, const pyarray &borderValue,
                                            std::optional<Stream> pstream)
 {
-    ImageBatchVarShape output = ImageBatchVarShape::Create(input.capacity());
-
-    for (int i = 0; i < input.numImages(); ++i)
-    {
-        nvcv::ImageFormat format = input[i].format();
-        nvcv::Size2D      size   = input[i].size();
-        auto              image  = Image::Create(size, format);
-        output.pushBack(image);
-    }
+    ImageBatchVarShape output = CreateSameShapeImageBatch(input);
 
     return WarpPerspectiveVarShapeInto(output, input, xform, flags, borderMode, borderValue, pstream);
 }
@@ -138,19 +140,10 @@ void ExportOpWarpPerspective(py::module &m)
 {
     using namespace pybind11::literals;
 
-    py::options options;
-    options.disable_function_signatures();
-
-    m.def("warp_perspective", &WarpPerspective, "src"_a, "xform"_a, "flags"_a, py::kw_only(), "border_mode"_a,
-          "border_value"_a, "stream"_a = nullptr, R"pbdoc(
-
-        cvcuda.warp_perspective(src: cvcuda.Tensor, xform: cvcuda.Tensor, flags: int, border_mode: cvcuda.Border, border_value: numpy.ndarray, stream: Optional[cvcuda.Stream] = None) -> cvcuda.Tensor
-
+    m.def("warp_perspective", NvtxTrace("cvcuda.warp_perspective", &WarpPerspective), "src"_a, "xform"_a, "flags"_a,
+          py::kw_only(), "border_mode"_a, "border_value"_a, "stream"_a = nullptr, R"pbdoc(
         Executes the Warp Perspective operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Warp Perspective operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.Tensor): Input tensor containing one or more images.
@@ -166,21 +159,12 @@ void ExportOpWarpPerspective(py::module &m)
         Returns:
             cvcuda.Tensor: The output tensor.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("warp_perspective_into", &WarpPerspectiveInto, "dst"_a, "src"_a, "xform"_a, "flags"_a, py::kw_only(),
-          "border_mode"_a, "border_value"_a, "stream"_a = nullptr, R"pbdoc(
-
-        cvcuda.warp_perspective_into(dst: cvcuda.Tensor, src: cvcuda.Tensor, xform: cvcuda.Tensor, flags: int, border_mode: cvcuda.Border, border_value: numpy.ndarray, stream: Optional[cvcuda.Stream] = None)
-
+    m.def("warp_perspective_into", NvtxTrace("cvcuda.warp_perspective_into", &WarpPerspectiveInto), "dst"_a, "src"_a,
+          "xform"_a, "flags"_a, py::kw_only(), "border_mode"_a, "border_value"_a, "stream"_a = nullptr, R"pbdoc(
         Executes the Warp Perspective operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Warp Perspective operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.Tensor): Output tensor to store the result of the operation.
@@ -195,23 +179,13 @@ void ExportOpWarpPerspective(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 
-    m.def("warp_perspective", &WarpPerspectiveVarShape, "src"_a, "xform"_a, "flags"_a, py::kw_only(), "border_mode"_a,
-          "border_value"_a, "stream"_a = nullptr, R"pbdoc(
-
-        cvcuda.warp_perspective(src: cvcuda.ImageBatchVarShape, xform: cvcuda.Tensor, flags: int, border_mode: cvcuda.Border, border_value: numpy.ndarray, stream: Optional[cvcuda.Stream] = None) -> cvcuda.ImageBatchVarShape
-
+    m.def("warp_perspective", NvtxTrace("cvcuda.warp_perspective", &WarpPerspectiveVarShape), "src"_a, "xform"_a,
+          "flags"_a, py::kw_only(), "border_mode"_a, "border_value"_a, "stream"_a = nullptr, R"pbdoc(
         Executes the Warp Perspective operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Warp Perspective operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
@@ -227,21 +201,13 @@ void ExportOpWarpPerspective(py::module &m)
         Returns:
             cvcuda.ImageBatchVarShape: The output image batch.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("warp_perspective_into", &WarpPerspectiveVarShapeInto, "dst"_a, "src"_a, "xform"_a, "flags"_a, py::kw_only(),
-          "border_mode"_a, "border_value"_a, "stream"_a = nullptr, R"pbdoc(
-
-        cvcuda.warp_perspective_into(dst: cvcuda.ImageBatchVarShape, src: cvcuda.ImageBatchVarShape, xform: cvcuda.Tensor, flags: int, border_mode: cvcuda.Border, border_value: numpy.ndarray, stream: Optional[cvcuda.Stream] = None)
-
+    m.def("warp_perspective_into", NvtxTrace("cvcuda.warp_perspective_into", &WarpPerspectiveVarShapeInto), "dst"_a,
+          "src"_a, "xform"_a, "flags"_a, py::kw_only(), "border_mode"_a, "border_value"_a, "stream"_a = nullptr,
+          R"pbdoc(
         Executes the Warp Perspective operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Warp Perspective operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
@@ -256,11 +222,7 @@ void ExportOpWarpPerspective(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.ImageBatchVarShape: The output image batch (same as dst).
     )pbdoc");
 }
 

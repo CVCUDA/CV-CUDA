@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -58,8 +58,8 @@ CVCUDA_PUBLIC NVCVStatus cvcudaCopyMakeBorderCreate(NVCVOperatorHandle *handle);
  *  Limitations:
  *
  *  Input:
- *       Data Layout:    [kNHWC, kHWC]
- *       Channels:       [1, 2, 3, 4]
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
+ *       Channels:       [1, 2, 3, 4] (planar kNCHW/kCHW: [1, 3, 4])
  *
  *       Data Type      | Allowed
  *       -------------- | -------------
@@ -69,14 +69,15 @@ CVCUDA_PUBLIC NVCVStatus cvcudaCopyMakeBorderCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | Yes
  *       64bit Float    | No
  *
- *       Note: 2 channels can only support 8bit Unsigned data type.
+ *       Note: 2 channels can only support 8bit Unsigned data type and interleaved layout.
  *
  *  Output:
- *       Data Layout:    [kNHWC, kHWC]
- *       Channels:       [1, 2, 3, 4]
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
+ *       Channels:       [1, 2, 3, 4] (planar kNCHW/kCHW: [1, 3, 4])
  *
  *       Data Type      | Allowed
  *       -------------- | -------------
@@ -86,6 +87,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaCopyMakeBorderCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | Yes
  *       64bit Float    | No
  *
@@ -142,5 +144,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaCopyMakeBorderVarShapeStackSubmit(NVCVOperatorHan
 #ifdef __cplusplus
 }
 #endif
+
+/** @} */
 
 #endif /* CVCUDA_COPYMAKEBORADER_H */

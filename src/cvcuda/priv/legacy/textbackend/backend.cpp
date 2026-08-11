@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -33,28 +33,24 @@
 
 const char *text_backend_type_name(TextBackendType backend)
 {
-    switch (backend)
+    if (backend == TextBackendType::StbTrueType)
     {
-    case TextBackendType::StbTrueType:
         return "StbTrueType";
-    default:
-        return "Unknow";
     }
+    return "Unknow";
 }
 
 std::shared_ptr<TextBackend> create_text_backend(TextBackendType backend)
 {
-    switch (backend)
-    {
 #ifdef ENABLE_TEXT_BACKEND_STB
-    case TextBackendType::StbTrueType:
+    if (backend == TextBackendType::StbTrueType)
+    {
         return create_stb_backend();
+    }
 #endif
 
-    default:
-        printf("Unsupport text backend: %s\n", text_backend_type_name(backend));
-        return nullptr;
-    }
+    printf("Unsupport text backend: %s\n", text_backend_type_name(backend));
+    return nullptr;
 }
 
 std::string concat_font_name_size(const char *name, int size)

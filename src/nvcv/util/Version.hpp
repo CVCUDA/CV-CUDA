@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
@@ -94,7 +94,7 @@ public:
         return m_code >= that.m_code;
     }
 
-    constexpr bool operator==(const Version &that) const
+    constexpr bool operator==(const Version &that) const // NOSONAR: defaulted comparisons are C++20.
     {
         return m_code == that.m_code;
     }

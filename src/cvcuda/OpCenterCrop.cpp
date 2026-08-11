@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "priv/OpCenterCrop.hpp"
 
+#include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <nvcv/Exception.hpp>
@@ -28,7 +29,7 @@ namespace priv = cvcuda::priv;
 CVCUDA_DEFINE_API(0, 0, NVCVStatus, cvcudaCenterCropCreate, (NVCVOperatorHandle * handle))
 {
     return nvcv::ProtectCall(
-        [&]
+        [&handle]
         {
             if (handle == nullptr)
             {
@@ -36,7 +37,7 @@ CVCUDA_DEFINE_API(0, 0, NVCVStatus, cvcudaCenterCropCreate, (NVCVOperatorHandle 
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            *handle = reinterpret_cast<NVCVOperatorHandle>(new priv::CenterCrop());
+            *handle = priv::CreateOperatorHandle<priv::CenterCrop>();
         });
 }
 
@@ -44,10 +45,13 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaCenterCropSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in, NVCVTensorHandle out,
                    int32_t cropWidth, int32_t cropHeight))
 {
+    CVCUDA_NVTX_RANGE("cvcudaCenterCropSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&in, &out, &handle, &stream, &cropWidth, &cropHeight]
         {
-            nvcv::TensorWrapHandle input(in), output(out);
-            priv::ToDynamicRef<priv::CenterCrop>(handle)(stream, input, output, {cropWidth, cropHeight});
+            nvcv::TensorWrapHandle input(in);
+            nvcv::TensorWrapHandle output(out);
+            priv::ToDynamicRef<priv::CenterCrop>(handle)(stream, input.resource(), output.resource(),
+                                                         {cropWidth, cropHeight});
         });
 }

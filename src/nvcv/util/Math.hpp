@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,21 +27,27 @@
 
 namespace nvcv::util {
 
-template<class T, class U, class = std::enable_if_t<std::is_integral_v<T> && std::is_integral_v<U>>>
+template<class T, class U>
 NVCV_CUDA_HOST_DEVICE constexpr T RoundUp(T value, U multiple)
 {
+    static_assert(std::is_integral_v<T> && std::is_integral_v<U>, "RoundUp requires integral arguments");
+
     return (value + multiple - 1) / multiple * multiple;
 }
 
-template<class T, class = std::enable_if_t<std::is_integral_v<T>>>
+template<class T>
 NVCV_CUDA_HOST_DEVICE constexpr bool IsPowerOfTwo(T value)
 {
+    static_assert(std::is_integral_v<T>, "IsPowerOfTwo requires an integral argument");
+
     return (value & (value - 1)) == 0;
 }
 
-template<class T, class = std::enable_if_t<std::is_integral_v<T>>>
+template<class T>
 NVCV_CUDA_HOST_DEVICE constexpr auto RoundUpNextPowerOfTwo(T x)
 {
+    static_assert(std::is_integral_v<T>, "RoundUpNextPowerOfTwo requires an integral argument");
+
     assert(x >= 0);
 
     // Source: Hacker's Delight 1st ed, p.48,
@@ -68,18 +74,22 @@ NVCV_CUDA_HOST_DEVICE constexpr auto RoundUpNextPowerOfTwo(T x)
     }
 }
 
-template<class T, class = std::enable_if_t<std::is_integral_v<T>>>
+template<class T>
 NVCV_CUDA_HOST_DEVICE constexpr auto DivUp(T num, TypeIdentity<T> den)
 {
+    static_assert(std::is_integral_v<T>, "DivUp requires integral arguments");
+
     assert(num >= 0);
     assert(den > 0);
 
     return (num + (den - 1)) / den;
 }
 
-template<class T, class U, class = std::enable_if_t<std::is_integral_v<T> && std::is_integral_v<U>>>
+template<class T, class U>
 NVCV_CUDA_HOST_DEVICE constexpr auto RoundUpPowerOfTwo(T value, U multiple)
 {
+    static_assert(std::is_integral_v<T> && std::is_integral_v<U>, "RoundUpPowerOfTwo requires integral arguments");
+
     assert(value >= 0);
     assert(multiple >= 0);
 
@@ -90,9 +100,11 @@ NVCV_CUDA_HOST_DEVICE constexpr auto RoundUpPowerOfTwo(T value, U multiple)
     return (value + (multiple - 1)) & -multiple;
 }
 
-template<class T, class = std::enable_if_t<std::is_integral_v<T>>>
+template<class T>
 constexpr int ILog2(T value)
 {
+    static_assert(std::is_integral_v<T>, "ILog2 requires an integral argument");
+
     assert(value > 0);
 
     if constexpr (sizeof(T) <= sizeof(unsigned))
@@ -114,22 +126,25 @@ constexpr int ILog2(T value)
     }
 }
 
-template<class T, class = std::enable_if_t<std::is_integral_v<T>>>
+template<class T>
 NVCV_CUDA_HOST_DEVICE constexpr auto DivUpPowerOfTwo(T num, TypeIdentity<T> den)
 {
+    static_assert(std::is_integral_v<T>, "DivUpPowerOfTwo requires integral arguments");
+
     assert(num >= 0);
     assert(den > 0);
     assert(IsPowerOfTwo(den));
 
-    return (num >> ILog2(den)) + !!(num & (den - 1));
+    return (num >> ILog2(den)) + ((num & (den - 1)) != 0 ? 1 : 0);
 }
 
 /// @brief Calculates normalized sinc i.e. `sin(pi * x) / (pi * x)`
-template<typename T, typename = std::enable_if_t<std::is_floating_point_v<T>>>
+template<typename T>
 NVCV_CUDA_HOST_DEVICE NVCV_FORCE_INLINE T sinc(T x)
 {
+    static_assert(std::is_floating_point_v<T>, "sinc requires a floating-point argument");
     static_assert(sizeof(T) >= sizeof(float)); // not analyzed for smaller floats, eps may require adjustment
-    constexpr T eps = sizeof(T) <= sizeof(float) ? 1e-5 : 1e-8;
+    constexpr T eps = sizeof(T) <= sizeof(float) ? static_cast<T>(1e-5) : static_cast<T>(1e-8);
     x *= static_cast<T>(M_PI);
     if (std::abs(x) < eps)
         return static_cast<T>(1.0) - x * x * (static_cast<T>(1.0) / 6); // remove singularity by using Taylor expansion

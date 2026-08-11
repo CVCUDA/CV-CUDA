@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,9 +41,6 @@ public:
     static std::shared_ptr<ImageBatchVarShape> WrapExternalBufferVector(std::vector<py::object> buffer,
                                                                         nvcv::ImageFormat       fmt);
 
-    std::shared_ptr<ImageBatchVarShape>       shared_from_this();
-    std::shared_ptr<const ImageBatchVarShape> shared_from_this() const;
-
     const nvcv::ImageBatchVarShape &impl() const;
     nvcv::ImageBatchVarShape       &impl();
 
@@ -55,6 +52,7 @@ public:
     Size2D     maxSize() const;
 
     int64_t GetSizeInBytes() const override;
+    void    submitSync(Stream &stream) override;
 
     void pushBack(Image &img);
     void pushBackMany(const std::vector<std::shared_ptr<Image>> &imgList);
@@ -75,11 +73,11 @@ public:
     private:
         int m_capacity;
 
-        virtual size_t doGetHash() const override;
-        virtual bool   doIsCompatible(const IKey &that) const override;
+        size_t doGetHash() const override;
+        bool   doIsCompatible(const IKey &that) const override;
     };
 
-    virtual const Key &key() const override
+    const Key &key() const override
     {
         return m_key;
     }
@@ -87,7 +85,7 @@ public:
 private:
     explicit ImageBatchVarShape(int capacity);
 
-    int64_t doComputeSizeInBytes(const NVCVImageBatchVarShapeRequirements &reqs);
+    int64_t doComputeSizeInBytes(const NVCVImageBatchVarShapeRequirements &reqs) const;
 
     Key                      m_key;
     ImageList                m_list;

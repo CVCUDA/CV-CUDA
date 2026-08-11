@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,6 +25,7 @@
 #define CVCUDA_PRIV_ROTATE_HPP
 
 #include "IOperator.hpp"
+#include "PerDeviceResource.hpp"
 #include "legacy/CvCudaLegacy.h"
 
 #include <nvcv/ImageBatch.hpp>
@@ -47,8 +48,10 @@ public:
                     const NVCVInterpolationType interpolation) const;
 
 private:
-    std::unique_ptr<nvcv::legacy::cuda_op::Rotate>         m_legacyOp;
-    std::unique_ptr<nvcv::legacy::cuda_op::RotateVarShape> m_legacyOpVarShape;
+    static std::unique_ptr<nvcv::legacy::cuda_op::Rotate> CreateLegacyOp(int deviceId);
+
+    mutable PerDeviceResource<nvcv::legacy::cuda_op::Rotate>         m_legacyOp{CreateLegacyOp};
+    mutable PerDeviceResource<nvcv::legacy::cuda_op::RotateVarShape> m_legacyOpVarShape;
 };
 
 } // namespace cvcuda::priv

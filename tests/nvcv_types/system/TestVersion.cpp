@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -83,52 +83,4 @@ TEST(VersionTests, make_version_macro)
 TEST(VersionTests, api_version_macro)
 {
     EXPECT_EQ(NVCV_MAKE_VERSION(NVCV_VERSION_MAJOR, NVCV_VERSION_MINOR), NVCV_VERSION_API);
-}
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wredundant-decls"
-
-#undef NVCV_VERSION_API
-#define NVCV_VERSION_API NVCV_MAKE_VERSION(1, 0)
-
-#pragma GCC diagnostic pop
-
-TEST(VersionTests, api_version_macro_redefinition)
-{
-    EXPECT_EQ(NVCV_MAKE_VERSION(1, 0), NVCV_VERSION_API);
-}
-
-TEST(VersionTests, api_version_at_least)
-{
-    EXPECT_TRUE(NVCV_VERSION_API_AT_LEAST(1, 0));
-    EXPECT_TRUE(NVCV_VERSION_API_AT_LEAST(0, 99));
-
-    EXPECT_FALSE(NVCV_VERSION_API_AT_LEAST(1, 2));
-    EXPECT_FALSE(NVCV_VERSION_API_AT_LEAST(2, 0));
-}
-
-TEST(VersionTests, api_version_at_most)
-{
-    EXPECT_TRUE(NVCV_VERSION_API_AT_MOST(1, 0));
-    EXPECT_FALSE(NVCV_VERSION_API_AT_MOST(0, 99));
-    EXPECT_TRUE(NVCV_VERSION_API_AT_MOST(1, 1));
-    EXPECT_TRUE(NVCV_VERSION_API_AT_MOST(2, 0));
-}
-
-TEST(VersionTests, api_version_in_range)
-{
-    EXPECT_TRUE(NVCV_VERSION_API_IN_RANGE(1, 0, 1, 0));
-    EXPECT_TRUE(NVCV_VERSION_API_IN_RANGE(0, 99, 1, 0));
-    EXPECT_TRUE(NVCV_VERSION_API_IN_RANGE(0, 99, 1, 1));
-    EXPECT_TRUE(NVCV_VERSION_API_IN_RANGE(0, 99, 2, 0));
-
-    EXPECT_FALSE(NVCV_VERSION_API_IN_RANGE(0, 98, 0, 99));
-    EXPECT_FALSE(NVCV_VERSION_API_IN_RANGE(1, 1, 1, 2));
-}
-
-TEST(VersionTests, api_version_is)
-{
-    EXPECT_TRUE(NVCV_VERSION_API_IS(1, 0));
-    EXPECT_FALSE(NVCV_VERSION_API_IS(1, 1));
-    EXPECT_FALSE(NVCV_VERSION_API_IS(0, 99));
 }

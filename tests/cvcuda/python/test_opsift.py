@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,8 +14,9 @@
 # limitations under the License.
 
 import cvcuda
+import cvcuda_tools as cv_tools
 
-import pytest as t
+import pytest
 import numpy as np
 
 
@@ -25,11 +26,13 @@ def gold_max_features(in_tensor):
     return max(w * h // 20, 1)
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "in_args",
     [
         (((3, 13, 24, 1), np.uint8, "NHWC")),
+        (((3, 1, 13, 24), np.uint8, "NCHW")),
         (((23, 34, 1), np.uint8, "HWC")),
+        (((1, 23, 34), np.uint8, "CHW")),
     ],
 )
 def test_op_sift_api(in_args):
@@ -102,3 +105,15 @@ def test_op_sift_api(in_args):
     )
     for ret, out in zip(rets, outs):
         assert ret is out
+
+
+globals().update(
+    cv_tools.make_op_tests(
+        name="sift",
+        runner_info=[("tensor", cvcuda.sift, None)],
+        keystone_dlc=(cvcuda.Type.U8, "NHWC", 1),
+        supported_dtypes={cvcuda.Type.U8},
+        supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
+        supported_channels={1},
+    )
+)

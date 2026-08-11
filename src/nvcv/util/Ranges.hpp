@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -69,21 +69,21 @@ auto End(R (&r)[N])
 }
 
 template<class R>
-auto Begin(R &&r)
+auto Begin(R &r)
 {
     using std::begin;
     return begin(r);
 }
 
 template<class R>
-auto End(R &&r)
+auto End(R &r)
 {
     using std::end;
     return end(r);
 }
 
 template<class R>
-auto Data(R &&r)
+auto Data(R &r)
 {
     return &*Begin(r);
 }
@@ -96,7 +96,7 @@ auto Size(const R &r)
 }
 
 template<class T>
-using RangeValue = std::remove_reference_t<decltype(*Begin(std::declval<T>()))>;
+using RangeValue = std::remove_reference_t<decltype(*Begin(std::declval<T &>()))>;
 
 namespace detail {
 template<class T>
@@ -104,8 +104,8 @@ constexpr bool IsRandomAccessRange()
 {
     if constexpr (IsRange<T>)
     {
-        return std::is_same_v<typename std::iterator_traits<
-                                  std::remove_reference_t<decltype(Begin(std::declval<T>()))>>::iterator_category,
+        return std::is_same_v<typename std::iterator_traits<std::remove_reference_t<decltype(Begin(
+                                  std::declval<T &>()))>>::iterator_category, // NOSONAR: range trait, not an array.
                               std::random_access_iterator_tag>;
     }
     else

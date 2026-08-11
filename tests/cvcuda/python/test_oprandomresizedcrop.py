@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,9 +15,12 @@
 
 import cvcuda
 
-import pytest as t
+import pytest
 import numpy as np
+
 import cvcuda_util as util
+import cvcuda_types as cv_types
+import cvcuda_tools as cv_tools
 
 min_scale = 0.08
 max_scale = 1.0
@@ -28,7 +31,7 @@ seed = 0
 RNG = np.random.default_rng(0)
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "input_args,out_shape,interp",
     [
         (
@@ -42,8 +45,18 @@ RNG = np.random.default_rng(0)
             cvcuda.Interp.LINEAR,
         ),
         (
+            ((5, 3, 16, 23), np.uint8, "NCHW"),
+            (5, 3, 132, 15),
+            cvcuda.Interp.LINEAR,
+        ),
+        (
             ((16, 23, 4), np.uint8, "HWC"),
             (132, 15, 4),
+            cvcuda.Interp.CUBIC,
+        ),
+        (
+            ((4, 16, 23), np.uint8, "CHW"),
+            (4, 132, 15),
             cvcuda.Interp.CUBIC,
         ),
         (((16, 23, 1), np.uint8, "HWC"), (132, 15, 1), None),
@@ -97,7 +110,7 @@ def test_op_random_resized_crop(input_args, out_shape, interp):
     assert out.dtype == input.dtype
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "max_input_size, max_output_size, interp",
     [
         ((123, 321), (321, 123), cvcuda.Interp.NEAREST),
@@ -159,3 +172,41 @@ def test_op_random_resized_crop_varshape(max_input_size, max_output_size, interp
     assert out.capacity == input.capacity
     assert out.uniqueformat == input.uniqueformat
     assert out.maxsize <= max_output_size
+
+
+def _randomresizedcrop_params(dtype, layout, channels):
+    return {
+        "shape": cv_types.resolve_shape(layout, channels, (10, 20)),
+        "interp": cvcuda.Interp.LINEAR,
+    }
+
+
+def _randomresizedcrop_varshape_params(dtype, layout, channels):
+    return {
+        "sizes": [[20, 10], [20, 10]],
+        "interp": cvcuda.Interp.LINEAR,
+    }
+
+
+globals().update(
+    cv_tools.make_op_tests(
+        name="random_resized_crop",
+        runner_info=[
+            ("tensor", cvcuda.random_resized_crop, _randomresizedcrop_params),
+            (
+                "image_batch",
+                cvcuda.random_resized_crop,
+                _randomresizedcrop_varshape_params,
+            ),
+        ],
+        keystone_dlc=(cvcuda.Type.U8, "NHWC", 3),
+        supported_dtypes={
+            cvcuda.Type.U8,
+            cvcuda.Type.U16,
+            cvcuda.Type.S16,
+            cvcuda.Type.F32,
+        },
+        supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
+        supported_channels={1, 3, 4},
+    )
+)

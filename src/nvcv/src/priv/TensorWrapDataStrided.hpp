@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,8 +27,9 @@ namespace nvcv::priv {
 class TensorWrapDataStrided final : public CoreObjectBase<ITensor>
 {
 public:
-    explicit TensorWrapDataStrided(const NVCVTensorData &tdata, NVCVTensorDataCleanupFunc cleanup, void *ctxCleanup);
-    ~TensorWrapDataStrided();
+    explicit TensorWrapDataStrided(const NVCVTensorData &tdata, NVCVTensorDataCleanupFunc cleanup,
+                                   NVCVUserPointer ctxCleanup);
+    ~TensorWrapDataStrided() override;
 
     int32_t        rank() const override;
     const int64_t *shape() const override;
@@ -45,7 +46,7 @@ private:
     NVCVTensorData m_tdata;
 
     NVCVTensorDataCleanupFunc m_cleanup;
-    void                     *m_ctxCleanup;
+    NVCVUserPointer           m_ctxCleanup;
 };
 
 } // namespace nvcv::priv

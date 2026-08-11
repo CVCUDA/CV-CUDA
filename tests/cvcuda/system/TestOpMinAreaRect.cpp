@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,6 +24,7 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
 
+#include <array>
 #include <fstream>
 #include <iostream>
 #include <random>
@@ -34,10 +35,25 @@ namespace t    = ::testing;
 void formatPoints(std::vector<std::pair<float, float>> points, std::vector<std::pair<float, float>> &format_points);
 bool isNearOpenCvResults(std::vector<float> opencvRes, std::vector<float> cvcudaRes);
 
+template<typename T>
+void SetRectanglePoints(nvcv::Tensor &tensor, size_t contourElements, int numPoints)
+{
+    std::vector<T>                           contour(contourElements, 0);
+    constexpr std::array<std::pair<T, T>, 4> corners{
+        {{10, 20}, {110, 20}, {110, 70}, {10, 70}}
+    };
+    for (int i = 0; i < numPoints; ++i)
+    {
+        contour[2 * i]     = corners[i % corners.size()].first;
+        contour[2 * i + 1] = corners[i % corners.size()].second;
+    }
+    nvcv::util::SetTensorFromVector<T>(tensor.exportData(), contour, 0);
+}
+
 void formatPoints(std::vector<std::pair<float, float>> points, std::vector<std::pair<float, float>> &format_points)
 {
-    std::sort(points.begin(), points.end(),
-              [](std::pair<float, float> &a, const std::pair<float, float> &b) { return a.first < b.first; });
+    std::ranges::sort(
+        points, [](const std::pair<float, float> &a, const std::pair<float, float> &b) { return a.first < b.first; });
 
     if (points[0].second <= points[1].second)
     {
@@ -122,9 +138,9 @@ TEST(OpMinAreaRect, MinAreaRect_sanity)
 
     for (int i = 0; i < batchsize; i++)
     {
-        inPointNumInContourValues[i] = contourPointsData[i].size() / 2;
+        inPointNumInContourValues[i] = static_cast<int>(contourPointsData[i].size() / 2);
     }
-    int maxPointsNumInCountour = *std::max_element(inPointNumInContourValues.begin(), inPointNumInContourValues.end());
+    int maxPointsNumInCountour = *std::ranges::max_element(inPointNumInContourValues);
 
     // inTensor
     auto tshapeIn = nvcv::TensorShape{
@@ -165,7 +181,7 @@ TEST(OpMinAreaRect, MinAreaRect_sanity)
     // copy output back to host
     for (size_t i = 0; i < testVec.size(); i++)
     {
-        nvcv::util::GetVectorFromTensor<float>(outMinAreaRect.exportData(), i, testVec[i]);
+        nvcv::util::GetVectorFromTensor<float>(outMinAreaRect.exportData(), static_cast<int>(i), testVec[i]);
         ASSERT_PRED2(isNearOpenCvResults, openCV_minAreaRect_results[i], testVec[i]);
     }
 }
@@ -193,9 +209,9 @@ TEST(OpMinAreaRect, MinAreaRect_multiple_contours_odd_stride)
 
     for (int i = 0; i < batchsize; i++)
     {
-        inPointNumInContourValues[i] = contourPointsData[i].size() / 2;
+        inPointNumInContourValues[i] = static_cast<int>(contourPointsData[i].size() / 2);
     }
-    int maxPointsNumInCountour = *std::max_element(inPointNumInContourValues.begin(), inPointNumInContourValues.end());
+    int maxPointsNumInCountour = *std::ranges::max_element(inPointNumInContourValues);
 
     // inTensor
     auto tshapeIn = nvcv::TensorShape{
@@ -232,8 +248,90 @@ TEST(OpMinAreaRect, MinAreaRect_multiple_contours_odd_stride)
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
+NVCV_TEST_SUITE_P(OpMinAreaRectCorrectness, test::ValueList<nvcv::DataType, int>{
+                                                {nvcv::TYPE_S16, 1024},
+                                                {nvcv::TYPE_U16,  128},
+                                                {nvcv::TYPE_U16,  512},
+                                                {nvcv::TYPE_S32,  128},
+                                                {nvcv::TYPE_S32,  512},
+});
+
+TEST_P(OpMinAreaRectCorrectness, tensor_correct_output)
+{
+    nvcv::DataType dtype       = GetParamValue<0>();
+    int            numOfPoints = GetParamValue<1>();
+
+    nvcv::Tensor inPointNumInContour{
+        nvcv::TensorShape{{1, 1}, nvcv::TENSOR_NW},
+        nvcv::TYPE_S32
+    };
+    auto             pointCountAccess = nvcv::TensorDataAccessStrided::Create(inPointNumInContour.exportData());
+    std::vector<int> pointCounts(pointCountAccess->sampleStride() / sizeof(int), 0);
+    pointCounts[0] = numOfPoints;
+    nvcv::util::SetTensorFromVector<int>(inPointNumInContour.exportData(), pointCounts, -1);
+
+    nvcv::Tensor inContours{
+        nvcv::TensorShape{{1, numOfPoints, 2}, nvcv::TENSOR_NWC},
+        dtype
+    };
+    auto contourAccess   = nvcv::TensorDataAccessStrided::Create(inContours.exportData());
+    auto contourElements = contourAccess->sampleStride() / dtype.strideBytes();
+
+    if (dtype == nvcv::TYPE_S16)
+    {
+        SetRectanglePoints<int16_t>(inContours, contourElements, numOfPoints);
+    }
+    else if (dtype == nvcv::TYPE_U16)
+    {
+        SetRectanglePoints<uint16_t>(inContours, contourElements, numOfPoints);
+    }
+    else
+    {
+        ASSERT_EQ(dtype, nvcv::TYPE_S32);
+        SetRectanglePoints<int32_t>(inContours, contourElements, numOfPoints);
+    }
+
+    nvcv::Tensor outMinAreaRect{
+        nvcv::TensorShape{{1, 8}, nvcv::TENSOR_NW},
+        nvcv::TYPE_F32
+    };
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::MinAreaRect minAreaRectOp(1);
+    EXPECT_NO_THROW(minAreaRectOp(stream, inContours, outMinAreaRect, inPointNumInContour, 1));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+
+    std::vector<float> output(8);
+    nvcv::util::GetVectorFromTensor<float>(outMinAreaRect.exportData(), 0, output);
+
+    std::vector<std::pair<float, float>> expected{
+        { 10, 20},
+        {110, 20},
+        {110, 70},
+        { 10, 70}
+    };
+    std::vector<std::pair<float, float>> actual{
+        {output[0], output[1]},
+        {output[2], output[3]},
+        {output[4], output[5]},
+        {output[6], output[7]}
+    };
+    std::vector<std::pair<float, float>> expectedFormatted(4);
+    std::vector<std::pair<float, float>> actualFormatted(4);
+    formatPoints(expected, expectedFormatted);
+    formatPoints(actual, actualFormatted);
+
+    for (size_t i = 0; i < expectedFormatted.size(); ++i)
+    {
+        EXPECT_EQ(expectedFormatted[i].first, actualFormatted[i].first);
+        EXPECT_EQ(expectedFormatted[i].second, actualFormatted[i].second);
+    }
+}
+
 // clang-format off
-NVCV_TEST_SUITE_P(OpMinAreaRectNegative, test::ValueList<int, nvcv::TensorLayout, nvcv::TensorLayout, nvcv::TensorLayout, nvcv::DataType, nvcv::DataType, nvcv::DataType>
+NVCV_TEST_SUITE_P(OpMinAreaRect_Negative, test::ValueList<int, nvcv::TensorLayout, nvcv::TensorLayout, nvcv::TensorLayout, nvcv::DataType, nvcv::DataType, nvcv::DataType>
 {
     // batchsize, inLayout, numPointsInContourLayout, outLayout, inDataType, numPointsInContourDataType, outDataType
     {        10, nvcv::TENSOR_NWC, nvcv::TENSOR_NW, nvcv::TENSOR_NW, nvcv::TYPE_S16, nvcv::TYPE_S32, nvcv::TYPE_F32},
@@ -247,7 +345,7 @@ NVCV_TEST_SUITE_P(OpMinAreaRectNegative, test::ValueList<int, nvcv::TensorLayout
 
 // clang-format on
 
-TEST_P(OpMinAreaRectNegative, tensor_correct_output)
+TEST_P(OpMinAreaRect_Negative, tensor_correct_output)
 {
     int                batchsize                  = GetParamValue<0>();
     nvcv::TensorLayout inLayout                   = GetParamValue<1>();
@@ -286,7 +384,8 @@ TEST_P(OpMinAreaRectNegative, tensor_correct_output)
     cvcuda::MinAreaRect minAreaRectOp(maxContourNum);
     EXPECT_EQ(
         NVCV_ERROR_INVALID_ARGUMENT,
-        nvcv::ProtectCall([&] { minAreaRectOp(stream, inContours, outMinAreaRect, inPointNumInContour, batchsize); }));
+        nvcv::ProtectCall([&minAreaRectOp, &stream, &inContours, &outMinAreaRect, &inPointNumInContour, &batchsize]
+                          { minAreaRectOp(stream, inContours, outMinAreaRect, inPointNumInContour, batchsize); }));
 
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
@@ -295,4 +394,51 @@ TEST_P(OpMinAreaRectNegative, tensor_correct_output)
 TEST(OpMinAreaRect, invalid_create)
 {
     EXPECT_EQ(cvcudaMinAreaRectCreate(nullptr, 1), NVCV_ERROR_INVALID_ARGUMENT);
+}
+
+TEST(OpMinAreaRect, numPointsInContour_exceeds_tensor_width)
+{
+    // Regression test for GPU heap overread: numPointsInContour > max_pts must not
+    // cause out-of-bounds GPU reads in calculateRotateArea.
+    int batchsize    = 1;
+    int max_pts      = 4;
+    int reported_pts = 100; // intentionally larger than max_pts
+
+    auto tshapeIn = nvcv::TensorShape{
+        {batchsize, max_pts, 2},
+        nvcv::TENSOR_NWC
+    };
+    nvcv::DataType dtypeIn = nvcv::TYPE_S16;
+    nvcv::Tensor   inContours{tshapeIn, dtypeIn};
+    auto           inContoursAccess    = nvcv::TensorDataAccessStrided::Create(inContours.exportData());
+    auto           numContoursElements = inContoursAccess->sampleStride() / (2 * dtypeIn.strideBytes());
+
+    // Use a simple axis-aligned rectangle.
+    std::vector<short> pts = {0, 0, 100, 0, 100, 50, 0, 50};
+    pts.resize(numContoursElements * 2, 0);
+    nvcv::util::SetTensorFromVector<short>(inContours.exportData(), pts, 0);
+
+    nvcv::Tensor inPointNumInContour{
+        nvcv::TensorShape{{1, batchsize}, nvcv::TENSOR_NW},
+        nvcv::TYPE_S32
+    };
+    auto inPointNumInContourAccess    = nvcv::TensorDataAccessStrided::Create(inPointNumInContour.exportData());
+    auto numPointNumInContourElements = inPointNumInContourAccess->sampleStride() / sizeof(int);
+    std::vector<int> numPtsVec(numPointNumInContourElements, 0);
+    numPtsVec[0] = reported_pts;
+    nvcv::util::SetTensorFromVector<int>(inPointNumInContour.exportData(), numPtsVec, -1);
+
+    auto tshapeOut = nvcv::TensorShape{
+        {batchsize, 8},
+        nvcv::TENSOR_NW
+    };
+    nvcv::Tensor outMinAreaRect{tshapeOut, nvcv::TYPE_F32};
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::MinAreaRect minAreaRectOp(batchsize);
+    EXPECT_NO_THROW(minAreaRectOp(stream, inContours, outMinAreaRect, inPointNumInContour, batchsize));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }

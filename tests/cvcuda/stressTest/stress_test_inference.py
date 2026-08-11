@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,10 +16,16 @@
 import logging
 import numpy as np
 import cvcuda
+
+# torch is intentionally imported without importorskip: this file also requires
+# tensorrt and tensorflow, making it a full-ML-stack stress test that is NOT
+# collected by the normal pytest run (cvcuda_test_python.in gates on cupy, not torch).
+# It is only executed manually in specialized inference environments.
 import torch
 import random
 
 import os
+import subprocess
 import sys
 import urllib.request
 import time
@@ -234,16 +240,21 @@ class ObjectDetectionTensorRT:
 
             # Convert ETLE to TensorRT model using the TAO-Converter.
             self.logger.info("Converting the PeopleNet model to TensorRT...")
-            if os.system(
-                "tao-converter -e %s -k tlt_encode -d 3,%d,%d -m %d -i nchw %s"
-                % (
-                    trt_engine_file_path,
-                    image_size[1],
-                    image_size[0],
-                    batch_size,
-                    etlt_model_path,
-                )
-            ):
+            conversion_cmd = [
+                "tao-converter",
+                "-e",
+                trt_engine_file_path,
+                "-k",
+                "tlt_encode",
+                "-d",
+                f"3,{image_size[1]},{image_size[0]}",
+                "-m",
+                str(batch_size),
+                "-i",
+                "nchw",
+                etlt_model_path,
+            ]
+            if subprocess.run(conversion_cmd, check=False).returncode != 0:
                 raise Exception("Conversion failed.")
             else:
                 self.logger.info(

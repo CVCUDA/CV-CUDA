@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +23,7 @@ namespace cvcudapy {
 
 void ExportNormType(py::module &m)
 {
-    py::enum_<NVCVNormType>(m, "Norm", py::arithmetic())
+    py::enum_<NVCVNormType>(m, "Norm", "Vector norm types for distance and similarity computation.", py::arithmetic())
         .value("HAMMING", NVCV_NORM_HAMMING, "Hamming distance")
         .value("L1", NVCV_NORM_L1, "Manhattan distance")
         .value("L2", NVCV_NORM_L2, "Euclidean distance");

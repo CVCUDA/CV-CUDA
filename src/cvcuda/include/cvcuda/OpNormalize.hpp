@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,6 +35,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class Normalize final : public IOperator
@@ -42,54 +44,64 @@ class Normalize final : public IOperator
 public:
     explicit Normalize();
 
-    ~Normalize();
-
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &base, const nvcv::Tensor &scale,
-                    const nvcv::Tensor &out, float global_scale, float shift, float epsilon, uint32_t flags = 0);
+                    const nvcv::Tensor &out, float global_scale, float shift, float epsilon, uint32_t flags = 0) const;
+
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const float4 base, const float4 scale,
+                    int32_t baseChannels, int32_t scaleChannels, const nvcv::Tensor &out, float global_scale,
+                    float shift, float epsilon, uint32_t flags = 0) const;
 
     void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::Tensor &base,
                     const nvcv::Tensor &scale, const nvcv::ImageBatch &out, float global_scale, float shift,
-                    float epsilon, uint32_t flags = 0);
+                    float epsilon, uint32_t flags = 0) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline Normalize::Normalize()
 {
-    nvcv::detail::CheckThrow(cvcudaNormalizeCreate(&m_handle));
-    assert(m_handle);
-}
-
-inline Normalize::~Normalize()
-{
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaNormalizeCreate(&h));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void Normalize::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &base,
                                   const nvcv::Tensor &scale, const nvcv::Tensor &out, float global_scale, float shift,
-                                  float epsilon, uint32_t flags)
+                                  float epsilon, uint32_t flags) const
 {
-    nvcv::detail::CheckThrow(cvcudaNormalizeSubmit(m_handle, stream, in.handle(), base.handle(), scale.handle(),
+    nvcv::detail::CheckThrow(cvcudaNormalizeSubmit(m_handle.get(), stream, in.handle(), base.handle(), scale.handle(),
                                                    out.handle(), global_scale, shift, epsilon, flags));
+}
+
+inline void Normalize::operator()(cudaStream_t stream, const nvcv::Tensor &in, const float4 base, const float4 scale,
+                                  int32_t baseChannels, int32_t scaleChannels, const nvcv::Tensor &out,
+                                  float global_scale, float shift, float epsilon, uint32_t flags) const
+{
+    nvcv::detail::CheckThrow(cvcudaNormalizeScalarSubmit(m_handle.get(), stream, in.handle(), base, scale, baseChannels,
+                                                         scaleChannels, out.handle(), global_scale, shift, epsilon,
+                                                         flags));
 }
 
 inline void Normalize::operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::Tensor &base,
                                   const nvcv::Tensor &scale, const nvcv::ImageBatch &out, float global_scale,
-                                  float shift, float epsilon, uint32_t flags)
+                                  float shift, float epsilon, uint32_t flags) const
 {
-    nvcv::detail::CheckThrow(cvcudaNormalizeVarShapeSubmit(m_handle, stream, in.handle(), base.handle(), scale.handle(),
-                                                           out.handle(), global_scale, shift, epsilon, flags));
+    nvcv::detail::CheckThrow(cvcudaNormalizeVarShapeSubmit(m_handle.get(), stream, in.handle(), base.handle(),
+                                                           scale.handle(), out.handle(), global_scale, shift, epsilon,
+                                                           flags));
 }
 
 inline NVCVOperatorHandle Normalize::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA_NORMALIZE_HPP

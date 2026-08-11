@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,6 +28,8 @@
 #include <nvcv/python/Tensor.hpp>
 #include <pybind11/stl.h>
 
+#include <stdexcept>
+
 namespace cvcudapy {
 
 namespace {
@@ -46,15 +48,22 @@ Tensor CompositeInto(Tensor &output, Tensor &foreground, Tensor &background, Ten
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*composite});
 
-    composite->submit(pstream->cudaHandle(), foreground, background, fgMask, output);
+    guard.run([&composite, &pstream, &foreground, &background, &fgMask, &output]()
+              { composite->submit(pstream->cudaHandle(), foreground, background, fgMask, output); });
 
     return output;
 }
 
 Tensor Composite(Tensor &foreground, Tensor &background, Tensor &fgMask, int outChannels, std::optional<Stream> pstream)
 {
-    Shape out_shape                 = CreateShape(foreground.shape());
-    out_shape[out_shape.size() - 1] = outChannels;
+    Shape out_shape  = CreateShape(foreground.shape());
+    int   channelIdx = foreground.layout().find('C');
+    if (channelIdx < 0)
+    {
+        throw std::invalid_argument(util::ConcatString("Cannot infer Composite output shape for layout=",
+                                                       std::string(foreground.layout().m_layout.data)));
+    }
+    out_shape[channelIdx] = outChannels;
 
     Tensor output = Tensor::Create(out_shape, foreground.dtype(), foreground.layout());
 
@@ -77,22 +86,50 @@ ImageBatchVarShape CompositeVarShapeInto(ImageBatchVarShape &output, ImageBatchV
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*composite});
 
-    composite->submit(pstream->cudaHandle(), foreground, background, fgMask, output);
+    guard.run([&composite, &pstream, &foreground, &background, &fgMask, &output]()
+              { composite->submit(pstream->cudaHandle(), foreground, background, fgMask, output); });
 
     return output;
 }
 
-ImageBatchVarShape CompositeVarShape(ImageBatchVarShape &foreground, ImageBatchVarShape &background,
-                                     ImageBatchVarShape &fgMask, std::optional<Stream> pstream)
+nvcv::ImageFormat CompositeVarShapeOutputFormat(nvcv::ImageFormat foregroundFormat, int outChannels)
 {
-    ImageBatchVarShape output = ImageBatchVarShape::Create(foreground.numImages());
+    if (foregroundFormat.numChannels() == outChannels)
+    {
+        return foregroundFormat;
+    }
 
-    nvcv::ImageFormat format = foreground.uniqueFormat();
+    if (outChannels == 4)
+    {
+        if (foregroundFormat == nvcv::FMT_RGB8)
+        {
+            return nvcv::FMT_RGBA8;
+        }
+        if (foregroundFormat == nvcv::FMT_RGB8p)
+        {
+            return nvcv::FMT_RGBA8p;
+        }
+        if (foregroundFormat == nvcv::FMT_BGR8)
+        {
+            return nvcv::FMT_BGRA8;
+        }
+    }
+
+    throw std::invalid_argument(
+        util::ConcatString("Cannot infer Composite output format for outchannels=", outChannels));
+}
+
+ImageBatchVarShape CompositeVarShape(ImageBatchVarShape &foreground, ImageBatchVarShape &background,
+                                     ImageBatchVarShape &fgMask, int outChannels, std::optional<Stream> pstream)
+{
+    ImageBatchVarShape output = ImageBatchVarShape::Create(foreground.capacity());
+
+    nvcv::ImageFormat format = CompositeVarShapeOutputFormat(foreground.uniqueFormat(), outChannels);
 
     for (auto img = foreground.begin(); img != foreground.end(); ++img)
     {
         auto newimg = Image::Create(img->size(), format);
-        output.pushBack(newimg);
+        output.pushBackImage(newimg);
     }
 
     return CompositeVarShapeInto(output, foreground, background, fgMask, pstream);
@@ -103,45 +140,28 @@ ImageBatchVarShape CompositeVarShape(ImageBatchVarShape &foreground, ImageBatchV
 void ExportOpComposite(py::module &m)
 {
     using namespace pybind11::literals;
-    py::options options;
-    options.disable_function_signatures();
 
-    m.def("composite", &Composite, "foreground"_a, "background"_a, "fgmask"_a, "outchannels"_a, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
-
-        cvcuda.composite(foreground: cvcuda.Tensor, background: cvcuda.Tensor, fgmask: cvcuda.Tensor, outchannels: int, stream: Optional[cvcuda.Stream] = None) -> cvcuda.Tensor
-
+    m.def("composite", NvtxTrace("cvcuda.composite", &Composite), "foreground"_a, "background"_a, "fgmask"_a,
+          "outchannels"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the Composite operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Composite operator
-            for more details and usage examples.
 
         Args:
             foreground (cvcuda.Tensor): Input tensor containing one or more foreground images. Each image is BGR (3-channel) 8-bit.
             background (cvcuda.Tensor): Input tensor containing one or more background images. Each image is BGR (3-channel) 8-bit.
             fgmask (cvcuda.Tensor): Input foreground mask tensor. Each mask image is grayscale 8-bit
-            outchannels (int): Specifies 3 channel for RGB and 4 channel for BGRA.
+            outchannels (int): Specifies 3 channels for RGB/BGR and 4 channels for RGBA/BGRA.
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             cvcuda.Tensor: The output tensor.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("composite_into", &CompositeInto, "dst"_a, "foreground"_a, "background"_a, "fgmask"_a, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
+    m.def("composite_into", NvtxTrace("cvcuda.composite_into", &CompositeInto), "dst"_a, "foreground"_a, "background"_a,
+          "fgmask"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+        Executes the Composite operation on the given cuda stream.
 
-        cvcuda.composite_into(dst: cvcuda.Tensor, foreground: cvcuda.Tensor, background: cvcuda.Tensor, fgmask: cvcuda.Tensor, outchannels: int, stream: Optional[cvcuda.Stream] = None)
-
-	Executes the Composite operation on the given cuda stream.
-
-        See also:
-            Refer to the CV-CUDA C API reference for the Composite operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.Tensor): Output tensor to store the result of the operation.
@@ -151,48 +171,30 @@ void ExportOpComposite(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 
-    m.def("composite", &CompositeVarShape, "foreground"_a, "background"_a, "fgmask"_a, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
+    m.def("composite", NvtxTrace("cvcuda.composite", &CompositeVarShape), "foreground"_a, "background"_a, "fgmask"_a,
+          "outchannels"_a = 3, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+        Executes the Composite operation on the given cuda stream.
 
-	cvcuda.composite(foreground: cvcuda.ImageBatchVarShape, background: cvcuda.ImageBatchVarShape, fgmask: cvcuda.ImageBatchVarShape, outchannels: int, stream: Optional[cvcuda.Stream] = None) -> cvcuda.ImageBatchVarShape
-
-	Executes the Composite operation on the given cuda stream.
-
-        See also:
-            Refer to the CV-CUDA C API reference for the Composite operator
-            for more details and usage examples.
 
         Args:
             foreground (cvcuda.ImageBatchVarShape): Input tensor containing one or more foreground images. Each image is BGR (3-channel) 8-bit.
             background (cvcuda.ImageBatchVarShape): Input tensor containing one or more background images. Each image is BGR (3-channel) 8-bit.
             fgmask (cvcuda.ImageBatchVarShape): Input foreground mask image batch. Each mask image is grayscale 8-bit.
+            outchannels (int): Specifies 3 channels for RGB/BGR and 4 channels for RGBA/BGRA.
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             cvcuda.ImageBatchVarShape: The output image batch.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("composite_into", &CompositeVarShapeInto, "dst"_a, "foreground"_a, "background"_a, "fgmask"_a, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.composite_into(dst: cvcuda.ImageBatchVarShape, foreground: cvcuda.ImageBatchVarShape, background: cvcuda.ImageBatchVarShape, fgmask: cvcuda.ImageBatchVarShape, outchannels: int, stream: Optional[cvcuda.Stream] = None)
-
+    m.def("composite_into", NvtxTrace("cvcuda.composite_into", &CompositeVarShapeInto), "dst"_a, "foreground"_a,
+          "background"_a, "fgmask"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the Composite operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Composite operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.ImageBatchVarShape): Output image batch containing the result of the operation.
@@ -202,11 +204,7 @@ void ExportOpComposite(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.ImageBatchVarShape: The output image batch (same as dst).
     )pbdoc");
 }
 

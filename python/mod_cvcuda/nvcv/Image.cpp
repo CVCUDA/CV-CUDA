@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "Image.hpp"
 
+#include "../NvtxRange.hpp"
 #include "Cache.hpp"
 #include "CastUtils.hpp"
 #include "DataType.hpp"
@@ -33,6 +34,9 @@
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+
+#include <array>
+#include <stdexcept>
 
 namespace nvcvpy::priv {
 
@@ -72,158 +76,152 @@ size_t Image::Key::doGetHash() const
 
 namespace {
 
+class ImageError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
+
 struct BufferImageInfo
 {
     int            numPlanes;
     nvcv::Size2D   size;
     int            numChannels;
     bool           isChannelLast;
-    int64_t        planeStride, rowStride;
+    int64_t        planeStride;
+    int64_t        rowStride;
     nvcv::DataType dtype;
-    void          *data;
+    NVCVByte      *data;
 };
+
+struct BufferTensorInfo
+{
+    std::array<ssize_t, 4> shape;
+    std::array<ssize_t, 4> strides;
+    nvcv::TensorLayout     layout;
+};
+
+nvcv::TensorLayout SelectBufferLayout(const nvcv::ImageFormat &fmt, size_t plane, ssize_t channels)
+{
+    if (fmt != nvcv::FMT_NONE)
+    {
+        return fmt.planeNumChannels(static_cast<int>(plane)) == channels ? nvcv::TENSOR_NHWC : nvcv::TENSOR_NCHW;
+    }
+
+    return channels <= 4 ? nvcv::TENSOR_NHWC : nvcv::TENSOR_NCHW;
+}
+
+BufferTensorInfo MakeBufferTensorInfo(const DLTensor &tensor, const nvcv::ImageFormat &fmt, size_t plane,
+                                      int elemStrideBytes)
+{
+    BufferTensorInfo info{};
+
+    switch (tensor.ndim)
+    {
+    case 1:
+        info.layout     = nvcv::TENSOR_NCHW;
+        info.shape      = {1, 1, 1, tensor.shape[0]};
+        info.strides[0] = tensor.strides[0] * elemStrideBytes;
+        info.strides[1] = info.strides[0];
+        info.strides[2] = info.strides[0];
+        info.strides[3] = info.strides[0];
+        break;
+
+    case 2:
+        info.layout     = nvcv::TENSOR_NCHW;
+        info.shape      = {1, 1, tensor.shape[0], tensor.shape[1]};
+        info.strides[0] = tensor.shape[0] * tensor.strides[0] * elemStrideBytes;
+        info.strides[1] = info.strides[0];
+        info.strides[2] = tensor.strides[0] * elemStrideBytes;
+        info.strides[3] = tensor.strides[1] * elemStrideBytes;
+        break;
+
+    case 3:
+    case 4:
+        info.shape[0] = tensor.ndim == 3 ? 1 : tensor.shape[tensor.ndim - 4];
+        info.shape[1] = tensor.shape[tensor.ndim - 3];
+        info.shape[2] = tensor.shape[tensor.ndim - 2];
+        info.shape[3] = tensor.shape[tensor.ndim - 1];
+        info.layout   = SelectBufferLayout(fmt, plane, info.shape[3]);
+
+        info.strides[1] = tensor.strides[tensor.ndim - 3] * elemStrideBytes;
+        info.strides[2] = tensor.strides[tensor.ndim - 2] * elemStrideBytes;
+        info.strides[3] = tensor.strides[tensor.ndim - 1] * elemStrideBytes;
+        info.strides[0] = tensor.ndim == 3 ? info.shape[1] * info.strides[1] : tensor.strides[tensor.ndim - 4];
+        break;
+
+    default:
+        throw std::invalid_argument(
+            util::ConcatString("Number of buffer dimensions must be between 1 and 4, not ", tensor.ndim));
+    }
+
+    return info;
+}
+
+void ValidateBufferStrides(const BufferTensorInfo &bufferInfo, int elemStrideBytes,
+                           const nvcv::TensorShapeInfoImagePlanar &infoShape)
+{
+    const auto &strides = bufferInfo.strides;
+    if (strides[0] <= 0 || strides[1] <= 0 || strides[2] <= 0)
+    {
+        throw std::invalid_argument("Buffer strides must be all >= 1");
+    }
+
+    const auto &infoLayout = infoShape.infoLayout();
+
+    if (strides[3] != elemStrideBytes)
+    {
+        throw std::invalid_argument(
+            util::ConcatString("Fastest changing dimension must be packed, i.e., have stride equal to ",
+                               elemStrideBytes, " byte(s), not ", strides[3]));
+    }
+
+    ssize_t packedRowStride = static_cast<ssize_t>(elemStrideBytes) * infoShape.numCols();
+    if (ssize_t rowStride = strides[infoLayout.idxHeight()];
+        !infoLayout.isChannelLast() && rowStride != packedRowStride)
+    {
+        throw std::invalid_argument(util::ConcatString("Image row must packed, i.e., have stride equal to ",
+                                                       packedRowStride, " byte(s), not ", rowStride));
+    }
+}
+
+BufferImageInfo MakeBufferImageInfo(const DLTensor &tensor, const nvcv::ImageFormat &fmt, size_t plane)
+{
+    int  elemStrideBytes = (tensor.dtype.bits * tensor.dtype.lanes + 7) / 8;
+    auto tensorInfo      = MakeBufferTensorInfo(tensor, fmt, plane, elemStrideBytes);
+
+    auto infoShape = nvcv::TensorShapeInfoImagePlanar::Create(
+        nvcv::TensorShape(tensorInfo.shape.data(), tensorInfo.shape.size(), tensorInfo.layout));
+    NVCV_ASSERT(infoShape);
+
+    ValidateBufferStrides(tensorInfo, elemStrideBytes, *infoShape);
+
+    const auto &infoLayout = infoShape->infoLayout();
+
+    BufferImageInfo bufferInfo;
+    bufferInfo.isChannelLast = infoLayout.isChannelLast();
+    bufferInfo.numPlanes
+        = bufferInfo.isChannelLast ? static_cast<int>(infoShape->numSamples()) : infoShape->numChannels();
+    bufferInfo.numChannels = infoShape->numChannels();
+    bufferInfo.size        = infoShape->size();
+    bufferInfo.planeStride
+        = tensorInfo.strides[bufferInfo.isChannelLast ? infoLayout.idxSample() : infoLayout.idxChannel()];
+    bufferInfo.rowStride = tensorInfo.strides[infoLayout.idxHeight()];
+    bufferInfo.dtype     = ToNVCVDataType(tensor.dtype);
+    bufferInfo.data      = static_cast<NVCVByte *>(tensor.data);
+    return bufferInfo;
+}
 
 std::vector<BufferImageInfo> ExtractBufferImageInfo(const std::vector<DLPackTensor> &tensorList,
                                                     const nvcv::ImageFormat         &fmt)
 {
     std::vector<BufferImageInfo> bufferInfoList;
+    int                          curChannel = 0;
 
-    int curChannel = 0;
-
-    // For each buffer,
     for (size_t p = 0; p < tensorList.size(); ++p)
     {
-        const DLTensor &tensor = *tensorList[p];
-
-        int elemStrideBytes = (tensor.dtype.bits * tensor.dtype.lanes + 7) / 8;
-
-        // Extract 4d shape and layout regardless of rank
-        ssize_t            shape[4];
-        ssize_t            strides[4];
-        nvcv::TensorLayout layout;
-
-        switch (tensor.ndim)
-        {
-        case 1:
-            layout = nvcv::TENSOR_NCHW;
-
-            shape[0] = 1;
-            shape[1] = 1;
-            shape[2] = 1;
-            shape[3] = tensor.shape[0];
-
-            strides[0] = tensor.strides[0] * elemStrideBytes;
-            strides[1] = strides[0];
-            strides[2] = strides[0];
-            strides[3] = strides[0];
-            break;
-
-        case 2:
-            layout = nvcv::TENSOR_NCHW;
-
-            shape[0] = 1;
-            shape[1] = 1;
-            shape[2] = tensor.shape[0];
-            shape[3] = tensor.shape[1];
-
-            strides[0] = tensor.shape[0] * tensor.strides[0] * elemStrideBytes;
-            strides[1] = strides[0];
-            strides[2] = tensor.strides[0] * elemStrideBytes;
-            strides[3] = tensor.strides[1] * elemStrideBytes;
-            break;
-
-        case 3:
-        case 4:
-            shape[0] = tensor.ndim == 3 ? 1 : tensor.shape[tensor.ndim - 4];
-            shape[1] = tensor.shape[tensor.ndim - 3];
-            shape[2] = tensor.shape[tensor.ndim - 2];
-            shape[3] = tensor.shape[tensor.ndim - 1];
-
-            // User has specified a format?
-            if (fmt != nvcv::FMT_NONE)
-            {
-                // Use it to disambiguate
-                if (fmt.planeNumChannels(p) == shape[3])
-                {
-                    layout = nvcv::TENSOR_NHWC;
-                }
-                else
-                {
-                    layout = nvcv::TENSOR_NCHW;
-                }
-            }
-            else
-            {
-                // Or else,
-                if (shape[3] <= 4) // (C<=4)
-                {
-                    layout = nvcv::TENSOR_NHWC;
-                }
-                else
-                {
-                    layout = nvcv::TENSOR_NCHW;
-                }
-            }
-
-            strides[1] = tensor.strides[tensor.ndim - 3] * elemStrideBytes;
-            strides[2] = tensor.strides[tensor.ndim - 2] * elemStrideBytes;
-            strides[3] = tensor.strides[tensor.ndim - 1] * elemStrideBytes;
-
-            if (tensor.ndim == 3)
-            {
-                strides[0] = shape[1] * strides[1];
-            }
-            else
-            {
-                strides[0] = tensor.strides[tensor.ndim - 4];
-            }
-            break;
-
-        default:
-            throw std::invalid_argument(
-                util::FormatString("Number of buffer dimensions must be between 1 and 4, not %d", tensor.ndim));
-        }
-
-        // Validate strides -----------------------
-
-        if (strides[0] <= 0 || strides[1] <= 0 || strides[2] <= 0)
-        {
-            throw std::invalid_argument("Buffer strides must be all >= 1");
-        }
-
-        NVCV_ASSERT(layout.rank() == 4);
-
-        auto infoShape = nvcv::TensorShapeInfoImagePlanar::Create(nvcv::TensorShape(shape, 4, layout));
-        NVCV_ASSERT(infoShape);
-
-        const auto *infoLayout = &infoShape->infoLayout();
-
-        if (strides[3] != elemStrideBytes)
-        {
-            throw std::invalid_argument(util::FormatString(
-                "Fastest changing dimension must be packed, i.e., have stride equal to %d byte(s), not %ld",
-                elemStrideBytes, strides[2]));
-        }
-
-        ssize_t packedRowStride = static_cast<ssize_t>(elemStrideBytes) * infoShape->numCols();
-        ssize_t rowStride       = strides[infoLayout->idxHeight()];
-        if (!infoLayout->isChannelLast() && rowStride != packedRowStride)
-        {
-            throw std::invalid_argument(util::FormatString(
-                "Image row must packed, i.e., have stride equal to %ld byte(s), not %ld", packedRowStride, rowStride));
-        }
-
-        bufferInfoList.emplace_back();
-
-        BufferImageInfo &bufInfo = bufferInfoList.back();
-        bufInfo.isChannelLast    = infoLayout->isChannelLast();
-        bufInfo.numPlanes        = bufInfo.isChannelLast ? infoShape->numSamples() : infoShape->numChannels();
-        bufInfo.numChannels      = infoShape->numChannels();
-        bufInfo.size             = infoShape->size();
-        bufInfo.planeStride      = strides[bufInfo.isChannelLast ? infoLayout->idxSample() : infoLayout->idxChannel()];
-        bufInfo.rowStride        = strides[infoLayout->idxHeight()];
-        bufInfo.data             = tensor.data;
-        bufInfo.dtype            = ToNVCVDataType(tensor.dtype);
+        const DLTensor &tensor  = *tensorList[p];
+        auto            bufInfo = MakeBufferImageInfo(tensor, fmt, p);
 
         curChannel += bufInfo.numPlanes * bufInfo.numChannels;
         if (curChannel > 4)
@@ -233,6 +231,7 @@ std::vector<BufferImageInfo> ExtractBufferImageInfo(const std::vector<DLPackTens
 
         NVCV_ASSERT(bufInfo.numPlanes <= 4);
         NVCV_ASSERT(bufInfo.numChannels <= 4);
+        bufferInfoList.push_back(bufInfo);
     }
 
     return bufferInfoList;
@@ -261,6 +260,8 @@ nvcv::DataType MakePackedType(nvcv::DataType dtype, int numChannels)
         case 4:
             pp.swizzle = nvcv::Swizzle::S_XYZW;
             break;
+        default:
+            break;
         }
         pp.byteOrder = nvcv::ByteOrder::MSB;
         for (int i = 1; i < numChannels; ++i)
@@ -283,7 +284,7 @@ nvcv::ImageFormat InferImageFormat(const std::vector<nvcv::DataType> &planePixTy
     static_assert(NVCV_PACKING_0 == 0, "Invalid 0 packing value");
     NVCV_ASSERT(planePixTypes.size() <= 4);
 
-    nvcv::Packing packing[4] = {nvcv::Packing::NONE};
+    std::array<nvcv::Packing, 4> packing = {nvcv::Packing::NONE};
 
     int numChannels = 0;
 
@@ -300,19 +301,19 @@ nvcv::ImageFormat InferImageFormat(const std::vector<nvcv::DataType> &planePixTy
 
     nvcv::DataKind dataKind = planePixTypes[0].dataKind();
 
-    int numPlanes = planePixTypes.size();
+    auto numPlanes = static_cast<int>(planePixTypes.size());
 
     // Planar or packed?
     if (numPlanes == 1 || numChannels == numPlanes)
     {
-        static const nvcv::ImageFormat baseFormatList[4]
+        static const std::array<nvcv::ImageFormat, 4> baseFormatList
             = {nvcv::FMT_U8, nvcv::FMT_2F32, nvcv::FMT_RGB8, nvcv::FMT_RGBA8};
 
         // Validate array index to prevent buffer overrun
         if (numChannels < 1 || numChannels > 4)
         {
             throw std::invalid_argument(
-                util::FormatString("Invalid number of channels %d, must be between 1 and 4", numChannels));
+                util::ConcatString("Invalid number of channels ", numChannels, ", must be between 1 and 4"));
         }
 
         nvcv::ImageFormat baseFormat = baseFormatList[numChannels - 1];
@@ -336,7 +337,7 @@ nvcv::ImageFormat InferImageFormat(const std::vector<nvcv::DataType> &planePixTy
         }
     }
     // semi-planar, NV12-like?
-    // TODO: this test is too fragile, must improve
+    // REVISIT: this test is too fragile, must improve
     else if (numPlanes == 2 && numChannels == 3)
     {
         return nvcv::FMT_NV12_ER.dataKind(dataKind).swizzleAndPacking(nvcv::Swizzle::S_XYZ0, packing[0], packing[1],
@@ -387,8 +388,8 @@ void FillNVCVImageBufferStrided(NVCVImageData &imgData, const std::vector<DLPack
 
             dataStrided.planes[curPlane].width     = b.size.w;
             dataStrided.planes[curPlane].height    = b.size.h;
-            dataStrided.planes[curPlane].rowStride = b.rowStride;
-            dataStrided.planes[curPlane].basePtr   = reinterpret_cast<NVCVByte *>(b.data) + b.planeStride * p;
+            dataStrided.planes[curPlane].rowStride = static_cast<int32_t>(b.rowStride);
+            dataStrided.planes[curPlane].basePtr   = b.data + b.planeStride * p;
 
             planeDataTypes.push_back(MakePackedType(b.dtype, b.isChannelLast ? b.numChannels : 1));
         }
@@ -409,9 +410,8 @@ void FillNVCVImageBufferStrided(NVCVImageData &imgData, const std::vector<DLPack
     {
         if (!HasSameDataLayout(fmt, inferredFormat))
         {
-            throw std::invalid_argument(
-                util::FormatString("Format inferred from buffers %s isn't compatible with given image format %s",
-                                   util::ToString(inferredFormat).c_str(), util::ToString(fmt).c_str()));
+            throw std::invalid_argument(util::ConcatString("Format inferred from buffers ", inferredFormat,
+                                                           " isn't compatible with given image format ", fmt));
         }
         finalFormat = fmt;
     }
@@ -419,7 +419,7 @@ void FillNVCVImageBufferStrided(NVCVImageData &imgData, const std::vector<DLPack
     {
         finalFormat = inferredFormat;
     }
-    imgData.format = finalFormat;
+    imgData.format = static_cast<NVCVImageFormat>(finalFormat);
 
     nvcv::Size2D imgSize = {dataStrided.planes[0].width, dataStrided.planes[0].height};
 
@@ -432,10 +432,10 @@ void FillNVCVImageBufferStrided(NVCVImageData &imgData, const std::vector<DLPack
 
         if (plSize.w != goldSize.w || plSize.h != goldSize.h)
         {
-            throw std::invalid_argument(util::FormatString(
-                "Plane %d's size %dx%d doesn't correspond to what's expected by %s format %s of image with size %dx%d",
-                p, plSize.w, plSize.h, (fmt == nvcv::FMT_NONE ? "inferred" : "given"),
-                util::ToString(finalFormat).c_str(), imgSize.w, imgSize.h));
+            throw std::invalid_argument(util::ConcatString(
+                "Plane ", p, "'s size ", plSize.w, "x", plSize.h, " doesn't correspond to what's expected by ",
+                (fmt == nvcv::FMT_NONE ? "inferred" : "given"), " format ", finalFormat, " of image with size ",
+                imgSize.w, "x", imgSize.h));
         }
     }
 }
@@ -459,28 +459,27 @@ nvcv::ImageDataStridedHost CreateNVCVImageDataHost(const std::vector<DLPackTenso
 } // namespace
 
 Image::Image(const Size2D &size, nvcv::ImageFormat fmt, int rowAlign)
+    : m_key{size, fmt}
 {
     nvcv::MemAlignment    bufAlign = rowAlign == 0 ? nvcv::MemAlignment{} : nvcv::MemAlignment{}.rowAddr(rowAlign);
     NVCVImageRequirements reqs;
 
-    nvcvImageCalcRequirements(std::get<0>(size), std::get<1>(size), fmt, bufAlign.baseAddr(), bufAlign.rowAddr(),
-                              &reqs);
+    nvcvImageCalcRequirements(std::get<0>(size), std::get<1>(size), static_cast<NVCVImageFormat>(fmt),
+                              bufAlign.baseAddr(), bufAlign.rowAddr(), &reqs);
 
-    m_impl         = nvcv::Image(reqs, nullptr /* allocator */);
-    m_key          = Key{size, fmt};
+    m_impl         = nvcv::Image(reqs);
     m_size_inbytes = doComputeSizeInBytes(reqs);
 }
 
 Image::Image(std::vector<std::shared_ptr<ExternalBuffer>> bufs, const nvcv::ImageDataStridedCuda &imgData)
-    : m_key{} // it's a wrap!
-    , m_size_inbytes{doComputeSizeInBytes(NVCVImageRequirements())}
+    : m_size_inbytes{doComputeSizeInBytes(NVCVImageRequirements())}
 {
     m_wrapData.emplace();
 
     this->setWrapData(std::move(bufs), imgData);
 }
 
-Image::Image(std::vector<py::buffer> bufs, const nvcv::ImageDataStridedHost &hostData, int rowAlign)
+Image::Image(const std::vector<py::buffer> &, const nvcv::ImageDataStridedHost &hostData, int rowAlign)
 {
     // Input buffer is host data.
     // We'll create a regular image and copy the host data into it.
@@ -489,10 +488,10 @@ Image::Image(std::vector<py::buffer> bufs, const nvcv::ImageDataStridedHost &hos
     nvcv::MemAlignment    bufAlign = nvcv::MemAlignment{}.rowAddr(rowAlign);
     NVCVImageRequirements reqs;
 
-    nvcvImageCalcRequirements(hostData.size().w, hostData.size().h, hostData.format(), bufAlign.baseAddr(),
-                              bufAlign.rowAddr(), &reqs);
+    nvcvImageCalcRequirements(hostData.size().w, hostData.size().h, static_cast<NVCVImageFormat>(hostData.format()),
+                              bufAlign.baseAddr(), bufAlign.rowAddr(), &reqs);
 
-    m_impl         = nvcv::Image(reqs, nullptr /* allocator */);
+    m_impl         = nvcv::Image(reqs);
     m_size_inbytes = doComputeSizeInBytes(reqs);
 
     auto devData = *m_impl.exportData<nvcv::ImageDataStridedCuda>();
@@ -519,7 +518,7 @@ Image::Image(std::vector<py::buffer> bufs, const nvcv::ImageDataStridedHost &hos
     };
 }
 
-int64_t Image::doComputeSizeInBytes(const NVCVImageRequirements &reqs)
+int64_t Image::doComputeSizeInBytes(const NVCVImageRequirements &reqs) const
 {
     int64_t size_inbytes;
     util::CheckThrow(nvcvMemRequirementsCalcTotalSizeBytes(&(reqs.mem.cudaMem), &size_inbytes));
@@ -533,16 +532,6 @@ int64_t Image::GetSizeInBytes() const
     return m_size_inbytes;
 }
 
-std::shared_ptr<Image> Image::shared_from_this()
-{
-    return std::static_pointer_cast<Image>(Container::shared_from_this());
-}
-
-std::shared_ptr<const Image> Image::shared_from_this() const
-{
-    return std::static_pointer_cast<const Image>(Container::shared_from_this());
-}
-
 std::shared_ptr<Image> Image::Create(const Size2D &size, nvcv::ImageFormat fmt, int rowAlign)
 {
     std::vector<std::shared_ptr<CacheItem>> vcont = Cache::Instance().fetch(Key{size, fmt});
@@ -550,7 +539,7 @@ std::shared_ptr<Image> Image::Create(const Size2D &size, nvcv::ImageFormat fmt, 
     // None found?
     if (vcont.empty())
     {
-        std::shared_ptr<Image> img(new Image(size, fmt, rowAlign));
+        std::shared_ptr<Image> img(new Image(size, fmt, rowAlign)); // NOSONAR: constructor is private.
         Cache::Instance().add(*img);
         return img;
     }
@@ -585,6 +574,31 @@ std::shared_ptr<Image> Image::WrapExternalBuffer(ExternalBuffer &buffer, nvcv::I
     return WrapExternalBufferVector({obj}, fmt);
 }
 
+// Seed the Image's Resource with the producer stream of its wrapping
+// ExternalBuffer so the first cvcuda op reading the image inserts the
+// necessary cross-stream wait (CAI v3 `stream` field honoring).
+//
+// For multi-plane buffers we conservatively seed from the first buffer that
+// advertises a (non-synced) stream; common-case cupy/torch interop uses a
+// single buffer so this captures the full producer-stream contract.
+static void SeedImageFromBuffers(Image &img, const std::vector<std::shared_ptr<ExternalBuffer>> &bufs)
+{
+    for (const auto &buf : bufs)
+    {
+        if (!buf || buf->producerIsSynced() || buf->producerStream() == nullptr)
+        {
+            continue;
+        }
+        int device = buf->producerDevice();
+        if (device < 0)
+        {
+            util::CheckThrow(cudaGetDevice(&device));
+        }
+        img.seedLastStream(buf->producerStream(), device);
+        return;
+    }
+}
+
 std::vector<std::shared_ptr<Image>> Image::WrapExternalBufferMany(std::vector<std::shared_ptr<ExternalBuffer>> &buffers,
                                                                   nvcv::ImageFormat                             fmt)
 {
@@ -597,13 +611,13 @@ std::vector<std::shared_ptr<Image>> Image::WrapExternalBufferMany(std::vector<st
     std::vector<std::shared_ptr<Image>> out;
     out.reserve(buffers.size());
 
-    for (size_t i = 0; i < buffers.size(); ++i)
+    for (const auto &buffer : buffers)
     {
         std::vector<std::shared_ptr<ExternalBuffer>> spBuffers;
-        spBuffers.push_back(buffers[i]);
+        spBuffers.push_back(buffer);
 
         if (!spBuffers.back())
-            throw std::runtime_error("Input buffer doesn't provide cuda_array_interface or DLPack interfaces");
+            throw ImageError("Input buffer doesn't provide cuda_array_interface or DLPack interfaces");
 
         std::vector<DLPackTensor> bufinfos;
         bufinfos.emplace_back(spBuffers[0]->dlTensor());
@@ -615,7 +629,8 @@ std::vector<std::shared_ptr<Image>> Image::WrapExternalBufferMany(std::vector<st
             // Need to add wrappers into cache so that they don't get destroyed by
             // the cuda stream when they're last used, and python script isn't
             // holding a reference to them. If we don't do it, things might break.
-            std::shared_ptr<Image> img(new Image(std::move(spBuffers), imgData));
+            std::shared_ptr<Image> img(new Image(spBuffers, imgData)); // NOSONAR: constructor is private.
+            SeedImageFromBuffers(*img, spBuffers);
             Cache::Instance().add(*img);
             out.push_back(img);
         }
@@ -623,10 +638,19 @@ std::vector<std::shared_ptr<Image>> Image::WrapExternalBufferMany(std::vector<st
         {
             std::shared_ptr<Image> img = std::static_pointer_cast<Image>(items.back());
             items.pop_back();
-            img->setWrapData(std::move(spBuffers), imgData);
+            img->setWrapData(spBuffers, imgData);
+            SeedImageFromBuffers(*img, spBuffers);
             out.push_back(img);
         }
     }
+
+    // Release any over-fetched or pre-existing not-in-use wrappers so their
+    // ExternalBuffer references (and thus the wrapped GPU buffers) are freed
+    // promptly.  Drop 'items' first so those shared_ptrs no longer count as
+    // "in use", then run the cleanup.  Images in 'out' are still in-use and
+    // will not be removed.
+    items.clear();
+    Cache::Instance().removeAllNotInUseMatching(key);
 
     return out;
 }
@@ -638,24 +662,25 @@ std::shared_ptr<Image> Image::WrapExternalBufferVector(std::vector<py::object> b
     {
         std::shared_ptr<ExternalBuffer> buffer = cast_py_object_as<ExternalBuffer>(obj);
         if (!buffer)
-            throw std::runtime_error("Input buffer doesn't provide cuda_array_interface or DLPack interfaces");
+            throw ImageError("Input buffer doesn't provide cuda_array_interface or DLPack interfaces");
         spBuffers.push_back(std::move(buffer));
     }
 
     std::vector<DLPackTensor> bufinfos;
 
-    for (size_t i = 0; i < spBuffers.size(); ++i)
+    for (const auto &buffer : spBuffers)
     {
-        bufinfos.emplace_back(spBuffers[i]->dlTensor());
+        bufinfos.emplace_back(buffer->dlTensor());
     }
 
-    nvcv::ImageDataStridedCuda imgData = CreateNVCVImageDataCuda(std::move(bufinfos), fmt);
+    nvcv::ImageDataStridedCuda imgData = CreateNVCVImageDataCuda(bufinfos, fmt);
 
     // This is the key of an image wrapper.
     // All image wrappers have the same key.
     Image::Key key;
 
     std::shared_ptr<CacheItem> item = Cache::Instance().fetchOne(key);
+    std::shared_ptr<Image>     img;
 
     // None found?
     if (!item)
@@ -663,16 +688,22 @@ std::shared_ptr<Image> Image::WrapExternalBufferVector(std::vector<py::object> b
         // Need to add wrappers into cache so that they don't get destroyed by
         // the cuda stream when they're last used, and python script isn't
         // holding a reference to them. If we don't do it, things might break.
-        std::shared_ptr<Image> img(new Image(std::move(spBuffers), imgData));
+        img = std::shared_ptr<Image>(new Image(spBuffers, imgData)); // NOSONAR: constructor is private.
         Cache::Instance().add(*img);
-        return img;
     }
     else
     {
-        std::shared_ptr<Image> img = std::static_pointer_cast<Image>(item);
-        img->setWrapData(std::move(spBuffers), imgData);
-        return img;
+        img = std::static_pointer_cast<Image>(item);
+        img->setWrapData(spBuffers, imgData);
     }
+    SeedImageFromBuffers(*img, spBuffers);
+
+    // Release any other not-in-use wrappers so their ExternalBuffer references
+    // (and thus the wrapped GPU buffers) are freed promptly.  The current img
+    // is in-use and will not be removed.
+    Cache::Instance().removeAllNotInUseMatching(key);
+
+    return img;
 }
 
 void Image::setWrapData(std::vector<std::shared_ptr<ExternalBuffer>> bufs, const nvcv::ImageDataStridedCuda &imgData)
@@ -680,11 +711,12 @@ void Image::setWrapData(std::vector<std::shared_ptr<ExternalBuffer>> bufs, const
     NVCV_ASSERT(m_wrapData);
 
     NVCV_ASSERT(bufs.size() >= 1);
-    m_wrapData->devType = bufs[0]->dlTensor().device.device_type;
+    const DLDeviceType devType = bufs[0]->dlTensor().device.device_type;
+    py::object         newObj;
 
     if (bufs.size() == 1)
     {
-        m_wrapData->obj = py::cast(bufs[0]);
+        newObj = py::cast(bufs[0]);
     }
     else
     {
@@ -693,16 +725,24 @@ void Image::setWrapData(std::vector<std::shared_ptr<ExternalBuffer>> bufs, const
             if (bufs[i]->dlTensor().device.device_type != bufs[0]->dlTensor().device.device_type
                 || bufs[i]->dlTensor().device.device_id != bufs[0]->dlTensor().device.device_id)
             {
-                throw std::runtime_error("All buffers must belong to the same device, but some don't.");
+                throw ImageError("All buffers must belong to the same device, but some don't.");
             }
         }
 
-        m_wrapData->obj = py::cast(std::move(bufs));
+        newObj = py::cast(std::move(bufs));
     }
+
+    nvcv::Image newImpl = nvcv::ImageWrapData(imgData);
+
+    // Cache::fetch only returns wrappers after their prior stream work has
+    // released them, so the old buffer's ordering state is safe to discard.
+    resetLastStreamForRebind();
+    m_wrapData->devType = devType;
+    m_wrapData->obj     = std::move(newObj);
 
     //We recreate the nvcv::Image wrapper (m_impl) because it's cheap.
     //It's not cheap to create nvcvpy::Image as it might have allocated expensive resources (cudaEvent_t in Resource parent).
-    m_impl = nvcv::ImageWrapData(imgData);
+    m_impl = std::move(newImpl);
 }
 
 std::shared_ptr<Image> Image::CreateHost(py::buffer buffer, nvcv::ImageFormat fmt, int rowAlign)
@@ -710,23 +750,24 @@ std::shared_ptr<Image> Image::CreateHost(py::buffer buffer, nvcv::ImageFormat fm
     return CreateHostVector(std::vector{buffer}, fmt, rowAlign);
 }
 
-std::shared_ptr<Image> Image::CreateHostVector(std::vector<py::buffer> buffers, nvcv::ImageFormat fmt, int rowAlign)
+std::shared_ptr<Image> Image::CreateHostVector(const std::vector<py::buffer> &buffers, nvcv::ImageFormat fmt,
+                                               int rowAlign)
 {
     std::vector<DLPackTensor> dlTensorList;
 
-    for (size_t i = 0; i < buffers.size(); ++i)
+    for (const auto &buffer : buffers)
     {
-        dlTensorList.emplace_back(buffers[i].request(), DLDevice{kDLCPU, 0});
+        dlTensorList.emplace_back(buffer.request(), DLDevice{kDLCPU, 0});
     }
 
-    nvcv::ImageDataStridedHost imgData = CreateNVCVImageDataHost(std::move(dlTensorList), fmt);
+    nvcv::ImageDataStridedHost imgData = CreateNVCVImageDataHost(dlTensorList, fmt);
 
     // We take this opportunity to remove all wrappers from cache.
     // They aren't reusable anyway.
     Image::Key key;
     Cache::Instance().removeAllNotInUseMatching(key);
 
-    std::shared_ptr<Image> img(new Image(std::move(buffers), imgData, rowAlign));
+    std::shared_ptr<Image> img(new Image(buffers, imgData, rowAlign)); // NOSONAR: constructor is private.
     Cache::Instance().add(*img);
     return img;
 }
@@ -761,6 +802,204 @@ std::ostream &operator<<(std::ostream &out, const Image &img)
 
 namespace {
 
+struct InferredBufferInfo
+{
+    std::vector<ssize_t> shape;
+    std::vector<ssize_t> strides;
+    nvcv::TensorLayout   layout;
+    py::dtype            dtype;
+};
+
+void ValidateExportLayout(const std::optional<nvcv::TensorLayout> &userLayout)
+{
+    if (!userLayout)
+    {
+        return;
+    }
+
+    if (!nvcv::TensorLayoutInfoImage::Create(*userLayout))
+    {
+        throw ImageError("Layout can't represent the planar images needed");
+    }
+}
+
+bool PlaneMatchesSingleBuffer(const nvcv::ImageDataStrided &imgData, const nvcv::ImagePlaneStrided &firstPlane, int p)
+{
+    const nvcv::ImagePlaneStrided &plane = imgData.plane(p);
+
+    return plane.width == firstPlane.width && plane.height == firstPlane.height
+        && plane.rowStride == firstPlane.rowStride && imgData.format().planeDataType(0).numChannels() < 2
+        && imgData.format().planeDataType(0) == imgData.format().planeDataType(p);
+}
+
+bool PlaneStrideMatchesSingleBuffer(const nvcv::ImageDataStrided &imgData, int p)
+{
+    intptr_t goldPlaneStride = imgData.plane(1).basePtr - imgData.plane(0).basePtr;
+    intptr_t curPlaneStride  = imgData.plane(p).basePtr - imgData.plane(p - 1).basePtr;
+    return curPlaneStride == goldPlaneStride;
+}
+
+bool CanExportAsSingleBuffer(const nvcv::ImageDataStrided &imgData)
+{
+    const nvcv::ImagePlaneStrided &firstPlane = imgData.plane(0);
+
+    for (int p = 1; p < imgData.numPlanes(); ++p)
+    {
+        if (!PlaneMatchesSingleBuffer(imgData, firstPlane, p))
+        {
+            return false;
+        }
+
+        if (p >= 2 && !PlaneStrideMatchesSingleBuffer(imgData, p))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+int PlaneNumChannelsForExport(const nvcv::ImageFormat &format, int p)
+{
+    switch (format.planePacking(p))
+    {
+    // These (YUYV, UYVY, ...) need some special treatment.
+    // Although it's 3 channels in the plane, it's actually two channels per pixel.
+    case nvcv::Packing::X8_Y8__X8_Z8:
+    case nvcv::Packing::Y8_X8__Z8_X8:
+        return 2;
+
+    default:
+        return format.planeNumChannels(p);
+    }
+}
+
+InferredBufferInfo InferSingleBufferInfo(const nvcv::ImageDataStrided &imgData, int p)
+{
+    const nvcv::ImagePlaneStrided &plane    = imgData.plane(p);
+    int                            planeBPP = imgData.format().planeDataType(p).strideBytes();
+
+    if (imgData.format().numChannels() == 1)
+    {
+        NVCV_ASSERT(imgData.numPlanes() == 1);
+
+        InferredBufferInfo info;
+        info.shape   = {plane.height, plane.width};
+        info.strides = {plane.rowStride, planeBPP};
+        info.layout  = nvcv::TensorLayout{"HW"};
+        info.dtype   = py::cast(imgData.format().planeDataType(p));
+        return info;
+    }
+
+    if (imgData.numPlanes() == 1)
+    {
+        int planeNumChannels = PlaneNumChannelsForExport(imgData.format(), p);
+        NVCV_ASSERT(planeNumChannels >= 2);
+
+        InferredBufferInfo info;
+        info.shape   = {plane.height, plane.width, planeNumChannels};
+        info.strides = {plane.rowStride, planeBPP, planeBPP / planeNumChannels};
+        info.layout  = nvcv::TensorLayout{"HWC"};
+        info.dtype   = py::cast(imgData.format().planeDataType(p).channelType(0));
+        return info;
+    }
+
+    NVCV_ASSERT(PlaneNumChannelsForExport(imgData.format(), p) == 1);
+
+    intptr_t planeStride = imgData.plane(1).basePtr - imgData.plane(0).basePtr;
+    NVCV_ASSERT(planeStride > 0);
+
+    InferredBufferInfo info;
+    info.shape   = {imgData.numPlanes(), plane.height, plane.width};
+    info.strides = {planeStride, plane.rowStride, planeBPP};
+    info.layout  = nvcv::TensorLayout{"CHW"};
+    info.dtype   = py::cast(imgData.format().planeDataType(p));
+    return info;
+}
+
+InferredBufferInfo InferPlaneBufferInfo(const nvcv::ImageDataStrided &imgData, int p)
+{
+    const nvcv::ImagePlaneStrided &plane            = imgData.plane(p);
+    int                            planeNumChannels = PlaneNumChannelsForExport(imgData.format(), p);
+    int                            planeBPP         = imgData.format().planeDataType(p).strideBytes();
+
+    NVCV_ASSERT(imgData.numPlanes() >= 2);
+
+    InferredBufferInfo info;
+    info.shape   = {plane.height, plane.width, planeNumChannels};
+    info.strides = {static_cast<ssize_t>(plane.rowStride), static_cast<ssize_t>(planeBPP),
+                    static_cast<ssize_t>(planeBPP / planeNumChannels)};
+    info.layout  = nvcv::TensorLayout{"HWC"};
+    info.dtype   = py::cast(imgData.format().planeDataType(p).channelType(0));
+    return info;
+}
+
+InferredBufferInfo InferBufferInfo(const nvcv::ImageDataStrided &imgData, int p, int numBuffers)
+{
+    if (numBuffers == 1)
+    {
+        return InferSingleBufferInfo(imgData, p);
+    }
+
+    return InferPlaneBufferInfo(imgData, p);
+}
+
+void ValidateRequiredLayoutDimensions(const InferredBufferInfo &inferred, const nvcv::TensorLayout &userLayout)
+{
+    for (int i = 0; i < inferred.layout.rank(); ++i)
+    {
+        if (inferred.shape[i] >= 2 && userLayout.find(inferred.layout[i]) < 0)
+        {
+            throw py::value_error(util::ConcatString("Layout need dimension '", inferred.layout[i], "'"));
+        }
+    }
+}
+
+InferredBufferInfo ApplyUserLayout(const InferredBufferInfo &inferred, const nvcv::TensorLayout &userLayout)
+{
+    InferredBufferInfo out{{}, {}, userLayout, inferred.dtype};
+    int                idxLastInferDim = -1;
+
+    ValidateRequiredLayoutDimensions(inferred, userLayout);
+
+    for (int i = 0; i < userLayout.rank(); ++i)
+    {
+        int idxInferDim = inferred.layout.find(userLayout[i]);
+
+        if (idxInferDim < 0)
+        {
+            out.shape.push_back(1);
+            // REVISIT: must do better than this
+            out.strides.push_back(0);
+            continue;
+        }
+
+        // The order of channels must be the same, despite of user layout having
+        // some other channels in the layout in between the channels in inferredLayout.
+        if (idxLastInferDim >= idxInferDim)
+        {
+            throw ImageError("Layout not compatible with image to be exported");
+        }
+
+        idxLastInferDim = idxInferDim;
+        out.shape.push_back(inferred.shape[idxInferDim]);
+        out.strides.push_back(inferred.strides[idxInferDim]);
+    }
+
+    return out;
+}
+
+InferredBufferInfo ResolveBufferInfoLayout(const InferredBufferInfo                &inferred,
+                                           const std::optional<nvcv::TensorLayout> &userLayout)
+{
+    if (userLayout)
+    {
+        return ApplyUserLayout(inferred, *userLayout);
+    }
+
+    return inferred;
+}
+
 std::vector<std::pair<py::buffer_info, nvcv::TensorLayout>> ToPyBufferInfo(const nvcv::ImageDataStrided     &imgData,
                                                                            std::optional<nvcv::TensorLayout> userLayout)
 {
@@ -769,217 +1008,57 @@ std::vector<std::pair<py::buffer_info, nvcv::TensorLayout>> ToPyBufferInfo(const
         return {};
     }
 
-    const nvcv::ImagePlaneStrided &firstPlane = imgData.plane(0);
-
-    std::optional<nvcv::TensorLayoutInfoImage> infoLayout;
-    if (userLayout)
-    {
-        if (auto tmp = nvcv::TensorLayoutInfoImage::Create(*userLayout))
-        {
-            infoLayout.emplace(std::move(*tmp));
-        }
-        else
-        {
-            throw std::runtime_error("Layout can't represent the planar images needed");
-        }
-    }
-
-    bool singleBuffer = true;
-
-    // Let's check if we can return only one buffer, depending
-    // on the planes dimensions, pitch and data type.
-    for (int p = 1; p < imgData.numPlanes(); ++p)
-    {
-        const nvcv::ImagePlaneStrided &plane = imgData.plane(p);
-
-        if (plane.width != firstPlane.width || plane.height != firstPlane.height
-            || plane.rowStride != firstPlane.rowStride || imgData.format().planeDataType(0).numChannels() >= 2
-            || imgData.format().planeDataType(0) != imgData.format().planeDataType(p))
-        {
-            singleBuffer = false;
-            break;
-        }
-
-        // check if using the same plane pitch
-        if (p >= 2)
-        {
-            intptr_t goldPlaneStrided = imgData.plane(1).basePtr - imgData.plane(0).basePtr;
-            intptr_t curPlaneStrided  = imgData.plane(p).basePtr - imgData.plane(p - 1).basePtr;
-            if (curPlaneStrided != goldPlaneStrided)
-            {
-                singleBuffer = false;
-                break;
-            }
-        }
-    }
+    ValidateExportLayout(userLayout);
 
     std::vector<std::pair<py::buffer_info, nvcv::TensorLayout>> out;
 
     // If not using a single buffer, we'll forcibly use one buffer per plane.
-    int numBuffers = singleBuffer ? 1 : imgData.numPlanes();
+    int numBuffers = CanExportAsSingleBuffer(imgData) ? 1 : imgData.numPlanes();
 
     for (int p = 0; p < numBuffers; ++p)
     {
-        int planeWidth       = imgData.plane(p).width;
-        int planeHeight      = imgData.plane(p).height;
-        int planeNumChannels = imgData.format().planeNumChannels(p);
-        // bytes per pixel in the plane
-        int planeBPP = imgData.format().planeDataType(p).strideBytes();
+        NVCV_ASSERT(numBuffers == 1 || imgData.numPlanes() == numBuffers);
 
-        switch (imgData.format().planePacking(p))
-        {
-        // These (YUYV, UYVY, ...) need some special treatment.
-        // Although it's 3 channels in the plane, it's actually
-        // two channels per pixel.
-        case nvcv::Packing::X8_Y8__X8_Z8:
-        case nvcv::Packing::Y8_X8__Z8_X8:
-            planeNumChannels = 2;
-            break;
-        default:
-            break;
-        }
+        InferredBufferInfo inferred = InferBufferInfo(imgData, p, numBuffers);
+        NVCV_ASSERT(static_cast<ssize_t>(inferred.shape.size()) == inferred.layout.rank());
+        NVCV_ASSERT(static_cast<ssize_t>(inferred.strides.size()) == inferred.layout.rank());
 
-        // Infer the layout and shape of this buffer
-        std::vector<ssize_t> inferredShape;
-        std::vector<ssize_t> inferredStrides;
-        nvcv::TensorLayout   inferredLayout;
-
-        py::dtype inferredDType;
-
-        if (numBuffers == 1)
-        {
-            if (imgData.format().numChannels() == 1)
-            {
-                NVCV_ASSERT(imgData.numPlanes() == 1);
-                inferredShape   = {planeHeight, planeWidth};
-                inferredStrides = {imgData.plane(p).rowStride, planeBPP};
-                inferredLayout  = nvcv::TensorLayout{"HW"};
-                inferredDType   = py::cast(imgData.format().planeDataType(p));
-            }
-            else if (imgData.numPlanes() == 1)
-            {
-                NVCV_ASSERT(planeNumChannels >= 2);
-                inferredShape   = {planeHeight, planeWidth, planeNumChannels};
-                inferredStrides = {imgData.plane(p).rowStride, planeBPP, planeBPP / planeNumChannels};
-                inferredLayout  = nvcv::TensorLayout{"HWC"};
-                inferredDType   = py::cast(imgData.format().planeDataType(p).channelType(0));
-            }
-            else
-            {
-                NVCV_ASSERT(planeNumChannels == 1);
-
-                intptr_t planeStride = imgData.plane(1).basePtr - imgData.plane(0).basePtr;
-                NVCV_ASSERT(planeStride > 0);
-
-                inferredShape   = {imgData.numPlanes(), planeHeight, planeWidth};
-                inferredStrides = {planeStride, imgData.plane(p).rowStride, planeBPP};
-                inferredLayout  = nvcv::TensorLayout{"CHW"};
-                inferredDType   = py::cast(imgData.format().planeDataType(p));
-            }
-        }
-        else
-        {
-            NVCV_ASSERT(imgData.numPlanes() >= 2);
-            NVCV_ASSERT(imgData.numPlanes() == numBuffers);
-
-            inferredShape = {planeHeight, planeWidth, planeNumChannels};
-            inferredStrides
-                = {(int64_t)imgData.plane(p).rowStride, (int64_t)planeBPP, (int64_t)planeBPP / planeNumChannels};
-            inferredLayout = nvcv::TensorLayout{"HWC"};
-            inferredDType  = py::cast(imgData.format().planeDataType(p).channelType(0));
-        }
-
-        NVCV_ASSERT((ssize_t)inferredShape.size() == inferredLayout.rank());
-        NVCV_ASSERT((ssize_t)inferredStrides.size() == inferredLayout.rank());
-
-        std::vector<ssize_t> shape;
-        std::vector<ssize_t> strides;
-        nvcv::TensorLayout   layout;
-
-        // Do we have to use the layout user has specified?
-        if (userLayout)
-        {
-            layout = *userLayout;
-
-            // Check if user layout has all required dimensions
-            for (int i = 0; i < inferredLayout.rank(); ++i)
-            {
-                if (inferredShape[i] >= 2 && userLayout->find(inferredLayout[i]) < 0)
-                {
-                    throw std::runtime_error(util::FormatString("Layout need dimension '%c'", inferredLayout[i]));
-                }
-            }
-
-            int idxLastInferDim = -1;
-
-            // Fill up the final shape and strides according to the user layout
-            for (int i = 0; i < userLayout->rank(); ++i)
-            {
-                int idxInferDim = inferredLayout.find((*userLayout)[i]);
-
-                if (idxInferDim < 0)
-                {
-                    shape.push_back(1);
-                    // TODO: must do better than this
-                    strides.push_back(0);
-                }
-                else
-                {
-                    // The order of channels must be the same, despite of
-                    // user layout having some other channels in the layout
-                    // in between the channels in inferredLayout.
-                    if (idxLastInferDim >= idxInferDim)
-                    {
-                        throw std::runtime_error("Layout not compatible with image to be exported");
-                    }
-                    idxLastInferDim = idxInferDim;
-
-                    shape.push_back(inferredShape[idxInferDim]);
-                    strides.push_back(inferredStrides[idxInferDim]);
-                }
-            }
-        }
-        else
-        {
-            layout  = inferredLayout;
-            shape   = inferredShape;
-            strides = inferredStrides;
-        }
+        InferredBufferInfo resolved = ResolveBufferInfoLayout(inferred, userLayout);
 
         // There's no direct way to construct a py::buffer_info from data together with a py::dtype.
         // To do that, we first construct a py::array (it accepts py::dtype), and use ".request()"
         // to retrieve the corresponding py::buffer_info.
         // To avoid spurious data copies in py::array ctor, we create this dummy owner.
         py::tuple tmpOwner = py::make_tuple();
-        py::array tmp(inferredDType, shape, strides, imgData.plane(p).basePtr, tmpOwner);
-        out.emplace_back(tmp.request(), layout);
+        py::array tmp(resolved.dtype, resolved.shape, resolved.strides, imgData.plane(p).basePtr, tmpOwner);
+        out.emplace_back(tmp.request(), resolved.layout);
     }
 
     return out;
 }
 
 std::vector<py::object> ToPython(const nvcv::ImageData &imgData, std::optional<nvcv::TensorLayout> userLayout,
-                                 py::object owner)
+                                 py::object owner, cudaStream_t exportStream, bool setExportStream)
 {
     std::vector<py::object> out;
 
     auto pitchData = imgData.cast<nvcv::ImageDataStrided>();
     if (!pitchData)
     {
-        throw std::runtime_error("Only images with pitch-linear formats can be exported");
+        throw ImageError("Only images with pitch-linear formats can be exported");
     }
 
     for (const auto &[info, layout] : ToPyBufferInfo(*pitchData, userLayout))
     {
         if (pitchData->cast<nvcv::ImageDataStridedCuda>())
         {
-            // TODO: set correct device_type and device_id
+            // REVISIT: set correct device_type and device_id
             out.emplace_back(ExternalBuffer::Create(
                 DLPackTensor{
                     info,
                     {kDLCUDA, 0}
             },
-                owner));
+                owner, exportStream, setExportStream));
         }
         else if (pitchData->cast<nvcv::ImageDataStridedHost>())
         {
@@ -988,7 +1067,7 @@ std::vector<py::object> ToPython(const nvcv::ImageData &imgData, std::optional<n
         }
         else
         {
-            throw std::runtime_error("Buffer type not supported");
+            throw ImageError("Buffer type not supported");
         }
     }
 
@@ -1004,7 +1083,7 @@ py::object Image::cuda(std::optional<nvcv::TensorLayout> layout) const
     {
         if (!IsCudaAccessible(m_wrapData->devType))
         {
-            throw std::runtime_error("Image data can't be exported, it's not cuda-accessible");
+            throw ImageError("Image data can't be exported, it's not cuda-accessible");
         }
 
         // That's what we'll return, as m_impl is wrapping it.
@@ -1015,10 +1094,15 @@ py::object Image::cuda(std::optional<nvcv::TensorLayout> layout) const
         auto imgData = m_impl.exportData<nvcv::ImageDataStridedCuda>();
         if (!imgData)
         {
-            throw std::runtime_error("Image data can't be exported, it's not cuda-accessible");
+            throw ImageError("Image data can't be exported, it's not cuda-accessible");
         }
 
-        std::vector<py::object> out = ToPython(*imgData, layout, py::cast(*this));
+        // Advertise the stream the image's data was last written on so
+        // downstream consumers (cupy/torch) can sync via CAI `stream`.
+        cudaStream_t lastStream = this->getLastStreamHandle();
+        bool         setStream  = lastStream != nullptr;
+
+        std::vector<py::object> out = ToPython(*imgData, layout, py::cast(*this), lastStream, setStream);
 
         if (out.size() == 1)
         {
@@ -1036,7 +1120,7 @@ py::object Image::cpu(std::optional<nvcv::TensorLayout> layout) const
     auto devStrided = m_impl.exportData<nvcv::ImageDataStridedCuda>();
     if (!devStrided)
     {
-        throw std::runtime_error("Only images with pitch-linear formats can be exported to CPU");
+        throw ImageError("Only images with pitch-linear formats can be exported to CPU");
     }
 
     std::vector<std::pair<py::buffer_info, nvcv::TensorLayout>> vDevBufInfo = ToPyBufferInfo(*devStrided, layout);
@@ -1053,8 +1137,8 @@ py::object Image::cpu(std::optional<nvcv::TensorLayout> layout) const
         py::buffer_info      hostBufInfo = hostData.request();
         std::vector<ssize_t> hostStrides = hostBufInfo.strides;
 
-        auto infoShape
-            = nvcv::TensorShapeInfoImagePlanar::Create(nvcv::TensorShape(shape.data(), shape.size(), bufLayout));
+        auto infoShape = nvcv::TensorShapeInfoImagePlanar::Create(
+            nvcv::TensorShape(shape.data(), static_cast<int32_t>(shape.size()), bufLayout));
         NVCV_ASSERT(infoShape);
 
         int nplanes = infoShape->numPlanes();
@@ -1064,7 +1148,8 @@ py::object Image::cpu(std::optional<nvcv::TensorLayout> layout) const
         ssize_t colStride = devStrides[infoShape->infoLayout().idxWidth()];
         NVCV_ASSERT(colStride == hostStrides[infoShape->infoLayout().idxWidth()]); // both must be packed
 
-        ssize_t hostRowStride, devRowStride;
+        ssize_t hostRowStride;
+        ssize_t devRowStride;
         if (infoShape->infoLayout().idxHeight() >= 0)
         {
             devRowStride  = devStrides[infoShape->infoLayout().idxHeight()];
@@ -1114,18 +1199,21 @@ void Image::Export(py::module &m)
         .def_static("zeros", &Image::Zeros, "size"_a, "format"_a, "rowalign"_a = 0,
                     "Create an image filled with zeros with a given size, format and optional row align")
         .def("__repr__", &util::ToString<Image>)
-        .def("cuda", &Image::cuda, "layout"_a = std::nullopt, "The image on the CUDA device")
-        .def("cpu", &Image::cpu, "layout"_a = std::nullopt, "The image on the CPU")
+        .def("cuda", ::cvcudapy::NvtxTrace("cvcuda.Image.cuda", &Image::cuda), "layout"_a = std::nullopt,
+             "The image on the CUDA device")
+        .def("cpu", ::cvcudapy::NvtxTrace("cvcuda.Image.cpu", &Image::cpu), "layout"_a = std::nullopt,
+             "The image on the CPU")
         .def_property_readonly("size", &Image::size, "Read-only property that returns the size of the image")
         .def_property_readonly("width", &Image::width, "Read-only property that returns the width of the image")
         .def_property_readonly("height", &Image::height, "Read-only property that returns the height of the image")
         .def_property_readonly("format", &Image::format, "Read-only property that returns the format of the image");
 
     // Make sure buffer lifetime is tied to image's (keep_alive)
-    m.def("as_image", &Image::WrapExternalBuffer, "buffer"_a, "format"_a = nvcv::FMT_NONE, py::keep_alive<0, 1>(),
-          "Wrap an external buffer as an image and tie the buffer lifetime to the image");
-    m.def("as_image", &Image::WrapExternalBufferVector, py::arg_v("buffer", std::vector<py::object>{}),
+    m.def("as_image", ::cvcudapy::NvtxTrace("cvcuda.as_image", &Image::WrapExternalBuffer), "buffer"_a,
           "format"_a = nvcv::FMT_NONE, py::keep_alive<0, 1>(),
+          "Wrap an external buffer as an image and tie the buffer lifetime to the image");
+    m.def("as_image", ::cvcudapy::NvtxTrace("cvcuda.as_image", &Image::WrapExternalBufferVector),
+          py::arg_v("buffer", std::vector<py::object>{}), "format"_a = nvcv::FMT_NONE, py::keep_alive<0, 1>(),
           "Wrap a vector of external buffers as an image and tie the buffer lifetime to the image");
 }
 

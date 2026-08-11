@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "priv/OpLaplacian.hpp"
 
+#include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <nvcv/Exception.hpp>
@@ -29,7 +30,7 @@ namespace priv = cvcuda::priv;
 CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaLaplacianCreate, (NVCVOperatorHandle * handle))
 {
     return nvcv::ProtectCall(
-        [&]
+        [&handle]
         {
             if (handle == nullptr)
             {
@@ -37,7 +38,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaLaplacianCreate, (NVCVOperatorHandle *
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            *handle = reinterpret_cast<NVCVOperatorHandle>(new priv::Laplacian());
+            *handle = priv::CreateOperatorHandle<priv::Laplacian>();
         });
 }
 
@@ -45,11 +46,14 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaLaplacianSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in, NVCVTensorHandle out,
                    int32_t ksize, float scale, NVCVBorderType borderMode))
 {
+    CVCUDA_NVTX_RANGE("cvcudaLaplacianSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&out, &in, &handle, &stream, &ksize, &scale, &borderMode]
         {
-            nvcv::TensorWrapHandle output(out), input(in);
-            priv::ToDynamicRef<priv::Laplacian>(handle)(stream, input, output, ksize, scale, borderMode);
+            nvcv::TensorWrapHandle output(out);
+            nvcv::TensorWrapHandle input(in);
+            priv::ToDynamicRef<priv::Laplacian>(handle)(stream, input.resource(), output.resource(), ksize, scale,
+                                                        borderMode);
         });
 }
 
@@ -57,11 +61,15 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaLaplacianVarShapeSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVImageBatchHandle in, NVCVImageBatchHandle out,
                    NVCVTensorHandle ksize, NVCVTensorHandle scale, NVCVBorderType borderMode))
 {
+    CVCUDA_NVTX_RANGE("cvcudaLaplacianVarShapeSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&in, &out, &ksize, &scale, &handle, &stream, &borderMode]
         {
-            nvcv::ImageBatchVarShapeWrapHandle inWrap(in), outWrap(out);
-            nvcv::TensorWrapHandle             ksizeWrap(ksize), scaleWrap(scale);
-            priv::ToDynamicRef<priv::Laplacian>(handle)(stream, inWrap, outWrap, ksizeWrap, scaleWrap, borderMode);
+            nvcv::ImageBatchVarShapeWrapHandle inWrap(in);
+            nvcv::ImageBatchVarShapeWrapHandle outWrap(out);
+            nvcv::TensorWrapHandle             ksizeWrap(ksize);
+            nvcv::TensorWrapHandle             scaleWrap(scale);
+            priv::ToDynamicRef<priv::Laplacian>(handle)(stream, inWrap.resource(), outWrap.resource(),
+                                                        ksizeWrap.resource(), scaleWrap.resource(), borderMode);
         });
 }

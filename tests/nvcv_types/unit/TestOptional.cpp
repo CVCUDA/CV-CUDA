@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,6 +19,7 @@
 
 #include <nvcv/Optional.hpp>
 
+#include <stdexcept>
 #include <vector>
 
 TEST(Optional, default_no_value)
@@ -50,7 +51,8 @@ TEST(Optional, assignment)
     ASSERT_TRUE(opt.hasValue());
     ASSERT_EQ(*opt, test_value);
 
-    nvcv::Optional<std::vector<int>> o1, o2;
+    nvcv::Optional<std::vector<int>> o1;
+    nvcv::Optional<std::vector<int>> o2;
     o1 = opt;
     EXPECT_TRUE(o1.hasValue());
     EXPECT_EQ(o1.value(), test_value);
@@ -60,8 +62,8 @@ TEST(Optional, assignment)
     o2 = std::move(opt);
     EXPECT_TRUE(o1.hasValue());
     EXPECT_EQ(o1.value(), test_value);
-    EXPECT_TRUE(opt.hasValue()) << "A moved-out optional still has a value.";
-    EXPECT_TRUE(opt.value().empty()) << "The value wasn't moved out properly";
+    EXPECT_TRUE(opt.hasValue());      // NOSONAR: this test verifies moved-from state.
+    EXPECT_TRUE(opt.value().empty()); // NOSONAR: this test verifies moved-from state.
 
     opt = nvcv::NullOpt;
     EXPECT_FALSE(opt.hasValue());
@@ -70,7 +72,7 @@ TEST(Optional, assignment)
     EXPECT_TRUE(opt.hasValue());
     EXPECT_EQ(opt.value(), test_value2);
 
-    nvcv::Optional<char> c = 42;
+    nvcv::Optional<char> c{42};
     nvcv::Optional<int>  i;
     i = c;
     EXPECT_TRUE(i.hasValue());
@@ -103,6 +105,37 @@ TEST(Optional, equality)
     EXPECT_TRUE(nvcv::NullOpt != optA);
 }
 
-// TODO need way more tests.
+namespace {
+
+struct ThrowingCtorError : std::runtime_error
+{
+    ThrowingCtorError()
+        : std::runtime_error("construction failed")
+    {
+    }
+};
+
+struct ThrowingCtor
+{
+    explicit ThrowingCtor(bool shouldThrow)
+    {
+        if (shouldThrow)
+        {
+            throw ThrowingCtorError{};
+        }
+    }
+};
+
+} // namespace
+
+TEST(Optional, emplace_leaves_empty_when_replacement_construction_throws)
+{
+    nvcv::Optional<ThrowingCtor> opt(nvcv::detail::InPlace, false);
+
+    EXPECT_THROW(opt.emplace(true), std::runtime_error);
+    EXPECT_FALSE(opt.hasValue());
+}
+
+// REVISIT need way more tests.
 // We're not writing them now because if we can upgrade public API to c++17,
 // we won't need our Optional.

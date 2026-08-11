@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+#include "Nvtx.hpp"
 #include "OpResizeCropConvertReformat.hpp"
 #include "legacy/CvCudaLegacy.h"
 #include "legacy/CvCudaLegacyHelpers.hpp"
@@ -121,6 +122,146 @@ private:
     DstT  *m_dst;
 };
 
+template<typename PixelT, typename BaseT>
+__device__ __forceinline__ PixelT MakePlanarPixel(const BaseT *plane0, int64_t planeStride)
+{
+    static_assert(cuda::NumElements<PixelT> == 1 || cuda::NumElements<PixelT> == 3);
+
+    if constexpr (cuda::NumElements<PixelT> == 1)
+    {
+        return PixelT{plane0[0]};
+    }
+    else
+    {
+        return PixelT{plane0[0], plane0[planeStride], plane0[2 * planeStride]};
+    }
+}
+
+template<typename SrcT>
+class TensorPlanarSrc
+{
+public:
+    using ValueType = SrcT;
+    using BaseT     = cuda::BaseType<SrcT>;
+
+    TensorPlanarSrc(const nvcv::TensorDataStridedCuda &srcData,
+                    const nvcv::TensorDataAccessStridedImagePlanar &srcAccess)
+        : m_src{reinterpret_cast<const BaseT *>(srcData.basePtr())}
+        , m_sampleStride{srcAccess.sampleStride() / static_cast<int64_t>(sizeof(BaseT))}
+        , m_planeStride{srcAccess.planeStride() / static_cast<int64_t>(sizeof(BaseT))}
+        , m_rowStride{srcAccess.rowStride() / static_cast<int64_t>(sizeof(BaseT))}
+        , m_colStride{srcAccess.colStride() / static_cast<int64_t>(sizeof(BaseT))}
+    {
+    }
+
+    __device__ __forceinline__ SrcT read(int n, int y, int x) const
+    {
+        const BaseT *plane0 = m_src + n * m_sampleStride + y * m_rowStride + x * m_colStride;
+        return MakePlanarPixel<SrcT>(plane0, m_planeStride);
+    }
+
+private:
+    const BaseT *m_src;
+    int64_t      m_sampleStride;
+    int64_t      m_planeStride;
+    int64_t      m_rowStride;
+    int64_t      m_colStride;
+};
+
+template<typename SrcT>
+class ImageBatchVarShapePlanarSrc
+{
+public:
+    using ValueType = SrcT;
+    using BaseT     = cuda::BaseType<SrcT>;
+
+    explicit ImageBatchVarShapePlanarSrc(const nvcv::ImageBatchVarShapeDataStridedCuda &srcData)
+        : m_src{srcData}
+    {
+    }
+
+    __host__ __device__ int width(int s) const
+    {
+        return m_src.width(s, 0);
+    }
+
+    __host__ __device__ int height(int s) const
+    {
+        return m_src.height(s, 0);
+    }
+
+    __device__ __forceinline__ SrcT read(int n, int y, int x) const
+    {
+        const BaseT *plane0 = m_src.ptr(n, 0, y, x);
+
+        if constexpr (cuda::NumElements<SrcT> == 1)
+        {
+            return SrcT{plane0[0]};
+        }
+        else
+        {
+            return SrcT{plane0[0], *m_src.ptr(n, 1, y, x), *m_src.ptr(n, 2, y, x)};
+        }
+    }
+
+private:
+    cuda::ImageBatchVarShapeWrap<const BaseT> m_src;
+};
+
+template<class SrcWrapper>
+__device__ __forceinline__ std::remove_cv_t<typename SrcWrapper::ValueType>
+ReadPixel(const SrcWrapper &src, int n, int y, int x)
+{
+    return *src.ptr(n, y, x);
+}
+
+template<typename SrcT>
+__device__ __forceinline__ SrcT ReadPixel(const TensorPlanarSrc<SrcT> &src, int n, int y, int x)
+{
+    return src.read(n, y, x);
+}
+
+template<typename SrcT>
+__device__ __forceinline__ SrcT ReadPixel(const ImageBatchVarShapePlanarSrc<SrcT> &src, int n, int y, int x)
+{
+    return src.read(n, y, x);
+}
+
+template<class DstMap, class SrcWrapper>
+__device__ __forceinline__ void WriteBilinearPixel(DstMap dst, const SrcWrapper &src, int n, int dstY, int dstX,
+                                                   float fx, float fy, int srcW, int srcH, float scale, float offset,
+                                                   bool srcCast)
+{
+    using SrcT = std::remove_cv_t<typename SrcWrapper::ValueType>;
+
+    int sx0 = __float2int_rd(fx);
+    int sy0 = __float2int_rd(fy);
+    int sx1 = cuda::min(sx0 + 1, srcW - 1);
+    int sy1 = cuda::min(sy0 + 1, srcH - 1);
+
+    fx -= sx0;
+    fy -= sy0;
+    sx0 = cuda::max(0, sx0);
+    sy0 = cuda::max(0, sy0);
+    sx1 = sx1 > sx0 ? sx1 : sx0;
+
+    const SrcT src00 = ReadPixel(src, n, sy0, sx0);
+    const SrcT src01 = ReadPixel(src, n, sy0, sx1);
+    const SrcT src10 = ReadPixel(src, n, sy1, sx0);
+    const SrcT src11 = ReadPixel(src, n, sy1, sx1);
+
+    if (srcCast)
+    {
+        dst(n, dstY, dstX, scale * cuda::SaturateCast<SrcT>((1-fy) * ((1-fx) * src00 + src01 * fx)
+                                                            + fy  * ((1-fx) * src10 + src11 * fx)) + offset);
+    }
+    else
+    {
+        dst(n, dstY, dstX, scale * ((1-fy) * ((1-fx) * src00 + src01 * fx)
+                                    + fy  * ((1-fx) * src10 + src11 * fx)) + offset);
+    }
+}
+
 //******************** Tensor Source ********************//
 
 //******************** NN = Nearest Neighbor (TensorWrap)
@@ -140,7 +281,7 @@ __global__ void resizeCrop_NN(DstMap dst, SrcWrapper src,
         const int sy = __float2int_rd((dst_y + crop.y + 0.5f) * resize.y);
 
         // Rescale, channel manipulation, convert type, and reformat.
-        dst(blockIdx.z, dst_y, dst_x, scale * *src.ptr((int)blockIdx.z, sy, sx) + offset);
+        dst(blockIdx.z, dst_y, dst_x, scale * ReadPixel(src, (int)blockIdx.z, sy, sx) + offset);
     }
 } // resizeCrop_NN
 
@@ -150,8 +291,6 @@ __global__ void resizeCrop_bilinear(DstMap dst, SrcWrapper src, const int src_w,
                                     const float2 resize, const int2 crop,
                                     const float scale, const float offset, bool src_cast)
 {
-    using SrcT = typename SrcWrapper::ValueType;
-
     const int dst_x = blockIdx.x * blockDim.x + threadIdx.x;
     const int dst_y = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -162,29 +301,8 @@ __global__ void resizeCrop_bilinear(DstMap dst, SrcWrapper src, const int src_w,
         float fx = (dst_x + crop.x + 0.5f) * resize.x - 0.5f;
         float fy = (dst_y + crop.y + 0.5f) * resize.y - 0.5f;
 
-        int sx0 = __float2int_rd(fx);
-        int sy0 = __float2int_rd(fy);
-        int sx1 = cuda::min(sx0 + 1, src_w - 1);
-        int sy1 = cuda::min(sy0 + 1, src_h - 1);
-
-        fx -= sx0;
-        fy -= sy0;
-        sx0 = cuda::max(0, sx0);
-        sy0 = cuda::max(0, sy0);
-        sx1 = (sx1 > sx0);
-
-        // Set up source row pointers.
-        const SrcT *ptr0 = src.ptr((int)blockIdx.z, sy0, sx0); // Pointer in upper row.
-        const SrcT *ptr1 = src.ptr((int)blockIdx.z, sy1, sx0); // Pointer in lower row.
-
         // Bi-linear interpolation, rescale, channel manipulation, convert type, and reformat.
-        if (src_cast)
-            dst(blockIdx.z, dst_y, dst_x,
-                scale * cuda::SaturateCast<SrcT>((1-fy) * ((1-fx) * ptr0[0] + ptr0[sx1] * fx)
-                                                  + fy  * ((1-fx) * ptr1[0] + ptr1[sx1] * fx)) + offset);
-        else
-            dst(blockIdx.z, dst_y, dst_x, scale * ((1-fy) * ((1-fx) * ptr0[0] + ptr0[sx1] * fx)
-                                                    + fy  * ((1-fx) * ptr1[0] + ptr1[sx1] * fx)) + offset);
+        WriteBilinearPixel(dst, src, (int)blockIdx.z, dst_y, dst_x, fx, fy, src_w, src_h, scale, offset, src_cast);
     }
 } // resizeCrop_bilinear
 
@@ -213,7 +331,7 @@ __global__ void resizeCrop_NN_varShape(DstMap dst, SrcWrapper src,
         const int sy = __float2int_rd((dst_y + crop.y + 0.5f) * resize_y);
 
         // Rescale, channel manipulation, convert type, and reformat.
-        dst(blockIdx.z, dst_y, dst_x, scale * *src.ptr((int)blockIdx.z, sy, sx) + offset);
+        dst(blockIdx.z, dst_y, dst_x, scale * ReadPixel(src, (int)blockIdx.z, sy, sx) + offset);
     }
 } // resizeCrop_NN_varShape
 
@@ -223,8 +341,6 @@ __global__ void resizeCrop_bilinear_varShape(DstMap dst, SrcWrapper src,
                                              const NVCVSize2D resize, const int2 crop,
                                              float scale, float offset, bool src_cast)
 {
-    using SrcT = typename SrcWrapper::ValueType;
-
     const int dst_x = blockIdx.x * blockDim.x + threadIdx.x;
     const int dst_y = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -242,31 +358,50 @@ __global__ void resizeCrop_bilinear_varShape(DstMap dst, SrcWrapper src,
         float fx = (dst_x + crop.x + 0.5f) * resize_x - 0.5f;
         float fy = (dst_y + crop.y + 0.5f) * resize_y - 0.5f;
 
-        int sx0 = __float2int_rd(fx);
-        int sy0 = __float2int_rd(fy);
-        int sx1 = cuda::min(sx0 + 1, src_w - 1);
-        int sy1 = cuda::min(sy0 + 1, src_h - 1);
-
-        fx -= sx0;
-        fy -= sy0;
-        sx0 = cuda::max(0, sx0);
-        sy0 = cuda::max(0, sy0);
-        sx1 = (sx1 > sx0);
-
-        // Set up source row pointers.
-        const SrcT *ptr0 = src.ptr((int)blockIdx.z, sy0, sx0); // Pointer in upper row.
-        const SrcT *ptr1 = src.ptr((int)blockIdx.z, sy1, sx0); // Pointer in lower row.
-
         // Bi-linear interpolation, rescale, channel manipulation, convert type, and reformat.
-        if (src_cast)
-            dst(blockIdx.z, dst_y, dst_x,
-                scale * cuda::SaturateCast<SrcT>((1-fy) * ((1-fx) * ptr0[0] + ptr0[sx1] * fx)
-                                                  + fy  * ((1-fx) * ptr1[0] + ptr1[sx1] * fx)) + offset);
-        else
-            dst(blockIdx.z, dst_y, dst_x, scale * ((1-fy) * ((1-fx) * ptr0[0] + ptr0[sx1] * fx)
-                                                    + fy  * ((1-fx) * ptr1[0] + ptr1[sx1] * fx)) + offset);
+        WriteBilinearPixel(dst, src, (int)blockIdx.z, dst_y, dst_x, fx, fy, src_w, src_h, scale, offset, src_cast);
     }
 } // resizeCrop_bilinear_varShape
+
+template<class DstMap, class SrcWrapper>
+void LaunchTensorResizeCrop(DstMap dst, SrcWrapper src, const dim3 &gridSize, const dim3 &blockSize,
+                            cudaStream_t stream, NVCVInterpolationType interp, int src_w, int src_h, float2 resize,
+                            int2 cropPos, float scale, float offset, bool srcCast)
+{
+    switch (interp)
+    {
+    case NVCV_INTERP_NEAREST:
+        resizeCrop_NN<<<gridSize, blockSize, 0, stream>>>(dst, src, resize, cropPos, scale, offset);
+        break;
+
+    case NVCV_INTERP_LINEAR:
+        resizeCrop_bilinear<<<gridSize, blockSize, 0, stream>>>(dst, src, src_w, src_h, resize, cropPos, scale, offset,
+                                                                srcCast);
+        break;
+    default:
+        break;
+    } // switch
+}
+
+template<class DstMap, class SrcWrapper>
+void LaunchVarShapeResizeCrop(DstMap dst, SrcWrapper src, const dim3 &gridSize, const dim3 &blockSize,
+                              cudaStream_t stream, NVCVInterpolationType interp, NVCVSize2D resizeDim, int2 cropPos,
+                              float scale, float offset, bool srcCast)
+{
+    switch (interp)
+    {
+    case NVCV_INTERP_NEAREST:
+        resizeCrop_NN_varShape<<<gridSize, blockSize, 0, stream>>>(dst, src, resizeDim, cropPos, scale, offset);
+        break;
+
+    case NVCV_INTERP_LINEAR:
+        resizeCrop_bilinear_varShape<<<gridSize, blockSize, 0, stream>>>(dst, src, resizeDim, cropPos, scale, offset,
+                                                                         srcCast);
+        break;
+    default:
+        break;
+    } // switch
+}
 
 // clang-format on
 
@@ -319,23 +454,23 @@ void resizeCropConvertReformat(const nvcv::TensorDataStridedCuda &srcData, const
     const dim3 blockSize(BLOCK_WIDTH, THREADS_PER_BLOCK / BLOCK_WIDTH, 1);
     const dim3 gridSize(util::DivUp(dst_w, blockSize.x), util::DivUp(dst_h, blockSize.y), samples);
 
-    auto src = cuda::CreateTensorWrapNHW<const SrcT, StrideT>(srcData);
-
     // Note: resize is fundamentally a gather memory operation, with a little bit of compute
     //       our goals are to (a) maximize throughput, and (b) minimize occupancy for the same performance
-    switch (interp)
+    // The channel dispatcher uses scalar SrcT only for a single-channel input, which has one plane.
+    if constexpr (NumElems > 1)
     {
-    case NVCV_INTERP_NEAREST:
-        resizeCrop_NN<<<gridSize, blockSize, 0, stream>>>(dst, src, resize, cropPos, scale, offset);
-        break;
+        if (srcAccess->numPlanes() > 1)
+        {
+            TensorPlanarSrc<SrcT> src{srcData, *srcAccess};
+            LaunchTensorResizeCrop(dst, src, gridSize, blockSize, stream, interp, src_w, src_h, resize, cropPos, scale,
+                                   offset, srcCast);
+            return;
+        }
+    }
 
-    case NVCV_INTERP_LINEAR:
-        resizeCrop_bilinear<<<gridSize, blockSize, 0, stream>>>(dst, src, src_w, src_h, resize, cropPos, scale, offset,
-                                                                srcCast);
-        break;
-    default:
-        break;
-    } //switch
+    auto src = cuda::CreateTensorWrapNHW<const SrcT, StrideT>(srcData);
+    LaunchTensorResizeCrop(dst, src, gridSize, blockSize, stream, interp, src_w, src_h, resize, cropPos, scale, offset,
+                           srcCast);
 } //resize
 
 template<typename SrcT, typename DstT>
@@ -376,26 +511,25 @@ void resizeCropConvertReformat(const nvcv::ImageBatchVarShapeDataStridedCuda &sr
     DstMapT dst{dstPtr, addN, addH, addW, addC, manip, dst_w, dst_h};
 
     const int THREADS_PER_BLOCK = 256; // Performance degrades above 256 and below 16 (GMEM speed limited)
-    const int BLOCK_WIDTH       = 8;   // as in 32x4 or 32x8 or 8x32.
+    const int BLOCK_WIDTH       = 32;  // Keep each warp on one contiguous output row.
 
     const dim3 blockSize(BLOCK_WIDTH, THREADS_PER_BLOCK / BLOCK_WIDTH, 1);
     const dim3 gridSize(util::DivUp(dst_w, blockSize.x), util::DivUp(dst_h, blockSize.y), samples);
 
-    cuda::ImageBatchVarShapeWrap<const SrcT> src(srcData);
-
-    switch (interp)
+    // The channel dispatcher uses scalar SrcT only for a single-channel input, which has one plane.
+    if constexpr (NumElems > 1)
     {
-    case NVCV_INTERP_NEAREST:
-        resizeCrop_NN_varShape<<<gridSize, blockSize, 0, stream>>>(dst, src, resizeDim, cropPos, scale, offset);
-        break;
+        if (srcFrmt.numPlanes() > 1)
+        {
+            ImageBatchVarShapePlanarSrc<SrcT> src(srcData);
+            LaunchVarShapeResizeCrop(dst, src, gridSize, blockSize, stream, interp, resizeDim, cropPos, scale, offset,
+                                     srcCast);
+            return;
+        }
+    }
 
-    case NVCV_INTERP_LINEAR:
-        resizeCrop_bilinear_varShape<<<gridSize, blockSize, 0, stream>>>(dst, src, resizeDim, cropPos, scale, offset,
-                                                                         srcCast);
-        break;
-    default:
-        break;
-    } // switch
+    cuda::ImageBatchVarShapeWrap<const SrcT> src(srcData);
+    LaunchVarShapeResizeCrop(dst, src, gridSize, blockSize, stream, interp, resizeDim, cropPos, scale, offset, srcCast);
 }
 
 } // anonymous namespace
@@ -411,6 +545,7 @@ void ResizeCropConvertReformat::operator()(cudaStream_t stream, const nvcv::Tens
                                            const int2 cropPos, const NVCVChannelManip manip, float scale, float offset,
                                            bool srcCast) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::ResizeCropConvertReformat::operator()[Tensor]");
     auto srcData = src.exportData<nvcv::TensorDataStridedCuda>();
     if (!srcData)
     {
@@ -449,10 +584,10 @@ void ResizeCropConvertReformat::operator()(cudaStream_t stream, const nvcv::Tens
         throw nvcv::Exception(nvcv::Status::ERROR_NOT_COMPATIBLE, "%s", msg.c_str());
     }
 
-    if (channels != 3)
+    if (channels != 1 && channels != 3)
     {
-        std::string msg = "Only three-channel input is currently supported: Provided " + std::to_string(channels)
-                        + " input channels";
+        std::string msg
+            = "Only 1- or 3-channel input is supported: Provided " + std::to_string(channels) + " input channels";
         throw nvcv::Exception(nvcv::Status::ERROR_NOT_COMPATIBLE, "%s", msg.c_str());
     }
 
@@ -472,10 +607,12 @@ void ResizeCropConvertReformat::operator()(cudaStream_t stream, const nvcv::Tens
     nvcv::TensorLayout srcLayout = srcData->layout();
     nvcv::TensorLayout dstLayout = dstData->layout();
 
-    if (!(srcLayout == NVCV_TENSOR_NHWC || srcLayout == NVCV_TENSOR_HWC))
+    if (!(srcLayout == NVCV_TENSOR_NHWC || srcLayout == NVCV_TENSOR_HWC || srcLayout == NVCV_TENSOR_NCHW
+          || srcLayout == NVCV_TENSOR_CHW))
     {
         const char *layout = nvcvTensorLayoutGetName(&srcLayout.m_layout);
-        std::string msg    = "Input tensor must have 'NHWC' or 'HWC' layout: Layout provided " + std::string(layout);
+        std::string msg
+            = "Input tensor must have 'NHWC', 'NCHW', 'HWC', or 'CHW' layout: Layout provided " + std::string(layout);
         throw nvcv::Exception(nvcv::Status::ERROR_NOT_COMPATIBLE, "%s", msg.c_str());
     }
 
@@ -531,15 +668,23 @@ void ResizeCropConvertReformat::operator()(cudaStream_t stream, const nvcv::Tens
 
     if (srcType == cuda_op::kCV_8U)
     {
-        if (dstType == cuda_op::kCV_8U)
+        if (channels == 1)
         {
-            resizeCropConvertReformat<uchar3, uint8_t>(*srcData, *dstData, resizeDim, interp, cropPos, manip, scale,
-                                                       offset, srcCast, stream);
+            if (dstType == cuda_op::kCV_8U)
+                resizeCropConvertReformat<uchar1, uint8_t>(*srcData, *dstData, resizeDim, interp, cropPos, manip, scale,
+                                                           offset, srcCast, stream);
+            else if (dstType == cuda_op::kCV_32F)
+                resizeCropConvertReformat<uchar1, float>(*srcData, *dstData, resizeDim, interp, cropPos, manip, scale,
+                                                         offset, srcCast, stream);
         }
-        else if (dstType == cuda_op::kCV_32F)
+        else
         {
-            resizeCropConvertReformat<uchar3, float>(*srcData, *dstData, resizeDim, interp, cropPos, manip, scale,
-                                                     offset, srcCast, stream);
+            if (dstType == cuda_op::kCV_8U)
+                resizeCropConvertReformat<uchar3, uint8_t>(*srcData, *dstData, resizeDim, interp, cropPos, manip, scale,
+                                                           offset, srcCast, stream);
+            else if (dstType == cuda_op::kCV_32F)
+                resizeCropConvertReformat<uchar3, float>(*srcData, *dstData, resizeDim, interp, cropPos, manip, scale,
+                                                         offset, srcCast, stream);
         }
     }
 }
@@ -549,6 +694,7 @@ void ResizeCropConvertReformat::operator()(cudaStream_t stream, const nvcv::Imag
                                            const NVCVInterpolationType interp, const int2 cropPos,
                                            const NVCVChannelManip manip, float scale, float offset, bool srcCast) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::ResizeCropConvertReformat::operator()[ImageBatchVarShape]");
     auto srcData = src.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (!srcData)
     {
@@ -594,10 +740,10 @@ void ResizeCropConvertReformat::operator()(cudaStream_t stream, const nvcv::Imag
         throw nvcv::Exception(nvcv::Status::ERROR_NOT_COMPATIBLE, "%s", msg.c_str());
     }
 
-    if (channels != 3)
+    if (channels != 1 && channels != 3)
     {
-        std::string msg = "Only three-channel input is currently supported: Provided " + std::to_string(channels)
-                        + " input channels";
+        std::string msg
+            = "Only 1- or 3-channel input is supported: Provided " + std::to_string(channels) + " input channels";
         throw nvcv::Exception(nvcv::Status::ERROR_NOT_COMPATIBLE, "%s", msg.c_str());
     }
 
@@ -615,11 +761,6 @@ void ResizeCropConvertReformat::operator()(cudaStream_t stream, const nvcv::Imag
     }
 
     nvcv::TensorLayout dstLayout = dstData->layout();
-
-    if (srcFrmt.numPlanes() > 1)
-    {
-        throw nvcv::Exception(nvcv::Status::ERROR_NOT_COMPATIBLE, "Input must be non-planar (i.e., interleaved).");
-    }
 
     if (!(dstLayout == NVCV_TENSOR_NHWC || dstLayout == NVCV_TENSOR_HWC || dstLayout == NVCV_TENSOR_NCHW
           || dstLayout == NVCV_TENSOR_CHW))
@@ -660,15 +801,23 @@ void ResizeCropConvertReformat::operator()(cudaStream_t stream, const nvcv::Imag
 
     if (srcType == cuda_op::kCV_8U)
     {
-        if (dstType == cuda_op::kCV_8U)
+        if (channels == 1)
         {
-            resizeCropConvertReformat<uchar3, uint8_t>(*srcData, *dstData, resizeDim, interp, cropPos, manip, scale,
-                                                       offset, srcCast, stream);
+            if (dstType == cuda_op::kCV_8U)
+                resizeCropConvertReformat<uchar1, uint8_t>(*srcData, *dstData, resizeDim, interp, cropPos, manip, scale,
+                                                           offset, srcCast, stream);
+            else if (dstType == cuda_op::kCV_32F)
+                resizeCropConvertReformat<uchar1, float>(*srcData, *dstData, resizeDim, interp, cropPos, manip, scale,
+                                                         offset, srcCast, stream);
         }
-        else if (dstType == cuda_op::kCV_32F)
+        else
         {
-            resizeCropConvertReformat<uchar3, float>(*srcData, *dstData, resizeDim, interp, cropPos, manip, scale,
-                                                     offset, srcCast, stream);
+            if (dstType == cuda_op::kCV_8U)
+                resizeCropConvertReformat<uchar3, uint8_t>(*srcData, *dstData, resizeDim, interp, cropPos, manip, scale,
+                                                           offset, srcCast, stream);
+            else if (dstType == cuda_op::kCV_32F)
+                resizeCropConvertReformat<uchar3, float>(*srcData, *dstData, resizeDim, interp, cropPos, manip, scale,
+                                                         offset, srcCast, stream);
         }
     }
 }

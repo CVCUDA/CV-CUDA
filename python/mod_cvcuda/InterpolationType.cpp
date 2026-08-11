@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +23,7 @@ namespace cvcudapy {
 
 void ExportInterpolationType(py::module &m)
 {
-    py::enum_<NVCVInterpolationType>(m, "Interp")
+    py::enum_<NVCVInterpolationType>(m, "Interp", "Interpolation methods for image resampling.")
         .value("NEAREST", NVCV_INTERP_NEAREST, "Nearest-neighbor interpolation")
         .value("LINEAR", NVCV_INTERP_LINEAR, "Linear interpolation")
         .value("CUBIC", NVCV_INTERP_CUBIC, "Cubic interpolation")

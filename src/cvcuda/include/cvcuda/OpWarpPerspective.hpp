@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -36,6 +36,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class WarpPerspective final : public IOperator
@@ -43,55 +45,52 @@ class WarpPerspective final : public IOperator
 public:
     explicit WarpPerspective(const int32_t maxVarShapeBatchSize);
 
-    ~WarpPerspective();
-
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                     const NVCVPerspectiveTransform transMatrix, const int32_t flags, const NVCVBorderType borderMode,
-                    const float4 borderValue);
+                    const float4 borderValue) const;
 
     void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
                     const nvcv::Tensor &transMatrix, const int32_t flags, const NVCVBorderType borderMode,
-                    const float4 borderValue);
+                    const float4 borderValue) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline WarpPerspective::WarpPerspective(const int32_t maxVarShapeBatchSize)
 {
-    nvcv::detail::CheckThrow(cvcudaWarpPerspectiveCreate(&m_handle, maxVarShapeBatchSize));
-    assert(m_handle);
-}
-
-inline WarpPerspective::~WarpPerspective()
-{
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaWarpPerspectiveCreate(&h, maxVarShapeBatchSize));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void WarpPerspective::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                                         const NVCVPerspectiveTransform transMatrix, const int32_t flags,
-                                        const NVCVBorderType borderMode, const float4 borderValue)
+                                        const NVCVBorderType borderMode, const float4 borderValue) const
 {
-    nvcv::detail::CheckThrow(cvcudaWarpPerspectiveSubmit(m_handle, stream, in.handle(), out.handle(), transMatrix,
+    nvcv::detail::CheckThrow(cvcudaWarpPerspectiveSubmit(m_handle.get(), stream, in.handle(), out.handle(), transMatrix,
                                                          flags, borderMode, borderValue));
 }
 
 inline void WarpPerspective::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
                                         const nvcv::ImageBatchVarShape &out, const nvcv::Tensor &transMatrix,
-                                        const int32_t flags, const NVCVBorderType borderMode, const float4 borderValue)
+                                        const int32_t flags, const NVCVBorderType borderMode,
+                                        const float4 borderValue) const
 {
-    nvcv::detail::CheckThrow(cvcudaWarpPerspectiveVarShapeSubmit(m_handle, stream, in.handle(), out.handle(),
+    nvcv::detail::CheckThrow(cvcudaWarpPerspectiveVarShapeSubmit(m_handle.get(), stream, in.handle(), out.handle(),
                                                                  transMatrix.handle(), flags, borderMode, borderValue));
 }
 
 inline NVCVOperatorHandle WarpPerspective::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA_WARP_PERSPECTIVE_HPP

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -54,18 +54,46 @@ public:
         return exportData().cast<DerivedArrayData>();
     }
 
-    void  setUserPointer(void *ptr);
-    void *userPointer() const;
+    void            setUserPointer(NVCVUserPointer ptr);
+    NVCVUserPointer userPointer() const;
 
     static Requirements CalcRequirements(int64_t capacity, DataType dtype, int32_t alignment = 0,
                                          NVCVResourceType target = NVCV_RESOURCE_MEM_CUDA);
 
-    NVCV_IMPLEMENT_SHARED_RESOURCE(Array, Base);
+    using Base::Base;
+    using Base::operator=;
+
+    Array(const Array &other)
+        : Base(other)
+    {
+    }
+
+    Array(Array &&other) noexcept
+        : Base(std::move(other))
+    {
+    }
+
+    Array &operator=(const Array &other)
+    {
+        Base::operator=(other);
+        return *this;
+    }
+
+    Array &operator=(Array &&other) noexcept
+    {
+        Base::operator=(std::move(other));
+        return *this;
+    }
+
+    ~Array()
+    {
+        this->reset();
+    }
 
     explicit Array(const Requirements &reqs, NVCVResourceType target = NVCV_RESOURCE_MEM_CUDA,
-                   const Allocator &alloc = nullptr);
+                   const Allocator &alloc = Allocator{nullptr});
     explicit Array(int64_t capacity, DataType dtype, int32_t alignment = 0,
-                   NVCVResourceType target = NVCV_RESOURCE_MEM_CUDA, const Allocator &alloc = nullptr);
+                   NVCVResourceType target = NVCV_RESOURCE_MEM_CUDA, const Allocator &alloc = Allocator{nullptr});
 };
 
 // ArrayWrapData definition -------------------------------------
@@ -92,6 +120,6 @@ using ArrayWrapHandle = NonOwningResource<Array>;
 
 } // namespace nvcv
 
-#include "detail/ArrayImpl.hpp"
+#include "detail/ArrayImpl.hpp" // NOSONAR: inline definitions require the declarations above.
 
 #endif // NVCV_ARRAY_HPP

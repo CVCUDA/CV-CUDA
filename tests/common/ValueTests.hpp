@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,21 +21,46 @@
 #include "HashMD5.hpp"
 #include "ValueList.hpp"
 
+#include <algorithm>
+#include <array>
+#include <type_traits>
+#include <vector>
+
 namespace nvcv::test {
+
+template<class T>
+std::ostream &PrintParamValue(std::ostream &out, const T &value)
+{
+    return out << value;
+}
+
+template<class T, class Alloc>
+std::ostream &PrintParamValue(std::ostream &out, const std::vector<T, Alloc> &vec)
+{
+    out << '{';
+    const char *sep = "";
+    for (const auto &value : vec)
+    {
+        out << sep;
+        PrintParamValue(out, value);
+        sep = ",";
+    }
+    return out << '}';
+}
 
 template<size_t N>
 struct StringLiteral
 {
     constexpr StringLiteral(const char (&str)[N])
     {
-        std::copy_n(str, N, value);
+        std::copy_n(str, N, value.begin());
     }
 
-    char value[N];
+    std::array<char, N> value;
 
     friend std::ostream &operator<<(std::ostream &out, const StringLiteral &p)
     {
-        return out << p.value;
+        return out << p.value.data();
     };
 };
 
@@ -49,15 +74,14 @@ class Param
     static_assert(sizeof...(DEFAULT) <= 1);
 
 public:
-    template<class U = void *, std::enable_if_t<sizeof(U) * 0 + sizeof...(DEFAULT) == 1, int> = 0>
-    constexpr Param()
+    template<class U = void *>
+    requires(sizeof(U) * 0 + sizeof...(DEFAULT) == 1) constexpr Param()
         : m_value(DEFAULT...)
     {
     }
 
-    template<class U = void *,
-             std::enable_if_t<std::is_default_constructible_v<T> && sizeof(U) * 0 + sizeof...(DEFAULT) == 0, int> = 0>
-    constexpr Param()
+    template<class U = void *>
+    requires(std::is_default_constructible_v<T> && sizeof(U) * 0 + sizeof...(DEFAULT) == 0) constexpr Param()
         : m_value(T{})
     {
     }
@@ -67,7 +91,18 @@ public:
     {
     }
 
-    constexpr operator T() const
+    constexpr Param(const Param &)     = default;
+    constexpr Param(Param &&) noexcept = default;
+
+    constexpr Param &operator=(const Param &)     = default;
+    constexpr Param &operator=(Param &&) noexcept = default;
+
+    explicit constexpr operator T() const
+    {
+        return m_value;
+    }
+
+    constexpr T value() const
     {
         return m_value;
     }
@@ -75,12 +110,14 @@ public:
     friend std::ostream &operator<<(std::ostream &out, Param p)
     {
         out << NAME << std::boolalpha;
-        out << '(' << p.m_value << ')';
+        out << '(';
+        PrintParamValue(out, p.m_value);
+        out << ')';
         out << std::noboolalpha;
         return out;
     };
 
-    constexpr bool operator==(const Param &that) const
+    constexpr bool operator==(const Param &that) const // NOSONAR: defaulted comparisons are C++20.
     {
         return m_value == that.m_value;
     }
@@ -92,7 +129,14 @@ public:
 
     constexpr bool operator<(const Param &that) const
     {
-        return m_value < that.m_value;
+        if constexpr (std::is_same_v<T, bool>)
+        {
+            return static_cast<int>(m_value) < static_cast<int>(that.m_value);
+        }
+        else
+        {
+            return m_value < that.m_value;
+        }
     }
 
 private:
@@ -103,6 +147,18 @@ template<StringLiteral NAME, class T, T... DEFAULT>
 void Update(test::HashMD5 &hash, const Param<NAME, T, DEFAULT...> &p)
 {
     Update(hash, static_cast<T>(p));
+}
+
+template<class T>
+decltype(auto) ParamValue(T &&value)
+{
+    return std::forward<T>(value);
+}
+
+template<StringLiteral NAME, class T, T... DEFAULT>
+constexpr T ParamValue(const Param<NAME, T, DEFAULT...> &p)
+{
+    return p.value();
 }
 
 namespace detail {
@@ -117,22 +173,18 @@ std::string GetTestParamHashHelper(const P &info)
     // We don't need 64 bit worth of variation, 32-bit is enough and leads
     // to shorter suffixes.
 
-    union Cast
-    {
-        uint8_t  array[16];
-        uint64_t value[2];
-    };
+    auto hashBytes = hash.getHashAndReset();
 
-    static_assert(sizeof(hash.getHashAndReset()) == sizeof(Cast::array));
+    std::array<uint64_t, 2> hashWords{};
+    static_assert(sizeof(hashBytes) == sizeof(hashWords));
 
-    Cast caster;
-    memcpy(caster.array, &hash.getHashAndReset()[0], sizeof(caster.array));
+    memcpy(hashWords.data(), hashBytes.data(), sizeof(hashWords));
 
-    uint64_t code64 = caster.value[0] ^ caster.value[1];
+    uint64_t code64 = hashWords[0] ^ hashWords[1];
     uint32_t code32 = (code64 & UINT32_MAX) ^ (code64 >> 32);
 
     std::ostringstream out;
-    out << std::hex << std::setw(sizeof(code32) * 2) << std::setfill('0') << code32;
+    out << std::hex << std::setw(sizeof(code32) * 2) << std::setfill('0') << code32; // NOSONAR: std::format is C++20.
     return out.str();
 }
 
@@ -175,7 +227,7 @@ struct TestSuffixPrinter
         template<int I>                                                                       \
         auto GetParamValue() const                                                            \
         {                                                                                     \
-            return std::get<I>(GetParam());                                                   \
+            return ::nvcv::test::ParamValue(std::get<I>(GetParam()));                         \
         }                                                                                     \
     };                                                                                        \
     NVCV_INSTANTIATE_TEST_SUITE_P(_, TEST, g_##TEST##_Params)

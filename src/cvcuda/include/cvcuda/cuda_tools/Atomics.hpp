@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -44,13 +44,16 @@ namespace nvcv::cuda {
  * @param[in] val Second value to be used.
  * @param[in] op Operation to be used.
  */
-template<typename T, class OP, class = Require<std::is_floating_point_v<T>>>
+template<typename T, class OP>
 __device__ void AtomicOp(T *address, T val, OP op)
 {
+    static_assert(std::is_floating_point_v<T>, "AtomicOp requires a floating-point type");
+
     using UT = typename std::conditional_t<sizeof(T) == 4, unsigned int, unsigned long long int>;
 
-    UT *intAddress = reinterpret_cast<UT *>(address);
-    UT  assumed, old = *intAddress;
+    auto *intAddress = reinterpret_cast<UT *>(address);
+    UT    assumed;
+    UT    old = *intAddress;
 
     do
     {

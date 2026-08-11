@@ -1,6 +1,6 @@
 
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -57,6 +57,9 @@ CVCUDA_PUBLIC NVCVStatus cvcudaMinAreaRectCreate(NVCVOperatorHandle *handle, int
  *
  *  Limitations:
  *
+ *  Planar image layouts: Not applicable
+ *       Reason: Inputs are contour-coordinate tensors and outputs are rectangle parameters, not images.
+ *
  *  Input:
  *       Data Layout:    [NWC]
  *       Channels:       [2]
@@ -69,6 +72,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaMinAreaRectCreate(NVCVOperatorHandle *handle, int
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | Yes
+ *       16bit Float    | No
  *       32bit Float    | No
  *       64bit Float    | No
  *
@@ -84,6 +88,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaMinAreaRectCreate(NVCVOperatorHandle *handle, int
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | Yes
  *       64bit Float    | No
  *
@@ -121,5 +126,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaMinAreaRectSubmit(NVCVOperatorHandle handle, cuda
 #ifdef __cplusplus
 }
 #endif
+
+/** @} */
 
 #endif /* CVCUDA__MIN_AREA_RECT_H */

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,11 +15,12 @@
 
 import cvcuda
 
-import pytest as t
+import pytest
 import numpy as np
+import cvcuda_tools as cv_tools
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "inputp, bndboxes",
     [
         (
@@ -118,3 +119,31 @@ def test_op_bndbox(inputp, bndboxes):
     assert out.layout == input.layout
     assert out.shape == input.shape
     assert out.dtype == input.dtype
+
+
+def _bndbox_params(dtype, layout, channels):
+    boxes = cvcuda.BndBoxesI(
+        boxes=[
+            [
+                cvcuda.BndBoxI(
+                    box=(5, 5, 3, 3),
+                    thickness=1,
+                    borderColor=(255, 255, 0),
+                    fillColor=(0, 128, 255, 128),
+                ),
+            ],
+        ]
+    )
+    return {"bboxes": boxes}
+
+
+globals().update(
+    cv_tools.make_op_tests(
+        name="bndbox",
+        runner_info=[("tensor", cvcuda.bndbox, _bndbox_params)],
+        keystone_dlc=(cvcuda.Type.U8, "NHWC", 3),
+        supported_dtypes={cvcuda.Type.U8},
+        supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
+        supported_channels={3, 4},
+    )
+)

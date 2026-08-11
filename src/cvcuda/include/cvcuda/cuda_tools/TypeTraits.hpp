@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -57,21 +57,50 @@ namespace nvcv::cuda {
  */
 using detail::TypeTraits;
 
+template<bool B, typename T = void>
+struct Requirement;
+
+template<typename T>
+struct Requirement<true, T>
+{
+    using type = T;
+};
+
 // Metatype to serve as a requirement for a template object to meet the given boolean expression.
-template<bool B>
-using Require = std::enable_if_t<B>;
+template<bool B, typename T = void>
+using Require = typename Requirement<B, T>::type;
 
 // Metavariable to check if one or more types have type traits.
 template<typename... Ts>
 constexpr bool HasTypeTraits = (detail::HasTypeTraits_t<Ts>::value && ...);
 
 // Metavariable to check if a type is a CUDA compound type.
-template<class T, class = Require<HasTypeTraits<T>>>
-constexpr bool IsCompound = TypeTraits<T>::components >= 1;
+template<class T>
+constexpr bool IsCompound = []
+{
+    if constexpr (HasTypeTraits<T>)
+    {
+        return TypeTraits<T>::components >= 1;
+    }
+    else
+    {
+        return false;
+    }
+}();
 
 // Metavariable to check if a CUDA compound type T has N or more components.
-template<typename T, int N, class = Require<HasTypeTraits<T>>>
-constexpr bool HasEnoughComponents = N <= TypeTraits<T>::components;
+template<typename T, int N>
+constexpr bool HasEnoughComponents = []
+{
+    if constexpr (HasTypeTraits<T>)
+    {
+        return N <= TypeTraits<T>::components;
+    }
+    else
+    {
+        return false;
+    }
+}();
 
 template<typename T>
 constexpr bool IsStrideType = std::is_same_v<T, int32_t> || std::is_same_v<T, int64_t>;
@@ -91,7 +120,7 @@ constexpr bool IsIndexType = std::is_integral_v<T> && (TypeTraits<T>::max <= Typ
  *
  * @tparam T Type to get the base type from.
  */
-template<class T, class = Require<HasTypeTraits<T>>>
+template<class T>
 using BaseType = typename TypeTraits<T>::base_type;
 
 /**
@@ -106,7 +135,7 @@ using BaseType = typename TypeTraits<T>::base_type;
  *
  * @tparam T Type to get the number of components from.
  */
-template<class T, class = Require<HasTypeTraits<T>>>
+template<class T>
 constexpr int NumComponents = TypeTraits<T>::components;
 
 /**
@@ -122,12 +151,22 @@ constexpr int NumComponents = TypeTraits<T>::components;
  *
  * @tparam T Type to get the number of elements from.
  */
-template<class T, class = Require<HasTypeTraits<T>>>
+template<class T>
 constexpr int NumElements = TypeTraits<T>::elements;
 
 // Metavariable to get the lowest value from a regular C or CUDA compound type T.
-template<typename T, class = Require<HasTypeTraits<T>>>
-constexpr BaseType<T> Lowest = std::is_floating_point_v<BaseType<T>> ? -TypeTraits<T>::max : TypeTraits<T>::min;
+template<typename T>
+constexpr BaseType<T> Lowest = []
+{
+    if constexpr (std::is_floating_point_v<BaseType<T>>)
+    {
+        return -TypeTraits<T>::max;
+    }
+    else
+    {
+        return TypeTraits<T>::min;
+    }
+}();
 
 /**
  * Metatype to make a type from a base type and number of components.
@@ -144,7 +183,7 @@ constexpr BaseType<T> Lowest = std::is_floating_point_v<BaseType<T>> ? -TypeTrai
  * @tparam T Base type to make the type from.
  * @tparam C Number of components to make the type.
  */
-template<class T, int C, class = Require<HasTypeTraits<T>>>
+template<class T, int C>
 using MakeType = detail::MakeType_t<T, C>;
 
 /**
@@ -160,7 +199,7 @@ using MakeType = detail::MakeType_t<T, C>;
  * @tparam BT Base type to use in the conversion.
  * @tparam T Target type to convert its base type.
  */
-template<class BT, class T, class = Require<HasTypeTraits<BT, T>>>
+template<class BT, class T>
 using ConvertBaseTypeTo = detail::ConvertBaseTypeTo_t<BT, T>;
 
 /**
@@ -187,9 +226,11 @@ using ConvertBaseTypeTo = detail::ConvertBaseTypeTo_t<BT, T>;
  * @return The reference of the value's element.
  */
 template<typename T, typename RT = detail::CopyConstness_t<T, std::conditional_t<IsCompound<T>, BaseType<T>, T>>,
-         class = Require<HasTypeTraits<T>>>
+         class = void>
 __host__ __device__ RT &GetElement(T &v, int eidx)
 {
+    static_assert(HasTypeTraits<T>, "GetElement requires a type with CUDA type traits");
+
     if constexpr (IsCompound<T>)
     {
         assert(eidx < NumElements<T>);
@@ -202,10 +243,11 @@ __host__ __device__ RT &GetElement(T &v, int eidx)
 }
 
 template<int EIDX, typename T,
-         typename RT = detail::CopyConstness_t<T, std::conditional_t<IsCompound<T>, BaseType<T>, T>>,
-         class       = Require<HasTypeTraits<T>>>
+         typename RT = detail::CopyConstness_t<T, std::conditional_t<IsCompound<T>, BaseType<T>, T>>, class = void>
 __host__ __device__ RT &GetElement(T &v)
 {
+    static_assert(HasTypeTraits<T>, "GetElement requires a type with CUDA type traits");
+
     if constexpr (IsCompound<T>)
     {
         static_assert(EIDX < NumElements<T>);
@@ -245,9 +287,11 @@ __host__ __device__ RT &GetElement(T &v)
  *
  * @return The object of type T with all elements set to \p x.
  */
-template<typename T, class = Require<HasTypeTraits<T>>>
+template<typename T>
 __host__ __device__ T SetAll(BaseType<T> x)
 {
+    static_assert(HasTypeTraits<T>, "SetAll requires a type with CUDA type traits");
+
     T out{};
 
     GetElement<0>(out) = x;
@@ -261,9 +305,11 @@ __host__ __device__ T SetAll(BaseType<T> x)
     return out;
 }
 
-template<int N, typename BT, typename RT = MakeType<BT, N>, class = Require<HasTypeTraits<BT>>>
+template<int N, typename BT, typename RT = MakeType<BT, N>>
 __host__ __device__ RT SetAll(BT x)
 {
+    static_assert(HasTypeTraits<BT>, "SetAll requires a base type with CUDA type traits");
+
     return SetAll<RT>(x);
 }
 
@@ -281,9 +327,11 @@ __host__ __device__ RT SetAll(BT x)
  *
  * @return String with the name of the type.
  */
-template<class T, class = Require<HasTypeTraits<T>>>
+template<class T>
 __host__ const char *GetTypeName()
 {
+    static_assert(HasTypeTraits<T>, "GetTypeName requires a type with CUDA type traits");
+
     return TypeTraits<T>::name;
 }
 

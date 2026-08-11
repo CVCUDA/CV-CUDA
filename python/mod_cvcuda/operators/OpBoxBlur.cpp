@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,14 +19,20 @@
 
 #include <common/PyUtil.hpp>
 #include <cvcuda/OpBoxBlur.hpp>
+#include <cvcuda/priv/Types.hpp>
 #include <nvcv/python/ResourceGuard.hpp>
 #include <nvcv/python/Stream.hpp>
 #include <nvcv/python/Tensor.hpp>
 
+#include <memory>
+
 namespace cvcudapy {
 
 namespace {
-Tensor BoxBlurInto(Tensor &output, Tensor &input, NVCVBlurBoxesI bboxes, std::optional<Stream> pstream)
+using BlurBoxesImpl = cvcuda::priv::NVCVBlurBoxesImpl;
+
+Tensor BoxBlurInto(Tensor &output, Tensor &input, const std::shared_ptr<BlurBoxesImpl> &bboxes,
+                   std::optional<Stream> pstream)
 {
     if (!pstream)
     {
@@ -40,12 +46,14 @@ Tensor BoxBlurInto(Tensor &output, Tensor &input, NVCVBlurBoxesI bboxes, std::op
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
-    op->submit(pstream->cudaHandle(), input, output, bboxes);
+    auto bboxesHandle = static_cast<NVCVBlurBoxesI>(static_cast<void *>(bboxes.get()));
+    guard.run([&op, &pstream, &input, &output, bboxesHandle]()
+              { op->submit(pstream->cudaHandle(), input, output, bboxesHandle); });
 
     return std::move(output);
 }
 
-Tensor BoxBlur(Tensor &input, NVCVBlurBoxesI bboxes, std::optional<Stream> pstream)
+Tensor BoxBlur(Tensor &input, const std::shared_ptr<BlurBoxesImpl> &bboxes, std::optional<Stream> pstream)
 {
     Tensor output = Tensor::Create(input.shape(), input.dtype());
     return BoxBlurInto(output, input, bboxes, pstream);
@@ -57,13 +65,10 @@ void ExportOpBoxBlur(py::module &m)
 {
     using namespace pybind11::literals;
 
-    m.def("boxblur", &BoxBlur, "src"_a, "bboxes"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
+    m.def("boxblur", NvtxTrace("cvcuda.boxblur", &BoxBlur), "src"_a, "bboxes"_a, py::kw_only(), "stream"_a = nullptr,
+          R"pbdoc(
         Executes the BoxBlur operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the BoxBlur operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.Tensor): Input tensor containing one or more images.
@@ -73,18 +78,12 @@ void ExportOpBoxBlur(py::module &m)
         Returns:
             cvcuda.Tensor: The output tensor.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("boxblur_into", &BoxBlurInto, "dst"_a, "src"_a, "bboxes"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
+    m.def("boxblur_into", NvtxTrace("cvcuda.boxblur_into", &BoxBlurInto), "dst"_a, "src"_a, "bboxes"_a, py::kw_only(),
+          "stream"_a = nullptr, R"pbdoc(
         Executes the BoxBlur operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the BoxBlur operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.Tensor): Output tensor to store the result of the operation.
@@ -93,11 +92,7 @@ void ExportOpBoxBlur(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 }
 

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -63,6 +63,35 @@ CVCUDA_PUBLIC NVCVStatus cvcudaPairwiseMatcherCreate(NVCVOperatorHandle *handle,
  * @note This operation does not guarantee deterministic output.  Each output tensor limits the number of matches
  *       found by the operator, that is the total number may be greater than this limitation and the order of
  *       matches returned might differ in different runs.
+ *
+ *  Limitations:
+ *
+ *  Planar image layouts: Not applicable
+ *       Reason: Inputs are descriptor-set tensors and outputs are matches and distances, not images.
+ *
+ *  Input set1, set2:
+ *       Data Layout:    [NMD] (rank-3 tensor)
+ *       Channels:       D (depth dimension, e.g., 128 for SIFT descriptors)
+ *
+ *       Data Type      | Allowed
+ *       -------------- | -------------
+ *       8bit  Unsigned | Yes
+ *       8bit  Signed   | No
+ *       16bit Unsigned | No
+ *       16bit Signed   | No
+ *       32bit Unsigned | Yes
+ *       32bit Signed   | No
+ *       16bit Float    | No
+ *       32bit Float    | Yes
+ *       64bit Float    | No
+ *
+ *  Output matches:
+ *       Data Layout:    [NMA] (rank-3 tensor, A=2)
+ *       Data Type:     32bit Signed
+ *
+ *  Output distances:
+ *       Data Layout:    [NM] or [NMC] (rank-2 or rank-3 tensor)
+ *       Data Type:     32bit Float
  *
  * @param [in] handle Handle to the operator.
  *                    + Must not be NULL.
@@ -169,5 +198,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaPairwiseMatcherSubmit(NVCVOperatorHandle handle, 
 #ifdef __cplusplus
 }
 #endif
+
+/** @} */
 
 #endif /* CVCUDA_PAIRWISE_MATCHER_H */

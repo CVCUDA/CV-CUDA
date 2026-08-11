@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,19 +13,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
 import cvcuda
 
-import pytest as t
+import pytest
 import numpy as np
+
 import cvcuda_util as util
+import cvcuda_tools as cv_tools
+import cupy
 
 params = [
     (((10, 16, 23, 1), np.uint8, "NHWC")),
+    (((10, 1, 16, 23), np.uint8, "NCHW")),
     (((1, 160, 3, 1), np.uint8, "NHWC")),
     (((16, 23, 1), np.uint8, "HWC")),
+    (((1, 16, 23), np.uint8, "CHW")),
     (((257, 23, 1), np.uint8, "HWC")),
     (((100, 200, 3, 1), np.uint8, "NHWC")),
+    (((100, 1, 200, 3), np.uint8, "NCHW")),
     (((50, 50, 2, 1), np.uint8, "NHWC")),
     (((27, 25, 1), np.uint8, "HWC")),
     (((10, 10, 1), np.uint8, "HWC")),
@@ -33,19 +38,20 @@ params = [
 ]
 
 
-@t.mark.parametrize("input", params)
+@pytest.mark.parametrize("input", params)
 def test_op_histogram(input):
 
     inputT = cvcuda.Tensor(*input)
 
     out = cvcuda.histogram(inputT)
+
     assert out.shape[1] == 256
     assert out.dtype == np.int32
 
-    result_torch = torch.as_tensor(out.cuda())
+    result = cupy.asarray(out.cuda())
 
-    # Sum up the entries in result_torch
-    actual_sum = torch.sum(result_torch)
+    # Sum up the entries in result
+    actual_sum = np.sum(result.get())
     total_entries = np.prod(input[0])
     assert actual_sum == total_entries
 
@@ -56,7 +62,7 @@ def test_op_histogram(input):
     elif rank == 4:
         new_shape = ((input[0][0], 256, 1), np.int32, "HWC")
     else:
-        t.fail("Invalid test input")
+        pytest.fail("Invalid test input")
 
     out = cvcuda.Tensor(*new_shape)
     tmp = cvcuda.histogram_into(histogram=out, src=inputT)
@@ -65,19 +71,20 @@ def test_op_histogram(input):
     assert out.shape[1] == 256
     assert out.dtype == np.int32
 
-    result_torch = torch.as_tensor(out.cuda())
+    result = cupy.asarray(out.cuda())
 
-    # Sum up the entries in result_torch
-    actual_sum = torch.sum(result_torch)
+    # Sum up the entries in result
+    actual_sum = np.sum(result.get())
     total_entries = np.prod(input[0])
     assert actual_sum == total_entries
 
 
-@t.mark.parametrize("input", params)
+@pytest.mark.parametrize("input", params)
 def test_op_histogram_mask(input):
 
     inputT = cvcuda.Tensor(*input)
-    arr = np.random.random(input[0])
+    rng = np.random.default_rng(0)
+    arr = rng.random(input[0])
     arr = (arr * 3).astype(np.uint8)
     maskT = util.to_cvcuda_tensor(arr, input[2])
 
@@ -87,10 +94,10 @@ def test_op_histogram_mask(input):
     assert out.shape[1] == 256
     assert out.dtype == np.int32
 
-    result_torch = torch.as_tensor(out.cuda())
+    result = cupy.asarray(out.cuda())
 
-    # Sum up the entries in result_torch
-    actual_sum = torch.sum(result_torch)
+    # Sum up the entries in result
+    actual_sum = np.sum(result.get())
     masked_entries = np.count_nonzero(arr)
     assert actual_sum == masked_entries
 
@@ -101,7 +108,7 @@ def test_op_histogram_mask(input):
     elif rank == 4:
         new_shape = ((input[0][0], 256, 1), np.int32, "HWC")
     else:
-        t.fail("Invalid test input")
+        pytest.fail("Invalid test input")
 
     out = cvcuda.Tensor(*new_shape)
     tmp = cvcuda.histogram_into(histogram=out, mask=maskT, src=inputT)
@@ -110,8 +117,20 @@ def test_op_histogram_mask(input):
     assert out.shape[1] == 256
     assert out.dtype == np.int32
 
-    result_torch = torch.as_tensor(out.cuda())
+    result = cupy.asarray(out.cuda())
 
-    # Sum up the entries in result_torch
-    actual_sum = torch.sum(result_torch)
+    # Sum up the entries in result
+    actual_sum = np.sum(result.get())
     assert actual_sum == masked_entries
+
+
+globals().update(
+    cv_tools.make_op_tests(
+        name="histogram",
+        runner_info=[("tensor", cvcuda.histogram, None)],
+        keystone_dlc=(cvcuda.Type.U8, "NHWC", 1),
+        supported_dtypes={cvcuda.Type.U8},
+        supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
+        supported_channels={1},
+    )
+)

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,14 +25,20 @@
 #define NVCV_EXCEPTION_HPP
 
 #include <nvcv/Status.hpp>
+#include <nvcv/detail/Format.hpp>
 
+#include <array>
 #include <cassert>
+#include <cstddef>
 #include <cstring>
+#include <new>
+#include <stdexcept>
+#include <utility>
 
 namespace nvcv {
 
 namespace detail {
-void ThrowException(NVCVStatus status);
+[[noreturn]] void ThrowException(NVCVStatus status);
 }
 
 /**
@@ -54,22 +60,24 @@ public:
      *
      * @param code The error status code.
      * @param fmt The format string for the error message.
-     * @param ... The format arguments.
+     * @param args The format arguments.
      */
-    explicit Exception(Status code, const char *fmt = nullptr, ...)
-#if __GNUC__
-        __attribute__((format(printf, 3, 4)))
-#endif
+    explicit Exception(Status code)
+        : Exception(code, "%s", "")
+    {
+    }
+
+    explicit Exception(Status code, const char *msg)
+        : Exception(code, "%s", msg != nullptr ? msg : "")
+    {
+    }
+
+    template<size_t N, class... Args>
+    explicit Exception(Status code, const char (&fmt)[N], Args &&...args)
         : m_code(code)
     {
-        va_list va;
-        va_start(va, fmt);
-        nvcvSetThreadStatusVarArgList(static_cast<NVCVStatus>(code), fmt, va);
-        va_end(va);
-
-        va_start(va, fmt);
-        doSetMessage(fmt, va);
-        va_end(va);
+        doSetMessage(fmt, std::forward<Args>(args)...);
+        nvcvSetThreadStatus(static_cast<NVCVStatus>(code), "%s", m_msg);
     }
 
     /**
@@ -101,7 +109,7 @@ public:
      */
     const char *what() const noexcept override
     {
-        return m_msgBuffer;
+        return m_msgBuffer.data();
     }
 
 private:
@@ -110,7 +118,7 @@ private:
 
     // 64: maximum size of string representation of a status enum
     // 2: ': '
-    char m_msgBuffer[NVCV_MAX_STATUS_MESSAGE_LENGTH + 64 + 2];
+    std::array<char, NVCV_MAX_STATUS_MESSAGE_LENGTH + 64 + 2> m_msgBuffer;
 
     friend void detail::ThrowException(NVCVStatus status);
 
@@ -118,36 +126,42 @@ private:
     {
     };
 
-    // Constructor that doesn't set the C thread status.
-    // Used when converting C statuses to C++.
-    Exception(InternalCtorTag, Status code, const char *fmt = nullptr, ...)
-#if __GNUC__
-        __attribute__((format(printf, 4, 5)))
-#endif
-        : m_code(code)
+    Exception(InternalCtorTag, Status code)
+        : Exception(InternalCtorTag{}, code, "%s", "")
     {
-        va_list va;
-        va_start(va, fmt);
-
-        doSetMessage(fmt, va);
-
-        va_end(va);
     }
 
-    void doSetMessage(const char *fmt, va_list va)
+    Exception(InternalCtorTag, Status code, const char *msg)
+        : Exception(InternalCtorTag{}, code, "%s", msg != nullptr ? msg : "")
     {
-        int buflen   = sizeof(m_msgBuffer);
-        int nwritten = snprintf(m_msgBuffer, buflen, "%s: ", GetName(m_code));
+    }
+
+    // Constructor that doesn't set the C thread status. Used when converting C statuses to C++.
+    template<size_t N, class... Args>
+    Exception(InternalCtorTag, Status code, const char (&fmt)[N], Args &&...args)
+        : m_code(code)
+    {
+        doSetMessage(fmt, std::forward<Args>(args)...);
+    }
+
+    template<size_t N, class... Args>
+    void doSetMessage(const char (&fmt)[N], Args &&...args)
+    {
+        auto buflen = static_cast<int>(m_msgBuffer.size());
 
         // no truncation?
-        if (nwritten < buflen)
+        detail::FormatTo(m_msgBuffer.data(), m_msgBuffer.size(), "%s: ", GetName(m_code));
+
+        int nwritten = static_cast<int>(std::char_traits<char>::length(m_msgBuffer.data()));
+        if (nwritten < buflen - 1)
         {
             buflen -= nwritten;
-            m_msg = m_msgBuffer + nwritten;
-            vsnprintf(m_msgBuffer + nwritten, buflen, fmt, va);
+            m_msg = m_msgBuffer.data() + nwritten;
+            detail::FormatTo(m_msgBuffer.data() + nwritten, static_cast<std::size_t>(buflen), fmt,
+                             std::forward<Args>(args)...);
         }
 
-        m_msgBuffer[sizeof(m_msgBuffer) - 1] = '\0';
+        m_msgBuffer.back() = '\0';
     }
 };
 
@@ -180,15 +194,35 @@ inline void SetThreadError(std::exception_ptr e)
     {
         nvcvSetThreadStatus(NVCV_ERROR_INVALID_ARGUMENT, "%s", e.what());
     }
+    catch (const std::domain_error &e)
+    {
+        nvcvSetThreadStatus(NVCV_ERROR_INTERNAL, "%s", e.what());
+    }
+    catch (const std::length_error &e)
+    {
+        nvcvSetThreadStatus(NVCV_ERROR_INTERNAL, "%s", e.what());
+    }
+    catch (const std::out_of_range &e)
+    {
+        nvcvSetThreadStatus(NVCV_ERROR_INTERNAL, "%s", e.what());
+    }
     catch (const std::bad_alloc &)
     {
         nvcvSetThreadStatus(NVCV_ERROR_OUT_OF_MEMORY, "Not enough space for resource allocation");
     }
-    catch (const std::exception &e)
+    catch (const std::range_error &e)
     {
         nvcvSetThreadStatus(NVCV_ERROR_INTERNAL, "%s", e.what());
     }
-    catch (...)
+    catch (const std::overflow_error &e)
+    {
+        nvcvSetThreadStatus(NVCV_ERROR_INTERNAL, "%s", e.what());
+    }
+    catch (const std::underflow_error &e)
+    {
+        nvcvSetThreadStatus(NVCV_ERROR_INTERNAL, "%s", e.what());
+    }
+    catch (...) // NOSONAR: API boundary converts any non-standard exception to NVCV status.
     {
         nvcvSetThreadStatus(NVCV_ERROR_INTERNAL, "Unexpected error");
     }
@@ -214,7 +248,7 @@ NVCVStatus ProtectCall(F &&fn)
         fn();
         return NVCV_SUCCESS;
     }
-    catch (...)
+    catch (...) // NOSONAR: this API boundary translates any exception to an NVCVStatus.
     {
         SetThreadError(std::current_exception());
         return nvcvPeekAtLastError();

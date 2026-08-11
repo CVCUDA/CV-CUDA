@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,7 +24,7 @@ namespace nvcvpy::priv {
 void StreamStack::push(Stream &stream)
 {
     std::unique_lock lk(m_mtx);
-    m_stack.push(stream.shared_from_this());
+    m_stack.push(stream.sharedStream());
 }
 
 void StreamStack::pop()

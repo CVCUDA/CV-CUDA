@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,14 +28,16 @@
 
 import os
 import sys
-import sphinx_rtd_theme
+
+# Ensure local extensions in docs/sphinx/ are importable
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 # -- Project information -----------------------------------------------------
 
 project = "CV-CUDA"
-copyright = "2022-2025, NVIDIA."
+copyright = "2022-2026, NVIDIA."
 author = "NVIDIA"
-version = "Beta"
+version = "0.17.0"
 release = version
 
 # cvcuda module imported from virtual environment
@@ -80,6 +82,22 @@ primary_domain = "cpp"
 # Tell sphinx what the pygments highlight language should be.
 highlight_language = "cpp"
 
+# CUDA attribute keywords that Sphinx's C++ domain parser doesn't natively
+# understand; without this every `__device__` / `__host__` / etc. function
+# emitted by Doxygen triggers "Error when parsing function declaration".
+cpp_id_attributes = [
+    "__device__",
+    "__host__",
+    "__global__",
+    "__forceinline__",
+    "__noinline__",
+    "__shared__",
+    "__constant__",
+    "__managed__",
+    "__restrict__",
+]
+cpp_paren_attributes = ["__declspec"]
+
 autodoc_inherit_docstrings = False
 
 # -- Options for HTML output -------------------------------------------------
@@ -88,14 +106,11 @@ autodoc_inherit_docstrings = False
 # a list of builtin themes.
 #
 
-html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
-
 html_theme = "sphinx_rtd_theme"
 html_logo = os.path.join("content", "nv_logo.png")
 
 html_theme_options = {
     "logo_only": True,
-    "display_version": True,
     "prev_next_buttons_location": "bottom",
     "style_external_links": False,
     "style_nav_header_background": "#000000",
@@ -146,6 +161,10 @@ extensions.append("sphinx.ext.autodoc")
 extensions.append("sphinx.ext.viewcode")
 extensions.append("sphinx.ext.napoleon")
 extensions.append("sphinx_tabs.tabs")
+
+# Injects C API limitations into Python operator autodoc pages.
+# Must be registered after napoleon so the hook receives post-Napoleon RST.
+extensions.append("cvcuda_limitations_ext")
 
 # -- Extension configuration -------------------------------------------------
 # Set up the default project for breathe extension

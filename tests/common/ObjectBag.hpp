@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,8 +30,9 @@ namespace nvcv::test {
 class ObjectBag final
 {
 public:
-    ObjectBag()                  = default;
-    ObjectBag(const ObjectBag &) = delete;
+    ObjectBag()                             = default;
+    ObjectBag(const ObjectBag &)            = delete;
+    ObjectBag &operator=(const ObjectBag &) = delete;
 
     ~ObjectBag();
 

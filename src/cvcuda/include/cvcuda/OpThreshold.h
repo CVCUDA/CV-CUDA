@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -68,9 +68,10 @@ CVCUDA_PUBLIC NVCVStatus cvcudaThresholdCreate(NVCVOperatorHandle *handle, uint3
  *  Limitations:
  *
  *  Input:
- *       Data Layout:    [kNHWC, kHWC, kNCHW, KCHW]
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
  *       Channels:       [1, 2, 3, 4] for the thresholding type NVCV_THRESH_BINARY, NVCV_THRESH_BINARY_INV,
  *                                      NVCV_THRESH_TRUNC, NVCV_THRESH_TOZERO and NVCV_THRESH_TOZERO_INV.
+ *                       [1, 3, 4] for planar kNCHW/kCHW layouts.
  *                       [1] for the thresholding type NVCV_THRESH_OTSU and NVCV_THRESH_TRIANGLE.
  *
  *       Data Type      | Allowed
@@ -82,6 +83,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaThresholdCreate(NVCVOperatorHandle *handle, uint3
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | Yes
  *       64bit Float    | Yes
  *       -------------- | -------------   for the thresholding type NVCV_THRESH_OTSU and NVCV_THRESH_TRIANGLE.
@@ -91,14 +93,16 @@ CVCUDA_PUBLIC NVCVStatus cvcudaThresholdCreate(NVCVOperatorHandle *handle, uint3
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | No
  *       64bit Float    | No
  *
  *
  *  Output:
- *       Data Layout:    [kNHWC, kHWC, kNCHW, KCHW]
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
  *       Channels:       [1, 2, 3, 4] for the thresholding type NVCV_THRESH_BINARY, NVCV_THRESH_BINARY_INV,
  *                                      NVCV_THRESH_TRUNC, NVCV_THRESH_TOZERO and NVCV_THRESH_TOZERO_INV.
+ *                       [1, 3, 4] for planar kNCHW/kCHW layouts.
  *                       [1] for the thresholding type NVCV_THRESH_OTSU and NVCV_THRESH_TRIANGLE.
  *
  *
@@ -111,6 +115,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaThresholdCreate(NVCVOperatorHandle *handle, uint3
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | Yes
  *       64bit Float    | Yes
  *       -------------- | -------------   for the thresholding type NVCV_THRESH_OTSU and NVCV_THRESH_TRIANGLE.
@@ -120,6 +125,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaThresholdCreate(NVCVOperatorHandle *handle, uint3
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | No
  *       64bit Float    | No
  *

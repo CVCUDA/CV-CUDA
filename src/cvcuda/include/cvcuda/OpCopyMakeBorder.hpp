@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,6 +35,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class CopyMakeBorder final : public IOperator
@@ -42,63 +44,61 @@ class CopyMakeBorder final : public IOperator
 public:
     explicit CopyMakeBorder();
 
-    ~CopyMakeBorder();
-
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, int32_t top, int32_t left,
-                    NVCVBorderType borderMode, const float4 borderValue);
+                    NVCVBorderType borderMode, const float4 borderValue) const;
     void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
                     const nvcv::Tensor &top, const nvcv::Tensor &left, NVCVBorderType borderMode,
-                    const float4 borderValue);
+                    const float4 borderValue) const;
     void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::Tensor &out,
                     const nvcv::Tensor &top, const nvcv::Tensor &left, NVCVBorderType borderMode,
-                    const float4 borderValue);
+                    const float4 borderValue) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline CopyMakeBorder::CopyMakeBorder()
 {
-    nvcv::detail::CheckThrow(cvcudaCopyMakeBorderCreate(&m_handle));
-    assert(m_handle);
-}
-
-inline CopyMakeBorder::~CopyMakeBorder()
-{
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaCopyMakeBorderCreate(&h));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void CopyMakeBorder::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
-                                       int32_t top, int32_t left, NVCVBorderType borderMode, const float4 borderValue)
+                                       int32_t top, int32_t left, NVCVBorderType borderMode,
+                                       const float4 borderValue) const
 {
-    nvcv::detail::CheckThrow(
-        cvcudaCopyMakeBorderSubmit(m_handle, stream, in.handle(), out.handle(), top, left, borderMode, borderValue));
+    nvcv::detail::CheckThrow(cvcudaCopyMakeBorderSubmit(m_handle.get(), stream, in.handle(), out.handle(), top, left,
+                                                        borderMode, borderValue));
 }
 
 inline void CopyMakeBorder::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
                                        const nvcv::ImageBatchVarShape &out, const nvcv::Tensor &top,
-                                       const nvcv::Tensor &left, NVCVBorderType borderMode, const float4 borderValue)
+                                       const nvcv::Tensor &left, NVCVBorderType borderMode,
+                                       const float4 borderValue) const
 {
-    nvcv::detail::CheckThrow(cvcudaCopyMakeBorderVarShapeSubmit(m_handle, stream, in.handle(), out.handle(),
+    nvcv::detail::CheckThrow(cvcudaCopyMakeBorderVarShapeSubmit(m_handle.get(), stream, in.handle(), out.handle(),
                                                                 top.handle(), left.handle(), borderMode, borderValue));
 }
 
 inline void CopyMakeBorder::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::Tensor &out,
                                        const nvcv::Tensor &top, const nvcv::Tensor &left, NVCVBorderType borderMode,
-                                       const float4 borderValue)
+                                       const float4 borderValue) const
 {
     nvcv::detail::CheckThrow(cvcudaCopyMakeBorderVarShapeStackSubmit(
-        m_handle, stream, in.handle(), out.handle(), top.handle(), left.handle(), borderMode, borderValue));
+        m_handle.get(), stream, in.handle(), out.handle(), top.handle(), left.handle(), borderMode, borderValue));
 }
 
 inline NVCVOperatorHandle CopyMakeBorder::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA_COPYMAKEBORDER_HPP

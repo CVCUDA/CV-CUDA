@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,6 +34,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class SIFT final : public IOperator
@@ -41,46 +43,42 @@ class SIFT final : public IOperator
 public:
     explicit SIFT(int3 maxShape, int maxOctaveLayers);
 
-    ~SIFT();
-
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &featCoords,
                     const nvcv::Tensor &featMetadata, const nvcv::Tensor &featDescriptors,
                     const nvcv::Tensor &numFeatures, int numOctaveLayers, float contrastThreshold, float edgeThreshold,
-                    float initSigma, NVCVSIFTFlagType flags);
+                    float initSigma, NVCVSIFTFlagType flags) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline SIFT::SIFT(int3 maxShape, int maxOctaveLayers)
 {
-    nvcv::detail::CheckThrow(cvcudaSIFTCreate(&m_handle, maxShape, maxOctaveLayers));
-    assert(m_handle);
-}
-
-inline SIFT::~SIFT()
-{
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaSIFTCreate(&h, maxShape, maxOctaveLayers));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void SIFT::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &featCoords,
                              const nvcv::Tensor &featMetadata, const nvcv::Tensor &featDescriptors,
                              const nvcv::Tensor &numFeatures, int numOctaveLayers, float contrastThreshold,
-                             float edgeThreshold, float initSigma, NVCVSIFTFlagType flags)
+                             float edgeThreshold, float initSigma, NVCVSIFTFlagType flags) const
 {
-    nvcv::detail::CheckThrow(cvcudaSIFTSubmit(m_handle, stream, in.handle(), featCoords.handle(), featMetadata.handle(),
-                                              featDescriptors.handle(), numFeatures.handle(), numOctaveLayers,
-                                              contrastThreshold, edgeThreshold, initSigma, flags));
+    nvcv::detail::CheckThrow(cvcudaSIFTSubmit(m_handle.get(), stream, in.handle(), featCoords.handle(),
+                                              featMetadata.handle(), featDescriptors.handle(), numFeatures.handle(),
+                                              numOctaveLayers, contrastThreshold, edgeThreshold, initSigma, flags));
 }
 
 inline NVCVOperatorHandle SIFT::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA_SIFT_HPP

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,51 +20,65 @@
 #include <nvcv/util/Assert.h>
 #include <openssl/evp.h>
 
+#include <array>
 #include <cstring>
 
 namespace nvcv::test {
 
-struct HashMD5::Impl
+struct EvpMdCtxDeleter
 {
-    EVP_MD_CTX *ctx;
+    void operator()(EVP_MD_CTX *ctx) const
+    {
+        EVP_MD_CTX_destroy(ctx);
+    }
 };
 
-HashMD5::HashMD5()
-    : pimpl{std::make_unique<Impl>()}
+struct HashMD5::Impl
 {
-    pimpl->ctx = EVP_MD_CTX_create();
-    NVCV_ASSERT(pimpl->ctx != nullptr);
+    std::unique_ptr<EVP_MD_CTX, EvpMdCtxDeleter> ctx{EVP_MD_CTX_create()};
+};
 
-    int ret = EVP_DigestInit_ex(pimpl->ctx, EVP_md5(), NULL);
+void HashMD5::ImplDeleter::operator()(Impl *impl) const
+{
+    std::default_delete<Impl>{}(impl);
+}
+
+HashMD5::ImplPtr HashMD5::CreateImpl()
+{
+    ImplPtr impl{new Impl};
+    NVCV_ASSERT(impl->ctx != nullptr);
+
+    int ret = EVP_DigestInit_ex(impl->ctx.get(), EVP_md5(), nullptr);
+    NVCV_ASSERT(ret == 1);
+
+    return impl;
+}
+
+HashMD5::HashMD5() = default;
+
+HashMD5::~HashMD5() = default;
+
+void HashMD5::operator()(const std::byte *data, size_t lenBytes) const
+{
+    int ret = EVP_DigestUpdate(pimpl->ctx.get(), data, lenBytes);
     NVCV_ASSERT(ret == 1);
 }
 
-HashMD5::~HashMD5()
+std::array<uint8_t, 16> HashMD5::getHashAndReset() const
 {
-    EVP_MD_CTX_destroy(pimpl->ctx);
-}
-
-void HashMD5::operator()(const void *data, size_t lenBytes)
-{
-    int ret = EVP_DigestUpdate(pimpl->ctx, data, lenBytes);
-    NVCV_ASSERT(ret == 1);
-}
-
-std::array<uint8_t, 16> HashMD5::getHashAndReset()
-{
-    unsigned char buf[EVP_MAX_MD_SIZE];
-    unsigned int  nwritten = sizeof(buf);
+    std::array<unsigned char, EVP_MAX_MD_SIZE> buf;
+    unsigned int                               nwritten = buf.size();
     // it also resets the context
-    int           ret = EVP_DigestFinal(pimpl->ctx, buf, &nwritten);
+    int                                        ret = EVP_DigestFinal(pimpl->ctx.get(), buf.data(), &nwritten);
     NVCV_ASSERT(ret == 1);
 
     // Be ready for a new run
-    ret = EVP_DigestInit_ex(pimpl->ctx, EVP_md5(), NULL);
+    ret = EVP_DigestInit_ex(pimpl->ctx.get(), EVP_md5(), nullptr);
     NVCV_ASSERT(ret == 1);
 
     NVCV_ASSERT(nwritten == 16);
     std::array<uint8_t, 16> hash;
-    memcpy(&hash[0], buf, sizeof(hash));
+    memcpy(hash.data(), buf.data(), hash.size());
     return hash;
 }
 

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -36,7 +36,7 @@
 #include <nvcv/Status.h>
 #include <nvcv/Tensor.h>
 
-typedef float NVCVAffineTransform[6];
+typedef float NVCVAffineTransform[6]; // NOSONAR: C ABI exposes affine transforms as fixed-size arrays.
 
 #ifdef __cplusplus
 extern "C"
@@ -66,7 +66,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaWarpAffineCreate(NVCVOperatorHandle *handle, cons
  *  Limitations:
  *
  *  Input:
- *       Data Layout:    [kNHWC, kHWC]
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
  *       Channels:       [1,3,4]
  *
  *       Data Type      | Allowed
@@ -77,11 +77,12 @@ CVCUDA_PUBLIC NVCVStatus cvcudaWarpAffineCreate(NVCVOperatorHandle *handle, cons
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | Yes
  *       64bit Float    | No
  *
  *  Output:
- *       Data Layout:    [kNHWC, kHWC]
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
  *       Channels:       [1,3,4]
  *
  *       Data Type      | Allowed
@@ -92,6 +93,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaWarpAffineCreate(NVCVOperatorHandle *handle, cons
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | Yes
  *       64bit Float    | No
  *
@@ -140,5 +142,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaWarpAffineVarShapeSubmit(NVCVOperatorHandle handl
 #ifdef __cplusplus
 }
 #endif
+
+/** @} */
 
 #endif /* CVCUDA_WARP_AFFINE_H */

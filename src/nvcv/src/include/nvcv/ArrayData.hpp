@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,7 +29,7 @@ namespace nvcv {
 class ArrayData
 {
 public:
-    ArrayData(const NVCVArrayData &data);
+    explicit ArrayData(const NVCVArrayData &data);
 
     int     rank() const;
     int64_t length() const;
@@ -73,7 +73,7 @@ class ArrayDataCuda : public ArrayData
 public:
     using Buffer = NVCVArrayBufferStrided;
 
-    ArrayDataCuda(const NVCVArrayData &data);
+    explicit ArrayDataCuda(const NVCVArrayData &data);
     ArrayDataCuda(int64_t length, const DataType &dtype, const Buffer &buffer);
 
     static bool IsCompatibleKind(NVCVArrayBufferType kind)
@@ -87,7 +87,7 @@ class ArrayDataHost : public ArrayData
 public:
     using Buffer = NVCVArrayBufferStrided;
 
-    ArrayDataHost(const NVCVArrayData &data);
+    explicit ArrayDataHost(const NVCVArrayData &data);
     ArrayDataHost(int64_t length, const DataType &dtype, const Buffer &buffer);
 
     static bool IsCompatibleKind(NVCVArrayBufferType kind)
@@ -101,7 +101,7 @@ class ArrayDataHostPinned : public ArrayData
 public:
     using Buffer = NVCVArrayBufferStrided;
 
-    ArrayDataHostPinned(const NVCVArrayData &data);
+    explicit ArrayDataHostPinned(const NVCVArrayData &data);
     ArrayDataHostPinned(int64_t length, const DataType &dtype, const Buffer &buffer);
 
     static bool IsCompatibleKind(NVCVArrayBufferType kind)
@@ -112,6 +112,6 @@ public:
 
 } // namespace nvcv
 
-#include "detail/ArrayDataImpl.hpp"
+#include "detail/ArrayDataImpl.hpp" // NOSONAR: inline definitions require the declarations above.
 
 #endif // NVCV_ARRAYDATA_HPP

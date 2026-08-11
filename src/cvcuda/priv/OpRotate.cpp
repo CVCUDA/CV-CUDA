@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "OpRotate.hpp"
 
+#include "Nvtx.hpp"
 #include "legacy/CvCudaLegacy.h"
 #include "legacy/CvCudaLegacyHelpers.hpp"
 
@@ -27,17 +28,25 @@ namespace cvcuda::priv {
 
 namespace legacy = nvcv::legacy::cuda_op;
 
-Rotate::Rotate(const int maxVarShapeBatchSize)
+std::unique_ptr<legacy::Rotate> Rotate::CreateLegacyOp(int)
 {
-    legacy::DataShape maxIn, maxOut;
-    // maxIn/maxOut not used by op.
-    m_legacyOp         = std::make_unique<legacy::Rotate>(maxIn, maxOut);
-    m_legacyOpVarShape = std::make_unique<legacy::RotateVarShape>(maxVarShapeBatchSize);
+    legacy::DataShape maxIn;
+    legacy::DataShape maxOut;
+    return std::make_unique<legacy::Rotate>(maxIn, maxOut);
+}
+
+Rotate::Rotate(const int maxVarShapeBatchSize)
+    // Legacy operators are single-device by design. PerDeviceResource creates
+    // one instance per CUDA device for transparent multi-GPU support.
+    : m_legacyOpVarShape([maxVarShapeBatchSize](int)
+                         { return std::make_unique<legacy::RotateVarShape>(maxVarShapeBatchSize); })
+{
 }
 
 void Rotate::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const double angleDeg,
                         const double2 shift, const NVCVInterpolationType interpolation) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::Rotate::operator()[Tensor]");
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
     if (inData == nullptr)
     {
@@ -52,13 +61,14 @@ void Rotate::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv:
                               "Output must be cuda-accessible, pitch-linear tensor");
     }
 
-    NVCV_CHECK_THROW(m_legacyOp->infer(*inData, *outData, angleDeg, shift, interpolation, stream));
+    NVCV_CHECK_THROW(m_legacyOp.get().infer(*inData, *outData, angleDeg, shift, interpolation, stream));
 }
 
 void Rotate::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
                         const nvcv::Tensor &angleDeg, const nvcv::Tensor &shift,
                         const NVCVInterpolationType interpolation) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::Rotate::operator()[ImageBatchVarShape]");
     auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (inData == nullptr)
     {
@@ -83,7 +93,8 @@ void Rotate::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "shift must be a tensor");
     }
 
-    NVCV_CHECK_THROW(m_legacyOpVarShape->infer(*inData, *outData, *angleDegData, *shiftData, interpolation, stream));
+    NVCV_CHECK_THROW(
+        m_legacyOpVarShape.get().infer(*inData, *outData, *angleDegData, *shiftData, interpolation, stream));
 }
 
 } // namespace cvcuda::priv

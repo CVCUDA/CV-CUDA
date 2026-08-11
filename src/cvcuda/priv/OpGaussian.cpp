@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "OpGaussian.hpp"
 
+#include "Nvtx.hpp"
 #include "legacy/CvCudaLegacy.h"
 #include "legacy/CvCudaLegacyHelpers.hpp"
 
@@ -28,15 +29,29 @@ namespace cvcuda::priv {
 namespace legacy = nvcv::legacy::cuda_op;
 
 Gaussian::Gaussian(nvcv::Size2D maxKernelSize, int maxBatchSize)
+    // Legacy operators are single-device by design. PerDeviceResource creates
+    // one instance per CUDA device for transparent multi-GPU support.
+    : m_legacyOp(
+        [maxKernelSize](int)
+        {
+            legacy::DataShape maxIn;
+            legacy::DataShape maxOut;
+            return std::make_unique<legacy::Gaussian>(maxIn, maxOut, maxKernelSize);
+        })
+    , m_legacyOpVarShape(
+          [maxKernelSize, maxBatchSize](int)
+          {
+              legacy::DataShape maxIn;
+              legacy::DataShape maxOut;
+              return std::make_unique<legacy::GaussianVarShape>(maxIn, maxOut, maxKernelSize, maxBatchSize);
+          })
 {
-    legacy::DataShape maxIn, maxOut; //maxIn/maxOut not used by op.
-    m_legacyOp         = std::make_unique<legacy::Gaussian>(maxIn, maxOut, maxKernelSize);
-    m_legacyOpVarShape = std::make_unique<legacy::GaussianVarShape>(maxIn, maxOut, maxKernelSize, maxBatchSize);
 }
 
 void Gaussian::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, nvcv::Size2D kernelSize,
                           double2 sigma, NVCVBorderType borderMode) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::Gaussian::operator()[Tensor]");
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
     if (inData == nullptr)
     {
@@ -51,12 +66,13 @@ void Gaussian::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvc
                               "Output must be cuda-accessible, pitch-linear tensor");
     }
 
-    NVCV_CHECK_THROW(m_legacyOp->infer(*inData, *outData, kernelSize, sigma, borderMode, stream));
+    NVCV_CHECK_THROW(m_legacyOp.get().infer(*inData, *outData, kernelSize, sigma, borderMode, stream));
 }
 
 void Gaussian::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
                           const nvcv::Tensor &kernelSize, const nvcv::Tensor &sigma, NVCVBorderType borderMode) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::Gaussian::operator()[ImageBatchVarShape]");
     auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (inData == nullptr)
     {
@@ -85,7 +101,8 @@ void Gaussian::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &i
                               "Kernel sigma must be cuda-accessible, pitch-linear tensor");
     }
 
-    NVCV_CHECK_THROW(m_legacyOpVarShape->infer(*inData, *outData, *kernelSizeData, *sigmaData, borderMode, stream));
+    NVCV_CHECK_THROW(
+        m_legacyOpVarShape.get().infer(*inData, *outData, *kernelSizeData, *sigmaData, borderMode, stream));
 }
 
 } // namespace cvcuda::priv

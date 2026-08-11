@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,6 +22,7 @@
 #include "detail/CheckError.hpp"
 #include "detail/Concepts.hpp"
 
+#include <array>
 #include <cassert>
 #include <iostream>
 
@@ -107,7 +108,7 @@ public:
      * @brief Constructs a TensorLayout from an NVCVTensorLayout.
      * @param layout The NVCVTensorLayout to wrap.
      */
-    constexpr TensorLayout(const NVCVTensorLayout &layout)
+    explicit constexpr TensorLayout(const NVCVTensorLayout &layout)
         : m_layout(layout)
     {
     }
@@ -220,7 +221,7 @@ public:
     constexpr const_iterator cbegin() const;
     constexpr const_iterator cend() const;
 
-    constexpr operator const NVCVTensorLayout &() const;
+    explicit constexpr operator const NVCVTensorLayout &() const;
 
     /**
      * @brief Outputs the TensorLayout to a stream.
@@ -240,6 +241,14 @@ NVCV_DETAIL_DEF_TLAYOUT(NONE)
 #include "TensorLayoutDef.inc"
 #undef NVCV_DETAIL_DEF_TLAYOUT
 
+namespace detail {
+
+constexpr std::array<const TensorLayout *, 7> kImplicitTensorLayouts{
+    {&TENSOR_NONE, &TENSOR_W, &TENSOR_HW, &TENSOR_NHW, &TENSOR_NCHW, &TENSOR_NCDHW, &TENSOR_NCFDHW}
+};
+
+} // namespace detail
+
 /**
  * @brief Retrieves the default tensor layout based on the rank (number of dimensions).
  *
@@ -251,26 +260,9 @@ NVCV_DETAIL_DEF_TLAYOUT(NONE)
  */
 constexpr const TensorLayout &GetImplicitTensorLayout(int rank)
 {
-    // clang-format off
-    return rank == 1
-            ? TENSOR_W
-            : (rank == 2
-                ? TENSOR_HW
-                : (rank == 3
-                    ? TENSOR_NHW
-                    : (rank == 4
-                        ? TENSOR_NCHW
-                        : (rank == 5
-                            ? TENSOR_NCDHW
-                            : (rank == 6
-                                ? TENSOR_NCFDHW
-                                : TENSOR_NONE
-                              )
-                          )
-                      )
-                  )
-              );
-    // clang-format on
+    return 0 <= rank && rank < static_cast<int>(detail::kImplicitTensorLayouts.size())
+             ? *detail::kImplicitTensorLayouts[rank]
+             : TENSOR_NONE;
 }
 
 constexpr char TensorLayout::operator[](int idx) const
@@ -293,7 +285,7 @@ constexpr TensorLayout::operator const NVCVTensorLayout &() const
     return m_layout;
 }
 
-inline bool operator==(const TensorLayout &a, const TensorLayout &b)
+inline bool operator==(const TensorLayout &a, const TensorLayout &b) // NOSONAR: defaulted comparisons are C++20.
 {
     return a.m_layout == b.m_layout;
 }
@@ -313,7 +305,7 @@ constexpr auto TensorLayout::begin() const -> const_iterator
     return nvcvTensorLayoutGetName(&m_layout);
 }
 
-constexpr inline auto TensorLayout::end() const -> const_iterator
+constexpr auto TensorLayout::end() const -> const_iterator
 {
     return this->begin() + this->rank();
 }

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,17 +13,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
 import gc
+import os
 import sys
 import threading
 import time
-import cvcuda
-import torch
-import pytest
-import numpy as np
 
+import numpy as np
+import pytest
+
+import cuda.bindings.runtime as cudart
+
+import cvcuda
 import cvcuda_util as util
+import cupy
 
 RNG = np.random.default_rng(12345)
 
@@ -42,25 +45,25 @@ def test_clear_cache_inside_op():
     gc.collect()
 
 
-def test_gcbag_is_being_emptied():
+def test_clear_cache_empties_gcbag():
     # Make sure there's no work scheduled on the stream, it's all ours.
     workstream = cvcuda.Stream()
 
     # In order to test if the GCBag was really emptied,
 
-    # we create a torch tensor,
-    ttensor = torch.as_tensor(np.ndarray([100, 1500, 1500, 3], np.uint8), device="cuda")
+    # we create a CUDA buffer,
+    tensor = cupy.asarray(np.ndarray([100, 1500, 1500, 3], np.uint8))
     # keep track of its initial refcount.
-    orig_ttensor_refcount = sys.getrefcount(ttensor)
-    # and wrap it in a nvcv tensor 'cvwrapper'
-    cvwrapper = cvcuda.as_tensor(ttensor, cvcuda.TensorLayout.NHWC)
+    orig_tensor_refcount = sys.getrefcount(tensor)
+    # and wrap it in a cvcuda tensor 'cvwrapper'
+    cvwrapper = cvcuda.as_tensor(tensor, cvcuda.TensorLayout.NHWC)
 
     # We can then indirectly tell if 'cvwrapper' was destroyed by
-    # monitoring 'ttensor's refcount.
+    # monitoring 'tensor's refcount.
     # This works because we know 'cvwrapper' holds a reference to
-    # 'ttensor', as proved by the following assert:
-    wrapped_ttensor_refcount = sys.getrefcount(ttensor)
-    assert wrapped_ttensor_refcount > orig_ttensor_refcount
+    # 'tensor', as proved by the following assert:
+    wrapped_tensor_refcount = sys.getrefcount(tensor)
+    assert wrapped_tensor_refcount > orig_tensor_refcount
 
     # We need now to make sure cvwrapper is in the GCBag.
     # For that, we need to use it in operator
@@ -68,42 +71,26 @@ def test_gcbag_is_being_emptied():
         cvcuda.median_blur(cvwrapper, [3, 3], stream=workstream)
         # And make sure it finishes.
         workstream.sync()
-    # Make sure the auxiliary stream has finished extending cvwrapper's lifetime
-    cvcuda.internal.syncAuxStream()
+    # cvwrapper being referenced by others shouldn't change tensor's refcount.
+    assert sys.getrefcount(tensor) == wrapped_tensor_refcount
 
-    # cvwrapper being referenced by others shouldn't change ttensor's refcount.
-    assert sys.getrefcount(ttensor) == wrapped_ttensor_refcount
-
-    # Now remove cvwrapper from the cache by clearing it.
+    # Clearing the cache must also drain completed resource holds. Otherwise
+    # callers need to submit an unrelated operator before memory is released.
     cvcuda.clear_cache()
 
     # We can now release it from python side. We can't track its lifetime
     # directly anymore.
     del cvwrapper
 
-    # But we know indirectly that it is still alive
-    assert sys.getrefcount(ttensor) == wrapped_ttensor_refcount
-
-    # To finally destroy cvwrapper, we empty the GCBag by executing a
-    # cvcuda operator, any would do.
-    with workstream:
-        cvcuda.median_blur(
-            cvcuda.Tensor((3, 64, 32, 3), cvcuda.Type.U8, cvcuda.TensorLayout.NHWC),
-            [3, 3],
-        )
-        workstream.sync()
-    cvcuda.internal.syncAuxStream()
-
-    # Lo and behold, cvwrapper is no more.
-    # The wrapped tensor torch has the same refcount it had when we've created it.
-    assert sys.getrefcount(ttensor) == orig_ttensor_refcount
+    # The wrapped tensor has the same refcount it had when we've created it.
+    assert sys.getrefcount(tensor) == orig_tensor_refcount
 
 
 def test_cache_limit_get_set():
     cvcuda.clear_cache()
 
     # Verify initial cache limit (half of total gpu mem)
-    total = torch.cuda.mem_get_info()[1]
+    total = cupy.cuda.Device().mem_info[1]
     assert cvcuda.get_cache_limit_inbytes() == total // 2
 
     # Verify we can also set the cache limit
@@ -141,9 +128,9 @@ def test_cache_current_byte_size():
 def test_cache_external_cacheitem():
     cvcuda.clear_cache()
 
-    input_tensor = torch.rand(2, 30, 16, 1).cuda()
+    input_tensor = np.random.rand(2, 30, 16, 1).astype(np.uint8)
     input_tensor = input_tensor * 255
-    input_tensor = input_tensor.to(dtype=torch.uint8)
+    input_tensor = cupy.asarray(input_tensor)
     frames_cvcuda = cvcuda.as_tensor(input_tensor, "NHWC")
     assert cvcuda.current_cache_size_inbytes() == 0
 
@@ -217,7 +204,7 @@ def test_parallel_cache_size():
         barrier.wait()
 
     # Ensure that the cache limit was not altered by another test
-    cvcuda.set_cache_limit_inbytes(torch.cuda.mem_get_info()[1] // 2)
+    cvcuda.set_cache_limit_inbytes(cupy.cuda.Device().mem_info[1] // 2)
     cvcuda.clear_cache()
 
     nb_threads = len(os.sched_getaffinity(0))
@@ -248,7 +235,7 @@ def test_parallel_clear_cache():
         clear_event.set()  # notify that the cache has been cleared
 
     # Ensure that the cache limit was not altered by another test
-    cvcuda.set_cache_limit_inbytes(torch.cuda.mem_get_info()[1] // 2)
+    cvcuda.set_cache_limit_inbytes(cupy.cuda.Device().mem_info[1] // 2)
     cvcuda.clear_cache()
 
     done_event = threading.Event()
@@ -269,3 +256,86 @@ def test_parallel_clear_cache():
     cvcuda.Tensor((h, w), np.uint8)
     assert cvcuda.cache_size() == 1
     assert cvcuda.current_cache_size_inbytes() == size_inbytes
+
+
+# ---------------------------------------------------------------------------
+# Multi-GPU cache tests (skipped when fewer than 2 GPUs are available)
+# ---------------------------------------------------------------------------
+
+_err, NUM_GPUS = cudart.cudaGetDeviceCount()
+if _err != cudart.cudaError_t.cudaSuccess:
+    NUM_GPUS = 0
+
+requires_multi_gpu = pytest.mark.skipif(
+    NUM_GPUS < 2,
+    reason="Multi-GPU cache tests require at least 2 GPUs",
+)
+
+
+@pytest.fixture()
+def _restore_device_and_limits():
+    """Restore CUDA device 0 and per-device cache limits after each multi-GPU cache test."""
+    yield
+    for gpu_id in range(NUM_GPUS):
+        cudart.cudaSetDevice(gpu_id)
+        total = cupy.cuda.Device().mem_info[1]
+        cvcuda.set_cache_limit_inbytes(total // 2)
+    cudart.cudaSetDevice(0)
+    cvcuda.clear_cache()
+
+
+@requires_multi_gpu
+@pytest.mark.usefixtures("_restore_device_and_limits")
+def test_per_device_cache_limits():
+    """Cache limits, size accounting, and eviction must be independent per device."""
+    cvcuda.clear_cache()
+
+    # 1. Default limit is per-device: half of each GPU's total memory.
+    for gpu_id in range(NUM_GPUS):
+        cudart.cudaSetDevice(gpu_id)
+        total = cupy.cuda.Device().mem_info[1]
+        assert cvcuda.get_cache_limit_inbytes() == total // 2
+
+    # 2. Setting limit on device 0 does not affect device 1.
+    cudart.cudaSetDevice(0)
+    cvcuda.set_cache_limit_inbytes(12345)
+    assert cvcuda.get_cache_limit_inbytes() == 12345
+
+    cudart.cudaSetDevice(1)
+    total_1 = cupy.cuda.Device().mem_info[1]
+    assert cvcuda.get_cache_limit_inbytes() == total_1 // 2
+
+    # 3. Size accounting is per-device.
+    cudart.cudaSetDevice(0)
+    total_0 = cupy.cuda.Device().mem_info[1]
+    cvcuda.set_cache_limit_inbytes(total_0 // 2)
+    cvcuda.clear_cache()
+
+    cudart.cudaSetDevice(0)
+    img0 = cvcuda.Image.zeros((32, 32), cvcuda.Format.RGB8)
+    size0 = cvcuda.current_cache_size_inbytes()
+    assert size0 > 0
+
+    cudart.cudaSetDevice(1)
+    assert cvcuda.current_cache_size_inbytes() == 0
+
+    img1 = cvcuda.Image.zeros((32, 32), cvcuda.Format.RGB8)
+    size1 = cvcuda.current_cache_size_inbytes()
+    assert size1 > 0
+
+    cudart.cudaSetDevice(0)
+    assert cvcuda.current_cache_size_inbytes() == size0
+
+    # 4. Eviction on device 0 does not affect device 1.
+    del img0
+    cudart.cudaSetDevice(0)
+    img_size = cvcuda.internal.nbytes_in_cache(
+        cvcuda.Image.zeros((32, 32), cvcuda.Format.RGB8)
+    )
+    cvcuda.set_cache_limit_inbytes(img_size - 1)
+    assert cvcuda.current_cache_size_inbytes() == 0
+
+    cudart.cudaSetDevice(1)
+    assert cvcuda.current_cache_size_inbytes() == size1
+
+    del img1

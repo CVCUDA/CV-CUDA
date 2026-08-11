@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,6 +34,8 @@
 #include <nvcv/ImageFormat.hpp>
 #include <nvcv/Tensor.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class ColorTwist final : public IOperator
@@ -41,48 +43,46 @@ class ColorTwist final : public IOperator
 public:
     explicit ColorTwist();
 
-    ~ColorTwist();
-
-    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const nvcv::Tensor &twist);
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                    const nvcv::Tensor &twist) const;
 
     void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
-                    const nvcv::Tensor &twist);
+                    const nvcv::Tensor &twist) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline ColorTwist::ColorTwist()
 {
-    nvcv::detail::CheckThrow(cvcudaColorTwistCreate(&m_handle));
-    assert(m_handle);
-}
-
-inline ColorTwist::~ColorTwist()
-{
-    nvcvOperatorDestroy(m_handle);
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaColorTwistCreate(&h));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void ColorTwist::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
-                                   const nvcv::Tensor &twist)
+                                   const nvcv::Tensor &twist) const
 {
-    nvcv::detail::CheckThrow(cvcudaColorTwistSubmit(m_handle, stream, in.handle(), out.handle(), twist.handle()));
+    nvcv::detail::CheckThrow(cvcudaColorTwistSubmit(m_handle.get(), stream, in.handle(), out.handle(), twist.handle()));
 }
 
 inline void ColorTwist::operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
-                                   const nvcv::Tensor &twist)
+                                   const nvcv::Tensor &twist) const
 {
     nvcv::detail::CheckThrow(
-        cvcudaColorTwistVarShapeSubmit(m_handle, stream, in.handle(), out.handle(), twist.handle()));
+        cvcudaColorTwistVarShapeSubmit(m_handle.get(), stream, in.handle(), out.handle(), twist.handle()));
 }
 
 inline NVCVOperatorHandle ColorTwist::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA__COLOR_TWIST_HPP

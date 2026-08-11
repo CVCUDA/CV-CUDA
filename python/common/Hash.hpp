@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,7 +38,7 @@ size_t ComputeHash(const T &a)
 template<class T, std::enable_if_t<std::is_enum_v<T>, int> = 0>
 size_t ComputeHash(const T &a)
 {
-    using Base = typename std::underlying_type<T>::type;
+    using Base = std::underlying_type_t<T>;
 
     return std::hash<Base>{}(static_cast<Base>(a));
 }

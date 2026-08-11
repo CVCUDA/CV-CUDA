@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,7 +41,7 @@ class Array
 public:
     static Array Create(int64_t length, nvcv::DataType dtype)
     {
-        PyObject *oarray = capi().Array_Create(length, dtype);
+        PyObject *oarray = capi().Array_Create(length, static_cast<NVCVDataType>(dtype));
         CheckCAPIError();
         NVCV_ASSERT(oarray == nullptr);
         py::object pyarray = py::reinterpret_steal<py::object>(oarray);
@@ -79,7 +79,7 @@ struct type_caster<cvpy::Array> : type_caster_base<cvpy::Array>
     bool load(handle src, bool)
     {
         // Does it have the correct object type?
-        PyTypeObject *srctype = Py_TYPE(src.ptr());
+        const PyTypeObject *srctype = Py_TYPE(src.ptr());
         if (strcmp(name.text, srctype->tp_name) == 0)
         {
             value = cvpy::Array(reinterpret_borrow<object>(src));
@@ -93,8 +93,7 @@ struct type_caster<cvpy::Array> : type_caster_base<cvpy::Array>
 
     static handle cast(cvpy::Array array, return_value_policy /* policy */, handle /*parent */)
     {
-        array.inc_ref(); // for some reason this is needed
-        return array;
+        return static_cast<object &>(array).release();
     }
 };
 

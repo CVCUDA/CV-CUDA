@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,11 +23,11 @@ namespace cvcudapy {
 
 void ExportMorphologyType(py::module &m)
 {
-    py::enum_<NVCVMorphologyType>(m, "MorphologyType")
-        .value("ERODE", NVCV_ERODE)
-        .value("DILATE", NVCV_DILATE)
-        .value("OPEN", NVCV_OPEN)
-        .value("CLOSE", NVCV_CLOSE);
+    py::enum_<NVCVMorphologyType>(m, "MorphologyType", "Morphological operation types.")
+        .value("ERODE", NVCV_ERODE, "Replaces each pixel with the minimum over the structuring element.")
+        .value("DILATE", NVCV_DILATE, "Replaces each pixel with the maximum over the structuring element.")
+        .value("OPEN", NVCV_OPEN, "Erosion followed by dilation; removes small bright regions.")
+        .value("CLOSE", NVCV_CLOSE, "Dilation followed by erosion; fills small dark holes.");
 }
 
 } // namespace cvcudapy

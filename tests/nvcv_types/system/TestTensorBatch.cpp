@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,13 +33,14 @@ namespace test = nvcv::test;
 template<typename R>
 nvcv::Tensor GetRandomTensor(R &rg, const nvcv::ImageFormat &format)
 {
-    std::uniform_int_distribution<int32_t> shape_dist(100, 400);
-    std::uniform_int_distribution<int32_t> images_num_dist(1, 16);
+    std::uniform_int_distribution shape_dist(int32_t{100}, int32_t{400});
+    std::uniform_int_distribution images_num_dist(int32_t{1}, int32_t{16});
     return nvcv::Tensor(images_num_dist(rg), {shape_dist(rg), shape_dist(rg)}, format);
 }
 
 template<typename It>
-void CheckTensorBatchData(const nvcv::TensorBatchData &tbdata, It tensors_begin, It tensors_end, CUstream stream)
+void CheckTensorBatchData( // NOSONAR: test helper requires random-access iterators.
+    const nvcv::TensorBatchData &tbdata, It tensors_begin, It tensors_end, CUstream stream)
 {
     auto numTensors = tensors_end - tensors_begin;
     ASSERT_EQ(numTensors, tbdata.numTensors());
@@ -53,9 +54,9 @@ void CheckTensorBatchData(const nvcv::TensorBatchData &tbdata, It tensors_begin,
     int i = 0;
     for (auto it = tensors_begin; it != tensors_end; ++it)
     {
-        nvcv::Tensor &tensor  = *it;
-        auto          tdata   = tensor.exportData().cast<nvcv::TensorDataStridedCuda>().value();
-        auto         &element = elements[i];
+        const nvcv::Tensor &tensor  = *it;
+        auto                tdata   = tensor.exportData().cast<nvcv::TensorDataStridedCuda>().value();
+        auto               &element = elements[i];
         EXPECT_EQ(tdata.layout(), tbdata.layout());
         EXPECT_EQ(tdata.dtype(), tbdata.dtype());
         EXPECT_EQ(tdata.basePtr(), reinterpret_cast<nvcv::Byte *>(element.data));
@@ -78,8 +79,10 @@ TEST(TensorBatch, create)
         nvcv::TensorBatch tb(reqs);
         EXPECT_EQ(tb.layout(), nvcv::TensorLayout(""));
         EXPECT_EQ(tb.dtype(), nvcv::DataType());
+        EXPECT_EQ(-1, tb.rank());
         tb.pushBack(tensors[0]);
         ASSERT_EQ(tb.numTensors(), 1);
+        EXPECT_EQ(4, tb.rank());
         ASSERT_EQ(tensors[0].refCount(), 2);
         auto tbdata = tb.exportData(nullptr);
         CheckTensorBatchData(tbdata, tensors.begin(), tensors.end(), nullptr);
@@ -105,6 +108,25 @@ TEST(TensorBatch, ref_counting)
     ASSERT_EQ(tensor.refCount(), 1);
 }
 
+TEST(TensorBatch, c_api_reference_count_and_rank_outputs)
+{
+    NVCVTensorBatchRequirements reqs;
+    NVCVTensorBatchHandle       handle;
+    ASSERT_EQ(NVCV_SUCCESS, nvcvTensorBatchCalcRequirements(1, &reqs));
+    ASSERT_EQ(NVCV_SUCCESS, nvcvTensorBatchConstruct(&reqs, nullptr, &handle));
+
+    int32_t rank = 0;
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchGetRank(handle, &rank));
+    EXPECT_EQ(-1, rank);
+
+    int32_t refCount = 0;
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchIncRef(handle, &refCount));
+    EXPECT_EQ(2, refCount);
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchDecRef(handle, &refCount));
+    EXPECT_EQ(1, refCount);
+    EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchDecRef(handle, nullptr));
+}
+
 TEST(TensorBatch, properties)
 {
     int32_t                   capacity = 32;
@@ -128,16 +150,18 @@ TEST(TensorBatch, user_pointer)
 {
     auto              reqs = nvcv::TensorBatch::CalcRequirements(1);
     nvcv::TensorBatch tb(reqs);
-    int               valueA = 0;
-    tb.setUserPointer(&valueA);
-    EXPECT_EQ(tb.getUserPointer(), &valueA);
+    int               valueA   = 0;
+    auto              userPtrA = static_cast<NVCVUserPointer>(static_cast<void *>(&valueA));
+    tb.setUserPointer(userPtrA);
+    EXPECT_EQ(tb.getUserPointer(), userPtrA);
     auto tbCopy = tb;
     std::cout << tb.refCount() << std::endl;
-    EXPECT_EQ(tbCopy.getUserPointer(), &valueA);
-    int valueB = 0;
-    tb.setUserPointer(&valueB);
-    EXPECT_EQ(tb.getUserPointer(), &valueB);
-    EXPECT_EQ(tbCopy.getUserPointer(), &valueB);
+    EXPECT_EQ(tbCopy.getUserPointer(), userPtrA);
+    int  valueB   = 0;
+    auto userPtrB = static_cast<NVCVUserPointer>(static_cast<void *>(&valueB));
+    tb.setUserPointer(userPtrB);
+    EXPECT_EQ(tb.getUserPointer(), userPtrB);
+    EXPECT_EQ(tbCopy.getUserPointer(), userPtrB);
 }
 
 TEST(TensorBatch, consistency_validation)
@@ -145,7 +169,7 @@ TEST(TensorBatch, consistency_validation)
     std::mt19937 rg{321};
     auto         base_tensor = GetRandomTensor(rg, nvcv::FMT_RGB8);
 
-    auto test_inconsistency = [&](int32_t rank, nvcv::DataType dtype, nvcv::TensorLayout layout)
+    auto test_inconsistency = [&base_tensor](int32_t rank, nvcv::DataType dtype, nvcv::TensorLayout layout)
     {
         auto                 reqs = nvcv::TensorBatch::CalcRequirements(2);
         nvcv::TensorBatch    tb(reqs);
@@ -157,6 +181,7 @@ TEST(TensorBatch, consistency_validation)
     test_inconsistency(4, nvcv::TYPE_U8, nvcv::TensorLayout("FHWC"));
     test_inconsistency(4, nvcv::TYPE_U32, nvcv::TensorLayout("NHWC"));
     test_inconsistency(3, nvcv::TYPE_U8, nvcv::TensorLayout("HWC"));
+    test_inconsistency(4, nvcv::TYPE_F16, nvcv::TensorLayout("NHWC"));
 }
 
 TEST(TensorBatch, push_in_parts)
@@ -188,12 +213,12 @@ TEST(TensorBatch, push_in_parts)
             }
             tensors_begin += i;
         }
-        for (auto &t : tensors)
+        for (const auto &t : tensors)
         {
             ASSERT_EQ(t.refCount(), 2);
         }
     }
-    for (auto &t : tensors)
+    for (const auto &t : tensors)
     {
         ASSERT_EQ(t.refCount(), 1);
     }
@@ -232,17 +257,18 @@ TEST(TensorBatch, clear)
     auto              reqs = nvcv::TensorBatch::CalcRequirements(capacity);
     nvcv::TensorBatch tb(reqs);
     tb.pushBack(tensors.begin(), tensors.end());
-    for (auto &t : tensors)
+    for (const auto &t : tensors)
     {
         EXPECT_EQ(t.refCount(), 2);
     }
     tb.clear();
-    for (auto &t : tensors)
+    for (const auto &t : tensors)
     {
         EXPECT_EQ(t.refCount(), 1);
     }
     EXPECT_EQ(tb.layout(), nvcv::TensorLayout(""));
     EXPECT_EQ(tb.dtype(), nvcv::DataType());
+    EXPECT_EQ(-1, tb.rank());
 }
 
 TEST(TensorBatch, pop_tensors)
@@ -338,6 +364,20 @@ TEST(TensorBatch, pop_tensors)
 
     NVCV_EXPECT_THROW_STATUS(NVCV_ERROR_UNDERFLOW, tb.popTensors(capacity / 4 + 1));
     NVCV_EXPECT_THROW_STATUS(NVCV_ERROR_INVALID_ARGUMENT, tb.popTensors(-1));
+}
+
+TEST(TensorBatch, pop_last_tensor_resets_metadata)
+{
+    nvcv::Tensor      tensor(1, {300, 300}, nvcv::FMT_RGB8);
+    nvcv::TensorBatch batch(nvcv::TensorBatch::CalcRequirements(1));
+    batch.pushBack(tensor);
+
+    batch.popTensor();
+
+    EXPECT_EQ(0, batch.numTensors());
+    EXPECT_EQ(-1, batch.rank());
+    EXPECT_EQ(nvcv::DataType{}, batch.dtype());
+    EXPECT_EQ(nvcv::TensorLayout{}, batch.layout());
 }
 
 TEST(TensorBatch, iterator_arithm)
@@ -471,7 +511,7 @@ TEST(TensorBatch, valid_get_allocator)
     int                         tmp = 1;
     NVCVTensorBatchHandle       tensorBatchHandle;
     NVCVTensorBatchRequirements req;
-    NVCVAllocatorHandle         alloc = reinterpret_cast<NVCVAllocatorHandle>(&tmp);
+    auto                        alloc = reinterpret_cast<NVCVAllocatorHandle>(&tmp);
     EXPECT_NE(alloc, nullptr);
 
     EXPECT_EQ(NVCV_SUCCESS, nvcvTensorBatchCalcRequirements(16, &req));

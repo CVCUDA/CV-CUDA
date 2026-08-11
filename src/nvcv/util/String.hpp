@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,25 +15,51 @@
  * limitations under the License.
  */
 
-#include <string_view>
+#ifndef NVCV_UTIL_STRING_HPP
+#define NVCV_UTIL_STRING_HPP
 
-#ifdef __GNUC__
-#    undef __DEPRECATED
-#endif
-#include <strstream>
+#include <ostream>
+#include <streambuf>
+#include <string_view>
 
 namespace nvcv::util {
 
-void ReplaceAllInline(char *strBuffer, int bufferSize, const char *what, const char *replace) noexcept;
+void ReplaceAllInline(char *strBuffer, int bufferSize, std::string_view what, std::string_view replace) noexcept;
+
+class FixedBufferStreamBuf : public std::streambuf
+{
+public:
+    FixedBufferStreamBuf() = default;
+    FixedBufferStreamBuf(char *buffer, std::streamsize bufferSize);
+
+    FixedBufferStreamBuf(const FixedBufferStreamBuf &)            = delete;
+    FixedBufferStreamBuf &operator=(const FixedBufferStreamBuf &) = delete;
+    FixedBufferStreamBuf(FixedBufferStreamBuf &&)                 = delete;
+    FixedBufferStreamBuf &operator=(FixedBufferStreamBuf &&)      = delete;
+
+    void reset(char *buffer, std::streamsize bufferSize) noexcept;
+
+    std::streampos seekpos(std::streampos pos, std::ios_base::openmode which = std::ios_base::out) noexcept override;
+
+protected:
+    int_type overflow(int_type ch) noexcept override;
+    int      sync() noexcept override;
+
+private:
+    char           *m_buffer     = nullptr;
+    std::streamsize m_bufferSize = 0;
+};
 
 class BufferOStream : public std::ostream
 {
 public:
     BufferOStream(char *buffer, int len);
-    ~BufferOStream();
+    ~BufferOStream() override;
 
 private:
-    std::strstreambuf m_buf;
+    FixedBufferStreamBuf m_buf;
 };
 
 } // namespace nvcv::util
+
+#endif // NVCV_UTIL_STRING_HPP

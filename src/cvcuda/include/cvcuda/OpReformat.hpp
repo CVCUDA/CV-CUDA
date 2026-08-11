@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,6 +34,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class Reformat final : public IOperator
@@ -41,38 +43,34 @@ class Reformat final : public IOperator
 public:
     explicit Reformat();
 
-    ~Reformat();
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out) const;
 
-    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out);
-
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline Reformat::Reformat()
 {
-    nvcv::detail::CheckThrow(cvcudaReformatCreate(&m_handle));
-    assert(m_handle);
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaReformatCreate(&h));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
-inline Reformat::~Reformat()
+inline void Reformat::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out) const
 {
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
-}
-
-inline void Reformat::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out)
-{
-    nvcv::detail::CheckThrow(cvcudaReformatSubmit(m_handle, stream, in.handle(), out.handle()));
+    nvcv::detail::CheckThrow(cvcudaReformatSubmit(m_handle.get(), stream, in.handle(), out.handle()));
 }
 
 inline NVCVOperatorHandle Reformat::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA_REFORMAT_HPP

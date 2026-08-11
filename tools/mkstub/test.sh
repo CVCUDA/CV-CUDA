@@ -1,5 +1,5 @@
 #!/bin/bash -e
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 function cleanup()
 {
     rm -f stub_symbols orig_symbols libtest.so libtest_stub.so
+    return $?
 }
 
 trap 'cleanup' EXIT
@@ -30,7 +31,7 @@ function run_test()
     echo "test $name"
 
     local args=''
-    if [ -n "$ver" ]; then
+    if [[ -n "$ver" ]]; then
         args="-Wl,--version-script=$ver"
     fi
 
@@ -40,13 +41,16 @@ function run_test()
     ./mkstub.sh libtest.so
     function list_contents()
     {
-        readelf --dyn-syms "$1" | awk '$7 !~ /(UND|^$|Ndx)/ { print $4,$5,$6,$8 }' | sort
+        local library="$1"
+        readelf --dyn-syms "$library" | awk '$7 !~ /(UND|^$|Ndx)/ { print $4,$5,$6,$8 }' | sort
+        return $?
     }
 
     list_contents libtest.so > orig_symbols
     list_contents libtest_stub.so > stub_symbols
 
     diff orig_symbols stub_symbols
+    return $?
 }
 
 run_test versioned "$(cat test_versioned.c)" test_versioned.v

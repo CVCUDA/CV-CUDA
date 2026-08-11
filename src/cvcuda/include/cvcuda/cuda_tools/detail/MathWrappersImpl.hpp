@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +21,7 @@
 // Internal implementation of math wrapppers functionalities.
 // Not to be used directly.
 
+#include <cassert>
 #include <cfenv> // for FE_TONEAREST, etc.
 #include <cmath> // for std::round, etc.
 
@@ -404,12 +405,9 @@ template<typename U>
 inline __host__ U RoundEvenImpl(U u)
 {
     U rounded = std::round(u);
-    if (std::abs(rounded - u) == U(0.5))
+    if (std::abs(rounded - u) == U(0.5) && (static_cast<int64_t>(rounded) & 1) != 0)
     {
-        if (static_cast<int64_t>(rounded) & 1)
-        {
-            rounded -= std::copysign(U(1.0), u);
-        }
+        rounded -= std::copysign(U(1.0), u);
     }
     return rounded;
 }
@@ -424,19 +422,19 @@ inline __host__ __device__ T RoundImpl(U u)
     // round is to nearest; floor is downward; ceil is upward; and trunc is towards zero.
     if constexpr (RM == FE_TONEAREST)
     {
-        return RoundEvenImpl(u);
+        return static_cast<T>(RoundEvenImpl(u));
     }
     else if constexpr (RM == FE_DOWNWARD)
     {
-        return std::floor(u);
+        return static_cast<T>(std::floor(u));
     }
     else if constexpr (RM == FE_UPWARD)
     {
-        return std::ceil(u);
+        return static_cast<T>(std::ceil(u));
     }
     else if constexpr (RM == FE_TOWARDZERO)
     {
-        return std::trunc(u);
+        return static_cast<T>(std::trunc(u));
     }
 #endif
 }
@@ -467,7 +465,7 @@ inline __host__ __device__ U PowImpl(U x, S y)
 #ifdef __CUDA_ARCH__
     return DevicePowImpl(x, y);
 #else
-    return std::pow(x, y);
+    return static_cast<U>(std::pow(x, y));
 #endif
 }
 
@@ -477,7 +475,7 @@ inline __host__ __device__ U ExpImpl(U u)
 #ifdef __CUDA_ARCH__
     return DeviceExpImpl(u);
 #else
-    return std::exp(u);
+    return static_cast<U>(std::exp(u));
 #endif
 }
 
@@ -487,7 +485,7 @@ inline __host__ __device__ U SqrtImpl(U u)
 #ifdef __CUDA_ARCH__
     return DeviceSqrtImpl(u);
 #else
-    return std::sqrt(u);
+    return static_cast<U>(std::sqrt(u));
 #endif
 }
 
@@ -503,7 +501,7 @@ inline __host__ __device__ U AbsImpl(U u)
 #ifdef __CUDA_ARCH__
         return DeviceAbsImpl(u);
 #else
-        return std::abs(u);
+        return static_cast<U>(std::abs(u));
 #endif
     }
 }
@@ -511,7 +509,15 @@ inline __host__ __device__ U AbsImpl(U u)
 template<typename U, typename S>
 inline __host__ __device__ U ClampImpl(U u, S lo, S hi)
 {
-    return u <= lo ? lo : (u >= hi ? hi : u);
+    if (u <= lo)
+    {
+        return lo;
+    }
+    if (u >= hi)
+    {
+        return hi;
+    }
+    return u;
 }
 
 } // namespace nvcv::cuda::detail

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,7 +20,7 @@ def test_nvcv_types_available_in_cvcuda():
     """Verify nvcv types are accessible through cvcuda module."""
     # Clear any previous imports to test fresh
     for mod in list(sys.modules.keys()):
-        if mod.startswith("nvcv") or mod.startswith("cvcuda"):
+        if mod.startswith("cvcuda"):
             del sys.modules[mod]
 
     import cvcuda
@@ -43,20 +43,22 @@ def test_functional_usage():
     """Test that cvcuda types work functionally."""
     # Clear any previous imports to test fresh
     for mod in list(sys.modules.keys()):
-        if mod.startswith("nvcv") or mod.startswith("cvcuda"):
+        if mod.startswith("cvcuda"):
             del sys.modules[mod]
 
+    import numpy as np
+
     import cvcuda
-    import torch
+    import cupy
 
     # Create tensor using cvcuda re-exported types
-    torch_tensor = torch.rand(4, 32, 32, 3, dtype=torch.float32, device="cuda")
-    nvcv_tensor = cvcuda.as_tensor(torch_tensor, layout="NHWC")
+    cupy_tensor = cupy.asarray(np.random.rand(4, 32, 32, 3).astype(np.float32))
+    cvcuda_tensor = cvcuda.as_tensor(cupy_tensor, layout="NHWC")
 
     # Verify it's the right type
-    assert isinstance(nvcv_tensor, cvcuda.Tensor)
+    assert isinstance(cvcuda_tensor, cvcuda.Tensor)
 
     # Use cvcuda operator - resize requires full shape for NHWC tensors
-    result = cvcuda.resize(nvcv_tensor, (4, 16, 16, 3), cvcuda.Interp.LINEAR)
+    result = cvcuda.resize(cvcuda_tensor, (4, 16, 16, 3), cvcuda.Interp.LINEAR)
     assert isinstance(result, cvcuda.Tensor)
     assert result.shape == (4, 16, 16, 3)

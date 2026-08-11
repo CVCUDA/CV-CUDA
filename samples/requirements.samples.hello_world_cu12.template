@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Template for requirements.samples.hello_world_cu12.txt — to regenerate, run from the repo root:
+#   bash generate_requirements.sh
+
+# Minimal requirements for the hello_world.py sample only (CUDA 12)
+# This is a lightweight option for quick testing and getting started with CV-CUDA
+#
+# For running other samples (operators, applications, interoperability),
+# please use the installation script: ./install_dependencies.sh
+
+cuda-python==${cuda_python_cu12}
+cvcuda-cu12
+nvidia-nvimgcodec-cu12==${nvimgcodec}
+numpy==${numpy_v2_py310}; python_version=="3.10"
+numpy==${numpy_v2_py311plus}; python_version>="3.11"

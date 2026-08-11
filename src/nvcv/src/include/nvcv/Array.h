@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -212,7 +212,7 @@ NVCV_PUBLIC NVCVStatus nvcvArrayRefCount(NVCVArrayHandle handle, int *newRefCoun
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
  * @retval #NVCV_SUCCESS                Operation executed successfully.
  */
-NVCV_PUBLIC NVCVStatus nvcvArraySetUserPointer(NVCVArrayHandle handle, void *userPtr);
+NVCV_PUBLIC NVCVStatus nvcvArraySetUserPointer(NVCVArrayHandle handle, NVCVUserPointer userPtr);
 
 /** Returns the user pointer associated with the array handle.
  *
@@ -226,7 +226,7 @@ NVCV_PUBLIC NVCVStatus nvcvArraySetUserPointer(NVCVArrayHandle handle, void *use
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
  * @retval #NVCV_SUCCESS                Operation executed successfully.
  */
-NVCV_PUBLIC NVCVStatus nvcvArrayGetUserPointer(NVCVArrayHandle handle, void **outUserPtr);
+NVCV_PUBLIC NVCVStatus nvcvArrayGetUserPointer(NVCVArrayHandle handle, NVCVUserPointer *outUserPtr);
 
 /**
  * Get the type of the array elements (its data type).

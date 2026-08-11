@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,26 +22,28 @@
 
 #include <nvcv/alloc/Allocator.h>
 
+#include <array>
+
 namespace nvcv::priv {
 
 class CustomAllocator final : public CoreObjectBase<IAllocator>
 {
 public:
     CustomAllocator(const NVCVResourceAllocator *customAllocators, int32_t numCustomAllocators);
-    ~CustomAllocator();
+    ~CustomAllocator() override;
 
 private:
-    NVCVResourceAllocator m_allocators[NVCV_NUM_RESOURCE_TYPES] = {};
-    uint32_t              m_customAllocatorMask                 = 0;
+    std::array<NVCVResourceAllocator, NVCV_NUM_RESOURCE_TYPES> m_allocators          = {};
+    uint32_t                                                   m_customAllocatorMask = 0;
 
-    void *doAllocHostMem(int64_t size, int32_t align) override;
-    void  doFreeHostMem(void *ptr, int64_t size, int32_t align) noexcept override;
+    NVCVMemoryBuffer doAllocHostMem(int64_t size, int32_t align) override;
+    void             doFreeHostMem(NVCVMemoryBuffer ptr, int64_t size, int32_t align) noexcept override;
 
-    void *doAllocHostPinnedMem(int64_t size, int32_t align) override;
-    void  doFreeHostPinnedMem(void *ptr, int64_t size, int32_t align) noexcept override;
+    NVCVMemoryBuffer doAllocHostPinnedMem(int64_t size, int32_t align) override;
+    void             doFreeHostPinnedMem(NVCVMemoryBuffer ptr, int64_t size, int32_t align) noexcept override;
 
-    void *doAllocCudaMem(int64_t size, int32_t align) override;
-    void  doFreeCudaMem(void *ptr, int64_t size, int32_t align) noexcept override;
+    NVCVMemoryBuffer doAllocCudaMem(int64_t size, int32_t align) override;
+    void             doFreeCudaMem(NVCVMemoryBuffer ptr, int64_t size, int32_t align) noexcept override;
 
     NVCVResourceAllocator doGet(NVCVResourceType resType) override;
 };

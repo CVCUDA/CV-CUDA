@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,7 @@
  */
 
 #include "Operators.hpp"
+#include "VarShapeUtils.hpp"
 
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
@@ -48,7 +49,8 @@ Tensor RotateInto(Tensor &output, Tensor &input, double angleDeg, const std::tup
 
     double2 shiftArg{std::get<0>(shift), std::get<1>(shift)};
 
-    rotate->submit(pstream->cudaHandle(), input, output, angleDeg, shiftArg, interpolation);
+    guard.run([&rotate, &pstream, &input, &output, &angleDeg, &shiftArg, &interpolation]()
+              { rotate->submit(pstream->cudaHandle(), input, output, angleDeg, shiftArg, interpolation); });
 
     return output;
 }
@@ -76,7 +78,8 @@ ImageBatchVarShape VarShapeRotateInto(ImageBatchVarShape &output, ImageBatchVarS
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*rotate});
 
-    rotate->submit(pstream->cudaHandle(), input, output, angleDeg, shift, interpolation);
+    guard.run([&rotate, &pstream, &input, &output, &angleDeg, &shift, &interpolation]()
+              { rotate->submit(pstream->cudaHandle(), input, output, angleDeg, shift, interpolation); });
 
     return output;
 }
@@ -84,15 +87,7 @@ ImageBatchVarShape VarShapeRotateInto(ImageBatchVarShape &output, ImageBatchVarS
 ImageBatchVarShape VarShapeRotate(ImageBatchVarShape &input, Tensor &angleDeg, Tensor &shift,
                                   NVCVInterpolationType interpolation, std::optional<Stream> pstream)
 {
-    ImageBatchVarShape output = ImageBatchVarShape::Create(input.capacity());
-
-    for (int i = 0; i < input.numImages(); ++i)
-    {
-        nvcv::ImageFormat format = input[i].format();
-        nvcv::Size2D      size   = input[i].size();
-        auto              image  = Image::Create(size, format);
-        output.pushBack(image);
-    }
+    ImageBatchVarShape output = CreateSameShapeImageBatch(input);
 
     return VarShapeRotateInto(output, input, angleDeg, shift, interpolation, pstream);
 }
@@ -103,19 +98,11 @@ void ExportOpRotate(py::module &m)
 {
     using namespace pybind11::literals;
 
-    py::options options;
-    options.disable_function_signatures();
-
-    m.def("rotate", &Rotate, "src"_a, "angle_deg"_a, "shift"_a, "interpolation"_a, py::kw_only(), "stream"_a = nullptr,
+    m.def("rotate", NvtxTrace("cvcuda.rotate", &Rotate), "src"_a, "angle_deg"_a, "shift"_a, "interpolation"_a,
+          py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
-
-	cvcuda.rotate(src: cvcuda.Tensor, angle_deg: float, shift: Tuple[float, float], interpolation: cvcuda.Interp, stream: Optional[cvcuda.Stream] = None) -> cvcuda.Tensor
-
         Executes the Rotate operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Rotate operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.Tensor): Input tensor containing one or more images.
@@ -127,21 +114,12 @@ void ExportOpRotate(py::module &m)
         Returns:
             cvcuda.Tensor: The output tensor.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("rotate_into", &RotateInto, "dst"_a, "src"_a, "angle_deg"_a, "shift"_a, "interpolation"_a, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.rotate_into(dst: cvcuda.Tensor, src: cvcuda.Tensor, angle_deg: float, shift: Tuple[float, float], interpolation: cvcuda.Interp, stream: Optional[cvcuda.Stream] = None)
-
+    m.def("rotate_into", NvtxTrace("cvcuda.rotate_into", &RotateInto), "dst"_a, "src"_a, "angle_deg"_a, "shift"_a,
+          "interpolation"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the Rotate operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Rotate operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.Tensor): Output tensor to store the result of the operation.
@@ -152,66 +130,41 @@ void ExportOpRotate(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 
-    m.def("rotate", &VarShapeRotate, "src"_a, "angle_deg"_a, "shift"_a, "interpolation"_a, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
+    m.def("rotate", NvtxTrace("cvcuda.rotate", &VarShapeRotate), "src"_a, "angle_deg"_a, "shift"_a, "interpolation"_a,
+          py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+        Executes the Rotate operation on the given cuda stream.
 
-	cvcuda.rotate(src: cvcuda.ImageBatchVarShape, angle_deg: float, shift: Tuple[float, float], interpolation: cvcuda.Interp, stream: Optional[cvcuda.Stream] = None) -> cvcuda.ImageBatchVarShape
-
-
-	Executes the Rotate operation on the given cuda stream.
-
-        See also:
-            Refer to the CV-CUDA C API reference for the Rotate operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
-            dst (cvcuda.ImageBatchVarShape): Output image batch containing the result of the operation.
-            angle_deg (float): Angle used for rotation in degrees for each image.
-            shift (Tuple[float, float]): Value of shift in {x, y} directions to move the center at the same coord after rotation for each image.
+            angle_deg (cvcuda.Tensor): Rotation angle in degrees, specified per image.
+            shift (cvcuda.Tensor): Shift in {x, y} directions, specified per image.
             interpolation (cvcuda.Interp): Interpolation type used for transform.
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
             cvcuda.ImageBatchVarShape: The output image batch.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("rotate_into", &VarShapeRotateInto, "dst"_a, "src"_a, "angle_deg"_a, "shift"_a, "interpolation"_a,
-          py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.rotate_into(dst: cvcuda.ImageBatchVarShape, src: cvcuda.ImageBatchVarShape, angle_deg: cvcuda.Tensor, shift: cvcuda.Tensor, interpolation: cvcuda.Interp, stream: Optional[cvcuda.Stream] = None)
-
+    m.def("rotate_into", NvtxTrace("cvcuda.rotate_into", &VarShapeRotateInto), "dst"_a, "src"_a, "angle_deg"_a,
+          "shift"_a, "interpolation"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the Rotate operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Rotate operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
             dst (cvcuda.ImageBatchVarShape): Output image batch containing the result of the operation.
-            angle_deg (cvcuda.Tensor): Angle used for rotation in degrees for each image.
-            shift (cvcuda.Tensor): Value of shift in {x, y} directions to move the center at the same coord after rotation for each image.
+            angle_deg (cvcuda.Tensor): Rotation angle in degrees, specified per image.
+            shift (cvcuda.Tensor): Shift in {x, y} directions, specified per image.
             interpolation (cvcuda.Interp): Interpolation type used for transform.
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.ImageBatchVarShape: The output image batch (same as dst).
     )pbdoc");
 }
 

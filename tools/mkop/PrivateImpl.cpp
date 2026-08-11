@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+#include "Nvtx.hpp"
 #include "Op__OPNAME__.hpp"
 #include "legacy/CvCudaLegacy.h"
 #include "legacy/CvCudaLegacyHelpers.hpp"
@@ -33,6 +34,7 @@ __OPNAME__::__OPNAME__()
 
 void __OPNAME__::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::__OPNAME__::operator()[Tensor]");
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
     if (inData == nullptr)
     {

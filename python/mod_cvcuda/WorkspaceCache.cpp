@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,7 +17,35 @@
 
 #include "WorkspaceCache.hpp"
 
+#include <cuda_runtime.h>
+
+#include <memory>
+#include <mutex>
+#include <shared_mutex>
+#include <unordered_map>
+
 namespace cvcudapy {
+
+namespace {
+
+template<MemoryKind kind>
+void ReleaseWorkspaceMem(WorkspaceMemCache<kind> &cache, CachedWorkspaceMem<kind> &mem,
+                         std::optional<cudaStream_t> releaseStream) noexcept
+{
+    if (!mem)
+        return;
+
+    try
+    {
+        cache.put(std::move(mem), releaseStream);
+    }
+    catch (...)
+    {
+        mem.reset();
+    }
+}
+
+} // namespace
 
 WorkspaceLease::WorkspaceLease(WorkspaceCache *owner, CachedWorkspaceMem<MemoryKind::Host> &&host,
                                CachedWorkspaceMem<MemoryKind::Pinned> &&pinned,
@@ -35,14 +63,14 @@ WorkspaceLease::WorkspaceLease(WorkspaceCache *owner, CachedWorkspaceMem<MemoryK
 {
 }
 
-WorkspaceLease::~WorkspaceLease()
+WorkspaceLease::~WorkspaceLease() noexcept
 {
-    if (m_host)
-        m_owner->m_host.put(std::move(m_host), m_hostReleaseStream);
-    if (m_pinned)
-        m_owner->m_pinned.put(std::move(m_pinned), m_pinnedReleaseStream);
-    if (m_cuda)
-        m_owner->m_cuda.put(std::move(m_cuda), m_hostReleaseStream);
+    if (m_owner == nullptr)
+        return;
+
+    ReleaseWorkspaceMem(m_owner->m_host, m_host, m_hostReleaseStream);
+    ReleaseWorkspaceMem(m_owner->m_pinned, m_pinned, m_pinnedReleaseStream);
+    ReleaseWorkspaceMem(m_owner->m_cuda, m_cuda, m_cudaReleaseStream);
 }
 
 WorkspaceCache::WorkspaceCache(nvcv::Allocator allocator)
@@ -58,12 +86,13 @@ WorkspaceCache::WorkspaceCache()
 {
 }
 
-WorkspaceLease WorkspaceCache::get(cvcuda::WorkspaceRequirements req, std::optional<cudaStream_t> hostAcquireStream,
-                                   std::optional<cudaStream_t> hostReleaseStream,
-                                   std::optional<cudaStream_t> pinnedAcquireStream,
-                                   std::optional<cudaStream_t> pinnedReleaseStream,
-                                   std::optional<cudaStream_t> cudaAcquireStream,
-                                   std::optional<cudaStream_t> cudaReleaseStream)
+WorkspaceLease WorkspaceCache::get(const cvcuda::WorkspaceRequirements &req,
+                                   std::optional<cudaStream_t>          hostAcquireStream,
+                                   std::optional<cudaStream_t>          hostReleaseStream,
+                                   std::optional<cudaStream_t>          pinnedAcquireStream,
+                                   std::optional<cudaStream_t>          pinnedReleaseStream,
+                                   std::optional<cudaStream_t>          cudaAcquireStream,
+                                   std::optional<cudaStream_t>          cudaReleaseStream)
 {
     return WorkspaceLease(this, m_host.get(req.hostMem, hostAcquireStream),
                           m_pinned.get(req.pinnedMem, pinnedAcquireStream), m_cuda.get(req.cudaMem, cudaAcquireStream),
@@ -72,8 +101,30 @@ WorkspaceLease WorkspaceCache::get(cvcuda::WorkspaceRequirements req, std::optio
 
 WorkspaceCache &WorkspaceCache::instance()
 {
-    static WorkspaceCache instance;
-    return instance;
+    // Per-device singleton: each CUDA device gets its own WorkspaceCache
+    // so that device memory allocations are always on the correct GPU.
+    // Uses shared_ptr for heap stability — unordered_map rehashing won't
+    // invalidate the objects that outstanding references point to.
+    static std::unordered_map<int, std::shared_ptr<WorkspaceCache>> instances;
+    static std::shared_mutex                                        instances_mutex;
+
+    int dev = 0;
+    nvcvpy::util::CheckThrow(cudaGetDevice(&dev));
+
+    // Shared lock: concurrent readers when the entry already exists.
+    {
+        std::shared_lock lock(instances_mutex);
+        auto             it = instances.find(dev);
+        if (it != instances.end())
+            return *it->second;
+    }
+
+    // Exclusive lock: serializes the one-time insertion of a new entry.
+    std::unique_lock lock(instances_mutex);
+    auto [it, _] = instances.try_emplace(dev, nullptr);
+    if (!it->second)
+        it->second = std::make_shared<WorkspaceCache>();
+    return *it->second;
 }
 
 void WorkspaceCache::clear()

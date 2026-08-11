@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -78,10 +78,15 @@ CVCUDA_PUBLIC NVCVStatus cvcudaPillowResizeGetWorkspaceRequirements(NVCVOperator
  * @param [in] handle Where the image instance handle will be written to.
  *                     + Must not be NULL.
  * @param [in] batchSize The number of images
- * @param [in] inputSizes The sizes of the input images
- * @param [in] outputSizes The sizes of the output images
+ * @param [in] inputSizesWH The sizes of the input images.
+ *                          + Must not be NULL.
+ *                          + Must contain at least @p batchSize elements.
+ * @param [in] outputSizesWH The sizes of the output images.
+ *                           + Must not be NULL.
+ *                           + Must contain at least @p batchSize elements.
  * @param [in] fmt Image format
  * @param [out] reqOut Requirements for the operator's workspace
+ *                      + Must not be NULL.
  *
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Handle is null or one of the arguments is out of range.
  * @retval #NVCV_SUCCESS                Operation executed successfully.
@@ -98,32 +103,36 @@ CVCUDA_PUBLIC NVCVStatus cvcudaPillowResizeVarShapeGetWorkspaceRequirements(NVCV
  *  Limitations:
  *
  *  Input:
- *       Data Layout:    [kNHWC, kHWC]
- *       Channels:       [1, 3, 4]
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
+ *       Channels:       [1, 2, 3, 4] for interleaved (kNHWC, kHWC); [1, 3, 4] for planar (kNCHW, kCHW)
+ *                       (2-channel planar is not supported)
  *
  *       Data Type      | Allowed
  *       -------------- | -------------
  *       8bit  Unsigned | Yes
- *       8bit  Signed   | No
+ *       8bit  Signed   | Yes
  *       16bit Unsigned | Yes
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
- *       32bit Signed   | No
+ *       32bit Signed   | Yes
+ *       16bit Float    | No
  *       32bit Float    | Yes
  *       64bit Float    | No
  *
  *  Output:
- *       Data Layout:    [kNHWC, kHWC]
- *       Channels:       [1, 3, 4]
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
+ *       Channels:       [1, 2, 3, 4] for interleaved (kNHWC, kHWC); [1, 3, 4] for planar (kNCHW, kCHW)
+ *                       (2-channel planar is not supported)
  *
  *       Data Type      | Allowed
  *       -------------- | -------------
  *       8bit  Unsigned | Yes
- *       8bit  Signed   | No
+ *       8bit  Signed   | Yes
  *       16bit Unsigned | Yes
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
- *       32bit Signed   | No
+ *       32bit Signed   | Yes
+ *       16bit Float    | No
  *       32bit Float    | Yes
  *       64bit Float    | No
  *

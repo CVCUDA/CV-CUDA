@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,6 +33,11 @@ namespace py = pybind11;
 class ExternalBuffer;
 class Image;
 
+// Register nvcv::TensorLayout.  Split out of Tensor::Export so it can run
+// early — Image::cpu/cuda take a TensorLayout parameter and pybind11 needs
+// the type registered before Image::Export binds those methods.
+void ExportTensorLayout(py::module &m);
+
 class Tensor : public Container
 {
 public:
@@ -50,9 +55,6 @@ public:
     static std::shared_ptr<Tensor> ReshapeTensor(Tensor &tensor, Shape shape, std::optional<nvcv::TensorLayout> layout);
 
     std::shared_ptr<Tensor> Reshape(Shape shape, std::optional<nvcv::TensorLayout> layout);
-
-    std::shared_ptr<Tensor>       shared_from_this();
-    std::shared_ptr<const Tensor> shared_from_this() const;
 
     std::optional<nvcv::TensorLayout> layout() const;
     Shape                             shape() const;
@@ -78,23 +80,23 @@ public:
         nvcv::DataType    m_dtype;
         bool              m_wrapper;
 
-        virtual size_t doGetHash() const override;
-        virtual bool   doIsCompatible(const IKey &that) const override;
+        size_t doGetHash() const override;
+        bool   doIsCompatible(const IKey &that) const override;
     };
 
-    virtual const Key &key() const override;
+    const Key &key() const override;
 
     py::object cuda() const;
 
     int64_t GetSizeInBytes() const override;
 
 private:
-    Tensor(const nvcv::Tensor::Requirements &reqs);
+    explicit Tensor(const nvcv::Tensor::Requirements &reqs);
     Tensor(const nvcv::TensorData &data, py::object wrappedObject);
-    Tensor(Image &img);
-    Tensor(nvcv::Tensor &&tensor);
+    explicit Tensor(Image &img);
+    explicit Tensor(nvcv::Tensor &&tensor);
 
-    int64_t doComputeSizeInBytes(const nvcv::Tensor::Requirements &reqs);
+    int64_t doComputeSizeInBytes(const nvcv::Tensor::Requirements &reqs) const;
 
     nvcv::Tensor m_impl; // must come before m_key
     Key          m_key;

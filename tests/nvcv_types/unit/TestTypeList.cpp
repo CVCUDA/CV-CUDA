@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,8 +37,8 @@ TEST(TypeListTests, create_values)
     ASSERT_TRUE((std::is_same_v<test::Values<>, test::Types<>>));
     ASSERT_TRUE((std::is_same_v<test::Values<1>, test::Types<test::Value<1>>>));
     ASSERT_TRUE((std::is_same_v<test::Values<1, 2, 3>, test::Types<test::Value<1>, test::Value<2>, test::Value<3>>>));
-    ASSERT_TRUE((std::is_same_v<test::Values<1, 2L, 3ul, 'b'>,
-                                test::Types<test::Value<1>, test::Value<2L>, test::Value<3ul>, test::Value<'b'>>>));
+    ASSERT_TRUE((std::is_same_v<test::Values<1, 2L, 3UL, 'b'>,
+                                test::Types<test::Value<1>, test::Value<2L>, test::Value<3UL>, test::Value<'b'>>>));
 }
 
 TEST(TypeListTests, get_value)
@@ -49,20 +49,20 @@ TEST(TypeListTests, get_value)
     ASSERT_TRUE((std::is_same_v<decltype(test::GetValue<test::Values<1, 2, 3>, 1>), const int>));
     ASSERT_EQ(2, (test::GetValue<test::Values<1, 2, 3>, 1>));
 
-    ASSERT_TRUE((std::is_same_v<decltype(test::GetValue<test::Values<1, 'c', 3ul>, 0>), const int>));
-    ASSERT_EQ(1, (test::GetValue<test::Values<1, 'c', 3ul>, 0>));
+    ASSERT_TRUE((std::is_same_v<decltype(test::GetValue<test::Values<1, 'c', 3UL>, 0>), const int>));
+    ASSERT_EQ(1, (test::GetValue<test::Values<1, 'c', 3UL>, 0>));
 
-    ASSERT_TRUE((std::is_same_v<decltype(test::GetValue<test::Values<1, 'c', 3ul>, 1>), const char>));
-    ASSERT_EQ('c', (test::GetValue<test::Values<1, 'c', 3ul>, 1>));
+    ASSERT_TRUE((std::is_same_v<decltype(test::GetValue<test::Values<1, 'c', 3UL>, 1>), const char>));
+    ASSERT_EQ('c', (test::GetValue<test::Values<1, 'c', 3UL>, 1>));
 
-    // Using 5ul instead of 3ul to avoid gcc-7.0 bug below:
+    // Using 5UL instead of 3UL to avoid gcc-7.0 bug below:
     // Be aware that gcc-7.x has a bug where V's type will be
     // wrong if the value was already instantiated with another type.
     // gcc-8.0 fixes it. clang-6.0.0 doesn't have this bug.
-    // Ex: decltype(test::GetValue<test::Values<1,3ul,1>>) == 'const int' instead of 'const unsigned long'
+    // Ex: decltype(test::GetValue<test::Values<1,3UL,1>>) == 'const int' instead of 'const unsigned long'
     // Ref: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=79092
-    ASSERT_TRUE((std::is_same_v<decltype(test::GetValue<test::Values<1, 'c', 5ul>, 2>), const unsigned long>));
-    ASSERT_EQ(5ul, (test::GetValue<test::Values<1, 'c', 5ul>, 2>));
+    ASSERT_TRUE((std::is_same_v<decltype(test::GetValue<test::Values<1, 'c', 5UL>, 2>), const unsigned long>));
+    ASSERT_EQ(5UL, (test::GetValue<test::Values<1, 'c', 5UL>, 2>));
 }
 
 TEST(TypeListTests, subset)
@@ -309,7 +309,8 @@ TEST(TypeListTests, contains)
 {
     struct Foo
     {
-        int x, y;
+        int x;
+        int y;
 
         bool operator==(Foo that) const
         {
@@ -399,10 +400,9 @@ TEST(TypeListTests, heterogeneous_but_implicitly_convertible_types_to_value_list
         b2
     };
 
-    using V = test::Values<4ul, 2, a1, b2, 'c'>;
+    using V = test::Values<4UL, 2, a1, b2, 'c'>;
 
-    test::ValueList<unsigned long> gold
-        = {(unsigned long)4ul, (unsigned long)2, (unsigned long)a1, (unsigned long)b2, (unsigned long)'c'};
+    test::ValueList<unsigned long> gold = {4UL, 2, a1, b2, 'c'};
 
     EXPECT_EQ(gold, test::ToValueList<V>());
 }

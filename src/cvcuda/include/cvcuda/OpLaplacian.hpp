@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,6 +35,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class Laplacian final : public IOperator
@@ -42,51 +44,47 @@ class Laplacian final : public IOperator
 public:
     explicit Laplacian();
 
-    ~Laplacian();
-
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, int32_t ksize, float scale,
-                    NVCVBorderType borderMode);
+                    NVCVBorderType borderMode) const;
 
     void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
-                    const nvcv::Tensor &ksize, const nvcv::Tensor &scale, NVCVBorderType borderMode);
+                    const nvcv::Tensor &ksize, const nvcv::Tensor &scale, NVCVBorderType borderMode) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline Laplacian::Laplacian()
 {
-    nvcv::detail::CheckThrow(cvcudaLaplacianCreate(&m_handle));
-    assert(m_handle);
-}
-
-inline Laplacian::~Laplacian()
-{
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaLaplacianCreate(&h));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void Laplacian::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, int32_t ksize,
-                                  float scale, NVCVBorderType borderMode)
+                                  float scale, NVCVBorderType borderMode) const
 {
     nvcv::detail::CheckThrow(
-        cvcudaLaplacianSubmit(m_handle, stream, in.handle(), out.handle(), ksize, scale, borderMode));
+        cvcudaLaplacianSubmit(m_handle.get(), stream, in.handle(), out.handle(), ksize, scale, borderMode));
 }
 
 inline void Laplacian::operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
-                                  const nvcv::Tensor &ksize, const nvcv::Tensor &scale, NVCVBorderType borderMode)
+                                  const nvcv::Tensor &ksize, const nvcv::Tensor &scale, NVCVBorderType borderMode) const
 {
-    nvcv::detail::CheckThrow(cvcudaLaplacianVarShapeSubmit(m_handle, stream, in.handle(), out.handle(), ksize.handle(),
-                                                           scale.handle(), borderMode));
+    nvcv::detail::CheckThrow(cvcudaLaplacianVarShapeSubmit(m_handle.get(), stream, in.handle(), out.handle(),
+                                                           ksize.handle(), scale.handle(), borderMode));
 }
 
 inline NVCVOperatorHandle Laplacian::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA_LAPLACIAN_HPP

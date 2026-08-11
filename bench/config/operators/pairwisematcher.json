@@ -1,0 +1,439 @@
+{
+    "benchmark": "pairwisematcher",
+    "configs": {
+        "pairwisematcher_uint8_basic": {
+            "tier": "basic",
+            "dtypes": [
+                "uint8"
+            ],
+            "string_axes": {
+                "shape": [
+                    "2x5000x32"
+                ],
+                "crossCheck": [
+                    "T"
+                ],
+                "readNumSets": [
+                    "F"
+                ],
+                "writeDistances": [
+                    "T"
+                ],
+                "normType": [
+                    "HAMMING"
+                ],
+                "algoChoice": [
+                    "BRUTE_FORCE"
+                ],
+                "inputKind": [
+                    "Tensor"
+                ]
+            },
+            "int64_axes": {
+                "matchesPerPoint": [
+                    1
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "PairwiseMatcher single-channel (basic)."
+            },
+            "baselines": {
+                "pairwisematcher_uint8_basic[InOutDataType=uint8][shape=2x5000x32][crossCheck=T][readNumSets=F][writeDistances=T][normType=HAMMING][algoChoice=BRUTE_FORCE][inputKind=Tensor][matchesPerPoint=1]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1784.4982090897,
+                        "gpu_time_us_python": 1841.80141122846,
+                        "gpu_noise_us_cpp": 10.379999999999999,
+                        "gpu_noise_us_python": 14.824000000000002,
+                        "gpu_bwutil_cpp": 0.00038915784745079997,
+                        "gpu_bwutil_python": 0.00037705094254104004,
+                        "gpu_gap_stddev_us": 6.217237531602112
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1720.68891998836,
+                        "gpu_time_us_python": 1773.74485453868,
+                        "gpu_noise_us_cpp": 13.801999999999998,
+                        "gpu_noise_us_python": 16.166000000000004,
+                        "gpu_bwutil_cpp": 0.00030782177258108,
+                        "gpu_bwutil_python": 0.00029862058979752,
+                        "gpu_gap_stddev_us": 7.708940828839856
+                    }
+                }
+            }
+        },
+        "pairwisematcher_uint32_basic": {
+            "tier": "basic",
+            "dtypes": [
+                "uint32"
+            ],
+            "string_axes": {
+                "shape": [
+                    "1x2000x32"
+                ],
+                "crossCheck": [
+                    "T"
+                ],
+                "readNumSets": [
+                    "F"
+                ],
+                "writeDistances": [
+                    "T"
+                ],
+                "normType": [
+                    "HAMMING"
+                ],
+                "algoChoice": [
+                    "BRUTE_FORCE"
+                ],
+                "inputKind": [
+                    "Tensor"
+                ]
+            },
+            "int64_axes": {
+                "matchesPerPoint": [
+                    1
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "PairwiseMatcher single-channel (basic)."
+            },
+            "baselines": {
+                "pairwisematcher_uint32_basic[InOutDataType=uint32][shape=1x2000x32][crossCheck=T][readNumSets=F][writeDistances=T][normType=HAMMING][algoChoice=BRUTE_FORCE][inputKind=Tensor][matchesPerPoint=1]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 2383.3671757559596,
+                        "gpu_time_us_python": 2439.0132456054002,
+                        "gpu_noise_us_cpp": 3.5479999999999996,
+                        "gpu_noise_us_python": 12.132000000000001,
+                        "gpu_bwutil_cpp": 0.00021367407356650002,
+                        "gpu_bwutil_python": 0.00020879922954566,
+                        "gpu_gap_stddev_us": 6.253337796421098
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 2320.76809571988,
+                        "gpu_time_us_python": 2368.65685539258,
+                        "gpu_noise_us_cpp": 84.626,
+                        "gpu_noise_us_python": 87.174,
+                        "gpu_bwutil_cpp": 0.00016736709567284,
+                        "gpu_bwutil_python": 0.0001639856548071,
+                        "gpu_gap_stddev_us": 8.668846127017794
+                    }
+                }
+            }
+        },
+        "pairwisematcher_u8_hamming_nocross_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "uint8"
+            ],
+            "string_axes": {
+                "shape": [
+                    "2x8192x32"
+                ],
+                "crossCheck": [
+                    "F"
+                ],
+                "readNumSets": [
+                    "F"
+                ],
+                "writeDistances": [
+                    "T"
+                ],
+                "normType": [
+                    "HAMMING"
+                ],
+                "algoChoice": [
+                    "BRUTE_FORCE"
+                ],
+                "inputKind": [
+                    "Tensor"
+                ]
+            },
+            "int64_axes": {
+                "matchesPerPoint": [
+                    1
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "PairwiseMatcher single-channel hamming nocross (advanced)."
+            },
+            "baselines": {
+                "pairwisematcher_u8_hamming_nocross_advanced[InOutDataType=uint8][shape=2x8192x32][crossCheck=F][readNumSets=F][writeDistances=T][normType=HAMMING][algoChoice=BRUTE_FORCE][inputKind=Tensor][matchesPerPoint=1]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 2377.01659604004,
+                        "gpu_time_us_python": 2432.9836705934204,
+                        "gpu_noise_us_cpp": 9.643999999999998,
+                        "gpu_noise_us_python": 11.442,
+                        "gpu_bwutil_cpp": 0.00033683635530401996,
+                        "gpu_bwutil_python": 0.0003290879707805,
+                        "gpu_gap_stddev_us": 6.42539623487294
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 2250.33919719576,
+                        "gpu_time_us_python": 2303.7117027707,
+                        "gpu_noise_us_cpp": 10.148000000000001,
+                        "gpu_noise_us_python": 13.273999999999997,
+                        "gpu_bwutil_cpp": 0.00027137063390088,
+                        "gpu_bwutil_python": 0.00026508812132504,
+                        "gpu_gap_stddev_us": 9.496703871708467
+                    }
+                }
+            }
+        },
+        "pairwisematcher_u8_hamming_readnumsets_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "uint8"
+            ],
+            "string_axes": {
+                "shape": [
+                    "2x5000x32"
+                ],
+                "crossCheck": [
+                    "T"
+                ],
+                "readNumSets": [
+                    "T"
+                ],
+                "writeDistances": [
+                    "T"
+                ],
+                "normType": [
+                    "HAMMING"
+                ],
+                "algoChoice": [
+                    "BRUTE_FORCE"
+                ],
+                "inputKind": [
+                    "Tensor"
+                ]
+            },
+            "int64_axes": {
+                "matchesPerPoint": [
+                    1
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "PairwiseMatcher single-channel hamming readnumsets (advanced)."
+            },
+            "baselines": {
+                "pairwisematcher_u8_hamming_readnumsets_advanced[InOutDataType=uint8][shape=2x5000x32][crossCheck=T][readNumSets=T][writeDistances=T][normType=HAMMING][algoChoice=BRUTE_FORCE][inputKind=Tensor][matchesPerPoint=1]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1789.3522126333603,
+                        "gpu_time_us_python": 1847.3521050169802,
+                        "gpu_noise_us_cpp": 11.209999999999999,
+                        "gpu_noise_us_python": 14.273999999999997,
+                        "gpu_bwutil_cpp": 0.00038810253237255997,
+                        "gpu_bwutil_python": 0.00037592057029214,
+                        "gpu_gap_stddev_us": 9.838974633795075
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1721.6332701787,
+                        "gpu_time_us_python": 1778.5413155198999,
+                        "gpu_noise_us_cpp": 13.872,
+                        "gpu_noise_us_python": 16.458,
+                        "gpu_bwutil_cpp": 0.00030765284353579997,
+                        "gpu_bwutil_python": 0.00029781483627998003,
+                        "gpu_gap_stddev_us": 7.496889916141912
+                    }
+                }
+            }
+        },
+        "pairwisematcher_u8_hamming_nodist_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "uint8"
+            ],
+            "string_axes": {
+                "shape": [
+                    "2x5000x32"
+                ],
+                "crossCheck": [
+                    "T"
+                ],
+                "readNumSets": [
+                    "F"
+                ],
+                "writeDistances": [
+                    "F"
+                ],
+                "normType": [
+                    "HAMMING"
+                ],
+                "algoChoice": [
+                    "BRUTE_FORCE"
+                ],
+                "inputKind": [
+                    "Tensor"
+                ]
+            },
+            "int64_axes": {
+                "matchesPerPoint": [
+                    1
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "PairwiseMatcher single-channel hamming nodist (advanced)."
+            },
+            "baselines": {
+                "pairwisematcher_u8_hamming_nodist_advanced[InOutDataType=uint8][shape=2x5000x32][crossCheck=T][readNumSets=F][writeDistances=F][normType=HAMMING][algoChoice=BRUTE_FORCE][inputKind=Tensor][matchesPerPoint=1]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1784.8179442046198,
+                        "gpu_time_us_python": 1829.90680579332,
+                        "gpu_noise_us_cpp": 10.844,
+                        "gpu_noise_us_python": 13.742,
+                        "gpu_bwutil_cpp": 0.00038908842444948,
+                        "gpu_bwutil_python": 0.00037950267329023995,
+                        "gpu_gap_stddev_us": 4.852286896003957
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1720.78163313532,
+                        "gpu_time_us_python": 1761.05643902058,
+                        "gpu_noise_us_cpp": 13.651999999999997,
+                        "gpu_noise_us_python": 15.272,
+                        "gpu_bwutil_cpp": 0.0003078051712801,
+                        "gpu_bwutil_python": 0.00030076918056252,
+                        "gpu_gap_stddev_us": 5.533303972877654
+                    }
+                }
+            }
+        },
+        "pairwisematcher_u8_hamming_mpp2_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "uint8"
+            ],
+            "string_axes": {
+                "shape": [
+                    "2x8192x32"
+                ],
+                "crossCheck": [
+                    "F"
+                ],
+                "readNumSets": [
+                    "F"
+                ],
+                "writeDistances": [
+                    "T"
+                ],
+                "normType": [
+                    "HAMMING"
+                ],
+                "algoChoice": [
+                    "BRUTE_FORCE"
+                ],
+                "inputKind": [
+                    "Tensor"
+                ]
+            },
+            "int64_axes": {
+                "matchesPerPoint": [
+                    2
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "PairwiseMatcher single-channel hamming mpp2 (advanced)."
+            },
+            "baselines": {
+                "pairwisematcher_u8_hamming_mpp2_advanced[InOutDataType=uint8][shape=2x8192x32][crossCheck=F][readNumSets=F][writeDistances=T][normType=HAMMING][algoChoice=BRUTE_FORCE][inputKind=Tensor][matchesPerPoint=2]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 2581.6644702989397,
+                        "gpu_time_us_python": 2638.53966753728,
+                        "gpu_noise_us_cpp": 7.353999999999999,
+                        "gpu_noise_us_python": 11.108,
+                        "gpu_bwutil_cpp": 0.00035910404505308,
+                        "gpu_bwutil_python": 0.00035136371894252,
+                        "gpu_gap_stddev_us": 8.030777411225012
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 2394.7788837977396,
+                        "gpu_time_us_python": 2447.88667048672,
+                        "gpu_noise_us_cpp": 8.962,
+                        "gpu_noise_us_python": 14.468,
+                        "gpu_bwutil_cpp": 0.00029526636534586,
+                        "gpu_bwutil_python": 0.0002888640084875,
+                        "gpu_gap_stddev_us": 8.521084322191587
+                    }
+                }
+            }
+        },
+        "pairwisematcher_f32_l2_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "float32"
+            ],
+            "string_axes": {
+                "shape": [
+                    "2x1024x64"
+                ],
+                "crossCheck": [
+                    "T"
+                ],
+                "readNumSets": [
+                    "F"
+                ],
+                "writeDistances": [
+                    "T"
+                ],
+                "normType": [
+                    "L2"
+                ],
+                "algoChoice": [
+                    "BRUTE_FORCE"
+                ],
+                "inputKind": [
+                    "Tensor"
+                ]
+            },
+            "int64_axes": {
+                "matchesPerPoint": [
+                    1
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "PairwiseMatcher single-channel l2 (advanced)."
+            },
+            "baselines": {
+                "pairwisematcher_f32_l2_advanced[InOutDataType=float32][shape=2x1024x64][crossCheck=T][readNumSets=F][writeDistances=T][normType=L2][algoChoice=BRUTE_FORCE][inputKind=Tensor][matchesPerPoint=1]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 2422.6689754269,
+                        "gpu_time_us_python": 2479.8366863471997,
+                        "gpu_noise_us_cpp": 1.954,
+                        "gpu_noise_us_python": 14.342000000000002,
+                        "gpu_bwutil_cpp": 0.00042398554360234005,
+                        "gpu_bwutil_python": 0.0004142107187488,
+                        "gpu_gap_stddev_us": 8.140031752798818
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 2286.6472729769202,
+                        "gpu_time_us_python": 2341.11356327958,
+                        "gpu_noise_us_cpp": 2.044,
+                        "gpu_noise_us_python": 7.466000000000001,
+                        "gpu_bwutil_cpp": 0.00034261145543738,
+                        "gpu_bwutil_python": 0.0003346448327841,
+                        "gpu_gap_stddev_us": 10.010693422684348
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Template for requirements.samples.cu12.txt — to regenerate, run from the repo root:
+#   bash generate_requirements.sh
+
+# CUDA 12-specific Python packages for CV-CUDA samples
+
+# Include common requirements
+-r requirements.samples.common.txt
+
+# PyTorch + torchvision (paired versions) for CUDA 12.x (${torch_cu12_index} wheel index, compatible with CUDA 12.5+)
+--extra-index-url https://download.pytorch.org/whl/${torch_cu12_index}
+torch==${torch_cu12}
+torchvision==${torchvision_cu12}
+
+# CUDA 12-specific packages
+--extra-index-url https://pypi.nvidia.com/
+cuda-python==${cuda_python_cu12}
+nvidia-nvimgcodec-cu12==${nvimgcodec}
+nvidia-nvjpeg-cu12==${nvjpeg_cu12}
+cupy-cuda12x==${cupy_cu12}
+
+# TensorRT for CUDA 12 (skip on aarch64 - handled in install script)
+# Using .post1 version which has fixed dependencies (uses cuda-toolkit instead of deprecated packages)
+tensorrt-cu12==${tensorrt_cu12}; platform_machine != "aarch64"
+
+# CV-CUDA for CUDA 12
+cvcuda-cu12

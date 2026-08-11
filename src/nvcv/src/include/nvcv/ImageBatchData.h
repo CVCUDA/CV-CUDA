@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +23,7 @@
 #include <nvcv/ImageFormat.h>
 
 /** Stores the image plane in a variable shape image batch. */
-typedef struct NVCVImageBatchVarShapeBufferStridedRec
+typedef struct NVCVImageBatchVarShapeBufferStridedRec // NOSONAR: C ABI typedef.
 {
     /** Format of all images in the batch.
      * If images don't have all the same format, or the batch is empty,
@@ -33,7 +33,8 @@ typedef struct NVCVImageBatchVarShapeBufferStridedRec
     /** Union of all image dimensions.
      * If 0 and number of images is >= 1, this value
      * must not be relied upon. */
-    int32_t maxWidth, maxHeight;
+    int32_t maxWidth;
+    int32_t maxHeight;
 
     /** Pointer to an array of formats, one for each image in `imageList`. */
     NVCVImageFormat *formatList;
@@ -50,7 +51,7 @@ typedef struct NVCVImageBatchVarShapeBufferStridedRec
 } NVCVImageBatchVarShapeBufferStrided;
 
 /** Stores the tensor plane contents. */
-typedef struct NVCVImageBatchTensorBufferStridedRec
+typedef struct NVCVImageBatchTensorBufferStridedRec // NOSONAR: C ABI typedef.
 {
     /** Distance in bytes from beginning of first plane of one image to the
      *  first plane of the next image.
@@ -63,18 +64,19 @@ typedef struct NVCVImageBatchTensorBufferStridedRec
 
     /** Dimensions of each image.
      * + Must be >= 1x1 */
-    int32_t imgWidth, imgHeight;
+    int32_t imgWidth;
+    int32_t imgHeight;
 
     /** Buffer of all image planes in pitch-linear layout.
      *  It assumes all planes have same dimension specified by imgWidth/imgHeight,
      *  and that all planes have the same row pitch.
      *  + Only the first N elements must have valid data, where N is the number of planes
      *    defined by @ref NVCVImageBatchData::format. */
-    void *planeBuffer[NVCV_MAX_PLANE_COUNT];
+    void *planeBuffer[NVCV_MAX_PLANE_COUNT]; // NOSONAR: C ABI fixed-capacity plane buffer.
 } NVCVImageBatchTensorBufferStrided;
 
 /** Represents how the image buffer data is stored. */
-typedef enum
+typedef enum // NOSONAR: C ABI typedef.
 {
     /** Invalid buffer type.
      *  This is commonly used to inform that no buffer type was selected. */
@@ -86,7 +88,7 @@ typedef enum
 
 /** Represents the available methods to access image batch contents.
  * The correct method depends on \ref NVCVImageBatchData::bufferType. */
-typedef union NVCVImageBatchBufferRec
+typedef union NVCVImageBatchBufferRec // NOSONAR: C ABI typedef.
 {
     /** Varshape image batch stored in pitch-linear layout.
      * To be used when \ref NVCVImageBatchData::bufferType is:
@@ -96,7 +98,7 @@ typedef union NVCVImageBatchBufferRec
 } NVCVImageBatchBuffer;
 
 /** Stores information about image batch characteristics and content. */
-typedef struct NVCVImageBatchDataRec
+typedef struct NVCVImageBatchDataRec // NOSONAR: C ABI typedef.
 {
     /** Number of images in the image batch */
     int32_t numImages;

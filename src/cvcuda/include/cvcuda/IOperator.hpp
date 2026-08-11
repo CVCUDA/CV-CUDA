@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,14 +28,72 @@
 
 namespace cvcuda {
 
+namespace detail {
+
+// Move-only RAII wrapper around an NVCVOperatorHandle. Owning operator
+// wrappers hold one of these so they don't need to write any rule-of-five
+// boilerplate of their own — copy is deleted, move transfers the handle,
+// destruction calls nvcvOperatorDestroy exactly once.
+class OperatorHandle
+{
+public:
+    OperatorHandle() noexcept = default;
+
+    explicit OperatorHandle(NVCVOperatorHandle h) noexcept
+        : m_handle{h}
+    {
+    }
+
+    ~OperatorHandle()
+    {
+        nvcvOperatorDestroy(m_handle);
+    }
+
+    OperatorHandle(const OperatorHandle &)            = delete;
+    OperatorHandle &operator=(const OperatorHandle &) = delete;
+
+    OperatorHandle(OperatorHandle &&that) noexcept
+        : m_handle{that.m_handle}
+    {
+        that.m_handle = nullptr;
+    }
+
+    OperatorHandle &operator=(OperatorHandle &&that) noexcept
+    {
+        if (this != &that)
+        {
+            nvcvOperatorDestroy(m_handle);
+            m_handle      = that.m_handle;
+            that.m_handle = nullptr;
+        }
+        return *this;
+    }
+
+    NVCVOperatorHandle get() const noexcept
+    {
+        return m_handle;
+    }
+
+private:
+    NVCVOperatorHandle m_handle = nullptr;
+};
+
+} // namespace detail
+
 class IOperator
 {
 public:
-    virtual ~IOperator() = default;
+    IOperator()                             = default;
+    virtual ~IOperator()                    = default;
+    IOperator(const IOperator &)            = delete;
+    IOperator &operator=(const IOperator &) = delete;
+    // Defaulted move is correct only because IOperator carries no state; if
+    // data members are added here, revisit move semantics so subclasses don't
+    // silently inherit a wrong default.
+    IOperator(IOperator &&) noexcept            = default;
+    IOperator &operator=(IOperator &&) noexcept = default;
 
     virtual NVCVOperatorHandle handle() const noexcept = 0;
-
-private:
 };
 
 } // namespace cvcuda

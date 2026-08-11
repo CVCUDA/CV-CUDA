@@ -1,0 +1,167 @@
+{
+    "benchmark": "__OPNAMELOW__",
+    "configs": {
+        "__OPNAMELOW___uchar3_basic": {
+            "tier": "basic",
+            "dtypes": [
+                "uchar3"
+            ],
+            "string_axes": {
+                "shape": [
+                    "64x1080x1920"
+                ],
+                "layout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "inputKind": [
+                    "Tensor",
+                    "VarShape"
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "__OPNAMESPACE__ uchar3. TODO(make-op): calibrate this shape so the INTERLEAVED (NHWC) config lands in 1-2ms nvbench GPU; planar (NCHW) + fake-planar reuse the SAME shape and may run longer (apples-to-apples). Per-dtype shape (bytes/pixel differ); see .agents/guidance/MAKE_OP_GUIDELINES + flip.json."
+            },
+            "baselines": {}
+        },
+        "__OPNAMELOW___float3_basic": {
+            "tier": "basic",
+            "dtypes": [
+                "float3"
+            ],
+            "string_axes": {
+                "shape": [
+                    "32x1080x1920"
+                ],
+                "layout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "inputKind": [
+                    "Tensor",
+                    "VarShape"
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "__OPNAMESPACE__ float3. TODO(make-op): calibrate this shape so the INTERLEAVED (NHWC) config lands in 1-2ms nvbench GPU; planar (NCHW) + fake-planar reuse the SAME shape and may run longer (apples-to-apples). Per-dtype shape (bytes/pixel differ); see .agents/guidance/MAKE_OP_GUIDELINES + flip.json."
+            },
+            "baselines": {}
+        },
+        "__OPNAMELOW___uint16_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "uint16"
+            ],
+            "string_axes": {
+                "shape": [
+                    "64x1080x1920"
+                ],
+                "layout": [
+                    "NHWC"
+                ],
+                "inputKind": [
+                    "Tensor",
+                    "VarShape"
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "__OPNAMESPACE__ uint16. TODO(make-op): calibrate this shape so the INTERLEAVED (NHWC) config lands in 1-2ms nvbench GPU; planar (NCHW) + fake-planar reuse the SAME shape and may run longer (apples-to-apples). Per-dtype shape (bytes/pixel differ); see .agents/guidance/MAKE_OP_GUIDELINES + flip.json."
+            },
+            "baselines": {}
+        },
+        "__OPNAMELOW___fake_planar_uchar3_basic": {
+            "tier": "basic",
+            "dtypes": [
+                "uchar3"
+            ],
+            "string_axes": {
+                "shape": [
+                    "64x1080x1920"
+                ],
+                "layout": [
+                    "NCHW_FAKE"
+                ],
+                "inputKind": [
+                    "Tensor"
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "__OPNAMESPACE__ fake-planar comparison (tensor-only); SAME input size as the interleaved/planar config of this dtype for an apples-to-apples ratio (will run longer than 1-2ms -- that's expected). TODO(make-op): keep this shape equal to the dtype's interleaved config."
+            },
+            "baselines": {}
+        },
+        "__OPNAMELOW___uchar4_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "uchar4"
+            ],
+            "string_axes": {
+                "shape": [
+                    "48x1080x1920"
+                ],
+                "layout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "inputKind": [
+                    "Tensor"
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "__OPNAMESPACE__ uchar4. TODO(make-op): calibrate this shape so the INTERLEAVED (NHWC) config lands in 1-2ms nvbench GPU; planar (NCHW) + fake-planar reuse the SAME shape and may run longer (apples-to-apples). Per-dtype shape (bytes/pixel differ); see .agents/guidance/MAKE_OP_GUIDELINES + flip.json."
+            },
+            "baselines": {}
+        },
+        "__OPNAMELOW___float4_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "float4"
+            ],
+            "string_axes": {
+                "shape": [
+                    "24x1080x1920"
+                ],
+                "layout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "inputKind": [
+                    "Tensor",
+                    "VarShape"
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "__OPNAMESPACE__ float4. TODO(make-op): calibrate this shape so the INTERLEAVED (NHWC) config lands in 1-2ms nvbench GPU; planar (NCHW) + fake-planar reuse the SAME shape and may run longer (apples-to-apples). Per-dtype shape (bytes/pixel differ); see .agents/guidance/MAKE_OP_GUIDELINES + flip.json."
+            },
+            "baselines": {}
+        },
+        "__OPNAMELOW___fake_planar_float4_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "float4"
+            ],
+            "string_axes": {
+                "shape": [
+                    "24x1080x1920"
+                ],
+                "layout": [
+                    "NCHW_FAKE"
+                ],
+                "inputKind": [
+                    "Tensor"
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "__OPNAMESPACE__ fake-planar comparison (tensor-only); SAME input size as the interleaved/planar config of this dtype for an apples-to-apples ratio (will run longer than 1-2ms -- that's expected). TODO(make-op): keep this shape equal to the dtype's interleaved config."
+            },
+            "baselines": {}
+        }
+    }
+}

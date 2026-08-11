@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,9 +23,18 @@
 #include <nvcv/python/Stream.hpp>
 #include <nvcv/python/Tensor.hpp>
 
+#include <stdexcept>
+
 namespace cvcudapy {
 
 namespace {
+
+class MinAreaRectError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
+
 Tensor MinAreaRectInto(Tensor &output, Tensor &input, Tensor &numPointsInContour, const int totalContours,
                        std::optional<Stream> pstream)
 {
@@ -41,7 +50,8 @@ Tensor MinAreaRectInto(Tensor &output, Tensor &input, Tensor &numPointsInContour
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*minAreaRect});
 
-    minAreaRect->submit(pstream->cudaHandle(), input, output, numPointsInContour, totalContours);
+    guard.run([&minAreaRect, &pstream, &input, &output, &numPointsInContour, &totalContours]()
+              { minAreaRect->submit(pstream->cudaHandle(), input, output, numPointsInContour, totalContours); });
 
     return std::move(output);
 }
@@ -52,11 +62,11 @@ Tensor MinAreaRect(Tensor &input, Tensor &numPointsInContour, const int totalCon
     const auto &numPointsInContourShape = numPointsInContour.shape();
     if ((srcShape.rank() - 1) != numPointsInContourShape.rank())
     {
-        throw std::runtime_error("Input src rank must 1 greater than numPointsInContourShape tensors rank");
+        throw MinAreaRectError("Input src rank must 1 greater than numPointsInContourShape tensors rank");
     }
     if (srcShape.shape()[0] != numPointsInContourShape.shape()[1])
     {
-        throw std::runtime_error("Input src and numPointsInContourShape must have same batch size");
+        throw MinAreaRectError("Input src and numPointsInContourShape must have same batch size");
     }
 
     Shape dstShape(2);
@@ -74,14 +84,10 @@ void ExportOpMinAreaRect(py::module &m)
 {
     using namespace pybind11::literals;
 
-    m.def("minarearect", &MinAreaRect, "src"_a, "numPointsInContour"_a, "totalContours"_a, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
-
+    m.def("minarearect", NvtxTrace("cvcuda.minarearect", &MinAreaRect), "src"_a, "numPointsInContour"_a,
+          "totalContours"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the Min Area Rect operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Min Area Rect operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.Tensor): Input tensor containing one or more contours.src[i,j,k] is the set of contours
@@ -95,19 +101,12 @@ void ExportOpMinAreaRect(py::module &m)
             cvcuda.Tensor: The output tensor of rotated bounding boxes.The output will give 4 points' cooridinate(x,y)
             of each contour's minimum rotated bounding boxes
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("minarearect_into", &MinAreaRectInto, "dst"_a, "src"_a, "numPointsInContour"_a, "totalContours"_a,
-          py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
+    m.def("minarearect_into", NvtxTrace("cvcuda.minarearect_into", &MinAreaRectInto), "dst"_a, "src"_a,
+          "numPointsInContour"_a, "totalContours"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the Min Area Rect operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Min Area Rect operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.Tensor): Output tensor will give 4 points' cooridinate(x,y)
@@ -121,11 +120,7 @@ void ExportOpMinAreaRect(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 }
 

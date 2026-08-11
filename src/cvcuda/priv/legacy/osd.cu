@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -284,7 +284,7 @@ static void cuosd_text_prepare(cuOSDContext_t context, int width, int height, cu
             context->text_backend->add_build_text(text_cmd->text, text_cmd->font_size, text_cmd->font_name.c_str());
         }
     }
-    context->text_backend->build_bitmap((void *)stream);
+    context->text_backend->build_bitmap(stream);
 
     std::vector<std::vector<TextLocation>> locations;
     int                                    total_locations = 0;
@@ -399,7 +399,8 @@ static void cuosd_text_prepare(cuOSDContext_t context, int width, int height, cu
     context->text_location->copy_host_to_device(stream);
 }
 
-static void cuosd_apply(cuOSDContext_t context, int width, int height, cuOSDImageFormat format, cudaStream_t stream)
+static void cuosd_apply(cuOSDContext_t context, int width, int height, int batch, cuOSDImageFormat format,
+                        cudaStream_t stream)
 {
     if (context->commands.empty())
     {
@@ -416,12 +417,15 @@ static void cuosd_apply(cuOSDContext_t context, int width, int height, cuOSDImag
         context->bounding_right  = 0;
         context->bounding_bottom = 0;
 
-        size_t                    byte_of_commands = 0;
-        std::vector<unsigned int> cmd_offset(context->commands.size());
+        size_t           byte_of_commands = 0;
+        int              text_line        = 0;
+        const int        num_commands     = context->commands.size();
+        std::vector<int> cmd_offset(num_commands + batch + 1);
         for (int i = 0; i < (int)context->commands.size(); ++i)
         {
             auto &cmd     = context->commands[i];
             cmd_offset[i] = byte_of_commands;
+            cmd->reserved = text_line;
 
             context->bounding_left   = min(context->bounding_left, cmd->bounding_left);
             context->bounding_top    = min(context->bounding_top, cmd->bounding_top);
@@ -429,7 +433,13 @@ static void cuosd_apply(cuOSDContext_t context, int width, int height, cuOSDImag
             context->bounding_bottom = max(context->bounding_bottom, cmd->bounding_bottom);
 
             if (cmd->type == CommandType::Text)
+            {
+                auto text_cmd              = std::static_pointer_cast<TextHostCommand>(cmd);
+                text_cmd->gputile.reserved = text_line;
+                if (text_cmd->gputile.type == CommandType::Text)
+                    ++text_line;
                 byte_of_commands += sizeof(TextCommand);
+            }
             else if (cmd->type == CommandType::Rectangle)
                 byte_of_commands += sizeof(RectangleCommand);
             else if (cmd->type == CommandType::Circle)
@@ -438,6 +448,14 @@ static void cuosd_apply(cuOSDContext_t context, int width, int height, cuOSDImag
                 byte_of_commands += sizeof(SegmentCommand);
             else if (cmd->type == CommandType::PolyFill)
                 byte_of_commands += sizeof(PolyFillCommand);
+        }
+
+        int command_index = 0;
+        for (int batch_index = 0; batch_index <= batch; ++batch_index)
+        {
+            while (command_index < num_commands && context->commands[command_index]->batch_index < batch_index)
+                ++command_index;
+            cmd_offset[num_commands + batch_index] = command_index;
         }
 
         if (context->gpu_commands == nullptr)
@@ -1009,22 +1027,33 @@ static __global__ void render_elements_kernel(int bx, int by, const TextLocation
                                               DstWrapper dst, int image_width, int stride, int image_height,
                                               bool inplace)
 {
-    int ix = ((blockDim.x * blockIdx.x + threadIdx.x) << 1) + bx;
-    int iy = ((blockDim.y * blockIdx.y + threadIdx.y) << 1) + by;
+    int       ix        = ((blockDim.x * blockIdx.x + threadIdx.x) << 1) + bx;
+    int       iy        = ((blockDim.y * blockIdx.y + threadIdx.y) << 1) + by;
+    const int batch_idx = get_batch_idx();
+
+    const int command_begin = command_offsets[num_command + batch_idx];
+    const int command_end   = command_offsets[num_command + batch_idx + 1];
+
+    int text_line_begin = 0;
+    if (command_begin < command_end)
+    {
+        const auto *command = reinterpret_cast<const cuOSDContextCommand *>(commands + command_offsets[command_begin]);
+        text_line_begin     = command->reserved;
+    }
+
     if (ix < 0 || iy < 0 || ix >= image_width - 1 || iy >= image_height - 1)
         return;
 
-    int       itext_line       = 0;
-    uchar4    context_color[4] = {0};
-    const int batch_idx        = get_batch_idx();
+    int    itext_line       = text_line_begin;
+    uchar4 context_color[4] = {0};
 
-    for (int i = 0; i < num_command; ++i)
+    for (int i = command_begin; i < command_end; ++i)
     {
         cuOSDContextCommand *pcommand = (cuOSDContextCommand *)(commands + command_offsets[i]);
 
         // because there is four pixel to operator
-        if (pcommand->batch_index != batch_idx || ix + 1 < pcommand->bounding_left || ix > pcommand->bounding_right
-            || iy + 1 < pcommand->bounding_top || iy > pcommand->bounding_bottom)
+        if (ix + 1 < pcommand->bounding_left || ix > pcommand->bounding_right || iy + 1 < pcommand->bounding_top
+            || iy > pcommand->bounding_bottom)
         {
             if (pcommand->type == CommandType::Text)
                 itext_line++;
@@ -1214,8 +1243,8 @@ void cuosd_launch(cuOSDContext_t context, SrcWrapper src, DstWrapper dst, int wi
 
 static ErrorCode cuosd_draw_text(cuOSDContext_t context, int batch_idx, NVCVText text)
 {
-    const char *utf8_text   = text.utf8Text;
-    const char *font        = text.fontName;
+    const char *utf8_text   = text.utf8Text.c_str();
+    const char *font        = text.fontName.c_str();
     int         font_size   = text.fontSize;
     int         x           = text.tlPos.x;
     int         y           = text.tlPos.y;
@@ -1723,8 +1752,8 @@ static ErrorCode cuosd_draw_clock(cuOSDContext_t context, int batch_idx, NVCVClo
     }
     auto utf8_str = oss.str();
 
-    cuosd_draw_text(context, batch_idx, utf8_str.c_str(), clock.fontSize, clock.font, clock.tlPos.x, clock.tlPos.y,
-                    *(cuOSDColor *)(&clock.fontColor), *(cuOSDColor *)(&clock.bgColor));
+    cuosd_draw_text(context, batch_idx, utf8_str.c_str(), clock.fontSize, clock.font.c_str(), clock.tlPos.x,
+                    clock.tlPos.y, *(cuOSDColor *)(&clock.fontColor), *(cuOSDColor *)(&clock.bgColor));
     return ErrorCode::SUCCESS;
 }
 
@@ -1736,9 +1765,9 @@ static ErrorCode cuosd_draw_elements(cuOSDContext_t context, int width, int heig
 
         for (int i = 0; i < numElements; i++)
         {
-            auto element = ctx->elementAt(n, i);
-            auto type    = element->type();
-            auto data    = element->ptr();
+            auto  element = ctx->elementAt(n, i);
+            auto  type    = element->type();
+            auto &data    = element->data();
             switch (type)
             {
             case NVCVOSDType::NVCV_OSD_NONE:
@@ -1747,52 +1776,52 @@ static ErrorCode cuosd_draw_elements(cuOSDContext_t context, int width, int heig
             }
             case NVCVOSDType::NVCV_OSD_RECT:
             {
-                cuosd_draw_rectangle(context, n, width, height, *((NVCVBndBoxI *)data));
+                cuosd_draw_rectangle(context, n, width, height, std::get<NVCVBndBoxI>(data));
                 break;
             }
             case NVCVOSDType::NVCV_OSD_TEXT:
             {
-                cuosd_draw_text(context, n, *((NVCVText *)data));
+                cuosd_draw_text(context, n, std::get<NVCVText>(data));
                 break;
             }
             case NVCVOSDType::NVCV_OSD_SEGMENT:
             {
-                cuosd_draw_segmentmask(context, n, width, height, *((NVCVSegment *)data));
+                cuosd_draw_segmentmask(context, n, width, height, std::get<NVCVSegment>(data));
                 break;
             }
             case NVCVOSDType::NVCV_OSD_POINT:
             {
-                cuosd_draw_point(context, n, *((NVCVPoint *)data));
+                cuosd_draw_point(context, n, std::get<NVCVPoint>(data));
                 break;
             }
             case NVCVOSDType::NVCV_OSD_LINE:
             {
-                cuosd_draw_line(context, n, *((NVCVLine *)data));
+                cuosd_draw_line(context, n, std::get<NVCVLine>(data));
                 break;
             }
             case NVCVOSDType::NVCV_OSD_POLYLINE:
             {
-                cuosd_draw_polyline(context, n, *((NVCVPolyLine *)data));
+                cuosd_draw_polyline(context, n, std::get<NVCVPolyLine>(data));
                 break;
             }
             case NVCVOSDType::NVCV_OSD_ROTATED_RECT:
             {
-                cuosd_draw_rotationbox(context, n, *((NVCVRotatedBox *)data));
+                cuosd_draw_rotationbox(context, n, std::get<NVCVRotatedBox>(data));
                 break;
             }
             case NVCVOSDType::NVCV_OSD_CIRCLE:
             {
-                cuosd_draw_circle(context, n, *((NVCVCircle *)data));
+                cuosd_draw_circle(context, n, std::get<NVCVCircle>(data));
                 break;
             }
             case NVCVOSDType::NVCV_OSD_ARROW:
             {
-                cuosd_draw_arrow(context, n, *((NVCVArrow *)data));
+                cuosd_draw_arrow(context, n, std::get<NVCVArrow>(data));
                 break;
             }
             case NVCVOSDType::NVCV_OSD_CLOCK:
             {
-                cuosd_draw_clock(context, n, *((NVCVClock *)data));
+                cuosd_draw_clock(context, n, std::get<NVCVClock>(data));
                 break;
             }
             default:
@@ -1833,6 +1862,11 @@ OSD::~OSD()
     }
 }
 
+size_t OSD::calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type)
+{
+    return CudaBaseOp::calBufferSize(max_input_shape, max_output_shape, max_data_type);
+}
+
 ErrorCode OSD::infer(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,
                      NVCVElements elements, cudaStream_t stream)
 {
@@ -1852,6 +1886,14 @@ ErrorCode OSD::infer(const nvcv::TensorDataStridedCuda &inData, const nvcv::Tens
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
+    const cuda_op::DataType data_type = GetLegacyDataType(inData.dtype());
+
+    if (!(data_type == kCV_8U))
+    {
+        LOG_ERROR("Invalid DataType " << data_type);
+        return ErrorCode::INVALID_DATA_TYPE;
+    }
+
     auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(inData);
     if (!inAccess)
     {
@@ -1863,7 +1905,7 @@ ErrorCode OSD::infer(const nvcv::TensorDataStridedCuda &inData, const nvcv::Tens
     int rows     = inAccess->numRows();
     int cols     = inAccess->numCols();
 
-    if (channels > 4 || channels < 1)
+    if (channels > 4 || channels < 3)
     {
         LOG_ERROR("Invalid channel number ch = " << channels);
         return ErrorCode::INVALID_DATA_SHAPE;
@@ -1912,7 +1954,7 @@ ErrorCode OSD::infer(const nvcv::TensorDataStridedCuda &inData, const nvcv::Tens
     if (inputShape.C == 3)
         format = cuOSDImageFormat::RGB;
 
-    cuosd_apply(m_context, inputShape.W, inputShape.H, format, stream);
+    cuosd_apply(m_context, inputShape.W, inputShape.H, inputShape.N, format, stream);
 
     auto src     = nvcv::cuda::CreateTensorWrapNHWC<uint8_t>(inData);
     auto dst     = nvcv::cuda::CreateTensorWrapNHWC<uint8_t>(outData);
@@ -1947,6 +1989,14 @@ ErrorCode OSD::inferBox(const nvcv::TensorDataStridedCuda &inData, const nvcv::T
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
+    const cuda_op::DataType data_type = GetLegacyDataType(inData.dtype());
+
+    if (!(data_type == kCV_8U))
+    {
+        LOG_ERROR("Invalid DataType " << data_type);
+        return ErrorCode::INVALID_DATA_TYPE;
+    }
+
     auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(inData);
     if (!inAccess)
     {
@@ -1974,7 +2024,7 @@ ErrorCode OSD::inferBox(const nvcv::TensorDataStridedCuda &inData, const nvcv::T
     int rows     = inAccess->numRows();
     int cols     = inAccess->numCols();
 
-    if (channels > 4 || channels < 1)
+    if (channels > 4 || channels < 3)
     {
         LOG_ERROR("Invalid channel number ch = " << channels);
         return ErrorCode::INVALID_DATA_SHAPE;
@@ -1998,7 +2048,7 @@ ErrorCode OSD::inferBox(const nvcv::TensorDataStridedCuda &inData, const nvcv::T
     if (inputShape.C == 3)
         format = cuOSDImageFormat::RGB;
 
-    cuosd_apply(m_context, inputShape.W, inputShape.H, format, stream);
+    cuosd_apply(m_context, inputShape.W, inputShape.H, inputShape.N, format, stream);
 
     auto src     = nvcv::cuda::CreateTensorWrapNHWC<uint8_t>(inData);
     auto dst     = nvcv::cuda::CreateTensorWrapNHWC<uint8_t>(outData);

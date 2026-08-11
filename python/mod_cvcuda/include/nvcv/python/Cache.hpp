@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,6 +20,8 @@
 
 #include "CAPI.hpp"
 
+#include <common/CheckError.hpp>
+#include <cuda_runtime.h>
 #include <pybind11/pybind11.h>
 
 namespace nvcvpy {
@@ -29,7 +31,18 @@ namespace py = ::pybind11;
 class IKey
 {
 public:
+    IKey()
+    {
+        util::CheckThrow(cudaGetDevice(&m_deviceId));
+    }
+
     virtual ~IKey() = default;
+
+    /// Returns the CUDA device ID captured at construction time.
+    int deviceId() const
+    {
+        return m_deviceId;
+    }
 
     size_t hash() const
     {
@@ -37,22 +50,29 @@ public:
 
         // Make hash dependent on concrete object type
         h ^= typeid(*this).hash_code() << 1;
+
+        // Make hash dependent on device ID so that cache entries
+        // from different GPUs never collide.
+        h ^= std::hash<int>{}(m_deviceId) << 2;
         return h;
     }
 
     bool operator==(const IKey &that) const
     {
-        if (typeid(*this) == typeid(that))
-        {
-            return doIsCompatible(that);
-        }
-        else
+        if (typeid(*this) != typeid(that))
         {
             return false;
         }
+        if (m_deviceId != that.m_deviceId)
+        {
+            return false;
+        }
+        return doIsCompatible(that);
     }
 
 private:
+    int m_deviceId = 0;
+
     virtual size_t doGetHash() const                      = 0;
     virtual bool   doIsCompatible(const IKey &that) const = 0;
 };
@@ -77,7 +97,7 @@ public:
 
     static std::vector<std::shared_ptr<ICacheItem>> fetch(const IKey &key)
     {
-        std::unique_ptr<ICacheItem *[]> list
+        std::unique_ptr<ICacheItem *[]> list // NOSONAR: C API returns an owned null-terminated array.
         {
             capi().Cache_Fetch(&key)
         };

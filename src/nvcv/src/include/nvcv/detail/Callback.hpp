@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,7 +19,9 @@
 #define NVCV_CALLBACK_HPP
 
 #include "TypeTraits.hpp"
+#include "UniqueObj.hpp"
 
+#include <array>
 #include <cstring>
 #include <functional>
 #include <memory>
@@ -35,7 +37,7 @@ struct NoTranslation
     template<typename Callable, typename... Args>
     auto operator()(Callable &&c, Args &&...args) -> decltype(c(std::forward<Args>(args)...))
     {
-        return c(std::forward<Args>(args)...);
+        return c(std::forward<Args>(args)...); // NOSONAR: callback wrapper preserves the requested return type.
     }
 };
 
@@ -109,14 +111,14 @@ public:
     static_assert(std::is_same<CtxArg, void *>::value, "The first argument to the C wrapper must be of type void *");
 
     using FunctionType = Ret(Args...);
-    using WrappedFunc  = CRet(void *, CArgs...);
-    using CleanupFunc  = void(void *);
+    using WrappedFunc  = CRet(CtxArg, CArgs...);
+    using CleanupFunc  = void(CtxArg);
 
     Callback() = default;
 
     Callback(const Callback &) = delete;
 
-    Callback(Callback &&cb)
+    Callback(Callback &&cb) noexcept
     {
         *this = std::move(cb);
     }
@@ -135,7 +137,7 @@ public:
      *                  If SingleUse is true, all required cleanup must be also performed by `function`
      *                  and `cleanup` will not be called.
      */
-    void reset(WrappedFunc *function = nullptr, void *target = nullptr, CleanupFunc *cleanup = nullptr)
+    void reset(WrappedFunc *function = nullptr, CtxArg target = nullptr, CleanupFunc *cleanup = nullptr) noexcept
     {
         if (m_cleanup)
             m_cleanup(m_target.asOpaqueHandle());
@@ -144,7 +146,7 @@ public:
         m_cleanup = cleanup;
     }
 
-    std::tuple<WrappedFunc *, void *, CleanupFunc *> release()
+    std::tuple<WrappedFunc *, CtxArg, CleanupFunc *> release() noexcept
     {
         auto ret  = std::make_tuple(m_call, m_target.asOpaqueHandle(), m_cleanup);
         m_call    = nullptr;
@@ -158,7 +160,7 @@ public:
     template<typename Function>
     Callback &operator=(const Callback<Function> &f) = delete;
 
-    Callback &operator=(Callback &&cb)
+    Callback &operator=(Callback &&cb) noexcept
     {
         if (&cb != this)
         {
@@ -171,7 +173,7 @@ public:
     }
 
     template<typename FunctionLike>
-    detail::EnableIf_t<std::is_convertible<FunctionLike &&, Callback>::value, Callback &> &operator=(FunctionLike &&f)
+    detail::EnableIf_t<std::is_constructible<Callback, FunctionLike &&>::value, Callback &> &operator=(FunctionLike &&f)
     {
         return *this = Callback(std::forward<FunctionLike>(f));
     }
@@ -186,17 +188,18 @@ public:
         typename = detail::EnableIf_t<
             detail::IsInvocableR<Ret, Callable, Args...>::value &&
             !detail::IsCallback<detail::RemoveCVRef_t<Callable>>::value &&
+            !std::is_same<detail::RemoveCVRef_t<Callable>, Callback>::value &&
             !detail::IsStdFunction<detail::RemoveCVRef_t<Callable>>::value
             >>
     // clang-format on
-    Callback(Callable &&c)
+    explicit Callback(Callable &&c)
     {
         fromCallable(std::forward<Callable>(c));
     }
 
     /** Wraps a function pointer
      */
-    Callback(FunctionType *f)
+    explicit Callback(FunctionType *f)
     {
         fromFunction(f);
     }
@@ -205,7 +208,7 @@ public:
      */
     template<typename RetF, typename... ArgsF,
              typename = detail::EnableIf_t<detail::IsInvocableR<Ret, RetF (*)(ArgsF...), Args...>::value>>
-    Callback(RetF (*f)(ArgsF...))
+    explicit Callback(RetF (*f)(ArgsF...))
     {
         fromFunction(f);
     }
@@ -217,7 +220,7 @@ public:
      */
     template<typename FunctionSig,
              typename = detail::EnableIf_t<detail::IsInvocableR<Ret, std::function<FunctionSig>, Args...>::value>>
-    Callback(const std::function<FunctionSig> &f)
+    explicit Callback(const std::function<FunctionSig> &f)
     {
         // Suppress false positive warning from g++-12-14 about std::function::target()
 #if defined(__GNUC__) && __GNUC__ >= 12
@@ -274,7 +277,7 @@ public:
 
     /** Returns an opaque, type-erased value that describes the invocation target.
      */
-    void *targetHandle() const
+    CtxArg targetHandle() const
     {
         return m_target.asOpaqueHandle();
     }
@@ -336,20 +339,20 @@ public:
 private:
     struct alignas(void *) TargetBlob
     {
-        char data[sizeof(void *)];
+        std::array<unsigned char, sizeof(void *)> data;
 
         /** Reinterprets the contents of the blob as `void*` */
-        void *asOpaqueHandle() const noexcept
+        CtxArg asOpaqueHandle() const noexcept
         {
-            void *h;
-            std::memcpy(&h, data, sizeof(h));
+            CtxArg h;
+            std::memcpy(&h, data.data(), sizeof(h));
             return h;
         }
 
         /** Copies the opaque handle to the data blob */
-        void fromOpaqueHandle(void *h) noexcept
+        void fromOpaqueHandle(CtxArg h) noexcept
         {
-            std::memcpy(data, &h, sizeof(data));
+            std::memcpy(data.data(), &h, data.size());
         }
     };
 
@@ -376,12 +379,24 @@ private:
     };
 
     template<typename Callable>
+    struct CallableKindSelector
+    {
+        static constexpr CallableKind value = isEmpty<Callable>()   ? CallableKind::Empty   // NOSONAR
+                                            : isByValue<Callable>() ? CallableKind::ByValue // NOSONAR
+                                                                    : CallableKind::Other;
+    };
+
+    template<typename Callable>
+    static constexpr CallableKind GetCallableKind()
+    {
+        return CallableKindSelector<Callable>::value;
+    }
+
+    template<typename Callable>
     void fromCallable(Callable &&c)
     {
         using C                     = detail::RemoveCVRef_t<Callable>;
-        constexpr CallableKind kind = isEmpty<C>()   ? CallableKind::Empty
-                                    : isByValue<C>() ? CallableKind::ByValue
-                                                     : CallableKind::Other;
+        constexpr CallableKind kind = GetCallableKind<C>();
         fromCallable(std::forward<Callable>(c), std::integral_constant<CallableKind, kind>(),
                      std::integral_constant<bool, SingleUse>());
     }
@@ -390,7 +405,7 @@ private:
     void fromCallable(Callable &&, std::integral_constant<CallableKind, CallableKind::Empty>,
                       std::integral_constant<bool, SingleUse>)
     {
-        m_call = [](void *, CArgs... args) -> CRet
+        m_call = [](CtxArg, CArgs... args) -> CRet
         {
             TranslateCall tr;
             return tr(Callable{}, std::move(args)...);
@@ -402,10 +417,10 @@ private:
                       std::integral_constant<bool, SingleUse>)
     {
         using C = detail::RemoveCVRef_t<Callable>;
-        new (m_target.data) C{std::forward<Callable>(c)};
-        m_call = [](void *target, CArgs... args) -> CRet
+        new (m_target.data.data()) C{std::forward<Callable>(c)};
+        m_call = [](CtxArg target, CArgs... args) -> CRet
         {
-            C *c = reinterpret_cast<C *>(&target);
+            auto *c = reinterpret_cast<C *>(&target);
 
             TranslateCall tr;
             return tr(*c, std::move(args)...);
@@ -418,16 +433,17 @@ private:
     {
         using C = detail::RemoveCVRef_t<Callable>;
 
-        std::unique_ptr<C> ptr(new C(std::forward<Callable>(c)));
+        auto ptr = detail::MakeUniqueObj<C>(std::forward<Callable>(c));
 
-        m_call = [](void *target, CArgs... args) -> CRet
+        m_call = [](CtxArg target, CArgs... args) -> CRet
         {
             TranslateCall tr;
-            return tr(*static_cast<C *>(target), std::move(args)...);
+            return tr(*static_cast<C *>(target), std::move(args)...); // NOSONAR: CRet controls callback conversion.
         };
-        m_cleanup = [](void *target)
+        m_cleanup = [](CtxArg target)
         {
-            delete static_cast<C *>(target);
+            detail::UniqueObj<C> c(static_cast<C *>(target));
+            (void)c;
         };
         m_target.fromOpaqueHandle(ptr.release());
     }
@@ -438,18 +454,19 @@ private:
     {
         using C = detail::RemoveCVRef_t<Callable>;
 
-        std::unique_ptr<C> ptr(new C(std::forward<Callable>(c)));
+        auto ptr = detail::MakeUniqueObj<C>(std::forward<Callable>(c));
 
-        m_call = [](void *target, CArgs... args) -> CRet
+        m_call = [](CtxArg target, CArgs... args) -> CRet
         {
             // this will get destroyed even if the invocation or translation throws
-            std::unique_ptr<C> c(static_cast<C *>(target));
-            TranslateCall      tr;
+            detail::UniqueObj<C> c(static_cast<C *>(target));
+            TranslateCall        tr;
             return tr(*c, std::move(args)...);
         };
-        m_cleanup = [](void *target)
+        m_cleanup = [](CtxArg target)
         {
-            delete static_cast<C *>(target);
+            detail::UniqueObj<C> c(static_cast<C *>(target));
+            (void)c;
         };
         m_target.fromOpaqueHandle(ptr.release());
     }
@@ -458,12 +475,12 @@ private:
     void fromFunction(RetF (*f)(ArgsF...))
     {
         using FuncType = RetF(ArgsF...);
-        m_target.fromOpaqueHandle(reinterpret_cast<void *>(f));
-        m_call = [](void *target, CArgs... args) -> CRet
+        m_target.fromOpaqueHandle(reinterpret_cast<CtxArg>(f));
+        m_call = [](CtxArg target, CArgs... args) -> CRet
         {
-            FuncType     *ff = reinterpret_cast<FuncType *>(target);
+            auto         *ff = reinterpret_cast<FuncType *>(target);
             TranslateCall tr;
-            return tr(ff, std::move(args)...);
+            return tr(ff, std::move(args)...); // NOSONAR: CRet controls callback conversion.
         };
     }
 

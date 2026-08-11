@@ -14,7 +14,9 @@
 
 #include <nvcv/Exception.hpp>
 
-// TODO: once we have functions that generate errors, we should
+#include <array>
+
+// REVISIT: once we have functions that generate errors, we should
 // extend these tests to cover more scenarios
 
 namespace t = ::testing;
@@ -25,13 +27,16 @@ TEST(ExceptionTest, exception_updates_internal_status)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_DEVICE, "test error");
     }
-    catch (...)
+    catch (const nvcv::Exception &e)
     {
+        // The thread-local status update is the behavior under test.
+        EXPECT_EQ(nvcv::Status::ERROR_DEVICE, e.code());
+        EXPECT_STREQ("test error", e.msg());
     }
 
-    char msg[NVCV_MAX_STATUS_MESSAGE_LENGTH];
-    ASSERT_EQ(NVCV_ERROR_DEVICE, nvcvGetLastErrorMessage(msg, sizeof(msg)));
-    EXPECT_STREQ("test error", msg);
+    std::array<char, NVCV_MAX_STATUS_MESSAGE_LENGTH> msg;
+    ASSERT_EQ(NVCV_ERROR_DEVICE, nvcvGetLastErrorMessage(msg.data(), msg.size()));
+    EXPECT_STREQ("test error", msg.data());
 }
 
 TEST(ExceptionTest, protect_call_nvcv_exception)
@@ -47,9 +52,9 @@ TEST(ExceptionTest, protect_call_invalid_argument)
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, status);
 
-    char msg[NVCV_MAX_STATUS_MESSAGE_LENGTH];
-    ASSERT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvGetLastErrorMessage(msg, sizeof(msg)));
-    EXPECT_STREQ("test invalid argument", msg);
+    std::array<char, NVCV_MAX_STATUS_MESSAGE_LENGTH> msg;
+    ASSERT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcvGetLastErrorMessage(msg.data(), msg.size()));
+    EXPECT_STREQ("test invalid argument", msg.data());
 }
 
 TEST(ExceptionTest, protect_call_bad_alloc)
@@ -58,9 +63,19 @@ TEST(ExceptionTest, protect_call_bad_alloc)
 
     EXPECT_EQ(NVCV_ERROR_OUT_OF_MEMORY, status);
 
-    char msg[NVCV_MAX_STATUS_MESSAGE_LENGTH];
-    ASSERT_EQ(NVCV_ERROR_OUT_OF_MEMORY, nvcvGetLastErrorMessage(msg, sizeof(msg)));
-    EXPECT_STREQ("Not enough space for resource allocation", msg);
+    std::array<char, NVCV_MAX_STATUS_MESSAGE_LENGTH> msg;
+    ASSERT_EQ(NVCV_ERROR_OUT_OF_MEMORY, nvcvGetLastErrorMessage(msg.data(), msg.size()));
+    EXPECT_STREQ("Not enough space for resource allocation", msg.data());
+}
+
+TEST(ExceptionTest, protect_call_standard_logic_and_runtime_errors)
+{
+    EXPECT_EQ(NVCV_ERROR_INTERNAL, nvcv::ProtectCall([] { throw std::domain_error("domain"); }));
+    EXPECT_EQ(NVCV_ERROR_INTERNAL, nvcv::ProtectCall([] { throw std::length_error("length"); }));
+    EXPECT_EQ(NVCV_ERROR_INTERNAL, nvcv::ProtectCall([] { throw std::out_of_range("out of range"); }));
+    EXPECT_EQ(NVCV_ERROR_INTERNAL, nvcv::ProtectCall([] { throw std::range_error("range"); }));
+    EXPECT_EQ(NVCV_ERROR_INTERNAL, nvcv::ProtectCall([] { throw std::overflow_error("overflow"); }));
+    EXPECT_EQ(NVCV_ERROR_INTERNAL, nvcv::ProtectCall([] { throw std::underflow_error("underflow"); }));
 }
 
 TEST(ExceptionTest, protect_call_unexpected)
@@ -69,9 +84,9 @@ TEST(ExceptionTest, protect_call_unexpected)
 
     EXPECT_EQ(NVCV_ERROR_INTERNAL, status);
 
-    char msg[NVCV_MAX_STATUS_MESSAGE_LENGTH];
-    ASSERT_EQ(NVCV_ERROR_INTERNAL, nvcvGetLastErrorMessage(msg, sizeof(msg)));
-    EXPECT_STREQ("Unexpected error", msg);
+    std::array<char, NVCV_MAX_STATUS_MESSAGE_LENGTH> msg;
+    ASSERT_EQ(NVCV_ERROR_INTERNAL, nvcvGetLastErrorMessage(msg.data(), msg.size()));
+    EXPECT_STREQ("Unexpected error", msg.data());
 }
 
 TEST(ExceptionTest, exception_format_multiple_args)
@@ -81,7 +96,15 @@ TEST(ExceptionTest, exception_format_multiple_args)
     EXPECT_STREQ("NVCV_ERROR_DEVICE: test error 123 rod l", e.what());
     EXPECT_STREQ("test error 123 rod l", e.msg());
 
-    char msg[NVCV_MAX_STATUS_MESSAGE_LENGTH];
-    ASSERT_EQ(NVCV_ERROR_DEVICE, nvcvGetLastErrorMessage(msg, sizeof(msg)));
-    EXPECT_STREQ("test error 123 rod l", msg);
+    std::array<char, NVCV_MAX_STATUS_MESSAGE_LENGTH> msg;
+    ASSERT_EQ(NVCV_ERROR_DEVICE, nvcvGetLastErrorMessage(msg.data(), msg.size()));
+    EXPECT_STREQ("test error 123 rod l", msg.data());
+}
+
+TEST(ExceptionTest, exception_format_numeric_modifiers)
+{
+    nvcv::Exception e(nvcv::Status::ERROR_DEVICE, "test error %ld %.2f %x %%", 123L, 4.5, 255U);
+
+    EXPECT_STREQ("NVCV_ERROR_DEVICE: test error 123 4.50 ff %", e.what());
+    EXPECT_STREQ("test error 123 4.50 ff %", e.msg());
 }

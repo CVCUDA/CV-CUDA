@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,5 +35,5 @@ NVCV_TYPED_TEST_SUITE(TypedTest, test::type::Combine<test::Types<Foo, Bar>, test
 TYPED_TEST(TypedTest, test)
 {
     // For now we're concerned if typed tests will compile.
-    // TODO: How to test if the tests were correctly generated?
+    // REVISIT: How to test if the tests were correctly generated?
 }

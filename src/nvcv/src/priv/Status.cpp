@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,6 +25,8 @@
 #include <stdio.h>
 
 #include <cstring>
+#include <new>
+#include <stdexcept>
 
 namespace nvcv::priv {
 
@@ -32,7 +34,7 @@ void SetThreadError(std::exception_ptr e)
 {
     CoreTLS &tls = GetCoreTLS();
 
-    const int errorMessageLen = sizeof(tls.lastErrorMessage) - 1;
+    const int errorMessageLen = static_cast<int>(tls.lastErrorMessage.size()) - 1;
 
     try
     {
@@ -43,10 +45,10 @@ void SetThreadError(std::exception_ptr e)
         else
         {
             tls.lastErrorStatus = NVCV_SUCCESS;
-            snprintf(tls.lastErrorMessage, errorMessageLen, "success");
+            snprintf(tls.lastErrorMessage.data(), errorMessageLen, "success");
         }
     }
-    catch (const ::nvcv::Exception &e)
+    catch (const ::nvcv::Exception &)
     {
         tls.lastErrorStatus = NVCV_ERROR_INTERNAL;
         NVCV_ASSERT(!"Exception from public API cannot be originated from internal library implementation");
@@ -54,27 +56,52 @@ void SetThreadError(std::exception_ptr e)
     catch (const Exception &e)
     {
         tls.lastErrorStatus = e.code();
-        snprintf(tls.lastErrorMessage, errorMessageLen, "%s", e.msg());
+        snprintf(tls.lastErrorMessage.data(), errorMessageLen, "%s", e.msg());
     }
     catch (const std::invalid_argument &e)
     {
         tls.lastErrorStatus = NVCV_ERROR_INVALID_ARGUMENT;
-        snprintf(tls.lastErrorMessage, errorMessageLen, "%s", e.what());
+        snprintf(tls.lastErrorMessage.data(), errorMessageLen, "%s", e.what());
+    }
+    catch (const std::domain_error &e)
+    {
+        tls.lastErrorStatus = NVCV_ERROR_INTERNAL;
+        snprintf(tls.lastErrorMessage.data(), errorMessageLen, "%s", e.what());
+    }
+    catch (const std::length_error &e)
+    {
+        tls.lastErrorStatus = NVCV_ERROR_INTERNAL;
+        snprintf(tls.lastErrorMessage.data(), errorMessageLen, "%s", e.what());
+    }
+    catch (const std::out_of_range &e)
+    {
+        tls.lastErrorStatus = NVCV_ERROR_INTERNAL;
+        snprintf(tls.lastErrorMessage.data(), errorMessageLen, "%s", e.what());
     }
     catch (const std::bad_alloc &)
     {
         tls.lastErrorStatus = NVCV_ERROR_OUT_OF_MEMORY;
-        snprintf(tls.lastErrorMessage, errorMessageLen, "Not enough space for resource allocation");
+        snprintf(tls.lastErrorMessage.data(), errorMessageLen, "Not enough space for resource allocation");
     }
-    catch (const std::exception &e)
+    catch (const std::range_error &e)
     {
         tls.lastErrorStatus = NVCV_ERROR_INTERNAL;
-        snprintf(tls.lastErrorMessage, errorMessageLen, "%s", e.what());
+        snprintf(tls.lastErrorMessage.data(), errorMessageLen, "%s", e.what());
     }
-    catch (...)
+    catch (const std::overflow_error &e)
     {
         tls.lastErrorStatus = NVCV_ERROR_INTERNAL;
-        snprintf(tls.lastErrorMessage, errorMessageLen, "Unexpected error");
+        snprintf(tls.lastErrorMessage.data(), errorMessageLen, "%s", e.what());
+    }
+    catch (const std::underflow_error &e)
+    {
+        tls.lastErrorStatus = NVCV_ERROR_INTERNAL;
+        snprintf(tls.lastErrorMessage.data(), errorMessageLen, "%s", e.what());
+    }
+    catch (...) // NOSONAR: API boundary converts any non-standard exception to NVCV status.
+    {
+        tls.lastErrorStatus = NVCV_ERROR_INTERNAL;
+        snprintf(tls.lastErrorMessage.data(), errorMessageLen, "Unexpected error");
     }
 
     tls.lastErrorMessage[errorMessageLen] = '\0'; // Make sure it's null-terminated
@@ -104,7 +131,7 @@ NVCVStatus PeekAtLastThreadError(char *outMessage, int outMessageLen) noexcept
     CoreTLS &tls = GetCoreTLS();
 
     if (outMessage != nullptr && outMessageLen > 0)
-        snprintf(outMessage, outMessageLen, "%s", tls.lastErrorMessage);
+        snprintf(outMessage, outMessageLen, "%s", tls.lastErrorMessage.data());
 
     return tls.lastErrorStatus;
 }

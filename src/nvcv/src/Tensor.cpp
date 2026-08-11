@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -42,7 +42,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorCalcRequirementsForImages,
                  int32_t rowAlign, NVCVTensorRequirements *reqs))
 {
     return priv::ProtectCall(
-        [&]
+        [&reqs, &batch, &width, &height, &format, &baseAlign, &rowAlign]
         {
             if (reqs == nullptr)
             {
@@ -70,7 +70,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorCalcRequirements,
                  int32_t rowAlign, NVCVTensorRequirements *reqs))
 {
     return priv::ProtectCall(
-        [&]
+        [&reqs, &dtype, &rank, &shape, &layout, &baseAlign, &rowAlign]
         {
             if (reqs == nullptr)
             {
@@ -87,7 +87,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorConstruct,
                 (const NVCVTensorRequirements *reqs, NVCVAllocatorHandle halloc, NVCVTensorHandle *handle))
 {
     return priv::ProtectCall(
-        [&]
+        [&reqs, &handle, &halloc]
         {
             if (reqs == nullptr)
             {
@@ -111,7 +111,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorWrapDataConstruct,
                  NVCVTensorHandle *handle))
 {
     return priv::ProtectCall(
-        [&]
+        [&data, &handle, &cleanup, &ctxCleanup]
         {
             if (data == nullptr)
             {
@@ -123,13 +123,13 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorWrapDataConstruct,
                 throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Pointer to output handle must not be NULL");
             }
 
-            switch (data->bufferType)
+            if (data->bufferType == NVCV_TENSOR_BUFFER_STRIDED_CUDA)
             {
-            case NVCV_TENSOR_BUFFER_STRIDED_CUDA:
-                *handle = priv::CreateCoreObject<priv::TensorWrapDataStrided>(*data, cleanup, ctxCleanup);
-                break;
-
-            default:
+                *handle = priv::CreateCoreObject<priv::TensorWrapDataStrided>(*data, cleanup,
+                                                                              static_cast<NVCVUserPointer>(ctxCleanup));
+            }
+            else
+            {
                 throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT) << "Image buffer type not supported";
             }
         });
@@ -138,7 +138,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorWrapDataConstruct,
 NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorWrapImageConstruct, (NVCVImageHandle himg, NVCVTensorHandle *handle))
 {
     return priv::ProtectCall(
-        [&]
+        [&himg, &handle]
         {
             if (himg == nullptr)
             {
@@ -156,13 +156,13 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorWrapImageConstruct, (NVCVImageHandle
             FillTensorData(*img, tensorData);
 
             // The cleanup consists of dropping the reference
-            auto cleanup = [](void *h, const NVCVTensorData *)
+            auto cleanup = [](auto h, const NVCVTensorData *)
             {
                 priv::CoreObjectDecRef(static_cast<NVCVImageHandle>(h));
             };
-            void *cleanup_ctx = himg;
 
-            *handle = priv::CreateCoreObject<priv::TensorWrapDataStrided>(tensorData, cleanup, cleanup_ctx);
+            *handle = priv::CreateCoreObject<priv::TensorWrapDataStrided>(
+                tensorData, cleanup, static_cast<NVCVUserPointer>(static_cast<void *>(himg)));
             (void)img.release(); // now the image reference is owned by the tensor, so we should release it here
         });
 }
@@ -170,7 +170,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorWrapImageConstruct, (NVCVImageHandle
 NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvTensorDecRef, (NVCVTensorHandle handle, int *newRefCount))
 {
     return priv::ProtectCall(
-        [&]
+        [&handle, &newRefCount]
         {
             int newRef = priv::CoreObjectDecRef(handle);
             if (newRefCount)
@@ -181,7 +181,7 @@ NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvTensorDecRef, (NVCVTensorHandle handle, in
 NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvTensorIncRef, (NVCVTensorHandle handle, int *newRefCount))
 {
     return priv::ProtectCall(
-        [&]
+        [&handle, &newRefCount]
         {
             int newRef = priv::CoreObjectIncRef(handle);
             if (newRefCount)
@@ -191,13 +191,13 @@ NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvTensorIncRef, (NVCVTensorHandle handle, in
 
 NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvTensorRefCount, (NVCVTensorHandle handle, int *refCount))
 {
-    return priv::ProtectCall([&] { *refCount = priv::CoreObjectRefCount(handle); });
+    return priv::ProtectCall([&refCount, &handle] { *refCount = priv::CoreObjectRefCount(handle); });
 }
 
 NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorGetLayout, (NVCVTensorHandle handle, NVCVTensorLayout *layout))
 {
     return priv::ProtectCall(
-        [&]
+        [&layout, &handle]
         {
             if (layout == nullptr)
             {
@@ -213,7 +213,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorGetLayout, (NVCVTensorHandle handle,
 NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorGetAllocator, (NVCVTensorHandle handle, NVCVAllocatorHandle *halloc))
 {
     return priv::ProtectCall(
-        [&]
+        [&halloc, &handle]
         {
             if (halloc == nullptr)
             {
@@ -229,7 +229,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorGetAllocator, (NVCVTensorHandle hand
 NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorExportData, (NVCVTensorHandle handle, NVCVTensorData *data))
 {
     return priv::ProtectCall(
-        [&]
+        [&data, &handle]
         {
             if (data == nullptr)
             {
@@ -244,7 +244,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorExportData, (NVCVTensorHandle handle
 NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorGetShape, (NVCVTensorHandle handle, int32_t *rank, int64_t *shape))
 {
     return priv::ProtectCall(
-        [&]
+        [&handle, &rank, &shape]
         {
             auto &tensor = priv::ToStaticRef<const priv::ITensor>(handle);
 
@@ -254,8 +254,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorGetShape, (NVCVTensorHandle handle, 
             }
 
             // Number of shape elements to copy
-            int n = std::min(*rank, tensor.rank());
-            if (n > 0)
+            if (int n = std::min(*rank, tensor.rank()); n > 0)
             {
                 if (shape == nullptr)
                 {
@@ -274,7 +273,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorGetShape, (NVCVTensorHandle handle, 
 NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorGetDataType, (NVCVTensorHandle handle, NVCVDataType *dtype))
 {
     return priv::ProtectCall(
-        [&]
+        [&dtype, &handle]
         {
             if (dtype == nullptr)
             {
@@ -286,20 +285,20 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvTensorGetDataType, (NVCVTensorHandle handl
         });
 }
 
-NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvTensorSetUserPointer, (NVCVTensorHandle handle, void *userPtr))
+NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvTensorSetUserPointer, (NVCVTensorHandle handle, NVCVUserPointer userPtr))
 {
     return priv::ProtectCall(
-        [&]
+        [&handle, &userPtr]
         {
             auto &tensor = priv::ToStaticRef<priv::ITensor>(handle);
             tensor.setUserPointer(userPtr);
         });
 }
 
-NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvTensorGetUserPointer, (NVCVTensorHandle handle, void **outUserPtr))
+NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvTensorGetUserPointer, (NVCVTensorHandle handle, NVCVUserPointer *outUserPtr))
 {
     return priv::ProtectCall(
-        [&]
+        [&outUserPtr, &handle]
         {
             if (outUserPtr == nullptr)
             {
@@ -317,7 +316,7 @@ NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorReshape,
                  NVCVTensorHandle *out_handle))
 {
     return priv::ProtectCall(
-        [&]
+        [&handle, &out_handle, &rank, &shape, &layout]
         {
             if (handle == nullptr)
             {
@@ -338,13 +337,13 @@ NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvTensorReshape,
             priv::ReshapeTensorData(new_tensor_data, rank, shape, layout);
 
             // The cleanup consists of dropping the reference to the handle we reference
-            auto cleanup = [](void *h, const NVCVTensorData *)
+            auto cleanup = [](auto h, const NVCVTensorData *)
             {
                 priv::CoreObjectDecRef(static_cast<NVCVTensorHandle>(h));
             };
-            void *cleanup_ctx = handle;
 
-            *out_handle = priv::CreateCoreObject<priv::TensorWrapDataStrided>(new_tensor_data, cleanup, cleanup_ctx);
+            *out_handle = priv::CreateCoreObject<priv::TensorWrapDataStrided>(
+                new_tensor_data, cleanup, static_cast<NVCVUserPointer>(static_cast<void *>(handle)));
 
             (void)tensor_ptr.release(); // we transferred ownership, we can release
         });

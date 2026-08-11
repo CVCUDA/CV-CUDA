@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,7 @@
  */
 
 #include "Operators.hpp"
+#include "VarShapeUtils.hpp"
 
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
@@ -48,7 +49,8 @@ Tensor MedianBlurInto(Tensor &output, Tensor &input, const std::tuple<int, int> 
 
     nvcv::Size2D ksizeArg{std::get<0>(ksize), std::get<1>(ksize)};
 
-    median_blur->submit(pstream->cudaHandle(), input, output, ksizeArg);
+    guard.run([&median_blur, &pstream, &input, &output, &ksizeArg]()
+              { median_blur->submit(pstream->cudaHandle(), input, output, ksizeArg); });
 
     return output;
 }
@@ -75,22 +77,15 @@ ImageBatchVarShape VarShapeMedianBlurInto(ImageBatchVarShape &output, ImageBatch
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*median_blur});
 
-    median_blur->submit(pstream->cudaHandle(), input, output, ksize);
+    guard.run([&median_blur, &pstream, &input, &output, &ksize]()
+              { median_blur->submit(pstream->cudaHandle(), input, output, ksize); });
 
     return output;
 }
 
 ImageBatchVarShape VarShapeMedianBlur(ImageBatchVarShape &input, Tensor &ksize, std::optional<Stream> pstream)
 {
-    ImageBatchVarShape output = ImageBatchVarShape::Create(input.capacity());
-
-    for (int i = 0; i < input.numImages(); ++i)
-    {
-        nvcv::ImageFormat format = input[i].format();
-        nvcv::Size2D      size   = input[i].size();
-        auto              image  = Image::Create(size, format);
-        output.pushBack(image);
-    }
+    ImageBatchVarShape output = CreateSameShapeImageBatch(input);
 
     return VarShapeMedianBlurInto(output, input, ksize, pstream);
 }
@@ -100,18 +95,11 @@ ImageBatchVarShape VarShapeMedianBlur(ImageBatchVarShape &input, Tensor &ksize, 
 void ExportOpMedianBlur(py::module &m)
 {
     using namespace pybind11::literals;
-    py::options options;
-    options.disable_function_signatures();
 
-    m.def("median_blur", &MedianBlur, "src"_a, "ksize"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.median_blur(src: cvcuda.Tensor, ksize: Tuple[int, int], stream: Optional[cvcuda.Stream] = None) -> cvcuda.Tensor
-
+    m.def("median_blur", NvtxTrace("cvcuda.median_blur", &MedianBlur), "src"_a, "ksize"_a, py::kw_only(),
+          "stream"_a = nullptr, R"pbdoc(
         Executes the Median Blur operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Median Blur operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.Tensor): Input tensor containing one or more images.
@@ -121,21 +109,13 @@ void ExportOpMedianBlur(py::module &m)
         Returns:
             cvcuda.Tensor: The output tensor.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("median_blur_into", &MedianBlurInto, "dst"_a, "src"_a, "ksize"_a, py::kw_only(), "stream"_a = nullptr,
+    m.def("median_blur_into", NvtxTrace("cvcuda.median_blur_into", &MedianBlurInto), "dst"_a, "src"_a, "ksize"_a,
+          py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
-
-	cvcuda.median_blur_into(dst: cvcuda.Tensor, src: cvcuda.Tensor, ksize: Tuple[int, int], stream: Optional[cvcuda.Stream] = None)
-
         Executes the Median Blur operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Median Blur operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.Tensor): Output tensor to store the result of the operation.
@@ -144,22 +124,13 @@ void ExportOpMedianBlur(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 
-    m.def("median_blur", &VarShapeMedianBlur, "src"_a, "ksize"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.median_blur(src: cvcuda.ImageBatchVarShape, ksize: Tuple[int, int], stream: Optional[cvcuda.Stream] = None) -> cvcuda.ImageBatchVarShape
-
+    m.def("median_blur", NvtxTrace("cvcuda.median_blur", &VarShapeMedianBlur), "src"_a, "ksize"_a, py::kw_only(),
+          "stream"_a = nullptr, R"pbdoc(
         Executes the Median Blur operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Median Blur operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
@@ -169,21 +140,13 @@ void ExportOpMedianBlur(py::module &m)
         Returns:
             cvcuda.ImageBatchVarShape: The output image batch.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("median_blur_into", &VarShapeMedianBlurInto, "dst"_a, "src"_a, "ksize"_a, py::kw_only(), "stream"_a = nullptr,
+    m.def("median_blur_into", NvtxTrace("cvcuda.median_blur_into", &VarShapeMedianBlurInto), "dst"_a, "src"_a,
+          "ksize"_a, py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
+        Executes the Median Blur operation on the given cuda stream.
 
-	cvcuda.median_blur_into(dst: cvcuda.ImageBatchVarShape, src: cvcuda.ImageBatchVarShape, ksize: Tuple[int, int], stream: Optional[cvcuda.Stream] = None)
-
-	Executes the Median Blur operation on the given cuda stream.
-
-        See also:
-            Refer to the CV-CUDA C API reference for the Median Blur operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
@@ -192,11 +155,7 @@ void ExportOpMedianBlur(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.ImageBatchVarShape: The output image batch (same as dst).
     )pbdoc");
 }
 

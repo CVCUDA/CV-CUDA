@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,8 +15,10 @@
 
 import cvcuda
 
-import pytest as t
+import pytest
 import numpy as np
+import cvcuda_types as cv_types
+import cvcuda_tools as cv_tools
 import cvcuda_util as util
 
 RNG = np.random.default_rng(0)
@@ -30,7 +32,7 @@ class ref:
     dist_dtype = np.float32
 
     def absdiff(a, b):
-        if type(a) == float:
+        if isinstance(a, float):
             return abs(a - b)
         else:
             return b - a if a < b else a - b
@@ -95,7 +97,7 @@ class ref:
         return sorted(output)
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "set_shape, set_dtype",
     [
         ((1, 11, 1), np.uint8),
@@ -183,7 +185,7 @@ def test_op_match_api(set_shape, set_dtype):
     assert tmp[0] is matches and tmp[1] is None and tmp[2] is None
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "set_shape, set_dtype, cross_check, norm_type",
     [
         ((1, 18, 32), np.uint8, False, cvcuda.Norm.HAMMING),
@@ -222,3 +224,26 @@ def test_op_match_content(set_shape, set_dtype, cross_check, norm_type):
     h_gold_output = ref.sort(h_gold_matches, h_gold_num_matches, h_gold_distances)
 
     np.testing.assert_allclose(h_test_output, h_gold_output, rtol=1e-5, atol=1e-5)
+
+
+def _op(src):
+    # src is a tensor created by cv_tools - extract dtype from it
+    # Create set1 and set2 with proper NMD layout for match operator
+    dtype = src.dtype
+    shape = (2, 16, 8)
+    set1 = cvcuda.Tensor(shape, dtype, "NMD")
+    set2 = cvcuda.Tensor(shape, dtype, "NMD")
+    return cvcuda.match(set1, set2)
+
+
+_supported_dtypes = {cvcuda.Type.U8, cvcuda.Type.U32, cvcuda.Type.F32}
+
+
+@pytest.mark.parametrize("dtype", _supported_dtypes)
+def test_op_match_dtype_input(dtype):
+    cv_tools.assert_dtypes(_op, dtype, wrapper="tensor", negative=False)
+
+
+@pytest.mark.parametrize("dtype", cv_types.SCALAR_TYPES_SET - _supported_dtypes)
+def test_op_match_dtype_negative(dtype):
+    cv_tools.assert_dtypes(_op, dtype, wrapper="tensor", negative=True)

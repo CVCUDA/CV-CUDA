@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "OpLaplacian.hpp"
 
+#include "Nvtx.hpp"
 #include "legacy/CvCudaLegacy.h"
 #include "legacy/CvCudaLegacyHelpers.hpp"
 
@@ -27,16 +28,26 @@ namespace cvcuda::priv {
 
 namespace legacy = nvcv::legacy::cuda_op;
 
-Laplacian::Laplacian()
+std::unique_ptr<legacy::Laplacian> Laplacian::CreateLegacyOp(int)
 {
-    legacy::DataShape maxIn, maxOut; //maxIn/maxOut not used by op.
-    m_legacyOp         = std::make_unique<legacy::Laplacian>(maxIn, maxOut);
-    m_legacyOpVarShape = std::make_unique<legacy::LaplacianVarShape>(maxIn, maxOut);
+    legacy::DataShape maxIn;
+    legacy::DataShape maxOut;
+    return std::make_unique<legacy::Laplacian>(maxIn, maxOut);
 }
+
+std::unique_ptr<legacy::LaplacianVarShape> Laplacian::CreateLegacyOpVarShape(int)
+{
+    legacy::DataShape maxIn;
+    legacy::DataShape maxOut;
+    return std::make_unique<legacy::LaplacianVarShape>(maxIn, maxOut);
+}
+
+Laplacian::Laplacian() = default;
 
 void Laplacian::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const int ksize,
                            const float scale, const NVCVBorderType borderMode) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::Laplacian::operator()[Tensor]");
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
     if (inData == nullptr)
     {
@@ -51,12 +62,13 @@ void Laplacian::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nv
                               "Output must be cuda-accessible, pitch-linear tensor");
     }
 
-    NVCV_CHECK_THROW(m_legacyOp->infer(*inData, *outData, ksize, scale, borderMode, stream));
+    NVCV_CHECK_THROW(m_legacyOp.get().infer(*inData, *outData, ksize, scale, borderMode, stream));
 }
 
 void Laplacian::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
                            const nvcv::Tensor &ksize, const nvcv::Tensor &scale, NVCVBorderType borderMode) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::Laplacian::operator()[ImageBatchVarShape]");
     auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (inData == nullptr)
     {
@@ -85,7 +97,20 @@ void Laplacian::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &
                               "Kernel scale must be cuda-accessible, pitch-linear tensor");
     }
 
-    NVCV_CHECK_THROW(m_legacyOpVarShape->infer(*inData, *outData, *ksizeData, *scaleData, borderMode, stream));
+    const int numImages = in.numImages();
+    if (ksizeData->rank() != 1 || ksizeData->shape(0) != numImages)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "Kernel aperture size must be a 1D tensor with one value per input image");
+    }
+
+    if (scaleData->rank() != 1 || scaleData->shape(0) != numImages)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "Kernel scale must be a 1D tensor with one value per input image");
+    }
+
+    NVCV_CHECK_THROW(m_legacyOpVarShape.get().infer(*inData, *outData, *ksizeData, *scaleData, borderMode, stream));
 }
 
 } // namespace cvcuda::priv

@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -23,12 +23,15 @@
 
 #include "CvCudaUtils.cuh"
 
+#include <cvcuda/cuda_tools/TensorWrap.hpp>
 #include <cvcuda/priv/Types.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/ImageData.hpp>
 #include <nvcv/TensorData.hpp>
 
+#include <algorithm>
 #include <cstdio>
+#include <type_traits>
 
 using namespace nvcv::legacy::cuda_op;
 using namespace nvcv::legacy::helpers;
@@ -41,6 +44,11 @@ template<typename _T>
 static __forceinline__ __device__ _T limit(_T value, _T low, _T high)
 {
     return value < low ? low : (value > high ? high : value);
+}
+
+static bool IsPlanar(DataFormat format)
+{
+    return format == kNCHW || format == kCHW;
 }
 
 template<class SrcWrapper, class DstWrapper>
@@ -64,6 +72,23 @@ static __global__ void render_p2p_kernel(SrcWrapper src, DstWrapper dst, int bat
 }
 
 template<class SrcWrapper, class DstWrapper>
+static __global__ void render_p2p_planar_kernel(SrcWrapper src, DstWrapper dst, int batch, int height, int width,
+                                                int channels)
+{
+    int       ix        = blockDim.x * blockIdx.x + threadIdx.x;
+    int       iy        = blockDim.y * blockIdx.y + threadIdx.y;
+    const int batch_idx = get_batch_idx();
+
+    if (ix >= width || iy >= height || batch_idx >= batch)
+        return;
+
+    for (int c = 0; c < channels; ++c)
+    {
+        *dst.ptr(batch_idx, c, iy, ix) = *src.ptr(batch_idx, c, iy, ix);
+    }
+}
+
+template<class SrcWrapper, class DstWrapper>
 static __global__ void render_blur_rgb_kernel(SrcWrapper src, DstWrapper dst, const BoxBlurCommand *commands,
                                               int num_command, int image_batch, int image_width, int image_height)
 {
@@ -73,20 +98,23 @@ static __global__ void render_blur_rgb_kernel(SrcWrapper src, DstWrapper dst, co
     if (box.batch_index >= image_batch)
         return;
 
-    __shared__ uchar3 crop[32][32];
-    int               ix = threadIdx.x;
-    int               iy = threadIdx.y;
+    using ChannelType = std::remove_const_t<typename SrcWrapper::ValueType>;
+    using PixelType   = nvcv::cuda::MakeType<ChannelType, 3>;
+
+    __shared__ PixelType crop[32][32];
+    int                  ix = threadIdx.x;
+    int                  iy = threadIdx.y;
 
     int boxwidth  = box.bounding_right - box.bounding_left;
     int boxheight = box.bounding_bottom - box.bounding_top;
     int sx        = limit((int)(ix / 32.0f * (float)boxwidth + 0.5f + box.bounding_left), 0, image_width);
     int sy        = limit((int)(iy / 32.0f * (float)boxheight + 0.5f + box.bounding_top), 0, image_height);
 
-    crop[iy][ix] = *(uchar3 *)(src.ptr(box.batch_index, sy, sx, 0));
+    crop[iy][ix] = *reinterpret_cast<const PixelType *>(src.ptr(box.batch_index, sy, sx, 0));
     __syncthreads();
 
-    uint3 color = make_uint3(0, 0, 0);
-    int   n     = 0;
+    int3 color = make_int3(0, 0, 0);
+    int  n     = 0;
     for (int i = -box.kernel_size / 2; i <= box.kernel_size / 2; ++i)
     {
         for (int j = -box.kernel_size / 2; j <= box.kernel_size / 2; ++j)
@@ -104,7 +132,8 @@ static __global__ void render_blur_rgb_kernel(SrcWrapper src, DstWrapper dst, co
         }
     }
     __syncthreads();
-    crop[iy][ix] = make_uchar3(color.x / n, color.y / n, color.z / n);
+    crop[iy][ix] = PixelType{static_cast<ChannelType>(color.x / n), static_cast<ChannelType>(color.y / n),
+                             static_cast<ChannelType>(color.z / n)};
     __syncthreads();
 
     int gap_width  = (boxwidth + 31) / 32;
@@ -121,8 +150,8 @@ static __global__ void render_blur_rgb_kernel(SrcWrapper src, DstWrapper dst, co
                 int sy = (iy * gap_height + i) / (float)boxheight * 32;
                 if (sx < 32 && sy < 32)
                 {
-                    auto &pix                                        = crop[sy][sx];
-                    *(uchar3 *)(dst.ptr(box.batch_index, fy, fx, 0)) = make_uchar3(pix.x, pix.y, pix.z);
+                    auto &pix                                                           = crop[sy][sx];
+                    *reinterpret_cast<PixelType *>(dst.ptr(box.batch_index, fy, fx, 0)) = pix;
                 }
             }
         }
@@ -139,20 +168,24 @@ static __global__ void render_blur_rgba_kernel(SrcWrapper src, DstWrapper dst, c
     if (box.batch_index >= image_batch)
         return;
 
-    __shared__ uchar3 crop[32][32];
-    int               ix = threadIdx.x;
-    int               iy = threadIdx.y;
+    using ChannelType = std::remove_const_t<typename SrcWrapper::ValueType>;
+    using Pixel3Type  = nvcv::cuda::MakeType<ChannelType, 3>;
+    using Pixel4Type  = nvcv::cuda::MakeType<ChannelType, 4>;
+
+    __shared__ Pixel3Type crop[32][32];
+    int                   ix = threadIdx.x;
+    int                   iy = threadIdx.y;
 
     int boxwidth  = box.bounding_right - box.bounding_left;
     int boxheight = box.bounding_bottom - box.bounding_top;
     int sx        = limit((int)(ix / 32.0f * (float)boxwidth + 0.5f + box.bounding_left), 0, image_width);
     int sy        = limit((int)(iy / 32.0f * (float)boxheight + 0.5f + box.bounding_top), 0, image_height);
 
-    crop[iy][ix] = *(uchar3 *)(src.ptr(box.batch_index, sy, sx, 0));
+    crop[iy][ix] = *reinterpret_cast<const Pixel3Type *>(src.ptr(box.batch_index, sy, sx, 0));
     __syncthreads();
 
-    uint3 color = make_uint3(0, 0, 0);
-    int   n     = 0;
+    int3 color = make_int3(0, 0, 0);
+    int  n     = 0;
     for (int i = -box.kernel_size / 2; i <= box.kernel_size / 2; ++i)
     {
         for (int j = -box.kernel_size / 2; j <= box.kernel_size / 2; ++j)
@@ -170,7 +203,8 @@ static __global__ void render_blur_rgba_kernel(SrcWrapper src, DstWrapper dst, c
         }
     }
     __syncthreads();
-    crop[iy][ix] = make_uchar3(color.x / n, color.y / n, color.z / n);
+    crop[iy][ix] = Pixel3Type{static_cast<ChannelType>(color.x / n), static_cast<ChannelType>(color.y / n),
+                              static_cast<ChannelType>(color.z / n)};
     __syncthreads();
 
     int gap_width  = (boxwidth + 31) / 32;
@@ -187,8 +221,103 @@ static __global__ void render_blur_rgba_kernel(SrcWrapper src, DstWrapper dst, c
                 int sy = (iy * gap_height + i) / (float)boxheight * 32;
                 if (sx < 32 && sy < 32)
                 {
-                    auto &pix                                        = crop[sy][sx];
-                    *(uchar4 *)(dst.ptr(box.batch_index, fy, fx, 0)) = make_uchar4(pix.x, pix.y, pix.z, 255);
+                    auto &pix = crop[sy][sx];
+                    *reinterpret_cast<Pixel4Type *>(dst.ptr(box.batch_index, fy, fx, 0))
+                        = Pixel4Type{pix.x, pix.y, pix.z, nvcv::cuda::TypeTraits<ChannelType>::max};
+                }
+            }
+        }
+    }
+}
+
+template<class SrcWrapper, class DstWrapper>
+static __global__ void render_blur_planar_kernel(SrcWrapper src, DstWrapper dst, const BoxBlurCommand *commands,
+                                                 int num_command, int image_batch, int image_width, int image_height,
+                                                 int channels)
+{
+    if (blockIdx.x >= num_command)
+        return;
+    const BoxBlurCommand &box = commands[blockIdx.x];
+    if (box.batch_index >= image_batch)
+        return;
+
+    using ChannelType = std::remove_const_t<typename SrcWrapper::ValueType>;
+
+    int plane = blockIdx.y;
+    if (plane >= channels)
+        return;
+
+    int ix = threadIdx.x;
+    int iy = threadIdx.y;
+
+    int boxwidth  = box.bounding_right - box.bounding_left;
+    int boxheight = box.bounding_bottom - box.bounding_top;
+
+    int gap_width  = (boxwidth + 31) / 32;
+    int gap_height = (boxheight + 31) / 32;
+
+    if (plane == 3)
+    {
+        for (int i = 0; i < gap_height; ++i)
+        {
+            for (int j = 0; j < gap_width; ++j)
+            {
+                int fx = ix * gap_width + j + box.bounding_left;
+                int fy = iy * gap_height + i + box.bounding_top;
+                if (fx >= 0 && fx < image_width && fy >= 0 && fy < image_height)
+                {
+                    int sx = (ix * gap_width + j) / (float)boxwidth * 32;
+                    int sy = (iy * gap_height + i) / (float)boxheight * 32;
+                    if (sx < 32 && sy < 32)
+                    {
+                        *dst.ptr(box.batch_index, plane, fy, fx) = nvcv::cuda::TypeTraits<ChannelType>::max;
+                    }
+                }
+            }
+        }
+        return;
+    }
+
+    __shared__ ChannelType crop[32][32];
+
+    int sx = limit((int)(ix / 32.0f * (float)boxwidth + 0.5f + box.bounding_left), 0, image_width);
+    int sy = limit((int)(iy / 32.0f * (float)boxheight + 0.5f + box.bounding_top), 0, image_height);
+
+    crop[iy][ix] = *src.ptr(box.batch_index, plane, sy, sx);
+    __syncthreads();
+
+    int color = 0;
+    int n     = 0;
+    for (int i = -box.kernel_size / 2; i <= box.kernel_size / 2; ++i)
+    {
+        for (int j = -box.kernel_size / 2; j <= box.kernel_size / 2; ++j)
+        {
+            int u = i + iy;
+            int v = j + ix;
+            if (u >= 0 && u < 32 && v >= 0 && v < 32)
+            {
+                color += crop[u][v];
+                n++;
+            }
+        }
+    }
+    __syncthreads();
+    crop[iy][ix] = static_cast<ChannelType>(color / n);
+    __syncthreads();
+
+    for (int i = 0; i < gap_height; ++i)
+    {
+        for (int j = 0; j < gap_width; ++j)
+        {
+            int fx = ix * gap_width + j + box.bounding_left;
+            int fy = iy * gap_height + i + box.bounding_top;
+            if (fx >= 0 && fx < image_width && fy >= 0 && fy < image_height)
+            {
+                int sx = (ix * gap_width + j) / (float)boxwidth * 32;
+                int sy = (iy * gap_height + i) / (float)boxheight * 32;
+                if (sx < 32 && sy < 32)
+                {
+                    *dst.ptr(box.batch_index, plane, fy, fx) = crop[sy][sx];
                 }
             }
         }
@@ -218,9 +347,9 @@ static void cuosd_apply(cuOSDContext_t context, cudaStream_t stream)
 
 template<typename SrcWrap, typename DstWrap>
 inline void RenderBlur_RGB(SrcWrap src, DstWrap dst, const cuda_op::DataShape &inputShape, cuOSDContext_t context,
-                           cudaStream_t stream)
+                           cudaStream_t stream, bool skipCopy)
 {
-    if (src.ptr(0) != dst.ptr(0))
+    if (!skipCopy && src.ptr(0) != dst.ptr(0))
     {
         dim3 blockSize(32, 32);
         dim3 gridSize(divUp(int(inputShape.W + 1), (int)blockSize.x), divUp(int(inputShape.H + 1), (int)blockSize.y),
@@ -243,8 +372,9 @@ inline void RenderBlur_RGB(SrcWrap src, DstWrap dst, const cuda_op::DataShape &i
     }
 }
 
+template<typename T>
 inline ErrorCode ApplyBoxBlur_RGB(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,
-                                  cuOSDContext_t context, cudaStream_t stream)
+                                  cuOSDContext_t context, cudaStream_t stream, bool skipCopy)
 {
     auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(inData);
     NVCV_ASSERT(inAccess);
@@ -270,10 +400,10 @@ inline ErrorCode ApplyBoxBlur_RGB(const nvcv::TensorDataStridedCuda &inData, con
 
     if (std::max(srcMaxStride, dstMaxStride) <= cuda::TypeTraits<int32_t>::max)
     {
-        auto src = nvcv::cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(inData);
-        auto dst = nvcv::cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(outData);
+        auto src = nvcv::cuda::CreateTensorWrapNHWC<T, int32_t>(inData);
+        auto dst = nvcv::cuda::CreateTensorWrapNHWC<T, int32_t>(outData);
 
-        RenderBlur_RGB(src, dst, inputShape, context, stream);
+        RenderBlur_RGB(src, dst, inputShape, context, stream, skipCopy);
         return ErrorCode::SUCCESS;
     }
     else
@@ -285,9 +415,9 @@ inline ErrorCode ApplyBoxBlur_RGB(const nvcv::TensorDataStridedCuda &inData, con
 
 template<typename SrcWrap, typename DstWrap>
 inline void RenderBlur_RGBA(SrcWrap src, DstWrap dst, const cuda_op::DataShape &inputShape, cuOSDContext_t context,
-                            cudaStream_t stream)
+                            cudaStream_t stream, bool skipCopy)
 {
-    if (src.ptr(0) != dst.ptr(0))
+    if (!skipCopy && src.ptr(0) != dst.ptr(0))
     {
         dim3 blockSize(32, 32);
         dim3 gridSize(divUp(int(inputShape.W + 1), (int)blockSize.x), divUp(int(inputShape.H + 1), (int)blockSize.y),
@@ -310,9 +440,10 @@ inline void RenderBlur_RGBA(SrcWrap src, DstWrap dst, const cuda_op::DataShape &
     }
 }
 
+template<typename T>
 inline ErrorCode ApplyBoxBlur_RGBA(const nvcv::TensorDataStridedCuda &inData,
                                    const nvcv::TensorDataStridedCuda &outData, cuOSDContext_t context,
-                                   cudaStream_t stream)
+                                   cudaStream_t stream, bool skipCopy)
 {
     auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(inData);
     NVCV_ASSERT(inAccess);
@@ -338,15 +469,86 @@ inline ErrorCode ApplyBoxBlur_RGBA(const nvcv::TensorDataStridedCuda &inData,
 
     if (std::max(srcMaxStride, dstMaxStride) <= cuda::TypeTraits<int32_t>::max)
     {
-        auto src = nvcv::cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(inData);
-        auto dst = nvcv::cuda::CreateTensorWrapNHWC<uint8_t, int32_t>(outData);
+        auto src = nvcv::cuda::CreateTensorWrapNHWC<T, int32_t>(inData);
+        auto dst = nvcv::cuda::CreateTensorWrapNHWC<T, int32_t>(outData);
 
-        RenderBlur_RGBA(src, dst, inputShape, context, stream);
+        RenderBlur_RGBA(src, dst, inputShape, context, stream, skipCopy);
         return ErrorCode::SUCCESS;
     }
     else
     {
         LOG_ERROR("Input or output size exceeds " << cuda::TypeTraits<int32_t>::max << ". Tensor is too large.");
+        return ErrorCode::INVALID_PARAMETER;
+    }
+}
+
+template<typename SrcWrap, typename DstWrap>
+inline void RenderBlur_Planar(SrcWrap src, DstWrap dst, const cuda_op::DataShape &inputShape, cuOSDContext_t context,
+                              cudaStream_t stream, bool skipCopy)
+{
+    if (!skipCopy && src.ptr(0, 0, 0, 0) != dst.ptr(0, 0, 0, 0))
+    {
+        dim3 blockSize(32, 32);
+        dim3 gridSize(divUp(int(inputShape.W + 1), (int)blockSize.x), divUp(int(inputShape.H + 1), (int)blockSize.y),
+                      inputShape.N);
+
+        render_p2p_planar_kernel<<<gridSize, blockSize, 0, stream>>>(src, dst, inputShape.N, inputShape.H, inputShape.W,
+                                                                     inputShape.C);
+        checkKernelErrors();
+    }
+
+    if (context->blur_commands.size() > 0)
+    {
+        dim3 blockSize(32, 32);
+        dim3 gridSize(context->blur_commands.size(), inputShape.C);
+
+        render_blur_planar_kernel<<<gridSize, blockSize, 0, stream>>>(
+            src, dst, context->gpu_blur_commands ? context->gpu_blur_commands->device() : nullptr,
+            context->blur_commands.size(), inputShape.N, inputShape.W, inputShape.H, inputShape.C);
+        checkKernelErrors();
+    }
+}
+
+template<typename T>
+inline ErrorCode ApplyBoxBlur_Planar(const nvcv::TensorDataStridedCuda &inData,
+                                     const nvcv::TensorDataStridedCuda &outData, cuOSDContext_t context,
+                                     cudaStream_t stream, bool skipCopy)
+{
+    auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(inData);
+    NVCV_ASSERT(inAccess);
+
+    cuda_op::DataShape inputShape = helpers::GetLegacyDataShape(inAccess->infoShape());
+
+    auto outAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(outData);
+    NVCV_ASSERT(outAccess);
+
+    cuda_op::DataShape outputShape = helpers::GetLegacyDataShape(outAccess->infoShape());
+
+    if (outputShape.H != inputShape.H || outputShape.W != inputShape.W || outputShape.N != inputShape.N
+        || outputShape.C != inputShape.C || (outputShape.C != 3 && outputShape.C != 4))
+    {
+        LOG_ERROR("Invalid output shape " << outputShape);
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+    cuosd_apply(context, stream);
+
+    int64_t maxStride
+        = std::max({inAccess->sampleStride() * inAccess->numSamples(), inAccess->chStride() * inAccess->numChannels(),
+                    inAccess->rowStride(), outAccess->sampleStride() * outAccess->numSamples(),
+                    outAccess->chStride() * outAccess->numChannels(), outAccess->rowStride()});
+
+    if (maxStride <= cuda::TypeTraits<int32_t>::max)
+    {
+        auto src = nvcv::cuda::CreateTensorWrapNCHW<T, int32_t>(inData);
+        auto dst = nvcv::cuda::CreateTensorWrapNCHW<T, int32_t>(outData);
+
+        RenderBlur_Planar(src, dst, inputShape, context, stream, skipCopy);
+        return ErrorCode::SUCCESS;
+    }
+    else
+    {
+        LOG_ERROR("Input or output stride exceeds " << cuda::TypeTraits<int32_t>::max << ". Tensor is too large.");
         return ErrorCode::INVALID_PARAMETER;
     }
 }
@@ -413,15 +615,22 @@ BoxBlur::~BoxBlur()
     }
 }
 
+size_t BoxBlur::calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type)
+{
+    return CudaBaseOp::calBufferSize(max_input_shape, max_output_shape, max_data_type);
+}
+
 ErrorCode BoxBlur::infer(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,
-                         NVCVBlurBoxesI bboxes, cudaStream_t stream)
+                         NVCVBlurBoxesI bboxes, cudaStream_t stream, bool skipCopy)
 {
     cuda_op::DataFormat input_format  = GetLegacyDataFormat(inData.layout());
     cuda_op::DataFormat output_format = GetLegacyDataFormat(outData.layout());
 
-    if (!(input_format == kNHWC || input_format == kHWC) || !(output_format == kNHWC || output_format == kHWC))
+    if (!(input_format == kNHWC || input_format == kHWC || input_format == kNCHW || input_format == kCHW)
+        || !(output_format == kNHWC || output_format == kHWC || output_format == kNCHW || output_format == kCHW)
+        || IsPlanar(input_format) != IsPlanar(output_format))
     {
-        LOG_ERROR("Invliad DataFormat both Input and Output must be kNHWC or kHWC");
+        LOG_ERROR("Invalid DataFormat both Input and Output must be kNHWC, kHWC, kNCHW or kCHW");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
@@ -430,6 +639,14 @@ ErrorCode BoxBlur::infer(const nvcv::TensorDataStridedCuda &inData, const nvcv::
         LOG_ERROR("Input and Output formats must be same input format =" << inData.dtype()
                                                                          << " output format = " << outData.dtype());
         return ErrorCode::INVALID_DATA_FORMAT;
+    }
+
+    const cuda_op::DataType data_type = GetLegacyDataType(inData.dtype());
+
+    if (!(data_type == kCV_8U || data_type == kCV_8S))
+    {
+        LOG_ERROR("Invalid DataType " << data_type);
+        return ErrorCode::INVALID_DATA_TYPE;
     }
 
     auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(inData);
@@ -443,7 +660,7 @@ ErrorCode BoxBlur::infer(const nvcv::TensorDataStridedCuda &inData, const nvcv::
     int rows     = inAccess->numRows();
     int cols     = inAccess->numCols();
 
-    if (channels > 4 || channels < 1)
+    if (channels > 4 || channels < 3)
     {
         LOG_ERROR("Invalid channel number ch = " << channels);
         return ErrorCode::INVALID_DATA_SHAPE;
@@ -469,15 +686,25 @@ ErrorCode BoxBlur::infer(const nvcv::TensorDataStridedCuda &inData, const nvcv::
     }
 
     typedef ErrorCode (*func_t)(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &outData,
-                                cuOSDContext_t context, cudaStream_t stream);
+                                cuOSDContext_t context, cudaStream_t stream, bool skipCopy);
 
-    static const func_t funcs[] = {
-        ApplyBoxBlur_RGB,
-        ApplyBoxBlur_RGBA,
+    static const func_t funcs[][2] = {
+        {ApplyBoxBlur_RGB<uint8_t>, ApplyBoxBlur_RGBA<uint8_t>},
+        { ApplyBoxBlur_RGB<int8_t>,  ApplyBoxBlur_RGBA<int8_t>},
     };
 
-    int       type_idx = channels - 3;
-    ErrorCode status   = funcs[type_idx](inData, outData, m_context, stream);
+    const int dataTypeIdx = data_type == kCV_8S ? 1 : 0;
+    ErrorCode status      = ErrorCode::SUCCESS;
+    if (IsPlanar(input_format))
+    {
+        status = dataTypeIdx == 0 ? ApplyBoxBlur_Planar<uint8_t>(inData, outData, m_context, stream, skipCopy)
+                                  : ApplyBoxBlur_Planar<int8_t>(inData, outData, m_context, stream, skipCopy);
+    }
+    else
+    {
+        const int channelIdx = channels - 3;
+        status               = funcs[dataTypeIdx][channelIdx](inData, outData, m_context, stream, skipCopy);
+    }
     m_context->blur_commands.clear(); // Clear the command buffer so next render does not contain previous boxes.
     return status;
 }

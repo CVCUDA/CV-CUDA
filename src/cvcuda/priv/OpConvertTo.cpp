@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "OpConvertTo.hpp"
 
+#include "Nvtx.hpp"
 #include "legacy/CvCudaLegacy.h"
 #include "legacy/CvCudaLegacyHelpers.hpp"
 
@@ -29,14 +30,16 @@ namespace legacy = nvcv::legacy::cuda_op;
 
 ConvertTo::ConvertTo()
 {
-    legacy::DataShape maxIn, maxOut;
+    legacy::DataShape maxIn;
+    legacy::DataShape maxOut;
     //maxIn/maxOut not used by op.
     m_legacyOp = std::make_unique<legacy::ConvertTo>(maxIn, maxOut);
 }
 
 void ConvertTo::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const double alpha,
-                           const double beta) const
+                           const double beta, NVCVRoundMode roundMode) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::ConvertTo::operator()[Tensor]");
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
     if (inData == nullptr)
     {
@@ -51,7 +54,7 @@ void ConvertTo::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nv
                               "Output must be cuda-accessible, pitch-linear tensor");
     }
 
-    NVCV_CHECK_THROW(m_legacyOp->infer(*inData, *outData, alpha, beta, stream));
+    NVCV_CHECK_THROW(m_legacyOp->infer(*inData, *outData, alpha, beta, roundMode, stream));
 }
 
 } // namespace cvcuda::priv

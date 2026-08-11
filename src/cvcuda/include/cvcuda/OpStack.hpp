@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,10 +30,13 @@
 #include "OpStack.h"
 
 #include <cuda_runtime.h>
+#include <nvcv/ImageBatch.hpp>
 #include <nvcv/ImageFormat.hpp>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorBatch.hpp>
 #include <nvcv/alloc/Requirements.hpp>
+
+#include <cassert>
 
 namespace cvcuda {
 
@@ -42,38 +45,40 @@ class Stack final : public IOperator
 public:
     explicit Stack();
 
-    ~Stack();
+    void operator()(cudaStream_t stream, const nvcv::TensorBatch &in, const nvcv::Tensor &out) const;
+    void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::Tensor &out) const;
 
-    void operator()(cudaStream_t stream, const nvcv::TensorBatch &in, const nvcv::Tensor &out);
-
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline Stack::Stack()
 {
-    nvcv::detail::CheckThrow(cvcudaStackCreate(&m_handle));
-    assert(m_handle);
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaStackCreate(&h));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
-inline Stack::~Stack()
+inline void Stack::operator()(cudaStream_t stream, const nvcv::TensorBatch &in, const nvcv::Tensor &out) const
 {
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    nvcv::detail::CheckThrow(cvcudaStackSubmit(m_handle.get(), stream, in.handle(), out.handle()));
 }
 
-inline void Stack::operator()(cudaStream_t stream, const nvcv::TensorBatch &in, const nvcv::Tensor &out)
+inline void Stack::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::Tensor &out) const
 {
-    nvcv::detail::CheckThrow(cvcudaStackSubmit(m_handle, stream, in.handle(), out.handle()));
+    nvcv::detail::CheckThrow(cvcudaStackVarShapeSubmit(m_handle.get(), stream, in.handle(), out.handle()));
 }
 
 inline NVCVOperatorHandle Stack::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA__STACK_HPP

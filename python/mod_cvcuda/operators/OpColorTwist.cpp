@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -42,7 +42,7 @@ inline ImageBatchVarShape batchLike(ImageBatchVarShape &src)
     ImageBatchVarShape dst = ImageBatchVarShape::Create(src.capacity());
     for (int i = 0; i < src.numImages(); ++i)
     {
-        dst.pushBack(Image::Create(src[i].size(), src[i].format()));
+        dst.pushBackImage(Image::Create(src[i].size(), src[i].format()));
     }
     return dst;
 }
@@ -60,13 +60,14 @@ auto runGuard(Op &op, Src &src, Dst &dst, const Tensor &twist, std::optional<Str
     guard.add(LockMode::LOCK_MODE_WRITE, {dst});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
-    call(*pstream);
+    guard.run([&call, &pstream]() { call(*pstream); });
 }
 
 Tensor ColorTwistMatrixInto(Tensor &dst, Tensor &src, Tensor &twist, std::optional<Stream> pstream)
 {
     auto op = CreateOperator<cvcuda::ColorTwist>();
-    runGuard(op, src, dst, twist, pstream, [&](Stream &stream) { op->submit(stream.cudaHandle(), src, dst, twist); });
+    runGuard(op, src, dst, twist, pstream,
+             [&op, &src, &dst, &twist](const Stream &stream) { op->submit(stream.cudaHandle(), src, dst, twist); });
     return dst;
 }
 
@@ -80,7 +81,8 @@ ImageBatchVarShape VarShapeColorTwistMatrixInto(ImageBatchVarShape &dst, ImageBa
                                                 std::optional<Stream> pstream)
 {
     auto op = CreateOperator<cvcuda::ColorTwist>();
-    runGuard(op, src, dst, twist, pstream, [&](Stream &stream) { op->submit(stream.cudaHandle(), src, dst, twist); });
+    runGuard(op, src, dst, twist, pstream,
+             [&op, &src, &dst, &twist](const Stream &stream) { op->submit(stream.cudaHandle(), src, dst, twist); });
     return dst;
 }
 
@@ -96,16 +98,11 @@ void ExportOpColorTwist(py::module &m)
 {
     using namespace pybind11::literals;
 
-    m.def("color_twist", &ColorTwistMatrix, "src"_a, "twist"_a, py::kw_only(), "stream"_a = nullptr,
+    m.def("color_twist", NvtxTrace("cvcuda.color_twist", &ColorTwistMatrix), "src"_a, "twist"_a, py::kw_only(),
+          "stream"_a = nullptr,
           R"pbdoc(
-
-        cvcuda.color_twist(src: cvcuda.Tensor, twist: cvcuda.Tensor, stream: Optional[cvcuda.Stream] = None) -> cvcuda.Tensor
-
         Transforms an image by applying affine transformation to the channels extent.
 
-        See Also:
-            Refer to the CV-CUDA C API reference for the ColorTwist operator for more details and
-            usage examples.
 
         Args:
             src (cvcuda.Tensor): Tensor corresponding to the input image. It must have
@@ -117,16 +114,11 @@ void ExportOpColorTwist(py::module &m)
         Returns:
             cvcuda.Tensor: The output tensor.
     )pbdoc");
-    m.def("color_twist_into", &ColorTwistMatrixInto, "dst"_a, "src"_a, "twist"_a, py::kw_only(), "stream"_a = nullptr,
+    m.def("color_twist_into", NvtxTrace("cvcuda.color_twist_into", &ColorTwistMatrixInto), "dst"_a, "src"_a, "twist"_a,
+          py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
-
-        cvcuda.color_twist_into(dst: cvcuda.Tensor, src: cvcuda.Tensor, twist: cvcuda.Tensor, stream: Optional[cvcuda.Stream] = None)
-
         Transforms an image by applying affine transformation to the channels extent.
 
-        See Also:
-            Refer to the CV-CUDA C API reference for the ColorTwist operator for more details and
-            usage examples.
 
         Args:
             dst (cvcuda.Tensor): Tensor corresponding to the output image. Must match the shape of
@@ -138,20 +130,15 @@ void ExportOpColorTwist(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 
     // VarShape variants
-    m.def("color_twist", &VarShapeColorTwistMatrix, "src"_a, "twist"_a, py::kw_only(), "stream"_a = nullptr,
+    m.def("color_twist", NvtxTrace("cvcuda.color_twist", &VarShapeColorTwistMatrix), "src"_a, "twist"_a, py::kw_only(),
+          "stream"_a = nullptr,
           R"pbdoc(
-
-        cvcuda.color_twist(src: cvcuda.ImageBatchVarShape, twist: cvcuda.Tensor, stream: Optional[cvcuda.Stream] = None) -> cvcuda.ImageBatchVarShape
-
         Transforms a batch of images by applying affine transformation to the channels extent.
 
-        See Also:
-            Refer to the CV-CUDA C API reference for the ColorTwist operator for more details and
-            usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch. Each image must have either 3 or 4
@@ -165,20 +152,14 @@ void ExportOpColorTwist(py::module &m)
             cvcuda.ImageBatchVarShape: The output image batch.
 
     )pbdoc");
-    m.def("color_twist_into", &VarShapeColorTwistMatrixInto, "dst"_a, "src"_a, "twist"_a, py::kw_only(),
-          "stream"_a = nullptr,
+    m.def("color_twist_into", NvtxTrace("cvcuda.color_twist_into", &VarShapeColorTwistMatrixInto), "dst"_a, "src"_a,
+          "twist"_a, py::kw_only(), "stream"_a = nullptr,
           R"pbdoc(
-
-        cvcuda.color_twist_into(dst: cvcuda.ImageBatchVarShape, src: cvcuda.ImageBatchVarShape, twist: cvcuda.Tensor, stream: Optional[cvcuda.Stream] = None)
-
         Transforms a batch of images by applying affine transformation to the channels extent.
 
         The twist should be a 2D tensor describing 3x4 affine transformation matrix or a 3D tensor specifying
         separate transformations for each sample in the input image batch.
 
-        See Also:
-            Refer to the CV-CUDA C API reference for the ColorTwist operator for more details and
-            usage examples.
 
         Args:
             dst (cvcuda.ImageBatchVarShape): Output image batch. The shapes of the output images
@@ -191,7 +172,7 @@ void ExportOpColorTwist(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
+            cvcuda.ImageBatchVarShape: The output image batch (same as dst).
     )pbdoc");
 }
 

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,14 +15,17 @@
 
 import cvcuda
 
-import pytest as t
+import pytest
 import numpy as np
 import random
+import cvcuda_types as cv_types
+import cvcuda_tools as cv_tools
+
 
 random.seed(1)
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "input, dtype, number",
     [
         (((5, 16, 23, 4), np.uint8, "NHWC"), np.int8, 2),
@@ -102,3 +105,116 @@ def test_op_stack(input, dtype, number):
         assert output_tensor.shape[1] == input_tensors[0].shape[1]
         assert output_tensor.shape[2] == input_tensors[0].shape[2]
         assert output_tensor.shape[3] == input_tensors[0].shape[3]
+
+
+globals().update(
+    cv_tools.make_op_tests(
+        name="stack",
+        runner_info=[("tensor_batch", cvcuda.stack, None)],
+        keystone_dlc=(cvcuda.Type.U8, "NHWC", 3),
+        supported_dtypes=cv_types.SCALAR_TYPES_SET,
+        supported_layouts={"NHWC", "NCHW", "HWC", "CHW"},
+        supported_channels=cv_types.CHANNELS,
+    )
+)
+
+
+@pytest.mark.parametrize(
+    "input, dtype, number",
+    [
+        (((5, 16, 23, 4), np.uint8, "NHWC"), np.int8, 2),
+        (((1, 160, 221, 2), np.uint8, "NHWC"), np.int8, 3),
+        (((6, 61, 12, 3), np.uint8, "NHWC"), np.int8, 5),
+        (((5, 161, 23, 4), np.uint8, "NCHW"), np.int8, 2),
+        (((16, 23, 4), np.uint8, "HWC"), np.int8, 2),
+        (((161, 23, 4), np.uint8, "CHW"), np.int8, 2),
+    ],
+)
+def test_op_stack_tensorbatch(input, dtype, number):
+    """Test stack with TensorBatch input directly."""
+    input_tensors = []
+    numberOfTensors = 0
+
+    updated_input = list(input)
+    for _ in range(number):
+        if updated_input[2] == "NHWC" or updated_input[2] == "NCHW":
+            updated_input[0] = (random.randint(1, input[0][0]),) + input[0][1:]
+            numberOfTensors += updated_input[0][0]
+        else:
+            numberOfTensors += 1
+        input_tensor = cvcuda.Tensor(*updated_input)
+        input_tensors.append(input_tensor)
+
+    # Create TensorBatch from list of tensors
+    tensor_batch = cvcuda.TensorBatch(len(input_tensors))
+    for tensor in input_tensors:
+        tensor_batch.pushback(tensor)
+
+    # Test stack with TensorBatch
+    out = cvcuda.stack(tensor_batch)
+
+    assert out.shape[0] == numberOfTensors
+    assert out.dtype == input_tensors[0].dtype
+
+    # Test stack_into with TensorBatch
+    outputTensorDef = list(updated_input)
+    if updated_input[2] == "NHWC" or updated_input[2] == "NCHW":
+        outputTensorDef[0] = (numberOfTensors,) + input[0][1:]
+    else:
+        outputTensorDef[0] = (numberOfTensors,) + input[0][0:]
+        if updated_input[2] == "HWC":
+            outputTensorDef[2] = "NHWC"
+        else:
+            outputTensorDef[2] = "NCHW"
+
+    output_tensor = cvcuda.Tensor(*outputTensorDef)
+    tmp = cvcuda.stack_into(output_tensor, tensor_batch)
+
+    assert tmp is output_tensor
+    assert output_tensor.shape[0] == numberOfTensors
+    assert output_tensor.dtype == input_tensors[0].dtype
+
+
+@pytest.mark.parametrize(
+    "format, num_images, width, height",
+    [
+        (cvcuda.Format.U8, 5, 64, 48),
+        (cvcuda.Format.RGB8, 3, 128, 96),
+        (cvcuda.Format.RGBA8, 2, 32, 24),
+        (cvcuda.Format.RGBf32, 4, 64, 64),
+        (cvcuda.Format.U8, 1, 16, 16),
+    ],
+)
+def test_op_stack_varshape(format, num_images, width, height):
+    """Test stack with ImageBatchVarShape input."""
+    # Create ImageBatchVarShape with same-size images
+    input_batch = cvcuda.ImageBatchVarShape(num_images)
+
+    images = [cvcuda.Image((width, height), format) for _ in range(num_images)]
+    input_batch.pushback(images)
+
+    # Test stack with ImageBatchVarShape
+    out = cvcuda.stack(input_batch)
+
+    assert out.shape[0] == num_images
+    # Check output dimensions match input image dimensions
+    if format.planes == 1:
+        # Interleaved format (NHWC)
+        assert out.shape[1] == height
+        assert out.shape[2] == width
+    else:
+        # Planar format (NCHW)
+        assert out.shape[2] == height
+        assert out.shape[3] == width
+
+    # Test stack_into with ImageBatchVarShape
+    output_tensor = cvcuda.Tensor(num_images, (width, height), format)
+    tmp = cvcuda.stack_into(output_tensor, input_batch)
+
+    assert tmp is output_tensor
+    assert output_tensor.shape[0] == num_images
+
+    # Test with stream
+    stream = cvcuda.Stream()
+    out_stream = cvcuda.stack(input_batch, stream=stream)
+    assert out_stream.shape[0] == num_images

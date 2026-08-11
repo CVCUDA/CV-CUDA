@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,18 +12,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from __future__ import annotations
 
-import cvcuda
+import colorsys
 import math
+import numbers
 import os
 import threading
-import torch
-import numpy as np
-import numbers
 
-import copy
-import colorsys
+import numpy as np
 from typing_extensions import Callable, Concatenate, ParamSpec
+
+import cupy
+import cvcuda
 
 P = ParamSpec("P")
 
@@ -44,8 +45,12 @@ IMG_FORMAT_TO_NUMPY_DTYPE = {
     cvcuda.Format.RGBA8: np.uint8,
     cvcuda.Format.BGR8: np.uint8,
     cvcuda.Format.RGB8: np.uint8,
+    cvcuda.Format.RGB8p: np.uint8,
+    cvcuda.Format.RGBA8p: np.uint8,
     cvcuda.Format.RGBf32: np.float32,
     cvcuda.Format.RGBAf32: np.float32,
+    cvcuda.Format.RGBf32p: np.float32,
+    cvcuda.Format.RGBAf32p: np.float32,
     cvcuda.Format.F32: np.float32,
     cvcuda.Format.F64: np.float64,
     cvcuda.Format.U8: np.uint8,
@@ -57,6 +62,16 @@ IMG_FORMAT_TO_NUMPY_DTYPE = {
     cvcuda.Format.U32: np.uint32,
     cvcuda.Format.S32: np.int32,
 }
+
+
+def get_numpy_dtype_for_format(img_format):
+    dtype = IMG_FORMAT_TO_NUMPY_DTYPE.get(img_format)
+    if dtype is None:
+        raise ValueError(
+            f"Unsupported image format: {img_format}. "
+            f"Supported: {list(IMG_FORMAT_TO_NUMPY_DTYPE)}"
+        )
+    return dtype
 
 
 def dist_odd(x):
@@ -97,34 +112,14 @@ def generate_data(shape, dtype, max_random=None, rng=None):
                 max_random = [1.0 for _ in range(shape[-1])]
             data = rng.random(size=shape, dtype=dtype) * np.array(max_random)
             data = data.astype(dtype)
+        else:
+            raise ValueError(
+                f"Unsupported dtype: {dtype}. Expected an integral or real type."
+            )
     return data
 
 
-class CudaBuffer:
-    __cuda_array_interface__ = None
-    obj = None
-
-
-def to_torch_dtype(data_type):
-    """Convert a data type into one supported by torch
-
-    Args:
-        data_type (numpy dtype): Original data type
-
-    Returns:
-        dtype: A data type supported by torch
-    """
-    if data_type == np.uint16:
-        return np.dtype(np.int16)
-    elif data_type == np.uint32:
-        return np.dtype(np.int32)
-    elif data_type == np.uint64:
-        return np.dtype(np.int64)
-    else:
-        return data_type
-
-
-def to_cpu_numpy_buffer(cuda_buffer):
+def to_cpu_numpy_buffer(cuda_buffer) -> np.ndarray:
     """Convert a CUDA buffer to host (CPU) data
 
     Args:
@@ -133,15 +128,7 @@ def to_cpu_numpy_buffer(cuda_buffer):
     Returns:
         numpy array: The CUDA buffer copied to the CPU
     """
-    torch_dtype = copy.copy(cuda_buffer.dtype)
-    torch_dtype = to_torch_dtype(torch_dtype)
-
-    buf = CudaBuffer
-    buf.obj = cuda_buffer
-    buf.__cuda_array_interface__ = cuda_buffer.__cuda_array_interface__
-    buf.__cuda_array_interface__["typestr"] = torch_dtype.str
-
-    return torch.as_tensor(buf).cpu().numpy()
+    return cupy.asarray(cuda_buffer).get()
 
 
 def to_cuda_buffer(host_data):
@@ -151,23 +138,9 @@ def to_cuda_buffer(host_data):
         host_data (numpy array): Host data
 
     Returns:
-        CudaBuffer: The converted CUDA buffer
+        cupy.ndarray: The converted CUDA buffer
     """
-    orig_dtype = copy.copy(host_data.dtype)
-
-    host_data.dtype = to_torch_dtype(host_data.dtype)
-
-    dev = torch.as_tensor(host_data, device="cuda").cuda()
-    host_data.dtype = orig_dtype  # restore it
-
-    # The cuda buffer only needs the cuda array interface.
-    # We can then set its dtype to whatever we want.
-    buf = CudaBuffer()
-    buf.__cuda_array_interface__ = dev.__cuda_array_interface__
-    buf.__cuda_array_interface__["typestr"] = orig_dtype.str
-    buf.obj = dev  # make sure it holds a reference to the torch buffer
-
-    return buf
+    return cupy.asarray(host_data)
 
 
 def to_cvcuda_tensor(data, layout):
@@ -215,6 +188,29 @@ def create_tensor(shape, dtype, layout, max_random=None, rng=None, transform_dis
     return to_cvcuda_tensor(h_data, layout)
 
 
+def create_tensor_batch(
+    shape, dtype, layout, count=2, max_random=None, rng=None, transform_dist=None
+):
+    """Create a list of tensors with identical shapes.
+
+    Args:
+        shape (tuple or list): Tensor shape
+        dtype (numpy dtype): Tensor data type (e.g. np.uint8)
+        layout (string): Tensor layout (e.g. NC, HWC, NHWC)
+        count (int): Number of tensors to create (default: 2)
+        max_random (number or tuple or list): Maximum random value
+        rng (numpy random Generator): To fill tensor with random values
+        transform_dist (function): To transform random values
+
+    Returns:
+        list[cvcuda.Tensor]: List of created tensors
+    """
+    return [
+        create_tensor(shape, dtype, layout, max_random, rng, transform_dist)
+        for _ in range(count)
+    ]
+
+
 def to_cvcuda_image(host_data):
     """Convert an image in host data to cvcuda.Image
 
@@ -239,8 +235,21 @@ def create_image(size, img_format, max_random=None, rng=None):
     Returns:
         cvcuda.Image: The created image
     """
+    dtype = get_numpy_dtype_for_format(img_format)
+    if img_format.planes > 1:
+        planes = []
+        for plane_idx in range(img_format.planes):
+            plane_max_random = max_random
+            if (
+                isinstance(max_random, (tuple, list))
+                and len(max_random) == img_format.planes
+            ):
+                plane_max_random = max_random[plane_idx]
+            h_data = generate_data((size[1], size[0]), dtype, plane_max_random, rng)
+            planes.append(to_cuda_buffer(h_data))
+        return cvcuda.as_image(planes, img_format)
+
     shape = (size[1], size[0], img_format.channels)
-    dtype = IMG_FORMAT_TO_NUMPY_DTYPE[img_format]
     h_data = generate_data(shape, dtype, max_random, rng)
     return to_cvcuda_image(h_data)
 
@@ -261,7 +270,7 @@ def create_image_pattern(
         np.array: The created image
     """
     shape = (size[1], size[0], img_format.channels)
-    dtype = IMG_FORMAT_TO_NUMPY_DTYPE[img_format]
+    dtype = get_numpy_dtype_for_format(img_format)
     ci, cj = shape[0] - 1, shape[1] - 1
     max_r = max(ci, cj) * math.sqrt(2)
     image = np.zeros(shape, dtype=dtype)
@@ -385,3 +394,20 @@ def run_parallel(
 
     if exception is not None:
         raise exception
+
+
+__all__ = [
+    "IMG_FORMAT_TO_TYPE",
+    "IMG_FORMAT_TO_NUMPY_DTYPE",
+    "get_numpy_dtype_for_format",
+    "dist_odd",
+    "generate_data",
+    "to_cpu_numpy_buffer",
+    "to_cuda_buffer",
+    "create_tensor",
+    "create_image",
+    "create_image_pattern",
+    "create_image_batch",
+    "clone_image_batch",
+    "run_parallel",
+]

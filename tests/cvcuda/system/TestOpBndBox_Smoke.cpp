@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -79,7 +79,7 @@ TEST(OpBndBox_Smoke, basic_functionality_rgb8)
         bndBoxVec.push_back(boxes);
     }
 
-    std::shared_ptr<NVCVBndBoxesImpl> bndBoxes = std::make_shared<NVCVBndBoxesImpl>(bndBoxVec);
+    auto bndBoxes = std::make_shared<NVCVBndBoxesImpl>(bndBoxVec);
 
     // Run operator
     cvcuda::BndBox op;
@@ -171,7 +171,7 @@ TEST(OpBndBox_Smoke, basic_functionality_rgba8)
     boxes.push_back(box);
     bndBoxVec.push_back(boxes);
 
-    std::shared_ptr<NVCVBndBoxesImpl> bndBoxes = std::make_shared<NVCVBndBoxesImpl>(bndBoxVec);
+    auto bndBoxes = std::make_shared<NVCVBndBoxesImpl>(bndBoxVec);
 
     cvcuda::BndBox op;
     EXPECT_NO_THROW(op(stream, imgIn, imgOut, (NVCVBndBoxesI)bndBoxes.get()));
@@ -195,10 +195,9 @@ TEST(OpBndBox_Smoke, basic_functionality_rgba8)
         uint8_t r = outData[i];
         uint8_t g = outData[i + 1];
         uint8_t b = outData[i + 2];
-        uint8_t a = outData[i + 3];
 
         // Gray background with full alpha (should be present)
-        if (r == 64 && g == 64 && b == 64 && a == 255)
+        if (uint8_t a = outData[i + 3]; r == 64 && g == 64 && b == 64 && a == 255)
             hasGray = true;
 
         // Blue component should be present from fill (pure blue or blended)
@@ -255,7 +254,7 @@ TEST(OpBndBox_Smoke, multiple_boxes)
     }
     bndBoxVec.push_back(boxes);
 
-    std::shared_ptr<NVCVBndBoxesImpl> bndBoxes = std::make_shared<NVCVBndBoxesImpl>(bndBoxVec);
+    auto bndBoxes = std::make_shared<NVCVBndBoxesImpl>(bndBoxVec);
 
     cvcuda::BndBox op;
     EXPECT_NO_THROW(op(stream, imgIn, imgOut, (NVCVBndBoxesI)bndBoxes.get()));
@@ -271,7 +270,7 @@ TEST(OpBndBox_Smoke, memory_management)
 
     cvcuda::BndBox op;
 
-    for (int iter = 0; iter < 5; iter++)
+    for (int iter = 0; iter < 5; iter++) // NOSONAR
     {
         nvcv::Tensor imgIn  = nvcv::util::CreateTensor(1, 224, 224, nvcv::FMT_RGB8);
         nvcv::Tensor imgOut = nvcv::util::CreateTensor(1, 224, 224, nvcv::FMT_RGB8);
@@ -301,7 +300,7 @@ TEST(OpBndBox_Smoke, memory_management)
         boxes.push_back(box);
         bndBoxVec.push_back(boxes);
 
-        std::shared_ptr<NVCVBndBoxesImpl> bndBoxes = std::make_shared<NVCVBndBoxesImpl>(bndBoxVec);
+        auto bndBoxes = std::make_shared<NVCVBndBoxesImpl>(bndBoxVec);
 
         EXPECT_NO_THROW(op(stream, imgIn, imgOut, (NVCVBndBoxesI)bndBoxes.get()));
         EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
@@ -337,7 +336,7 @@ TEST(OpBndBox_Smoke, edge_cases)
         std::vector<std::vector<NVCVBndBoxI>> bndBoxVec;
         std::vector<NVCVBndBoxI>              boxes; // Empty
         bndBoxVec.push_back(boxes);
-        std::shared_ptr<NVCVBndBoxesImpl> bndBoxes = std::make_shared<NVCVBndBoxesImpl>(bndBoxVec);
+        auto bndBoxes = std::make_shared<NVCVBndBoxesImpl>(bndBoxVec);
         EXPECT_NO_THROW(op(stream, imgIn, imgOut, (NVCVBndBoxesI)bndBoxes.get()));
         EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
 
@@ -361,7 +360,7 @@ TEST(OpBndBox_Smoke, edge_cases)
         box.borderColor = {255, 255, 255, 255};
         boxes.push_back(box);
         bndBoxVec.push_back(boxes);
-        std::shared_ptr<NVCVBndBoxesImpl> bndBoxes = std::make_shared<NVCVBndBoxesImpl>(bndBoxVec);
+        auto bndBoxes = std::make_shared<NVCVBndBoxesImpl>(bndBoxVec);
         EXPECT_NO_THROW(op(stream, imgIn, imgOut, (NVCVBndBoxesI)bndBoxes.get()));
         EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
 

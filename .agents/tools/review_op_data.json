@@ -1,0 +1,46 @@
+{
+  "schema": "review-op-curated-data/v1",
+  "spdx": {
+    "copyright": "Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.",
+    "license": "Apache-2.0"
+  },
+    "tensor_only": [
+        "advcvtcolor",
+        "bndbox",
+        "boxblur",
+        "centercrop",
+        "convertto",
+        "customcrop",
+        "histogram",
+        "label",
+        "minarearect",
+        "nonmaximumsuppression",
+        "osd",
+        "pairwisematcher",
+        "reformat",
+        "sift"
+    ],
+    "varshape_only": [
+        "conv2d",
+        "cropflipnormalizereformat",
+        "padandstack"
+    ],
+    "bench_layout_na": [
+        "findhomography",
+        "minarearect",
+        "nonmaximumsuppression",
+        "pairwisematcher",
+        "reformat"
+    ],
+    "bench_rgb_na": [
+        "findhomography",
+        "histogram",
+        "label",
+        "minarearect",
+        "minmaxloc",
+        "nonmaximumsuppression",
+        "pairwisematcher",
+        "sift"
+    ],
+  "basic_expected": {}
+}

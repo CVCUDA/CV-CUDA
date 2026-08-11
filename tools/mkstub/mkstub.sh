@@ -1,5 +1,5 @@
 #!/bin/bash -e
-# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,12 +23,12 @@ fi
 dso=$1
 stub_dso=$2
 
-if [ ! -r "$dso" ]; then
+if [[ ! -r "$dso" ]]; then
     echo "$dso: file not found or is not readable"
     exit 1
 fi
 
-if [ -z "$stub_dso" ]; then
+if [[ -z "$stub_dso" ]]; then
     tmp=$(basename "$dso")
     stub_dso="${tmp%.*}_stub.${tmp##*.}"
 fi
@@ -37,7 +37,7 @@ CC=${CC:-gcc}
 target=$($CC -v 2>&1 | sed -n 's@Target: @@pg')
 #echo Targetting $target
 
-if [ ${CC%-*} = $CC ]; then
+if [[ ${CC%-*} == "$CC" ]]; then
     STRIP="strip"
 else
     STRIP="$target-strip"
@@ -51,6 +51,7 @@ tmp_stub_symbols=$(mktemp)
 function cleanup()
 {
     rm -f $tmp_c $tmp_v $tmp_orig_symbols $tmp_stub_symbols
+    return $?
 }
 
 trap 'cleanup' EXIT
@@ -135,6 +136,7 @@ function print_symbol()
         echo "Symbol type not understood: '$symtype'"
         exit 1;
     esac
+    return $?
 }
 
 symbol_filter='$7 !~ /(Ndx|UND|ABS|^$)/ && $5 !~ /(UNIQUE|LOCAL)/ && ( $5 ~ /WEAK/ || $4 !~ /NOTYPE/ )'
@@ -147,6 +149,7 @@ function get_symbols()
     # IFUNC on x86_64-redhat-linux DSOs (Centos7)
     # aren't well understood x86_64-linux-gnu (Ubuntu, Gentoo...)
     readelf -W --dyn-syms "$dso" | sed 's/<OS specific>: 10/IFUNC/g'
+    return $?
 }
 
 first=1
@@ -155,7 +158,7 @@ versioned=0
 declare -a weak_ifuncs
 
 while read ver vertype name symtype bind vis; do
-    if [ -z "$name" ]; then
+    if [[ -z "$name" ]]; then
         continue;
     fi
 
@@ -163,7 +166,7 @@ while read ver vertype name symtype bind vis; do
     name=${name:1:-1}
     vertype=${vertype:1:-1}
 
-    if [ -n "$ver" ]; then
+    if [[ -n "$ver" ]]; then
         cver="$vertype$ver"
         cname=${name}_$cver
         cname="${cname//[.@-]/_}"
@@ -180,7 +183,7 @@ while read ver vertype name symtype bind vis; do
         print_symbol "$cname" "$bind" "$vis" "$symtype"
     fi
 
-    if [ -z "$ver" ]; then
+    if [[ -z "$ver" ]]; then
         ver_symbols+=("$cname")
         continue;
     fi
@@ -214,12 +217,12 @@ for syminfo in "${weak_ifuncs[@]}"; do
     print_symbol $syminfo
 done
 
-if [ ! -f $tmp_c ]; then
+if [[ ! -f $tmp_c ]]; then
     echo "No symbols found to be stubbed"
     exit 1
 fi
 
-if [ $versioned -eq 0 ]; then
+if [[ $versioned -eq 0 ]]; then
     echo "{" >> $tmp_v
 fi
 
@@ -236,13 +239,13 @@ args="-Wl,--version-script=$tmp_v"
 soname=$(readelf -d "$dso"  | gawk '/SONAME/ { print $5 }')
 soname=${soname:1:-1}
 
-if [ -n "$soname" ]; then
+if [[ -n "$soname" ]]; then
     args="$args -Wl,-soname=$soname"
 fi
 
 # Some old versions of ld don't support these options.
 # Let's use only what's supported.
-if [ ${CC%-*} = $CC ]; then
+if [[ ${CC%-*} == "$CC" ]]; then
     LD=$(dirname $CC)/ld
 else
     LD="$(dirname $CC)/$target-ld"
@@ -273,13 +276,14 @@ function list_contents()
     local parser='{ print $4,$5,$6,$8 }'
     local dso=$1
     get_symbols $dso | gawk "$symbol_filter $parser" | sort
+    return $?
 }
 
 list_contents $dso > $tmp_orig_symbols
 list_contents $stub_dso > $tmp_stub_symbols
 
 if ! diff $tmp_orig_symbols $tmp_stub_symbols; then
-    echo "Error, resulting stub doesn't correspond to input"
+    echo "Error, resulting stub doesn't correspond to input" >&2
     rm $stub_dso
     exit 1
 fi

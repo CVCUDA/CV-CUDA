@@ -17,8 +17,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -O3 -ggdb")
 set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} -O3 -ggdb")
 
-# Use old behavior (before CMake 3.20) for Ninja DEPFILES generators
-cmake_policy(SET CMP0116 OLD)
+# Use new behavior (CMake 3.20+) for Ninja DEPFILES generators
+cmake_policy(SET CMP0116 NEW)
 
 if(WARNINGS_AS_ERRORS)
     set(C_WARNING_ERROR_FLAG "-Werror")

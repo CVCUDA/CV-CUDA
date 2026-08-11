@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,6 +23,7 @@
 #include <nvcv/ArrayDataAccess.hpp>
 #include <nvcv/alloc/Allocator.hpp>
 
+#include <cstddef>
 #include <list>
 #include <random>
 #include <vector>
@@ -32,29 +33,13 @@
 namespace t    = ::testing;
 namespace test = nvcv::test;
 
-// clang-format off
-namespace std {
+namespace {
 
-template<typename T>
-std::ostream &operator<<(std::ostream &out, const std::vector<T> &vec)
-{
-    out << '{';
-    std::string sep = "";
-    for (auto value: vec)
-    {
-        out << sep << value;
-        sep = ",";
-    }
-    return out << '}';
-}
+const std::vector<int>              g_testCapacities = {1, 2, 1024, 1048576};
+const std::vector<nvcv::DataType>   g_testDataTypes  = {nvcv::TYPE_U8, nvcv::TYPE_F16, nvcv::TYPE_F32, nvcv::TYPE_4F64};
+const std::vector<NVCVResourceType> g_testResourceTypes = {NVCV_RESOURCE_MEM_CUDA, NVCV_RESOURCE_MEM_HOST};
 
-} // namespace std
-
-// clang-format on
-
-static std::vector<int>              g_testCapacities    = {1, 2, 1024, 1048576};
-static std::vector<nvcv::DataType>   g_testDataTypes     = {nvcv::TYPE_U8, nvcv::TYPE_F32, nvcv::TYPE_4F64};
-static std::vector<NVCVResourceType> g_testResourceTypes = {NVCV_RESOURCE_MEM_CUDA, NVCV_RESOURCE_MEM_HOST};
+} // namespace
 
 class ArrayTests : public t::TestWithParam<std::tuple<int, nvcv::DataType, NVCVResourceType>>
 {
@@ -66,13 +51,10 @@ public:
         {
             std::string result = "";
 
-            auto paramPack = info.param;
-            auto capacity  = std::get<0>(paramPack);
-            auto dtype     = std::get<1>(paramPack);
-            auto target    = std::get<2>(paramPack);
+            auto [capacity, dtype, target] = info.param;
 
             result += "mem" + std::string(nvcvResourceTypeGetName(target)).substr(18) + "__";
-            result += "dtype" + std::string(nvcvDataTypeGetName(dtype)).substr(15) + "__";
+            result += "dtype" + std::string(nvcvDataTypeGetName(static_cast<NVCVDataType>(dtype))).substr(15) + "__";
             result += "cap" + std::to_string(capacity);
 
             return result;
@@ -82,15 +64,11 @@ public:
 
 TEST_P(ArrayTests, smoke_c_create)
 {
-    auto paramPack = GetParam();
-
-    auto capacity = std::get<0>(paramPack);
-    auto dtype    = std::get<1>(paramPack);
-    auto target   = std::get<2>(paramPack);
+    const auto &[capacity, dtype, target] = GetParam();
 
     NVCVArrayHandle       handle;
     NVCVArrayRequirements reqs;
-    ASSERT_EQ(NVCV_SUCCESS, nvcvArrayCalcRequirements(capacity, dtype, 0, &reqs));
+    ASSERT_EQ(NVCV_SUCCESS, nvcvArrayCalcRequirements(capacity, static_cast<NVCVDataType>(dtype), 0, &reqs));
     ASSERT_EQ(NVCV_SUCCESS, nvcvArrayConstructWithTarget(&reqs, nullptr, target, &handle));
 
     int ref;
@@ -111,28 +89,20 @@ TEST_P(ArrayTests, smoke_c_create)
 
 TEST_P(ArrayTests, smoke_cxx_create)
 {
-    auto paramPack = GetParam();
+    const auto &[capacity, dtype, target] = GetParam();
 
-    auto capacity = std::get<0>(paramPack);
-    auto dtype    = std::get<1>(paramPack);
-    auto target   = std::get<2>(paramPack);
+    nvcv::Array array;
 
-    nvcv::Array *pArray = nullptr;
+    ASSERT_NO_THROW(array = nvcv::Array(capacity, dtype, 0, target));
 
-    ASSERT_NO_THROW(pArray = new nvcv::Array(capacity, dtype, 0, target));
+    EXPECT_EQ(array.target(), target);
+    EXPECT_EQ(array.dtype(), dtype);
+    EXPECT_EQ(array.capacity(), capacity);
+    EXPECT_EQ(array.length(), 0);
 
-    EXPECT_EQ(pArray->target(), target);
-    EXPECT_EQ(pArray->dtype(), dtype);
-    EXPECT_EQ(pArray->capacity(), capacity);
-    EXPECT_EQ(pArray->length(), 0);
-
-    auto data = pArray->exportData<nvcv::ArrayData>();
+    auto data = array.exportData<nvcv::ArrayData>();
     ASSERT_TRUE(data);
     EXPECT_NE(data->basePtr(), nullptr);
-
-    EXPECT_NO_THROW(delete pArray);
-
-    pArray = nullptr;
 }
 
 INSTANTIATE_TEST_SUITE_P(_, ArrayTests,
@@ -146,11 +116,7 @@ class ArrayWrapTests : public ArrayTests
 
 TEST_P(ArrayWrapTests, smoke_create)
 {
-    auto paramPack = GetParam();
-
-    auto capacity = std::get<0>(paramPack);
-    auto dtype    = std::get<1>(paramPack);
-    auto target   = std::get<2>(paramPack);
+    const auto &[capacity, dtype, target] = GetParam();
 
     nvcv::Array baseArray(capacity, dtype, dtype.alignment(), target);
 
@@ -207,9 +173,9 @@ TEST(ArrayTests, smoke_create_allocator)
 
                 void *ptr = nullptr;
                 cudaMalloc(&ptr, size);
-                return ptr;
+                return static_cast<std::byte *>(ptr);
             },
-            [](void *ptr, int64_t bufLen, int32_t bufAlign)
+            [](auto ptr, int64_t, int32_t)
             {
                 cudaFree(ptr);
             }
@@ -290,7 +256,8 @@ TEST(ArrayTests, mismatch_construct_with_target)
 {
     NVCVArrayRequirements req;
     NVCVArrayHandle       arrayHandle;
-    int64_t               capacity = -1, length = -1;
+    int64_t               capacity = -1;
+    int64_t               length   = -1;
     NVCVResourceType      target;
     NVCVDataType          dType;
     EXPECT_EQ(NVCV_SUCCESS,
@@ -347,11 +314,16 @@ TEST(ArrayTests, invalid_handle_wrap_data_construct)
 
 void arrayDataCleanUpFunc(void *ctx, const NVCVArrayData *data);
 
-void arrayDataCleanUpFunc(void *ctx, const NVCVArrayData *data) {}
+void arrayDataCleanUpFunc(void *ctx, const NVCVArrayData *data)
+{
+    (void)ctx;
+    (void)data;
+}
 
 TEST(ArrayTests, valid_handle_wrap_data_construct)
 {
-    NVCVArrayHandle       arrayHandle, arrayHandle2;
+    NVCVArrayHandle       arrayHandle;
+    NVCVArrayHandle       arrayHandle2;
     NVCVArrayRequirements req;
     NVCVArrayData         arrayData;
     EXPECT_EQ(NVCV_SUCCESS, nvcvArrayCalcRequirements(16, NVCV_DATA_TYPE_U8, 0, &req));
@@ -364,7 +336,8 @@ TEST(ArrayTests, valid_handle_wrap_data_construct)
 
 TEST(ArrayTests, valid_handle_wrap_data_construct_pinned)
 {
-    NVCVArrayHandle       arrayHandle, arrayHandle2;
+    NVCVArrayHandle       arrayHandle;
+    NVCVArrayHandle       arrayHandle2;
     NVCVArrayRequirements req;
     NVCVArrayData         arrayData;
     EXPECT_EQ(NVCV_SUCCESS,
@@ -407,7 +380,7 @@ TEST(ArrayTests, smoke_user_pointer)
 {
     NVCVArrayHandle       arrayHandle;
     NVCVArrayRequirements req;
-    void                 *userPtr;
+    NVCVUserPointer       userPtr;
 
     EXPECT_EQ(NVCV_SUCCESS, nvcvArrayCalcRequirements(16, NVCV_DATA_TYPE_U8, 0, &req));
     EXPECT_EQ(NVCV_SUCCESS, nvcvArrayConstruct(&req, nullptr, &arrayHandle));
@@ -415,9 +388,9 @@ TEST(ArrayTests, smoke_user_pointer)
     EXPECT_EQ(NVCV_SUCCESS, nvcvArrayGetUserPointer(arrayHandle, &userPtr));
     EXPECT_EQ(nullptr, userPtr);
 
-    EXPECT_EQ(NVCV_SUCCESS, nvcvArraySetUserPointer(arrayHandle, reinterpret_cast<void *>(0x123ULL)));
+    EXPECT_EQ(NVCV_SUCCESS, nvcvArraySetUserPointer(arrayHandle, reinterpret_cast<NVCVUserPointer>(0x123ULL)));
     EXPECT_EQ(NVCV_SUCCESS, nvcvArrayGetUserPointer(arrayHandle, &userPtr));
-    EXPECT_EQ(reinterpret_cast<void *>(0x123ULL), userPtr);
+    EXPECT_EQ(reinterpret_cast<NVCVUserPointer>(0x123ULL), userPtr);
 
     EXPECT_EQ(NVCV_SUCCESS, nvcvArraySetUserPointer(arrayHandle, nullptr));
     EXPECT_EQ(NVCV_SUCCESS, nvcvArrayGetUserPointer(arrayHandle, &userPtr));
@@ -454,7 +427,7 @@ TEST(ArrayTests, valid_get_allocator)
     int                   tmp = 1;
     NVCVArrayHandle       arrayHandle;
     NVCVArrayRequirements req;
-    NVCVAllocatorHandle   alloc = reinterpret_cast<NVCVAllocatorHandle>(&tmp);
+    auto                  alloc = reinterpret_cast<NVCVAllocatorHandle>(&tmp);
     EXPECT_NE(alloc, nullptr);
 
     EXPECT_EQ(NVCV_SUCCESS, nvcvArrayCalcRequirements(16, NVCV_DATA_TYPE_U8, 0, &req));
@@ -556,7 +529,8 @@ TEST(ArrayTests, invalidResize)
 
 TEST(ArrayWrapTests, validResize)
 {
-    NVCVArrayHandle       arrayHandle, arrayWrapHandle;
+    NVCVArrayHandle       arrayHandle;
+    NVCVArrayHandle       arrayWrapHandle;
     NVCVArrayData         arrayData;
     NVCVArrayRequirements req;
     int64_t               length = 0;
@@ -576,7 +550,8 @@ TEST(ArrayWrapTests, validResize)
 
 TEST(ArrayWrapTests, invalidResize)
 {
-    NVCVArrayHandle       arrayHandle, arrayWrapHandle;
+    NVCVArrayHandle       arrayHandle;
+    NVCVArrayHandle       arrayWrapHandle;
     NVCVArrayData         arrayData;
     NVCVArrayRequirements req;
 
@@ -594,10 +569,11 @@ TEST(ArrayWrapTests, invalidResize)
 TEST(ArrayWrapTests, valid_get_allocator)
 {
     int                   tmp = 1;
-    NVCVArrayHandle       arrayHandle, arrayWrapHandle;
+    NVCVArrayHandle       arrayHandle;
+    NVCVArrayHandle       arrayWrapHandle;
     NVCVArrayData         arrayData;
     NVCVArrayRequirements req;
-    NVCVAllocatorHandle   alloc = reinterpret_cast<NVCVAllocatorHandle>(&tmp);
+    auto                  alloc = reinterpret_cast<NVCVAllocatorHandle>(&tmp);
     EXPECT_NE(alloc, nullptr);
 
     EXPECT_EQ(NVCV_SUCCESS, nvcvArrayCalcRequirements(16, NVCV_DATA_TYPE_U8, 0, &req));

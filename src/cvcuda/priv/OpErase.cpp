@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,8 +17,10 @@
 
 #include "OpErase.hpp"
 
+#include "Nvtx.hpp"
 #include "legacy/CvCudaLegacy.h"
 #include "legacy/CvCudaLegacyHelpers.hpp"
+#include "legacy/EraseCopyPolicy.hpp"
 
 #include <nvcv/Exception.hpp>
 #include <nvcv/util/CheckError.hpp>
@@ -27,18 +29,49 @@ namespace cvcuda::priv {
 
 namespace legacy = nvcv::legacy::cuda_op;
 
-Erase::Erase(int num_erasing_area)
+namespace {
+
+bool UseBulkEraseCopyOnDevice(int deviceId)
 {
-    legacy::DataShape maxIn, maxOut;
-    // maxIn/maxOut not used by op.
-    m_legacyOp         = std::make_unique<legacy::Erase>(maxIn, maxOut, num_erasing_area);
-    m_legacyOpVarShape = std::make_unique<legacy::EraseVarShape>(maxIn, maxOut, num_erasing_area);
+    cudaDeviceProp properties{};
+    NVCV_CHECK_THROW(cudaGetDeviceProperties(&properties, deviceId));
+
+    const int sm = properties.major * 10 + properties.minor;
+    return legacy::UseBulkEraseCopyForDevice(sm, properties.name);
+}
+
+} // namespace
+
+Erase::Erase(int num_erasing_area)
+    // Legacy operators are single-device by design. PerDeviceResource creates
+    // one instance per CUDA device for transparent multi-GPU support.
+    : m_legacyOp(
+        [num_erasing_area](int deviceId)
+        {
+            legacy::DataShape maxIn;
+            legacy::DataShape maxOut;
+            return std::make_unique<legacy::Erase>(maxIn, maxOut, num_erasing_area, UseBulkEraseCopyOnDevice(deviceId));
+        })
+    , m_legacyOpVarShape(
+          [num_erasing_area](int deviceId)
+          {
+              legacy::DataShape maxIn;
+              legacy::DataShape maxOut;
+              return std::make_unique<legacy::EraseVarShape>(maxIn, maxOut, num_erasing_area,
+                                                             UseBulkEraseCopyOnDevice(deviceId));
+          })
+{
+    if (num_erasing_area < 0)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "num_erasing_area must be >= 0");
+    }
 }
 
 void Erase::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const nvcv::Tensor &anchor,
                        const nvcv::Tensor &erasing, const nvcv::Tensor &values, const nvcv::Tensor &imgIdx, bool random,
                        unsigned int seed) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::Erase::operator()[Tensor]");
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
     if (inData == nullptr)
     {
@@ -82,14 +115,15 @@ void Erase::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::
     }
 
     bool inplace = (in.handle() == out.handle());
-    NVCV_CHECK_THROW(m_legacyOp->infer(*inData, *outData, *anchorData, *erasingData, *valuesData, *imgIdxData, random,
-                                       seed, inplace, stream));
+    NVCV_CHECK_THROW(m_legacyOp.get().infer(*inData, *outData, *anchorData, *erasingData, *valuesData, *imgIdxData,
+                                            random, seed, inplace, stream));
 }
 
 void Erase::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
                        const nvcv::Tensor &anchor, const nvcv::Tensor &erasing, const nvcv::Tensor &values,
                        const nvcv::Tensor &imgIdx, bool random, unsigned int seed) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::Erase::operator()[ImageBatchVarShape]");
     auto anchorData = anchor.exportData<nvcv::TensorDataStridedCuda>();
     if (anchorData == nullptr)
     {
@@ -119,8 +153,8 @@ void Erase::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, 
     }
 
     bool inplace = (in.handle() == out.handle());
-    NVCV_CHECK_THROW(m_legacyOpVarShape->infer(in, out, *anchorData, *erasingData, *valuesData, *imgIdxData, random,
-                                               seed, inplace, stream));
+    NVCV_CHECK_THROW(m_legacyOpVarShape.get().infer(in, out, *anchorData, *erasingData, *valuesData, *imgIdxData,
+                                                    random, seed, inplace, stream));
 }
 
 } // namespace cvcuda::priv

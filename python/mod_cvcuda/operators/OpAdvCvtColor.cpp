@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -40,7 +40,8 @@ Tensor AdvCvtColorInto(Tensor &output, Tensor &input, NVCVColorConversionCode co
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
-    op->submit(pstream->cudaHandle(), input, output, code, spec);
+    guard.run([&op, &pstream, &input, &output, &code, &spec]()
+              { op->submit(pstream->cudaHandle(), input, output, code, nvcv::ColorSpec{spec}); });
     return std::move(output);
 }
 
@@ -59,14 +60,11 @@ Tensor AdvCvtColor(Tensor &input, NVCVColorConversionCode code, NVCVColorSpec sp
 void ExportOpAdvCvtColor(py::module &m)
 {
     using namespace pybind11::literals;
-    m.def("advcvtcolor", &AdvCvtColor, "src"_a, "code"_a, "spec"_a, py::kw_only(), "stream"_a = nullptr,
+    m.def("advcvtcolor", NvtxTrace("cvcuda.advcvtcolor", &AdvCvtColor), "src"_a, "code"_a, "spec"_a, py::kw_only(),
+          "stream"_a = nullptr,
           R"pbdoc(
-
         Executes the Adv Cvt Color operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Adv Cvt Color operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.Tensor): Input tensor containing one or more images.
@@ -77,19 +75,12 @@ void ExportOpAdvCvtColor(py::module &m)
         Returns:
             cvcuda.Tensor: The output color converted image.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("advcvtcolor_into", &AdvCvtColorInto, "dst"_a, "src"_a, "code"_a, "spec"_a, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
-
+    m.def("advcvtcolor_into", NvtxTrace("cvcuda.advcvtcolor_into", &AdvCvtColorInto), "dst"_a, "src"_a, "code"_a,
+          "spec"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the Adv Cvt Color operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Adv Cvt Color operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.Tensor): Output tensor to store the result of the operation.
@@ -99,11 +90,7 @@ void ExportOpAdvCvtColor(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 }
 

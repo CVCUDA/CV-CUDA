@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -36,7 +36,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvMakeDataType,
                 (NVCVDataType * outDataType, NVCVDataKind dataKind, NVCVPacking packing))
 {
     return priv::ProtectCall(
-        [&]
+        [&outDataType, &dataKind, &packing]
         {
             if (outDataType == nullptr)
             {
@@ -50,7 +50,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvMakeDataType,
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvDataTypeGetPacking, (NVCVDataType type, NVCVPacking *outPacking))
 {
     return priv::ProtectCall(
-        [&]
+        [&outPacking, &type]
         {
             if (outPacking == nullptr)
             {
@@ -65,7 +65,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvDataTypeGetPacking, (NVCVDataType type, NV
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvDataTypeGetBitsPerPixel, (NVCVDataType type, int32_t *outBPP))
 {
     return priv::ProtectCall(
-        [&]
+        [&outBPP, &type]
         {
             if (outBPP == nullptr)
             {
@@ -80,7 +80,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvDataTypeGetBitsPerPixel, (NVCVDataType typ
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvDataTypeGetBitsPerChannel, (NVCVDataType type, int32_t *outBits))
 {
     return priv::ProtectCall(
-        [&]
+        [&outBits, &type]
         {
             if (outBits == nullptr)
             {
@@ -97,7 +97,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvDataTypeGetBitsPerChannel, (NVCVDataType t
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvDataTypeGetDataKind, (NVCVDataType type, NVCVDataKind *outDataKind))
 {
     return priv::ProtectCall(
-        [&]
+        [&outDataKind, &type]
         {
             if (outDataKind == nullptr)
             {
@@ -112,7 +112,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvDataTypeGetDataKind, (NVCVDataType type, N
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvDataTypeGetNumChannels, (NVCVDataType type, int32_t *outNumChannels))
 {
     return priv::ProtectCall(
-        [&]
+        [&outNumChannels, &type]
         {
             if (outNumChannels == nullptr)
             {
@@ -129,7 +129,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvDataTypeGetChannelType,
                 (NVCVDataType type, int32_t channel, NVCVDataType *outChannelType))
 {
     return priv::ProtectCall(
-        [&]
+        [&outChannelType, &type, &channel]
         {
             if (outChannelType == nullptr)
             {
@@ -145,8 +145,8 @@ NVCV_DEFINE_API(0, 0, const char *, nvcvDataTypeGetName, (NVCVDataType type))
 {
     priv::CoreTLS &tls = priv::GetCoreTLS(); // noexcept
 
-    char         *buffer  = tls.bufDataTypeName;
-    constexpr int bufSize = sizeof(tls.bufDataTypeName);
+    char *buffer  = tls.bufDataTypeName.data();
+    auto  bufSize = static_cast<int>(tls.bufDataTypeName.size());
 
     try
     {
@@ -172,7 +172,7 @@ NVCV_DEFINE_API(0, 0, const char *, nvcvDataTypeGetName, (NVCVDataType type))
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvDataTypeGetStrideBytes, (NVCVDataType type, int32_t *dtypeStride))
 {
     return priv::ProtectCall(
-        [&]
+        [&dtypeStride, &type]
         {
             if (dtypeStride == nullptr)
             {
@@ -187,7 +187,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvDataTypeGetStrideBytes, (NVCVDataType type
 NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvDataTypeGetAlignment, (NVCVDataType type, int32_t *outAlignment))
 {
     return priv::ProtectCall(
-        [&]
+        [&outAlignment, &type]
         {
             if (outAlignment == nullptr)
             {

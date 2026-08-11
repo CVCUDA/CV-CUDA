@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
@@ -26,7 +26,7 @@ namespace {
 class EventListener : public t::EmptyTestEventListener
 {
 public:
-    virtual void OnTestStart(const t::TestInfo &tinfo) override
+    void OnTestStart(const t::TestInfo &tinfo) override
     {
         // Swallow any existing error so that test isn't affected by it.
         // Actual error must have been already trapped in the previous test.
@@ -39,7 +39,7 @@ public:
         g_HasSanitizerError = false;
     }
 
-    virtual void OnTestEnd(const t::TestInfo &tinfo) override
+    void OnTestEnd(const t::TestInfo &tinfo) override
     {
         int devCount = 0;
         cudaGetDeviceCount(&devCount);

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,24 +16,3 @@
  */
 
 #include "String.hpp"
-
-#include <cstdarg>
-#include <cstdio>
-
-namespace nvcvpy::util {
-
-std::string FormatString(const char *fmt, ...)
-{
-    va_list va;
-    va_start(va, fmt);
-
-    char buffer[1024];
-    vsnprintf(buffer, sizeof(buffer) - 1, fmt, va);
-    buffer[sizeof(buffer) - 1] = '\0'; // better be safe against truncation
-
-    va_end(va);
-
-    return buffer;
-}
-
-} // namespace nvcvpy::util

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,13 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import cvcuda
-import cvcuda_util
-import pytest as t
 import numpy as np
 
+import cvcuda
+import cvcuda_util
+import pytest
+import cvcuda_types as cv_types
+import cvcuda_tools as cv_tools
 
-@t.mark.parametrize(
+
+@pytest.mark.parametrize(
     "num_samples, num_points",
     [
         (16, 1024),
@@ -53,7 +56,7 @@ def test_op_findhomography(num_samples, num_points):
     assert out.dtype == cvcuda.Type.F32
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "num_samples, num_points",
     [
         (16, 1024),
@@ -92,3 +95,31 @@ def test_op_findhomographyvarshape(num_samples, num_points):
     assert outBatch.ndim == 3
     assert outBatch.dtype == cvcuda.Type.F32
     assert outBatch.capacity == srcBatch.capacity
+
+
+def _op(src: cvcuda.Tensor) -> cvcuda.Tensor:
+    dst = cvcuda.Tensor(src.shape, src.dtype, src.layout)
+    return cvcuda.findhomography(src, dst)
+
+
+_num_samples = 4
+_num_points = 16
+
+_supported_input_configs = [
+    (cvcuda.Type._2F32, "NW", 1),
+    (cvcuda.Type.F32, "NWC", 2),
+]
+
+
+@pytest.mark.parametrize("dtype,layout,channels", _supported_input_configs)
+def test_op_findhomography_input(dtype, layout, channels):
+    cv_tools.assert_layouts(
+        _op, layout, dtype=dtype, wrapper="tensor", channels=channels
+    )
+
+
+@pytest.mark.parametrize("dtype", cv_types.SCALAR_TYPES_SET - {cvcuda.Type.F32})
+def test_op_findhomography_dtype_negative(dtype):
+    cv_tools.assert_layouts(
+        _op, "NWC", dtype=dtype, wrapper="tensor", channels=2, negative=True
+    )

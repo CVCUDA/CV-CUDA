@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "priv/OpConvertTo.hpp"
 
+#include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <nvcv/Exception.hpp>
@@ -28,7 +29,7 @@ namespace priv = cvcuda::priv;
 CVCUDA_DEFINE_API(0, 0, NVCVStatus, cvcudaConvertToCreate, (NVCVOperatorHandle * handle))
 {
     return nvcv::ProtectCall(
-        [&]
+        [&handle]
         {
             if (handle == nullptr)
             {
@@ -36,18 +37,21 @@ CVCUDA_DEFINE_API(0, 0, NVCVStatus, cvcudaConvertToCreate, (NVCVOperatorHandle *
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            *handle = reinterpret_cast<NVCVOperatorHandle>(new priv::ConvertTo());
+            *handle = priv::CreateOperatorHandle<priv::ConvertTo>();
         });
 }
 
-CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaConvertToSubmit,
+CVCUDA_DEFINE_API(0, 17, NVCVStatus, cvcudaConvertToSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in, NVCVTensorHandle out,
-                   const double alpha, const double beta))
+                   const double alpha, const double beta, NVCVRoundMode roundMode))
 {
+    CVCUDA_NVTX_RANGE("cvcudaConvertToSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&in, &out, &handle, &stream, &alpha, &beta, &roundMode]
         {
-            nvcv::TensorWrapHandle input(in), output(out);
-            priv::ToDynamicRef<priv::ConvertTo>(handle)(stream, input, output, alpha, beta);
+            nvcv::TensorWrapHandle input(in);
+            nvcv::TensorWrapHandle output(out);
+            priv::ToDynamicRef<priv::ConvertTo>(handle)(stream, input.resource(), output.resource(), alpha, beta,
+                                                        roundMode);
         });
 }

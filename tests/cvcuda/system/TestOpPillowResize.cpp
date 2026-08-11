@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,18 +16,30 @@
  */
 
 #include "Definitions.hpp"
+#include "PlanarParityUtils.hpp"
 
 #include <common/ValueTests.hpp>
 #include <cvcuda/OpPillowResize.hpp>
+#include <nvcv/Exception.hpp>
 #include <nvcv/Image.hpp>
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Rect.h>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
 
+#include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdint>
+#include <cstring>
 #include <iostream>
+#include <limits>
 #include <random>
+#include <ranges>
+#include <stdexcept>
+#include <type_traits>
+#include <utility>
+#include <vector>
 
 namespace test = nvcv::test;
 namespace t    = ::testing;
@@ -35,11 +47,11 @@ namespace t    = ::testing;
 using Vecf  = std::vector<float>;
 using uchar = unsigned char;
 
-#include <array>
-#include <cstdint>
-#include <limits>
-#include <utility>
-#include <vector>
+class PillowResizeTestError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
 
 template<typename T>
 class TestMat
@@ -49,69 +61,71 @@ public:
         : rows(rows_)
         , cols(cols_)
         , channels(channels_)
+        , data(static_cast<size_t>(rows_) * static_cast<size_t>(cols_) * static_cast<size_t>(channels_))
         , dkind(dkind_)
     {
-        data = std::vector<T>();
-        data.resize(rows * cols * channels);
     }
 
-    TestMat(int rows_, int cols_, int channels_, nvcv::DataKind dkind_, std::vector<T> &data_)
+    TestMat(int rows_, int cols_, int channels_, nvcv::DataKind dkind_, const std::vector<T> &data_)
         : rows(rows_)
         , cols(cols_)
         , channels(channels_)
+        , data(data_)
         , dkind(dkind_)
     {
-        data = std::vector<T>();
-        data = data_;
     }
 
     TestMat(const TestMat &test_mat, NVCVRectI roi)
+        : rows(roi.height)
+        , cols(roi.width)
+        , channels(test_mat.channels)
+        , dkind(test_mat.dkind)
     {
-        rows     = roi.height;
-        cols     = roi.width;
-        channels = test_mat.channels;
-        dkind    = test_mat.dkind;
         if (roi.height == test_mat.rows && roi.width == test_mat.cols)
         {
-            data = std::vector<T>();
             data = test_mat.data;
         }
         else
         {
-            data = std::vector<T>();
-            data.resize(roi.width * roi.height * test_mat.channels);
+            data.resize(static_cast<size_t>(roi.width) * static_cast<size_t>(roi.height)
+                        * static_cast<size_t>(test_mat.channels));
+
+            auto copyPixel = [this, &test_mat, roi](int row, int col)
+            {
+                for (int c = 0; c < channels; c++)
+                {
+                    data[row * cols * channels + col * channels + c]
+                        = test_mat.data[(row + roi.y) * test_mat.cols * channels + (col + roi.x) * channels + c];
+                }
+            };
+
             for (int i = 0; i < rows; i++)
             {
                 for (int j = 0; j < cols; j++)
                 {
-                    for (int c = 0; c < channels; c++)
-                    {
-                        data[i * cols * channels + j * channels + c]
-                            = test_mat.data[(i + roi.y) * test_mat.cols * channels + (j + roi.x) * channels + c];
-                    }
+                    copyPixel(i, j);
                 }
             }
         }
     }
 
-    TestMat(nvcv::DataKind dkind_)
-        : dkind(dkind_)
+    explicit TestMat(nvcv::DataKind dkind_)
+        : rows(0)
+        , cols(0)
+        , channels(0)
+        , data()
+        , dkind(dkind_)
     {
-        rows     = 0;
-        cols     = 0;
-        channels = 0;
-        data     = std::vector<T>();
     }
 
-    bool empty()
+    bool empty() const
     {
         return data.empty();
     }
 
     void create(int rows_, int cols_, int ch_)
     {
-        data = std::vector<T>();
-        data.resize(rows_ * cols_ * ch_);
+        data.assign(static_cast<size_t>(rows_) * static_cast<size_t>(cols_) * static_cast<size_t>(ch_), T{});
         rows     = rows_;
         cols     = cols_;
         channels = ch_;
@@ -153,7 +167,7 @@ public:
                 std::cout << "i,j = " << i << "," << j;
                 for (int c = 0; c < channels; c++)
                 {
-                    std::cout << " " << (int)get(i, j, c);
+                    std::cout << " " << static_cast<int>(get(i, j, c));
                 }
                 std::cout << std::endl;
             }
@@ -166,6 +180,23 @@ public:
     std::vector<T> data;
     nvcv::DataKind dkind;
 };
+
+static int ScaleDimension(int value, double scale)
+{
+    return static_cast<int>(static_cast<double>(value) * scale);
+}
+
+template<typename T>
+static void FillRandomBytes(std::vector<T> &values)
+{
+    std::default_random_engine    randEng{0};
+    std::uniform_int_distribution srcRand{0, 255};
+
+    for (T &value : values)
+    {
+        value = static_cast<T>(srcRand(randEng));
+    }
+}
 
 struct Rect2f
 {
@@ -196,6 +227,8 @@ protected:
         double _support; /** Support size (length of resampling filter). */
 
     public:
+        virtual ~Filter() = default;
+
         /**
          * \brief Construct a new Filter object.
          *
@@ -231,6 +264,7 @@ protected:
     public:
         BoxFilter()
             : Filter(box_filter_support){};
+        ~BoxFilter() override = default;
         [[nodiscard]] double filter(double x) const override;
     };
 
@@ -241,6 +275,7 @@ protected:
     public:
         BilinearFilter()
             : Filter(bilinear_filter_support){};
+        ~BilinearFilter() override = default;
         [[nodiscard]] double filter(double x) const override;
     };
 
@@ -251,6 +286,7 @@ protected:
     public:
         HammingFilter()
             : Filter(hamming_filter_support){};
+        ~HammingFilter() override = default;
         [[nodiscard]] double filter(double x) const override;
     };
 
@@ -261,6 +297,7 @@ protected:
     public:
         BicubicFilter()
             : Filter(bicubic_filter_support){};
+        ~BicubicFilter() override = default;
         [[nodiscard]] double filter(double x) const override;
     };
 
@@ -274,6 +311,7 @@ protected:
     public:
         LanczosFilter()
             : Filter(lanczos_filter_support){};
+        ~LanczosFilter() override = default;
         [[nodiscard]] double filter(double x) const override;
     };
 
@@ -501,7 +539,7 @@ public:
      *
      * \return Resized matrix.
      *
-     * \throw std::runtime_error In case the box is invalid, the interpolation filter
+     * \throw PillowResizeTestError In case the box is invalid, the interpolation filter
      *        or the input matrix type are not supported.
      */
     template<typename T>
@@ -517,7 +555,7 @@ public:
      *
      * \return Resized matrix.
      *
-     * \throw std::runtime_error In case the box is invalid, the interpolation filter
+     * \throw PillowResizeTestError In case the box is invalid, the interpolation filter
      *        or the input matrix type are not supported.
      */
     template<typename T>
@@ -558,21 +596,28 @@ void PillowResizeCPU::_resampleHorizontal(TestMat<T> &im_out, const TestMat<T> &
         kk = preprocessCoefficients(kk);
     }
 
+    auto resampleChannel = [&im_in, &kk, offset, ksize, &bounds, init_buffer](int yy, int xx, int c)
+    {
+        int           xmin = bounds[xx * 2 + 0];
+        int           xmax = bounds[xx * 2 + 1];
+        const double *k    = &kk[xx * ksize];
+        double        ss   = init_buffer;
+
+        for (int x = 0; x < xmax; ++x)
+        {
+            // NOLINTNEXTLINE
+            ss += (T)im_in.get(yy + offset, x + xmin, c) * k[x];
+        }
+        return ss;
+    };
+
     for (int yy = 0; yy < im_out.rows; ++yy)
     {
         for (int xx = 0; xx < im_out.cols; ++xx)
         {
-            int     xmin = bounds[xx * 2 + 0];
-            int     xmax = bounds[xx * 2 + 1];
-            double *k    = &kk[xx * ksize];
             for (int c = 0; c < im_in.channels; ++c)
             {
-                double ss = init_buffer;
-                for (int x = 0; x < xmax; ++x)
-                {
-                    // NOLINTNEXTLINE
-                    ss += (T)im_in.get(yy + offset, x + xmin, c) * k[x];
-                }
+                double ss = resampleChannel(yy, xx, c);
                 // NOLINTNEXTLINE
                 im_out.set(yy, xx, c, (T)(outMap == nullptr ? ss : outMap(ss)));
             }
@@ -595,8 +640,7 @@ double PillowResizeCPU::BilinearFilter::filter(double x) const
 
 double PillowResizeCPU::BoxFilter::filter(double x) const
 {
-    const double half_pixel = 0.5;
-    if (x > -half_pixel && x <= half_pixel)
+    if (const double half_pixel = 0.5; x > -half_pixel && x <= half_pixel)
     {
         return 1.0;
     }
@@ -651,8 +695,7 @@ double PillowResizeCPU::LanczosFilter::_sincFilter(double x)
 
 double PillowResizeCPU::LanczosFilter::filter(double x) const
 {
-    const double lanczos_a_param = 3.0;
-    if (-lanczos_a_param <= x && x < lanczos_a_param)
+    if (const double lanczos_a_param = 3.0; - lanczos_a_param <= x && x < lanczos_a_param)
     {
         return _sincFilter(x) * _sincFilter(x / lanczos_a_param);
     }
@@ -666,7 +709,7 @@ int PillowResizeCPU::_precomputeCoeffs(int in_size, double in0, double in1, int 
     // Prepare for horizontal stretch.
     double scale       = 0;
     double filterscale = 0;
-    filterscale = scale = static_cast<double>(in1 - in0) / out_size;
+    filterscale = scale = (in1 - in0) / out_size;
     if (filterscale < 1.0)
     {
         filterscale = 1.0;
@@ -681,7 +724,7 @@ int PillowResizeCPU::_precomputeCoeffs(int in_size, double in0, double in1, int 
     // Check for overflow
     if (out_size > INT_MAX / (k_size * static_cast<int>(sizeof(double))))
     {
-        throw std::runtime_error("Memory error");
+        throw PillowResizeTestError("Memory error");
     }
 
     // Coefficient buffer.
@@ -764,7 +807,7 @@ std::vector<double> PillowResizeCPU::_normalizeCoeffs8bpc(const std::vector<doub
 template<typename T>
 TestMat<T> PillowResizeCPU::resize(const TestMat<T> &src, const nvcv::Size2D &out_size, int filter)
 {
-    Rect2f box(0.F, 0.F, static_cast<float>(src.cols), static_cast<float>(src.rows));
+    Rect2f box{0.F, 0.F, static_cast<float>(src.cols), static_cast<float>(src.rows)};
     return resize(src, out_size, filter, box);
 }
 
@@ -777,29 +820,29 @@ TestMat<T> PillowResizeCPU::resize(const TestMat<T> &src, const nvcv::Size2D &ou
     int y_size = out_size.h;
     if (x_size < 1 || y_size < 1)
     {
-        throw std::runtime_error("Height and width must be > 0");
+        throw PillowResizeTestError("Height and width must be > 0");
     }
 
     if (rect[0] < 0.F || rect[1] < 0.F)
     {
-        throw std::runtime_error("Box offset can't be negative");
+        throw PillowResizeTestError("Box offset can't be negative");
     }
 
     if (static_cast<int>(rect[2]) > src.cols || static_cast<int>(rect[3]) > src.rows)
     {
-        throw std::runtime_error("Box can't exceed original image size");
+        throw PillowResizeTestError("Box can't exceed original image size");
     }
 
     if (box.width < 0 || box.height < 0)
     {
-        throw std::runtime_error("Box can't be empty");
+        throw PillowResizeTestError("Box can't be empty");
     }
 
     // If box's coordinates are int and box size matches requested size
     if (static_cast<int>(box.width) == x_size && static_cast<int>(box.height) == y_size)
     {
-        NVCVRectI roi(static_cast<int>(box.x), static_cast<int>(box.y), static_cast<int>(box.width),
-                      static_cast<int>(box.height));
+        NVCVRectI roi{static_cast<int>(box.x), static_cast<int>(box.y), static_cast<int>(box.width),
+                      static_cast<int>(box.height)};
         return TestMat(src, roi);
     }
 
@@ -824,7 +867,7 @@ TestMat<T> PillowResizeCPU::resize(const TestMat<T> &src, const nvcv::Size2D &ou
         filter_p = std::make_shared<LanczosFilter>(LanczosFilter());
         break;
     default:
-        throw std::runtime_error("unsupported resampling filter");
+        throw PillowResizeTestError("unsupported resampling filter");
     }
 
     return PillowResizeCPU::_resample(src, x_size, y_size, filter_p, rect);
@@ -921,7 +964,7 @@ void PillowResizeCPU::_resampleHorizontal(TestMat<T> &im_out, const TestMat<T> &
     case nvcv::DataKind::FLOAT:
         return _resampleHorizontal<T, float>(im_out, im_in, offset, ksize, bounds, prekk);
     default:
-        throw std::runtime_error("Pixel kind not supported");
+        throw PillowResizeTestError("Pixel kind not supported");
     }
 }
 
@@ -944,6 +987,7 @@ NVCV_TEST_SUITE_P(OpPillowResize, test::ValueList<int, int, int, int, NVCVInterp
     {       16,         16,        8,         8,  NVCV_INTERP_LINEAR,           1, nvcv::FMT_U16},
     {       16,         16,        8,         8,  NVCV_INTERP_LINEAR,           1, nvcv::FMT_S16},
     {        5,          5,        5,         5,  NVCV_INTERP_LINEAR,           1, nvcv::FMT_RGBf32},
+    {       16,         16,        8,         8,  NVCV_INTERP_LINEAR,           1, nvcv::FMT_2F32},
     {        10,        10,        5,         5,  NVCV_INTERP_LINEAR,           1, nvcv::FMT_RGB8},
     {        42,        40,       21,        20,  NVCV_INTERP_LINEAR,           1, nvcv::FMT_RGB8},
     {        21,        21,       42,        42,  NVCV_INTERP_LINEAR,           1, nvcv::FMT_RGB8},
@@ -983,25 +1027,13 @@ void StartTest(int srcWidth, int srcHeight, int dstWidth, int dstHeight, NVCVInt
     std::vector<std::vector<T>> srcVec(numberOfImages);
     int                         srcVecRowStride = srcWidth * fmt.planePixelStrideBytes(0);
     int                         num_channels    = fmt.numChannels();
-    nvcv::DataKind              dkind           = nvcv::DataKind::UNSIGNED;
-    std::default_random_engine  randEng;
+    nvcv::DataKind              dkind = std::is_same_v<T, float> ? nvcv::DataKind::FLOAT : nvcv::DataKind::UNSIGNED;
 
     for (int i = 0; i < numberOfImages; ++i)
     {
         srcVec[i].resize(srcHeight * srcWidth * num_channels);
 
-        std::default_random_engine             randEng{0};
-        std::uniform_int_distribution<uint8_t> srcRand{0u, 255u};
-        if (std::is_same<T, float>::value)
-        {
-            std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return srcRand(randEng); });
-            dkind = nvcv::DataKind::FLOAT;
-        }
-        else
-        {
-            std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return srcRand(randEng); });
-            dkind = nvcv::DataKind::UNSIGNED;
-        }
+        FillRandomBytes(srcVec[i]);
 
         // Copy input data to the GPU
         ASSERT_EQ(cudaSuccess,
@@ -1050,10 +1082,10 @@ void StartTest(int srcWidth, int srcHeight, int dstWidth, int dstHeight, NVCVInt
         int              maeThreshold = 2;
         int              count        = 0;
         std::vector<int> mae(testVec.size());
-        for (size_t i = 0; i < mae.size(); ++i)
+        for (size_t idx = 0; idx < mae.size(); ++idx)
         {
-            mae[i] = abs(static_cast<int>((test_out.data)[i]) - static_cast<int>(testVec[i]));
-            if (mae[i] > maeThreshold)
+            mae[idx] = abs(static_cast<int>((test_out.data)[idx]) - static_cast<int>(testVec[idx]));
+            if (mae[idx] > maeThreshold)
                 count++;
         }
 
@@ -1075,7 +1107,7 @@ TEST_P(OpPillowResize, tensor_correct_output)
     nvcv::ImageFormat     fmt            = GetParamValue<6>();
     if (nvcv::FMT_RGB8 == fmt || nvcv::FMT_RGBA8 == fmt)
         StartTest<uint8_t>(srcWidth, srcHeight, dstWidth, dstHeight, interpolation, numberOfImages, fmt);
-    else if (nvcv::FMT_RGBf32 == fmt || nvcv::FMT_RGBAf32 == fmt)
+    else if (nvcv::FMT_RGBf32 == fmt || nvcv::FMT_RGBAf32 == fmt || nvcv::FMT_2F32 == fmt)
         StartTest<float>(srcWidth, srcHeight, dstWidth, dstHeight, interpolation, numberOfImages, fmt);
     else if (nvcv::FMT_S16 == fmt)
         StartTest<int16_t>(srcWidth, srcHeight, dstWidth, dstHeight, interpolation, numberOfImages, fmt);
@@ -1091,15 +1123,17 @@ void StartVarShapeTest(int srcWidthBase, int srcHeightBase, int dstWidthBase, in
     EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
     // Create input and output
-    std::default_random_engine         randEng;
-    std::uniform_int_distribution<int> rndSrcWidth(srcWidthBase * 0.8, srcWidthBase * 1.1);
-    std::uniform_int_distribution<int> rndSrcHeight(srcHeightBase * 0.8, srcHeightBase * 1.1);
+    std::default_random_engine    randEng;
+    std::uniform_int_distribution rndSrcWidth(ScaleDimension(srcWidthBase, 0.8), ScaleDimension(srcWidthBase, 1.1));
+    std::uniform_int_distribution rndSrcHeight(ScaleDimension(srcHeightBase, 0.8), ScaleDimension(srcHeightBase, 1.1));
 
-    std::uniform_int_distribution<int> rndDstWidth(dstWidthBase * 0.8, dstWidthBase * 1.1);
-    std::uniform_int_distribution<int> rndDstHeight(dstHeightBase * 0.8, dstHeightBase * 1.1);
+    std::uniform_int_distribution rndDstWidth(ScaleDimension(dstWidthBase, 0.8), ScaleDimension(dstWidthBase, 1.1));
+    std::uniform_int_distribution rndDstHeight(ScaleDimension(dstHeightBase, 0.8), ScaleDimension(dstHeightBase, 1.1));
 
-    std::vector<nvcv::Image>  imgSrc, imgDst;
-    std::vector<nvcv::Size2D> srcSizes, dstSizes;
+    std::vector<nvcv::Image>  imgSrc;
+    std::vector<nvcv::Image>  imgDst;
+    std::vector<nvcv::Size2D> srcSizes;
+    std::vector<nvcv::Size2D> dstSizes;
     for (int i = 0; i < numberOfImages; ++i)
     {
         if (i == 0)
@@ -1125,7 +1159,7 @@ void StartVarShapeTest(int srcWidthBase, int srcHeightBase, int dstWidthBase, in
     std::vector<std::vector<T>> srcVec(numberOfImages);
     std::vector<int>            srcVecRowStride(numberOfImages);
     int                         num_channels = fmt.numChannels();
-    nvcv::DataKind              dkind        = nvcv::DataKind::UNSIGNED;
+    nvcv::DataKind              dkind = std::is_same_v<T, float> ? nvcv::DataKind::FLOAT : nvcv::DataKind::UNSIGNED;
     // Populate input
     for (int i = 0; i < numberOfImages; ++i)
     {
@@ -1139,20 +1173,8 @@ void StartVarShapeTest(int srcWidthBase, int srcHeightBase, int dstWidthBase, in
 
         srcVecRowStride[i] = srcRowStride;
 
-        std::default_random_engine             randEng{0};
-        std::uniform_int_distribution<uint8_t> srcRand{0u, 255u};
-
         srcVec[i].resize(srcHeight * srcWidth * num_channels);
-        if (std::is_same<T, float>::value)
-        {
-            std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return srcRand(randEng); });
-            dkind = nvcv::DataKind::FLOAT;
-        }
-        else
-        {
-            std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return srcRand(randEng); });
-            dkind = nvcv::DataKind::UNSIGNED;
-        }
+        FillRandomBytes(srcVec[i]);
         // Copy input data to the GPU
         ASSERT_EQ(cudaSuccess,
                   cudaMemcpy2D(srcData->plane(0).basePtr, srcData->plane(0).rowStride, srcVec[i].data(), srcRowStride,
@@ -1205,10 +1227,10 @@ void StartVarShapeTest(int srcWidthBase, int srcHeightBase, int dstWidthBase, in
         int              maeThreshold = 2;
         int              count        = 0;
         std::vector<int> mae(testVec.size());
-        for (size_t i = 0; i < mae.size(); ++i)
+        for (size_t idx = 0; idx < mae.size(); ++idx)
         {
-            mae[i] = abs(static_cast<int>((test_out.data)[i]) - static_cast<int>(testVec[i]));
-            if (mae[i] > maeThreshold)
+            mae[idx] = abs(static_cast<int>((test_out.data)[idx]) - static_cast<int>(testVec[idx]));
+            if (mae[idx] > maeThreshold)
                 count++;
         }
 
@@ -1230,7 +1252,7 @@ TEST_P(OpPillowResize, varshape_correct_output)
     nvcv::ImageFormat     fmt            = GetParamValue<6>();
     if (nvcv::FMT_RGB8 == fmt || nvcv::FMT_RGBA8 == fmt)
         StartVarShapeTest<uint8_t>(srcWidth, srcHeight, dstWidth, dstHeight, interpolation, numberOfImages, fmt);
-    else if (nvcv::FMT_RGBf32 == fmt || nvcv::FMT_RGBAf32 == fmt)
+    else if (nvcv::FMT_RGBf32 == fmt || nvcv::FMT_RGBAf32 == fmt || nvcv::FMT_2F32 == fmt)
         StartVarShapeTest<float>(srcWidth, srcHeight, dstWidth, dstHeight, interpolation, numberOfImages, fmt);
     else if (nvcv::FMT_S16 == fmt)
         StartVarShapeTest<int16_t>(srcWidth, srcHeight, dstWidth, dstHeight, interpolation, numberOfImages, fmt);
@@ -1238,17 +1260,106 @@ TEST_P(OpPillowResize, varshape_correct_output)
         StartVarShapeTest<uint16_t>(srcWidth, srcHeight, dstWidth, dstHeight, interpolation, numberOfImages, fmt);
 }
 
-// clang-format off
-NVCV_TEST_SUITE_P(OpPillowResize_Negative, test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat, NVCVInterpolationType>{
-    {nvcv::FMT_RGB8p, nvcv::FMT_RGB8, NVCV_INTERP_LINEAR},
-    {nvcv::FMT_RGB8p, nvcv::FMT_RGB8p, NVCV_INTERP_LINEAR},
-    {nvcv::FMT_F64, nvcv::FMT_F64, NVCV_INTERP_LINEAR},
-#ifndef ENABLE_SANITIZER
-    {nvcv::FMT_RGB8, nvcv::FMT_RGB8, static_cast<NVCVInterpolationType>(255)},
-#endif
+// =============================================================================
+// Planar (NCHW/CHW) layout support
+//
+// PillowResize resizes each channel independently, so a planar input is resized plane-by-plane and
+// must produce exactly the same pixels as the interleaved path. These tests feed identical data in
+// both layouts through cvcuda::PillowResize and require the (re-interleaved) planar output to match
+// the interleaved output bit-for-bit, for every supported interpolation mode and dtype.
+// =============================================================================
+
+namespace {
+
+const nvcv::ImageFormat FMT_RGBS16{nvcv::ColorModel::RGB,  nvcv::CSPEC_UNDEFINED, nvcv::MemLayout::PITCH_LINEAR,
+                                   nvcv::DataKind::SIGNED, nvcv::Swizzle::S_XYZ1, nvcv::Packing::X16_Y16_Z16};
+const nvcv::ImageFormat FMT_RGBS16p{nvcv::ColorModel::RGB,  nvcv::CSPEC_UNDEFINED, nvcv::MemLayout::PITCH_LINEAR,
+                                    nvcv::DataKind::SIGNED, nvcv::Swizzle::S_XYZ0, nvcv::Packing::X16,
+                                    nvcv::Packing::X16,     nvcv::Packing::X16};
+
+// Resize identical data in interleaved and planar tensor layout; outputs must match bit-for-bit.
+// The shared scaffolding (upload/run/download/compare) lives in PlanarParityUtils.hpp; here we only
+// bind the PillowResize call, which needs a per-format workspace.
+void RunPlanarParityTensorCase(nvcv::ImageFormat planarFmt, nvcv::ImageFormat interleavedFmt, int srcW, int srcH,
+                               int dstW, int dstH, NVCVInterpolationType interp, int numImages)
+{
+    test::planar::RunTensorParity(
+        planarFmt, interleavedFmt, srcW, srcH, dstW, dstH, numImages,
+        [numImages, srcW, srcH, dstW, dstH, interp](cudaStream_t s, const nvcv::Tensor &src, const nvcv::Tensor &dst,
+                                                    nvcv::ImageFormat fmt)
+        {
+            cvcuda::PillowResize    op;
+            cvcuda::UniqueWorkspace ws
+                = cvcuda::AllocateWorkspace(op.getWorkspaceRequirements(numImages, {srcW, srcH}, {dstW, dstH}, fmt));
+            EXPECT_NO_THROW(op(s, ws.get(), src, dst, interp));
+        });
+}
+
+// Var-shape counterpart of RunPlanarParityTensorCase.
+void RunPlanarParityVarShapeCase(nvcv::ImageFormat planarFmt, nvcv::ImageFormat interleavedFmt, int srcW, int srcH,
+                                 int dstW, int dstH, NVCVInterpolationType interp, int numImages)
+{
+    std::vector<nvcv::Size2D> srcSizes(numImages, {srcW, srcH});
+    std::vector<nvcv::Size2D> dstSizes(numImages, {dstW, dstH});
+    test::planar::RunVarShapeParity(
+        planarFmt, interleavedFmt, srcW, srcH, dstW, dstH, numImages,
+        [numImages, &srcSizes, &dstSizes, interp](cudaStream_t s, const nvcv::ImageBatchVarShape &src,
+                                                  const nvcv::ImageBatchVarShape &dst, nvcv::ImageFormat fmt)
+        {
+            cvcuda::PillowResize    op;
+            cvcuda::UniqueWorkspace ws = cvcuda::AllocateWorkspace(
+                op.getWorkspaceRequirements(numImages, srcSizes.data(), dstSizes.data(), fmt));
+            EXPECT_NO_THROW(op(s, ws.get(), src, dst, interp));
+        });
+}
+
+} // namespace
+
+// Parameters: srcW, srcH, dstW, dstH, interpolation, numImages, planarFmt, interleavedFmt
+NVCV_TEST_SUITE_P(OpPillowResizePlanar,
+                  test::ValueList<int, int, int, int, NVCVInterpolationType, int, nvcv::ImageFormat, nvcv::ImageFormat>{
+  // RGB8 (3 channel uint8): every supported interpolation, expand and contract.
+                      { 64, 48, 128, 96,  NVCV_INTERP_LINEAR, 2,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+                      {128, 96,  64, 48,   NVCV_INTERP_CUBIC, 2,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+                      { 64, 48, 100, 72,     NVCV_INTERP_BOX, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+                      {100, 72,  40, 30, NVCV_INTERP_HAMMING, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+                      { 50, 40, 100, 80, NVCV_INTERP_LANCZOS, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8},
+ // RGBA8 (4 channel uint8).
+                      { 50, 40, 100, 80,  NVCV_INTERP_LINEAR, 2,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8},
+                      {100, 80,  50, 40,   NVCV_INTERP_CUBIC, 1,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8},
+ // Float planar (3 and 4 channel).
+                      { 64, 48,  96, 72,  NVCV_INTERP_LINEAR, 2,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32},
+                      { 96, 72,  48, 36,   NVCV_INTERP_CUBIC, 1, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32},
+ // Signed 16-bit exercises Pillow's round-to-nearest output path.
+                      { 72, 54,  45, 35,  NVCV_INTERP_LINEAR, 2,        FMT_RGBS16p,        FMT_RGBS16},
 });
 
-// clang-format on
+TEST_P(OpPillowResizePlanar, tensor_matches_interleaved)
+{
+    RunPlanarParityTensorCase(GetParamValue<6>(), GetParamValue<7>(), GetParamValue<0>(), GetParamValue<1>(),
+                              GetParamValue<2>(), GetParamValue<3>(), GetParamValue<4>(), GetParamValue<5>());
+}
+
+TEST_P(OpPillowResizePlanar, varshape_matches_interleaved)
+{
+    RunPlanarParityVarShapeCase(GetParamValue<6>(), GetParamValue<7>(), GetParamValue<0>(), GetParamValue<1>(),
+                                GetParamValue<2>(), GetParamValue<3>(), GetParamValue<4>(), GetParamValue<5>());
+}
+
+static auto OpPillowResizeNegativeParams()
+{
+    test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat, NVCVInterpolationType> params{
+        {nvcv::FMT_RGB8p, nvcv::FMT_RGB8,  NVCV_INTERP_LINEAR}, // planar in, interleaved out: layout mismatch
+        {  nvcv::FMT_F64,  nvcv::FMT_F64,  NVCV_INTERP_LINEAR},
+        { nvcv::FMT_RGB8, nvcv::FMT_RGB8, NVCV_INTERP_NEAREST},
+    };
+#ifndef ENABLE_SANITIZER
+    params.emplace_back(nvcv::FMT_RGB8, nvcv::FMT_RGB8, static_cast<NVCVInterpolationType>(255));
+#endif
+    return params;
+}
+
+NVCV_TEST_SUITE_P(OpPillowResize_Negative, OpPillowResizeNegativeParams());
 
 TEST_P(OpPillowResize_Negative, op)
 {
@@ -1271,7 +1382,8 @@ TEST_P(OpPillowResize_Negative, op)
         pillowResizeOp.getWorkspaceRequirements(numberOfImages, {24, 24}, {12, 12}, inputFmt));
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-              nvcv::ProtectCall([&] { pillowResizeOp(stream, ws.get(), imgSrc, imgDst, interpolation); }));
+              nvcv::ProtectCall([&pillowResizeOp, &stream, &ws, &imgSrc, &imgDst, &interpolation]
+                                { pillowResizeOp(stream, ws.get(), imgSrc, imgDst, interpolation); }));
 
     EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
@@ -1293,15 +1405,17 @@ TEST_P(OpPillowResize_Negative, varshape_op)
     int dstHeightBase  = 8;
 
     // Create input and output
-    std::default_random_engine         randEng;
-    std::uniform_int_distribution<int> rndSrcWidth(srcWidthBase * 0.8, srcWidthBase * 1.1);
-    std::uniform_int_distribution<int> rndSrcHeight(srcHeightBase * 0.8, srcHeightBase * 1.1);
+    std::default_random_engine    randEng;
+    std::uniform_int_distribution rndSrcWidth(ScaleDimension(srcWidthBase, 0.8), ScaleDimension(srcWidthBase, 1.1));
+    std::uniform_int_distribution rndSrcHeight(ScaleDimension(srcHeightBase, 0.8), ScaleDimension(srcHeightBase, 1.1));
 
-    std::uniform_int_distribution<int> rndDstWidth(dstWidthBase * 0.8, dstWidthBase * 1.1);
-    std::uniform_int_distribution<int> rndDstHeight(dstHeightBase * 0.8, dstHeightBase * 1.1);
+    std::uniform_int_distribution rndDstWidth(ScaleDimension(dstWidthBase, 0.8), ScaleDimension(dstWidthBase, 1.1));
+    std::uniform_int_distribution rndDstHeight(ScaleDimension(dstHeightBase, 0.8), ScaleDimension(dstHeightBase, 1.1));
 
-    std::vector<nvcv::Image>  imgSrc, imgDst;
-    std::vector<nvcv::Size2D> srcSizes, dstSizes;
+    std::vector<nvcv::Image>  imgSrc;
+    std::vector<nvcv::Image>  imgDst;
+    std::vector<nvcv::Size2D> srcSizes;
+    std::vector<nvcv::Size2D> dstSizes;
     for (int i = 0; i < numberOfImages; ++i)
     {
         imgSrc.emplace_back(nvcv::Size2D{rndSrcWidth(randEng), rndSrcHeight(randEng)}, inputFmt);
@@ -1323,7 +1437,8 @@ TEST_P(OpPillowResize_Negative, varshape_op)
         pillowResizeOp.getWorkspaceRequirements(numberOfImages, srcSizes.data(), dstSizes.data(), inputFmt));
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-              nvcv::ProtectCall([&] { pillowResizeOp(stream, ws.get(), batchSrc, batchDst, interpolation); }));
+              nvcv::ProtectCall([&pillowResizeOp, &stream, &ws, &batchSrc, &batchDst, &interpolation]
+                                { pillowResizeOp(stream, ws.get(), batchSrc, batchDst, interpolation); }));
 
     // Get test data back
     EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
@@ -1349,20 +1464,21 @@ TEST(OpPillowResize_Negative, varshape_hasDifferentFormat)
         {            fmt, nvcv::FMT_RGBA8}
     };
 
-    for (auto testCase : testSet)
+    for (const auto &[inputFmtExtra, outputFmtExtra] : testSet)
     {
-        nvcv::ImageFormat inputFmtExtra  = std::get<0>(testCase);
-        nvcv::ImageFormat outputFmtExtra = std::get<1>(testCase);
-
         // Create input and output
-        std::default_random_engine         randEng;
-        std::uniform_int_distribution<int> rndSrcWidth(srcWidthBase * 0.8, srcWidthBase * 1.1);
-        std::uniform_int_distribution<int> rndSrcHeight(srcHeightBase * 0.8, srcHeightBase * 1.1);
-        std::uniform_int_distribution<int> rndDstWidth(dstWidthBase * 0.8, dstWidthBase * 1.1);
-        std::uniform_int_distribution<int> rndDstHeight(dstHeightBase * 0.8, dstHeightBase * 1.1);
+        std::default_random_engine    randEng;
+        std::uniform_int_distribution rndSrcWidth(ScaleDimension(srcWidthBase, 0.8), ScaleDimension(srcWidthBase, 1.1));
+        std::uniform_int_distribution rndSrcHeight(ScaleDimension(srcHeightBase, 0.8),
+                                                   ScaleDimension(srcHeightBase, 1.1));
+        std::uniform_int_distribution rndDstWidth(ScaleDimension(dstWidthBase, 0.8), ScaleDimension(dstWidthBase, 1.1));
+        std::uniform_int_distribution rndDstHeight(ScaleDimension(dstHeightBase, 0.8),
+                                                   ScaleDimension(dstHeightBase, 1.1));
 
-        std::vector<nvcv::Image>  imgSrc, imgDst;
-        std::vector<nvcv::Size2D> srcSizes, dstSizes;
+        std::vector<nvcv::Image>  imgSrc;
+        std::vector<nvcv::Image>  imgDst;
+        std::vector<nvcv::Size2D> srcSizes;
+        std::vector<nvcv::Size2D> dstSizes;
 
         // Create n-1 images with standard format
         for (int i = 0; i < numberOfImages - 1; ++i)
@@ -1397,8 +1513,46 @@ TEST(OpPillowResize_Negative, varshape_hasDifferentFormat)
             pillowResizeOp.getWorkspaceRequirements(numberOfImages, srcSizes.data(), dstSizes.data(), inputFmtExtra));
 
         EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-                  nvcv::ProtectCall([&] { pillowResizeOp(stream, ws.get(), batchSrc, batchDst, interpolation); }));
+                  nvcv::ProtectCall([&pillowResizeOp, &stream, &ws, &batchSrc, &batchDst, &interpolation]
+                                    { pillowResizeOp(stream, ws.get(), batchSrc, batchDst, interpolation); }));
     }
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+// 2-channel planar (NCHW/CHW) is rejected: nvcv defines no 2-plane planar format, and PillowResize
+// follows the Resize/Normalize convention of disallowing 2-channel planar (see .agents/guidance/PLANAR_GUIDELINES.md).
+// The tensor is built by raw (N, C, H, W) shape because no 2-channel image format exists to construct
+// it from. The var-shape 2-channel planar guard is unreachable from any constructable input (no
+// 2-channel format), so only the tensor path is exercised here.
+TEST(OpPillowResize_Negative, planar_two_channel_rejected)
+{
+    cudaStream_t stream;
+    EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::Tensor src(
+        {
+            {1, 2, 24, 24},
+            "NCHW"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor dst(
+        {
+            {1, 2, 12, 12},
+            "NCHW"
+    },
+        nvcv::TYPE_U8);
+
+    cvcuda::PillowResize    pillowResizeOp;
+    // Workspace sizing only needs a valid format; the op rejects the 2-channel planar tensor before the
+    // workspace is touched.
+    cvcuda::UniqueWorkspace ws
+        = cvcuda::AllocateWorkspace(pillowResizeOp.getWorkspaceRequirements(1, {24, 24}, {12, 12}, nvcv::FMT_RGB8));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&pillowResizeOp, &stream, &ws, &src, &dst]
+                                { pillowResizeOp(stream, ws.get(), src, dst, NVCV_INTERP_LINEAR); }));
 
     EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
@@ -1408,15 +1562,19 @@ TEST(OpPillowResize_Negative, invalidGetWorkSpaceReq)
 {
     NVCVOperatorHandle pillowResizeHandle;
     ASSERT_EQ(NVCV_SUCCESS, cvcudaPillowResizeCreate(&pillowResizeHandle));
-    NVCVSize2D inputSizesWH[1] = {
-        {224, 224}
-    };
-    NVCVSize2D outputSizesWH[1] = {
-        {112, 112}
-    };
+    std::array<NVCVSize2D, 1> inputSizesWH{{{224, 224}}};
+    std::array<NVCVSize2D, 1> outputSizesWH{{{112, 112}}};
+    NVCVWorkspaceRequirements req{};
+
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-              cvcudaPillowResizeVarShapeGetWorkspaceRequirements(pillowResizeHandle, 1, inputSizesWH, outputSizesWH,
-                                                                 NVCV_IMAGE_FORMAT_U8, nullptr));
+              cvcudaPillowResizeVarShapeGetWorkspaceRequirements(pillowResizeHandle, 1, inputSizesWH.data(),
+                                                                 outputSizesWH.data(), NVCV_IMAGE_FORMAT_U8, nullptr));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              cvcudaPillowResizeVarShapeGetWorkspaceRequirements(pillowResizeHandle, 1, nullptr, outputSizesWH.data(),
+                                                                 NVCV_IMAGE_FORMAT_U8, &req));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              cvcudaPillowResizeVarShapeGetWorkspaceRequirements(pillowResizeHandle, 1, inputSizesWH.data(), nullptr,
+                                                                 NVCV_IMAGE_FORMAT_U8, &req));
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaPillowResizeGetWorkspaceRequirements(
                                                pillowResizeHandle, 1, 24, 24, 24, 24, NVCV_IMAGE_FORMAT_U8, nullptr));
@@ -1427,4 +1585,170 @@ TEST(OpPillowResize_Negative, invalidGetWorkSpaceReq)
 TEST(OpPillowResize_Negative, create_null_handle)
 {
     EXPECT_EQ(cvcudaPillowResizeCreate(nullptr), NVCV_ERROR_INVALID_ARGUMENT);
+}
+
+TEST(OpPillowResize_Negative, null_workspace)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::PillowResize op;
+
+    nvcv::Tensor imgSrc(1, {4, 4}, nvcv::FMT_RGB8);
+    nvcv::Tensor imgDst(1, {4, 4}, nvcv::FMT_RGB8);
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaPillowResizeSubmit(op.handle(), stream, nullptr, imgSrc.handle(),
+                                                                    imgDst.handle(), NVCV_INTERP_LINEAR));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpPillowResize_Negative, null_workspace_varshape)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    cvcuda::PillowResize op;
+
+    const int                numImages = 2;
+    std::vector<nvcv::Image> imgSrc;
+    std::vector<nvcv::Image> imgDst;
+    for (int i = 0; i < numImages; ++i)
+    {
+        imgSrc.emplace_back(nvcv::Size2D{4, 4}, nvcv::FMT_RGB8);
+        imgDst.emplace_back(nvcv::Size2D{4, 4}, nvcv::FMT_RGB8);
+    }
+
+    nvcv::ImageBatchVarShape batchSrc(numImages);
+    nvcv::ImageBatchVarShape batchDst(numImages);
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              cvcudaPillowResizeVarShapeSubmit(op.handle(), stream, nullptr, batchSrc.handle(), batchDst.handle(),
+                                               NVCV_INTERP_LINEAR));
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+TEST(OpPillowResize_Negative, invalid_interpolation)
+{
+    NVCVOperatorHandle op;
+    ASSERT_EQ(NVCV_SUCCESS, cvcudaPillowResizeCreate(&op));
+
+    // NVCV_INTERP_NEAREST is valid for other ops but not supported by PillowResize
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              cvcudaPillowResizeSubmit(op, nullptr, nullptr, nullptr, nullptr, NVCV_INTERP_NEAREST));
+    // Completely out-of-range enum value
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              cvcudaPillowResizeSubmit(op, nullptr, nullptr, nullptr, nullptr, static_cast<NVCVInterpolationType>(99)));
+
+    EXPECT_NO_THROW(nvcvOperatorDestroy(op));
+}
+
+TEST(OpPillowResize_Negative, invalid_interpolation_varshape)
+{
+    NVCVOperatorHandle op;
+    ASSERT_EQ(NVCV_SUCCESS, cvcudaPillowResizeCreate(&op));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              cvcudaPillowResizeVarShapeSubmit(op, nullptr, nullptr, nullptr, nullptr, NVCV_INTERP_NEAREST));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaPillowResizeVarShapeSubmit(op, nullptr, nullptr, nullptr, nullptr,
+                                                                            static_cast<NVCVInterpolationType>(99)));
+
+    EXPECT_NO_THROW(nvcvOperatorDestroy(op));
+}
+
+// The legacy kernels compute per-sample offsets as 32-bit (sample * imgStride), so any tensor whose
+// byte extent exceeds INT32_MAX overflows the addressing and corrupts memory. The operator must
+// reject such tensors instead of launching.
+TEST(OpPillowResize_Negative, oversized_tensor_rejected)
+{
+    size_t freeMem  = 0;
+    size_t totalMem = 0;
+    ASSERT_EQ(cudaSuccess, cudaMemGetInfo(&freeMem, &totalMem));
+    // src (1.2 GB) + dst (4.8 GB) + workspace intermediate (2.4 GB) plus slack.
+    if (freeMem < 10ULL << 30)
+    {
+        GTEST_SKIP() << "needs ~10 GB free device memory, have " << (freeMem >> 20) << " MiB";
+    }
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    nvcv::ImageFormat fmt = nvcv::FMT_RGBf32;
+    // 48 x 2160 x 3840 x 3 floats = 4.6 GiB > INT32_MAX bytes: sample offsets overflow 32-bit.
+    nvcv::Tensor      imgSrc(48, {1920, 1080}, fmt);
+    nvcv::Tensor      imgDst(48, {3840, 2160}, fmt);
+
+    cvcuda::PillowResize pillowResizeOp;
+
+    cvcuda::UniqueWorkspace ws
+        = cvcuda::AllocateWorkspace(pillowResizeOp.getWorkspaceRequirements(48, {1920, 1080}, {3840, 2160}, fmt));
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { pillowResizeOp(stream, ws.get(), imgSrc, imgDst, NVCV_INTERP_LINEAR); }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+// Var-shape sibling of oversized_tensor_rejected: the horizontally-resized intermediate is one dense
+// elem-typed image slot per batch entry (numImages x maxInH x maxOutW x C) addressed with 32-bit
+// products, so batches whose intermediate exceeds INT32_MAX bytes must be rejected.
+TEST(OpPillowResize_Negative, oversized_varshape_rejected)
+{
+    size_t freeMem  = 0;
+    size_t totalMem = 0;
+    ASSERT_EQ(cudaSuccess, cudaMemGetInfo(&freeMem, &totalMem));
+    if (freeMem < 10ULL << 30)
+    {
+        GTEST_SKIP() << "needs ~10 GB free device memory, have " << (freeMem >> 20) << " MiB";
+    }
+
+    try
+    {
+        nvcv::ImageFormat fmt            = nvcv::FMT_RGB8;
+        int               numberOfImages = 192;
+        nvcv::Size2D      srcSize{1920, 1080};
+        nvcv::Size2D      dstSize{3840, 2160};
+
+        std::vector<nvcv::Image>  imgSrc;
+        std::vector<nvcv::Image>  imgDst;
+        std::vector<nvcv::Size2D> srcSizes;
+        std::vector<nvcv::Size2D> dstSizes;
+        for (int i = 0; i < numberOfImages; ++i)
+        {
+            imgSrc.emplace_back(srcSize, fmt);
+            imgDst.emplace_back(dstSize, fmt);
+            srcSizes.push_back(srcSize);
+            dstSizes.push_back(dstSize);
+        }
+
+        nvcv::ImageBatchVarShape batchSrc(numberOfImages);
+        nvcv::ImageBatchVarShape batchDst(numberOfImages);
+        batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+        batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+        cvcuda::PillowResize    pillowResizeOp;
+        cvcuda::UniqueWorkspace ws = cvcuda::AllocateWorkspace(
+            pillowResizeOp.getWorkspaceRequirements(numberOfImages, srcSizes.data(), dstSizes.data(), fmt));
+
+        cudaStream_t stream;
+        ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+                  nvcv::ProtectCall([&] { pillowResizeOp(stream, ws.get(), batchSrc, batchDst, NVCV_INTERP_LINEAR); }));
+
+        EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+        EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+    }
+    catch (const nvcv::Exception &e)
+    {
+        if (e.code() == nvcv::Status::ERROR_OUT_OF_MEMORY)
+        {
+            GTEST_SKIP() << "insufficient device memory for oversized var-shape input: " << e.what();
+        }
+        throw;
+    }
 }

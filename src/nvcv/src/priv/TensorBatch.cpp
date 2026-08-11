@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,29 +28,21 @@ namespace nvcv::priv {
 TensorBatch::TensorBatch(const NVCVTensorBatchRequirements &reqs, IAllocator &alloc)
     : m_alloc(alloc)
     , m_reqs(reqs)
-    , m_dirtyBegin(0)
-    , m_dirtyEnd(0)
-    , m_dtype(NVCV_DATA_TYPE_NONE)
-    , m_layout(NVCV_TENSOR_LAYOUT_MAKE(""))
-    , m_rank(-1)
-    , m_userPointer(nullptr)
 {
-    m_evPostFence         = nullptr;
-    m_devTensorsBuffer    = nullptr;
-    m_pinnedTensorsBuffer = nullptr;
-    m_Tensors             = nullptr;
-
     int64_t bufferSize = m_reqs.capacity * sizeof(BatchElement);
 
     try
     {
-        m_devTensorsBuffer = static_cast<BatchElement *>(m_alloc->allocCudaMem(bufferSize, m_reqs.alignBytes));
+        m_devTensorsBuffer
+            = static_cast<BatchElement *>(static_cast<void *>(m_alloc->allocCudaMem(bufferSize, m_reqs.alignBytes)));
         NVCV_ASSERT(m_devTensorsBuffer != nullptr);
 
-        m_pinnedTensorsBuffer = static_cast<BatchElement *>(m_alloc->allocHostPinnedMem(bufferSize, m_reqs.alignBytes));
+        m_pinnedTensorsBuffer = static_cast<BatchElement *>(
+            static_cast<void *>(m_alloc->allocHostPinnedMem(bufferSize, m_reqs.alignBytes)));
         NVCV_ASSERT(m_pinnedTensorsBuffer != nullptr);
 
-        m_Tensors = static_cast<NVCVTensorHandle *>(m_alloc->allocHostMem(bufferSize, m_reqs.alignBytes));
+        m_Tensors = static_cast<NVCVTensorHandle *>(
+            static_cast<void *>(m_alloc->allocHostMem(bufferSize, m_reqs.alignBytes)));
         NVCV_ASSERT(m_Tensors != nullptr);
 
         NVCV_CHECK_THROW(cudaEventCreateWithFlags(&m_evPostFence, cudaEventDisableTiming));
@@ -69,7 +61,7 @@ NVCVTensorBatchRequirements TensorBatch::CalcRequirements(int32_t capacity)
     reqs.mem      = {};
 
     reqs.alignBytes = alignof(BatchElement);
-    reqs.alignBytes = util::RoundUpNextPowerOfTwo(reqs.alignBytes);
+    reqs.alignBytes = static_cast<int32_t>(util::RoundUpNextPowerOfTwo(reqs.alignBytes));
 
     if (reqs.alignBytes > NVCV_MAX_MEM_REQUIREMENTS_BLOCK_SIZE)
     {
@@ -104,9 +96,11 @@ void TensorBatch::cleanUp()
 
     int64_t bufferSize = m_reqs.capacity * sizeof(BatchElement);
 
-    m_alloc->freeCudaMem(m_devTensorsBuffer, bufferSize, m_reqs.alignBytes);
-    m_alloc->freeHostPinnedMem(m_pinnedTensorsBuffer, bufferSize, m_reqs.alignBytes);
-    m_alloc->freeHostMem(m_Tensors, bufferSize, m_reqs.alignBytes);
+    m_alloc->freeCudaMem(static_cast<NVCVMemoryBuffer>(static_cast<void *>(m_devTensorsBuffer)), bufferSize,
+                         m_reqs.alignBytes);
+    m_alloc->freeHostPinnedMem(static_cast<NVCVMemoryBuffer>(static_cast<void *>(m_pinnedTensorsBuffer)), bufferSize,
+                               m_reqs.alignBytes);
+    m_alloc->freeHostMem(static_cast<NVCVMemoryBuffer>(static_cast<void *>(m_Tensors)), bufferSize, m_reqs.alignBytes);
 }
 
 void TensorBatch::exportData(CUstream stream, NVCVTensorBatchData &data)
@@ -118,7 +112,7 @@ void TensorBatch::exportData(CUstream stream, NVCVTensorBatchData &data)
 
         for (auto i = m_dirtyBegin; i < m_dirtyEnd; ++i)
         {
-            auto          &t = ToStaticRef<ITensor>(m_Tensors[i]);
+            const auto    &t = ToStaticRef<ITensor>(m_Tensors[i]);
             NVCVTensorData tdata;
             t.exportData(tdata);
             auto &element = m_pinnedTensorsBuffer[i];
@@ -144,15 +138,15 @@ void TensorBatch::exportData(CUstream stream, NVCVTensorBatchData &data)
     data.type       = NVCV_TENSOR_BUFFER_STRIDED_CUDA;
     data.rank       = m_rank;
     data.dtype      = m_dtype;
-    data.layout     = m_layout;
+    data.layout     = static_cast<NVCVTensorLayout>(m_layout);
     data.numTensors = m_numTensors;
 }
 
-void TensorBatch::validateTensors(const NVCVTensorHandle *tensors, int32_t numTensors)
+void TensorBatch::validateTensors(const NVCVTensorHandle *tensors, int32_t numTensors) const
 {
     for (int32_t i = 0; i < numTensors; ++i)
     {
-        auto &t = ToStaticRef<ITensor>(tensors[i]);
+        const auto &t = ToStaticRef<ITensor>(tensors[i]);
         if (m_rank != -1 && t.rank() != m_rank)
         {
             throw Exception(NVCV_ERROR_INVALID_ARGUMENT,
@@ -163,7 +157,8 @@ void TensorBatch::validateTensors(const NVCVTensorHandle *tensors, int32_t numTe
             throw Exception(NVCV_ERROR_INVALID_ARGUMENT,
                             "Trying to add a tensor to a tensor batch with an inconsistent type.");
         }
-        if (nvcvTensorLayoutCompare(t.layout(), m_layout) != 0)
+        if (nvcvTensorLayoutCompare(static_cast<NVCVTensorLayout>(t.layout()), static_cast<NVCVTensorLayout>(m_layout))
+            != 0)
         {
             throw Exception(NVCV_ERROR_INVALID_ARGUMENT,
                             "Trying to add a tensor to a tensor batch with an inconsistent layout.");
@@ -175,10 +170,10 @@ void TensorBatch::setLayoutAndDType(const NVCVTensorHandle *tensors, int32_t num
 {
     if (numTensors > 0 && m_numTensors == 0)
     {
-        auto &t  = ToStaticRef<ITensor>(tensors[0]);
-        m_rank   = t.rank();
-        m_dtype  = t.dtype().value();
-        m_layout = t.layout();
+        const auto &t = ToStaticRef<ITensor>(tensors[0]);
+        m_rank        = t.rank();
+        m_dtype       = t.dtype().value();
+        m_layout      = t.layout();
     }
 }
 

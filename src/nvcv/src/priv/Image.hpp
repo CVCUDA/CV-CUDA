@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,7 +28,7 @@ class Image final : public CoreObjectBase<IImage>
 {
 public:
     explicit Image(NVCVImageRequirements reqs, IAllocator &alloc);
-    ~Image();
+    ~Image() override;
 
     static NVCVImageRequirements CalcRequirements(Size2D size, ImageFormat fmt, int32_t baseAlign, int32_t rowAlign);
 
@@ -40,19 +40,19 @@ public:
     void exportData(NVCVImageData &data) const override;
 
 private:
-    static void *AllocateBuffer(IAllocator &alloc, const NVCVImageRequirements &reqs);
+    static NVCVByte *AllocateBuffer(IAllocator &alloc, const NVCVImageRequirements &reqs);
 
     SharedCoreObj<IAllocator> m_alloc;
     NVCVImageRequirements     m_reqs;
-    void                     *m_memBuffer;
+    NVCVByte                 *m_memBuffer;
 };
 
 class ImageWrapData final : public CoreObjectBase<IImage>
 {
 public:
-    explicit ImageWrapData(const NVCVImageData &data, NVCVImageDataCleanupFunc cleanup, void *ctxCleanup);
+    explicit ImageWrapData(const NVCVImageData &data, NVCVImageDataCleanupFunc cleanup, NVCVUserPointer ctxCleanup);
 
-    ~ImageWrapData();
+    ~ImageWrapData() override;
 
     Size2D                    size() const override;
     ImageFormat               format() const override;
@@ -65,7 +65,7 @@ private:
     NVCVImageData m_data;
 
     NVCVImageDataCleanupFunc m_cleanup;
-    void                    *m_ctxCleanup;
+    NVCVUserPointer          m_ctxCleanup;
 
     void doCleanup() noexcept;
 

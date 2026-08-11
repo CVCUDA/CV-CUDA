@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -50,9 +50,6 @@ public:
     std::shared_ptr<Array> Resize(Shape shape);
     std::shared_ptr<Array> Resize(int64_t length);
 
-    std::shared_ptr<Array>       shared_from_this();
-    std::shared_ptr<const Array> shared_from_this() const;
-
     Shape          shape() const;
     nvcv::DataType dtype() const;
     int            rank() const;
@@ -77,22 +74,22 @@ public:
         nvcv::DataType m_dtype;
         bool           m_wrapper;
 
-        virtual size_t doGetHash() const override;
-        virtual bool   doIsCompatible(const IKey &that) const override;
+        size_t doGetHash() const override;
+        bool   doIsCompatible(const IKey &that) const override;
     };
 
-    virtual const Key &key() const override;
+    const Key &key() const override;
 
     int64_t GetSizeInBytes() const override;
 
     py::object cuda() const;
 
 private:
-    Array(const nvcv::Array::Requirements &reqs);
+    explicit Array(const nvcv::Array::Requirements &reqs);
     Array(const nvcv::ArrayData &data, py::object wrappedObject);
-    Array(nvcv::Array &&array);
+    explicit Array(nvcv::Array &&array);
 
-    int64_t doComputeSizeInBytes(const nvcv::Array::Requirements &reqs);
+    int64_t doComputeSizeInBytes(const nvcv::Array::Requirements &reqs) const;
 
     nvcv::Array m_impl; // must come before m_key
     Key         m_key;

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,6 +28,20 @@
 
 namespace cuda  = nvcv::cuda;
 namespace ttype = nvcv::test::type;
+
+template<typename T, typename BufferElement>
+void FillGoldImage(std::vector<BufferElement> &gold, int width, int height, int rowStride, int numChannels)
+{
+    for (int i = 0, total = width * height * numChannels; i < total; ++i)
+    {
+        int k     = i % numChannels;
+        int pixel = i / numChannels;
+        int x     = pixel % width;
+        int y     = pixel / width;
+
+        *reinterpret_cast<T *>(&gold[y * rowStride + x * sizeof(T) * numChannels + k * sizeof(T)]) = cuda::SetAll<T>(2);
+    }
+}
 
 // --------------------- Testing ImageBatchVarShapeWrap ------------------------
 
@@ -71,8 +85,8 @@ NVCV_MIXTYPED_TEST(ImageBatchVarShapeWrapTest, correct_content)
 
     nvcv::ImageBatchVarShape imageBatch(samples);
 
-    std::default_random_engine         randEng{0};
-    std::uniform_int_distribution<int> rand{-varSize, varSize};
+    std::default_random_engine    randEng{0};
+    std::uniform_int_distribution rand{-varSize, varSize};
 
     std::list<nvcv::Image> imageList;
 
@@ -105,26 +119,20 @@ NVCV_MIXTYPED_TEST(ImageBatchVarShapeWrapTest, correct_content)
 
     for (int s = 0; s < samples; s++)
     {
-        void *testBuffer = testPlanes[s].planes[0].basePtr;
+        const void *testBuffer = testPlanes[s].planes[0].basePtr;
 
-        int width  = testPlanes[s].planes[0].width;
-        int height = testPlanes[s].planes[0].height;
+        int sampleWidth  = testPlanes[s].planes[0].width;
+        int sampleHeight = testPlanes[s].planes[0].height;
 
         int rowStride = testPlanes[s].planes[0].rowStride;
-        int sizeBytes = rowStride * height;
+        int sizeBytes = rowStride * sampleHeight;
 
         std::vector<uint8_t> test(sizeBytes);
         std::vector<uint8_t> gold(sizeBytes);
 
         ASSERT_EQ(cudaSuccess, cudaMemcpy(test.data(), testBuffer, sizeBytes, cudaMemcpyDeviceToHost));
 
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                *reinterpret_cast<T *>(&gold[y * rowStride + x * sizeof(T)]) = cuda::SetAll<T>(2);
-            }
-        }
+        FillGoldImage<T>(gold, sampleWidth, sampleHeight, rowStride, 1);
 
         EXPECT_EQ(test, gold);
     }
@@ -164,8 +172,8 @@ NVCV_MIXTYPED_TEST(ImageBatchVarShapeWrapNHWCTest, correct_content)
 
     nvcv::ImageBatchVarShape imageBatch(samples);
 
-    std::default_random_engine         randEng{0};
-    std::uniform_int_distribution<int> rand{-varSize, varSize};
+    std::default_random_engine    randEng{0};
+    std::uniform_int_distribution rand{-varSize, varSize};
 
     std::list<nvcv::Image> imageList;
 
@@ -200,30 +208,20 @@ NVCV_MIXTYPED_TEST(ImageBatchVarShapeWrapNHWCTest, correct_content)
 
     for (int s = 0; s < samples; s++)
     {
-        void *testBuffer = testPlanes[s].planes[0].basePtr;
+        const void *testBuffer = testPlanes[s].planes[0].basePtr;
 
-        int width  = testPlanes[s].planes[0].width;
-        int height = testPlanes[s].planes[0].height;
+        int sampleWidth  = testPlanes[s].planes[0].width;
+        int sampleHeight = testPlanes[s].planes[0].height;
 
         int rowStride = testPlanes[s].planes[0].rowStride;
-        int sizeBytes = rowStride * height;
+        int sizeBytes = rowStride * sampleHeight;
 
         std::vector<std::byte> test(sizeBytes);
         std::vector<std::byte> gold(sizeBytes);
 
         ASSERT_EQ(cudaSuccess, cudaMemcpy(test.data(), testBuffer, sizeBytes, cudaMemcpyDeviceToHost));
 
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
-            {
-                for (int k = 0; k < numChannels; k++)
-                {
-                    *reinterpret_cast<T *>(&gold[y * rowStride + x * sizeof(T) * numChannels + k * sizeof(T)])
-                        = cuda::SetAll<T>(2);
-                }
-            }
-        }
+        FillGoldImage<T>(gold, sampleWidth, sampleHeight, rowStride, numChannels);
 
         EXPECT_EQ(test, gold);
     }

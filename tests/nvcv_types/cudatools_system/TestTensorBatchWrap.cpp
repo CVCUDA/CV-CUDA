@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -39,10 +39,10 @@ namespace ttype = nvcv::test::type;
 static constexpr int kMaxDim = 50;
 
 template<typename T, int NDIM, int INNER_DIM = -1, typename R>
-nvcv::Tensor GetRandomTensor(R &rg, nvcv::DataType dtype, cudaStream_t stream)
+nvcv::Tensor GetRandomTensor(R &rg, nvcv::DataType dtype, cudaStream_t)
 {
-    std::uniform_int_distribution<int32_t> shape_dist(kMaxDim / 2, kMaxDim);
-    nvcv::TensorShape::ShapeType           shapeData(NDIM);
+    std::uniform_int_distribution shape_dist(kMaxDim / 2, kMaxDim);
+    nvcv::TensorShape::ShapeType  shapeData(NDIM);
     for (auto &d : shapeData)
     {
         d = shape_dist(rg);
@@ -60,7 +60,7 @@ void VerifyTensorHelper(NVCVByte *data, const int64_t *shape, const int64_t *str
 {
     if constexpr (N == NDIM)
     {
-        auto gold  = cuda::SetAll<T>(startIndex % 255);
+        auto gold  = cuda::SetAll<T>(static_cast<cuda::BaseType<T>>(startIndex % 255));
         auto value = *reinterpret_cast<T *>(data);
         ASSERT_EQ(value, gold);
     }

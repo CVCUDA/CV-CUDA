@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "OpRandomResizedCrop.hpp"
 
+#include "Nvtx.hpp"
 #include "legacy/CvCudaLegacy.h"
 #include "legacy/CvCudaLegacyHelpers.hpp"
 
@@ -29,18 +30,35 @@ namespace legacy = nvcv::legacy::cuda_op;
 
 RandomResizedCrop::RandomResizedCrop(double minScale, double maxScale, double minRatio, double maxRatio,
                                      int32_t maxBatchSize, uint32_t seed)
+    // Legacy operators are single-device by design. PerDeviceResource creates
+    // one instance per CUDA device for transparent multi-GPU support.
+    : m_legacyOp(
+        [minScale, maxScale, minRatio, maxRatio, maxBatchSize, seed](int)
+        {
+            legacy::DataShape maxIn;
+            legacy::DataShape maxOut;
+            return std::make_unique<legacy::RandomResizedCrop>(maxIn, maxOut, minScale, maxScale, minRatio, maxRatio,
+                                                               maxBatchSize, seed);
+        })
+    , m_legacyOpVarShape(
+          [minScale, maxScale, minRatio, maxRatio, maxBatchSize, seed](int)
+          {
+              legacy::DataShape maxIn;
+              legacy::DataShape maxOut;
+              return std::make_unique<legacy::RandomResizedCropVarShape>(maxIn, maxOut, minScale, maxScale, minRatio,
+                                                                         maxRatio, maxBatchSize, seed);
+          })
 {
-    legacy::DataShape maxIn, maxOut;
-    // maxIn/maxOut not used by op.
-    m_legacyOp = std::make_unique<legacy::RandomResizedCrop>(maxIn, maxOut, minScale, maxScale, minRatio, maxRatio,
-                                                             maxBatchSize, seed);
-    m_legacyOpVarShape = std::make_unique<legacy::RandomResizedCropVarShape>(maxIn, maxOut, minScale, maxScale,
-                                                                             minRatio, maxRatio, maxBatchSize, seed);
+    if (minScale > maxScale || minRatio > maxRatio)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "scale and ratio must satisfy min <= max");
+    }
 }
 
 void RandomResizedCrop::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                                    const NVCVInterpolationType interpolation) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::RandomResizedCrop::operator()[Tensor]");
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
     if (inData == nullptr)
     {
@@ -55,13 +73,14 @@ void RandomResizedCrop::operator()(cudaStream_t stream, const nvcv::Tensor &in, 
                               "Output must be cuda-accessible, pitch-linear tensor");
     }
 
-    NVCV_CHECK_THROW(m_legacyOp->infer(*inData, *outData, interpolation, stream));
+    NVCV_CHECK_THROW(m_legacyOp.get().infer(*inData, *outData, interpolation, stream));
 }
 
 void RandomResizedCrop::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
                                    const nvcv::ImageBatchVarShape &out, const NVCVInterpolationType interpolation) const
 {
-    NVCV_CHECK_THROW(m_legacyOpVarShape->infer(in, out, interpolation, stream));
+    CVCUDA_NVTX_RANGE("cvcuda::RandomResizedCrop::operator()[ImageBatchVarShape]");
+    NVCV_CHECK_THROW(m_legacyOpVarShape.get().infer(in, out, interpolation, stream));
 }
 
 } // namespace cvcuda::priv

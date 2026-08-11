@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -36,7 +36,7 @@ NVCV_DEFINE_API(0, 4, NVCVStatus, nvcvArrayCalcRequirements,
                 (int64_t capacity, NVCVDataType dtype, int32_t alignment, NVCVArrayRequirements *reqs))
 {
     return priv::ProtectCall(
-        [&]
+        [&reqs, &dtype, &capacity, &alignment]
         {
             if (reqs == nullptr)
             {
@@ -54,7 +54,7 @@ NVCV_DEFINE_API(0, 4, NVCVStatus, nvcvArrayCalcRequirementsWithTarget,
                  NVCVArrayRequirements *reqs))
 {
     return priv::ProtectCall(
-        [&]
+        [&reqs, &dtype, &capacity, &alignment, &target]
         {
             if (reqs == nullptr)
             {
@@ -71,7 +71,7 @@ NVCV_DEFINE_API(0, 4, NVCVStatus, nvcvArrayConstruct,
                 (const NVCVArrayRequirements *reqs, NVCVAllocatorHandle halloc, NVCVArrayHandle *handle))
 {
     return priv::ProtectCall(
-        [&]
+        [&reqs, &handle, &halloc]
         {
             if (reqs == nullptr)
             {
@@ -94,7 +94,7 @@ NVCV_DEFINE_API(0, 4, NVCVStatus, nvcvArrayConstructWithTarget,
                  NVCVArrayHandle *handle))
 {
     return priv::ProtectCall(
-        [&]
+        [&reqs, &handle, &halloc, &target]
         {
             if (reqs == nullptr)
             {
@@ -117,7 +117,7 @@ NVCV_DEFINE_API(0, 4, NVCVStatus, nvcvArrayWrapDataConstruct,
                  NVCVArrayHandle *handle))
 {
     return priv::ProtectCall(
-        [&]
+        [&data, &handle, &cleanup, &ctxCleanup]
         {
             if (data == nullptr)
             {
@@ -129,14 +129,15 @@ NVCV_DEFINE_API(0, 4, NVCVStatus, nvcvArrayWrapDataConstruct,
                 throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Pointer to output handle must not be NULL");
             }
 
-            *handle = priv::CreateCoreObject<priv::ArrayWrapData>(*data, cleanup, ctxCleanup);
+            *handle
+                = priv::CreateCoreObject<priv::ArrayWrapData>(*data, cleanup, static_cast<NVCVUserPointer>(ctxCleanup));
         });
 }
 
 NVCV_DEFINE_API(0, 4, NVCVStatus, nvcvArrayDecRef, (NVCVArrayHandle handle, int *newRefCount))
 {
     return priv::ProtectCall(
-        [&]
+        [&handle, &newRefCount]
         {
             int newRef = priv::CoreObjectDecRef(handle);
             if (newRefCount)
@@ -147,7 +148,7 @@ NVCV_DEFINE_API(0, 4, NVCVStatus, nvcvArrayDecRef, (NVCVArrayHandle handle, int 
 NVCV_DEFINE_API(0, 4, NVCVStatus, nvcvArrayIncRef, (NVCVArrayHandle handle, int *newRefCount))
 {
     return priv::ProtectCall(
-        [&]
+        [&handle, &newRefCount]
         {
             int newRef = priv::CoreObjectIncRef(handle);
             if (newRefCount)
@@ -157,23 +158,23 @@ NVCV_DEFINE_API(0, 4, NVCVStatus, nvcvArrayIncRef, (NVCVArrayHandle handle, int 
 
 NVCV_DEFINE_API(0, 4, NVCVStatus, nvcvArrayRefCount, (NVCVArrayHandle handle, int *refCount))
 {
-    return priv::ProtectCall([&] { *refCount = priv::CoreObjectRefCount(handle); });
+    return priv::ProtectCall([&refCount, &handle] { *refCount = priv::CoreObjectRefCount(handle); });
 }
 
-NVCV_DEFINE_API(0, 4, NVCVStatus, nvcvArraySetUserPointer, (NVCVArrayHandle handle, void *userPtr))
+NVCV_DEFINE_API(0, 4, NVCVStatus, nvcvArraySetUserPointer, (NVCVArrayHandle handle, NVCVUserPointer userPtr))
 {
     return priv::ProtectCall(
-        [&]
+        [&handle, &userPtr]
         {
             auto &array = priv::ToStaticRef<priv::IArray>(handle);
             array.setUserPointer(userPtr);
         });
 }
 
-NVCV_DEFINE_API(0, 4, NVCVStatus, nvcvArrayGetUserPointer, (NVCVArrayHandle handle, void **outUserPtr))
+NVCV_DEFINE_API(0, 4, NVCVStatus, nvcvArrayGetUserPointer, (NVCVArrayHandle handle, NVCVUserPointer *outUserPtr))
 {
     return priv::ProtectCall(
-        [&]
+        [&outUserPtr, &handle]
         {
             if (outUserPtr == nullptr)
             {
@@ -189,7 +190,7 @@ NVCV_DEFINE_API(0, 4, NVCVStatus, nvcvArrayGetUserPointer, (NVCVArrayHandle hand
 NVCV_DEFINE_API(0, 4, NVCVStatus, nvcvArrayGetDataType, (NVCVArrayHandle handle, NVCVDataType *dtype))
 {
     return priv::ProtectCall(
-        [&]
+        [&dtype, &handle]
         {
             if (dtype == nullptr)
             {
@@ -204,7 +205,7 @@ NVCV_DEFINE_API(0, 4, NVCVStatus, nvcvArrayGetDataType, (NVCVArrayHandle handle,
 NVCV_DEFINE_API(0, 4, NVCVStatus, nvcvArrayGetAllocator, (NVCVArrayHandle handle, NVCVAllocatorHandle *halloc))
 {
     return priv::ProtectCall(
-        [&]
+        [&halloc, &handle]
         {
             if (halloc == nullptr)
             {
@@ -220,7 +221,7 @@ NVCV_DEFINE_API(0, 4, NVCVStatus, nvcvArrayGetAllocator, (NVCVArrayHandle handle
 NVCV_DEFINE_API(0, 4, NVCVStatus, nvcvArrayExportData, (NVCVArrayHandle handle, NVCVArrayData *data))
 {
     return priv::ProtectCall(
-        [&]
+        [&data, &handle]
         {
             if (data == nullptr)
             {
@@ -235,7 +236,7 @@ NVCV_DEFINE_API(0, 4, NVCVStatus, nvcvArrayExportData, (NVCVArrayHandle handle, 
 NVCV_DEFINE_API(0, 4, NVCVStatus, nvcvArrayGetLength, (NVCVArrayHandle handle, int64_t *length))
 {
     return priv::ProtectCall(
-        [&]
+        [&handle, &length]
         {
             auto &array = priv::ToStaticRef<const priv::IArray>(handle);
 
@@ -251,7 +252,7 @@ NVCV_DEFINE_API(0, 4, NVCVStatus, nvcvArrayGetLength, (NVCVArrayHandle handle, i
 NVCV_DEFINE_API(0, 4, NVCVStatus, nvcvArrayGetCapacity, (NVCVArrayHandle handle, int64_t *capacity))
 {
     return priv::ProtectCall(
-        [&]
+        [&handle, &capacity]
         {
             auto &array = priv::ToStaticRef<const priv::IArray>(handle);
 
@@ -267,7 +268,7 @@ NVCV_DEFINE_API(0, 4, NVCVStatus, nvcvArrayGetCapacity, (NVCVArrayHandle handle,
 NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvArrayResize, (NVCVArrayHandle handle, int64_t length))
 {
     return priv::ProtectCall(
-        [&]
+        [&handle, &length]
         {
             auto &array = priv::ToStaticRef<priv::IArray>(handle);
 
@@ -284,7 +285,7 @@ NVCV_DEFINE_API(0, 5, NVCVStatus, nvcvArrayResize, (NVCVArrayHandle handle, int6
 NVCV_DEFINE_API(0, 4, NVCVStatus, nvcvArrayGetTarget, (NVCVArrayHandle handle, NVCVResourceType *target))
 {
     return priv::ProtectCall(
-        [&]
+        [&handle, &target]
         {
             auto &array = priv::ToStaticRef<const priv::IArray>(handle);
 

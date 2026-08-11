@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -72,7 +72,7 @@ struct type_caster<cvpy::Stream> : type_caster_base<cvpy::Stream>
     bool load(handle src, bool)
     {
         // Does it have the correct object type?
-        PyTypeObject *srctype = Py_TYPE(src.ptr());
+        const PyTypeObject *srctype = Py_TYPE(src.ptr());
         if (strcmp(name.text, srctype->tp_name) == 0)
         {
             value = cvpy::Stream(reinterpret_borrow<object>(src));
@@ -86,8 +86,7 @@ struct type_caster<cvpy::Stream> : type_caster_base<cvpy::Stream>
 
     static handle cast(cvpy::Stream stream, return_value_policy /* policy */, handle /*parent */)
     {
-        stream.inc_ref(); // for some reason this is needed
-        return stream;
+        return stream.release();
     }
 };
 

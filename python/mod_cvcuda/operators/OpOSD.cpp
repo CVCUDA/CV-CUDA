@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,14 +19,20 @@
 
 #include <common/PyUtil.hpp>
 #include <cvcuda/OpOSD.hpp>
+#include <cvcuda/priv/Types.hpp>
 #include <nvcv/python/ResourceGuard.hpp>
 #include <nvcv/python/Stream.hpp>
 #include <nvcv/python/Tensor.hpp>
 
+#include <memory>
+
 namespace cvcudapy {
 
 namespace {
-Tensor OSDInto(Tensor &output, Tensor &input, NVCVElements elements, std::optional<Stream> pstream)
+using ElementsImpl = cvcuda::priv::NVCVElementsImpl;
+
+Tensor OSDInto(Tensor &output, Tensor &input, const std::shared_ptr<ElementsImpl> &elements,
+               std::optional<Stream> pstream)
 {
     if (!pstream)
     {
@@ -40,12 +46,14 @@ Tensor OSDInto(Tensor &output, Tensor &input, NVCVElements elements, std::option
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*op});
 
-    op->submit(pstream->cudaHandle(), input, output, elements);
+    auto elementsHandle = static_cast<NVCVElements>(static_cast<void *>(elements.get()));
+    guard.run([&op, &pstream, &input, &output, elementsHandle]()
+              { op->submit(pstream->cudaHandle(), input, output, elementsHandle); });
 
     return std::move(output);
 }
 
-Tensor OSD(Tensor &input, NVCVElements elements, std::optional<Stream> pstream)
+Tensor OSD(Tensor &input, const std::shared_ptr<ElementsImpl> &elements, std::optional<Stream> pstream)
 {
     Tensor output = Tensor::Create(input.shape(), input.dtype());
 
@@ -58,13 +66,9 @@ void ExportOpOSD(py::module &m)
 {
     using namespace pybind11::literals;
 
-    m.def("osd", &OSD, "src"_a, "elements"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
+    m.def("osd", NvtxTrace("cvcuda.osd", &OSD), "src"_a, "elements"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the OSD operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the OSD operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.Tensor): Input tensor containing one or more images.
@@ -74,18 +78,12 @@ void ExportOpOSD(py::module &m)
         Returns:
             cvcuda.Tensor: The output tensor.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("osd_into", &OSDInto, "dst"_a, "src"_a, "elements"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
+    m.def("osd_into", NvtxTrace("cvcuda.osd_into", &OSDInto), "dst"_a, "src"_a, "elements"_a, py::kw_only(),
+          "stream"_a = nullptr, R"pbdoc(
         Executes the OSD operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the OSD operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.Tensor): Output tensor to store the result of the operation.
@@ -94,11 +92,7 @@ void ExportOpOSD(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 }
 

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,8 +15,10 @@
 
 import cvcuda
 
-import pytest as t
+import pytest
 import numpy as np
+import cvcuda_types as cv_types
+import cvcuda_tools as cv_tools
 
 DEF_OUT_DTYPE = np.int32
 DEF_MAX_CAPACITY = 10000
@@ -26,7 +28,7 @@ def defaultNumStats(layout):
     return 9 if "D" in layout else 7
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "src_args",
     [
         (((2, 11, 26, 32, 1), np.uint8, "NDHWC")),
@@ -34,8 +36,10 @@ def defaultNumStats(layout):
         (((10, 22, 33, 1), np.uint8, "DHWC")),
         (((14, 23, 34), np.uint8, "DHW")),
         (((2, 15, 25, 1), np.uint8, "NHWC")),
+        (((2, 1, 15, 25), np.uint8, "NCHW")),
         (((3, 17, 24), np.uint8, "NHW")),
         (((28, 37, 1), np.uint8, "HWC")),
+        (((1, 28, 37), np.uint8, "CHW")),
         (((18, 16), np.uint8, "HW")),
     ],
 )
@@ -125,7 +129,7 @@ def test_op_label_api(src_args):
 
     mask = cvcuda.Tensor(src.shape, np.uint8, src.layout)
 
-    t_out, _, _ = cvcuda.label_into(
+    tmp_out, _, _ = cvcuda.label_into(
         out,
         count,
         stats,
@@ -135,10 +139,12 @@ def test_op_label_api(src_args):
         min_size=min_size,
         mask=mask,
     )
-    assert t_out is out
+    assert tmp_out is out
 
-    t_out, t_count, t_stats = cvcuda.label_into(out, count, stats, src, connectivity)
-    assert t_out is out and t_count is count and t_stats is stats
+    tmp_out, tmp_count, tmp_stats = cvcuda.label_into(
+        out, count, stats, src, connectivity
+    )
+    assert tmp_out is out and tmp_count is count and tmp_stats is stats
     assert out.layout == src.layout
     assert out.shape == src.shape
     assert out.dtype == DEF_OUT_DTYPE
@@ -168,3 +174,71 @@ def test_op_label_api(src_args):
     assert out.layout == src.layout
     assert out.shape == src.shape
     assert out.dtype == np.uint32
+
+
+def _op(src):
+    if "D" in str(src.layout):
+        connectivity = cvcuda.CONNECTIVITY_6_3D
+    else:
+        connectivity = cvcuda.CONNECTIVITY_4_2D
+    return cvcuda.label(src, connectivity)
+
+
+_supported_dtypes = {
+    cvcuda.Type.U8,
+    cvcuda.Type.S8,
+    cvcuda.Type.U16,
+    cvcuda.Type.S16,
+    cvcuda.Type.U32,
+    cvcuda.Type.S32,
+}
+_supported_layouts_2d = {"HW", "HWC", "CHW", "NHW", "NHWC", "NCHW"}
+_supported_layouts_3d = {"DHW", "DHWC", "NDHW", "NDHWC"}
+_supported_channels = {1}
+
+
+@pytest.mark.parametrize("dtype", _supported_dtypes)
+@pytest.mark.parametrize("layout", _supported_layouts_2d)
+def test_op_label_input_2d(dtype, layout):
+    cv_tools.assert_layouts(_op, layout, dtype=dtype, wrapper="tensor", channels=1)
+
+
+@pytest.mark.parametrize("dtype", _supported_dtypes)
+@pytest.mark.parametrize("layout", _supported_layouts_3d)
+def test_op_label_input_3d(dtype, layout):
+    cv_tools.assert_layouts(_op, layout, dtype=dtype, wrapper="tensor", channels=1)
+
+
+@pytest.mark.parametrize("dtype", cv_types.SCALAR_TYPES_SET - _supported_dtypes)
+def test_op_label_dtype_negative(dtype):
+    cv_tools.assert_dtypes(
+        _op, dtype, wrapper="tensor", channels=1, layout="NHWC", negative=True
+    )
+
+
+@pytest.mark.parametrize(
+    "layout",
+    cv_types.IMAGE_LAYOUTS - _supported_layouts_2d - _supported_layouts_3d,
+)
+def test_op_label_layout_negative(layout):
+    cv_tools.assert_layouts(
+        _op, layout, dtype=cvcuda.Type.U8, wrapper="tensor", channels=1, negative=True
+    )
+
+
+@pytest.mark.parametrize("channels", [2, 3, 4])
+def test_op_label_channels_negative(channels):
+    cv_tools.assert_layouts(
+        _op,
+        "NHWC",
+        dtype=cvcuda.Type.U8,
+        wrapper="tensor",
+        channels=channels,
+        negative=True,
+    )
+
+
+def test_op_label_multichannel_hwc_negative():
+    src = cvcuda.Tensor((16, 17, 3), np.uint8, "HWC")
+    with pytest.raises(RuntimeError):
+        cvcuda.label(src, cvcuda.CONNECTIVITY_4_2D)

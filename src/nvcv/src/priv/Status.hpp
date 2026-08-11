@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -43,7 +43,7 @@ NVCVStatus ProtectCall(F &&fn)
         fn();
         return NVCV_SUCCESS;
     }
-    catch (...)
+    catch (...) // NOSONAR: API boundary converts any non-standard exception to NVCV status.
     {
         SetThreadError(std::current_exception());
         return PeekAtLastThreadError();

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,6 +24,9 @@
 #include <pybind11/numpy.h>
 #include <pybind11/stl.h>
 
+#include <cstddef>
+#include <stdexcept>
+
 namespace cvcudapy {
 
 #define checkRuntime(call) check_runtime(call, #call, __LINE__, __FILE__)
@@ -41,53 +44,91 @@ inline static bool check_runtime(cudaError_t e, const char *call, int line, cons
 
 namespace {
 
-static NVCVPointI pytopoint(py::tuple point)
+class OsdElementError : public std::runtime_error
 {
-    if (point.size() > 2 || point.size() == 0)
+public:
+    using std::runtime_error::runtime_error;
+};
+
+NVCVPointI pytopoint(py::tuple point)
+{
+    if (point.size() > 2 || point.empty())
         throw py::value_error("Invalid point size.");
 
     NVCVPointI ret;
     memset(&ret, 0, sizeof(ret));
 
-    int *pr = (int *)&ret;
-    for (size_t i = 0; i < point.size(); ++i)
+    if (!point.empty())
     {
-        pr[i] = point[i].cast<int>();
+        ret.x = point[0].cast<int>();
+    }
+    if (point.size() > 1)
+    {
+        ret.y = point[1].cast<int>();
     }
     return ret;
 }
 
-static NVCVBoxI pytobox(py::tuple box)
+NVCVBoxI pytobox(py::tuple box)
 {
-    if (box.size() > 4 || box.size() == 0)
+    if (box.size() > 4 || box.empty())
         throw py::value_error("Invalid box size.");
 
     NVCVBoxI ret;
     memset(&ret, 0, sizeof(ret));
 
-    int *pr = (int *)&ret;
-    for (size_t i = 0; i < box.size(); ++i)
+    if (!box.empty())
     {
-        pr[i] = box[i].cast<int>();
+        ret.x = box[0].cast<int>();
+    }
+    if (box.size() > 1)
+    {
+        ret.y = box[1].cast<int>();
+    }
+    if (box.size() > 2)
+    {
+        ret.width = box[2].cast<int>();
+    }
+    if (box.size() > 3)
+    {
+        ret.height = box[3].cast<int>();
     }
     return ret;
 }
 
-static NVCVColorRGBA pytocolor(py::tuple color)
+NVCVColorRGBA pytocolor(py::tuple color)
 {
-    if (color.size() > 4 || color.size() == 0)
+    if (color.size() > 4 || color.empty())
         throw py::value_error("Invalid color size.");
 
     NVCVColorRGBA ret;
     memset(&ret, 0, sizeof(ret));
     ret.a = 255;
 
-    unsigned char *pr = (unsigned char *)&ret;
+    auto *pr = reinterpret_cast<std::byte *>(&ret);
     for (size_t i = 0; i < color.size(); ++i)
     {
-        pr[i] = color[i].cast<unsigned char>();
+        pr[i] = static_cast<std::byte>(color[i].cast<unsigned char>());
     }
     return ret;
+}
+
+// Inverse of pytopoint/pytobox/pytocolor.  Used for `def_property_readonly`
+// accessors so pybind11-stubgen sees a Python-importable `tuple` instead of
+// raw C-API type names like `NVCVPointI`.
+py::tuple pointtotuple(const NVCVPointI &p)
+{
+    return py::make_tuple(p.x, p.y);
+}
+
+py::tuple boxtotuple(const NVCVBoxI &b)
+{
+    return py::make_tuple(b.x, b.y, b.width, b.height);
+}
+
+py::tuple colortotuple(const NVCVColorRGBA &c)
+{
+    return py::make_tuple(c.r, c.g, c.b, c.a);
 }
 
 } // namespace
@@ -107,7 +148,9 @@ void ExportBoxBlur(py::module &m)
                      return blurbox;
                  }),
              "box"_a, "kernelSize"_a)
-        .def_readonly("box", &NVCVBlurBoxI::box, "Tuple describing a box: x-coordinate, y-coordinate, width, height.")
+        .def_property_readonly(
+            "box", [](const NVCVBlurBoxI &self) { return boxtotuple(self.box); },
+            "Tuple describing a box: x-coordinate, y-coordinate, width, height.")
         .def_readonly("kernelSize", &NVCVBlurBoxI::kernelSize, "Kernel sizes of mean filter.");
 
     py::class_<NVCVBlurBoxesImpl, std::shared_ptr<NVCVBlurBoxesImpl>>(m, "BlurBoxesI")
@@ -133,10 +176,16 @@ void ExportOSD(py::module &m)
                      return bndbox;
                  }),
              "box"_a, "thickness"_a, "borderColor"_a, "fillColor"_a)
-        .def_readonly("box", &NVCVBndBoxI::box, "Tuple describing a box: x-coordinate, y-coordinate, width, height.")
+        .def_property_readonly(
+            "box", [](const NVCVBndBoxI &self) { return boxtotuple(self.box); },
+            "Tuple describing a box: x-coordinate, y-coordinate, width, height.")
         .def_readonly("thickness", &NVCVBndBoxI::thickness, "Border thickness of bounding box.")
-        .def_readonly("borderColor", &NVCVBndBoxI::borderColor, "Border color of bounding box.")
-        .def_readonly("fillColor", &NVCVBndBoxI::fillColor, "Filled color of bounding box.");
+        .def_property_readonly(
+            "borderColor", [](const NVCVBndBoxI &self) { return colortotuple(self.borderColor); },
+            "Border color of bounding box.")
+        .def_property_readonly(
+            "fillColor", [](const NVCVBndBoxI &self) { return colortotuple(self.fillColor); },
+            "Filled color of bounding box.");
 
     py::class_<NVCVBndBoxesImpl, std::shared_ptr<NVCVBndBoxesImpl>>(m, "BndBoxesI")
         .def(py::init([](const std::vector<std::vector<NVCVBndBoxI>> &bndboxes_vec)
@@ -160,11 +209,12 @@ void ExportOSD(py::module &m)
                      py::buffer_info hSeg = segArray.request();
                      if (hSeg.ndim != 2)
                      {
-                         throw std::runtime_error("segArray dims must be 2!");
+                         throw OsdElementError("segArray dims must be 2!");
                      }
 
-                     return NVCVSegment(pytobox(box), thickness, (float *)hSeg.ptr, hSeg.shape[0], hSeg.shape[1],
-                                        segThreshold, pytocolor(borderColor), pytocolor(segColor));
+                     return NVCVSegment(pytobox(box), thickness, (float *)hSeg.ptr, static_cast<int32_t>(hSeg.shape[0]),
+                                        static_cast<int32_t>(hSeg.shape[1]), segThreshold, pytocolor(borderColor),
+                                        pytocolor(segColor));
                  }),
              "box"_a, "thickness"_a, "segArray"_a, "segThreshold"_a, "borderColor"_a, "segColor"_a);
 
@@ -179,9 +229,11 @@ void ExportOSD(py::module &m)
                      return point;
                  }),
              "centerPos"_a, "radius"_a, "color"_a)
-        .def_readonly("centerPos", &NVCVPoint::centerPos, "Center point.")
+        .def_property_readonly(
+            "centerPos", [](const NVCVPoint &self) { return pointtotuple(self.centerPos); }, "Center point.")
         .def_readonly("radius", &NVCVPoint::radius, "Point size.")
-        .def_readonly("color", &NVCVPoint::color, "Point color.");
+        .def_property_readonly(
+            "color", [](const NVCVPoint &self) { return colortotuple(self.color); }, "Point color.");
 
     py::class_<NVCVLine>(m, "Line", "Line")
         .def(py::init(
@@ -196,10 +248,13 @@ void ExportOSD(py::module &m)
                      return line;
                  }),
              "pos0"_a, "pos1"_a, "thickness"_a, "color"_a, py::arg("interpolation") = true)
-        .def_readonly("pos0", &NVCVLine::pos0, "Start point.")
-        .def_readonly("pos1", &NVCVLine::pos1, "End point.")
+        .def_property_readonly(
+            "pos0", [](const NVCVLine &self) { return pointtotuple(self.pos0); }, "Start point.")
+        .def_property_readonly(
+            "pos1", [](const NVCVLine &self) { return pointtotuple(self.pos1); }, "End point.")
         .def_readonly("thickness", &NVCVLine::thickness, "Line thickness.")
-        .def_readonly("color", &NVCVLine::color, "Line color.")
+        .def_property_readonly(
+            "color", [](const NVCVLine &self) { return colortotuple(self.color); }, "Line color.")
         .def_readonly("interpolation", &NVCVLine::interpolation, "Default: true.");
 
     py::class_<NVCVPolyLine>(m, "PolyLine")
@@ -210,11 +265,12 @@ void ExportOSD(py::module &m)
                      py::buffer_info points_info = points.request();
                      if (points_info.ndim != 2 || points_info.shape[1] != 2)
                      {
-                         throw std::runtime_error("points dims and shape[1] must be 2!");
+                         throw OsdElementError("points dims and shape[1] must be 2!");
                      }
 
-                     return NVCVPolyLine((int32_t *)points_info.ptr, points_info.shape[0], thickness, isClosed,
-                                         pytocolor(borderColor), pytocolor(fillColor), interpolation);
+                     return NVCVPolyLine((int32_t *)points_info.ptr, static_cast<int32_t>(points_info.shape[0]),
+                                         thickness, isClosed, pytocolor(borderColor), pytocolor(fillColor),
+                                         interpolation);
                  }),
              "points"_a, "thickness"_a, "isClosed"_a, "borderColor"_a, "fillColor"_a, py::arg("interpolation") = true);
 
@@ -236,13 +292,18 @@ void ExportOSD(py::module &m)
                  }),
              "centerPos"_a, "width"_a, "height"_a, "yaw"_a, "thickness"_a, "borderColor"_a, "bgColor"_a,
              py::arg("interpolation") = false)
-        .def_readonly("centerPos", &NVCVRotatedBox::centerPos, "Center point.")
+        .def_property_readonly(
+            "centerPos", [](const NVCVRotatedBox &self) { return pointtotuple(self.centerPos); }, "Center point.")
         .def_readonly("width", &NVCVRotatedBox::width, "Box width.")
         .def_readonly("height", &NVCVRotatedBox::height, "Box height.")
         .def_readonly("yaw", &NVCVRotatedBox::yaw, "Box yaw.")
         .def_readonly("thickness", &NVCVRotatedBox::thickness, "Box border thickness.")
-        .def_readonly("borderColor", &NVCVRotatedBox::borderColor, "Circle border color.")
-        .def_readonly("bgColor", &NVCVRotatedBox::bgColor, "Circle filled color.")
+        .def_property_readonly(
+            "borderColor", [](const NVCVRotatedBox &self) { return colortotuple(self.borderColor); },
+            "Rotated box border color.")
+        .def_property_readonly(
+            "bgColor", [](const NVCVRotatedBox &self) { return colortotuple(self.bgColor); },
+            "Rotated box filled color.")
         .def_readonly("interpolation", &NVCVRotatedBox::interpolation, "Default: false.");
 
     py::class_<NVCVCircle>(m, "Circle", "Circle")
@@ -258,11 +319,15 @@ void ExportOSD(py::module &m)
                      return circle;
                  }),
              "centerPos"_a, "radius"_a, "thickness"_a, "borderColor"_a, "bgColor"_a)
-        .def_readonly("centerPos", &NVCVCircle::centerPos, "Center point.")
+        .def_property_readonly(
+            "centerPos", [](const NVCVCircle &self) { return pointtotuple(self.centerPos); }, "Center point.")
         .def_readonly("radius", &NVCVCircle::radius, "Circle radius.")
         .def_readonly("thickness", &NVCVCircle::thickness, "Circle thickness.")
-        .def_readonly("borderColor", &NVCVCircle::borderColor, "Circle border color.")
-        .def_readonly("bgColor", &NVCVCircle::bgColor, "Circle filled color.");
+        .def_property_readonly(
+            "borderColor", [](const NVCVCircle &self) { return colortotuple(self.borderColor); },
+            "Circle border color.")
+        .def_property_readonly(
+            "bgColor", [](const NVCVCircle &self) { return colortotuple(self.bgColor); }, "Circle filled color.");
 
     py::class_<NVCVArrow>(m, "Arrow", "Arrow")
         .def(py::init(
@@ -279,11 +344,14 @@ void ExportOSD(py::module &m)
                      return arrow;
                  }),
              "pos0"_a, "pos1"_a, "arrowSize"_a, "thickness"_a, "color"_a, py::arg("interpolation") = false)
-        .def_readonly("pos0", &NVCVArrow::pos0, "Start point.")
-        .def_readonly("pos1", &NVCVArrow::pos1, "End point.")
+        .def_property_readonly(
+            "pos0", [](const NVCVArrow &self) { return pointtotuple(self.pos0); }, "Start point.")
+        .def_property_readonly(
+            "pos1", [](const NVCVArrow &self) { return pointtotuple(self.pos1); }, "End point.")
         .def_readonly("arrowSize", &NVCVArrow::arrowSize, "Arrow size.")
         .def_readonly("thickness", &NVCVArrow::thickness, "Arrow line thickness.")
-        .def_readonly("color", &NVCVArrow::color, "Arrow line color.")
+        .def_property_readonly(
+            "color", [](const NVCVArrow &self) { return colortotuple(self.color); }, "Arrow line color.")
         .def_readonly("interpolation", &NVCVArrow::interpolation, "Default: false.");
 
     py::enum_<NVCVClockFormat>(m, "ClockFormat")
@@ -309,57 +377,57 @@ void ExportOSD(py::module &m)
                      for (const auto &elements_list : elements_list_vec)
                      {
                          std::vector<std::shared_ptr<NVCVElement>> curVec;
-                         for (size_t i = 0; i < elements_list.size(); ++i)
+                         for (const auto &item : elements_list)
                          {
                              std::shared_ptr<NVCVElement> element;
-                             if (pybind11::isinstance<NVCVBndBoxI>(elements_list[i]))
+                             if (pybind11::isinstance<NVCVBndBoxI>(item))
                              {
-                                 auto rect = elements_list[i].cast<NVCVBndBoxI>();
+                                 auto rect = item.cast<NVCVBndBoxI>();
                                  element   = std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_RECT, &rect);
                              }
-                             else if (pybind11::isinstance<NVCVText>(elements_list[i]))
+                             else if (pybind11::isinstance<NVCVText>(item))
                              {
-                                 auto text = elements_list[i].cast<NVCVText>();
+                                 auto text = item.cast<NVCVText>();
                                  element   = std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_TEXT, &text);
                              }
-                             else if (pybind11::isinstance<NVCVSegment>(elements_list[i]))
+                             else if (pybind11::isinstance<NVCVSegment>(item))
                              {
-                                 auto segment = elements_list[i].cast<NVCVSegment>();
+                                 auto segment = item.cast<NVCVSegment>();
                                  element      = std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_SEGMENT, &segment);
                              }
-                             else if (pybind11::isinstance<NVCVPoint>(elements_list[i]))
+                             else if (pybind11::isinstance<NVCVPoint>(item))
                              {
-                                 auto point = elements_list[i].cast<NVCVPoint>();
+                                 auto point = item.cast<NVCVPoint>();
                                  element    = std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_POINT, &point);
                              }
-                             else if (pybind11::isinstance<NVCVLine>(elements_list[i]))
+                             else if (pybind11::isinstance<NVCVLine>(item))
                              {
-                                 auto line = elements_list[i].cast<NVCVLine>();
+                                 auto line = item.cast<NVCVLine>();
                                  element   = std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_LINE, &line);
                              }
-                             else if (pybind11::isinstance<NVCVPolyLine>(elements_list[i]))
+                             else if (pybind11::isinstance<NVCVPolyLine>(item))
                              {
-                                 auto pl = elements_list[i].cast<NVCVPolyLine>();
+                                 auto pl = item.cast<NVCVPolyLine>();
                                  element = std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_POLYLINE, &pl);
                              }
-                             else if (pybind11::isinstance<NVCVRotatedBox>(elements_list[i]))
+                             else if (pybind11::isinstance<NVCVRotatedBox>(item))
                              {
-                                 auto rb = elements_list[i].cast<NVCVRotatedBox>();
+                                 auto rb = item.cast<NVCVRotatedBox>();
                                  element = std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_ROTATED_RECT, &rb);
                              }
-                             else if (pybind11::isinstance<NVCVCircle>(elements_list[i]))
+                             else if (pybind11::isinstance<NVCVCircle>(item))
                              {
-                                 auto circle = elements_list[i].cast<NVCVCircle>();
+                                 auto circle = item.cast<NVCVCircle>();
                                  element     = std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_CIRCLE, &circle);
                              }
-                             else if (pybind11::isinstance<NVCVArrow>(elements_list[i]))
+                             else if (pybind11::isinstance<NVCVArrow>(item))
                              {
-                                 auto arrow = elements_list[i].cast<NVCVArrow>();
+                                 auto arrow = item.cast<NVCVArrow>();
                                  element    = std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_ARROW, &arrow);
                              }
-                             else if (pybind11::isinstance<NVCVClock>(elements_list[i]))
+                             else if (pybind11::isinstance<NVCVClock>(item))
                              {
-                                 auto clock = elements_list[i].cast<NVCVClock>();
+                                 auto clock = item.cast<NVCVClock>();
                                  element    = std::make_shared<NVCVElement>(NVCVOSDType::NVCV_OSD_CLOCK, &clock);
                              }
                              else

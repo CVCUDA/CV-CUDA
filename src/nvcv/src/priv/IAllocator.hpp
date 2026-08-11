@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,27 +29,27 @@ namespace nvcv::priv {
 class IAllocator : public ICoreObjectHandle<IAllocator, NVCVAllocatorHandle>
 {
 public:
-    void *allocHostMem(int64_t size, int32_t align);
-    void  freeHostMem(void *ptr, int64_t size, int32_t align) noexcept;
+    NVCVMemoryBuffer allocHostMem(int64_t size, int32_t align);
+    void             freeHostMem(NVCVMemoryBuffer ptr, int64_t size, int32_t align) noexcept;
 
-    void *allocHostPinnedMem(int64_t size, int32_t align);
-    void  freeHostPinnedMem(void *ptr, int64_t size, int32_t align) noexcept;
+    NVCVMemoryBuffer allocHostPinnedMem(int64_t size, int32_t align);
+    void             freeHostPinnedMem(NVCVMemoryBuffer ptr, int64_t size, int32_t align) noexcept;
 
-    void *allocCudaMem(int64_t size, int32_t align);
-    void  freeCudaMem(void *ptr, int64_t size, int32_t align) noexcept;
+    NVCVMemoryBuffer allocCudaMem(int64_t size, int32_t align);
+    void             freeCudaMem(NVCVMemoryBuffer ptr, int64_t size, int32_t align) noexcept;
 
     NVCVResourceAllocator get(NVCVResourceType resType);
 
 private:
     // NVI idiom
-    virtual void *doAllocHostMem(int64_t size, int32_t align)                    = 0;
-    virtual void  doFreeHostMem(void *ptr, int64_t size, int32_t align) noexcept = 0;
+    virtual NVCVMemoryBuffer doAllocHostMem(int64_t size, int32_t align)                               = 0;
+    virtual void             doFreeHostMem(NVCVMemoryBuffer ptr, int64_t size, int32_t align) noexcept = 0;
 
-    virtual void *doAllocHostPinnedMem(int64_t size, int32_t align)                    = 0;
-    virtual void  doFreeHostPinnedMem(void *ptr, int64_t size, int32_t align) noexcept = 0;
+    virtual NVCVMemoryBuffer doAllocHostPinnedMem(int64_t size, int32_t align)                               = 0;
+    virtual void             doFreeHostPinnedMem(NVCVMemoryBuffer ptr, int64_t size, int32_t align) noexcept = 0;
 
-    virtual void *doAllocCudaMem(int64_t size, int32_t align)                    = 0;
-    virtual void  doFreeCudaMem(void *ptr, int64_t size, int32_t align) noexcept = 0;
+    virtual NVCVMemoryBuffer doAllocCudaMem(int64_t size, int32_t align)                               = 0;
+    virtual void             doFreeCudaMem(NVCVMemoryBuffer ptr, int64_t size, int32_t align) noexcept = 0;
 
     virtual NVCVResourceAllocator doGet(NVCVResourceType resType) = 0;
 };
@@ -57,7 +57,7 @@ private:
 template<class T, class... ARGS>
 std::unique_ptr<T> AllocHostObj(IAllocator &alloc, ARGS &&...args)
 {
-    void *arena = alloc.allocHostMem(sizeof(T), alignof(T));
+    NVCVMemoryBuffer arena = alloc.allocHostMem(sizeof(T), alignof(T));
     try
     {
         return std::unique_ptr<T>{new (arena) T{std::forward<ARGS>(args)...}};
@@ -75,7 +75,7 @@ void FreeHostObj(IAllocator &alloc, T *ptr) noexcept
     if (ptr != nullptr)
     {
         ptr->~T();
-        alloc.freeHostMem(ptr, sizeof(T), alignof(T));
+        alloc.freeHostMem(reinterpret_cast<NVCVMemoryBuffer>(ptr), sizeof(T), alignof(T));
     }
 }
 

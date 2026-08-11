@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,16 +20,23 @@
 #include <common/ValueTests.hpp>
 #if __has_include(<sys/random.h>)
 #    include <sys/random.h>
-#    define HAS_SYS_RANDOM_H 1
 #endif
 #include <nvcv/util/Compat.h>
+
+#include <array>
 
 namespace test = nvcv::test;
 namespace t    = ::testing;
 
-#if HAS_SYS_RANDOM_H
+#if __has_include(<sys/random.h>)
 
-static char g_buf[256] = {};
+static constexpr size_t kBufSize = 256;
+
+static char *Buf()
+{
+    static std::array<char, kBufSize> buf = {};
+    return buf.data();
+}
 
 class CompatGetRandomParamTest
     : public t::TestWithParam<
@@ -45,26 +52,26 @@ NVCV_INSTANTIATE_TEST_SUITE_P(Negative, CompatGetRandomParamTest,
     {          NULL,                 1,      0,          -1,     EFAULT},
     { (void *)0x666,                 1,      0,          -1,     EFAULT},
     { (void *)0x666,                -1,      0,          -1,     EFAULT},
-    {         g_buf,                 1,  0x666,          -1,     EINVAL},
+    {         Buf(),                 1,  0x666,          -1,     EINVAL},
 });
 
 NVCV_INSTANTIATE_TEST_SUITE_P(Positive, CompatGetRandomParamTest,
 {
     //       buffer,        length,  flags,   gold_retval,    gold_errno
-    {(void *)&g_buf, sizeof(g_buf),      0, sizeof(g_buf), 0 /*ignored*/},
-    {(void *)&g_buf,             1,      0,             1, 0 /*ignored*/},
-    {(void *)&g_buf,             0,      0,             0, 0 /*ignored*/},
+    {         Buf(),          kBufSize,      0,      kBufSize, 0 /*ignored*/},
+    {         Buf(),                 1,      0,             1, 0 /*ignored*/},
+    {         Buf(),                 0,      0,             0, 0 /*ignored*/},
 });
 
 // clang-format on
 
 TEST_P(CompatGetRandomParamTest, test)
 {
-    void        *buf         = std::get<0>(GetParam());
-    size_t       length      = std::get<1>(GetParam());
-    unsigned int flags       = std::get<2>(GetParam());
-    int          gold_retval = std::get<3>(GetParam());
-    int          gold_errno  = std::get<4>(GetParam());
+    void        *buf         = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    size_t       length      = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
+    unsigned int flags       = ::nvcv::test::ParamValue(std::get<2>(GetParam()));
+    auto         gold_retval = ::nvcv::test::ParamValue(std::get<3>(GetParam()));
+    auto         gold_errno  = ::nvcv::test::ParamValue(std::get<4>(GetParam()));
 
     ssize_t ret = Compat_getrandom(buf, length, flags);
     EXPECT_EQ(gold_retval, ret);
@@ -92,17 +99,17 @@ NVCV_INSTANTIATE_TEST_SUITE_P(Flags, CompatGetRandomExecTest,
 
 TEST_P(CompatGetRandomExecTest, works)
 {
-    unsigned int flags = GetParam();
+    unsigned int flags = ::nvcv::test::ParamValue(GetParam());
 
     // when using urandom, it's guaranteed that it'll return at least 256 bytes
     // so let's use 256.
-    char    buf1[256 + 1] = {};
-    ssize_t n             = Compat_getrandom(buf1, 256, flags);
+    std::array<char, 256 + 1> buf1 = {};
+    ssize_t                   n    = Compat_getrandom(buf1.data(), 256, flags);
     ASSERT_EQ(256, n);
     ASSERT_EQ(0, buf1[256]);
 
-    char buf2[256 + 1] = {};
-    n                  = Compat_getrandom(buf2, 256, flags);
+    std::array<char, 256 + 1> buf2 = {};
+    n                              = Compat_getrandom(buf2.data(), 256, flags);
     ASSERT_EQ(256, n);
     ASSERT_EQ(0, buf2[256]);
     ASSERT_THAT(buf1, t::Not(t::ElementsAreArray(buf2)));
@@ -120,25 +127,25 @@ NVCV_INSTANTIATE_TEST_SUITE_P(Negative, CompatGetEntropyParamTest,
     //       buffer,            length,  gold_retval, gold_errno
     {          NULL,                 1,           -1,     EFAULT},
     { (void *)0x666,                 1,           -1,     EFAULT},
-    {         g_buf,               257,           -1,     EIO},
+    {         Buf(),      kBufSize + 1,           -1,     EIO},
 });
 
 NVCV_INSTANTIATE_TEST_SUITE_P(Positive, CompatGetEntropyParamTest,
 {
     //       buffer,        length,  gold_retval,    gold_errno
-    {(void *)&g_buf, sizeof(g_buf),            0, 0 /*ignored*/},
-    {(void *)&g_buf,             1,            0, 0 /*ignored*/},
-    {(void *)&g_buf,             0,            0, 0 /*ignored*/},
+    {         Buf(),          kBufSize,            0, 0 /*ignored*/},
+    {         Buf(),                 1,            0, 0 /*ignored*/},
+    {         Buf(),                 0,            0, 0 /*ignored*/},
 });
 
 // clang-format on
 
 TEST_P(CompatGetEntropyParamTest, test)
 {
-    void  *buf         = std::get<0>(GetParam());
-    size_t length      = std::get<1>(GetParam());
-    int    gold_retval = std::get<2>(GetParam());
-    int    gold_errno  = std::get<3>(GetParam());
+    void  *buf         = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    size_t length      = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
+    int    gold_retval = ::nvcv::test::ParamValue(std::get<2>(GetParam()));
+    int    gold_errno  = ::nvcv::test::ParamValue(std::get<3>(GetParam()));
 
     ssize_t ret = Compat_getentropy(buf, length);
     EXPECT_EQ(gold_retval, ret);
@@ -150,15 +157,15 @@ TEST_P(CompatGetEntropyParamTest, test)
 
 TEST(CompatGetEntropyExecTest, works)
 {
-    char buf1[256] = {};
-    ASSERT_EQ(0, Compat_getentropy(buf1, sizeof(buf1) - 1));
-    ASSERT_EQ(0, buf1[sizeof(buf1) - 1]);
+    std::array<char, 256> buf1 = {};
+    ASSERT_EQ(0, Compat_getentropy(buf1.data(), buf1.size() - 1));
+    ASSERT_EQ(0, buf1[buf1.size() - 1]);
 
-    char buf2[256] = {};
-    ASSERT_EQ(0, Compat_getentropy(buf2, sizeof(buf2) - 1));
-    ASSERT_EQ(0, buf1[sizeof(buf2) - 1]);
+    std::array<char, 256> buf2 = {};
+    ASSERT_EQ(0, Compat_getentropy(buf2.data(), buf2.size() - 1));
+    ASSERT_EQ(0, buf1[buf2.size() - 1]);
 
     ASSERT_THAT(buf1, t::Not(t::ElementsAreArray(buf2)));
 }
 
-#endif
+#endif // __has_include(<sys/random.h>)

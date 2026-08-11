@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,7 +46,7 @@ struct Size2D : NVCVSize2D
     {
     }
 
-    constexpr Size2D(const NVCVSize2D &s)
+    explicit constexpr Size2D(const NVCVSize2D &s)
         : NVCVSize2D{s.w, s.h}
     {
     }

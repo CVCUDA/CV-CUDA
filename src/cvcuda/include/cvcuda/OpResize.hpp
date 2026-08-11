@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,6 +35,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class Resize final : public IOperator
@@ -42,48 +44,45 @@ class Resize final : public IOperator
 public:
     explicit Resize();
 
-    ~Resize();
-
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
-                    const NVCVInterpolationType interpolation);
+                    const NVCVInterpolationType interpolation) const;
     void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
-                    const NVCVInterpolationType interpolation);
+                    const NVCVInterpolationType interpolation) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline Resize::Resize()
 {
-    nvcv::detail::CheckThrow(cvcudaResizeCreate(&m_handle));
-    assert(m_handle);
-}
-
-inline Resize::~Resize()
-{
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaResizeCreate(&h));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void Resize::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
-                               const NVCVInterpolationType interpolation)
+                               const NVCVInterpolationType interpolation) const
 {
-    nvcv::detail::CheckThrow(cvcudaResizeSubmit(m_handle, stream, in.handle(), out.handle(), interpolation));
+    nvcv::detail::CheckThrow(cvcudaResizeSubmit(m_handle.get(), stream, in.handle(), out.handle(), interpolation));
 }
 
 inline void Resize::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
-                               const nvcv::ImageBatchVarShape &out, const NVCVInterpolationType interpolation)
+                               const nvcv::ImageBatchVarShape &out, const NVCVInterpolationType interpolation) const
 {
-    nvcv::detail::CheckThrow(cvcudaResizeVarShapeSubmit(m_handle, stream, in.handle(), out.handle(), interpolation));
+    nvcv::detail::CheckThrow(
+        cvcudaResizeVarShapeSubmit(m_handle.get(), stream, in.handle(), out.handle(), interpolation));
 }
 
 inline NVCVOperatorHandle Resize::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA_RESIZE_HPP

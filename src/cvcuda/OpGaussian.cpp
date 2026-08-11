@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "priv/OpGaussian.hpp"
 
+#include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <nvcv/Exception.hpp>
@@ -31,7 +32,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaGaussianCreate,
                    int32_t maxVarShapeBatchSize))
 {
     return nvcv::ProtectCall(
-        [&]
+        [&handle, &maxKernelWidth, &maxKernelHeight, &maxVarShapeBatchSize]
         {
             if (handle == nullptr)
             {
@@ -39,8 +40,8 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaGaussianCreate,
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            *handle = reinterpret_cast<NVCVOperatorHandle>(
-                new priv::Gaussian(nvcv::Size2D{maxKernelWidth, maxKernelHeight}, maxVarShapeBatchSize));
+            *handle = priv::CreateOperatorHandle<priv::Gaussian>(nvcv::Size2D{maxKernelWidth, maxKernelHeight},
+                                                                 maxVarShapeBatchSize);
         });
 }
 
@@ -48,12 +49,15 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaGaussianSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in, NVCVTensorHandle out,
                    int32_t kernelWidth, int32_t kernelHeight, double sigmaX, double sigmaY, NVCVBorderType borderMode))
 {
+    CVCUDA_NVTX_RANGE("cvcudaGaussianSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&out, &in, &handle, &stream, &kernelWidth, &kernelHeight, &sigmaX, &sigmaY, &borderMode]
         {
-            nvcv::TensorWrapHandle output(out), input(in);
-            priv::ToDynamicRef<priv::Gaussian>(handle)(stream, input, output, nvcv::Size2D{kernelWidth, kernelHeight},
-                                                       double2{sigmaX, sigmaY}, borderMode);
+            nvcv::TensorWrapHandle output(out);
+            nvcv::TensorWrapHandle input(in);
+            priv::ToDynamicRef<priv::Gaussian>(handle)(stream, input.resource(), output.resource(),
+                                                       nvcv::Size2D{kernelWidth, kernelHeight}, double2{sigmaX, sigmaY},
+                                                       borderMode);
         });
 }
 
@@ -61,11 +65,15 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaGaussianVarShapeSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVImageBatchHandle in, NVCVImageBatchHandle out,
                    NVCVTensorHandle kernelSize, NVCVTensorHandle sigma, NVCVBorderType borderMode))
 {
+    CVCUDA_NVTX_RANGE("cvcudaGaussianVarShapeSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&in, &out, &kernelSize, &sigma, &handle, &stream, &borderMode]
         {
-            nvcv::ImageBatchVarShapeWrapHandle inWrap(in), outWrap(out);
-            nvcv::TensorWrapHandle             kernelSizeWrap(kernelSize), sigmaWrap(sigma);
-            priv::ToDynamicRef<priv::Gaussian>(handle)(stream, inWrap, outWrap, kernelSizeWrap, sigmaWrap, borderMode);
+            nvcv::ImageBatchVarShapeWrapHandle inWrap(in);
+            nvcv::ImageBatchVarShapeWrapHandle outWrap(out);
+            nvcv::TensorWrapHandle             kernelSizeWrap(kernelSize);
+            nvcv::TensorWrapHandle             sigmaWrap(sigma);
+            priv::ToDynamicRef<priv::Gaussian>(handle)(stream, inWrap.resource(), outWrap.resource(),
+                                                       kernelSizeWrap.resource(), sigmaWrap.resource(), borderMode);
         });
 }

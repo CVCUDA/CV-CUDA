@@ -20,6 +20,7 @@
 
 #include "CvCudaLegacy.h"
 #include "CvCudaLegacyHelpers.hpp"
+#include "ReformatCopyPolicy.hpp"
 
 #include "CvCudaUtils.cuh"
 
@@ -27,45 +28,57 @@
 #include <nvcv/ImageData.hpp>
 
 #include <cassert>
+#include <cstddef>
+#include <type_traits>
 
 namespace cuda    = nvcv::cuda;
 namespace cuda_op = nvcv::legacy::cuda_op;
 
-template<cuda_op::DataFormat SrcFormat, class SrcWrapper, class DstWrapper>
+template<cuda_op::DataFormat SrcFormat, int RowsPerThread, class SrcWrapper, class DstWrapper>
 __global__ void transformFormat(const SrcWrapper src, DstWrapper dst, int3 inout_size)
 {
-    int3 thrCoord = cuda::StaticCast<int>(blockIdx * blockDim + threadIdx);
+    const int x      = blockIdx.x * blockDim.x + threadIdx.x;
+    const int firstY = blockIdx.y * blockDim.y * RowsPerThread + threadIdx.y;
 
-    if (thrCoord.x >= inout_size.x || thrCoord.y >= inout_size.y)
+    if (x >= inout_size.x)
         return;
 
     using DimType = cuda::MakeType<int, SrcWrapper::kNumDimensions>;
     DimType srcCoord, dstCoord;
 
-    for (int c = 0; c < inout_size.z; c++)
+#pragma unroll
+    for (int row = 0; row < RowsPerThread; ++row)
     {
-        if constexpr (SrcFormat == cuda_op::kNCHW)
-        {
-            srcCoord = {thrCoord.x, thrCoord.y, c, thrCoord.z};
-            dstCoord = {c, thrCoord.x, thrCoord.y, thrCoord.z};
-        }
-        else if constexpr (SrcFormat == cuda_op::kNHWC)
-        {
-            srcCoord = {c, thrCoord.x, thrCoord.y, thrCoord.z};
-            dstCoord = {thrCoord.x, thrCoord.y, c, thrCoord.z};
-        }
-        else if constexpr (SrcFormat == cuda_op::kCHW)
-        {
-            srcCoord = {thrCoord.x, thrCoord.y, c};
-            dstCoord = {c, thrCoord.x, thrCoord.y};
-        }
-        else if constexpr (SrcFormat == cuda_op::kHWC)
-        {
-            srcCoord = {c, thrCoord.x, thrCoord.y};
-            dstCoord = {thrCoord.x, thrCoord.y, c};
-        }
+        const int y = firstY + row * blockDim.y;
+        if (y >= inout_size.y)
+            continue;
 
-        dst[dstCoord] = src[srcCoord];
+#pragma unroll 4
+        for (int c = 0; c < inout_size.z; c++)
+        {
+            if constexpr (SrcFormat == cuda_op::kNCHW)
+            {
+                srcCoord = {x, y, c, static_cast<int>(blockIdx.z)};
+                dstCoord = {c, x, y, static_cast<int>(blockIdx.z)};
+            }
+            else if constexpr (SrcFormat == cuda_op::kNHWC)
+            {
+                srcCoord = {c, x, y, static_cast<int>(blockIdx.z)};
+                dstCoord = {x, y, c, static_cast<int>(blockIdx.z)};
+            }
+            else if constexpr (SrcFormat == cuda_op::kCHW)
+            {
+                srcCoord = {x, y, c};
+                dstCoord = {c, x, y};
+            }
+            else if constexpr (SrcFormat == cuda_op::kHWC)
+            {
+                srcCoord = {c, x, y};
+                dstCoord = {x, y, c};
+            }
+
+            dst[dstCoord] = src[srcCoord];
+        }
     }
 }
 
@@ -83,8 +96,11 @@ ErrorCode transform(const nvcv::TensorDataStridedCuda &inData, const nvcv::Tenso
 
     const int3 inout_size = {inAccess->numCols(), inAccess->numRows(), outAccess->numChannels()};
 
-    dim3 block(32, 8);
-    dim3 grid(cuda_op::divUp(inout_size.x, block.x), cuda_op::divUp(inout_size.y, block.y), inAccess->numSamples());
+    constexpr bool kUseWideBlock  = std::is_same_v<data_type, uchar>;
+    constexpr int  kRowsPerThread = kUseWideBlock ? 8 : 1;
+    dim3           block          = kUseWideBlock ? dim3{128, 2} : dim3{32, 8};
+    dim3           grid(cuda_op::divUp(inout_size.x, block.x), cuda_op::divUp(inout_size.y, block.y * kRowsPerThread),
+                        inAccess->numSamples());
 
     auto inMaxStride  = inAccess->sampleStride() * inAccess->numSamples();
     auto outMaxStride = outAccess->sampleStride() * outAccess->numSamples();
@@ -93,7 +109,7 @@ ErrorCode transform(const nvcv::TensorDataStridedCuda &inData, const nvcv::Tenso
         cuda::TensorNDWrap<const data_type, cuda_op::FormatDimensions<input_format>, int32_t> src(inData);
         cuda::TensorNDWrap<data_type, cuda_op::FormatDimensions<input_format>, int32_t>       dst(outData);
 
-        transformFormat<input_format><<<grid, block, 0, stream>>>(src, dst, inout_size);
+        transformFormat<input_format, kRowsPerThread><<<grid, block, 0, stream>>>(src, dst, inout_size);
     }
     else
     {
@@ -129,6 +145,13 @@ ErrorCode Reformat::infer(const nvcv::TensorDataStridedCuda &inData, const nvcv:
 
     auto outAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(outData);
     NVCV_ASSERT(outAccess);
+
+    if (inAccess->numSamples() != outAccess->numSamples() || inAccess->numChannels() != outAccess->numChannels()
+        || inAccess->numRows() != outAccess->numRows() || inAccess->numCols() != outAccess->numCols())
+    {
+        LOG_ERROR("Input and output logical image extents must match");
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
 
     if (inData.dtype() == outData.dtype() && inData.shape() == outData.shape())
     {
@@ -176,6 +199,50 @@ ErrorCode Reformat::infer(const nvcv::TensorDataStridedCuda &inData, const nvcv:
     {
         LOG_ERROR("Invalid DataType " << data_type);
         return ErrorCode::INVALID_DATA_TYPE;
+    }
+
+    if (data_type == kCV_8U && inAccess->numChannels() == 1 && outAccess->numChannels() == 1
+        && inAccess->numPlanes() == 1 && outAccess->numPlanes() == 1 && inAccess->numRows() == outAccess->numRows()
+        && inAccess->numCols() == outAccess->numCols() && inAccess->colStride() == outAccess->colStride())
+    {
+        const auto rowBytes = inAccess->numCols() * inAccess->colStride();
+
+        if (inAccess->rowStride() == rowBytes && outAccess->rowStride() == rowBytes
+            && inAccess->sampleStride() == rowBytes * inAccess->numRows()
+            && outAccess->sampleStride() == rowBytes * outAccess->numRows())
+        {
+            if (inAccess->numSamples() > 0)
+            {
+                const auto totalBytes = static_cast<size_t>(rowBytes) * static_cast<size_t>(inAccess->numRows())
+                                      * static_cast<size_t>(inAccess->numSamples());
+                checkCudaErrors(cudaMemcpyAsync(outAccess->sampleData(0), inAccess->sampleData(0), totalBytes,
+                                                cudaMemcpyDeviceToDevice, stream));
+            }
+            return SUCCESS;
+        }
+
+        // A pitched copy needs one CUDA operation per sample. Below the measured
+        // crossover, that setup cost is higher than one reformat kernel launch.
+        const size_t pixelsPerSample
+            = static_cast<size_t>(inAccess->numRows()) * static_cast<size_t>(inAccess->numCols());
+        const uint32_t numSamples = inAccess->numSamples();
+        const bool     usePitchedCopy
+            = detail::ShouldUsePitchedCopy(numSamples, pixelsPerSample, static_cast<size_t>(rowBytes));
+
+        if (usePitchedCopy)
+        {
+            for (uint32_t i = 0; i < numSamples; ++i)
+            {
+                nvcv::Byte *inSampData  = inAccess->sampleData(i);
+                nvcv::Byte *outSampData = outAccess->sampleData(i);
+
+                checkCudaErrors(cudaMemcpy2DAsync(
+                    outAccess->planeData(0, outSampData), outAccess->rowStride(), inAccess->planeData(0, inSampData),
+                    inAccess->rowStride(), static_cast<size_t>(rowBytes), static_cast<size_t>(inAccess->numRows()),
+                    cudaMemcpyDeviceToDevice, stream));
+            }
+            return SUCCESS;
+        }
     }
 
     typedef ErrorCode (*transform_t)(const TensorDataStridedCuda &input, const TensorDataStridedCuda &output,

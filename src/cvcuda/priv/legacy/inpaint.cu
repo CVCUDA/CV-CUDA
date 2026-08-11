@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -22,7 +22,6 @@
 #include "CvCudaLegacyHelpers.hpp"
 
 #include "CvCudaUtils.cuh"
-#include "cub/cub.cuh"
 #include "inpaint_utils.cuh"
 #include "reduce_kernel_utils.cuh"
 
@@ -33,11 +32,6 @@ using namespace nvcv::legacy::helpers;
 using namespace nvcv::legacy::cuda_op;
 
 using namespace nvcv::cuda;
-
-#define KNOWN  0 //known outside narrow band
-#define BAND   1 //narrow band (known)
-#define INSIDE 2 //unknown
-#define CHANGE 3 //servise
 
 #define BLOCK            32
 #define BLOCK_S          16
@@ -60,6 +54,19 @@ __global__ void copy_mask_data(MaskWrapper src, Ptr2dNHWC<T> dst, int row_offset
             *dst.ptr(batch_idx, src_y + row_offset, src_x + col_offset, c) = value;
         }
     }
+}
+
+template<typename OutWrapper>
+__device__ __forceinline__ auto inpaint_out_ptr(OutWrapper out, int batch, int y, int x, int channel)
+    -> decltype(out.ptr(batch, y, x, channel))
+{
+    return out.ptr(batch, y, x, channel);
+}
+
+template<typename T>
+__device__ __forceinline__ T *inpaint_out_ptr(Ptr2dNCHW<T> out, int batch, int y, int x, int channel)
+{
+    return out.ptr(batch, y, x, channel);
 }
 
 template<typename OutWrapper>
@@ -130,34 +137,37 @@ __device__ void inpaint(Ptr2dNHWC<unsigned char> f, Ptr2dNHWC<float> t, OutWrapp
                         r.y = (float)(i - k);
                         r.x = (float)(j - l);
 
-                        dst = (float)(1. / (VectorLength(r) * sqrt((double)VectorLength(r))));
-                        lev = (float)(1. / (1 + fabs(*t.ptr(batch_idx, k, l) - *t.ptr(batch_idx, i, j))));
+                        float len = VectorLength(r);
+                        dst       = 1.0f / (len * sqrtf(len));
+                        lev       = 1.0f / (1.0f + fabsf(*t.ptr(batch_idx, k, l) - *t.ptr(batch_idx, i, j)));
 
                         dir = VectorScalMult(r, gradT);
-                        if (fabs(dir) <= 0.01)
+                        // Preserve the Telea weighting floor: near-orthogonal directions get a tiny
+                        // nonzero contribution instead of disappearing through floating-point noise.
+                        if (fabsf(dir) <= 0.01f)
                             dir = 0.000001f;
-                        w = (float)fabs(dst * lev * dir);
+                        w = fabsf(dst * lev * dir);
 
                         if (*f.ptr(batch_idx, k, l + 1) != INSIDE)
                         {
                             if (*f.ptr(batch_idx, k, l - 1) != INSIDE)
                             {
-                                gradI.x = (float)((*out.ptr(batch_idx, km, lp + 1, color)
-                                                   - *out.ptr(batch_idx, km, lm - 1, color)))
+                                gradI.x = (float)((*inpaint_out_ptr(out, batch_idx, km, lp + 1, color)
+                                                   - *inpaint_out_ptr(out, batch_idx, km, lm - 1, color)))
                                         * 2.0f;
                             }
                             else
                             {
-                                gradI.x = (float)((*out.ptr(batch_idx, km, lp + 1, color)
-                                                   - *out.ptr(batch_idx, km, lm, color)));
+                                gradI.x = (float)((*inpaint_out_ptr(out, batch_idx, km, lp + 1, color)
+                                                   - *inpaint_out_ptr(out, batch_idx, km, lm, color)));
                             }
                         }
                         else
                         {
                             if (*f.ptr(batch_idx, k, l - 1) != INSIDE)
                             {
-                                gradI.x = (float)((*out.ptr(batch_idx, km, lp, color)
-                                                   - *out.ptr(batch_idx, km, lm - 1, color)));
+                                gradI.x = (float)((*inpaint_out_ptr(out, batch_idx, km, lp, color)
+                                                   - *inpaint_out_ptr(out, batch_idx, km, lm - 1, color)));
                             }
                             else
                             {
@@ -168,22 +178,22 @@ __device__ void inpaint(Ptr2dNHWC<unsigned char> f, Ptr2dNHWC<float> t, OutWrapp
                         {
                             if (*f.ptr(batch_idx, k - 1, l) != INSIDE)
                             {
-                                gradI.y = (float)((*out.ptr(batch_idx, kp + 1, lm, color)
-                                                   - *out.ptr(batch_idx, km - 1, lm, color)))
+                                gradI.y = (float)((*inpaint_out_ptr(out, batch_idx, kp + 1, lm, color)
+                                                   - *inpaint_out_ptr(out, batch_idx, km - 1, lm, color)))
                                         * 2.0f;
                             }
                             else
                             {
-                                gradI.y = (float)((*out.ptr(batch_idx, kp + 1, lm, color)
-                                                   - *out.ptr(batch_idx, km, lm, color)));
+                                gradI.y = (float)((*inpaint_out_ptr(out, batch_idx, kp + 1, lm, color)
+                                                   - *inpaint_out_ptr(out, batch_idx, km, lm, color)));
                             }
                         }
                         else
                         {
                             if (*f.ptr(batch_idx, k - 1, l) != INSIDE)
                             {
-                                gradI.y = (float)((*out.ptr(batch_idx, kp, lm, color)
-                                                   - *out.ptr(batch_idx, km - 1, lm, color)));
+                                gradI.y = (float)((*inpaint_out_ptr(out, batch_idx, kp, lm, color)
+                                                   - *inpaint_out_ptr(out, batch_idx, km - 1, lm, color)));
                             }
                             else
                             {
@@ -191,7 +201,7 @@ __device__ void inpaint(Ptr2dNHWC<unsigned char> f, Ptr2dNHWC<float> t, OutWrapp
                             }
                         }
                         //  float Iaorg = Ia, Jxorg = Jx, Jyorg = Jy, sorg = s;
-                        Ia += (float)w * (float)(*out.ptr(batch_idx, km, lm, color));
+                        Ia += (float)w * (float)(*inpaint_out_ptr(out, batch_idx, km, lm, color));
                         Jx -= (float)w * (float)(gradI.x * r.x);
                         Jy -= (float)w * (float)(gradI.y * r.y);
                         s += w;
@@ -199,9 +209,9 @@ __device__ void inpaint(Ptr2dNHWC<unsigned char> f, Ptr2dNHWC<float> t, OutWrapp
                 }
             }
         }
-        sat = (float)((Ia / s + (Jx + Jy) / (sqrt(Jx * Jx + Jy * Jy) + 1.0e-20f) + 0.5f));
+        sat = Ia / s + (Jx + Jy) / (sqrtf(Jx * Jx + Jy * Jy) + 1.0e-20f) + 0.5f;
         {
-            *out.ptr(batch_idx, i - 1, j - 1, color) = SaturateCast<uchar>(sat); // nan
+            *inpaint_out_ptr(out, batch_idx, i - 1, j - 1, color) = SaturateCast<uchar>(sat); // nan
         }
     }
 }
@@ -445,11 +455,83 @@ inline int finish_flag_reduce(Ptr2dNHWC<unsigned char> src_ptr, int *d_out, int 
     return rst;
 }
 
+inline bool IsPlanarFormat(DataFormat format)
+{
+    return format == kNCHW || format == kCHW;
+}
+
+inline bool IsSupportedInpaintFormat(DataFormat format)
+{
+    return format == kNHWC || format == kHWC || IsPlanarFormat(format);
+}
+
+inline void CopyTensorInputToOutput(const nvcv::TensorDataAccessStridedImagePlanar &inAccess,
+                                    const nvcv::TensorDataAccessStridedImagePlanar &outAccess, bool isPlanar,
+                                    cudaStream_t stream)
+{
+    for (uint32_t i = 0; i < inAccess.numSamples(); ++i)
+    {
+        if (isPlanar)
+        {
+            const int rowBytes = inAccess.numCols() * inAccess.colStride();
+            for (int c = 0; c < inAccess.numChannels(); ++c)
+            {
+                void *inSampData  = inAccess.sampleData(i) + c * inAccess.chStride();
+                void *outSampData = outAccess.sampleData(i) + c * outAccess.chStride();
+
+                checkCudaErrors(cudaMemcpy2DAsync(outSampData, outAccess.rowStride(), inSampData, inAccess.rowStride(),
+                                                  rowBytes, inAccess.numRows(), cudaMemcpyDeviceToDevice, stream));
+            }
+        }
+        else
+        {
+            void *inSampData  = inAccess.sampleData(i);
+            void *outSampData = outAccess.sampleData(i);
+
+            checkCudaErrors(cudaMemcpy2DAsync(outSampData, outAccess.rowStride(), inSampData, inAccess.rowStride(),
+                                              inAccess.numCols() * inAccess.colStride(), inAccess.numRows(),
+                                              cudaMemcpyDeviceToDevice, stream));
+        }
+    }
+}
+
+template<typename T>
+ErrorCode RunTeleaInpaint(Ptr2dNHWC<unsigned char> inpaint_mask, Ptr2dNHWC<float> t, Ptr2dNHWC<unsigned char> band,
+                          const nvcv::TensorDataStridedCuda &outData, int range, int channel, bool isPlanar,
+                          cudaStream_t stream)
+{
+    int  iteration = 20;
+    dim3 block(BLOCK_S, BLOCK_S);
+    dim3 grid(divUp(inpaint_mask.rows, block.x), divUp(inpaint_mask.cols, block.y), inpaint_mask.batches);
+
+    if (isPlanar)
+    {
+        auto outAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(outData);
+        NVCV_ASSERT(outAccess);
+        Ptr2dNCHW<T> dst(*outAccess);
+        for (int i = 0; i < iteration; i++)
+        {
+            TeleaInpaintFMM<<<grid, block, 0, stream>>>(inpaint_mask, t, dst, range, band, channel);
+        }
+    }
+    else
+    {
+        auto dst = CreateTensorWrapNHWC<T, int32_t>(outData);
+        for (int i = 0; i < iteration; i++)
+        {
+            TeleaInpaintFMM<<<grid, block, 0, stream>>>(inpaint_mask, t, dst, range, band, channel);
+            /* icvTeleaInpaintFMM<uchar>(mask,t,output_img,range,Heap); */
+        }
+    }
+
+    return ErrorCode::SUCCESS;
+}
+
 template<typename T>
 ErrorCode inpaint_helper(const nvcv::TensorDataStridedCuda &inData, const nvcv::TensorDataStridedCuda &mask,
                          const nvcv::TensorDataStridedCuda &outData, void *workspace, unsigned char *kernel_ptr,
                          int range, bool &init_flag, int batch, int height, int width, int channel, int maxBatchSize,
-                         cudaStream_t stream)
+                         bool isPlanar, cudaStream_t stream)
 {
     dim3 blockSize(BLOCK, BLOCK / 4, 1);
     dim3 gridSize(divUp(width + 2, blockSize.x), divUp(height + 2, blockSize.y), batch);
@@ -478,15 +560,7 @@ ErrorCode inpaint_helper(const nvcv::TensorDataStridedCuda &inData, const nvcv::
     auto outAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(outData);
     NVCV_ASSERT(outAccess);
 
-    for (uint32_t i = 0; i < inAccess->numSamples(); ++i)
-    {
-        void *inSampData  = inAccess->sampleData(i);
-        void *outSampData = outAccess->sampleData(i);
-
-        checkCudaErrors(cudaMemcpy2DAsync(outSampData, outAccess->rowStride(), inSampData, inAccess->rowStride(),
-                                          inAccess->numCols() * inAccess->colStride(), inAccess->numRows(),
-                                          cudaMemcpyDeviceToDevice, stream));
-    }
+    CopyTensorInputToOutput(*inAccess, *outAccess, isPlanar, stream);
 
     // step1 init mask
 
@@ -518,8 +592,7 @@ ErrorCode inpaint_helper(const nvcv::TensorDataStridedCuda &inData, const nvcv::
 
     checkCudaErrors(cudaMemsetAsync(f_ptr, KNOWN, sizeof(unsigned char) * batch * erows * ecols * 1,
                                     stream)); // cvSet(f,cvScalar(KNOWN,0,0,0));
-    checkCudaErrors(cudaMemsetAsync(t_ptr, 1.0e6f, sizeof(float) * batch * erows * ecols * 1,
-                                    stream)); // cvSet(t,cvScalar(1.0e6f,0,0,0));
+    fill_value<float>(t, 1.0e6f, stream);     // cvSet(t,cvScalar(1.0e6f,0,0,0));
 
     // step3 init band
 
@@ -548,21 +621,13 @@ ErrorCode inpaint_helper(const nvcv::TensorDataStridedCuda &inData, const nvcv::
 
     // step5 FMM
 
-    int  iteration = 20;
-    dim3 block(BLOCK_S, BLOCK_S);
-    dim3 grid(divUp(f.rows, block.x), divUp(f.cols, block.y), f.batches);
-    int  flag = 1;
+    int flag = 1;
 
     if (outAccess->sampleStride() * batch <= nvcv::cuda::TypeTraits<int32_t>::max)
     {
-        auto dst = CreateTensorWrapNHWC<T, int32_t>(outData);
         while (flag)
         {
-            for (int i = 0; i < iteration; i++)
-            {
-                TeleaInpaintFMM<<<grid, block, 0, stream>>>(inpaint_mask, t, dst, range, band, channel);
-                /* icvTeleaInpaintFMM<uchar>(mask,t,output_img,range,Heap); */
-            }
+            RunTeleaInpaint<T>(inpaint_mask, t, band, outData, range, channel, isPlanar, stream);
             flag = finish_flag_reduce(band, block_reduce_buffer1, block_reduce_buffer2, stream);
         }
     }
@@ -585,23 +650,21 @@ Inpaint::Inpaint(DataShape max_input_shape, DataShape max_output_shape, int maxB
     , m_kernel_ptr(nullptr)
     , m_workspace(nullptr)
 {
-    cudaError_t err = cudaMalloc(&m_kernel_ptr, sizeof(unsigned char) * maxBatchSize * 3 * 3);
+    size_t      kernelSize = ComputeInpaintKernelSize(maxBatchSize);
+    cudaError_t err        = cudaMalloc(&m_kernel_ptr, kernelSize);
     if (err != cudaSuccess)
     {
-        LOG_ERROR("CUDA memory allocation error of size: " << sizeof(uchar) * maxBatchSize * 3 * 3);
-        throw std::runtime_error("CUDA memory allocation error!");
+        LOG_ERROR("CUDA memory allocation error of size: " << kernelSize);
+        throw LegacyCudaAllocationError("CUDA memory allocation error!");
     }
 
-    int    erows      = (maxShape.h + 2);
-    int    ecols      = (maxShape.w + 2);
-    size_t buffersize = sizeof(int) * (REDUCE_GRID_SIZE * maxBatchSize + 1)
-                      + maxBatchSize * erows * ecols * 1 * (sizeof(float) + sizeof(unsigned char) * 3);
-    err = cudaMalloc(&m_workspace, buffersize);
+    size_t buffersize = ComputeInpaintWorkspaceSize(maxBatchSize, maxShape, REDUCE_GRID_SIZE);
+    err               = cudaMalloc(&m_workspace, buffersize);
     if (err != cudaSuccess)
     {
         cudaFree(m_kernel_ptr);
         LOG_ERROR("CUDA memory allocation error of size: " << buffersize);
-        throw std::runtime_error("CUDA memory allocation error!");
+        throw LegacyCudaAllocationError("CUDA memory allocation error!");
     }
 }
 
@@ -620,11 +683,13 @@ ErrorCode Inpaint::infer(const TensorDataStridedCuda &inData, const TensorDataSt
 {
     DataFormat in_format    = GetLegacyDataFormat(inData.layout());
     DataType   in_data_type = GetLegacyDataType(inData.dtype());
-    if (!(in_format == kNHWC || in_format == kHWC))
+    if (!IsSupportedInpaintFormat(in_format))
     {
-        LOG_ERROR("Invalid input DataFormat " << in_format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
+        LOG_ERROR("Invalid input DataFormat " << in_format
+                                              << ", the valid DataFormats are: \"NHWC\", \"HWC\", \"NCHW\", \"CHW\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
+    const bool isPlanar = IsPlanarFormat(in_format);
 
     if (!(in_data_type == kCV_8U || in_data_type == kCV_32S || in_data_type == kCV_32F))
     {
@@ -641,12 +706,23 @@ ErrorCode Inpaint::infer(const TensorDataStridedCuda &inData, const TensorDataSt
         LOG_ERROR("Invalid input channel number " << in_channels);
         return ErrorCode::INVALID_DATA_SHAPE;
     }
+    if (isPlanar && in_channels == 2)
+    {
+        LOG_ERROR("2-channel planar Inpaint is unsupported");
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
 
     DataFormat out_format    = GetLegacyDataFormat(outData.layout());
     DataType   out_data_type = GetLegacyDataType(outData.dtype());
-    if (!(out_format == kNHWC || out_format == kHWC))
+    if (!IsSupportedInpaintFormat(out_format))
     {
-        LOG_ERROR("Invalid output DataFormat " << out_format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
+        LOG_ERROR("Invalid output DataFormat " << out_format
+                                               << ", the valid DataFormats are: \"NHWC\", \"HWC\", \"NCHW\", \"CHW\"");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
+    if (IsPlanarFormat(out_format) != isPlanar)
+    {
+        LOG_ERROR("Input and output must both be interleaved or both planar");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
@@ -684,10 +760,10 @@ ErrorCode Inpaint::infer(const TensorDataStridedCuda &inData, const TensorDataSt
     typedef ErrorCode (*inpaint_t)(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &mask,
                                    const TensorDataStridedCuda &outData, void *workspace, unsigned char *kernel_ptr,
                                    int range, bool &init_flag, int batch, int height, int width, int channel,
-                                   int maxBatchSize, cudaStream_t stream);
+                                   int maxBatchSize, bool isPlanar, cudaStream_t stream);
 
     static const inpaint_t funcs[6] = {
-        inpaint_helper<unsigned char>, inpaint_helper<char>, 0, 0, inpaint_helper<int>, inpaint_helper<float>,
+        inpaint_helper<unsigned char>, 0, 0, 0, inpaint_helper<int>, inpaint_helper<float>,
 
     };
     int range = (int)std::round(inpaintRadius);
@@ -695,7 +771,7 @@ ErrorCode Inpaint::infer(const TensorDataStridedCuda &inData, const TensorDataSt
     range     = std::min(range, 100);
     return funcs[in_data_type](inData, masks, outData, m_workspace, m_kernel_ptr, range, m_init_dilate,
                                inAccess->numSamples(), inAccess->numRows(), inAccess->numCols(), in_channels,
-                               m_maxBatchSize, stream);
+                               m_maxBatchSize, isPlanar, stream);
 }
 
 } // namespace nvcv::legacy::cuda_op

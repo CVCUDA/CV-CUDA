@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -54,23 +54,24 @@ NVCV_TEST_SUITE_P(TensorDataUtils, test::ValueList<int, int, int, uint8_t, nvcv:
     {     2,      2,         2,         2, nvcv::FMT_BGRAf32p},
     {     2,      7,         2,         2, nvcv::FMT_F64},
     {     3,      5,         3,         2, nvcv::FMT_RGBA8},
+    {     2,      7,         2,         2, nvcv::FMT_F16},
 });
 
 // clang-format on
 
 template<typename DT>
-static void compareTensor(nvcv::Tensor &tensor, DT fillVal)
+static void compareTensor(const nvcv::Tensor &tensor, DT fillVal)
 {
     auto            ac       = nvcv::TensorDataAccessStrided::Create(tensor.exportData());
-    int             elements = ac->sampleStride() / sizeof(DT);
+    auto            elements = static_cast<int>(ac->sampleStride() / sizeof(DT));
     std::vector<DT> goldVec(elements, static_cast<DT>(fillVal));
     for (int i = 0; i < ac->numSamples(); ++i)
     {
         std::vector<DT> readVec(elements);
         if (cudaMemcpy(readVec.data(), ac->sampleData(i), ac->sampleStride(), cudaMemcpyDeviceToHost) != cudaSuccess)
-            throw std::runtime_error("CudaMemcpy failed");
+            throw util::TensorDataUtilsError("CudaMemcpy failed");
         if (goldVec != readVec)
-            throw std::runtime_error("Vectors not equal");
+            throw util::TensorDataUtilsError("Vectors not equal");
     }
     return;
 }
@@ -81,17 +82,17 @@ template<typename DT>
 static void GetSetTensor(const nvcv::Tensor &tensor)
 {
     auto                          ac          = nvcv::TensorDataAccessStrided::Create(tensor.exportData());
-    int                           numElements = ac->sampleStride() / sizeof(DT);
+    auto                          numElements = static_cast<int>(ac->sampleStride() / sizeof(DT));
     std::vector<DT>               vec(numElements);
     std::default_random_engine    rng;
     std::uniform_int_distribution rand;
-    generate(vec.begin(), vec.end(), [&rng, &rand] { return rand(rng); });
+    std::ranges::generate(vec, [&rng, &rand] { return rand(rng); });
 
     std::vector<DT> vecOut(numElements, 0);
     util::SetTensorFromVector<DT>(tensor.exportData(), vec);
     util::GetVectorFromTensor<DT>(tensor.exportData(), 0, vecOut);
     if (vec != vecOut)
-        throw std::runtime_error("Vectors not equal");
+        throw util::TensorDataUtilsError("Vectors not equal");
 
     return;
 }
@@ -103,11 +104,11 @@ static void setGetTensorImage(const nvcv::Tensor &tensor)
 {
     auto                          ac              = nvcv::TensorDataAccessStridedImage::Create(tensor.exportData());
     int                           numElements     = ac->numCols() * ac->numRows() * ac->numChannels();
-    int                           numElementsFull = ac->sampleStride() / sizeof(DT);
+    auto                          numElementsFull = static_cast<int>(ac->sampleStride() / sizeof(DT));
     std::vector<DT>               vec(numElements, 0);
     std::default_random_engine    rng;
     std::uniform_int_distribution rand;
-    generate(vec.begin(), vec.end(), [&rng, &rand] { return rand(rng); });
+    std::ranges::generate(vec, [&rng, &rand] { return rand(rng); });
     std::vector<DT> vecOutImage(numElements, 0);
 
     std::vector<DT> vecImageOriginal(numElements, 0);
@@ -124,16 +125,42 @@ static void setGetTensorImage(const nvcv::Tensor &tensor)
     util::GetImageVectorFromTensor<DT>(tensor.exportData(), 0, vecOutImage);
 
     if (vec != vecOutImage)
-        throw std::runtime_error(
+        throw util::TensorDataUtilsError(
             "Vectors not equal vector out image does note contain the same data as the input vector");
 
     util::SetImageTensorFromVector<DT>(tensor.exportData(), vecImageOriginal);
     util::GetVectorFromTensor<DT>(tensor.exportData(), 0, vecOutFull);
 
     if (vecOriginal != vecOutFull)
-        throw std::runtime_error("Vectors not equal, vector not restored to original state");
+        throw util::TensorDataUtilsError("Vectors not equal, vector not restored to original state");
 
     return;
+}
+
+template<typename DT>
+static void checkPixelRange(util::TensorImageData &img, int x, int y, DT lowBound, DT highBound)
+{
+    for (int c = 0; c < img.numC(); c++)
+    {
+        DT value = *img.item<DT>(x, y, c);
+        //note floats are [a,b), while ints are (a,b) but this should be sufficient
+        if (value < lowBound || value > highBound)
+        {
+            throw util::TensorDataUtilsError("Value out of bounds");
+        }
+    }
+}
+
+template<typename DT>
+static void checkImageRange(util::TensorImageData &img, DT lowBound, DT highBound)
+{
+    for (int x = 0; x < img.size().w; x++)
+    {
+        for (int y = 0; y < img.size().h; y++)
+        {
+            checkPixelRange(img, x, y, lowBound, highBound);
+        }
+    }
 }
 
 template<typename DT>
@@ -145,17 +172,7 @@ static void checkRndRange(const nvcv::Tensor &tensor, DT lowBound, DT highBound)
     {
         util::TensorImageData img(tensor.exportData(), sample);
 
-        for (int x = 0; x < img.size().w; x++)
-            for (int y = 0; y < img.size().h; y++)
-                for (int c = 0; c < img.numC(); c++)
-                {
-                    DT value = *img.item<DT>(x, y, c);
-                    //note floats are [a,b), while ints are (a,b) but this should be sufficient
-                    if (value < lowBound || value > highBound)
-                    {
-                        throw std::runtime_error("Value out of bounds");
-                    }
-                }
+        checkImageRange(img, lowBound, highBound);
     }
     return;
 }
@@ -238,10 +255,10 @@ TEST_P(TensorDataUtils, SetGetTensorToFromByteVector)
     std::uniform_int_distribution rand(0u, 255u);
 
     // Test the CHW/HWC tensors
-    for (int i = 0; i < number; ++i)
+    for (int i = 0; i < number; ++i) // NOSONAR
     {
         std::vector<nvcv::Byte> imageVec((width * height) * bytesPerPixel);
-        std::generate(imageVec.begin(), imageVec.end(), [&]() { return (nvcv::Byte)rand(randEng); });
+        std::ranges::generate(imageVec, [&rand, &randEng]() { return (nvcv::Byte)rand(randEng); });
         std::vector<nvcv::Byte> outVec((width * height) * bytesPerPixel);
         EXPECT_NO_THROW(util::SetImageTensorFromByteVector(tensor.exportData(), imageVec, i));
         EXPECT_NO_THROW(util::GetImageByteVectorFromTensor(tensor.exportData(), i, outVec));
@@ -261,40 +278,40 @@ TEST_P(TensorDataUtils, SetGetTensorFromImageVector)
     nvcv::Tensor tensor(number, {width, height}, fmt);
     // Just put in some random data
     EXPECT_NO_THROW(util::SetTensorToRandomValue<uint8_t>(tensor.exportData(), 0, 0xFF));
-    switch (fmt)
+    switch (static_cast<NVCVImageFormat>(fmt))
     {
-    case nvcv::FMT_BGR8:
-    case nvcv::FMT_RGBA8:
-    case nvcv::FMT_BGRA8:
-    case nvcv::FMT_BGR8p:
-    case nvcv::FMT_RGB8p:
-    case nvcv::FMT_RGBA8p:
-    case nvcv::FMT_BGRA8p:
+    case static_cast<NVCVImageFormat>(nvcv::FMT_BGR8):
+    case static_cast<NVCVImageFormat>(nvcv::FMT_RGBA8):
+    case static_cast<NVCVImageFormat>(nvcv::FMT_BGRA8):
+    case static_cast<NVCVImageFormat>(nvcv::FMT_BGR8p):
+    case static_cast<NVCVImageFormat>(nvcv::FMT_RGB8p):
+    case static_cast<NVCVImageFormat>(nvcv::FMT_RGBA8p):
+    case static_cast<NVCVImageFormat>(nvcv::FMT_BGRA8p):
     {
         EXPECT_NO_THROW(setGetTensorImage<uint8_t>(tensor));
         break;
     }
 
-    case nvcv::FMT_U32:
+    case static_cast<NVCVImageFormat>(nvcv::FMT_U32):
     {
         EXPECT_NO_THROW(setGetTensorImage<uint32_t>(tensor));
         break;
     }
 
-    case nvcv::FMT_RGBf32:
-    case nvcv::FMT_BGRf32:
-    case nvcv::FMT_RGBAf32:
-    case nvcv::FMT_BGRAf32:
-    case nvcv::FMT_RGBf32p:
-    case nvcv::FMT_BGRf32p:
-    case nvcv::FMT_RGBAf32p:
-    case nvcv::FMT_BGRAf32p:
+    case static_cast<NVCVImageFormat>(nvcv::FMT_RGBf32):
+    case static_cast<NVCVImageFormat>(nvcv::FMT_BGRf32):
+    case static_cast<NVCVImageFormat>(nvcv::FMT_RGBAf32):
+    case static_cast<NVCVImageFormat>(nvcv::FMT_BGRAf32):
+    case static_cast<NVCVImageFormat>(nvcv::FMT_RGBf32p):
+    case static_cast<NVCVImageFormat>(nvcv::FMT_BGRf32p):
+    case static_cast<NVCVImageFormat>(nvcv::FMT_RGBAf32p):
+    case static_cast<NVCVImageFormat>(nvcv::FMT_BGRAf32p):
     {
         EXPECT_NO_THROW(setGetTensorImage<float>(tensor));
         break;
     }
 
-    case nvcv::FMT_F64:
+    case static_cast<NVCVImageFormat>(nvcv::FMT_F64):
 
     {
         EXPECT_NO_THROW(setGetTensorImage<double>(tensor));
@@ -355,7 +372,7 @@ TEST(TensorDataUtils, SetCvImageData)
     EXPECT_NO_THROW(
         util::SetCvDataTo<uint8_t>(cvTensor, 0xFF, region, util::chflags::C0 | util::chflags::C2 | util::chflags::C3));
 
-    uint8_t *dataPtr = cvTensor.getVector().data();
+    const uint8_t *dataPtr = cvTensor.getVector().data();
     //1st Col
     EXPECT_EQ(*dataPtr, 0xFF);
     dataPtr += sizeof(uint8_t);
@@ -412,22 +429,24 @@ TEST(TensorDataUtils, SetCvImageDataP)
     EXPECT_NO_THROW(
         util::SetCvDataTo<float>(cvTensorFp, .5f, region, util::chflags::C0 | util::chflags::C2 | util::chflags::C3));
 
-    float *dataPtr = (float *)cvTensorFp.getVector().data();
+    const auto *dataPtr = static_cast<const float *>(static_cast<const void *>(cvTensorFp.getVector().data()));
     EXPECT_EQ(*dataPtr, .5f);
     EXPECT_EQ(*(dataPtr + cvTensorFp.planeStride() / sizeof(float)), 1.0f);
     EXPECT_EQ(*(dataPtr + 2 * cvTensorFp.planeStride() / sizeof(float)), .5f);
     EXPECT_EQ(*(dataPtr + 3 * cvTensorFp.planeStride() / sizeof(float)), .5f);
 
     // last col should be 1.0
-    float *lastCol = (float *)(cvTensorFp.getVector().data() + (cvTensorFp.size().w - 1) * sizeof(float));
+    const auto *lastCol = static_cast<const float *>(
+        static_cast<const void *>(cvTensorFp.getVector().data() + (cvTensorFp.size().w - 1) * sizeof(float)));
     EXPECT_EQ(*lastCol, 1.0f);
     EXPECT_EQ(*(lastCol + cvTensorFp.planeStride() / sizeof(float)), 1.0f);
     EXPECT_EQ(*(lastCol + 2 * cvTensorFp.planeStride() / sizeof(float)), 1.0f);
     EXPECT_EQ(*(lastCol + 3 * cvTensorFp.planeStride() / sizeof(float)), 1.0f);
 
     // last row should be 1.0
-    float *lastRow = (float *)(cvTensorFp.getVector().data() + (cvTensorFp.size().h - 1) * cvTensorFp.rowStride());
-    EXPECT_EQ((float)*lastRow, 1.0f);
+    const auto *lastRow = static_cast<const float *>(
+        static_cast<const void *>(cvTensorFp.getVector().data() + (cvTensorFp.size().h - 1) * cvTensorFp.rowStride()));
+    EXPECT_EQ(*lastRow, 1.0f);
     EXPECT_EQ(*(lastRow + cvTensorFp.planeStride() / sizeof(float)), 1.0f);
     EXPECT_EQ(*(lastRow + 2 * cvTensorFp.planeStride() / sizeof(float)), 1.0f);
     EXPECT_EQ(*(lastRow + 3 * cvTensorFp.planeStride() / sizeof(float)), 1.0f);

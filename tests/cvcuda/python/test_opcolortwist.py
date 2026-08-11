@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,14 +14,15 @@
 # limitations under the License.
 
 import cvcuda
-import pytest as t
+import pytest
 import cvcuda_util as util
 import numpy as np
+import cvcuda_tools as cv_tools
 
 RNG = np.random.default_rng(12345)
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "src_args, twist_args",
     [
         (
@@ -102,7 +103,7 @@ def test_op_remap_api(src_args, twist_args):
     assert t_tmp is t_dst
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "num_images, dtype, max_size, twist_args",
     [
         (4, np.uint8, (73, 98), ((3,), cvcuda.Type._4F32, "HW")),
@@ -143,3 +144,40 @@ def test_op_colortwistvarshape_api(num_images, dtype, max_size, twist_args):
         stream=stream,
     )
     assert b_dst is b_tmp
+
+
+def _colortwist_params(dtype, layout, channels):
+    twist_dtype = cvcuda.Type.F32
+    if dtype in {cvcuda.Type.U32, cvcuda.Type.S32}:
+        twist_dtype = cvcuda.Type.F64
+    return {"twist": cvcuda.Tensor((3, 4), twist_dtype, "HW")}
+
+
+def _colortwist_varshape_params(dtype, layout, channels):
+    np_dtype = np.float64 if dtype in {cvcuda.Type.U32, cvcuda.Type.S32} else np.float32
+    twist_data = np.zeros((2, 3, 4), dtype=np_dtype)
+    for i in range(3):
+        twist_data[:, i, i] = 1.0
+    return {"twist": util.to_cvcuda_tensor(twist_data, "NHW")}
+
+
+globals().update(
+    cv_tools.make_op_tests(
+        name="colortwist",
+        runner_info=[
+            ("tensor", cvcuda.color_twist, _colortwist_params),
+            ("image_batch", cvcuda.color_twist, _colortwist_varshape_params),
+        ],
+        keystone_dlc=(cvcuda.Type.U8, "NHWC", 3),
+        supported_dtypes={
+            cvcuda.Type.U8,
+            cvcuda.Type.U16,
+            cvcuda.Type.S16,
+            cvcuda.Type.U32,
+            cvcuda.Type.S32,
+            cvcuda.Type.F32,
+        },
+        supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
+        supported_channels={3, 4},
+    )
+)

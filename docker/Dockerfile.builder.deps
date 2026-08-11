@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,7 +17,7 @@
 ##  Build CV-CUDA builder dependencies on top of manylinux_2_28
 ##  CV-CUDA builder images are based on manylinux_2_28, official page https://github.com/pypa/manylinux
 #########################################################################################
-ARG FROM_IMAGE_NAME=quay.io/pypa/manylinux_2_28_x86_64:latest
+ARG FROM_IMAGE_NAME=quay.io/pypa/manylinux_2_28_x86_64:2026.05.27-1
 ARG CUDA_IMAGE=scratch
 ARG BUILDER_EXTRA_DEPS=scratch
 ARG BUILDER_CUDA_EXTRA_DEPS=scratch
@@ -26,49 +26,70 @@ FROM ${BUILDER_EXTRA_DEPS:-scratch} AS extra_deps
 FROM ${CUDA_IMAGE:-scratch} AS cuda
 FROM ${FROM_IMAGE_NAME:-quay.io/pypa/manylinux_2_28_x86_64:latest}
 
+ARG PYTHON_VERSIONS="3.10 3.11 3.12 3.13 3.14"
 ARG CMAKE_VERSION=3.24.3
+ARG CCACHE_VERSION=4.13.6
+ARG CCACHE_SHA256_X86_64=09e0547a0c3b250a76675c33130366f1399f3580842fb360c052520d56214ead
+ARG CCACHE_SHA256_AARCH64=bff0e0c19165db8627c85c36b0885b3b180659eda67a028298d26565aad52f56
 ARG CC=gcc
 ARG CXX=g++
 
 # Enable gcc-toolset-10 (AlmaLinux 8 / manylinux_2_28)
 ENV PATH=/opt/rh/gcc-toolset-10/root/usr/bin:${PATH} \
     LD_LIBRARY_PATH=/opt/rh/gcc-toolset-10/root/usr/lib64:/opt/rh/gcc-toolset-10/root/usr/lib:${LD_LIBRARY_PATH:-} \
-    MANPATH=/opt/rh/gcc-toolset-10/root/usr/share/man:${MANPATH:-}
+    MANPATH=/opt/rh/gcc-toolset-10/root/usr/share/man
 
 # Detect architecture and install CMake
-RUN export CMAKE_VERSION=${CMAKE_VERSION} \
+RUN export CMAKE_VERSION="${CMAKE_VERSION}" \
       && ARCH=$(uname -m) \
       && echo "Detected architecture: ${ARCH}" \
       && echo "Downloading CMake ${CMAKE_VERSION} for ${ARCH}..." \
-      && wget https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-${ARCH}.sh \
-        -O /tmp/cmake-install.sh \
+      && curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
+        "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-${ARCH}.sh" \
+        --output /tmp/cmake-install.sh \
       && echo "Download completed, verifying file..." \
       && ls -lh /tmp/cmake-install.sh \
       && chmod u+x /tmp/cmake-install.sh \
-      && mkdir -p /opt/cmake-${CMAKE_VERSION} \
+      && mkdir -p "/opt/cmake-${CMAKE_VERSION}" \
       && echo "Running CMake installer..." \
-      && sh /tmp/cmake-install.sh --skip-license --prefix=/opt/cmake-${CMAKE_VERSION} \
+      && sh /tmp/cmake-install.sh --skip-license --prefix="/opt/cmake-${CMAKE_VERSION}" \
       && echo "CMake installation completed" \
       && rm -f /tmp/cmake-install.sh \
       && rm -f /usr/local/bin/*cmake* \
       && rm -f /usr/local/bin/cpack \
       && rm -f /usr/local/bin/ctest \
-      && for file in /opt/cmake-${CMAKE_VERSION}/bin/*; do \
+      && for file in "/opt/cmake-${CMAKE_VERSION}"/bin/*; do \
            if [ -f "$file" ]; then \
              ln -s "$file" /usr/local/bin/; \
            fi; \
-         done
+         done \
+      && yum install -y epel-release almalinux-release-devel \
+      && yum install -y --enablerepo=powertools,devel \
+                        git-lfs openssl-devel openssl-static \
+                        ninja-build dejavu-sans-fonts
 
-# build dependencies
-RUN curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.rpm.sh | bash \
-    && yum install -y epel-release almalinux-release-devel \
-    && yum install -y --enablerepo=powertools,devel \
-                      git-lfs openssl-devel openssl-static \
-                      ninja-build ccache dejavu-sans-fonts
+# Install ccache from upstream static binaries; distro packages are ccache 3.x,
+# which lacks nvcc support (added in ccache 4.4)
+RUN ARCH=$(uname -m) \
+    && case "$ARCH" in \
+         x86_64) CCACHE_SHA256="$CCACHE_SHA256_X86_64" ;; \
+         aarch64) CCACHE_SHA256="$CCACHE_SHA256_AARCH64" ;; \
+         *) echo "Unsupported architecture: $ARCH" >&2 && exit 1 ;; \
+       esac \
+    && curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
+        "https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-linux-${ARCH}-musl-static.tar.gz" \
+        --output /tmp/ccache.tar.gz \
+    && echo "${CCACHE_SHA256}  /tmp/ccache.tar.gz" | sha256sum -c - \
+    && tar -xzf /tmp/ccache.tar.gz -C /tmp \
+    && install -m 755 "/tmp/ccache-${CCACHE_VERSION}-linux-${ARCH}-musl-static/ccache" /usr/local/bin/ccache \
+    && rm -rf /tmp/ccache.tar.gz "/tmp/ccache-${CCACHE_VERSION}-linux-${ARCH}-musl-static" \
+    && ccache --version
 
 # Build and install zlib 1.3.1 from source to replace vulnerable system version (CVE-2018-25032)
 # Remove any old system zlib artifacts and install new version to /usr/local
-RUN curl -L https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz -o /tmp/zlib-1.3.1.tar.gz \
+RUN curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
+        https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz \
+        --output /tmp/zlib-1.3.1.tar.gz \
     && tar -xzf /tmp/zlib-1.3.1.tar.gz -C /tmp \
     && cd /tmp/zlib-1.3.1 \
     && ./configure --prefix=/usr/local \
@@ -78,18 +99,38 @@ RUN curl -L https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.t
     && rm -rf /tmp/zlib-1.3.1* \
     && ldconfig
 
-# Python
-ARG PYVER=3.9
-ARG PYV=39
+# Install dlpack headers and CMake config from source (header-only library)
+RUN git clone --depth 1 --branch v1.3 https://github.com/dmlc/dlpack.git /tmp/dlpack \
+    && cmake -S /tmp/dlpack -B /tmp/dlpack/build -DBUILD_MOCK=OFF -DBUILD_DOCS=OFF \
+    && cmake --install /tmp/dlpack/build --prefix /usr/local \
+    && rm -rf /tmp/dlpack
+
+# Install googletest from source (not available as a recent package on manylinux/AlmaLinux 8)
+RUN git clone --depth 1 --branch v1.14.0 https://github.com/google/googletest.git /tmp/googletest \
+    && cmake -S /tmp/googletest -B /tmp/googletest/build \
+        -DBUILD_GMOCK=ON -DINSTALL_GTEST=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+    && cmake --build /tmp/googletest/build --parallel $(nproc) \
+    && cmake --install /tmp/googletest/build --prefix /usr/local \
+    && rm -rf /tmp/googletest
+
+# Python — PYTHON_VERSIONS controls which versions are set up (same pattern as Dockerfile.devel.deps)
+# PYVER/PYV select the default Python symlinked to /opt/python/v
+# NOTE: Update the ENV PATH/LD_LIBRARY_PATH/LIBRARY_PATH below when changing PYTHON_VERSIONS
+ARG PYVER=3.10
+ARG PYV=310
 
 ENV PYVER=${PYVER} PYV=${PYV} PYTHONPATH=/opt/python/v
 ENV PYBIN=${PYTHONPATH}/bin \
     PYLIB=${PYTHONPATH}/lib
 
-ENV PATH=/opt/python/cp39-cp39/bin:/opt/python/cp310-cp310/bin:/opt/python/cp311-cp311/bin:/opt/python/cp312-cp312/bin:/opt/python/cp313-cp313/bin:/opt/python/cp313-cp313t/bin:/opt/python/cp314-cp314/bin:${PYBIN}:${PATH} \
-    LD_LIBRARY_PATH=/usr/local/lib:/opt/python/cp39-cp39/lib:/opt/python/cp310-cp310/lib:/opt/python/cp311-cp311/lib:/opt/python/cp312-cp312/lib:/opt/python/cp313-cp313/lib:/opt/python/cp313-cp313t/lib:/opt/python/cp314-cp314/lib:${PYLIB}:${LD_LIBRARY_PATH:-} \
-    LIBRARY_PATH=/usr/local/lib:/opt/python/cp39-cp39/lib:/opt/python/cp310-cp310/lib:/opt/python/cp311-cp311/lib:/opt/python/cp312-cp312/lib:/opt/python/cp313-cp313/lib:/opt/python/cp313-cp313t/lib:/opt/python/cp314-cp314/lib:${PYLIB}:${LIBRARY_PATH:-}
+# Manylinux Python paths — must list all versions from PYTHON_VERSIONS
+# Free-threaded variants (cp313t, cp314t) are intentionally excluded; add them here
+# and to PYTHON_VERSIONS if free-threaded support is needed in the future.
+ENV PATH=/opt/python/cp310-cp310/bin:/opt/python/cp311-cp311/bin:/opt/python/cp312-cp312/bin:/opt/python/cp313-cp313/bin:/opt/python/cp314-cp314/bin:${PYBIN}:${PATH} \
+    LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/lib:/opt/python/cp310-cp310/lib:/opt/python/cp311-cp311/lib:/opt/python/cp312-cp312/lib:/opt/python/cp313-cp313/lib:/opt/python/cp314-cp314/lib:${PYLIB}:${LD_LIBRARY_PATH:-} \
+    LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/lib:/opt/python/cp310-cp310/lib:/opt/python/cp311-cp311/lib:/opt/python/cp312-cp312/lib:/opt/python/cp313-cp313/lib:/opt/python/cp314-cp314/lib:${PYLIB}
 
+# Symlink default Python version
 RUN echo "Looking for Python directories in /opt/python:" && \
     ls -la /opt/python/ && \
     echo "Searching for cp${PYV}* pattern:" && \
@@ -100,7 +141,8 @@ RUN echo "Looking for Python directories in /opt/python:" && \
         ln -s "$PYTHON_DIR" /opt/python/v; \
     else \
         echo "No Python directory found matching cp${PYV}*, trying alternative patterns..." && \
-        PYTHON_DIR=$(find /opt/python -name "*python*" \( -type d -o -type l \) | grep -E "cp${PYV}|python${PYV}" | head -1) && \
+        PYTHON_DIR=$(find /opt/python -name "*python*" \( -type d -o -type l \) \
+            | grep -E "cp${PYV}|python${PYV}" | head -1) && \
         if [ -n "$PYTHON_DIR" ]; then \
             echo "Found alternative Python directory: $PYTHON_DIR" && \
             ln -s "$PYTHON_DIR" /opt/python/v; \
@@ -112,12 +154,92 @@ RUN echo "Looking for Python directories in /opt/python:" && \
         fi; \
     fi
 
-# install pip packages needed only for the system python
-COPY requirements.sys_python.txt /tmp/requirements.sys_python.txt
-RUN python -m pip install --break-system-packages --force-reinstall -r /tmp/requirements.sys_python.txt && \
-    rm -rf /root/.cache/pip /tmp/requirements.sys_python.txt
+# install build/packaging/linting packages for the system python
+COPY requirements.build.sys_python.txt /tmp/requirements.build.sys_python.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip install --break-system-packages --force-reinstall -r /tmp/requirements.build.sys_python.txt && \
+    rm -rf /tmp/requirements.build.sys_python.txt
+
+# install documentation packages for the system python
+COPY requirements.docs.txt /tmp/requirements.docs.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip install --break-system-packages --force-reinstall -r /tmp/requirements.docs.txt && \
+    rm -rf /tmp/requirements.docs.txt
+
+# install build dependencies for all specified Python versions (needed for CMake find_package)
+COPY requirements.build.all_pythons.txt /tmp/requirements.build.all_pythons.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    set -e; \
+    for pyver in $PYTHON_VERSIONS; do \
+        cpver="cp$(echo "$pyver" | tr -d '.')"; \
+        pydir="/opt/python/${cpver}-${cpver}"; \
+        if [ -d "$pydir" ]; then \
+            echo "Installing build packages for Python $pyver ($pydir)"; \
+            "$pydir/bin/pip" install -r /tmp/requirements.build.all_pythons.txt; \
+        else \
+            echo "ERROR: No manylinux directory found at $pydir" && exit 1; \
+        fi; \
+    done && \
+    rm -f /tmp/requirements.build.all_pythons.txt
+
+# install test dependencies for all specified Python versions
+COPY requirements.tests.common.txt /tmp/requirements.tests.common.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    set -e; \
+    for pyver in $PYTHON_VERSIONS; do \
+        cpver="cp$(echo "$pyver" | tr -d '.')"; \
+        pydir="/opt/python/${cpver}-${cpver}"; \
+        if [ -d "$pydir" ]; then \
+            echo "Installing test packages for Python $pyver ($pydir)"; \
+            "$pydir/bin/pip" install -r /tmp/requirements.tests.common.txt; \
+        else \
+            echo "ERROR: No manylinux directory found at $pydir" && exit 1; \
+        fi; \
+    done && \
+    rm -f /tmp/requirements.tests.common.txt
+
+# install numpy for all specified Python versions
+# - Needed at wheel-build time: pybind11_stubgen imports cvcuda, and
+#   _cvcuda.so pulls numpy via pybind11's npy_api at module init.
+# - At end-user runtime the wheel declares numpy as an install_requires
+#   so pip pulls it transparently; this install is purely build-time.
+COPY requirements.tests.numpy2.txt /tmp/requirements.tests.numpy.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    set -e; \
+    for pyver in $PYTHON_VERSIONS; do \
+        cpver="cp$(echo "$pyver" | tr -d '.')"; \
+        pydir="/opt/python/${cpver}-${cpver}"; \
+        if [ -d "$pydir" ]; then \
+            echo "Installing numpy for Python $pyver ($pydir)"; \
+            "$pydir/bin/pip" install -r /tmp/requirements.tests.numpy.txt; \
+        else \
+            echo "ERROR: No manylinux directory found at $pydir" && exit 1; \
+        fi; \
+    done && \
+    rm -f /tmp/requirements.tests.numpy.txt
 
 RUN ldconfig
+
+# Verify critical packages are installed and importable for all Python versions
+ARG PYTHON_VERSIONS
+RUN set -e; \
+    for pyver in $PYTHON_VERSIONS; do \
+        cpver="cp$(echo "$pyver" | tr -d '.')"; \
+        pydir="/opt/python/${cpver}-${cpver}"; \
+        if [ ! -d "$pydir" ]; then \
+            echo "VERIFY FAILED: No directory found at $pydir" && exit 1; \
+        fi; \
+        echo "Verifying Python $pyver ($pydir)..."; \
+        "$pydir/bin/python" -c "import pybind11; print(f'  pybind11 {pybind11.__version__}')" || \
+            { echo "VERIFY FAILED: pybind11 not importable for Python $pyver" && exit 1; }; \
+        "$pydir/bin/python" -c "import pybind11_stubgen" || \
+            { echo "VERIFY FAILED: pybind11_stubgen not importable for Python $pyver" && exit 1; }; \
+        "$pydir/bin/python" -c "import pytest; print(f'  pytest {pytest.__version__}')" || \
+            { echo "VERIFY FAILED: pytest not importable for Python $pyver" && exit 1; }; \
+        "$pydir/bin/python" -c "import numpy; print(f'  numpy {numpy.__version__}')" || \
+            { echo "VERIFY FAILED: numpy not importable for Python $pyver" && exit 1; }; \
+    done; \
+    echo "All Python versions verified successfully"
 
 # extra deps
 COPY --from=extra_deps / /
@@ -129,6 +251,24 @@ ENV NVIDIA_DRIVER_CAPABILITIES=video,compute,utility
 
 # CUDA
 COPY --from=cuda /usr/local/cuda /usr/local/cuda
+
+# Install cupy and CUDA Python test dependencies from requirements file
+# Uses ${cpver}-${cpver} pattern to match standard builds only (excludes free-threaded cp3XXt)
+COPY requirements.tests.cu12.txt requirements.tests.cu13.txt /tmp/
+RUN --mount=type=cache,target=/root/.cache/pip \
+    CUDA_MAJOR=$(/usr/local/cuda/bin/nvcc --version | grep -oP 'release \K[0-9]+') && \
+    set -e; \
+    for pyver in $PYTHON_VERSIONS; do \
+        cpver="cp$(echo "$pyver" | tr -d '.')"; \
+        pydir="/opt/python/${cpver}-${cpver}"; \
+        if [ -d "$pydir" ]; then \
+            echo "Installing cupy test deps for Python $pyver ($pydir)"; \
+            "$pydir/bin/pip" install -r "/tmp/requirements.tests.cu${CUDA_MAJOR}.txt"; \
+        else \
+            echo "WARNING: No manylinux directory found at $pydir, skipping"; \
+        fi; \
+    done && \
+    rm -f /tmp/requirements.tests.cu*.txt
 
 # extra deps
 COPY --from=cuda_extra_deps / /

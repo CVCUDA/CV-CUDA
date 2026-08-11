@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,7 @@
  */
 
 #include "Operators.hpp"
+#include "VarShapeUtils.hpp"
 
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
@@ -48,7 +49,8 @@ ImageBatchVarShape Conv2DVarShapeInto(ImageBatchVarShape &output, ImageBatchVarS
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*conv2D});
 
-    conv2D->submit(pstream->cudaHandle(), input, output, kernel, kernel_anchor, border);
+    guard.run([&conv2D, &pstream, &input, &output, &kernel, &kernel_anchor, &border]()
+              { conv2D->submit(pstream->cudaHandle(), input, output, kernel, kernel_anchor, border); });
 
     return output;
 }
@@ -56,15 +58,7 @@ ImageBatchVarShape Conv2DVarShapeInto(ImageBatchVarShape &output, ImageBatchVarS
 ImageBatchVarShape Conv2DVarShape(ImageBatchVarShape &input, ImageBatchVarShape &kernel, Tensor &kernel_anchor,
                                   NVCVBorderType border, std::optional<Stream> pstream)
 {
-    ImageBatchVarShape output = ImageBatchVarShape::Create(input.capacity());
-
-    for (int i = 0; i < input.numImages(); ++i)
-    {
-        nvcv::ImageFormat format = input[i].format();
-        nvcv::Size2D      size   = input[i].size();
-        auto              image  = Image::Create(size, format);
-        output.pushBack(image);
-    }
+    ImageBatchVarShape output = CreateSameShapeImageBatch(input);
 
     return Conv2DVarShapeInto(output, input, kernel, kernel_anchor, border, pstream);
 }
@@ -75,14 +69,10 @@ void ExportOpConv2D(py::module &m)
 {
     using namespace pybind11::literals;
 
-    m.def("conv2d", &Conv2DVarShape, "src"_a, "kernel"_a, "kernel_anchor"_a,
+    m.def("conv2d", NvtxTrace("cvcuda.conv2d", &Conv2DVarShape), "src"_a, "kernel"_a, "kernel_anchor"_a,
           "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
         Executes the Convolve 2D operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Convolve 2D operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
@@ -96,19 +86,13 @@ void ExportOpConv2D(py::module &m)
         Returns:
             cvcuda.ImageBatchVarShape: The output image batch.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("conv2d_into", &Conv2DVarShapeInto, "dst"_a, "src"_a, "kernel"_a, "kernel_anchor"_a,
-          "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
+    m.def("conv2d_into", NvtxTrace("cvcuda.conv2d_into", &Conv2DVarShapeInto), "dst"_a, "src"_a, "kernel"_a,
+          "kernel_anchor"_a, "border"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, py::kw_only(), "stream"_a = nullptr,
+          R"pbdoc(
         Executes the Convolve 2D operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Convolve 2D operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.ImageBatchVarShape): Output image batch to store the result of the operation.
@@ -121,11 +105,7 @@ void ExportOpConv2D(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.ImageBatchVarShape: The output image batch (same as dst).
     )pbdoc");
 }
 

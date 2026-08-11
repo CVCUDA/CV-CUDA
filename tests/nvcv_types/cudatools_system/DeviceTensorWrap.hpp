@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,63 +41,106 @@ template<typename T, int N>
 struct Array { // Array extends std::array to add extra properties
     using value_type = T;
     static constexpr int kNumDim           = 1;
-    static constexpr int kStrides[kNumDim] = {sizeof(T)};
-    static constexpr int kShapes[kNumDim]  = {N};
+    static constexpr int kStrides[kNumDim] = {sizeof(T)}; // NOSONAR: test data mirrors C array API.
+    static constexpr int kShapes[kNumDim]  = {N};         // NOSONAR: test data mirrors C array API.
     static constexpr dim3 kBlocks          = {N};
 
     std::array<T, N> m_data;
     T *data() { return m_data.data(); }
     const T *data() const { return m_data.data(); }
     const T& operator[](int i) const { return m_data[i]; }
-    bool operator==(const Array<T, N> &that) const { return m_data == that.m_data; }
+    bool operator==(const Array<T, N> &that) const // NOSONAR: defaulted comparisons are C++20.
+    {
+        return m_data == that.m_data;
+    }
 };
 
 template<typename T, int H, int W>
 struct PackedImage { // PackedImage extends std::array in two dimensions
     using value_type = T;
     static constexpr int kNumDim           = 2;
-    static constexpr int kStrides[kNumDim] = {W * sizeof(T), sizeof(T)};
-    static constexpr int kShapes[kNumDim]  = {H, W};
+    static constexpr int kStrides[kNumDim] = {W * sizeof(T), sizeof(T)}; // NOSONAR: test data mirrors C array API.
+    static constexpr int kShapes[kNumDim]  = {H, W};                    // NOSONAR: test data mirrors C array API.
     static constexpr dim3 kBlocks          = {W, H};
 
     std::array<T, H*W> m_data;
     T *data() { return m_data.data(); }
     const T *data() const { return m_data.data(); }
     const T& operator[](int i) const { return m_data[i]; }
-    bool operator==(const PackedImage<T, H, W> &that) const { return m_data == that.m_data; }
+    bool operator==(const PackedImage<T, H, W> &that) const // NOSONAR: defaulted comparisons are C++20.
+    {
+        return m_data == that.m_data;
+    }
 };
 
 template<typename T, int N, int H, int W>
 struct PackedTensor3D { // PackedTensor3D extends std::array in three dimensions
     using value_type = T;
     static constexpr int kNumDim           = 3;
-    static constexpr int kStrides[kNumDim] = {H * W * sizeof(T), W * sizeof(T), sizeof(T)};
-    static constexpr int kShapes[kNumDim]  = {N, H, W};
+    static constexpr int kStrides[kNumDim] = {H * W * sizeof(T), W * sizeof(T), sizeof(T)}; // NOSONAR
+    static constexpr int kShapes[kNumDim]  = {N, H, W}; // NOSONAR: test data mirrors C array API.
     static constexpr dim3 kBlocks          = {W, H, N};
 
     std::array<T, N*H*W> m_data;
     T *data() { return m_data.data(); }
     const T *data() const { return m_data.data(); }
     const T& operator[](int i) const { return m_data[i]; }
-    bool operator==(const PackedTensor3D<T, N, H, W> &that) const { return m_data == that.m_data; }
+    bool operator==(const PackedTensor3D<T, N, H, W> &that) const // NOSONAR: defaulted comparisons are C++20.
+    {
+        return m_data == that.m_data;
+    }
 };
 
 template<typename T, int N, int H, int W, int C>
 struct PackedTensor4D { // PackedTensor4D extends std::array in four dimensions
     using value_type = T;
     static constexpr int kNumDim           = 4;
-    static constexpr int kStrides[kNumDim] = {H * W * C * sizeof(T), W * C * sizeof(T), C * sizeof(T), sizeof(T)};
-    static constexpr int kShapes[kNumDim]  = {N, H, W, C};
+    static constexpr int kStrides[kNumDim] // NOSONAR: test data mirrors C array API.
+        = {H * W * C * sizeof(T), W * C * sizeof(T), C * sizeof(T), sizeof(T)};
+    static constexpr int kShapes[kNumDim] = {N, H, W, C}; // NOSONAR: test data mirrors C array API.
     static constexpr dim3 kBlocks          = {W, H, N};
 
     std::array<T, N*H*W*C> m_data;
     T *data() { return m_data.data(); }
     const T *data() const { return m_data.data(); }
     const T& operator[](int i) const { return m_data[i]; }
-    bool operator==(const PackedTensor4D<T, N, H, W, C> &that) const { return m_data == that.m_data; }
+    bool operator==(const PackedTensor4D<T, N, H, W, C> &that) const // NOSONAR: defaulted comparisons are C++20.
+    {
+        return m_data == that.m_data;
+    }
 };
 
 // clang-format on
+
+template<typename Func>
+void ForEach4D(int n, int h, int w, int c, Func func)
+{
+    for (int i = 0, total = n * h * w * c; i < total; ++i)
+    {
+        int rest = i;
+        int k    = rest % c;
+        rest /= c;
+        int x = rest % w;
+        rest /= w;
+        int y = rest % h;
+        int b = rest / h;
+
+        func(b, y, x, k);
+    }
+}
+
+template<class InputType>
+int PackedOffset4D(int b, int y, int x, int k)
+{
+    return b * InputType::kShapes[1] * InputType::kShapes[2] * InputType::kShapes[3]
+         + y * InputType::kShapes[2] * InputType::kShapes[3] + x * InputType::kShapes[3] + k;
+}
+
+template<class TensorData>
+auto StridedOffset4D(const TensorData &dev, int b, int y, int x, int k)
+{
+    return b * dev.stride(0) + y * dev.stride(1) + x * dev.stride(2) + k * dev.stride(3);
+}
 
 template<class InputType>
 void DeviceUseTensorWrap(const InputType &);

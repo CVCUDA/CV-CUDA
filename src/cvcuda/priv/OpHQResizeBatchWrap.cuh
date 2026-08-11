@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,6 +19,8 @@
 
 #include "WorkspaceUtil.hpp"
 #include "cvcuda/Workspace.hpp"
+
+#include "OpHQResizePlanar.cuh"
 
 #include <cuda_runtime.h>
 #include <cvcuda/cuda_tools/ImageBatchVarShapeWrap.hpp>
@@ -274,8 +276,8 @@ struct DynamicBatchWrap
     {
         static_assert(1 <= kVariableStrides && kVariableStrides <= 3);
 
-        auto                 sample  = m_samples[sampleIdx];
-        const unsigned char *basePtr = sample.basePtr;
+        auto  sample  = m_samples[sampleIdx];
+        auto *basePtr = sample.basePtr;
 
         if constexpr (kVariableStrides == 1)
         {
@@ -374,23 +376,31 @@ struct ImageBatchVarShapeWrapAdapter
     using TensorWrapT                     = cuda::TensorNDWrap<T, kNumSampleDim, StrideT>;
     static_assert(kVariableStrides == TensorWrapT::kVariableStrides);
 
-    ImageBatchVarShapeWrapAdapter(const nvcv::ImageBatchVarShapeDataStridedCuda &batchData)
+    // channels == 1 (the default) is the interleaved path: sampleIdx maps to image sampleIdx,
+    // plane 0 -- identical to the previous behavior. For planar (multi-plane) batches the kernel
+    // runs over numImages*channels expanded samples and each expanded index decodes to its
+    // {image, plane}, so every channel plane is processed as an independent single-channel image.
+    ImageBatchVarShapeWrapAdapter(const nvcv::ImageBatchVarShapeDataStridedCuda &batchData, int channels = 1)
         : m_batch{cuda::ImageBatchVarShapeWrap<T>{batchData}}
+        , m_channels{channels}
     {
     }
 
     inline __device__ TensorWrapT GetSampleView(const int sampleIdx, const VecI<2> roi) const
     {
-        return TensorWrapT{m_batch.ptr(sampleIdx, 0, roi.y, roi.x), m_batch.rowStride(sampleIdx)};
+        const int2 ip = planar::DecodePlane(sampleIdx, m_channels); // {image, plane}
+        return TensorWrapT{m_batch.ptr(ip.x, ip.y, roi.y, roi.x), m_batch.rowStride(ip.x, ip.y)};
     }
 
     inline __device__ TensorWrapT GetSampleView(const int sampleIdx) const
     {
-        return TensorWrapT{m_batch.ptr(sampleIdx, 0, 0, 0), m_batch.rowStride(sampleIdx)};
+        const int2 ip = planar::DecodePlane(sampleIdx, m_channels); // {image, plane}
+        return TensorWrapT{m_batch.ptr(ip.x, ip.y, 0, 0), m_batch.rowStride(ip.x, ip.y)};
     }
 
 private:
     cuda::ImageBatchVarShapeWrap<T> m_batch;
+    int                             m_channels;
 };
 
 template<typename T, int N, typename StrideT>
@@ -406,7 +416,10 @@ struct TensorBatchWrapAdapter
     static_assert(kVariableStrides == TensorWrapT::kVariableStrides);
     static_assert(kVariableStrides == TensorBatchWrapT::kVariableStrides);
 
-    TensorBatchWrapAdapter(const nvcv::TensorBatchDataStridedCuda &batchData)
+    // The trailing argument exists only to share RunPasses' adapter construction with the
+    // ImageBatchVarShape adapter (which uses it for plane decode). TensorBatch planar is not yet
+    // supported, so it is always 1 here and ignored.
+    TensorBatchWrapAdapter(const nvcv::TensorBatchDataStridedCuda &batchData, int = 1)
         : m_batch{TensorBatchWrapT{batchData}}
     {
     }

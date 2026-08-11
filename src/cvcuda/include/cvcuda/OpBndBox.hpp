@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,6 +34,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class BndBox final : public IOperator
@@ -41,39 +43,36 @@ class BndBox final : public IOperator
 public:
     explicit BndBox();
 
-    ~BndBox();
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                    const NVCVBndBoxesI bboxes) const;
 
-    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const NVCVBndBoxesI bboxes);
-
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline BndBox::BndBox()
 {
-    nvcv::detail::CheckThrow(cvcudaBndBoxCreate(&m_handle));
-    assert(m_handle);
-}
-
-inline BndBox::~BndBox()
-{
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaBndBoxCreate(&h));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void BndBox::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
-                               const NVCVBndBoxesI bboxes)
+                               const NVCVBndBoxesI bboxes) const
 {
-    nvcv::detail::CheckThrow(cvcudaBndBoxSubmit(m_handle, stream, in.handle(), out.handle(), bboxes));
+    nvcv::detail::CheckThrow(cvcudaBndBoxSubmit(m_handle.get(), stream, in.handle(), out.handle(), bboxes));
 }
 
 inline NVCVOperatorHandle BndBox::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA__BND_BOX_HPP

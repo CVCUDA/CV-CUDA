@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "OpMinAreaRect.hpp"
 
+#include "Nvtx.hpp"
 #include "legacy/CvCudaLegacy.h"
 #include "legacy/CvCudaLegacyHelpers.hpp"
 
@@ -28,15 +29,22 @@ namespace cvcuda::priv {
 namespace legacy = nvcv::legacy::cuda_op;
 
 MinAreaRect::MinAreaRect(int maxContourNum)
+    // Legacy operators are single-device by design. PerDeviceResource creates
+    // one instance per CUDA device for transparent multi-GPU support.
+    : m_legacyOp(
+        [maxContourNum](int)
+        {
+            legacy::DataShape maxIn;
+            legacy::DataShape maxOut;
+            return std::make_unique<legacy::MinAreaRect>(maxIn, maxOut, maxContourNum);
+        })
 {
-    // init
-    legacy::DataShape maxIn, maxOut;
-    m_legacyOp = std::make_unique<legacy::MinAreaRect>(maxIn, maxOut, maxContourNum);
 }
 
 void MinAreaRect::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                              const nvcv::Tensor &numPointsInContour, const int totalContours) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::MinAreaRect::operator()[Tensor]");
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
     if (inData == nullptr)
     {
@@ -71,10 +79,19 @@ void MinAreaRect::operator()(cudaStream_t stream, const nvcv::Tensor &in, const 
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Output must have NW layout");
     }
 
+    // channel check
+    auto inShape = inData->shape();
+    if (auto channels = static_cast<int>(inShape[inShape.rank() - 1]); channels != 2)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "Input must have 2 channels (x, y coordinates per point)");
+    }
+
     // dtype check
     if (inData->dtype() != nvcv::TYPE_U16 && inData->dtype() != nvcv::TYPE_S16 && inData->dtype() != nvcv::TYPE_S32)
     {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input must have TYPE_U16 data type");
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "Input must have TYPE_U16, TYPE_S16, or TYPE_S32 data type");
     }
     if (outData->dtype() != nvcv::TYPE_F32)
     {
@@ -87,7 +104,7 @@ void MinAreaRect::operator()(cudaStream_t stream, const nvcv::Tensor &in, const 
     }
 
     // add calls to kernel here
-    NVCV_CHECK_THROW(m_legacyOp->infer(*inData, *outData, *numPointsInContourData, totalContours, stream));
+    NVCV_CHECK_THROW(m_legacyOp.get().infer(*inData, *outData, *numPointsInContourData, totalContours, stream));
 }
 
 } // namespace cvcuda::priv

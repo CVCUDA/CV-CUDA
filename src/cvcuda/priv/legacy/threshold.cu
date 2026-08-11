@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -22,8 +22,11 @@
 #include "CvCudaLegacyHelpers.hpp"
 
 #include "CvCudaUtils.cuh"
-#include "cub/cub.cuh"
 #include "threshold_util.cuh"
+
+#include <cvcuda/priv/PlanarTensorView.hpp>
+
+#include <cstdint>
 
 using namespace nvcv::legacy::helpers;
 
@@ -455,15 +458,21 @@ __global__ void hist_kernel(Tensor3DWrap<uchar, int32_t> img, int *histogram, in
 
     if (h < rows)
     {
-        if (w + 16 > cols)
+        uchar *ptr = img.ptr(batch, h, w);
+        // Use a 16-byte vectorized load when the pointer is aligned and 16 bytes remain.
+        // When the tensor stride does not guarantee 16-byte alignment, or fewer than
+        // 16 columns remain, fall back to per-element loads to avoid out-of-bounds
+        // reads and misaligned-access crashes.
+        if (w + 16 <= cols && (reinterpret_cast<uintptr_t>(ptr) % 16) == 0)
         {
-            for (int i = w; i < cols; i++) atomicAdd(&hist[*img.ptr(batch, h, i)], 1);
+            int4   src   = *((int4 *)ptr);
+            uchar *inval = reinterpret_cast<uchar *>((void *)&src);
+            for (int i = 0; i < 16; i++) atomicAdd(&hist[inval[i]], 1);
         }
         else
         {
-            int4   src   = *((int4 *)img.ptr(batch, h, w));
-            uchar *inval = reinterpret_cast<uchar *>((void *)&src);
-            for (int i = 0; i < 16; i++) atomicAdd(&hist[inval[i]], 1);
+            int end = min(w + 16, cols);
+            for (int i = w; i < end; i++) atomicAdd(&hist[*img.ptr(batch, h, i)], 1);
         }
     }
     __syncthreads();
@@ -699,6 +708,9 @@ ErrorCode thresholdDispatch(const nvcv::TensorDataStridedCuda &input, const nvcv
                             int batch, int rows, int cols, int channel, NVCVThresholdType type, DataType data_type,
                             cudaStream_t stream)
 {
+    (void)data_type;
+    using vectype = nvcv::cuda::MakeType<T, N>;
+
     int                           size = rows * cols * channel;
     Tensor1DWrap<double, int32_t> thresh(_thresh);
     Tensor1DWrap<double, int32_t> maxval(_maxval);
@@ -714,7 +726,19 @@ ErrorCode thresholdDispatch(const nvcv::TensorDataStridedCuda &input, const nvcv
         return ErrorCode::INVALID_PARAMETER;
     }
 
-    using vectype    = nvcv::cuda::MakeType<T, N>;
+    if constexpr (N > 1)
+    {
+        std::uintptr_t packAlignmentBits
+            = reinterpret_cast<std::uintptr_t>(input.basePtr()) | reinterpret_cast<std::uintptr_t>(output.basePtr())
+            | static_cast<std::uintptr_t>(inAccess->rowStride()) | static_cast<std::uintptr_t>(outAccess->rowStride())
+            | static_cast<std::uintptr_t>(inAccess->sampleStride())
+            | static_cast<std::uintptr_t>(outAccess->sampleStride());
+
+        if ((packAlignmentBits & (alignof(vectype) - 1)) != 0)
+            return thresholdDispatch<T, 1>(input, output, _thresh, _maxval, batch, rows, cols, channel, type, data_type,
+                                           stream);
+    }
+
     using StrideType = int32_t;
     auto src_ptr     = CreateTensorWrapNHWC<T, int32_t>(input);
     auto dst_ptr     = CreateTensorWrapNHWC<T, int32_t>(output);
@@ -724,13 +748,13 @@ ErrorCode thresholdDispatch(const nvcv::TensorDataStridedCuda &input, const nvcv
     switch (type)
     {
     case NVCV_THRESH_BINARY:
-        if (data_type == kCV_32F || data_type == kCV_64F)
+        if constexpr (std::is_floating_point_v<T>)
             Binary_Generic<vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, maxval, rows, cols, channel);
         else
             Binary_overflow<vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, maxval, rows, cols, channel);
         break;
     case NVCV_THRESH_BINARY_INV:
-        if (data_type == kCV_32F || data_type == kCV_64F)
+        if constexpr (std::is_floating_point_v<T>)
             BinaryInv_Generic<vectype>
                 <<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, maxval, rows, cols, channel);
         else
@@ -738,19 +762,19 @@ ErrorCode thresholdDispatch(const nvcv::TensorDataStridedCuda &input, const nvcv
                 <<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, maxval, rows, cols, channel);
         break;
     case NVCV_THRESH_TRUNC:
-        if (data_type == kCV_32F || data_type == kCV_64F)
+        if constexpr (std::is_floating_point_v<T>)
             Trunc_Generic<vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, rows, cols, channel);
         else
             Trunc_overflow<vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, rows, cols, channel);
         break;
     case NVCV_THRESH_TOZERO:
-        if (data_type == kCV_32F || data_type == kCV_64F)
+        if constexpr (std::is_floating_point_v<T>)
             Tozero_Generic<vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, rows, cols, channel);
         else
             Tozero_overflow<vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, rows, cols, channel);
         break;
     default: //NVCV_THRESH_TOZERO_INV
-        if (data_type == kCV_32F || data_type == kCV_64F)
+        if constexpr (std::is_floating_point_v<T>)
             TozeroInv_Generic<vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, rows, cols, channel);
         else
             TozeroInv_overflow<vectype><<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, rows, cols, channel);
@@ -771,7 +795,7 @@ ErrorCode thresholdScale(const nvcv::TensorDataStridedCuda &input, const nvcv::T
 
     if (stride % 4 == 0)
     {
-        if (std::is_same<T, double>::value)
+        if constexpr (std::is_same_v<T, double>)
             return thresholdDispatch<T, 2>(input, output, threshold, maxval, batch, rows, cols, channel, type,
                                            data_type, stream);
         else
@@ -784,6 +808,136 @@ ErrorCode thresholdScale(const nvcv::TensorDataStridedCuda &input, const nvcv::T
     else
         return thresholdDispatch<T, 1>(input, output, threshold, maxval, batch, rows, cols, channel, type, data_type,
                                        stream);
+}
+
+template<typename T>
+__device__ __forceinline__ T ThresholdOverflowValue(T inval, double th, double maxv, NVCVThresholdType type)
+{
+    T   maxType = TypeTraits<T>::max;
+    T   minType = TypeTraits<T>::min;
+    int imaxval = round(maxv);
+    T   maxval  = nvcv::cuda::SaturateCast<T>(imaxval);
+    int ithresh = floor(th);
+
+    switch (type)
+    {
+    case NVCV_THRESH_BINARY:
+        if (ithresh >= minType && ithresh <= maxType)
+        {
+            T thresh = (T)ithresh;
+            return inval > thresh ? maxval : 0;
+        }
+        return ithresh < minType ? maxval : 0;
+    case NVCV_THRESH_BINARY_INV:
+        if (ithresh >= minType && ithresh <= maxType)
+        {
+            T thresh = (T)ithresh;
+            return inval > thresh ? 0 : maxval;
+        }
+        return ithresh < minType ? 0 : maxval;
+    case NVCV_THRESH_TRUNC:
+        if (ithresh >= minType && ithresh <= maxType)
+        {
+            T thresh = (T)ithresh;
+            return inval > thresh ? thresh : inval;
+        }
+        return ithresh < minType ? minType : inval;
+    case NVCV_THRESH_TOZERO:
+        if (ithresh >= minType && ithresh <= maxType)
+        {
+            T thresh = (T)ithresh;
+            return inval > thresh ? inval : 0;
+        }
+        return ithresh < minType ? inval : 0;
+    default: // NVCV_THRESH_TOZERO_INV
+        if (ithresh >= minType && ithresh <= maxType)
+        {
+            T thresh = (T)ithresh;
+            return inval > thresh ? 0 : inval;
+        }
+        return ithresh < minType ? 0 : inval;
+    }
+}
+
+template<typename T>
+__device__ __forceinline__ T ThresholdGenericValue(T inval, double th, double maxv, NVCVThresholdType type)
+{
+    T thresh = (T)th;
+    T maxval = (T)maxv;
+
+    switch (type)
+    {
+    case NVCV_THRESH_BINARY:
+        return inval > thresh ? maxval : 0;
+    case NVCV_THRESH_BINARY_INV:
+        return inval > thresh ? 0 : maxval;
+    case NVCV_THRESH_TRUNC:
+        return inval > thresh ? thresh : inval;
+    case NVCV_THRESH_TOZERO:
+        return inval > thresh ? inval : 0;
+    default: // NVCV_THRESH_TOZERO_INV
+        return inval > thresh ? 0 : inval;
+    }
+}
+
+template<typename T, typename SrcWrap, typename DstWrap>
+__global__ void ThresholdPlanarTensor(SrcWrap src, DstWrap dst, Tensor1DWrap<double, int32_t> _thresh,
+                                      Tensor1DWrap<double, int32_t> _maxval, int rows, int cols, int channels,
+                                      NVCVThresholdType type, DataType data_type)
+{
+    int globalid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (globalid >= rows * cols)
+        return;
+
+    int batch = blockIdx.z / channels;
+    int plane = blockIdx.z % channels;
+    int y     = globalid / cols;
+    int x     = globalid % cols;
+
+    T inval                      = *src.ptr(batch, plane, y, x);
+    T out                        = (data_type == kCV_32F || data_type == kCV_64F)
+                                     ? ThresholdGenericValue(inval, _thresh[batch], _maxval[batch], type)
+                                     : ThresholdOverflowValue(inval, _thresh[batch], _maxval[batch], type);
+    *dst.ptr(batch, plane, y, x) = out;
+}
+
+template<typename T>
+ErrorCode thresholdScalePlanar(const nvcv::TensorDataStridedCuda &input, const nvcv::TensorDataStridedCuda &output,
+                               const nvcv::TensorDataStridedCuda &threshold, const nvcv::TensorDataStridedCuda &maxval,
+                               int batch, int rows, int cols, int channels, NVCVThresholdType type, DataType data_type,
+                               cudaStream_t stream)
+{
+    Tensor1DWrap<double, int32_t> thresh(threshold);
+    Tensor1DWrap<double, int32_t> maxv(maxval);
+
+    auto inAccess  = nvcv::TensorDataAccessStridedImagePlanar::Create(input);
+    auto outAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(output);
+
+    auto outMaxStride = outAccess->sampleStride() * outAccess->numSamples();
+    auto inMaxStride  = inAccess->sampleStride() * inAccess->numSamples();
+    if (std::max(outMaxStride, inMaxStride) > TypeTraits<int32_t>::max)
+    {
+        LOG_ERROR("Input or output size exceeds " << TypeTraits<int32_t>::max << ". Tensor is too large.");
+        return ErrorCode::INVALID_PARAMETER;
+    }
+
+    const int64_t planarBatch = static_cast<int64_t>(batch) * channels;
+    if (planarBatch > 65535)
+    {
+        LOG_ERROR("Planar Threshold requires batch * channels <= 65535 (CUDA grid-z limit)");
+        return ErrorCode::INVALID_PARAMETER;
+    }
+
+    auto src_ptr = CreateTensorWrapNCHW<T, int32_t>(input);
+    auto dst_ptr = CreateTensorWrapNCHW<T, int32_t>(output);
+
+    dim3 block(256);
+    dim3 grid(divUp(rows * cols, block.x), 1, batch * channels);
+    ThresholdPlanarTensor<T>
+        <<<grid, block, 0, stream>>>(src_ptr, dst_ptr, thresh, maxv, rows, cols, channels, type, data_type);
+
+    checkKernelErrors();
+    return ErrorCode::SUCCESS;
 }
 
 static void getThreshVal_Triangle(const nvcv::TensorDataStridedCuda &inData,
@@ -830,6 +984,7 @@ Threshold::Threshold(DataShape max_input_shape, DataShape max_output_shape, uint
     : CudaBaseOp(max_input_shape, max_output_shape)
     , m_histogram(nullptr)
     , m_type(type)
+    , m_maxBatchSize(maxBatchSize)
 {
     if (maxBatchSize < 0)
     {
@@ -843,7 +998,7 @@ Threshold::Threshold(DataShape max_input_shape, DataShape max_output_shape, uint
         if (err != cudaSuccess)
         {
             LOG_ERROR("CUDA memory allocation error of size: " << sizeof(int) * 256 * maxBatchSize);
-            throw std::runtime_error("CUDA memory allocation error!");
+            throw LegacyCudaAllocationError("CUDA memory allocation error!");
         }
     }
 }
@@ -878,6 +1033,28 @@ ErrorCode Threshold::infer(const TensorDataStridedCuda &inData, const TensorData
         return ErrorCode::INVALID_DATA_TYPE;
     }
 
+    const DataFormat input_format  = GetLegacyDataFormat(inData.layout());
+    const DataFormat output_format = GetLegacyDataFormat(outData.layout());
+
+    if (!(input_format == kNHWC || input_format == kHWC || input_format == kNCHW || input_format == kCHW))
+    {
+        LOG_ERROR("Invalid input DataFormat " << input_format);
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
+
+    if (!(output_format == kNHWC || output_format == kHWC || output_format == kNCHW || output_format == kCHW))
+    {
+        LOG_ERROR("Invalid output DataFormat " << output_format);
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
+
+    if (input_format != output_format)
+    {
+        LOG_ERROR("Invalid DataFormat between input (" << input_format << ") and output (" << output_format << ")");
+        return ErrorCode::INVALID_DATA_FORMAT;
+    }
+    const bool isPlanar = (input_format == kNCHW || input_format == kCHW);
+
     DataType thresh_data_type = GetLegacyDataType(thresh.dtype());
     if (thresh_data_type != kCV_64F)
     {
@@ -907,6 +1084,13 @@ ErrorCode Threshold::infer(const TensorDataStridedCuda &inData, const TensorData
     auto inAccess = TensorDataAccessStridedImagePlanar::Create(inData);
     NVCV_ASSERT(inAccess);
 
+    const int channels = inAccess->numChannels();
+    if (channels > 4 || (isPlanar && channels == 2))
+    {
+        LOG_ERROR("Invalid channel number " << channels);
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
     if (m_automatic_thresh == ((uint32_t)NVCV_THRESH_OTSU | (uint32_t)NVCV_THRESH_TRIANGLE))
     {
         LOG_ERROR("Invalid Threshold Type " << m_type);
@@ -914,10 +1098,32 @@ ErrorCode Threshold::infer(const TensorDataStridedCuda &inData, const TensorData
     }
 
     m_type &= (uint32_t)NVCV_THRESH_MASK;
-    if (m_type & (m_type - 1) != 0)
+    if ((m_type & (m_type - 1)) != 0)
     {
         LOG_ERROR("Invalid Threhold Type " << m_type);
         return ErrorCode::INVALID_PARAMETER;
+    }
+
+    const int batch = inAccess->numSamples();
+    if (m_automatic_thresh != 0 && batch > m_maxBatchSize)
+    {
+        LOG_ERROR("Input batch exceeds maxBatchSize");
+        return ErrorCode::INVALID_PARAMETER;
+    }
+
+    std::optional<std::pair<TensorDataStridedCuda, TensorDataStridedCuda>> planarViews;
+    const TensorDataStridedCuda                                           *workInData   = &inData;
+    const TensorDataStridedCuda                                           *workOutData  = &outData;
+    int                                                                    workBatch    = batch;
+    int                                                                    workChannels = channels;
+    if (isPlanar && m_automatic_thresh != 0)
+    {
+        planarViews = cvcuda::priv::PlanarSingleChannelViews(inData, outData);
+        NVCV_ASSERT(planarViews);
+        workInData   = &planarViews->first;
+        workOutData  = &planarViews->second;
+        workBatch    = batch * channels;
+        workChannels = 1;
     }
 
     if (m_automatic_thresh == NVCV_THRESH_OTSU)
@@ -932,12 +1138,12 @@ ErrorCode Threshold::infer(const TensorDataStridedCuda &inData, const TensorData
             LOG_ERROR("Only support 1 channel");
             return ErrorCode::INVALID_DATA_FORMAT;
         }
-        if (inAccess->sampleStride() * inAccess->numSamples() > TypeTraits<int32_t>::max)
+        if (inAccess->sampleStride() * batch > TypeTraits<int32_t>::max)
         {
             LOG_ERROR("Input size exceeds " << TypeTraits<int32_t>::max << ". Tensor is too large.");
             return ErrorCode::INVALID_PARAMETER;
         }
-        getThreshVal_Otsu(inData, thresh, m_histogram, inAccess->numRows(), inAccess->numCols(), inAccess->numSamples(),
+        getThreshVal_Otsu(*workInData, thresh, m_histogram, inAccess->numRows(), inAccess->numCols(), workBatch,
                           stream);
     }
     else if (m_automatic_thresh == NVCV_THRESH_TRIANGLE)
@@ -952,13 +1158,13 @@ ErrorCode Threshold::infer(const TensorDataStridedCuda &inData, const TensorData
             LOG_ERROR("Only support 1 channel");
             return ErrorCode::INVALID_DATA_FORMAT;
         }
-        if (inAccess->sampleStride() * inAccess->numSamples() > TypeTraits<int32_t>::max)
+        if (inAccess->sampleStride() * batch > TypeTraits<int32_t>::max)
         {
             LOG_ERROR("Input size exceeds " << TypeTraits<int32_t>::max << ". Tensor is too large.");
             return ErrorCode::INVALID_PARAMETER;
         }
-        getThreshVal_Triangle(inData, thresh, m_histogram, inAccess->numRows(), inAccess->numCols(),
-                              inAccess->numSamples(), stream);
+        getThreshVal_Triangle(*workInData, thresh, m_histogram, inAccess->numRows(), inAccess->numCols(), workBatch,
+                              stream);
     }
 
     typedef ErrorCode (*threshold_t)(const TensorDataStridedCuda &input, const TensorDataStridedCuda &output,
@@ -971,8 +1177,22 @@ ErrorCode Threshold::infer(const TensorDataStridedCuda &inData, const TensorData
 
     threshold_t       func    = funcs[in_data_type];
     NVCVThresholdType th_type = NVCVThresholdType(m_type);
-    return func(inData, outData, thresh, maxval, inAccess->numSamples(), inAccess->numRows(), inAccess->numCols(),
-                inAccess->numChannels(), th_type, in_data_type, stream);
+    if (isPlanar && m_automatic_thresh == 0)
+    {
+        typedef ErrorCode (*threshold_planar_t)(
+            const TensorDataStridedCuda &input, const TensorDataStridedCuda &output,
+            const TensorDataStridedCuda &threshold, const TensorDataStridedCuda &maxval, int batch, int rows, int cols,
+            int channels, NVCVThresholdType type, DataType data_type, cudaStream_t stream);
+        static const threshold_planar_t planarFuncs[7] = {thresholdScalePlanar<uchar>, 0, thresholdScalePlanar<ushort>,
+                                                          thresholdScalePlanar<short>, 0, thresholdScalePlanar<float>,
+                                                          thresholdScalePlanar<double>};
+        threshold_planar_t              planarFunc     = planarFuncs[in_data_type];
+        return planarFunc(inData, outData, thresh, maxval, batch, inAccess->numRows(), inAccess->numCols(), channels,
+                          th_type, in_data_type, stream);
+    }
+
+    return func(*workInData, *workOutData, thresh, maxval, workBatch, inAccess->numRows(), inAccess->numCols(),
+                workChannels, th_type, in_data_type, stream);
 }
 
 } // namespace nvcv::legacy::cuda_op

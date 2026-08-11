@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,9 +24,18 @@
 #include <nvcv/python/Stream.hpp>
 #include <nvcv/python/Tensor.hpp>
 
+#include <stdexcept>
+
 namespace cvcudapy {
 
 namespace {
+
+class PadAndStackError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
+
 Tensor PadAndStackInto(Tensor &output, ImageBatchVarShape &input, Tensor &top, Tensor &left, NVCVBorderType border,
                        float borderValue, std::optional<Stream> pstream)
 {
@@ -42,7 +51,8 @@ Tensor PadAndStackInto(Tensor &output, ImageBatchVarShape &input, Tensor &top, T
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*padstack});
 
-    padstack->submit(pstream->cudaHandle(), input, output, top, left, border, borderValue);
+    guard.run([&padstack, &pstream, &input, &output, &top, &left, &border, &borderValue]()
+              { padstack->submit(pstream->cudaHandle(), input, output, top, left, border, borderValue); });
 
     return std::move(output);
 }
@@ -53,7 +63,7 @@ Tensor PadAndStack(ImageBatchVarShape &input, Tensor &top, Tensor &left, NVCVBor
     nvcv::ImageFormat fmt = input.uniqueFormat();
     if (fmt == nvcv::FMT_NONE)
     {
-        throw std::runtime_error("All images in the input must have the same format");
+        throw PadAndStackError("All images in the input must have the same format");
     }
 
     Tensor output = Tensor::CreateForImageBatch(input.numImages(), input.maxSize(), fmt);
@@ -67,14 +77,10 @@ void ExportOpPadAndStack(py::module &m)
 {
     using namespace pybind11::literals;
 
-    m.def("padandstack", &PadAndStack, "src"_a, "top"_a, "left"_a, "border"_a = NVCV_BORDER_CONSTANT, "bvalue"_a = 0,
-          py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
+    m.def("padandstack", NvtxTrace("cvcuda.padandstack", &PadAndStack), "src"_a, "top"_a, "left"_a,
+          "border"_a = NVCV_BORDER_CONSTANT, "bvalue"_a = 0, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the Pad and Stack operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Pad and Stack operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): input image batch containing one or more images.
@@ -87,19 +93,12 @@ void ExportOpPadAndStack(py::module &m)
         Returns:
             cvcuda.Tensor: The output tensor.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("padandstack_into", &PadAndStackInto, "dst"_a, "src"_a, "top"_a, "left"_a, "border"_a = NVCV_BORDER_CONSTANT,
-          "bvalue"_a = 0, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
+    m.def("padandstack_into", NvtxTrace("cvcuda.padandstack_into", &PadAndStackInto), "dst"_a, "src"_a, "top"_a,
+          "left"_a, "border"_a = NVCV_BORDER_CONSTANT, "bvalue"_a = 0, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the Pad and Stack operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Pad and Stack operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.Tensor): Output tensor to store the result of the operation.
@@ -111,11 +110,7 @@ void ExportOpPadAndStack(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 }
 

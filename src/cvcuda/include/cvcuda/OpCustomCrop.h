@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -58,8 +58,8 @@ CVCUDA_PUBLIC NVCVStatus cvcudaCustomCropCreate(NVCVOperatorHandle *handle);
  *  ROI must be smaller than output tensor.
  *
  *  Input:
- *       Data Layout:    [kNHWC, kHWC]
- *       Channels:       [1, 3, 4]
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
+ *       Channels:       [1, 2, 3, 4] (planar kNCHW/kCHW: [1, 3, 4])
  *
  *       Data Type      | Allowed
  *       -------------- | -------------
@@ -67,14 +67,15 @@ CVCUDA_PUBLIC NVCVStatus cvcudaCustomCropCreate(NVCVOperatorHandle *handle);
  *       8bit  Signed   | Yes
  *       16bit Unsigned | Yes
  *       16bit Signed   | Yes
- *       32bit Unsigned | Yes
+ *       32bit Unsigned | No
  *       32bit Signed   | Yes
+ *       16bit Float    | Yes
  *       32bit Float    | Yes
  *       64bit Float    | Yes
  *
  *  Output:
- *       Data Layout:    [kNHWC, kHWC]
- *       Channels:       [1, 3, 4]
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
+ *       Channels:       [1, 2, 3, 4] (planar kNCHW/kCHW: [1, 3, 4])
  *
  *       Data Type      | Allowed
  *       -------------- | -------------
@@ -82,8 +83,9 @@ CVCUDA_PUBLIC NVCVStatus cvcudaCustomCropCreate(NVCVOperatorHandle *handle);
  *       8bit  Signed   | Yes
  *       16bit Unsigned | Yes
  *       16bit Signed   | Yes
- *       32bit Unsigned | Yes
+ *       32bit Unsigned | No
  *       32bit Signed   | Yes
+ *       16bit Float    | Yes
  *       32bit Float    | Yes
  *       64bit Float    | Yes
  *
@@ -118,5 +120,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaCustomCropSubmit(NVCVOperatorHandle handle, cudaS
 #ifdef __cplusplus
 }
 #endif
+
+/** @} */
 
 #endif /* CVCUDA_CUSTOM_CROP_H */

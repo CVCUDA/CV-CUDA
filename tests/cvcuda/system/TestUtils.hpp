@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,6 +28,23 @@ using RandInt = std::uniform_int_distribution<T>;
 
 template<typename T>
 using RandFlt = std::uniform_real_distribution<T>;
+
+template<typename T, bool FullRange>
+constexpr unsigned int HsvHueRange()
+{
+    if constexpr (sizeof(T) > 1)
+    {
+        return 360U;
+    }
+    else if constexpr (FullRange)
+    {
+        return 256U;
+    }
+    else
+    {
+        return 180U;
+    }
+}
 
 //--------------------------------------------------------------------------------------------------------------------//
 template<typename T>
@@ -61,7 +78,7 @@ template<typename T>
 inline void generateAllRGB(std::vector<T> &dst, unsigned int wdth, unsigned int hght, unsigned int num,
                            bool rgba = false, bool bga = false)
 {
-    ASSERT_GE(dst.size(), (size_t)num * (size_t)hght * (size_t)wdth * (size_t)(3 + rgba));
+    ASSERT_GE(dst.size(), (size_t)num * (size_t)hght * (size_t)wdth * (size_t)(rgba ? 4 : 3));
     generateAllRGB<T>(dst.data(), wdth, hght, num, rgba, bga);
 }
 

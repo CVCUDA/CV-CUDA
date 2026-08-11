@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,6 +25,7 @@
 #include <nvcv/util/Math.hpp>
 #include <nvcv/util/String.hpp>
 
+#include <array>
 #include <iostream>
 
 //                    |63 62 61|60 59 58|57 56 55|54|53 52 51|50 49 48|47|46 45 44|43 42 41 40|39 38|37 36 35|
@@ -324,13 +325,15 @@ const std::multimap<PackingData, NVCVPacking> g_dataToPacking = []
 {
     std::multimap<PackingData, NVCVPacking> map;
 
-    for (const auto &item : g_packingToData)
+    for (const auto &[packing, data] : g_packingToData)
     {
-        map.emplace(item.second, item.first);
+        map.emplace(data, packing);
     }
 
     return map;
 }();
+
+using PackingLookupIterator = std::multimap<PackingData, NVCVPacking>::const_iterator;
 
 } // namespace
 
@@ -340,7 +343,8 @@ std::optional<NVCVPacking> MakeNVCVPacking(int bitsX, int bitsY, int bitsZ, int 
 
     if (bitsY == 0 || bitsZ == 0)
     {
-        int origX = bitsX, origY = bitsY;
+        int origX = bitsX;
+        int origY = bitsY;
 
         // We use MSB representation, e.g. X10b6
         switch (origX)
@@ -354,6 +358,8 @@ std::optional<NVCVPacking> MakeNVCVPacking(int bitsX, int bitsY, int bitsZ, int 
         case 20:
             bitsY          = 32 - origX;
             params.swizzle = NVCV_SWIZZLE_X000;
+            break;
+        default:
             break;
         }
 
@@ -369,6 +375,8 @@ std::optional<NVCVPacking> MakeNVCVPacking(int bitsX, int bitsY, int bitsZ, int 
             bitsZ          = 32 - origY;
             params.swizzle = NVCV_SWIZZLE_XZ00;
             break;
+        default:
+            break;
         }
     }
 
@@ -382,12 +390,71 @@ std::optional<NVCVPacking> MakeNVCVPacking(int bitsX, int bitsY, int bitsZ, int 
 
 static NVCVSwizzle MakeNVCVSwizzleFromBits(const int (&bits)[4])
 {
-    NVCVChannel swc[4];
+    std::array<NVCVChannel, 4> swc;
     for (int i = 0; i < 4; ++i)
     {
         swc[i] = bits[i] != 0 ? (NVCVChannel)(i + NVCV_CHANNEL_X) : NVCV_CHANNEL_0;
     }
     return MakeNVCVSwizzle(swc[0], swc[1], swc[2], swc[3]);
+}
+
+static PackingLookupIterator FindSmallestAlignment(PackingLookupIterator itbegin, PackingLookupIterator itend) noexcept
+{
+    auto it = itbegin;
+    for (; itbegin != itend; ++itbegin) // NOSONAR: iterator search must return the matching candidate.
+    {
+        if (itbegin->first.params.alignment < it->first.params.alignment)
+        {
+            it = itbegin;
+        }
+    }
+    return it;
+}
+
+static PackingLookupIterator FindCompatibleAlignment(PackingLookupIterator itbegin,
+                                                     PackingLookupIterator itend) noexcept
+{
+    auto it = itbegin;
+    for (; itbegin != itend; ++itbegin) // NOSONAR: the loop must return the matching candidate iterator.
+    {
+        // Smaller alignments are valid.
+        if (it->first.params.alignment >= itbegin->first.params.alignment)
+        {
+            return itbegin;
+        }
+    }
+    return itend;
+}
+
+static PackingLookupIterator FindPackingForAlignment(PackingLookupIterator itbegin, PackingLookupIterator itend,
+                                                     int alignment) noexcept
+{
+    if (alignment == 0)
+    {
+        return FindSmallestAlignment(itbegin, itend);
+    }
+    return FindCompatibleAlignment(itbegin, itend);
+}
+
+static bool MatchesByteOrder(const NVCVPackingParams &params, const PackingData &candidate) noexcept
+{
+    return GetNumChannels(params.swizzle) < 2 || candidate.params.byteOrder == params.byteOrder;
+}
+
+static bool MatchesSwizzle(const NVCVPackingParams &params, const PackingData &candidate)
+{
+    if (params.swizzle == NVCV_SWIZZLE_0000)
+    {
+        return true;
+    }
+
+    NVCVSwizzle sw = candidate.params.swizzle;
+    if (sw == NVCV_SWIZZLE_0000)
+    {
+        sw = MakeNVCVSwizzleFromBits(params.bits);
+    }
+
+    return sw == params.swizzle;
 }
 
 std::optional<NVCVPacking> MakeNVCVPacking(const NVCVPackingParams &params) noexcept
@@ -402,74 +469,21 @@ std::optional<NVCVPacking> MakeNVCVPacking(const NVCVPackingParams &params) noex
     }
 
     auto [itbegin, itend] = g_dataToPacking.equal_range(key);
-    if (itbegin != itend)
-    {
-        auto it = itbegin;
-        if (params.alignment == 0)
-        {
-            for (; itbegin != itend; ++itbegin)
-            {
-                // choose smallest alignment
-                if (itbegin->first.params.alignment < it->first.params.alignment)
-                {
-                    it = itbegin;
-                }
-            }
-        }
-        else
-        {
-            for (; itbegin != itend; ++itbegin)
-            {
-                // Smaller alignments are valid.
-                if (it->first.params.alignment >= itbegin->first.params.alignment)
-                {
-                    it = itbegin;
-                    break;
-                }
-            }
-            // packing with needed alignment not found
-            if (itbegin == itend)
-            {
-                return std::nullopt;
-            }
-        }
-
-        // if 0 or one channel, packing is both host and big endian, so don't need to filter out.
-        if (GetNumChannels(params.swizzle) >= 2)
-        {
-            // Endian don't match?
-            if (it->first.params.byteOrder != params.byteOrder)
-            {
-                return std::nullopt;
-            }
-        }
-
-        // use filters by swizzle?
-        if (params.swizzle != NVCV_SWIZZLE_0000)
-        {
-            // If our swizzle is not specified, let's reconstruct it from bits
-            NVCVSwizzle sw = it->first.params.swizzle;
-            if (sw == NVCV_SWIZZLE_0000)
-            {
-                sw = MakeNVCVSwizzleFromBits(params.bits);
-            }
-
-            // now we can apply the filter.
-            if (sw != params.swizzle)
-            {
-                return std::nullopt;
-            }
-        }
-
-        return it->second;
-    }
-    else
+    if (itbegin == itend)
     {
         return std::nullopt;
     }
+
+    auto it = FindPackingForAlignment(itbegin, itend, params.alignment);
+    if (it == itend || !MatchesByteOrder(params, it->first) || !MatchesSwizzle(params, it->first))
+    {
+        return std::nullopt;
+    }
+
+    return it->second;
 }
 
-const uint64_t swizzleBitsArray[NVCV_MAX_SWIZZLE_COUNT]
+const std::array<uint64_t, NVCV_MAX_SWIZZLE_COUNT> swizzleBitsArray
     = {NVCV_DETAIL_MAKE_SWZL(0, 0, 0, 0), NVCV_DETAIL_MAKE_SWZL(X, 0, 0, 0), NVCV_DETAIL_MAKE_SWZL(X, Y, 0, 0),
        NVCV_DETAIL_MAKE_SWZL(X, Y, Z, 0), NVCV_DETAIL_MAKE_SWZL(X, Y, Z, W), NVCV_DETAIL_MAKE_SWZL(1, 0, 0, 0),
        NVCV_DETAIL_MAKE_SWZL(0, 0, 0, 1), NVCV_DETAIL_MAKE_SWZL(Z, Y, X, W), NVCV_DETAIL_MAKE_SWZL(W, X, Y, Z),
@@ -517,9 +531,9 @@ bool IsSubWord(const NVCVPackingParams &p)
     }
 
     int chbits = 0;
-    for (int i = 0; i < 4; ++i)
+    for (int bits : p.bits)
     {
-        if (p.bits[i] != 0)
+        if (bits != 0)
         {
             chbits += 1;
         }
@@ -610,7 +624,7 @@ int GetBitsPerPixel(NVCVPacking packing) noexcept
         }
         else
         {
-            // invalid;
+            // No valid bit-depth encoding uses this value.
             return 0;
         }
     }
@@ -646,7 +660,7 @@ int GetNumChannels(NVCVSwizzle swizzle) noexcept
 {
     std::array<NVCVChannel, 4> channels = GetChannels(swizzle);
 
-    int hist[4] = {};
+    std::array<int, 4> hist = {};
 
     int count = 0;
     for (int i = 0; i < 4; ++i)
@@ -683,7 +697,7 @@ int GetNumComponents(NVCVPacking packing) noexcept
     }
     else
     {
-        return ExtractBitfield(packing, 4, 2) + 1;
+        return static_cast<int>(ExtractBitfield(packing, 4, 2) + 1);
     }
 }
 
@@ -734,6 +748,49 @@ int GetAlignment(NVCVPacking packing) noexcept
     return GetPackingParams(packing).alignment;
 }
 
+static NVCVChannel MaxSwizzleChannel(NVCVSwizzle swizzle) noexcept
+{
+    NVCVChannel maxSwChannel = NVCV_CHANNEL_0;
+    for (int j = 0; j < 4; ++j)
+    {
+        NVCVChannel swch = GetSwizzleChannel(swizzle, j);
+        if (NVCV_CHANNEL_X <= swch && swch <= NVCV_CHANNEL_W)
+        {
+            maxSwChannel = std::max(maxSwChannel, swch);
+        }
+    }
+    return maxSwChannel;
+}
+
+static NVCVChannel NextAlphaChannel(NVCVChannel maxSwChannel)
+{
+    auto ch = static_cast<NVCVChannel>(maxSwChannel + 1);
+    if (ch >= NVCV_CHANNEL_1)
+    {
+        throw Exception(NVCV_ERROR_INVALID_ARGUMENT,
+                        "When swizzle has W channel, it must not have channel with maximum value (channel '1')");
+    }
+    return ch;
+}
+
+static void FillReverseSwizzle(std::array<NVCVChannel, 6> &rev, NVCVSwizzle swizzle)
+{
+    NVCVChannel maxSwChannel = MaxSwizzleChannel(swizzle);
+
+    for (int j = 0; j < 4; ++j)
+    {
+        NVCVChannel ch = GetSwizzleChannel(swizzle, j);
+        if (ch == NVCV_CHANNEL_1)
+        {
+            rev[NextAlphaChannel(maxSwChannel)] = NVCV_CHANNEL_1;
+        }
+        else
+        {
+            rev[ch] = (NVCVChannel)(NVCV_CHANNEL_X + j);
+        }
+    }
+}
+
 NVCVSwizzle MergePlaneSwizzles(NVCVSwizzle sw0, NVCVSwizzle sw1, NVCVSwizzle sw2, NVCVSwizzle sw3)
 {
     // just one plane?
@@ -750,48 +807,17 @@ NVCVSwizzle MergePlaneSwizzles(NVCVSwizzle sw0, NVCVSwizzle sw1, NVCVSwizzle sw2
         }
     }
 
-    NVCVSwizzle sw[4] = {sw0, sw1, sw2, sw3};
+    std::array<NVCVSwizzle, 4> sw = {sw0, sw1, sw2, sw3};
 
-    NVCVChannel swResult[4] = {};
+    std::array<NVCVChannel, 4> swResult = {};
 
     int curch = 0;
     for (int i = 0; i < 4 && sw[i] != NVCV_SWIZZLE_0000; ++i)
     {
         int nchannels = GetNumChannels(sw[i]);
 
-        NVCVChannel rev[6] = {};
-
-        NVCVChannel maxSwChannel = NVCV_CHANNEL_0;
-
-        for (int j = 0; j < 4; ++j)
-        {
-            NVCVChannel swch = GetSwizzleChannel(sw[i], j);
-            if (NVCV_CHANNEL_X <= swch && swch <= NVCV_CHANNEL_W)
-            {
-                maxSwChannel = std::max(maxSwChannel, swch);
-            }
-        }
-
-        for (int j = 0; j < 4; ++j)
-        {
-            NVCVChannel ch = GetSwizzleChannel(sw[i], j);
-            if (ch == NVCV_CHANNEL_1)
-            {
-                ch = (NVCVChannel)(maxSwChannel + 1);
-                // you can't specify W and also have 1 in the swizzle
-                if (ch >= NVCV_CHANNEL_1)
-                {
-                    throw Exception(
-                        NVCV_ERROR_INVALID_ARGUMENT,
-                        "When swizzle has W channel, it must not have channel with maximum value (channel '1')");
-                }
-                rev[ch] = NVCV_CHANNEL_1;
-            }
-            else
-            {
-                rev[ch] = (NVCVChannel)(NVCV_CHANNEL_X + j);
-            }
-        }
+        std::array<NVCVChannel, 6> rev = {};
+        FillReverseSwizzle(rev, sw[i]);
 
         for (int j = 0; j < nchannels; ++j)
         {
@@ -845,8 +871,9 @@ NVCVSwizzle FlipByteOrder(NVCVSwizzle swizzle, int off, int len) noexcept
     // So first map swizzle to memory space, i.e., sort components in order
     // they will show up in memory, from lowest address to highest.
 
-    NVCVChannel mem[4] = {};
-    int         m = INT32_MAX, M = INT32_MIN;
+    std::array<NVCVChannel, 4> mem = {};
+    int                        m   = INT32_MAX;
+    int                        M   = INT32_MIN;
 
     for (int i = 0; i < 4; ++i)
     {
@@ -861,7 +888,7 @@ NVCVSwizzle FlipByteOrder(NVCVSwizzle swizzle, int off, int len) noexcept
     }
 
     // Now flip in memory space
-    NVCVChannel flipped[4] = {};
+    std::array<NVCVChannel, 4> flipped = {};
     for (int i = m; i <= M; ++i)
     {
         NVCVChannel ch = mem[m + ((M - m) - (i - m))];
@@ -898,8 +925,9 @@ const char *GetName(NVCVDataKind dataKind)
 #undef ENUM_CASE
     }
     priv::CoreTLS &tls = priv::GetCoreTLS();
-    util::BufferOStream(tls.bufDataKindName, sizeof(tls.bufDataKindName)) << "NVCVDataKind(" << (int)dataKind << ")";
-    return tls.bufDataKindName;
+    util::BufferOStream(tls.bufDataKindName.data(), static_cast<int>(tls.bufDataKindName.size()))
+        << "NVCVDataKind(" << (int)dataKind << ")";
+    return tls.bufDataKindName.data();
 }
 
 const char *GetName(NVCVMemLayout memLayout)
@@ -920,9 +948,9 @@ const char *GetName(NVCVMemLayout memLayout)
     }
 
     priv::CoreTLS &tls = priv::GetCoreTLS();
-    util::BufferOStream(tls.bufMemLayoutName, sizeof(tls.bufMemLayoutName))
+    util::BufferOStream(tls.bufMemLayoutName.data(), static_cast<int>(tls.bufMemLayoutName.size()))
         << "NVCVMemLayout(" << (int)memLayout << ")";
-    return tls.bufMemLayoutName;
+    return tls.bufMemLayoutName.data();
 }
 
 const char *GetName(NVCVChannel swizzleChannel)
@@ -946,8 +974,9 @@ const char *GetName(NVCVChannel swizzleChannel)
     }
 
     priv::CoreTLS &tls = priv::GetCoreTLS();
-    util::BufferOStream(tls.bufChannelName, sizeof(tls.bufChannelName)) << "NVCVChannel(" << (int)swizzleChannel << ")";
-    return tls.bufChannelName;
+    util::BufferOStream(tls.bufChannelName.data(), static_cast<int>(tls.bufChannelName.size()))
+        << "NVCVChannel(" << (int)swizzleChannel << ")";
+    return tls.bufChannelName.data();
 }
 
 const char *GetName(NVCVAlphaType alphaType)
@@ -961,9 +990,9 @@ const char *GetName(NVCVAlphaType alphaType)
     }
 
     priv::CoreTLS &tls = priv::GetCoreTLS();
-    util::BufferOStream(tls.bufAlphaTypeName, sizeof(tls.bufAlphaTypeName))
+    util::BufferOStream(tls.bufAlphaTypeName.data(), static_cast<int>(tls.bufAlphaTypeName.size()))
         << "NVCVAlphaType(" << (int)alphaType << ")";
-    return tls.bufAlphaTypeName;
+    return tls.bufAlphaTypeName.data();
 }
 
 const char *GetName(NVCVExtraChannel channelType)
@@ -979,9 +1008,9 @@ const char *GetName(NVCVExtraChannel channelType)
     }
 
     priv::CoreTLS &tls = priv::GetCoreTLS();
-    util::BufferOStream(tls.bufExtraChannelTypeName, sizeof(tls.bufExtraChannelTypeName))
+    util::BufferOStream(tls.bufExtraChannelTypeName.data(), static_cast<int>(tls.bufExtraChannelTypeName.size()))
         << "NVCVExtraChannel(" << (int)channelType << ")";
-    return tls.bufExtraChannelTypeName;
+    return tls.bufExtraChannelTypeName.data();
 }
 
 const char *GetName(NVCVSwizzle swizzle)
@@ -989,9 +1018,9 @@ const char *GetName(NVCVSwizzle swizzle)
     std::array<NVCVChannel, 4> channels = priv::GetChannels(swizzle);
 
     priv::CoreTLS &tls = priv::GetCoreTLS();
-    util::BufferOStream(tls.bufSwizzleName, sizeof(tls.bufSwizzleName))
+    util::BufferOStream(tls.bufSwizzleName.data(), static_cast<int>(tls.bufSwizzleName.size()))
         << channels[0] << channels[1] << channels[2] << channels[3];
-    return tls.bufSwizzleName;
+    return tls.bufSwizzleName.data();
 }
 
 const char *GetName(NVCVByteOrder byteOrder)
@@ -1005,9 +1034,9 @@ const char *GetName(NVCVByteOrder byteOrder)
     }
 
     priv::CoreTLS &tls = priv::GetCoreTLS();
-    util::BufferOStream(tls.bufByteOrderName, sizeof(tls.bufByteOrderName))
+    util::BufferOStream(tls.bufByteOrderName.data(), static_cast<int>(tls.bufByteOrderName.size()))
         << "NVCVByteOrder(" << (int)byteOrder << ")";
-    return tls.bufByteOrderName;
+    return tls.bufByteOrderName.data();
 }
 
 const char *GetName(NVCVPacking packing)
@@ -1020,8 +1049,9 @@ const char *GetName(NVCVPacking packing)
     else
     {
         priv::CoreTLS &tls = priv::GetCoreTLS();
-        util::BufferOStream(tls.bufPackingName, sizeof(tls.bufPackingName)) << "NVCVPacking(" << (int)packing << ")";
-        return tls.bufPackingName;
+        util::BufferOStream(tls.bufPackingName.data(), static_cast<int>(tls.bufPackingName.size()))
+            << "NVCVPacking(" << (int)packing << ")";
+        return tls.bufPackingName.data();
     }
 }
 

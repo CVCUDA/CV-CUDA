@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,6 +35,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class CenterCrop final : public IOperator
@@ -42,40 +44,37 @@ class CenterCrop final : public IOperator
 public:
     explicit CenterCrop();
 
-    ~CenterCrop();
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                    const nvcv::Size2D &cropSize) const;
 
-    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const nvcv::Size2D &cropSize);
-
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline CenterCrop::CenterCrop()
 {
-    nvcv::detail::CheckThrow(cvcudaCenterCropCreate(&m_handle));
-    assert(m_handle);
-}
-
-inline CenterCrop::~CenterCrop()
-{
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaCenterCropCreate(&h));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void CenterCrop::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
-                                   const nvcv::Size2D &cropSize)
+                                   const nvcv::Size2D &cropSize) const
 {
     nvcv::detail::CheckThrow(
-        cvcudaCenterCropSubmit(m_handle, stream, in.handle(), out.handle(), cropSize.w, cropSize.h));
+        cvcudaCenterCropSubmit(m_handle.get(), stream, in.handle(), out.handle(), cropSize.w, cropSize.h));
 }
 
 inline NVCVOperatorHandle CenterCrop::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA_CENTER_CROP_HPP

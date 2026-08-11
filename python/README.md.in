@@ -1,11 +1,11 @@
-[//]: # "SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved."
+[//]: # "SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved."
 [//]: # "SPDX-License-Identifier: Apache-2.0"
 
 # CV-CUDA Python Package
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![CUDA](https://img.shields.io/badge/CUDA-${CUDA_VERSION_MAJOR}-green.svg)](https://developer.nvidia.com/cuda-toolkit)
-[![Python](https://img.shields.io/badge/python-3.9--3.14-blue)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-3.10--3.14-blue)](https://www.python.org/)
 ![Platform](https://img.shields.io/badge/Platform-Linux%20x86__64%20%7C%20Linux%20aarch64%20%7C%20WSL2-blue)
 
 CV-CUDA is an open-source library of GPU-accelerated computer vision algorithms designed for speed and scalability.
@@ -45,7 +45,7 @@ resized = cvcuda.resize(cvcuda_tensor, (224, 224, 3), cvcuda.Interp.LINEAR)
 ## Requirements
 
 - CUDA Toolkit ${CUDA_VERSION_MAJOR} or later
-- Python 3.9 or later
+- Python 3.10 or later
 - NumPy 1.23.5 or later
 - Linux x86_64 (Ubuntu 20.04, 22.04, or later)
 

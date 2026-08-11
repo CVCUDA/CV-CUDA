@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,6 +22,12 @@
 /cvcuda-installer*/
 /.cache/
 
+# CMake user presets (personal overrides)
+CMakeUserPresets.json
+
+# Build time benchmark reports
+/bench-reports/
+
 # Visual Studio Code
 # ------------------
 .vscode/
@@ -40,6 +46,10 @@ ipynb_checkpoints
 profile_default/
 ipython_config.py
 
+# Build artifacts
+# ---------------
+compile_commands.json
+
 # Miscellaneous
 # -------------
 *.bin
@@ -49,12 +59,26 @@ ipython_config.py
 
 # Documentation
 # -------------
-_c_api
-_cpp_api
 _c_cpp_api
-_python_api
 _cvcuda_api
+
+# Optimization summaries are MR/artifact state, not repository documentation.
+/docs/optimize/
 
 # Samples
 # -------------
 *.engine
+
+# Generated requirements files (produced by generate_requirements.sh from *.template sources)
+docker/requirements.build.*.txt
+tests/requirements.tests.*.txt
+bench/python/requirements.bench.*.txt
+samples/requirements.samples.*.txt
+docs/requirements.docs.txt
+
+# Benchmark per-config outputs
+# ----------------------------
+# run_bench.py writes one out_<config>_<lang>.csv per config (see make output
+# filename in bench/run_bench.py); these are run artifacts, never source.
+out_*_cpp.csv
+out_*_python.csv

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,7 @@
  */
 
 #include "Definitions.hpp"
+#include "PlanarParityUtils.hpp"
 
 #include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
@@ -34,53 +35,58 @@
 namespace gt   = ::testing;
 namespace test = nvcv::test;
 
-static uint32_t saturate_cast(float n)
+using TensorDim = nvcv::TensorShape::DimType;
+
+static uint8_t saturate_cast(float n)
 {
-    return static_cast<uint32_t>(std::min(255.0f, std::round(n)));
+    return static_cast<uint8_t>(std::min(255.0f, std::round(n)));
 }
 
-static bool CompareImages(uint8_t *pTest, uint8_t *pGold, size_t columns, size_t rows, size_t rowStride,
+static bool CompareImages(const uint8_t *pTest, const uint8_t *pGold, size_t columns, size_t rows, size_t rowStride,
                           size_t channels, float delta)
 {
+    const size_t activeRowBytes = columns * channels;
     for (size_t j = 0; j < rows; j++)
     {
-        for (size_t k = 0; k < columns; k++)
+        const size_t rowOffset = j * rowStride;
+        for (size_t k = 0; k < activeRowBytes; k++)
         {
-            for (size_t c = 0; c < channels; ++c)
+            const size_t offset = rowOffset + k;
+            float        diff   = std::abs(static_cast<float>(pTest[offset]) - static_cast<float>(pGold[offset]));
+            if (diff > delta)
             {
-                size_t offset = j * rowStride + k * channels + c;
-                float  diff   = std::abs(static_cast<float>(pTest[offset]) - static_cast<float>(pGold[offset]));
-                if (diff > delta)
-                {
-                    std::cout << " o = " << offset << " j = " << j << " k = " << k << " rowS = " << rowStride
-                              << std::endl;
-                    std::cout << " test = " << static_cast<float>(pTest[offset])
-                              << " gold = " << static_cast<float>(pGold[offset]) << std::endl;
+                const size_t column  = k / channels;
+                const size_t channel = k % channels;
+                std::cout << " o = " << offset << " j = " << j << " k = " << column << " c = " << channel
+                          << " rowS = " << rowStride << std::endl;
+                std::cout << " test = " << static_cast<float>(pTest[offset])
+                          << " gold = " << static_cast<float>(pGold[offset]) << std::endl;
 
-                    return false;
-                }
+                return false;
             }
         }
     }
     return true;
 }
 
-static bool CompareTensors(std::vector<uint8_t> &vTest, std::vector<uint8_t> &vGold, size_t columns, size_t rows,
-                           size_t batch, size_t rowStride, size_t channels, size_t sampleStride, float delta)
+static bool CompareTensors(const std::vector<uint8_t> &vTest, const std::vector<uint8_t> &vGold, size_t columns,
+                           size_t rows, size_t batch, size_t rowStride, size_t channels, size_t sampleStride,
+                           float delta)
 {
     for (size_t i = 0; i < batch; i++)
     {
-        uint8_t *pTest = vTest.data() + i * sampleStride;
-        uint8_t *pGold = vGold.data() + i * sampleStride;
+        const uint8_t *pTest = vTest.data() + i * sampleStride;
+        const uint8_t *pGold = vGold.data() + i * sampleStride;
         if (!CompareImages(pTest, pGold, columns, rows, rowStride, channels, delta))
             return false;
     }
     return true;
 }
 
-static bool CompareVarShapes(std::vector<std::vector<uint8_t>> &vTest, std::vector<std::vector<uint8_t>> &vGold,
-                             std::vector<int> &vColumns, std::vector<int> &vRows, std::vector<int> &vRowStride,
-                             std::vector<int> &vChannels, float delta)
+static bool CompareVarShapes(const std::vector<std::vector<uint8_t>> &vTest,
+                             const std::vector<std::vector<uint8_t>> &vGold, const std::vector<int> &vColumns,
+                             const std::vector<int> &vRows, const std::vector<int> &vRowStride,
+                             const std::vector<int> &vChannels, float delta)
 {
     for (size_t i = 0; i < vTest.size(); i++)
     {
@@ -92,61 +98,91 @@ static bool CompareVarShapes(std::vector<std::vector<uint8_t>> &vTest, std::vect
     return true;
 }
 
-static void CPUJointBilateralFilter(uint8_t *pIn, uint8_t *pInColor, uint8_t *pOut, int columns, int rows,
-                                    int rowStride, int channels, int radius, float colorCoefficient,
+static float ReadPixel(const uint8_t *pIn, TensorDim x, TensorDim y, int c, TensorDim columns, TensorDim rows,
+                       int rowStride, int channels)
+{
+    return ((x >= 0) && (x < columns) && (y >= 0) && (y < rows))
+             ? static_cast<float>(pIn[y * rowStride + x * channels + c])
+             : 0.0f;
+}
+
+static std::vector<float> ReadChannels(const uint8_t *pIn, TensorDim x, TensorDim y, TensorDim columns, TensorDim rows,
+                                       int rowStride, int channels)
+{
+    std::vector<float> values(channels);
+
+    for (int c = 0; c < channels; ++c)
+    {
+        values[c] = ReadPixel(pIn, x, y, c, columns, rows, rowStride, channels);
+    }
+
+    return values;
+}
+
+static void AccumulateJointBilateralSample(std::vector<float> &numerators, float &denominator,
+                                           const std::vector<float> &centerColors, const uint8_t *pIn,
+                                           const uint8_t *pInColor, TensorDim x, TensorDim y, TensorDim columns,
+                                           TensorDim rows, int rowStride, int channels, float distanceSquared,
+                                           float colorCoefficient, float spaceCoefficient)
+{
+    std::vector<float> pixels      = ReadChannels(pIn, x, y, columns, rows, rowStride, channels);
+    std::vector<float> pixelColors = ReadChannels(pInColor, x, y, columns, rows, rowStride, channels);
+    float              eColor      = 0.0f;
+
+    for (int c = 0; c < channels; ++c)
+    {
+        eColor += std::abs(pixelColors[c] - centerColors[c]);
+    }
+
+    float weight = std::exp(distanceSquared * spaceCoefficient + eColor * eColor * colorCoefficient);
+    denominator += weight;
+
+    for (int c = 0; c < channels; ++c)
+    {
+        numerators[c] += weight * pixels[c];
+    }
+}
+
+static void AccumulateJointBilateralWindow(std::vector<float> &numerators, float &denominator,
+                                           const std::vector<float> &centerColors, const uint8_t *pIn,
+                                           const uint8_t *pInColor, TensorDim column, TensorDim row, TensorDim columns,
+                                           TensorDim rows, int rowStride, int channels, int radius, float radiusSquared,
+                                           float colorCoefficient, float spaceCoefficient)
+{
+    for (TensorDim y = row - radius; y <= row + radius; y++)
+    {
+        for (TensorDim x = column - radius; x <= column + radius; x++)
+        {
+            auto distanceSquared = static_cast<float>((column - x) * (column - x) + (row - y) * (row - y));
+
+            if (distanceSquared > radiusSquared)
+            {
+                continue;
+            }
+
+            AccumulateJointBilateralSample(numerators, denominator, centerColors, pIn, pInColor, x, y, columns, rows,
+                                           rowStride, channels, distanceSquared, colorCoefficient, spaceCoefficient);
+        }
+    }
+}
+
+static void CPUJointBilateralFilter(const uint8_t *pIn, const uint8_t *pInColor, uint8_t *pOut, TensorDim columns,
+                                    TensorDim rows, int rowStride, int channels, int radius, float colorCoefficient,
                                     float spaceCoefficient)
 {
-    float radiusSquared = radius * radius;
-    for (int j = 0; j < rows; j++)
+    auto radiusSquared = static_cast<float>(radius * radius);
+    for (TensorDim j = 0; j < rows; j++)
     {
-        for (int k = 0; k < columns; k++)
+        for (TensorDim k = 0; k < columns; k++)
         {
             std::vector<float> numerators(channels, 0.0f);
-            float              denominator = 0;
-            std::vector<float> centerColors{
-                static_cast<float>(pInColor[j * rowStride + k * channels]),
-                channels > 1 ? static_cast<float>(pInColor[j * rowStride + k * channels + 1]) : 0,
-                channels > 2 ? static_cast<float>(pInColor[j * rowStride + k * channels + 2]) : 0,
-                channels > 3 ? static_cast<float>(pInColor[j * rowStride + k * channels + 3]) : 0};
+            float              denominator  = 0;
+            std::vector<float> centerColors = ReadChannels(pInColor, k, j, columns, rows, rowStride, channels);
 
-            for (int y = j - radius; y <= j + radius; y++)
-            {
-                for (int x = k - radius; x <= k + radius; x++)
-                {
-                    float distanceSquared = (k - x) * (k - x) + (j - y) * (j - y);
-                    if (distanceSquared <= radiusSquared)
-                    {
-                        std::vector<float> pixels;
-                        std::vector<float> pixelColors;
-                        for (auto c = 0; c < channels; ++c)
-                        {
-                            float pixel      = ((x >= 0) && (x < columns) && (y >= 0) && (y < rows))
-                                                 ? static_cast<float>(pIn[y * rowStride + x * channels + c])
-                                                 : 0.0f;
-                            float pixelColor = ((x >= 0) && (x < columns) && (y >= 0) && (y < rows))
-                                                 ? static_cast<float>(pInColor[y * rowStride + x * channels + c])
-                                                 : 0.0f;
-                            pixels.emplace_back(pixel);
-                            pixelColors.emplace_back(pixelColor);
-                        }
+            AccumulateJointBilateralWindow(numerators, denominator, centerColors, pIn, pInColor, k, j, columns, rows,
+                                           rowStride, channels, radius, radiusSquared, colorCoefficient,
+                                           spaceCoefficient);
 
-                        float e_space = distanceSquared * spaceCoefficient;
-                        float e_color = 0.0f;
-                        for (auto c = 0; c < channels; ++c)
-                        {
-                            e_color += std::abs(pixelColors[c] - centerColors[c]);
-                        }
-                        e_color = e_color * e_color * colorCoefficient;
-
-                        float weight = std::exp(e_space + e_color);
-                        denominator += weight;
-                        for (auto c = 0; c < channels; ++c)
-                        {
-                            numerators[c] += weight * pixels[c];
-                        }
-                    }
-                }
-            }
             denominator = (denominator != 0) ? denominator : 1.0f;
             for (auto c = 0; c < channels; ++c)
             {
@@ -157,9 +193,9 @@ static void CPUJointBilateralFilter(uint8_t *pIn, uint8_t *pInColor, uint8_t *pO
 }
 
 static void CPUJointBilateralFilterTensor(std::vector<uint8_t> &vIn, std::vector<uint8_t> &vInColor,
-                                          std::vector<uint8_t> &vOut, int columns, int rows, int batch, int rowStride,
-                                          int channels, int sampleStride, int diameter, float sigmaColor,
-                                          float sigmaSpace)
+                                          std::vector<uint8_t> &vOut, TensorDim columns, TensorDim rows,
+                                          TensorDim batch, int rowStride, int channels, int sampleStride, int diameter,
+                                          float sigmaColor, float sigmaSpace)
 {
     if (sigmaColor <= 0)
     {
@@ -173,7 +209,7 @@ static void CPUJointBilateralFilterTensor(std::vector<uint8_t> &vIn, std::vector
     int radius;
     if (diameter <= 0)
     {
-        radius = std::roundf(sigmaSpace * 1.5f);
+        radius = static_cast<int>(std::roundf(sigmaSpace * 1.5f));
     }
     else
     {
@@ -184,13 +220,13 @@ static void CPUJointBilateralFilterTensor(std::vector<uint8_t> &vIn, std::vector
         radius = 1;
     }
 
-    float spaceCoefficient = -1 / (2 * sigmaSpace * sigmaSpace);
-    float colorCoefficient = -1 / (2 * sigmaColor * sigmaColor);
-    for (int i = 0; i < batch; i++)
+    float spaceCoefficient = -1.f / (2.f * sigmaSpace * sigmaSpace);
+    float colorCoefficient = -1.f / (2.f * sigmaColor * sigmaColor);
+    for (TensorDim i = 0; i < batch; i++)
     {
-        uint8_t *pIn      = vIn.data() + i * sampleStride;
-        uint8_t *pInColor = vInColor.data() + i * sampleStride;
-        uint8_t *pOut     = vOut.data() + i * sampleStride;
+        const uint8_t *pIn      = vIn.data() + i * sampleStride;
+        const uint8_t *pInColor = vInColor.data() + i * sampleStride;
+        uint8_t       *pOut     = vOut.data() + i * sampleStride;
         CPUJointBilateralFilter(pIn, pInColor, pOut, columns, rows, rowStride, channels, radius, colorCoefficient,
                                 spaceCoefficient);
     }
@@ -221,7 +257,7 @@ static void CPUJointBilateralFilterVarShape(std::vector<std::vector<uint8_t>> &v
         int radius;
         if (diameter <= 0)
         {
-            radius = std::roundf(sigmaSpace * 1.5f);
+            radius = static_cast<int>(std::roundf(sigmaSpace * 1.5f));
         }
         else
         {
@@ -232,8 +268,8 @@ static void CPUJointBilateralFilterVarShape(std::vector<std::vector<uint8_t>> &v
             radius = 1;
         }
 
-        float spaceCoefficient = -1 / (2 * sigmaSpace * sigmaSpace);
-        float colorCoefficient = -1 / (2 * sigmaColor * sigmaColor);
+        float spaceCoefficient = -1.f / (2.f * sigmaSpace * sigmaSpace);
+        float colorCoefficient = -1.f / (2.f * sigmaColor * sigmaColor);
         CPUJointBilateralFilter(vIn[i].data(), vInColor[i].data(), vOut[i].data(), vColumns[i], vRows[i], vRowStride[i],
                                 vChannels[i], radius, colorCoefficient, spaceCoefficient);
     }
@@ -280,7 +316,7 @@ TEST_P(OpJointBilateralFilter, JointBilateralFilter_packed)
     std::vector<nvcv::ImageFormat> fmts{nvcv::FMT_U8, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_2U8}, nvcv::FMT_RGB8,
                                         nvcv::FMT_RGBA8};
 
-    for (nvcv::ImageFormat fmt : fmts)
+    for (nvcv::ImageFormat fmt : fmts) // NOSONAR
     {
         nvcv::Tensor imgOut     = nvcv::util::CreateTensor(numberOfImages, width, height, fmt);
         nvcv::Tensor imgIn      = nvcv::util::CreateTensor(numberOfImages, width, height, fmt);
@@ -304,13 +340,13 @@ TEST_P(OpJointBilateralFilter, JointBilateralFilter_packed)
         auto outAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(*outData);
         ASSERT_TRUE(outAccess);
 
-        int inSampleStride      = inAccess->numRows() * inAccess->rowStride();
-        int inColorSampleStride = inColorAccess->numRows() * inColorAccess->rowStride();
-        int outSampleStride     = outAccess->numRows() * outAccess->rowStride();
+        auto inSampleStride      = static_cast<int>(inAccess->numRows() * inAccess->rowStride());
+        auto inColorSampleStride = static_cast<int>(inColorAccess->numRows() * inColorAccess->rowStride());
+        auto outSampleStride     = static_cast<int>(outAccess->numRows() * outAccess->rowStride());
 
-        int inBufSize      = inSampleStride * inAccess->numSamples();
-        int inColorBufSize = inColorSampleStride * inColorAccess->numSamples();
-        int outBufSize     = outSampleStride * outAccess->numSamples();
+        int inBufSize      = inSampleStride * static_cast<int>(inAccess->numSamples());
+        int inColorBufSize = inColorSampleStride * static_cast<int>(inColorAccess->numSamples());
+        int outBufSize     = outSampleStride * static_cast<int>(outAccess->numSamples());
 
         std::vector<uint8_t> vIn(inBufSize);
         std::vector<uint8_t> vInColor(inColorBufSize);
@@ -325,9 +361,10 @@ TEST_P(OpJointBilateralFilter, JointBilateralFilter_packed)
         EXPECT_EQ(cudaSuccess, cudaMemcpy(inData->basePtr(), inGold.data(), inBufSize, cudaMemcpyHostToDevice));
         EXPECT_EQ(cudaSuccess,
                   cudaMemcpy(inColorData->basePtr(), inColorGold.data(), inColorBufSize, cudaMemcpyHostToDevice));
+        const int rowStride{static_cast<int>(inAccess->rowStride())};
         CPUJointBilateralFilterTensor(inGold, inColorGold, outGold, inAccess->numCols(), inAccess->numRows(),
-                                      inAccess->numSamples(), inAccess->rowStride(), channels, inSampleStride, d,
-                                      sigmaColor, sigmaSpace);
+                                      inAccess->numSamples(), rowStride, channels, inSampleStride, d, sigmaColor,
+                                      sigmaSpace);
 
         // run operator
         cvcuda::JointBilateralFilter jointBilateralFilterOp;
@@ -340,13 +377,15 @@ TEST_P(OpJointBilateralFilter, JointBilateralFilter_packed)
 
         EXPECT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
         EXPECT_EQ(cudaSuccess, cudaMemcpy(outTest.data(), outData->basePtr(), outBufSize, cudaMemcpyDeviceToHost));
-        ASSERT_TRUE(CompareTensors(outTest, outGold, inAccess->numCols(), inAccess->numRows(), inAccess->numSamples(),
-                                   inAccess->rowStride(), channels, inSampleStride, 0.9f));
+        ASSERT_TRUE(CompareTensors(
+            outTest, outGold, static_cast<size_t>(inAccess->numCols()), static_cast<size_t>(inAccess->numRows()),
+            static_cast<size_t>(inAccess->numSamples()), static_cast<size_t>(inAccess->rowStride()),
+            static_cast<size_t>(channels), static_cast<size_t>(inSampleStride), 0.9f));
     }
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
-TEST_P(OpJointBilateralFilter, JointBilateralFilter_VarShape)
+TEST_P(OpJointBilateralFilter, varshape_correct_output)
 {
     cudaStream_t stream;
     EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
@@ -359,12 +398,14 @@ TEST_P(OpJointBilateralFilter, JointBilateralFilter_VarShape)
     std::vector<nvcv::ImageFormat> fmts{nvcv::FMT_U8, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_2U8}, nvcv::FMT_RGB8,
                                         nvcv::FMT_RGBA8};
 
-    for (nvcv::ImageFormat fmt : fmts)
+    for (nvcv::ImageFormat fmt : fmts) // NOSONAR
     {
         // Create input varshape
-        std::default_random_engine         rng;
-        std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
-        std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
+        std::default_random_engine    rng;
+        std::uniform_int_distribution udistWidth(static_cast<int>(static_cast<double>(width) * 0.8),
+                                                 static_cast<int>(static_cast<double>(width) * 1.1));
+        std::uniform_int_distribution udistHeight(static_cast<int>(static_cast<double>(height) * 0.8),
+                                                  static_cast<int>(static_cast<double>(height) * 1.1));
 
         std::vector<nvcv::Image> imgSrc;
         std::vector<nvcv::Image> imgSrcColor;
@@ -395,10 +436,10 @@ TEST_P(OpJointBilateralFilter, JointBilateralFilter_VarShape)
             srcColorVec[i].resize(imgSrcColor[i].size().h * srcRowStride);
             goldVec[i].resize(imgSrc[i].size().h * srcRowStride);
             dstVec[i].resize(imgSrc[i].size().h * srcRowStride);
-            std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return udist(rng); });
-            std::generate(srcColorVec[i].begin(), srcColorVec[i].end(), [&]() { return udist(rng); });
-            std::generate(goldVec[i].begin(), goldVec[i].end(), [&]() { return 0; });
-            std::generate(dstVec[i].begin(), dstVec[i].end(), [&]() { return 0; });
+            std::ranges::generate(srcVec[i], [&udist, &rng]() { return udist(rng); });
+            std::ranges::generate(srcColorVec[i], [&udist, &rng]() { return udist(rng); });
+            std::ranges::generate(goldVec[i], []() { return 0; });
+            std::ranges::generate(dstVec[i], []() { return 0; });
             auto imgData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
             ASSERT_NE(imgData, nvcv::NullOpt);
             auto imgColorData = imgSrcColor[i].exportData<nvcv::ImageDataStridedCuda>();
@@ -489,39 +530,155 @@ TEST_P(OpJointBilateralFilter, JointBilateralFilter_VarShape)
     EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
 }
 
+static void RunJointBilateralTensorPlanarParity(nvcv::ImageFormat interleavedFmt, nvcv::ImageFormat planarFmt,
+                                                NVCVBorderType border)
+{
+    cvcuda::JointBilateralFilter op;
+    nvcv::test::planar::RunTensorParity(
+        planarFmt, interleavedFmt, 33, 25, 33, 25, 2,
+        [&op, border](cudaStream_t stream, const nvcv::Tensor &src, const nvcv::Tensor &dst, nvcv::ImageFormat)
+        { op(stream, src, src, dst, 5, 15.f, 3.f, border); });
+}
+
+static void RunJointBilateralVarShapePlanarParity(nvcv::ImageFormat interleavedFmt, nvcv::ImageFormat planarFmt,
+                                                  NVCVBorderType border)
+{
+    cvcuda::JointBilateralFilter op;
+    nvcv::test::planar::RunVarShapeParity(
+        planarFmt, interleavedFmt, 31, 23, 31, 23, 2,
+        [&op, border](cudaStream_t stream, const nvcv::ImageBatchVarShape &src, const nvcv::ImageBatchVarShape &dst,
+                      nvcv::ImageFormat)
+        {
+            const int numImages = src.numImages();
+
+            auto diameter   = nvcv::test::planar::MakePerImageTensor(numImages, nvcv::TYPE_S32, 5);
+            auto sigmaColor = nvcv::test::planar::MakePerImageTensor(numImages, nvcv::TYPE_F32, 15.f);
+            auto sigmaSpace = nvcv::test::planar::MakePerImageTensor(numImages, nvcv::TYPE_F32, 3.f);
+
+            op(stream, src, src, dst, diameter, sigmaColor, sigmaSpace, border);
+            ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+        });
+}
+
+TEST(OpJointBilateralFilterPlanar, tensor_rgb8_matches_interleaved)
+{
+    RunJointBilateralTensorPlanarParity(nvcv::FMT_RGB8, nvcv::FMT_RGB8p, NVCV_BORDER_REFLECT);
+}
+
+TEST(OpJointBilateralFilterPlanar, tensor_rgba8_matches_interleaved)
+{
+    RunJointBilateralTensorPlanarParity(nvcv::FMT_RGBA8, nvcv::FMT_RGBA8p, NVCV_BORDER_CONSTANT);
+}
+
+TEST(OpJointBilateralFilterPlanar, varshape_rgb8_matches_interleaved)
+{
+    RunJointBilateralVarShapePlanarParity(nvcv::FMT_RGB8, nvcv::FMT_RGB8p, NVCV_BORDER_REFLECT);
+}
+
+TEST(OpJointBilateralFilterPlanar, varshape_rgba8_matches_interleaved)
+{
+    RunJointBilateralVarShapePlanarParity(nvcv::FMT_RGBA8, nvcv::FMT_RGBA8p, NVCV_BORDER_CONSTANT);
+}
+
+static auto OpJointBilateralFilterVarshapeNegativeParams()
+{
+    nvcv::test::ValueList<NVCVStatus, nvcv::ImageFormat, nvcv::ImageFormat, nvcv::ImageFormat, NVCVBorderType,
+                          nvcv::DataType, nvcv::DataType, nvcv::DataType, int, int>
+        params{
+            {NVCV_ERROR_INVALID_ARGUMENT,    nvcv::FMT_U8,    nvcv::FMT_U8,  nvcv::FMT_U16, NVCV_BORDER_CONSTANT,
+             nvcv::TYPE_S32, nvcv::TYPE_F32, nvcv::TYPE_F32, 5, 5}, // in/out image format not same
+            {NVCV_ERROR_INVALID_ARGUMENT,   nvcv::FMT_U16,    nvcv::FMT_U8,  nvcv::FMT_U16, NVCV_BORDER_CONSTANT,
+             nvcv::TYPE_S32, nvcv::TYPE_F32, nvcv::TYPE_F32, 5, 5}, // inColor/out image format not same
+            {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8p,  nvcv::FMT_RGB8, nvcv::FMT_RGB8, NVCV_BORDER_CONSTANT,
+             nvcv::TYPE_S32, nvcv::TYPE_F32, nvcv::TYPE_F32, 5, 5}, // in/out data format not same
+            {NVCV_ERROR_INVALID_ARGUMENT,  nvcv::FMT_RGB8, nvcv::FMT_RGB8p, nvcv::FMT_RGB8, NVCV_BORDER_CONSTANT,
+             nvcv::TYPE_S32, nvcv::TYPE_F32, nvcv::TYPE_F32, 5, 5}, // inColor/out data format not same
+    };
+#ifndef ENABLE_SANITIZER
+    params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, nvcv::FMT_U8,
+                        static_cast<NVCVBorderType>(255), nvcv::TYPE_S32, nvcv::TYPE_F32, nvcv::TYPE_F32, 5, 5);
+#endif
+    params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F16, nvcv::FMT_F16, nvcv::FMT_F16, NVCV_BORDER_CONSTANT,
+                        nvcv::TYPE_S32, nvcv::TYPE_F32, nvcv::TYPE_F32, 5, 5);
+    params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, nvcv::FMT_U8, NVCV_BORDER_CONSTANT,
+                        nvcv::TYPE_F32, nvcv::TYPE_F32, nvcv::TYPE_F32, 5, 5);
+    params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, nvcv::FMT_U8, NVCV_BORDER_CONSTANT,
+                        nvcv::TYPE_S32, nvcv::TYPE_S32, nvcv::TYPE_F32, 5, 5);
+    params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, nvcv::FMT_U8, NVCV_BORDER_CONSTANT,
+                        nvcv::TYPE_S32, nvcv::TYPE_F32, nvcv::TYPE_S32, 5, 5);
+    params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, nvcv::FMT_U8, NVCV_BORDER_CONSTANT,
+                        nvcv::TYPE_S32, nvcv::TYPE_F32, nvcv::TYPE_F32, 6, 5);
+    return params;
+}
+
+NVCV_TEST_SUITE_P(OpJointBilateralFilterVarshape_Negative, OpJointBilateralFilterVarshapeNegativeParams());
+
+static auto OpJointBilateralFilterNegativeParams()
+{
+    nvcv::test::ValueList<NVCVStatus, nvcv::ImageFormat, nvcv::ImageFormat, nvcv::ImageFormat, NVCVBorderType> params{
+        {NVCV_ERROR_INVALID_ARGUMENT,    nvcv::FMT_U8,    nvcv::FMT_U8,   nvcv::FMT_U16,
+         NVCV_BORDER_CONSTANT}, // in/out image format not same
+        {NVCV_ERROR_INVALID_ARGUMENT,   nvcv::FMT_U16,    nvcv::FMT_U8,   nvcv::FMT_U16,
+         NVCV_BORDER_CONSTANT}, // inColor/out image format not same
+        {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8p,  nvcv::FMT_RGB8,  nvcv::FMT_RGB8,
+         NVCV_BORDER_CONSTANT}, // in/out data format not same
+        {NVCV_ERROR_INVALID_ARGUMENT,  nvcv::FMT_RGB8, nvcv::FMT_RGB8p,  nvcv::FMT_RGB8,
+         NVCV_BORDER_CONSTANT}, // inColor/out data format not same
+        {NVCV_ERROR_INVALID_ARGUMENT,  nvcv::FMT_RGB8,  nvcv::FMT_RGB8, nvcv::FMT_RGB8p,
+         NVCV_BORDER_CONSTANT}, // inColor not kHWC/kNHWC
+    };
+#ifndef ENABLE_SANITIZER
+    params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, nvcv::FMT_U8,
+                        static_cast<NVCVBorderType>(255));
+#endif
+    params.emplace_back(NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F16, nvcv::FMT_F16, nvcv::FMT_F16, NVCV_BORDER_CONSTANT);
+    return params;
+}
+
+NVCV_TEST_SUITE_P(OpJointBilateralFilter_Negative, OpJointBilateralFilterNegativeParams());
+
 #undef NVCV_IMAGE_FORMAT_2U8
 
-// clang-format off
-NVCV_TEST_SUITE_P(OpJointBilateralFilterVarshape_Negative, nvcv::test::ValueList<NVCVStatus, nvcv::ImageFormat, nvcv::ImageFormat, nvcv::ImageFormat, NVCVBorderType, nvcv::DataType, nvcv::DataType, nvcv::DataType, int, int>{
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, nvcv::FMT_U16, NVCV_BORDER_CONSTANT, nvcv::TYPE_S32, nvcv::TYPE_F32, nvcv::TYPE_F32, 5, 5}, // in/out image format not same
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U16, nvcv::FMT_U8, nvcv::FMT_U16, NVCV_BORDER_CONSTANT, nvcv::TYPE_S32, nvcv::TYPE_F32, nvcv::TYPE_F32, 5, 5}, // inColor/out image format not same
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8p, nvcv::FMT_RGB8, nvcv::FMT_RGB8, NVCV_BORDER_CONSTANT, nvcv::TYPE_S32, nvcv::TYPE_F32, nvcv::TYPE_F32, 5, 5}, // in/out data format not same
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8, nvcv::FMT_RGB8p, nvcv::FMT_RGB8, NVCV_BORDER_CONSTANT, nvcv::TYPE_S32, nvcv::TYPE_F32, nvcv::TYPE_F32, 5, 5}, // inColor/out data format not same
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8p, nvcv::FMT_RGB8p, nvcv::FMT_RGB8p, NVCV_BORDER_CONSTANT, nvcv::TYPE_S32, nvcv::TYPE_F32, nvcv::TYPE_F32, 5, 5}, // input not kHWC/kNHWC
-#ifndef ENABLE_SANITIZER
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, nvcv::FMT_U8, static_cast<NVCVBorderType>(255), nvcv::TYPE_S32, nvcv::TYPE_F32, nvcv::TYPE_F32, 5, 5}, // invalid border type
-#endif
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F16, nvcv::FMT_F16, nvcv::FMT_F16, NVCV_BORDER_CONSTANT, nvcv::TYPE_S32, nvcv::TYPE_F32, nvcv::TYPE_F32, 5, 5}, // invalid data type
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, nvcv::FMT_U8, NVCV_BORDER_CONSTANT, nvcv::TYPE_F32, nvcv::TYPE_F32, nvcv::TYPE_F32, 5, 5}, // invalid diameter data type
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, nvcv::FMT_U8, NVCV_BORDER_CONSTANT, nvcv::TYPE_S32, nvcv::TYPE_S32, nvcv::TYPE_F32, 5, 5}, // invalid sigmaColor data type
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, nvcv::FMT_U8, NVCV_BORDER_CONSTANT, nvcv::TYPE_S32, nvcv::TYPE_F32, nvcv::TYPE_S32, 5, 5}, // invalid sigmaSpace data type
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, nvcv::FMT_U8, NVCV_BORDER_CONSTANT, nvcv::TYPE_S32, nvcv::TYPE_F32, nvcv::TYPE_F32, 6, 5}, // in/out images number not equal
-});
+TEST(OpJointBilateralFilter_Negative, tensor_planar_2channel_rejected)
+{
+    cudaStream_t stream;
+    EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
-NVCV_TEST_SUITE_P(OpJointBilateralFilter_Negative, nvcv::test::ValueList<NVCVStatus, nvcv::ImageFormat, nvcv::ImageFormat, nvcv::ImageFormat, NVCVBorderType>{
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, nvcv::FMT_U16, NVCV_BORDER_CONSTANT}, // in/out image format not same
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U16, nvcv::FMT_U8, nvcv::FMT_U16, NVCV_BORDER_CONSTANT}, // inColor/out image format not same
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8p, nvcv::FMT_RGB8, nvcv::FMT_RGB8, NVCV_BORDER_CONSTANT}, // in/out data format not same
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8, nvcv::FMT_RGB8p, nvcv::FMT_RGB8, NVCV_BORDER_CONSTANT}, // inColor/out data format not same
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8p, nvcv::FMT_RGB8p, nvcv::FMT_RGB8p, NVCV_BORDER_CONSTANT}, // input not kHWC/kNHWC
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_RGB8, nvcv::FMT_RGB8, nvcv::FMT_RGB8p, NVCV_BORDER_CONSTANT}, // inColor not kHWC/kNHWC
-#ifndef ENABLE_SANITIZER
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_U8, nvcv::FMT_U8, nvcv::FMT_U8, static_cast<NVCVBorderType>(255)}, // invalid border type
-#endif
-    {NVCV_ERROR_INVALID_ARGUMENT, nvcv::FMT_F16, nvcv::FMT_F16, nvcv::FMT_F16, NVCV_BORDER_CONSTANT}, // invalid data type
-});
+    nvcv::Tensor imgOut(
+        {
+            {5, 2, 24, 24},
+            "NCHW"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor imgIn(
+        {
+            {5, 2, 24, 24},
+            "NCHW"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor imgInColor(
+        {
+            {5, 2, 24, 24},
+            "NCHW"
+    },
+        nvcv::TYPE_U8);
 
-// clang-format on
+    int   diameter   = 4;
+    float sigmaColor = 5;
+    float sigmaSpace = 3;
+
+    cvcuda::JointBilateralFilter jointBilateralFilterOp;
+
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall(
+                  [&jointBilateralFilterOp, &stream, &imgIn, &imgInColor, &imgOut, &diameter, &sigmaColor, &sigmaSpace]
+                  {
+                      jointBilateralFilterOp(stream, imgIn, imgInColor, imgOut, diameter, sigmaColor, sigmaSpace,
+                                             NVCV_BORDER_CONSTANT);
+                  }));
+
+    EXPECT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
 
 TEST_P(OpJointBilateralFilter_Negative, op)
 {
@@ -549,7 +706,8 @@ TEST_P(OpJointBilateralFilter_Negative, op)
     cvcuda::JointBilateralFilter jointBilateralFilterOp;
 
     EXPECT_EQ(expectedReturnCode, nvcv::ProtectCall(
-                                      [&] {
+                                      [&jointBilateralFilterOp, &stream, &imgIn, &imgInColor, &imgOut, &diameter,
+                                       &sigmaColor, &sigmaSpace, &borderType] {
                                           jointBilateralFilterOp(stream, imgIn, imgInColor, imgOut, diameter,
                                                                  sigmaColor, sigmaSpace, borderType);
                                       }));
@@ -580,9 +738,9 @@ TEST_P(OpJointBilateralFilterVarshape_Negative, op)
     float sigmaSpace = 3;
 
     // Create input varshape
-    std::default_random_engine         rng;
-    std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
-    std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
+    std::default_random_engine    rng;
+    std::uniform_int_distribution udistWidth(width * 8 / 10, width * 11 / 10);
+    std::uniform_int_distribution udistHeight(height * 8 / 10, height * 11 / 10);
 
     std::vector<nvcv::Image> imgSrc;
     std::vector<nvcv::Image> imgSrcColor;
@@ -646,7 +804,8 @@ TEST_P(OpJointBilateralFilterVarshape_Negative, op)
     // Run operator
     cvcuda::JointBilateralFilter jointBilateralFilterOp;
     EXPECT_EQ(expectedReturnCode, nvcv::ProtectCall(
-                                      [&]
+                                      [&jointBilateralFilterOp, &stream, &batchSrc, &batchSrcColor, &batchDst,
+                                       &diameterTensor, &sigmaColorTensor, &sigmaSpaceTensor, &borderType]
                                       {
                                           jointBilateralFilterOp(stream, batchSrc, batchSrcColor, batchDst,
                                                                  diameterTensor, sigmaColorTensor, sigmaSpaceTensor,
@@ -667,12 +826,8 @@ TEST(OpJointBilateralFilter_Negative, varshape_hasDifferentFormat)
         {         fmt,          fmt, nvcv::FMT_U8}
     };
 
-    for (auto testCase : testSet)
+    for (const auto &[inputFmtExtra, inputColorFmtExtra, outputFmtExtra] : testSet)
     {
-        nvcv::ImageFormat inputFmtExtra      = std::get<0>(testCase);
-        nvcv::ImageFormat inputColorFmtExtra = std::get<1>(testCase);
-        nvcv::ImageFormat outputFmtExtra     = std::get<2>(testCase);
-
         cudaStream_t stream;
         EXPECT_EQ(cudaSuccess, cudaStreamCreate(&stream));
 
@@ -684,9 +839,11 @@ TEST(OpJointBilateralFilter_Negative, varshape_hasDifferentFormat)
         int   numberOfImages = 5;
 
         // Create input varshape
-        std::default_random_engine         rng;
-        std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
-        std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
+        std::default_random_engine    rng;
+        std::uniform_int_distribution udistWidth(static_cast<int>(static_cast<double>(width) * 0.8),
+                                                 static_cast<int>(static_cast<double>(width) * 1.1));
+        std::uniform_int_distribution udistHeight(static_cast<int>(static_cast<double>(height) * 0.8),
+                                                  static_cast<int>(static_cast<double>(height) * 1.1));
 
         std::vector<nvcv::Image> imgSrc;
         std::vector<nvcv::Image> imgSrcColor;
@@ -754,7 +911,8 @@ TEST(OpJointBilateralFilter_Negative, varshape_hasDifferentFormat)
         // Run operator
         cvcuda::JointBilateralFilter jointBilateralFilterOp;
         EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall(
-                                                   [&]
+                                                   [&jointBilateralFilterOp, &stream, &batchSrc, &batchSrcColor,
+                                                    &batchDst, &diameterTensor, &sigmaColorTensor, &sigmaSpaceTensor]
                                                    {
                                                        jointBilateralFilterOp(stream, batchSrc, batchSrcColor, batchDst,
                                                                               diameterTensor, sigmaColorTensor,

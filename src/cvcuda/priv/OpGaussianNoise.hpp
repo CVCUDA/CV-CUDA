@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,12 +25,11 @@
 #define CVCUDA_PRIV_GAUSSIAN_NOISE_HPP
 
 #include "IOperator.hpp"
+#include "PerDeviceResource.hpp"
 #include "legacy/CvCudaLegacy.h"
 
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/Tensor.hpp>
-
-#include <memory>
 
 namespace cvcuda::priv {
 
@@ -42,12 +41,15 @@ public:
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const nvcv::Tensor &mu,
                     const nvcv::Tensor &sigma, bool per_channel, unsigned long long seed) const;
 
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, float mu, float sigma,
+                    bool per_channel, unsigned long long seed, bool reseed, bool clip) const;
+
     void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
                     const nvcv::Tensor &mu, const nvcv::Tensor &sigma, bool per_channel, unsigned long long seed) const;
 
 private:
-    std::unique_ptr<nvcv::legacy::cuda_op::GaussianNoise>         m_legacyOp;
-    std::unique_ptr<nvcv::legacy::cuda_op::GaussianNoiseVarShape> m_legacyOpVarShape;
+    mutable PerDeviceResource<nvcv::legacy::cuda_op::GaussianNoise>         m_legacyOp;
+    mutable PerDeviceResource<nvcv::legacy::cuda_op::GaussianNoiseVarShape> m_legacyOpVarShape;
 };
 
 } // namespace cvcuda::priv

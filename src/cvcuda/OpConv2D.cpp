@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "priv/OpConv2D.hpp"
 
+#include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <cvcuda/OpConv2D.hpp>
@@ -30,7 +31,7 @@ namespace priv = cvcuda::priv;
 CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaConv2DCreate, (NVCVOperatorHandle * handle))
 {
     return nvcv::ProtectCall(
-        [&]
+        [&handle]
         {
             if (handle == nullptr)
             {
@@ -38,7 +39,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaConv2DCreate, (NVCVOperatorHandle * ha
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            *handle = reinterpret_cast<NVCVOperatorHandle>(new priv::Conv2D());
+            *handle = priv::CreateOperatorHandle<priv::Conv2D>();
         });
 }
 
@@ -46,11 +47,15 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaConv2DVarShapeSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVImageBatchHandle in, NVCVImageBatchHandle out,
                    NVCVImageBatchHandle kernel, NVCVTensorHandle kernelAnchor, NVCVBorderType borderMode))
 {
+    CVCUDA_NVTX_RANGE("cvcudaConv2DVarShapeSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&in, &out, &kernel, &kernelAnchor, &handle, &stream, &borderMode]
         {
-            nvcv::ImageBatchVarShapeWrapHandle inWrap(in), outWrap(out), kernelWrap(kernel);
+            nvcv::ImageBatchVarShapeWrapHandle inWrap(in);
+            nvcv::ImageBatchVarShapeWrapHandle outWrap(out);
+            nvcv::ImageBatchVarShapeWrapHandle kernelWrap(kernel);
             nvcv::TensorWrapHandle             kernelAnchorWrap(kernelAnchor);
-            priv::ToDynamicRef<priv::Conv2D>(handle)(stream, inWrap, outWrap, kernelWrap, kernelAnchorWrap, borderMode);
+            priv::ToDynamicRef<priv::Conv2D>(handle)(stream, inWrap.resource(), outWrap.resource(),
+                                                     kernelWrap.resource(), kernelAnchorWrap.resource(), borderMode);
         });
 }

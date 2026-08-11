@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+#include "Nvtx.hpp"
 #include "OpMinMaxLoc.hpp"
 
 #include <cvcuda/cuda_tools/Atomics.hpp>
@@ -29,7 +30,8 @@
 #include <nvcv/util/CheckError.hpp>
 #include <nvcv/util/Math.hpp>
 
-#include <cub/cub.cuh>
+#include <cub/block/block_reduce.cuh>
+#include <cub/block/block_scan.cuh>
 
 #include <sstream>
 
@@ -104,21 +106,95 @@ __device__ inline auto get(OutWrapper out)
     }
 }
 
-// OpMin used when finding only minimum value
+// Ordered-int encoding so native integer atomicMin/Max can be used on floating-point
+// min/max values. IEEE-754 floats are mapped to unsigned integers that preserve their
+// ordering (flip the sign bit for positives, flip all bits for negatives), so an integer
+// atomicMin/atomicMax yields the correct float result. This avoids the atomicCAS spin-loop
+// that emulates float atomics (cuda::AtomicMin/Max), whose contended latency stalls badly
+// on architectures without native float atomics. The slot holds the encoded integer during
+// the reduction and is decoded back to the float value before locations are collected.
 
-template<typename T>
-struct OpMin
+template<typename F>
+struct OrderedInt;
+
+template<>
+struct OrderedInt<float>
+{
+    using type = unsigned int;
+
+    inline static __device__ type encode(float f)
+    {
+        type u = __float_as_uint(f);
+        return u ^ (static_cast<type>(-static_cast<int>(u >> 31)) | 0x80000000u);
+    }
+
+    static __device__ inline float decode(type u)
+    {
+        type mask = ((u >> 31) - 1u) | 0x80000000u;
+        return __uint_as_float(u ^ mask);
+    }
+};
+
+template<>
+struct OrderedInt<double>
+{
+    using type = unsigned long long;
+
+    inline static __device__ type encode(double f)
+    {
+        type u = static_cast<type>(__double_as_longlong(f));
+        return u ^ (static_cast<type>(-static_cast<long long>(u >> 63)) | 0x8000000000000000ULL);
+    }
+
+    static __device__ inline double decode(type u)
+    {
+        type mask = ((u >> 63) - 1ULL) | 0x8000000000000000ULL;
+        return __longlong_as_double(static_cast<long long>(u ^ mask));
+    }
+};
+
+template<typename T, typename Derived>
+struct OpSingleExtremaBase
 {
     using OutType     = OutputType<T>;
     using BaseOutType = cuda::BaseType<OutType>;
 
-    static constexpr OutType init = {cuda::TypeTraits<OutType>::max};
-
     template<class OutWrapper>
     __device__ inline static void initFill(OutWrapper out, int z)
     {
-        get<0>(out)[z] = init;
+        if constexpr (std::is_floating_point_v<BaseOutType>)
+        {
+            using OI                                                  = OrderedInt<BaseOutType>;
+            *reinterpret_cast<typename OI::type *>(&get<0>(out)[z].x) = OI::encode(Derived::init.x);
+        }
+        else
+        {
+            get<0>(out)[z] = Derived::init;
+        }
     }
+
+    template<class OutWrapper>
+    __device__ inline static void finalize(OutWrapper out, int z)
+    {
+        if constexpr (std::is_floating_point_v<BaseOutType>)
+        {
+            using OI         = OrderedInt<BaseOutType>;
+            auto *p          = reinterpret_cast<typename OI::type *>(&get<0>(out)[z].x);
+            get<0>(out)[z].x = OI::decode(*p);
+        }
+    }
+};
+
+// OpMin used when finding only minimum value
+
+template<typename T>
+struct OpMin : OpSingleExtremaBase<T, OpMin<T>>
+{
+    using Base = OpSingleExtremaBase<T, OpMin<T>>;
+    using typename Base::BaseOutType;
+    using typename Base::OutType;
+
+    static constexpr OutType init = {cuda::TypeTraits<OutType>::max};
 
     template<typename U>
     __device__ inline static void op(OutType &a, U b)
@@ -129,25 +205,28 @@ struct OpMin
     template<class OutWrapper>
     __device__ inline static void opAtomic(OutWrapper out, int z, OutType b)
     {
-        cuda::AtomicMin(get<0>(out)[z].x, b.x);
+        if constexpr (std::is_floating_point_v<BaseOutType>)
+        {
+            using OI = OrderedInt<BaseOutType>;
+            atomicMin(reinterpret_cast<typename OI::type *>(&get<0>(out)[z].x), OI::encode(b.x));
+        }
+        else
+        {
+            cuda::AtomicMin(get<0>(out)[z].x, b.x);
+        }
     }
 };
 
 // OpMax used when finding only maximum value
 
 template<typename T>
-struct OpMax
+struct OpMax : OpSingleExtremaBase<T, OpMax<T>>
 {
-    using OutType     = OutputType<T>;
-    using BaseOutType = cuda::BaseType<OutType>;
+    using Base = OpSingleExtremaBase<T, OpMax<T>>;
+    using typename Base::BaseOutType;
+    using typename Base::OutType;
 
     static constexpr OutType init = {cuda::Lowest<OutType>};
-
-    template<class OutWrapper>
-    __device__ inline static void initFill(OutWrapper out, int z)
-    {
-        get<0>(out)[z] = init;
-    }
 
     template<typename U>
     __device__ inline static void op(OutType &a, U b)
@@ -158,7 +237,15 @@ struct OpMax
     template<class OutWrapper>
     __device__ inline static void opAtomic(OutWrapper out, int z, OutType b)
     {
-        cuda::AtomicMax(get<0>(out)[z].x, b.x);
+        if constexpr (std::is_floating_point_v<BaseOutType>)
+        {
+            using OI = OrderedInt<BaseOutType>;
+            atomicMax(reinterpret_cast<typename OI::type *>(&get<0>(out)[z].x), OI::encode(b.x));
+        }
+        else
+        {
+            cuda::AtomicMax(get<0>(out)[z].x, b.x);
+        }
     }
 };
 
@@ -175,8 +262,17 @@ struct OpMinMax
     template<class OutWrapper>
     __device__ inline static void initFill(OutWrapper out, int z)
     {
-        get<0>(out)[z] = {init.x};
-        get<1>(out)[z] = {init.y};
+        if constexpr (std::is_floating_point_v<BaseOutType>)
+        {
+            using OI                                                  = OrderedInt<BaseOutType>;
+            *reinterpret_cast<typename OI::type *>(&get<0>(out)[z].x) = OI::encode(init.x);
+            *reinterpret_cast<typename OI::type *>(&get<1>(out)[z].x) = OI::encode(init.y);
+        }
+        else
+        {
+            get<0>(out)[z] = {init.x};
+            get<1>(out)[z] = {init.y};
+        }
     }
 
     template<typename U>
@@ -199,8 +295,30 @@ struct OpMinMax
     template<class OutWrapper>
     __device__ inline static void opAtomic(OutWrapper out, int z, OutType b)
     {
-        cuda::AtomicMin(get<0>(out)[z].x, b.x);
-        cuda::AtomicMax(get<1>(out)[z].x, b.y);
+        if constexpr (std::is_floating_point_v<BaseOutType>)
+        {
+            using OI = OrderedInt<BaseOutType>;
+            atomicMin(reinterpret_cast<typename OI::type *>(&get<0>(out)[z].x), OI::encode(b.x));
+            atomicMax(reinterpret_cast<typename OI::type *>(&get<1>(out)[z].x), OI::encode(b.y));
+        }
+        else
+        {
+            cuda::AtomicMin(get<0>(out)[z].x, b.x);
+            cuda::AtomicMax(get<1>(out)[z].x, b.y);
+        }
+    }
+
+    template<class OutWrapper>
+    __device__ inline static void finalize(OutWrapper out, int z)
+    {
+        if constexpr (std::is_floating_point_v<BaseOutType>)
+        {
+            using OI         = OrderedInt<BaseOutType>;
+            auto *pMin       = reinterpret_cast<typename OI::type *>(&get<0>(out)[z].x);
+            auto *pMax       = reinterpret_cast<typename OI::type *>(&get<1>(out)[z].x);
+            get<0>(out)[z].x = OI::decode(*pMin);
+            get<1>(out)[z].x = OI::decode(*pMax);
+        }
     }
 };
 
@@ -330,6 +448,16 @@ template<class OP, class OutWrapper>
 __global__ void InitMinMax(OutWrapper out)
 {
     OP::initFill(out, static_cast<int>(blockIdx.z));
+}
+
+// Decodes the ordered-int min/max values back to their floating-point representation after
+// FindMinMax (no-op for integer types). Must run before CollectMinMax, which reads the
+// min/max value as a float to locate matching pixels.
+
+template<class OP, class OutWrapper>
+__global__ void FinalizeMinMax(OutWrapper out)
+{
+    OP::finalize(out, static_cast<int>(blockIdx.z));
 }
 
 template<class OP, int BW, int BH, int TW, int TH, class InWrapper, class OutWrapper>
@@ -595,6 +723,11 @@ inline void RunMinMaxLocForType(cudaStream_t stream, const DataStridedCuda &inDa
 
         FindMinMax<OpMinMax<T>, BW, BH, TW, TH><<<grid2, block, 0, stream>>>(inWrap, inSize, outWrap);
 
+        if constexpr (std::is_floating_point_v<cuda::BaseType<OutputType<T>>>)
+        {
+            FinalizeMinMax<OpMinMax<T>><<<grid1, 1, 0, stream>>>(outWrap);
+        }
+
         CollectMinMax<BW, BH, TW, TH><<<grid2, block, 0, stream>>>(inWrap, inSize, outWrap, op);
     }
     else if (minValData)
@@ -615,6 +748,11 @@ inline void RunMinMaxLocForType(cudaStream_t stream, const DataStridedCuda &inDa
         InitMinMax<OpMin<T>><<<grid1, 1, 0, stream>>>(outWrap);
 
         FindMinMax<OpMin<T>, BW, BH, TW, TH><<<grid2, block, 0, stream>>>(inWrap, inSize, outWrap);
+
+        if constexpr (std::is_floating_point_v<cuda::BaseType<OutputType<T>>>)
+        {
+            FinalizeMinMax<OpMin<T>><<<grid1, 1, 0, stream>>>(outWrap);
+        }
 
         CollectMinMax<BW, BH, TW, TH><<<grid2, block, 0, stream>>>(inWrap, inSize, outWrap, op);
     }
@@ -637,6 +775,11 @@ inline void RunMinMaxLocForType(cudaStream_t stream, const DataStridedCuda &inDa
 
         FindMinMax<OpMax<T>, BW, BH, TW, TH><<<grid2, block, 0, stream>>>(inWrap, inSize, outWrap);
 
+        if constexpr (std::is_floating_point_v<cuda::BaseType<OutputType<T>>>)
+        {
+            FinalizeMinMax<OpMax<T>><<<grid1, 1, 0, stream>>>(outWrap);
+        }
+
         CollectMinMax<BW, BH, TW, TH><<<grid2, block, 0, stream>>>(inWrap, inSize, outWrap, op);
     }
 }
@@ -649,10 +792,10 @@ inline void RunMinMaxLocDataOut(cudaStream_t stream, const DataStridedCuda &inDa
                                 OptionalTensorDataRef numMinData, OptionalTensorDataRef maxValData,
                                 OptionalTensorDataRef maxLocData, OptionalTensorDataRef numMaxData)
 {
-    switch (inDataType)
+    switch (static_cast<NVCVDataType>(inDataType))
     {
 #define NVCV_CASE_MINMAXLOC(DT, T)                                                                         \
-    case nvcv::TYPE_##DT:                                                                                  \
+    case static_cast<NVCVDataType>(nvcv::TYPE_##DT):                                                       \
         RunMinMaxLocForType<T>(stream, inData, minValData, minLocData, numMinData, maxValData, maxLocData, \
                                numMaxData);                                                                \
         break
@@ -678,18 +821,18 @@ inline void RunMinMaxLocDataOut(cudaStream_t stream, const DataStridedCuda &inDa
 inline bool DataTypeMatches(nvcv::DataType inDataType, nvcv::DataType valDataType)
 {
     bool match = false;
-    switch (valDataType)
+    switch (static_cast<NVCVDataType>(valDataType))
     {
-    case nvcv::TYPE_S32:
+    case static_cast<NVCVDataType>(nvcv::TYPE_S32):
         match = inDataType == nvcv::TYPE_S32 || inDataType == nvcv::TYPE_S16 || inDataType == nvcv::TYPE_S8;
         break;
 
-    case nvcv::TYPE_U32:
+    case static_cast<NVCVDataType>(nvcv::TYPE_U32):
         match = inDataType == nvcv::TYPE_U32 || inDataType == nvcv::TYPE_U16 || inDataType == nvcv::TYPE_U8;
         break;
 
-    case nvcv::TYPE_F32:
-    case nvcv::TYPE_F64:
+    case static_cast<NVCVDataType>(nvcv::TYPE_F32):
+    case static_cast<NVCVDataType>(nvcv::TYPE_F64):
         match = inDataType == valDataType;
         break;
 
@@ -769,8 +912,8 @@ inline void RunMinMaxLocDataIn(cudaStream_t stream, const DataStridedCuda &inDat
         if (!DataTypeMatches(inDataType, minValData->dtype()))
         {
             std::ostringstream oss;
-            oss << "for minVal=" << nvcvDataTypeGetName(minValData->dtype())
-                << " for input=" << nvcvDataTypeGetName(inDataType)
+            oss << "for minVal=" << nvcvDataTypeGetName(static_cast<NVCVDataType>(minValData->dtype()))
+                << " for input=" << nvcvDataTypeGetName(static_cast<NVCVDataType>(inDataType))
                 << "; output minVal data type must be S32/U32/F32/F64: for input "
                 << "data type S8/S16 use S32; for U8/U16 use U32; for all other data types use same as input tensor";
             throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Wrong data types: %s", oss.str().c_str());
@@ -811,12 +954,13 @@ inline void RunMinMaxLocDataIn(cudaStream_t stream, const DataStridedCuda &inDat
             throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                                   "Output minLoc must have rank 2 or 3 and 2xS32 or 2S32 data type, "
                                   "not rank %d and data type %s",
-                                  minLocData->rank(), nvcvDataTypeGetName(minLocData->dtype()));
+                                  minLocData->rank(),
+                                  nvcvDataTypeGetName(static_cast<NVCVDataType>(minLocData->dtype())));
         }
         if (numMinData->dtype() != nvcv::TYPE_S32)
         {
             throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Output numMin must have S32 data type, not %s",
-                                  nvcvDataTypeGetName(numMinData->dtype()));
+                                  nvcvDataTypeGetName(static_cast<NVCVDataType>(numMinData->dtype())));
         }
     }
 
@@ -848,8 +992,8 @@ inline void RunMinMaxLocDataIn(cudaStream_t stream, const DataStridedCuda &inDat
         if (!DataTypeMatches(inDataType, maxValData->dtype()))
         {
             std::ostringstream oss;
-            oss << "for maxVal=" << nvcvDataTypeGetName(maxValData->dtype())
-                << " for input=" << nvcvDataTypeGetName(inDataType)
+            oss << "for maxVal=" << nvcvDataTypeGetName(static_cast<NVCVDataType>(maxValData->dtype()))
+                << " for input=" << nvcvDataTypeGetName(static_cast<NVCVDataType>(inDataType))
                 << "; output maxVal data type must be S32/U32/F32/F64: for input "
                 << "data type S8/S16 use S32; for U8/U16 use U32; for all other data types use same as input tensor";
             throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Wrong data types: %s", oss.str().c_str());
@@ -890,12 +1034,13 @@ inline void RunMinMaxLocDataIn(cudaStream_t stream, const DataStridedCuda &inDat
             throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                                   "Output maxLoc must have rank 2 or 3 and 2xS32 or 2S32 data type, "
                                   "not rank %d and data type %s",
-                                  maxLocData->rank(), nvcvDataTypeGetName(maxLocData->dtype()));
+                                  maxLocData->rank(),
+                                  nvcvDataTypeGetName(static_cast<NVCVDataType>(maxLocData->dtype())));
         }
         if (numMaxData->dtype() != nvcv::TYPE_S32)
         {
             throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Output numMax must have S32 data type, not %s",
-                                  nvcvDataTypeGetName(numMaxData->dtype()));
+                                  nvcvDataTypeGetName(static_cast<NVCVDataType>(numMaxData->dtype())));
         }
     }
 
@@ -916,6 +1061,15 @@ void MinMaxLoc::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nv
                            const nvcv::Tensor &minLoc, const nvcv::Tensor &numMin, const nvcv::Tensor &maxVal,
                            const nvcv::Tensor &maxLoc, const nvcv::Tensor &numMax) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::MinMaxLoc::operator()[Tensor]");
+    const nvcv::TensorLayout inLayout = in.layout();
+    if (!(inLayout == nvcv::TENSOR_HWC || inLayout == nvcv::TENSOR_NHWC || inLayout == nvcv::TENSOR_CHW
+          || inLayout == nvcv::TENSOR_NCHW || inLayout == nvcv::TENSOR_HW || inLayout == nvcv::TENSOR_NHW))
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
+                              "Input tensor layout must be HW, NHW, HWC, NHWC, CHW, or NCHW");
+    }
+
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
     if (!inData)
     {
@@ -936,6 +1090,7 @@ void MinMaxLoc::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &
                            const nvcv::Tensor &minLoc, const nvcv::Tensor &numMin, const nvcv::Tensor &maxVal,
                            const nvcv::Tensor &maxLoc, const nvcv::Tensor &numMax) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::MinMaxLoc::operator()[ImageBatchVarShape]");
     auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (!inData)
     {

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +23,8 @@ namespace cvcudapy {
 
 void ExportPairwiseMatcherType(py::module &m)
 {
-    py::enum_<NVCVPairwiseMatcherType>(m, "Matcher", py::arithmetic()).value("BRUTE_FORCE", NVCV_BRUTE_FORCE);
+    py::enum_<NVCVPairwiseMatcherType>(m, "Matcher", "Pairwise feature matcher algorithm types.", py::arithmetic())
+        .value("BRUTE_FORCE", NVCV_BRUTE_FORCE, "Exhaustively compares all descriptor pairs to find the best match.");
 }
 
 } // namespace cvcudapy

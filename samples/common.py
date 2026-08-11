@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -145,6 +145,148 @@ def cuda_memcpy_d2h(
     )
 
 
+def _tensor_copy_geometry(tensor: cvcuda.Tensor) -> tuple[int, int, int, int]:
+    """
+    Internal: Derive a 2D pitched-copy geometry from a strided device tensor.
+
+    CVCUDA pads each image row to a hardware alignment boundary, so the row
+    stride is generally larger than the packed row width.  A flat copy of
+    ``shape``-many packed bytes would therefore shear the image.  This helper
+    returns the parameters for a ``cudaMemcpy2D`` that honours the pitch.
+
+    It works directly from the ``__cuda_array_interface__`` strides, so it
+    handles any layout with a single padded stride level (HWC, NHWC, NCHW, CHW,
+    1-D, ...): it finds the contiguous inner block (the "row") and treats every
+    outer dimension as additional rows at the row pitch.
+
+    Args:
+        tensor: CVCUDA tensor.
+
+    Returns:
+        (device_ptr, dpitch_bytes, width_bytes, num_rows)
+    """
+    iface = tensor.cuda().__cuda_array_interface__
+    shape = tuple(tensor.shape)
+    itemsize = tensor.dtype.itemsize
+    strides = iface.get("strides")
+
+    nbytes = itemsize
+    for dim in shape:
+        nbytes *= dim
+
+    # No strides reported => fully contiguous => a single packed row.
+    if strides is None or len(shape) == 0:
+        return iface["data"][0], nbytes, nbytes, 1
+
+    # Walk from the innermost dimension outward while it stays packed; the run
+    # of packed dimensions forms one contiguous "row".  The first dimension that
+    # breaks contiguity carries the (padded) row pitch.
+    expected = itemsize
+    row_bytes = itemsize
+    pitch_axis = -1
+    for axis in range(len(shape) - 1, -1, -1):
+        if strides[axis] == expected:
+            row_bytes *= shape[axis]
+            expected *= shape[axis]
+        else:
+            pitch_axis = axis
+            break
+
+    if pitch_axis < 0:
+        # Fully contiguous: copy as one row.
+        return iface["data"][0], nbytes, nbytes, 1
+
+    width_bytes = row_bytes
+    dpitch = strides[pitch_axis]
+    num_rows = 1
+    for dim in shape[: pitch_axis + 1]:
+        num_rows *= dim
+
+    return iface["data"][0], dpitch, width_bytes, num_rows
+
+
+def download_tensor(tensor: cvcuda.Tensor) -> np.ndarray:
+    """
+    Copy an image-like device tensor to a contiguous host numpy array.
+
+    Honours the device row pitch (CVCUDA pads rows to an alignment boundary),
+    unlike :func:`cuda_memcpy_d2h` which assumes a packed layout and would shear
+    a padded image.
+
+    Args:
+        tensor: CVCUDA tensor (any layout with a single padded stride level).
+
+    Returns:
+        Contiguous host array with the tensor's shape and dtype.
+    """
+    host = np.empty(tuple(tensor.shape), dtype=np.dtype(tensor.dtype))
+    device_ptr, dpitch, width_bytes, num_rows = _tensor_copy_geometry(tensor)
+    (err,) = cudart.cudaMemcpy2D(
+        host.ctypes.data,
+        width_bytes,  # host is packed: spitch == width
+        device_ptr,
+        dpitch,
+        width_bytes,
+        num_rows,
+        cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost,
+    )
+    if err != cudart.cudaError_t.cudaSuccess:
+        raise RuntimeError(f"cudaMemcpy2D (D2H) failed: {err}")
+    return host
+
+
+def upload_tensor(host_array: np.ndarray, tensor: cvcuda.Tensor) -> None:
+    """
+    Copy a contiguous host numpy array into an image-like device tensor.
+
+    Honours the device row pitch, so it is safe to write into a freshly
+    allocated (and therefore possibly padded) tensor, unlike
+    :func:`cuda_memcpy_h2d` which assumes a packed layout.
+
+    Args:
+        host_array: Contiguous host array matching the tensor's shape/dtype.
+        tensor: CVCUDA tensor (any layout with a single padded stride level).
+    """
+    if not host_array.flags.c_contiguous:
+        raise ValueError("Host array must be contiguous")
+
+    # The copy is a raw byte memcpy, so element sizes must agree; a mismatch
+    # would silently shear the data.  We deliberately do NOT compare full
+    # shapes: padded device tensors and reshaped/squeezed host views legitimately
+    # have differing shape tuples, and correctness only depends on the byte count.
+    if host_array.dtype.itemsize != tensor.dtype.itemsize:
+        raise ValueError(
+            f"Host dtype {host_array.dtype} (itemsize {host_array.dtype.itemsize}) "
+            f"is incompatible with tensor dtype {tensor.dtype} "
+            f"(itemsize {tensor.dtype.itemsize})"
+        )
+
+    device_ptr, dpitch, width_bytes, num_rows = _tensor_copy_geometry(tensor)
+
+    # Guard against a host buffer that is too small for the geometry-derived
+    # copy: cudaMemcpy2D reads width_bytes * num_rows bytes from the (packed)
+    # host pointer, so a smaller buffer would read past its end.
+    expected_nbytes = width_bytes * num_rows
+    if host_array.nbytes < expected_nbytes:
+        raise ValueError(
+            f"Host buffer is too small for the device tensor: host has "
+            f"{host_array.nbytes} bytes but the copy needs {expected_nbytes} "
+            f"({width_bytes} width bytes x {num_rows} rows)"
+        )
+
+    (err,) = cudart.cudaMemcpy2D(
+        device_ptr,
+        dpitch,
+        host_array.ctypes.data,
+        width_bytes,  # host is packed: spitch == width
+        width_bytes,
+        num_rows,
+        cudart.cudaMemcpyKind.cudaMemcpyHostToDevice,
+    )
+    if err != cudart.cudaError_t.cudaSuccess:
+        raise RuntimeError(f"cudaMemcpy2D (H2D) failed: {err}")
+
+
 def zero_copy_split(batch_tensor: cvcuda.Tensor) -> list[cvcuda.Tensor]:
     """
     Split a batch tensor into a list of individual tensors using zero-copy.
@@ -216,14 +358,19 @@ def read_image(
     """
     Read an image from a file and return a CVCUDA tensor.
 
+    nvImageCodec decodes to interleaved RGB by default, so the returned tensor
+    is an RGB8 HWC tensor. Downstream operators that need an explicit format
+    (e.g. ``cvcuda.pillowresize`` with ``cvcuda.Format.RGB8``) rely on this
+    contract.
+
     Args:
         file: Path to the image file.
 
     Returns:
-        CVCUDA tensor.
+        RGB8 HWC CVCUDA tensor.
     """
     decoder = nvimgcodec.Decoder()
-    nvc_img = decoder.decode(str(file))
+    nvc_img = decoder.read(str(file))
     return cvcuda.as_tensor(nvc_img, "HWC")
 
 
@@ -286,7 +433,7 @@ def export_classifier_onnx(
         args=(torch.randn(1, *input_shape),),
         f=output,
         export_params=True,
-        opset_version=13,
+        opset_version=18,
         do_constant_folding=True,
         input_names=["input"],
         output_names=["output"],
@@ -334,7 +481,7 @@ def export_segmentation_onnx(
         args=(torch.randn(1, *input_shape),),
         f=output,
         export_params=True,
-        opset_version=13,
+        opset_version=18,
         do_constant_folding=True,
         input_names=["input"],
         output_names=["output"],
@@ -451,7 +598,7 @@ def export_retinanet_onnx(
             args=(dummy_input,),
             f=temp_output,
             export_params=True,
-            opset_version=13,
+            opset_version=18,
             do_constant_folding=True,
             input_names=["images"],
             output_names=["raw_output"],
@@ -588,8 +735,7 @@ def engine_from_onnx(
     trt.init_libnvinfer_plugins(None, "")
     trt_logger = trt.Logger(trt.Logger.WARNING)
     builder = trt.Builder(trt_logger)
-    network_flags = 1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
-    network = builder.create_network(network_flags)
+    network = builder.create_network()
     parser = trt.OnnxParser(network, trt_logger)
 
     with onnx.open("rb") as model:

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,10 +23,12 @@ namespace cvcudapy {
 
 void ExportRemapMapValueType(py::module &m)
 {
-    py::enum_<NVCVRemapMapValueType>(m, "Remap", py::arithmetic())
-        .value("ABSOLUTE", NVCV_REMAP_ABSOLUTE)
-        .value("ABSOLUTE_NORMALIZED", NVCV_REMAP_ABSOLUTE_NORMALIZED)
-        .value("RELATIVE_NORMALIZED", NVCV_REMAP_RELATIVE_NORMALIZED);
+    py::enum_<NVCVRemapMapValueType>(m, "Remap", "Coordinate map value types for remap operations.", py::arithmetic())
+        .value("ABSOLUTE", NVCV_REMAP_ABSOLUTE, "Map values are absolute pixel coordinates.")
+        .value("ABSOLUTE_NORMALIZED", NVCV_REMAP_ABSOLUTE_NORMALIZED,
+               "Map values are absolute coordinates normalized to [-1, 1].")
+        .value("RELATIVE_NORMALIZED", NVCV_REMAP_RELATIVE_NORMALIZED,
+               "Map values are relative offsets normalized to [-1, 1].");
 }
 
 } // namespace cvcudapy

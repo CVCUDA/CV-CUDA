@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -39,14 +39,19 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvMakeColorImageFormat,
                  const NVCVExtraChannelInfo *exChannelInfo))
 {
     return priv::ProtectCall(
-        [&]
+        [&outFormat, &colorModel, &colorSpec, &memLayout, &dataKind, &swizzle, &packing0, &packing1, &packing2,
+         &packing3, &alphaType, &exChannelInfo]
         {
             if (outFormat == nullptr)
             {
                 throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Pointer to output image format cannot be NULL");
             }
-            priv::ImageFormat pout{colorModel, colorSpec, NVCV_CSS_NONE, memLayout, dataKind,  swizzle,
-                                   packing0,   packing1,  packing2,      packing3,  alphaType, exChannelInfo};
+            priv::ImageFormat pout{colorModel,    priv::ColorSpec{colorSpec},
+                                   NVCV_CSS_NONE, memLayout,
+                                   dataKind,      swizzle,
+                                   packing0,      packing1,
+                                   packing2,      packing3,
+                                   alphaType,     exChannelInfo};
             *outFormat = pout.value();
         });
 }
@@ -58,7 +63,8 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvMakeYCbCrImageFormat,
                  const NVCVExtraChannelInfo *exChannelInfo))
 {
     return priv::ProtectCall(
-        [&]
+        [&outFormat, &colorSpec, &chromaSub, &memLayout, &dataKind, &swizzle, &packing0, &packing1, &packing2,
+         &packing3, &alphaType, &exChannelInfo]
         {
             if (outFormat == nullptr)
             {
@@ -66,7 +72,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvMakeYCbCrImageFormat,
             }
 
             priv::ImageFormat pout{NVCV_COLOR_MODEL_YCbCr,
-                                   colorSpec,
+                                   priv::ColorSpec{colorSpec},
                                    chromaSub,
                                    memLayout,
                                    dataKind,
@@ -87,7 +93,8 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvMakeNonColorImageFormat,
                  NVCVAlphaType alphaType, const NVCVExtraChannelInfo *exChannelInfo))
 {
     return priv::ProtectCall(
-        [&]
+        [&outFormat, &memLayout, &dataKind, &swizzle, &packing0, &packing1, &packing2, &packing3, &alphaType,
+         &exChannelInfo]
         {
             if (outFormat == nullptr)
             {
@@ -106,7 +113,8 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvMakeRawImageFormat,
                  NVCVPacking packing3, NVCVAlphaType alphaType, const NVCVExtraChannelInfo *exChannelInfo))
 {
     return priv::ProtectCall(
-        [&]
+        [&outFormat, &rawPattern, &memLayout, &dataKind, &swizzle, &packing0, &packing1, &packing2, &packing3,
+         &alphaType, &exChannelInfo]
         {
             if (outFormat == nullptr)
             {
@@ -123,7 +131,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetPlanePacking,
                 (NVCVImageFormat fmt, int plane, NVCVPacking *outPacking))
 {
     return priv::ProtectCall(
-        [&]
+        [&outPacking, &fmt, &plane]
         {
             if (outPacking == nullptr)
             {
@@ -139,7 +147,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetPlaneBitsPerPixel,
                 (NVCVImageFormat fmt, int32_t plane, int32_t *outBPP))
 {
     return priv::ProtectCall(
-        [&]
+        [&outBPP, &fmt, &plane]
         {
             if (outBPP == nullptr)
             {
@@ -155,7 +163,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatSetSwizzleAndPacking,
                  NVCVPacking newPacking2, NVCVPacking newPacking3))
 {
     return priv::ProtectCall(
-        [&]
+        [&fmt, &newSwizzle, &newPacking0, &newPacking1, &newPacking2, &newPacking3]
         {
             if (fmt == nullptr)
             {
@@ -170,7 +178,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatSetSwizzleAndPacking,
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatSetDataKind, (NVCVImageFormat * fmt, NVCVDataKind newDataKind))
 {
     return priv::ProtectCall(
-        [&]
+        [&fmt, &newDataKind]
         {
             if (fmt == nullptr)
             {
@@ -184,7 +192,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatSetDataKind, (NVCVImageFormat *
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetDataKind, (NVCVImageFormat fmt, NVCVDataKind *outDataKind))
 {
     return priv::ProtectCall(
-        [&]
+        [&outDataKind, &fmt]
         {
             if (outDataKind == nullptr)
             {
@@ -198,7 +206,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetDataKind, (NVCVImageFormat f
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetSwizzle, (NVCVImageFormat fmt, NVCVSwizzle *outSwizzle))
 {
     return priv::ProtectCall(
-        [&]
+        [&outSwizzle, &fmt]
         {
             if (outSwizzle == nullptr)
             {
@@ -212,7 +220,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetSwizzle, (NVCVImageFormat fm
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatSetMemLayout, (NVCVImageFormat * fmt, NVCVMemLayout newMemLayout))
 {
     return priv::ProtectCall(
-        [&]
+        [&fmt, &newMemLayout]
         {
             if (fmt == nullptr)
             {
@@ -226,7 +234,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatSetMemLayout, (NVCVImageFormat 
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetMemLayout, (NVCVImageFormat fmt, NVCVMemLayout *outMemLayout))
 {
     return priv::ProtectCall(
-        [&]
+        [&outMemLayout, &fmt]
         {
             if (outMemLayout == nullptr)
             {
@@ -240,21 +248,21 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetMemLayout, (NVCVImageFormat 
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatSetColorSpec, (NVCVImageFormat * fmt, NVCVColorSpec newColorSpec))
 {
     return priv::ProtectCall(
-        [&]
+        [&fmt, &newColorSpec]
         {
             if (fmt == nullptr)
             {
                 throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Pointer to input image format cannot be NULL");
             }
             priv::ImageFormat pfmt{*fmt};
-            *fmt = pfmt.colorSpec(newColorSpec).value();
+            *fmt = pfmt.colorSpec(priv::ColorSpec{newColorSpec}).value();
         });
 }
 
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetColorSpec, (NVCVImageFormat fmt, NVCVColorSpec *outColorSpec))
 {
     return priv::ProtectCall(
-        [&]
+        [&outColorSpec, &fmt]
         {
             if (outColorSpec == nullptr)
             {
@@ -262,14 +270,14 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetColorSpec, (NVCVImageFormat 
             }
             priv::ImageFormat pfmt{fmt};
 
-            *outColorSpec = pfmt.colorSpec();
+            *outColorSpec = static_cast<NVCVColorSpec>(pfmt.colorSpec());
         });
 }
 
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetColorModel, (NVCVImageFormat fmt, NVCVColorModel *outColorModel))
 {
     return priv::ProtectCall(
-        [&]
+        [&outColorModel, &fmt]
         {
             if (outColorModel == nullptr)
             {
@@ -284,7 +292,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatSetChromaSubsampling,
                 (NVCVImageFormat * fmt, NVCVChromaSubsampling newCSS))
 {
     return priv::ProtectCall(
-        [&]
+        [&fmt, &newCSS]
         {
             if (fmt == nullptr)
             {
@@ -299,7 +307,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetChromaSubsampling,
                 (NVCVImageFormat fmt, NVCVChromaSubsampling *outCSS))
 {
     return priv::ProtectCall(
-        [&]
+        [&outCSS, &fmt]
         {
             if (outCSS == nullptr)
             {
@@ -315,7 +323,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetPlaneNumChannels,
                 (NVCVImageFormat fmt, int32_t plane, int32_t *outNumChannels))
 {
     return priv::ProtectCall(
-        [&]
+        [&outNumChannels, &fmt, &plane]
         {
             if (outNumChannels == nullptr)
             {
@@ -331,7 +339,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetPlanePixelStrideBytes,
                 (NVCVImageFormat fmt, int32_t plane, int32_t *outStrideBytes))
 {
     return priv::ProtectCall(
-        [&]
+        [&outStrideBytes, &fmt, &plane]
         {
             if (outStrideBytes == nullptr)
             {
@@ -345,7 +353,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetPlanePixelStrideBytes,
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetBitsPerChannel, (NVCVImageFormat fmt, int32_t *outBits))
 {
     return priv::ProtectCall(
-        [&]
+        [&outBits, &fmt]
         {
             if (outBits == nullptr)
             {
@@ -363,7 +371,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetBitsPerChannel, (NVCVImageFo
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetNumPlanes, (NVCVImageFormat fmt, int32_t *outNumPlanes))
 {
     return priv::ProtectCall(
-        [&]
+        [&outNumPlanes, &fmt]
         {
             if (outNumPlanes == nullptr)
             {
@@ -377,7 +385,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetNumPlanes, (NVCVImageFormat 
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetNumChannels, (NVCVImageFormat fmt, int32_t *outNumChannels))
 {
     return priv::ProtectCall(
-        [&]
+        [&outNumChannels, &fmt]
         {
             if (outNumChannels == nullptr)
             {
@@ -393,7 +401,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetPlaneDataType,
                 (NVCVImageFormat fmt, int plane, NVCVDataType *outPixType))
 {
     return priv::ProtectCall(
-        [&]
+        [&outPixType, &fmt, &plane]
         {
             if (outPixType == nullptr)
             {
@@ -408,7 +416,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetPlaneSwizzle,
                 (NVCVImageFormat fmt, int plane, NVCVSwizzle *outSwizzle))
 {
     return priv::ProtectCall(
-        [&]
+        [&outSwizzle, &fmt, &plane]
         {
             if (outSwizzle == nullptr)
             {
@@ -424,7 +432,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvMakeImageFormatFromPlanes,
                  NVCVImageFormat plane3))
 {
     return priv::ProtectCall(
-        [&]
+        [&outFormat, &plane0, &plane1, &plane2, &plane3]
         {
             if (outFormat == nullptr)
             {
@@ -457,7 +465,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetPlaneFormat,
                 (NVCVImageFormat fmt, int plane, NVCVImageFormat *outFormat))
 {
     return priv::ProtectCall(
-        [&]
+        [&outFormat, &fmt, &plane]
         {
             if (outFormat == nullptr)
             {
@@ -473,7 +481,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetPlaneFormat,
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetRawPattern, (NVCVImageFormat fmt, NVCVRawPattern *outPattern))
 {
     return priv::ProtectCall(
-        [&]
+        [&outPattern, &fmt]
         {
             if (outPattern == nullptr)
             {
@@ -496,7 +504,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetRawPattern, (NVCVImageFormat
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatSetRawPattern, (NVCVImageFormat * fmt, NVCVRawPattern newRawPattern))
 {
     return priv::ProtectCall(
-        [&]
+        [&fmt, &newRawPattern]
         {
             if (fmt == nullptr)
             {
@@ -511,13 +519,14 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatHasSameDataLayout,
                 (NVCVImageFormat a, NVCVImageFormat b, int8_t *outBool))
 {
     return priv::ProtectCall(
-        [&]
+        [&outBool, &a, &b]
         {
             if (outBool == nullptr)
             {
                 throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Pointer to boolean output cannot be NULL");
             }
-            priv::ImageFormat pfmtA{a}, pfmtB{b};
+            priv::ImageFormat pfmtA{a};
+            priv::ImageFormat pfmtB{b};
             *outBool = HasSameDataLayout(pfmtA, pfmtB) ? 1 : 0;
         });
 }
@@ -526,21 +535,21 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvMakeImageFormatFromFourCC,
                 (NVCVImageFormat * outFormat, uint32_t fourcc, NVCVColorSpec colorSpec, NVCVMemLayout memLayout))
 {
     return priv::ProtectCall(
-        [&]
+        [&outFormat, &fourcc, &colorSpec, &memLayout]
         {
             if (outFormat == nullptr)
             {
                 throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT,
                                       "Pointer to output image plane format cannot be NULL");
             }
-            *outFormat = priv::ImageFormat::FromFourCC(fourcc, colorSpec, memLayout).value();
+            *outFormat = priv::ImageFormat::FromFourCC(fourcc, priv::ColorSpec{colorSpec}, memLayout).value();
         });
 }
 
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatToFourCC, (NVCVImageFormat fmt, uint32_t *outFourCC))
 {
     return priv::ProtectCall(
-        [&]
+        [&outFourCC, &fmt]
         {
             if (outFourCC == nullptr)
             {
@@ -556,7 +565,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetPlaneSize,
                  int32_t *outPlaneHeight))
 {
     return priv::ProtectCall(
-        [&]
+        [&outPlaneWidth, &outPlaneHeight, &fmt, &imgWidth, &imgHeight, &plane]
         {
             if (outPlaneWidth == nullptr && outPlaneHeight == nullptr)
             {
@@ -580,8 +589,8 @@ NVCV_DEFINE_API(0, 0, const char *, nvcvImageFormatGetName, (NVCVImageFormat fmt
 {
     priv::CoreTLS &tls = priv::GetCoreTLS(); // noexcept
 
-    char         *buffer  = tls.bufImageFormatName;
-    constexpr int bufSize = sizeof(tls.bufImageFormatName);
+    char *buffer  = tls.bufImageFormatName.data();
+    auto  bufSize = static_cast<int>(tls.bufImageFormatName.size());
 
     try
     {
@@ -617,7 +626,7 @@ NVCV_DEFINE_API(0, 0, const char *, nvcvImageFormatGetName, (NVCVImageFormat fmt
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetAlphaType, (NVCVImageFormat fmt, NVCVAlphaType *alphaChannelType))
 {
     return priv::ProtectCall(
-        [&]
+        [&alphaChannelType, &fmt]
         {
             if (alphaChannelType == nullptr)
             {
@@ -631,7 +640,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetAlphaType, (NVCVImageFormat 
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatSetAlphaType, (NVCVImageFormat * fmt, NVCVAlphaType alphaChannelType))
 {
     return priv::ProtectCall(
-        [&]
+        [&fmt, &alphaChannelType]
         {
             if (fmt == nullptr)
             {
@@ -646,7 +655,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatGetExtraChannelInfo,
                 (NVCVImageFormat fmt, NVCVExtraChannelInfo *exChannelInfo))
 {
     return priv::ProtectCall(
-        [&]
+        [&exChannelInfo, &fmt]
         {
             if (exChannelInfo == nullptr)
             {
@@ -661,7 +670,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvImageFormatSetExtraChannelInfo,
                 (NVCVImageFormat * fmt, const NVCVExtraChannelInfo *exChannelInfo))
 {
     return priv::ProtectCall(
-        [&]
+        [&fmt, &exChannelInfo]
         {
             if (fmt == nullptr)
             {

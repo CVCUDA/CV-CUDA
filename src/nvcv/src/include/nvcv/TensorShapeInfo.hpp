@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -73,7 +73,7 @@ public:
         int idx = m_infoLayout.idxSample();
         if (idx >= 0)
         {
-            m_cacheNumSamples = m_shape[idx];
+            m_cacheNumSamples = static_cast<int>(m_shape[idx]);
         }
         else if (m_shape.layout() != TENSOR_NONE)
         {
@@ -84,6 +84,12 @@ public:
             m_cacheNumSamples = 0;
         }
     }
+
+    TensorShapeInfoImpl(const TensorShapeInfoImpl &)     = default;
+    TensorShapeInfoImpl(TensorShapeInfoImpl &&) noexcept = default;
+
+    TensorShapeInfoImpl &operator=(const TensorShapeInfoImpl &)     = default;
+    TensorShapeInfoImpl &operator=(TensorShapeInfoImpl &&) noexcept = default;
 
     /**
      * @brief Returns the shape of the tensor.
@@ -135,7 +141,7 @@ public:
         return m_infoLayout.isImage();
     }
 
-protected:
+private:
     TensorShape m_shape;
     LayoutInfo  m_infoLayout;
     int         m_cacheNumSamples;
@@ -155,6 +161,12 @@ class TensorShapeInfo : public detail::TensorShapeInfoImpl<TensorLayoutInfo>
     using Base = detail::TensorShapeInfoImpl<TensorLayoutInfo>;
 
 public:
+    TensorShapeInfo(const TensorShapeInfo &)     = default;
+    TensorShapeInfo(TensorShapeInfo &&) noexcept = default;
+
+    TensorShapeInfo &operator=(const TensorShapeInfo &)     = default;
+    TensorShapeInfo &operator=(TensorShapeInfo &&) noexcept = default;
+
     /**
      * @brief Checks if the provided tensor shape is compatible with this class.
      *        In this case, all tensor shapes are considered compatible.
@@ -178,16 +190,14 @@ public:
      */
     static Optional<TensorShapeInfo> Create(const TensorShape &tshape)
     {
-        return TensorShapeInfo(tshape);
+        return Optional<TensorShapeInfo>{TensorShapeInfo{tshape}};
     }
 
 private:
-    TensorShapeInfo(const TensorShape &tshape)
+    explicit TensorShapeInfo(const TensorShape &tshape)
         : Base(tshape, *TensorLayoutInfo::Create(tshape.layout()))
     {
     }
-
-    Optional<TensorLayoutInfo> m_infoLayout;
 };
 
 /**
@@ -202,6 +212,12 @@ class TensorShapeInfoImage : public detail::TensorShapeInfoImpl<TensorLayoutInfo
     using Base = detail::TensorShapeInfoImpl<TensorLayoutInfoImage>;
 
 public:
+    TensorShapeInfoImage(const TensorShapeInfoImage &)     = default;
+    TensorShapeInfoImage(TensorShapeInfoImage &&) noexcept = default;
+
+    TensorShapeInfoImage &operator=(const TensorShapeInfoImage &)     = default;
+    TensorShapeInfoImage &operator=(TensorShapeInfoImage &&) noexcept = default;
+
     /**
      * @brief Checks if the provided tensor shape is compatible with this class.
      *        A tensor shape is considered compatible if both `TensorShapeInfo` and `TensorLayoutInfo` deem it compatible.
@@ -226,11 +242,11 @@ public:
     {
         if (IsCompatible(tshape))
         {
-            return TensorShapeInfoImage(tshape);
+            return Optional<TensorShapeInfoImage>{TensorShapeInfoImage{tshape}};
         }
         else
         {
-            return NullOpt;
+            return Optional<TensorShapeInfoImage>{NullOpt};
         }
     }
 
@@ -270,7 +286,7 @@ public:
     }
 
 protected:
-    TensorShapeInfoImage(const TensorShape &tshape)
+    explicit TensorShapeInfoImage(const TensorShape &tshape)
         : TensorShapeInfoImage(tshape, *TensorLayoutInfoImage::Create(tshape.layout()))
     {
     }
@@ -282,7 +298,7 @@ protected:
         int idx = this->infoLayout().idxChannel();
         if (idx >= 0)
         {
-            m_cacheNumChannels = m_shape[idx];
+            m_cacheNumChannels = static_cast<int>(this->shape()[idx]);
         }
         else
         {
@@ -295,13 +311,13 @@ protected:
         {
             throw Exception(Status::ERROR_INVALID_ARGUMENT, "Image shape must have a Width dimension");
         }
-        m_cacheSize.w = m_shape[idx];
+        m_cacheSize.w = static_cast<int32_t>(this->shape()[idx]);
 
         // idxHeight
         idx = this->infoLayout().idxHeight();
         if (idx >= 0)
         {
-            m_cacheSize.h = m_shape[idx];
+            m_cacheSize.h = static_cast<int32_t>(this->shape()[idx]);
         }
         else
         {
@@ -309,6 +325,7 @@ protected:
         }
     }
 
+private:
     Size2D m_cacheSize;
     int    m_cacheNumChannels;
 };
@@ -323,6 +340,12 @@ protected:
 class TensorShapeInfoImagePlanar : public TensorShapeInfoImage
 {
 public:
+    TensorShapeInfoImagePlanar(const TensorShapeInfoImagePlanar &)     = default;
+    TensorShapeInfoImagePlanar(TensorShapeInfoImagePlanar &&) noexcept = default;
+
+    TensorShapeInfoImagePlanar &operator=(const TensorShapeInfoImagePlanar &)     = default;
+    TensorShapeInfoImagePlanar &operator=(TensorShapeInfoImagePlanar &&) noexcept = default;
+
     /**
      * @brief Checks if the provided tensor shape is compatible with this class.
      *        A tensor shape is considered compatible if it matches certain criteria related to the layout of the tensor.
@@ -371,11 +394,11 @@ public:
     {
         if (IsCompatible(tshape))
         {
-            return TensorShapeInfoImagePlanar(tshape);
+            return Optional<TensorShapeInfoImagePlanar>{TensorShapeInfoImagePlanar{tshape}};
         }
         else
         {
-            return NullOpt;
+            return Optional<TensorShapeInfoImagePlanar>{NullOpt};
         }
     }
 
@@ -392,7 +415,7 @@ public:
 private:
     int m_cacheNumPlanes;
 
-    TensorShapeInfoImagePlanar(const TensorShape &tshape)
+    explicit TensorShapeInfoImagePlanar(const TensorShape &tshape)
         : TensorShapeInfoImage(tshape)
     {
         // numPlanes
@@ -405,7 +428,7 @@ private:
             int ichannel = this->infoLayout().idxChannel();
             if (ichannel >= 0)
             {
-                m_cacheNumPlanes = m_shape[ichannel];
+                m_cacheNumPlanes = static_cast<int>(this->shape()[ichannel]);
             }
             else
             {

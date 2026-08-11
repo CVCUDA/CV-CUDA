@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "priv/OpRemap.hpp"
 
+#include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <nvcv/Exception.hpp>
@@ -29,7 +30,7 @@ namespace priv = cvcuda::priv;
 CVCUDA_DEFINE_API(0, 3, NVCVStatus, cvcudaRemapCreate, (NVCVOperatorHandle * handle))
 {
     return nvcv::ProtectCall(
-        [&]
+        [&handle]
         {
             if (handle == nullptr)
             {
@@ -37,7 +38,7 @@ CVCUDA_DEFINE_API(0, 3, NVCVStatus, cvcudaRemapCreate, (NVCVOperatorHandle * han
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            *handle = reinterpret_cast<NVCVOperatorHandle>(new priv::Remap());
+            *handle = priv::CreateOperatorHandle<priv::Remap>();
         });
 }
 
@@ -46,12 +47,16 @@ CVCUDA_DEFINE_API(0, 3, NVCVStatus, cvcudaRemapSubmit,
                    NVCVTensorHandle map, NVCVInterpolationType inInterp, NVCVInterpolationType mapInterp,
                    NVCVRemapMapValueType mapValueType, int8_t alignCorners, NVCVBorderType border, float4 borderValue))
 {
+    CVCUDA_NVTX_RANGE("cvcudaRemapSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&in, &out, &map, &handle, &stream, &inInterp, &mapInterp, &mapValueType, &alignCorners, &border, &borderValue]
         {
-            nvcv::TensorWrapHandle _in(in), _out(out), _map(map);
-            priv::ToDynamicRef<priv::Remap>(handle)(stream, _in, _out, _map, inInterp, mapInterp, mapValueType,
-                                                    static_cast<bool>(alignCorners), border, borderValue);
+            nvcv::TensorWrapHandle _in(in);
+            nvcv::TensorWrapHandle _out(out);
+            nvcv::TensorWrapHandle _map(map);
+            priv::ToDynamicRef<priv::Remap>(handle)(stream, _in.resource(), _out.resource(), _map.resource(), inInterp,
+                                                    mapInterp, mapValueType, static_cast<bool>(alignCorners), border,
+                                                    borderValue);
         });
 }
 
@@ -60,12 +65,15 @@ CVCUDA_DEFINE_API(0, 3, NVCVStatus, cvcudaRemapVarShapeSubmit,
                    NVCVTensorHandle map, NVCVInterpolationType inInterp, NVCVInterpolationType mapInterp,
                    NVCVRemapMapValueType mapValueType, int8_t alignCorners, NVCVBorderType border, float4 borderValue))
 {
+    CVCUDA_NVTX_RANGE("cvcudaRemapVarShapeSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&in, &out, &map, &handle, &stream, &inInterp, &mapInterp, &mapValueType, &alignCorners, &border, &borderValue]
         {
-            nvcv::ImageBatchVarShapeWrapHandle _in(in), _out(out);
+            nvcv::ImageBatchVarShapeWrapHandle _in(in);
+            nvcv::ImageBatchVarShapeWrapHandle _out(out);
             nvcv::TensorWrapHandle             _map(map);
-            priv::ToDynamicRef<priv::Remap>(handle)(stream, _in, _out, _map, inInterp, mapInterp, mapValueType,
-                                                    static_cast<bool>(alignCorners), border, borderValue);
+            priv::ToDynamicRef<priv::Remap>(handle)(stream, _in.resource(), _out.resource(), _map.resource(), inInterp,
+                                                    mapInterp, mapValueType, static_cast<bool>(alignCorners), border,
+                                                    borderValue);
         });
 }

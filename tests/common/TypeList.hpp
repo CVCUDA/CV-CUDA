@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -455,7 +455,7 @@ struct RemoveIfImpl<PRED, Types<>>
 template<class PRED, class HEAD, class... TAIL>
 struct RemoveIfImpl<PRED, Types<HEAD, TAIL...>>
 {
-    using type = Concat<typename std::conditional<PRED::template Call<HEAD>::value, Types<>, Types<HEAD>>::type,
+    using type = Concat<std::conditional_t<PRED::template Call<HEAD>::value, Types<>, Types<HEAD>>,
                         typename RemoveIfImpl<PRED, Types<TAIL...>>::type>;
 };
 
@@ -658,7 +658,7 @@ using SetDifference = RemoveIf<ContainedIn<U>, T>;
 // check if value is in Values container
 
 template<class T>
-constexpr bool Contains(Types<>, T size)
+constexpr bool Contains(Types<>, T)
 {
     return false;
 }

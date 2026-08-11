@@ -356,6 +356,7 @@ The common module requires:
 * **torch** - PyTorch for model export
 * **nvimgcodec** - Image I/O
 * **cuda-python** - CUDA runtime bindings
+* **cupy** - GPU array library
 
 See Also
 --------

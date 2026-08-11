@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -36,7 +36,7 @@ inline int64_t Array::length() const
     return length;
 }
 
-inline void Array::resize(int64_t length)
+inline void Array::resize(int64_t length) // NOSONAR: mutates state through the wrapped C handle.
 {
     NVCVArrayHandle harray = this->handle();
 
@@ -83,14 +83,14 @@ inline ArrayData Array::exportData() const
     return ArrayData(data);
 }
 
-inline void Array::setUserPointer(void *ptr)
+inline void Array::setUserPointer(NVCVUserPointer ptr) // NOSONAR: mutates state through the wrapped C handle.
 {
     detail::CheckThrow(nvcvArraySetUserPointer(this->handle(), ptr));
 }
 
-inline void *Array::userPointer() const
+inline NVCVUserPointer Array::userPointer() const
 {
-    void *ptr;
+    NVCVUserPointer ptr;
     detail::CheckThrow(nvcvArrayGetUserPointer(this->handle(), &ptr));
     return ptr;
 }
@@ -99,7 +99,8 @@ inline auto Array::CalcRequirements(int64_t capacity, DataType dtype, int32_t al
     -> Requirements
 {
     Requirements reqs;
-    detail::CheckThrow(nvcvArrayCalcRequirementsWithTarget(capacity, dtype, alignment, target, &reqs));
+    detail::CheckThrow(
+        nvcvArrayCalcRequirementsWithTarget(capacity, static_cast<NVCVDataType>(dtype), alignment, target, &reqs));
     return reqs;
 }
 
@@ -123,7 +124,7 @@ inline Array ArrayWrapData(const ArrayData &data, ArrayDataCleanupCallback &&cle
     NVCVArrayHandle handle;
     detail::CheckThrow(
         nvcvArrayWrapDataConstruct(&data.cdata(), cleanup.targetFunc(), cleanup.targetHandle(), &handle));
-    cleanup.release(); // already owned by the array
+    std::move(cleanup).release(); // already owned by the array
     return Array(std::move(handle));
 }
 

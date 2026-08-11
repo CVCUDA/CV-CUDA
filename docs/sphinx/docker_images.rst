@@ -1,5 +1,5 @@
 ..
-  # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
   # SPDX-License-Identifier: Apache-2.0
   #
   # Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,18 +46,22 @@ Manylinux-based images with CUDA toolkit for building CV-CUDA packages compatibl
      - GCC Version
      - CUDA Version
      - Purpose
+   * - builder_cu12.2.0_gcc10
+     - 10
+     - 12.2.0
+     - CUDA 12.2 builds (multi-arch)
    * - builder_cu12.5.0_gcc10
      - 10
      - 12.5.0
      - CUDA 12.5 builds (multi-arch)
-   * - builder_cu12.9.0_gcc10
-     - 10
-     - 12.9.0
-     - CUDA 12.9 builds (multi-arch)
    * - builder_cu13.0.1_gcc10
      - 10
      - 13.0.1
      - CUDA 13.0 builds (multi-arch)
+   * - builder_cu13.3.0_gcc10
+     - 10
+     - 13.3.0
+     - CUDA 13.3 builds (multi-arch)
 
 **Build Dependencies Hierarchy:**
 
@@ -86,7 +90,7 @@ Manylinux-based images with CUDA toolkit for building CV-CUDA packages compatibl
 **Builder Image Features:**
 
 - CMake 3.24.3
-- Python 3.9-3.14 from ManyLinux
+- Python 3.10-3.14 from ManyLinux
 - Documentation tools (Sphinx 7.4.7/8.1.3, sphinx_rtd_theme, breathe)
 - Development tools (patchelf 0.17.2, setuptools, wheel, clang 14.0)
 - Full CUDA toolkit
@@ -109,56 +113,105 @@ Base: `NVIDIA CUDA images <https://hub.docker.com/r/nvidia/cuda/tags>`_ (nvidia/
      - NumPy
      - PyTorch
      - Python
-  * - devel_u22.04_cu12.9.0_num2_torch2.8.0
-    - ubuntu22.04
-    - 12.9.0
-    - 2.x
-    - 2.8.0
-    - 3.9-3.14
-  * - devel_u22.04_cu12.5.0_num1_torch2.8.0
-    - ubuntu22.04
-    - 12.5.0
-    - 1.26.4
-    - 2.8.0
-    - 3.9-3.14
-   * - devel_u24.04_cu13.0.1_num2_torch2.9.0
-     - ubuntu24.04
-     - 13.0.1
+   * - devel_u26.04_cu13.3.0_num2
+     - ubuntu26.04
+     - 13.3.0
      - 2.x
-     - 2.9.0
+     - 2.11.0
+     - 3.14
+   * - devel_u22.04_cu12.5.0_num1
+     - ubuntu22.04
+     - 12.5.0
+     - 1.26.4
+     - 2.9.1
+     - 3.10
+   * - devel_u22.04_py310-314_cu12.5.0_num2
+     - ubuntu22.04
+     - 12.5.0
+     - 2.x
+     - 2.9.1
      - 3.10-3.14
+   * - devel_u26.04_py310-314_cu13.3.0_num2
+     - ubuntu26.04
+     - 13.3.0
+     - 2.x
+     - 2.11.0
+     - 3.10-3.14
+
+The NumPy 1 image uses CuPy 13.6.0, the newest release compatible with NumPy
+1.26. The NumPy 2 images use CuPy 14.0.1.
 
 **Key Features:**
 
-- Multiple GCC versions (10, 11, 12, 13, 14 on Ubuntu 24.04)
-- Multiple Clang versions (11 on Ubuntu 22.04, 14 on all)
+- Multiple GCC versions (10-13 on Ubuntu 22.04, 11-15 on Ubuntu 26.04)
+- Multiple Clang versions (11 and 14 on Ubuntu 22.04, 18 on Ubuntu 26.04)
 - CMake 3.24.3, ninja-build, ccache
 - Testing frameworks (Google Test/Mock, pytest)
 - ML frameworks (PyTorch, NumPy with version-specific wheels)
 - Documentation tools (Doxygen, Sphinx)
 - Development tools (git, git-lfs, pre-commit, shellcheck)
 
-Python Requirements Files
---------------------------
+Version Management
+------------------
 
-CV-CUDA uses multiple requirements files for different purposes:
+All pinned Python package versions are defined in a single file at the repository root:
+``versions.env``. This is the **only place** where versions should be changed.
 
-.. list-table:: Requirements Files
+After editing ``versions.env``, regenerate all requirements files:
+
+.. code-block:: shell
+
+    bash generate_requirements.sh
+
+The generator rewrites the following files (do not edit them directly — they are
+auto-generated and carry an ``AUTO-GENERATED`` header):
+
+.. list-table:: Auto-Generated Requirements Files
    :header-rows: 1
-   :widths: 35 65
+   :widths: 45 55
 
    * - File
-     - Purpose
-   * - requirements.sys_python.txt
-     - System Python only: documentation (Sphinx, Breathe), wheel building (setuptools, wheel, build, patchelf, auditwheel), linting (flake8)
-   * - requirements.no_torch_no_numpy.txt
-     - All Python versions: testing tools (pytest, typing-extensions) - excludes PyTorch and NumPy
-   * - requirements.numpy1.txt
-     - NumPy 1.x for Python 3.9-3.12 (1.26.4). Not compatible with Python 3.13+
-   * - requirements.numpy2.txt
-     - NumPy 2.x with version constraints: 2.0.2 (Python 3.9), 2.2.6 (Python 3.10-3.13), 2.3.3 (Python 3.14)
+     - Contents
+   * - tests/requirements.tests.cu12.txt
+     - CuPy and CUDA-Python for CUDA 12.x
+   * - tests/requirements.tests.cu12.numpy1.txt
+     - NumPy 1-compatible CuPy and CUDA-Python for CUDA 12.x
+   * - tests/requirements.tests.cu13.txt
+     - CuPy and CUDA-Python for CUDA 13.x
+   * - tests/requirements.tests.numpy1.txt
+     - NumPy 1.x (Python 3.10-3.12)
+   * - tests/requirements.tests.numpy2.txt
+     - NumPy 2.x (Python 3.10-3.14)
+   * - bench/python/requirements.bench.common.txt
+     - Common benchmark dependencies
+   * - bench/python/requirements.bench.cu12.txt
+     - CUDA 12 benchmark dependencies
+   * - bench/python/requirements.bench.cu13.txt
+     - CUDA 13 benchmark dependencies
+   * - samples/requirements.samples.common.txt
+     - Common sample dependencies
+   * - samples/requirements.samples.cu12.txt
+     - CUDA 12 sample dependencies
+   * - samples/requirements.samples.cu13.txt
+     - CUDA 13 sample dependencies
+   * - samples/requirements.samples.hello_world_cu12.txt
+     - Minimal CUDA 12 hello-world dependencies
+   * - samples/requirements.samples.hello_world_cu13.txt
+     - Minimal CUDA 13 hello-world dependencies
+   * - docker/requirements.build.sys_python.txt
+     - System Python only: wheel building and linting tools
+   * - docker/requirements.build.all_pythons.txt
+     - All Python versions: pybind11 for CMake find_package
+   * - tests/requirements.tests.common.txt
+     - All Python versions: pytest and typing-extensions
+   * - docs/requirements.docs.txt
+     - System Python only: Sphinx documentation tools
 
-PyTorch is installed separately per Python version in the Dockerfiles (not via requirements files).
+The generator runs automatically in ``init_repo.sh`` (on clone) and ``docker/build_dockers.sh``
+(before Docker builds). ``build.sh`` also runs the generator before each build to ensure
+requirements files are always up to date. The pre-commit hook (triggered on changes to
+``versions.env`` or any ``.template`` file) runs ``--check`` mode and fails if the generated
+files are out of sync, forcing you to run ``bash generate_requirements.sh`` before committing.
 
 Building the Images
 -------------------
@@ -194,7 +247,7 @@ Running a  development image, mounting source code for development:
 
     docker run -it --gpus all \
       -v /path/to/cvcuda:/workspace \
-      devel_u22.04_cu12.5.0_num1_torch2.8.0:v2
+      devel_u22.04_cu12.5.0_num1:v9
 
 
 Using a builder image for creating manylinux-compatible wheels:
@@ -203,11 +256,18 @@ Using a builder image for creating manylinux-compatible wheels:
 
     docker run -it --gpus all \
       -v /path/to/cvcuda:/workspace \
-      builder_cu12.5.0_gcc10:v1
+      builder_cu12.5.0_gcc10:v9
 
 
 Maintenance
 -----------
+
+Updating Package Versions
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+1. Edit ``versions.env`` at the repository root
+2. Run ``bash generate_requirements.sh`` to regenerate all requirements files
+3. Commit both ``versions.env`` and the regenerated files together
 
 Updating Image Versions
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -222,7 +282,8 @@ Adding New CUDA Versions
    - Use ``dpkg --print-architecture`` to detect amd64 vs arm64
    - Download appropriate CUDA installer (linux.run for x86_64, linux_sbsa.run for aarch64)
 2. Add corresponding sections in ``build_dockers.sh``
-3. Update development image variants
+3. Add the new CUDA version to ``versions.env`` and add any new package variants
+4. Update development image variants
 
 Adding New Python Versions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -232,7 +293,7 @@ Adding New Python Versions
 
   .. code-block:: shell
 
-      --build-arg "PYTHON_VERSIONS=3.9 3.10 3.11 3.12 3.13 3.14"
+      --build-arg "PYTHON_VERSIONS=3.10 3.11 3.12 3.13 3.14"
 
 Troubleshooting
 ---------------

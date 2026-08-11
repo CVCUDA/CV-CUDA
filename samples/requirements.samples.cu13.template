@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Template for requirements.samples.cu13.txt — to regenerate, run from the repo root:
+#   bash generate_requirements.sh
+
+# CUDA 13-specific Python packages for CV-CUDA samples
+
+# Include common requirements
+-r requirements.samples.common.txt
+
+# PyTorch + torchvision (paired versions) for CUDA 13.x (${torch_cu13_index} wheel index, compatible with CUDA 13.3+)
+--extra-index-url https://download.pytorch.org/whl/${torch_cu13_index}
+torch==${torch_cu13}
+torchvision==${torchvision_cu13}
+
+# CUDA 13-specific packages
+--extra-index-url https://pypi.nvidia.com/
+cuda-python==${cuda_python_cu13}
+nvidia-nvimgcodec-cu13==${nvimgcodec}
+nvidia-nvjpeg==${nvjpeg_cu13}
+cupy-cuda13x==${cupy_cu13}
+
+# TensorRT for CUDA 13 (skip on aarch64 - handled in install script)
+# TensorRT 11.1 is the first release with Python 3.14 bindings.
+tensorrt-cu13==${tensorrt_cu13}; platform_machine != "aarch64"
+
+# CV-CUDA for CUDA 13
+cvcuda-cu13

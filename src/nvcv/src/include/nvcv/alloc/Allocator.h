@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -74,7 +74,7 @@ extern "C"
  * @returns Pointer to allocated memory buffer.
  *          Must return NULL if buffer cannot be allocated.
  */
-typedef void *(*NVCVMemAllocFunc)(void *ctx, int64_t sizeBytes, int32_t alignBytes);
+typedef NVCVMemoryBuffer (*NVCVMemAllocFunc)(NVCVResourceContext ctx, int64_t sizeBytes, int32_t alignBytes);
 
 /** Function type for memory deallocation.
  *
@@ -83,7 +83,7 @@ typedef void *(*NVCVMemAllocFunc)(void *ctx, int64_t sizeBytes, int32_t alignByt
  *                        If NULL, the operation must do nothing, successfully.
  * @param [in] sizeBytes, alignBytes Parameters passed during buffer allocation.
  */
-typedef void (*NVCVMemFreeFunc)(void *ctx, void *ptr, int64_t sizeBytes, int32_t alignBytes);
+typedef void (*NVCVMemFreeFunc)(NVCVResourceContext ctx, NVCVMemoryBuffer ptr, int64_t sizeBytes, int32_t alignBytes);
 
 /** Memory types handled by the memory resource allocator. */
 typedef enum
@@ -118,7 +118,7 @@ typedef union NVCVCustomResourceAllocatorRec
 typedef struct NVCVResourceAllocatorRec NVCVResourceAllocator;
 
 /** Custom allocator cleanup function type */
-typedef void (*NVCVResourceAllocatorCleanupFunc)(void *ctx, NVCVResourceAllocator *data);
+typedef void (*NVCVResourceAllocatorCleanupFunc)(NVCVResourceContext ctx, NVCVResourceAllocator *data);
 
 struct NVCVResourceAllocatorRec
 {
@@ -126,7 +126,7 @@ struct NVCVResourceAllocatorRec
      *  It's passed unchanged to memory allocation/deallocation functions.
      *  It can be NULL, in this case no context is passed in.
      */
-    void *ctx;
+    NVCVResourceContext ctx;
 
     /** Type of memory being handled by fnMemAlloc and fnMemFree. */
     NVCVResourceType resType;
@@ -229,7 +229,7 @@ NVCV_PUBLIC NVCVStatus nvcvAllocatorGet(NVCVAllocatorHandle handle, NVCVResource
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
  * @retval #NVCV_SUCCESS                Operation executed successfully.
  */
-NVCV_PUBLIC NVCVStatus nvcvAllocatorSetUserPointer(NVCVAllocatorHandle handle, void *userPtr);
+NVCV_PUBLIC NVCVStatus nvcvAllocatorSetUserPointer(NVCVAllocatorHandle handle, NVCVUserPointer userPtr);
 
 /** Returns the user pointer associated with the allocator handle.
  *
@@ -243,7 +243,7 @@ NVCV_PUBLIC NVCVStatus nvcvAllocatorSetUserPointer(NVCVAllocatorHandle handle, v
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
  * @retval #NVCV_SUCCESS                Operation executed successfully.
  */
-NVCV_PUBLIC NVCVStatus nvcvAllocatorGetUserPointer(NVCVAllocatorHandle handle, void **outUserPtr);
+NVCV_PUBLIC NVCVStatus nvcvAllocatorGetUserPointer(NVCVAllocatorHandle handle, NVCVUserPointer *outUserPtr);
 
 /** Allocates a memory buffer of a host-accessible memory.
  *
@@ -264,8 +264,8 @@ NVCV_PUBLIC NVCVStatus nvcvAllocatorGetUserPointer(NVCVAllocatorHandle handle, v
  * @retval #NVCV_ERROR_OUT_OF_MEMORY    Not enough free memory.
  * @retval #NVCV_SUCCESS                Operation completed successfully.
  */
-NVCV_PUBLIC NVCVStatus nvcvAllocatorAllocHostMemory(NVCVAllocatorHandle halloc, void **ptr, int64_t sizeBytes,
-                                                    int32_t alignBytes);
+NVCV_PUBLIC NVCVStatus nvcvAllocatorAllocHostMemory(NVCVAllocatorHandle halloc, NVCVMemoryBuffer *ptr,
+                                                    int64_t sizeBytes, int32_t alignBytes);
 
 /** Frees a host-accessible memory buffer.
  *
@@ -284,7 +284,7 @@ NVCV_PUBLIC NVCVStatus nvcvAllocatorAllocHostMemory(NVCVAllocatorHandle halloc, 
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside its valid range.
  * @retval #NVCV_SUCCESS                Operation completed successfully.
  */
-NVCV_PUBLIC NVCVStatus nvcvAllocatorFreeHostMemory(NVCVAllocatorHandle halloc, void *ptr, int64_t sizeBytes,
+NVCV_PUBLIC NVCVStatus nvcvAllocatorFreeHostMemory(NVCVAllocatorHandle halloc, NVCVMemoryBuffer ptr, int64_t sizeBytes,
                                                    int32_t alignBytes);
 
 /** Allocates a memory buffer of both host- and cuda-accessible memory.
@@ -306,8 +306,8 @@ NVCV_PUBLIC NVCVStatus nvcvAllocatorFreeHostMemory(NVCVAllocatorHandle halloc, v
  * @retval #NVCV_ERROR_OUT_OF_MEMORY    Not enough free memory.
  * @retval #NVCV_SUCCESS                Operation completed successfully.
  */
-NVCV_PUBLIC NVCVStatus nvcvAllocatorAllocHostPinnedMemory(NVCVAllocatorHandle halloc, void **ptr, int64_t sizeBytes,
-                                                          int32_t alignBytes);
+NVCV_PUBLIC NVCVStatus nvcvAllocatorAllocHostPinnedMemory(NVCVAllocatorHandle halloc, NVCVMemoryBuffer *ptr,
+                                                          int64_t sizeBytes, int32_t alignBytes);
 
 /** Frees a both host- and cuda-accessible memory buffer.
  *
@@ -326,8 +326,8 @@ NVCV_PUBLIC NVCVStatus nvcvAllocatorAllocHostPinnedMemory(NVCVAllocatorHandle ha
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside its valid range.
  * @retval #NVCV_SUCCESS                Operation completed successfully.
  */
-NVCV_PUBLIC NVCVStatus nvcvAllocatorFreeHostPinnedMemory(NVCVAllocatorHandle halloc, void *ptr, int64_t sizeBytes,
-                                                         int32_t alignBytes);
+NVCV_PUBLIC NVCVStatus nvcvAllocatorFreeHostPinnedMemory(NVCVAllocatorHandle halloc, NVCVMemoryBuffer ptr,
+                                                         int64_t sizeBytes, int32_t alignBytes);
 
 /** Allocates a memory buffer of cuda-accessible memory.
  *
@@ -348,8 +348,8 @@ NVCV_PUBLIC NVCVStatus nvcvAllocatorFreeHostPinnedMemory(NVCVAllocatorHandle hal
  * @retval #NVCV_ERROR_OUT_OF_MEMORY    Not enough free memory.
  * @retval #NVCV_SUCCESS                Operation completed successfully.
  */
-NVCV_PUBLIC NVCVStatus nvcvAllocatorAllocCudaMemory(NVCVAllocatorHandle halloc, void **ptr, int64_t sizeBytes,
-                                                    int32_t alignBytes);
+NVCV_PUBLIC NVCVStatus nvcvAllocatorAllocCudaMemory(NVCVAllocatorHandle halloc, NVCVMemoryBuffer *ptr,
+                                                    int64_t sizeBytes, int32_t alignBytes);
 
 /** Frees a cuda-accessible memory buffer.
  *
@@ -368,7 +368,7 @@ NVCV_PUBLIC NVCVStatus nvcvAllocatorAllocCudaMemory(NVCVAllocatorHandle halloc, 
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside its valid range.
  * @retval #NVCV_SUCCESS                Operation completed successfully.
  */
-NVCV_PUBLIC NVCVStatus nvcvAllocatorFreeCudaMemory(NVCVAllocatorHandle halloc, void *ptr, int64_t sizeBytes,
+NVCV_PUBLIC NVCVStatus nvcvAllocatorFreeCudaMemory(NVCVAllocatorHandle halloc, NVCVMemoryBuffer ptr, int64_t sizeBytes,
                                                    int32_t alignBytes);
 
 /** Returns a string representation of the resource type.

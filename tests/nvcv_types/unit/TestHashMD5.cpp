@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -59,7 +59,7 @@ const auto g_matchMd5String2 = t::ElementsAre
     0x43, 0x08, 0xFA, 0x20
 );
 
-auto g_matchFPzero = t::ElementsAre
+const auto g_matchFPzero = t::ElementsAre
 (
     0x7D, 0xEA, 0x36, 0x2B,
     0x3F, 0xAC, 0x8E, 0x00,
@@ -132,7 +132,7 @@ TEST(HashMD5Tests, vector)
     test::HashMD5 hash;
 
     // clang-format off
-    const std::vector<float> vec1 = {0.5, -0.2, 3.141};
+    const std::vector<float> vec1 = {0.5f, -0.2f, 3.141f};
     const auto matcher1 =
     t::ElementsAre(
         0xCC, 0xC2, 0xAB, 0x13,
@@ -141,7 +141,7 @@ TEST(HashMD5Tests, vector)
         0x63, 0xF8, 0xE1, 0x94
     );
 
-    const std::vector<float> vec2 = {0.5, -0.2, 3.142};
+    const std::vector<float> vec2 = {0.5f, -0.2f, 3.142f};
     const auto matcher2 =
     t::ElementsAre(
         0xA8, 0xFA, 0x59, 0x16,
@@ -226,7 +226,8 @@ TEST(HashMD5Tests, std_string_view_string)
 {
     test::HashMD5 hash;
 
-    Update(hash, std::string_view{std::string{g_str1}});
+    std::string str{g_str1};
+    Update(hash, std::string_view{str});
     EXPECT_THAT(hash.getHashAndReset(), g_matchMd5String1);
 }
 

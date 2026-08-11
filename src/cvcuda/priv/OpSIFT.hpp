@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -66,11 +66,14 @@ private:
                      cudaStream_t stream) const;
 
     int3 m_maxShape;
-    int  m_maxOctaves, m_maxOctaveLayers;
+    int  m_maxOctaves;
+    int  m_maxOctaveLayers;
 
     // Maximum allowed pyramids and run (submit) time pyramids
-    PyramidType         m_maxPyramidGaussian, m_maxPyramidDoG;
-    mutable PyramidType m_runPyramidGaussian, m_runPyramidDoG; // mutable as it changes during run-time
+    PyramidType         m_maxPyramidGaussian;
+    PyramidType         m_maxPyramidDoG;
+    mutable PyramidType m_runPyramidGaussian; // mutable as it changes during run-time
+    mutable PyramidType m_runPyramidDoG;
 };
 
 } // namespace cvcuda::priv

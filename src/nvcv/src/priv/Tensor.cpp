@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,7 +31,9 @@
 #include <nvcv/util/Math.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <iterator>
 #include <numeric>
 
 namespace nvcv::priv {
@@ -71,16 +73,16 @@ NVCVTensorRequirements Tensor::CalcRequirements(int32_t numImages, Size2D imgSiz
     // Calculate the shape based on image parameters
     NVCVTensorLayout layout = GetTensorLayoutFor(fmt, numImages);
 
-    int64_t shapeNCHW[4] = {numImages, fmt.numChannels(), imgSize.h, imgSize.w};
+    std::array<int64_t, 4> shapeNCHW = {numImages, fmt.numChannels(), imgSize.h, imgSize.w};
 
-    int64_t shape[NVCV_TENSOR_MAX_RANK];
-    PermuteShape(NVCV_TENSOR_NCHW, shapeNCHW, layout, shape);
+    std::array<int64_t, NVCV_TENSOR_MAX_RANK> shape;
+    PermuteShape(NVCV_TENSOR_NCHW, shapeNCHW.data(), layout, shape.data());
 
     // Calculate the element type. It's the data type of the
     // first channel. It assumes that all channels have same packing.
     NVCVPackingParams params = GetPackingParams(fmt.planePacking(0));
     params.swizzle           = NVCV_SWIZZLE_X000;
-    std::fill(params.bits + 1, params.bits + sizeof(params.bits) / sizeof(params.bits[0]), 0);
+    std::fill(params.bits + 1, params.bits + std::size(params.bits), 0);
     std::optional<NVCVPacking> chPacking = MakeNVCVPacking(params);
     if (!chPacking)
     {
@@ -89,7 +91,7 @@ NVCVTensorRequirements Tensor::CalcRequirements(int32_t numImages, Size2D imgSiz
 
     DataType dtype{fmt.dataKind(), *chPacking};
 
-    return CalcRequirements(layout.rank, shape, dtype, layout, userBaseAlign, userRowAlign);
+    return CalcRequirements(layout.rank, shape.data(), dtype, layout, userBaseAlign, userRowAlign);
 }
 
 NVCVTensorRequirements Tensor::CalcRequirements(int32_t rank, const int64_t *shape, const DataType &dtype,
@@ -126,7 +128,7 @@ NVCVTensorRequirements Tensor::CalcRequirements(int32_t rank, const int64_t *sha
         {
             // it usually returns 32 bytes
             NVCV_CHECK_THROW(cudaDeviceGetAttribute(&rowAlign, cudaDevAttrTexturePitchAlignment, dev));
-            rowAlign = std::lcm(rowAlign, util::RoundUpNextPowerOfTwo(dtype.strideBytes()));
+            rowAlign = static_cast<int>(std::lcm(rowAlign, util::RoundUpNextPowerOfTwo(dtype.strideBytes())));
         }
         else
         {
@@ -148,7 +150,7 @@ NVCVTensorRequirements Tensor::CalcRequirements(int32_t rank, const int64_t *sha
             // it usually returns 512 bytes
             NVCV_CHECK_THROW(cudaDeviceGetAttribute(&addrAlign, cudaDevAttrTextureAlignment, dev));
             reqs.alignBytes = std::lcm(addrAlign, rowAlign);
-            reqs.alignBytes = util::RoundUpNextPowerOfTwo(reqs.alignBytes);
+            reqs.alignBytes = static_cast<int32_t>(util::RoundUpNextPowerOfTwo(reqs.alignBytes));
 
             if (reqs.alignBytes > NVCV_MAX_MEM_REQUIREMENTS_BLOCK_SIZE)
             {
@@ -189,10 +191,10 @@ NVCVTensorRequirements Tensor::CalcRequirements(int32_t rank, const int64_t *sha
     return reqs;
 }
 
-void *Tensor::AllocateBuffer(IAllocator &alloc, const NVCVTensorRequirements &reqs)
+NVCVByte *Tensor::AllocateBuffer(IAllocator &alloc, const NVCVTensorRequirements &reqs)
 {
     int64_t bufSize = CalcTotalSizeBytes(reqs.mem.cudaMem);
-    void   *buffer  = alloc.allocCudaMem(bufSize, reqs.alignBytes);
+    auto   *buffer  = static_cast<NVCVByte *>(static_cast<void *>(alloc.allocCudaMem(bufSize, reqs.alignBytes)));
     NVCV_ASSERT(buffer != nullptr);
     return buffer;
 }
@@ -209,7 +211,8 @@ Tensor::Tensor(NVCVTensorRequirements reqs, IAllocator &alloc)
 
 Tensor::~Tensor()
 {
-    m_alloc->freeCudaMem(m_memBuffer, CalcTotalSizeBytes(m_reqs.mem.cudaMem), m_reqs.alignBytes);
+    m_alloc->freeCudaMem(static_cast<NVCVMemoryBuffer>(static_cast<void *>(m_memBuffer)),
+                         CalcTotalSizeBytes(m_reqs.mem.cudaMem), m_reqs.alignBytes);
 }
 
 int32_t Tensor::rank() const
@@ -242,7 +245,7 @@ void Tensor::exportData(NVCVTensorData &data) const
     data.bufferType = NVCV_TENSOR_BUFFER_STRIDED_CUDA;
 
     data.dtype  = m_reqs.dtype;
-    data.layout = m_reqs.layout;
+    data.layout = static_cast<NVCVTensorLayout>(m_reqs.layout);
     data.rank   = m_reqs.rank;
 
     std::copy_n(m_reqs.shape, NVCV_TENSOR_MAX_RANK, data.shape);
@@ -254,7 +257,7 @@ void Tensor::exportData(NVCVTensorData &data) const
             std::is_same_v<std::decay_t<decltype(buf.strides[0])>, std::decay_t<decltype(m_reqs.strides[0])>>);
         std::copy_n(m_reqs.strides, NVCV_TENSOR_MAX_RANK, buf.strides);
 
-        buf.basePtr = reinterpret_cast<NVCVByte *>(m_memBuffer);
+        buf.basePtr = m_memBuffer;
     }
 }
 

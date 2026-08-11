@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,22 +28,8 @@ namespace nvcv::test {
 
 namespace detail {
 
-template<typename T>
-inline void Convolve(std::vector<uint8_t> &hDst, const long3 &dstStrides, const std::vector<uint8_t> &hSrc,
-                     const long3 &srcStrides, const int3 &shape, const std::vector<float> &kernel,
-                     const Size2D &kernelSize, int2 &kernelAnchor, const NVCVBorderType &borderMode,
-                     const float4 &borderValue)
+inline void ResolveKernelAnchor(int2 &kernelAnchor, const Size2D &kernelSize)
 {
-    using BT  = cuda::BaseType<T>;
-    using WT  = cuda::ConvertBaseTypeTo<float, T>;
-    int2 size = cuda::DropCast<2>(shape);
-
-    T borderValueT;
-    for (int e = 0; e < cuda::NumElements<T>; ++e)
-    {
-        cuda::GetElement(borderValueT, e) = static_cast<BT>(cuda::GetElement(borderValue, e));
-    }
-
     if (kernelAnchor.x < 0)
     {
         kernelAnchor.x = kernelSize.w / 2;
@@ -52,6 +38,139 @@ inline void Convolve(std::vector<uint8_t> &hDst, const long3 &dstStrides, const 
     {
         kernelAnchor.y = kernelSize.h / 2;
     }
+}
+
+template<typename T>
+inline T MakeConvolveBorderValue(const float4 &borderValue)
+{
+    using BT = cuda::BaseType<T>;
+
+    T borderValueT;
+    for (int e = 0; e < cuda::NumElements<T>; ++e)
+    {
+        cuda::GetElement(borderValueT, e) = static_cast<BT>(cuda::GetElement(borderValue, e));
+    }
+    return borderValueT;
+}
+
+template<typename T>
+inline T MakeMorphBorderValue(NVCVMorphologyType type)
+{
+    using BT = cuda::BaseType<T>;
+
+    BT val
+        = (type == NVCVMorphologyType::NVCV_DILATE) ? std::numeric_limits<BT>::min() : std::numeric_limits<BT>::max();
+    T borderValueT;
+    for (int e = 0; e < cuda::NumElements<T>; ++e)
+    {
+        cuda::GetElement(borderValueT, e) = val;
+    }
+    return borderValueT;
+}
+
+template<typename T>
+struct ConvolveRefData
+{
+    const std::vector<uint8_t> &hSrc;
+    const long3                &srcStrides;
+    const std::vector<float>   &kernel;
+    const Size2D               &kernelSize;
+    const int2                 &kernelAnchor;
+    const NVCVBorderType       &borderMode;
+    T                           borderValue;
+    int2                        size;
+};
+
+template<typename T>
+struct MorphRefData
+{
+    const std::vector<uint8_t> &hSrc;
+    const long3                &srcStrides;
+    const Size2D               &kernelSize;
+    const int2                 &kernelAnchor;
+    const NVCVBorderType       &borderMode;
+    NVCVMorphologyType          type;
+    T                           borderValue;
+    int2                        size;
+};
+
+template<typename T>
+inline T SourceOrBorder(const std::vector<uint8_t> &hSrc, const long3 &srcStrides, const int2 &size, int b, int2 coord,
+                        const NVCVBorderType &borderMode, T borderValue)
+{
+    return IsInside(coord, size, borderMode) ? ValueAt<T>(hSrc, srcStrides, b, coord.y, coord.x) : borderValue;
+}
+
+template<typename T>
+inline T ConvolveSourceValue(const ConvolveRefData<T> &ref, int b, int y, int x, int ky, int kx)
+{
+    int2 coord{x + kx - ref.kernelAnchor.x, y + ky - ref.kernelAnchor.y};
+    return SourceOrBorder(ref.hSrc, ref.srcStrides, ref.size, b, coord, ref.borderMode, ref.borderValue);
+}
+
+template<typename T>
+inline auto ConvolvePixel(const ConvolveRefData<T> &ref, int b, int y, int x)
+{
+    using BT = cuda::BaseType<T>;
+    using WT = cuda::ConvertBaseTypeTo<float, T>;
+
+    WT res = cuda::SetAll<WT>(0);
+    for (int ky = 0; ky < ref.kernelSize.h; ++ky)
+    {
+        for (int kx = 0; kx < ref.kernelSize.w; ++kx)
+        {
+            res += ConvolveSourceValue(ref, b, y, x, ky, kx) * ref.kernel[ky * ref.kernelSize.w + kx];
+        }
+    }
+
+    return cuda::SaturateCast<BT>(res);
+}
+
+template<typename T>
+inline T MorphSourceValue(const MorphRefData<T> &ref, int b, int y, int x, int ky, int kx)
+{
+    int2 coord{x + kx - ref.kernelAnchor.x, y + ky - ref.kernelAnchor.y};
+    return SourceOrBorder(ref.hSrc, ref.srcStrides, ref.size, b, coord, ref.borderMode, ref.borderValue);
+}
+
+template<typename T>
+inline T CombineMorphValue(T current, T next, NVCVMorphologyType type)
+{
+    return (type == NVCVMorphologyType::NVCV_DILATE) ? cuda::max(current, next) : cuda::min(current, next);
+}
+
+template<typename T>
+inline auto MorphPixel(const MorphRefData<T> &ref, int b, int y, int x)
+{
+    using BT = cuda::BaseType<T>;
+
+    T res = ref.borderValue;
+    for (int ky = 0; ky < ref.kernelSize.h; ++ky)
+    {
+        for (int kx = 0; kx < ref.kernelSize.w; ++kx)
+        {
+            res = CombineMorphValue(res, MorphSourceValue(ref, b, y, x, ky, kx), ref.type);
+        }
+    }
+
+    return cuda::SaturateCast<BT>(res);
+}
+
+template<typename T>
+inline void Convolve(std::vector<uint8_t> &hDst, const long3 &dstStrides, const std::vector<uint8_t> &hSrc,
+                     const long3 &srcStrides, const int3 &shape, const std::vector<float> &kernel,
+                     const Size2D &kernelSize, int2 &kernelAnchor, const NVCVBorderType &borderMode,
+                     const float4 &borderValue)
+{
+    ResolveKernelAnchor(kernelAnchor, kernelSize);
+    ConvolveRefData<T> ref{hSrc,
+                           srcStrides,
+                           kernel,
+                           kernelSize,
+                           kernelAnchor,
+                           borderMode,
+                           MakeConvolveBorderValue<T>(borderValue),
+                           cuda::DropCast<2>(shape)};
 
     for (int b = 0; b < shape.z; ++b)
     {
@@ -59,27 +178,7 @@ inline void Convolve(std::vector<uint8_t> &hDst, const long3 &dstStrides, const 
         {
             for (int x = 0; x < shape.x; ++x)
             {
-                WT res = cuda::SetAll<WT>(0);
-
-                int2 coord;
-
-                for (int ky = 0; ky < kernelSize.h; ++ky)
-                {
-                    coord.y = y + ky - kernelAnchor.y;
-
-                    for (int kx = 0; kx < kernelSize.w; ++kx)
-                    {
-                        coord.x = x + kx - kernelAnchor.x;
-
-                        T srcValue = IsInside(coord, size, borderMode)
-                                       ? ValueAt<T>(hSrc, srcStrides, b, coord.y, coord.x)
-                                       : borderValueT;
-
-                        res += srcValue * kernel[ky * kernelSize.w + kx];
-                    }
-                }
-
-                ValueAt<T>(hDst, dstStrides, b, y, x) = cuda::SaturateCast<BT>(res);
+                ValueAt<T>(hDst, dstStrides, b, y, x) = ConvolvePixel(ref, b, y, x);
             }
         }
     }
@@ -90,25 +189,15 @@ inline void Morph(std::vector<uint8_t> &hDst, const long3 &dstStrides, const std
                   const long3 &srcStrides, const int3 &shape, const Size2D &kernelSize, int2 &kernelAnchor,
                   const NVCVBorderType &borderMode, NVCVMorphologyType type)
 {
-    using BT  = cuda::BaseType<T>;
-    int2 size = cuda::DropCast<2>(shape);
-
-    BT val
-        = (type == NVCVMorphologyType::NVCV_DILATE) ? std::numeric_limits<BT>::min() : std::numeric_limits<BT>::max();
-    T borderValueT;
-    for (int e = 0; e < cuda::NumElements<T>; ++e)
-    {
-        cuda::GetElement(borderValueT, e) = val;
-    }
-
-    if (kernelAnchor.x < 0)
-    {
-        kernelAnchor.x = kernelSize.w / 2;
-    }
-    if (kernelAnchor.y < 0)
-    {
-        kernelAnchor.y = kernelSize.h / 2;
-    }
+    ResolveKernelAnchor(kernelAnchor, kernelSize);
+    MorphRefData<T> ref{hSrc,
+                        srcStrides,
+                        kernelSize,
+                        kernelAnchor,
+                        borderMode,
+                        type,
+                        MakeMorphBorderValue<T>(type),
+                        cuda::DropCast<2>(shape)};
 
     for (int b = 0; b < shape.z; ++b)
     {
@@ -116,27 +205,7 @@ inline void Morph(std::vector<uint8_t> &hDst, const long3 &dstStrides, const std
         {
             for (int x = 0; x < shape.x; ++x)
             {
-                T res = cuda::SetAll<T>(val);
-
-                int2 coord;
-
-                for (int ky = 0; ky < kernelSize.h; ++ky)
-                {
-                    coord.y = y + ky - kernelAnchor.y;
-
-                    for (int kx = 0; kx < kernelSize.w; ++kx)
-                    {
-                        coord.x = x + kx - kernelAnchor.x;
-
-                        T srcValue = IsInside(coord, size, borderMode)
-                                       ? ValueAt<T>(hSrc, srcStrides, b, coord.y, coord.x)
-                                       : borderValueT;
-
-                        res = (type == NVCVMorphologyType::NVCV_DILATE) ? cuda::max(res, srcValue)
-                                                                        : cuda::min(res, srcValue);
-                    }
-                }
-                ValueAt<T>(hDst, dstStrides, b, y, x) = cuda::SaturateCast<BT>(res);
+                ValueAt<T>(hDst, dstStrides, b, y, x) = MorphPixel(ref, b, y, x);
             }
         }
     }
@@ -171,7 +240,7 @@ void Convolve(std::vector<uint8_t> &hDst, const long3 &dstStrides, const std::ve
 {
     NVCV_ASSERT(format.numPlanes() == 1);
 
-    switch (format.planeDataType(0))
+    switch (static_cast<NVCVDataType>(format.planeDataType(0)))
     {
 #define NVCV_TEST_CASE(DATATYPE, TYPE)                                                                      \
     case NVCV_DATA_TYPE_##DATATYPE:                                                                         \
@@ -200,7 +269,7 @@ void Morph(std::vector<uint8_t> &hDst, const long3 &dstStrides, const std::vecto
 {
     NVCV_ASSERT(format.numPlanes() == 1);
 
-    switch (format.planeDataType(0))
+    switch (static_cast<NVCVDataType>(format.planeDataType(0)))
     {
 #define NVCV_TEST_CASE(DATATYPE, TYPE)                                                                              \
     case NVCV_DATA_TYPE_##DATATYPE:                                                                                 \
@@ -224,7 +293,7 @@ void Morph(std::vector<uint8_t> &hDst, const long3 &dstStrides, const std::vecto
 std::vector<float> ComputeMeanKernel(nvcv::Size2D kernelSize)
 {
     std::size_t ks = kernelSize.w * kernelSize.h;
-    float       kv = 1.f / ks;
+    float       kv = 1.f / static_cast<float>(ks);
 
     std::vector<float> kernel(ks, kv);
     return kernel;
@@ -236,15 +305,15 @@ std::vector<float> ComputeGaussianKernel(nvcv::Size2D kernelSize, double2 sigma)
 
     int2 half{kernelSize.w / 2, kernelSize.h / 2};
 
-    float sx  = 2.f * sigma.x * sigma.x;
-    float sy  = 2.f * sigma.y * sigma.y;
-    float s   = 2.f * sigma.x * sigma.y * M_PI;
+    auto  sx  = static_cast<float>(2.0 * sigma.x * sigma.x);
+    auto  sy  = static_cast<float>(2.0 * sigma.y * sigma.y);
+    auto  s   = static_cast<float>(2.0 * sigma.x * sigma.y * M_PI);
     float sum = 0.f;
     for (int y = -half.y; y <= half.y; ++y)
     {
         for (int x = -half.x; x <= half.x; ++x)
         {
-            float kv = std::exp(-((x * x) / sx + (y * y) / sy)) / s;
+            auto kv = std::exp(-((static_cast<float>(x * x) / sx) + (static_cast<float>(y * y) / sy))) / s;
 
             kernel[(y + half.y) * kernelSize.w + (x + half.x)] = kv;
 

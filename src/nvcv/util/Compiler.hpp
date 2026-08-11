@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,14 +32,6 @@
 
 #if defined(__CUDACC__)
 #    define NVCV_CUDACC_VERSION (__CUDACC_VER_MAJOR__ * 10000 + __CUDACC_VER_MINOR__ * 100 + __CUDACC_VER_BUILD__)
-#endif
-
-#if defined(_WIN32)
-#    define NVCV_WINDOWS 1
-#endif
-
-#if defined(__unix__)
-#    define NVCV_UNIX 1
 #endif
 
 #if NVCV_GCC_VERSION || NVCV_CLANG_VERSION

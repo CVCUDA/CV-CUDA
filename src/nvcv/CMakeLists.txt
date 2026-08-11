@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,12 +17,9 @@ cmake_minimum_required(VERSION 3.20.1)
 
 project(nvcv
         LANGUAGES C CXX
-        VERSION 0.16.0
+        VERSION 0.17.0
         DESCRIPTION "NVCV is NVIDIA Computer Vision library"
 )
-
-# Used when creating special builds
-set(PROJECT_VERSION_SUFFIX "")
 
 include(CMakeDependentOption)
 

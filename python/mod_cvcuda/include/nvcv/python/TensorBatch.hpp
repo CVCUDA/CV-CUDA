@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -36,6 +36,12 @@ class TensorBatch
     , public nvcv::TensorBatch
 {
 public:
+    TensorBatch(const TensorBatch &)     = default;
+    TensorBatch(TensorBatch &&) noexcept = default;
+
+    TensorBatch &operator=(const TensorBatch &)     = default;
+    TensorBatch &operator=(TensorBatch &&) noexcept = default;
+
     static TensorBatch Create(int capacity)
     {
         PyObject *tensorBatch = capi().TensorBatch_Create(capacity);
@@ -46,19 +52,19 @@ public:
         return TensorBatch(pytensorBatch);
     }
 
-    void pushBack(Tensor tensor)
+    void pushBackTensor(Tensor tensor)
     {
         capi().TensorBatch_PushBack(this->ptr(), tensor.ptr());
         CheckCAPIError();
     }
 
-    void popBack(int cnt)
+    void popBackTensors(int cnt)
     {
         capi().TensorBatch_PopBack(this->ptr(), cnt);
         CheckCAPIError();
     }
 
-    void clear()
+    void clearTensors()
     {
         capi().TensorBatch_Clear(this->ptr());
         CheckCAPIError();
@@ -94,7 +100,7 @@ struct type_caster<cvpy::TensorBatch> : type_caster_base<cvpy::TensorBatch>
     bool load(handle src, bool)
     {
         // Does it have the correct object type?
-        PyTypeObject *srctype = Py_TYPE(src.ptr());
+        const PyTypeObject *srctype = Py_TYPE(src.ptr());
         if (strcmp(name.text, srctype->tp_name) == 0)
         {
             value = cvpy::TensorBatch(reinterpret_borrow<object>(src));
@@ -108,8 +114,7 @@ struct type_caster<cvpy::TensorBatch> : type_caster_base<cvpy::TensorBatch>
 
     static handle cast(cvpy::TensorBatch tensor, return_value_policy /* policy */, handle /*parent */)
     {
-        tensor.inc_ref(); // for some reason this is needed
-        return tensor;
+        return static_cast<object &>(tensor).release();
     }
 };
 

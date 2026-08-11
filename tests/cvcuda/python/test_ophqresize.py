@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,9 +14,12 @@
 # limitations under the License.
 
 import cvcuda
-import pytest as t
+
+import pytest
 import cvcuda_util as util
 import numpy as np
+import cvcuda_types as cv_types
+import cvcuda_tools as cv_tools
 
 RNG = np.random.default_rng(12345)
 
@@ -32,7 +35,7 @@ def get_shape(in_shape, layout, out_size):
     )
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "src_args, dst_args, interpolation_args, roi",
     [
         (
@@ -116,7 +119,7 @@ def test_op_hq_resize_api(src_args, dst_args, interpolation_args, roi):
         assert t_dst.shape == out_shape
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "num_samples, src_args, dst_type, interpolation_args, roi",
     [
         (
@@ -205,7 +208,7 @@ def test_op_hq_resize_var_shape_api(
         )
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "num_samples, src_args, dst_type, interpolation_args, use_roi",
     [
         (
@@ -303,3 +306,84 @@ def test_op_hq_resize_tensor_batch_api(
         assert b_dst.dtype == dst_type
         for i in range(num_samples):
             assert b_dst[i].shape == get_shape(src_shape, layout, out_sizes[i])
+
+
+def _hqresize_params(dtype, layout, channels):
+    return {
+        "out_size": (12, 12),
+        "interpolation": cvcuda.Interp.LINEAR,
+    }
+
+
+def _hqresize_varshape_params(dtype, layout, channels):
+    return {
+        "out_size": [(12, 12), (12, 12)],
+        "interpolation": cvcuda.Interp.LINEAR,
+    }
+
+
+def _hqresize_tensorbatch_params(dtype, layout, channels):
+    if "D" in layout:
+        return {
+            "out_size": [(1, 12, 12), (1, 12, 12)],
+            "interpolation": cvcuda.Interp.LINEAR,
+        }
+    return {
+        "out_size": [(12, 12), (12, 12)],
+        "interpolation": cvcuda.Interp.LINEAR,
+    }
+
+
+_interleaved_layouts = {"NHWC", "NHW", "HWC", "HW"}
+_planar_layouts = {"NCHW", "CHW", "NFHW", "FHW", "FHWC"}
+# 2D channel-first layouts support multi-channel planar resize (processed plane-by-plane).
+_planar_2d_layouts = {"NCHW", "CHW"}
+
+
+globals().update(
+    cv_tools.make_op_tests(
+        name="hq_resize",
+        runner_info=[
+            ("tensor", cvcuda.hq_resize, _hqresize_params),
+            ("image_batch", cvcuda.hq_resize, _hqresize_varshape_params),
+        ],
+        keystone_dlc=(cvcuda.Type.U8, "NHWC", 3),
+        supported_dtypes={
+            cvcuda.Type.U8,
+            cvcuda.Type.U16,
+            cvcuda.Type.S16,
+            cvcuda.Type.F32,
+        },
+        supported_layouts=_interleaved_layouts | _planar_layouts,
+        supported_channels=cv_types.CHANNELS,
+        # Only 2D channel-first planar layouts support multi-channel; frame/3D planar layouts
+        # (NFHW/FHW/FHWC) remain single-channel.
+        exclude_dlc=[
+            (None, layout, ch)
+            for layout in _planar_layouts - _planar_2d_layouts
+            for ch in cv_types.CHANNELS - {1}
+        ],
+    )
+)
+
+
+globals().update(
+    cv_tools.make_op_tests(
+        name="hq_resize_tensor_batch",
+        runner_info=[
+            ("tensor_batch", cvcuda.hq_resize, _hqresize_tensorbatch_params),
+        ],
+        keystone_dlc=(cvcuda.Type.U8, "NCHW", 1),
+        supported_dtypes={
+            cvcuda.Type.U8,
+            cvcuda.Type.U16,
+            cvcuda.Type.S16,
+            cvcuda.Type.F32,
+        },
+        # NCHW/CHW (channel-first 2D) planar tensor batches are expanded plane-by-plane and accept
+        # any channel count; the interleaved path supports dynamic channels too, so there is no
+        # channel-count upper limit to assert as negative.
+        supported_layouts={"HW", "HWC", "DHW", "DHWC", "NCHW", "CHW"},
+        supported_channels=cv_types.CHANNELS,
+    )
+)

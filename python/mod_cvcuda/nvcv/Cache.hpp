@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,13 +26,14 @@
 #include <pybind11/pybind11.h>
 
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace nvcvpy::priv {
 
 namespace py = pybind11;
 
-class PYBIND11_EXPORT CacheItem : public virtual Object
+class PYBIND11_EXPORT CacheItem : public virtual Object // NOSONAR: cache resources share one Object base.
 {
 public:
     uint64_t id() const;
@@ -56,8 +57,8 @@ private:
 class ExternalCacheItem : public CacheItem
 {
 public:
-    ExternalCacheItem(std::shared_ptr<nvcvpy::ICacheItem> obj_)
-        : obj(obj_)
+    explicit ExternalCacheItem(std::shared_ptr<nvcvpy::ICacheItem> obj_)
+        : m_obj(std::move(obj_))
         , m_size_inbytes(doComputeSizeInBytes())
     {
     }
@@ -70,22 +71,26 @@ public:
         return m_size_inbytes;
     }
 
-    std::shared_ptr<nvcvpy::ICacheItem> obj;
+    nvcvpy::ICacheItem *obj() const
+    {
+        return m_obj.get();
+    }
 
     const IKey &key() const override
     {
-        return obj->key();
+        return m_obj->key();
     }
 
 private:
-    int64_t doComputeSizeInBytes()
+    int64_t doComputeSizeInBytes() const
     {
         // ExternalCacheItems (CacheItems outside of nvcv, eg. operators from cvcuda) will not pollute the
         // Cache, thus for now we say they've no impact on the Cache
         return 0;
     }
 
-    int64_t m_size_inbytes = -1;
+    std::shared_ptr<nvcvpy::ICacheItem> m_obj;
+    int64_t                             m_size_inbytes = -1;
 };
 
 class PYBIND11_EXPORT Cache
@@ -113,14 +118,13 @@ public:
     {
         std::vector<std::shared_ptr<T>> out;
 
-        doIterateThroughItems(
-            [&out](CacheItem &item)
+        for (const std::shared_ptr<CacheItem> &item : doSnapshotItems())
+        {
+            if (auto titem = std::dynamic_pointer_cast<T>(item))
             {
-                if (auto titem = std::dynamic_pointer_cast<T>(item.shared_from_this()))
-                {
-                    out.emplace_back(std::move(titem));
-                }
-            });
+                out.emplace_back(std::move(titem));
+            }
+        }
         return out;
     }
 
@@ -129,7 +133,7 @@ public:
 
     void    setCacheLimit(int64_t new_cache_limit);
     int64_t getCacheLimit() const;
-    int64_t getCurrentSizeInBytes();
+    int64_t getCurrentSizeInBytes() const;
 
 private:
     inline static std::unordered_set<Cache *> instances;
@@ -138,11 +142,11 @@ private:
     std::unique_ptr<Impl> pimpl;
 
     Cache();
-    ~Cache();
+    ~Cache() noexcept;
 
-    void    doIterateThroughItems(const std::function<void(CacheItem &item)> &fn) const;
-    int64_t doGetCurrentSizeInBytes() const;
-    int64_t doGetCacheLimit() const;
+    std::vector<std::shared_ptr<CacheItem>> doSnapshotItems() const;
+    int64_t                                 doGetDeviceSize(int dev) const;
+    int64_t                                 doGetDeviceLimit(int dev) const;
 };
 
 } // namespace nvcvpy::priv

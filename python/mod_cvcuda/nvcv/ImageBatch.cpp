@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "ImageBatch.hpp"
 
+#include "../NvtxRange.hpp"
 #include "CastUtils.hpp"
 #include "ExternalBuffer.hpp"
 #include "Image.hpp"
@@ -24,7 +25,19 @@
 #include <common/Assert.hpp>
 #include <common/CheckError.hpp>
 
+#include <stdexcept>
+
 namespace nvcvpy::priv {
+
+namespace {
+
+class ImageBatchError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
+
+} // namespace
 
 size_t ImageBatchVarShape::Key::doGetHash() const
 {
@@ -45,7 +58,7 @@ std::shared_ptr<ImageBatchVarShape> ImageBatchVarShape::Create(int capacity)
     // None found?
     if (vcont.empty())
     {
-        std::shared_ptr<ImageBatchVarShape> batch(new ImageBatchVarShape(capacity));
+        std::shared_ptr<ImageBatchVarShape> batch(new ImageBatchVarShape(capacity)); // NOSONAR: constructor is private.
         Cache::Instance().add(*batch);
         return batch;
     }
@@ -70,12 +83,12 @@ std::shared_ptr<ImageBatchVarShape> ImageBatchVarShape::WrapExternalBufferVector
         std::shared_ptr<ExternalBuffer> buffer = cast_py_object_as<ExternalBuffer>(obj);
         if (!buffer)
         {
-            throw std::runtime_error("Input buffer doesn't provide cuda_array_interface or DLPack interfaces");
+            throw ImageBatchError("Input buffer doesn't provide cuda_array_interface or DLPack interfaces");
         }
         buflist.push_back(buffer);
     }
 
-    std::shared_ptr<ImageBatchVarShape> batch = Create(buffers.size());
+    std::shared_ptr<ImageBatchVarShape> batch = Create(static_cast<int>(buffers.size()));
     batch->pushBackMany(Image::WrapExternalBufferMany(buflist, fmt));
 
     return batch;
@@ -89,7 +102,7 @@ ImageBatchVarShape::ImageBatchVarShape(int capacity)
     m_list.reserve(capacity);
 }
 
-int64_t ImageBatchVarShape::doComputeSizeInBytes(const NVCVImageBatchVarShapeRequirements &reqs)
+int64_t ImageBatchVarShape::doComputeSizeInBytes(const NVCVImageBatchVarShapeRequirements &reqs) const
 {
     int64_t size_inbytes;
     util::CheckThrow(nvcvMemRequirementsCalcTotalSizeBytes(&(reqs.mem.cudaMem), &size_inbytes));
@@ -102,6 +115,19 @@ int64_t ImageBatchVarShape::GetSizeInBytes() const
     NVCV_ASSERT(m_size_inbytes != -1
                 && "ImageBatchVarShape has m_size_inbytes == -1, ie m_size_inbytes has not been correctly set");
     return m_size_inbytes;
+}
+
+void ImageBatchVarShape::submitSync(Stream &stream)
+{
+    const auto synchronizedState = syncState();
+    Resource::submitSync(stream);
+    for (const std::shared_ptr<Image> &image : m_list)
+    {
+        if (image && !image->submitSyncThrough(stream, synchronizedState))
+        {
+            image->submitSync(stream);
+        }
+    }
 }
 
 const nvcv::ImageBatchVarShape &ImageBatchVarShape::impl() const
@@ -147,27 +173,28 @@ int32_t ImageBatchVarShape::numImages() const
 void ImageBatchVarShape::pushBack(Image &img)
 {
     m_impl.pushBack(img.impl());
-    m_list.push_back(img.shared_from_this());
+    m_list.push_back(SharedContainerFrom(img));
 }
 
 void ImageBatchVarShape::pushBackMany(const std::vector<std::shared_ptr<Image>> &imgList)
 {
     std::vector<NVCVImageHandle> handlelist;
     handlelist.reserve(imgList.size());
-    for (size_t i = 0; i < imgList.size(); ++i)
+    for (const auto &img : imgList)
     {
-        if (imgList[i])
+        if (img)
         {
-            handlelist.push_back(imgList[i]->impl().handle());
+            handlelist.push_back(img->impl().handle());
         }
         else
         {
             handlelist.push_back(nullptr);
         }
-        m_list.push_back(imgList[i]);
+        m_list.push_back(img);
     }
 
-    nvcv::detail::CheckThrow(nvcvImageBatchVarShapePushImages(m_impl.handle(), handlelist.data(), handlelist.size()));
+    nvcv::detail::CheckThrow(
+        nvcvImageBatchVarShapePushImages(m_impl.handle(), handlelist.data(), static_cast<int32_t>(handlelist.size())));
 }
 
 void ImageBatchVarShape::popBack(int imgCount)
@@ -190,16 +217,6 @@ auto ImageBatchVarShape::begin() const -> ImageList::const_iterator
 auto ImageBatchVarShape::end() const -> ImageList::const_iterator
 {
     return m_list.end();
-}
-
-std::shared_ptr<ImageBatchVarShape> ImageBatchVarShape::shared_from_this()
-{
-    return std::static_pointer_cast<ImageBatchVarShape>(Container::shared_from_this());
-}
-
-std::shared_ptr<const ImageBatchVarShape> ImageBatchVarShape::shared_from_this() const
-{
-    return std::static_pointer_cast<const ImageBatchVarShape>(Container::shared_from_this());
 }
 
 void ImageBatchVarShape::Export(py::module &m)
@@ -226,8 +243,8 @@ void ImageBatchVarShape::Export(py::module &m)
              "Remove one or more images from the end of the ImageBatchVarShape.")
         .def("clear", &ImageBatchVarShape::clear, "Remove all images from the ImageBatchVarShape.");
 
-    m.def("as_images", &ImageBatchVarShape::WrapExternalBufferVector, py::arg_v("buffers", std::vector<py::object>{}),
-          "format"_a = nvcv::FMT_NONE, py::keep_alive<0, 1>(),
+    m.def("as_images", ::cvcudapy::NvtxTrace("cvcuda.as_images", &ImageBatchVarShape::WrapExternalBufferVector),
+          py::arg_v("buffers", std::vector<py::object>{}), "format"_a = nvcv::FMT_NONE, py::keep_alive<0, 1>(),
           "Wrap a vector of external buffers as a batch of images, and tie the buffers lifetime to it");
 }
 

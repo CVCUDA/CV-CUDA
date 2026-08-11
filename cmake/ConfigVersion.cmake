@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,6 +19,28 @@ get_filename_component(config_version_script_path ${CMAKE_CURRENT_LIST_FILE} PAT
 
 include(GetGitRevisionDescription)
 get_git_head_revision(GIT_REFSPEC REPO_COMMIT)
+
+# When building from an exported source tree with no .git — the OSS release
+# tarball, or a downloaded release archive — get_git_head_revision()
+# returns a "*-NOTFOUND" sentinel instead of a hash, so the embedded
+# <LIB>_COMMIT would be bogus. Fall back to a COMMIT_SHA file written at the
+# source-tree root by the release packaging, preserving in-binary commit
+# provenance (and the version-commit test) without a repository present.
+if(NOT REPO_COMMIT MATCHES "^[0-9a-fA-F]+$" AND EXISTS "${CMAKE_SOURCE_DIR}/COMMIT_SHA")
+    file(STRINGS "${CMAKE_SOURCE_DIR}/COMMIT_SHA" _repo_commit_lines LIMIT_COUNT 1)
+    string(STRIP "${_repo_commit_lines}" _repo_commit_file)
+    # Only ever embed a bare commit hash. Refusing anything else keeps build
+    # state (tokens, env dumps, build flags) from leaking into the in-binary
+    # <LIB>_COMMIT through a malformed or polluted COMMIT_SHA file.
+    if(_repo_commit_file MATCHES "^[0-9a-fA-F]+$")
+        set(REPO_COMMIT "${_repo_commit_file}")
+        message(STATUS "REPO_COMMIT taken from COMMIT_SHA file (no .git present): ${REPO_COMMIT}")
+    else()
+        message(WARNING "Ignoring COMMIT_SHA file: contents are not a bare commit hash")
+    endif()
+    unset(_repo_commit_lines)
+    unset(_repo_commit_file)
+endif()
 
 set(PROJECT_VERSION "${PROJECT_VERSION}${PROJECT_VERSION_SUFFIX}")
 

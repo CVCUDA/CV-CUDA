@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,9 +23,10 @@ namespace cvcudapy {
 
 void ExportSIFTFlagType(py::module &m)
 {
-    py::enum_<NVCVSIFTFlagType>(m, "SIFT", py::arithmetic())
-        .value("USE_ORIGINAL_INPUT", NVCV_SIFT_USE_ORIGINAL_INPUT)
-        .value("USE_EXPANDED_INPUT", NVCV_SIFT_USE_EXPANDED_INPUT);
+    py::enum_<NVCVSIFTFlagType>(m, "SIFT", "SIFT algorithm configuration flags.", py::arithmetic())
+        .value("USE_ORIGINAL_INPUT", NVCV_SIFT_USE_ORIGINAL_INPUT, "Use the original input image without upscaling.")
+        .value("USE_EXPANDED_INPUT", NVCV_SIFT_USE_EXPANDED_INPUT,
+               "Upscale the input image 2x before processing for improved keypoint detection.");
 }
 
 } // namespace cvcudapy

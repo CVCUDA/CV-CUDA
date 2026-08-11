@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,10 +22,11 @@ namespace nvcv::util {
 
 struct Size2D
 {
-    int w, h;
+    int w;
+    int h;
 };
 
-inline bool operator==(const Size2D &a, const Size2D &b)
+inline bool operator==(const Size2D &a, const Size2D &b) // NOSONAR: defaulted comparisons are C++20.
 {
     return a.w == b.w && a.h == b.h;
 }

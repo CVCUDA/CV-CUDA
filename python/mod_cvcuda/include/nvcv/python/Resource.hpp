@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,10 +29,16 @@ class Resource : public py::object
 public:
     using py::object::object;
 
-    Resource(py::object o)
+    explicit Resource(py::object o)
         : py::object(o)
     {
     }
+
+    Resource(const Resource &)     = default;
+    Resource(Resource &&) noexcept = default;
+
+    Resource &operator=(const Resource &)     = default;
+    Resource &operator=(Resource &&) noexcept = default;
 
     virtual ~Resource() = default;
 };

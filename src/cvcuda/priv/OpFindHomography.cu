@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,7 +15,9 @@
  * limitations under the License.
  */
 
+#include "Nvtx.hpp"
 #include "OpFindHomography.hpp"
+#include "SafeSize.hpp"
 
 #include <cuda_runtime.h>
 #include <cvcuda/cuda_tools/DropCast.hpp>
@@ -632,11 +634,13 @@ __device__ void compute_qr8x8(matrix8x8 &sA, matrix8x8 &sQ)
         {
             if (tid < N)
             {
-                double theta   = atan(-(double)sA[i][j] / (double)sA[pivot_row][j]);
-                double ctheta  = cos(theta);
-                double stheta  = sin(theta);
-                float  sthetaf = (float)stheta;
-                float  cthetaf = (float)ctheta;
+                const double pivot   = sA[pivot_row][j];
+                const double value   = sA[i][j];
+                const double norm    = hypot(pivot, value);
+                const double ctheta  = fabs(pivot) / norm;
+                const double stheta  = -value * copysign(1.0, pivot) / norm;
+                const float  sthetaf = (float)stheta;
+                const float  cthetaf = (float)ctheta;
 
                 temp[0]            = ctheta * sA[pivot_row][tid] - stheta * sA[i][tid];
                 temp[1]            = stheta * sA[pivot_row][tid] + ctheta * sA[i][tid];
@@ -803,8 +807,14 @@ __device__ int compute_model_estimate(float2 cM, float2 cm, float2 sM, float2 sm
 
     if (sm.x < FLT_EPSILON || sm.y < FLT_EPSILON || sM.x < FLT_EPSILON || sM.y < FLT_EPSILON)
     {
+        // Centroid + abs-shift both ~0 in at least one axis means the input
+        // points are all coincident or the kernel saw zero data (e.g. dst
+        // tensor never populated — see TestOpFindHomography test fix). Either
+        // way we cannot estimate a homography. Write NaN so the failure
+        // propagates to the caller's output rather than emitting a "valid"-
+        // looking [0 0 0; 0 0 0; 0 0 1] zero matrix.
         if (tid < 8)
-            x[tid] = 0;
+            x[tid] = nanf("");
         __syncwarp();
         return 1;
     }
@@ -1287,9 +1297,17 @@ template<class SrcDstWrapper, class Func>
 __global__ void compute_LtL(SrcDstWrapper src, SrcDstWrapper dst, float *LtL, Func ltl_op, int maxNumPoints,
                             int batchSize)
 {
+    // cuSolver consumes CUBLAS_FILL_MODE_LOWER in column-major order. LtL is populated through a
+    // row-major linear index, so the 45 physical locations it reads are the row-major upper triangle
+    // (j <= k). The bit mask marks the first packed-triangle entry for each j; popcount maps one of
+    // the 45 launched blocks to its (j, k) pair without a lookup table or runtime storage.
+    constexpr unsigned long long kColumnStarts = (1ULL << 0) | (1ULL << 9) | (1ULL << 17) | (1ULL << 24) | (1ULL << 30)
+                                               | (1ULL << 35) | (1ULL << 39) | (1ULL << 42) | (1ULL << 44);
+
+    int        pair  = blockIdx.y;
+    int        j     = __popcll(kColumnStarts & ((1ULL << (pair + 1)) - 1)) - 1;
+    int        k     = j + pair - j * (19 - j) / 2;
     int        batch = blockIdx.z;
-    int        j     = blockIdx.y / 9; // LtL row index
-    int        k     = blockIdx.y % 9; // LtL col index
     __shared__ cuda::math::Vector<float, 32> warpSums;
     if (batch < batchSize)
     {
@@ -1358,7 +1376,7 @@ void FindHomographyWrapper(SrcDstWrapper srcWrap, SrcDstWrapper dstWrap, ModelTy
     printKernelfloat2<<<1, 1, 0, stream>>>(dstShiftSum + check_batch, 1, 0);
 #endif
 
-    grid.y = 81;
+    grid.y = 45;
     grid.z = batchSize;
     LtLOp ltl_op(srcMean, dstMean, srcShiftSum, dstShiftSum);
     compute_LtL<<<grid, block, 0, stream>>>(srcWrap, dstWrap, LtL, ltl_op, numPoints, batchSize);
@@ -1402,7 +1420,10 @@ void FindHomographyWrapper(SrcDstWrapper srcWrap, SrcDstWrapper dstWrap, ModelTy
     }
 #endif
 
-    block.x = 256;
+    // One block owns one model. Match its warp count to the residual/Jacobian work so small point
+    // sets do not reserve idle warps that could otherwise keep more independent batches resident.
+    const int refinementWork = 2 * numPoints;
+    block.x = refinementWork <= 32 ? 32 : refinementWork <= 64 ? 64 : refinementWork <= 128 ? 128 : 256;
     grid.x  = 1;
     grid.y  = batchSize;
     grid.z  = 1;
@@ -1476,48 +1497,125 @@ namespace cvcuda::priv {
 
 // Constructor -----------------------------------------------------------------
 
-FindHomography::FindHomography(int batchSize, int maxNumPoints)
+static void CheckCuSolver(cusolverStatus_t err, const char *msg)
 {
-    cudaMalloc(reinterpret_cast<void **>(&(bufferOffset.srcMean)), sizeof(float2) * batchSize);
-    cudaMalloc(reinterpret_cast<void **>(&(bufferOffset.dstMean)), sizeof(float2) * batchSize);
-    cudaMalloc(reinterpret_cast<void **>(&(bufferOffset.srcShiftSum)), sizeof(float2) * batchSize);
-    cudaMalloc(reinterpret_cast<void **>(&(bufferOffset.dstShiftSum)), sizeof(float2) * batchSize);
-    cudaMalloc(reinterpret_cast<void **>(&(bufferOffset.LtL)), 81 * sizeof(float) * batchSize);
-    cudaMalloc(reinterpret_cast<void **>(&(bufferOffset.W)), 9 * sizeof(float) * batchSize);
-    cudaMalloc(reinterpret_cast<void **>(&(bufferOffset.r)), 2 * maxNumPoints * sizeof(float) * batchSize);
-    cudaMalloc(reinterpret_cast<void **>(&(bufferOffset.J)), 2 * maxNumPoints * 8 * sizeof(float) * batchSize);
-    cudaMalloc(reinterpret_cast<void **>(&(bufferOffset.calc_buffer)), maxNumPoints * sizeof(float) * batchSize);
-    CUSOLVER_CHECK_ERROR(cusolverDnCreate(&(cusolverData.cusolverH)), "Failed to create cusolver handle");
-    CUSOLVER_CHECK_ERROR(cusolverDnCreateSyevjInfo(&(cusolverData.syevj_params)), "Failed to create syevj params");
-    CUSOLVER_CHECK_ERROR(cusolverDnXsyevjSetTolerance(cusolverData.syevj_params, 1e-7),
-                         "Failed to set tolerance for syevj");
-    CUSOLVER_CHECK_ERROR(cusolverDnXsyevjSetMaxSweeps(cusolverData.syevj_params, 15),
-                         "Failed to set max sweeps for syevj");
-    CUSOLVER_CHECK_ERROR(cusolverDnXsyevjSetSortEig(cusolverData.syevj_params, 1),
-                         "Failed to set sorting of eigen values in syevj");
-    CUSOLVER_CHECK_ERROR(
-        cusolverDnSsyevjBatched_bufferSize(cusolverData.cusolverH, CUSOLVER_EIG_MODE_VECTOR, CUBLAS_FILL_MODE_LOWER, 9,
-                                           NULL, 9, NULL, &(cusolverData.lwork), cusolverData.syevj_params, batchSize),
-        "Failed to calculate buffer size for syevj");
-    cudaMalloc(reinterpret_cast<void **>(&(cusolverData.cusolverBuffer)), cusolverData.lwork * sizeof(float));
-    cudaMalloc(reinterpret_cast<void **>(&(cusolverData.cusolverInfo)), batchSize * sizeof(int));
+    if (err != CUSOLVER_STATUS_SUCCESS)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INTERNAL, "CUSOLVER error (%d): %s", static_cast<int>(err), msg);
+    }
 }
 
-FindHomography::~FindHomography()
+FindHomography::DeviceState::DeviceState(int batchSize, int maxNumPoints)
 {
-    cudaFree(bufferOffset.srcMean);
-    cudaFree(bufferOffset.dstMean);
-    cudaFree(bufferOffset.srcShiftSum);
-    cudaFree(bufferOffset.dstShiftSum);
-    cudaFree(bufferOffset.LtL);
-    cudaFree(bufferOffset.W);
-    cudaFree(bufferOffset.r);
-    cudaFree(bufferOffset.J);
-    cudaFree(bufferOffset.calc_buffer);
-    cusolverDnDestroySyevjInfo(cusolverData.syevj_params);
-    cusolverDnDestroy(cusolverData.cusolverH);
-    cudaFree(cusolverData.cusolverBuffer);
-    cudaFree(cusolverData.cusolverInfo);
+    try
+    {
+        const size_t batch  = CheckedPositiveToSize(batchSize, "batchSize");
+        const size_t points = CheckedPositiveToSize(maxNumPoints, "maxNumPoints");
+
+        const size_t meanBytes
+            = CheckedMulMany({sizeof(float2), batch}, "FindHomography mean allocation size overflow");
+        NVCV_CHECK_THROW(cudaMalloc(reinterpret_cast<void **>(&bufferOffset.srcMean), meanBytes));
+        NVCV_CHECK_THROW(cudaMalloc(reinterpret_cast<void **>(&bufferOffset.dstMean), meanBytes));
+        NVCV_CHECK_THROW(cudaMalloc(reinterpret_cast<void **>(&bufferOffset.srcShiftSum), meanBytes));
+        NVCV_CHECK_THROW(cudaMalloc(reinterpret_cast<void **>(&bufferOffset.dstShiftSum), meanBytes));
+        NVCV_CHECK_THROW(
+            cudaMalloc(reinterpret_cast<void **>(&bufferOffset.LtL),
+                       CheckedMulMany({81U, sizeof(float), batch}, "FindHomography LtL allocation size overflow")));
+        NVCV_CHECK_THROW(
+            cudaMalloc(reinterpret_cast<void **>(&bufferOffset.W),
+                       CheckedMulMany({9U, sizeof(float), batch}, "FindHomography W allocation size overflow")));
+        NVCV_CHECK_THROW(cudaMalloc(
+            reinterpret_cast<void **>(&bufferOffset.r),
+            CheckedMulMany({2U, points, sizeof(float), batch}, "FindHomography residual allocation size overflow")));
+        NVCV_CHECK_THROW(cudaMalloc(reinterpret_cast<void **>(&bufferOffset.J),
+                                    CheckedMulMany({2U, points, 8U, sizeof(float), batch},
+                                                   "FindHomography Jacobian allocation size overflow")));
+        NVCV_CHECK_THROW(cudaMalloc(
+            reinterpret_cast<void **>(&bufferOffset.calc_buffer),
+            CheckedMulMany({points, sizeof(float), batch}, "FindHomography calc buffer allocation size overflow")));
+
+        CheckCuSolver(cusolverDnCreate(&cusolverData.cusolverH), "Failed to create cusolver handle");
+        CheckCuSolver(cusolverDnCreateSyevjInfo(&cusolverData.syevj_params), "Failed to create syevj params");
+        CheckCuSolver(cusolverDnXsyevjSetTolerance(cusolverData.syevj_params, 1e-7),
+                      "Failed to set tolerance for syevj");
+        CheckCuSolver(cusolverDnXsyevjSetMaxSweeps(cusolverData.syevj_params, 15),
+                      "Failed to set max sweeps for syevj");
+        CheckCuSolver(cusolverDnXsyevjSetSortEig(cusolverData.syevj_params, 1),
+                      "Failed to set sorting of eigen values in syevj");
+        CheckCuSolver(cusolverDnSsyevjBatched_bufferSize(cusolverData.cusolverH, CUSOLVER_EIG_MODE_VECTOR,
+                                                         CUBLAS_FILL_MODE_LOWER, 9, nullptr, 9, nullptr,
+                                                         &cusolverData.lwork, cusolverData.syevj_params, batchSize),
+                      "Failed to calculate buffer size for syevj");
+
+        NVCV_CHECK_THROW(cudaMalloc(
+            reinterpret_cast<void **>(&cusolverData.cusolverBuffer),
+            CheckedMulMany({CheckedNonNegativeToSize(cusolverData.lwork, "cusolverData.lwork"), sizeof(float)},
+                           "FindHomography cuSolver buffer allocation size overflow")));
+        NVCV_CHECK_THROW(
+            cudaMalloc(reinterpret_cast<void **>(&cusolverData.cusolverInfo),
+                       CheckedMulMany({batch, sizeof(int)}, "FindHomography cuSolver info allocation size overflow")));
+    }
+    catch (...)
+    {
+        cleanup();
+        throw;
+    }
+}
+
+FindHomography::DeviceState::~DeviceState()
+{
+    cleanup();
+}
+
+void FindHomography::DeviceState::cleanup() noexcept
+{
+    (void)cudaFree(bufferOffset.srcMean);
+    bufferOffset.srcMean = nullptr;
+    (void)cudaFree(bufferOffset.dstMean);
+    bufferOffset.dstMean = nullptr;
+    (void)cudaFree(bufferOffset.srcShiftSum);
+    bufferOffset.srcShiftSum = nullptr;
+    (void)cudaFree(bufferOffset.dstShiftSum);
+    bufferOffset.dstShiftSum = nullptr;
+    (void)cudaFree(bufferOffset.LtL);
+    bufferOffset.LtL = nullptr;
+    (void)cudaFree(bufferOffset.W);
+    bufferOffset.W = nullptr;
+    (void)cudaFree(bufferOffset.r);
+    bufferOffset.r = nullptr;
+    (void)cudaFree(bufferOffset.J);
+    bufferOffset.J = nullptr;
+    (void)cudaFree(bufferOffset.calc_buffer);
+    bufferOffset.calc_buffer = nullptr;
+
+    if (cusolverData.syevj_params != nullptr)
+    {
+        (void)cusolverDnDestroySyevjInfo(cusolverData.syevj_params);
+        cusolverData.syevj_params = nullptr;
+    }
+    if (cusolverData.cusolverH != nullptr)
+    {
+        (void)cusolverDnDestroy(cusolverData.cusolverH);
+        cusolverData.cusolverH = nullptr;
+    }
+    (void)cudaFree(cusolverData.cusolverBuffer);
+    cusolverData.cusolverBuffer = nullptr;
+    (void)cudaFree(cusolverData.cusolverInfo);
+    cusolverData.cusolverInfo = nullptr;
+    cusolverData.lwork        = 0;
+}
+
+FindHomography::FindHomography(int batchSize, int maxNumPoints)
+    : m_state([batchSize, maxNumPoints](int) { return std::make_unique<DeviceState>(batchSize, maxNumPoints); })
+{
+    if (batchSize <= 0)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "batchSize must be positive");
+    }
+    if (maxNumPoints < 4)
+    {
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "maxNumPoints must be at least 4");
+    }
 }
 
 // Operator --------------------------------------------------------------------
@@ -1526,6 +1624,7 @@ FindHomography::~FindHomography()
 void FindHomography::operator()(cudaStream_t stream, const nvcv::Tensor &srcPoints, const nvcv::Tensor &dstPoints,
                                 const nvcv::Tensor &models) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::FindHomography::operator()[Tensor]");
     auto srcData = srcPoints.exportData<nvcv::TensorDataStridedCuda>();
     if (!srcData)
     {
@@ -1547,18 +1646,21 @@ void FindHomography::operator()(cudaStream_t stream, const nvcv::Tensor &srcPoin
                               "Input must be cuda-accessible, pitch-linear tensor");
     }
 
-    RunFindHomography(*srcData, *dstData, *modelData, &bufferOffset, &cusolverData, stream);
+    auto &state = m_state.get();
+    RunFindHomography(*srcData, *dstData, *modelData, &state.bufferOffset, &state.cusolverData, stream);
 }
 
 void FindHomography::operator()(cudaStream_t stream, const nvcv::TensorBatch &srcPoints,
                                 const nvcv::TensorBatch &dstPoints, const nvcv::TensorBatch &models) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::FindHomography::operator()[TensorBatch]");
     if (!(srcPoints.numTensors() == dstPoints.numTensors() && srcPoints.numTensors() == models.numTensors()))
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
                               "source, destination and model tensors must have same batch size");
     }
 
+    auto &state = m_state.get();
     for (int b = 0; b < srcPoints.numTensors(); b++)
     {
         auto srcData = srcPoints[b].exportData<nvcv::TensorDataStridedCuda>();
@@ -1582,7 +1684,7 @@ void FindHomography::operator()(cudaStream_t stream, const nvcv::TensorBatch &sr
                                   "model must be cuda-accessible, pitch-linear tensor");
         }
 
-        RunFindHomography(*srcData, *dstData, *modelData, &bufferOffset, &cusolverData, stream);
+        RunFindHomography(*srcData, *dstData, *modelData, &state.bufferOffset, &state.cusolverData, stream);
     }
 }
 

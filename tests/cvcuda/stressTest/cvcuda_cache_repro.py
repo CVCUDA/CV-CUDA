@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,19 +15,17 @@
 
 import numpy as np
 import cvcuda
-import torch
 import random
 import threading
 import queue
 import time
 import gc
 
+import cupy
+
 
 def preprocess(input, out_size):
-    frame_nhwc = cvcuda.as_tensor(
-        torch.as_tensor(input).to(device="cuda:0", non_blocking=True),
-        "NHWC",
-    )
+    frame_nhwc = cvcuda.as_tensor(input, "NHWC")
     resized = cvcuda.resize(
         frame_nhwc,
         (
@@ -46,21 +44,16 @@ def preprocess(input, out_size):
 
 
 def preprocess_into(input, out_size):
-    torch.cuda.synchronize()
-    cvcuda_RGBtensor = cvcuda.as_tensor(input.cuda(), "NHWC")
-    torch.cuda.synchronize()
-    torch_RGBtensor_resized = torch.empty(
-        (
-            cvcuda_RGBtensor.shape[0],
-            out_size[1],
-            out_size[0],
-            cvcuda_RGBtensor.shape[3],
-        ),
-        dtype=torch.uint8,
-        device="cuda:0",
-    )
+    cvcuda.Stream.current.sync()
+    cvcuda_RGBtensor = cvcuda.as_tensor(input, "NHWC")
+    cvcuda.Stream.current.sync()
     cvcuda_RGBtensor_resized = cvcuda.as_tensor(
-        torch_RGBtensor_resized.cuda(),
+        cupy.asarray(
+            np.zeros(
+                (input.shape[0], out_size[1], out_size[0], input.shape[3]),
+                dtype=np.uint8,
+            )
+        ),
         "NHWC",
     )
     cvcuda.resize_into(
@@ -69,14 +62,14 @@ def preprocess_into(input, out_size):
         cvcuda.Interp.LINEAR,
     )
 
-    torch_nchw = torch.empty(
-        (input.shape[0], 3, out_size[1], out_size[0]),
-        dtype=torch.uint8,
-        device="cuda:0",
+    cvcuda_nchw = cvcuda.as_tensor(
+        cupy.asarray(
+            np.zeros((input.shape[0], 3, out_size[1], out_size[0]), dtype=np.uint8)
+        ),
+        "NCHW",
     )
-    cvcuda_nchw = cvcuda.as_tensor(torch_nchw.cuda(0), "NCHW")
     cvcuda.reformat_into(cvcuda_nchw, cvcuda_RGBtensor_resized)
-    return torch_nchw
+    return cvcuda_nchw
 
 
 def generate_images(N, width=None, height=None, random_size=False):
@@ -86,7 +79,7 @@ def generate_images(N, width=None, height=None, random_size=False):
     else:
         w = width
         h = height
-    return torch.as_tensor(torch.rand(N, h, w, 3), dtype=torch.uint8)
+    return cupy.asarray(np.random.rand(N, h, w, 3).astype(np.uint8))
 
 
 def worker(device_id, task_queue, result_queue):
@@ -189,7 +182,7 @@ def main():
     collected = gc.collect()
     print(f"Garbage collector: collected {collected} objects.")
     time.sleep(1)
-    torch.cuda.empty_cache()
+    cvcuda.Stream.current.sync()
     time.sleep(1)
     test_random_batch_size()
     collected = gc.collect()

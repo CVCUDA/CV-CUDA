@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +15,8 @@
  * limitations under the License.
  */
 
+#include "../NvtxRange.hpp"
+
 #include <common/Hash.hpp>
 #include <cvcuda/cuda_tools/MathOps.hpp>
 #include <nvcv/python/Array.hpp>
@@ -27,14 +29,14 @@
 #include <nvcv/python/TensorBatch.hpp>
 #include <pybind11/pybind11.h>
 
-#include <nvcv/python/Fwd.hpp>
+#include <memory>
 
-namespace nvcvpy::util {
-}
+#include <nvcv/python/Fwd.hpp>
 
 namespace cvcudapy {
 
 using nvcvpy::Array;
+using nvcvpy::AsNvcvTensor;
 using nvcvpy::CreateNVCVTensorShape;
 using nvcvpy::CreateShape;
 using nvcvpy::Image;
@@ -100,6 +102,16 @@ void ExportOpPairwiseMatcher(py::module &m);
 void ExportOpStack(py::module &m);
 void ExportOpFindHomography(py::module &m);
 void ExportOpResizeCropConvertReformat(py::module &m);
+void ExportOpCLAHE(py::module &m);
+void ExportOpInvert(py::module &m);
+void ExportOpSolarize(py::module &m);
+void ExportOpPosterize(py::module &m);
+void ExportOpAutoContrast(py::module &m);
+void ExportOpAdjustHue(py::module &m);
+void ExportOpAdjustSaturation(py::module &m);
+void ExportOpAdjustSharpness(py::module &m);
+void ExportOpAdjustContrast(py::module &m);
+void ExportOpJpegCompressionDistortion(py::module &m);
 
 // Helper class that serves as generic python-side operator class.
 // OP: native operator class
@@ -108,7 +120,8 @@ template<class OP, class CTOR>
 class PyOperator;
 
 template<class OP, class... CTOR_ARGS>
-class PyOperator<OP, void(CTOR_ARGS...)> : public nvcvpy::Container
+class PyOperator<OP, void(CTOR_ARGS...)> // NOSONAR: generic operator wrappers share the cache hierarchy.
+    : public nvcvpy::Container
 {
 public:
     // This defines a generic cache key class for any cvcuda::OP operator.
@@ -118,7 +131,7 @@ public:
     class Key : public nvcvpy::IKey
     {
     public:
-        Key(const CTOR_ARGS &...args)
+        explicit Key(const CTOR_ARGS &...args)
             : m_args{args...}
         {
         }
@@ -131,16 +144,16 @@ public:
 
         bool doIsCompatible(const nvcvpy::IKey &that_) const override
         {
-            const Key &that = static_cast<const Key &>(that_);
+            const auto &that = static_cast<const Key &>(that_);
             return m_args == that.m_args;
         }
 
         std::tuple<std::decay_t<CTOR_ARGS>...> m_args;
     };
 
-    PyOperator(CTOR_ARGS &&...args)
+    explicit PyOperator(CTOR_ARGS &&...args)
         : m_key(args...)
-        , m_op{std::forward<CTOR_ARGS>(args)...}
+        , m_op{static_cast<CTOR_ARGS &&>(args)...}
     {
     }
 
@@ -152,7 +165,7 @@ public:
 
     py::object container() const override
     {
-        return *this;
+        return py::reinterpret_borrow<py::object>(this->ptr());
     }
 
     const nvcvpy::IKey &key() const override
@@ -195,7 +208,7 @@ std::shared_ptr<PyOP> CreateOperatorEx(CTOR_ARGS &&...args)
     if (vcont.empty())
     {
         // Creates a new one
-        auto op = std::shared_ptr<PyOP>(new PyOP(std::forward<CTOR_ARGS>(args)...));
+        auto op = std::make_shared<PyOP>(std::forward<CTOR_ARGS>(args)...);
 
         // Adds to the resource cache
         nvcvpy::Cache::add(*op);

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,6 +37,7 @@ repos:
   - id: check-case-conflict
   - id: destroyed-symlinks
   - id: check-yaml
+    args: [--unsafe]
     exclude: '.clang-format'
 
 - repo: https://github.com/detailyang/pre-commit-shell
@@ -49,6 +50,7 @@ repos:
   rev: v14.0.6
   hooks:
   - id: clang-format
+    exclude_types: ['json']
 
 - repo: https://github.com/pryorda/dockerfilelint-precommit-hooks
   rev: v0.1.0
@@ -56,13 +58,14 @@ repos:
   - id: dockerfilelint
 
 - repo: https://github.com/psf/black
-  rev: 22.10.0
+  rev: 25.11.0
   hooks:
   - id: black
 
 - repo: https://github.com/pycqa/flake8
-  rev: 5.0.4
+  rev: 7.1.1
   hooks:
   - id: flake8
     args:
       - "--max-line-length=110"
+

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "priv/OpLabel.hpp"
 
+#include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <nvcv/Exception.hpp>
@@ -26,7 +27,7 @@
 CVCUDA_DEFINE_API(0, 5, NVCVStatus, cvcudaLabelCreate, (NVCVOperatorHandle * handle))
 {
     return nvcv::ProtectCall(
-        [&]
+        [&handle]
         {
             if (handle == nullptr)
             {
@@ -34,7 +35,7 @@ CVCUDA_DEFINE_API(0, 5, NVCVStatus, cvcudaLabelCreate, (NVCVOperatorHandle * han
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            *handle = reinterpret_cast<NVCVOperatorHandle>(new cvcuda::priv::Label());
+            *handle = cvcuda::priv::CreateOperatorHandle<cvcuda::priv::Label>();
         });
 }
 
@@ -44,13 +45,16 @@ CVCUDA_DEFINE_API(0, 7, NVCVStatus, cvcudaLabelSubmit,
                    NVCVTensorHandle minSize, NVCVTensorHandle count, NVCVTensorHandle stats, NVCVTensorHandle mask,
                    NVCVConnectivityType connectivity, NVCVLabelType assignLabels, NVCVLabelMaskType maskType))
 {
+    CVCUDA_NVTX_RANGE("cvcudaLabelSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&handle, &stream, &in, &out, &bgLabel, &minThresh, &maxThresh, &minSize, &count, &stats, &mask, &connectivity,
+         &assignLabels, &maskType]
         {
             cvcuda::priv::ToDynamicRef<cvcuda::priv::Label>(handle)(
-                stream, nvcv::TensorWrapHandle{in}, nvcv::TensorWrapHandle{out}, nvcv::TensorWrapHandle{bgLabel},
-                nvcv::TensorWrapHandle{minThresh}, nvcv::TensorWrapHandle{maxThresh}, nvcv::TensorWrapHandle{minSize},
-                nvcv::TensorWrapHandle{count}, nvcv::TensorWrapHandle{stats}, nvcv::TensorWrapHandle{mask},
-                connectivity, assignLabels, maskType);
+                stream, nvcv::TensorWrapHandle{in}.resource(), nvcv::TensorWrapHandle{out}.resource(),
+                nvcv::TensorWrapHandle{bgLabel}.resource(), nvcv::TensorWrapHandle{minThresh}.resource(),
+                nvcv::TensorWrapHandle{maxThresh}.resource(), nvcv::TensorWrapHandle{minSize}.resource(),
+                nvcv::TensorWrapHandle{count}.resource(), nvcv::TensorWrapHandle{stats}.resource(),
+                nvcv::TensorWrapHandle{mask}.resource(), connectivity, assignLabels, maskType);
         });
 }

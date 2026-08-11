@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "priv/OpReformat.hpp"
 
+#include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <nvcv/Exception.hpp>
@@ -28,7 +29,7 @@ namespace priv = cvcuda::priv;
 CVCUDA_DEFINE_API(0, 0, NVCVStatus, cvcudaReformatCreate, (NVCVOperatorHandle * handle))
 {
     return nvcv::ProtectCall(
-        [&]
+        [&handle]
         {
             if (handle == nullptr)
             {
@@ -36,17 +37,19 @@ CVCUDA_DEFINE_API(0, 0, NVCVStatus, cvcudaReformatCreate, (NVCVOperatorHandle * 
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            *handle = reinterpret_cast<NVCVOperatorHandle>(new priv::Reformat());
+            *handle = priv::CreateOperatorHandle<priv::Reformat>();
         });
 }
 
 CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaReformatSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in, NVCVTensorHandle out))
 {
+    CVCUDA_NVTX_RANGE("cvcudaReformatSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&in, &out, &handle, &stream]
         {
-            nvcv::TensorWrapHandle input(in), output(out);
-            priv::ToDynamicRef<priv::Reformat>(handle)(stream, input, output);
+            nvcv::TensorWrapHandle input(in);
+            nvcv::TensorWrapHandle output(out);
+            priv::ToDynamicRef<priv::Reformat>(handle)(stream, input.resource(), output.resource());
         });
 }

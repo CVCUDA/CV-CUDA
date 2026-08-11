@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -72,7 +72,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaSIFTCreate(NVCVOperatorHandle *handle, int3 maxSh
  *  Limitations:
  *
  *  Input:
- *       Data Layout:    [HWC, NHWC]
+ *       Data Layout:    [HWC, NHWC, CHW, NCHW]
  *       Channels:       [1]
  *
  *       Data Type      | Allowed
@@ -83,6 +83,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaSIFTCreate(NVCVOperatorHandle *handle, int3 maxSh
  *       16bit Signed   | No
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | No
  *       64bit Float    | No
  *
@@ -91,9 +92,9 @@ CVCUDA_PUBLIC NVCVStatus cvcudaSIFTCreate(NVCVOperatorHandle *handle, int3 maxSh
  *
  * @param [in] stream Handle to a valid CUDA stream.
  *
- * @param [in] in Input tensor.  The expected layout is [HWC] or [NHWC], where N is the number of samples,
- *                i.e. images with height H and width W and channels C, inside the tensor.  This operator extracts
- *                features and computes descriptors of each input image in the \ref in tensor.
+ * @param [in] in Input tensor.  The expected layout is [HWC], [NHWC], [CHW] or [NCHW], where N is the number of
+ *                samples, i.e. images with height H and width W and channels C, inside the tensor.  This operator
+ *                extracts features and computes descriptors of each input image in the \ref in tensor.
  *                + Check above limitations table to the input tensor data layout, number of channels and data type.
  *
  * @param [out] featCoords Output tensor with features coordinates.  The expected layout is [NM] or [NMC] meaning a
@@ -189,5 +190,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaSIFTSubmit(NVCVOperatorHandle handle, cudaStream_
 #ifdef __cplusplus
 }
 #endif
+
+/** @} */
 
 #endif /* CVCUDA_SIFT_H */

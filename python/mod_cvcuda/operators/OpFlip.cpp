@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,7 @@
  */
 
 #include "Operators.hpp"
+#include "VarShapeUtils.hpp"
 
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
@@ -45,7 +46,8 @@ Tensor FlipInto(Tensor &output, Tensor &input, int32_t flipCode, std::optional<S
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*Flip});
 
-    Flip->submit(pstream->cudaHandle(), input, output, flipCode);
+    guard.run([&Flip, &pstream, &input, &output, &flipCode]()
+              { Flip->submit(pstream->cudaHandle(), input, output, flipCode); });
 
     return output;
 }
@@ -72,22 +74,15 @@ ImageBatchVarShape FlipVarShapeInto(ImageBatchVarShape &output, ImageBatchVarSha
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*flip});
 
-    flip->submit(pstream->cudaHandle(), input, output, flipCode);
+    guard.run([&flip, &pstream, &input, &output, &flipCode]()
+              { flip->submit(pstream->cudaHandle(), input, output, flipCode); });
 
     return output;
 }
 
 ImageBatchVarShape FlipVarShape(ImageBatchVarShape &input, Tensor &flipCode, std::optional<Stream> pstream)
 {
-    ImageBatchVarShape output = ImageBatchVarShape::Create(input.capacity());
-
-    for (int i = 0; i < input.numImages(); ++i)
-    {
-        nvcv::ImageFormat format = input[i].format();
-        nvcv::Size2D      size   = input[i].size();
-        auto              image  = Image::Create(size, format);
-        output.pushBack(image);
-    }
+    ImageBatchVarShape output = CreateSameShapeImageBatch(input);
 
     return FlipVarShapeInto(output, input, flipCode, pstream);
 }
@@ -97,18 +92,10 @@ ImageBatchVarShape FlipVarShape(ImageBatchVarShape &input, Tensor &flipCode, std
 void ExportOpFlip(py::module &m)
 {
     using namespace pybind11::literals;
-    py::options options;
-    options.disable_function_signatures();
 
-    m.def("flip", &Flip, "src"_a, "flipCode"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
-        cvcuda.flip(src: cvcuda.Tensor, flipCode: int, stream: Optional[cvcuda.Stream] = None) -> cvcuda.Tensor
-
+    m.def("flip", NvtxTrace("cvcuda.flip", &Flip), "src"_a, "flipCode"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the Flip operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Flip operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.Tensor): Input tensor containing one or more images.
@@ -121,20 +108,12 @@ void ExportOpFlip(py::module &m)
         Returns:
             cvcuda.Tensor: The output tensor.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("flip_into", &FlipInto, "dst"_a, "src"_a, "flipCode"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+    m.def("flip_into", NvtxTrace("cvcuda.flip_into", &FlipInto), "dst"_a, "src"_a, "flipCode"_a, py::kw_only(),
+          "stream"_a = nullptr, R"pbdoc(
+        Executes the Flip operation on the given cuda stream.
 
-        cvcuda.flip_into(dst: cvcuda.Tensor, src: cvcuda.Tensor, flipCode: int, stream: Optional[cvcuda.Stream] = None)
-
-	Executes the Flip operation on the given cuda stream.
-
-        See also:
-            Refer to the CV-CUDA C API reference for the Flip operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.Tensor): Output tensor to store the result of the operation.
@@ -146,22 +125,13 @@ void ExportOpFlip(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 
-    m.def("flip", &FlipVarShape, "src"_a, "flipCode"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+    m.def("flip", NvtxTrace("cvcuda.flip", &FlipVarShape), "src"_a, "flipCode"_a, py::kw_only(), "stream"_a = nullptr,
+          R"pbdoc(
+        Executes the Flip operation on the given cuda stream.
 
-        cvcuda.flip(src: cvcuda.ImageBatchVarShape, flipCode: cvcuda.Tensor, stream: Optional[cvcuda.Stream] = None) -> cvcuda.ImageBatchVarShape
-
-	Executes the Flip operation on the given cuda stream.
-
-        See also:
-            Refer to the CV-CUDA C API reference for the Flip operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
@@ -174,20 +144,12 @@ void ExportOpFlip(py::module &m)
         Returns:
             cvcuda.ImageBatchVarShape: The output image batch.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("flip_into", &FlipVarShapeInto, "dst"_a, "src"_a, "flipCode"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
-        cvcuda.flip_into(dst:cvcuda.ImageBatchVarShape, src: cvcuda.ImageBatchVarShape, flipCode: cvcuda.Tensor, stream: Optional[cvcuda.Stream] = None)
-
+    m.def("flip_into", NvtxTrace("cvcuda.flip_into", &FlipVarShapeInto), "dst"_a, "src"_a, "flipCode"_a, py::kw_only(),
+          "stream"_a = nullptr, R"pbdoc(
         Executes the Flip operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Flip operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
@@ -199,11 +161,7 @@ void ExportOpFlip(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.ImageBatchVarShape: The output image batch (same as dst).
     )pbdoc");
 }
 

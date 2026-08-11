@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,7 +24,7 @@
 #ifndef NVCV_CUDA_DROP_CAST_HPP
 #define NVCV_CUDA_DROP_CAST_HPP
 
-#include "TypeTraits.hpp" // for Require, etc.
+#include "TypeTraits.hpp"
 
 namespace nvcv::cuda {
 
@@ -52,9 +52,11 @@ namespace nvcv::cuda {
  *
  * @return The compound value with N components dropping the last, extra components.
  */
-template<int N, typename T, class = Require<HasEnoughComponents<T, N>>>
+template<int N, typename T>
 __host__ __device__ auto DropCast(T v)
 {
+    static_assert(HasEnoughComponents<T, N>, "DropCast requires a compound type with at least N components");
+
     using RT = MakeType<BaseType<T>, N>;
     if constexpr (std::is_same_v<T, RT>)
     {

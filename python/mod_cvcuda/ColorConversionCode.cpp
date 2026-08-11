@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +23,8 @@ namespace cvcudapy {
 
 void ExportColorConversionCode(py::module &m)
 {
-    py::enum_<NVCVColorConversionCode>(m, "ColorConversion")
+    py::enum_<NVCVColorConversionCode>(m, "ColorConversion",
+                                       "Color space conversion codes (mirrors OpenCV convention).")
         .value("BGR2BGRA", NVCV_COLOR_BGR2BGRA)
         .value("RGB2RGBA", NVCV_COLOR_RGB2RGBA)
         .value("BGRA2BGR", NVCV_COLOR_BGRA2BGR)
@@ -221,7 +222,6 @@ void ExportColorConversionCode(py::module &m)
         .value("BayerGB2RGB_EA", NVCV_COLOR_BayerGB2RGB_EA)
         .value("BayerRG2RGB_EA", NVCV_COLOR_BayerRG2RGB_EA)
         .value("BayerGR2RGB_EA", NVCV_COLOR_BayerGR2RGB_EA)
-        .value("COLORCVT_MAX", NVCV_COLOR_COLORCVT_MAX)
         .value("RGB2YUV_NV12", NVCV_COLOR_RGB2YUV_NV12)
         .value("BGR2YUV_NV12", NVCV_COLOR_BGR2YUV_NV12)
         .value("RGB2YUV_NV21", NVCV_COLOR_RGB2YUV_NV21)
@@ -233,8 +233,7 @@ void ExportColorConversionCode(py::module &m)
         .value("RGBA2YUV_NV21", NVCV_COLOR_RGBA2YUV_NV21)
         .value("RGBA2YUV420sp", NVCV_COLOR_RGBA2YUV420sp)
         .value("BGRA2YUV_NV21", NVCV_COLOR_BGRA2YUV_NV21)
-        .value("BGRA2YUV420sp", NVCV_COLOR_BGRA2YUV420sp)
-        .value("CVT_MAX", NVCV_COLORCVT_MAX);
+        .value("BGRA2YUV420sp", NVCV_COLOR_BGRA2YUV420sp);
 }
 
 } // namespace cvcudapy

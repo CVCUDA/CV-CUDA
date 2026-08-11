@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,6 +34,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class ChannelReorder final : public IOperator
@@ -41,41 +43,47 @@ class ChannelReorder final : public IOperator
 public:
     explicit ChannelReorder();
 
-    ~ChannelReorder();
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const int32_t *order,
+                    int32_t orderLength) const;
 
     void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
-                    const nvcv::Tensor &orders);
+                    const nvcv::Tensor &orders) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline ChannelReorder::ChannelReorder()
 {
-    nvcv::detail::CheckThrow(cvcudaChannelReorderCreate(&m_handle));
-    assert(m_handle);
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaChannelReorderCreate(&h));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
-inline ChannelReorder::~ChannelReorder()
+inline void ChannelReorder::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                                       const int32_t *order, int32_t orderLength) const
 {
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    nvcv::detail::CheckThrow(
+        cvcudaChannelReorderSubmit(m_handle.get(), stream, in.handle(), out.handle(), order, orderLength));
 }
 
 inline void ChannelReorder::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
-                                       const nvcv::ImageBatchVarShape &out, const nvcv::Tensor &orders)
+                                       const nvcv::ImageBatchVarShape &out, const nvcv::Tensor &orders) const
 {
     nvcv::detail::CheckThrow(
-        cvcudaChannelReorderVarShapeSubmit(m_handle, stream, in.handle(), out.handle(), orders.handle()));
+        cvcudaChannelReorderVarShapeSubmit(m_handle.get(), stream, in.handle(), out.handle(), orders.handle()));
 }
 
 inline NVCVOperatorHandle ChannelReorder::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA_CHANNEL_REORDER_HPP

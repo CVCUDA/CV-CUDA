@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -154,7 +154,7 @@ NVCV_PUBLIC NVCVStatus nvcvImageBatchRefCount(NVCVImageBatchHandle handle, int *
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
  * @retval #NVCV_SUCCESS                Operation executed successfully.
  */
-NVCV_PUBLIC NVCVStatus nvcvImageBatchSetUserPointer(NVCVImageBatchHandle handle, void *userPtr);
+NVCV_PUBLIC NVCVStatus nvcvImageBatchSetUserPointer(NVCVImageBatchHandle handle, NVCVUserPointer userPtr);
 
 /** Returns the user pointer associated with the image batch handle.
  *
@@ -168,7 +168,7 @@ NVCV_PUBLIC NVCVStatus nvcvImageBatchSetUserPointer(NVCVImageBatchHandle handle,
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
  * @retval #NVCV_SUCCESS                Operation executed successfully.
  */
-NVCV_PUBLIC NVCVStatus nvcvImageBatchGetUserPointer(NVCVImageBatchHandle handle, void **outUserPtr);
+NVCV_PUBLIC NVCVStatus nvcvImageBatchGetUserPointer(NVCVImageBatchHandle handle, NVCVUserPointer *outUserPtr);
 
 /** Returns the underlying type of the image batch.
  *

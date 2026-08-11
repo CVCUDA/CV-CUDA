@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,6 +25,7 @@
 #define CVCUDA_PRIV_WARP_AFFINE_HPP
 
 #include "IOperator.hpp"
+#include "PerDeviceResource.hpp"
 #include "legacy/CvCudaLegacy.h"
 
 #include <cvcuda/OpWarpAffine.h>
@@ -49,8 +50,10 @@ public:
                     const float4 borderValue) const;
 
 private:
-    std::unique_ptr<nvcv::legacy::cuda_op::WarpAffine>         m_legacyOp;
-    std::unique_ptr<nvcv::legacy::cuda_op::WarpAffineVarShape> m_legacyOpVarShape;
+    static std::unique_ptr<nvcv::legacy::cuda_op::WarpAffine> CreateLegacyOp(int deviceId);
+
+    mutable PerDeviceResource<nvcv::legacy::cuda_op::WarpAffine>         m_legacyOp{CreateLegacyOp};
+    mutable PerDeviceResource<nvcv::legacy::cuda_op::WarpAffineVarShape> m_legacyOpVarShape;
 };
 
 } // namespace cvcuda::priv

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,7 +27,7 @@ using cuStreamGetId_t = CUresult(CUstream, unsigned long long *);
 
 namespace {
 
-cuStreamGetId_t *_cuStreamGetId = cuStreamGetId;
+cuStreamGetId_t *const _cuStreamGetId = cuStreamGetId;
 
 bool _hasPreciseHint()
 {
@@ -123,8 +123,7 @@ uint64_t GetCudaStreamIdHint(CUstream stream)
     static auto initResult = cuInit(0);
     (void)initResult;
     unsigned long long id;
-    CUresult           err = _cuStreamGetId(stream, &id);
-    if (err != CUDA_SUCCESS)
+    if (CUresult err = _cuStreamGetId(stream, &id); err != CUDA_SUCCESS)
     {
         switch (err)
         {

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,9 +23,29 @@
 #include <nvcv/detail/CompilerUtils.h>
 
 #include <cassert>
+#include <stdexcept>
 #include <type_traits>
+#include <utility>
 
 namespace nvcv::priv {
+
+class SharedCoreObjError : public std::logic_error
+{
+public:
+    using std::logic_error::logic_error;
+};
+
+template<bool B, typename T = void>
+struct SharedCoreObjRequirement;
+
+template<typename T>
+struct SharedCoreObjRequirement<true, T>
+{
+    using type = T;
+};
+
+template<bool B, typename T = void>
+using SharedCoreObjRequire = typename SharedCoreObjRequirement<B, T>::type;
 
 template<typename CoreObj>
 class SharedCoreObj
@@ -36,7 +56,7 @@ public:
 
     SharedCoreObj() = default;
 
-    SharedCoreObj(std::nullptr_t) {}
+    explicit SharedCoreObj(std::nullptr_t) {}
 
     static SharedCoreObj FromHandle(typename CoreObj::HandleType handle, bool incRef)
     {
@@ -62,13 +82,13 @@ public:
             if (auto h = obj->handle())
                 CoreObjectIncRef(h);
             else
-                throw std::logic_error("Cannot use incRef on an object without a handle");
+                throw SharedCoreObjError("Cannot use incRef on an object without a handle");
         }
         return SharedCoreObj(std::move(obj));
     }
 
     explicit SharedCoreObj(CoreObj *&&obj)
-        : m_obj(obj)
+        : m_obj(std::move(obj))
     {
         obj = nullptr;
     }
@@ -81,20 +101,20 @@ public:
     SharedCoreObj(CoreObj &&obj) = delete;
 
     // Temporary workaround to avoid too many changes in the code
-    SharedCoreObj(CoreObj &obj)
+    explicit SharedCoreObj(CoreObj &obj)
         : m_obj(&obj)
     {
         if (auto h = obj.handle())
             CoreObjectIncRef(h);
     }
 
-    template<typename U, std::enable_if_t<std::is_convertible_v<U *, CoreObj *>, int> = 0>
-    SharedCoreObj(const SharedCoreObj<U> &obj)
+    template<typename U, SharedCoreObjRequire<std::is_convertible_v<U *, CoreObj *>, int> = 0>
+    explicit SharedCoreObj(const SharedCoreObj<U> &obj)
     {
         *this = obj;
     }
 
-    SharedCoreObj(SharedCoreObj &&obj)
+    SharedCoreObj(SharedCoreObj &&obj) noexcept
     {
         *this = std::move(obj);
     }
@@ -104,19 +124,19 @@ public:
         reset(nullptr);
     }
 
-    int reset(CoreObj *&&obj)
+    int reset(CoreObj *&&obj) noexcept
     {
         int ret = 0;
         if (m_obj)
             if (auto h = m_obj->handle())
                 ret = CoreObjectDecRef(h);
 
-        m_obj = obj;
+        m_obj = std::move(obj);
         obj   = nullptr;
         return ret;
     }
 
-    NVCV_NODISCARD CoreObj *release()
+    NVCV_NODISCARD CoreObj *release() noexcept
     {
         CoreObj *ret = m_obj;
         m_obj        = nullptr;
@@ -131,9 +151,15 @@ public:
         return *this;
     }
 
-    SharedCoreObj &operator=(SharedCoreObj &&obj)
+    SharedCoreObj &operator=(SharedCoreObj &&obj) noexcept
     {
-        reset(obj.release());
+        reset(std::move(obj).release());
+        return *this;
+    }
+
+    SharedCoreObj &operator=(std::nullptr_t) noexcept
+    {
+        reset(nullptr);
         return *this;
     }
 
@@ -149,7 +175,7 @@ public:
     template<typename T>
     SharedCoreObj &operator=(SharedCoreObj<T> &&obj)
     {
-        reset(obj.release());
+        reset(std::move(obj).release());
         return *this;
     }
 
@@ -188,7 +214,7 @@ public:
         return static_cast<void *>(get()) < static_cast<void *>(other.get());
     }
 
-    constexpr operator bool() const noexcept
+    explicit constexpr operator bool() const noexcept
     {
         return m_obj != nullptr;
     }
@@ -206,7 +232,7 @@ constexpr bool operator==(std::nullptr_t, const SharedCoreObj<T> &x)
 template<typename T>
 constexpr bool operator!=(std::nullptr_t, const SharedCoreObj<T> &x)
 {
-    return x;
+    return static_cast<bool>(x);
 }
 
 template<typename T>
@@ -218,7 +244,7 @@ constexpr bool operator==(const SharedCoreObj<T> &x, std::nullptr_t)
 template<typename T>
 constexpr bool operator!=(const SharedCoreObj<T> &x, std::nullptr_t)
 {
-    return x;
+    return static_cast<bool>(x);
 }
 
 template<typename T, typename HandleType>

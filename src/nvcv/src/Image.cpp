@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,7 +33,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageCalcRequirements,
                  NVCVImageRequirements *reqs))
 {
     return priv::ProtectCall(
-        [&]
+        [&reqs, &width, &height, &format, &baseAlign, &rowAlign]
         {
             if (reqs == nullptr)
             {
@@ -48,7 +48,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageConstruct,
                 (const NVCVImageRequirements *reqs, NVCVAllocatorHandle halloc, NVCVImageHandle *handle))
 {
     return priv::ProtectCall(
-        [&]
+        [&reqs, &handle, &halloc]
         {
             if (reqs == nullptr)
             {
@@ -71,7 +71,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageWrapDataConstruct,
                  NVCVImageHandle *handle))
 {
     return priv::ProtectCall(
-        [&]
+        [&handle, &data, &cleanup, &ctxCleanup]
         {
             if (handle == nullptr)
             {
@@ -83,14 +83,15 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageWrapDataConstruct,
                 throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Image data must not be NULL");
             }
 
-            *handle = priv::CreateCoreObject<priv::ImageWrapData>(*data, cleanup, ctxCleanup);
+            *handle
+                = priv::CreateCoreObject<priv::ImageWrapData>(*data, cleanup, static_cast<NVCVUserPointer>(ctxCleanup));
         });
 }
 
 NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvImageDecRef, (NVCVImageHandle handle, int *newRefCount))
 {
     return priv::ProtectCall(
-        [&]
+        [&handle, &newRefCount]
         {
             int newRef = priv::CoreObjectDecRef(handle);
             if (newRefCount)
@@ -101,7 +102,7 @@ NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvImageDecRef, (NVCVImageHandle handle, int 
 NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvImageIncRef, (NVCVImageHandle handle, int *newRefCount))
 {
     return priv::ProtectCall(
-        [&]
+        [&handle, &newRefCount]
         {
             int newRef = priv::CoreObjectIncRef(handle);
             if (newRefCount)
@@ -111,13 +112,22 @@ NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvImageIncRef, (NVCVImageHandle handle, int 
 
 NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvImageRefCount, (NVCVImageHandle handle, int *refCount))
 {
-    return priv::ProtectCall([&] { *refCount = priv::CoreObjectRefCount(handle); });
+    return priv::ProtectCall(
+        [&refCount, &handle]
+        {
+            if (refCount == nullptr)
+            {
+                throw priv::Exception(NVCV_ERROR_INVALID_ARGUMENT, "Pointer to output reference count cannot be NULL");
+            }
+
+            *refCount = priv::CoreObjectRefCount(handle);
+        });
 }
 
 NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageGetSize, (NVCVImageHandle handle, int32_t *width, int32_t *height))
 {
     return priv::ProtectCall(
-        [&]
+        [&width, &height, &handle]
         {
             if (width == nullptr)
             {
@@ -140,7 +150,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageGetSize, (NVCVImageHandle handle, int
 NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageGetFormat, (NVCVImageHandle handle, NVCVImageFormat *fmt))
 {
     return priv::ProtectCall(
-        [&]
+        [&fmt, &handle]
         {
             if (fmt == nullptr)
             {
@@ -156,7 +166,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageGetFormat, (NVCVImageHandle handle, N
 NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageGetAllocator, (NVCVImageHandle handle, NVCVAllocatorHandle *halloc))
 {
     return priv::ProtectCall(
-        [&]
+        [&halloc, &handle]
         {
             if (halloc == nullptr)
             {
@@ -172,7 +182,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageGetAllocator, (NVCVImageHandle handle
 NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageGetType, (NVCVImageHandle handle, NVCVTypeImage *type))
 {
     return priv::ProtectCall(
-        [&]
+        [&type, &handle]
         {
             if (type == nullptr)
             {
@@ -188,7 +198,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageGetType, (NVCVImageHandle handle, NVC
 NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageExportData, (NVCVImageHandle handle, NVCVImageData *data))
 {
     return priv::ProtectCall(
-        [&]
+        [&data, &handle]
         {
             if (data == nullptr)
             {
@@ -200,20 +210,20 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvImageExportData, (NVCVImageHandle handle, 
         });
 }
 
-NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvImageSetUserPointer, (NVCVImageHandle handle, void *userPtr))
+NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvImageSetUserPointer, (NVCVImageHandle handle, NVCVUserPointer userPtr))
 {
     return priv::ProtectCall(
-        [&]
+        [&handle, &userPtr]
         {
             auto &img = priv::ToStaticRef<priv::IImage>(handle);
             img.setUserPointer(userPtr);
         });
 }
 
-NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvImageGetUserPointer, (NVCVImageHandle handle, void **outUserPtr))
+NVCV_DEFINE_API(0, 3, NVCVStatus, nvcvImageGetUserPointer, (NVCVImageHandle handle, NVCVUserPointer *outUserPtr))
 {
     return priv::ProtectCall(
-        [&]
+        [&outUserPtr, &handle]
         {
             if (outUserPtr == nullptr)
             {

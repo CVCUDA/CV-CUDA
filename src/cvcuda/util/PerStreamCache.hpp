@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,8 +24,12 @@
 
 #include <nvcv/util/CheckError.hpp>
 
+#include <array>
 #include <cassert>
+#include <cstdio>
+#include <exception>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <set>
 #include <unordered_map>
@@ -70,7 +74,8 @@ namespace detail {
 template<typename Payload>
 struct StreamCacheItem
 {
-    StreamCacheItem *next = nullptr, *prev = nullptr;
+    StreamCacheItem *next = nullptr;
+    StreamCacheItem *prev = nullptr;
 
     mutable bool wasReady = false;
 
@@ -115,29 +120,30 @@ public:
         assert(m_allocated == 0);
         while (m_head)
         {
-            auto *next = m_head->next;
-            delete m_head;
-            m_head = next;
+            std::unique_ptr<item_t> current = std::move(m_head);
+            m_head.reset(current->next);
+            current->next = nullptr;
         }
     }
 
     item_t *allocate()
     {
-        if (auto *p = m_head)
+        if (m_head)
         {
-            m_head  = p->next;
+            std::unique_ptr<item_t> p = std::move(m_head);
+            m_head.reset(p->next);
             p->next = nullptr;
             assert(!p->prev);
             m_allocated++;
             m_free--;
 
             *p = {}; // clear the object
-            return p;
+            return p.release();
         }
 
-        auto *p = new item_t();
+        std::unique_ptr<item_t> p = std::make_unique<item_t>();
         m_allocated++;
-        return p;
+        return p.release();
     }
 
     void deallocate(item_t *item)
@@ -148,16 +154,17 @@ public:
         assert(!item->next && !item->prev && "The item is still linked");
         item->payload = {};
 
-        item->next = m_head;
-        m_head     = item;
+        item->next = m_head.release();
+        m_head.reset(item);
         m_allocated--;
         m_free++;
     }
 
 private:
-    item_t *m_head = nullptr;
+    std::unique_ptr<item_t> m_head;
 
-    size_t m_allocated = 0, m_free = 0;
+    size_t m_allocated = 0;
+    size_t m_free      = 0;
 };
 
 template<typename Payload, typename Item = StreamCacheItem<Payload>>
@@ -171,9 +178,25 @@ public:
     {
     }
 
-    ~StreamOrderedCache()
+    StreamOrderedCache(const StreamOrderedCache &)            = delete;
+    StreamOrderedCache(StreamOrderedCache &&)                 = delete;
+    StreamOrderedCache &operator=(const StreamOrderedCache &) = delete;
+    StreamOrderedCache &operator=(StreamOrderedCache &&)      = delete;
+
+    ~StreamOrderedCache() noexcept
     {
-        waitAndPurge();
+        try
+        {
+            waitAndPurge();
+        }
+        catch (const std::exception &e)
+        {
+            std::fprintf(stderr, "WARNING: failed to purge stream-ordered cache in destructor: %s\n", e.what());
+        }
+        catch (...)
+        {
+            std::fputs("WARNING: failed to purge stream-ordered cache in destructor\n", stderr);
+        }
     }
 
     void waitAndPurge();
@@ -196,7 +219,7 @@ public:
     std::optional<Payload> get(size_t minSize, size_t minAlignment)
     {
         return getIf(
-            minSize, [=](const Payload &p)
+            minSize, [minSize, minAlignment](const Payload &p)
             { return StreamCachePayloadSize(p) >= minSize && StreamCachePayloadAlignment(p) >= minAlignment; });
     }
 
@@ -209,7 +232,8 @@ private:
 
     std::set<std::pair<size_t, item_t *>> m_bySize;
 
-    item_t *m_head = nullptr, *m_tail = nullptr;
+    item_t *m_head = nullptr;
+    item_t *m_tail = nullptr;
 };
 
 } // namespace detail
@@ -227,7 +251,7 @@ public:
     {
         return getIf(
             minSize,
-            [=](const Payload &p)
+            [minSize, minAlignment](const Payload &p)
             { return StreamCachePayloadSize(p) >= minSize && StreamCachePayloadAlignment(p) >= minAlignment; },
             stream);
     }
@@ -261,6 +285,6 @@ private:
 
 } // namespace nvcv::util
 
-#include "PerStreamCacheImpl.hpp"
+#include "PerStreamCacheImpl.hpp" // NOSONAR: inline definitions require the declarations above.
 
 #endif // NVCV_UTIL_PER_STREAM_CACHE_HPP

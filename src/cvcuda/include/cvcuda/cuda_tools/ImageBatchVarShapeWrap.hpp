@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,6 +27,8 @@
 #include "TypeTraits.hpp" // for HasTypeTraits, etc.
 
 #include <nvcv/ImageBatchData.hpp> // for ImageBatchVarShapeDataStridedCuda, etc.
+
+#include <cassert>
 
 namespace nvcv::cuda {
 
@@ -80,7 +82,7 @@ public:
      *
      * @param[in] images Reference to the list of images that will be wrapped.
      */
-    __host__ ImageBatchVarShapeWrap(const ImageBatchVarShapeDataStridedCuda &images)
+    explicit __host__ ImageBatchVarShapeWrap(const ImageBatchVarShapeDataStridedCuda &images)
         : m_imageList(images.imageList())
     {
     }
@@ -93,7 +95,7 @@ public:
      *
      * @return The plane of the given image sample in batch.
      */
-    inline const __host__ __device__ NVCVImagePlaneStrided plane(int s, int p = 0) const
+    inline __host__ __device__ NVCVImagePlaneStrided plane(int s, int p = 0) const
     {
         return m_imageList[s].planes[p];
     }
@@ -241,7 +243,7 @@ public:
      *
      * @param[in] images Reference to the list of images that will be wrapped.
      */
-    __host__ ImageBatchVarShapeWrap(const ImageBatchVarShapeDataStridedCuda &images)
+    explicit __host__ ImageBatchVarShapeWrap(const ImageBatchVarShapeDataStridedCuda &images)
         : Base(images)
     {
     }
@@ -337,7 +339,7 @@ protected:
  * @tparam T Type (it can be const) of each element inside this wrapper.
  */
 template<typename T>
-class ImageBatchVarShapeWrapNHWC : ImageBatchVarShapeWrap<T>
+class ImageBatchVarShapeWrapNHWC : private ImageBatchVarShapeWrap<T>
 {
     using Base = ImageBatchVarShapeWrap<T>;
 

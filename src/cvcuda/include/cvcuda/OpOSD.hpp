@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,6 +34,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class OSD final : public IOperator
@@ -41,39 +43,36 @@ class OSD final : public IOperator
 public:
     explicit OSD();
 
-    ~OSD();
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
+                    const NVCVElements elements) const;
 
-    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const NVCVElements elements);
-
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline OSD::OSD()
 {
-    nvcv::detail::CheckThrow(cvcudaOSDCreate(&m_handle));
-    assert(m_handle);
-}
-
-inline OSD::~OSD()
-{
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaOSDCreate(&h));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void OSD::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
-                            const NVCVElements elements)
+                            const NVCVElements elements) const
 {
-    nvcv::detail::CheckThrow(cvcudaOSDSubmit(m_handle, stream, in.handle(), out.handle(), elements));
+    nvcv::detail::CheckThrow(cvcudaOSDSubmit(m_handle.get(), stream, in.handle(), out.handle(), elements));
 }
 
 inline NVCVOperatorHandle OSD::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA__O_S_D_HPP

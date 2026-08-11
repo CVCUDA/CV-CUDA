@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,10 +14,11 @@
 # limitations under the License.
 
 import numpy as np
-import pytest as t
+import pytest
 
 import cvcuda
-import torch
+import cvcuda_tools as cv_tools
+import cupy
 
 # NOTE: The following tests for resize_crop_convert_reformat DO NOT TEST:
 #       1. The correctness of the output data
@@ -25,11 +26,37 @@ import torch
 #       3. Whether the channel swapping actually worked correctly w.r.t. the data
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "tensor_params, resize_dim, resize_interpolation, crop_rect_params, "
     "out_layout, out_dtype, manip, out_expected_shape, scale_norm, offset_norm, "
     "is_positive_test",
     [
+        (
+            ((4, 512, 512, 1), np.uint8, "NHWC"),  # 1-channel (grayscale) input
+            (256, 256),
+            cvcuda.Interp.LINEAR,
+            (0, 0, 224, 224),
+            "NHWC",
+            cvcuda.Type.F32,
+            cvcuda.ChannelManip.NO_OP,
+            (4, 224, 224, 1),
+            1,
+            0,
+            True,
+        ),
+        (
+            ((4, 512, 512, 1), np.uint8, "NHWC"),  # 1-channel (grayscale) to uint8
+            (256, 256),
+            cvcuda.Interp.NEAREST,
+            (0, 0, 224, 224),
+            "NHWC",
+            cvcuda.Type.U8,
+            cvcuda.ChannelManip.NO_OP,
+            (4, 224, 224, 1),
+            1,
+            0,
+            True,
+        ),
         (
             ((4, 512, 512, 3), np.uint8, "NHWC"),  # Basic test
             (256, 256),
@@ -135,7 +162,7 @@ import torch
             True,
         ),
         (
-            ((3, 512, 512), np.uint8, "CHW"),  # Unsupported input CHW
+            ((3, 512, 512), np.uint8, "CHW"),
             (256, 256),
             cvcuda.Interp.LINEAR,
             (0, 0, 224, 224),
@@ -145,7 +172,20 @@ import torch
             (3, 224, 224),
             1,
             0,
-            False,  # Negative test
+            True,
+        ),
+        (
+            ((4, 3, 512, 512), np.uint8, "NCHW"),
+            (256, 256),
+            cvcuda.Interp.NEAREST,
+            (0, 0, 224, 224),
+            "NHWC",
+            cvcuda.Type.U8,
+            cvcuda.ChannelManip.REVERSE,
+            (4, 224, 224, 3),
+            1,
+            0,
+            True,
         ),
         (
             ((512, 1024, 3), np.uint8, "HWC"),  # Large sizes
@@ -297,12 +337,12 @@ def test_op_resize_crop_convert_reformat(
 
     # Compare the two
     if is_positive_test:
-        out1 = torch.as_tensor(out1.cuda())
-        out2 = torch.as_tensor(out2.cuda())
-        assert torch.equal(out1, out2)
+        out1 = cupy.asarray(out1.cuda())
+        out2 = cupy.asarray(out2.cuda())
+        assert np.all(out1.get() == out2.get())
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "num_images, min_size, max_size, resize_dim, resize_interpolation, crop_rect_params, "
     "out_layout, out_dtype, manip, out_expected_shape, scale_norm, offset_norm, is_positive_test",
     [
@@ -481,6 +521,43 @@ def test_op_resize_crop_convert_reformat_varshape(
 
     if is_positive_test:
         # Compare the two
-        out1 = torch.as_tensor(out1.cuda())
-        out2 = torch.as_tensor(out2.cuda())
-        assert torch.equal(out1, out2)
+        out1 = cupy.asarray(out1.cuda())
+        out2 = cupy.asarray(out2.cuda())
+        assert np.all(out1.get() == out2.get())
+
+
+def _resizecropconvertreformat_params(dtype, layout, channels):
+    return {
+        "resize_dim": (16, 16),
+        "interp": cvcuda.Interp.LINEAR,
+        "crop_rect": cvcuda.RectI(0, 0, 16, 16),
+        "layout": "",
+        "data_type": cvcuda.Type.U8,
+        "manip": cvcuda.ChannelManip.REVERSE,
+        "scale": 1.0,
+        "offset": 0.0,
+        "srcCast": True,
+    }
+
+
+globals().update(
+    cv_tools.make_op_tests(
+        name="resize_crop_convert_reformat",
+        runner_info=[
+            (
+                "tensor",
+                cvcuda.resize_crop_convert_reformat,
+                _resizecropconvertreformat_params,
+            ),
+            (
+                "image_batch",
+                cvcuda.resize_crop_convert_reformat,
+                _resizecropconvertreformat_params,
+            ),
+        ],
+        keystone_dlc=(cvcuda.Type.U8, "NHWC", 3),
+        supported_dtypes={cvcuda.Type.U8},
+        supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
+        supported_channels={1, 3},
+    )
+)

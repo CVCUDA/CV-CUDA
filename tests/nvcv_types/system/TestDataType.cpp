@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +21,8 @@
 #include <nvcv/DataType.h>
 #include <nvcv/DataType.hpp>
 #include <nvcv/ImageFormat.hpp>
+
+#include <array>
 
 namespace t    = ::testing;
 namespace test = nvcv::test;
@@ -62,6 +64,10 @@ INSTANTIATE_TEST_SUITE_P(ExplicitTypes, DataTypeTests,
                                    Params{NVCV_DATA_TYPE_2U8, FMT_DATA_PARAMS(UNSIGNED, X8_Y8), 2, 16},
                                    Params{NVCV_DATA_TYPE_3U8, FMT_DATA_PARAMS(UNSIGNED, X8_Y8_Z8), 3, 24},
                                    Params{NVCV_DATA_TYPE_4U8, FMT_DATA_PARAMS(UNSIGNED, X8_Y8_Z8_W8), 4, 32},
+                                   Params{NVCV_DATA_TYPE_F16, FMT_DATA_PARAMS(FLOAT, X16), 1, 16},
+                                   Params{NVCV_DATA_TYPE_2F16, FMT_DATA_PARAMS(FLOAT, X16_Y16), 2, 32},
+                                   Params{NVCV_DATA_TYPE_3F16, FMT_DATA_PARAMS(FLOAT, X16_Y16_Z16), 3, 48},
+                                   Params{NVCV_DATA_TYPE_4F16, FMT_DATA_PARAMS(FLOAT, X16_Y16_Z16_W16), 4, 64},
                                    Params{NVCV_DATA_TYPE_F32, FMT_DATA_PARAMS(FLOAT, X32), 1, 32},
                                    Params{NVCV_DATA_TYPE_F64, FMT_DATA_PARAMS(FLOAT, X64), 1, 64},
                                    Params{NVCV_DATA_TYPE_C64, FMT_DATA_PARAMS(COMPLEX, X64), 1, 64},
@@ -95,14 +101,14 @@ TEST_P(DataTypeTests, get_bpc_works)
 {
     const Params &p = GetParam();
 
-    int32_t bits[4];
-    ASSERT_EQ(NVCV_SUCCESS, nvcvDataTypeGetBitsPerChannel(p.dtype, bits));
+    std::array<int32_t, 4> bits;
+    ASSERT_EQ(NVCV_SUCCESS, nvcvDataTypeGetBitsPerChannel(p.dtype, bits.data()));
 
     NVCVPacking packing;
     ASSERT_EQ(NVCV_SUCCESS, nvcvDataTypeGetPacking(p.dtype, &packing));
 
-    int32_t goldbits[4];
-    ASSERT_EQ(NVCV_SUCCESS, nvcvPackingGetBitsPerComponent(packing, goldbits));
+    std::array<int32_t, 4> goldbits;
+    ASSERT_EQ(NVCV_SUCCESS, nvcvPackingGetBitsPerComponent(packing, goldbits.data()));
 
     EXPECT_EQ(bits[0], goldbits[0]);
     EXPECT_EQ(bits[1], goldbits[1]);
@@ -156,8 +162,8 @@ INSTANTIATE_TEST_SUITE_P(ExplicitTypes, ImageDataTypeTests,
 
 TEST_P(ImageDataTypeTests, pixel_type_matches_corresponding_image_type)
 {
-    NVCVImageFormat imgFormat = std::get<0>(GetParam());
-    NVCVDataType    dtype     = std::get<1>(GetParam());
+    auto imgFormat = static_cast<NVCVImageFormat>(::nvcv::test::ParamValue(std::get<0>(GetParam())));
+    auto dtype     = static_cast<NVCVDataType>(::nvcv::test::ParamValue(std::get<1>(GetParam())));
 
     EXPECT_EQ((uint64_t)imgFormat, (uint64_t)dtype);
 }
@@ -281,7 +287,6 @@ NVCV_INSTANTIATE_TEST_SUITE_P(
     test::ValueList<NVCVDataType, int>
     {
           {NVCV_DATA_TYPE_U8, -1},
-          // WAR {MAKE_DATA_TYPE_ABBREV(UNSIGNED, b2X14), 0},
           {MAKE_DATA_TYPE_ABBREV(UNSIGNED, X5Y5b1Z5), 0},
           {MAKE_DATA_TYPE_ABBREV(UNSIGNED, X3Y3Z2), 1}
     }
@@ -291,10 +296,10 @@ NVCV_INSTANTIATE_TEST_SUITE_P(
 
 TEST_P(ChannelDataTypeTests, get_channel_type)
 {
-    NVCVDataType test       = std::get<0>(GetParam());
-    int          channel    = std::get<1>(GetParam());
-    NVCVDataType gold       = std::get<2>(GetParam());
-    NVCVStatus   goldStatus = std::get<3>(GetParam());
+    NVCVDataType test       = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    int          channel    = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
+    NVCVDataType gold       = ::nvcv::test::ParamValue(std::get<2>(GetParam()));
+    NVCVStatus   goldStatus = ::nvcv::test::ParamValue(std::get<3>(GetParam()));
 
     NVCVDataType pix;
     ASSERT_EQ(goldStatus, nvcvDataTypeGetChannelType(test, channel, &pix));
@@ -330,8 +335,8 @@ NVCV_INSTANTIATE_TEST_SUITE_P(_,DataTypeStrideTests,
 
 TEST_P(DataTypeStrideTests, works)
 {
-    const NVCVDataType dtype      = std::get<0>(GetParam());
-    const int          goldStride = std::get<1>(GetParam());
+    const NVCVDataType dtype      = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const int          goldStride = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     int32_t testStride;
     ASSERT_EQ(NVCV_SUCCESS, nvcvDataTypeGetStrideBytes(dtype, &testStride));
@@ -367,8 +372,8 @@ NVCV_TEST_SUITE_P(DataTypeAlignmentTests,
 
 TEST_P(DataTypeAlignmentTests, works)
 {
-    const NVCVDataType dtype     = std::get<0>(GetParam());
-    const int          goldAlign = std::get<1>(GetParam());
+    const NVCVDataType dtype     = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    const int          goldAlign = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
 
     int32_t testAlign;
     ASSERT_EQ(NVCV_SUCCESS, nvcvDataTypeGetAlignment(dtype, &testAlign));

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -60,14 +60,14 @@ inline Optional<DATA> Image::exportData() const
     return exportData().cast<DATA>();
 }
 
-inline void Image::setUserPointer(void *ptr)
+inline void Image::setUserPointer(NVCVUserPointer ptr) // NOSONAR: mutates state through the wrapped C handle.
 {
     detail::CheckThrow(nvcvImageSetUserPointer(this->handle(), ptr));
 }
 
-inline void *Image::userPointer() const
+inline NVCVUserPointer Image::userPointer() const
 {
-    void *ptr;
+    NVCVUserPointer ptr;
     detail::CheckThrow(nvcvImageGetUserPointer(this->handle(), &ptr));
     return ptr;
 }
@@ -75,7 +75,8 @@ inline void *Image::userPointer() const
 inline auto Image::CalcRequirements(const Size2D &size, ImageFormat fmt, const MemAlignment &bufAlign) -> Requirements
 {
     Requirements reqs;
-    detail::CheckThrow(nvcvImageCalcRequirements(size.w, size.h, fmt, bufAlign.baseAddr(), bufAlign.rowAddr(), &reqs));
+    detail::CheckThrow(nvcvImageCalcRequirements(size.w, size.h, static_cast<NVCVImageFormat>(fmt), bufAlign.baseAddr(),
+                                                 bufAlign.rowAddr(), &reqs));
     return reqs;
 }
 
@@ -98,7 +99,7 @@ inline Image ImageWrapData(const ImageData &data, ImageDataCleanupCallback &&cle
     NVCVImageHandle handle = nullptr;
     detail::CheckThrow(
         nvcvImageWrapDataConstruct(&data.cdata(), cleanup.targetFunc(), cleanup.targetHandle(), &handle));
-    (void)cleanup.release(); // The cleanup callback is now owned by the image object.
+    (void)std::move(cleanup).release(); // The cleanup callback is now owned by the image object.
     return Image(std::move(handle));
 }
 

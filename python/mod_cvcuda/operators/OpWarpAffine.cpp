@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,7 @@
  */
 
 #include "Operators.hpp"
+#include "VarShapeUtils.hpp"
 
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
@@ -29,9 +30,17 @@
 #include <pybind11/numpy.h>
 #include <pybind11/stl.h>
 
+#include <stdexcept>
+
 namespace cvcudapy {
 
 namespace {
+
+class WarpAffineError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
 
 Tensor WarpAffineInto(Tensor &output, Tensor &input, const pyarray &xform, const int32_t flags,
                       const NVCVBorderType borderMode, const pyarray &borderValue, std::optional<Stream> pstream)
@@ -43,13 +52,11 @@ Tensor WarpAffineInto(Tensor &output, Tensor &input, const pyarray &xform, const
 
     float4 bValue = GetFloat4FromPyArray(borderValue);
 
-    size_t xformDims = xform.ndim();
-    if (!(xformDims == 2 && xform.shape(0) == 2 && xform.shape(1) == 3))
+    if (size_t xformDims = xform.ndim(); !(xformDims == 2 && xform.shape(0) == 2 && xform.shape(1) == 3))
     {
-        throw std::runtime_error(
-            util::FormatString("Details of transformation matrix: nDim == 2, shape == (2, 3) but current is "
-                               "'%lu', ('%lu', '%lu') respectively",
-                               xformDims, xform.shape(0), xform.shape(1)));
+        throw WarpAffineError(
+            util::ConcatString("Details of transformation matrix: nDim == 2, shape == (2, 3) but current is '",
+                               xformDims, "', ('", xform.shape(0), "', '", xform.shape(1), "') respectively"));
     }
 
     NVCVAffineTransform xformOutput;
@@ -68,7 +75,8 @@ Tensor WarpAffineInto(Tensor &output, Tensor &input, const pyarray &xform, const
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*warpAffine});
 
-    warpAffine->submit(pstream->cudaHandle(), input, output, xformOutput, flags, borderMode, bValue);
+    guard.run([&warpAffine, &pstream, &input, &output, &xformOutput, &flags, &borderMode, &bValue]()
+              { warpAffine->submit(pstream->cudaHandle(), input, output, xformOutput, flags, borderMode, bValue); });
 
     return output;
 }
@@ -91,17 +99,17 @@ ImageBatchVarShape WarpAffineVarShapeInto(ImageBatchVarShape &output, ImageBatch
     }
 
     size_t bValueSize = borderValue.size();
-    size_t bValueDims = borderValue.ndim();
-    if (bValueSize > 4 || bValueDims != 1)
+    if (size_t bValueDims = borderValue.ndim(); bValueSize > 4 || bValueDims != 1)
     {
-        throw std::runtime_error(util::FormatString(
-            "Channels of borderValue should <= 4 and dimension should be 2, current is '%lu', '%lu' respectively",
-            bValueSize, bValueDims));
+        throw py::value_error(
+            util::ConcatString("Channels of borderValue should <= 4 and dimension should be 2, current is '",
+                               bValueSize, "', '", bValueDims, "' respectively"));
     }
     float4 bValue;
-    for (size_t i = 0; i < 4; i++)
+    for (int i = 0; i < 4; i++)
     {
-        nvcv::cuda::GetElement(bValue, i) = bValueSize > i ? *borderValue.data(i) : 0.f;
+        const auto valueIdx               = static_cast<size_t>(i);
+        nvcv::cuda::GetElement(bValue, i) = bValueSize > valueIdx ? *borderValue.data(valueIdx) : 0.f;
     }
 
     auto warpAffine = CreateOperator<cvcuda::WarpAffine>(input.capacity());
@@ -109,9 +117,10 @@ ImageBatchVarShape WarpAffineVarShapeInto(ImageBatchVarShape &output, ImageBatch
     ResourceGuard guard(*pstream);
     guard.add(LockMode::LOCK_MODE_READ, {input, xform});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
-    guard.add(LockMode::LOCK_MODE_READWRITE, {*warpAffine});
+    guard.add(LockMode::LOCK_MODE_NONE, {*warpAffine}); // operator is const, no internal state modified
 
-    warpAffine->submit(pstream->cudaHandle(), input, output, xform, flags, borderMode, bValue);
+    guard.run([&warpAffine, &pstream, &input, &output, &xform, &flags, &borderMode, &bValue]()
+              { warpAffine->submit(pstream->cudaHandle(), input, output, xform, flags, borderMode, bValue); });
 
     return output;
 }
@@ -120,15 +129,7 @@ ImageBatchVarShape WarpAffineVarShape(ImageBatchVarShape &input, Tensor &xform, 
                                       const NVCVBorderType borderMode, const pyarray &borderValue,
                                       std::optional<Stream> pstream)
 {
-    ImageBatchVarShape output = ImageBatchVarShape::Create(input.capacity());
-
-    for (int i = 0; i < input.numImages(); ++i)
-    {
-        nvcv::ImageFormat format = input[i].format();
-        nvcv::Size2D      size   = input[i].size();
-        auto              image  = Image::Create(size, format);
-        output.pushBack(image);
-    }
+    ImageBatchVarShape output = CreateSameShapeImageBatch(input);
 
     return WarpAffineVarShapeInto(output, input, xform, flags, borderMode, borderValue, pstream);
 }
@@ -139,19 +140,10 @@ void ExportOpWarpAffine(py::module &m)
 {
     using namespace pybind11::literals;
 
-    py::options options;
-    options.disable_function_signatures();
-
-    m.def("warp_affine", &WarpAffine, "src"_a, "xform"_a, "flags"_a, py::kw_only(),
+    m.def("warp_affine", NvtxTrace("cvcuda.warp_affine", &WarpAffine), "src"_a, "xform"_a, "flags"_a, py::kw_only(),
           "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "border_value"_a = 0, "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.warp_affine(src: cvcuda.Tensor, xform: cvcuda.Tensor, flags: cvcuda.Tensor, border_mode: cvcuda.Border = cvcuda.Border.CONSTANT, border_value: numpy.ndarray, stream: Optional[cvcuda.Stream] = None) -> cvcuda.Tensor
-
         Executes the Warp Affine operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Warp Affine operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.Tensor): Input tensor containing one or more images.
@@ -167,21 +159,13 @@ void ExportOpWarpAffine(py::module &m)
         Returns:
             cvcuda.Tensor: The output tensor.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("warp_affine_into", &WarpAffineInto, "dst"_a, "src"_a, "xform"_a, "flags"_a, py::kw_only(),
-          "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "border_value"_a = 0, "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.warp_affine_into(dst: cvcuda.Tensor, src: cvcuda.Tensor, xform: cvcuda.Tensor, flags: cvcuda.Tensor, border_mode: cvcuda.Border = cvcuda.Border.CONSTANT, border_value: numpy.ndarray, stream: Optional[cvcuda.Stream] = None)
-
+    m.def("warp_affine_into", NvtxTrace("cvcuda.warp_affine_into", &WarpAffineInto), "dst"_a, "src"_a, "xform"_a,
+          "flags"_a, py::kw_only(), "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "border_value"_a = 0,
+          "stream"_a = nullptr, R"pbdoc(
         Executes the Warp Affine operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Warp Affine operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.Tensor): Output tensor to store the result of the operation.
@@ -196,23 +180,14 @@ void ExportOpWarpAffine(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 
-    m.def("warp_affine", &WarpAffineVarShape, "src"_a, "xform"_a, "flags"_a, py::kw_only(),
-          "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "border_value"_a = 0, "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.warp_affine(src: cvcuda.ImageBatchVarShape, xform: cvcuda.Tensor, flags: cvcuda.Tensor, border_mode: cvcuda.Border = cvcuda.Border.CONSTANT, border_value: numpy.ndarray, stream: Optional[cvcuda.Stream] = None) -> cvcuda.ImageBatchVarShape
-
+    m.def("warp_affine", NvtxTrace("cvcuda.warp_affine", &WarpAffineVarShape), "src"_a, "xform"_a, "flags"_a,
+          py::kw_only(), "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "border_value"_a = 0,
+          "stream"_a = nullptr, R"pbdoc(
         Executes the Warp Affine operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Warp Affine operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
@@ -228,21 +203,13 @@ void ExportOpWarpAffine(py::module &m)
         Returns:
             cvcuda.ImageBatchVarShape: The output image batch.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("warp_affine_into", &WarpAffineVarShapeInto, "dst"_a, "src"_a, "xform"_a, "flags"_a, py::kw_only(),
-          "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "border_value"_a = 0, "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.warp_affine_into(dst: cvcuda.ImageBatchVarShape, src: cvcuda.ImageBatchVarShape, xform: cvcuda.Tensor, flags: cvcuda.Tensor, border_mode: cvcuda.Border = cvcuda.Border.CONSTANT, border_value: numpy.ndarray, stream: Optional[cvcuda.Stream] = None)
-
+    m.def("warp_affine_into", NvtxTrace("cvcuda.warp_affine_into", &WarpAffineVarShapeInto), "dst"_a, "src"_a,
+          "xform"_a, "flags"_a, py::kw_only(), "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT,
+          "border_value"_a = 0, "stream"_a = nullptr, R"pbdoc(
         Executes the Warp Affine operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Warp Affine operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.ImageBatchVarShape): Output image batch containing the result of the operation.
@@ -257,11 +224,7 @@ void ExportOpWarpAffine(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.ImageBatchVarShape: The output image batch (same as dst).
     )pbdoc");
 }
 

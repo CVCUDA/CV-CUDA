@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,8 +19,19 @@
 
 #include <iostream>
 #include <sstream>
+#include <stdexcept>
 
 namespace nvcvpy::util {
+
+namespace {
+
+class CudaError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
+
+} // namespace
 
 static std::string ToString(cudaError_t err)
 {
@@ -34,7 +45,7 @@ void CheckThrow(cudaError_t err)
     if (err != cudaSuccess)
     {
         cudaGetLastError(); // consume the error
-        throw std::runtime_error(ToString(err));
+        throw CudaError(ToString(err));
     }
 }
 

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +18,7 @@
 #include "Cache.hpp"
 
 #include "Definitions.hpp"
+#include "Stream.hpp"
 #include "ThreadScope.hpp"
 
 #include <common/Assert.hpp>
@@ -25,6 +26,7 @@
 #include <common/PyUtil.hpp>
 
 #include <atomic>
+#include <memory>
 #include <mutex>
 #include <numeric>
 #include <thread>
@@ -85,34 +87,37 @@ using Items = std::unordered_multimap<const IKey *, std::shared_ptr<CacheItem>, 
 
 struct Cache::Impl
 {
-    Items                    items;
-    inline static std::mutex mtx;
-    inline static int64_t    cache_limit_inbytes;
-    inline static int64_t    current_size_inbytes;
+    Items                                          items;
+    inline static std::mutex                       mtx;
+    inline static std::unordered_map<int, int64_t> cache_limit_inbytes;
+    inline static std::unordered_map<int, int64_t> current_size_inbytes;
 };
 
 Cache::Cache()
-    : pimpl(new Impl())
 {
-    std::lock_guard<std::mutex> lk(pimpl->mtx);
+    pimpl = std::make_unique<Impl>();
+    std::lock_guard lk(Impl::mtx);
     instances.insert(this);
 }
 
-Cache::~Cache()
+Cache::~Cache() noexcept
 {
-    {
-        std::lock_guard<std::mutex> lk(pimpl->mtx);
-        instances.erase(this);
-        // It might not be safe to call destructors here, decrease the size manually
-        for (const auto &node : pimpl->items)
-        {
-            pimpl->current_size_inbytes -= node.second->GetSizeInBytes();
-        }
-    }
+    std::unique_ptr<Impl> localPimpl;
 
-    Impl *pimpl = this->pimpl.release();
     try
     {
+        {
+            std::lock_guard lk(Impl::mtx);
+            instances.erase(this);
+            // It might not be safe to call destructors here, decrease the size manually
+            for (const auto &[nodeKey, node] : pimpl->items)
+            {
+                int dev = nodeKey->deviceId();
+                Impl::current_size_inbytes[dev] -= node->GetSizeInBytes();
+            }
+        }
+
+        localPimpl = std::move(this->pimpl);
 #if PY_MAJOR_VERSION >= 3 && PY_MINOR_VERSION >= 13
         if (Py_IsInitialized() && !Py_IsFinalizing())
 #else
@@ -121,13 +126,25 @@ Cache::~Cache()
         {
             // Make sure that the main thread doesn't finalize the interpreter until all objects have been destroyed
             py::gil_scoped_acquire acq;
-            delete pimpl;
+            localPimpl.reset();
+        }
+        else
+        {
+            localPimpl.release();
         }
     }
-    catch (const std::exception &)
+    catch (...)
     {
         // Leak intentionally if the Python runtime is not available anymore.
         // See https://pybind11.readthedocs.io/en/stable/advanced/misc.html#common-sources-of-global-interpreter-lock-errors
+        if (localPimpl)
+        {
+            localPimpl.release();
+        }
+        if (pimpl)
+        {
+            pimpl.release();
+        }
     }
 }
 
@@ -135,21 +152,33 @@ void Cache::add(CacheItem &item)
 {
     Items savedItems;
     {
-        std::unique_lock<std::mutex> lk(pimpl->mtx);
-        if (item.GetSizeInBytes() > doGetCacheLimit())
+        std::unique_lock lk(Impl::mtx);
+        int              dev = item.key().deviceId();
+
+        if (item.GetSizeInBytes() > doGetDeviceLimit(dev))
         {
             return;
         }
 
-        if (item.GetSizeInBytes() + doGetCurrentSizeInBytes() > doGetCacheLimit())
+        if (item.GetSizeInBytes() + doGetDeviceSize(dev) > doGetDeviceLimit(dev))
         {
-            // we clear the cache: all pimpl->items will be dtor'ed at the end of scope of savedItems and cache size will be reset to 0
-            savedItems                  = std::move(pimpl->items);
-            pimpl->current_size_inbytes = 0;
+            // Evict only items belonging to this device.
+            for (auto it = pimpl->items.begin(); it != pimpl->items.end();)
+            {
+                if (it->first->deviceId() == dev)
+                {
+                    savedItems.insert(pimpl->items.extract(it++));
+                }
+                else
+                {
+                    ++it;
+                }
+            }
+            Impl::current_size_inbytes[dev] = 0;
         }
 
         pimpl->items.emplace(&item.key(), item.shared_from_this());
-        pimpl->current_size_inbytes += item.GetSizeInBytes();
+        Impl::current_size_inbytes[dev] += item.GetSizeInBytes();
     }
 }
 
@@ -168,19 +197,20 @@ void Cache::removeAllNotInUseMatching(const IKey &key)
     std::vector<std::shared_ptr<CacheItem>> holdItemsUntilMtxUnlocked;
 
     {
-        std::unique_lock<std::mutex> lk(pimpl->mtx);
+        std::unique_lock lk(Impl::mtx);
 
-        auto itrange = pimpl->items.equal_range(&key);
+        auto [firstItem, lastItem] = pimpl->items.equal_range(&key);
 
-        int numItems = std::distance(itrange.first, itrange.second);
+        auto numItems = std::distance(firstItem, lastItem);
 
-        auto it = itrange.first;
-        for (int i = 0; i < numItems; ++i)
+        auto it = firstItem;
+        for (decltype(numItems) i = 0; i < numItems; ++i)
         {
             if (!it->second->isInUse())
             {
                 holdItemsUntilMtxUnlocked.push_back(it->second);
-                pimpl->current_size_inbytes -= it->second->GetSizeInBytes();
+                int dev = it->first->deviceId();
+                Impl::current_size_inbytes[dev] -= it->second->GetSizeInBytes();
                 pimpl->items.erase(it++);
             }
             else
@@ -195,13 +225,13 @@ std::vector<std::shared_ptr<CacheItem>> Cache::fetch(const IKey &key) const
 {
     std::vector<std::shared_ptr<CacheItem>> v;
 
-    std::unique_lock<std::mutex> lk(pimpl->mtx);
+    std::unique_lock lk(Impl::mtx);
 
-    auto itrange = pimpl->items.equal_range(&key);
+    auto [firstItem, lastItem] = pimpl->items.equal_range(&key);
 
-    v.reserve(distance(itrange.first, itrange.second));
+    v.reserve(distance(firstItem, lastItem));
 
-    for (auto it = itrange.first; it != itrange.second; ++it)
+    for (auto it = firstItem; it != lastItem; ++it)
     {
         if (!it->second->isInUse())
         {
@@ -216,7 +246,7 @@ std::vector<std::shared_ptr<CacheItem>> Cache::fetch(const IKey &key) const
 void Cache::dbgPrintCacheForKey(const IKey &key, const std::string &prefix)
 {
     std::vector<std::shared_ptr<CacheItem>> v;
-    std::unique_lock<std::mutex>            lk(pimpl->mtx);
+    std::unique_lock                        lk(Impl::mtx);
     auto                                    itrange = pimpl->items.equal_range(&key);
 
     for (auto it = itrange.first; it != itrange.second; ++it)
@@ -228,11 +258,11 @@ void Cache::dbgPrintCacheForKey(const IKey &key, const std::string &prefix)
 
 std::shared_ptr<CacheItem> Cache::fetchOne(const IKey &key) const
 {
-    std::unique_lock<std::mutex> lk(pimpl->mtx);
+    std::unique_lock lk(Impl::mtx);
 
-    auto itrange = pimpl->items.equal_range(&key);
+    auto [firstItem, lastItem] = pimpl->items.equal_range(&key);
 
-    for (auto it = itrange.first; it != itrange.second; ++it)
+    for (auto it = firstItem; it != lastItem; ++it)
     {
         if (!it->second->isInUse())
         {
@@ -260,60 +290,78 @@ void Cache::setCacheLimit(int64_t new_cache_limit_inbytes)
         throw std::invalid_argument("Cache limit must be non-negative.");
     }
 
-    size_t free_mem, total_mem;
+    int dev = 0;
+    util::CheckThrow(cudaGetDevice(&dev));
+
+    size_t free_mem;
+    size_t total_mem;
     util::CheckThrow(cudaMemGetInfo(&free_mem, &total_mem));
 
     if (static_cast<int64_t>(total_mem) < new_cache_limit_inbytes)
     {
-        // Cache is not device aware, so in a multi-gpu scenario it could be ok to have a cache limit larger
-        // than the total mem of the current device, but we should notify the user about this.
         std::cerr << "WARNING: new_cache_limit=" << new_cache_limit_inbytes
-                  << " is more than total available memory on current device: " << total_mem << std::endl;
+                  << " is more than total available memory on device " << dev << ": " << total_mem << std::endl;
     }
 
     Items savedItems;
     {
-        std::unique_lock<std::mutex> lk(pimpl->mtx);
-        if (doGetCurrentSizeInBytes() > new_cache_limit_inbytes)
+        std::unique_lock lk(Impl::mtx);
+        if (doGetDeviceSize(dev) > new_cache_limit_inbytes)
         {
-            // we clear the cache: all pimpl->items will be dtor'ed at the end of scope of savedItems and cache size will be reset to 0
-            savedItems                  = std::move(pimpl->items);
-            pimpl->current_size_inbytes = 0;
+            // Evict only items belonging to this device.
+            for (auto it = pimpl->items.begin(); it != pimpl->items.end();)
+            {
+                if (it->first->deviceId() == dev)
+                {
+                    savedItems.insert(pimpl->items.extract(it++));
+                }
+                else
+                {
+                    ++it;
+                }
+            }
+            Impl::current_size_inbytes[dev] = 0;
         }
-        pimpl->cache_limit_inbytes = new_cache_limit_inbytes;
+        Impl::cache_limit_inbytes[dev] = new_cache_limit_inbytes;
     }
 }
 
 int64_t Cache::getCacheLimit() const
 {
-    std::unique_lock<std::mutex> lk(pimpl->mtx);
-    return doGetCacheLimit();
+    int dev = 0;
+    util::CheckThrow(cudaGetDevice(&dev));
+    std::unique_lock lk(Impl::mtx);
+    return doGetDeviceLimit(dev);
 }
 
-int64_t Cache::doGetCacheLimit() const
+int64_t Cache::doGetDeviceLimit(int dev) const
 {
-    return pimpl->cache_limit_inbytes;
+    auto it = Impl::cache_limit_inbytes.find(dev);
+    return it != Impl::cache_limit_inbytes.end() ? it->second : 0;
 }
 
-int64_t Cache::getCurrentSizeInBytes()
+int64_t Cache::getCurrentSizeInBytes() const
 {
-    std::unique_lock<std::mutex> lk(pimpl->mtx);
-    return doGetCurrentSizeInBytes();
+    int dev = 0;
+    util::CheckThrow(cudaGetDevice(&dev));
+    std::unique_lock lk(Impl::mtx);
+    return doGetDeviceSize(dev);
 }
 
-int64_t Cache::doGetCurrentSizeInBytes() const
+int64_t Cache::doGetDeviceSize(int dev) const
 {
-    return pimpl->current_size_inbytes;
+    auto it = Impl::current_size_inbytes.find(dev);
+    return it != Impl::current_size_inbytes.end() ? it->second : 0;
 }
 
-void Cache::doIterateThroughItems(const std::function<void(CacheItem &item)> &fn) const
+std::vector<std::shared_ptr<CacheItem>> Cache::doSnapshotItems() const
 {
     // To avoid keeping mutex locked for too long, let's first gather all items
     // into a vector, unlock the mutex, and then iterate through them.
     std::vector<std::shared_ptr<CacheItem>> v;
 
     {
-        std::unique_lock<std::mutex> lk(pimpl->mtx);
+        std::unique_lock lk(Impl::mtx);
         v.reserve(pimpl->items.size());
 
         for (auto it = pimpl->items.begin(); it != pimpl->items.end(); ++it)
@@ -322,10 +370,7 @@ void Cache::doIterateThroughItems(const std::function<void(CacheItem &item)> &fn
         }
     }
 
-    for (const std::shared_ptr<CacheItem> &item : v)
-    {
-        fn(*item);
-    }
+    return v;
 }
 
 Cache &Cache::Instance()
@@ -338,16 +383,16 @@ void Cache::ClearAll()
 {
     Items savedItems;
     {
-        std::lock_guard<std::mutex> lk(Cache::Impl::mtx);
+        std::lock_guard lk(Cache::Impl::mtx);
         std::for_each(instances.begin(), instances.end(),
-                      [&](Cache *instance) { savedItems.merge(instance->pimpl->items); });
-        Cache::Impl::current_size_inbytes = 0;
+                      [&savedItems](Cache *instance) { savedItems.merge(instance->pimpl->items); });
+        Cache::Impl::current_size_inbytes.clear();
     }
 }
 
 size_t Cache::TotalSize()
 {
-    std::lock_guard<std::mutex> lk(Cache::Impl::mtx);
+    std::lock_guard lk(Cache::Impl::mtx);
     return std::accumulate(instances.cbegin(), instances.cend(), static_cast<size_t>(0),
                            [](size_t sum, const Cache *instance) { return sum + instance->size(); });
 }
@@ -356,15 +401,47 @@ void Cache::Export(py::module &m)
 {
     using namespace pybind11::literals;
 
-    py::class_<CacheItem, std::shared_ptr<CacheItem>>(nullptr, "CacheItem", py::module_local());
+    py::class_<CacheItem, std::shared_ptr<CacheItem>> cacheItem(nullptr, "CacheItem", py::module_local());
 
-    py::class_<ExternalCacheItem, CacheItem, std::shared_ptr<ExternalCacheItem>>(nullptr, "ExternalCacheItem",
-                                                                                 py::module_local());
+    py::class_<ExternalCacheItem, CacheItem, std::shared_ptr<ExternalCacheItem>> externalCacheItem(
+        nullptr, "ExternalCacheItem", py::module_local());
+    (void)cacheItem;
+    (void)externalCacheItem;
 
-    // Initialy set cache limit to half the size of the GPU memory
-    size_t free_mem, total_mem;
-    util::CheckThrow(cudaMemGetInfo(&free_mem, &total_mem));
-    Cache::Instance().setCacheLimit(total_mem / 2);
+    // Initialize per-device cache limits to half each GPU's total memory.
+    // Tolerate hosts with no CUDA device or only a stub libcuda available
+    // (CPU-only build/CI nodes, CUDA_VISIBLE_DEVICES="", manylinux build
+    // hosts that resolve libcuda.so.1 to a stub). cudaGetDeviceCount may
+    // return cudaSuccess with deviceCount=0, cudaErrorNoDevice, or
+    // cudaErrorStubLibrary. In any of those there is nothing to seed;
+    // skipping leaves `import cvcuda` working. The cache cannot actually
+    // be used until a real device is present, so deferring is safe.
+    {
+        int deviceCount = 0;
+        if (cudaError_t err = cudaGetDeviceCount(&deviceCount); err == cudaErrorNoDevice || err == cudaErrorStubLibrary)
+        {
+            (void)cudaGetLastError(); // clear sticky error
+            deviceCount = 0;
+        }
+        else
+        {
+            util::CheckThrow(err);
+        }
+        if (deviceCount > 0)
+        {
+            int savedDev = 0;
+            util::CheckThrow(cudaGetDevice(&savedDev));
+            for (int d = 0; d < deviceCount; ++d)
+            {
+                util::CheckThrow(cudaSetDevice(d));
+                size_t free_mem;
+                size_t total_mem;
+                util::CheckThrow(cudaMemGetInfo(&free_mem, &total_mem));
+                Impl::cache_limit_inbytes[d] = static_cast<int64_t>(total_mem / 2);
+            }
+            util::CheckThrow(cudaSetDevice(savedDev));
+        }
+    }
 
     // Make sure cache is cleared up when script ends.
     util::RegisterCleanup(m, Cache::ClearAll);
@@ -373,6 +450,9 @@ void Cache::Export(py::module &m)
         "clear_cache",
         [](ThreadScope scope)
         {
+            // ResourceGuard releases completed holds through auxiliary-stream callbacks.
+            // Drain them so clearing the cache also releases their resources.
+            Stream::SynchronizeAndClearGCBag();
             switch (scope)
             {
             case ThreadScope::GLOBAL:
@@ -414,15 +494,15 @@ void Cache::Export(py::module &m)
 
     m.def(
         "get_cache_limit_inbytes", [] { return Cache::Instance().getCacheLimit(); },
-        "Returns the current cache limit [in bytes]");
+        "Returns the cache limit [in bytes] for the current CUDA device.");
     m.def(
         "set_cache_limit_inbytes",
         [](int64_t new_cache_limit_inbytes) { Cache::Instance().setCacheLimit(new_cache_limit_inbytes); },
-        "Sets the current cache limit [in bytes]");
+        "Sets the cache limit [in bytes] for the current CUDA device.");
 
     m.def(
         "current_cache_size_inbytes", [] { return Cache::Instance().getCurrentSizeInBytes(); },
-        "Returns the current cache size [in bytes]");
+        "Returns the current cache size [in bytes] for the current CUDA device.");
 
     py::module_ internal = m.attr(INTERNAL_SUBMODULE_NAME);
     internal.def("nbytes_in_cache", [](const CacheItem &item) { return item.GetSizeInBytes(); });

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,6 +27,11 @@ set(CMAKE_FOLDER tests)
 set(CMAKE_CXX_STANDARD 20)
 
 enable_testing()
+
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 11.0)
+    message(WARNING "GCC-${CMAKE_CXX_COMPILER_VERSION}: System libgtest may have ABI incompatibilities. Build with GCC-11+ for full test coverage.")
+endif()
+find_package(GTest REQUIRED)
 
 add_library(nvcv_test_main Main.cpp)
 target_link_libraries(nvcv_test_main
@@ -111,6 +116,8 @@ else()
 endif()
 
 # Create build tree
+
+add_subdirectory(cmake)
 
 if(BUILD_TESTS_CPP OR BUILD_TESTS_PYTHON)
     add_subdirectory(common)

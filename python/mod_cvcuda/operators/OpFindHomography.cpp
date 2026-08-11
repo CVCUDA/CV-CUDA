@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +18,7 @@
 #include "../WorkspaceCache.hpp"
 #include "Operators.hpp"
 
+#include <common/Hash.hpp>
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
 #include <cvcuda/OpFindHomography.hpp>
@@ -32,43 +33,45 @@
 #include <nvcv/python/TensorBatch.hpp>
 #include <pybind11/stl.h>
 
+#include <memory>
+
 namespace cvcudapy {
 
-namespace {
-
-// Specialized class for cvcuda::FindHomography operator with a better cache Key.
-// It allows for reusing an existing operator object from cache if its payload size is >= the required size.
-// It also allows to fetch the biggest payload object to be reused while removing all others.
-// This is more flexible than using the generic PyOperator class and its Key class.
-class PyOpFindHomography : public nvcvpy::Container
+// Specialized Python wrapper for cvcuda::FindHomography.
+// The underlying DeviceState allocates device buffers sized for
+// (batchSize, maxNumPoints); a cached op can only be reused when the
+// request matches those dimensions exactly, otherwise RunFindHomography
+// would issue memsets and kernel launches past the end of the
+// allocations. The cache key therefore uses strict equality on both
+// ctor arguments (matching the generic PyOperator pattern).
+class PyOpFindHomography : public nvcvpy::Container // NOSONAR: operator wrappers share the Python cache hierarchy.
 {
 public:
-    // Define a Key class to be used by the cache to fetch similar items for potential reuse.
     class Key : public nvcvpy::IKey
     {
     public:
-        // Arguments of the key constructor should match the corresponding cvcuda operator arguments.
-        Key(int batchSize, int maxNumPoints) {}
-
-        size_t payloadSize() const
+        Key(int batchSize, int maxNumPoints)
+            : m_batchSize(batchSize)
+            , m_maxNumPoints(maxNumPoints)
         {
-            return 0;
         }
 
     private:
         size_t doGetHash() const override
         {
-            return 0;
+            return nvcvpy::util::ComputeHash(m_batchSize, m_maxNumPoints);
         }
 
-        // The comparison of keys is based on the payload size, the one in the cache is "that" key.
         bool doIsCompatible(const nvcvpy::IKey &that_) const override
         {
-            return dynamic_cast<const Key *>(&that_) != nullptr;
+            const auto &that = static_cast<const Key &>(that_);
+            return m_batchSize == that.m_batchSize && m_maxNumPoints == that.m_maxNumPoints;
         }
+
+        int m_batchSize;
+        int m_maxNumPoints;
     };
 
-    // Constructor instantiate the cache key and the operator object.
     PyOpFindHomography(int batchSize, int maxNumPoints)
         : m_key(batchSize, maxNumPoints)
         , m_op(batchSize, maxNumPoints)
@@ -76,65 +79,41 @@ public:
     }
 
     inline void submit(cudaStream_t stream, const nvcv::Tensor &srcPts, const nvcv::Tensor &dstPts,
-                       const nvcv::Tensor &models)
+                       const nvcv::Tensor &models) const
     {
         m_op(stream, srcPts, dstPts, models);
     }
 
     inline void submit(cudaStream_t stream, const nvcv::TensorBatch &srcPts, const nvcv::TensorBatch &dstPts,
-                       const nvcv::TensorBatch &models)
+                       const nvcv::TensorBatch &models) const
     {
         m_op(stream, srcPts, dstPts, models);
     }
 
-    // Required override to get the py object container.
     py::object container() const override
     {
-        return *this;
+        return py::reinterpret_borrow<py::object>(this->ptr());
     }
 
-    // Required override to get the key as the base interface class.
     const nvcvpy::IKey &key() const override
     {
         return m_key;
     }
 
-    // The static fetch function can be used to specialize the fetch of a specific object from the cache.
-    // It can be used to select the best object among a number of matched cache objects.
-    // It can also be used to remove other objects that are not needed in the cache anymore.
-    // Here, it fetches the biggest payload OP among cache items and remove all other OPs from the cache.
-    // It is ok to remove them since the biggest payload OP can be used to accomodate all of them,
-    // so they will never be reused and thus are no longer necessary.
+    // Items returned by Cache::fetch have already passed the strict-equality check above,
+    // so any one of them can serve the request.
     static std::shared_ptr<nvcvpy::ICacheItem> fetch(std::vector<std::shared_ptr<nvcvpy::ICacheItem>> &cache)
     {
         assert(!cache.empty());
-
-        std::shared_ptr<nvcvpy::ICacheItem> retItem        = cache[0];
-        size_t                              maxPayloadSize = 0;
-
-        for (const auto &item : cache)
-        {
-            const Key &key            = static_cast<const Key &>(item.get()->key());
-            size_t     keyPayloadSize = key.payloadSize();
-
-            if (keyPayloadSize > maxPayloadSize)
-            {
-                maxPayloadSize = keyPayloadSize;
-                retItem        = item;
-            }
-        }
-
-        cache.clear();
-
-        nvcvpy::Cache::removeAllNotInUseMatching(retItem.get()->key());
-
-        return retItem;
+        return cache[0];
     }
 
 private:
     Key                    m_key;
     cvcuda::FindHomography m_op;
 };
+
+namespace {
 
 Tensor FindHomographyInto(Tensor &models, Tensor &srcPts, Tensor &dstPts, std::optional<Stream> pstream)
 {
@@ -145,8 +124,8 @@ Tensor FindHomographyInto(Tensor &models, Tensor &srcPts, Tensor &dstPts, std::o
 
     // Use CreateOperatorEx to use the extended create operator function passing the specialized PyOperator above
     // as template type, instead of the regular cvcuda::OP class used in the CreateOperator function.
-    int32_t batchSize = srcPts.shape()[0];
-    int32_t numPoints = srcPts.shape()[1];
+    auto batchSize = static_cast<int32_t>(srcPts.shape()[0]);
+    auto numPoints = static_cast<int32_t>(srcPts.shape()[1]);
 
     auto findHomography = CreateOperatorEx<PyOpFindHomography>(batchSize, numPoints);
 
@@ -156,7 +135,8 @@ Tensor FindHomographyInto(Tensor &models, Tensor &srcPts, Tensor &dstPts, std::o
     guard.add(LockMode::LOCK_MODE_READWRITE, {models});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*findHomography});
 
-    findHomography->submit(pstream->cudaHandle(), srcPts, dstPts, models);
+    guard.run([&findHomography, &pstream, &srcPts, &dstPts, &models]()
+              { findHomography->submit(pstream->cudaHandle(), srcPts, dstPts, models); });
 
     return models;
 }
@@ -187,7 +167,7 @@ TensorBatch VarShapeFindHomographyInto(TensorBatch &models, TensorBatch &srcPts,
 
     for (int i = 0; i < batchSize; i++)
     {
-        int numPoints = srcPts[i].shape()[1];
+        auto numPoints = static_cast<int>(srcPts[i].shape()[1]);
         if (numPoints > maxNumPoints)
             maxNumPoints = numPoints;
     }
@@ -200,7 +180,8 @@ TensorBatch VarShapeFindHomographyInto(TensorBatch &models, TensorBatch &srcPts,
     guard.add(LockMode::LOCK_MODE_READWRITE, {models});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*findHomography});
 
-    findHomography->submit(pstream->cudaHandle(), srcPts, dstPts, models);
+    guard.run([&findHomography, &pstream, &srcPts, &dstPts, &models]()
+              { findHomography->submit(pstream->cudaHandle(), srcPts, dstPts, models); });
 
     return models;
 }
@@ -217,10 +198,54 @@ TensorBatch VarShapeFindHomography(TensorBatch &srcPts, TensorBatch &dstPts, std
     for (int i = 0; i < srcPts.numTensors(); i++)
     {
         Tensor outTensor = Tensor::Create(modelsShape, nvcv::TYPE_F32, nvcv::TENSOR_NHW);
-        models.pushBack(outTensor);
+        models.pushBackTensor(outTensor);
     }
 
     return VarShapeFindHomographyInto(models, srcPts, dstPts, pstream);
+}
+
+// Get a reusable FindHomography operator that can be passed to findhomography_into_with_op.
+// This allows the caller to hold a persistent reference to prevent cache eviction overhead.
+// Returns a PyCapsule containing the shared_ptr to the operator.
+py::object GetFindHomographyOperator(int32_t batchSize, int32_t numPoints)
+{
+    auto op = CreateOperatorEx<PyOpFindHomography>(batchSize, numPoints);
+    // Store the shared_ptr on the heap so it can be held by the capsule.
+    auto opPtr = std::make_unique<std::shared_ptr<PyOpFindHomography>>(std::move(op));
+    return py::capsule(opPtr.release(), "FindHomographyOperator",
+                       [](PyObject *capsule)
+                       {
+                           auto ptr = PyCapsule_GetPointer(capsule, "FindHomographyOperator");
+                           std::unique_ptr<std::shared_ptr<PyOpFindHomography>> opPtr(
+                               static_cast<std::shared_ptr<PyOpFindHomography> *>(ptr));
+                           (void)opPtr;
+                       });
+}
+
+// Version of FindHomographyInto that accepts a pre-fetched operator.
+// This avoids the cache lookup and ResourceGuard overhead that causes bimodal timing.
+Tensor FindHomographyIntoWithOp(Tensor &models, Tensor &srcPts, Tensor &dstPts, py::capsule pyOp,
+                                std::optional<Stream> pstream)
+{
+    if (!pstream)
+    {
+        pstream = Stream::Current();
+    }
+
+    // Extract the shared_ptr from the capsule
+    const auto *opPtr          = static_cast<std::shared_ptr<PyOpFindHomography> *>(pyOp.get_pointer());
+    auto        findHomography = *opPtr;
+
+    ResourceGuard guard(*pstream);
+    guard.add(LockMode::LOCK_MODE_READ, {srcPts});
+    guard.add(LockMode::LOCK_MODE_READ, {dstPts});
+    guard.add(LockMode::LOCK_MODE_READWRITE, {models});
+    // NOTE: Do NOT add findHomography to ResourceGuard - the caller holds the reference
+
+    guard.run([&findHomography, &pstream, &srcPts, &dstPts, &models]()
+              { findHomography->submit(pstream->cudaHandle(), srcPts, dstPts, models); });
+
+    return models;
 }
 
 } // namespace
@@ -229,18 +254,10 @@ void ExportOpFindHomography(py::module &m)
 {
     using namespace pybind11::literals;
 
-    py::options options;
-    options.disable_function_signatures();
-
-    m.def("findhomography", &FindHomography, "srcPts"_a, "dstPts"_a, "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.findhomography(srcPts: cvcuda.Tensor, dstPts: cvcuda.Tensor, stream: Optional[cvcuda.Stream] = None) -> cvcuda.Tensor
-
+    m.def("findhomography", NvtxTrace("cvcuda.findhomography", &FindHomography), "srcPts"_a, "dstPts"_a,
+          "stream"_a = nullptr, R"pbdoc(
         Estimates the homography matrix between srcPts and dstPts coordinates on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Find Homography operator
-            for more details and usage examples.
 
         Args:
             srcPts (cvcuda.Tensor): Input source coordinates tensor containing 2D coordinates in the source image.
@@ -250,20 +267,12 @@ void ExportOpFindHomography(py::module &m)
         Returns:
             cvcuda.Tensor: The model homography matrix tensor.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("findhomography_into", &FindHomographyInto, "models"_a, "srcPts"_a, "dstPts"_a, "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.findhomography_into(models: cvcuda.Tensor, srcPts: cvcuda.Tensor, dstPts: cvcuda.Tensor, stream: Optional[cvcuda.Stream] = None)
-
+    m.def("findhomography_into", NvtxTrace("cvcuda.findhomography_into", &FindHomographyInto), "models"_a, "srcPts"_a,
+          "dstPts"_a, "stream"_a = nullptr, R"pbdoc(
         Executes the Find Homography operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Find Homography operator
-            for more details and usage examples.
 
         Args:
             models (cvcuda.Tensor): Output model tensor containing 3x3 homography matrices.
@@ -274,20 +283,12 @@ void ExportOpFindHomography(py::module &m)
         Returns:
             cvcuda.Tensor: The model homography matrix tensor.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("findhomography", &VarShapeFindHomography, "srcPts"_a, "dstPts"_a, "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.findhomography(srcPts: cvcuda.TensorBatch, dstPts: cvcuda.TensorBatch, stream: Optional[cvcuda.Stream] = None) -> TensorBatch
-
+    m.def("findhomography", NvtxTrace("cvcuda.findhomography", &VarShapeFindHomography), "srcPts"_a, "dstPts"_a,
+          "stream"_a = nullptr, R"pbdoc(
         Executes the Find Homography operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Find Homography operator
-            for more details and usage examples.
 
         Args:
             srcPts (cvcuda.TensorBatch): Input source coordinates tensor containing 2D coordinates in the source image.
@@ -297,21 +298,13 @@ void ExportOpFindHomography(py::module &m)
         Returns:
             cvcuda.TensorBatch: The model homography matrix tensor batch.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("findhomography_into", &VarShapeFindHomographyInto, "models"_a, "srcPts"_a, "dstPts"_a, "stream"_a = nullptr,
+    m.def("findhomography_into", NvtxTrace("cvcuda.findhomography_into", &VarShapeFindHomographyInto), "models"_a,
+          "srcPts"_a, "dstPts"_a, "stream"_a = nullptr,
           R"pbdoc(
-
-	cvcuda.findhomography(models: cvcuda.TensorBatch, srcPts: cvcuda.TensorBatch, dstPts: cvcuda.TensorBatch, stream: Optional[cvcuda.Stream] = None)
-
         Executes the Find Homography operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Find Homography operator
-            for more details and usage examples.
 
         Args:
             models (cvcuda.TensorBatch): Output model tensor containing 3x3 homography matrices.
@@ -323,9 +316,47 @@ void ExportOpFindHomography(py::module &m)
             cvcuda.TensorBatch: The model homography matrix tensor batch.
 
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+    )pbdoc");
+
+    m.def("get_findhomography_operator", NvtxTrace("cvcuda.get_findhomography_operator", &GetFindHomographyOperator),
+          "batch_size"_a, "num_points"_a, R"pbdoc(
+        Get a reusable FindHomography operator for the given dimensions.
+
+        This allows holding a persistent reference to the operator to avoid
+        the cache eviction overhead that can cause bimodal timing patterns
+        when calling findhomography_into repeatedly.
+
+        Args:
+            batch_size (int): Number of samples in the batch.
+            num_points (int): Number of points per sample.
+
+        Returns:
+            object: A FindHomography operator that can be passed to findhomography_into_with_op.
+
+        Example:
+            >>> op = cvcuda.get_findhomography_operator(1024, 2048)
+            >>> for _ in range(iterations):
+            ...     cvcuda.findhomography_into_with_op(models, src, dst, op, stream=stream)
+    )pbdoc");
+
+    m.def("findhomography_into_with_op", NvtxTrace("cvcuda.findhomography_into_with_op", &FindHomographyIntoWithOp),
+          "models"_a, "srcPts"_a, "dstPts"_a, "operator"_a, "stream"_a = nullptr, R"pbdoc(
+        Executes the Find Homography operation using a pre-fetched operator.
+
+        This version accepts an operator obtained from get_findhomography_operator(),
+        which avoids cache lookup overhead and prevents bimodal timing patterns.
+
+
+        Args:
+            models (cvcuda.Tensor): Output model tensor containing 3x3 homography matrices.
+            srcPts (cvcuda.Tensor): Input source coordinates tensor containing 2D coordinates in the source image.
+            dstPts (cvcuda.Tensor): Input destination coordinates tensor containing 2D coordinates in the target image.
+            operator (object): Pre-fetched operator from get_findhomography_operator().
+            stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
+
+        Returns:
+            cvcuda.Tensor: The model homography matrix tensor.
+
     )pbdoc");
 }
 

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,7 @@
  */
 
 #include "Assert.h"
+#include "Nvtx.hpp"
 #include "OpPairwiseMatcher.hpp"
 
 #include <cvcuda/cuda_tools/MathWrappers.hpp>
@@ -25,7 +26,8 @@
 #include <nvcv/util/CheckError.hpp>
 #include <nvcv/util/Math.hpp>
 
-#include <cub/cub.cuh>
+#include <cub/block/block_radix_sort.cuh>
+#include <cub/block/block_reduce.cuh>
 
 #include <sstream>
 
@@ -60,7 +62,8 @@ template<class T>
 class PointT<T, 0>
 {
 public:
-    static constexpr int kMaxSize = 0; // maximum size in bytes of a single point stored by this class
+    static constexpr int  kMaxSize            = 0; // maximum size in bytes of a single point stored by this class
+    static constexpr bool kPackedHammingWords = false;
 
     __device__ PointT() = default;
 
@@ -89,9 +92,10 @@ class PointT
     static_assert(NB > 0, "Maximum number of bytes capacity in PointT class must be positive");
 
 public:
-    static constexpr int kMaxSize = NB;              // maximum size in bytes of a single point stored by this class
-    static constexpr int kNumElem = NB / sizeof(RT); // number of elements in array serving as a cache
-    static constexpr int kMaxDims = NB / sizeof(T);  // maximum number of dimensions a single point may have
+    static constexpr int  kMaxSize            = NB; // maximum size in bytes of a single point stored by this class
+    static constexpr int  kNumElem            = NB / sizeof(RT); // number of elements in array serving as a cache
+    static constexpr int  kMaxDims            = NB / sizeof(T);  // maximum number of dimensions a single point may have
+    static constexpr bool kPackedHammingWords = false;
 
     __device__ PointT() = default;
 
@@ -112,6 +116,89 @@ public:
 private:
     RT data[kNumElem];
 };
+
+// Keep each word as a separately named value so the compiler can cache an exact 32-byte descriptor in registers while
+// computing Hamming distance a word at a time. Indexing a uint32_t array directly makes nvcc spill every cached descriptor.
+class PackedU8Point32
+{
+public:
+    static constexpr int  kNumElem            = 8;
+    static constexpr bool kPackedHammingWords = true;
+
+    __device__ PackedU8Point32() = default;
+
+    inline __device__ void load(cuda::Tensor3DWrap<const uint8_t> set, int sampleIdx, int setIdx, int)
+    {
+        const RT *src = reinterpret_cast<const RT *>(set.ptr(sampleIdx, setIdx));
+        d0            = src[0];
+        d1            = src[1];
+        d2            = src[2];
+        d3            = src[3];
+        d4            = src[4];
+        d5            = src[5];
+        d6            = src[6];
+        d7            = src[7];
+    }
+
+    inline __device__ uint8_t operator[](int i) const
+    {
+        RT value;
+        switch (i / 4)
+        {
+        case 0:
+            value = d0;
+            break;
+        case 1:
+            value = d1;
+            break;
+        case 2:
+            value = d2;
+            break;
+        case 3:
+            value = d3;
+            break;
+        case 4:
+            value = d4;
+            break;
+        case 5:
+            value = d5;
+            break;
+        case 6:
+            value = d6;
+            break;
+        default:
+            value = d7;
+        }
+        return value >> ((i % 4) * 8);
+    }
+
+    template<int I>
+    inline __device__ RT word() const
+    {
+        static_assert(I < kNumElem);
+        if constexpr (I == 0)
+            return d0;
+        else if constexpr (I == 1)
+            return d1;
+        else if constexpr (I == 2)
+            return d2;
+        else if constexpr (I == 3)
+            return d3;
+        else if constexpr (I == 4)
+            return d4;
+        else if constexpr (I == 5)
+            return d5;
+        else if constexpr (I == 6)
+            return d6;
+        else
+            return d7;
+    }
+
+private:
+    RT d0, d1, d2, d3, d4, d5, d6, d7;
+};
+
+static_assert(sizeof(PackedU8Point32) == 32);
 
 // Is compatible checks if a {numDim}-dimensional point fits in the corresponding Point T class (above)
 template<typename T, int NB>
@@ -172,6 +259,19 @@ inline __device__ void ComputeDistance(float &distance, const T &e1, const T &e2
     }
 }
 
+template<int I = 0, class Point>
+inline __device__ void ComputeHammingWords(float &distance, const Point &p1, const Point &p2, int numWords)
+{
+    if constexpr (I < Point::kNumElem)
+    {
+        if (I < numWords)
+        {
+            distance += __popc(p1.template word<I>() ^ p2.template word<I>());
+        }
+        ComputeHammingWords<I + 1>(distance, p1, p2, numWords);
+    }
+}
+
 // Sort pairs of (distance, index) one per thread from a fixed point p1 to all points p2 in set2 with numDim
 // dimensions, each point is an array with numDim elements of source type ST, each set is an array of points, and
 // the tensor is an array of sets where the sampleIdx selects the current set within it with set2Size points
@@ -191,7 +291,19 @@ inline __device__ void SortKeyValue(float &sortedDist, int &sortedIdx, const Poi
 
         curDist = 0.f;
 
-        if constexpr (Point::kMaxSize > 0)
+        if constexpr (NORM == NVCV_NORM_HAMMING && Point::kPackedHammingWords)
+        {
+            constexpr int kElemPerWord = sizeof(RT) / sizeof(uint8_t);
+            int           numWords     = numDim / kElemPerWord;
+
+            ComputeHammingWords(curDist, p1, p2, numWords);
+
+            for (int i = numWords * kElemPerWord; i < numDim; ++i)
+            {
+                ComputeDistance<NORM>(curDist, p1[i], p2[i]);
+            }
+        }
+        else if constexpr (Point::kMaxSize > 0)
         {
 #pragma unroll
             for (int i = 0; i < Point::kMaxDims && i < numDim; ++i)
@@ -272,7 +384,7 @@ inline __device__ void WriteMatch(int matchIdx, int set1Idx, int set2Idx, int sa
 
 // Brute-force matcher finds closest pairs of n-dimensional points in set1 and set2, comparing all against all, it
 // is instantiated by: <NB> an upper limit of each point size in bytes; <NORM> type; and <ST> source type
-template<int NB, NVCVNormType NORM, typename ST>
+template<int NB, NVCVNormType NORM, typename ST, class Point = PointT<ST, NB>>
 __global__ void BruteForceMatcher(cuda::Tensor3DWrap<ST> set1, cuda::Tensor3DWrap<ST> set2,
                                   cuda::Tensor1DWrap<const int> numSet1, cuda::Tensor1DWrap<const int> numSet2,
                                   cuda::Tensor3DWrap<int> matches, cuda::Tensor1DWrap<int> numMatches,
@@ -302,7 +414,7 @@ __global__ void BruteForceMatcher(cuda::Tensor3DWrap<ST> set1, cuda::Tensor3DWra
         set2Size = set2Size > set2Capacity ? set2Capacity : set2Size;
     }
 
-    PointT<ST, NB> p;
+    Point p;
 
     p.load(set1, sampleIdx, set1Idx, numDim);
 
@@ -372,8 +484,10 @@ inline void RunBruteForceMatcherForNorm(cudaStream_t stream, const nvcv::Tensor 
                                         const nvcv::Tensor &matches, const nvcv::Tensor &numMatches,
                                         const nvcv::Tensor &distances, bool crossCheck, int matchesPerPoint)
 {
-    cuda::Tensor3DWrap<const SrcT>    w_set1, w_set2; // tensor wraps of set1 and set2 and other tensors
-    cuda::Tensor1DWrap<const int32_t> w_numSet1, w_numSet2;
+    cuda::Tensor3DWrap<const SrcT>    w_set1; // tensor wraps of set1 and set2 and other tensors
+    cuda::Tensor3DWrap<const SrcT>    w_set2;
+    cuda::Tensor1DWrap<const int32_t> w_numSet1;
+    cuda::Tensor1DWrap<const int32_t> w_numSet2;
     cuda::Tensor3DWrap<int32_t>       w_matches;
     cuda::Tensor1DWrap<int32_t>       w_numMatches;
     cuda::Tensor2DWrap<float>         w_distances;
@@ -451,6 +565,16 @@ inline void RunBruteForceMatcherForNorm(cudaStream_t stream, const nvcv::Tensor 
     {
         if (isCompatible<SrcT, 32>(numDim))
         {
+            if constexpr (NORM == NVCV_NORM_HAMMING && std::is_same_v<SrcT, uint8_t>)
+            {
+                if (numDim == 32)
+                {
+                    BruteForceMatcher<32, NORM, const SrcT, PackedU8Point32><<<blocks2, threads, 0, stream>>>(
+                        w_set1, w_set2, w_numSet1, w_numSet2, w_matches, w_numMatches, w_distances, set1Capacity,
+                        set2Capacity, outCapacity, numDim, crossCheck, matchesPerPoint);
+                    return;
+                }
+            }
             CVCUDA_BFM_RUN(32);
         }
         else if (isCompatible<SrcT, 128>(numDim))
@@ -506,10 +630,10 @@ inline void RunBruteForceMatcher(cudaStream_t stream, const nvcv::Tensor &set1, 
                                  const nvcv::Tensor &numMatches, const nvcv::Tensor &distances, bool crossCheck,
                                  int matchesPerPoint, NVCVNormType normType)
 {
-    switch (set1.dtype())
+    switch (static_cast<NVCVDataType>(set1.dtype()))
     {
 #define CVCUDA_BFM_CASE(DT, T)                                                                               \
-    case nvcv::TYPE_##DT:                                                                                    \
+    case static_cast<NVCVDataType>(nvcv::TYPE_##DT):                                                         \
         RunBruteForceMatcherForType<T>(stream, set1, set2, numSet1, numSet2, matches, numMatches, distances, \
                                        crossCheck, matchesPerPoint, normType);                               \
         break
@@ -548,6 +672,7 @@ void PairwiseMatcher::operator()(cudaStream_t stream, const nvcv::Tensor &set1, 
                                  const nvcv::Tensor &numMatches, const nvcv::Tensor &distances, bool crossCheck,
                                  int matchesPerPoint, NVCVNormType normType)
 {
+    CVCUDA_NVTX_RANGE("cvcuda::PairwiseMatcher::operator()[Tensor]");
     // Check each input and output tensor and their properties are conforming to what is expected
 
     if (!set1 || !set2 || !matches)

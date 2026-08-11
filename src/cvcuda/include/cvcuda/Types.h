@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,6 +28,7 @@
 
 #include "detail/Export.h"
 
+#include <nvcv/Status.h>
 #include <stdbool.h>
 
 #ifdef __cplusplus
@@ -262,7 +263,6 @@ typedef enum
 
     NVCV_COLOR_YUV2GRAY_UYVY = 123,
     NVCV_COLOR_YUV2GRAY_YUY2 = 124,
-    //CV_YUV2GRAY_VYUY    = CV_YUV2GRAY_UYVY,
     NVCV_COLOR_YUV2GRAY_Y422 = NVCV_COLOR_YUV2GRAY_UYVY,
     NVCV_COLOR_YUV2GRAY_UYNV = NVCV_COLOR_YUV2GRAY_UYVY,
     NVCV_COLOR_YUV2GRAY_YVYU = NVCV_COLOR_YUV2GRAY_YUY2,
@@ -471,7 +471,7 @@ typedef struct
     NVCVColorRGBA fillColor;   // Filled color of bounding box.
 } NVCVBndBoxI;
 
-typedef void *NVCVBndBoxesI;
+typedef struct NVCVBndBoxesIRec *NVCVBndBoxesI;
 
 typedef struct
 {
@@ -479,7 +479,7 @@ typedef struct
     int32_t  kernelSize; // Kernel sizes of mean filter, refer to cv::blur().
 } NVCVBlurBoxI;
 
-typedef void *NVCVBlurBoxesI;
+typedef struct NVCVBlurBoxesIRec *NVCVBlurBoxesI;
 
 typedef struct
 {
@@ -536,10 +536,62 @@ typedef enum
     HHMMSS        = 3
 } NVCVClockFormat;
 
-typedef void *NVCVElements;
+typedef struct NVCVElementsRec *NVCVElements;
+
+/** Construct an NVCVBndBoxesI from a flat array of bounding boxes.
+ *
+ * The handle owns its copy of the data; the input arrays may be freed after
+ * the call returns. Free the handle with nvcvBndBoxesIDestroy.
+ *
+ * @param [out] handle             Where the new handle is written. Must not be NULL.
+ * @param [in]  boxes              Flat array of bounding boxes, length == sum(numBoxesPerBatch[]).
+ * @param [in]  numBoxesPerBatch   Per-batch box counts, length == batchSize.
+ * @param [in]  batchSize          Number of batches. Must be >= 0.
+ *
+ * @retval #NVCV_ERROR_INVALID_ARGUMENT One of the pointers is NULL or batchSize < 0.
+ * @retval #NVCV_ERROR_OUT_OF_MEMORY    Allocation failed.
+ * @retval #NVCV_SUCCESS                Operation executed successfully.
+ */
+CVCUDA_PUBLIC NVCVStatus nvcvBndBoxesIConstruct(NVCVBndBoxesI *handle, const NVCVBndBoxI *boxes,
+                                                const int32_t *numBoxesPerBatch, int32_t batchSize);
+
+/** Destroy a handle previously returned by nvcvBndBoxesIConstruct. Passing NULL is a no-op. */
+CVCUDA_PUBLIC NVCVStatus nvcvBndBoxesIDestroy(NVCVBndBoxesI handle);
+
+/** Construct an NVCVBlurBoxesI from a flat array of blur boxes. See nvcvBndBoxesIConstruct. */
+CVCUDA_PUBLIC NVCVStatus nvcvBlurBoxesIConstruct(NVCVBlurBoxesI *handle, const NVCVBlurBoxI *boxes,
+                                                 const int32_t *numBoxesPerBatch, int32_t batchSize);
+
+/** Destroy a handle previously returned by nvcvBlurBoxesIConstruct. Passing NULL is a no-op. */
+CVCUDA_PUBLIC NVCVStatus nvcvBlurBoxesIDestroy(NVCVBlurBoxesI handle);
+
+/** Construct an NVCVElements from parallel flat arrays of OSD types and payload pointers.
+ *
+ * Element i in the flat arrays is described by types[i] and payloads[i]. Elements are
+ * grouped into batches according to numElementsPerBatch (length batchSize).
+ * The handle owns its copy of the payloads; input arrays may be freed after the call.
+ * Free the handle with nvcvElementsDestroy.
+ *
+ * Only POD OSD element types are supported here: NVCV_OSD_RECT, NVCV_OSD_POINT,
+ * NVCV_OSD_LINE, NVCV_OSD_ROTATED_RECT, NVCV_OSD_CIRCLE, NVCV_OSD_ARROW.
+ *
+ * @param [out] handle               Where the new handle is written. Must not be NULL.
+ * @param [in]  types                Flat array of OSD types, length == sum(numElementsPerBatch[]).
+ * @param [in]  payloads             Flat array of payload pointers, parallel to types[].
+ * @param [in]  numElementsPerBatch  Per-batch element counts, length == batchSize.
+ * @param [in]  batchSize            Number of batches. Must be >= 0.
+ */
+CVCUDA_PUBLIC NVCVStatus nvcvElementsConstruct(NVCVElements *handle, const NVCVOSDType *types,
+                                               const void *const *payloads, const int32_t *numElementsPerBatch,
+                                               int32_t batchSize);
+
+/** Destroy a handle previously returned by nvcvElementsConstruct. Passing NULL is a no-op. */
+CVCUDA_PUBLIC NVCVStatus nvcvElementsDestroy(NVCVElements handle);
 
 #ifdef __cplusplus
 }
 #endif
+
+/** @} */
 
 #endif /* CVCUDAERATORS_TYPES_H */

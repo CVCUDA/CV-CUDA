@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -50,21 +50,22 @@ struct MyLessEqual
 
 #define BLOCK_DIM_X 16
 #define BLOCK_DIM_Y 16
-#define X_STEPS     4
 
-template<typename CMP, typename SrcWrapper, typename DstWrapper, typename KernelWrapper>
+template<int KSize, int XSteps, bool ReuseCoefficients, typename CMP, typename SrcWrapper, typename DstWrapper,
+         typename KernelWrapper>
 __global__ void adaptive_threshold(SrcWrapper src, DstWrapper dst, Size2D dstSize, const uchar maxValue,
                                    KernelWrapper kernel, const int blockSize, const int idelta)
 {
-    const int         batch_idx = get_batch_idx();
-    const int         r         = blockSize >> 1;
-    // (2 * r + BLOCK_DIM_X * X_STEPS) * (2 * r + BLOCK_DIM_Y) + blockSize * blockSize * sizeof(float)
+    const int         batch_idx          = get_batch_idx();
+    const int         effectiveBlockSize = KSize > 0 ? KSize : blockSize;
+    const int         r                  = effectiveBlockSize >> 1;
+    // (2 * r + BLOCK_DIM_X * XSteps) * (2 * r + BLOCK_DIM_Y) + blockSize * blockSize * sizeof(float)
     extern __shared__ __align__(sizeof(float)) uchar s[];
-    const int                                        s_width  = 2 * r + BLOCK_DIM_X * X_STEPS;
+    const int                                        s_width  = 2 * r + BLOCK_DIM_X * XSteps;
     const int                                        s_height = 2 * r + BLOCK_DIM_Y;
     float                                           *s_k      = (float *)(s + s_width * s_height); // for kernel
     // load image data into shared memory
-    const int                                        shift_x = blockIdx.x * BLOCK_DIM_X * X_STEPS - r;
+    const int                                        shift_x = blockIdx.x * BLOCK_DIM_X * XSteps - r;
     const int                                        shift_y = blockIdx.y * BLOCK_DIM_Y - r;
     int3                                             srcCoord{0, 0, batch_idx};
     for (int start_y = 0; start_y < s_height; start_y += BLOCK_DIM_Y)
@@ -83,7 +84,7 @@ __global__ void adaptive_threshold(SrcWrapper src, DstWrapper dst, Size2D dstSiz
         }
     }
     // load kernel data into shared memory
-    const int kernel_size = blockSize * blockSize;
+    const int kernel_size = effectiveBlockSize * effectiveBlockSize;
     int       local_idx   = threadIdx.y * BLOCK_DIM_X + threadIdx.x;
     while (local_idx < kernel_size)
     {
@@ -93,42 +94,117 @@ __global__ void adaptive_threshold(SrcWrapper src, DstWrapper dst, Size2D dstSiz
     __syncthreads();
 
     // calculate convolution
-    int out_x = blockIdx.x * BLOCK_DIM_X * X_STEPS + threadIdx.x;
+    int out_x = blockIdx.x * BLOCK_DIM_X * XSteps + threadIdx.x;
     int out_y = blockIdx.y * BLOCK_DIM_Y + threadIdx.y;
     if (out_x >= dstSize.w || out_y >= dstSize.h)
         return;
     CMP cmp;
-#pragma unroll
-    for (int k = 0; k < X_STEPS; ++k)
+    if constexpr (ReuseCoefficients)
     {
-        float  res     = 0.f;
+        // Accumulate the XSteps outputs together so each shared kernel coefficient is loaded once.
+        // Each output still visits coefficients in the original row-major order, preserving rounding.
+        float  res[XSteps]{};
         int    kInd    = 0;
         int    start_x = out_x - shift_x - r;
         int    start_y = out_y - shift_y - r;
         uchar *p       = s + start_y * s_width + start_x;
-        for (int i = 0; i < blockSize; ++i)
+        if constexpr (KSize > 0)
         {
-            for (int j = 0; j < blockSize; ++j)
+#pragma unroll
+            for (int i = 0; i < KSize; ++i)
             {
-                res += p[j] * s_k[kInd++];
+#pragma unroll
+                for (int j = 0; j < KSize; ++j)
+                {
+                    float coeff = s_k[kInd++];
+#pragma unroll
+                    for (int k = 0; k < XSteps; ++k)
+                    {
+                        res[k] += p[j + k * BLOCK_DIM_X] * coeff;
+                    }
+                }
+                p += s_width;
             }
-            // next row in shared memory
-            p += s_width;
         }
-        uchar t = cmp(s[(out_y - shift_y) * s_width + out_x - shift_x] + idelta, cuda::SaturateCast<uchar>(res))
-                    ? maxValue
-                    : 0;
-        *dst.ptr(batch_idx, out_y, out_x) = t;
-        out_x += BLOCK_DIM_X;
-        if (out_x >= dstSize.w)
-            return;
+        else
+        {
+            for (int i = 0; i < blockSize; ++i)
+            {
+                for (int j = 0; j < blockSize; ++j)
+                {
+                    float coeff = s_k[kInd++];
+#pragma unroll
+                    for (int k = 0; k < XSteps; ++k)
+                    {
+                        res[k] += p[j + k * BLOCK_DIM_X] * coeff;
+                    }
+                }
+                p += s_width;
+            }
+        }
+
+#pragma unroll
+        for (int k = 0; k < XSteps; ++k)
+        {
+            uchar t = cmp(s[(out_y - shift_y) * s_width + out_x - shift_x] + idelta, cuda::SaturateCast<uchar>(res[k]))
+                        ? maxValue
+                        : 0;
+            *dst.ptr(batch_idx, out_y, out_x) = t;
+            out_x += BLOCK_DIM_X;
+            if (out_x >= dstSize.w)
+                return;
+        }
+    }
+    else
+    {
+#pragma unroll
+        for (int k = 0; k < XSteps; ++k)
+        {
+            float  res     = 0.f;
+            int    kInd    = 0;
+            int    start_x = out_x - shift_x - r;
+            int    start_y = out_y - shift_y - r;
+            uchar *p       = s + start_y * s_width + start_x;
+            if constexpr (KSize > 0)
+            {
+#pragma unroll
+                for (int i = 0; i < KSize; ++i)
+                {
+#pragma unroll
+                    for (int j = 0; j < KSize; ++j)
+                    {
+                        res += p[j] * s_k[kInd++];
+                    }
+                    p += s_width;
+                }
+            }
+            else
+            {
+                for (int i = 0; i < blockSize; ++i)
+                {
+                    for (int j = 0; j < blockSize; ++j)
+                    {
+                        res += p[j] * s_k[kInd++];
+                    }
+                    // next row in shared memory
+                    p += s_width;
+                }
+            }
+            uchar t = cmp(s[(out_y - shift_y) * s_width + out_x - shift_x] + idelta, cuda::SaturateCast<uchar>(res))
+                        ? maxValue
+                        : 0;
+            *dst.ptr(batch_idx, out_y, out_x) = t;
+            out_x += BLOCK_DIM_X;
+            if (out_x >= dstSize.w)
+                return;
+        }
     }
 }
 
-template<typename T, NVCVBorderType B, typename CMP, class KernelWrapper>
-ErrorCode adaptive_threshold_caller(const TensorDataStridedCuda &in, const TensorDataStridedCuda &out,
-                                    const uchar maxValue, KernelWrapper kernel, const int blockSize, const int idelta,
-                                    cudaStream_t stream)
+template<int XSteps, bool ReuseCoefficients, typename T, NVCVBorderType B, typename CMP, class KernelWrapper>
+ErrorCode adaptive_threshold_caller_impl(const TensorDataStridedCuda &in, const TensorDataStridedCuda &out,
+                                         const uchar maxValue, KernelWrapper kernel, const int blockSize,
+                                         const int idelta, cudaStream_t stream)
 {
     auto outAccess = TensorDataAccessStridedImagePlanar::Create(out);
     NVCV_ASSERT(outAccess);
@@ -139,9 +215,9 @@ ErrorCode adaptive_threshold_caller(const TensorDataStridedCuda &in, const Tenso
     Size2D dstSize{outAccess->numCols(), outAccess->numRows()};
 
     dim3 block(BLOCK_DIM_X, BLOCK_DIM_Y);
-    dim3 grid(divUp(dstSize.w, BLOCK_DIM_X * X_STEPS), divUp(dstSize.h, block.y), outAccess->numSamples());
+    dim3 grid(divUp(dstSize.w, BLOCK_DIM_X * XSteps), divUp(dstSize.h, block.y), outAccess->numSamples());
 
-    int s_mem_size = (blockSize - 1 + BLOCK_DIM_X * X_STEPS) * (blockSize - 1 + BLOCK_DIM_Y)
+    int s_mem_size = (blockSize - 1 + BLOCK_DIM_X * XSteps) * (blockSize - 1 + BLOCK_DIM_Y)
                    + blockSize * blockSize * sizeof(float);
 
     int64_t inMaxStride  = inAccess->sampleStride() * inAccess->numSamples();
@@ -151,8 +227,21 @@ ErrorCode adaptive_threshold_caller(const TensorDataStridedCuda &in, const Tenso
         auto src = cuda::CreateBorderWrapNHW<const T, B, int32_t>(in, cuda::SetAll<T>(0.f));
         auto dst = cuda::CreateTensorWrapNHW<T, int32_t>(out);
 
-        adaptive_threshold<CMP>
-            <<<grid, block, s_mem_size, stream>>>(src, dst, dstSize, maxValue, kernel, blockSize, idelta);
+        if (blockSize == 7)
+        {
+            adaptive_threshold<7, XSteps, ReuseCoefficients, CMP>
+                <<<grid, block, s_mem_size, stream>>>(src, dst, dstSize, maxValue, kernel, blockSize, idelta);
+        }
+        else if (blockSize == 3)
+        {
+            adaptive_threshold<3, XSteps, ReuseCoefficients, CMP>
+                <<<grid, block, s_mem_size, stream>>>(src, dst, dstSize, maxValue, kernel, blockSize, idelta);
+        }
+        else
+        {
+            adaptive_threshold<0, XSteps, ReuseCoefficients, CMP>
+                <<<grid, block, s_mem_size, stream>>>(src, dst, dstSize, maxValue, kernel, blockSize, idelta);
+        }
     }
     else
     {
@@ -168,8 +257,24 @@ ErrorCode adaptive_threshold_caller(const TensorDataStridedCuda &in, const Tenso
     return ErrorCode::SUCCESS;
 }
 
-AdaptiveThreshold::AdaptiveThreshold(DataShape maxInputShape, DataShape maxOutputShape, int32_t maxBlockSize)
+template<typename T, NVCVBorderType B, typename CMP, class KernelWrapper>
+ErrorCode adaptive_threshold_caller(const TensorDataStridedCuda &in, const TensorDataStridedCuda &out,
+                                    const uchar maxValue, KernelWrapper kernel, const int blockSize, const int idelta,
+                                    AdaptiveThresholdKernelPolicy kernelPolicy, cudaStream_t stream)
+{
+    if (kernelPolicy == AdaptiveThresholdKernelPolicy::kLegacyX4)
+    {
+        return adaptive_threshold_caller_impl<4, false, T, B, CMP>(in, out, maxValue, kernel, blockSize, idelta,
+                                                                   stream);
+    }
+    return adaptive_threshold_caller_impl<8, true, T, B, CMP>(in, out, maxValue, kernel, blockSize, idelta, stream);
+}
+
+AdaptiveThreshold::AdaptiveThreshold(DataShape maxInputShape, DataShape maxOutputShape, int32_t maxBlockSize,
+                                     AdaptiveThresholdKernelPolicy kernelPolicy)
     : CudaBaseOp(maxInputShape, maxOutputShape)
+    , m_maxBlockSize(maxBlockSize)
+    , m_kernelPolicy(kernelPolicy)
 {
     if (maxBlockSize <= 0)
     {
@@ -207,9 +312,10 @@ ErrorCode AdaptiveThreshold::infer(const TensorDataStridedCuda &in, const Tensor
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
-    if ((input_format != kNHWC) && (input_format != kHWC))
+    const bool isPlanar = input_format == kNCHW || input_format == kCHW;
+    if ((input_format != kNHWC) && (input_format != kHWC) && !isPlanar)
     {
-        LOG_ERROR("Invalid DataFormat both Input and Output must be kHWC or kNHWC");
+        LOG_ERROR("Invalid DataFormat both Input and Output must be kHWC, kNHWC, kCHW or kNCHW");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
@@ -247,13 +353,13 @@ ErrorCode AdaptiveThreshold::infer(const TensorDataStridedCuda &in, const Tensor
         return ErrorCode::INVALID_PARAMETER;
     }
 
-    if (!(blockSize % 2 == 1 && blockSize > 1))
+    if (!(blockSize % 2 == 1 && blockSize > 1 && blockSize <= m_maxBlockSize))
     {
         LOG_ERROR("Invalid BlockSize " << blockSize);
         return ErrorCode::INVALID_PARAMETER;
     }
 
-    float *kernelPtr = (float *)m_kernel;
+    float *kernelPtr = m_kernel;
     if (m_adaptiveMethod != adaptiveMethod || m_blockSize != blockSize)
     {
         if (adaptiveMethod == NVCV_ADAPTIVE_THRESH_MEAN_C)
@@ -281,13 +387,13 @@ ErrorCode AdaptiveThreshold::infer(const TensorDataStridedCuda &in, const Tensor
     int   idelta  = thresholdType == NVCV_THRESH_BINARY ? (int)std::ceil(c) : (int)std::floor(c);
     if (thresholdType == NVCV_THRESH_BINARY)
     {
-        return adaptive_threshold_caller<uchar, NVCV_BORDER_REPLICATE, MyGreater<int>>(in, out, imaxval, kernelPtr,
-                                                                                       blockSize, idelta, stream);
+        return adaptive_threshold_caller<uchar, NVCV_BORDER_REPLICATE, MyGreater<int>>(
+            in, out, imaxval, kernelPtr, blockSize, idelta, m_kernelPolicy, stream);
     }
     else
     {
-        return adaptive_threshold_caller<uchar, NVCV_BORDER_REPLICATE, MyLessEqual<int>>(in, out, imaxval, kernelPtr,
-                                                                                         blockSize, idelta, stream);
+        return adaptive_threshold_caller<uchar, NVCV_BORDER_REPLICATE, MyLessEqual<int>>(
+            in, out, imaxval, kernelPtr, blockSize, idelta, m_kernelPolicy, stream);
     }
 }
 

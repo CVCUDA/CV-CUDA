@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -44,8 +44,6 @@ public:
                     const nvcv::Tensor &cropRect, const NVCVBorderType borderMode, const float borderValue,
                     const nvcv::Tensor &flipCode, const nvcv::Tensor &base, const nvcv::Tensor &scale,
                     float global_scale, float shift, float epsilon, uint32_t flags) const;
-
-private:
 };
 
 } // namespace cvcuda::priv

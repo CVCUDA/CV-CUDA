@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,22 +29,9 @@ IContext &GlobalContext()
     return g_ctx;
 }
 
-Context::Context()
-    : m_allocatorManager("Allocator")
-    , m_imageManager("Image")
-    , m_imageBatchManager("ImageBatch")
-    , m_tensorManager("Tensor")
-    , m_tensorBatchManager("TensorBatch")
-    , m_arrayManager("Array")
-    , m_managerList{m_allocatorManager, m_imageManager,       m_imageBatchManager,
-                    m_tensorManager,    m_tensorBatchManager, m_arrayManager}
-{
-}
+Context::Context() = default;
 
-Context::~Context()
-{
-    // empty
-}
+Context::~Context() = default;
 
 IAllocator &Context::allocDefault()
 {

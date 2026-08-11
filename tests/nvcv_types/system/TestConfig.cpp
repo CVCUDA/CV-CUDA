@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -92,7 +92,7 @@ template<class T>
 class ConfigTests : public ::testing::Test
 {
 public:
-    ~ConfigTests()
+    ~ConfigTests() override
     {
         // Make sure we set the handle manager back to dynamic allocation.
         EXPECT_NO_THROW(SetMaxCount<T>(-1));
@@ -107,7 +107,7 @@ TYPED_TEST(ConfigTests, set_max_obj_count_works)
 
     ASSERT_NO_THROW(SetMaxCount<TypeParam>(5));
 
-    for (int i = 0; i < 5; ++i)
+    for (int i = 0; i < 5; ++i) // NOSONAR
     {
         ASSERT_NO_THROW(objs.emplace_back(CreateObj<TypeParam>()));
     }

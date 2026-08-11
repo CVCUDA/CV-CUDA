@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,11 +15,12 @@
 
 import cvcuda
 
-import pytest as t
+import pytest
 import numpy as np
+import cvcuda_tools as cv_tools
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "inputp, blurboxes",
     [
         (
@@ -73,3 +74,24 @@ def test_op_boxblur(inputp, blurboxes):
     assert out.layout == input.layout
     assert out.shape == input.shape
     assert out.dtype == input.dtype
+
+
+def _boxblur_params(dtype, layout, channels):
+    boxes = [
+        [
+            cvcuda.BlurBoxI(box=(5, 5, 3, 3), kernelSize=3),
+        ]
+    ]
+    return {"bboxes": cvcuda.BlurBoxesI(boxes=boxes)}
+
+
+globals().update(
+    cv_tools.make_op_tests(
+        name="boxblur",
+        runner_info=[("tensor", cvcuda.boxblur, _boxblur_params)],
+        keystone_dlc=(cvcuda.Type.U8, "NHWC", 3),
+        supported_dtypes={cvcuda.Type.U8, cvcuda.Type.S8},
+        supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
+        supported_channels={3, 4},
+    )
+)

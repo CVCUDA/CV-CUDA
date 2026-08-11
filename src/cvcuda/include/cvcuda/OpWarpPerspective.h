@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,7 +37,7 @@
 #include <nvcv/Tensor.h>
 
 // @brief storage for perspective transform matrix (row major)
-typedef float NVCVPerspectiveTransform[9];
+typedef float NVCVPerspectiveTransform[9]; // NOSONAR: C ABI exposes perspective transforms as fixed-size arrays.
 
 #ifdef __cplusplus
 extern "C"
@@ -65,7 +65,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaWarpPerspectiveCreate(NVCVOperatorHandle *handle,
  *  Limitations:
  *
  *  Input:
- *       Data Layout:    [kNHWC, kHWC]
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
  *       Channels:       [1,3,4]
  *
  *       Data Type      | Allowed
@@ -76,11 +76,12 @@ CVCUDA_PUBLIC NVCVStatus cvcudaWarpPerspectiveCreate(NVCVOperatorHandle *handle,
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | Yes
  *       64bit Float    | No
  *
  *  Output:
- *       Data Layout:    [kNHWC, kHWC]
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
  *       Channels:       [1,3,4]
  *
  *       Data Type      | Allowed
@@ -91,6 +92,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaWarpPerspectiveCreate(NVCVOperatorHandle *handle,
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | Yes
  *       64bit Float    | No
  *
@@ -140,5 +142,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaWarpPerspectiveVarShapeSubmit(NVCVOperatorHandle 
 #ifdef __cplusplus
 }
 #endif
+
+/** @} */
 
 #endif /* CVCUDA_WARP_PERSPECTIVE_H */

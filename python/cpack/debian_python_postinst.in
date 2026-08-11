@@ -27,7 +27,7 @@ case "$1" in
             # Create parent directory for the symlink if it contains subdirectories
             dst_dir=$(dirname "$dst")
             mkdir -p "$dst_dir"
-            ln -sf "$src" "$dst"
+            ln -sfn "$src" "$dst"
         done
         ;;
 esac

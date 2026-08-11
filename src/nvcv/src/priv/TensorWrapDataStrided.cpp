@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -62,8 +62,8 @@ static void ValidateTensorBufferStrided(const NVCVTensorData &tdata)
 
     int firstPacked = IsChannelLast(tdata.layout) ? std::max(0, rank - 2) : rank - 1;
 
-    int prevStrideConsidered = buffer.strides[rank - 1];
-    int prevSizeConsidered   = tdata.shape[rank - 1];
+    int64_t prevStrideConsidered = buffer.strides[rank - 1];
+    int64_t prevSizeConsidered   = tdata.shape[rank - 1];
 
     // Test packed dimensions
     int dim;
@@ -74,8 +74,8 @@ static void ValidateTensorBufferStrided(const NVCVTensorData &tdata)
             continue;
         }
 
-        int correctPitch = dim == rank - 1 ? dtype.strideBytes() : prevStrideConsidered * prevSizeConsidered;
-        if (buffer.strides[dim] != correctPitch)
+        if (int64_t correctPitch = dim == rank - 1 ? dtype.strideBytes() : prevStrideConsidered * prevSizeConsidered;
+            buffer.strides[dim] != correctPitch)
         {
             throw Exception(NVCV_ERROR_INVALID_ARGUMENT)
                 << "Pitch of dimension " << dim << " must be == " << correctPitch << " (packed)"
@@ -93,8 +93,7 @@ static void ValidateTensorBufferStrided(const NVCVTensorData &tdata)
             continue;
         }
 
-        int minPitch = prevStrideConsidered * prevSizeConsidered;
-        if (buffer.strides[dim] < minPitch)
+        if (int64_t minPitch = prevStrideConsidered * prevSizeConsidered; buffer.strides[dim] < minPitch)
         {
             throw Exception(NVCV_ERROR_INVALID_ARGUMENT)
                 << "Pitch of dimension " << dim << " must be >= " << minPitch << ", but it is " << buffer.strides[dim];
@@ -105,7 +104,7 @@ static void ValidateTensorBufferStrided(const NVCVTensorData &tdata)
 }
 
 TensorWrapDataStrided::TensorWrapDataStrided(const NVCVTensorData &tdata, NVCVTensorDataCleanupFunc cleanup,
-                                             void *ctxCleanup)
+                                             NVCVUserPointer ctxCleanup)
     : m_tdata(tdata)
     , m_cleanup(cleanup)
     , m_ctxCleanup(ctxCleanup)
@@ -143,7 +142,7 @@ DataType TensorWrapDataStrided::dtype() const
 
 SharedCoreObj<IAllocator> TensorWrapDataStrided::alloc() const
 {
-    return GetDefaultAllocator();
+    return SharedCoreObj<IAllocator>{GetDefaultAllocator()};
 }
 
 void TensorWrapDataStrided::exportData(NVCVTensorData &tdata) const

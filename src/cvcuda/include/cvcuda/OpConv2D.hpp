@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,6 +34,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class Conv2D final : public IOperator
@@ -41,42 +43,38 @@ class Conv2D final : public IOperator
 public:
     explicit Conv2D();
 
-    ~Conv2D();
-
     void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
-                    const nvcv::ImageBatch &kernel, const nvcv::Tensor &kernelAnchor, NVCVBorderType borderMode);
+                    const nvcv::ImageBatch &kernel, const nvcv::Tensor &kernelAnchor, NVCVBorderType borderMode) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline Conv2D::Conv2D()
 {
-    nvcv::detail::CheckThrow(cvcudaConv2DCreate(&m_handle));
-    assert(m_handle);
-}
-
-inline Conv2D::~Conv2D()
-{
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaConv2DCreate(&h));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void Conv2D::operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
                                const nvcv::ImageBatch &kernel, const nvcv::Tensor &kernelAnchor,
-                               NVCVBorderType borderMode)
+                               NVCVBorderType borderMode) const
 {
-    nvcv::detail::CheckThrow(cvcudaConv2DVarShapeSubmit(m_handle, stream, in.handle(), out.handle(), kernel.handle(),
-                                                        kernelAnchor.handle(), borderMode));
+    nvcv::detail::CheckThrow(cvcudaConv2DVarShapeSubmit(m_handle.get(), stream, in.handle(), out.handle(),
+                                                        kernel.handle(), kernelAnchor.handle(), borderMode));
 }
 
 inline NVCVOperatorHandle Conv2D::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA_CONV2D_HPP

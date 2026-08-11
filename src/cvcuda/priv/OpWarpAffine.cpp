@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "OpWarpAffine.hpp"
 
+#include "Nvtx.hpp"
 #include "legacy/CvCudaLegacy.h"
 #include "legacy/CvCudaLegacyHelpers.hpp"
 
@@ -27,18 +28,26 @@ namespace cvcuda::priv {
 
 namespace legacy = nvcv::legacy::cuda_op;
 
-WarpAffine::WarpAffine(const int32_t maxVarShapeBatchSize)
+std::unique_ptr<legacy::WarpAffine> WarpAffine::CreateLegacyOp(int)
 {
-    legacy::DataShape maxIn, maxOut;
-    //maxIn/maxOut not used by op.
-    m_legacyOp         = std::make_unique<legacy::WarpAffine>(maxIn, maxOut);
-    m_legacyOpVarShape = std::make_unique<legacy::WarpAffineVarShape>(maxVarShapeBatchSize);
+    legacy::DataShape maxIn;
+    legacy::DataShape maxOut;
+    return std::make_unique<legacy::WarpAffine>(maxIn, maxOut);
+}
+
+WarpAffine::WarpAffine(const int32_t maxVarShapeBatchSize)
+    // Legacy operators are single-device by design. PerDeviceResource creates
+    // one instance per CUDA device for transparent multi-GPU support.
+    : m_legacyOpVarShape([maxVarShapeBatchSize](int)
+                         { return std::make_unique<legacy::WarpAffineVarShape>(maxVarShapeBatchSize); })
+{
 }
 
 void WarpAffine::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                             const NVCVAffineTransform xform, const int32_t flags, const NVCVBorderType borderMode,
                             const float4 borderValue) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::WarpAffine::operator()[Tensor]");
     auto inData = in.exportData<nvcv::TensorDataStridedCuda>();
     if (inData == nullptr)
     {
@@ -53,13 +62,14 @@ void WarpAffine::operator()(cudaStream_t stream, const nvcv::Tensor &in, const n
                               "Output must be cuda-accessible, pitch-linear tensor");
     }
 
-    NVCV_CHECK_THROW(m_legacyOp->infer(*inData, *outData, xform, flags, borderMode, borderValue, stream));
+    NVCV_CHECK_THROW(m_legacyOp.get().infer(*inData, *outData, xform, flags, borderMode, borderValue, stream));
 }
 
 void WarpAffine::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in,
                             const nvcv::ImageBatchVarShape &out, const nvcv::Tensor &transMatrix, const int32_t flags,
                             const NVCVBorderType borderMode, const float4 borderValue) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::WarpAffine::operator()[ImageBatchVarShape]");
     auto inData = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (inData == nullptr)
     {
@@ -80,7 +90,7 @@ void WarpAffine::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape 
     }
 
     NVCV_CHECK_THROW(
-        m_legacyOpVarShape->infer(*inData, *outData, *transMatrixData, flags, borderMode, borderValue, stream));
+        m_legacyOpVarShape.get().infer(*inData, *outData, *transMatrixData, flags, borderMode, borderValue, stream));
 }
 
 } // namespace cvcuda::priv

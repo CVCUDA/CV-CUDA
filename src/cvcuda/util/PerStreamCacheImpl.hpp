@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,8 +34,7 @@ void StreamOrderedCache<Payload, Item>::waitAndPurge()
     {
         if (!ready && m_tail->readyEvent())
         {
-            auto err = cudaEventSynchronize(m_tail->readyEvent());
-            if (err != cudaErrorCudartUnloading)
+            if (auto err = cudaEventSynchronize(m_tail->readyEvent()); err != cudaErrorCudartUnloading)
                 NVCV_CHECK_THROW(err);
             ready = true;
         }
@@ -96,9 +95,9 @@ void StreamOrderedCache<Payload, Item>::removeAllReady(PayloadCallback callback)
 template<typename Payload, typename Item>
 auto StreamOrderedCache<Payload, Item>::findNewestReady() -> item_t *
 {
-    constexpr int kMaxItemsOnStack = 256;
-    item_t       *tmp[kMaxItemsOnStack];
-    item_t       *sectionStart = m_tail;
+    constexpr int                          kMaxItemsOnStack = 256;
+    std::array<item_t *, kMaxItemsOnStack> tmp;
+    item_t                                *sectionStart = m_tail;
     // Process the items in blocks of up to kMaxItemsOnStack. On each block, a binary search is performed.
     while (sectionStart)
     {
@@ -119,7 +118,8 @@ auto StreamOrderedCache<Payload, Item>::findNewestReady() -> item_t *
             continue;
         }
 
-        int lo = 0, m = (lo + hi) >> 1;
+        int lo = 0;
+        int m  = (lo + hi) >> 1;
         // After this loop, `m` is going to contain the index of the newest ready element
         while (lo < hi) // exclusive upper bound
         {
@@ -235,16 +235,16 @@ std::optional<Payload> PerStreamCache<Payload, Item>::getIf(size_t minSize, Pred
 
     std::lock_guard guard(m_lock);
 
-    if (stream)
+    if (stream.has_value())
     {
-        ret = tryGetPerStream(minSize, pred, *stream);
+        ret = tryGetPerStream(minSize, std::forward<Predicate>(pred), *stream);
         if (ret)
             return ret;
     }
 
     do
     {
-        ret = tryGetGlobal(minSize, pred);
+        ret = tryGetGlobal(minSize, std::forward<Predicate>(pred));
         if (ret)
             return ret;
     }
@@ -288,7 +288,7 @@ int PerStreamCache<Payload, Item>::moveReadyToGlobal()
     for (auto it = m_perStreamCache.begin(); it != m_perStreamCache.end();)
     {
         it->second.removeAllReady(
-            [&](Payload &&payload)
+            [this, &moved](Payload &&payload)
             {
                 m_globalCache.emplace(StreamCachePayloadSize(payload), std::move(payload));
                 moved++;
@@ -311,7 +311,7 @@ void PerStreamCache<Payload, Item>::put(Payload &&payload, std::optional<cudaStr
 
     if (per_stream)
     {
-        uint64_t id      = stream ? GetCudaStreamIdHint(*stream) : (uint64_t)-1ll;
+        uint64_t id      = stream ? GetCudaStreamIdHint(*stream) : (uint64_t)-1LL;
         auto     cacheIt = m_perStreamCache.find(id);
         if (cacheIt == m_perStreamCache.end())
             cacheIt = m_perStreamCache.emplace(id, &m_cacheItemAlloc).first;

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "CvtColorUtils.hpp"
 #include "Definitions.hpp"
+#include "PlanarParityUtils.hpp"
 #include "TestUtils.hpp"
 
 #include <common/TensorDataUtils.hpp>
@@ -27,11 +28,19 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorDataAccess.hpp>
 
+#include <cstddef>
+#include <cstring>
+
 namespace test = nvcv::test;
 namespace util = nvcv::util;
 namespace cuda = nvcv::cuda;
 
 using std::vector;
+
+static int ScaledSize(int size, double scale)
+{
+    return static_cast<int>(size * scale);
+}
 
 #define NVCV_IMAGE_FORMAT_RGBS8  NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, SIGNED, XYZ1, ASSOCIATED, X8_Y8_Z8)
 #define NVCV_IMAGE_FORMAT_BGRS8  NVCV_DETAIL_MAKE_COLOR_FMT1(RGB, UNDEFINED, PL, SIGNED, ZYX1, ASSOCIATED, X8_Y8_Z8)
@@ -83,6 +92,272 @@ using std::vector;
 // clang-format off
 
 //--------------------------------------------------------------------------------------------------------------------//
+static bool IsInterleavedYuv422(nvcv::ImageFormat fmt)
+{
+    return fmt == NVCV_IMAGE_FORMAT_UYVY || fmt == NVCV_IMAGE_FORMAT_UYVY_ER || fmt == NVCV_IMAGE_FORMAT_YUYV
+        || fmt == NVCV_IMAGE_FORMAT_YUYV_ER;
+}
+
+static bool IsSemiPlanarYuv420(nvcv::ImageFormat fmt)
+{
+    return fmt == NVCV_IMAGE_FORMAT_NV12 || fmt == NVCV_IMAGE_FORMAT_NV12_ER || fmt == NVCV_IMAGE_FORMAT_NV21
+        || fmt == NVCV_IMAGE_FORMAT_NV21_ER;
+}
+
+static bool IsBGR(nvcv::Swizzle swizzle)
+{
+    return swizzle == nvcv::Swizzle::S_ZYXW || swizzle == nvcv::Swizzle::S_ZYX1
+        || swizzle == nvcv::Swizzle::S_ZYX0;
+}
+
+static bool IsHsvToRgb(NVCVColorConversionCode code)
+{
+    return code == NVCV_COLOR_HSV2BGR || code == NVCV_COLOR_HSV2BGR_FULL || code == NVCV_COLOR_HSV2RGB
+        || code == NVCV_COLOR_HSV2RGB_FULL;
+}
+
+static bool IsFullHsvToRgb(NVCVColorConversionCode code)
+{
+    return code == NVCV_COLOR_HSV2BGR_FULL || code == NVCV_COLOR_HSV2RGB_FULL;
+}
+
+template<typename T, bool full>
+static void GenerateHsvSource(vector<T> &srcVec, int srcWdth, int srcHght, int imgs, size_t numPixels, RandEng &randEng)
+{
+    constexpr size_t minCntAllHSV = 90 * 256 * 256; // Minimum # of pixels to call generateAllHSV.
+    constexpr double minMultHSV   = -0.5;           // Set hue range multiplier to be outside normal range
+    constexpr double maxMultHSV   = 1.5;            // to test robustness to wrapped hue values.
+
+    if (numPixels >= minCntAllHSV)
+    {
+        generateAllHSV<T, full>(srcVec, srcWdth, srcHght, imgs);
+        return;
+    }
+
+    generateRandHSV<T, full>(srcVec, randEng, minMultHSV, maxMultHSV);
+}
+
+template<typename T>
+static void PopulateSource(vector<T> &srcVec, int srcWdth, int srcHght, int imgs, int srcChannels, size_t numPixels,
+                           bool srcRGBA, bool srcBGR, NVCVColorConversionCode code, RandEng &randEng)
+{
+    constexpr size_t minCntAllRGB = 128 * 256 * 256; // Minimum # of pixels to call generateAllRGB.
+
+    if (srcChannels <= 2)
+    {
+        generateRandVec(srcVec, randEng);
+        return;
+    }
+
+    if (IsHsvToRgb(code))
+    {
+        if (IsFullHsvToRgb(code))
+        {
+            GenerateHsvSource<T, true>(srcVec, srcWdth, srcHght, imgs, numPixels, randEng);
+        }
+        else
+        {
+            GenerateHsvSource<T, false>(srcVec, srcWdth, srcHght, imgs, numPixels, randEng);
+        }
+        return;
+    }
+
+    if (numPixels >= minCntAllRGB)
+    {
+        generateAllRGB(srcVec, srcWdth, srcHght, imgs, srcRGBA, srcBGR);
+        return;
+    }
+
+    generateRandTestRGB(srcVec, randEng, srcRGBA, srcBGR);
+}
+
+template<typename T>
+static bool BuildBasicColorReference(vector<T> &refVec, const vector<T> &srcVec, NVCVColorConversionCode code,
+                                     size_t numPixels, bool srcRGBA, bool srcBGR, bool dstRGBA, bool dstBGR)
+{
+    switch (code) // NOSONAR: reference implementation covers each supported conversion code.
+    {
+    case NVCV_COLOR_BGR2BGRA:
+    case NVCV_COLOR_BGRA2BGR:
+        changeAlpha<T>(refVec, srcVec, numPixels, srcRGBA, dstRGBA);
+        return true;
+
+    case NVCV_COLOR_BGR2RGBA:
+    case NVCV_COLOR_RGBA2BGR:
+    case NVCV_COLOR_BGR2RGB:
+    case NVCV_COLOR_BGRA2RGBA:
+        convertRGBtoBGR<T>(refVec, srcVec, numPixels, srcRGBA, dstRGBA);
+        return true;
+
+    case NVCV_COLOR_BGR2GRAY:
+    case NVCV_COLOR_RGB2GRAY:
+    case NVCV_COLOR_BGRA2GRAY:
+    case NVCV_COLOR_RGBA2GRAY:
+        convertRGBtoGray<T>(refVec, srcVec, numPixels, srcRGBA, srcBGR);
+        return true;
+
+    case NVCV_COLOR_GRAY2BGR:
+    case NVCV_COLOR_GRAY2BGRA:
+        convertGrayToRGB<T>(refVec, srcVec, numPixels, dstRGBA);
+        return true;
+
+    case NVCV_COLOR_BGR2HSV:
+    case NVCV_COLOR_RGB2HSV:
+        convertRGBtoHSV<T, false>(refVec, srcVec, numPixels, srcRGBA, srcBGR);
+        return true;
+
+    case NVCV_COLOR_HSV2BGR:
+    case NVCV_COLOR_HSV2RGB:
+        convertHSVtoRGB<T, false>(refVec, srcVec, numPixels, dstRGBA, dstBGR);
+        return true;
+
+    case NVCV_COLOR_BGR2HSV_FULL:
+    case NVCV_COLOR_RGB2HSV_FULL:
+        convertRGBtoHSV<T, true>(refVec, srcVec, numPixels, srcRGBA, srcBGR);
+        return true;
+
+    case NVCV_COLOR_HSV2BGR_FULL:
+    case NVCV_COLOR_HSV2RGB_FULL:
+        convertHSVtoRGB<T, true>(refVec, srcVec, numPixels, dstRGBA, dstBGR);
+        return true;
+
+    case NVCV_COLOR_BGR2YUV:
+    case NVCV_COLOR_RGB2YUV:
+        convertRGBtoYUV_PAL<T>(refVec, srcVec, numPixels, srcRGBA, srcBGR);
+        return true;
+
+    case NVCV_COLOR_YUV2BGR:
+    case NVCV_COLOR_YUV2RGB:
+        convertYUVtoRGB_PAL<T>(refVec, srcVec, numPixels, dstRGBA, dstBGR);
+        return true;
+
+    default:
+        return false;
+    }
+}
+
+template<typename T>
+static bool BuildYuvToColorReference(vector<T> &refVec, const vector<T> &srcVec, NVCVColorConversionCode code, int wdth,
+                                     int hght, int imgs, size_t numPixels, bool dstRGBA, bool dstBGR)
+{
+    switch (code) // NOSONAR: reference implementation covers each supported YUV conversion code.
+    {
+    case NVCV_COLOR_YUV2RGB_NV12:
+    case NVCV_COLOR_YUV2BGR_NV12:
+    case NVCV_COLOR_YUV2RGBA_NV12:
+    case NVCV_COLOR_YUV2BGRA_NV12:
+        convertNV12toRGB<T>(refVec, srcVec, wdth, hght, imgs, dstRGBA, dstBGR, false);
+        return true;
+
+    case NVCV_COLOR_YUV2RGB_NV21:
+    case NVCV_COLOR_YUV2BGR_NV21:
+    case NVCV_COLOR_YUV2RGBA_NV21:
+    case NVCV_COLOR_YUV2BGRA_NV21:
+        convertNV12toRGB<T>(refVec, srcVec, wdth, hght, imgs, dstRGBA, dstBGR, true);
+        return true;
+
+    case NVCV_COLOR_YUV2RGB_YV12:
+    case NVCV_COLOR_YUV2BGR_YV12:
+    case NVCV_COLOR_YUV2RGBA_YV12:
+    case NVCV_COLOR_YUV2BGRA_YV12:
+        convertYUVtoRGB_420<T>(refVec, srcVec, wdth, hght, imgs, dstRGBA, dstBGR, true);
+        return true;
+
+    case NVCV_COLOR_YUV2RGB_IYUV:
+    case NVCV_COLOR_YUV2BGR_IYUV:
+    case NVCV_COLOR_YUV2RGBA_IYUV:
+    case NVCV_COLOR_YUV2BGRA_IYUV:
+        convertYUVtoRGB_420<T>(refVec, srcVec, wdth, hght, imgs, dstRGBA, dstBGR, false);
+        return true;
+
+    case NVCV_COLOR_YUV2GRAY_420:
+        convertYUVtoGray_420<T>(refVec, srcVec, wdth, hght, imgs);
+        return true;
+
+    case NVCV_COLOR_YUV2RGB_UYVY:
+    case NVCV_COLOR_YUV2BGR_UYVY:
+    case NVCV_COLOR_YUV2RGBA_UYVY:
+    case NVCV_COLOR_YUV2BGRA_UYVY:
+        convertYUVtoRGB_422<T, false>(refVec, srcVec, wdth, hght, imgs, dstRGBA, dstBGR, false);
+        return true;
+
+    case NVCV_COLOR_YUV2RGB_YUY2:
+    case NVCV_COLOR_YUV2BGR_YUY2:
+    case NVCV_COLOR_YUV2RGBA_YUY2:
+    case NVCV_COLOR_YUV2BGRA_YUY2:
+        convertYUVtoRGB_422<T, true>(refVec, srcVec, wdth, hght, imgs, dstRGBA, dstBGR, false);
+        return true;
+
+    case NVCV_COLOR_YUV2RGB_YVYU:
+    case NVCV_COLOR_YUV2BGR_YVYU:
+    case NVCV_COLOR_YUV2RGBA_YVYU:
+    case NVCV_COLOR_YUV2BGRA_YVYU:
+        convertYUVtoRGB_422<T, true>(refVec, srcVec, wdth, hght, imgs, dstRGBA, dstBGR, true);
+        return true;
+
+    case NVCV_COLOR_YUV2GRAY_UYVY:
+        convertYUVtoGray_422<T, false>(refVec, srcVec, numPixels);
+        return true;
+
+    case NVCV_COLOR_YUV2GRAY_YUY2:
+        convertYUVtoGray_422<T, true>(refVec, srcVec, numPixels);
+        return true;
+
+    default:
+        return false;
+    }
+}
+
+template<typename T>
+static bool BuildColorToYuvReference(vector<T> &refVec, const vector<T> &srcVec, NVCVColorConversionCode code, int wdth,
+                                     int hght, int imgs, bool srcRGBA, bool srcBGR)
+{
+    switch (code)
+    {
+    case NVCV_COLOR_RGB2YUV_I420:
+    case NVCV_COLOR_BGR2YUV_I420:
+    case NVCV_COLOR_RGBA2YUV_I420:
+    case NVCV_COLOR_BGRA2YUV_I420:
+        convertRGBtoYUV_420<T>(refVec, srcVec, wdth, hght, imgs, srcRGBA, srcBGR, false);
+        return true;
+
+    case NVCV_COLOR_RGB2YUV_YV12:
+    case NVCV_COLOR_BGR2YUV_YV12:
+    case NVCV_COLOR_RGBA2YUV_YV12:
+    case NVCV_COLOR_BGRA2YUV_YV12:
+        convertRGBtoYUV_420<T>(refVec, srcVec, wdth, hght, imgs, srcRGBA, srcBGR, true);
+        return true;
+
+    case NVCV_COLOR_RGB2YUV_NV12:
+    case NVCV_COLOR_BGR2YUV_NV12:
+    case NVCV_COLOR_RGBA2YUV_NV12:
+    case NVCV_COLOR_BGRA2YUV_NV12:
+        convertRGBtoNV12<T>(refVec, srcVec, wdth, hght, imgs, srcRGBA, srcBGR, false);
+        return true;
+
+    case NVCV_COLOR_RGB2YUV_NV21:
+    case NVCV_COLOR_BGR2YUV_NV21:
+    case NVCV_COLOR_RGBA2YUV_NV21:
+    case NVCV_COLOR_BGRA2YUV_NV21:
+        convertRGBtoNV12<T>(refVec, srcVec, wdth, hght, imgs, srcRGBA, srcBGR, true);
+        return true;
+
+    default:
+        return false;
+    }
+}
+
+template<typename T>
+static bool BuildCvtColorReference(vector<T> &refVec, const vector<T> &srcVec, NVCVColorConversionCode code,
+                                   size_t numPixels, int wdth, int hght, int imgs, bool srcRGBA, bool srcBGR,
+                                   bool dstRGBA, bool dstBGR)
+{
+    return BuildBasicColorReference(refVec, srcVec, code, numPixels, srcRGBA, srcBGR, dstRGBA, dstBGR)
+        || BuildYuvToColorReference(refVec, srcVec, code, wdth, hght, imgs, numPixels, dstRGBA, dstBGR)
+        || BuildColorToYuvReference(refVec, srcVec, code, wdth, hght, imgs, srcRGBA, srcBGR);
+}
+
+//--------------------------------------------------------------------------------------------------------------------//
 template<typename T>
 static void verifyOutput(nvcv::Tensor srcTensor, nvcv::ImageFormat srcFrmt,
                          nvcv::Tensor dstTensor, nvcv::ImageFormat dstFrmt,
@@ -104,25 +379,21 @@ static void verifyOutput(nvcv::Tensor srcTensor, nvcv::ImageFormat srcFrmt,
     ASSERT_LE(srcChannels, 4);
     ASSERT_LE(dstChannels, 4);
 
-    int srcWdth = wdth,
-        srcHght = hght;
-    int dstWdth = wdth,
-        dstHght = hght;
+    int srcWdth = wdth;
+    int srcHght = hght;
+    int dstWdth = wdth;
+    int dstHght = hght;
 
-    if (srcFrmt == NVCV_IMAGE_FORMAT_UYVY || srcFrmt == NVCV_IMAGE_FORMAT_UYVY_ER ||
-        srcFrmt == NVCV_IMAGE_FORMAT_YUYV || srcFrmt == NVCV_IMAGE_FORMAT_YUYV_ER)
+    if (IsInterleavedYuv422(srcFrmt))
         srcWdth = srcWdth << 1;
-    if (srcFrmt == NVCV_IMAGE_FORMAT_NV12 || srcFrmt == NVCV_IMAGE_FORMAT_NV12_ER ||
-        srcFrmt == NVCV_IMAGE_FORMAT_NV21 || srcFrmt == NVCV_IMAGE_FORMAT_NV21_ER)
+    if (IsSemiPlanarYuv420(srcFrmt))
         srcHght = (srcHght * 3) >> 1;
     ASSERT_EQ(srcWdth, srcAccess->numCols());
     ASSERT_EQ(srcHght, srcAccess->numRows());
 
-    if (dstFrmt == NVCV_IMAGE_FORMAT_UYVY || dstFrmt == NVCV_IMAGE_FORMAT_UYVY_ER ||
-        dstFrmt == NVCV_IMAGE_FORMAT_YUYV || dstFrmt == NVCV_IMAGE_FORMAT_YUYV_ER)
+    if (IsInterleavedYuv422(dstFrmt))
         dstWdth = dstWdth << 1;
-    if (dstFrmt == NVCV_IMAGE_FORMAT_NV12 || dstFrmt == NVCV_IMAGE_FORMAT_NV12_ER ||
-        dstFrmt == NVCV_IMAGE_FORMAT_NV21 || dstFrmt == NVCV_IMAGE_FORMAT_NV21_ER)
+    if (IsSemiPlanarYuv420(dstFrmt))
         dstHght = (dstHght * 3) >> 1;
     ASSERT_EQ(dstWdth, dstAccess->numCols());
     ASSERT_EQ(dstHght, dstAccess->numRows());
@@ -143,260 +414,24 @@ static void verifyOutput(nvcv::Tensor srcTensor, nvcv::ImageFormat srcFrmt,
     vector<T> srcVec(srcElems);
     vector<T> refVec(dstElems);
 
-    bool srcBGR  = (srcSwizzle == nvcv::Swizzle::S_ZYXW ||
-                    srcSwizzle == nvcv::Swizzle::S_ZYX1 ||
-                    srcSwizzle == nvcv::Swizzle::S_ZYX0);
-    bool dstBGR  = (dstSwizzle == nvcv::Swizzle::S_ZYXW ||
-                    dstSwizzle == nvcv::Swizzle::S_ZYX1 ||
-                    dstSwizzle == nvcv::Swizzle::S_ZYX0);
-    bool srcRGBA = (srcChannels == 4),
-         dstRGBA = (dstChannels == 4);
-    bool success = true;
+    bool srcBGR  = IsBGR(srcSwizzle);
+    bool dstBGR  = IsBGR(dstSwizzle);
+    bool srcRGBA = (srcChannels == 4);
+    bool dstRGBA = (dstChannels == 4);
 
     RandEng randEng(0);
 
-    constexpr size_t minCntAllRGB = 128 * 256 * 256; // Minimum # of pixels to call generateAllRGB.
-    constexpr size_t minCntAllHSV =  90 * 256 * 256; // Minimum # of pixels to call generateAllHSV.
-    constexpr double minMultHSV   = -0.5;            // Set hue range multiplier to be outside normal range
-    constexpr double maxMultHSV   =  1.5;            //   to test robustness to wrapped hue values.
-
-    // Populate source tensor.
-    if (srcChannels > 2)
-    {
-        if (code == NVCV_COLOR_HSV2BGR || code == NVCV_COLOR_HSV2BGR_FULL ||
-            code == NVCV_COLOR_HSV2RGB || code == NVCV_COLOR_HSV2RGB_FULL)
-        {
-            bool full = (code == NVCV_COLOR_HSV2BGR_FULL || code == NVCV_COLOR_HSV2RGB_FULL);
-
-            if (numPixels >= minCntAllHSV)
-            {
-                if (full) generateAllHSV<T, true >(srcVec, srcWdth, srcHght, imgs);
-                else      generateAllHSV<T, false>(srcVec, srcWdth, srcHght, imgs);
-            }
-            else
-            {
-                if (full) generateRandHSV<T, true >(srcVec, randEng, minMultHSV, maxMultHSV);
-                else      generateRandHSV<T, false>(srcVec, randEng, minMultHSV, maxMultHSV);
-            }
-        }
-        else
-        {
-            if (numPixels >= minCntAllRGB)
-                generateAllRGB(srcVec, srcWdth, srcHght, imgs, srcRGBA, srcBGR);
-            else
-                generateRandTestRGB(srcVec, randEng, srcRGBA, srcBGR);
-        }
-    }
-    else
-        generateRandVec(srcVec, randEng);
+    PopulateSource(srcVec, srcWdth, srcHght, imgs, srcChannels, numPixels, srcRGBA, srcBGR, code, randEng);
 
     // Copy source from image vector to device tensor.
     ASSERT_EQ(cudaSuccess, cudaMemcpy2D(srcData->basePtr(), srcAccess->rowStride(), srcVec.data(), srcPitchCPU,
                                         srcPitchCPU, (size_t)imgs * (size_t)srcHght, cudaMemcpyHostToDevice));
 
-    switch (code)
+    bool success = BuildCvtColorReference(refVec, srcVec, code, numPixels, wdth, hght, imgs, srcRGBA, srcBGR, dstRGBA,
+                                          dstBGR);
+    if (!success)
     {
-    // Add/remove alpha channel to RGB/BGR image.
-    case NVCV_COLOR_BGR2BGRA     :  // NVCV_COLOR_BGR2BGRA      =   0 (NVCV_COLOR_RGB2RGBA)
-    case NVCV_COLOR_BGRA2BGR     :  // NVCV_COLOR_BGRA2BGR      =   1 (NVCV_COLOR_RGBA2RGB)
-        changeAlpha<T>(refVec, srcVec, numPixels, srcRGBA, dstRGBA);
-        break;
-
-    // Convert between RGB and BGR (with or without alpha channel).
-    case NVCV_COLOR_BGR2RGBA     :  // NVCV_COLOR_BGR2RGBA      =   2 (NVCV_COLOR_RGB2BGRA)
-    case NVCV_COLOR_RGBA2BGR     :  // NVCV_COLOR_RGBA2BGR      =   3 (NVCV_COLOR_BGRA2RGB)
-    case NVCV_COLOR_BGR2RGB      :  // NVCV_COLOR_BGR2RGB       =   4 (NVCV_COLOR_BGR2RGB)
-    case NVCV_COLOR_BGRA2RGBA    :  // NVCV_COLOR_BGRA2RGBA     =   5 (NVCV_COLOR_RGBA2BGRA)
-        convertRGBtoBGR<T>(refVec, srcVec, numPixels, srcRGBA, dstRGBA);
-        break;
-
-    // Convert from RGB/BGR to grayscale.
-    case NVCV_COLOR_BGR2GRAY     :  // NVCV_COLOR_BGR2GRAY      =   6
-    case NVCV_COLOR_RGB2GRAY     :  // NVCV_COLOR_RGB2GRAY      =   7
-    case NVCV_COLOR_BGRA2GRAY    :  // NVCV_COLOR_BGRA2GRAY     =  10
-    case NVCV_COLOR_RGBA2GRAY    :  // NVCV_COLOR_RGBA2GRAY     =  11
-        convertRGBtoGray<T>(refVec, srcVec, numPixels, srcRGBA, srcBGR);
-        break;
-
-    // Convert from grayscale to RGB/BGR.
-    case NVCV_COLOR_GRAY2BGR     :  // NVCV_COLOR_GRAY2BGR      =   8 (NVCV_COLOR_GRAY2RGB)
-    case NVCV_COLOR_GRAY2BGRA    :  // NVCV_COLOR_GRAY2BGRA     =   9 (NVCV_COLOR_GRAY2RGBA)
-        convertGrayToRGB<T>(refVec, srcVec, numPixels, dstRGBA);
-        break;
-
-    // Convert between RGB/BGR   and BGR565 (16-bit images) --> Conversion codes 12-19 not implemented.
-    // Convert between grayscale and BGR565 (16-bit images) --> Conversion codes 20-21 not implemented.
-    // Convert between RGB/BGR   and BGR555 (16-bit images) --> Conversion codes 22-29 not implemented.
-    // Convert between grayscale and BGR555 (16-bit images) --> Conversion codes 30-31 not implemented.
-    // Convert between RGB/BGR   and CIE XYZ                --> Conversion codes 32-35 not implemented.
-    // Convert between RGB/BGR   and YCrCb (aka YCC)        --> Conversion codes 36-39 not implemented.
-
-    // Convert from RGB/BGR to HSV (hue, saturation, value).
-    case NVCV_COLOR_BGR2HSV      :  // NVCV_COLOR_BGR2HSV       =  40
-    case NVCV_COLOR_RGB2HSV      :  // NVCV_COLOR_RGB2HSV       =  41
-        convertRGBtoHSV<T, false>(refVec, srcVec, numPixels, srcRGBA, srcBGR);
-        break;
-
-    // Conversion codes 42 and 43 not specified.
-    // Convert from RGB/BGR to CIE Lab                          --> Conversion codes 44-45 not implemented.
-    // Bayer demosaicing to RGB/BGR                             --> Conversion codes 46-49 not implemented.
-    // Convert from RGB/BGR to CIE Luv                          --> Conversion codes 50-51 not implemented.
-    // Convert from RGB/BGR to HLS (hue, lightness, saturation) --> Conversion codes 52-53 not implemented.
-
-    // Convert from HSV (hue, saturation, value) to RGB/BGR.
-    case NVCV_COLOR_HSV2BGR      :  // NVCV_COLOR_HSV2BGR       =  54
-    case NVCV_COLOR_HSV2RGB      :  // NVCV_COLOR_HSV2RGB       =  55
-        convertHSVtoRGB<T, false>(refVec, srcVec, numPixels, dstRGBA, dstBGR);
-        break;
-
-    // Convert to RGB/BGR from CIE Lab                           --> Conversion codes 56-57 not implemented.
-    // Convert to RGB/BGR from CIE Luv                           --> Conversion codes 58-59 not implemented.
-    // Convert to RGB/BGR from HLS (hue, lightness, saturation)  --> Conversion codes 60-61 not implemented.
-    // VNG (Variable Number of Gradients) demosaicing to RGB/BGR --> Conversion codes 62-65 not implemented.
-
-    // Convert from RGB/BGR to full-range HSV (hue, saturation, value).
-    case NVCV_COLOR_BGR2HSV_FULL :  // NVCV_COLOR_BGR2HSV_FULL  =  66
-    case NVCV_COLOR_RGB2HSV_FULL :  // NVCV_COLOR_RGB2HSV_FULL  =  67
-        convertRGBtoHSV<T, true>(refVec, srcVec, numPixels, srcRGBA, srcBGR);
-        break;
-
-    // Convert from RGB/BGR to full-range HLS (hue, lightness, saturation) --> Conversion codes 68-69 not implemented.
-
-    // Convert from full-range HSV (hue, saturation, value) to RGB/BGR.
-    case NVCV_COLOR_HSV2BGR_FULL :  // NVCV_COLOR_HSV2BGR_FULL  =  70
-    case NVCV_COLOR_HSV2RGB_FULL :  // NVCV_COLOR_HSV2RGB_FULL  =  71
-        convertHSVtoRGB<T, true>(refVec, srcVec, numPixels, dstRGBA, dstBGR);
-        break;
-
-    // Convert from full-range HLS (hue, lightness, saturation) to RGB/BGR --> Conversion codes 72-73 not implemented.
-    // Convert from LRGB/LBGR (luminance, red, green, blue) to   CIE Lab   --> Conversion codes 74-75 not implemented.
-    // Convert from LRGB/LBGR (luminance, red, green, blue) to   CIE Luv   --> Conversion codes 76-77 not implemented.
-    // Convert to   LRGB/LBGR (luminance, red, green, blue) from CIE Lab   --> Conversion codes 78-79 not implemented.
-    // Convert to   LRGB/LBGR (luminance, red, green, blue) from CIE Luv   --> Conversion codes 80-81 not implemented.
-
-    // Convert from RGB/BGR to YUV.
-    case NVCV_COLOR_BGR2YUV      :  // NVCV_COLOR_BGR2YUV       =  82
-    case NVCV_COLOR_RGB2YUV      :  // NVCV_COLOR_RGB2YUV       =  83
-        convertRGBtoYUV_PAL<T>(refVec, srcVec, numPixels, srcRGBA, srcBGR);
-        break;
-
-    // Convert from YUV to RGB/BGR.
-    case NVCV_COLOR_YUV2BGR      :  // NVCV_COLOR_YUV2BGR       =  84
-    case NVCV_COLOR_YUV2RGB      :  // NVCV_COLOR_YUV2RGB       =  85
-        convertYUVtoRGB_PAL<T>(refVec, srcVec, numPixels, dstRGBA, dstBGR);
-        break;
-
-    // Bayer demosaicing to grayscale --> Conversion codes 86-89 not implemented.
-
-    // Convert from YUV 4:2:0 family to RGB/BGR.
-    case NVCV_COLOR_YUV2RGB_NV12 :  // NVCV_COLOR_YUV2RGB_NV12  =  90
-    case NVCV_COLOR_YUV2BGR_NV12 :  // NVCV_COLOR_YUV2BGR_NV12  =  91
-    case NVCV_COLOR_YUV2RGBA_NV12:  // NVCV_COLOR_YUV2RGBA_NV12 =  94
-    case NVCV_COLOR_YUV2BGRA_NV12:  // NVCV_COLOR_YUV2BGRA_NV12 =  95
-        convertNV12toRGB<T>(refVec, srcVec, wdth, hght, imgs, dstRGBA, dstBGR, false);
-        break;
-
-    case NVCV_COLOR_YUV2RGB_NV21 :  // NVCV_COLOR_YUV2RGB_NV21  =  92 (NVCV_COLOR_YUV420sp2RGB)
-    case NVCV_COLOR_YUV2BGR_NV21 :  // NVCV_COLOR_YUV2BGR_NV21  =  93 (NVCV_COLOR_YUV420sp2BGR)
-    case NVCV_COLOR_YUV2RGBA_NV21:  // NVCV_COLOR_YUV2RGBA_NV21 =  96 (NVCV_COLOR_YUV420sp2RGBA)
-    case NVCV_COLOR_YUV2BGRA_NV21:  // NVCV_COLOR_YUV2BGRA_NV21 =  97 (NVCV_COLOR_YUV420sp2BGRA)
-        convertNV12toRGB<T>(refVec, srcVec, wdth, hght, imgs, dstRGBA, dstBGR, true);
-        break;
-
-    case NVCV_COLOR_YUV2RGB_YV12 :  // NVCV_COLOR_YUV2RGB_YV12  =  98 (NVCV_COLOR_YUV420p2RGB)
-    case NVCV_COLOR_YUV2BGR_YV12 :  // NVCV_COLOR_YUV2BGR_YV12  =  99 (NVCV_COLOR_YUV420p2BGR)
-    case NVCV_COLOR_YUV2RGBA_YV12:  // NVCV_COLOR_YUV2RGBA_YV12 = 102 (NVCV_COLOR_YUV420p2RGBA)
-    case NVCV_COLOR_YUV2BGRA_YV12:  // NVCV_COLOR_YUV2BGRA_YV12 = 103 (NVCV_COLOR_YUV420p2BGRA)
-        convertYUVtoRGB_420<T>(refVec, srcVec, wdth, hght, imgs, dstRGBA, dstBGR, true);
-        break;
-
-    case NVCV_COLOR_YUV2RGB_IYUV :  // NVCV_COLOR_YUV2RGB_IYUV  = 100 (NVCV_COLOR_YUV2RGB_I420)
-    case NVCV_COLOR_YUV2BGR_IYUV :  // NVCV_COLOR_YUV2BGR_IYUV  = 101 (NVCV_COLOR_YUV2BGR_I420)
-    case NVCV_COLOR_YUV2RGBA_IYUV:  // NVCV_COLOR_YUV2RGBA_IYUV = 104 (NVCV_COLOR_YUV2RGBA_I420)
-    case NVCV_COLOR_YUV2BGRA_IYUV:  // NVCV_COLOR_YUV2BGRA_IYUV = 105 (NVCV_COLOR_YUV2BGRA_I420)
-        convertYUVtoRGB_420<T>(refVec, srcVec, wdth, hght, imgs, dstRGBA, dstBGR, false);
-        break;
-
-    // Convert from YUV 4:2:0 family to grayscale.
-    case NVCV_COLOR_YUV2GRAY_420 :  // NVCV_COLOR_YUV2GRAY_420  = 106 (NVCV_COLOR_YUV2GRAY_NV21, NVCV_COLOR_YUV2GRAY_NV12,
-                                    //                                 NVCV_COLOR_YUV2GRAY_YV12, NVCV_COLOR_YUV2GRAY_IYUV,
-                                    //                                 NVCV_COLOR_YUV2GRAY_I420, NVCV_COLOR_YUV420sp2GRAY,
-                                    //                                 NVCV_COLOR_YUV420p2GRAY)
-        convertYUVtoGray_420<T>(refVec, srcVec, wdth, hght, imgs);
-        break;
-
-    // Convert from YUV 4:2:2 family to RGB/BGR.
-    case NVCV_COLOR_YUV2RGB_UYVY :  // NVCV_COLOR_YUV2RGB_UYVY  = 107 ( NVCV_COLOR_YUV2RGB_Y422, NVCV_COLOR_YUV2RGB_UYNV)
-    case NVCV_COLOR_YUV2BGR_UYVY :  // NVCV_COLOR_YUV2BGR_UYVY  = 108 ( NVCV_COLOR_YUV2RGB_Y422, NVCV_COLOR_YUV2RGB_UYNV)
-    // Conversion codes 109 (NVCV_COLOR_YUV2RGB_VYUY) and 110 (NVCV_COLOR_YUV2BGR_VYUY) not available.
-    case NVCV_COLOR_YUV2RGBA_UYVY:  // NVCV_COLOR_YUV2RGBA_UYVY = 111 ( NVCV_COLOR_YUV2RGBA_Y422, NVCV_COLOR_YUV2RGBA_UYNV)
-    case NVCV_COLOR_YUV2BGRA_UYVY:  // NVCV_COLOR_YUV2BGRA_UYVY = 112 ( NVCV_COLOR_YUV2BGRA_Y422, NVCV_COLOR_YUV2BGRA_UYNV)
-        convertYUVtoRGB_422<T, false>(refVec, srcVec, wdth, hght, imgs, dstRGBA, dstBGR, false);
-        break;
-
-    // Conversion codes 113 (NVCV_COLOR_YUV2RGBA_VYUY) and 114 (NVCV_COLOR_YUV2BGRA_VYUY) not available.
-    case NVCV_COLOR_YUV2RGB_YUY2 :  // NVCV_COLOR_YUV2RGB_YUY2  = 115 (NVCV_COLOR_YUV2RGB_YUYV, NVCV_COLOR_YUV2RGB_YUNV)
-    case NVCV_COLOR_YUV2BGR_YUY2 :  // NVCV_COLOR_YUV2BGR_YUY2  = 116 (NVCV_COLOR_YUV2BGR_YUYV, NVCV_COLOR_YUV2BGR_YUNV)
-    case NVCV_COLOR_YUV2RGBA_YUY2:  // NVCV_COLOR_YUV2RGBA_YUY2 = 119 (NVCV_COLOR_YUV2RGBA_YUYV, NVCV_COLOR_YUV2RGBA_YUNV)
-    case NVCV_COLOR_YUV2BGRA_YUY2:  // NVCV_COLOR_YUV2BGRA_YUY2 = 120 (NVCV_COLOR_YUV2BGRA_YUYV, NVCV_COLOR_YUV2BGRA_YUNV)
-        convertYUVtoRGB_422<T, true>(refVec, srcVec, wdth, hght, imgs, dstRGBA, dstBGR, false);
-        break;
-
-    case NVCV_COLOR_YUV2RGB_YVYU :  // NVCV_COLOR_YUV2RGB_YVYU  = 117
-    case NVCV_COLOR_YUV2BGR_YVYU :  // NVCV_COLOR_YUV2BGR_YVYU  = 118
-    case NVCV_COLOR_YUV2RGBA_YVYU:  // NVCV_COLOR_YUV2RGBA_YVYU = 121
-    case NVCV_COLOR_YUV2BGRA_YVYU:  // NVCV_COLOR_YUV2BGRA_YVYU = 122
-        convertYUVtoRGB_422<T, true>(refVec, srcVec, wdth, hght, imgs, dstRGBA, dstBGR, true);
-        break;
-
-    // Convert from YUV 4:2:2 family to grayscale.
-    case NVCV_COLOR_YUV2GRAY_UYVY:  // NVCV_COLOR_YUV2GRAY_UYVY = 123 (NVCV_COLOR_YUV2GRAY_Y422, NVCV_COLOR_YUV2GRAY_UYNV)
-        convertYUVtoGray_422<T, false>(refVec, srcVec, numPixels);
-        break;
-
-    case NVCV_COLOR_YUV2GRAY_YUY2:  // NVCV_COLOR_YUV2GRAY_YUY2 = 124 (NVCV_COLOR_YUV2GRAY_YVYU, NVCV_COLOR_YUV2GRAY_YUYV,
-                                    //                                 NVCV_COLOR_YUV2GRAY_YUNV)
-        convertYUVtoGray_422<T, true>(refVec, srcVec, numPixels);
-        break;
-
-    // RGB/BGA alpha premultiplication --> Conversion codes 125-126 not implemented.
-
-    // Convert from RGB/BGR to YUV 4:2:0 family.
-    case NVCV_COLOR_RGB2YUV_I420 :  // NVCV_COLOR_RGB2YUV_I420  = 127 (NVCV_COLOR_RGB2YUV_IYUV)
-    case NVCV_COLOR_BGR2YUV_I420 :  // NVCV_COLOR_BGR2YUV_I420  = 128 (NVCV_COLOR_BGR2YUV_IYUV)
-    case NVCV_COLOR_RGBA2YUV_I420:  // NVCV_COLOR_RGBA2YUV_I420 = 129 (NVCV_COLOR_RGBA2YUV_IYUV)
-    case NVCV_COLOR_BGRA2YUV_I420:  // NVCV_COLOR_BGRA2YUV_I420 = 130 (NVCV_COLOR_BGRA2YUV_IYUV)
-        convertRGBtoYUV_420<T>(refVec, srcVec, wdth, hght, imgs, srcRGBA, srcBGR, false);
-        break;
-
-    case NVCV_COLOR_RGB2YUV_YV12 :  // NVCV_COLOR_RGB2YUV_YV12  = 131
-    case NVCV_COLOR_BGR2YUV_YV12 :  // NVCV_COLOR_BGR2YUV_YV12  = 132
-    case NVCV_COLOR_RGBA2YUV_YV12:  // NVCV_COLOR_RGBA2YUV_YV12 = 133
-    case NVCV_COLOR_BGRA2YUV_YV12:  // NVCV_COLOR_BGRA2YUV_YV12 = 134
-        convertRGBtoYUV_420<T>(refVec, srcVec, wdth, hght, imgs, srcRGBA, srcBGR, true);
-        break;
-
-    // Edge-aware demosaicing to RGB/BGR --> Conversion codes 135-138 not implemented.
-    // OpenCV COLORCVT_MAX               --> Conversion code  139     not implemented.
-
-    // Convert RGB/BGR to YUV 4:2:0 family (two plane YUV; not in OpenCV).
-    case NVCV_COLOR_RGB2YUV_NV12 :  // NVCV_COLOR_RGB2YUV_NV12  = 140
-    case NVCV_COLOR_BGR2YUV_NV12 :  // NVCV_COLOR_BGR2YUV_NV12  = 141
-    case NVCV_COLOR_RGBA2YUV_NV12:  // NVCV_COLOR_RGBA2YUV_NV12 = 144
-    case NVCV_COLOR_BGRA2YUV_NV12:  // NVCV_COLOR_BGRA2YUV_NV12 = 145
-        convertRGBtoNV12<T>(refVec, srcVec, wdth, hght, imgs, srcRGBA, srcBGR, false);
-        break;
-
-    case NVCV_COLOR_RGB2YUV_NV21 :  // NVCV_COLOR_RGB2YUV_NV21  = 142 (NVCV_COLOR_RGB2YUV420sp)
-    case NVCV_COLOR_BGR2YUV_NV21 :  // NVCV_COLOR_BGR2YUV_NV21  = 143 (NVCV_COLOR_BGR2YUV420sp)
-    case NVCV_COLOR_RGBA2YUV_NV21:  // NVCV_COLOR_RGBA2YUV_NV21 = 146 (NVCV_COLOR_RGBA2YUV420sp)
-    case NVCV_COLOR_BGRA2YUV_NV21:  // NVCV_COLOR_BGRA2YUV_NV21 = 147 (NVCV_COLOR_BGRA2YUV420sp)
-        convertRGBtoNV12<T>(refVec, srcVec, wdth, hght, imgs, srcRGBA, srcBGR, true);
-        break;
-
-    default:
         std::cerr << "**** ERROR: Color conversion not implemented for conversion code " << code << ". ****\n\n";
-        success = false;
     }
 
     if (success)
@@ -424,8 +459,12 @@ static void verifyOutput(nvcv::Tensor srcTensor, nvcv::ImageFormat srcFrmt,
         // Compare "gold" reference to computed output.
         if (dstFrmt == NVCV_IMAGE_FORMAT_HSV8 || dstFrmt == NVCV_IMAGE_FORMAT_HSVf32)
         {
-            const bool   full  = (code == NVCV_COLOR_BGR2HSV_FULL || code == NVCV_COLOR_RGB2HSV_FULL);
-            const double range = (sizeof(T) > 1) ? 360.0 : (full ? 256.0 : 180.0);
+            const bool full = (code == NVCV_COLOR_BGR2HSV_FULL || code == NVCV_COLOR_RGB2HSV_FULL);
+            double     range = 360.0;
+            if constexpr (sizeof(T) == 1)
+            {
+                range = full ? 256.0 : 180.0;
+            }
 
             EXPECT_NEAR_HSV_VEC_CNT(refVec, dstVec, range, maxDiff, maxErrCnt, success);
         }
@@ -734,9 +773,9 @@ TEST_P(OpCvtColor, correct_output)
     nvcv::Tensor dstTensor = util::CreateTensor(imgs, wdth, hght, dstFrmt);
 
     NVCVDataType dataType;
-    ASSERT_EQ(nvcvImageFormatGetPlaneDataType(srcFrmt, 0, &dataType), NVCV_SUCCESS);
+    ASSERT_EQ(nvcvImageFormatGetPlaneDataType(static_cast<NVCVImageFormat>(srcFrmt), 0, &dataType), NVCV_SUCCESS);
 
-    switch (dataType)
+    switch (dataType) // NOSONAR: typed test dispatch covers all supported source channel layouts.
     {
     case NVCV_DATA_TYPE_U8:
     case NVCV_DATA_TYPE_2U8:
@@ -788,6 +827,363 @@ TEST_P(OpCvtColor, correct_output)
         FAIL() << "Unsupported tensor data type.";
         break;
     }
+}
+
+//--------------------------------------------------------------------------------------------------------------------//
+
+NVCV_TEST_SUITE_P(OpCvtColorVarShapeReference,
+                  test::ValueList<NVCVImageFormat, NVCVImageFormat, NVCVColorConversionCode, int>{
+  //  Input Format,            Output Format,           Conversion Code,       Max Diff
+                      { NVCV_IMAGE_FORMAT_RGB8,  NVCV_IMAGE_FORMAT_BGR8,  NVCV_COLOR_RGB2BGR, 0},
+                      { NVCV_IMAGE_FORMAT_RGB8, NVCV_IMAGE_FORMAT_RGBA8, NVCV_COLOR_RGB2RGBA, 0},
+                      {NVCV_IMAGE_FORMAT_RGBA8,  NVCV_IMAGE_FORMAT_RGB8, NVCV_COLOR_RGBA2RGB, 0},
+                      { NVCV_IMAGE_FORMAT_RGB8,    NVCV_IMAGE_FORMAT_Y8, NVCV_COLOR_RGB2GRAY, 1},
+                      { NVCV_IMAGE_FORMAT_HSV8,  NVCV_IMAGE_FORMAT_RGB8,  NVCV_COLOR_HSV2RGB, 1},
+});
+
+TEST_P(OpCvtColorVarShapeReference, benchmark_kernels_match_independent_reference)
+{
+    nvcv::ImageFormat       srcFormat{GetParamValue<0>()};
+    nvcv::ImageFormat       dstFormat{GetParamValue<1>()};
+    NVCVColorConversionCode code{GetParamValue<2>()};
+    int                     maxDiff = GetParamValue<3>();
+
+    // Odd, nonuniform dimensions cover scalar tails and per-image var-shape addressing.
+    const std::vector<nvcv::Size2D> sizes{
+        {31, 23},
+        {37, 19},
+        {65, 17}
+    };
+    const int srcChannels = srcFormat.numChannels();
+    const int dstChannels = dstFormat.numChannels();
+
+    std::vector<nvcv::Image>          srcImages;
+    std::vector<nvcv::Image>          dstImages;
+    std::vector<std::vector<uint8_t>> srcVectors;
+    std::vector<std::vector<uint8_t>> refVectors;
+    srcImages.reserve(sizes.size());
+    dstImages.reserve(sizes.size());
+    srcVectors.reserve(sizes.size());
+    refVectors.reserve(sizes.size());
+
+    RandEng randEng(0);
+    for (const nvcv::Size2D &size : sizes)
+    {
+        const size_t numPixels = static_cast<size_t>(size.w) * size.h;
+        srcVectors.emplace_back(numPixels * srcChannels);
+        refVectors.emplace_back(numPixels * dstChannels);
+
+        const bool srcRGBA = srcChannels == 4;
+        const bool dstRGBA = dstChannels == 4;
+        const bool srcBGR  = IsBGR(srcFormat.swizzle());
+        const bool dstBGR  = IsBGR(dstFormat.swizzle());
+        PopulateSource(srcVectors.back(), size.w, size.h, 1, srcChannels, numPixels, srcRGBA, srcBGR, code, randEng);
+        ASSERT_TRUE(BuildCvtColorReference(refVectors.back(), srcVectors.back(), code, numPixels, size.w, size.h, 1,
+                                           srcRGBA, srcBGR, dstRGBA, dstBGR));
+
+        srcImages.emplace_back(size, srcFormat);
+        dstImages.emplace_back(size, dstFormat);
+        auto srcData = srcImages.back().exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_TRUE(srcData);
+        const size_t srcRowBytes = static_cast<size_t>(size.w) * srcFormat.planePixelStrideBytes(0);
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy2D(srcData->plane(0).basePtr, srcData->plane(0).rowStride, srcVectors.back().data(),
+                               srcRowBytes, srcRowBytes, size.h, cudaMemcpyHostToDevice));
+    }
+
+    nvcv::ImageBatchVarShape srcBatch(static_cast<int32_t>(sizes.size()));
+    nvcv::ImageBatchVarShape dstBatch(static_cast<int32_t>(sizes.size()));
+    srcBatch.pushBack(srcImages.begin(), srcImages.end());
+    dstBatch.pushBack(dstImages.begin(), dstImages.end());
+
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+    cvcuda::CvtColor op;
+    EXPECT_NO_THROW(op(stream, srcBatch, dstBatch, code));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    for (size_t i = 0; i < sizes.size(); ++i)
+    {
+        SCOPED_TRACE(i);
+        auto dstData = dstImages[i].exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_TRUE(dstData);
+        const size_t         dstRowBytes = static_cast<size_t>(sizes[i].w) * dstFormat.planePixelStrideBytes(0);
+        std::vector<uint8_t> dstVector(static_cast<size_t>(sizes[i].h) * dstRowBytes);
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy2D(dstVector.data(), dstRowBytes, dstData->plane(0).basePtr, dstData->plane(0).rowStride,
+                               dstRowBytes, sizes[i].h, cudaMemcpyDeviceToHost));
+
+        if (maxDiff == 0)
+        {
+            EXPECT_EQ(refVectors[i], dstVector);
+        }
+        else
+        {
+            ASSERT_EQ(refVectors[i].size(), dstVector.size());
+            for (size_t j = 0; j < refVectors[i].size(); ++j)
+            {
+                // This one-level tolerance covers fixed-point luma/HSV rounding against the scalar reference.
+                EXPECT_NEAR(refVectors[i][j], dstVector[j], maxDiff) << "At index " << j;
+            }
+        }
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+//--------------------------------------------------------------------------------------------------------------------//
+
+template<typename T>
+static std::vector<uint8_t> GenerateCvtColorPlanarParitySource(int width, int height, int numImages, int srcChannels,
+                                                               NVCVColorConversionCode code, bool srcRGBA, bool srcBGR)
+{
+    const size_t   numPixels = static_cast<size_t>(numImages) * height * width;
+    std::vector<T> srcVec(numPixels * srcChannels);
+    RandEng        randEng(0);
+
+    PopulateSource(srcVec, width, height, numImages, srcChannels, numPixels, srcRGBA, srcBGR, code, randEng);
+
+    std::vector<uint8_t> srcBytes(srcVec.size() * sizeof(T));
+    std::memcpy(srcBytes.data(), srcVec.data(), srcBytes.size());
+    return srcBytes;
+}
+
+static void RunCvtColorTensorPlanarParity(int width, int height, int numImages, int srcChannels, int dstChannels,
+                                          NVCVColorConversionCode code, bool srcRGBA, bool srcBGR)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    constexpr int elemSize     = 1;
+    const int     srcRowStride = width * srcChannels * elemSize;
+    const int     dstRowStride = width * dstChannels * elemSize;
+
+    nvcv::Tensor srcI(
+        {
+            {numImages, height, width, srcChannels},
+            "NHWC"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor dstI(
+        {
+            {numImages, height, width, dstChannels},
+            "NHWC"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor srcP(
+        {
+            {numImages, srcChannels, height, width},
+            "NCHW"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor dstP(
+        {
+            {numImages, dstChannels, height, width},
+            "NCHW"
+    },
+        nvcv::TYPE_U8);
+
+    auto srcIData = srcI.exportData<nvcv::TensorDataStridedCuda>();
+    auto dstIData = dstI.exportData<nvcv::TensorDataStridedCuda>();
+    auto srcPData = srcP.exportData<nvcv::TensorDataStridedCuda>();
+    auto dstPData = dstP.exportData<nvcv::TensorDataStridedCuda>();
+    ASSERT_TRUE(srcIData && dstIData && srcPData && dstPData);
+
+    auto srcIAcc = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcIData);
+    auto dstIAcc = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstIData);
+    auto srcPAcc = nvcv::TensorDataAccessStridedImagePlanar::Create(*srcPData);
+    auto dstPAcc = nvcv::TensorDataAccessStridedImagePlanar::Create(*dstPData);
+    ASSERT_TRUE(srcIAcc && dstIAcc && srcPAcc && dstPAcc);
+
+    const auto srcHwcBytes
+        = GenerateCvtColorPlanarParitySource<uint8_t>(width, height, numImages, srcChannels, code, srcRGBA, srcBGR);
+    const size_t sampleBytes = static_cast<size_t>(height) * srcRowStride;
+    for (int i = 0; i < numImages; ++i)
+    {
+        const auto           sampleStart = srcHwcBytes.begin() + static_cast<ptrdiff_t>(i * sampleBytes);
+        std::vector<uint8_t> hwc(sampleStart, sampleStart + static_cast<ptrdiff_t>(sampleBytes));
+
+        test::planar::UploadInterleavedSample(*srcIAcc, i, hwc, width, height, srcRowStride);
+        test::planar::UploadPlanarSample(*srcPAcc, i,
+                                         test::planar::DeinterleaveToPlanes(hwc, width, height, srcChannels, elemSize),
+                                         width, height, srcChannels, elemSize);
+    }
+
+    cvcuda::CvtColor op;
+    EXPECT_NO_THROW(op(stream, srcI, dstI, code));
+    EXPECT_NO_THROW(op(stream, srcP, dstP, code));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    for (int i = 0; i < numImages; ++i)
+    {
+        SCOPED_TRACE(i);
+        auto gpuInter    = test::planar::DownloadInterleavedSample(*dstIAcc, i, width, height, dstRowStride);
+        auto planesOut   = test::planar::DownloadPlanarSample(*dstPAcc, i, width, height, dstChannels, elemSize);
+        auto planarInter = test::planar::InterleaveFromPlanes(planesOut, width, height, dstChannels, elemSize);
+
+        EXPECT_EQ(gpuInter, planarInter);
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+template<typename T>
+static void RunCvtColorVarShapePlanarParity(int width, int height, int numImages, nvcv::ImageFormat planarSrcFmt,
+                                            nvcv::ImageFormat interleavedSrcFmt, nvcv::ImageFormat planarDstFmt,
+                                            nvcv::ImageFormat interleavedDstFmt, NVCVColorConversionCode code,
+                                            bool srcRGBA, bool srcBGR)
+{
+    cudaStream_t stream;
+    ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+
+    const int srcChannels  = planarSrcFmt.numChannels();
+    const int dstChannels  = planarDstFmt.numChannels();
+    const int elemSize     = sizeof(T);
+    const int srcRowStride = width * srcChannels * elemSize;
+    const int dstRowStride = width * dstChannels * elemSize;
+
+    std::vector<nvcv::Image> srcI;
+    std::vector<nvcv::Image> dstI;
+    std::vector<nvcv::Image> srcP;
+    std::vector<nvcv::Image> dstP;
+    for (int i = 0; i < numImages; ++i)
+    {
+        srcI.emplace_back(nvcv::Size2D{width, height}, interleavedSrcFmt);
+        dstI.emplace_back(nvcv::Size2D{width, height}, interleavedDstFmt);
+        srcP.emplace_back(nvcv::Size2D{width, height}, planarSrcFmt);
+        dstP.emplace_back(nvcv::Size2D{width, height}, planarDstFmt);
+    }
+
+    nvcv::ImageBatchVarShape batchSrcI(numImages);
+    nvcv::ImageBatchVarShape batchDstI(numImages);
+    nvcv::ImageBatchVarShape batchSrcP(numImages);
+    nvcv::ImageBatchVarShape batchDstP(numImages);
+    batchSrcI.pushBack(srcI.begin(), srcI.end());
+    batchDstI.pushBack(dstI.begin(), dstI.end());
+    batchSrcP.pushBack(srcP.begin(), srcP.end());
+    batchDstP.pushBack(dstP.begin(), dstP.end());
+
+    const auto srcHwcBytes
+        = GenerateCvtColorPlanarParitySource<T>(width, height, numImages, srcChannels, code, srcRGBA, srcBGR);
+    const size_t sampleBytes = static_cast<size_t>(height) * srcRowStride;
+    for (int i = 0; i < numImages; ++i)
+    {
+        const auto           sampleStart = srcHwcBytes.begin() + static_cast<ptrdiff_t>(i * sampleBytes);
+        std::vector<uint8_t> hwc(sampleStart, sampleStart + static_cast<ptrdiff_t>(sampleBytes));
+
+        auto idata = srcI[i].exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_EQ(cudaSuccess, cudaMemcpy2D(idata->plane(0).basePtr, idata->plane(0).rowStride, hwc.data(),
+                                            srcRowStride, srcRowStride, height, cudaMemcpyHostToDevice));
+
+        auto      planes     = test::planar::DeinterleaveToPlanes(hwc, width, height, srcChannels, elemSize);
+        auto      pdata      = srcP[i].exportData<nvcv::ImageDataStridedCuda>();
+        const int planeBytes = width * height * elemSize;
+        ASSERT_EQ(pdata->numPlanes(), srcChannels);
+        for (int c = 0; c < srcChannels; ++c)
+        {
+            ASSERT_EQ(cudaSuccess,
+                      cudaMemcpy2D(pdata->plane(c).basePtr, pdata->plane(c).rowStride, planes.data() + c * planeBytes,
+                                   width * elemSize, width * elemSize, height, cudaMemcpyHostToDevice));
+        }
+    }
+
+    cvcuda::CvtColor op;
+    EXPECT_NO_THROW(op(stream, batchSrcI, batchDstI, code));
+    EXPECT_NO_THROW(op(stream, batchSrcP, batchDstP, code));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    const int dstPlaneBytes = width * height * elemSize;
+    for (int i = 0; i < numImages; ++i)
+    {
+        SCOPED_TRACE(i);
+        std::vector<uint8_t> gpuInter(height * dstRowStride);
+        auto                 idata = dstI[i].exportData<nvcv::ImageDataStridedCuda>();
+        EXPECT_EQ(cudaSuccess, cudaMemcpy2D(gpuInter.data(), dstRowStride, idata->plane(0).basePtr,
+                                            idata->plane(0).rowStride, dstRowStride, height, cudaMemcpyDeviceToHost));
+
+        std::vector<uint8_t> planesOut(width * height * dstChannels * elemSize);
+        auto                 pdata = dstP[i].exportData<nvcv::ImageDataStridedCuda>();
+        ASSERT_EQ(pdata->numPlanes(), dstChannels);
+        for (int c = 0; c < dstChannels; ++c)
+        {
+            EXPECT_EQ(cudaSuccess,
+                      cudaMemcpy2D(planesOut.data() + c * dstPlaneBytes, width * elemSize, pdata->plane(c).basePtr,
+                                   pdata->plane(c).rowStride, width * elemSize, height, cudaMemcpyDeviceToHost));
+        }
+        auto planarInter = test::planar::InterleaveFromPlanes(planesOut, width, height, dstChannels, elemSize);
+
+        EXPECT_EQ(gpuInter, planarInter);
+    }
+
+    ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
+}
+
+// clang-format off
+
+NVCV_TEST_SUITE_P(OpCvtColorPlanarTensor,
+test::ValueList<int, int, int, int, int, NVCVColorConversionCode, bool, bool>
+{
+    //  W,  H,  N, SrcC, DstC, Conversion Code,     SrcRGBA, SrcBGR
+    { 31, 23, 2,    3,    3,  NVCV_COLOR_RGB2BGR,    false,  false},
+    { 29, 17, 1,    3,    4, NVCV_COLOR_RGB2RGBA,    false,  false},
+    { 33, 19, 2,    4,    3, NVCV_COLOR_RGBA2RGB,     true,  false},
+    { 27, 25, 2,    3,    1, NVCV_COLOR_RGB2GRAY,    false,  false},
+    { 35, 21, 1,    1,    3, NVCV_COLOR_GRAY2RGB,    false,  false},
+    { 23, 31, 2,    3,    3,  NVCV_COLOR_RGB2HSV,    false,  false},
+    { 25, 29, 1,    3,    3,  NVCV_COLOR_HSV2RGB,    false,  false},
+    { 37, 27, 2,    3,    3,  NVCV_COLOR_RGB2YUV,    false,  false},
+    { 39, 23, 1,    3,    3,  NVCV_COLOR_YUV2RGB,    false,  false},
+});
+
+NVCV_TEST_SUITE_P(OpCvtColorPlanarVarShape,
+test::ValueList<int, int, int, nvcv::ImageFormat, nvcv::ImageFormat, nvcv::ImageFormat, nvcv::ImageFormat, NVCVColorConversionCode, bool, bool>
+{
+    //  W,  H,  N, Planar Src,       Interleaved Src, Planar Dst,        Interleaved Dst, Conversion Code,   SrcRGBA, SrcBGR
+    { 31, 23, 2,  nvcv::FMT_RGB8p,  nvcv::FMT_RGB8,  nvcv::FMT_RGBA8p, nvcv::FMT_RGBA8, NVCV_COLOR_RGB2RGBA,  false,  false},
+    { 29, 17, 1, nvcv::FMT_RGBA8p, nvcv::FMT_RGBA8,   nvcv::FMT_RGB8p,  nvcv::FMT_RGB8, NVCV_COLOR_RGBA2RGB,   true,  false},
+    { 33, 21, 2,  nvcv::FMT_RGB8p,  nvcv::FMT_RGB8,    nvcv::FMT_BGR8p,  nvcv::FMT_BGR8, NVCV_COLOR_RGB2BGR,   false, false},
+    { 35, 19, 2,  nvcv::FMT_RGB8p,  nvcv::FMT_RGB8,    nvcv::FMT_RGB8p,  nvcv::FMT_RGB8, NVCV_COLOR_RGB2HSV,   false, false},
+    { 37, 23, 1,  nvcv::FMT_RGB8p,  nvcv::FMT_RGB8,    nvcv::FMT_RGB8p,  nvcv::FMT_RGB8, NVCV_COLOR_HSV2RGB,   false, false},
+    { 39, 25, 2,  nvcv::FMT_BGR8p,  nvcv::FMT_BGR8,    nvcv::FMT_BGR8p,  nvcv::FMT_BGR8, NVCV_COLOR_BGR2HSV_FULL, false, true},
+    { 41, 27, 1,  nvcv::FMT_BGR8p,  nvcv::FMT_BGR8,    nvcv::FMT_BGR8p,  nvcv::FMT_BGR8, NVCV_COLOR_HSV2BGR_FULL, false, true},
+    { 43, 29, 2,  nvcv::FMT_RGB8p,  nvcv::FMT_RGB8,    nvcv::FMT_RGB8p,  nvcv::FMT_RGB8, NVCV_COLOR_RGB2YUV,   false, false},
+    { 45, 31, 1,  nvcv::FMT_RGB8p,  nvcv::FMT_RGB8,    nvcv::FMT_RGB8p,  nvcv::FMT_RGB8, NVCV_COLOR_YUV2RGB,   false, false},
+    { 47, 33, 2,  nvcv::FMT_BGR8p,  nvcv::FMT_BGR8,    nvcv::FMT_BGR8p,  nvcv::FMT_BGR8, NVCV_COLOR_BGR2YUV,   false, true},
+    { 49, 35, 1,  nvcv::FMT_BGR8p,  nvcv::FMT_BGR8,    nvcv::FMT_BGR8p,  nvcv::FMT_BGR8, NVCV_COLOR_YUV2BGR,   false, true},
+});
+
+NVCV_TEST_SUITE_P(OpCvtColorPlanarVarShapeFloat,
+test::ValueList<int, int, int, nvcv::ImageFormat, nvcv::ImageFormat, nvcv::ImageFormat, nvcv::ImageFormat, NVCVColorConversionCode, bool, bool>
+{
+    //  W,  H,  N, Planar Src,          Interleaved Src,    Planar Dst,          Interleaved Dst, Conversion Code,      SrcRGBA, SrcBGR
+    { 23, 17, 2, nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32, nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32, NVCV_COLOR_RGB2HSV,      false, false},
+    { 25, 19, 1, nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32, nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32, NVCV_COLOR_HSV2RGB,      false, false},
+    { 27, 21, 2, nvcv::FMT_BGRf32p,  nvcv::FMT_BGRf32, nvcv::FMT_BGRf32p,  nvcv::FMT_BGRf32, NVCV_COLOR_BGR2HSV_FULL, false, true },
+    { 29, 23, 1, nvcv::FMT_BGRf32p,  nvcv::FMT_BGRf32, nvcv::FMT_BGRf32p,  nvcv::FMT_BGRf32, NVCV_COLOR_HSV2BGR_FULL, false, true },
+    { 31, 25, 2, nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32, nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32, NVCV_COLOR_RGB2YUV,      false, false},
+    { 33, 27, 1, nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32, nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32, NVCV_COLOR_YUV2RGB,      false, false},
+});
+
+// clang-format on
+
+TEST_P(OpCvtColorPlanarTensor, tensor_matches_interleaved)
+{
+    RunCvtColorTensorPlanarParity(GetParamValue<0>(), GetParamValue<1>(), GetParamValue<2>(), GetParamValue<3>(),
+                                  GetParamValue<4>(), GetParamValue<5>(), GetParamValue<6>(), GetParamValue<7>());
+}
+
+TEST_P(OpCvtColorPlanarVarShape, varshape_matches_interleaved)
+{
+    RunCvtColorVarShapePlanarParity<uint8_t>(
+        GetParamValue<0>(), GetParamValue<1>(), GetParamValue<2>(), GetParamValue<3>(), GetParamValue<4>(),
+        GetParamValue<5>(), GetParamValue<6>(), GetParamValue<7>(), GetParamValue<8>(), GetParamValue<9>());
+}
+
+TEST_P(OpCvtColorPlanarVarShapeFloat, varshape_matches_interleaved)
+{
+    RunCvtColorVarShapePlanarParity<float>(
+        GetParamValue<0>(), GetParamValue<1>(), GetParamValue<2>(), GetParamValue<3>(), GetParamValue<4>(),
+        GetParamValue<5>(), GetParamValue<6>(), GetParamValue<7>(), GetParamValue<8>(), GetParamValue<9>());
 }
 
 //--------------------------------------------------------------------------------------------------------------------//
@@ -917,7 +1313,7 @@ TEST_P(OpCvtColor_circular, varshape_correct_output)
     // clang-format on
 
     NVCVDataType nvcvDataType;
-    ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetPlaneDataType(srcFormat, 0, &nvcvDataType));
+    ASSERT_EQ(NVCV_SUCCESS, nvcvImageFormatGetPlaneDataType(static_cast<NVCVImageFormat>(srcFormat), 0, &nvcvDataType));
 
     NVCVColorConversionCode src2dstCode{GetParamValue<5>()};
     NVCVColorConversionCode dst2srcCode{GetParamValue<6>()};
@@ -925,9 +1321,9 @@ TEST_P(OpCvtColor_circular, varshape_correct_output)
     double maxDiff{GetParamValue<7>()};
 
     // Create input varshape
-    std::default_random_engine         rng;
-    std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
-    std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
+    std::default_random_engine    rng;
+    std::uniform_int_distribution udistWidth(ScaledSize(width, 0.8), ScaledSize(width, 1.1));
+    std::uniform_int_distribution udistHeight(ScaledSize(height, 0.8), ScaledSize(height, 1.1));
 
     std::vector<nvcv::Image> imgSrc;
 
@@ -953,7 +1349,7 @@ TEST_P(OpCvtColor_circular, varshape_correct_output)
             generateRandVec(reinterpret_cast<float *>(srcVec[i].data()), srcVec[i].size() / sizeof(float), rng);
             break;
         default:
-            generateRandVec(reinterpret_cast<uint8_t *>(srcVec[i].data()), srcVec[i].size(), rng);
+            generateRandVec(srcVec[i].data(), srcVec[i].size(), rng);
             break;
         }
 
@@ -1026,6 +1422,45 @@ TEST(OpCvtColor_negative, create_with_null_handle)
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, cvcudaCvtColorCreate(nullptr));
 }
 
+TEST(OpCvtColor_Negative, planar_tensor_layout_mismatch)
+{
+    nvcv::Tensor srcTensor(
+        {
+            {1, 3, 8, 8},
+            "NCHW"
+    },
+        nvcv::TYPE_U8);
+    nvcv::Tensor dstTensor(
+        {
+            {1, 8, 8, 3},
+            "NHWC"
+    },
+        nvcv::TYPE_U8);
+
+    cvcuda::CvtColor cvtColorOp;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { cvtColorOp(nullptr, srcTensor, dstTensor, NVCV_COLOR_RGB2BGR); }));
+}
+
+TEST(OpCvtColor_Negative, planar_varshape_layout_mismatch)
+{
+    std::vector<nvcv::Image> imgSrc;
+    imgSrc.emplace_back(nvcv::Size2D{8, 8}, nvcv::FMT_RGB8p);
+
+    nvcv::ImageBatchVarShape batchSrc(1);
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+
+    std::vector<nvcv::Image> imgDst;
+    imgDst.emplace_back(nvcv::Size2D{8, 8}, nvcv::FMT_RGBA8);
+
+    nvcv::ImageBatchVarShape batchDst(1);
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    cvcuda::CvtColor cvtColorOp;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall([&] { cvtColorOp(nullptr, batchSrc, batchDst, NVCV_COLOR_RGB2RGBA); }));
+}
+
 TEST(OpCvtColor_negative, mismatch_shape)
 {
     nvcv::Tensor tensorY8   = util::CreateTensor(2, 224, 224, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_Y8});
@@ -1036,17 +1471,21 @@ TEST(OpCvtColor_negative, mismatch_shape)
     // run operator
     cvcuda::CvtColor cvtColorOp;
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-              nvcv::ProtectCall([&] { cvtColorOp(nullptr, tensorY8, tensorBGR8, NVCV_COLOR_GRAY2BGR); }));
+              nvcv::ProtectCall([&cvtColorOp, &tensorY8, &tensorBGR8]
+                                { cvtColorOp(nullptr, tensorY8, tensorBGR8, NVCV_COLOR_GRAY2BGR); }));
 
     // reserved conversion invalid too
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-              nvcv::ProtectCall([&] { cvtColorOp(nullptr, tensorBGR8, tensorY8, NVCV_COLOR_BGR2GRAY); }));
+              nvcv::ProtectCall([&cvtColorOp, &tensorBGR8, &tensorY8]
+                                { cvtColorOp(nullptr, tensorBGR8, tensorY8, NVCV_COLOR_BGR2GRAY); }));
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-              nvcv::ProtectCall([&] { cvtColorOp(nullptr, tensorHSV8, tensorBGR8, NVCV_COLOR_HSV2BGR); }));
+              nvcv::ProtectCall([&cvtColorOp, &tensorHSV8, &tensorBGR8]
+                                { cvtColorOp(nullptr, tensorHSV8, tensorBGR8, NVCV_COLOR_HSV2BGR); }));
 
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-              nvcv::ProtectCall([&] { cvtColorOp(nullptr, tensorBGR8, tensorRGB8, NVCV_COLOR_BGR2RGB); }));
+              nvcv::ProtectCall([&cvtColorOp, &tensorBGR8, &tensorRGB8]
+                                { cvtColorOp(nullptr, tensorBGR8, tensorRGB8, NVCV_COLOR_BGR2RGB); }));
 }
 
 TEST(OpCvtColor_negative, invalid_shape_BGR_to_YUV420xp)
@@ -1056,7 +1495,7 @@ TEST(OpCvtColor_negative, invalid_shape_BGR_to_YUV420xp)
                                          util::CreateTensor(1, 8, 8, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_BGRf16}),
                                          util::CreateTensor(1, 16, 16, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_BGR8})};
 
-    nvcv::Tensor dstTensor = nvcv::Tensor(
+    auto dstTensor = nvcv::Tensor(
         {
             {8, 8, 1},
             "HWC"
@@ -1065,10 +1504,11 @@ TEST(OpCvtColor_negative, invalid_shape_BGR_to_YUV420xp)
 
     // run operator
     cvcuda::CvtColor cvtColorOp;
-    for (auto &srcTensor : srcTensors)
+    for (const auto &srcTensor : srcTensors)
     {
         EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-                  nvcv::ProtectCall([&] { cvtColorOp(nullptr, srcTensor, dstTensor, NVCV_COLOR_BGR2YUV_YV12); }));
+                  nvcv::ProtectCall([&cvtColorOp, &srcTensor, &dstTensor]
+                                    { cvtColorOp(nullptr, srcTensor, dstTensor, NVCV_COLOR_BGR2YUV_YV12); }));
     }
 }
 
@@ -1099,16 +1539,18 @@ TEST(OpCvtColor_negative, invalid_shape_YUV420xp_toBGR)
 
     // run operator
     cvcuda::CvtColor cvtColorOp;
-    for (auto &srcTensor : srcTensors)
+    for (const auto &srcTensor : srcTensors)
     {
         EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-                  nvcv::ProtectCall([&] { cvtColorOp(nullptr, srcTensor, dstTensor, NVCV_COLOR_YUV2BGR_YV12); }));
+                  nvcv::ProtectCall([&cvtColorOp, &srcTensor, &dstTensor]
+                                    { cvtColorOp(nullptr, srcTensor, dstTensor, NVCV_COLOR_YUV2BGR_YV12); }));
     }
 
-    EXPECT_EQ(
-        NVCV_ERROR_INVALID_ARGUMENT,
-        nvcv::ProtectCall(
-            [&] { cvtColorOp(nullptr, srcTensor_1, dstTensor_1, NVCV_COLOR_YUV2BGR_YV12); })); // incalid output channel
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall(
+                                               [&cvtColorOp, &srcTensor_1, &dstTensor_1] {
+                                                   cvtColorOp(nullptr, srcTensor_1, dstTensor_1,
+                                                              NVCV_COLOR_YUV2BGR_YV12);
+                                               })); // incalid output channel
 }
 
 TEST(OpCvtColor_negative, invalid_shape_YUV422_to_BGR)
@@ -1125,7 +1567,7 @@ TEST(OpCvtColor_negative, invalid_shape_YUV422_to_BGR)
         .planeDataType(0).channelType(0))
     };
 
-    nvcv::Tensor dstTensor = nvcv::Tensor(
+    auto dstTensor = nvcv::Tensor(
         {
             {120, 40, 3},
             "HWC"
@@ -1134,16 +1576,17 @@ TEST(OpCvtColor_negative, invalid_shape_YUV422_to_BGR)
 
     // run operator
     cvcuda::CvtColor cvtColorOp;
-    for (auto &srcTensor : srcTensors)
+    for (const auto &srcTensor : srcTensors)
     {
         EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-                  nvcv::ProtectCall([&] { cvtColorOp(nullptr, srcTensor, dstTensor, NVCV_COLOR_YUV2BGR_UYVY); }));
+                  nvcv::ProtectCall([&cvtColorOp, &srcTensor, &dstTensor]
+                                    { cvtColorOp(nullptr, srcTensor, dstTensor, NVCV_COLOR_YUV2BGR_UYVY); }));
     }
 }
 
 TEST(OpCvtColor_negative, invalid_shape_YUV422_to_BGR_invalid_out)
 {
-    nvcv::Tensor srcTensor = nvcv::Tensor(
+    auto srcTensor = nvcv::Tensor(
         {
             {120, 20, 1},
             "HWC"
@@ -1161,11 +1604,43 @@ TEST(OpCvtColor_negative, invalid_shape_YUV422_to_BGR_invalid_out)
 
     // run operator
     cvcuda::CvtColor cvtColorOp;
-    for (auto &dstTensor : dstTensors)
+    for (const auto &dstTensor : dstTensors)
     {
         EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-                  nvcv::ProtectCall([&] { cvtColorOp(nullptr, srcTensor, dstTensor, NVCV_COLOR_YUV2BGR_UYVY); }));
+                  nvcv::ProtectCall([&cvtColorOp, &srcTensor, &dstTensor]
+                                    { cvtColorOp(nullptr, srcTensor, dstTensor, NVCV_COLOR_YUV2BGR_UYVY); }));
     }
+}
+
+TEST(OpCvtColor_negative, invalid_conversion_code)
+{
+    nvcv::Tensor srcTensor = util::CreateTensor(1, 8, 8, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_BGR8});
+    nvcv::Tensor dstTensor = util::CreateTensor(1, 8, 8, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_RGB8});
+
+    cvcuda::CvtColor cvtColorOp;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall(
+                  [&] { cvtColorOp(nullptr, srcTensor, dstTensor, static_cast<NVCVColorConversionCode>(1000000)); }));
+}
+
+TEST(OpCvtColor_negative, varshape_invalid_conversion_code)
+{
+    std::vector<nvcv::Image> imgSrc;
+    imgSrc.emplace_back(nvcv::Size2D{8, 8}, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_BGR8});
+
+    nvcv::ImageBatchVarShape batchSrc(1);
+    batchSrc.pushBack(imgSrc.begin(), imgSrc.end());
+
+    std::vector<nvcv::Image> imgDst;
+    imgDst.emplace_back(nvcv::Size2D{8, 8}, nvcv::ImageFormat{NVCV_IMAGE_FORMAT_RGB8});
+
+    nvcv::ImageBatchVarShape batchDst(1);
+    batchDst.pushBack(imgDst.begin(), imgDst.end());
+
+    cvcuda::CvtColor cvtColorOp;
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
+              nvcv::ProtectCall(
+                  [&] { cvtColorOp(nullptr, batchSrc, batchDst, static_cast<NVCVColorConversionCode>(1000000)); }));
 }
 
 // clang-format off
@@ -1177,7 +1652,6 @@ test::ValueList<int, int, int, NVCVImageFormat, NVCVImageFormat, NVCVColorConver
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_Y8,      NVCV_IMAGE_FORMAT_BGRA8,    NVCV_COLOR_BGR2BGRA}, // invalid input channel
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGR8,    NVCV_IMAGE_FORMAT_BGRAf32,  NVCV_COLOR_BGR2BGRA}, // mismatch data type
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGR8,    NVCV_IMAGE_FORMAT_BGRA8p,   NVCV_COLOR_BGR2BGRA}, // mismatch format
-    {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGR8p,   NVCV_IMAGE_FORMAT_BGRA8p,   NVCV_COLOR_BGR2BGRA}, // invalid format
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGR8,    NVCV_IMAGE_FORMAT_Y8,       NVCV_COLOR_BGR2BGRA}, // invalid output channel
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_BGR8,    NVCV_IMAGE_FORMAT_BGR8,     NVCV_COLOR_GRAY2BGR}, // invalid input channel
     {   8,   8,  3,  NVCV_IMAGE_FORMAT_Y8,      NVCV_IMAGE_FORMAT_BGRf32,   NVCV_COLOR_GRAY2BGR}, // mismatch data type
@@ -1240,9 +1714,9 @@ TEST_P(OpCvtColor_negative, varshape_invalid_input)
     NVCVColorConversionCode src2dstCode{GetParamValue<5>()};
 
     // Create input varshape
-    std::default_random_engine         rng;
-    std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
-    std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
+    std::default_random_engine    rng;
+    std::uniform_int_distribution udistWidth(ScaledSize(width, 0.8), ScaledSize(width, 1.1));
+    std::uniform_int_distribution udistHeight(ScaledSize(height, 0.8), ScaledSize(height, 1.1));
 
     std::vector<nvcv::Image> imgSrc;
 
@@ -1309,10 +1783,6 @@ NVCV_TEST_SUITE_P(OpCvtColor_negative_diff_format, test::ValueList<NVCVImageForm
 #undef NVCV_IMAGE_FORMAT_Yf32
 #undef NVCV_IMAGE_FORMAT_HSVf32
 
-#undef NVCV_IMAGE_FORMAT_BGRS64
-#undef NVCV_IMAGE_FORMAT_RGBS64
-#undef NVCV_IMAGE_FORMAT_BGRAS64
-#undef NVCV_IMAGE_FORMAT_RGBAS64
 #undef NVCV_IMAGE_FORMAT_HSVf64
 #undef NVCV_IMAGE_FORMAT_Yf64
 
@@ -1329,9 +1799,9 @@ TEST_P(OpCvtColor_negative_diff_format, varshape_hasDifferentFormat)
     int height  = 224;
 
     // Create input varshape
-    std::default_random_engine         rng;
-    std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
-    std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
+    std::default_random_engine    rng;
+    std::uniform_int_distribution udistWidth(ScaledSize(width, 0.8), ScaledSize(width, 1.1));
+    std::uniform_int_distribution udistHeight(ScaledSize(height, 0.8), ScaledSize(height, 1.1));
 
     std::vector<nvcv::Image> imgSrc;
     for (int i = 0; i < batches - 1; ++i)
@@ -1357,7 +1827,8 @@ TEST_P(OpCvtColor_negative_diff_format, varshape_hasDifferentFormat)
 
     cvcuda::CvtColor cvtColorOp;
     EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-              nvcv::ProtectCall([&] { cvtColorOp(nullptr, batchSrc, batchDst, src2dstCode); }));
+              nvcv::ProtectCall([&cvtColorOp, &batchSrc, &batchDst, &src2dstCode]
+                                { cvtColorOp(nullptr, batchSrc, batchDst, src2dstCode); }));
 }
 
 #undef VEC_EXPECT_NEAR

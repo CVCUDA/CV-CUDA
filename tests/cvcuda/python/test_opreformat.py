@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,17 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
 import cvcuda
 
-import pytest as t
+import pytest
 import numpy as np
 import threading
+import cvcuda_types as cv_types
+import cvcuda_tools as cv_tools
+import cupy
 
 RNG = np.random.default_rng(0)
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "input_args,out_shape,out_layout",
     [
         (((5, 16, 23, 4), np.uint8, "NHWC"), (5, 4, 16, 23), "NCHW"),
@@ -68,11 +70,14 @@ def test_op_reformat_gpuload():
     src = cvcuda.Tensor(src_shape, np.uint8, src_layout)
     dst = cvcuda.Tensor(dst_shape, np.uint8, dst_layout)
 
-    torch0 = torch.zeros(src_shape, dtype=torch.int32, device="cuda")
-    torch1 = torch.zeros(src_shape, dtype=torch.int32, device="cuda")
+    cuda0 = cupy.asarray(np.zeros(src_shape, dtype=np.int32))
+    cuda1 = cupy.asarray(np.zeros(src_shape, dtype=np.int32))
 
     thread = threading.Thread(
-        target=lambda: (torch.abs(torch0, out=torch1), torch.square(torch1, out=torch0))
+        target=lambda: (
+            np.abs(cuda0.get(), out=cuda1.get()),
+            np.square(cuda1.get(), out=cuda0.get()),
+        )
     )
     thread.start()
 
@@ -83,5 +88,40 @@ def test_op_reformat_gpuload():
     assert dst.shape == dst_shape
 
     thread.join()
-    assert torch0.shape == src_shape
-    assert torch1.shape == src_shape
+    assert cuda0.shape == src_shape
+    assert cuda1.shape == src_shape
+
+
+_layout_conversion = {
+    "NHWC": "NCHW",
+    "NCHW": "NHWC",
+    "HWC": "CHW",
+    "CHW": "HWC",
+}
+
+
+def _reformat_params(dtype, layout, channels):
+    inverse_layout = _layout_conversion.get(layout)
+    return {
+        "layout": inverse_layout if inverse_layout is not None else layout,
+    }
+
+
+globals().update(
+    cv_tools.make_op_tests(
+        name="reformat",
+        runner_info=[("tensor", cvcuda.reformat, _reformat_params)],
+        keystone_dlc=(cvcuda.Type.U8, "NHWC", 3),
+        supported_dtypes={
+            cvcuda.Type.U8,
+            cvcuda.Type.S8,
+            cvcuda.Type.U16,
+            cvcuda.Type.S16,
+            cvcuda.Type.S32,
+            cvcuda.Type.F32,
+            cvcuda.Type.F64,
+        },
+        supported_layouts={"NHWC", "NCHW", "HWC", "CHW"},
+        supported_channels=cv_types.CHANNELS,
+    )
+)

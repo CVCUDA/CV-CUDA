@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,18 +13,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
 import cvcuda
 
-import pytest as t
+import pytest
 import numpy as np
 import cvcuda_util as util
+import cvcuda_types as cv_types
+import cvcuda_tools as cv_tools
 import threading
+
+
+import cupy
 
 RNG = np.random.default_rng(0)
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "input_args,out_shape,interp,fmt",
     [
         (
@@ -87,6 +91,31 @@ RNG = np.random.default_rng(0)
             cvcuda.Interp.BOX,
             cvcuda.Format.RGBf32,
         ),
+        # Planar (NCHW / CHW) layouts: output keeps the input layout.
+        (
+            ((5, 3, 16, 23), np.uint8, "NCHW"),
+            (5, 3, 132, 15),
+            cvcuda.Interp.LINEAR,
+            cvcuda.Format.RGB8,
+        ),
+        (
+            ((5, 3, 55, 55), np.uint8, "NCHW"),
+            (5, 3, 31, 31),
+            cvcuda.Interp.CUBIC,
+            cvcuda.Format.RGB8,
+        ),
+        (
+            ((3, 31, 31), np.float32, "CHW"),
+            (3, 55, 55),
+            cvcuda.Interp.LANCZOS,
+            cvcuda.Format.RGBf32,
+        ),
+        (
+            ((4, 40, 30), np.uint8, "CHW"),
+            (4, 20, 15),
+            cvcuda.Interp.HAMMING,
+            cvcuda.Format.RGBA8,
+        ),
     ],
 )
 def test_op_pillowresize(input_args, out_shape, interp, fmt):
@@ -118,7 +147,7 @@ def test_op_pillowresize(input_args, out_shape, interp, fmt):
     assert out.dtype == input.dtype
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "nimages, format, max_size, max_pixel, interp",
     [
         (
@@ -224,11 +253,14 @@ def test_op_pillowresize_gpuload():
     src = cvcuda.Tensor(src_shape, dtype, layout)
     dst = cvcuda.Tensor(dst_shape, dtype, layout)
 
-    torch0 = torch.zeros(src_shape, dtype=torch.int32, device="cuda")
-    torch1 = torch.zeros(src_shape, dtype=torch.int32, device="cuda")
+    cuda0 = cupy.asarray(np.zeros(src_shape, dtype=np.int32))
+    cuda1 = cupy.asarray(np.zeros(src_shape, dtype=np.int32))
 
     thread = threading.Thread(
-        target=lambda: (torch.abs(torch0, out=torch1), torch.square(torch1, out=torch0))
+        target=lambda: (
+            np.abs(cuda0.get(), out=cuda1.get()),
+            np.square(cuda1.get(), out=cuda0.get()),
+        )
     )
     thread.start()
 
@@ -239,8 +271,8 @@ def test_op_pillowresize_gpuload():
     assert tmp.dtype == dtype
 
     thread.join()
-    assert torch0.shape == src_shape
-    assert torch1.shape == src_shape
+    assert cuda0.shape == src_shape
+    assert cuda1.shape == src_shape
 
 
 def test_op_pillowresize_user_stream_with_tensor():
@@ -257,7 +289,7 @@ def test_op_pillowresize_user_stream_with_tensor():
         assert dst.dtype == dtype
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "batch_size",
     [
         3,
@@ -281,3 +313,60 @@ def test_op_pillowresize_user_stream_with_image_batch(batch_size):
         assert len(dst) == len(src)
         assert dst.uniqueformat == dst.uniqueformat
         assert dst.maxsize == dst_sizes[0]
+
+
+def _pillowresize_params(dtype, layout, channels):
+    return {
+        "shape": cv_types.resolve_shape(layout, channels, (10, 20)),
+        "format": cv_types.as_cvcuda_format(dtype),
+        "interp": cvcuda.Interp.LINEAR,
+    }
+
+
+def _pillowresize_varshape_params(dtype, layout, channels):
+    return {
+        "sizes": [[10, 20], [10, 20]],
+        "interp": cvcuda.Interp.LINEAR,
+    }
+
+
+globals().update(
+    cv_tools.make_op_tests(
+        name="pillowresize",
+        runner_info=[
+            ("tensor", cvcuda.pillowresize, _pillowresize_params),
+        ],
+        keystone_dlc=(cvcuda.Type.U8, "NHWC", 3),
+        supported_dtypes={
+            cvcuda.Type.U8,
+            cvcuda.Type.S8,
+            cvcuda.Type.U16,
+            cvcuda.Type.S16,
+            cvcuda.Type.S32,
+            cvcuda.Type.F32,
+        },
+        supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
+        supported_channels={1, 2, 3, 4},
+        # 2-channel interleaved is supported, but there is no 2-plane planar format.
+        exclude_dlc=[(None, "NCHW", 2), (None, "CHW", 2)],
+    )
+)
+
+
+globals().update(
+    cv_tools.make_op_tests(
+        name="pillowresize_varshape",
+        runner_info=[
+            ("image_batch", cvcuda.pillowresize, _pillowresize_varshape_params),
+        ],
+        keystone_dlc=(cvcuda.Type.U8, "NHWC", 3),
+        supported_dtypes={
+            cvcuda.Type.U8,
+            cvcuda.Type.U16,
+            cvcuda.Type.S16,
+            cvcuda.Type.F32,
+        },
+        supported_layouts={"NHWC", "HWC"},
+        supported_channels={1, 2, 3, 4},
+    )
+)

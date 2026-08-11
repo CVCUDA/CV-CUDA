@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -59,7 +59,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaRotateCreate(NVCVOperatorHandle *handle, const in
  *  Limitations:
  *
  *  Input:
- *       Data Layout:    [kNHWC, kHWC]
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
  *       Channels:       [1, 3, 4]
  *
  *       Data Type      | Allowed
@@ -70,11 +70,12 @@ CVCUDA_PUBLIC NVCVStatus cvcudaRotateCreate(NVCVOperatorHandle *handle, const in
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | Yes
  *       64bit Float    | No
  *
  *  Output:
- *       Data Layout:    [kNHWC, kHWC]
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
  *       Channels:       [1, 3, 4]
  *
  *       Data Type      | Allowed
@@ -85,6 +86,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaRotateCreate(NVCVOperatorHandle *handle, const in
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | No
+ *       16bit Float    | No
  *       32bit Float    | Yes
  *       64bit Float    | No
  *

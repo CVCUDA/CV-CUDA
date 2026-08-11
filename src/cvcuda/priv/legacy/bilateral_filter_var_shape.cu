@@ -50,6 +50,233 @@ static __device__ __forceinline__ float norm1(const float4 &a)
     return cuda::abs(a.x) + cuda::abs(a.y) + cuda::abs(a.z) + cuda::abs(a.w);
 }
 
+template<NVCVBorderType B>
+__device__ __forceinline__ bool mapBorderCoordinate(int &x, int &y, int columns, int rows, bool windowInside)
+{
+    if constexpr (B == NVCV_BORDER_CONSTANT)
+    {
+        return !cuda::IsOutside(x, columns) && !cuda::IsOutside(y, rows);
+    }
+    else
+    {
+        if (windowInside || (!cuda::IsOutside(x, columns) && !cuda::IsOutside(y, rows)))
+        {
+            return true;
+        }
+        x = cuda::GetIndexWithBorder<B>(x, columns);
+        y = cuda::GetIndexWithBorder<B>(y, rows);
+        return true;
+    }
+}
+
+template<class SrcWrapper>
+__device__ __forceinline__ typename SrcWrapper::ValueType readPackedPixel(const SrcWrapper &src, int3 coord, int rows,
+                                                                          int columns, bool windowInside)
+{
+    if constexpr (SrcWrapper::kBorderType != NVCV_BORDER_CONSTANT)
+    {
+        if (windowInside || (!cuda::IsOutside(coord.x, columns) && !cuda::IsOutside(coord.y, rows)))
+        {
+            return src.imageBatchWrap()[coord];
+        }
+    }
+    return src[coord];
+}
+
+template<typename T, int CHANNELS>
+struct BilateralFilterVarShapePlanarImageWrap
+{
+    const NVCVByte *srcBase[CHANNELS];
+    NVCVByte       *dstBase[CHANNELS];
+    int             srcRowStride[CHANNELS];
+    int             dstRowStride[CHANNELS];
+
+    __device__ __forceinline__ float read(int channel, int y, int x) const
+    {
+        const NVCVByte *ptr = srcBase[channel] + y * srcRowStride[channel] + x * sizeof(T);
+        return static_cast<float>(*reinterpret_cast<const T *>(ptr));
+    }
+
+    __device__ __forceinline__ void write(int channel, int y, int x, T value) const
+    {
+        NVCVByte *ptr               = dstBase[channel] + y * dstRowStride[channel] + x * sizeof(T);
+        *reinterpret_cast<T *>(ptr) = value;
+    }
+};
+
+template<typename T, NVCVBorderType B, int CHANNELS>
+__device__ __forceinline__ void BilateralFilterVarShapePlanarTile(
+    BilateralFilterVarShapePlanarImageWrap<T, CHANNELS> img, int colIdx, int rowIdx, int rows, int columns, int radius,
+    int squared_radius, float color_coefficient, float space_coefficient)
+{
+    const int  x[4] = {colIdx, colIdx + 1, colIdx, colIdx + 1};
+    const int  y[4] = {rowIdx, rowIdx, rowIdx + 1, rowIdx + 1};
+    const bool windowInside
+        = colIdx >= radius && rowIdx >= radius && colIdx + radius + 1 < columns && rowIdx + radius + 1 < rows;
+
+    bool valid[4];
+    valid[0] = colIdx < columns && rowIdx < rows;
+    valid[1] = colIdx + 1 < columns && rowIdx < rows;
+    valid[2] = colIdx < columns && rowIdx + 1 < rows;
+    valid[3] = colIdx + 1 < columns && rowIdx + 1 < rows;
+
+    if (!(valid[0] || valid[1] || valid[2] || valid[3]))
+    {
+        return;
+    }
+
+    float center[4][CHANNELS]    = {};
+    float numerator[4][CHANNELS] = {};
+    float denominator[4]         = {};
+
+#pragma unroll
+    for (int p = 0; p < 4; ++p)
+    {
+        if (valid[p])
+        {
+#pragma unroll
+            for (int ch = 0; ch < CHANNELS; ++ch)
+            {
+                center[p][ch] = img.read(ch, y[p], x[p]);
+            }
+        }
+    }
+
+    for (int r = rowIdx - radius; r < rowIdx + radius + 2; r++)
+    {
+        for (int c = colIdx - radius; c < colIdx + radius + 2; c++)
+        {
+            const int dx0          = std::abs(c - colIdx);
+            const int dy0          = cuda::abs(r - rowIdx);
+            const int dx1          = std::abs(c - (colIdx + 1));
+            const int dy1          = cuda::abs(r - (rowIdx + 1));
+            const int squared_dis0 = dx0 * dx0 + dy0 * dy0;
+            const int squared_dis1 = dx1 * dx1 + dy0 * dy0;
+            const int squared_dis2 = dx0 * dx0 + dy1 * dy1;
+            const int squared_dis3 = dx1 * dx1 + dy1 * dy1;
+
+            if (!(squared_dis0 <= squared_radius || squared_dis1 <= squared_radius || squared_dis2 <= squared_radius
+                  || squared_dis3 <= squared_radius))
+            {
+                continue;
+            }
+
+            float curr[CHANNELS] = {};
+            int   srcX           = c;
+            int   srcY           = r;
+            bool  inside         = mapBorderCoordinate<B>(srcX, srcY, columns, rows, windowInside);
+            if (inside)
+            {
+#pragma unroll
+                for (int ch = 0; ch < CHANNELS; ++ch)
+                {
+                    curr[ch] = img.read(ch, srcY, srcX);
+                }
+            }
+
+            const int squared_dis[4] = {squared_dis0, squared_dis1, squared_dis2, squared_dis3};
+#pragma unroll
+            for (int p = 0; p < 4; ++p)
+            {
+                if (valid[p] && squared_dis[p] <= squared_radius)
+                {
+                    float one_norm_size = 0.f;
+#pragma unroll
+                    for (int ch = 0; ch < CHANNELS; ++ch)
+                    {
+                        one_norm_size += cuda::abs(curr[ch] - center[p][ch]);
+                    }
+
+                    const float e_space = squared_dis[p] * space_coefficient;
+                    const float e_color = one_norm_size * one_norm_size * color_coefficient;
+                    const float weight  = cuda::exp(e_space + e_color);
+                    denominator[p] += weight;
+#pragma unroll
+                    for (int ch = 0; ch < CHANNELS; ++ch)
+                    {
+                        numerator[p][ch] += weight * curr[ch];
+                    }
+                }
+            }
+        }
+    }
+
+#pragma unroll
+    for (int p = 0; p < 4; ++p)
+    {
+        if (valid[p])
+        {
+#pragma unroll
+            for (int ch = 0; ch < CHANNELS; ++ch)
+            {
+                img.write(ch, y[p], x[p], nvcv::cuda::SaturateCast<T>(numerator[p][ch] / denominator[p]));
+            }
+        }
+    }
+}
+
+template<NVCVBorderType B, int CHANNELS, class SrcWrapper, class DstWrapper>
+__global__ __launch_bounds__(64, CHANNELS == 4 ? 12 : 16) void BilateralFilterVarShapePlanarKernel(
+    const SrcWrapper src, DstWrapper dst, const cuda::Tensor1DWrap<int> inDiameter,
+    const cuda::Tensor1DWrap<float> inSigmaColor, const cuda::Tensor1DWrap<float> inSigmaSpace)
+{
+    const int batch_idx = get_batch_idx();
+    const int rows      = dst.height(batch_idx);
+    const int columns   = dst.width(batch_idx);
+
+    float sigmaColor = inSigmaColor[batch_idx];
+    if (sigmaColor <= 0)
+    {
+        sigmaColor = 1;
+    }
+    float sigmaSpace = inSigmaSpace[batch_idx];
+    if (sigmaSpace <= 0)
+    {
+        sigmaSpace = 1;
+    }
+
+    int radius;
+    int diameter = inDiameter[batch_idx];
+    if (diameter <= 0)
+    {
+        radius = std::roundf(sigmaSpace * 1.5f);
+    }
+    else
+    {
+        radius = diameter / 2;
+    }
+    if (radius < 1)
+    {
+        radius = 1;
+    }
+    assert(radius < 10000);
+
+    const int colIdx = (blockIdx.x * blockDim.x + threadIdx.x) * 2;
+    const int rowIdx = (blockIdx.y * blockDim.y + threadIdx.y) * 2;
+
+    const int   squared_radius    = radius * radius;
+    const float space_coefficient = -1 / (2 * sigmaSpace * sigmaSpace);
+    const float color_coefficient = -1 / (2 * sigmaColor * sigmaColor);
+
+    using T = typename DstWrapper::ValueType;
+
+    BilateralFilterVarShapePlanarImageWrap<T, CHANNELS> img{};
+#pragma unroll
+    for (int ch = 0; ch < CHANNELS; ++ch)
+    {
+        const NVCVImagePlaneStrided srcPlane = src.imageBatchWrap().plane(batch_idx, ch);
+        const NVCVImagePlaneStrided dstPlane = dst.plane(batch_idx, ch);
+
+        img.srcBase[ch]      = srcPlane.basePtr;
+        img.dstBase[ch]      = dstPlane.basePtr;
+        img.srcRowStride[ch] = srcPlane.rowStride;
+        img.dstRowStride[ch] = dstPlane.rowStride;
+    }
+
+    BilateralFilterVarShapePlanarTile<T, B, CHANNELS>(img, colIdx, rowIdx, rows, columns, radius, squared_radius,
+                                                      color_coefficient, space_coefficient);
+}
+
 template<class SrcWrapper, class DstWrapper>
 __global__ void BilateralFilterVarShapeKernel(const SrcWrapper src, DstWrapper dst,
                                               const cuda::Tensor1DWrap<int>   inDiameter,
@@ -92,14 +319,16 @@ __global__ void BilateralFilterVarShapeKernel(const SrcWrapper src, DstWrapper d
     const int colIdx = (blockIdx.x * blockDim.x + threadIdx.x) * 2;
     const int rowIdx = (blockIdx.y * blockDim.y + threadIdx.y) * 2;
     using work_type  = cuda::ConvertBaseTypeTo<float, T>;
-    int3      coord0{colIdx, rowIdx, batch_idx};
-    int3      coord1{colIdx + 1, rowIdx, batch_idx};
-    int3      coord2{colIdx, rowIdx + 1, batch_idx};
-    int3      coord3{colIdx + 1, rowIdx + 1, batch_idx};
-    work_type center0 = cuda::StaticCast<float>(src[coord0]);
-    work_type center1 = cuda::StaticCast<float>(src[coord1]);
-    work_type center2 = cuda::StaticCast<float>(src[coord2]);
-    work_type center3 = cuda::StaticCast<float>(src[coord3]);
+    int3       coord0{colIdx, rowIdx, batch_idx};
+    int3       coord1{colIdx + 1, rowIdx, batch_idx};
+    int3       coord2{colIdx, rowIdx + 1, batch_idx};
+    int3       coord3{colIdx + 1, rowIdx + 1, batch_idx};
+    const bool windowInside
+        = colIdx >= radius && rowIdx >= radius && colIdx + radius + 1 < columns && rowIdx + radius + 1 < rows;
+    work_type center0 = cuda::StaticCast<float>(readPackedPixel(src, coord0, rows, columns, windowInside));
+    work_type center1 = cuda::StaticCast<float>(readPackedPixel(src, coord1, rows, columns, windowInside));
+    work_type center2 = cuda::StaticCast<float>(readPackedPixel(src, coord2, rows, columns, windowInside));
+    work_type center3 = cuda::StaticCast<float>(readPackedPixel(src, coord3, rows, columns, windowInside));
 
     int       squared_radius    = radius * radius;
     float     space_coefficient = -1 / (2 * sigmaSpace * sigmaSpace);
@@ -131,7 +360,7 @@ __global__ void BilateralFilterVarShapeKernel(const SrcWrapper src, DstWrapper d
             }
 
             int3      srcCoord{c, r, batch_idx};
-            work_type curr = cuda::StaticCast<float>(src[srcCoord]);
+            work_type curr = cuda::StaticCast<float>(readPackedPixel(src, srcCoord, rows, columns, windowInside));
 
             if (squared_dis0 <= squared_radius)
             {
@@ -193,6 +422,51 @@ __global__ void BilateralFilterVarShapeKernel(const SrcWrapper src, DstWrapper d
 }
 
 template<typename T, NVCVBorderType B>
+ErrorCode BilateralFilterVarShapePlanarCaller(const ImageBatchVarShapeDataStridedCuda &inData,
+                                              const ImageBatchVarShapeDataStridedCuda &outData, int batch, int channels,
+                                              const cuda::Tensor1DWrap<int>   &inDiameter,
+                                              const cuda::Tensor1DWrap<float> &inSigmaColor,
+                                              const cuda::Tensor1DWrap<float> &inSigmaSpace, cudaStream_t stream)
+{
+    cuda::BorderVarShapeWrap<const T, B> src(inData);
+    cuda::ImageBatchVarShapeWrap<T>      dst(outData);
+
+    Size2D outMaxSize = outData.maxSize();
+    dim3   block(32, 2);
+    dim3   grid(divUp(outMaxSize.w, block.x * 2), divUp(outMaxSize.h, block.y * 2), batch);
+
+#ifdef CUDA_DEBUG_LOG
+    checkCudaErrors(cudaStreamSynchronize(stream));
+    checkCudaErrors(cudaGetLastError());
+#endif
+
+    switch (channels)
+    {
+    case 1:
+        BilateralFilterVarShapePlanarKernel<B, 1>
+            <<<grid, block, 0, stream>>>(src, dst, inDiameter, inSigmaColor, inSigmaSpace);
+        break;
+    case 3:
+        BilateralFilterVarShapePlanarKernel<B, 3>
+            <<<grid, block, 0, stream>>>(src, dst, inDiameter, inSigmaColor, inSigmaSpace);
+        break;
+    case 4:
+        BilateralFilterVarShapePlanarKernel<B, 4>
+            <<<grid, block, 0, stream>>>(src, dst, inDiameter, inSigmaColor, inSigmaSpace);
+        break;
+    default:
+        LOG_ERROR("Invalid planar channel number ch = " << channels);
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+#ifdef CUDA_DEBUG_LOG
+    checkCudaErrors(cudaStreamSynchronize(stream));
+    checkCudaErrors(cudaGetLastError());
+#endif
+    return ErrorCode::SUCCESS;
+}
+
+template<typename T, NVCVBorderType B>
 void BilateralFilterVarShapeCaller(const ImageBatchVarShapeDataStridedCuda &inData,
                                    const ImageBatchVarShapeDataStridedCuda &outData, int batch,
                                    const cuda::Tensor1DWrap<int>   &inDiameter,
@@ -203,7 +477,7 @@ void BilateralFilterVarShapeCaller(const ImageBatchVarShapeDataStridedCuda &inDa
     cuda::ImageBatchVarShapeWrap<T>      dst(outData);
 
     Size2D outMaxSize = outData.maxSize();
-    dim3   block(8, 8);
+    dim3   block(32, 2);
     dim3   grid(divUp(outMaxSize.w, block.x * 2), divUp(outMaxSize.h, block.y * 2), batch);
 
 #ifdef CUDA_DEBUG_LOG
@@ -242,11 +516,12 @@ ErrorCode BilateralFilterVarShape::infer(const ImageBatchVarShapeDataStridedCuda
         return ErrorCode::INVALID_DATA_FORMAT;
     }
 
-    if ((input_format != kNHWC) && (input_format != kHWC))
+    if (!(input_format == kNHWC || input_format == kHWC || input_format == kNCHW || input_format == kCHW))
     {
-        LOG_ERROR("Invalid DataFormat both Input and Output must be kHWC or kNHWC");
+        LOG_ERROR("Invalid DataFormat both Input and Output must be kHWC, kNHWC, kCHW, or kNCHW");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
+    const bool isPlanar = input_format == kNCHW || input_format == kCHW;
 
     if (inData.uniqueFormat() != outData.uniqueFormat())
     {
@@ -306,6 +581,11 @@ ErrorCode BilateralFilterVarShape::infer(const ImageBatchVarShapeDataStridedCuda
         LOG_ERROR("Invalid channel number ch = " << channels);
         return ErrorCode::INVALID_DATA_SHAPE;
     }
+    if (isPlanar && channels == 2)
+    {
+        LOG_ERROR("Planar BilateralFilter does not support 2-channel images");
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
 
     // Create Tensor wrappers for parameter arrays
     cuda::Tensor1DWrap<int>   inDiameter(diameterData);
@@ -316,19 +596,20 @@ ErrorCode BilateralFilterVarShape::infer(const ImageBatchVarShapeDataStridedCuda
         const ImageBatchVarShapeDataStridedCuda &inData, const ImageBatchVarShapeDataStridedCuda &outData, int batch,
         const cuda::Tensor1DWrap<int> &inDiameter, const cuda::Tensor1DWrap<float> &inSigmaColor,
         const cuda::Tensor1DWrap<float> &inSigmaSpace, cudaStream_t stream);
+    typedef ErrorCode (*bilateral_filter_var_shape_planar_t)(
+        const ImageBatchVarShapeDataStridedCuda &inData, const ImageBatchVarShapeDataStridedCuda &outData, int batch,
+        int channels, const cuda::Tensor1DWrap<int> &inDiameter, const cuda::Tensor1DWrap<float> &inSigmaColor,
+        const cuda::Tensor1DWrap<float> &inSigmaSpace, cudaStream_t stream);
 
     // All templated functions instantiated here to remove one level of indirection that just hides the same lookup
-    // table in 5 parts
+    // table in 5 parts. The kCV_8S row is null because validation above rejects signed 8-bit input.
     static const bilateral_filter_var_shape_t funcs[5][6][4] = {
         {
          {BilateralFilterVarShapeCaller<uchar, NVCV_BORDER_CONSTANT>,
          BilateralFilterVarShapeCaller<uchar2, NVCV_BORDER_CONSTANT>,
          BilateralFilterVarShapeCaller<uchar3, NVCV_BORDER_CONSTANT>,
          BilateralFilterVarShapeCaller<uchar4, NVCV_BORDER_CONSTANT>},
-         {BilateralFilterVarShapeCaller<char, NVCV_BORDER_CONSTANT>,
-         BilateralFilterVarShapeCaller<char2, NVCV_BORDER_CONSTANT>,
-         BilateralFilterVarShapeCaller<char3, NVCV_BORDER_CONSTANT>,
-         BilateralFilterVarShapeCaller<char4, NVCV_BORDER_CONSTANT>},
+         {nullptr, nullptr, nullptr, nullptr},
          {BilateralFilterVarShapeCaller<ushort, NVCV_BORDER_CONSTANT>,
          BilateralFilterVarShapeCaller<ushort2, NVCV_BORDER_CONSTANT>,
          BilateralFilterVarShapeCaller<ushort3, NVCV_BORDER_CONSTANT>,
@@ -351,10 +632,7 @@ ErrorCode BilateralFilterVarShape::infer(const ImageBatchVarShapeDataStridedCuda
          BilateralFilterVarShapeCaller<uchar2, NVCV_BORDER_REPLICATE>,
          BilateralFilterVarShapeCaller<uchar3, NVCV_BORDER_REPLICATE>,
          BilateralFilterVarShapeCaller<uchar4, NVCV_BORDER_REPLICATE>},
-         {BilateralFilterVarShapeCaller<char, NVCV_BORDER_REPLICATE>,
-         BilateralFilterVarShapeCaller<char2, NVCV_BORDER_REPLICATE>,
-         BilateralFilterVarShapeCaller<char3, NVCV_BORDER_REPLICATE>,
-         BilateralFilterVarShapeCaller<char4, NVCV_BORDER_REPLICATE>},
+         {nullptr, nullptr, nullptr, nullptr},
          {BilateralFilterVarShapeCaller<ushort, NVCV_BORDER_REPLICATE>,
          BilateralFilterVarShapeCaller<ushort2, NVCV_BORDER_REPLICATE>,
          BilateralFilterVarShapeCaller<ushort3, NVCV_BORDER_REPLICATE>,
@@ -377,10 +655,7 @@ ErrorCode BilateralFilterVarShape::infer(const ImageBatchVarShapeDataStridedCuda
          BilateralFilterVarShapeCaller<uchar2, NVCV_BORDER_REFLECT>,
          BilateralFilterVarShapeCaller<uchar3, NVCV_BORDER_REFLECT>,
          BilateralFilterVarShapeCaller<uchar4, NVCV_BORDER_REFLECT>},
-         {BilateralFilterVarShapeCaller<char, NVCV_BORDER_REFLECT>,
-         BilateralFilterVarShapeCaller<char2, NVCV_BORDER_REFLECT>,
-         BilateralFilterVarShapeCaller<char3, NVCV_BORDER_REFLECT>,
-         BilateralFilterVarShapeCaller<char4, NVCV_BORDER_REFLECT>},
+         {nullptr, nullptr, nullptr, nullptr},
          {BilateralFilterVarShapeCaller<ushort, NVCV_BORDER_REFLECT>,
          BilateralFilterVarShapeCaller<ushort2, NVCV_BORDER_REFLECT>,
          BilateralFilterVarShapeCaller<ushort3, NVCV_BORDER_REFLECT>,
@@ -403,10 +678,7 @@ ErrorCode BilateralFilterVarShape::infer(const ImageBatchVarShapeDataStridedCuda
          BilateralFilterVarShapeCaller<uchar2, NVCV_BORDER_WRAP>,
          BilateralFilterVarShapeCaller<uchar3, NVCV_BORDER_WRAP>,
          BilateralFilterVarShapeCaller<uchar4, NVCV_BORDER_WRAP>},
-         {BilateralFilterVarShapeCaller<char, NVCV_BORDER_WRAP>,
-         BilateralFilterVarShapeCaller<char2, NVCV_BORDER_WRAP>,
-         BilateralFilterVarShapeCaller<char3, NVCV_BORDER_WRAP>,
-         BilateralFilterVarShapeCaller<char4, NVCV_BORDER_WRAP>},
+         {nullptr, nullptr, nullptr, nullptr},
          {BilateralFilterVarShapeCaller<ushort, NVCV_BORDER_WRAP>,
          BilateralFilterVarShapeCaller<ushort2, NVCV_BORDER_WRAP>,
          BilateralFilterVarShapeCaller<ushort3, NVCV_BORDER_WRAP>,
@@ -429,10 +701,7 @@ ErrorCode BilateralFilterVarShape::infer(const ImageBatchVarShapeDataStridedCuda
          BilateralFilterVarShapeCaller<uchar2, NVCV_BORDER_REFLECT101>,
          BilateralFilterVarShapeCaller<uchar3, NVCV_BORDER_REFLECT101>,
          BilateralFilterVarShapeCaller<uchar4, NVCV_BORDER_REFLECT101>},
-         {BilateralFilterVarShapeCaller<char, NVCV_BORDER_REFLECT101>,
-         BilateralFilterVarShapeCaller<char2, NVCV_BORDER_REFLECT101>,
-         BilateralFilterVarShapeCaller<char3, NVCV_BORDER_REFLECT101>,
-         BilateralFilterVarShapeCaller<char4, NVCV_BORDER_REFLECT101>},
+         {nullptr, nullptr, nullptr, nullptr},
          {BilateralFilterVarShapeCaller<ushort, NVCV_BORDER_REFLECT101>,
          BilateralFilterVarShapeCaller<ushort2, NVCV_BORDER_REFLECT101>,
          BilateralFilterVarShapeCaller<ushort3, NVCV_BORDER_REFLECT101>,
@@ -451,7 +720,39 @@ ErrorCode BilateralFilterVarShape::infer(const ImageBatchVarShapeDataStridedCuda
          BilateralFilterVarShapeCaller<float4, NVCV_BORDER_REFLECT101>},
          },
     };
+    static const bilateral_filter_var_shape_planar_t planarFuncs[5][6] = {
+        {BilateralFilterVarShapePlanarCaller<uchar,   NVCV_BORDER_CONSTANT>, nullptr,
+         BilateralFilterVarShapePlanarCaller<ushort,   NVCV_BORDER_CONSTANT>,
+         BilateralFilterVarShapePlanarCaller<short,   NVCV_BORDER_CONSTANT>,
+         BilateralFilterVarShapePlanarCaller<int,   NVCV_BORDER_CONSTANT>,
+         BilateralFilterVarShapePlanarCaller<float,   NVCV_BORDER_CONSTANT>},
+        {BilateralFilterVarShapePlanarCaller<uchar,  NVCV_BORDER_REPLICATE>, nullptr,
+         BilateralFilterVarShapePlanarCaller<ushort,  NVCV_BORDER_REPLICATE>,
+         BilateralFilterVarShapePlanarCaller<short,  NVCV_BORDER_REPLICATE>,
+         BilateralFilterVarShapePlanarCaller<int,  NVCV_BORDER_REPLICATE>,
+         BilateralFilterVarShapePlanarCaller<float,  NVCV_BORDER_REPLICATE>},
+        {BilateralFilterVarShapePlanarCaller<uchar,    NVCV_BORDER_REFLECT>, nullptr,
+         BilateralFilterVarShapePlanarCaller<ushort,    NVCV_BORDER_REFLECT>,
+         BilateralFilterVarShapePlanarCaller<short,    NVCV_BORDER_REFLECT>,
+         BilateralFilterVarShapePlanarCaller<int,    NVCV_BORDER_REFLECT>,
+         BilateralFilterVarShapePlanarCaller<float,    NVCV_BORDER_REFLECT>},
+        {BilateralFilterVarShapePlanarCaller<uchar,       NVCV_BORDER_WRAP>, nullptr,
+         BilateralFilterVarShapePlanarCaller<ushort,       NVCV_BORDER_WRAP>,
+         BilateralFilterVarShapePlanarCaller<short,       NVCV_BORDER_WRAP>,
+         BilateralFilterVarShapePlanarCaller<int,       NVCV_BORDER_WRAP>,
+         BilateralFilterVarShapePlanarCaller<float,       NVCV_BORDER_WRAP>},
+        {BilateralFilterVarShapePlanarCaller<uchar, NVCV_BORDER_REFLECT101>, nullptr,
+         BilateralFilterVarShapePlanarCaller<ushort, NVCV_BORDER_REFLECT101>,
+         BilateralFilterVarShapePlanarCaller<short, NVCV_BORDER_REFLECT101>,
+         BilateralFilterVarShapePlanarCaller<int, NVCV_BORDER_REFLECT101>,
+         BilateralFilterVarShapePlanarCaller<float, NVCV_BORDER_REFLECT101>},
+    };
 
+    if (isPlanar)
+    {
+        return planarFuncs[borderMode][data_type](inData, outData, batch, channels, inDiameter, inSigmaColor,
+                                                  inSigmaSpace, stream);
+    }
     funcs[borderMode][data_type][channels - 1](inData, outData, batch, inDiameter, inSigmaColor, inSigmaSpace, stream);
     return ErrorCode::SUCCESS;
 }

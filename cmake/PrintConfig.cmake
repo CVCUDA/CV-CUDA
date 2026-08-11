@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,6 +37,7 @@ message(STATUS "    BUILD_TESTS_PYTHON       : ${BUILD_TESTS_PYTHON}")
 
 if(BUILD_PYTHON)
     message(STATUS "    BUILD_PYTHON             : ON")
+    message(STATUS "    BUILD_PYTHON_WHEEL       : ${BUILD_PYTHON_WHEEL}")
     message(STATUS "        Python versions : ${PYTHON_VERSIONS}")
 else()
     message(STATUS "    BUILD_PYTHON             : OFF")
@@ -138,6 +139,7 @@ message(STATUS "    C Flags      : ${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_${BUILD_TYPE
 message(STATUS "")
 message(STATUS "    CUDA Compiler : ${CMAKE_CUDA_COMPILER} (${CMAKE_CUDA_COMPILER_VERSION})")
 message(STATUS "    CUDA Arch     : ${CMAKE_CUDA_ARCHITECTURES}")
+message(STATUS "    Targeted SM8.x cubins : ${CVCUDA_TARGETED_SM8X_CUBINS} (active: ${CVCUDA_TARGETED_SM8X_CUBINS_ACTIVE})")
 message(STATUS "    CUDA flags    : ${CMAKE_CUDA_FLAGS} ${CMAKE_CUDA_FLAGS_${BUILD_TYPE}}")
 message(STATUS "    CUDA toolkit target dir : ${CUDAToolkit_TARGET_DIR}")
 message(STATUS "")

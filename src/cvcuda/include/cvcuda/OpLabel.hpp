@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,6 +34,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class Label final : public IOperator
@@ -41,29 +43,23 @@ class Label final : public IOperator
 public:
     explicit Label();
 
-    ~Label();
-
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const nvcv::Tensor &bgLabel,
                     const nvcv::Tensor &minThresh, const nvcv::Tensor &maxThresh, const nvcv::Tensor &minSize,
                     const nvcv::Tensor &count, const nvcv::Tensor &stats, const nvcv::Tensor &mask,
                     NVCVConnectivityType connectivity, NVCVLabelType assignLabels, NVCVLabelMaskType maskType) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline Label::Label()
 {
-    nvcv::detail::CheckThrow(cvcudaLabelCreate(&m_handle));
-    assert(m_handle);
-}
-
-inline Label::~Label()
-{
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaLabelCreate(&h));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void Label::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
@@ -72,16 +68,18 @@ inline void Label::operator()(cudaStream_t stream, const nvcv::Tensor &in, const
                               const nvcv::Tensor &mask, NVCVConnectivityType connectivity, NVCVLabelType assignLabels,
                               NVCVLabelMaskType maskType) const
 {
-    nvcv::detail::CheckThrow(cvcudaLabelSubmit(m_handle, stream, in.handle(), out.handle(), bgLabel.handle(),
+    nvcv::detail::CheckThrow(cvcudaLabelSubmit(m_handle.get(), stream, in.handle(), out.handle(), bgLabel.handle(),
                                                minThresh.handle(), maxThresh.handle(), minSize.handle(), count.handle(),
                                                stats.handle(), mask.handle(), connectivity, assignLabels, maskType));
 }
 
 inline NVCVOperatorHandle Label::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA_LABEL_HPP

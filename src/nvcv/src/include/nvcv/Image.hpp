@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -58,7 +58,35 @@ public:
      */
     static Requirements CalcRequirements(const Size2D &size, ImageFormat fmt, const MemAlignment &bufAlign = {});
 
-    NVCV_IMPLEMENT_SHARED_RESOURCE(Image, Base);
+    using Base::Base;
+    using Base::operator=;
+
+    Image(const Image &other)
+        : Base(other)
+    {
+    }
+
+    Image(Image &&other) noexcept
+        : Base(std::move(other))
+    {
+    }
+
+    Image &operator=(const Image &other)
+    {
+        Base::operator=(other);
+        return *this;
+    }
+
+    Image &operator=(Image &&other) noexcept
+    {
+        Base::operator=(std::move(other));
+        return *this;
+    }
+
+    ~Image()
+    {
+        this->reset();
+    }
 
     /**
      * @brief Construct an Image with specific requirements.
@@ -66,7 +94,7 @@ public:
      * @param reqs The requirements for the image.
      * @param alloc The allocator to use (optional).
      */
-    explicit Image(const Requirements &reqs, const Allocator &alloc = nullptr);
+    explicit Image(const Requirements &reqs, const Allocator &alloc = Allocator{nullptr});
 
     /**
      * @brief Construct an Image with specified size, format, and alignment.
@@ -76,7 +104,7 @@ public:
      * @param alloc The allocator to use (optional).
      * @param bufAlign The memory alignment (optional).
      */
-    explicit Image(const Size2D &size, ImageFormat fmt, const Allocator &alloc = nullptr,
+    explicit Image(const Size2D &size, ImageFormat fmt, const Allocator &alloc = Allocator{nullptr},
                    const MemAlignment &bufAlign = {});
 
     /**
@@ -114,14 +142,14 @@ public:
      *
      * @param ptr The pointer to set.
      */
-    void setUserPointer(void *ptr);
+    void setUserPointer(NVCVUserPointer ptr);
 
     /**
      * @brief Retrieve the user-defined pointer associated with the image.
      *
      * @return The user pointer.
      */
-    void *userPointer() const;
+    NVCVUserPointer userPointer() const;
 };
 
 // ImageWrapData definition -------------------------------------
@@ -149,6 +177,6 @@ using ImageWrapHandle = NonOwningResource<Image>;
 
 } // namespace nvcv
 
-#include "detail/ImageImpl.hpp"
+#include "detail/ImageImpl.hpp" // NOSONAR: inline definitions require the declarations above.
 
 #endif // NVCV_IMAGE_HPP

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,6 +35,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class Remap final : public IOperator
@@ -42,58 +44,56 @@ class Remap final : public IOperator
 public:
     explicit Remap();
 
-    ~Remap();
-
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const nvcv::Tensor &map,
                     NVCVInterpolationType inInterp, NVCVInterpolationType mapInterp, NVCVRemapMapValueType mapValueType,
-                    bool alignCorners, NVCVBorderType border, float4 borderValue);
+                    bool alignCorners, NVCVBorderType border, float4 borderValue) const;
 
     void operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
                     const nvcv::Tensor &map, NVCVInterpolationType inInterp, NVCVInterpolationType mapInterp,
-                    NVCVRemapMapValueType mapValueType, bool alignCorners, NVCVBorderType border, float4 borderValue);
+                    NVCVRemapMapValueType mapValueType, bool alignCorners, NVCVBorderType border,
+                    float4 borderValue) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline Remap::Remap()
 {
-    nvcv::detail::CheckThrow(cvcudaRemapCreate(&m_handle));
-    assert(m_handle);
-}
-
-inline Remap::~Remap()
-{
-    nvcvOperatorDestroy(m_handle);
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaRemapCreate(&h));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void Remap::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
                               const nvcv::Tensor &map, NVCVInterpolationType inInterp, NVCVInterpolationType mapInterp,
                               NVCVRemapMapValueType mapValueType, bool alignCorners, NVCVBorderType border,
-                              float4 borderValue)
+                              float4 borderValue) const
 {
-    nvcv::detail::CheckThrow(cvcudaRemapSubmit(m_handle, stream, in.handle(), out.handle(), map.handle(), inInterp,
-                                               mapInterp, mapValueType, static_cast<int8_t>(alignCorners), border,
-                                               borderValue));
+    nvcv::detail::CheckThrow(cvcudaRemapSubmit(m_handle.get(), stream, in.handle(), out.handle(), map.handle(),
+                                               inInterp, mapInterp, mapValueType, static_cast<int8_t>(alignCorners),
+                                               border, borderValue));
 }
 
 inline void Remap::operator()(cudaStream_t stream, const nvcv::ImageBatch &in, const nvcv::ImageBatch &out,
                               const nvcv::Tensor &map, NVCVInterpolationType inInterp, NVCVInterpolationType mapInterp,
                               NVCVRemapMapValueType mapValueType, bool alignCorners, NVCVBorderType border,
-                              float4 borderValue)
+                              float4 borderValue) const
 {
-    nvcv::detail::CheckThrow(cvcudaRemapVarShapeSubmit(m_handle, stream, in.handle(), out.handle(), map.handle(),
+    nvcv::detail::CheckThrow(cvcudaRemapVarShapeSubmit(m_handle.get(), stream, in.handle(), out.handle(), map.handle(),
                                                        inInterp, mapInterp, mapValueType,
                                                        static_cast<int8_t>(alignCorners), border, borderValue));
 }
 
 inline NVCVOperatorHandle Remap::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA__REMAP_HPP

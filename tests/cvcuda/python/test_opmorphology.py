@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,17 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
 import cvcuda
 
-import pytest as t
+import pytest
 import numpy as np
+
 import cvcuda_util as util
+import cvcuda_tools as cv_tools
+import cupy
 
 RNG = np.random.default_rng(0)
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "input_args, morphologyType, maskSize, anchor, iteration, border ",
     [
         (
@@ -159,7 +161,7 @@ def test_op_morphology(input_args, morphologyType, maskSize, anchor, iteration, 
     assert out.dtype == input.dtype
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "num_images, img_format, img_size, max_pixel, \
      morphologyType, max_mask, max_anchor, iteration, border ",
     [
@@ -375,12 +377,16 @@ def test_op_morphology_input_output():
     number = 3
 
     # Create a tensor filled with zeros
-    source = torch.zeros((number, height, width, 1), dtype=torch.uint8).cuda()
+    source_host = np.zeros((number, height, width, 1), dtype=np.uint8)
 
     # Set the middle pixel of each image to 1
-    source[:, 1, 1, :] = 1
+    source_host[:, 1, 1, :] = 1
 
-    image = source.clone()  # Copy source tensor, so we can compare later
+    # Now copy to device
+    source = cupy.asarray(source_host)
+
+    image = source.copy()
+
     image = cvcuda.as_tensor(image, "NHWC")
 
     workspace = cvcuda.Tensor(image.shape, image.dtype, image.layout)
@@ -395,17 +401,52 @@ def test_op_morphology_input_output():
         image, cvcuda.MorphologyType.CLOSE, [4, 4], [-1, -1], workspace=workspace
     )
 
-    outDilate = torch.as_tensor(outDilate.cuda(), device=torch.device("cuda", 0))
-    outErode = torch.as_tensor(outErode.cuda(), device=torch.device("cuda", 0))
-    outOpen = torch.as_tensor(outOpen.cuda(), device=torch.device("cuda", 0))
-    outClose = torch.as_tensor(outClose.cuda(), device=torch.device("cuda", 0))
+    outDilate = cupy.asarray(outDilate.cuda())
+    outErode = cupy.asarray(outErode.cuda())
+    outOpen = cupy.asarray(outOpen.cuda())
+    outClose = cupy.asarray(outClose.cuda())
 
-    expectedDilate = torch.ones((number, height, width, 1), dtype=torch.uint8).cuda()
-    expectedErode = torch.zeros((number, height, width, 1), dtype=torch.uint8).cuda()
-    expectedOpen = torch.zeros((number, height, width, 1), dtype=torch.uint8).cuda()
-    expectedClose = torch.ones((number, height, width, 1), dtype=torch.uint8).cuda()
+    expectedDilate = cupy.asarray(np.ones((number, height, width, 1), dtype=np.uint8))
+    expectedErode = cupy.asarray(np.zeros((number, height, width, 1), dtype=np.uint8))
+    expectedOpen = cupy.asarray(np.zeros((number, height, width, 1), dtype=np.uint8))
+    expectedClose = cupy.asarray(np.ones((number, height, width, 1), dtype=np.uint8))
 
-    assert torch.all(outDilate.eq(expectedDilate))
-    assert torch.all(outErode.eq(expectedErode))
-    assert torch.all(outOpen.eq(expectedOpen))
-    assert torch.all(outClose.eq(expectedClose))
+    assert np.all(outDilate.get() == expectedDilate.get())
+    assert np.all(outErode.get() == expectedErode.get())
+    assert np.all(outOpen.get() == expectedOpen.get())
+    assert np.all(outClose.get() == expectedClose.get())
+
+
+def _morphology_params(dtype, layout, channels):
+    return {
+        "morphologyType": cvcuda.MorphologyType.ERODE,
+        "maskSize": [-1, -1],
+        "anchor": [-1, -1],
+    }
+
+
+def _morphology_varshape_params(dtype, layout, channels):
+    return {
+        "morphologyType": cvcuda.MorphologyType.ERODE,
+        "masks": util.to_cvcuda_tensor(
+            np.array([[3, 3], [3, 3]], dtype=np.int32), "NC"
+        ),
+        "anchors": util.to_cvcuda_tensor(
+            np.array([[-1, -1], [-1, -1]], dtype=np.int32), "NC"
+        ),
+    }
+
+
+globals().update(
+    cv_tools.make_op_tests(
+        name="morphology",
+        runner_info=[
+            ("tensor", cvcuda.morphology, _morphology_params),
+            ("image_batch", cvcuda.morphology, _morphology_varshape_params),
+        ],
+        keystone_dlc=(cvcuda.Type.U8, "NHWC", 3),
+        supported_dtypes={cvcuda.Type.U8, cvcuda.Type.U16, cvcuda.Type.F32},
+        supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
+        supported_channels={1, 3, 4},
+    )
+)

@@ -1,5 +1,5 @@
 ..
-   # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+   # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
    # SPDX-License-Identifier: Apache-2.0
    #
    # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,83 +14,56 @@
    # See the License for the specific language governing permissions and
    # limitations under the License.
 
+:orphan:
+
 .. _sample_operators:
 
-Operators
-=========
+Operator Samples Overview
+=========================
 
-Individual operator samples demonstrating specific CV-CUDA operations.
+Each operator sample reads an image from disk, runs a single CV-CUDA operator on the GPU,
+and writes the result back to disk.
 
-Overview
---------
-
-The operator samples show focused functionality for understanding specific operations:
-
-* **Gaussian** - Blur and smoothing with configurable kernel and sigma
-* **Resize** - Image resizing with various interpolation methods (linear, cubic, area, nearest)
-* **Reformat** - Tensor layout conversions (HWC, CHW, NHWC, NCHW)
-* **Stack** - Batch creation from multiple tensors for parallel processing
-* **Label** - Connected component labeling for region identification
-
-These samples are perfect for:
-
-* Learning individual operator behavior
-* Understanding operator parameters
-* Quick experimentation
-* Building custom pipelines
-
-Operator Samples
-----------------
-
-.. toctree::
-   :maxdepth: 1
-
-   Gaussian Blur <operators/gaussian>
-   Resize <operators/resize>
-   Reformat <operators/reformat>
-   Stack <operators/stack>
-   Connected Components Labeling <operators/label>
-
-Common Usage Patterns
+Resampling & Geometry
 ---------------------
 
-Single Operator
-^^^^^^^^^^^^^^^
+:doc:`operators/center_crop` · :doc:`operators/copymakeborder` · :doc:`operators/customcrop` ·
+:doc:`operators/flip` · :doc:`operators/hq_resize` · :doc:`operators/pillowresize` ·
+:doc:`operators/random_resized_crop` · :doc:`operators/remap` · :doc:`operators/resize` ·
+:doc:`operators/rotate` · :doc:`operators/warp_affine` · :doc:`operators/warp_perspective`
 
-Simple, focused operation:
+Filtering & Blur
+----------------
 
-.. code-block:: python
+:doc:`operators/averageblur` · :doc:`operators/bilateral_filter` · :doc:`operators/boxblur` ·
+:doc:`operators/conv2d` · :doc:`operators/gaussian` · :doc:`operators/joint_bilateral_filter` ·
+:doc:`operators/laplacian` · :doc:`operators/median_blur` · :doc:`operators/morphology`
 
-   import cvcuda
-   from common import read_image, write_image
+Color & Photometric
+-------------------
 
-   image = read_image("input.jpg")
-   result = cvcuda.gaussian(image, (5, 5), (1.0, 1.0))
-   write_image(result, "output.jpg")
+:doc:`operators/advcvtcolor` · :doc:`operators/brightness_contrast` ·
+:doc:`operators/channelreorder` · :doc:`operators/clahe` · :doc:`operators/color_twist` ·
+:doc:`operators/convertto` · :doc:`operators/cvtcolor` · :doc:`operators/gamma_contrast` ·
+:doc:`operators/histogrameq` · :doc:`operators/normalize`
 
-Chaining Operators
-^^^^^^^^^^^^^^^^^^
+Thresholding & Segmentation
+---------------------------
 
-Combine multiple operations:
+:doc:`operators/adaptivethreshold` · :doc:`operators/label` · :doc:`operators/threshold`
 
-.. code-block:: python
+Noise, Restoration & Augmentation
+----------------------------------
 
-   image = read_image("input.jpg")
-   resized = cvcuda.resize(image, (224, 224, 3))
-   blurred = cvcuda.gaussian(resized, (5, 5), (1.0, 1.0))
-   write_image(blurred, "output.jpg")
+:doc:`operators/erase` · :doc:`operators/gaussiannoise` · :doc:`operators/inpaint`
 
-Batch Processing
-^^^^^^^^^^^^^^^^
+Compositing & Drawing
+---------------------
 
-.. code-block:: python
+:doc:`operators/bndbox` · :doc:`operators/composite` · :doc:`operators/osd`
 
-   batch = cvcuda.stack([read_image(p) for p in paths])
-   processed = cvcuda.gaussian(batch, (5, 5), (1.0, 1.0))
+Layout & Preprocessing
+-----------------------
 
-See Also
---------
-
-* :ref:`Applications <sample_applications>` - End-to-end pipelines
-* :ref:`Common Utilities <sample_common>` - Helper functions
-* :ref:`Python API <python_api>` - Complete operator API documentation
+:doc:`operators/crop_flip_normalize_reformat` · :doc:`operators/reformat` ·
+:doc:`operators/resize_crop_convert_reformat` · :doc:`operators/stack`

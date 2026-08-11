@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,6 +24,7 @@
 #    include <nvcv/Exception.hpp>
 #endif
 
+#include <array>
 #include <type_traits>
 
 #if !defined(NVCV_UNIT_TESTS) || !NVCV_UNIT_TESTS
@@ -38,12 +39,11 @@ inline ::testing::AssertionResult CmpHelperEQFailure(const char *lhs_expression,
     auto res = EqFailure(lhs_expression, rhs_expression, FormatForComparisonFailureMessage(lhs, rhs),
                          FormatForComparisonFailureMessage(rhs, lhs), false);
 
-    char       detail[NVCV_MAX_STATUS_MESSAGE_LENGTH];
-    NVCVStatus last = nvcvPeekAtLastErrorMessage(detail, sizeof(detail));
-
-    if (last != NVCV_SUCCESS && (last == lhs || last == rhs))
+    std::array<char, NVCV_MAX_STATUS_MESSAGE_LENGTH> detail;
+    if (NVCVStatus last = nvcvPeekAtLastErrorMessage(detail.data(), detail.size());
+        last != NVCV_SUCCESS && (last == lhs || last == rhs))
     {
-        res << "\n  Detail: " << detail;
+        res << "\n  Detail: " << detail.data();
     }
 
     return res;

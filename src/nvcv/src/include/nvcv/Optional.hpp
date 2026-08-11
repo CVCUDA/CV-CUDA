@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,21 +18,33 @@
 #ifndef NVCV_OPTIONAL_HPP
 #define NVCV_OPTIONAL_HPP
 
-// C++>=17 ?
-#if __cplusplus >= 201703L
-#    include <new> // for std::launder
-#endif
-
 #include "detail/InPlace.hpp"
 #include "detail/TypeTraits.hpp"
 
 #include <cassert>
 #include <cstddef> // for std::nullptr_t
+#include <memory>
 #include <stdexcept>
 #include <type_traits>
 #include <utility> // for std::move, std::forward
 
 namespace nvcv {
+
+class OptionalBadAccess : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
+
+namespace detail {
+using std::swap;
+
+template<class T>
+struct IsNothrowSwappable
+{
+    static constexpr bool value = noexcept(swap(std::declval<T &>(), std::declval<T &>()));
+};
+} // namespace detail
 
 struct NullOptT
 {
@@ -58,11 +70,12 @@ public:
     /// @brief Default constructor that initializes an empty `Optional`
     Optional() noexcept
         : m_hasValue(false)
+        , m_storage()
     {
     }
 
     /// @brief Constructs an empty `Optional` using the specified `NullOptT` tag.
-    Optional(NullOptT) noexcept
+    explicit Optional(NullOptT) noexcept
         : Optional()
     {
     }
@@ -70,22 +83,24 @@ public:
     /// @brief Copy constructor.
     /// If the other `Optional` contains a value, it will be copied to this `Optional`.
     Optional(const Optional &that)
-        : m_hasValue(that.m_hasValue)
+        : m_hasValue(false)
+        , m_storage()
     {
-        if (m_hasValue)
+        if (that.m_hasValue)
         {
-            new (&m_storage) T(that.value());
+            construct(that.value());
         }
     }
 
     /// @brief Move constructor.
-    Optional(Optional &&that) noexcept(std::is_nothrow_move_constructible<T>::value)
-        : m_hasValue(that.m_hasValue)
+    Optional(Optional &&that) noexcept
+        : m_hasValue(false)
+        , m_storage()
     {
-        if (m_hasValue)
+        if (that.m_hasValue)
         {
-            new (&m_storage) T(std::move(that.value()));
-            // do not set that.m_hasValue to false as per c++17 standard.
+            construct(std::move(that.value()));
+            // Moving from the source optional keeps its engagement state as per the C++17 standard.
         }
     }
 
@@ -101,12 +116,13 @@ public:
      * @param that The source `Optional` object to be copied from.
      */
     template<typename U, detail::EnableIf_t<std::is_constructible<T, const U &>::value, int> = 0>
-    Optional(const Optional<U> &that)
-        : m_hasValue(that.m_hasValue)
+    explicit Optional(const Optional<U> &that)
+        : m_hasValue(false)
+        , m_storage()
     {
-        if (m_hasValue)
+        if (that.hasValue())
         {
-            new (&m_storage) T(that.value());
+            construct(that.value());
         }
     }
 
@@ -126,13 +142,14 @@ public:
      * @param that The source `Optional` object to be moved from.
      */
     template<typename U, detail::EnableIf_t<std::is_constructible<T, U &&>::value, int> = 0>
-    Optional(Optional<U> &&that) noexcept(std::is_nothrow_constructible<T, U &&>::value)
-        : m_hasValue(that.m_hasValue)
+    explicit Optional(Optional<U> &&that) noexcept(std::is_nothrow_constructible<T, U &&>::value)
+        : m_hasValue(false)
+        , m_storage()
     {
-        if (m_hasValue)
+        if (that.hasValue())
         {
-            new (&m_storage) T(std::move(that.value()));
-            // do not set that.m_hasValue to false as per c++17 standard.
+            construct(std::move(that.value()));
+            // Moving from the source optional keeps its engagement state as per the C++17 standard.
         }
     }
 
@@ -158,10 +175,11 @@ public:
                                              && !std::is_same<typename std::decay<U>::type, detail::InPlaceT>::value
                                              && !std::is_same<typename std::decay<U>::type, Optional<U>>::value,
                                          int> = 0>
-    Optional(U &&that)
-        : m_hasValue(true)
+    explicit Optional(U &&that)
+        : m_hasValue(false)
+        , m_storage()
     {
-        new (&m_storage) T(std::forward<U>(that));
+        construct(std::forward<U>(that));
     }
 
     /**
@@ -182,29 +200,23 @@ public:
      * @param args... The arguments used for in-place construction of the `Optional` object's contained value.
      */
     template<class... AA, detail::EnableIf_t<std::is_constructible<T, AA...>::value, int> = 0>
-    Optional(detail::InPlaceT, AA &&...args)
-        : m_hasValue(true)
+    explicit Optional(detail::InPlaceT, AA &&...args)
+        : m_hasValue(false)
+        , m_storage()
     {
-        new (&m_storage) T(std::forward<AA>(args)...);
+        construct(std::forward<AA>(args)...);
     }
 
     // Dtor
     ~Optional()
     {
-        if (m_hasValue)
-        {
-            this->value().~T();
-        }
+        reset();
     }
 
     /// Comparison operators below
     Optional &operator=(NullOptT) noexcept
     {
-        if (m_hasValue)
-        {
-            this->value().~T();
-            m_hasValue = false;
-        }
+        reset();
         return *this;
     }
 
@@ -213,23 +225,11 @@ public:
     {
         if (that.hasValue())
         {
-            if (m_hasValue)
-            {
-                this->value() = that.value();
-            }
-            else
-            {
-                new (&m_storage) T(that.value());
-                m_hasValue = true;
-            }
+            assignValue(that.value());
         }
         else
         {
-            if (m_hasValue)
-            {
-                this->value().~T();
-                m_hasValue = false;
-            }
+            reset();
         }
         return *this;
     }
@@ -239,24 +239,12 @@ public:
     {
         if (that.hasValue())
         {
-            if (m_hasValue)
-            {
-                this->value() = std::move(that.value());
-            }
-            else
-            {
-                new (&m_storage) T(std::move(that.value()));
-                m_hasValue = true;
-            }
-            // do not set that.m_hasValue to false as per c++17 standard.
+            assignValue(std::move(that.value()));
+            // Moving from the source optional keeps its engagement state as per the C++17 standard.
         }
         else
         {
-            if (m_hasValue)
-            {
-                this->value().~T();
-                m_hasValue = false;
-            }
+            reset();
         }
         return *this;
     }
@@ -264,57 +252,47 @@ public:
     // copy/move assignment
     Optional &operator=(const Optional &that)
     {
-        return this->operator=<T>(that);
+        if (that.m_hasValue)
+        {
+            assignValue(that.value());
+        }
+        else
+        {
+            reset();
+        }
+        return *this;
     }
 
-    Optional &operator=(Optional &&that)
+    Optional &operator=(Optional &&that) noexcept
     {
-        return this->operator=<T>(std::move(that));
+        if (that.m_hasValue)
+        {
+            assignValue(std::move(that.value()));
+        }
+        else
+        {
+            reset();
+        }
+        return *this;
     }
 
     Optional &operator=(const T &value)
     {
-        if (m_hasValue)
-        {
-            this->value() = value;
-        }
-        else
-        {
-            new (&m_storage) T(value);
-            m_hasValue = true;
-        }
+        assignValue(value);
         return *this;
     }
 
     Optional &operator=(T &&value)
     {
-        if (m_hasValue)
-        {
-            this->value() = std::move(value);
-        }
-        else
-        {
-            new (&m_storage) T(std::move(value));
-            m_hasValue = true;
-        }
+        assignValue(std::move(value));
         return *this;
     }
 
     template<class... AA, detail::EnableIf_t<std::is_constructible<T, AA...>::value, int> = 0>
     T &emplace(AA &&...args)
     {
-        T *p;
-        if (m_hasValue)
-        {
-            this->value().~T();
-            p = new (&m_storage) T(std::forward<AA>(args)...);
-        }
-        else
-        {
-            p          = new (&m_storage) T(std::forward<AA>(args)...);
-            m_hasValue = true;
-        }
-        return *p;
+        reset();
+        return *construct(std::forward<AA>(args)...);
     }
 
     /**
@@ -327,7 +305,8 @@ public:
     {
         if (m_hasValue)
         {
-            this->value().~T();
+            Allocator alloc;
+            AllocTraits::destroy(alloc, valuePtr());
             m_hasValue = false;
         }
     }
@@ -340,12 +319,12 @@ public:
      *
      * @param that Another `Optional` object of the same type.
      */
-    void swap(Optional &that)
+    void swap(Optional &that) noexcept
     {
         if (m_hasValue && that.m_hasValue)
         {
             using std::swap;
-            swap(this->value() && that.value());
+            swap(this->value(), that.value());
         }
         else if (!m_hasValue && !that.m_hasValue)
         {
@@ -353,7 +332,8 @@ public:
         }
         else
         {
-            Optional *a, *b;
+            Optional *a;
+            Optional *b;
             if (m_hasValue)
             {
                 a = this;
@@ -365,10 +345,8 @@ public:
                 a = &that;
                 b = this;
             }
-            new (&b->m_storage) T(std::move(a->value()));
-            a->value().~T();
-            a->m_hasValue = false;
-            b->m_hasValue = true;
+            b->construct(std::move(a->value()));
+            a->reset();
         }
     }
 
@@ -399,15 +377,10 @@ public:
     {
         if (!m_hasValue)
         {
-            throw std::runtime_error("Bad optional access");
+            throw OptionalBadAccess("Bad optional access");
         }
 
-        T *p = reinterpret_cast<T *>(&m_storage);
-#if __cplusplus >= 201703L
-        return *std::launder(p);
-#else
-        return *p;
-#endif
+        return *valuePtr();
     }
 
     /**
@@ -419,15 +392,10 @@ public:
     {
         if (!m_hasValue)
         {
-            throw std::runtime_error("Bad optional access");
+            throw OptionalBadAccess("Bad optional access");
         }
 
-        const T *p = reinterpret_cast<const T *>(&m_storage);
-#if __cplusplus >= 201703L
-        return *std::launder(p);
-#else
-        return *p;
-#endif
+        return *valuePtr();
     }
 
     T *operator->()
@@ -451,6 +419,41 @@ public:
     }
 
 private:
+    using Allocator   = std::allocator<T>;
+    using AllocTraits = std::allocator_traits<Allocator>;
+
+    T *valuePtr() noexcept
+    {
+        return reinterpret_cast<T *>(&m_storage);
+    }
+
+    const T *valuePtr() const noexcept
+    {
+        return reinterpret_cast<const T *>(&m_storage);
+    }
+
+    template<class Value>
+    void assignValue(Value &&value)
+    {
+        if (m_hasValue)
+        {
+            this->value() = std::forward<Value>(value);
+        }
+        else
+        {
+            construct(std::forward<Value>(value));
+        }
+    }
+
+    template<class... AA>
+    T *construct(AA &&...args)
+    {
+        Allocator alloc;
+        AllocTraits::construct(alloc, valuePtr(), std::forward<AA>(args)...);
+        m_hasValue = true;
+        return valuePtr();
+    }
+
     bool                                                       m_hasValue;
     typename std::aligned_storage<sizeof(T), alignof(T)>::type m_storage;
 };

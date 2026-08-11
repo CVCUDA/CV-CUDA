@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,7 +28,7 @@ namespace nvcv::priv {
 
 NVCVTensorLayout GetTensorLayoutFor(ImageFormat fmt, int nbatches);
 
-void FillTensorData(IImage &img, NVCVTensorData &data);
+void FillTensorData(const IImage &img, NVCVTensorData &data);
 
 void ReshapeTensorData(NVCVTensorData &tensor_data, int new_rank, const int64_t *new_shape,
                        NVCVTensorLayout new_layout);

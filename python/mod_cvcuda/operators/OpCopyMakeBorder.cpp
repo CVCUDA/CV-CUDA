@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,15 +23,43 @@
 #include <cvcuda/Types.h>
 #include <cvcuda/cuda_tools/TypeTraits.hpp>
 #include <nvcv/DataType.hpp>
+#include <nvcv/TensorLayoutInfo.hpp>
 #include <nvcv/python/ImageBatchVarShape.hpp>
 #include <nvcv/python/ResourceGuard.hpp>
 #include <nvcv/python/Stream.hpp>
 #include <nvcv/python/Tensor.hpp>
 #include <pybind11/stl.h>
 
+#include <stdexcept>
+
 namespace cvcudapy {
 
 namespace {
+
+class CopyMakeBorderError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
+
+float4 GetBorderValue(const std::vector<float> &borderValue)
+{
+    size_t bValueDims = borderValue.size();
+    if (bValueDims > 4)
+    {
+        throw CopyMakeBorderError(
+            util::ConcatString("Channels of borderValue should <= 4, current is '", bValueDims, "'"));
+    }
+
+    float4 bValue;
+    for (int i = 0; i < 4; i++)
+    {
+        const auto valueIdx               = static_cast<size_t>(i);
+        nvcv::cuda::GetElement(bValue, i) = bValueDims > valueIdx ? borderValue[valueIdx] : 0.f;
+    }
+    return bValue;
+}
+
 Tensor CopyMakeBorderInto(Tensor &output, Tensor &input, NVCVBorderType borderMode,
                           const std::vector<float> &borderValue, int top, int left, std::optional<Stream> pstream)
 {
@@ -40,17 +68,7 @@ Tensor CopyMakeBorderInto(Tensor &output, Tensor &input, NVCVBorderType borderMo
         pstream = Stream::Current();
     }
 
-    size_t bValueDims = borderValue.size();
-    if (bValueDims > 4)
-    {
-        throw std::runtime_error(
-            util::FormatString("Channels of borderValue should <= 4, current is '%lu'", bValueDims));
-    }
-    float4 bValue;
-    for (size_t i = 0; i < 4; i++)
-    {
-        nvcv::cuda::GetElement(bValue, i) = bValueDims > i ? borderValue[i] : 0.f;
-    }
+    float4 bValue = GetBorderValue(borderValue);
 
     auto copyMakeBorder = CreateOperator<cvcuda::CopyMakeBorder>();
 
@@ -59,7 +77,8 @@ Tensor CopyMakeBorderInto(Tensor &output, Tensor &input, NVCVBorderType borderMo
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*copyMakeBorder});
 
-    copyMakeBorder->submit(pstream->cudaHandle(), input, output, top, left, borderMode, bValue);
+    guard.run([&copyMakeBorder, &pstream, &input, &output, &top, &left, &borderMode, &bValue]()
+              { copyMakeBorder->submit(pstream->cudaHandle(), input, output, top, left, borderMode, bValue); });
 
     return output;
 }
@@ -67,47 +86,31 @@ Tensor CopyMakeBorderInto(Tensor &output, Tensor &input, NVCVBorderType borderMo
 Tensor CopyMakeBorder(Tensor &input, NVCVBorderType borderMode, const std::vector<float> &borderValue, int top,
                       int bottom, int left, int right, std::optional<Stream> pstream)
 {
-    Shape out_shape     = CreateShape(input.shape());
-    int   cdim          = out_shape.size() - 1;
-    out_shape[cdim - 2] = out_shape[cdim - 2].cast<int64_t>() + top + bottom;
-    out_shape[cdim - 1] = out_shape[cdim - 1].cast<int64_t>() + left + right;
+    auto info = nvcv::TensorLayoutInfoImage::Create(input.layout());
+    if (!info)
+    {
+        throw CopyMakeBorderError("Non-supported tensor layout");
+    }
+
+    Shape out_shape              = CreateShape(input.shape());
+    out_shape[info->idxHeight()] = out_shape[info->idxHeight()].cast<int64_t>() + top + bottom;
+    out_shape[info->idxWidth()]  = out_shape[info->idxWidth()].cast<int64_t>() + left + right;
 
     Tensor output = Tensor::Create(out_shape, input.dtype(), input.layout());
 
     return CopyMakeBorderInto(output, input, borderMode, borderValue, top, left, pstream);
 }
 
+template<class Output>
+Output &VarShapeCopyMakeBorderSubmit(Output &output, ImageBatchVarShape &input, NVCVBorderType borderMode,
+                                     const std::vector<float> &borderValue, Tensor &top, Tensor &left,
+                                     std::optional<Stream> pstream);
+
 Tensor VarShapeCopyMakeBorderStackInto(Tensor &output, ImageBatchVarShape &input, NVCVBorderType borderMode,
                                        const std::vector<float> &borderValue, Tensor &top, Tensor &left,
                                        std::optional<Stream> pstream)
 {
-    if (!pstream)
-    {
-        pstream = Stream::Current();
-    }
-
-    size_t bValueDims = borderValue.size();
-    if (bValueDims > 4)
-    {
-        throw std::runtime_error(
-            util::FormatString("Channels of borderValue should <= 4, current is '%lu'", bValueDims));
-    }
-    float4 bValue;
-    for (size_t i = 0; i < 4; i++)
-    {
-        nvcv::cuda::GetElement(bValue, i) = bValueDims > i ? borderValue[i] : 0.f;
-    }
-
-    auto copyMakeBorder = CreateOperator<cvcuda::CopyMakeBorder>();
-
-    ResourceGuard guard(*pstream);
-    guard.add(LockMode::LOCK_MODE_READ, {input, top, left});
-    guard.add(LockMode::LOCK_MODE_WRITE, {output});
-    guard.add(LockMode::LOCK_MODE_NONE, {*copyMakeBorder});
-
-    copyMakeBorder->submit(pstream->cudaHandle(), input, output, top, left, borderMode, bValue);
-
-    return output;
+    return VarShapeCopyMakeBorderSubmit(output, input, borderMode, borderValue, top, left, pstream);
 }
 
 Tensor VarShapeCopyMakeBorderStack(ImageBatchVarShape &input, NVCVBorderType borderMode,
@@ -117,7 +120,7 @@ Tensor VarShapeCopyMakeBorderStack(ImageBatchVarShape &input, NVCVBorderType bor
     auto format = input.uniqueFormat();
     if (!format)
     {
-        throw std::runtime_error("All images in input must have the same format.");
+        throw CopyMakeBorderError("All images in input must have the same format.");
     }
 
     Tensor output = Tensor::CreateForImageBatch(input.numImages(), {out_width, out_height}, format);
@@ -129,22 +132,20 @@ ImageBatchVarShape VarShapeCopyMakeBorderInto(ImageBatchVarShape &output, ImageB
                                               NVCVBorderType borderMode, const std::vector<float> &borderValue,
                                               Tensor &top, Tensor &left, std::optional<Stream> pstream)
 {
+    return VarShapeCopyMakeBorderSubmit(output, input, borderMode, borderValue, top, left, pstream);
+}
+
+template<class Output>
+Output &VarShapeCopyMakeBorderSubmit(Output &output, ImageBatchVarShape &input, NVCVBorderType borderMode,
+                                     const std::vector<float> &borderValue, Tensor &top, Tensor &left,
+                                     std::optional<Stream> pstream)
+{
     if (!pstream)
     {
         pstream = Stream::Current();
     }
 
-    size_t bValueDims = borderValue.size();
-    if (bValueDims > 4)
-    {
-        throw std::runtime_error(
-            util::FormatString("Channels of borderValue should <= 4, current is '%lu'", bValueDims));
-    }
-    float4 bValue;
-    for (size_t i = 0; i < 4; i++)
-    {
-        nvcv::cuda::GetElement(bValue, i) = bValueDims > i ? borderValue[i] : 0.f;
-    }
+    float4 bValue = GetBorderValue(borderValue);
 
     auto copyMakeBorder = CreateOperator<cvcuda::CopyMakeBorder>();
 
@@ -153,7 +154,8 @@ ImageBatchVarShape VarShapeCopyMakeBorderInto(ImageBatchVarShape &output, ImageB
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*copyMakeBorder});
 
-    copyMakeBorder->submit(pstream->cudaHandle(), input, output, top, left, borderMode, bValue);
+    guard.run([&copyMakeBorder, &pstream, &input, &output, &top, &left, &borderMode, &bValue]()
+              { copyMakeBorder->submit(pstream->cudaHandle(), input, output, top, left, borderMode, bValue); });
 
     return output;
 }
@@ -165,28 +167,28 @@ ImageBatchVarShape VarShapeCopyMakeBorder(ImageBatchVarShape &input, NVCVBorderT
 {
     if (int(out_heights.size()) != input.numImages())
     {
-        throw std::runtime_error(util::FormatString("out_heights.size() != input.numImages, %lu != %d",
-                                                    out_heights.size(), input.numImages()));
+        throw CopyMakeBorderError(util::ConcatString("out_heights.size() != input.numImages, ", out_heights.size(),
+                                                     " != ", input.numImages()));
     }
 
     if (int(out_widths.size()) != input.numImages())
     {
-        throw std::runtime_error(util::FormatString("out_widths.size() != input.numImages, %lu != %d",
-                                                    out_heights.size(), input.numImages()));
+        throw CopyMakeBorderError(
+            util::ConcatString("out_widths.size() != input.numImages, ", out_widths.size(), " != ", input.numImages()));
     }
     ImageBatchVarShape output = ImageBatchVarShape::Create(input.numImages());
 
     auto format = input.uniqueFormat();
     if (!format)
     {
-        throw std::runtime_error("All images in input must have the same format.");
+        throw CopyMakeBorderError("All images in input must have the same format.");
     }
 
     for (int i = 0; i < input.numImages(); ++i)
     {
         nvcv::Size2D size = {out_widths[i], out_heights[i]};
         auto         img  = Image::Create(size, format);
-        output.pushBack(img);
+        output.pushBackImage(img);
     }
     return VarShapeCopyMakeBorderInto(output, input, borderMode, borderValue, top, left, pstream);
 }
@@ -197,20 +199,11 @@ void ExportOpCopyMakeBorder(py::module &m)
 {
     using namespace pybind11::literals;
 
-    py::options options;
-    options.disable_function_signatures();
+    m.def("copymakeborder", NvtxTrace("cvcuda.copymakeborder", &CopyMakeBorder), "src"_a,
+          "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "border_value"_a = std::vector<float>(),
+          py::kw_only(), "top"_a, "bottom"_a, "left"_a, "right"_a, "stream"_a = nullptr, R"pbdoc(
+        Executes the Copy Make Border operation on the given cuda stream.
 
-    m.def("copymakeborder", &CopyMakeBorder, "src"_a, "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT,
-          "border_value"_a = std::vector<float>(), py::kw_only(), "top"_a, "bottom"_a, "left"_a, "right"_a,
-          "stream"_a       = nullptr, R"pbdoc(
-
-	cvcuda.copymakeborder(src: cvcuda.Tensor, border_mode: cvcuda.Border = cvcuda.Border.CONSTANT, border_value: List[float], top: int, bottom: int, right: int, stream: Optional[cvcuda.Stream] = None) -> cvcuda.Tensor
-
-	Executes the Copy Make Border operation on the given cuda stream.
-
-        See also:
-            Refer to the CV-CUDA C API reference for the Copy Make Border operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.Tensor): Input tensor containing one or more images.
@@ -226,22 +219,13 @@ void ExportOpCopyMakeBorder(py::module &m)
         Returns:
             cvcuda.Tensor: The output tensor.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("copymakeborder_into", &CopyMakeBorderInto, "dst"_a, "src"_a,
+    m.def("copymakeborder_into", NvtxTrace("cvcuda.copymakeborder_into", &CopyMakeBorderInto), "dst"_a, "src"_a,
           "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "border_value"_a = std::vector<float>(),
           py::kw_only(), "top"_a, "left"_a, "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.copymakeborder_into(dst: cvcuda.Tensor, src: cvcuda.Tensor, border_mode: cvcuda.Border = cvcuda.Border.CONSTANT, border_value: List[float], top: int, bottom: int, right: int, stream: Optional[cvcuda.Stream] = None)
-
         Executes the Copy Make Border operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Copy Make Border operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.Tensor): Output tensor to store the result of the operation.
@@ -254,24 +238,14 @@ void ExportOpCopyMakeBorder(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 
-    m.def("copymakeborderstack", &VarShapeCopyMakeBorderStack, "src"_a,
+    m.def("copymakeborderstack", NvtxTrace("cvcuda.copymakeborderstack", &VarShapeCopyMakeBorderStack), "src"_a,
           "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "border_value"_a = std::vector<float>(),
           py::kw_only(), "top"_a, "left"_a, "out_height"_a, "out_width"_a, "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.copymakeborderstack(src: cvcuda.ImageBatchVarShape, border_mode: cvcuda.Border = cvcuda.Border.CONSTANT, border_value: List[float], top: int, bottom: int, right: int, stream: Optional[cvcuda.Stream] = None) -> cvcuda.Tensor
-
         Executes the Copy Make Border Stack operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Copy Make Border Stack operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
@@ -287,22 +261,13 @@ void ExportOpCopyMakeBorder(py::module &m)
         Returns:
             cvcuda.Tensor: The output images.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("copymakeborderstack_into", &VarShapeCopyMakeBorderStackInto, "dst"_a, "src"_a,
-          "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "border_value"_a = std::vector<float>(),
-          py::kw_only(), "top"_a, "left"_a, "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.copymakeborderstack_into(dst: cvcuda.Tensor, src: cvcuda.ImageBatchVarShape, border_mode: cvcuda.Border = cvcuda.Border.CONSTANT, border_value: List[float], top: int, bottom: int, right: int, stream: Optional[cvcuda.Stream] = None)
-
+    m.def("copymakeborderstack_into", NvtxTrace("cvcuda.copymakeborderstack_into", &VarShapeCopyMakeBorderStackInto),
+          "dst"_a, "src"_a, "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT,
+          "border_value"_a = std::vector<float>(), py::kw_only(), "top"_a, "left"_a, "stream"_a = nullptr, R"pbdoc(
         Executes the Copy Make Border Stack operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Copy Make Border Stack operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.Tensor): Output tensor to store the result of the operation.
@@ -317,24 +282,14 @@ void ExportOpCopyMakeBorder(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 
-    m.def("copymakeborder", &VarShapeCopyMakeBorder, "src"_a, "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT,
-          "border_value"_a = std::vector<float>(), py::kw_only(), "top"_a, "left"_a, "out_heights"_a, "out_widths"_a,
-          "stream"_a       = nullptr, R"pbdoc(
-
-	cvcuda.copymakeborder(src: cvcuda.ImageBatchVarShape, border_mode: cvcuda.Border = cvcuda.Border.CONSTANT, border_value: List[float], top: int, bottom: int, right: int, stream: Optional[cvcuda.Stream] = None) -> cvcuda.ImageBatchVarShape
-
+    m.def("copymakeborder", NvtxTrace("cvcuda.copymakeborder", &VarShapeCopyMakeBorder), "src"_a,
+          "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "border_value"_a = std::vector<float>(),
+          py::kw_only(), "top"_a, "left"_a, "out_heights"_a, "out_widths"_a, "stream"_a = nullptr, R"pbdoc(
         Executes the Copy Make Border operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Copy Make Border operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
@@ -350,22 +305,13 @@ void ExportOpCopyMakeBorder(py::module &m)
         Returns:
             cvcuda.ImageBatchVarShape: The output image batch.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("copymakeborder_into", &VarShapeCopyMakeBorderInto, "dst"_a, "src"_a,
+    m.def("copymakeborder_into", NvtxTrace("cvcuda.copymakeborder_into", &VarShapeCopyMakeBorderInto), "dst"_a, "src"_a,
           "border_mode"_a = NVCVBorderType::NVCV_BORDER_CONSTANT, "border_value"_a = std::vector<float>(),
           py::kw_only(), "top"_a, "left"_a, "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.copymakeborder_into(dst: cvcuda.ImageBatchVarShape, src: cvcuda.ImageBatchVarShape, border_mode: cvcuda.Border = cvcuda.Border.CONSTANT, border_value: List[float], top: int, bottom: int, right: int, stream: Optional[cvcuda.Stream] = None)
-
         Executes the Copy Make Border operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Copy Make Border operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.ImageBatchVarShape): Output image batch containing the result of the operation.
@@ -380,11 +326,7 @@ void ExportOpCopyMakeBorder(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.ImageBatchVarShape: The output image batch (same as dst).
     )pbdoc");
 }
 

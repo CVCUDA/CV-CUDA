@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,7 @@
  */
 
 #include "Operators.hpp"
+#include "VarShapeUtils.hpp"
 
 #include <common/PyUtil.hpp>
 #include <cvcuda/OpHistogramEq.hpp>
@@ -24,24 +25,34 @@
 #include <nvcv/python/Stream.hpp>
 #include <nvcv/python/Tensor.hpp>
 
+#include <stdexcept>
+
 namespace cvcudapy {
 
 namespace {
+
+class HistogramEqError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
+
 Tensor HistogramEqInto(Tensor &output, Tensor &input, std::optional<Stream> pstream)
 {
     if (!pstream)
     {
         pstream = Stream::Current();
     }
-    nvcv::TensorShape shape = input.shape();
-    auto              op    = CreateOperator<cvcuda::HistogramEq>((uint32_t)shape[0]);
+    // HWC inputs (rank 3) have no N dim, so shape[0] is H — fall back to 1.
+    uint32_t batchSize = (input.shape().size() == 4) ? (uint32_t)input.shape()[0] : 1u;
+    auto     op        = CreateOperator<cvcuda::HistogramEq>(batchSize);
 
     ResourceGuard guard(*pstream);
     guard.add(LockMode::LOCK_MODE_READ, {input});
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*op});
 
-    op->submit(pstream->cudaHandle(), input, output);
+    guard.run([&op, &pstream, &input, &output]() { op->submit(pstream->cudaHandle(), input, output); });
 
     return std::move(output);
 }
@@ -68,26 +79,20 @@ ImageBatchVarShape HistogramEqVarShapeInto(ImageBatchVarShape &output, ImageBatc
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*op});
 
-    op->submit(pstream->cudaHandle(), input, output);
+    guard.run([&op, &pstream, &input, &output]() { op->submit(pstream->cudaHandle(), input, output); });
 
     return output;
 }
 
 ImageBatchVarShape HistogramEqVarShape(ImageBatchVarShape &input, std::optional<Stream> pstream)
 {
-    ImageBatchVarShape output = ImageBatchVarShape::Create(input.numImages());
-
     auto format = input.uniqueFormat();
     if (!format)
     {
-        throw std::runtime_error("All images in input must have the same format.");
+        throw HistogramEqError("All images in input must have the same format.");
     }
 
-    for (auto img = input.begin(); img != input.end(); ++img)
-    {
-        auto newimg = Image::Create(img->size(), format);
-        output.pushBack(newimg);
-    }
+    ImageBatchVarShape output = CreateSameShapeImageBatch(input, format, input.numImages());
 
     return HistogramEqVarShapeInto(output, input, pstream);
 }
@@ -97,18 +102,11 @@ ImageBatchVarShape HistogramEqVarShape(ImageBatchVarShape &input, std::optional<
 void ExportOpHistogramEq(py::module &m)
 {
     using namespace pybind11::literals;
-    py::options options;
-    options.disable_function_signatures();
 
-    m.def("histogrameq", &HistogramEq, "src"_a, "dtype"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.histogrameq(src: cvcuda.Tensor, dtype: numpy.dtype, stream: Optional[cvcuda.Stream] = None) -> cvcuda.Tensor
-
+    m.def("histogrameq", NvtxTrace("cvcuda.histogrameq", &HistogramEq), "src"_a, "dtype"_a, py::kw_only(),
+          "stream"_a = nullptr, R"pbdoc(
         Executes the histogram equalization operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Histogram Eq operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.Tensor): Input image batch containing one or more images.
@@ -118,20 +116,12 @@ void ExportOpHistogramEq(py::module &m)
         Returns:
             cvcuda.Tensor: The output image batch.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("histogrameq_into", &HistogramEqInto, "dst"_a, "src"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.histogrameq_into(dst: cvcuda.Tensor, src: cvcuda.Tensor, stream: Optional[cvcuda.Stream] = None)
-
+    m.def("histogrameq_into", NvtxTrace("cvcuda.histogrameq_into", &HistogramEqInto), "dst"_a, "src"_a, py::kw_only(),
+          "stream"_a = nullptr, R"pbdoc(
         Executes the histogram equalization operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Histogram Eq operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.Tensor): Output image batch containing the result of the operation.
@@ -139,22 +129,13 @@ void ExportOpHistogramEq(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 
-    m.def("histogrameq", &HistogramEqVarShape, "src"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+    m.def("histogrameq", NvtxTrace("cvcuda.histogrameq", &HistogramEqVarShape), "src"_a, py::kw_only(),
+          "stream"_a = nullptr, R"pbdoc(
+        Executes the histogram equalization operation on the given cuda stream.
 
-	cvcuda.histogrameq(src: cvcuda.ImageBatchVarShape, stream: Optional[cvcuda.Stream] = None) -> cvcuda.ImageBatchVarShape
-
-	Executes the histogram equalization operation on the given cuda stream.
-
-        See also:
-            Refer to the CV-CUDA C API reference for the HistogramEq operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images.
@@ -163,20 +144,12 @@ void ExportOpHistogramEq(py::module &m)
         Returns:
             cvcuda.ImageBatchVarShape: The output image batch.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("histogrameq_into", &HistogramEqVarShapeInto, "dst"_a, "src"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.histogrameq_into(dst: cvcuda.ImageBatchVarShape, src: cvcuda.ImageBatchVarShape, stream: Optional[cvcuda.Stream] = None)
-
+    m.def("histogrameq_into", NvtxTrace("cvcuda.histogrameq_into", &HistogramEqVarShapeInto), "dst"_a, "src"_a,
+          py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the histogram equalization operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the HistogramEq operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.ImageBatchVarShape): Output image batch containing the result of the operation.
@@ -184,11 +157,7 @@ void ExportOpHistogramEq(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.ImageBatchVarShape: The output image batch (same as dst).
     )pbdoc");
 }
 

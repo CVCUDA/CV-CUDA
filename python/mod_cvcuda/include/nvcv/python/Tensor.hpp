@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,6 +30,7 @@
 #include <pybind11/stl.h>
 
 #include <cassert>
+#include <optional>
 
 namespace nvcvpy {
 
@@ -40,6 +41,12 @@ class Tensor
     , public nvcv::Tensor
 {
 public:
+    Tensor(const Tensor &)     = default;
+    Tensor(Tensor &&) noexcept = default;
+
+    Tensor &operator=(const Tensor &)     = default;
+    Tensor &operator=(Tensor &&) noexcept = default;
+
     static Tensor Create(const nvcv::TensorShape &tshape, nvcv::DataType dtype, int rowalign = 0)
     {
         PyObject *otensor = capi().Tensor_Create(tshape.size(), &tshape[0], static_cast<NVCVDataType>(dtype),
@@ -80,6 +87,15 @@ private:
     }
 };
 
+// Forward an optional Python Tensor wrapper to a C++ submit() taking
+// const nvcv::Tensor&, substituting a caller-owned null-handle fallback when
+// the optional is empty.  Centralizes the explicit cast that silences Sonar's
+// object-slicing finding at the operator call sites.
+inline const nvcv::Tensor &AsNvcvTensor(const std::optional<Tensor> &opt, const nvcv::Tensor &nullTensor)
+{
+    return opt ? static_cast<const nvcv::Tensor &>(*opt) : nullTensor;
+}
+
 } // namespace nvcvpy
 
 namespace pybind11::detail {
@@ -94,7 +110,7 @@ struct type_caster<cvpy::Tensor> : type_caster_base<cvpy::Tensor>
     bool load(handle src, bool)
     {
         // Does it have the correct object type?
-        PyTypeObject *srctype = Py_TYPE(src.ptr());
+        const PyTypeObject *srctype = Py_TYPE(src.ptr());
         if (strcmp(name.text, srctype->tp_name) == 0)
         {
             value = cvpy::Tensor(reinterpret_borrow<object>(src));
@@ -108,8 +124,7 @@ struct type_caster<cvpy::Tensor> : type_caster_base<cvpy::Tensor>
 
     static handle cast(cvpy::Tensor tensor, return_value_policy /* policy */, handle /*parent */)
     {
-        tensor.inc_ref(); // for some reason this is needed
-        return tensor;
+        return static_cast<object &>(tensor).release();
     }
 };
 

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -50,7 +50,9 @@ Tensor ResizeCropConvertReformatInto(Tensor &dst, Tensor &src, const std::tuple<
     nvcv::Size2D size_wh{std::get<0>(resizeDim), std::get<1>(resizeDim)};
     int2         crop_xy{std::get<0>(cropPos), std::get<1>(cropPos)};
 
-    resize->submit(pstream->cudaHandle(), src, dst, size_wh, interp, crop_xy, manip, scale, offset, srcCast);
+    guard.run(
+        [&resize, &pstream, &src, &dst, &size_wh, &interp, &crop_xy, &manip, &scale, &offset, &srcCast]()
+        { resize->submit(pstream->cudaHandle(), src, dst, size_wh, interp, crop_xy, manip, scale, offset, srcCast); });
 
     return std::move(dst);
 }
@@ -62,10 +64,11 @@ Tensor ResizeCropConvertReformat(Tensor &src, const std::tuple<int, int> resizeD
 {
     nvcv::TensorLayout srcLayout = src.layout();
 
-    if (srcLayout != NVCV_TENSOR_HWC && srcLayout != NVCV_TENSOR_NHWC)
+    if (srcLayout != NVCV_TENSOR_HWC && srcLayout != NVCV_TENSOR_NHWC && srcLayout != NVCV_TENSOR_CHW
+        && srcLayout != NVCV_TENSOR_NCHW)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_IMAGE_FORMAT,
-                              "Input tensor must have layout 'HWC' or 'NHWC'.");
+                              "Input tensor must have layout 'HWC', 'NHWC', 'CHW', or 'NCHW'.");
     }
 
     nvcv::TensorLayout dstLayout = (layout && *layout ? nvcv::TensorLayout(layout) : nvcv::TensorLayout(""));
@@ -87,18 +90,18 @@ Tensor ResizeCropConvertReformat(Tensor &src, const std::tuple<int, int> resizeD
                               "Output tensor must have layout 'HWC', 'NHWC', 'CHW', or 'NCHW'.");
     }
 
-    nvcv::TensorShape srcShape = Permute(src.shape(), NVCV_TENSOR_NHWC);
+    nvcv::TensorShape srcShape = Permute(src.shape(), nvcv::TensorLayout{NVCV_TENSOR_NHWC});
 
     nvcv::TensorShape::ShapeType shape = srcShape.shape();
 
     shape[2] = cropRect.width;
     shape[1] = cropRect.height;
 
-    nvcv::TensorShape dstShape = Permute(nvcv::TensorShape(shape, NVCV_TENSOR_NHWC), dstLayout);
+    nvcv::TensorShape dstShape = Permute(nvcv::TensorShape(shape, nvcv::TensorLayout{NVCV_TENSOR_NHWC}), dstLayout);
 
     Tensor dst = Tensor::Create(dstShape, dataType);
 
-    const std::tuple<int, int> cropPos = std::make_tuple((int)cropRect.x, (int)cropRect.y);
+    const std::tuple<int, int> cropPos = std::make_tuple(cropRect.x, cropRect.y);
 
     return ResizeCropConvertReformatInto(dst, src, resizeDim, interp, cropPos, manip, scale, offset, srcCast, pstream);
 }
@@ -123,7 +126,9 @@ Tensor ResizeCropConvertReformatVarShapeInto(Tensor &dst, ImageBatchVarShape &sr
     nvcv::Size2D size_wh(std::get<0>(resizeDim), std::get<1>(resizeDim));
     int2         crop_xy{std::get<0>(cropPos), std::get<1>(cropPos)};
 
-    resize->submit(pstream->cudaHandle(), src, dst, size_wh, interp, crop_xy, manip, scale, offset, srcCast);
+    guard.run(
+        [&resize, &pstream, &src, &dst, &size_wh, &interp, &crop_xy, &manip, &scale, &offset, &srcCast]()
+        { resize->submit(pstream->cudaHandle(), src, dst, size_wh, interp, crop_xy, manip, scale, offset, srcCast); });
 
     return std::move(dst);
 }
@@ -144,41 +149,39 @@ Tensor ResizeCropConvertReformatVarShape(ImageBatchVarShape &src, const std::tup
     int channels = srcFrmt.numChannels();
     int images   = src.numImages();
 
-    if (channels != 3)
+    if (channels != 1 && channels != 3)
     {
-        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input must have 3 channels.");
+        throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT, "Input must have 1 or 3 channels.");
     }
 
-    if (srcFrmt != nvcv::FMT_RGB8 && srcFrmt != nvcv::FMT_BGR8)
+    if (srcFrmt != nvcv::FMT_RGB8 && srcFrmt != nvcv::FMT_BGR8 && srcFrmt != nvcv::FMT_RGB8p
+        && srcFrmt != nvcv::FMT_BGR8p && srcFrmt != nvcv::FMT_Y8 && srcFrmt != nvcv::FMT_U8)
     {
         throw nvcv::Exception(nvcv::Status::ERROR_INVALID_ARGUMENT,
-                              "Input must have three interleaved, 8-bit channels in RGB or BGR format.");
+                              "Input must have 8-bit channels in RGB, BGR, Y8, or U8 format.");
     }
 
     nvcv::TensorShape shape;
 
     if (dstLayout.rank() == 0)
     {
-        if (srcFrmt == nvcv::FMT_RGB8 || srcFrmt == nvcv::FMT_BGR8)
-        {
-            shape = nvcv::TensorShape{
-                {images, cropRect.height, cropRect.width, channels},
-                NVCV_TENSOR_NHWC
-            };
-        }
+        shape = nvcv::TensorShape{
+            {          images, cropRect.height, cropRect.width, channels},
+            nvcv::TensorLayout{NVCV_TENSOR_NHWC                }
+        };
     }
     else
     {
         if (dstLayout == NVCV_TENSOR_NHWC || dstLayout == NVCV_TENSOR_HWC || dstLayout == NVCV_TENSOR_NHW
             || dstLayout == NVCV_TENSOR_HW)
             shape = nvcv::TensorShape{
-                {images, cropRect.height, cropRect.width, channels},
-                NVCV_TENSOR_NHWC
+                {          images, cropRect.height, cropRect.width, channels},
+                nvcv::TensorLayout{NVCV_TENSOR_NHWC                }
             };
         else if (dstLayout == NVCV_TENSOR_NCHW || dstLayout == NVCV_TENSOR_CHW)
             shape = nvcv::TensorShape{
-                {images, channels, cropRect.height, cropRect.width},
-                NVCV_TENSOR_NCHW
+                {          images, channels, cropRect.height, cropRect.width},
+                nvcv::TensorLayout{NVCV_TENSOR_NCHW         }
             };
         else
         {
@@ -189,7 +192,7 @@ Tensor ResizeCropConvertReformatVarShape(ImageBatchVarShape &src, const std::tup
 
     Tensor dst = Tensor::Create(shape, dataType);
 
-    const std::tuple<int, int> cropPos = std::make_tuple((int)cropRect.x, (int)cropRect.y);
+    const std::tuple<int, int> cropPos = std::make_tuple(cropRect.x, cropRect.y);
 
     return ResizeCropConvertReformatVarShapeInto(dst, src, resizeDim, interp, cropPos, manip, scale, offset, srcCast,
                                                  pstream);
@@ -201,39 +204,20 @@ void ExportOpResizeCropConvertReformat(py::module &m)
 {
     using namespace pybind11::literals;
 
-    py::options options;
-    options.disable_function_signatures();
-
-    m.def("resize_crop_convert_reformat", &ResizeCropConvertReformat, "src"_a, "resize_dim"_a, "interp"_a,
-          "crop_rect"_a, py::kw_only(), "layout"_a = "", "data_type"_a = NVCV_DATA_TYPE_NONE,
-          "manip"_a = NVCV_CHANNEL_NO_OP, "scale"_a = 1.0, "offset"_a = 0.0, "srcCast"_a = true, "stream"_a = nullptr,
+    m.def("resize_crop_convert_reformat", NvtxTrace("cvcuda.resize_crop_convert_reformat", &ResizeCropConvertReformat),
+          "src"_a, "resize_dim"_a, "interp"_a, "crop_rect"_a, py::kw_only(), "layout"_a = "",
+          "data_type"_a = NVCV_DATA_TYPE_NONE, "manip"_a = NVCV_CHANNEL_NO_OP, "scale"_a = 1.0, "offset"_a = 0.0,
+          "srcCast"_a = true, "stream"_a = nullptr,
           R"pbdoc(
-
-	cvcuda.resize_crop_convert_reformat(src: cvcuda.Tensor,
-                                        resize_dim: tuple[int,int],
-                                        interp: cvcuda.Interp,
-                                        crop_rect: cvcuda.RectI,
-                                        *,
-                                        layout: str = "",
-                                        data_type: cvcuda.Type = 0,
-                                        manip: cvcuda.ChannelManip = cvcuda.ChannelManip.NO_OP,
-                                        scale: float = 1.0,
-                                        offset: float = 0.0,
-                                        srcCast: bool = True,
-                                        stream: Optional[cvcuda.Stream] = None) -> cvcuda.Tensor
-
         Executes the ResizeCropConvertReformat operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the ResizeCropConvertReformat operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.Tensor): Input tensor containing one or more images.
             resize_dim (tuple[int,int]): Dimensions, width & height, of resized tensor (prior to cropping).
             interp (cvcuda.Interp): Interpolation type used for resizing. Currently, only cvcuda.Interp.NEAREST and
                                     cvcuda.Interp.LINEAR are available.
-            crop_rect (cvcuda.RectI): Crop rectangle, (top, left, width, height), specifying the top-left corner and
+            crop_rect (cvcuda.RectI): Crop rectangle, (left, top, width, height), specifying the top-left corner and
                                    width & height dimensions of the region to crop from the resized images.
             layout(string, optional): String specifying output tensor layout (e.g., 'NHWC' or 'CHW'). Empty string
                                       (default) indicates output tensor layout copies input.
@@ -255,32 +239,14 @@ void ExportOpResizeCropConvertReformat(py::module &m)
         Returns:
             cvcuda.Tensor: The output tensor.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("resize_crop_convert_reformat_into", &ResizeCropConvertReformatInto, "dst"_a, "src"_a, "resize_dim"_a,
-          "interp"_a, "cropPos"_a, py::kw_only(), "manip"_a = NVCV_CHANNEL_NO_OP, "scale"_a = 1.0, "offset"_a = 0.0,
-          "srcCast"_a = true, "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.resize_crop_convert_reformat_into(dst: cvcuda.Tensor,
-                                             src: cvcuda.Tensor,
-                                             resize_dim: tuple[int,int],
-                                             interp: cvcuda.Interp,
-                                             cropPos: tuple[int,int],
-                                             *,
-                                             manip: cvcuda.ChannelManip = cvcuda.ChannelManip.NO_OP,
-                                             scale: float = 1.0,
-                                             offset: float = 0.0,
-                                             srcCast: bool = True,
-                                             stream: Optional[cvcuda.Stream] = None)
-
+    m.def("resize_crop_convert_reformat_into",
+          NvtxTrace("cvcuda.resize_crop_convert_reformat_into", &ResizeCropConvertReformatInto), "dst"_a, "src"_a,
+          "resize_dim"_a, "interp"_a, "cropPos"_a, py::kw_only(), "manip"_a = NVCV_CHANNEL_NO_OP, "scale"_a = 1.0,
+          "offset"_a = 0.0, "srcCast"_a = true, "stream"_a = nullptr, R"pbdoc(
         Executes the ResizeCropConvertReformat operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the ResizeCropConvertReformat operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.Tensor): Output tensor to store the result of the operation. Output tensor also specifies the
@@ -290,7 +256,7 @@ void ExportOpResizeCropConvertReformat(py::module &m)
             resize_dim (tuple[int,int]): Dimensions, width & height, of resized tensor (prior to cropping).
             interp (cvcuda.Interp): Interpolation type used for resizing. Currently, only cvcuda.Interp.NEAREST and
                                     cvcuda.Interp.LINEAR are available.
-            cropPos (tuple[int,int]): Crop position, (top, left), specifying the top-left corner of the region to crop
+            cropPos (tuple[int,int]): Crop position, (x, y), specifying the top-left corner of the region to crop
                                       from the resized images. The crop region's width and height is specified by the
                                       output tensor's width & height.
             manip(cvcuda.ChannelManip, optional): Channel manipulation (e.g., shuffle RGB to BGR). NO_OP (default)
@@ -307,36 +273,16 @@ void ExportOpResizeCropConvertReformat(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 
-    m.def("resize_crop_convert_reformat", &ResizeCropConvertReformatVarShape, "src"_a, "resize_dim"_a, "interp"_a,
-          "crop_rect"_a, py::kw_only(), "layout"_a = "", "data_type"_a = NVCV_DATA_TYPE_NONE,
+    m.def("resize_crop_convert_reformat",
+          NvtxTrace("cvcuda.resize_crop_convert_reformat", &ResizeCropConvertReformatVarShape), "src"_a, "resize_dim"_a,
+          "interp"_a, "crop_rect"_a, py::kw_only(), "layout"_a = "", "data_type"_a = NVCV_DATA_TYPE_NONE,
           "manip"_a = NVCV_CHANNEL_NO_OP, "scale"_a = 1.0, "offset"_a = 0.0, "srcCast"_a = true, "stream"_a = nullptr,
           R"pbdoc(
-
-	cvcuda.resizeCropConvertReformat(src: cvcuda.ImageBatchVarShape,
-                                     resize_dim: tuple[int,int],
-                      interp: cvcuda.Interp,
-                      crop_rect: cvcuda.RectI,
-                      *,
-                      layout: str = "",
-                      data_type: cvcuda.Type = 0,
-                      manip: cvcuda.ChannelManip = cvcuda.ChannelManip.NO_OP,
-                      scale: float = 1.0,
-                      offset: float = 0.0,
-                      srcCast: bool = True,
-                      stream: Optional[cvcuda.Stream] = None) -> cvcuda.Tensor
-
         Executes the ResizeCropConvertReformat operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the ResizeCropConvertReformat operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input image batch containing one or more images of varying sizes, but all images
@@ -344,7 +290,7 @@ void ExportOpResizeCropConvertReformat(py::module &m)
             resize_dim (tuple[int,int]): Dimensions, width & height, of resized tensor (prior to cropping).
             interp (cvcuda.Interp): Interpolation type used for resizing. Currently, only cvcuda.Interp.NEAREST and
                                     cvcuda.Interp.LINEAR are available.
-            crop_rect (cvcuda.RectI): Crop rectangle, (top, left, width, height), specifying the top-left corner and
+            crop_rect (cvcuda.RectI): Crop rectangle, (left, top, width, height), specifying the top-left corner and
                                    width & height dimensions of the region to crop from the resized images.
             layout(string, optional): String specifying output tensor layout (e.g., 'NHWC' or 'CHW'). Empty string
                                       (default) indicates output tensor layout copies input.
@@ -366,32 +312,14 @@ void ExportOpResizeCropConvertReformat(py::module &m)
         Returns:
             cvcuda.Tensor: The output tensor.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("resize_crop_convert_reformat_into", &ResizeCropConvertReformatVarShapeInto, "dst"_a, "src"_a, "resize_dim"_a,
-          "interp"_a, "cropPos"_a, py::kw_only(), "manip"_a = NVCV_CHANNEL_NO_OP, "scale"_a = 1.0, "offset"_a = 0.0,
-          "srcCast"_a = true, "stream"_a = nullptr, R"pbdoc(
-
-	cvcuda.resize_crop_convert_reformat_into(dst: cvcuda.Tensor,
-                                             src: cvcuda.ImageBatchVarShape,
-                                             resize_dim: tuple[int,int],
-                                             interp: cvcuda.Interp,
-                                             cropPos: tuple[int,int],
-                                             *,
-                                             manip: cvcuda.ChannelManip = cvcuda.ChannelManip.NO_OP,
-                                             scale: float = 1.0,
-                                             offset: float = 0.0,
-                                             srcCast: bool = True,
-                                             stream: Optional[cvcuda.Stream] = None)
-
+    m.def("resize_crop_convert_reformat_into",
+          NvtxTrace("cvcuda.resize_crop_convert_reformat_into", &ResizeCropConvertReformatVarShapeInto), "dst"_a,
+          "src"_a, "resize_dim"_a, "interp"_a, "cropPos"_a, py::kw_only(), "manip"_a = NVCV_CHANNEL_NO_OP,
+          "scale"_a = 1.0, "offset"_a = 0.0, "srcCast"_a = true, "stream"_a = nullptr, R"pbdoc(
         Executes the ResizeCropConvertReformat operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the ResizeCropConvertReformat operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.Tensor): Output tensor to store the result of the operation. Output tensor also specifies the
@@ -402,7 +330,7 @@ void ExportOpResizeCropConvertReformat(py::module &m)
             resize_dim (tuple[int,int]): Dimensions, width & height, of resized tensor (prior to cropping).
             interp (cvcuda.Interp): Interpolation type used for resizing. Currently, only cvcuda.Interp.NEAREST and
                                     cvcuda.Interp.LINEAR are available.
-            cropPos (tuple[int,int]): Crop position, (top, left), specifying the top-left corner of the region to
+            cropPos (tuple[int,int]): Crop position, (x, y), specifying the top-left corner of the region to
                                       crop from the resized images. The crop region's width and height is specified by
                                       the output tensor's width & height.
             manip(cvcuda.ChannelManip, optional): Channel manipulation (e.g., shuffle RGB to BGR). NO_OP (default)
@@ -419,11 +347,7 @@ void ExportOpResizeCropConvertReformat(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.Tensor: The output tensor (same as dst).
     )pbdoc");
 }
 

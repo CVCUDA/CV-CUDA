@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,6 +19,12 @@
 
 #include <nvcv/util/StaticVector.hpp>
 
+#include <array>
+#include <deque>
+#include <memory_resource>
+#include <string>
+#include <type_traits>
+
 namespace util = nvcv::util;
 
 TEST(StaticVector, default_constructed_is_empty)
@@ -29,7 +35,7 @@ TEST(StaticVector, default_constructed_is_empty)
 
 TEST(StaticVector, destructor_destroys_items)
 {
-    std::weak_ptr<short> w[2];
+    std::array<std::weak_ptr<short>, 2> w;
 
     {
         util::StaticVector<std::shared_ptr<short>, 2> v = {std::make_shared<short>(2), std::make_shared<short>(4)};
@@ -138,7 +144,7 @@ TEST(StaticVector, resize_to_bigger_doesnt_touch_existing_objects)
 {
     util::StaticVector<std::shared_ptr<short>, 3> v = {std::make_shared<short>(0), std::make_shared<short>(1)};
 
-    std::weak_ptr<short> w[] = {v[0], v[1]};
+    std::array<std::weak_ptr<short>, 2> w = {v[0], v[1]};
 
     ASSERT_NO_THROW(v.resize(3));
 
@@ -230,7 +236,7 @@ TEST(StaticVector, pop_back_destroys_removed_item)
 {
     util::StaticVector<std::shared_ptr<short>, 2> v = {std::make_shared<short>(2), std::make_shared<short>(3)};
 
-    std::weak_ptr<short> w[] = {v[0], v[1]};
+    std::array<std::weak_ptr<short>, 2> w = {v[0], v[1]};
 
     ASSERT_NO_THROW(v.pop_back());
 
@@ -263,7 +269,7 @@ TEST(StaticVector, move_ctor_src_isnt_emptied)
 
     [[maybe_unused]] util::StaticVector<std::shared_ptr<short>, 2> dst(std::move(src));
 
-    EXPECT_EQ(1u, src.size());
+    EXPECT_EQ(1u, src.size()); // NOSONAR: this test verifies moved-from state.
 }
 
 TEST(StaticVector, move_ctor_dst_has_same_size_as_src_before_move)
@@ -291,7 +297,7 @@ TEST(StaticVector, move_assign_src_isnt_emptied)
 
     dst = std::move(src);
 
-    EXPECT_EQ(1u, src.size());
+    EXPECT_EQ(1u, src.size()); // NOSONAR: this test verifies moved-from state.
 }
 
 TEST(StaticVector, move_assign_dst_has_same_size_as_src_before_move)
@@ -324,6 +330,21 @@ TEST(StaticVector, copy_ctor_not_available_when_elements_arent_copiable)
 TEST(StaticVector, copy_assign_not_available_when_elements_arent_copiable)
 {
     EXPECT_FALSE((std::is_copy_assignable_v<util::StaticVector<std::unique_ptr<short>, 3>>));
+}
+
+struct CopyAssignableOnly
+{
+    CopyAssignableOnly() = default;
+
+    CopyAssignableOnly(CopyAssignableOnly &) = default;
+
+    CopyAssignableOnly &operator=(const CopyAssignableOnly &) = default;
+};
+
+TEST(StaticVector, copy_assign_not_available_when_elements_cannot_be_copy_constructed)
+{
+    EXPECT_TRUE(std::is_copy_assignable_v<CopyAssignableOnly>);
+    EXPECT_FALSE((std::is_copy_assignable_v<util::StaticVector<CopyAssignableOnly, 3>>));
 }
 
 TEST(StaticVector, copy_ctor_available_when_elements_are_copiable)
@@ -527,8 +548,8 @@ TEST(StaticVector, move_assignment_src_is_larger_than_src_items_lifetime_are_han
     util::StaticVector<std::shared_ptr<short>, 2> src{std::make_shared<short>(0), std::make_shared<short>(1)};
     util::StaticVector<std::shared_ptr<short>, 2> dst{std::make_shared<short>(3)};
 
-    std::weak_ptr<short> wsrc[2] = {src[0], src[1]};
-    std::weak_ptr<short> wdst    = {dst[0]};
+    std::array<std::weak_ptr<short>, 2> wsrc = {src[0], src[1]};
+    std::weak_ptr<short>                wdst = {dst[0]};
 
     dst = std::move(src);
 
@@ -542,8 +563,8 @@ TEST(StaticVector, move_assignment_src_is_smaller_than_src_items_lifetime_are_ha
     util::StaticVector<std::shared_ptr<short>, 2> src{std::make_shared<short>(0)};
     util::StaticVector<std::shared_ptr<short>, 2> dst{std::make_shared<short>(1), std::make_shared<short>(3)};
 
-    std::weak_ptr<short> wsrc    = {src[0]};
-    std::weak_ptr<short> wdst[2] = {dst[0], dst[1]};
+    std::weak_ptr<short>                wsrc = {src[0]};
+    std::array<std::weak_ptr<short>, 2> wdst = {dst[0], dst[1]};
 
     dst = std::move(src);
 
@@ -557,8 +578,8 @@ TEST(StaticVector, move_assignment_src_has_same_element_count_as_dst_items_lifet
     util::StaticVector<std::shared_ptr<short>, 2> src{std::make_shared<short>(0), std::make_shared<short>(2)};
     util::StaticVector<std::shared_ptr<short>, 2> dst{std::make_shared<short>(1), std::make_shared<short>(3)};
 
-    std::weak_ptr<short> wsrc[2] = {src[0], src[1]};
-    std::weak_ptr<short> wdst[2] = {dst[0], dst[1]};
+    std::array<std::weak_ptr<short>, 2> wsrc = {src[0], src[1]};
+    std::array<std::weak_ptr<short>, 2> wdst = {dst[0], dst[1]};
 
     dst = std::move(src);
 
@@ -573,8 +594,8 @@ TEST(StaticVector, copy_assignment_src_is_larger_than_src_items_lifetime_are_han
     util::StaticVector<std::shared_ptr<short>, 2> src{std::make_shared<short>(0), std::make_shared<short>(1)};
     util::StaticVector<std::shared_ptr<short>, 2> dst{std::make_shared<short>(3)};
 
-    std::weak_ptr<short> wsrc[2] = {src[0], src[1]};
-    std::weak_ptr<short> wdst    = {dst[0]};
+    std::array<std::weak_ptr<short>, 2> wsrc = {src[0], src[1]};
+    std::weak_ptr<short>                wdst = {dst[0]};
 
     dst = src;
 
@@ -588,8 +609,8 @@ TEST(StaticVector, copy_assignment_src_is_smaller_than_src_items_lifetime_are_ha
     util::StaticVector<std::shared_ptr<short>, 2> src{std::make_shared<short>(0)};
     util::StaticVector<std::shared_ptr<short>, 2> dst{std::make_shared<short>(1), std::make_shared<short>(3)};
 
-    std::weak_ptr<short> wsrc    = {src[0]};
-    std::weak_ptr<short> wdst[2] = {dst[0], dst[1]};
+    std::weak_ptr<short>                wsrc = {src[0]};
+    std::array<std::weak_ptr<short>, 2> wdst = {dst[0], dst[1]};
 
     dst = src;
 
@@ -603,8 +624,8 @@ TEST(StaticVector, copy_assignment_src_has_same_element_count_as_src_items_lifet
     util::StaticVector<std::shared_ptr<short>, 2> src{std::make_shared<short>(0), std::make_shared<short>(2)};
     util::StaticVector<std::shared_ptr<short>, 2> dst{std::make_shared<short>(1), std::make_shared<short>(3)};
 
-    std::weak_ptr<short> wsrc[2] = {src[0], src[1]};
-    std::weak_ptr<short> wdst[2] = {dst[0], dst[1]};
+    std::array<std::weak_ptr<short>, 2> wsrc = {src[0], src[1]};
+    std::array<std::weak_ptr<short>, 2> wdst = {dst[0], dst[1]};
 
     dst = src;
 
@@ -619,7 +640,7 @@ TEST(StaticVector, swap_non_trivial_type_a_is_larger_than_b_dont_destroy_objects
     util::StaticVector<std::shared_ptr<short>, 2> a{std::make_shared<short>(0), std::make_shared<short>(1)};
     util::StaticVector<std::shared_ptr<short>, 2> b{std::make_shared<short>(3)};
 
-    std::weak_ptr<short> w[] = {a[0], a[1], b[0]};
+    std::array<std::weak_ptr<short>, 3> w = {a[0], a[1], b[0]};
 
     swap(a, b);
 
@@ -633,7 +654,7 @@ TEST(StaticVector, swap_non_trivial_type_a_is_smaller_than_b_dont_destroy_object
     util::StaticVector<std::shared_ptr<short>, 2> a{std::make_shared<short>(3)};
     util::StaticVector<std::shared_ptr<short>, 2> b{std::make_shared<short>(0), std::make_shared<short>(1)};
 
-    std::weak_ptr<short> w[] = {a[0], b[0], b[1]};
+    std::array<std::weak_ptr<short>, 3> w = {a[0], b[0], b[1]};
 
     swap(a, b);
 
@@ -647,7 +668,7 @@ TEST(StaticVector, swap_non_trivial_type_a_has_same_element_count_as_b_dont_dest
     util::StaticVector<std::shared_ptr<short>, 2> a{std::make_shared<short>(3), std::make_shared<short>(4)};
     util::StaticVector<std::shared_ptr<short>, 2> b{std::make_shared<short>(0), std::make_shared<short>(1)};
 
-    std::weak_ptr<short> w[] = {a[0], a[1], b[0], b[1]};
+    std::array<std::weak_ptr<short>, 4> w = {a[0], a[1], b[0], b[1]};
 
     swap(a, b);
 
@@ -734,7 +755,7 @@ TEST(StaticVector, move_ctor_trivial_type_doesnt_reset_src)
     util::StaticVector<short, 2> src{1, 2};
     util::StaticVector<short, 2> dst(std::move(src));
 
-    EXPECT_EQ(2u, src.size());
+    EXPECT_EQ(2u, src.size()); // NOSONAR: this test verifies moved-from state.
     EXPECT_EQ(2u, dst.size());
 }
 
@@ -745,7 +766,7 @@ TEST(StaticVector, move_assign_trivial_type_doesnt_reset_src)
 
     dst = std::move(src);
 
-    EXPECT_EQ(2u, src.size());
+    EXPECT_EQ(2u, src.size()); // NOSONAR: this test verifies moved-from state.
     EXPECT_EQ(2u, dst.size());
 }
 
@@ -816,7 +837,7 @@ TEST(StaticVector, erase_single_element_at_beginning)
     util::StaticVector<std::shared_ptr<int>, 3> vec{std::make_shared<int>(1), std::make_shared<int>(2),
                                                     std::make_shared<int>(3)};
 
-    std::weak_ptr<int> items[] = {vec[0], vec[1], vec[2]};
+    std::array<std::weak_ptr<int>, 3> items = {vec[0], vec[1], vec[2]};
 
     vec.erase(vec.begin());
 
@@ -835,7 +856,7 @@ TEST(StaticVector, erase_single_element_in_the_middle)
     util::StaticVector<std::shared_ptr<int>, 3> vec{std::make_shared<int>(1), std::make_shared<int>(2),
                                                     std::make_shared<int>(3)};
 
-    std::weak_ptr<int> items[] = {vec[0], vec[1], vec[2]};
+    std::array<std::weak_ptr<int>, 3> items = {vec[0], vec[1], vec[2]};
 
     vec.erase(vec.begin() + 1);
 
@@ -854,7 +875,7 @@ TEST(StaticVector, erase_single_element_at_the_end)
     util::StaticVector<std::shared_ptr<int>, 3> vec{std::make_shared<int>(1), std::make_shared<int>(2),
                                                     std::make_shared<int>(3)};
 
-    std::weak_ptr<int> items[] = {vec[0], vec[1], vec[2]};
+    std::array<std::weak_ptr<int>, 3> items = {vec[0], vec[1], vec[2]};
 
     vec.erase(vec.begin() + 2);
 
@@ -873,7 +894,7 @@ TEST(StaticVector, erase_single_element_past_end_segfaults)
     util::StaticVector<std::shared_ptr<int>, 3> vec{std::make_shared<int>(1), std::make_shared<int>(2),
                                                     std::make_shared<int>(3)};
 
-    std::weak_ptr<int> items[] = {vec[0], vec[1], vec[2]};
+    std::array<std::weak_ptr<int>, 3> items = {vec[0], vec[1], vec[2]};
 
     ASSERT_DEATH(vec.erase(vec.end()), ".*");
 }
@@ -883,7 +904,7 @@ TEST(StaticVector, erase_single_element_before_beginning_segfaults)
     util::StaticVector<std::shared_ptr<int>, 3> vec{std::make_shared<int>(1), std::make_shared<int>(2),
                                                     std::make_shared<int>(3)};
 
-    std::weak_ptr<int> items[] = {vec[0], vec[1], vec[2]};
+    std::array<std::weak_ptr<int>, 3> items = {vec[0], vec[1], vec[2]};
 
     ASSERT_DEATH(vec.erase(vec.begin() - 1), ".*");
 }
@@ -893,7 +914,7 @@ TEST(StaticVector, erase_range_begin_before_start_segfaults)
     util::StaticVector<std::shared_ptr<int>, 3> vec{std::make_shared<int>(1), std::make_shared<int>(2),
                                                     std::make_shared<int>(3)};
 
-    std::weak_ptr<int> items[] = {vec[0], vec[1], vec[2]};
+    std::array<std::weak_ptr<int>, 3> items = {vec[0], vec[1], vec[2]};
 
     ASSERT_DEATH(vec.erase(vec.begin() - 1, vec.end()), ".*");
 }
@@ -903,7 +924,7 @@ TEST(StaticVector, erase_range_begin_after_end_segfaults)
     util::StaticVector<std::shared_ptr<int>, 3> vec{std::make_shared<int>(1), std::make_shared<int>(2),
                                                     std::make_shared<int>(3)};
 
-    std::weak_ptr<int> items[] = {vec[0], vec[1], vec[2]};
+    std::array<std::weak_ptr<int>, 3> items = {vec[0], vec[1], vec[2]};
 
     ASSERT_DEATH(vec.erase(vec.end() + 1, vec.end() + 1), ".*");
 }
@@ -913,7 +934,7 @@ TEST(StaticVector, erase_empty_range_noop)
     util::StaticVector<std::shared_ptr<int>, 3> vec{std::make_shared<int>(1), std::make_shared<int>(2),
                                                     std::make_shared<int>(3)};
 
-    std::weak_ptr<int> items[] = {vec[0], vec[1], vec[2]};
+    std::array<std::weak_ptr<int>, 3> items = {vec[0], vec[1], vec[2]};
 
     vec.erase(vec.begin(), vec.begin());
 
@@ -931,7 +952,7 @@ TEST(StaticVector, erase_empty_range_at_end_noop)
     util::StaticVector<std::shared_ptr<int>, 3> vec{std::make_shared<int>(1), std::make_shared<int>(2),
                                                     std::make_shared<int>(3)};
 
-    std::weak_ptr<int> items[] = {vec[0], vec[1], vec[2]};
+    std::array<std::weak_ptr<int>, 3> items = {vec[0], vec[1], vec[2]};
 
     vec.erase(vec.end(), vec.end());
 
@@ -949,7 +970,7 @@ TEST(StaticVector, erase_empty_range_at_end_returns_end)
     util::StaticVector<std::shared_ptr<int>, 3> vec{std::make_shared<int>(1), std::make_shared<int>(2),
                                                     std::make_shared<int>(3)};
 
-    std::weak_ptr<int> items[] = {vec[0], vec[1], vec[2]};
+    std::array<std::weak_ptr<int>, 3> items = {vec[0], vec[1], vec[2]};
 
     EXPECT_EQ(vec.end(), vec.erase(vec.end(), vec.end()));
 }
@@ -959,7 +980,7 @@ TEST(StaticVector, erase_empty_range_returns_begin_range)
     util::StaticVector<std::shared_ptr<int>, 3> vec{std::make_shared<int>(1), std::make_shared<int>(2),
                                                     std::make_shared<int>(3)};
 
-    std::weak_ptr<int> items[] = {vec[0], vec[1], vec[2]};
+    std::array<std::weak_ptr<int>, 3> items = {vec[0], vec[1], vec[2]};
 
     EXPECT_EQ(vec.begin(), vec.erase(vec.begin(), vec.begin()));
 }
@@ -969,7 +990,7 @@ TEST(StaticVector, erase_range_end_before_begin_segfaults)
     util::StaticVector<std::shared_ptr<int>, 3> vec{std::make_shared<int>(1), std::make_shared<int>(2),
                                                     std::make_shared<int>(3)};
 
-    std::weak_ptr<int> items[] = {vec[0], vec[1], vec[2]};
+    std::array<std::weak_ptr<int>, 3> items = {vec[0], vec[1], vec[2]};
 
     ASSERT_DEATH(vec.erase(vec.begin() + 2, vec.begin()), ".*");
 }
@@ -979,7 +1000,7 @@ TEST(StaticVector, erase_range_end_after_vector_end_segfaults)
     util::StaticVector<std::shared_ptr<int>, 3> vec{std::make_shared<int>(1), std::make_shared<int>(2),
                                                     std::make_shared<int>(3)};
 
-    std::weak_ptr<int> items[] = {vec[0], vec[1], vec[2]};
+    std::array<std::weak_ptr<int>, 3> items = {vec[0], vec[1], vec[2]};
 
     ASSERT_DEATH(vec.erase(vec.begin() + 2, vec.end() + 1), ".*");
 }
@@ -989,7 +1010,7 @@ TEST(StaticVector, erase_all_elements_empties_container)
     util::StaticVector<std::shared_ptr<int>, 3> vec{std::make_shared<int>(1), std::make_shared<int>(2),
                                                     std::make_shared<int>(3)};
 
-    std::weak_ptr<int> items[] = {vec[0], vec[1], vec[2]};
+    std::array<std::weak_ptr<int>, 3> items = {vec[0], vec[1], vec[2]};
 
     vec.erase(vec.begin(), vec.end());
 
@@ -1006,7 +1027,7 @@ TEST(StaticVector, erase_range_at_beginning_with_bigger_range_remaining)
                                                     std::make_shared<int>(3), std::make_shared<int>(4),
                                                     std::make_shared<int>(5)};
 
-    std::weak_ptr<int> items[] = {vec[0], vec[1], vec[2], vec[3], vec[4]};
+    std::array<std::weak_ptr<int>, 5> items = {vec[0], vec[1], vec[2], vec[3], vec[4]};
 
     vec.erase(vec.begin(), vec.begin() + 2);
 
@@ -1029,7 +1050,7 @@ TEST(StaticVector, erase_range_at_beginning_with_smaller_range_remaining)
                                                     std::make_shared<int>(3), std::make_shared<int>(4),
                                                     std::make_shared<int>(5)};
 
-    std::weak_ptr<int> items[] = {vec[0], vec[1], vec[2], vec[3], vec[4]};
+    std::array<std::weak_ptr<int>, 5> items = {vec[0], vec[1], vec[2], vec[3], vec[4]};
 
     vec.erase(vec.begin(), vec.begin() + 3);
 
@@ -1051,7 +1072,7 @@ TEST(StaticVector, erase_range_at_end)
                                                     std::make_shared<int>(3), std::make_shared<int>(4),
                                                     std::make_shared<int>(5)};
 
-    std::weak_ptr<int> items[] = {vec[0], vec[1], vec[2], vec[3], vec[4]};
+    std::array<std::weak_ptr<int>, 5> items = {vec[0], vec[1], vec[2], vec[3], vec[4]};
 
     vec.erase(vec.end() - 2, vec.end());
 
@@ -1074,7 +1095,7 @@ TEST(StaticVector, erase_range_in_the_middle)
                                                     std::make_shared<int>(3), std::make_shared<int>(4),
                                                     std::make_shared<int>(5)};
 
-    std::weak_ptr<int> items[] = {vec[0], vec[1], vec[2], vec[3], vec[4]};
+    std::array<std::weak_ptr<int>, 5> items = {vec[0], vec[1], vec[2], vec[3], vec[4]};
 
     vec.erase(vec.begin() + 1, vec.begin() + 3);
 
@@ -1097,7 +1118,7 @@ TEST(StaticVector, erase_in_middle_return_iterator_to_next_element)
 
     Vector vec{std::make_shared<int>(1), std::make_shared<int>(2), std::make_shared<int>(3)};
 
-    std::weak_ptr<int> items[] = {vec[0], vec[1], vec[2]};
+    std::array<std::weak_ptr<int>, 3> items = {vec[0], vec[1], vec[2]};
 
     Vector::iterator it = vec.erase(vec.begin(), vec.begin() + 2);
 
@@ -1111,7 +1132,7 @@ TEST(StaticVector, erase_at_end_return_end_iterator)
 
     Vector vec{std::make_shared<int>(1), std::make_shared<int>(2), std::make_shared<int>(3)};
 
-    std::weak_ptr<int> items[] = {vec[0], vec[1], vec[2]};
+    std::array<std::weak_ptr<int>, 3> items = {vec[0], vec[1], vec[2]};
 
     Vector::iterator it = vec.erase(vec.begin() + 2, vec.begin() + 3);
 
@@ -1141,7 +1162,7 @@ TEST(StaticVector, reverse_iteration_works)
     using Vector = util::StaticVector<int, 5>;
     Vector v     = {1, 2, 3, 4, 5};
 
-    Vector::reverse_iterator it = v.rbegin();
+    auto it = v.rbegin();
 
     EXPECT_EQ(5, it[0]);
     EXPECT_EQ(4, it[1]);
@@ -1182,7 +1203,7 @@ struct NonDefaultConstructible
 {
     NonDefaultConstructible() = delete;
 
-    NonDefaultConstructible(int d)
+    explicit NonDefaultConstructible(int d)
         : dummy(d)
     {
     }
@@ -1200,7 +1221,7 @@ TEST(StaticVector, cant_increase_size_of_non_default_constructible_type_vector)
 TEST(StaticVector, can_decrease_size_of_non_default_constructible_type_vector)
 {
     util::StaticVector<NonDefaultConstructible, 5> v;
-    ASSERT_NO_THROW(v.push_back(1));
+    ASSERT_NO_THROW(v.push_back(NonDefaultConstructible{1}));
     ASSERT_EQ(1u, v.size());
 
     EXPECT_NO_THROW(v.resize(0));
@@ -1210,7 +1231,7 @@ TEST(StaticVector, can_decrease_size_of_non_default_constructible_type_vector)
 TEST(StaticVector, can_add_non_default_constructible_type)
 {
     util::StaticVector<NonDefaultConstructible, 5> v;
-    ASSERT_NO_THROW(v.push_back(1));
+    ASSERT_NO_THROW(v.push_back(NonDefaultConstructible{1}));
     EXPECT_EQ(1u, v.size());
     EXPECT_EQ(1, v[0].dummy);
 }
@@ -1218,193 +1239,51 @@ TEST(StaticVector, can_add_non_default_constructible_type)
 TEST(StaticVector, can_erase_non_default_constructible_type)
 {
     util::StaticVector<NonDefaultConstructible, 5> v;
-    ASSERT_NO_THROW(v.push_back(1));
+    ASSERT_NO_THROW(v.push_back(NonDefaultConstructible{1}));
     EXPECT_NO_THROW(v.erase(v.begin()));
 
     EXPECT_EQ(0u, v.size());
 }
 
-struct NoThrowableMoveCtor
-{
-    // use the opposite exception spec to check whether it influences the result or not
-    NoThrowableMoveCtor(const NoThrowableMoveCtor &){};
-
-    NoThrowableMoveCtor &operator=(const NoThrowableMoveCtor &)
-    {
-        return *this;
-    }
-
-    NoThrowableMoveCtor &operator=(NoThrowableMoveCtor &&)
-    {
-        return *this;
-    }
-
-    NoThrowableMoveCtor(NoThrowableMoveCtor &&) noexcept {};
-};
-
 TEST(StaticVector, has_nothrow_move_ctor_when_type_has_it)
 {
-    EXPECT_TRUE((std::is_nothrow_move_constructible_v<util::StaticVector<NoThrowableMoveCtor, 5>>));
+    EXPECT_TRUE((std::is_nothrow_move_constructible_v<util::StaticVector<std::shared_ptr<int>, 5>>));
 }
 
-struct NoThrowableMoveAssign
+TEST(StaticVector, has_nothrow_move_assign_when_element_move_ops_are_nothrow)
 {
-    // use the opposite exception spec to check whether it influences the result or not
-    NoThrowableMoveAssign(const NoThrowableMoveAssign &){};
-
-    NoThrowableMoveAssign &operator=(const NoThrowableMoveAssign &)
-    {
-        return *this;
-    }
-
-    NoThrowableMoveAssign(NoThrowableMoveAssign &&){};
-
-    NoThrowableMoveAssign &operator=(NoThrowableMoveAssign &&) noexcept
-    {
-        return *this;
-    }
-};
-
-TEST(StaticVector, has_nothrow_move_assign_when_type_has_it)
-{
-    EXPECT_TRUE((std::is_nothrow_move_assignable_v<util::StaticVector<NoThrowableMoveAssign, 5>>));
+    EXPECT_TRUE((std::is_nothrow_move_assignable_v<util::StaticVector<std::shared_ptr<int>, 5>>));
 }
 
-struct ThrowableMoveCtor
+TEST(StaticVector, has_nothrow_move_ctor_with_deque_elements)
 {
-    // use the opposite exception spec to check whether it influences the result or not
-    ThrowableMoveCtor(const ThrowableMoveCtor &) noexcept {};
-
-    ThrowableMoveCtor operator=(const ThrowableMoveCtor &) noexcept
-    {
-        return *this;
-    }
-
-    ThrowableMoveCtor operator=(ThrowableMoveCtor &&) noexcept
-    {
-        return *this;
-    }
-
-    ThrowableMoveCtor(ThrowableMoveCtor &&){};
-};
-
-TEST(StaticVector, has_throwable_move_ctor_when_type_has_it)
-{
-    EXPECT_FALSE((std::is_nothrow_move_constructible_v<util::StaticVector<ThrowableMoveCtor, 5>>));
+    EXPECT_TRUE((std::is_nothrow_move_constructible_v<util::StaticVector<std::deque<int>, 5>>));
 }
 
-struct ThrowableMoveAssign
+TEST(StaticVector, has_nothrow_move_assign_with_throwable_element_move_ctor)
 {
-    // use the opposite exception spec to check whether it influences the result or not
-    ThrowableMoveAssign(const ThrowableMoveAssign &) noexcept {};
-
-    ThrowableMoveAssign operator=(const ThrowableMoveAssign &) noexcept
-    {
-        return *this;
-    }
-
-    ThrowableMoveAssign(ThrowableMoveAssign &&) noexcept {};
-
-    ThrowableMoveAssign operator=(ThrowableMoveAssign &&)
-    {
-        return *this;
-    }
-};
-
-TEST(StaticVector, has_throwable_move_assign_when_type_has_it)
-{
-    EXPECT_FALSE((std::is_nothrow_move_assignable_v<util::StaticVector<ThrowableMoveAssign, 5>>));
+    EXPECT_TRUE((std::is_nothrow_move_assignable_v<util::StaticVector<std::deque<int>, 5>>));
+    EXPECT_TRUE((std::is_nothrow_move_assignable_v<util::StaticVector<std::pmr::vector<int>, 5>>));
 }
-
-struct NoThrowableCopyCtor
-{
-    // use the opposite exception spec to check whether it influences the result or not
-    NoThrowableCopyCtor(NoThrowableCopyCtor &&){};
-
-    NoThrowableCopyCtor &operator=(const NoThrowableCopyCtor &)
-    {
-        return *this;
-    }
-
-    NoThrowableCopyCtor &operator=(NoThrowableCopyCtor &&)
-    {
-        return *this;
-    }
-
-    NoThrowableCopyCtor(const NoThrowableCopyCtor &) noexcept {};
-};
 
 TEST(StaticVector, has_nothrow_copy_ctor_when_type_has_it)
 {
-    EXPECT_TRUE((std::is_nothrow_copy_constructible_v<util::StaticVector<NoThrowableCopyCtor, 5>>));
+    EXPECT_TRUE((std::is_nothrow_copy_constructible_v<util::StaticVector<std::shared_ptr<int>, 5>>));
 }
-
-struct NoThrowableCopyAssign
-{
-    // use the opposite exception spec to check whether it influences the result or not
-    NoThrowableCopyAssign(const NoThrowableCopyAssign &){};
-    NoThrowableCopyAssign(NoThrowableCopyAssign &&){};
-
-    NoThrowableCopyAssign &operator=(NoThrowableCopyAssign &&)
-    {
-        return *this;
-    }
-
-    NoThrowableCopyAssign &operator=(const NoThrowableCopyAssign &) noexcept
-    {
-        return *this;
-    }
-};
 
 TEST(StaticVector, has_nothrow_copy_assign_when_type_has_it)
 {
-    EXPECT_TRUE((std::is_nothrow_copy_assignable_v<util::StaticVector<NoThrowableCopyAssign, 5>>));
+    EXPECT_TRUE((std::is_nothrow_copy_assignable_v<util::StaticVector<std::shared_ptr<int>, 5>>));
 }
-
-struct ThrowableCopyCtor
-{
-    // use the opposite exception spec to check whether it influences the result or not
-    ThrowableCopyCtor(ThrowableCopyCtor &&) noexcept {};
-
-    ThrowableCopyCtor operator=(const ThrowableCopyCtor &) noexcept
-    {
-        return *this;
-    }
-
-    ThrowableCopyCtor operator=(ThrowableCopyCtor &&) noexcept
-    {
-        return *this;
-    }
-
-    ThrowableCopyCtor(const ThrowableCopyCtor &){};
-};
 
 TEST(StaticVector, has_throwable_copy_ctor_when_type_has_it)
 {
-    EXPECT_FALSE((std::is_nothrow_copy_constructible_v<util::StaticVector<ThrowableCopyCtor, 5>>));
+    EXPECT_FALSE((std::is_nothrow_copy_constructible_v<util::StaticVector<std::string, 5>>));
 }
-
-struct ThrowableCopyAssign
-{
-    // use the opposite exception spec to check whether it influences the result or not
-    ThrowableCopyAssign(const ThrowableCopyAssign &) noexcept {};
-
-    ThrowableCopyAssign operator=(ThrowableCopyAssign &) noexcept
-    {
-        return *this;
-    }
-
-    ThrowableCopyAssign(ThrowableCopyAssign &&) noexcept {};
-
-    ThrowableCopyAssign operator=(const ThrowableCopyAssign &&)
-    {
-        return *this;
-    }
-};
 
 TEST(StaticVector, has_throwable_copy_assign_when_type_has_it)
 {
-    EXPECT_FALSE((std::is_nothrow_copy_assignable_v<util::StaticVector<ThrowableCopyAssign, 5>>));
+    EXPECT_FALSE((std::is_nothrow_copy_assignable_v<util::StaticVector<std::string, 5>>));
 }
 
 TEST(StaticVector, construct_from_empty_range)
@@ -1423,7 +1302,7 @@ TEST(StaticVector, construct_from_range)
 {
     util::StaticVector<std::shared_ptr<int>, 5> data{std::make_shared<int>(1), std::make_shared<int>(2)};
 
-    std::weak_ptr<int> wdata[2] = {data[0], data[1]};
+    std::array<std::weak_ptr<int>, 2> wdata = {data[0], data[1]};
 
     util::StaticVector<std::shared_ptr<int>, 2> v(data.begin(), data.end());
 

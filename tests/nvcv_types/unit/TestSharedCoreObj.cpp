@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,7 +31,8 @@ inline NVCVImageHandle CreateImage()
     nvcv::Size2D          size{640, 480};
     nvcv::ImageFormat     fmt = nvcv::FMT_RGBA8;
     NVCVImageRequirements reqs;
-    nvcv::detail::CheckThrow(nvcvImageCalcRequirements(size.w, size.h, fmt, 256, 16, &reqs));
+    nvcv::detail::CheckThrow(
+        nvcvImageCalcRequirements(size.w, size.h, static_cast<NVCVImageFormat>(fmt), 256, 16, &reqs));
     auto &alloc = nvcv::priv::GetDefaultAllocator();
 
     return nvcv::priv::CreateCoreObject<nvcv::priv::Image>(reqs, alloc);
@@ -90,7 +91,7 @@ TEST(SharedCoreObjTest, Comparison)
     Ptr s2 = Ptr::FromHandle(h2, true);
     EXPECT_EQ(nvcv::priv::CoreObjectDecRef(h2), 1);
 
-    Ptr s3 = nullptr;
+    Ptr s3{nullptr};
 
     EXPECT_TRUE(s1 == s1);
     EXPECT_FALSE(s1 != s1);
@@ -137,7 +138,7 @@ TEST(SharedCoreObjTest, AssignCopyMove)
 
         Ptr s3 = std::move(s2);
         EXPECT_EQ(nvcv::priv::CoreObjectRefCount(h), 3) << "Ref count changed during move construction.";
-        EXPECT_EQ(s2, nullptr) << "Not moved out properly";
+        EXPECT_EQ(s2, nullptr) << "Not moved out properly"; // NOSONAR: this test verifies moved-from state.
 
         s2 = s3;
         EXPECT_EQ(nvcv::priv::CoreObjectRefCount(h), 4) << "Ref count not raised after copy.";
@@ -147,8 +148,8 @@ TEST(SharedCoreObjTest, AssignCopyMove)
         s3 = std::move(s2);
         EXPECT_EQ(nvcv::priv::CoreObjectRefCount(h), 3) << "Ref count changed during move into a null shared pointer.";
         EXPECT_EQ(s3, s1);
-        EXPECT_EQ(s2, nullptr) << "Not moved out properly";
-        s3 = s2;
+        EXPECT_EQ(s2, nullptr) << "Not moved out properly"; // NOSONAR: this test verifies moved-from state.
+        s3 = s2;                                            // NOSONAR: this test verifies copy-from-moved-out state.
         EXPECT_EQ(nvcv::priv::CoreObjectRefCount(h), 2) << "Ref count not dropped after copy-from-null assignment.";
     }
     EXPECT_EQ(nvcv::priv::CoreObjectRefCount(h), 1);

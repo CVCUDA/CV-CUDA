@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,15 +30,16 @@ TEST(DataLayoutTest, GetBlockHeightLog2)
 
 TEST(DataLayoutTest, FlipByteOrder)
 {
-    auto makeSwizzle = [](NVCVChannel x, NVCVChannel y, NVCVChannel z, NVCVChannel w) -> NVCVSwizzle
+    auto makeSwizzle = [](NVCVChannel x, NVCVChannel y, NVCVChannel z, NVCVChannel w)
     {
         NVCVSwizzle res;
         EXPECT_EQ(NVCV_SUCCESS, nvcvMakeSwizzle(&res, x, y, z, w));
         return res;
     };
 
-    auto testFlipByteOrder = [&](NVCVChannel x, NVCVChannel y, NVCVChannel z, NVCVChannel w, int off, int len,
-                                 NVCVChannel goldX, NVCVChannel goldY, NVCVChannel goldZ, NVCVChannel goldW) -> void
+    auto testFlipByteOrder
+        = [&makeSwizzle](NVCVChannel x, NVCVChannel y, NVCVChannel z, NVCVChannel w, int off, int len,
+                         NVCVChannel goldX, NVCVChannel goldY, NVCVChannel goldZ, NVCVChannel goldW)
     {
         NVCVSwizzle initialSwizzle = makeSwizzle(x, y, z, w);
         NVCVSwizzle res            = nvcv::priv::FlipByteOrder(initialSwizzle, off, len);
@@ -92,7 +93,7 @@ TEST(DataLayoutTest, IsSubWord)
 
 TEST(ByteOrderTests, get_name_operator)
 {
-    auto testOperatorInsertion = [](std::string expectedStr, NVCVByteOrder order) -> void
+    auto testOperatorInsertion = [](const std::string &expectedStr, NVCVByteOrder order)
     {
         std::ostringstream ss;
         ss << order;
@@ -107,7 +108,7 @@ TEST(ByteOrderTests, get_name_operator)
 
 TEST(AlphaTypeTests, get_name_operator)
 {
-    auto testOperatorInsertion = [](std::string expectedStr, NVCVAlphaType alphaType) -> void
+    auto testOperatorInsertion = [](const std::string &expectedStr, NVCVAlphaType alphaType)
     {
         std::ostringstream ss;
         ss << alphaType;
@@ -123,7 +124,7 @@ TEST(AlphaTypeTests, get_name_operator)
 
 TEST(ExtraChannelTests, get_name_operator)
 {
-    auto testOperatorInsertion = [](std::string expectedStr, NVCVExtraChannel extraChannel) -> void
+    auto testOperatorInsertion = [](const std::string &expectedStr, NVCVExtraChannel extraChannel)
     {
         std::ostringstream ss;
         ss << extraChannel;

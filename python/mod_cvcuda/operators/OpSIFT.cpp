@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,6 +24,7 @@
 #include <nvcv/python/Stream.hpp>
 #include <nvcv/python/Tensor.hpp>
 
+#include <cassert>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -34,7 +35,7 @@ namespace {
 
 using TupleTensor4 = std::tuple<Tensor, Tensor, Tensor, Tensor>;
 
-class PyOpSIFT : public nvcvpy::Container
+class PyOpSIFT : public nvcvpy::Container // NOSONAR: operator wrappers share the Python cache hierarchy.
 {
 public:
     class Key : public nvcvpy::IKey
@@ -65,7 +66,7 @@ public:
 
         bool doIsCompatible(const nvcvpy::IKey &that_) const override
         {
-            const Key &that = static_cast<const Key &>(that_);
+            const auto &that = static_cast<const Key &>(that_);
             return that.canBeUsedWith(m_maxShape, m_maxOctaveLayers);
         }
 
@@ -87,7 +88,7 @@ public:
 
     py::object container() const override
     {
-        return *this;
+        return py::reinterpret_borrow<py::object>(this->ptr());
     }
 
     const nvcvpy::IKey &key() const override
@@ -97,13 +98,15 @@ public:
 
     static std::shared_ptr<nvcvpy::ICacheItem> fetch(std::vector<std::shared_ptr<nvcvpy::ICacheItem>> &cache)
     {
-        std::shared_ptr<nvcvpy::ICacheItem> retItem = cache[0];
+        assert(!cache.empty());
 
-        long long int maxPayloadSize = 0;
+        // Find the operator with the largest workspace (can handle any smaller request)
+        std::shared_ptr<nvcvpy::ICacheItem> retItem        = cache[0];
+        long long int                       maxPayloadSize = 0;
 
         for (const auto &item : cache)
         {
-            const Key &key = static_cast<const Key &>(item.get()->key());
+            const auto &key = static_cast<const Key &>(item.get()->key());
 
             long long int keyPayloadSize = key.payloadSize();
 
@@ -114,9 +117,9 @@ public:
             }
         }
 
-        cache.clear();
-
-        nvcvpy::Cache::removeAllNotInUseMatching(retItem.get()->key());
+        // Note: Removed cache.clear() and removeAllNotInUseMatching() calls to reduce per-call overhead.
+        // The cache will naturally evict unused operators when memory pressure occurs.
+        // This fix matches the pattern used in OpInpaint.cpp.
 
         return retItem;
     }
@@ -152,7 +155,7 @@ TupleTensor4 SIFTInto(Tensor &featCoords, Tensor &featMetadata, Tensor &featDesc
     }
 
     auto inAccess = tensorAccess(in);
-    int3 inShape{(int)inAccess->numCols(), (int)inAccess->numRows(), (int)inAccess->numSamples()};
+    int3 inShape{inAccess->numCols(), inAccess->numRows(), static_cast<int>(inAccess->numSamples())};
     if (flags == NVCV_SIFT_USE_EXPANDED_INPUT)
     {
         inShape.x *= 2;
@@ -166,8 +169,13 @@ TupleTensor4 SIFTInto(Tensor &featCoords, Tensor &featMetadata, Tensor &featDesc
     guard.add(LockMode::LOCK_MODE_WRITE, {featCoords, featMetadata, featDescriptors, numFeatures});
     guard.add(LockMode::LOCK_MODE_READWRITE, {*op});
 
-    op->submit(pstream->cudaHandle(), in, featCoords, featMetadata, featDescriptors, numFeatures, numOctaveLayers,
-               contrastThreshold, edgeThreshold, initSigma, flags);
+    guard.run(
+        [&op, &pstream, &in, &featCoords, &featMetadata, &featDescriptors, &numFeatures, &numOctaveLayers,
+         &contrastThreshold, &edgeThreshold, &initSigma, &flags]()
+        {
+            op->submit(pstream->cudaHandle(), in, featCoords, featMetadata, featDescriptors, numFeatures,
+                       numOctaveLayers, contrastThreshold, edgeThreshold, initSigma, flags);
+        });
 
     return TupleTensor4(std::move(featCoords), std::move(featMetadata), std::move(featDescriptors),
                         std::move(numFeatures));
@@ -183,7 +191,7 @@ TupleTensor4 SIFT(Tensor &in, int maxFeatures, int numOctaveLayers, float contra
                   float initSigma, NVCVSIFTFlagType flags, std::optional<Stream> pstream)
 {
     auto inAccess   = tensorAccess(in);
-    int  numSamples = inAccess->numSamples();
+    auto numSamples = static_cast<int>(inAccess->numSamples());
 
     maxFeatures = maxFeatures == 0 ? GetDefaultMaxFeatures(inAccess->numCols(), inAccess->numRows()) : maxFeatures;
 
@@ -191,10 +199,10 @@ TupleTensor4 SIFT(Tensor &in, int maxFeatures, int numOctaveLayers, float contra
 
     // clang-format off
 
-    Tensor featCoords      = Tensor::Create({{numSamples, maxFeatures, 4}, "NMC"}, nvcv::TYPE_F32, 1);
-    Tensor featMetadata    = Tensor::Create({{numSamples, maxFeatures, 3}, "NMC"}, nvcv::TYPE_F32, 1);
-    Tensor featDescriptors = Tensor::Create({{numSamples, maxFeatures, 128}, "NMD"}, nvcv::TYPE_U8, 1);
-    Tensor numFeatures     = Tensor::Create({{numSamples, 1}, "NC"}, nvcv::TYPE_S32, 1);
+    auto featCoords      = Tensor::Create({{numSamples, maxFeatures, 4}, "NMC"}, nvcv::TYPE_F32, 1);
+    auto featMetadata    = Tensor::Create({{numSamples, maxFeatures, 3}, "NMC"}, nvcv::TYPE_F32, 1);
+    auto featDescriptors = Tensor::Create({{numSamples, maxFeatures, 128}, "NMD"}, nvcv::TYPE_U8, 1);
+    auto numFeatures     = Tensor::Create({{numSamples, 1}, "NC"}, nvcv::TYPE_S32, 1);
 
     // clang-format on
 
@@ -208,15 +216,11 @@ void ExportOpSIFT(py::module &m)
 {
     using namespace pybind11::literals;
 
-    m.def("sift", &SIFT, "src"_a, "max_features"_a = 0, "num_octave_layers"_a = 3, "contrast_threshold"_a = 0.03f,
-          "edge_threshold"_a = 10.f, "init_sigma"_a = 1.6f, "flags"_a = NVCV_SIFT_USE_EXPANDED_INPUT, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
-
+    m.def("sift", NvtxTrace("cvcuda.sift", &SIFT), "src"_a, "max_features"_a = 0, "num_octave_layers"_a = 3,
+          "contrast_threshold"_a = 0.03f, "edge_threshold"_a = 10.f, "init_sigma"_a = 1.6f,
+          "flags"_a = NVCV_SIFT_USE_EXPANDED_INPUT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the SIFT operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the SIFT operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.Tensor): Input tensor to extract features and compute descriptors from.
@@ -234,20 +238,14 @@ void ExportOpSIFT(py::module &m)
             Tuple[cvcuda.Tensor, cvcuda.Tensor, cvcuda.Tensor, cvcuda.Tensor]: A tuple with feature coordinates, metadata, descriptors and
             number of features.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("sift_into", &SIFTInto, "feat_coords"_a, "feat_metadata"_a, "feat_descriptors"_a, "num_features"_a, "src"_a,
-          "num_octave_layers"_a = 3, "contrast_threshold"_a = 0.03f, "edge_threshold"_a = 10.f, "init_sigma"_a = 1.6f,
-          "flags"_a = NVCV_SIFT_USE_EXPANDED_INPUT, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
-
+    m.def("sift_into", NvtxTrace("cvcuda.sift_into", &SIFTInto), "feat_coords"_a, "feat_metadata"_a,
+          "feat_descriptors"_a, "num_features"_a, "src"_a, "num_octave_layers"_a = 3, "contrast_threshold"_a = 0.03f,
+          "edge_threshold"_a = 10.f, "init_sigma"_a = 1.6f, "flags"_a = NVCV_SIFT_USE_EXPANDED_INPUT, py::kw_only(),
+          "stream"_a = nullptr, R"pbdoc(
         Executes the SIFT operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the SIFT operator
-            for more details and usage examples.
 
         Args:
             feat_coords (cvcuda.Tensor): Output tensor with feature coordinates.
@@ -267,9 +265,6 @@ void ExportOpSIFT(py::module &m)
             Tuple[cvcuda.Tensor, cvcuda.Tensor, cvcuda.Tensor, cvcuda.Tensor]: A tuple with feature coordinates, metadata, descriptors and
             number of features.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 }
 

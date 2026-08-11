@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,7 +30,7 @@ namespace priv = nvcv::priv;
 NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvConfigSetMaxImageCount, (int32_t maxCount))
 {
     return priv::ProtectCall(
-        [&]
+        [&maxCount]
         {
             auto &mgr = std::get<priv::ImageManager &>(priv::GlobalContext().managerList());
             if (maxCount >= 0)
@@ -47,7 +47,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvConfigSetMaxImageCount, (int32_t maxCount)
 NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvConfigSetMaxImageBatchCount, (int32_t maxCount))
 {
     return priv::ProtectCall(
-        [&]
+        [&maxCount]
         {
             auto &mgr = std::get<priv::ImageBatchManager &>(priv::GlobalContext().managerList());
             if (maxCount >= 0)
@@ -64,7 +64,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvConfigSetMaxImageBatchCount, (int32_t maxC
 NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvConfigSetMaxTensorCount, (int32_t maxCount))
 {
     return priv::ProtectCall(
-        [&]
+        [&maxCount]
         {
             auto &mgr = std::get<priv::TensorManager &>(priv::GlobalContext().managerList());
             if (maxCount >= 0)
@@ -81,7 +81,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvConfigSetMaxTensorCount, (int32_t maxCount
 NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvConfigSetMaxArrayCount, (int32_t maxCount))
 {
     return priv::ProtectCall(
-        [&]
+        [&maxCount]
         {
             auto &mgr = std::get<priv::ArrayManager &>(priv::GlobalContext().managerList());
             if (maxCount >= 0)
@@ -98,7 +98,7 @@ NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvConfigSetMaxArrayCount, (int32_t maxCount)
 NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvConfigSetMaxAllocatorCount, (int32_t maxCount))
 {
     return priv::ProtectCall(
-        [&]
+        [&maxCount]
         {
             auto &mgr = std::get<priv::AllocatorManager &>(priv::GlobalContext().managerList());
             if (maxCount >= 0)

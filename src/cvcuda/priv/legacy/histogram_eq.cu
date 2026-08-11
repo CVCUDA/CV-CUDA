@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -33,10 +33,23 @@
 using namespace nvcv::legacy::cuda_op;
 using namespace nvcv::legacy::helpers;
 
-template<class SrcWrapper, class DstWrapper>
+template<bool IsPlanar>
+__device__ __forceinline__ int4 imageCoord(int batch, int y, int x, int ch)
+{
+    if constexpr (IsPlanar)
+    {
+        return int4{x, y, ch, batch};
+    }
+    else
+    {
+        return int4{ch, x, y, batch};
+    }
+}
+
+template<bool IsPlanar, int PIXELS_PER_THREAD_X, class SrcWrapper, class DstWrapper>
 __global__ void hist_kernel(const SrcWrapper src, DstWrapper histogram, int channels, nvcv::Size2D dstSize)
 {
-    const int src_x     = blockIdx.x * blockDim.x + threadIdx.x;
+    const int src_x0    = blockIdx.x * blockDim.x * PIXELS_PER_THREAD_X + threadIdx.x;
     const int src_y     = blockIdx.y * blockDim.y + threadIdx.y;
     const int batch_idx = get_batch_idx();
     const int local_id  = threadIdx.y * blockDim.x + threadIdx.x;
@@ -49,15 +62,21 @@ __global__ void hist_kernel(const SrcWrapper src, DstWrapper histogram, int chan
     }
     __syncthreads(); // wait for all threads to finish initialization
 
-    //check if we are in the image.
-    if (src_x < dstSize.w && src_y < dstSize.h)
+#pragma unroll
+    for (int i = 0; i < PIXELS_PER_THREAD_X; ++i)
     {
-        for (int ch = 0; ch < channels; ch++)
+        const int src_x = src_x0 + i * blockDim.x;
+
+        // Skip widened X positions that extend beyond the final partial tile.
+        if (src_x < dstSize.w && src_y < dstSize.h)
         {
-            int4  coordImg{ch, src_x, src_y, batch_idx};
-            uchar out = src[coordImg];
-            int   idx = out + (256 * ch);
-            atomicAdd(&shist[idx], 1);
+            for (int ch = 0; ch < channels; ch++)
+            {
+                int4  coordImg = imageCoord<IsPlanar>(batch_idx, src_y, src_x, ch);
+                uchar out      = src[coordImg];
+                int   idx      = out + (256 * ch);
+                atomicAdd(&shist[idx], 1);
+            }
         }
     }
     __syncthreads();
@@ -139,7 +158,7 @@ __global__ void prefix_sum_with_norm_kernel(CdfWrapper histogram, nvcv::Size2D d
     }
 }
 
-template<class SrcWrapper, class DstWrapper, class CdfWrapper>
+template<bool IsPlanar, class SrcWrapper, class DstWrapper, class CdfWrapper>
 __global__ void lookup(const SrcWrapper src, DstWrapper dst, CdfWrapper cdf, int channels, nvcv::Size2D dstSize)
 
 {
@@ -163,9 +182,8 @@ __global__ void lookup(const SrcWrapper src, DstWrapper dst, CdfWrapper cdf, int
         int offset = 0;
         for (int ch = 0; ch < channels; ch++)
         {
-            offset = 256 * ch;
-            int4 coordImg{ch, src_x, src_y, batch_idx};
-            int2 coordHisto{src[coordImg] + offset, batch_idx};
+            offset        = 256 * ch;
+            int4 coordImg = imageCoord<IsPlanar>(batch_idx, src_y, src_x, ch);
             dst[coordImg] = nvcv::cuda::SaturateCast<uchar>((temp[src[coordImg] + offset]));
         }
     }
@@ -201,7 +219,7 @@ HistogramEq::~HistogramEq()
     }
 }
 
-template<typename SrcWrap, typename DstWrap, typename HistWrap>
+template<bool IsPlanar, typename SrcWrap, typename DstWrap, typename HistWrap>
 ErrorCode infer_histogram(SrcWrap src, DstWrap dst, HistWrap histo, int batch, nvcv::Size2D dstSize, int channels,
                           cudaStream_t stream)
 {
@@ -213,7 +231,7 @@ ErrorCode infer_histogram(SrcWrap src, DstWrap dst, HistWrap histo, int batch, n
         switch (channels)
         {
         case 1:
-            bsX = 16; // 256 (1 ch)
+            bsX = 32; // 512 (1 ch)
             bsY = 16;
             break;
         case 2:
@@ -228,11 +246,25 @@ ErrorCode infer_histogram(SrcWrap src, DstWrap dst, HistWrap histo, int batch, n
             break;
         }
 
+        constexpr int kPixelsPerThreadC1   = 8;
+        constexpr int kPixelsPerThreadCN   = 1;
+        int           histPixelsPerThreadX = channels == 1 ? kPixelsPerThreadC1 : kPixelsPerThreadCN;
+
         // each block is going to be 256bins * channels = threads
         dim3   histBlockSize(bsX, bsY, 1);
-        dim3   histGridSize(divUp(dstSize.w, histBlockSize.x), divUp(dstSize.h, histBlockSize.y), batch);
+        dim3   histGridSize(divUp(dstSize.w, histBlockSize.x * histPixelsPerThreadX), divUp(dstSize.h, histBlockSize.y),
+                            batch);
         size_t sharedMemSize = 256 * channels * sizeof(int);
-        hist_kernel<<<histGridSize, histBlockSize, sharedMemSize, stream>>>(src, histo, channels, dstSize);
+        if (channels == 1)
+        {
+            hist_kernel<IsPlanar, kPixelsPerThreadC1>
+                <<<histGridSize, histBlockSize, sharedMemSize, stream>>>(src, histo, channels, dstSize);
+        }
+        else
+        {
+            hist_kernel<IsPlanar, kPixelsPerThreadCN>
+                <<<histGridSize, histBlockSize, sharedMemSize, stream>>>(src, histo, channels, dstSize);
+        }
         checkKernelErrors();
     }
 
@@ -250,8 +282,8 @@ ErrorCode infer_histogram(SrcWrap src, DstWrap dst, HistWrap histo, int batch, n
     {
         dim3 lookupBlockSize(32, 32, 1);
         dim3 lookupGridSize(divUp(dstSize.w, lookupBlockSize.x), divUp(dstSize.h, lookupBlockSize.y), batch);
-        lookup<<<lookupGridSize, lookupBlockSize, 256 * channels * sizeof(int), stream>>>(src, dst, histo, channels,
-                                                                                          dstSize);
+        lookup<IsPlanar><<<lookupGridSize, lookupBlockSize, 256 * channels * sizeof(int), stream>>>(src, dst, histo,
+                                                                                                    channels, dstSize);
         checkKernelErrors();
     }
 
@@ -280,11 +312,12 @@ ErrorCode HistogramEq::infer(const TensorDataStridedCuda &inData, const TensorDa
 
     DataFormat format = input_format;
 
-    if (!(format == kNHWC || format == kHWC))
+    if (!(format == kNHWC || format == kHWC || format == kNCHW || format == kCHW))
     {
         LOG_ERROR("Invliad DataFormat " << format);
         return ErrorCode::INVALID_DATA_FORMAT;
     }
+    const bool isPlanar = (format == kNCHW || format == kCHW);
 
     if (!(data_type == kCV_8U))
     {
@@ -303,9 +336,20 @@ ErrorCode HistogramEq::infer(const TensorDataStridedCuda &inData, const TensorDa
     int          height   = inAccess->numRows();
     nvcv::Size2D dstSize{width, height};
 
+    if (m_maxBatchSize <= 0 || batch > m_maxBatchSize)
+    {
+        LOG_ERROR("Invalid maximum batch size " << m_maxBatchSize << " for input batch " << batch);
+        return ErrorCode::INVALID_PARAMETER;
+    }
+
     if (channels > 4 || channels < 1)
     {
         LOG_ERROR("Invalid channel number ch = " << channels);
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
+    if (isPlanar && channels == 2)
+    {
+        LOG_ERROR("2-channel planar HistogramEq is unsupported");
         return ErrorCode::INVALID_DATA_SHAPE;
     }
 
@@ -313,6 +357,18 @@ ErrorCode HistogramEq::infer(const TensorDataStridedCuda &inData, const TensorDa
     if (!outAccess)
     {
         return ErrorCode::INVALID_DATA_FORMAT;
+    }
+    if (outAccess->numSamples() != batch || outAccess->numChannels() != channels || outAccess->numCols() != width
+        || outAccess->numRows() != height)
+    {
+        LOG_ERROR("Input and output tensor shapes must match");
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+    if (batch > 65535)
+    {
+        LOG_ERROR("HistogramEq input exceeds the 65535 batch launch limit");
+        return ErrorCode::INVALID_DATA_SHAPE;
     }
 
     //clear the histogram.
@@ -326,10 +382,20 @@ ErrorCode HistogramEq::infer(const TensorDataStridedCuda &inData, const TensorDa
 
     if (std::max(srcMaxStride, dstMaxStride) <= cuda::TypeTraits<int32_t>::max)
     {
-        auto src = nvcv::cuda::CreateTensorWrapNHWC<uchar, int32_t>(inData);
-        auto dst = nvcv::cuda::CreateTensorWrapNHWC<uchar, int32_t>(outData);
+        if (isPlanar)
+        {
+            auto src = nvcv::cuda::CreateTensorWrapNCHW<uchar, int32_t>(inData);
+            auto dst = nvcv::cuda::CreateTensorWrapNCHW<uchar, int32_t>(outData);
 
-        return infer_histogram(src, dst, histo, batch, dstSize, channels, stream);
+            return infer_histogram<true>(src, dst, histo, batch, dstSize, channels, stream);
+        }
+        else
+        {
+            auto src = nvcv::cuda::CreateTensorWrapNHWC<uchar, int32_t>(inData);
+            auto dst = nvcv::cuda::CreateTensorWrapNHWC<uchar, int32_t>(outData);
+
+            return infer_histogram<false>(src, dst, histo, batch, dstSize, channels, stream);
+        }
     }
     else
     {

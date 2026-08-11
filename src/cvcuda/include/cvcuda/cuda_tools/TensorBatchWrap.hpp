@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,6 +29,7 @@
 
 #include <nvcv/TensorBatchData.hpp>
 
+#include <cassert>
 #include <type_traits>
 
 namespace nvcv::cuda {
@@ -74,7 +75,7 @@ namespace nvcv::cuda {
  * @tparam T Type (it can be const) of each element inside the tensor wrapper.
  * @tparam Strides Each compile-time (use -1 for run-time) pitch in bytes from first to last dimension.
  */
-template<typename T, typename StrideT, StrideT... Strides>
+template<typename T, typename StrideT, StrideT... Strides> // NOSONAR: StrideT is part of this public template API.
 class TensorBatchWrapT;
 
 template<typename T, typename StrideT, StrideT... Strides>
@@ -99,7 +100,7 @@ public:
      *
      * @param[in] data Tensor batch data to wrap.
      */
-    __host__ TensorBatchWrapT(const TensorBatchDataStridedCuda &data)
+    explicit __host__ TensorBatchWrapT(const TensorBatchDataStridedCuda &data)
         : TensorBatchWrapT(data.cdata())
     {
     }
@@ -109,7 +110,7 @@ public:
      *
      * @param[in] data Tensor batch data to wrap.
      */
-    __host__ __device__ TensorBatchWrapT(const NVCVTensorBatchData &data)
+    explicit __host__ __device__ TensorBatchWrapT(const NVCVTensorBatchData &data)
         : m_numTensors(data.numTensors)
         , m_tensors(data.buffer.strided.tensors)
     {
@@ -170,7 +171,7 @@ public:
      * @tparam Strides static strides
      * @param t index of the tensor
      */
-    inline const __host__ __device__ auto tensor(int t) const
+    inline __host__ __device__ auto tensor(int t) const
     {
         return TensorWrapT<ValueType, StrideType, Strides...>(doGetPtr(t), strides(t));
     }
@@ -215,13 +216,13 @@ protected:
         constexpr int     kArgSize  = sizeof...(Args);
         constexpr int     kVarSize  = kArgSize < kVariableStrides ? kArgSize : kVariableStrides;
         constexpr int     kDimSize  = kArgSize < kNumDimensions ? kArgSize : kNumDimensions;
-        constexpr StrideT kStride[] = {std::forward<StrideT>(Strides)...};
+        constexpr StrideT kStride[] = {Strides...}; // NOSONAR: CUDA code indexes template-pack values.
 
         // Computing offset first potentially postpones or avoids 64-bit math during addressing
         StrideType offset = 0;
         if constexpr (kArgSize > 0)
         {
-            StrideType     coords[] = {std::forward<StrideType>(c)...};
+            StrideType     coords[] = {static_cast<StrideType>(c)...}; // NOSONAR: CUDA code indexes pack values.
             const int64_t *strides  = m_tensors[t].stride;
 
 #pragma unroll
@@ -236,10 +237,11 @@ protected:
             }
         }
 
-        NVCVByte *dataPtr = m_tensors[t].data;
+        NVCVByte *dataPtr = m_tensors[t].data; // NOSONAR: doGetPtr preserves mutable tensor element access.
         return reinterpret_cast<T *>(dataPtr + offset);
     }
 
+private:
     int32_t                           m_numTensors;
     NVCVTensorBatchElementStridedRec *m_tensors;
 };
@@ -250,7 +252,7 @@ protected:
  * @tparam T Type (non-const) of each element inside the tensor batch wrapper.
  * @tparam Strides Each compile-time (use -1 for run-time) pitch in bytes from first to last dimension.
  */
-template<typename T, typename StrideT, StrideT... Strides>
+template<typename T, typename StrideT, StrideT... Strides> // NOSONAR: StrideT is part of this public template API.
 class TensorBatchWrapT : public TensorBatchWrapT<const T, StrideT, Strides...>
 {
     using Base = TensorBatchWrapT<const T, StrideT, Strides...>;
@@ -259,7 +261,6 @@ public:
     using ValueType = T;
     using Base::doGetPtr;
     using Base::kNumDimensions;
-    using Base::m_tensors;
     using Base::strides;
     using typename Base::StrideType;
 
@@ -268,7 +269,7 @@ public:
      *
      * @param[in] data Tensor batch data to wrap.
      */
-    __host__ TensorBatchWrapT(const TensorBatchDataStridedCuda &data)
+    explicit __host__ TensorBatchWrapT(const TensorBatchDataStridedCuda &data)
         : Base(data)
     {
     }
@@ -278,7 +279,7 @@ public:
      *
      * @param[in] data Tensor batch data to wrap.
      */
-    __host__ __device__ TensorBatchWrapT(NVCVTensorBatchData &data)
+    explicit __host__ __device__ TensorBatchWrapT(NVCVTensorBatchData &data)
         : Base(data)
     {
     }

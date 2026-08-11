@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,7 @@
  */
 
 #include "Operators.hpp"
+#include "VarShapeUtils.hpp"
 
 #include <common/PyUtil.hpp>
 #include <common/String.hpp>
@@ -33,6 +34,33 @@ namespace cvcudapy {
 
 namespace {
 
+Tensor ChannelReorderTensorInto(Tensor &output, Tensor &input, const std::vector<int32_t> &order,
+                                std::optional<Stream> pstream)
+{
+    if (!pstream)
+    {
+        pstream = Stream::Current();
+    }
+
+    auto          channelReorder = CreateOperator<cvcuda::ChannelReorder>();
+    ResourceGuard guard(*pstream);
+    guard.add(LockMode::LOCK_MODE_READ, {input});
+    guard.add(LockMode::LOCK_MODE_WRITE, {output});
+    guard.add(LockMode::LOCK_MODE_NONE, {*channelReorder});
+    guard.run(
+        [&channelReorder, &pstream, &input, &output, &order] {
+            channelReorder->submit(pstream->cudaHandle(), input, output, order.data(),
+                                   static_cast<int32_t>(order.size()));
+        });
+    return output;
+}
+
+Tensor ChannelReorderTensor(Tensor &input, const std::vector<int32_t> &order, std::optional<Stream> pstream)
+{
+    Tensor output = Tensor::Create(input.shape(), input.dtype());
+    return ChannelReorderTensorInto(output, input, order, pstream);
+}
+
 ImageBatchVarShape ChannelReorderVarShapeInto(ImageBatchVarShape &output, ImageBatchVarShape &input, Tensor &orders,
                                               std::optional<Stream> pstream)
 {
@@ -48,7 +76,8 @@ ImageBatchVarShape ChannelReorderVarShapeInto(ImageBatchVarShape &output, ImageB
     guard.add(LockMode::LOCK_MODE_WRITE, {output});
     guard.add(LockMode::LOCK_MODE_NONE, {*chReorder});
 
-    chReorder->submit(pstream->cudaHandle(), input, output, orders);
+    guard.run([&chReorder, &pstream, &input, &output, &orders]()
+              { chReorder->submit(pstream->cudaHandle(), input, output, orders); });
 
     return output;
 }
@@ -56,15 +85,7 @@ ImageBatchVarShape ChannelReorderVarShapeInto(ImageBatchVarShape &output, ImageB
 ImageBatchVarShape ChannelReorderVarShape(ImageBatchVarShape &input, Tensor &orders,
                                           std::optional<nvcv::ImageFormat> fmt, std::optional<Stream> pstream)
 {
-    ImageBatchVarShape output = ImageBatchVarShape::Create(input.capacity());
-
-    for (int i = 0; i < input.numImages(); ++i)
-    {
-        nvcv::ImageFormat format = fmt ? *fmt : input[i].format();
-        nvcv::Size2D      size   = input[i].size();
-        auto              image  = Image::Create(size, format);
-        output.pushBack(image);
-    }
+    ImageBatchVarShape output = fmt ? CreateSameShapeImageBatch(input, *fmt) : CreateSameShapeImageBatch(input);
 
     return ChannelReorderVarShapeInto(output, input, orders, pstream);
 }
@@ -75,14 +96,41 @@ void ExportOpChannelReorder(py::module &m)
 {
     using namespace pybind11::literals;
 
-    m.def("channelreorder", &ChannelReorderVarShape, "src"_a, "order"_a, py::kw_only(), "format"_a = nullptr,
-          "stream"_a = nullptr, R"pbdoc(
+    m.def("channelreorder", NvtxTrace("cvcuda.channelreorder", &ChannelReorderTensor), "src"_a, "order"_a,
+          py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+        Reorders the channels of a tensor using a host sequence.
 
+        Each output channel ``c`` receives input channel ``order[c]``. Negative entries write zero;
+        repeated non-negative entries are allowed. The output has the same shape, layout, and data
+        type as the input.
+
+        Args:
+            src (cvcuda.Tensor): Input tensor in HWC, NHWC, CHW, or NCHW layout.
+            order (Sequence[int]): One source-channel index per output channel.
+            stream (cvcuda.Stream, optional): CUDA stream on which to submit the operation.
+
+        Returns:
+            cvcuda.Tensor: Reordered output tensor.
+    )pbdoc");
+
+    m.def("channelreorder_into", NvtxTrace("cvcuda.channelreorder_into", &ChannelReorderTensorInto), "dst"_a, "src"_a,
+          "order"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
+        Reorders tensor channels into a caller-provided output tensor.
+
+        Args:
+            dst (cvcuda.Tensor): Output tensor with metadata identical to ``src``.
+            src (cvcuda.Tensor): Input tensor.
+            order (Sequence[int]): One source-channel index per output channel; negatives write zero.
+            stream (cvcuda.Stream, optional): CUDA stream on which to submit the operation.
+
+        Returns:
+            cvcuda.Tensor: ``dst``.
+    )pbdoc");
+
+    m.def("channelreorder", NvtxTrace("cvcuda.channelreorder", &ChannelReorderVarShape), "src"_a, "order"_a,
+          py::kw_only(), "format"_a = nullptr, "stream"_a = nullptr, R"pbdoc(
         Executes the Channel Reorder operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Channel Reorder operator
-            for more details and usage examples.
 
         Args:
             src (cvcuda.ImageBatchVarShape): Input tensor containing one or more images.
@@ -95,19 +143,12 @@ void ExportOpChannelReorder(py::module &m)
         Returns:
             cvcuda.ImageBatchVarShape: The output image batch.
 
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
     )pbdoc");
 
-    m.def("channelreorder_into", &ChannelReorderVarShapeInto, "dst"_a, "src"_a, "orders"_a, py::kw_only(),
-          "stream"_a = nullptr, R"pbdoc(
-
+    m.def("channelreorder_into", NvtxTrace("cvcuda.channelreorder_into", &ChannelReorderVarShapeInto), "dst"_a, "src"_a,
+          "orders"_a, py::kw_only(), "stream"_a = nullptr, R"pbdoc(
         Executes the Channel Reorder operation on the given cuda stream.
 
-        See also:
-            Refer to the CV-CUDA C API reference for the Channel Reorder operator
-            for more details and usage examples.
 
         Args:
             dst (cvcuda.ImageBatchVarShape): Output tensor to store the result of the operation.
@@ -119,11 +160,7 @@ void ExportOpChannelReorder(py::module &m)
             stream (cvcuda.Stream, optional): CUDA Stream on which to perform the operation.
 
         Returns:
-            None
-
-        Caution:
-            Restrictions to several arguments may apply. Check the C
-            API references of the CV-CUDA operator.
+            cvcuda.ImageBatchVarShape: The output image batch (same as dst).
     )pbdoc");
 }
 

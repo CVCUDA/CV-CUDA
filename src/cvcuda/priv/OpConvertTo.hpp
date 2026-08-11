@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,6 +27,7 @@
 #include "IOperator.hpp"
 #include "legacy/CvCudaLegacy.h"
 
+#include <nvcv/RoundMode.h>
 #include <nvcv/Tensor.hpp>
 
 #include <memory>
@@ -39,7 +40,7 @@ public:
     explicit ConvertTo();
 
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, const double alpha,
-                    const double beta) const;
+                    const double beta, NVCVRoundMode roundMode) const;
 
 private:
     std::unique_ptr<nvcv::legacy::cuda_op::ConvertTo> m_legacyOp;

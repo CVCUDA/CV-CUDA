@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,7 +29,7 @@ NVCVResourceAllocator IAllocator::get(NVCVResourceType resType)
     return doGet(resType);
 }
 
-void *IAllocator::allocHostMem(int64_t size, int32_t align)
+NVCVMemoryBuffer IAllocator::allocHostMem(int64_t size, int32_t align)
 {
     if (size < 0)
     {
@@ -52,12 +52,12 @@ void *IAllocator::allocHostMem(int64_t size, int32_t align)
     return doAllocHostMem(size, align);
 }
 
-void IAllocator::freeHostMem(void *ptr, int64_t size, int32_t align) noexcept
+void IAllocator::freeHostMem(NVCVMemoryBuffer ptr, int64_t size, int32_t align) noexcept
 {
     doFreeHostMem(ptr, size, align);
 }
 
-void *IAllocator::allocHostPinnedMem(int64_t size, int32_t align)
+NVCVMemoryBuffer IAllocator::allocHostPinnedMem(int64_t size, int32_t align)
 {
     if (size < 0)
     {
@@ -80,12 +80,12 @@ void *IAllocator::allocHostPinnedMem(int64_t size, int32_t align)
     return doAllocHostPinnedMem(size, align);
 }
 
-void IAllocator::freeHostPinnedMem(void *ptr, int64_t size, int32_t align) noexcept
+void IAllocator::freeHostPinnedMem(NVCVMemoryBuffer ptr, int64_t size, int32_t align) noexcept
 {
     doFreeHostPinnedMem(ptr, size, align);
 }
 
-void *IAllocator::allocCudaMem(int64_t size, int32_t align)
+NVCVMemoryBuffer IAllocator::allocCudaMem(int64_t size, int32_t align)
 {
     if (size < 0)
     {
@@ -108,7 +108,7 @@ void *IAllocator::allocCudaMem(int64_t size, int32_t align)
     return doAllocCudaMem(size, align);
 }
 
-void IAllocator::freeCudaMem(void *ptr, int64_t size, int32_t align) noexcept
+void IAllocator::freeCudaMem(NVCVMemoryBuffer ptr, int64_t size, int32_t align) noexcept
 {
     doFreeCudaMem(ptr, size, align);
 }

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,11 +28,16 @@ namespace {
 class Hog
 {
 public:
-    Hog(size_t size = 64 << 20)
+    explicit Hog(size_t size = 64 << 20)
         : m_size(size)
     {
         NVCV_CHECK_THROW(cudaMalloc(&m_buf, m_size));
     }
+
+    Hog(const Hog &)            = delete;
+    Hog(Hog &&)                 = delete;
+    Hog &operator=(const Hog &) = delete;
+    Hog &operator=(Hog &&)      = delete;
 
     ~Hog()
     {
@@ -54,8 +59,9 @@ private:
 
 struct DummyPayload
 {
-    size_t      size = 0, alignment = 1;
-    cudaEvent_t ready = nullptr;
+    size_t      size      = 0;
+    size_t      alignment = 1;
+    cudaEvent_t ready     = nullptr;
 };
 
 using ItemAlloc = nvcv::util::detail::StreamCacheItemAllocator<DummyPayload>;
@@ -78,10 +84,10 @@ TEST(StreamCacheItemAllocator, BasicTest)
         }
         else
         {
-            int                                n = items.size();
-            std::uniform_int_distribution<int> dist(0, n - 1);
-            int                                i = dist(rng);
-            std::swap(items[i], items.back());
+            auto                          itemCount = static_cast<int>(items.size());
+            std::uniform_int_distribution dist(0, itemCount - 1);
+            int                           itemIndex = dist(rng);
+            std::swap(items[itemIndex], items.back());
             alloc.deallocate(items.back());
             items.pop_back();
         }
@@ -155,7 +161,7 @@ TEST(StreamOrderedCacheTest, FindNextReady)
     const int kMaxRetries = 10;
     int       retries     = kMaxRetries;
 
-    for (int split = 0; split < N; split += 20)
+    for (int split = 0; split < N; split += 20) // NOSONAR: split index drives cache readiness coverage.
     {
         events.clear();
 
@@ -182,10 +188,10 @@ TEST(StreamOrderedCacheTest, FindNextReady)
 
         if (split > 0)
         {
-            ASSERT_EQ(cudaSuccess, cudaEventSynchronize(events.events[split - 1]));
+            ASSERT_EQ(cudaSuccess, cudaEventSynchronize(events.events[split - 1].get()));
         }
         auto *item = cache.findNewestReady();
-        if (cudaEventQuery(events.events[split]) == cudaSuccess)
+        if (cudaEventQuery(events.events[split].get()) == cudaSuccess)
         {
             if (--retries < 0)
                 GTEST_SKIP() << "Unreliable test";
@@ -230,7 +236,7 @@ TEST(StreamOrderedCacheTest, RemoveAllReady)
 
     std::vector<bool> mask(N);
 
-    for (int split = 0; split < N; split += 20)
+    for (int split = 0; split < N; split += 20) // NOSONAR: split index drives cache readiness coverage.
     {
         events.clear();
         for (int i = 0; i < N; i++) mask[i] = false;
@@ -258,10 +264,10 @@ TEST(StreamOrderedCacheTest, RemoveAllReady)
 
         if (split > 0)
         {
-            ASSERT_EQ(cudaSuccess, cudaEventSynchronize(events.events[split - 1]));
+            ASSERT_EQ(cudaSuccess, cudaEventSynchronize(events.events[split - 1].get()));
         }
-        cache.removeAllReady([&](const DummyPayload &p) { mask[p.size] = true; });
-        if (cudaEventQuery(events.events[split]) != cudaErrorNotReady)
+        cache.removeAllReady([&mask](const DummyPayload &p) { mask[p.size] = true; });
+        if (cudaEventQuery(events.events[split].get()) != cudaErrorNotReady)
         {
             if (--retries < 0)
                 GTEST_SKIP() << "Unreliable test";
@@ -271,9 +277,9 @@ TEST(StreamOrderedCacheTest, RemoveAllReady)
             continue;
         }
         retries = kMaxRetries;
-        for (int i = 0; i < N; i++)
+        for (int index = 0; index < N; index++)
         {
-            EXPECT_EQ(mask[i], (i < split)) << "@ i = " << i << " split = " << split;
+            EXPECT_EQ(mask[index], (index < split)) << "@ index = " << index << " split = " << split;
         }
 
         ASSERT_EQ(cudaSuccess, cudaDeviceSynchronize());
@@ -337,13 +343,13 @@ TEST(PerStreamCacheTest, TwoStream)
         cache.put(std::move(p3), s1.get());
         cache.put(std::move(p4), s2.get());
         auto   e               = std::chrono::high_resolution_clock::now();
-        double insert_time     = (e - s).count() / 4;
+        auto   insert_time     = static_cast<double>((e - s).count()) / 4.0;
         double stream_get_time = 0;
 
-        s                      = std::chrono::high_resolution_clock::now();
-        auto v0                = cache.get(1, 0, std::nullopt);
-        e                      = std::chrono::high_resolution_clock::now();
-        double failed_get_time = (e - s).count();
+        s                    = std::chrono::high_resolution_clock::now();
+        auto v0              = cache.get(1, 0, std::nullopt);
+        e                    = std::chrono::high_resolution_clock::now();
+        auto failed_get_time = static_cast<double>((e - s).count());
         if (v0.has_value())
         {
             if (cudaSuccess == cudaEventQuery(p1.ready) || cudaSuccess == cudaEventQuery(p1.ready))
@@ -351,33 +357,33 @@ TEST(PerStreamCacheTest, TwoStream)
             EXPECT_FALSE(v0.has_value()) << "The resources are not ready - none should be returned for null stream.";
         }
 
-        s               = std::chrono::high_resolution_clock::now();
-        auto v1s1       = cache.get(1001, 0, s1);
-        e               = std::chrono::high_resolution_clock::now();
-        stream_get_time = (e - s).count();
+        s         = std::chrono::high_resolution_clock::now();
+        auto v1s1 = cache.get(1001, 0, s1.get());
+        e         = std::chrono::high_resolution_clock::now();
+        stream_get_time += static_cast<double>((e - s).count());
         ASSERT_TRUE(v1s1.has_value());
         EXPECT_EQ(v1s1->size, 3000);
 
-        s               = std::chrono::high_resolution_clock::now();
-        auto v2s1       = cache.get(900, 0, s1);
-        e               = std::chrono::high_resolution_clock::now();
-        stream_get_time = (e - s).count();
+        s         = std::chrono::high_resolution_clock::now();
+        auto v2s1 = cache.get(900, 0, s1.get());
+        e         = std::chrono::high_resolution_clock::now();
+        stream_get_time += static_cast<double>((e - s).count());
         ASSERT_TRUE(v2s1.has_value());
         EXPECT_EQ(v2s1->size, 1000);
 
-        s               = std::chrono::high_resolution_clock::now();
-        auto v1s2       = cache.get(900, 0, s2);
-        e               = std::chrono::high_resolution_clock::now();
-        stream_get_time = (e - s).count();
+        s         = std::chrono::high_resolution_clock::now();
+        auto v1s2 = cache.get(900, 0, s2.get());
+        e         = std::chrono::high_resolution_clock::now();
+        stream_get_time += static_cast<double>((e - s).count());
         stream_get_time /= 3;
         ASSERT_TRUE(v1s2.has_value());
         EXPECT_EQ(v1s2->size, 2000);
 
-        ASSERT_EQ(cudaSuccess, cudaEventSynchronize(events.events[3]));
-        s               = std::chrono::high_resolution_clock::now();
-        auto v0ready    = cache.get(1, 0, std::nullopt);
-        e               = std::chrono::high_resolution_clock::now();
-        double get_time = (e - s).count();
+        ASSERT_EQ(cudaSuccess, cudaEventSynchronize(events.events[3].get()));
+        s             = std::chrono::high_resolution_clock::now();
+        auto v0ready  = cache.get(1, 0, std::nullopt);
+        e             = std::chrono::high_resolution_clock::now();
+        auto get_time = static_cast<double>((e - s).count());
         ASSERT_TRUE(v0ready.has_value());
         EXPECT_EQ(v0ready->size, 4000);
 

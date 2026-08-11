@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,9 +23,11 @@ namespace cvcudapy {
 
 void ExportAdaptiveThresholdType(py::module &m)
 {
-    py::enum_<NVCVAdaptiveThresholdType>(m, "AdaptiveThresholdType", py::arithmetic())
-        .value("MEAN_C", NVCV_ADAPTIVE_THRESH_MEAN_C)
-        .value("GAUSSIAN_C", NVCV_ADAPTIVE_THRESH_GAUSSIAN_C);
+    py::enum_<NVCVAdaptiveThresholdType>(m, "AdaptiveThresholdType", "Adaptive threshold computation methods.",
+                                         py::arithmetic())
+        .value("MEAN_C", NVCV_ADAPTIVE_THRESH_MEAN_C, "Threshold is the mean of the neighbourhood area minus C.")
+        .value("GAUSSIAN_C", NVCV_ADAPTIVE_THRESH_GAUSSIAN_C,
+               "Threshold is the Gaussian-weighted sum of the neighbourhood area minus C.");
 }
 
 } // namespace cvcudapy

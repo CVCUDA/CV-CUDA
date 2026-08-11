@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,26 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-if(ARCH_AARCH64)
-    include_directories(
-        ${CUOSD_SOURCE_DIR}/aarch64/include
-    )
-    link_directories(
-        ${CUOSD_SOURCE_DIR}/aarch64/lib
-    )
-else()
-    include_directories(
-        ${CUOSD_SOURCE_DIR}/x86_64/include
-    )
-    link_directories(
-        ${CUOSD_SOURCE_DIR}/x86_64/lib
-    )
-endif()
-
 # system core -------------------------------------------------
 
-# Base source files that work with C++17 and don't require libcuosd
 set(CVCUDA_TEST_SOURCES
+    TestOpJpegCompressionDistortion.cpp
+    TestOpAdjustHue.cpp
+    TestOpAdjustSaturation.cpp
+    TestOpAdjustSharpness.cpp
+    TestOpAdjustContrast.cpp
+    TestOpInvert.cpp
+    TestOpSolarize.cpp
+    TestOpPosterize.cpp
+    TestOpAutoContrast.cpp
     TestOpPairwiseMatcher.cpp
     TestOpStack.cpp
     TestOpLabel.cpp
@@ -84,13 +76,16 @@ set(CVCUDA_TEST_SOURCES
     TestOpInpaint.cpp
     TestOpFindHomography.cpp
     TestOpHQResize.cpp
+    TestOpOSD.cpp
+    TestOpBndBox.cpp
+    TestOpBoxBlur.cpp
+    TestOpCLAHE.cpp
+    TestOperatorWrapperCopy.cpp
 )
 
-# Smoke tests that don't require libcuosd - these work on all compilers including GCC-10
 set(CVCUDA_SMOKE_TEST_SOURCES
     TestOpBndBox_Smoke.cpp
     TestOpBoxBlur_Smoke.cpp
-    TestOpOSD_Smoke.cpp
 )
 
 # Test files that require C++20 (use floating-point values as template non-type parameters)
@@ -102,15 +97,6 @@ set(CVCUDA_TEST_SOURCES_CPP20
     TestOpSIFT.cpp
 )
 
-# Test files that require libcuosd (OSD library)
-# libcuosd has ABI incompatibility with GCC-10, so these tests are excluded for GCC-10
-set(CVCUDA_TEST_SOURCES_CUOSD
-    TestOpOSD.cpp
-    TestOpBndBox.cpp
-    TestOpBoxBlur.cpp
-    OsdUtils.cu
-)
-
 # Build smoke tests unconditionally - they work on all compilers
 add_executable(cvcuda_test_system_smoke ${CVCUDA_SMOKE_TEST_SOURCES})
 
@@ -118,36 +104,25 @@ target_link_libraries(cvcuda_test_system_smoke
     PUBLIC
         cvcuda
         nvcv_test_common_system
-        # Note: Does NOT link against cuosd
 )
 
 nvcv_add_test(cvcuda_test_system_smoke cvcuda cpp)
 
-# Include C++20-requiring tests and libcuosd tests only if compiler supports them properly
+# Include C++20-requiring tests only if compiler supports them
 if(NOT (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 11.0))
     list(APPEND CVCUDA_TEST_SOURCES ${CVCUDA_TEST_SOURCES_CPP20})
-    list(APPEND CVCUDA_TEST_SOURCES ${CVCUDA_TEST_SOURCES_CUOSD})
 endif()
 
-# Build cvcuda_test_system (works with GCC-10+ but with reduced test coverage for GCC-10)
 add_executable(cvcuda_test_system ${CVCUDA_TEST_SOURCES})
 
-# Link against libcuosd only for GCC-11+ (needed for OSD tests)
-if(NOT (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 11.0))
-    target_link_libraries(cvcuda_test_system
-        PUBLIC
-            cvcuda
-            nvcv_test_common_system
-            cuosd
-    )
-else()
-    # GCC-10: Build without libcuosd, excluding OSD and C++20 NTTP tests
-    target_link_libraries(cvcuda_test_system
-        PUBLIC
-            cvcuda
-            nvcv_test_common_system
-    )
-    message(STATUS "GCC-${CMAKE_CXX_COMPILER_VERSION}: Building cvcuda_test_system without libcuosd. OSD tests and C++20 NTTP tests excluded.")
+target_link_libraries(cvcuda_test_system
+    PUBLIC
+        cvcuda
+        nvcv_test_common_system
+)
+
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 11.0)
+    message(STATUS "GCC-${CMAKE_CXX_COMPILER_VERSION}: Building cvcuda_test_system without C++20 NTTP tests.")
 endif()
 
 nvcv_add_test(cvcuda_test_system cvcuda cpp)

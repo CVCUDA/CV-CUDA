@@ -1,5 +1,5 @@
 ..
-  # SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  # SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
   # SPDX-License-Identifier: Apache-2.0
   #
   # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,8 @@
   # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
   # See the License for the specific language governing permissions and
   # limitations under the License.
+
+:orphan:
 
 .. _wsl2:
 
@@ -29,7 +31,7 @@ More information about WSL2 and using CUDA can be found on this page `CUDA Toolk
 For installation instructions, you can refer to the following links:
 
 - `CUDA Toolkit 13.0`_, if you have driver r580 or later
-- `CUDA Toolkit 12.8`_, if you have driver r525 or later
+- `CUDA Toolkit 12.8`_, if you have driver r550 or later
 
 2. Setup Environment Variables
 ------------------------------

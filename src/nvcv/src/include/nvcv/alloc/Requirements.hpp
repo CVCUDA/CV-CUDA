@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -39,7 +39,7 @@ public:
     class ConstMemory
     {
         friend class Requirements;
-        ConstMemory(const NVCVMemRequirements &reqs);
+        explicit ConstMemory(const NVCVMemRequirements &reqs);
 
     protected:
         const NVCVMemRequirements &m_reqs;
@@ -54,7 +54,9 @@ public:
     class Memory : public ConstMemory
     {
         friend class Requirements;
-        Memory(NVCVMemRequirements &reqs);
+        explicit Memory(NVCVMemRequirements &reqs);
+
+        NVCVMemRequirements &m_mutReqs;
 
     public:
         void addBuffer(int64_t bufSize, int64_t bufAlignment);
@@ -94,7 +96,7 @@ inline Requirements::ConstMemory::ConstMemory(const NVCVMemRequirements &reqs)
 {
 }
 
-inline constexpr int Requirements::ConstMemory::size()
+constexpr int Requirements::ConstMemory::size()
 {
     return NVCV_MAX_MEM_REQUIREMENTS_LOG2_BLOCK_SIZE;
 }
@@ -122,12 +124,13 @@ inline int64_t Requirements::ConstMemory::numBlocks(int log2BlockSizeBytes) cons
 
 inline Requirements::Memory::Memory(NVCVMemRequirements &reqs)
     : ConstMemory(reqs)
+    , m_mutReqs(reqs)
 {
 }
 
 inline NVCVMemRequirements &Requirements::Memory::cdata()
 {
-    return const_cast<NVCVMemRequirements &>(m_reqs);
+    return m_mutReqs;
 }
 
 inline void Requirements::Memory::addBuffer(int64_t bufSize, int64_t bufAlign)

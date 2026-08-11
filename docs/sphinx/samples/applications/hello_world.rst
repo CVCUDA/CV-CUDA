@@ -1,5 +1,5 @@
 ..
-   # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+   # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
    # SPDX-License-Identifier: Apache-2.0
    #
    # Licensed under the Apache License, Version 2.0 (the "License");
@@ -141,7 +141,7 @@ Batching Images
    :end-before: docs_tag: end_batch
    :dedent:
 
-The :py:func:`cvcuda.stack` operation combines individual HWC tensors into a single NHWC tensor, enabling efficient batched processing.
+The :pyfunc:`cvcuda.stack` operation combines individual HWC tensors into a single NHWC tensor, enabling efficient batched processing.
 
 Applying Gaussian Blur
 """""""""""""""""""""""

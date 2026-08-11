@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,7 +38,7 @@ inline TensorShape Tensor::shape() const
 
     TensorShape::ShapeType shape(rank);
     detail::CheckThrow(nvcvTensorGetShape(htensor, &rank, shape.begin()));
-    return {shape, layout};
+    return TensorShape{shape, TensorLayout{layout}};
 }
 
 inline int Tensor::rank() const
@@ -69,7 +69,7 @@ inline TensorData Tensor::exportData() const
         throw Exception(Status::ERROR_INVALID_OPERATION, "The tensor handle is null.");
 
     NVCVTensorData data;
-    detail::CheckThrow(nvcvTensorExportData(this->handle(), &data));
+    detail::CheckThrow(nvcvTensorExportData(h, &data));
 
     if (data.bufferType != NVCV_TENSOR_BUFFER_STRIDED_CUDA)
     {
@@ -79,23 +79,23 @@ inline TensorData Tensor::exportData() const
     return TensorData(data);
 }
 
-inline void Tensor::setUserPointer(void *ptr)
+inline void Tensor::setUserPointer(NVCVUserPointer ptr) // NOSONAR: mutates state through the wrapped C handle.
 {
     detail::CheckThrow(nvcvTensorSetUserPointer(this->handle(), ptr));
 }
 
-inline void *Tensor::userPointer() const
+inline NVCVUserPointer Tensor::userPointer() const
 {
-    void *ptr;
+    NVCVUserPointer ptr;
     detail::CheckThrow(nvcvTensorGetUserPointer(this->handle(), &ptr));
     return ptr;
 }
 
-inline Tensor Tensor::reshape(const TensorShape &new_shape)
+inline Tensor Tensor::reshape(const TensorShape &new_shape) const
 {
     NVCVTensorHandle out_handle;
-    detail::CheckThrow(
-        nvcvTensorReshape(this->handle(), new_shape.rank(), &new_shape.shape()[0], new_shape.layout(), &out_handle));
+    detail::CheckThrow(nvcvTensorReshape(this->handle(), new_shape.rank(), &new_shape.shape()[0],
+                                         static_cast<NVCVTensorLayout>(new_shape.layout()), &out_handle));
     Tensor out_tensor(std::move(out_handle));
     return out_tensor;
 }
@@ -104,7 +104,7 @@ inline auto Tensor::CalcRequirements(const TensorShape &shape, DataType dtype, c
     -> Requirements
 {
     Requirements reqs;
-    detail::CheckThrow(nvcvTensorCalcRequirements(shape.size(), &shape[0], dtype,
+    detail::CheckThrow(nvcvTensorCalcRequirements(shape.size(), &shape[0], static_cast<NVCVDataType>(dtype),
                                                   static_cast<NVCVTensorLayout>(shape.layout()), bufAlign.baseAddr(),
                                                   bufAlign.rowAddr(), &reqs));
     return reqs;
@@ -114,7 +114,8 @@ inline auto Tensor::CalcRequirements(int numImages, Size2D imgSize, ImageFormat 
     -> Requirements
 {
     Requirements reqs;
-    detail::CheckThrow(nvcvTensorCalcRequirementsForImages(numImages, imgSize.w, imgSize.h, fmt, bufAlign.baseAddr(),
+    detail::CheckThrow(nvcvTensorCalcRequirementsForImages(numImages, imgSize.w, imgSize.h,
+                                                           static_cast<NVCVImageFormat>(fmt), bufAlign.baseAddr(),
                                                            bufAlign.rowAddr(), &reqs));
     return reqs;
 }
@@ -144,7 +145,7 @@ inline Tensor TensorWrapData(const TensorData &data, TensorDataCleanupCallback &
     NVCVTensorHandle handle;
     detail::CheckThrow(
         nvcvTensorWrapDataConstruct(&data.cdata(), cleanup.targetFunc(), cleanup.targetHandle(), &handle));
-    cleanup.release(); // already owned by the tensor
+    std::move(cleanup).release(); // already owned by the tensor
     return Tensor(std::move(handle));
 }
 

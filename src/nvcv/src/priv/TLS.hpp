@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,39 +20,40 @@
 
 #include <nvcv/Status.h>
 
+#include <array>
 #include <exception>
 
 namespace nvcv::priv {
 
-struct CoreTLS
+struct CoreTLS // NOSONAR: TLS buffers stay flat so C API string-return helpers can reuse stable storage.
 {
-    NVCVStatus lastErrorStatus;
-    char       lastErrorMessage[NVCV_MAX_STATUS_MESSAGE_LENGTH];
+    NVCVStatus                                       lastErrorStatus;
+    std::array<char, NVCV_MAX_STATUS_MESSAGE_LENGTH> lastErrorMessage;
 
-    char bufColorSpecName[1024];
-    char bufColorModelName[128];
-    char bufChromaLocationName[128];
-    char bufRawPatternName[128];
-    char bufColorSpaceName[128];
-    char bufColorTransferFunctionName[128];
-    char bufColorRangeName[128];
-    char bufWhitePointName[128];
-    char bufYCbCrEncodingName[128];
-    char bufChromaSubsamplingName[128];
+    std::array<char, 1024> bufColorSpecName;
+    std::array<char, 128>  bufColorModelName;
+    std::array<char, 128>  bufChromaLocationName;
+    std::array<char, 128>  bufRawPatternName;
+    std::array<char, 128>  bufColorSpaceName;
+    std::array<char, 128>  bufColorTransferFunctionName;
+    std::array<char, 128>  bufColorRangeName;
+    std::array<char, 128>  bufWhitePointName;
+    std::array<char, 128>  bufYCbCrEncodingName;
+    std::array<char, 128>  bufChromaSubsamplingName;
 
-    char bufDataKindName[128];
-    char bufMemLayoutName[128];
-    char bufChannelName[128];
-    char bufSwizzleName[128];
-    char bufByteOrderName[128];
-    char bufPackingName[128];
+    std::array<char, 128> bufDataKindName;
+    std::array<char, 128> bufMemLayoutName;
+    std::array<char, 128> bufChannelName;
+    std::array<char, 128> bufSwizzleName;
+    std::array<char, 128> bufByteOrderName;
+    std::array<char, 128> bufPackingName;
 
-    char bufDataTypeName[1024];
-    char bufImageFormatName[1024];
-    char bufAlphaTypeName[1024];
-    char bufExtraChannelTypeName[1024];
+    std::array<char, 1024> bufDataTypeName;
+    std::array<char, 1024> bufImageFormatName;
+    std::array<char, 1024> bufAlphaTypeName;
+    std::array<char, 1024> bufExtraChannelTypeName;
 
-    char bufResourceTypeName[128];
+    std::array<char, 128> bufResourceTypeName;
 };
 
 CoreTLS &GetCoreTLS() noexcept;

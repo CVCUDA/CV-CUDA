@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -62,22 +62,22 @@ NVCVImageRequirements Image::CalcRequirements(Size2D size, ImageFormat fmt, int3
     // Pitch alignment must be compatible with each plane's pixel stride.
     for (int p = 0; p < fmt.numPlanes(); ++p)
     {
-        int rowAlign;
+        int planeAlign;
         if (userRowAlign == 0)
         {
             // Safest thing we can do
-            rowAlign = fmt.planePixelStrideBytes(p);
+            planeAlign = fmt.planePixelStrideBytes(p);
         }
         else
         {
             // Strictest thing we can do
-            rowAlign = fmt.planeRowAlignment(p);
+            planeAlign = fmt.planeRowAlignment(p);
         }
 
-        rowAlign = std::lcm(rowAlign, rowAlign);
+        rowAlign = std::lcm(rowAlign, planeAlign);
     }
 
-    rowAlign = util::RoundUpNextPowerOfTwo(rowAlign);
+    rowAlign = static_cast<int>(util::RoundUpNextPowerOfTwo(rowAlign));
 
     int baseAlign;
     if (userBaseAlign == 0)
@@ -112,7 +112,8 @@ NVCVImageRequirements Image::CalcRequirements(Size2D size, ImageFormat fmt, int3
 
         NVCV_ASSERT((size_t)p < sizeof(reqs.planeRowStride) / sizeof(reqs.planeRowStride[0]));
 
-        reqs.planeRowStride[p] = util::RoundUpPowerOfTwo((int64_t)planeSize.w * fmt.planePixelStrideBytes(p), rowAlign);
+        reqs.planeRowStride[p] = static_cast<int32_t>(
+            util::RoundUpPowerOfTwo((int64_t)planeSize.w * fmt.planePixelStrideBytes(p), rowAlign));
 
         AddBuffer(reqs.mem.cudaMem, (int64_t)reqs.planeRowStride[p] * planeSize.h, baseAlign);
     }
@@ -120,7 +121,7 @@ NVCVImageRequirements Image::CalcRequirements(Size2D size, ImageFormat fmt, int3
     return reqs;
 }
 
-void *Image::AllocateBuffer(IAllocator &alloc, const NVCVImageRequirements &reqs)
+NVCVByte *Image::AllocateBuffer(IAllocator &alloc, const NVCVImageRequirements &reqs)
 {
     if (ImageFormat{reqs.format}.memLayout() != NVCV_MEM_LAYOUT_PL)
     {
@@ -128,7 +129,7 @@ void *Image::AllocateBuffer(IAllocator &alloc, const NVCVImageRequirements &reqs
     }
 
     int64_t bufSize = CalcTotalSizeBytes(reqs.mem.cudaMem);
-    void   *buffer  = alloc.allocCudaMem(bufSize, reqs.alignBytes);
+    auto   *buffer  = static_cast<NVCVByte *>(static_cast<void *>(alloc.allocCudaMem(bufSize, reqs.alignBytes)));
     NVCV_ASSERT(buffer != nullptr);
     return buffer;
 }
@@ -144,7 +145,8 @@ Image::Image(NVCVImageRequirements reqs, IAllocator &alloc)
 
 Image::~Image()
 {
-    m_alloc->freeCudaMem(m_memBuffer, CalcTotalSizeBytes(m_reqs.mem.cudaMem), m_reqs.alignBytes);
+    m_alloc->freeCudaMem(static_cast<NVCVMemoryBuffer>(static_cast<void *>(m_memBuffer)),
+                         CalcTotalSizeBytes(m_reqs.mem.cudaMem), m_reqs.alignBytes);
 }
 
 NVCVTypeImage Image::type() const
@@ -189,7 +191,7 @@ void Image::exportData(NVCVImageData &data) const
         plane.width     = planeSize.w;
         plane.height    = planeSize.h;
         plane.rowStride = m_reqs.planeRowStride[p];
-        plane.basePtr   = reinterpret_cast<NVCVByte *>(m_memBuffer) + planeOffsetBytes;
+        plane.basePtr   = m_memBuffer + planeOffsetBytes;
 
         planeOffsetBytes += (int64_t)plane.height * plane.rowStride;
     }
@@ -201,13 +203,12 @@ void Image::exportData(NVCVImageData &data) const
 
 // ImageWrap implementation -------------------------------------------
 
-ImageWrapData::ImageWrapData(const NVCVImageData &data, NVCVImageDataCleanupFunc cleanup, void *ctxCleanup)
-    : m_cleanup(cleanup)
+ImageWrapData::ImageWrapData(const NVCVImageData &data, NVCVImageDataCleanupFunc cleanup, NVCVUserPointer ctxCleanup)
+    : m_data(data)
+    , m_cleanup(cleanup)
     , m_ctxCleanup(ctxCleanup)
 {
-    doValidateData(data);
-
-    m_data = data;
+    doValidateData(m_data);
 }
 
 ImageWrapData::~ImageWrapData()
@@ -234,6 +235,11 @@ void ImageWrapData::doValidateData(const NVCVImageData &data) const
             throw Exception(NVCV_ERROR_INVALID_ARGUMENT)
                 << "Number of planes must be >= 1, not " << data.buffer.strided.numPlanes;
         }
+        if (data.buffer.strided.numPlanes > NVCV_MAX_PLANE_COUNT)
+        {
+            throw Exception(NVCV_ERROR_INVALID_ARGUMENT)
+                << "Number of planes must be <= " << NVCV_MAX_PLANE_COUNT << ", not " << data.buffer.strided.numPlanes;
+        }
 
         for (int p = 0; p < data.buffer.strided.numPlanes; ++p)
         {
@@ -247,6 +253,14 @@ void ImageWrapData::doValidateData(const NVCVImageData &data) const
             if (plane.basePtr == nullptr)
             {
                 throw Exception(NVCV_ERROR_INVALID_ARGUMENT) << "Plane #" << p << "'s base pointer must not be NULL";
+            }
+
+            int64_t minRowStride = (int64_t)plane.width * format.planePixelStrideBytes(p);
+            if (plane.rowStride < minRowStride)
+            {
+                throw Exception(NVCV_ERROR_INVALID_ARGUMENT)
+                    << "Plane #" << p << "'s row stride " << plane.rowStride << " is smaller than the minimum required "
+                    << minRowStride;
             }
         }
         success = true;
@@ -271,7 +285,7 @@ void ImageWrapData::doValidateData(const NVCVImageData &data) const
 
 SharedCoreObj<IAllocator> ImageWrapData::alloc() const
 {
-    return GetDefaultAllocator();
+    return SharedCoreObj<IAllocator>{GetDefaultAllocator()};
 }
 
 Size2D ImageWrapData::size() const

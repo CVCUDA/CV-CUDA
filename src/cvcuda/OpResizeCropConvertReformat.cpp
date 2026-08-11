@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "priv/OpResizeCropConvertReformat.hpp"
 
+#include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <nvcv/Exception.hpp>
@@ -29,7 +30,7 @@ namespace priv = cvcuda::priv;
 CVCUDA_DEFINE_API(0, 8, NVCVStatus, cvcudaResizeCropConvertReformatCreate, (NVCVOperatorHandle * handle))
 {
     return nvcv::ProtectCall(
-        [&]
+        [&handle]
         {
             if (handle == nullptr)
             {
@@ -37,7 +38,7 @@ CVCUDA_DEFINE_API(0, 8, NVCVStatus, cvcudaResizeCropConvertReformatCreate, (NVCV
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            *handle = reinterpret_cast<NVCVOperatorHandle>(new priv::ResizeCropConvertReformat());
+            *handle = priv::CreateOperatorHandle<priv::ResizeCropConvertReformat>();
         });
 }
 
@@ -46,12 +47,15 @@ CVCUDA_DEFINE_API(0, 10, NVCVStatus, cvcudaResizeCropConvertReformatSubmit,
                    const NVCVSize2D resizeDim, const NVCVInterpolationType interpolation, const int2 cropPos,
                    const NVCVChannelManip manip, const float scale, const float offset, const bool srcCast))
 {
+    CVCUDA_NVTX_RANGE("cvcudaResizeCropConvertReformatSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&in, &out, &handle, &stream, &resizeDim, &interpolation, &cropPos, &manip, &scale, &offset, &srcCast]
         {
-            nvcv::TensorWrapHandle input(in), output(out);
-            priv::ToDynamicRef<priv::ResizeCropConvertReformat>(handle)(stream, input, output, resizeDim, interpolation,
-                                                                        cropPos, manip, scale, offset, srcCast);
+            nvcv::TensorWrapHandle input(in);
+            nvcv::TensorWrapHandle output(out);
+            priv::ToDynamicRef<priv::ResizeCropConvertReformat>(handle)(stream, input.resource(), output.resource(),
+                                                                        resizeDim, interpolation, cropPos, manip, scale,
+                                                                        offset, srcCast);
         });
 }
 
@@ -60,12 +64,14 @@ CVCUDA_DEFINE_API(0, 10, NVCVStatus, cvcudaResizeCropConvertReformatVarShapeSubm
                    const NVCVSize2D resizeDim, const NVCVInterpolationType interpolation, const int2 cropPos,
                    const NVCVChannelManip manip, const float scale, const float offset, const bool srcCast))
 {
+    CVCUDA_NVTX_RANGE("cvcudaResizeCropConvertReformatVarShapeSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&in, &out, &handle, &stream, &resizeDim, &interpolation, &cropPos, &manip, &scale, &offset, &srcCast]
         {
             nvcv::ImageBatchVarShapeWrapHandle input(in);
             nvcv::TensorWrapHandle             output(out);
-            priv::ToDynamicRef<priv::ResizeCropConvertReformat>(handle)(stream, input, output, resizeDim, interpolation,
-                                                                        cropPos, manip, scale, offset, srcCast);
+            priv::ToDynamicRef<priv::ResizeCropConvertReformat>(handle)(stream, input.resource(), output.resource(),
+                                                                        resizeDim, interpolation, cropPos, manip, scale,
+                                                                        offset, srcCast);
         });
 }

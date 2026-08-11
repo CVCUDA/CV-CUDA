@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,26 +35,50 @@ class VersionTests
                                          test::Param<"ctor_result", NVCVStatus>,    // 5
                                          test::Param<"values_result", NVCVStatus>>> // 6
 {
-public:
-    VersionTests()
-        : m_paramCode(std::get<0>(GetParam()))
-        , m_paramMajor(std::get<1>(GetParam()))
-        , m_paramMinor(std::get<2>(GetParam()))
-        , m_paramPatch(std::get<3>(GetParam()))
-        , m_paramTweak(std::get<4>(GetParam()))
-        , m_goldCtorResult(std::get<5>(GetParam()))
-        , m_goldValuesResult(std::get<6>(GetParam()))
+protected:
+    uint32_t paramCode() const
     {
+        return m_paramCode;
     }
 
-protected:
-    uint32_t   m_paramCode;
-    int        m_paramMajor;
-    int        m_paramMinor;
-    int        m_paramPatch;
-    int        m_paramTweak;
-    NVCVStatus m_goldCtorResult;
-    NVCVStatus m_goldValuesResult;
+    int paramMajor() const
+    {
+        return m_paramMajor;
+    }
+
+    int paramMinor() const
+    {
+        return m_paramMinor;
+    }
+
+    int paramPatch() const
+    {
+        return m_paramPatch;
+    }
+
+    int paramTweak() const
+    {
+        return m_paramTweak;
+    }
+
+    NVCVStatus goldCtorResult() const
+    {
+        return m_goldCtorResult;
+    }
+
+    NVCVStatus goldValuesResult() const
+    {
+        return m_goldValuesResult;
+    }
+
+private:
+    uint32_t   m_paramCode        = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    int        m_paramMajor       = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
+    int        m_paramMinor       = ::nvcv::test::ParamValue(std::get<2>(GetParam()));
+    int        m_paramPatch       = ::nvcv::test::ParamValue(std::get<3>(GetParam()));
+    int        m_paramTweak       = ::nvcv::test::ParamValue(std::get<4>(GetParam()));
+    NVCVStatus m_goldCtorResult   = ::nvcv::test::ParamValue(std::get<5>(GetParam()));
+    NVCVStatus m_goldValuesResult = ::nvcv::test::ParamValue(std::get<6>(GetParam()));
 };
 
 // clang-format off
@@ -104,35 +128,35 @@ TEST_P(VersionTests, code_to_version)
 
     // Code is always valid because any overflow will just make at most the major version
     // larger than expected. We can't check for that, it's still a valid version.
-    ASSERT_NO_THROW(ver = std::make_unique<util::Version>(m_paramCode));
+    ASSERT_NO_THROW(ver = std::make_unique<util::Version>(paramCode()));
 
-    if (m_goldValuesResult == NVCV_SUCCESS)
+    if (goldValuesResult() == NVCV_SUCCESS)
     {
         ASSERT_NE(nullptr, ver);
 
-        EXPECT_EQ(ver->major(), m_paramMajor);
-        EXPECT_EQ(ver->minor(), m_paramMinor);
-        EXPECT_EQ(ver->patch(), m_paramPatch);
-        EXPECT_EQ(ver->tweak(), m_paramTweak);
+        EXPECT_EQ(ver->major(), paramMajor());
+        EXPECT_EQ(ver->minor(), paramMinor());
+        EXPECT_EQ(ver->patch(), paramPatch());
+        EXPECT_EQ(ver->tweak(), paramTweak());
     }
-    else if (ver && m_goldCtorResult == NVCV_SUCCESS)
+    else if (ver && goldCtorResult() == NVCV_SUCCESS)
     {
-        EXPECT_TRUE(ver->major() != m_paramMajor || ver->minor() != m_paramMinor || ver->patch() != m_paramPatch
-                    || ver->tweak() != m_paramTweak);
+        EXPECT_TRUE(ver->major() != paramMajor() || ver->minor() != paramMinor() || ver->patch() != paramPatch()
+                    || ver->tweak() != paramTweak());
     }
 }
 
 TEST_P(VersionTests, version_to_code)
 {
     std::unique_ptr<util::Version> ver;
-    switch (m_goldValuesResult)
+    switch (goldValuesResult())
     {
     case NVCV_SUCCESS:
-        ASSERT_NO_THROW(ver = std::make_unique<util::Version>(m_paramMajor, m_paramMinor, m_paramPatch, m_paramTweak));
+        ASSERT_NO_THROW(ver = std::make_unique<util::Version>(paramMajor(), paramMinor(), paramPatch(), paramTweak()));
         break;
 
     case NVCV_ERROR_INVALID_ARGUMENT:
-        ASSERT_THROW(ver = std::make_unique<util::Version>(m_paramMajor, m_paramMinor, m_paramPatch, m_paramTweak),
+        ASSERT_THROW(ver = std::make_unique<util::Version>(paramMajor(), paramMinor(), paramPatch(), paramTweak()),
                      std::invalid_argument);
         break;
     default:
@@ -141,7 +165,7 @@ TEST_P(VersionTests, version_to_code)
 
     if (ver)
     {
-        EXPECT_EQ(m_paramCode, ver->code());
+        EXPECT_EQ(paramCode(), ver->code());
     }
 }
 
@@ -152,22 +176,38 @@ class VersionStringTests
                                          test::Param<"tweak", int>,            // 3
                                          test::Param<"result", const char *>>> // 4
 {
-public:
-    VersionStringTests()
-        : m_paramMajor(std::get<0>(GetParam()))
-        , m_paramMinor(std::get<1>(GetParam()))
-        , m_paramPatch(std::get<2>(GetParam()))
-        , m_paramTweak(std::get<3>(GetParam()))
-        , m_goldResult(std::get<4>(GetParam()))
+protected:
+    int paramMajor() const
     {
+        return m_paramMajor;
     }
 
-protected:
-    int         m_paramMajor;
-    int         m_paramMinor;
-    int         m_paramPatch;
-    int         m_paramTweak;
-    const char *m_goldResult;
+    int paramMinor() const
+    {
+        return m_paramMinor;
+    }
+
+    int paramPatch() const
+    {
+        return m_paramPatch;
+    }
+
+    int paramTweak() const
+    {
+        return m_paramTweak;
+    }
+
+    const char *goldResult() const
+    {
+        return m_goldResult;
+    }
+
+private:
+    int         m_paramMajor = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    int         m_paramMinor = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
+    int         m_paramPatch = ::nvcv::test::ParamValue(std::get<2>(GetParam()));
+    int         m_paramTweak = ::nvcv::test::ParamValue(std::get<3>(GetParam()));
+    const char *m_goldResult = ::nvcv::test::ParamValue(std::get<4>(GetParam()));
 };
 
 NVCV_INSTANTIATE_TEST_SUITE_P(Positive, VersionStringTests,
@@ -181,12 +221,12 @@ NVCV_INSTANTIATE_TEST_SUITE_P(Positive, VersionStringTests,
 
 TEST_P(VersionStringTests, test)
 {
-    util::Version ver(m_paramMajor, m_paramMinor, m_paramPatch, m_paramTweak);
+    util::Version ver(paramMajor(), paramMinor(), paramPatch(), paramTweak());
 
     std::ostringstream ss;
     ss << ver;
 
-    EXPECT_STREQ(m_goldResult, ss.str().c_str());
+    EXPECT_STREQ(goldResult(), ss.str().c_str());
 }
 
 class VersionComparisonTests
@@ -194,17 +234,26 @@ class VersionComparisonTests
                                          test::Param<"rhs", util::Version, util::Version{0, 0, 0, 0}>, // 1
                                          test::Param<"result", int>>>                                  // 2
 {
-public:
-    VersionComparisonTests()
-        : m_paramLHS(std::get<0>(GetParam()))
-        , m_paramRHS(std::get<1>(GetParam()))
-        , m_goldResult(std::get<2>(GetParam()))
+protected:
+    const util::Version &paramLHS() const
     {
+        return m_paramLHS;
     }
 
-protected:
-    util::Version m_paramLHS, m_paramRHS;
-    int           m_goldResult;
+    const util::Version &paramRHS() const
+    {
+        return m_paramRHS;
+    }
+
+    int goldResult() const
+    {
+        return m_goldResult;
+    }
+
+private:
+    util::Version m_paramLHS   = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    util::Version m_paramRHS   = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
+    int           m_goldResult = ::nvcv::test::ParamValue(std::get<2>(GetParam()));
 };
 
 NVCV_INSTANTIATE_TEST_SUITE_P(Positive, VersionComparisonTests,
@@ -216,30 +265,30 @@ NVCV_INSTANTIATE_TEST_SUITE_P(Positive, VersionComparisonTests,
 
 TEST_P(VersionComparisonTests, lower_than)
 {
-    EXPECT_EQ(m_goldResult < 0, m_paramLHS < m_paramRHS);
+    EXPECT_EQ(goldResult() < 0, paramLHS() < paramRHS());
 }
 
 TEST_P(VersionComparisonTests, lower_equal_than)
 {
-    EXPECT_EQ(m_goldResult <= 0, m_paramLHS <= m_paramRHS);
+    EXPECT_EQ(goldResult() <= 0, paramLHS() <= paramRHS());
 }
 
 TEST_P(VersionComparisonTests, equal_than)
 {
-    EXPECT_EQ(m_goldResult == 0, m_paramLHS == m_paramRHS);
+    EXPECT_EQ(goldResult() == 0, paramLHS() == paramRHS());
 }
 
 TEST_P(VersionComparisonTests, not_equal_than)
 {
-    EXPECT_EQ(m_goldResult != 0, m_paramLHS != m_paramRHS);
+    EXPECT_EQ(goldResult() != 0, paramLHS() != paramRHS());
 }
 
 TEST_P(VersionComparisonTests, greater_equal_than)
 {
-    EXPECT_EQ(m_goldResult >= 0, m_paramLHS >= m_paramRHS);
+    EXPECT_EQ(goldResult() >= 0, paramLHS() >= paramRHS());
 }
 
 TEST_P(VersionComparisonTests, greater_than)
 {
-    EXPECT_EQ(m_goldResult > 0, m_paramLHS > m_paramRHS);
+    EXPECT_EQ(goldResult() > 0, paramLHS() > paramRHS());
 }

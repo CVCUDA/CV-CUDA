@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "OpFlip.hpp"
 
+#include "Nvtx.hpp"
 #include "legacy/CvCudaLegacy.h"
 #include "legacy/CvCudaLegacyHelpers.hpp"
 
@@ -27,15 +28,17 @@ namespace cvcuda::priv {
 
 namespace legacy = nvcv::legacy::cuda_op;
 
-Flip::Flip(int32_t maxBatchSize)
+Flip::Flip(int32_t)
 {
-    legacy::DataShape maxIn, maxOut; //maxIn/maxOut not used by op.
+    legacy::DataShape maxIn;
+    legacy::DataShape maxOut; //maxIn/maxOut not used by op.
     m_legacyOp         = std::make_unique<legacy::Flip>(maxIn, maxOut);
     m_legacyOpVarShape = std::make_unique<legacy::FlipOrCopyVarShape>(maxIn, maxOut);
 }
 
 void Flip::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out, int32_t flipCode) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::Flip::operator()[Tensor]");
     auto input = in.exportData<nvcv::TensorDataStridedCuda>();
     if (input == nullptr)
     {
@@ -56,6 +59,7 @@ void Flip::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::T
 void Flip::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::ImageBatchVarShape &out,
                       const nvcv::Tensor &flipCode) const
 {
+    CVCUDA_NVTX_RANGE("cvcuda::Flip::operator()[ImageBatchVarShape]");
     auto input = in.exportData<nvcv::ImageBatchVarShapeDataStridedCuda>(stream);
     if (input == nullptr)
     {

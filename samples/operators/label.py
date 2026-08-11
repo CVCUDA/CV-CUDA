@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,8 +31,8 @@ from common import (  # noqa: E402
     parse_image_args,
     read_image,
     write_image,
-    cuda_memcpy_d2h,
-    cuda_memcpy_h2d,
+    download_tensor,
+    upload_tensor,
 )
 
 
@@ -46,8 +46,7 @@ def color_labels_nhwc(labels):
         cvcuda.Tensor: RGB image, with each label having a unique color
     """
     # Download labels from GPU
-    host_labels = np.zeros(labels.shape, dtype=np.int32)
-    cuda_memcpy_d2h(labels.cuda(), host_labels)
+    host_labels = download_tensor(labels)
 
     # Create RGB output on CPU (contiguous)
     rgb_shape = (host_labels.shape[0], host_labels.shape[1], host_labels.shape[2], 3)
@@ -62,10 +61,10 @@ def color_labels_nhwc(labels):
             mask = host_labels[n] == label
             a_rgb[n][mask[:, :, 0]] = rgb_label_color
 
-    # Force a contiguous tensor allocation and reshape to NHWC
-    contiguous_tensor = cvcuda.Tensor((np.prod(rgb_shape),), dtype=np.uint8)
-    nhwc_tensor = contiguous_tensor.reshape(rgb_shape, layout="NHWC")
-    cuda_memcpy_h2d(a_rgb, nhwc_tensor.cuda())
+    # Allocate an NHWC tensor and upload the colorized labels.  upload_tensor
+    # honours the tensor's row pitch, so no contiguous-reshape trick is needed.
+    nhwc_tensor = cvcuda.Tensor(rgb_shape, dtype=np.uint8, layout="NHWC")
+    upload_tensor(a_rgb, nhwc_tensor)
 
     # Return the NHWC tensor
     return nhwc_tensor
@@ -90,11 +89,11 @@ def main() -> None:
     # 2. Compute threshold
     tp_host = np.array([128], dtype=np.float64)
     tp = cvcuda.Tensor((1,), dtype=np.float64, layout="N")
-    cuda_memcpy_h2d(tp_host, tp.cuda())
+    upload_tensor(tp_host, tp)
 
     mp_host = np.array([255], dtype=np.float64)
     mp = cvcuda.Tensor((1,), dtype=np.float64, layout="N")
-    cuda_memcpy_h2d(mp_host, mp.cuda())
+    upload_tensor(mp_host, mp)
 
     threshold_image: cvcuda.Tensor = cvcuda.threshold(
         histogram_image, tp, mp, cvcuda.ThresholdType.BINARY

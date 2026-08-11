@@ -1,0 +1,1256 @@
+{
+    "benchmark": "cropflipnormalizereformat",
+    "configs": {
+        "cropflipnormalizereformat_uchar3_basic": {
+            "tier": "basic",
+            "dtypes": [
+                "uchar3"
+            ],
+            "string_axes": {
+                "shape": [
+                    "32x1080x1920"
+                ],
+                "layout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "srcLayout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "border": [
+                    "REFLECT101"
+                ],
+                "cropMode": [
+                    "full"
+                ],
+                "flagsMode": [
+                    "normal"
+                ],
+                "inputKind": [
+                    "VarShape"
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "CropFlipNormalizeReformat RGB8 (basic)."
+            },
+            "baselines": {
+                "cropflipnormalizereformat_uchar3_basic[InOutDataType=uchar3][shape=32x1080x1920][layout=NHWC][srcLayout=NHWC][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1916.44785054202,
+                        "gpu_time_us_python": 1935.75194833098,
+                        "gpu_noise_us_cpp": 5.7780000000000005,
+                        "gpu_noise_us_python": 6.029999999999999,
+                        "gpu_bwutil_cpp": 0.13358146108979702,
+                        "gpu_bwutil_python": 0.13224972344864291
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1914.0090856920801,
+                        "gpu_time_us_python": 1927.56847754286,
+                        "gpu_noise_us_cpp": 1.44,
+                        "gpu_noise_us_python": 3.28,
+                        "gpu_bwutil_cpp": 0.10202726815412859,
+                        "gpu_bwutil_python": 0.10130923895637405
+                    }
+                },
+                "cropflipnormalizereformat_uchar3_basic[InOutDataType=uchar3][shape=32x1080x1920][layout=NCHW][srcLayout=NCHW][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1925.3373880436397,
+                        "gpu_time_us_python": 1938.4882813602599,
+                        "gpu_noise_us_cpp": 1.3279999999999998,
+                        "gpu_noise_us_python": 4.561999999999999,
+                        "gpu_bwutil_cpp": 0.13296435850656194,
+                        "gpu_bwutil_python": 0.132062292362215
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1864.4323554639002,
+                        "gpu_time_us_python": 1877.99574450296,
+                        "gpu_noise_us_cpp": 1.3900000000000001,
+                        "gpu_noise_us_python": 3.6380000000000003,
+                        "gpu_bwutil_cpp": 0.10473980394129109,
+                        "gpu_bwutil_python": 0.10398322587699196
+                    }
+                },
+                "cropflipnormalizereformat_uchar3_basic[InOutDataType=uchar3][shape=32x1080x1920][layout=NCHW][srcLayout=NHWC][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1930.4999534899798,
+                        "gpu_time_us_python": 1949.93124167672,
+                        "gpu_noise_us_cpp": 2.724,
+                        "gpu_noise_us_python": 5.686,
+                        "gpu_bwutil_cpp": 0.1326088297735317,
+                        "gpu_bwutil_python": 0.13129072338278078
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1914.60236140836,
+                        "gpu_time_us_python": 1928.93736445686,
+                        "gpu_noise_us_cpp": 0.8739999999999999,
+                        "gpu_noise_us_python": 4.074,
+                        "gpu_bwutil_cpp": 0.10199585458140745,
+                        "gpu_bwutil_python": 0.10123612409050024
+                    }
+                },
+                "cropflipnormalizereformat_uchar3_basic[InOutDataType=uchar3][shape=32x1080x1920][layout=NHWC][srcLayout=NCHW][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1904.61650593474,
+                        "gpu_time_us_python": 1921.3447079851198,
+                        "gpu_noise_us_cpp": 1.18,
+                        "gpu_noise_us_python": 4.0760000000000005,
+                        "gpu_bwutil_cpp": 0.13441084736628225,
+                        "gpu_bwutil_python": 0.13324091312190872
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1870.10426636366,
+                        "gpu_time_us_python": 1884.9926451807398,
+                        "gpu_noise_us_cpp": 0.8459999999999999,
+                        "gpu_noise_us_python": 4.544,
+                        "gpu_bwutil_cpp": 0.1044225032625653,
+                        "gpu_bwutil_python": 0.10360001232190368
+                    }
+                }
+            }
+        },
+        "cropflipnormalizereformat_float3_basic": {
+            "tier": "basic",
+            "dtypes": [
+                "float3"
+            ],
+            "string_axes": {
+                "shape": [
+                    "32x1080x1920"
+                ],
+                "layout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "srcLayout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "border": [
+                    "REFLECT101"
+                ],
+                "cropMode": [
+                    "full"
+                ],
+                "flagsMode": [
+                    "normal"
+                ],
+                "inputKind": [
+                    "VarShape"
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "CropFlipNormalizeReformat RGBf32 (basic)."
+            },
+            "baselines": {
+                "cropflipnormalizereformat_float3_basic[InOutDataType=float3][shape=32x1080x1920][layout=NHWC][srcLayout=NHWC][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1975.6540150154,
+                        "gpu_time_us_python": 1993.57317462262,
+                        "gpu_noise_us_cpp": 1.378,
+                        "gpu_noise_us_python": 6.556,
+                        "gpu_bwutil_cpp": 0.5183103653805543,
+                        "gpu_bwutil_python": 0.5136588124306883
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1977.1549413282598,
+                        "gpu_time_us_python": 1991.8035363262,
+                        "gpu_noise_us_cpp": 0.7859999999999999,
+                        "gpu_noise_us_python": 3.3400000000000007,
+                        "gpu_bwutil_cpp": 0.3950748172563342,
+                        "gpu_bwutil_python": 0.39217409456942215
+                    }
+                },
+                "cropflipnormalizereformat_float3_basic[InOutDataType=float3][shape=32x1080x1920][layout=NCHW][srcLayout=NCHW][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 2044.43687694822,
+                        "gpu_time_us_python": 2060.06132735574,
+                        "gpu_noise_us_cpp": 2.022,
+                        "gpu_noise_us_python": 3.5080000000000005,
+                        "gpu_bwutil_cpp": 0.500872168136392,
+                        "gpu_bwutil_python": 0.4970748346072976
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1934.5537532860599,
+                        "gpu_time_us_python": 1949.2611033337998,
+                        "gpu_noise_us_cpp": 1.5240000000000002,
+                        "gpu_noise_us_python": 5.082,
+                        "gpu_bwutil_cpp": 0.40377078149110845,
+                        "gpu_bwutil_python": 0.4007195182628819
+                    }
+                },
+                "cropflipnormalizereformat_float3_basic[InOutDataType=float3][shape=32x1080x1920][layout=NCHW][srcLayout=NHWC][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1990.4317097058004,
+                        "gpu_time_us_python": 2006.3065343735202,
+                        "gpu_noise_us_cpp": 1.514,
+                        "gpu_noise_us_python": 3.132,
+                        "gpu_bwutil_cpp": 0.514462164919933,
+                        "gpu_bwutil_python": 0.5103935902854485
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 2019.8850577433,
+                        "gpu_time_us_python": 2033.5595025376601,
+                        "gpu_noise_us_cpp": 1.2440000000000002,
+                        "gpu_noise_us_python": 2.7699999999999996,
+                        "gpu_bwutil_cpp": 0.3867168551601202,
+                        "gpu_bwutil_python": 0.38411705703062443
+                    }
+                },
+                "cropflipnormalizereformat_float3_basic[InOutDataType=float3][shape=32x1080x1920][layout=NHWC][srcLayout=NCHW][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 2068.7000217871596,
+                        "gpu_time_us_python": 2081.60464476286,
+                        "gpu_noise_us_cpp": 1.4859999999999998,
+                        "gpu_noise_us_python": 5.58,
+                        "gpu_bwutil_cpp": 0.4949975836319386,
+                        "gpu_bwutil_python": 0.49192984802832224
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1944.4232191388,
+                        "gpu_time_us_python": 1959.34545776004,
+                        "gpu_noise_us_cpp": 1.052,
+                        "gpu_noise_us_python": 2.548,
+                        "gpu_bwutil_cpp": 0.40171946516174567,
+                        "gpu_bwutil_python": 0.39866776351123134
+                    }
+                }
+            }
+        },
+        "cropflipnormalizereformat_uchar4_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "uchar4"
+            ],
+            "string_axes": {
+                "shape": [
+                    "16x1080x1920"
+                ],
+                "layout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "srcLayout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "border": [
+                    "REFLECT101"
+                ],
+                "cropMode": [
+                    "full"
+                ],
+                "flagsMode": [
+                    "normal"
+                ],
+                "inputKind": [
+                    "VarShape"
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "CropFlipNormalizeReformat RGBA8 (advanced)."
+            },
+            "baselines": {
+                "cropflipnormalizereformat_uchar4_advanced[InOutDataType=uchar4][shape=16x1080x1920][layout=NHWC][srcLayout=NHWC][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1350.0209812923201,
+                        "gpu_time_us_python": 1365.27476271286,
+                        "gpu_noise_us_cpp": 2.256,
+                        "gpu_noise_us_python": 5.093999999999999,
+                        "gpu_bwutil_cpp": 0.12641944649180337,
+                        "gpu_bwutil_python": 0.1250061873977156
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1242.9681772299,
+                        "gpu_time_us_python": 1257.45018560502,
+                        "gpu_noise_us_cpp": 1.4140000000000001,
+                        "gpu_noise_us_python": 2.84,
+                        "gpu_bwutil_cpp": 0.10473853398379598,
+                        "gpu_bwutil_python": 0.10352856775769026
+                    }
+                },
+                "cropflipnormalizereformat_uchar4_advanced[InOutDataType=uchar4][shape=16x1080x1920][layout=NCHW][srcLayout=NCHW][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1259.2898952122,
+                        "gpu_time_us_python": 1274.00719855318,
+                        "gpu_noise_us_cpp": 1.4140000000000001,
+                        "gpu_noise_us_python": 4.384,
+                        "gpu_bwutil_cpp": 0.13552674987773516,
+                        "gpu_bwutil_python": 0.13396181205458596
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1208.5339790329401,
+                        "gpu_time_us_python": 1223.17753891132,
+                        "gpu_noise_us_cpp": 0.8160000000000001,
+                        "gpu_noise_us_python": 4.382,
+                        "gpu_bwutil_cpp": 0.10772276244859971,
+                        "gpu_bwutil_python": 0.10643538076188663
+                    }
+                },
+                "cropflipnormalizereformat_uchar4_advanced[InOutDataType=uchar4][shape=16x1080x1920][layout=NCHW][srcLayout=NHWC][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1267.29374046362,
+                        "gpu_time_us_python": 1281.91975117654,
+                        "gpu_noise_us_cpp": 1.8399999999999999,
+                        "gpu_noise_us_python": 3.75,
+                        "gpu_bwutil_cpp": 0.1346707496844671,
+                        "gpu_bwutil_python": 0.13313504768205572
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1245.55829731932,
+                        "gpu_time_us_python": 1260.34451392124,
+                        "gpu_noise_us_cpp": 2.2340000000000004,
+                        "gpu_noise_us_python": 4.148000000000001,
+                        "gpu_bwutil_cpp": 0.10452092689877504,
+                        "gpu_bwutil_python": 0.10329067102048055
+                    }
+                },
+                "cropflipnormalizereformat_uchar4_advanced[InOutDataType=uchar4][shape=16x1080x1920][layout=NHWC][srcLayout=NCHW][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1354.9963312346601,
+                        "gpu_time_us_python": 1369.7177703531802,
+                        "gpu_noise_us_cpp": 2.7619999999999996,
+                        "gpu_noise_us_python": 4.142,
+                        "gpu_bwutil_cpp": 0.12595553759329872,
+                        "gpu_bwutil_python": 0.12460099891748791
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1212.33506645286,
+                        "gpu_time_us_python": 1227.5625539218802,
+                        "gpu_noise_us_cpp": 1.176,
+                        "gpu_noise_us_python": 2.604,
+                        "gpu_bwutil_cpp": 0.10738475931990914,
+                        "gpu_bwutil_python": 0.10604740193700057
+                    }
+                }
+            }
+        },
+        "cropflipnormalizereformat_float4_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "float4"
+            ],
+            "string_axes": {
+                "shape": [
+                    "16x1080x1920"
+                ],
+                "layout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "srcLayout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "border": [
+                    "REFLECT101"
+                ],
+                "cropMode": [
+                    "full"
+                ],
+                "flagsMode": [
+                    "normal"
+                ],
+                "inputKind": [
+                    "VarShape"
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "CropFlipNormalizeReformat RGBAf32 (advanced)."
+            },
+            "baselines": {
+                "cropflipnormalizereformat_float4_advanced[InOutDataType=float4][shape=16x1080x1920][layout=NHWC][srcLayout=NHWC][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1365.3339311879201,
+                        "gpu_time_us_python": 1377.0457554214597,
+                        "gpu_noise_us_cpp": 1.9080000000000001,
+                        "gpu_noise_us_python": 3.492,
+                        "gpu_bwutil_cpp": 0.5000072788691499,
+                        "gpu_bwutil_python": 0.4957552494251628
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1271.22873659692,
+                        "gpu_time_us_python": 1284.5461578210998,
+                        "gpu_noise_us_cpp": 1.596,
+                        "gpu_noise_us_python": 3.3520000000000003,
+                        "gpu_bwutil_cpp": 0.40963639216008324,
+                        "gpu_bwutil_python": 0.4054021614437341
+                    }
+                },
+                "cropflipnormalizereformat_float4_advanced[InOutDataType=float4][shape=16x1080x1920][layout=NCHW][srcLayout=NCHW][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1345.6663626736001,
+                        "gpu_time_us_python": 1359.2369886185002,
+                        "gpu_noise_us_cpp": 1.3059999999999998,
+                        "gpu_noise_us_python": 3.0060000000000002,
+                        "gpu_bwutil_cpp": 0.5073084108810619,
+                        "gpu_bwutil_python": 0.5022444117727322
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1239.3862674692,
+                        "gpu_time_us_python": 1253.1831487560999,
+                        "gpu_noise_us_cpp": 1.3679999999999999,
+                        "gpu_noise_us_python": 4.402,
+                        "gpu_bwutil_cpp": 0.4201575881756344,
+                        "gpu_bwutil_python": 0.41552737582295035
+                    }
+                },
+                "cropflipnormalizereformat_float4_advanced[InOutDataType=float4][shape=16x1080x1920][layout=NCHW][srcLayout=NHWC][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1288.61306984206,
+                        "gpu_time_us_python": 1303.5435485478,
+                        "gpu_noise_us_cpp": 1.904,
+                        "gpu_noise_us_python": 3.5480000000000005,
+                        "gpu_bwutil_cpp": 0.5297697217770725,
+                        "gpu_bwutil_python": 0.523704701066845
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1296.29897189538,
+                        "gpu_time_us_python": 1310.0247560091,
+                        "gpu_noise_us_cpp": 1.2200000000000002,
+                        "gpu_noise_us_python": 4.064,
+                        "gpu_bwutil_cpp": 0.40171640000900927,
+                        "gpu_bwutil_python": 0.3975127753211594
+                    }
+                },
+                "cropflipnormalizereformat_float4_advanced[InOutDataType=float4][shape=16x1080x1920][layout=NHWC][srcLayout=NCHW][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1491.8360042551399,
+                        "gpu_time_us_python": 1504.4546664066,
+                        "gpu_noise_us_cpp": 2.0300000000000002,
+                        "gpu_noise_us_python": 4.444,
+                        "gpu_bwutil_cpp": 0.457604417187388,
+                        "gpu_bwutil_python": 0.45376630227269166
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1263.64398298456,
+                        "gpu_time_us_python": 1279.3893117309,
+                        "gpu_noise_us_cpp": 1.0740000000000003,
+                        "gpu_noise_us_python": 3.21,
+                        "gpu_bwutil_cpp": 0.41208465241512204,
+                        "gpu_bwutil_python": 0.40702032368698526
+                    }
+                }
+            }
+        },
+        "cropflipnormalizereformat_scalar_reflect101_1080p_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "uint8",
+                "float32"
+            ],
+            "string_axes": {
+                "shape": [
+                    "64x1080x1920"
+                ],
+                "layout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "srcLayout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "border": [
+                    "REFLECT101"
+                ],
+                "cropMode": [
+                    "full"
+                ],
+                "flagsMode": [
+                    "normal"
+                ],
+                "inputKind": [
+                    "VarShape"
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "CropFlipNormalizeReformat single-channel reflect101 (advanced)."
+            },
+            "baselines": {
+                "cropflipnormalizereformat_scalar_reflect101_1080p_advanced[InOutDataType=float32][shape=64x1080x1920][layout=NHWC][srcLayout=NHWC][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1485.8897770876401,
+                        "gpu_time_us_python": 1501.5779171717,
+                        "gpu_noise_us_cpp": 1.23,
+                        "gpu_noise_us_python": 3.3,
+                        "gpu_bwutil_cpp": 0.45943831214319353,
+                        "gpu_bwutil_python": 0.4546450641345773
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1589.7725783669998,
+                        "gpu_time_us_python": 1603.5001185718997,
+                        "gpu_noise_us_cpp": 0.7699999999999999,
+                        "gpu_noise_us_python": 3.192,
+                        "gpu_bwutil_cpp": 0.3275694793864763,
+                        "gpu_bwutil_python": 0.32475802697447226
+                    }
+                },
+                "cropflipnormalizereformat_scalar_reflect101_1080p_advanced[InOutDataType=uint8][shape=64x1080x1920][layout=NHWC][srcLayout=NHWC][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1527.8603788754,
+                        "gpu_time_us_python": 1543.70336776158,
+                        "gpu_noise_us_cpp": 2.152,
+                        "gpu_noise_us_python": 3.496,
+                        "gpu_bwutil_cpp": 0.11170393822289756,
+                        "gpu_bwutil_python": 0.11055918742715698
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1613.83955363454,
+                        "gpu_time_us_python": 1632.3835301415,
+                        "gpu_noise_us_cpp": 1.134,
+                        "gpu_noise_us_python": 3.9480000000000004,
+                        "gpu_bwutil_cpp": 0.08066988183743748,
+                        "gpu_bwutil_python": 0.07975261841028183
+                    }
+                },
+                "cropflipnormalizereformat_scalar_reflect101_1080p_advanced[InOutDataType=float32][shape=64x1080x1920][layout=NCHW][srcLayout=NCHW][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1486.60601750072,
+                        "gpu_time_us_python": 1501.6023184320202,
+                        "gpu_noise_us_cpp": 1.324,
+                        "gpu_noise_us_python": 3.25,
+                        "gpu_bwutil_cpp": 0.45921718304307235,
+                        "gpu_bwutil_python": 0.45463006125050365
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1578.1262833789401,
+                        "gpu_time_us_python": 1593.30020708148,
+                        "gpu_noise_us_cpp": 1.476,
+                        "gpu_noise_us_python": 4.032,
+                        "gpu_bwutil_cpp": 0.3299871544324221,
+                        "gpu_bwutil_python": 0.326843617497135
+                    }
+                },
+                "cropflipnormalizereformat_scalar_reflect101_1080p_advanced[InOutDataType=float32][shape=64x1080x1920][layout=NCHW][srcLayout=NHWC][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1486.55183714234,
+                        "gpu_time_us_python": 1503.53363716086,
+                        "gpu_noise_us_cpp": 1.318,
+                        "gpu_noise_us_python": 4.942,
+                        "gpu_bwutil_cpp": 0.4592340455355961,
+                        "gpu_bwutil_python": 0.454054507739737
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1577.8302117833402,
+                        "gpu_time_us_python": 1592.5226559422001,
+                        "gpu_noise_us_cpp": 0.646,
+                        "gpu_noise_us_python": 3.6559999999999997,
+                        "gpu_bwutil_cpp": 0.3300486042903145,
+                        "gpu_bwutil_python": 0.3269946272466834
+                    }
+                },
+                "cropflipnormalizereformat_scalar_reflect101_1080p_advanced[InOutDataType=float32][shape=64x1080x1920][layout=NHWC][srcLayout=NCHW][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1486.3060091491202,
+                        "gpu_time_us_python": 1502.6417437563398,
+                        "gpu_noise_us_cpp": 1.8020000000000003,
+                        "gpu_noise_us_python": 5.308000000000001,
+                        "gpu_bwutil_cpp": 0.4593096645580125,
+                        "gpu_bwutil_python": 0.45432060248275097
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1589.799677955,
+                        "gpu_time_us_python": 1604.8757022996201,
+                        "gpu_noise_us_cpp": 0.8879999999999999,
+                        "gpu_noise_us_python": 3.842,
+                        "gpu_bwutil_cpp": 0.3275630860034195,
+                        "gpu_bwutil_python": 0.3244873388456567
+                    }
+                },
+                "cropflipnormalizereformat_scalar_reflect101_1080p_advanced[InOutDataType=uint8][shape=64x1080x1920][layout=NCHW][srcLayout=NCHW][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1515.7631655938399,
+                        "gpu_time_us_python": 1532.29071621706,
+                        "gpu_noise_us_cpp": 1.544,
+                        "gpu_noise_us_python": 5.5200000000000005,
+                        "gpu_bwutil_cpp": 0.11259541081220048,
+                        "gpu_bwutil_python": 0.11138226696691249
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1595.59149583252,
+                        "gpu_time_us_python": 1615.0228384012003,
+                        "gpu_noise_us_cpp": 1.048,
+                        "gpu_noise_us_python": 5.24,
+                        "gpu_bwutil_cpp": 0.08159202803166751,
+                        "gpu_bwutil_python": 0.08061142875641146
+                    }
+                },
+                "cropflipnormalizereformat_scalar_reflect101_1080p_advanced[InOutDataType=uint8][shape=64x1080x1920][layout=NCHW][srcLayout=NHWC][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1515.93995037452,
+                        "gpu_time_us_python": 1530.32053811594,
+                        "gpu_noise_us_cpp": 1.1580000000000001,
+                        "gpu_noise_us_python": 4.682,
+                        "gpu_bwutil_cpp": 0.11258228202590763,
+                        "gpu_bwutil_python": 0.11152459533706507
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1595.5528854712798,
+                        "gpu_time_us_python": 1613.88331221962,
+                        "gpu_noise_us_cpp": 1.42,
+                        "gpu_noise_us_python": 3.092,
+                        "gpu_bwutil_cpp": 0.08159413440571393,
+                        "gpu_bwutil_python": 0.08066938865823439
+                    }
+                },
+                "cropflipnormalizereformat_scalar_reflect101_1080p_advanced[InOutDataType=uint8][shape=64x1080x1920][layout=NHWC][srcLayout=NCHW][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1527.8301786759,
+                        "gpu_time_us_python": 1544.7256444843001,
+                        "gpu_noise_us_cpp": 1.526,
+                        "gpu_noise_us_python": 5.0,
+                        "gpu_bwutil_cpp": 0.11170609990822034,
+                        "gpu_bwutil_python": 0.1104858175542109
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1613.8865071686,
+                        "gpu_time_us_python": 1632.57446051764,
+                        "gpu_noise_us_cpp": 1.5619999999999998,
+                        "gpu_noise_us_python": 4.058,
+                        "gpu_bwutil_cpp": 0.08066709459387016,
+                        "gpu_bwutil_python": 0.07974279868394549
+                    }
+                }
+            }
+        },
+        "cropflipnormalizereformat_rgb_u8_reflect101_1080p_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "uchar3"
+            ],
+            "string_axes": {
+                "shape": [
+                    "32x1080x1920"
+                ],
+                "layout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "srcLayout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "border": [
+                    "REFLECT101"
+                ],
+                "cropMode": [
+                    "full"
+                ],
+                "flagsMode": [
+                    "normal"
+                ],
+                "inputKind": [
+                    "VarShape"
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "CropFlipNormalizeReformat RGB8 reflect101 (advanced)."
+            },
+            "baselines": {
+                "cropflipnormalizereformat_rgb_u8_reflect101_1080p_advanced[InOutDataType=uchar3][shape=32x1080x1920][layout=NHWC][srcLayout=NHWC][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1922.75959827724,
+                        "gpu_time_us_python": 1936.1945782463602,
+                        "gpu_noise_us_cpp": 1.9479999999999997,
+                        "gpu_noise_us_python": 4.776000000000001,
+                        "gpu_bwutil_cpp": 0.13314410686192896,
+                        "gpu_bwutil_python": 0.13222065236979946
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1918.8996838074204,
+                        "gpu_time_us_python": 1934.68279272884,
+                        "gpu_noise_us_cpp": 1.004,
+                        "gpu_noise_us_python": 3.844,
+                        "gpu_bwutil_cpp": 0.10176988202060126,
+                        "gpu_bwutil_python": 0.10093962249805218
+                    }
+                },
+                "cropflipnormalizereformat_rgb_u8_reflect101_1080p_advanced[InOutDataType=uchar3][shape=32x1080x1920][layout=NCHW][srcLayout=NCHW][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1925.56337176944,
+                        "gpu_time_us_python": 1941.0441594160402,
+                        "gpu_noise_us_cpp": 2.76,
+                        "gpu_noise_us_python": 5.26,
+                        "gpu_bwutil_cpp": 0.13294872036027988,
+                        "gpu_bwutil_python": 0.13188880617430704
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1869.2094152925201,
+                        "gpu_time_us_python": 1883.0892134555397,
+                        "gpu_noise_us_cpp": 0.8960000000000001,
+                        "gpu_noise_us_python": 3.186,
+                        "gpu_bwutil_cpp": 0.1044750653711773,
+                        "gpu_bwutil_python": 0.10370287365272261
+                    }
+                },
+                "cropflipnormalizereformat_rgb_u8_reflect101_1080p_advanced[InOutDataType=uchar3][shape=32x1080x1920][layout=NCHW][srcLayout=NHWC][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1933.3356398076999,
+                        "gpu_time_us_python": 1947.2680144285798,
+                        "gpu_noise_us_cpp": 2.868,
+                        "gpu_noise_us_python": 4.95,
+                        "gpu_bwutil_cpp": 0.1324146911419944,
+                        "gpu_bwutil_python": 0.1314670232245402
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1919.7856520608198,
+                        "gpu_time_us_python": 1935.41113043434,
+                        "gpu_noise_us_cpp": 1.666,
+                        "gpu_noise_us_python": 3.11,
+                        "gpu_bwutil_cpp": 0.10172309026163355,
+                        "gpu_bwutil_python": 0.10090120054343939
+                    }
+                },
+                "cropflipnormalizereformat_rgb_u8_reflect101_1080p_advanced[InOutDataType=uchar3][shape=32x1080x1920][layout=NHWC][srcLayout=NCHW][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1907.9043418230801,
+                        "gpu_time_us_python": 1921.94452991918,
+                        "gpu_noise_us_cpp": 1.5799999999999998,
+                        "gpu_noise_us_python": 5.456,
+                        "gpu_bwutil_cpp": 0.13418039292505526,
+                        "gpu_bwutil_python": 0.1332000967446138
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1875.0084929920201,
+                        "gpu_time_us_python": 1890.12429239608,
+                        "gpu_noise_us_cpp": 0.644,
+                        "gpu_noise_us_python": 3.71,
+                        "gpu_bwutil_cpp": 0.10415200765871886,
+                        "gpu_bwutil_python": 0.10331857776105599
+                    }
+                }
+            }
+        },
+        "cropflipnormalizereformat_rgb_f32_reflect101_1080p_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "float3"
+            ],
+            "string_axes": {
+                "shape": [
+                    "32x1080x1920"
+                ],
+                "layout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "srcLayout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "border": [
+                    "REFLECT101"
+                ],
+                "cropMode": [
+                    "full"
+                ],
+                "flagsMode": [
+                    "normal"
+                ],
+                "inputKind": [
+                    "VarShape"
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "CropFlipNormalizeReformat RGBf32 reflect101 (advanced)."
+            },
+            "baselines": {
+                "cropflipnormalizereformat_rgb_f32_reflect101_1080p_advanced[InOutDataType=float3][shape=32x1080x1920][layout=NHWC][srcLayout=NHWC][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1978.1165548330398,
+                        "gpu_time_us_python": 1993.6325190192802,
+                        "gpu_noise_us_cpp": 1.256,
+                        "gpu_noise_us_python": 4.728,
+                        "gpu_bwutil_cpp": 0.5176679059021648,
+                        "gpu_bwutil_python": 0.5136472443929245
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1983.2681113671802,
+                        "gpu_time_us_python": 1998.7701964209202,
+                        "gpu_noise_us_cpp": 1.968,
+                        "gpu_noise_us_python": 4.966,
+                        "gpu_bwutil_cpp": 0.3938658994455661,
+                        "gpu_bwutil_python": 0.3908010052817553
+                    }
+                },
+                "cropflipnormalizereformat_rgb_f32_reflect101_1080p_advanced[InOutDataType=float3][shape=32x1080x1920][layout=NCHW][srcLayout=NCHW][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 2045.5739577070603,
+                        "gpu_time_us_python": 2060.3032648974795,
+                        "gpu_noise_us_cpp": 1.116,
+                        "gpu_noise_us_python": 3.84,
+                        "gpu_bwutil_cpp": 0.5005966633843917,
+                        "gpu_bwutil_python": 0.4970190118544345
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1939.2676478621202,
+                        "gpu_time_us_python": 1948.83401600252,
+                        "gpu_noise_us_cpp": 0.9340000000000002,
+                        "gpu_noise_us_python": 3.0279999999999996,
+                        "gpu_bwutil_cpp": 0.40279792734926356,
+                        "gpu_bwutil_python": 0.4008041797559735
+                    }
+                },
+                "cropflipnormalizereformat_rgb_f32_reflect101_1080p_advanced[InOutDataType=float3][shape=32x1080x1920][layout=NCHW][srcLayout=NHWC][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1993.1076301089602,
+                        "gpu_time_us_python": 2007.8732544959998,
+                        "gpu_noise_us_cpp": 1.6179999999999999,
+                        "gpu_noise_us_python": 3.976,
+                        "gpu_bwutil_cpp": 0.5137747746428797,
+                        "gpu_bwutil_python": 0.509999232326141
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 2025.62472630134,
+                        "gpu_time_us_python": 2041.1051092547,
+                        "gpu_noise_us_cpp": 1.202,
+                        "gpu_noise_us_python": 5.606,
+                        "gpu_bwutil_cpp": 0.38562964294475444,
+                        "gpu_bwutil_python": 0.382698367524406
+                    }
+                },
+                "cropflipnormalizereformat_rgb_f32_reflect101_1080p_advanced[InOutDataType=float3][shape=32x1080x1920][layout=NHWC][srcLayout=NCHW][border=REFLECT101][cropMode=full][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 2070.50568372018,
+                        "gpu_time_us_python": 2085.1936718615802,
+                        "gpu_noise_us_cpp": 2.97,
+                        "gpu_noise_us_python": 4.374,
+                        "gpu_bwutil_cpp": 0.4945688218133443,
+                        "gpu_bwutil_python": 0.4910864291341405
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1949.60025487274,
+                        "gpu_time_us_python": 1959.5898536749203,
+                        "gpu_noise_us_cpp": 1.3240000000000003,
+                        "gpu_noise_us_python": 2.7199999999999998,
+                        "gpu_bwutil_cpp": 0.4006617025426465,
+                        "gpu_bwutil_python": 0.39859448921343554
+                    }
+                }
+            }
+        },
+        "cropflipnormalizereformat_padded_constant_1080p_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "uint8"
+            ],
+            "string_axes": {
+                "shape": [
+                    "64x1080x1920"
+                ],
+                "layout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "srcLayout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "border": [
+                    "CONSTANT"
+                ],
+                "cropMode": [
+                    "padded16"
+                ],
+                "flagsMode": [
+                    "normal"
+                ],
+                "inputKind": [
+                    "VarShape"
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "CropFlipNormalizeReformat single-channel padded constant (advanced)."
+            },
+            "baselines": {
+                "cropflipnormalizereformat_padded_constant_1080p_advanced[InOutDataType=uint8][shape=64x1080x1920][layout=NHWC][srcLayout=NHWC][border=CONSTANT][cropMode=padded16][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1156.00388854944,
+                        "gpu_time_us_python": 1171.8473635459,
+                        "gpu_noise_us_cpp": 1.7120000000000002,
+                        "gpu_noise_us_python": 3.508,
+                        "gpu_bwutil_cpp": 0.14763802420925437,
+                        "gpu_bwutil_python": 0.1456421043433498
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1137.93112919218,
+                        "gpu_time_us_python": 1151.45319822384,
+                        "gpu_noise_us_cpp": 1.41,
+                        "gpu_noise_us_python": 3.62,
+                        "gpu_bwutil_cpp": 0.114404934974175,
+                        "gpu_bwutil_python": 0.11305924472802868
+                    }
+                },
+                "cropflipnormalizereformat_padded_constant_1080p_advanced[InOutDataType=uint8][shape=64x1080x1920][layout=NCHW][srcLayout=NCHW][border=CONSTANT][cropMode=padded16][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1122.7585854595,
+                        "gpu_time_us_python": 1139.1263208121002,
+                        "gpu_noise_us_cpp": 2.652,
+                        "gpu_noise_us_python": 3.69,
+                        "gpu_bwutil_cpp": 0.15200793618125927,
+                        "gpu_bwutil_python": 0.14982777763265334
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1113.09409909736,
+                        "gpu_time_us_python": 1125.5153888260602,
+                        "gpu_noise_us_cpp": 0.9259999999999999,
+                        "gpu_noise_us_python": 2.88,
+                        "gpu_bwutil_cpp": 0.11695823217135988,
+                        "gpu_bwutil_python": 0.1156650854282955
+                    }
+                },
+                "cropflipnormalizereformat_padded_constant_1080p_advanced[InOutDataType=uint8][shape=64x1080x1920][layout=NCHW][srcLayout=NHWC][border=CONSTANT][cropMode=padded16][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1123.95338786404,
+                        "gpu_time_us_python": 1138.5874078388201,
+                        "gpu_noise_us_cpp": 1.8559999999999999,
+                        "gpu_noise_us_python": 2.5759999999999996,
+                        "gpu_bwutil_cpp": 0.15184732185025798,
+                        "gpu_bwutil_python": 0.1498973455909278
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1113.33362947156,
+                        "gpu_time_us_python": 1126.6289078156599,
+                        "gpu_noise_us_cpp": 1.4940000000000002,
+                        "gpu_noise_us_python": 3.0759999999999996,
+                        "gpu_bwutil_cpp": 0.11693261606856051,
+                        "gpu_bwutil_python": 0.1155507578302919
+                    }
+                },
+                "cropflipnormalizereformat_padded_constant_1080p_advanced[InOutDataType=uint8][shape=64x1080x1920][layout=NHWC][srcLayout=NCHW][border=CONSTANT][cropMode=padded16][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1154.46417441562,
+                        "gpu_time_us_python": 1169.93548804854,
+                        "gpu_noise_us_cpp": 2.174,
+                        "gpu_noise_us_python": 3.628,
+                        "gpu_bwutil_cpp": 0.14783296516603767,
+                        "gpu_bwutil_python": 0.14587949313428852
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1138.17436378206,
+                        "gpu_time_us_python": 1150.50102875904,
+                        "gpu_noise_us_cpp": 1.36,
+                        "gpu_noise_us_python": 2.342,
+                        "gpu_bwutil_cpp": 0.11438065850077132,
+                        "gpu_bwutil_python": 0.11315508904860686
+                    }
+                }
+            }
+        },
+        "cropflipnormalizereformat_padded_reflect101_1080p_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "uint8"
+            ],
+            "string_axes": {
+                "shape": [
+                    "64x1080x1920"
+                ],
+                "layout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "srcLayout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "border": [
+                    "REFLECT101"
+                ],
+                "cropMode": [
+                    "padded16"
+                ],
+                "flagsMode": [
+                    "normal"
+                ],
+                "inputKind": [
+                    "VarShape"
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "CropFlipNormalizeReformat single-channel padded reflect101 (advanced)."
+            },
+            "baselines": {
+                "cropflipnormalizereformat_padded_reflect101_1080p_advanced[InOutDataType=uint8][shape=64x1080x1920][layout=NHWC][srcLayout=NHWC][border=REFLECT101][cropMode=padded16][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1529.2295395556,
+                        "gpu_time_us_python": 1543.2539103871,
+                        "gpu_noise_us_cpp": 1.468,
+                        "gpu_noise_us_python": 5.668,
+                        "gpu_bwutil_cpp": 0.11160539876713405,
+                        "gpu_bwutil_python": 0.11059067312244557
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1613.5344479723603,
+                        "gpu_time_us_python": 1628.08119996926,
+                        "gpu_noise_us_cpp": 0.898,
+                        "gpu_noise_us_python": 3.444,
+                        "gpu_bwutil_cpp": 0.08068395823829791,
+                        "gpu_bwutil_python": 0.07996104472990054
+                    }
+                },
+                "cropflipnormalizereformat_padded_reflect101_1080p_advanced[InOutDataType=uint8][shape=64x1080x1920][layout=NCHW][srcLayout=NCHW][border=REFLECT101][cropMode=padded16][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1516.1520699759599,
+                        "gpu_time_us_python": 1532.26794566678,
+                        "gpu_noise_us_cpp": 1.842,
+                        "gpu_noise_us_python": 4.824,
+                        "gpu_bwutil_cpp": 0.11256686778576333,
+                        "gpu_bwutil_python": 0.11138403847592818
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1595.4422955679602,
+                        "gpu_time_us_python": 1610.5319032490002,
+                        "gpu_noise_us_cpp": 0.9720000000000001,
+                        "gpu_noise_us_python": 4.162000000000001,
+                        "gpu_bwutil_cpp": 0.08159921786816202,
+                        "gpu_bwutil_python": 0.08083187421514096
+                    }
+                },
+                "cropflipnormalizereformat_padded_reflect101_1080p_advanced[InOutDataType=uint8][shape=64x1080x1920][layout=NCHW][srcLayout=NHWC][border=REFLECT101][cropMode=padded16][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1516.5122547311,
+                        "gpu_time_us_python": 1531.04983752716,
+                        "gpu_noise_us_cpp": 2.158,
+                        "gpu_noise_us_python": 4.248,
+                        "gpu_bwutil_cpp": 0.11254037463033481,
+                        "gpu_bwutil_python": 0.11147184441660847
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1595.42732832934,
+                        "gpu_time_us_python": 1609.7968669359,
+                        "gpu_noise_us_cpp": 0.7899999999999999,
+                        "gpu_noise_us_python": 3.8259999999999996,
+                        "gpu_bwutil_cpp": 0.08159968668564524,
+                        "gpu_bwutil_python": 0.08086988201346863
+                    }
+                },
+                "cropflipnormalizereformat_padded_reflect101_1080p_advanced[InOutDataType=uint8][shape=64x1080x1920][layout=NHWC][srcLayout=NCHW][border=REFLECT101][cropMode=padded16][flagsMode=normal][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1527.45827793804,
+                        "gpu_time_us_python": 1542.3830286847601,
+                        "gpu_noise_us_cpp": 1.9200000000000004,
+                        "gpu_noise_us_python": 4.068,
+                        "gpu_bwutil_cpp": 0.11173340180498262,
+                        "gpu_bwutil_python": 0.11065312374736336
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1613.90267293612,
+                        "gpu_time_us_python": 1628.6750151116798,
+                        "gpu_noise_us_cpp": 1.6019999999999999,
+                        "gpu_noise_us_python": 3.554,
+                        "gpu_bwutil_cpp": 0.08066536930963256,
+                        "gpu_bwutil_python": 0.07993332030146172
+                    }
+                }
+            }
+        },
+        "cropflipnormalizereformat_stddev_f32_1080p_advanced": {
+            "tier": "advanced",
+            "dtypes": [
+                "float32"
+            ],
+            "string_axes": {
+                "shape": [
+                    "64x1080x1920"
+                ],
+                "layout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "srcLayout": [
+                    "NHWC",
+                    "NCHW"
+                ],
+                "border": [
+                    "REFLECT101"
+                ],
+                "cropMode": [
+                    "full"
+                ],
+                "flagsMode": [
+                    "stddev"
+                ],
+                "inputKind": [
+                    "VarShape"
+                ]
+            },
+            "warmup_iterations": 200,
+            "metadata": {
+                "description": "CropFlipNormalizeReformat single-channel stddev (advanced)."
+            },
+            "baselines": {
+                "cropflipnormalizereformat_stddev_f32_1080p_advanced[InOutDataType=float32][shape=64x1080x1920][layout=NHWC][srcLayout=NHWC][border=REFLECT101][cropMode=full][flagsMode=stddev][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1645.24088999468,
+                        "gpu_time_us_python": 1661.75185459124,
+                        "gpu_noise_us_cpp": 1.236,
+                        "gpu_noise_us_python": 3.572,
+                        "gpu_bwutil_cpp": 0.41493967334982873,
+                        "gpu_bwutil_python": 0.4108178304253192
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1743.3174787939802,
+                        "gpu_time_us_python": 1761.1138584983796,
+                        "gpu_noise_us_cpp": 1.082,
+                        "gpu_noise_us_python": 6.1899999999999995,
+                        "gpu_bwutil_cpp": 0.29870899503859033,
+                        "gpu_bwutil_python": 0.29569139643909154
+                    }
+                },
+                "cropflipnormalizereformat_stddev_f32_1080p_advanced[InOutDataType=float32][shape=64x1080x1920][layout=NCHW][srcLayout=NCHW][border=REFLECT101][cropMode=full][flagsMode=stddev][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1643.8491035540799,
+                        "gpu_time_us_python": 1660.4401212979003,
+                        "gpu_noise_us_cpp": 1.3239999999999998,
+                        "gpu_noise_us_python": 3.556,
+                        "gpu_bwutil_cpp": 0.41529044054922404,
+                        "gpu_bwutil_python": 0.4111453996071421
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1728.2682530730199,
+                        "gpu_time_us_python": 1745.82701367034,
+                        "gpu_noise_us_cpp": 0.8859999999999999,
+                        "gpu_noise_us_python": 5.5920000000000005,
+                        "gpu_bwutil_cpp": 0.30131019317846486,
+                        "gpu_bwutil_python": 0.29826421877980197
+                    }
+                },
+                "cropflipnormalizereformat_stddev_f32_1080p_advanced[InOutDataType=float32][shape=64x1080x1920][layout=NCHW][srcLayout=NHWC][border=REFLECT101][cropMode=full][flagsMode=stddev][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1643.3233481390803,
+                        "gpu_time_us_python": 1658.4128701755399,
+                        "gpu_noise_us_cpp": 1.216,
+                        "gpu_noise_us_python": 3.618,
+                        "gpu_bwutil_cpp": 0.41542274550943314,
+                        "gpu_bwutil_python": 0.4116436825843607
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1728.3634145361,
+                        "gpu_time_us_python": 1745.52677723218,
+                        "gpu_noise_us_cpp": 1.1,
+                        "gpu_noise_us_python": 4.708,
+                        "gpu_bwutil_cpp": 0.3012936708791984,
+                        "gpu_bwutil_python": 0.2983284027891214
+                    }
+                },
+                "cropflipnormalizereformat_stddev_f32_1080p_advanced[InOutDataType=float32][shape=64x1080x1920][layout=NHWC][srcLayout=NCHW][border=REFLECT101][cropMode=full][flagsMode=stddev][inputKind=VarShape]": {
+                    "A100_PCIE_40GB_250W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1645.12698168414,
+                        "gpu_time_us_python": 1661.93548895856,
+                        "gpu_noise_us_cpp": 2.418,
+                        "gpu_noise_us_python": 4.702,
+                        "gpu_bwutil_cpp": 0.41496785897427435,
+                        "gpu_bwutil_python": 0.4107729287737766
+                    },
+                    "H100_PCIe_350W_1095MHz": {
+                        "n_runs": 5,
+                        "gpu_time_us_cpp": 1743.17538399986,
+                        "gpu_time_us_python": 1759.9688039446999,
+                        "gpu_noise_us_cpp": 1.0419999999999998,
+                        "gpu_noise_us_python": 4.6,
+                        "gpu_bwutil_cpp": 0.2987338353865481,
+                        "gpu_bwutil_python": 0.29587144059087855
+                    }
+                }
+            }
+        }
+    }
+}

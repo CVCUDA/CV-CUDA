@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,6 +35,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class Composite final : public IOperator
@@ -42,53 +44,49 @@ class Composite final : public IOperator
 public:
     explicit Composite();
 
-    ~Composite();
-
     void operator()(cudaStream_t stream, const nvcv::Tensor &foreground, const nvcv::Tensor &background,
-                    const nvcv::Tensor &fgMask, const nvcv::Tensor &output);
+                    const nvcv::Tensor &fgMask, const nvcv::Tensor &output) const;
 
     void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &foreground,
                     const nvcv::ImageBatchVarShape &background, const nvcv::ImageBatchVarShape &fgMask,
-                    const nvcv::ImageBatchVarShape &output);
+                    const nvcv::ImageBatchVarShape &output) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline Composite::Composite()
 {
-    nvcv::detail::CheckThrow(cvcudaCompositeCreate(&m_handle));
-    assert(m_handle);
-}
-
-inline Composite::~Composite()
-{
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaCompositeCreate(&h));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void Composite::operator()(cudaStream_t stream, const nvcv::Tensor &foreground, const nvcv::Tensor &background,
-                                  const nvcv::Tensor &fgMask, const nvcv::Tensor &output)
+                                  const nvcv::Tensor &fgMask, const nvcv::Tensor &output) const
 {
-    nvcv::detail::CheckThrow(cvcudaCompositeSubmit(m_handle, stream, foreground.handle(), background.handle(),
+    nvcv::detail::CheckThrow(cvcudaCompositeSubmit(m_handle.get(), stream, foreground.handle(), background.handle(),
                                                    fgMask.handle(), output.handle()));
 }
 
 inline void Composite::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &foreground,
                                   const nvcv::ImageBatchVarShape &background, const nvcv::ImageBatchVarShape &fgMask,
-                                  const nvcv::ImageBatchVarShape &output)
+                                  const nvcv::ImageBatchVarShape &output) const
 {
-    nvcv::detail::CheckThrow(cvcudaCompositeVarShapeSubmit(m_handle, stream, foreground.handle(), background.handle(),
-                                                           fgMask.handle(), output.handle()));
+    nvcv::detail::CheckThrow(cvcudaCompositeVarShapeSubmit(m_handle.get(), stream, foreground.handle(),
+                                                           background.handle(), fgMask.handle(), output.handle()));
 }
 
 inline NVCVOperatorHandle Composite::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA_COMPOSITE_HPP

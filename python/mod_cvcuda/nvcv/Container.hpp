@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -36,12 +36,31 @@ class Container
 public:
     static void Export(py::module &m);
 
-    std::shared_ptr<Container>       shared_from_this();
-    std::shared_ptr<const Container> shared_from_this() const;
-
 protected:
     Container() = default;
 };
+
+inline std::shared_ptr<Container> SharedContainerFrom(Container &container)
+{
+    return std::static_pointer_cast<Container>(static_cast<Resource &>(container).shared_from_this());
+}
+
+inline std::shared_ptr<const Container> SharedContainerFrom(const Container &container)
+{
+    return std::static_pointer_cast<const Container>(static_cast<const Resource &>(container).shared_from_this());
+}
+
+template<class T>
+std::shared_ptr<T> SharedContainerFrom(T &container)
+{
+    return std::static_pointer_cast<T>(SharedContainerFrom(static_cast<Container &>(container)));
+}
+
+template<class T>
+std::shared_ptr<const T> SharedContainerFrom(const T &container)
+{
+    return std::static_pointer_cast<const T>(SharedContainerFrom(static_cast<const Container &>(container)));
+}
 
 class ExternalContainer : public Container
 {
@@ -63,7 +82,7 @@ public:
 private:
     nvcvpy::Container &m_extCont;
 
-    int64_t doComputeSizeInBytes()
+    int64_t doComputeSizeInBytes() const
     {
         // ExternalCacheItems (CacheItems outside of nvcv, eg. operators from cvcuda) will not pollute the
         // Cache, thus for now we say they've no impact on the Cache

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,7 +20,37 @@
 
 #include <cvcuda/cuda_tools/TensorWrap.hpp> // for TensorWrap, etc.
 
+#include <type_traits>
+
 namespace nvcv::legacy::cuda_op {
+
+// Keep scalar planar and compound interleaved kernels on the same explicitly rounded instruction sequence.
+template<typename T>
+__device__ __forceinline__ T LaplacianFloatMulRN(T value, float coefficient)
+{
+    static_assert(std::is_same_v<cuda::BaseType<T>, float>);
+
+    T result;
+#pragma unroll
+    for (int c = 0; c < cuda::NumElements<T>; ++c)
+    {
+        cuda::GetElement(result, c) = __fmul_rn(cuda::GetElement(value, c), coefficient);
+    }
+    return result;
+}
+
+template<typename T>
+__device__ __forceinline__ T LaplacianFloatFmaRN(T value, float coefficient, T result)
+{
+    static_assert(std::is_same_v<cuda::BaseType<T>, float>);
+
+#pragma unroll
+    for (int c = 0; c < cuda::NumElements<T>; ++c)
+    {
+        cuda::GetElement(result, c) = __fmaf_rn(cuda::GetElement(value, c), coefficient, cuda::GetElement(result, c));
+    }
+    return result;
+}
 
 __global__ void computeMeanKernel(float *kernel_ptr, int k_size);
 

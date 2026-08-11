@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -60,34 +60,36 @@ CVCUDA_PUBLIC NVCVStatus cvcudaBilateralFilterCreate(NVCVOperatorHandle *handle)
  *  Destination must be same format and size as source
  *
  *  Input:
- *       Data Layout:    [kNHWC, kHWC]
- *       Channels:       [1, 3, 4]
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
+ *       Channels:       [1, 2, 3, 4] (planar kNCHW/kCHW: [1, 3, 4])
  *
  *       Data Type      | Allowed
  *       -------------- | -------------
  *       8bit  Unsigned | Yes
- *       8bit  Signed   | Yes
+ *       8bit  Signed   | No
  *       16bit Unsigned | Yes
  *       16bit Signed   | Yes
- *       32bit Unsigned | Yes
+ *       32bit Unsigned | No
  *       32bit Signed   | Yes
+ *       16bit Float    | No
  *       32bit Float    | Yes
- *       64bit Float    | Yes
+ *       64bit Float    | No
  *
  *  Output:
- *       Data Layout:    [kNHWC, kHWC]
- *       Channels:       [1, 3, 4]
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
+ *       Channels:       [1, 2, 3, 4] (planar kNCHW/kCHW: [1, 3, 4])
  *
  *       Data Type      | Allowed
  *       -------------- | -------------
  *       8bit  Unsigned | Yes
- *       8bit  Signed   | Yes
+ *       8bit  Signed   | No
  *       16bit Unsigned | Yes
  *       16bit Signed   | Yes
- *       32bit Unsigned | Yes
+ *       32bit Unsigned | No
  *       32bit Signed   | Yes
+ *       16bit Float    | No
  *       32bit Float    | Yes
- *       64bit Float    | Yes
+ *       64bit Float    | No
  *
  *  Input/Output dependency
  *
@@ -133,5 +135,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaBilateralFilterVarShapeSubmit(NVCVOperatorHandle 
 #ifdef __cplusplus
 }
 #endif
+
+/** @} */
 
 #endif /* CVCUDA_BILATERAL_FILTER_H */

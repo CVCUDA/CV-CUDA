@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -36,6 +36,12 @@ class ImageBatchVarShape
     , public nvcv::ImageBatchVarShape
 {
 public:
+    ImageBatchVarShape(const ImageBatchVarShape &)     = default;
+    ImageBatchVarShape(ImageBatchVarShape &&) noexcept = default;
+
+    ImageBatchVarShape &operator=(const ImageBatchVarShape &)     = default;
+    ImageBatchVarShape &operator=(ImageBatchVarShape &&) noexcept = default;
+
     static ImageBatchVarShape Create(int capacity)
     {
         PyObject *ovarshape = capi().ImageBatchVarShape_Create(capacity);
@@ -46,27 +52,21 @@ public:
         return ImageBatchVarShape(pyvarshape);
     }
 
-    // For manipulating the image list we can't call directly the
-    // nvcv::ImageBatchVarShape methods, it must go through the python
-    // bindings because it ends up storing a reference to the added images, to
-    // keep them alive. We can't do it here, things must be consistent.
-    // PROBLEM: these functions should be virtual but they aren't.
-    // We can't modify the image list through nvcv::ImageBatchVarShape
-    // or else the this image list to keep their alive won't be updated.
-    // We currently can't avoid this issue.
-    void pushBack(Image img)
+    // Python image wrappers must go through CAPI so the backing Python objects
+    // stay alive for as long as the batch references them.
+    void pushBackImage(Image img)
     {
         capi().ImageBatchVarShape_PushBack(this->ptr(), img.ptr());
         CheckCAPIError();
     }
 
-    void popBack(int cnt)
+    void popBackImages(int cnt)
     {
         capi().ImageBatchVarShape_PopBack(this->ptr(), cnt);
         CheckCAPIError();
     }
 
-    void clear()
+    void clearImages()
     {
         capi().ImageBatchVarShape_Clear(this->ptr());
         CheckCAPIError();
@@ -105,7 +105,7 @@ struct type_caster<cvpy::ImageBatchVarShape> : type_caster_base<cvpy::ImageBatch
     bool load(handle src, bool)
     {
         // Does it have the correct object type?
-        PyTypeObject *srctype = Py_TYPE(src.ptr());
+        const PyTypeObject *srctype = Py_TYPE(src.ptr());
         if (strcmp(name.text, srctype->tp_name) == 0)
         {
             value = cvpy::ImageBatchVarShape(reinterpret_borrow<object>(src));
@@ -119,8 +119,7 @@ struct type_caster<cvpy::ImageBatchVarShape> : type_caster_base<cvpy::ImageBatch
 
     static handle cast(cvpy::ImageBatchVarShape tensor, return_value_policy /* policy */, handle /*parent */)
     {
-        tensor.inc_ref(); // for some reason this is needed
-        return tensor;
+        return static_cast<object &>(tensor).release();
     }
 };
 

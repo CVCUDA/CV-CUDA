@@ -1,0 +1,203 @@
+{
+    "_comment": "Source-of-truth operator categorization for the RGB benchmark guidelines. A = general image op (basic tier = RGB uchar3/float3; 1-ch moved to advanced; RGBA mirror in advanced). B = inherently single-channel (left 1-channel). C = intrinsic channel semantics (unchanged). See bench/tests/test_bench_rgb_guidelines.py.",
+    "category_reasons": {
+        "A": "General image op: per-pixel/per-channel on color images; RGB is the realistic input.",
+        "B": "Inherently single-channel/luma/binary; RGB would mislead or be rejected by the op.",
+        "C": "Intrinsic channel semantics (color conversion, channel ops, drawing, non-image data); leave as-is."
+    },
+    "operators": {
+        "adaptivethreshold": {
+            "category": "B"
+        },
+        "adjustcontrast": {
+            "category": "A",
+            "rgba_unsupported": true
+        },
+        "adjusthue": {
+            "category": "A",
+            "rgba_unsupported": true
+        },
+        "adjustsaturation": {
+            "category": "A",
+            "rgba_unsupported": true
+        },
+        "adjustsharpness": {
+            "category": "A"
+        },
+        "advcvtcolor": {
+            "category": "C"
+        },
+        "autocontrast": {
+            "category": "A"
+        },
+        "averageblur": {
+            "category": "A"
+        },
+        "bilateralfilter": {
+            "category": "A"
+        },
+        "bndbox": {
+            "category": "C"
+        },
+        "boxblur": {
+            "category": "C"
+        },
+        "brightnesscontrast": {
+            "category": "A"
+        },
+        "centercrop": {
+            "category": "A"
+        },
+        "channelreorder": {
+            "category": "C"
+        },
+        "clahe": {
+            "category": "B"
+        },
+        "colortwist": {
+            "category": "C"
+        },
+        "composite": {
+            "category": "C"
+        },
+        "conv2d": {
+            "category": "A"
+        },
+        "convertto": {
+            "category": "A"
+        },
+        "copymakeborder": {
+            "category": "A"
+        },
+        "cropflipnormalizereformat": {
+            "category": "A"
+        },
+        "customcrop": {
+            "category": "A"
+        },
+        "cvtcolor": {
+            "category": "C"
+        },
+        "erase": {
+            "category": "A"
+        },
+        "findhomography": {
+            "category": "C"
+        },
+        "flip": {
+            "category": "A"
+        },
+        "gammacontrast": {
+            "category": "A"
+        },
+        "gaussian": {
+            "category": "A"
+        },
+        "gaussiannoise": {
+            "category": "A"
+        },
+        "histogram": {
+            "category": "B"
+        },
+        "histogrameq": {
+            "category": "A"
+        },
+        "hqresize": {
+            "category": "A",
+            "rgb_unsupported": true
+        },
+        "inpaint": {
+            "category": "A"
+        },
+        "invert": {
+            "category": "A"
+        },
+        "jointbilateralfilter": {
+            "category": "A"
+        },
+        "jpegcompressiondistortion": {
+            "category": "A",
+            "rgba_unsupported": true
+        },
+        "label": {
+            "category": "B"
+        },
+        "laplacian": {
+            "category": "A"
+        },
+        "medianblur": {
+            "category": "A"
+        },
+        "minarearect": {
+            "category": "C"
+        },
+        "minmaxloc": {
+            "category": "B"
+        },
+        "morphology": {
+            "category": "A"
+        },
+        "nonmaximumsuppression": {
+            "category": "C"
+        },
+        "normalize": {
+            "category": "A"
+        },
+        "osd": {
+            "category": "C"
+        },
+        "padandstack": {
+            "category": "A"
+        },
+        "pairwisematcher": {
+            "category": "C"
+        },
+        "pillowresize": {
+            "category": "A"
+        },
+        "posterize": {
+            "category": "A"
+        },
+        "randomresizedcrop": {
+            "category": "A"
+        },
+        "reformat": {
+            "category": "A"
+        },
+        "remap": {
+            "category": "A"
+        },
+        "resize": {
+            "category": "A"
+        },
+        "resizecropconvertreformat": {
+            "category": "A",
+            "rgba_unsupported": true
+        },
+        "rotate": {
+            "category": "A"
+        },
+        "sift": {
+            "category": "B"
+        },
+        "solarize": {
+            "category": "A"
+        },
+        "stack": {
+            "category": "A"
+        },
+        "threshold": {
+            "category": "B"
+        },
+        "warpaffine": {
+            "category": "A"
+        },
+        "warpperspective": {
+            "category": "A"
+        }
+    },
+    "_notes": {
+        "rgba_unsupported": "Cat-A op whose kernel has no 4-channel instantiation; exempt from the RGBA-mirror rule (R4).",
+        "rgb_unsupported": "Cat-A op whose bench has no multi-channel instantiation (U8/F32 only); left single-channel (would need a bench code change to RGB-convert)."
+    }
+}

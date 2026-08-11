@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "priv/OpFlip.hpp"
 
+#include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <nvcv/Exception.hpp>
@@ -29,7 +30,7 @@ namespace priv = cvcuda::priv;
 CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaFlipCreate, (NVCVOperatorHandle * handle, int32_t maxVarShapeBatchSize))
 {
     return nvcv::ProtectCall(
-        [&]
+        [&handle, &maxVarShapeBatchSize]
         {
             if (handle == nullptr)
             {
@@ -37,7 +38,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaFlipCreate, (NVCVOperatorHandle * hand
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            *handle = reinterpret_cast<NVCVOperatorHandle>(new priv::Flip(maxVarShapeBatchSize));
+            *handle = priv::CreateOperatorHandle<priv::Flip>(maxVarShapeBatchSize);
         });
 }
 
@@ -45,11 +46,13 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaFlipSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in, NVCVTensorHandle out,
                    int32_t flipCode))
 {
+    CVCUDA_NVTX_RANGE("cvcudaFlipSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&out, &in, &handle, &stream, &flipCode]
         {
-            nvcv::TensorWrapHandle output(out), input(in);
-            priv::ToDynamicRef<priv::Flip>(handle)(stream, input, output, flipCode);
+            nvcv::TensorWrapHandle output(out);
+            nvcv::TensorWrapHandle input(in);
+            priv::ToDynamicRef<priv::Flip>(handle)(stream, input.resource(), output.resource(), flipCode);
         });
 }
 
@@ -57,11 +60,13 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaFlipVarShapeSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVImageBatchHandle in, NVCVImageBatchHandle out,
                    NVCVTensorHandle flipCode))
 {
+    CVCUDA_NVTX_RANGE("cvcudaFlipVarShapeSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&out, &in, &flipCode, &handle, &stream]
         {
-            nvcv::ImageBatchVarShapeWrapHandle output(out), input(in);
+            nvcv::ImageBatchVarShapeWrapHandle output(out);
+            nvcv::ImageBatchVarShapeWrapHandle input(in);
             nvcv::TensorWrapHandle             flip_code(flipCode);
-            priv::ToDynamicRef<priv::Flip>(handle)(stream, input, output, flip_code);
+            priv::ToDynamicRef<priv::Flip>(handle)(stream, input.resource(), output.resource(), flip_code.resource());
         });
 }

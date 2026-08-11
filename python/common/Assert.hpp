@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,9 +41,19 @@ NVCV_NORETURN void DoAssert(const char *file, int line, const char *cond);
 #    define NVCV_SOURCE_FILE_LINENO    __LINE__
 #    define NVCV_OPTIONAL_STRINGIFY(X) #    X
 #else
-#    define NVCV_SOURCE_FILE_NAME      ""
-#    define NVCV_SOURCE_FILE_LINENO    0
-#    define NVCV_OPTIONAL_STRINGIFY(X) ""
+inline constexpr char kHiddenSourceFileName[] = "";
+inline constexpr int  kHiddenSourceFileLineNo = 0;
+inline constexpr char kHiddenConditionText[]  = "";
+
+#    if !defined(NVCV_SOURCE_FILE_NAME)
+#        define NVCV_SOURCE_FILE_NAME ::nvcvpy::util::kHiddenSourceFileName
+#    endif
+#    if !defined(NVCV_SOURCE_FILE_LINENO)
+#        define NVCV_SOURCE_FILE_LINENO ::nvcvpy::util::kHiddenSourceFileLineNo
+#    endif
+#    if !defined(NVCV_OPTIONAL_STRINGIFY)
+#        define NVCV_OPTIONAL_STRINGIFY(X) ::nvcvpy::util::kHiddenConditionText
+#    endif
 #endif
 
 // allows overriding of NVCV_ASSERT definition

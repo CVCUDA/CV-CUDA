@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -48,21 +48,24 @@ class alignas(kResourceAlignment) ICoreObject
 {
 public:
     // Disable copy/move to avoid slicing.
-    ICoreObject(const ICoreObject &) = delete;
+    ICoreObject(const ICoreObject &)            = delete;
+    ICoreObject(ICoreObject &&)                 = delete;
+    ICoreObject &operator=(const ICoreObject &) = delete;
+    ICoreObject &operator=(ICoreObject &&)      = delete;
 
     virtual ~ICoreObject() = default;
 
     virtual Version version() const = 0;
 
-    virtual void  setUserPointer(void *ptr) = 0;
-    virtual void *userPointer() const       = 0;
+    virtual void            setUserPointer(NVCVUserPointer ptr) = 0;
+    virtual NVCVUserPointer userPointer() const                 = 0;
 
 protected:
     ICoreObject() = default;
 };
 
 template<class HANDLE>
-class IHandleHolder
+class IHandleHolder // NOSONAR: this interface participates in the stable core-object ABI; do not add virtual slots.
 {
 public:
     using HandleType = HANDLE;
@@ -104,19 +107,19 @@ public:
         return CURRENT_VERSION;
     }
 
-    void setUserPointer(void *ptr) final
+    void setUserPointer(NVCVUserPointer ptr) final
     {
         m_userPtr = ptr;
     }
 
-    void *userPointer() const final
+    NVCVUserPointer userPointer() const final
     {
         return m_userPtr;
     }
 
 private:
-    HandleType m_handle  = {};
-    void      *m_userPtr = nullptr;
+    HandleType      m_handle  = {};
+    NVCVUserPointer m_userPtr = nullptr;
 };
 
 template<class HandleType>

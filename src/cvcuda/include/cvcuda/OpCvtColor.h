@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -53,6 +53,38 @@ CVCUDA_PUBLIC NVCVStatus cvcudaCvtColorCreate(NVCVOperatorHandle *handle);
 
 /** Executes the CvtColor (convert color) operation on the given cuda stream.  This operation does not wait for completion.
  *
+ *  Limitations:
+ *
+ *  Input:
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
+ *       Channels:       [1, 3, 4] for kNCHW/kCHW planar tensors; var-shape planar images require RGB8p or RGBA8p
+ *                       compatible conversion codes.
+ *       Data Type:      [U8, S8, U16, S16, S32, F16, F32, F64] depending on conversion code.
+ *
+ *  Output:
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
+ *       Channels:       [1, 3, 4] for kNCHW/kCHW planar tensors; var-shape planar images require RGB8p or RGBA8p
+ *                       compatible conversion codes.
+ *       Data Type:      Same base type as input, depending on conversion code.
+ *
+ *  Notes:
+ *       Planar kNCHW/kCHW support excludes subsampled YUV420 and packed YUV422 conversion codes.
+ *
+ *  Supported backends:
+ *
+ *       Backend       | Supported
+ *       ------------- | ---------
+ *       CUDA          | Yes
+ *       CPU           | No
+ *
+ *  Performance characteristics:
+ *
+ *       Input         | Supported
+ *       ------------- | ---------
+ *       Data Layout   | Yes
+ *       Data Type     | Yes
+ *       Channels      | Yes
+ *
  * @param [in] handle Handle to the operator.
  *                    + Must not be NULL.
  * @param [in] stream Handle to a valid CUDA stream.
@@ -77,5 +109,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaCvtColorVarShapeSubmit(NVCVOperatorHandle handle,
 #ifdef __cplusplus
 }
 #endif
+
+/** @} */
 
 #endif /* CVCUDA_CVTCOLOR_H */

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,11 +15,12 @@
 
 import cvcuda
 
-import pytest as t
+import pytest
 import numpy as np
+import cvcuda_tools as cv_tools
 
 
-@t.mark.parametrize(
+@pytest.mark.parametrize(
     "inputp, elements",
     [
         (
@@ -159,3 +160,29 @@ def test_op_osd(inputp, elements):
     assert out.layout == input.layout
     assert out.shape == input.shape
     assert out.dtype == input.dtype
+
+
+def _osd_params(dtype, layout, channels):
+    elements_list = [
+        [
+            cvcuda.BndBoxI(
+                box=(5, 5, 3, 3),
+                thickness=1,
+                borderColor=(255, 255, 0),
+                fillColor=(0, 128, 255, 128),
+            )
+        ]
+    ]
+    return {"elements": cvcuda.Elements(elements=elements_list)}
+
+
+globals().update(
+    cv_tools.make_op_tests(
+        name="osd",
+        runner_info=[("tensor", cvcuda.osd, _osd_params)],
+        keystone_dlc=(cvcuda.Type.U8, "NHWC", 3),
+        supported_dtypes={cvcuda.Type.U8},
+        supported_layouts={"NHWC", "HWC", "NCHW", "CHW"},
+        supported_channels={3, 4},
+    )
+)

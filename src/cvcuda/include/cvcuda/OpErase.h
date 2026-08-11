@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -60,8 +60,8 @@ CVCUDA_PUBLIC NVCVStatus cvcudaEraseCreate(NVCVOperatorHandle *handle, int32_t m
  *  Limitations:
  *
  *  Input:
- *       Data Layout:    [kNHWC, kHWC]
- *       Channels:       [1, 2, 3, 4]
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
+ *       Channels:       [1, 2, 3, 4] (planar kNCHW/kCHW: [1, 3, 4])
  *
  *       Data Type      | Allowed
  *       -------------- | -------------
@@ -71,12 +71,13 @@ CVCUDA_PUBLIC NVCVStatus cvcudaEraseCreate(NVCVOperatorHandle *handle, int32_t m
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | Yes
+ *       16bit Float    | No
  *       32bit Float    | Yes
  *       64bit Float    | No
  *
  *  Output:
- *       Data Layout:    [kNHWC, kHWC]
- *       Channels:       [1, 2, 3, 4]
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
+ *       Channels:       [1, 2, 3, 4] (planar kNCHW/kCHW: [1, 3, 4])
  *
  *       Data Type      | Allowed
  *       -------------- | -------------
@@ -86,6 +87,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaEraseCreate(NVCVOperatorHandle *handle, int32_t m
  *       16bit Signed   | Yes
  *       32bit Unsigned | No
  *       32bit Signed   | Yes
+ *       16bit Float    | No
  *       32bit Float    | Yes
  *       64bit Float    | No
  *
@@ -99,6 +101,11 @@ CVCUDA_PUBLIC NVCVStatus cvcudaEraseCreate(NVCVOperatorHandle *handle, int32_t m
  *       Channels      | Yes
  *       Width         | Yes
  *       Height        | Yes
+ *
+ *  In-place execution is selected by passing the same handle for `in` and `out`.
+ *  There is no separate in-place parameter. When `in` and `out` are different handles,
+ *  the operation copies `in` to `out` before applying the erase areas. Passing different
+ *  handles that partially alias the same storage is not a supported aliasing mode.
  *
  *  anchor Tensor
  *
@@ -146,8 +153,6 @@ CVCUDA_PUBLIC NVCVStatus cvcudaEraseCreate(NVCVOperatorHandle *handle, int32_t m
  *
  * @param [in] seed random seed for random filling erase area.
  *
- * @param [in] inplace for perform inplace op.
- *
  * @retval #NVCV_ERROR_INVALID_ARGUMENT Some parameter is outside valid range.
  * @retval #NVCV_ERROR_INTERNAL         Internal error in the operator, invalid types passed in.
  * @retval #NVCV_SUCCESS                Operation executed successfully.
@@ -163,6 +168,68 @@ CVCUDA_PUBLIC NVCVStatus cvcudaEraseVarShapeSubmit(NVCVOperatorHandle handle, cu
                                                    NVCVTensorHandle anchor, NVCVTensorHandle erasing,
                                                    NVCVTensorHandle values, NVCVTensorHandle imgIdx, int8_t random,
                                                    uint32_t seed);
+
+/** Executes a torchvision-compatible single-region erase on the given CUDA stream.
+ *  This operation does not wait for completion.
+ *
+ *  The operation is equivalent to the following assignment on the logical planar view of the input:
+ *
+ *      out = in.clone()
+ *      out[..., i:i+h, j:j+w] = values
+ *
+ *  Passing the same tensor handle for @p in and @p out performs the assignment in place. Negative,
+ *  empty, and out-of-bounds regions follow Python's step-one slice rules. For interleaved layouts,
+ *  @p values is still broadcast against the logical planar shape `(N, C, h, w)` or `(C, h, w)`.
+ *
+ *  Reference: torchvision.transforms.v2.functional.erase.
+ *
+ *  This overload is independent of the `max_num_erasing_area` capacity supplied to
+ *  #cvcudaEraseCreate.
+ *
+ *  Limitations:
+ *
+ *  Input / Output:
+ *       Container:      Tensor only
+ *       Data Layout:    [kNHWC, kHWC, kNCHW, kCHW]
+ *       Channels:       [1, 2, 3, 4]
+ *
+ *       Data Type      | Allowed
+ *       -------------- | -------------
+ *       8bit  Unsigned | Yes
+ *       8bit  Signed   | Yes
+ *       16bit Unsigned | Yes
+ *       16bit Signed   | Yes
+ *       32bit Unsigned | Yes
+ *       32bit Signed   | Yes
+ *       64bit Unsigned | Yes
+ *       64bit Signed   | Yes
+ *       16bit Float    | Yes
+ *       32bit Float    | Yes
+ *       64bit Float    | Yes
+ *
+ *  Values:
+ *       Rank must not exceed four. Dimensions are right-aligned against the logical `(N, C, H, W)`
+ *       shape, with `N = 1` for unbatched inputs, and each must equal the corresponding
+ *       selected-region dimension or be one for broadcasting. The dtype must match the input dtype
+ *       or be 32-bit float. Float-to-integer conversion matches CUDA PyTorch assignment semantics,
+ *       including for non-finite and out-of-range values.
+ *
+ * @param [in] handle Handle to the operator. Must not be NULL.
+ * @param [in] stream Handle to a valid CUDA stream.
+ * @param [in] in Input image tensor.
+ * @param [out] out Output image tensor. Shape, layout, and dtype must match @p in.
+ * @param [in] i Vertical slice start.
+ * @param [in] j Horizontal slice start.
+ * @param [in] h Vertical slice extent used to form the exclusive stop `i + h`.
+ * @param [in] w Horizontal slice extent used to form the exclusive stop `j + w`.
+ * @param [in] values Value tensor to broadcast into the selected region.
+ *
+ * @retval #NVCV_ERROR_INVALID_ARGUMENT A tensor or parameter violates the contract above.
+ * @retval #NVCV_SUCCESS Operation submitted successfully.
+ */
+CVCUDA_PUBLIC NVCVStatus cvcudaEraseRegionSubmit(NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in,
+                                                 NVCVTensorHandle out, int64_t i, int64_t j, int64_t h, int64_t w,
+                                                 NVCVTensorHandle values);
 
 /** @} */
 

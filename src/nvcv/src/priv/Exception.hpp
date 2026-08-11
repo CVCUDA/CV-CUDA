@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,14 +18,16 @@
 #ifndef NVCV_CORE_PRIV_EXCEPTION_HPP
 #define NVCV_CORE_PRIV_EXCEPTION_HPP
 
+#include "Status.hpp"
+
 #include <nvcv/Status.h>
+#include <nvcv/detail/Format.hpp>
+#include <nvcv/util/String.hpp>
 
+#include <array>
+#include <cstddef>
 #include <cstring>
-
-#ifdef __GNUC__
-#    undef __DEPRECATED
-#endif
-#include <strstream>
+#include <utility>
 
 namespace nvcv::priv {
 
@@ -34,15 +36,24 @@ class Exception : public std::exception
 public:
     explicit Exception(NVCVStatus code, const char *fmt, va_list va);
 
-    explicit Exception(NVCVStatus code, const char *fmt, ...)
-#if __GNUC__
-        // first argument is actually 'this'
-        __attribute__((format(printf, 3, 4)));
-#else
-        ;
-#endif
+    explicit Exception(NVCVStatus code, const char *msg);
+
+    template<size_t N, class... Args>
+    explicit Exception(NVCVStatus code, const char (&fmt)[N], Args &&...args)
+        : m_code(code)
+    {
+        initStreamBuffer();
+        formatMessage(fmt, std::forward<Args>(args)...);
+    }
 
     explicit Exception(NVCVStatus code);
+
+    Exception(const Exception &that) noexcept;
+    Exception(Exception &&that) noexcept;
+    Exception &operator=(const Exception &that) noexcept;
+    Exception &operator=(Exception &&that) noexcept;
+
+    ~Exception() noexcept override;
 
     NVCVStatus  code() const;
     const char *msg() const;
@@ -52,24 +63,32 @@ public:
     template<class T>
     Exception &&operator<<(const T &v) &&
     {
-        // TODO: must avoid allocating memory from heap, can't use ostringstream
+        // REVISIT: must avoid allocating memory from heap, can't use ostringstream
         std::ostream ss(&m_strbuf);
         ss << v << std::flush;
         return std::move(*this);
     }
 
 private:
-    NVCVStatus m_code = NVCV_ERROR_INTERNAL;
-    char       m_buffer[NVCV_MAX_STATUS_MESSAGE_LENGTH + 64 + 2]{};
+    void copyFrom(const Exception &that) noexcept;
+    void initStreamBuffer() noexcept;
+    void resetStreamPosition() noexcept;
 
-    class StrBuffer : public std::strstreambuf
+    template<size_t N, class... Args>
+    void formatMessage(const char (&fmt)[N], Args &&...args)
     {
-    public:
-        using std::strstreambuf::seekpos;
-        using std::strstreambuf::strstreambuf;
-    };
+        detail::FormatTo(m_buffer.data(), m_buffer.size(), "%s: ", GetName(m_code));
 
-    StrBuffer m_strbuf;
+        size_t len = std::char_traits<char>::length(m_buffer.data());
+        detail::FormatTo(m_buffer.data() + len, m_buffer.size() - len, fmt, std::forward<Args>(args)...);
+
+        resetStreamPosition();
+    }
+
+    NVCVStatus                                                m_code   = NVCV_ERROR_INTERNAL;
+    std::array<char, NVCV_MAX_STATUS_MESSAGE_LENGTH + 64 + 2> m_buffer = {};
+
+    util::FixedBufferStreamBuf m_strbuf;
 };
 
 } // namespace nvcv::priv

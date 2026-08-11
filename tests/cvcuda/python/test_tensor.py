@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,10 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
-import cvcuda
-import pytest as t
 import numpy as np
+import pytest as t
+
+import cvcuda
+import cupy
 
 
 @t.mark.parametrize(
@@ -82,7 +83,7 @@ def test_tensor_creation_shape_works(shape, dtype, layout):
     assert tensor.ndim == len(shape)
 
 
-params_wrap_torch = [
+params_wrap_cuda_buffer = [
     ((3, 5, 7, 1), np.uint8),
     ((3, 5, 7, 1), np.int8),
     ((3, 5, 7, 1), np.int16),
@@ -97,30 +98,118 @@ params_wrap_torch = [
 ]
 
 
-@t.mark.parametrize("shape,dtype", params_wrap_torch)
-def test_wrap_torch_buffer(shape, dtype):
-    tensor = cvcuda.as_tensor(
-        torch.as_tensor(np.ndarray(shape, dtype=dtype), device="cuda")
-    )
+@t.mark.parametrize("shape,dtype", params_wrap_cuda_buffer)
+def test_wrap_cuda_buffer(shape, dtype):
+    tensor = cvcuda.as_tensor(cupy.asarray(np.ndarray(shape, dtype=dtype)))
     assert tensor.shape == shape
     assert tensor.dtype == dtype
     assert tensor.layout is None
     assert tensor.ndim == len(shape)
 
 
-@t.mark.parametrize("shape,dtype", params_wrap_torch)
-def test_wrap_torch_buffer_dlpack(shape, dtype):
-    ttensor = torch.as_tensor(np.ndarray(shape, dtype=dtype), device="cuda")
+def _make_dlpack_capsule(cupy_array):
+    """Build a DLPack v0 PyCapsule from a cupy array using ctypes.
 
-    # Since cvcuda.as_tensor can understand both dlpack and cuda_array_interface,
-    # and we don't know a priori which interfaces it'll use (torch provides both),
-    # let's create one object with only the dlpack interface.
-    class DLPackObject:
+    This replicates the capsule format that cvcuda's DLPack consumer expects,
+    bypassing cupy's v1.0 __dlpack__ protocol which triggers an abort in
+    cvcuda's C++ consumer for certain dtypes.
+    """
+    import ctypes
+
+    kDLCUDA = 2
+    kDLInt, kDLUInt, kDLFloat, kDLComplex = 0, 1, 2, 5
+
+    dtype = cupy_array.dtype
+    if dtype.kind == "u":
+        code = kDLUInt
+    elif dtype.kind == "i":
+        code = kDLInt
+    elif dtype.kind == "f":
+        code = kDLFloat
+    elif dtype.kind == "c":
+        code = kDLComplex
+    else:
+        raise TypeError(f"Unsupported dtype: {dtype}")
+
+    class _DLDevice(ctypes.Structure):
+        _fields_ = [("device_type", ctypes.c_int), ("device_id", ctypes.c_int)]
+
+    class _DLDataType(ctypes.Structure):
+        _fields_ = [
+            ("code", ctypes.c_uint8),
+            ("bits", ctypes.c_uint8),
+            ("lanes", ctypes.c_uint16),
+        ]
+
+    class _DLTensor(ctypes.Structure):
+        _fields_ = [
+            ("data", ctypes.c_void_p),
+            ("device", _DLDevice),
+            ("ndim", ctypes.c_int),
+            ("dtype", _DLDataType),
+            ("shape", ctypes.POINTER(ctypes.c_int64)),
+            ("strides", ctypes.POINTER(ctypes.c_int64)),
+            ("byte_offset", ctypes.c_uint64),
+        ]
+
+    class _DLManagedTensor(ctypes.Structure):
         pass
 
-    o = DLPackObject()
-    o.__dlpack__ = ttensor.__dlpack__
-    o.__dlpack_device__ = ttensor.__dlpack_device__
+    _DELETER = ctypes.CFUNCTYPE(None, ctypes.POINTER(_DLManagedTensor))
+    _DLManagedTensor._fields_ = [
+        ("dl_tensor", _DLTensor),
+        ("manager_ctx", ctypes.c_void_p),
+        ("deleter", _DELETER),
+    ]
+
+    ndim = cupy_array.ndim
+    shape_arr = (ctypes.c_int64 * ndim)(*cupy_array.shape)
+    strides_list = [1]
+    for i in range(ndim - 1, 0, -1):
+        strides_list.insert(0, strides_list[0] * cupy_array.shape[i])
+    strides_arr = (ctypes.c_int64 * ndim)(*strides_list)
+
+    mt = _DLManagedTensor()
+    mt.dl_tensor.data = ctypes.c_void_p(cupy_array.data.ptr)
+    mt.dl_tensor.device = _DLDevice(kDLCUDA, cupy_array.device.id)
+    mt.dl_tensor.ndim = ndim
+    mt.dl_tensor.dtype = _DLDataType(code, dtype.itemsize * 8, 1)
+    mt.dl_tensor.shape = ctypes.cast(shape_arr, ctypes.POINTER(ctypes.c_int64))
+    mt.dl_tensor.strides = ctypes.cast(strides_arr, ctypes.POINTER(ctypes.c_int64))
+    mt.dl_tensor.byte_offset = 0
+    mt.manager_ctx = None
+    mt.deleter = _DELETER(0)
+
+    PyCapsule_New = ctypes.pythonapi.PyCapsule_New
+    PyCapsule_New.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p]
+    PyCapsule_New.restype = ctypes.py_object
+
+    capsule = PyCapsule_New(ctypes.addressof(mt), b"dltensor", None)
+
+    # Return the capsule and the prevent-GC refs (caller must keep them alive)
+    return capsule, (mt, shape_arr, strides_arr, cupy_array)
+
+
+@t.mark.parametrize("shape,dtype", params_wrap_cuda_buffer)
+def test_wrap_cuda_buffer_dlpack(shape, dtype):
+    cuda_buffer = cupy.asarray(np.ndarray(shape, dtype=dtype))
+
+    # Create an object with only __dlpack__ (no __cuda_array_interface__)
+    # to force cvcuda.as_tensor to use the DLPack path.
+    class DLPackObject:
+        def __init__(self, src):
+            self._src = src
+            self._prevent_gc = None
+
+        def __dlpack__(self, *args, **kwargs):
+            capsule, refs = _make_dlpack_capsule(self._src)
+            self._prevent_gc = refs
+            return capsule
+
+        def __dlpack_device__(self):
+            return (2, self._src.device.id)  # kDLCUDA
+
+    o = DLPackObject(cuda_buffer)
 
     tensor = cvcuda.as_tensor(o)
     assert tensor.shape == shape
@@ -129,18 +218,42 @@ def test_wrap_torch_buffer_dlpack(shape, dtype):
     assert tensor.ndim == len(shape)
 
 
-@t.mark.parametrize("shape,dtype", params_wrap_torch)
-def test_wrap_torch_buffer_cuda_array_interface(shape, dtype):
-    ttensor = torch.as_tensor(np.ndarray(shape, dtype=dtype), device="cuda")
+@t.mark.parametrize("shape,dtype", params_wrap_cuda_buffer)
+def test_wrap_cuda_buffer_dlpack_v1(shape, dtype):
+    """Test consuming DLPack v1.0 capsules from cupy's native __dlpack__."""
+    cuda_buffer = cupy.asarray(np.ndarray(shape, dtype=dtype))
+
+    class DLPackV1Object:
+        def __init__(self, src):
+            self._src = src
+
+        def __dlpack__(self, *args, **kwargs):
+            return self._src.__dlpack__(*args, **kwargs)
+
+        def __dlpack_device__(self):
+            return self._src.__dlpack_device__()
+
+    o = DLPackV1Object(cuda_buffer)
+
+    tensor = cvcuda.as_tensor(o)
+    assert tensor.shape == shape
+    assert tensor.dtype == dtype
+    assert tensor.layout is None
+    assert tensor.ndim == len(shape)
+
+
+@t.mark.parametrize("shape,dtype", params_wrap_cuda_buffer)
+def test_wrap_cuda_buffer_cuda_array_interface(shape, dtype):
+    cuda_buffer = cupy.asarray(np.ndarray(shape, dtype=dtype))
 
     # Since cvcuda.as_tensor can understand both dlpack and cuda_array_interface,
-    # and we don't know a priori which interfaces it'll use (torch provides both),
+    # and we don't know a priori which interfaces it'll use (some CUDA libraries provide both),
     # let's create one object with only the cuda_array_interface.
     class CudaArrayInterfaceObject:
         pass
 
     o = CudaArrayInterfaceObject()
-    o.__cuda_array_interface__ = ttensor.__cuda_array_interface__
+    o.__cuda_array_interface__ = cuda_buffer.__cuda_array_interface__
 
     tensor = cvcuda.as_tensor(o)
     assert tensor.shape == shape
@@ -160,10 +273,8 @@ def test_wrap_torch_buffer_cuda_array_interface(shape, dtype):
         ((5,), np.uint8, "W"),
     ],
 )
-def test_wrap_torch_buffer_with_layout(shape, dtype, layout):
-    tensor = cvcuda.as_tensor(
-        torch.as_tensor(np.ndarray(shape, dtype=dtype), device="cuda"), layout
-    )
+def test_wrap_cuda_buffer_with_layout(shape, dtype, layout):
+    tensor = cvcuda.as_tensor(cupy.asarray(np.ndarray(shape, dtype=dtype)), layout)
     assert tensor.shape == shape
     assert tensor.shape == shape
     assert tensor.dtype == dtype
@@ -214,10 +325,10 @@ export_cuda_buffer_params = [
     export_cuda_buffer_params,
 )
 def test_tensor_export_cuda_buffer(shape, dtype):
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(0)
     hostGold = rng.integers(0, 128, shape, dtype)
 
-    devGold = torch.as_tensor(hostGold, device="cuda")
+    devGold = cupy.asarray(hostGold)
 
     tensor = cvcuda.as_tensor(devGold)
 
@@ -225,7 +336,8 @@ def test_tensor_export_cuda_buffer(shape, dtype):
     assert devMem.dtype == dtype
     assert devMem.shape == shape
 
-    assert (hostGold == torch.as_tensor(devMem).cpu().numpy()).all()
+    devMemWrapped = cupy.asarray(devMem)
+    assert (hostGold == devMemWrapped.get()).all()
 
 
 @t.mark.parametrize(
@@ -233,10 +345,10 @@ def test_tensor_export_cuda_buffer(shape, dtype):
     export_cuda_buffer_params,
 )
 def test_tensor_export_cuda_buffer_dlpack(shape, dtype):
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(0)
     hostGold = rng.integers(0, 128, shape, dtype)
 
-    devGold = torch.as_tensor(hostGold, device="cuda")
+    devGold = cupy.asarray(hostGold)
 
     tensor = cvcuda.as_tensor(devGold)
 
@@ -244,22 +356,51 @@ def test_tensor_export_cuda_buffer_dlpack(shape, dtype):
     assert devMem.dtype == dtype
     assert devMem.shape == shape
 
-    assert (hostGold == torch.from_dlpack(devMem).cpu().numpy()).all()
+    # Use from_dlpack to import the DLPack tensor
+    devMemWrapped = cupy.from_dlpack(devMem)
+    assert (hostGold == devMemWrapped.get()).all()
+
+
+@t.mark.parametrize(
+    "shape,dtype",
+    export_cuda_buffer_params,
+)
+def test_tensor_export_cuda_buffer_dlpack_v0(shape, dtype):
+    """Test that cvcuda produces a v0 'dltensor' capsule when max_version is not passed."""
+    import ctypes
+
+    rng = np.random.default_rng(0)
+    hostGold = rng.integers(0, 128, shape, dtype)
+
+    devGold = cupy.asarray(hostGold)
+    tensor = cvcuda.as_tensor(devGold)
+    devMem = tensor.cuda()
+
+    # Call __dlpack__ without max_version to get a legacy v0 capsule
+    capsule = devMem.__dlpack__()
+
+    # Verify it's a v0 capsule named "dltensor"
+    PyCapsule_IsValid = ctypes.pythonapi.PyCapsule_IsValid
+    PyCapsule_IsValid.argtypes = [ctypes.py_object, ctypes.c_char_p]
+    PyCapsule_IsValid.restype = ctypes.c_int
+    assert PyCapsule_IsValid(capsule, b"dltensor") or PyCapsule_IsValid(
+        capsule, b"used_dltensor"
+    )
 
 
 def test_tensor_hold_reference_of_wrapped_buffer():
-    ttensor = torch.as_tensor(np.ndarray([10], np.int8), device="cuda")
-    ptr0 = ttensor.data_ptr()
+    cuda_buffer = cupy.asarray(np.ndarray([10], np.int8))
+    ptr0 = cuda_buffer.data.ptr
 
-    cvtensor = cvcuda.as_tensor(ttensor)  # noqa: F841 assigned but never used
+    cvtensor = cvcuda.as_tensor(cuda_buffer)  # noqa: F841 assigned but never used
 
-    del ttensor  # cvtensor must have held ttensor object
+    del cuda_buffer  # cvtensor must have held cuda_buffer object
 
-    ttensor = torch.as_tensor(np.ndarray([10], np.int8), device="cuda")
+    cuda_buffer = cupy.asarray(np.ndarray([10], np.int8))
 
-    # since "cvtensor" must have held the reference to the first "ttensor",
-    # the second "ttensor" must be a different buffer
-    assert ptr0 != ttensor.data_ptr()
+    # since "cvtensor" must have held the reference to the first "cuda_buffer",
+    # the second "cuda_buffer" must be a different buffer
+    assert ptr0 != cuda_buffer.data.ptr
 
 
 def test_tensor_is_kept_alive_by_cuda_array_interface():
@@ -443,7 +584,7 @@ def test_tensor_size_in_bytes():
     assert cvcuda.internal.nbytes_in_cache(tensor_create) > 0
 
     tensor_wrap = cvcuda.as_tensor(
-        torch.as_tensor(np.ndarray((5, 16, 32, 4), dtype=np.float32), device="cuda")
+        cupy.asarray(np.ndarray((5, 16, 32, 4), dtype=np.float32))
     )
     assert cvcuda.internal.nbytes_in_cache(tensor_wrap) == 0
 

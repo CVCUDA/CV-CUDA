@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "Definitions.hpp"
 #include "FlipUtils.hpp"
+#include "PlanarParityUtils.hpp"
 
 #include <common/TensorDataUtils.hpp>
 #include <common/ValueTests.hpp>
@@ -28,9 +29,15 @@
 #include <nvcv/TensorDataAccess.hpp>
 
 #include <random>
+#include <vector>
 
 namespace test = nvcv::test;
 namespace cuda = nvcv::cuda;
+
+static int ScaledSize(int size, double scale)
+{
+    return static_cast<int>(size * scale);
+}
 
 // clang-format off
 
@@ -42,7 +49,20 @@ NVCV_TEST_SUITE_P(OpFlip, test::ValueList<int, int, int, NVCVImageFormat, int>
     {    123,     33,       3,  NVCV_IMAGE_FORMAT_RGB8, -1},
     {     42,     53,       4, NVCV_IMAGE_FORMAT_RGBA8,  1},
     {     13,     42,       3,  NVCV_IMAGE_FORMAT_RGB8,  0},
-    {     62,    111,       4, NVCV_IMAGE_FORMAT_RGBA8, -1}
+    {     62,    111,       4, NVCV_IMAGE_FORMAT_RGBA8, -1},
+    // Float3 is intentionally routed through conservative kernels. Cover every flip direction for
+    // both tensor and var-shape submissions against the independent CPU reference.
+    {     67,     45,       2, NVCV_IMAGE_FORMAT_RGBf32,  1},
+    {     70,     43,       3, NVCV_IMAGE_FORMAT_RGBf32,  0},
+    {     65,     41,       2, NVCV_IMAGE_FORMAT_RGBf32, -1},
+    // Single-channel cases that exercise the wide (VEC=4) vectorized path and its in-register lane
+    // reversal: width divisible by 4 (vector body) for each flip code, plus a non-divisible width that
+    // falls back to the scalar single-channel tail. U8 and U16 cover both VEC lane widths.
+    {    256,     65,       2,    NVCV_IMAGE_FORMAT_U8,  1}, // wide horizontal (lane reversal)
+    {    256,     64,       2,    NVCV_IMAGE_FORMAT_U8, -1}, // wide both (lane reversal)
+    {    256,     48,       3,    NVCV_IMAGE_FORMAT_U8,  0}, // wide vertical (direct copy)
+    {    128,     40,       2,   NVCV_IMAGE_FORMAT_U16, -1}, // wide both, 16-bit lanes
+    {    255,     40,       2,    NVCV_IMAGE_FORMAT_U8, -1}  // scalar tail (width % 4 != 0)
 });
 
 // clang-format on
@@ -80,8 +100,8 @@ TEST_P(OpFlip, correct_output)
     long inSampleStride  = inAccess->numRows() * inAccess->rowStride();
     long outSampleStride = outAccess->numRows() * outAccess->rowStride();
 
-    int inBufSize  = inSampleStride * inAccess->numSamples();
-    int outBufSize = outSampleStride * outAccess->numSamples();
+    auto inBufSize  = static_cast<size_t>(inSampleStride * inAccess->numSamples());
+    auto outBufSize = static_cast<size_t>(outSampleStride * outAccess->numSamples());
 
     long3 inStrides{inSampleStride, inAccess->rowStride(), inAccess->colStride()};
     long3 outStrides{outSampleStride, outAccess->rowStride(), outAccess->colStride()};
@@ -91,7 +111,7 @@ TEST_P(OpFlip, correct_output)
     std::default_random_engine    randEng(0);
     std::uniform_int_distribution rand(0u, 255u);
 
-    std::generate(inVec.begin(), inVec.end(), [&]() { return rand(randEng); });
+    std::ranges::generate(inVec, [&rand, &randEng]() { return rand(randEng); });
     std::vector<uint8_t> goldVec(outBufSize);
     test::FlipCPU(goldVec, outStrides, inVec, inStrides, shape, format, flipCode);
 
@@ -126,9 +146,9 @@ TEST_P(OpFlip, varshape_correct_output)
     int flipCode = GetParamValue<4>();
 
     // Create input varshape
-    std::default_random_engine         rng;
-    std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
-    std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
+    std::default_random_engine    rng;
+    std::uniform_int_distribution udistWidth(ScaledSize(width, 0.8), ScaledSize(width, 1.1));
+    std::uniform_int_distribution udistHeight(ScaledSize(height, 0.8), ScaledSize(height, 1.1));
 
     std::vector<nvcv::Image> imgSrc;
 
@@ -145,7 +165,7 @@ TEST_P(OpFlip, varshape_correct_output)
         std::uniform_int_distribution<uint8_t> udist(0, 255);
 
         srcVec[i].resize(imgSrc[i].size().h * srcRowStride);
-        std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return udist(rng); });
+        std::ranges::generate(srcVec[i], [&udist, &rng]() { return udist(rng); });
 
         auto imgData = imgSrc[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_NE(imgData, nvcv::NullOpt);
@@ -219,11 +239,92 @@ TEST_P(OpFlip, varshape_correct_output)
     }
 }
 
+// =============================================================================
+// Planar (NCHW/CHW) layout support
+//
+// Flip remaps each pixel independently of its channel, so a planar input is flipped plane-by-plane
+// and must produce exactly the same pixels as the interleaved path. These tests feed identical data
+// in both layouts through cvcuda::Flip and require the (re-interleaved) planar output to match the
+// interleaved output bit-for-bit, for every dtype and flip code.
+// =============================================================================
+
+namespace {
+
+// Flip identical data in interleaved and planar tensor layout; outputs must match bit-for-bit.
+// The shared scaffolding (upload/run/download/compare) lives in PlanarParityUtils.hpp; here we only
+// bind the Flip call.
+void RunPlanarParityTensorCase(nvcv::ImageFormat planarFmt, nvcv::ImageFormat interleavedFmt, int w, int h,
+                               int flipCode, int numImages)
+{
+    test::planar::RunTensorParity(
+        planarFmt, interleavedFmt, w, h, w, h, numImages,
+        [numImages, flipCode](cudaStream_t s, const nvcv::Tensor &src, const nvcv::Tensor &dst, nvcv::ImageFormat)
+        {
+            cvcuda::Flip op(numImages);
+            EXPECT_NO_THROW(op(s, src, dst, flipCode));
+        });
+}
+
+// Var-shape counterpart of RunPlanarParityTensorCase.
+void RunPlanarParityVarShapeCase(nvcv::ImageFormat planarFmt, nvcv::ImageFormat interleavedFmt, int w, int h,
+                                 int flipCode, int numImages)
+{
+    // Var-shape Flip takes the flip code as a per-image tensor; upload it once (synchronously, so it
+    // is ready before the operator runs on the parity helper's stream).
+    nvcv::Tensor flip_code({{numImages}, "N"}, nvcv::TYPE_S32);
+    {
+        auto dev = flip_code.exportData<nvcv::TensorDataStridedCuda>();
+        ASSERT_NE(dev, nullptr);
+        std::vector<int> vec(numImages, flipCode);
+        ASSERT_EQ(cudaSuccess,
+                  cudaMemcpy(dev->basePtr(), vec.data(), vec.size() * sizeof(int), cudaMemcpyHostToDevice));
+    }
+
+    test::planar::RunVarShapeParity(planarFmt, interleavedFmt, w, h, w, h, numImages,
+                                    [numImages, &flip_code](cudaStream_t s, const nvcv::ImageBatchVarShape &src,
+                                                            const nvcv::ImageBatchVarShape &dst, nvcv::ImageFormat)
+                                    {
+                                        cvcuda::Flip op(numImages);
+                                        EXPECT_NO_THROW(op(s, src, dst, flip_code));
+                                    });
+}
+
+} // namespace
+
+// Parameters: width, height, flipCode, numImages, planarFmt, interleavedFmt
+// clang-format off
+NVCV_TEST_SUITE_P(OpFlipPlanar,
+                  test::ValueList<int, int, int, int, nvcv::ImageFormat, nvcv::ImageFormat>{
+    {176, 113,  1, 2,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8}, // RGB8, horizontal
+    {123,  66,  0, 2,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8}, // RGB8, vertical
+    { 64,  48, -1, 1,    nvcv::FMT_RGB8p,    nvcv::FMT_RGB8}, // RGB8, both
+    { 50,  40,  1, 2,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8}, // RGBA8, horizontal
+    {100,  80, -1, 1,   nvcv::FMT_RGBA8p,   nvcv::FMT_RGBA8}, // RGBA8, both
+    { 64,  48,  0, 2, nvcv::FMT_RGBAf32p, nvcv::FMT_RGBAf32}, // float planar
+    { 67,  45,  1, 2,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32}, // RGB float3, horizontal
+    { 70,  43,  0, 2,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32}, // RGB float3, vertical
+    { 65,  41, -1, 2,  nvcv::FMT_RGBf32p,  nvcv::FMT_RGBf32}, // RGB float3, both
+});
+
+// clang-format on
+
+TEST_P(OpFlipPlanar, tensor_matches_interleaved)
+{
+    RunPlanarParityTensorCase(GetParamValue<4>(), GetParamValue<5>(), GetParamValue<0>(), GetParamValue<1>(),
+                              GetParamValue<2>(), GetParamValue<3>());
+}
+
+TEST_P(OpFlipPlanar, varshape_matches_interleaved)
+{
+    RunPlanarParityVarShapeCase(GetParamValue<4>(), GetParamValue<5>(), GetParamValue<0>(), GetParamValue<1>(),
+                                GetParamValue<2>(), GetParamValue<3>());
+}
+
 // clang-format off
 NVCV_TEST_SUITE_P(OpFlip_Negative, nvcv::test::ValueList<nvcv::ImageFormat, nvcv::ImageFormat>{
     {nvcv::FMT_RGB8, nvcv::FMT_RGBf32},  // data type is different
-    {nvcv::FMT_RGB8, nvcv::FMT_RGB8p},  // data format is different
-    {nvcv::FMT_RGB8p, nvcv::FMT_RGB8p}, // data format is not kNHWC/kHWC
+    {nvcv::FMT_RGB8, nvcv::FMT_RGB8p},  // data format is different (interleaved in, planar out)
+    {nvcv::FMT_2S16, nvcv::FMT_2S16},  // unsupported two-channel format
     {nvcv::FMT_F16, nvcv::FMT_F16},  // invalid data type,
 });
 
@@ -243,7 +344,8 @@ TEST_P(OpFlip_Negative, op)
 
     // run operator
     cvcuda::Flip flipOp;
-    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { flipOp(stream, inTensor, outTensor, flipCode); }));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&flipOp, &stream, &inTensor, &outTensor, &flipCode]
+                                                             { flipOp(stream, inTensor, outTensor, flipCode); }));
 
     ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
     ASSERT_EQ(cudaSuccess, cudaStreamDestroy(stream));
@@ -262,9 +364,9 @@ TEST_P(OpFlip_Negative, varshape_op)
     int batches  = 3;
     int flipCode = 0;
 
-    std::default_random_engine         rng;
-    std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
-    std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
+    std::default_random_engine    rng;
+    std::uniform_int_distribution udistWidth(ScaledSize(width, 0.8), ScaledSize(width, 1.1));
+    std::uniform_int_distribution udistHeight(ScaledSize(height, 0.8), ScaledSize(height, 1.1));
 
     std::vector<nvcv::Image> imgSrc;
     for (int i = 0; i < batches; ++i)
@@ -298,7 +400,8 @@ TEST_P(OpFlip_Negative, varshape_op)
     // Run operator
     cvcuda::Flip flipOp(batches);
 
-    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&] { flipOp(stream, batchSrc, batchDst, flip_code); }));
+    EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&flipOp, &stream, &batchSrc, &batchDst, &flip_code]
+                                                             { flipOp(stream, batchSrc, batchDst, flip_code); }));
 }
 
 TEST(OpFlip_Negative, varshape_hasDifferentFormat)
@@ -312,20 +415,17 @@ TEST(OpFlip_Negative, varshape_hasDifferentFormat)
     int               height   = 24;
     int               batches  = 3;
 
-    std::default_random_engine         rng;
-    std::uniform_int_distribution<int> udistWidth(width * 0.8, width * 1.1);
-    std::uniform_int_distribution<int> udistHeight(height * 0.8, height * 1.1);
+    std::default_random_engine    rng;
+    std::uniform_int_distribution udistWidth(ScaledSize(width, 0.8), ScaledSize(width, 1.1));
+    std::uniform_int_distribution udistHeight(ScaledSize(height, 0.8), ScaledSize(height, 1.1));
 
     std::vector<std::tuple<nvcv::ImageFormat, nvcv::ImageFormat>> testSet{
         {nvcv::FMT_U8,          fmt},
         {         fmt, nvcv::FMT_U8}
     };
 
-    for (auto testCase : testSet)
+    for (const auto &[inputFmtExtra, outputFmtExtra] : testSet)
     {
-        nvcv::ImageFormat inputFmtExtra  = std::get<0>(testCase);
-        nvcv::ImageFormat outputFmtExtra = std::get<1>(testCase);
-
         std::vector<nvcv::Image> imgSrc;
         for (int i = 0; i < batches - 1; ++i)
         {
@@ -360,8 +460,8 @@ TEST(OpFlip_Negative, varshape_hasDifferentFormat)
         // Run operator
         cvcuda::Flip flipOp(batches);
 
-        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT,
-                  nvcv::ProtectCall([&] { flipOp(stream, batchSrc, batchDst, flip_code); }));
+        EXPECT_EQ(NVCV_ERROR_INVALID_ARGUMENT, nvcv::ProtectCall([&flipOp, &stream, &batchSrc, &batchDst, &flip_code]
+                                                                 { flipOp(stream, batchSrc, batchDst, flip_code); }));
     }
 }
 

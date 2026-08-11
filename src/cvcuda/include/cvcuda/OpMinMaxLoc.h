@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -58,7 +58,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaMinMaxLocCreate(NVCVOperatorHandle *handle);
  *  Limitations:
  *
  *  Input:
- *       Data Layout:    [HWC, NHWC, CHW, NCHW]
+ *       Data Layout:    [HW, NHW, HWC, NHWC, CHW, NCHW]
  *       Channels:       [1]
  *
  *       Data Type      | Allowed
@@ -69,6 +69,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaMinMaxLocCreate(NVCVOperatorHandle *handle);
  *       16bit Signed   | Yes
  *       32bit Unsigned | Yes
  *       32bit Signed   | Yes
+ *       16bit Float    | No
  *       32bit Float    | Yes
  *       64bit Float    | Yes
  *
@@ -76,8 +77,9 @@ CVCUDA_PUBLIC NVCVStatus cvcudaMinMaxLocCreate(NVCVOperatorHandle *handle);
  *                    + Must not be NULL.
  * @param [in] stream Handle to a valid CUDA stream.
  *
- * @param [in] in Input tensor.  The expected layout is [HWC] or [NHWC] or [CHW] or [NCHW], where N is the number
- *                of samples, i.e. images with height H and width W and channels C, inside the tensor.
+ * @param [in] in Input tensor.  The expected layout is [HW] or [NHW] or [HWC] or [NHWC] or [CHW] or [NCHW],
+ *                where N is the number of samples, i.e. images with height H and width W and channels C,
+ *                inside the tensor.
  *
  * @param [out] minVal Output tensor to store minimum values found in the input tensor.  The expected layout is [N]
  *                     or [NC], meaning rank-1 or rank-2 tensor with first dimension as number of samples N, and a
@@ -160,5 +162,7 @@ CVCUDA_PUBLIC NVCVStatus cvcudaMinMaxLocVarShapeSubmit(NVCVOperatorHandle handle
 #ifdef __cplusplus
 }
 #endif
+
+/** @} */
 
 #endif /* CVCUDA_MINMAXLOC_H */

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2020-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,6 +41,10 @@ class CudaEvent : public UniqueHandle<cudaEvent_t, CudaEvent>
 public:
     NVCV_INHERIT_UNIQUE_HANDLE(cudaEvent_t, CudaEvent)
     constexpr CudaEvent() = default;
+
+    CudaEvent(CudaEvent &&) noexcept = default;
+
+    CudaEvent &operator=(CudaEvent &&) noexcept = default;
 
     /** @brief Creates an event on specified device (or current device, if deviceId < 0) */
     static CudaEvent Create(int deviceId = -1);

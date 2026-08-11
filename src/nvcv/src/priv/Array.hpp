@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,13 +24,15 @@
 
 #include <cuda_runtime.h>
 
+#include <cstddef>
+
 namespace nvcv::priv {
 
 class Array final : public CoreObjectBase<IArray>
 {
 public:
     explicit Array(NVCVArrayRequirements reqs, IAllocator &alloc, NVCVResourceType target);
-    ~Array();
+    ~Array() override;
 
     static NVCVArrayRequirements CalcRequirements(int64_t capacity, const DataType &dtype, int32_t alignment,
                                                   NVCVResourceType target = NVCV_RESOURCE_MEM_CUDA);
@@ -55,7 +57,7 @@ private:
     NVCVResourceType          m_target;
     NVCVArrayData             m_data;
 
-    void *m_memBuffer;
+    NVCVByte *m_memBuffer;
 };
 
 } // namespace nvcv::priv

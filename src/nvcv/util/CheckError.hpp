@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,11 +21,14 @@
 #include "Assert.h"
 
 #include <driver_types.h> // for cudaError
+#include <nvcv/detail/Format.hpp>
 
+#include <array>
 #include <cstring>
 #include <iostream>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #if NVCV_EXPORTING
 #    include <nvcv/src/priv/Exception.hpp>
@@ -48,8 +51,19 @@
 namespace nvcv::util {
 
 namespace detail {
-const char *GetCheckMessage(char *buf, int buflen);
-char       *GetCheckMessage(char *buf, int buflen, const char *fmt, ...);
+using CheckMessageBuffer = std::array<char, NVCV_MAX_STATUS_MESSAGE_LENGTH>;
+
+const char *GetCheckMessage(const char *buf, int buflen);
+
+template<size_t N, class... Args>
+char *GetCheckMessage(char *buf, int buflen, const char (&fmt)[N], Args &&...args)
+{
+    NVCV_ASSERT(buf != nullptr);
+    nvcv::detail::FormatTo(buf, static_cast<std::size_t>(buflen), fmt, std::forward<Args>(args)...);
+    buf[buflen - 1] = '\0';
+    return buf;
+}
+
 std::string FormatErrorMessage(const std::string_view &errname, const std::string_view &callstr,
                                const std::string_view &msg);
 } // namespace detail
@@ -83,6 +97,7 @@ NVCVStatus TranslateError(T err)
 template<class T>
 inline void PreprocessError(T err)
 {
+    (void)err;
 }
 
 namespace detail {
@@ -114,7 +129,7 @@ void DoThrow(T error, const char *file, int line, const std::string_view &stmt, 
 template<class T>
 void DoLog(T error, const char *file, int line, const std::string_view &stmt, const std::string_view &errmsg)
 {
-    // TODO: replace with a real log facility
+    // REVISIT: replace with a real log facility
 
     // Can we expose source file data?
     if (file != nullptr)
@@ -126,20 +141,20 @@ void DoLog(T error, const char *file, int line, const std::string_view &stmt, co
 
 } // namespace detail
 
-#define NVCV_CHECK_THROW(STMT, ...)                                                                                \
-    [&]()                                                                                                          \
-    {                                                                                                              \
-        using ::nvcv::util::PreprocessError;                                                                       \
-        using ::nvcv::util::CheckSucceeded;                                                                        \
-        auto status = (STMT);                                                                                      \
-        PreprocessError(status);                                                                                   \
-        if (!CheckSucceeded(status))                                                                               \
-        {                                                                                                          \
-            char buf[NVCV_MAX_STATUS_MESSAGE_LENGTH];                                                              \
-            ::nvcv::util::detail::DoThrow(status, NVCV_SOURCE_FILE_NAME, NVCV_SOURCE_FILE_LINENO,                  \
-                                          NVCV_OPTIONAL_STRINGIFY(STMT),                                           \
-                                          ::nvcv::util::detail::GetCheckMessage(buf, sizeof(buf), ##__VA_ARGS__)); \
-        }                                                                                                          \
+#define NVCV_CHECK_THROW(STMT, ...)                                                                              \
+    [&]()                                                                                                        \
+    {                                                                                                            \
+        using ::nvcv::util::PreprocessError;                                                                     \
+        using ::nvcv::util::CheckSucceeded;                                                                      \
+        auto status = (STMT);                                                                                    \
+        PreprocessError(status);                                                                                 \
+        if (!CheckSucceeded(status))                                                                             \
+        {                                                                                                        \
+            ::nvcv::util::detail::CheckMessageBuffer buf;                                                        \
+            ::nvcv::util::detail::DoThrow(                                                                       \
+                status, NVCV_SOURCE_FILE_NAME, NVCV_SOURCE_FILE_LINENO, NVCV_OPTIONAL_STRINGIFY(STMT),           \
+                ::nvcv::util::detail::GetCheckMessage(buf.data(), static_cast<int>(buf.size()), ##__VA_ARGS__)); \
+        }                                                                                                        \
     }()
 
 #define NVCV_CHECK_LOG(STMT, ...)                                                                                \
@@ -151,10 +166,10 @@ void DoLog(T error, const char *file, int line, const std::string_view &stmt, co
         PreprocessError(status);                                                                                 \
         if (!CheckSucceeded(status))                                                                             \
         {                                                                                                        \
-            char buf[NVCV_MAX_STATUS_MESSAGE_LENGTH];                                                            \
-            ::nvcv::util::detail::DoLog(status, NVCV_SOURCE_FILE_NAME, NVCV_SOURCE_FILE_LINENO,                  \
-                                        NVCV_OPTIONAL_STRINGIFY(STMT),                                           \
-                                        ::nvcv::util::detail::GetCheckMessage(buf, sizeof(buf), ##__VA_ARGS__)); \
+            ::nvcv::util::detail::CheckMessageBuffer buf;                                                        \
+            ::nvcv::util::detail::DoLog(                                                                         \
+                status, NVCV_SOURCE_FILE_NAME, NVCV_SOURCE_FILE_LINENO, NVCV_OPTIONAL_STRINGIFY(STMT),           \
+                ::nvcv::util::detail::GetCheckMessage(buf.data(), static_cast<int>(buf.size()), ##__VA_ARGS__)); \
             return false;                                                                                        \
         }                                                                                                        \
         else                                                                                                     \

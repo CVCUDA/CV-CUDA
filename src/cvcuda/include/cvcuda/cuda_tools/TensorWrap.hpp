@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -79,7 +79,7 @@ namespace nvcv::cuda {
  * @tparam T Type (it can be const) of each element inside the tensor wrapper.
  * @tparam Strides Each compile-time (use -1 for run-time) pitch in bytes from first to last dimension.
  */
-template<typename T, typename StrideT, StrideT... Strides>
+template<typename T, typename StrideT, StrideT... Strides> // NOSONAR: StrideT is part of this public template API.
 class TensorWrapT;
 
 template<typename T, typename StrideT, StrideT... Strides>
@@ -93,7 +93,7 @@ public:
     using StrideType = StrideT;
 
     static constexpr int kNumDimensions   = sizeof...(Strides);
-    static constexpr int kVariableStrides = ((Strides == -1) + ...);
+    static constexpr int kVariableStrides = ((Strides == -1 ? 1 : 0) + ...);
     static constexpr int kConstantStrides = kNumDimensions - kVariableStrides;
 
     TensorWrapT() = default;
@@ -107,7 +107,7 @@ public:
     template<typename DataType, typename... Args>
     explicit __host__ __device__ TensorWrapT(const DataType *data, Args... strides)
         : m_data(reinterpret_cast<const std::byte *>(data))
-        , m_strides{std::forward<StrideT>(strides)...}
+        , m_strides{static_cast<StrideType>(strides)...}
     {
         static_assert((IsIndexType<Args, StrideType> && ...));
         static_assert(sizeof...(Args) == kVariableStrides);
@@ -135,11 +135,10 @@ public:
      *
      * @param[in] image Image reference to the image that will be wrapped.
      */
-    __host__ TensorWrapT(const ImageDataStridedCuda &image)
+    explicit __host__ TensorWrapT(const ImageDataStridedCuda &image)
+        : m_data(reinterpret_cast<const std::byte *>(image.plane(0).basePtr))
     {
         static_assert(kVariableStrides == 1 && kNumDimensions == 2);
-
-        m_data = reinterpret_cast<const std::byte *>(image.plane(0).basePtr);
 
         m_strides[0] = image.plane(0).rowStride;
     }
@@ -149,13 +148,12 @@ public:
      *
      * @param[in] tensor Tensor reference to the tensor that will be wrapped.
      */
-    __host__ TensorWrapT(const TensorDataStridedCuda &tensor)
+    explicit __host__ TensorWrapT(const TensorDataStridedCuda &tensor)
+        : m_data(reinterpret_cast<const std::byte *>(tensor.basePtr()))
     {
-        constexpr StrideT kStride[] = {std::forward<StrideT>(Strides)...};
+        constexpr StrideT kStride[] = {Strides...}; // NOSONAR: CUDA code indexes template-pack values.
 
         assert(tensor.rank() >= kNumDimensions);
-
-        m_data = reinterpret_cast<const std::byte *>(tensor.basePtr());
 
 #pragma unroll
         for (int i = 0; i < kNumDimensions; ++i)
@@ -233,7 +231,7 @@ public:
 
 protected:
     template<typename... Args>
-    inline const __host__ __device__ T *doGetPtr(Args... c) const
+    inline __host__ __device__ StrideT doGetOffset(Args... c) const
     {
         static_assert((IsIndexType<Args, StrideType> && ...));
         static_assert(sizeof...(Args) <= kNumDimensions);
@@ -241,9 +239,9 @@ protected:
         constexpr int     kArgSize  = sizeof...(Args);
         constexpr int     kVarSize  = kArgSize < kVariableStrides ? kArgSize : kVariableStrides;
         constexpr int     kDimSize  = kArgSize < kNumDimensions ? kArgSize : kNumDimensions;
-        constexpr StrideT kStride[] = {std::forward<StrideT>(Strides)...};
+        constexpr StrideT kStride[] = {Strides...}; // NOSONAR: CUDA code indexes template-pack values.
 
-        StrideType coords[] = {std::forward<StrideType>(c)...};
+        StrideType coords[] = {static_cast<StrideType>(c)...}; // NOSONAR: CUDA code indexes pack values.
 
         // Computing offset first potentially postpones or avoids 64-bit math during addressing
         StrideT offset = 0;
@@ -258,12 +256,18 @@ protected:
             offset += coords[i] * kStride[i];
         }
 
-        return reinterpret_cast<const T *>(m_data + offset);
+        return offset;
+    }
+
+    template<typename... Args>
+    inline const __host__ __device__ T *doGetPtr(Args... c) const
+    {
+        return reinterpret_cast<const T *>(m_data + doGetOffset(c...));
     }
 
 private:
     const std::byte *m_data                      = nullptr;
-    StrideT          m_strides[kVariableStrides] = {};
+    StrideT          m_strides[kVariableStrides] = {}; // NOSONAR: device storage exposed as pointer.
 };
 
 /**
@@ -272,7 +276,7 @@ private:
  * @tparam T Type (non-const) of each element inside the tensor wrapper.
  * @tparam Strides Each compile-time (use -1 for run-time) pitch in bytes from first to last dimension.
  */
-template<typename T, typename StrideT, StrideT... Strides>
+template<typename T, typename StrideT, StrideT... Strides> // NOSONAR: StrideT is part of this public template API.
 class TensorWrapT : public TensorWrapT<const T, StrideT, Strides...>
 {
     using Base = TensorWrapT<const T, StrideT, Strides...>;
@@ -296,6 +300,7 @@ public:
     template<typename DataType, typename... Args>
     explicit __host__ __device__ TensorWrapT(DataType *data, Args... strides)
         : Base(data, strides...)
+        , m_data(reinterpret_cast<std::byte *>(data))
     {
     }
 
@@ -309,6 +314,7 @@ public:
     template<typename DataType, typename StrideType>
     explicit __host__ __device__ TensorWrapT(DataType *data, StrideType *strides)
         : Base(data, strides)
+        , m_data(reinterpret_cast<std::byte *>(data))
     {
     }
 
@@ -317,8 +323,9 @@ public:
      *
      * @param[in] image Image reference to the image that will be wrapped.
      */
-    __host__ TensorWrapT(const ImageDataStridedCuda &image)
+    explicit __host__ TensorWrapT(const ImageDataStridedCuda &image)
         : Base(image)
+        , m_data(reinterpret_cast<std::byte *>(image.plane(0).basePtr))
     {
     }
 
@@ -327,8 +334,9 @@ public:
      *
      * @param[in] tensor Tensor reference to the tensor that will be wrapped.
      */
-    __host__ TensorWrapT(const TensorDataStridedCuda &tensor)
+    explicit __host__ TensorWrapT(const TensorDataStridedCuda &tensor)
         : Base(tensor)
+        , m_data(reinterpret_cast<std::byte *>(tensor.basePtr()))
     {
     }
 
@@ -384,9 +392,11 @@ protected:
     template<typename... Args>
     inline __host__ __device__ T *doGetPtr(Args... c) const
     {
-        // The const_cast here is the *only* place where it is used to remove the base pointer constness
-        return const_cast<T *>(Base::doGetPtr(c...));
+        return reinterpret_cast<T *>(m_data + Base::doGetOffset(c...));
     }
+
+private:
+    std::byte *m_data = nullptr;
 };
 
 template<typename T, int64_t... Strides>

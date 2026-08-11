@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,6 +41,10 @@ public:
 
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &base, const nvcv::Tensor &scale,
                     const nvcv::Tensor &out, float global_scale, float shift, float epsilon, uint32_t flags) const;
+
+    void operator()(cudaStream_t stream, const nvcv::Tensor &in, const float4 base, const float4 scale, int baseCount,
+                    int scaleCount, const nvcv::Tensor &out, float global_scale, float shift, float epsilon,
+                    uint32_t flags) const;
 
     void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::Tensor &base,
                     const nvcv::Tensor &scale, const nvcv::ImageBatchVarShape &out, float global_scale, float shift,

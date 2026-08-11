@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +18,7 @@
 #ifndef CV_CUDA_LEGACY_H
 #define CV_CUDA_LEGACY_H
 
+#include "AdaptiveThresholdPolicy.hpp"
 #include "CvCudaOSD.hpp"
 
 #include <cuda_runtime.h>
@@ -28,9 +29,11 @@
 #include <nvcv/ImageBatch.hpp>
 #include <nvcv/ImageBatchData.hpp>
 #include <nvcv/Rect.h>
+#include <nvcv/RoundMode.h>
 #include <nvcv/Tensor.hpp>
 #include <nvcv/TensorData.hpp>
 
+#include <cstddef>
 #include <random>
 #include <vector>
 
@@ -76,8 +79,7 @@ enum DataType
 struct DataShape
 {
     DataShape()
-        : N(1)
-        , C(0)
+        : C(0)
         , H(0)
         , W(0){};
     DataShape(int n, int c, int h, int w)
@@ -86,17 +88,16 @@ struct DataShape
         , H(h)
         , W(w){};
     DataShape(int c, int h, int w)
-        : N(1)
-        , C(c)
+        : C(c)
         , H(h)
         , W(w){};
 
-    bool operator==(const DataShape &s)
+    bool operator==(const DataShape &s) const
     {
         return s.N == N && s.H == H && s.W == W && s.C == C;
     }
 
-    bool operator!=(const DataShape &s)
+    bool operator!=(const DataShape &s) const
     {
         return !(*this == s);
     }
@@ -144,19 +145,21 @@ struct WarpAffineTransform
 {
     static __device__ __forceinline__ float2 calcCoord(const float *c_warpMat, int x, int y)
     {
-        const float xcoo = c_warpMat[0] * x + c_warpMat[1] * y + c_warpMat[2];
-        const float ycoo = c_warpMat[3] * x + c_warpMat[4] * y + c_warpMat[5];
+        const auto  fx   = static_cast<float>(x);
+        const auto  fy   = static_cast<float>(y);
+        const float xcoo = c_warpMat[0] * fx + c_warpMat[1] * fy + c_warpMat[2];
+        const float ycoo = c_warpMat[3] * fx + c_warpMat[4] * fy + c_warpMat[5];
 
         return make_float2(xcoo, ycoo);
     }
 
     // declare a 3x3 matrix/array to avoid conflicts in shared GPU kernel with warpPerspective
-    float xform[9];
+    float xform[9]; // NOSONAR: CUDA kernels consume this fixed-size transform storage.
 };
 
 struct PerspectiveTransform
 {
-    PerspectiveTransform(const float *transMatrix)
+    explicit PerspectiveTransform(const float *transMatrix)
     {
         xform[0] = transMatrix[0];
         xform[1] = transMatrix[1];
@@ -171,22 +174,24 @@ struct PerspectiveTransform
 
     static __device__ __forceinline__ float2 calcCoord(const float *c_warpMat, int x, int y)
     {
-        const float coeff = 1.0f / (c_warpMat[6] * x + c_warpMat[7] * y + c_warpMat[8]);
+        const auto  fx    = static_cast<float>(x);
+        const auto  fy    = static_cast<float>(y);
+        const float coeff = 1.0f / (c_warpMat[6] * fx + c_warpMat[7] * fy + c_warpMat[8]);
 
-        const float xcoo = coeff * (c_warpMat[0] * x + c_warpMat[1] * y + c_warpMat[2]);
-        const float ycoo = coeff * (c_warpMat[3] * x + c_warpMat[4] * y + c_warpMat[5]);
+        const float xcoo = coeff * (c_warpMat[0] * fx + c_warpMat[1] * fy + c_warpMat[2]);
+        const float ycoo = coeff * (c_warpMat[3] * fx + c_warpMat[4] * fy + c_warpMat[5]);
 
         return make_float2(xcoo, ycoo);
     }
 
-    float xform[9];
+    float xform[9]; // NOSONAR: CUDA kernels consume this fixed-size transform storage.
 };
 
 // cuda base operator class
 class CudaBaseOp
 {
 public:
-    CudaBaseOp(){};
+    CudaBaseOp() = default;
 
     CudaBaseOp(DataShape max_input_shape, DataShape max_output_shape)
         : max_input_shape_(max_input_shape)
@@ -194,18 +199,20 @@ public:
     {
     }
 
+    virtual ~CudaBaseOp() = default;
+
     /**
      * @brief calculate the cpu/gpu buffer size needed by this operator
      * @param max_input_shape maximum input DataShape that may be used
      * @param max_output_shape maximum output DataShape that may be used
      * @param max_data_type DataType with the maximum size that may be used
      */
-    size_t calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type)
+    virtual size_t calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type)
     {
         return 0;
     };
 
-    bool checkDataShapeValid(DataShape input_shape, DataShape output_shape)
+    bool checkDataShapeValid(DataShape input_shape, DataShape output_shape) const
     {
         int input_size      = input_shape.N * input_shape.C * input_shape.H * input_shape.W;
         int max_input_size  = max_input_shape_.N * max_input_shape_.C * max_input_shape_.H * max_input_shape_.W;
@@ -214,7 +221,7 @@ public:
         return (input_size <= max_input_size) && (output_size <= max_output_size);
     }
 
-protected:
+private:
     DataShape max_input_shape_;
     DataShape max_output_shape_;
 };
@@ -299,7 +306,7 @@ public:
      *
      */
     ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, const double alpha,
-                    const double beta, cudaStream_t stream);
+                    const double beta, NVCVRoundMode roundMode, cudaStream_t stream);
 };
 
 class CustomCrop : public CudaBaseOp
@@ -381,7 +388,7 @@ public:
     MinAreaRect() = delete;
 
     MinAreaRect(DataShape max_input_shape, DataShape max_output_shape, int maxContourNum);
-    ~MinAreaRect();
+    ~MinAreaRect() override;
 
     /**
      * @brief Creating Bounding rotated boxes and ellipses for contours
@@ -444,9 +451,9 @@ public:
                     const TensorDataStridedCuda &numPointsInContour, const int totalContours, cudaStream_t stream);
 
 private:
-    int   mMaxContourNum;
-    void *mRotateCoeffsBufDev = nullptr;
-    void *mRotatedPointsDev   = nullptr;
+    int    mMaxContourNum;
+    float *mRotateCoeffsBufDev = nullptr;
+    int   *mRotatedPointsDev   = nullptr;
 };
 
 class Flip : public CudaBaseOp
@@ -655,8 +662,8 @@ public:
 class Morphology : public CudaBaseOp
 {
 public:
-    Morphology()          = default;
-    virtual ~Morphology() = default;
+    Morphology()           = default;
+    ~Morphology() override = default;
 
     /**
      * @brief Dilates/Erodes an image
@@ -722,7 +729,7 @@ class MorphologyVarShape : public CudaBaseOp
 public:
     MorphologyVarShape() = default;
 
-    virtual ~MorphologyVarShape() = default;
+    ~MorphologyVarShape() override = default;
     /**
      * @brief Dilates/Erodes an image
      *
@@ -779,7 +786,8 @@ public:
      */
     ErrorCode infer(const nvcv::ImageBatchVarShape &inBatch, const nvcv::ImageBatchVarShape &outBatch,
                     NVCVMorphologyType morph_type, const TensorDataStridedCuda &masks,
-                    const TensorDataStridedCuda &anchors, bool noop, NVCVBorderType borderMode, cudaStream_t stream);
+                    const TensorDataStridedCuda &anchors, bool noop, NVCVBorderType borderMode,
+                    bool enableGenericInterior, cudaStream_t stream);
 };
 
 class Normalize : public CudaBaseOp
@@ -877,7 +885,30 @@ public:
                     const float global_scale, const float shift, const float epsilon, const uint32_t flags,
                     cudaStream_t stream);
 
-    void checkParamShape(DataShape input_shape, DataShape param_shape);
+    /**
+     * @brief Tensor-free overload of the normalize operation: base and scale are supplied by value
+     * (packed into float4 lanes) instead of as parameter tensors, so no per-channel parameter tensor
+     * needs to be allocated or uploaded. The normalization math and flags semantics match the tensor
+     * overload above and results are bit-identical for the same values. Interleaved (kNHWC / kHWC) and
+     * planar (kNCHW / kCHW) layouts are supported; per-axis spatial parameters are not supported on this
+     * path.
+     *
+     * @param base base values passed by value (up to four channels in a float4).
+     * @param scale scale values passed by value (up to four channels in a float4).
+     * @param baseCount number of meaningful base lanes: 1 (broadcast to all channels) or the channel count.
+     * @param scaleCount number of meaningful scale lanes: 1 (broadcast to all channels) or the channel count.
+     * @param global_scale additional scaling factor, used e.g. when output is of integral type.
+     * @param shift additional bias value, used e.g. when output is of unsigned type.
+     * @param epsilon regularizing term added to variance; only used if scale_is_stddev = true
+     * @param flags if true, scale is interpreted as standard deviation and it's regularized and its
+     * reciprocal is used when scaling.
+     * @param stream for the asynchronous execution.
+     */
+    ErrorCode infer(const TensorDataStridedCuda &inData, const float4 base, const float4 scale, const int baseCount,
+                    const int scaleCount, const TensorDataStridedCuda &outData, const float global_scale,
+                    const float shift, const float epsilon, const uint32_t flags, cudaStream_t stream);
+
+    bool checkParamShape(DataShape input_shape, DataShape param_shape);
 };
 
 class PadAndStack : public CudaBaseOp
@@ -951,7 +982,7 @@ public:
     Rotate() = delete;
     Rotate(DataShape max_input_shape, DataShape max_output_shape);
 
-    ~Rotate();
+    ~Rotate() override;
 
     /**
      * @brief Rotates input images around the origin (0,0) and then shifts it.
@@ -977,10 +1008,10 @@ public:
      * @param max_output_shape maximum output DataShape that may be used
      * @param max_data_type DataType with the maximum size that may be used
      */
-    size_t    calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type);
+    size_t    calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type) override;
 
-protected:
-    double *d_aCoeffs;
+private:
+    float *d_aCoeffs;
 };
 
 class MedianBlur : public CudaBaseOp
@@ -1074,6 +1105,18 @@ public:
                     const float epsilon, const uint32_t flags, cudaStream_t stream);
 };
 
+// Host-verified uniform batch scale for the var-shape resize fast paths: per-image sizes are only
+// host-accessible through the batch handles, so the caller classifies the batch once and the
+// dispatch picks the matching specialized kernel. kGeneric covers mixed batches and every case
+// without a fast path.
+enum class ResizeVarShapeScale
+{
+    kGeneric,
+    kExpand2x,          // every image pair is exactly 2x up on both axes
+    kContract2x,        // every image pair is exactly 2x down on both axes
+    kFractionalZoomOut, // every image pair zooms out with a non-integer ratio on both axes
+};
+
 class ResizeVarShape : public CudaBaseOp
 {
 public:
@@ -1113,7 +1156,8 @@ public:
      *
      */
     ErrorCode infer(const ImageBatchVarShapeDataStridedCuda &inData, const ImageBatchVarShapeDataStridedCuda &outData,
-                    const NVCVInterpolationType interpolation, cudaStream_t stream);
+                    const NVCVInterpolationType interpolation, cudaStream_t stream,
+                    ResizeVarShapeScale batchScale = ResizeVarShapeScale::kGeneric);
 };
 
 class CopyMakeBorder : public CudaBaseOp
@@ -1268,9 +1312,9 @@ class RotateVarShape : public CudaBaseOp
 public:
     RotateVarShape() = delete;
 
-    RotateVarShape(const int maxVarShapeBatchSize);
+    explicit RotateVarShape(const int maxVarShapeBatchSize);
 
-    ~RotateVarShape();
+    ~RotateVarShape() override;
 
     /**
      * @brief Rotates input images around the origin (0,0) and then shifts it.
@@ -1295,8 +1339,8 @@ public:
                     const TensorDataStridedCuda &angleDeg, const TensorDataStridedCuda &shift,
                     const NVCVInterpolationType interpolation, cudaStream_t stream);
 
-protected:
-    double   *d_aCoeffs;
+private:
+    float    *d_aCoeffs;
     const int m_maxBatchSize;
 };
 
@@ -1373,7 +1417,7 @@ public:
 
     Gaussian(DataShape max_input_shape, DataShape max_output_shape, Size2D maxKernelSize);
 
-    ~Gaussian();
+    ~Gaussian() override;
 
     /**
      * Limitations:
@@ -1444,9 +1488,9 @@ class Erase : public CudaBaseOp
 public:
     Erase() = delete;
 
-    Erase(DataShape max_input_shape, DataShape max_output_shape, int num_erasing_area);
+    Erase(DataShape max_input_shape, DataShape max_output_shape, int num_erasing_area, bool useBulkCopy);
 
-    ~Erase();
+    ~Erase() override;
 
     /**
      * @brief erase areas of images. Different images in the same batch can be erased differently.
@@ -1470,11 +1514,12 @@ public:
                     const TensorDataStridedCuda &values, const TensorDataStridedCuda &imgIdx, bool random,
                     unsigned int seed, bool inplace, cudaStream_t stream);
 
-protected:
-    int3  *d_max_values;
-    void  *temp_storage;
-    size_t storage_bytes;
-    int    max_num_erasing_area;
+private:
+    int3      *d_max_values;
+    std::byte *temp_storage;
+    size_t     storage_bytes;
+    int        max_num_erasing_area;
+    bool       m_useBulkCopy;
 };
 
 class AverageBlur : public CudaBaseOp
@@ -1484,7 +1529,7 @@ public:
 
     AverageBlur(DataShape max_input_shape, DataShape max_output_shape, Size2D maxKernelSize);
 
-    ~AverageBlur();
+    ~AverageBlur() override;
 
     /**
      * Limitations:
@@ -1542,8 +1587,6 @@ public:
 
 private:
     Size2D m_maxKernelSize = {0, 0};
-    Size2D m_curKernelSize = {0, 0};
-    float *m_kernel        = nullptr;
 };
 
 class Conv2DVarShape : public CudaBaseOp
@@ -1698,7 +1741,7 @@ public:
 
     GammaContrastVarShape(const int32_t maxVarShapeBatchSize, const int32_t maxVarShapeChannelCount);
 
-    ~GammaContrastVarShape();
+    ~GammaContrastVarShape() override;
 
     /**
      * @brief Adjust image contrast by scaling pixel values to 255*((v/255)**gamma)
@@ -1728,14 +1771,40 @@ private:
     float *m_gammaArray      = nullptr;
 };
 
+// Tensor (non-var-shape) GammaContrast. Supports interleaved (kNHWC/kHWC) and planar (kNCHW/kCHW)
+// layouts. The gamma tensor is per-sample or per-sample-per-channel, normalized into a dense
+// [numSamples*channels] array shared with the var-shape path so results are bit-exact.
+class GammaContrast : public CudaBaseOp
+{
+public:
+    GammaContrast() = delete;
+
+    GammaContrast(const int32_t maxBatchSize, const int32_t maxChannelCount);
+
+    ~GammaContrast() override;
+
+    ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData,
+                    const TensorDataStridedCuda &gammas, cudaStream_t stream);
+
+    // Scalar (host-float) gamma/gain path: out = gain * in**gamma applied with a single gamma/gain for
+    // all samples/channels. Uses no gamma scratch (the scalars are passed straight into the kernel).
+    ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, float gamma, float gain,
+                    NVCVRoundMode roundMode, cudaStream_t stream);
+
+private:
+    int    m_maxBatchSize    = 0;
+    int    m_maxChannelCount = 0;
+    float *m_gammaArray      = nullptr;
+};
+
 class EraseVarShape : public CudaBaseOp
 {
 public:
     EraseVarShape() = delete;
 
-    EraseVarShape(DataShape max_input_shape, DataShape max_output_shape, int num_erasing_area);
+    EraseVarShape(DataShape max_input_shape, DataShape max_output_shape, int num_erasing_area, bool useBulkCopy);
 
-    ~EraseVarShape();
+    ~EraseVarShape() override;
 
     /**
     * @brief erase areas of images. Different images in the same batch can be erased differently.
@@ -1756,11 +1825,12 @@ public:
                     const TensorDataStridedCuda &values, const TensorDataStridedCuda &imgIdx, bool random,
                     unsigned int seed, bool inplace, cudaStream_t stream);
 
-protected:
-    int3  *d_max_values;
-    void  *temp_storage;
-    size_t storage_bytes;
-    int    max_num_erasing_area;
+private:
+    int3      *d_max_values;
+    std::byte *temp_storage;
+    size_t     storage_bytes;
+    int        max_num_erasing_area;
+    bool       m_useBulkCopy;
 };
 
 class GaussianVarShape : public CudaBaseOp
@@ -1770,7 +1840,7 @@ public:
 
     GaussianVarShape(DataShape max_input_shape, DataShape max_output_shape, Size2D maxKernelSize, int maxBatchSize);
 
-    ~GaussianVarShape();
+    ~GaussianVarShape() override;
 
     /**
      * Limitations:
@@ -1842,7 +1912,7 @@ public:
 
     AverageBlurVarShape(DataShape max_input_shape, DataShape max_output_shape, Size2D maxKernelSize, int maxBatchSize);
 
-    ~AverageBlurVarShape();
+    ~AverageBlurVarShape() override;
 
     /**
      * Limitations:
@@ -1906,16 +1976,15 @@ public:
 private:
     Size2D m_maxKernelSize = {0, 0};
     int    m_maxBatchSize  = 0;
-    float *m_kernel        = nullptr;
 };
 
 class MedianBlurVarShape : public CudaBaseOp
 {
 public:
     MedianBlurVarShape() = delete;
-    MedianBlurVarShape(const int maxVarShapeBatchSize);
+    explicit MedianBlurVarShape(const int maxVarShapeBatchSize);
 
-    ~MedianBlurVarShape();
+    ~MedianBlurVarShape() override;
     /**
      * @brief Blur an image using a median kernel.
      * @param inputs gpu pointer, inputs[i] is input image where i ranges from 0 to batch-1, whose shape is
@@ -1935,7 +2004,7 @@ public:
     ErrorCode infer(const ImageBatchVarShapeDataStridedCuda &in, const ImageBatchVarShapeDataStridedCuda &out,
                     const TensorDataStridedCuda &ksize, cudaStream_t stream);
 
-protected:
+private:
     const int        m_maxBatchSize;
     std::vector<int> m_kernelSizes;
 };
@@ -2050,7 +2119,7 @@ public:
 
     OSD(DataShape max_input_shape, DataShape max_output_shape);
 
-    ~OSD();
+    ~OSD() override;
 
     /**
      * @brief Draw OSD elements onto input tensor, then return back output tensor.
@@ -2076,7 +2145,7 @@ public:
      * @param max_output_shape maximum output DataShape that may be used
      * @param max_data_type DataType with the maximum size that may be used
      */
-    size_t calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type);
+    size_t calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type) override;
 
 private:
     nvcv::cuda::osd::cuOSDContext_t m_context;
@@ -2089,7 +2158,7 @@ public:
 
     BoxBlur(DataShape max_input_shape, DataShape max_output_shape);
 
-    ~BoxBlur();
+    ~BoxBlur() override;
 
     /**
      * @brief Converts an image from one color space to another.
@@ -2098,7 +2167,7 @@ public:
      * @param boxes Bounding boxes to blur, \ref NVCVBlurBoxesI.
      */
     ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, NVCVBlurBoxesI bboxes,
-                    cudaStream_t stream);
+                    cudaStream_t stream, bool skipCopy = false);
 
     /**
      * @brief calculate the cpu/gpu buffer size needed by this operator
@@ -2106,7 +2175,7 @@ public:
      * @param max_output_shape maximum output DataShape that may be used
      * @param max_data_type DataType with the maximum size that may be used
      */
-    size_t calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type);
+    size_t calBufferSize(DataShape max_input_shape, DataShape max_output_shape, DataType max_data_type) override;
 
 private:
     nvcv::cuda::osd::cuOSDContext_t m_context;
@@ -2198,9 +2267,9 @@ class WarpPerspectiveVarShape : public CudaBaseOp
 public:
     WarpPerspectiveVarShape() = delete;
 
-    WarpPerspectiveVarShape(const int32_t maxBatchSize);
+    explicit WarpPerspectiveVarShape(const int32_t maxBatchSize);
 
-    ~WarpPerspectiveVarShape();
+    ~WarpPerspectiveVarShape() override;
 
     /**
      * @brief Applies a perspective transformation to an image. Same function as nvcv::warpPerspective.
@@ -2229,7 +2298,7 @@ public:
                     const TensorDataStridedCuda &transMatrix, const int32_t flags, const NVCVBorderType borderMode,
                     const float4 borderValue, cudaStream_t stream);
 
-protected:
+private:
     const int m_maxBatchSize;
     float    *m_transformationMatrix = nullptr;
 };
@@ -2239,9 +2308,9 @@ class WarpAffineVarShape : public CudaBaseOp
 public:
     WarpAffineVarShape() = delete;
 
-    WarpAffineVarShape(const int32_t maxBatchSize);
+    explicit WarpAffineVarShape(const int32_t maxBatchSize);
 
-    ~WarpAffineVarShape();
+    ~WarpAffineVarShape() override;
     /**
      * @brief Applies an affine transformation to an image. Same function as nvcv::warpAffine.
      * @param inputs gpu pointer, inputs[i] is input image where i ranges from 0 to batch-1, whose shape is
@@ -2268,7 +2337,7 @@ public:
                     const TensorDataStridedCuda &transMatrix, const int32_t flags, const NVCVBorderType borderMode,
                     const float4 borderValue, cudaStream_t stream);
 
-protected:
+private:
     const int m_maxBatchSize;
     float    *m_transformationMatrix = nullptr;
 };
@@ -2441,7 +2510,7 @@ public:
 
     Threshold(DataShape max_input_shape, DataShape max_output_shape, uint32_t type, int maxBatchSize);
 
-    ~Threshold();
+    ~Threshold() override;
 
     /**
      * @brief Applies a fixed-level threshold to each array element.
@@ -2461,6 +2530,7 @@ private:
     int     *m_histogram;
     uint32_t m_type;
     uint32_t m_automatic_thresh;
+    int      m_maxBatchSize;
 };
 
 class AdaptiveThreshold : public CudaBaseOp
@@ -2468,9 +2538,10 @@ class AdaptiveThreshold : public CudaBaseOp
 public:
     AdaptiveThreshold() = delete;
 
-    AdaptiveThreshold(DataShape maxInputShape, DataShape maxOutputShape, int32_t maxBlockSize);
+    AdaptiveThreshold(DataShape maxInputShape, DataShape maxOutputShape, int32_t maxBlockSize,
+                      AdaptiveThresholdKernelPolicy kernelPolicy);
 
-    ~AdaptiveThreshold();
+    ~AdaptiveThreshold() override;
 
     /**
      * @brief Applies an adaptive threshold to input images.
@@ -2488,9 +2559,11 @@ public:
                     const int32_t blockSize, const double c, cudaStream_t stream);
 
 private:
-    int   m_blockSize      = -1;
-    int   m_adaptiveMethod = -1;
-    void *m_kernel         = nullptr;
+    const int                           m_maxBlockSize;
+    const AdaptiveThresholdKernelPolicy m_kernelPolicy;
+    int                                 m_blockSize      = -1;
+    int                                 m_adaptiveMethod = -1;
+    float                              *m_kernel         = nullptr;
 };
 
 class AdaptiveThresholdVarShape : public CudaBaseOp
@@ -2499,9 +2572,9 @@ public:
     AdaptiveThresholdVarShape() = delete;
 
     AdaptiveThresholdVarShape(DataShape maxInputShape, DataShape maxOutputShape, int32_t maxBlockSize,
-                              int32_t maxVarShapeBatchSize);
+                              int32_t maxVarShapeBatchSize, AdaptiveThresholdKernelPolicy kernelPolicy);
 
-    ~AdaptiveThresholdVarShape();
+    ~AdaptiveThresholdVarShape() override;
 
     /**
      * @brief Applies an adaptive threshold to input images.
@@ -2522,9 +2595,10 @@ public:
                     const TensorDataStridedCuda &c, cudaStream_t stream);
 
 private:
-    const int m_maxBatchSize;
-    const int m_maxBlockSize;
-    void     *m_kernel = nullptr;
+    const int                           m_maxBatchSize;
+    const int                           m_maxBlockSize;
+    const AdaptiveThresholdKernelPolicy m_kernelPolicy;
+    float                              *m_kernel = nullptr;
 };
 
 class ThresholdVarShape : public CudaBaseOp
@@ -2534,7 +2608,7 @@ public:
 
     ThresholdVarShape(DataShape max_input_shape, DataShape max_output_shape, uint32_t type, int maxBatchSize);
 
-    ~ThresholdVarShape();
+    ~ThresholdVarShape() override;
 
     /**
      * @brief Applies a fixed-level threshold to each array element.
@@ -2554,18 +2628,21 @@ private:
     int     *m_histogram;
     uint32_t m_type;
     uint32_t m_automatic_thresh;
+    int      m_maxBatchSize;
 };
 
 class RandomResizedCrop : public CudaBaseOp
 {
 public:
+    using CudaBaseOp::calBufferSize;
+
     RandomResizedCrop() = delete;
 
     RandomResizedCrop(DataShape max_input_shape, DataShape max_output_shape, const double min_scale,
                       const double max_scale, const double min_ratio, const double max_ratio, int32_t maxBatchSize,
                       uint32_t seed);
 
-    ~RandomResizedCrop();
+    ~RandomResizedCrop() override;
 
     /**
      * @brief Resize and crop images
@@ -2585,23 +2662,39 @@ public:
     size_t calBufferSize(int batch_size);
 
 protected:
+    struct CropParamBuffers
+    {
+        float *scaleY;
+        float *scaleX;
+        int   *tops;
+        int   *lefts;
+    };
+
+    int32_t          maxBatchSize() const noexcept;
+    CropParamBuffers hostCropParams(int batch) noexcept;
+    CropParamBuffers deviceCropParams(int batch) noexcept;
+    std::byte       *hostCropParamStorage() noexcept;
+    std::byte       *deviceCropParamStorage() noexcept;
+
     void getCropParams(int input_rows, int input_cols, int *top_indices, int *left_indices, int *crop_rows,
                        int *crop_cols);
 
-protected:
+private:
     double       min_scale_;
     double       max_scale_;
     double       min_ratio_;
     double       max_ratio_;
     std::mt19937 generator_;
     int32_t      m_maxBatchSize;
-    void        *m_cpuCropParams = nullptr;
-    void        *m_gpuCropParams = nullptr;
+    std::byte   *m_cpuCropParams = nullptr;
+    std::byte   *m_gpuCropParams = nullptr;
 };
 
 class RandomResizedCropVarShape : public RandomResizedCrop
 {
 public:
+    using RandomResizedCrop::infer;
+
     RandomResizedCropVarShape() = delete;
 
     RandomResizedCropVarShape(DataShape max_input_shape, DataShape max_output_shape, const double min_scale,
@@ -2628,7 +2721,7 @@ public:
 
     GaussianNoise(DataShape max_input_shape, DataShape max_output_shape, int maxBatchSize);
 
-    ~GaussianNoise();
+    ~GaussianNoise() override;
 
     /**
      * @brief Add gaussian noise on images.
@@ -2644,8 +2737,12 @@ public:
                     const TensorDataStridedCuda &mu, const TensorDataStridedCuda &sigma, bool per_channel,
                     unsigned long long seed, cudaStream_t stream);
 
+    ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, float mu, float sigma,
+                    bool per_channel, unsigned long long seed, bool reseed, bool clip, cudaStream_t stream);
+
 private:
     curandState       *m_states;
+    curandState       *m_nextStates;
     unsigned long long m_seed;
     bool               m_setupDone = false;
     int                m_maxBatchSize;
@@ -2658,7 +2755,7 @@ public:
 
     GaussianNoiseVarShape(DataShape max_input_shape, DataShape max_output_shape, int maxBatchSize);
 
-    ~GaussianNoiseVarShape();
+    ~GaussianNoiseVarShape() override;
 
     /**
      * @brief Add gaussian noise on images.
@@ -2676,6 +2773,7 @@ public:
 
 private:
     curandState       *m_states;
+    curandState       *m_nextStates;
     unsigned long long m_seed;
     bool               m_setupDone = false;
     int                m_maxBatchSize;
@@ -2703,7 +2801,7 @@ public:
 
     Inpaint(DataShape max_input_shape, DataShape max_output_shape, int maxBatchSize, Size2D maxShape);
 
-    ~Inpaint();
+    ~Inpaint() override;
 
     /**
     * @brief Restores the selected region in an image using the region neighborhood. TELEA algorithm is used here.
@@ -2720,7 +2818,7 @@ private:
     bool     m_init_dilate = false; // whether kernel is initialized
     int      m_maxBatchSize;
     uint8_t *m_kernel_ptr;
-    void    *m_workspace;
+    uint8_t *m_workspace;
 };
 
 class InpaintVarShape : public CudaBaseOp
@@ -2730,7 +2828,7 @@ public:
 
     InpaintVarShape(DataShape max_input_shape, DataShape max_output_shape, int maxBatchSize, Size2D maxShape);
 
-    ~InpaintVarShape();
+    ~InpaintVarShape() override;
 
     /**
     * @brief Restores the selected region in an image using the region neighborhood. TELEA algorithm is used here.
@@ -2747,7 +2845,7 @@ private:
     bool     m_init_dilate = false; // whether kernel is initialized
     int      m_maxBatchSize;
     uint8_t *m_kernel_ptr;
-    void    *m_workspace;
+    uint8_t *m_workspace;
 };
 
 class HistogramEq : public CudaBaseOp
@@ -2755,9 +2853,9 @@ class HistogramEq : public CudaBaseOp
 public:
     HistogramEq() = delete;
 
-    HistogramEq(int maxBatchSize);
+    explicit HistogramEq(int maxBatchSize);
 
-    ~HistogramEq();
+    ~HistogramEq() override;
 
     ErrorCode infer(const TensorDataStridedCuda &inData, const TensorDataStridedCuda &outData, cudaStream_t stream);
 
@@ -2773,9 +2871,9 @@ class HistogramEqVarShape : public CudaBaseOp
 public:
     HistogramEqVarShape() = delete;
 
-    HistogramEqVarShape(int maxBatchSize);
+    explicit HistogramEqVarShape(int maxBatchSize);
 
-    ~HistogramEqVarShape();
+    ~HistogramEqVarShape() override;
 
     ErrorCode infer(const ImageBatchVarShapeDataStridedCuda &inData, const ImageBatchVarShapeDataStridedCuda &outData,
                     cudaStream_t stream);

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,12 +26,13 @@
 #include <cassert>
 #include <cstring>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <vector>
 
 namespace nvcv::priv {
 
-static const char *LEAK_DETECTION_ENVVAR = "NVCV_LEAK_DETECTION";
+static const char *const LEAK_DETECTION_ENVVAR = "NVCV_LEAK_DETECTION";
 
 template<typename Node>
 class ManagedLockFreeStack : protected LockFreeStack<Node>
@@ -47,9 +48,10 @@ public:
     template<typename... Args>
     Node *emplace(Args &&...args)
     {
-        Node *n = new Node{std::forward<Args>(args)...};
-        push(n);
-        return n;
+        std::unique_ptr<Node> n   = std::make_unique<Node>(std::forward<Args>(args)...);
+        Node                 *out = n.get();
+        push(n.release());
+        return out;
     }
 
     ~ManagedLockFreeStack()
@@ -61,11 +63,11 @@ public:
     {
         if (Node *h = this->release())
         {
-            while (h)
+            std::unique_ptr<Node> node(h);
+            while (node)
             {
-                auto *n = h->next;
-                delete h;
-                h = n;
+                std::unique_ptr<Node> next(node->next);
+                node = std::move(next);
             }
         }
     }
@@ -74,7 +76,7 @@ public:
 template<typename Interface>
 HandleManager<Interface>::ResourceBase::ResourceBase()
 {
-    this->generation = 0;
+    generation = 0;
 }
 
 template<typename Interface>
@@ -88,7 +90,7 @@ void HandleManager<Interface>::ResourceBase::destroyObject()
 {
     if (m_ptrObj)
     {
-        m_ptrObj->~Interface();
+        std::destroy_at(m_ptrObj);
         m_ptrObj = nullptr;
     }
 
@@ -96,10 +98,10 @@ void HandleManager<Interface>::ResourceBase::destroyObject()
 }
 
 template<class Interface>
-void *HandleManager<Interface>::ResourceBase::getStorage()
+std::byte *HandleManager<Interface>::ResourceBase::getStorage()
 {
     using Resource = typename HandleManager<Interface>::Impl::Resource;
-    return static_cast<Resource *>(this)->getStorage();
+    return static_cast<Resource *>(this)->storage();
 }
 
 template<typename Interface>
@@ -115,13 +117,13 @@ struct HandleManager<Interface>::Impl
             this->destroyObject();
         }
 
-        void *getStorage()
+        std::byte *storage()
         {
-            return m_storage;
+            return m_storage.data();
         }
 
     private:
-        alignas(Storage) std::byte m_storage[sizeof(Storage)];
+        alignas(Storage) std::array<std::byte, sizeof(Storage)> m_storage;
     };
 
     static constexpr int kMinHandles = 1024;

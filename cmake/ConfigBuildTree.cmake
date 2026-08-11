@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -71,15 +71,18 @@ cmake_dependent_option(ENABLE_COMPAT_OLD_GLIBC "Generates binaries that work wit
 # Needed to get cuda version
 find_package(CUDAToolkit REQUIRED)
 
-# Are we inside a git repo and it has submodules enabled?
-if(EXISTS ${CMAKE_SOURCE_DIR}/.git AND EXISTS ${CMAKE_SOURCE_DIR}/.gitmodules)
-    if(NOT EXISTS ${CMAKE_SOURCE_DIR}/.git/modules)
-        message(FATAL_ERROR "git submodules not initialized. Did you forget to run 'git submodule update --init'?")
-    endif()
-endif()
 
 if(PLATFORM_IS_LINUX)
-    set(CVCUDA_SYSTEM_NAME "${CMAKE_SYSTEM_PROCESSOR}-linux")
+    # Jetson-target builds get their own system token: they carry a different
+    # GPU arch set (Orin-only, see ConfigCUDA.cmake) and, when built on-device,
+    # the L4T/Tegra CUDA runtime - yet would otherwise be name-identical to
+    # SBSA aarch64 artifacts, colliding in the package registry and in CI
+    # artifact discovery.
+    if(CVCUDA_AARCH64_JETSON)
+        set(CVCUDA_SYSTEM_NAME "${CMAKE_SYSTEM_PROCESSOR}-jetson-linux")
+    else()
+        set(CVCUDA_SYSTEM_NAME "${CMAKE_SYSTEM_PROCESSOR}-linux")
+    endif()
 else()
     message(FATAL_ERROR "Unsupported platform: ${CMAKE_SYSTEM_NAME}. "
                         "CV-CUDA only supports Linux platform.")

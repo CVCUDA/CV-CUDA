@@ -18,10 +18,14 @@
  * limitations under the License.
  */
 
+#include "../PlanarTensorView.hpp"
 #include "CvCudaLegacy.h"
 #include "CvCudaLegacyHelpers.hpp"
 
 #include "CvCudaUtils.cuh"
+
+#include <cstdint>
+#include <type_traits>
 
 #define GENERAL_KERNEL_BLOCK 32
 #define SMALL_KERNEL_BLOCK   16
@@ -325,6 +329,61 @@ __global__ void medianForSmallKernel(const Ptr2dNHWC<T> src, Ptr2dNHWC<T> dst, c
     }
 }
 
+template<typename T, int LENGTH>
+__device__ __forceinline__ T medianFromSortedWindow(T (&arr)[LENGTH])
+{
+#pragma unroll
+    for (int i = 0; i < LENGTH - 1; ++i)
+    {
+#pragma unroll
+        for (int j = i + 1; j < LENGTH; ++j)
+        {
+            if (arr[j] < arr[i])
+            {
+                T tmp  = arr[i];
+                arr[i] = arr[j];
+                arr[j] = tmp;
+            }
+        }
+    }
+
+    return arr[LENGTH / 2];
+}
+
+template<typename T, int KWidth, int KHeight>
+__global__ void medianForFixedSmallKernel(const Ptr2dNHWC<T> src, Ptr2dNHWC<T> dst)
+{
+    constexpr int kWidth  = KWidth;
+    constexpr int kHeight = KHeight;
+    constexpr int length  = KWidth * KHeight;
+
+    int blockX   = blockIdx.x * blockDim.x;
+    int blockY   = blockIdx.y * blockDim.y;
+    int x        = blockX + threadIdx.x;
+    int y        = blockY + threadIdx.y;
+    int channel  = blockIdx.z % dst.ch;
+    int batchIdx = blockIdx.z / dst.ch;
+    int h = src.rows, w = src.cols;
+
+    if ((x < w && y < h))
+    {
+        T arr[length];
+#pragma unroll
+        for (int i = 0; i < length; i++)
+        {
+            int gx = x - (kWidth / 2) + (i % kWidth);
+            int gy = y - (kHeight / 2) + (i / kWidth);
+
+            gx = min(max(gx, 0), w - 1);
+            gy = min(max(gy, 0), h - 1);
+
+            arr[i] = *src.ptr(batchIdx, gy, gx, channel);
+        }
+
+        *dst.ptr(batchIdx, y, x, channel) = medianFromSortedWindow(arr);
+    }
+}
+
 #undef fetch_
 #undef fetchAs1d
 
@@ -339,20 +398,63 @@ void median(const nvcv::TensorDataAccessStridedImagePlanar &inData,
     checkCudaErrors(cudaStreamSynchronize(stream));
     checkCudaErrors(cudaGetLastError());
 #endif
-    long unsigned int sharedMemSize = SMALL_KERNEL_BLOCK * SMALL_KERNEL_BLOCK * kWidth * kHeight * sizeof(T);
-    if (sharedMemSize < 48 * 1024)
+    long unsigned int sharedMemSize    = SMALL_KERNEL_BLOCK * SMALL_KERNEL_BLOCK * kWidth * kHeight * sizeof(T);
+    auto              runDynamicKernel = [&]
+    {
+        if (sharedMemSize < 48 * 1024)
+        {
+            dim3 block(SMALL_KERNEL_BLOCK, SMALL_KERNEL_BLOCK);
+            dim3 grid(divUp(dst.cols, block.x), divUp(dst.rows, block.y), dst.ch * dst.batches);
+            medianForSmallKernel<T><<<grid, block, sharedMemSize, stream>>>(src, dst, kWidth, kHeight);
+            checkKernelErrors();
+        }
+        else
+        {
+            dim3 block(GENERAL_KERNEL_BLOCK, GENERAL_KERNEL_BLOCK);
+            dim3 grid(divUp(dst.cols, block.x), divUp(dst.rows, block.y), dst.ch * dst.batches);
+            median<T><<<grid, block, 0, stream>>>(src, dst, kWidth, kHeight);
+            checkKernelErrors();
+        }
+    };
+
+    if (kWidth == 3 && kHeight == 3)
     {
         dim3 block(SMALL_KERNEL_BLOCK, SMALL_KERNEL_BLOCK);
         dim3 grid(divUp(dst.cols, block.x), divUp(dst.rows, block.y), dst.ch * dst.batches);
-        medianForSmallKernel<T><<<grid, block, sharedMemSize, stream>>>(src, dst, kWidth, kHeight);
+        medianForFixedSmallKernel<T, 3, 3><<<grid, block, 0, stream>>>(src, dst);
         checkKernelErrors();
+    }
+    else if constexpr (std::is_same_v<T, float> || std::is_same_v<T, uchar>)
+    {
+        if (kWidth == 5 && kHeight == 5)
+        {
+            dim3 block(SMALL_KERNEL_BLOCK, SMALL_KERNEL_BLOCK);
+            dim3 grid(divUp(dst.cols, block.x), divUp(dst.rows, block.y), dst.ch * dst.batches);
+            medianForFixedSmallKernel<T, 5, 5><<<grid, block, 0, stream>>>(src, dst);
+            checkKernelErrors();
+        }
+        else if constexpr (std::is_same_v<T, uchar>)
+        {
+            if (kWidth == 7 && kHeight == 7)
+            {
+                dim3 block(SMALL_KERNEL_BLOCK, SMALL_KERNEL_BLOCK);
+                dim3 grid(divUp(dst.cols, block.x), divUp(dst.rows, block.y), dst.ch * dst.batches);
+                medianForFixedSmallKernel<T, 7, 7><<<grid, block, 0, stream>>>(src, dst);
+                checkKernelErrors();
+            }
+            else
+            {
+                runDynamicKernel();
+            }
+        }
+        else
+        {
+            runDynamicKernel();
+        }
     }
     else
     {
-        dim3 block(GENERAL_KERNEL_BLOCK, GENERAL_KERNEL_BLOCK);
-        dim3 grid(divUp(dst.cols, block.x), divUp(dst.rows, block.y), dst.ch * dst.batches);
-        median<T><<<grid, block, 0, stream>>>(src, dst, kWidth, kHeight);
-        checkKernelErrors();
+        runDynamicKernel();
     }
 
 #ifdef CUDA_DEBUG_LOG
@@ -377,11 +479,13 @@ ErrorCode MedianBlur::infer(const TensorDataStridedCuda &inData, const TensorDat
 
     DataFormat format = input_format;
 
-    if (!(format == kNHWC || format == kHWC))
+    if (!(format == kNHWC || format == kHWC || format == kNCHW || format == kCHW))
     {
-        LOG_ERROR("Invalid input DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
+        LOG_ERROR("Invalid input DataFormat " << format
+                                              << ", the valid DataFormats are: \"NHWC\", \"HWC\", \"NCHW\", \"CHW\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
+    const bool isPlanar = (format == kNCHW || format == kCHW);
 
     auto inAccess = TensorDataAccessStridedImagePlanar::Create(inData);
     NVCV_ASSERT(inAccess);
@@ -406,7 +510,7 @@ ErrorCode MedianBlur::infer(const TensorDataStridedCuda &inData, const TensorDat
 
     const int channels = input_shape.C;
 
-    if (channels > 4)
+    if (channels > 4 || channels == 2)
     {
         LOG_ERROR("Invalid channel number " << channels);
         return ErrorCode::INVALID_DATA_SHAPE;
@@ -417,9 +521,32 @@ ErrorCode MedianBlur::infer(const TensorDataStridedCuda &inData, const TensorDat
                              cudaStream_t stream);
 
     static const median_t funcs[6] = {
-        median<uchar>, 0, median<ushort>, 0, median<int>, median<float>,
+        median<uchar>, 0, median<ushort>, 0, 0, median<float>,
 
     };
+
+    if (isPlanar)
+    {
+        const int64_t numSamples = inAccess->numSamples();
+        if (numSamples * channels > 65535)
+        {
+            LOG_ERROR("Planar median blur requires numSamples * numChannels <= 65535 (CUDA grid-z limit)");
+            return ErrorCode::INVALID_DATA_SHAPE;
+        }
+
+        auto inView  = cvcuda::priv::PlanarAsSingleChannelView(inData, *inAccess);
+        auto outView = cvcuda::priv::PlanarAsSingleChannelView(outData, *outAccess);
+
+        auto inViewAccess = TensorDataAccessStridedImagePlanar::Create(inView);
+        NVCV_ASSERT(inViewAccess);
+
+        auto outViewAccess = TensorDataAccessStridedImagePlanar::Create(outView);
+        NVCV_ASSERT(outViewAccess);
+
+        funcs[data_type](*inViewAccess, *outViewAccess, ksize.w, ksize.h, stream);
+        return SUCCESS;
+    }
+
     funcs[data_type](*inAccess, *outAccess, ksize.w, ksize.h, stream);
     return SUCCESS;
 }

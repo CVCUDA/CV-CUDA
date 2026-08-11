@@ -27,8 +27,31 @@ using namespace nvcv;
 using namespace nvcv::legacy::helpers;
 using namespace nvcv::legacy::cuda_op;
 
-#define Inv_255              0.00392156862f // 1.f/255.f
-#define AlphaLerp(c0, c1, a) int(((int)c1 - (int)c0) * (int)a * Inv_255 + c0 + 0.5f)
+namespace {
+
+__device__ __forceinline__ int AlphaLerp(uint8_t c0, uint8_t c1, uint8_t alpha)
+{
+    int value = (int)c0 * 255 + ((int)c1 - (int)c0) * (int)alpha + 128;
+    // This is exact rounded division by 255 over the full uint8 input range.
+    return (value + (value >> 8)) >> 8;
+}
+
+static bool IsInterleaved(DataFormat format)
+{
+    return format == kNHWC || format == kHWC;
+}
+
+static bool IsPlanar(DataFormat format)
+{
+    return format == kNCHW || format == kCHW;
+}
+
+static bool IsImageLayout(DataFormat format)
+{
+    return IsInterleaved(format) || IsPlanar(format);
+}
+
+} // namespace
 
 template<typename T, typename U, typename D>
 __global__ void composite_kernel(const cuda::ImageBatchVarShapeWrap<T> fg, const cuda::ImageBatchVarShapeWrap<T> bg,
@@ -41,6 +64,7 @@ __global__ void composite_kernel(const cuda::ImageBatchVarShapeWrap<T> fg, const
     if (dst_x >= dst.width(batch_idx) || dst_y >= dst.height(batch_idx))
         return;
 
+    // Compile-time channels let each instantiation fold the loop and avoid wrapper metadata loads.
     constexpr int dst_ch = cuda::NumElements<D>;
     constexpr int src_ch = cuda::NumElements<T>;
 
@@ -60,6 +84,34 @@ __global__ void composite_kernel(const cuda::ImageBatchVarShapeWrap<T> fg, const
     *dst.ptr(batch_idx, dst_y, dst_x) = out;
 }
 
+template<int dcn>
+__global__ void composite_planar_kernel(const cuda::ImageBatchVarShapeWrap<uchar> fg,
+                                        const cuda::ImageBatchVarShapeWrap<uchar> bg,
+                                        const cuda::ImageBatchVarShapeWrap<uchar> fgMask,
+                                        cuda::ImageBatchVarShapeWrap<uchar>       dst)
+{
+    int       dst_x     = blockIdx.x * blockDim.x + threadIdx.x;
+    int       dst_y     = blockIdx.y * blockDim.y + threadIdx.y;
+    const int batch_idx = get_batch_idx();
+
+    if (dst_x >= dst.width(batch_idx) || dst_y >= dst.height(batch_idx))
+        return;
+
+    uchar mask_val = *fgMask.ptr(batch_idx, 0, dst_y, dst_x);
+
+#pragma unroll
+    for (int c = 0; c < 3; ++c)
+    {
+        const uchar c0                       = *bg.ptr(batch_idx, c, dst_y, dst_x);
+        const uchar c1                       = *fg.ptr(batch_idx, c, dst_y, dst_x);
+        *dst.ptr(batch_idx, c, dst_y, dst_x) = AlphaLerp(c0, c1, mask_val);
+    }
+    if constexpr (dcn == 4)
+    {
+        *dst.ptr(batch_idx, 3, dst_y, dst_x) = 255;
+    }
+}
+
 template<typename T, int scn, int dcn> // uchar
 void composite(const nvcv::ImageBatchVarShapeDataStridedCuda &foregroundData,
                const nvcv::ImageBatchVarShapeDataStridedCuda &backgroundData,
@@ -77,10 +129,36 @@ void composite(const nvcv::ImageBatchVarShapeDataStridedCuda &foregroundData,
     const int batch_size = outData.numImages();
     Size2D    outMaxSize = outData.maxSize();
 
-    dim3 blockSize(16, 16, 1);
+    dim3 blockSize(dcn == 3 ? 32 : 16, dcn == 3 ? 8 : 16, 1);
     dim3 gridSize(divUp(outMaxSize.w, blockSize.x), divUp(outMaxSize.h, blockSize.y), batch_size);
 
     composite_kernel<<<gridSize, blockSize, 0, stream>>>(fg_ptr, bg_ptr, fgMask_ptr, dst_ptr);
+    checkKernelErrors();
+
+#ifdef CUDA_DEBUG_LOG
+    checkCudaErrors(cudaStreamSynchronize(stream));
+    checkCudaErrors(cudaGetLastError());
+#endif
+}
+
+template<int dcn>
+void composite_planar(const nvcv::ImageBatchVarShapeDataStridedCuda &foregroundData,
+                      const nvcv::ImageBatchVarShapeDataStridedCuda &backgroundData,
+                      const nvcv::ImageBatchVarShapeDataStridedCuda &fgMaskData,
+                      const nvcv::ImageBatchVarShapeDataStridedCuda &outData, cudaStream_t stream)
+{
+    cuda::ImageBatchVarShapeWrap<uchar> fg_ptr(foregroundData);
+    cuda::ImageBatchVarShapeWrap<uchar> bg_ptr(backgroundData);
+    cuda::ImageBatchVarShapeWrap<uchar> fgMask_ptr(fgMaskData);
+    cuda::ImageBatchVarShapeWrap<uchar> dst_ptr(outData);
+
+    const int batch_size = outData.numImages();
+    Size2D    outMaxSize = outData.maxSize();
+
+    dim3 blockSize(32, 8, 1);
+    dim3 gridSize(divUp(outMaxSize.w, blockSize.x), divUp(outMaxSize.h, blockSize.y), batch_size);
+
+    composite_planar_kernel<dcn><<<gridSize, blockSize, 0, stream>>>(fg_ptr, bg_ptr, fgMask_ptr, dst_ptr);
     checkKernelErrors();
 
 #ifdef CUDA_DEBUG_LOG
@@ -107,8 +185,8 @@ ErrorCode CompositeVarShape::infer(const ImageBatchVarShapeDataStridedCuda &fore
     DataFormat fgMask_format     = helpers::GetLegacyDataFormat(fgMask);
     DataFormat output_format     = helpers::GetLegacyDataFormat(outData);
 
-    if (!((foreground_format == background_format) && (foreground_format == fgMask_format)
-          && (foreground_format == output_format)))
+    if (!((foreground_format == background_format) && (foreground_format == output_format)
+          && IsImageLayout(foreground_format) && IsImageLayout(fgMask_format)))
     {
         LOG_ERROR("Invalid DataFormat between foreground ("
                   << foreground_format << "), background (" << background_format << "), foreground mask ("
@@ -117,12 +195,6 @@ ErrorCode CompositeVarShape::infer(const ImageBatchVarShapeDataStridedCuda &fore
     }
 
     DataFormat format = foreground_format;
-
-    if (!(format == kNHWC || format == kHWC))
-    {
-        LOG_ERROR("Invalid foreground DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
-        return ErrorCode::INVALID_DATA_FORMAT;
-    }
 
     DataType foreground_data_type = helpers::GetLegacyDataType(foreground.uniqueFormat());
     DataType background_data_type = helpers::GetLegacyDataType(background.uniqueFormat());
@@ -147,6 +219,35 @@ ErrorCode CompositeVarShape::infer(const ImageBatchVarShapeDataStridedCuda &fore
     {
         LOG_ERROR("Invalid channel number " << channels);
         return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+    if (!((foreground.numImages() == background.numImages()) && (foreground.numImages() == fgMask.numImages())
+          && (foreground.numImages() == outData.numImages())))
+    {
+        LOG_ERROR("Invalid input/output batch size: foreground "
+                  << foreground.numImages() << ", background " << background.numImages() << ", foreground mask "
+                  << fgMask.numImages() << ", output " << outData.numImages());
+        return ErrorCode::INVALID_DATA_SHAPE;
+    }
+
+    const bool isPlanar = IsPlanar(format);
+    if (isPlanar)
+    {
+        if (outData.numImages() > 65535)
+        {
+            LOG_ERROR("Planar Composite requires number of images <= 65535");
+            return ErrorCode::INVALID_DATA_SHAPE;
+        }
+
+        if (output_channels == 3)
+        {
+            composite_planar<3>(foreground, background, fgMask, outData, stream);
+        }
+        else
+        {
+            composite_planar<4>(foreground, background, fgMask, outData, stream);
+        }
+        return SUCCESS;
     }
 
     typedef void (*func_t)(const nvcv::ImageBatchVarShapeDataStridedCuda &foregroundData,

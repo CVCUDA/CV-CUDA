@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,7 +24,9 @@
 #include <nvcv/util/String.hpp>
 #include <stdio.h>
 
+#include <new>
 #include <sstream>
+#include <stdexcept>
 
 namespace nvcv::priv {
 
@@ -41,7 +43,7 @@ ColorSpec::operator NVCVColorSpec() const noexcept
 
 NVCVColorSpace ColorSpec::colorSpace() const noexcept
 {
-    int32_t val = ExtractBitfield(m_cspec, 0, 3);
+    auto val = static_cast<int32_t>(ExtractBitfield(m_cspec, 0, 3));
     return (NVCVColorSpace)val;
 }
 
@@ -113,6 +115,8 @@ NVCVChromaSubsampling MakeNVCVChromaSubsampling(int samplesHoriz, int samplesVer
             return NVCV_CSS_422R;
         case 1:
             return NVCV_CSS_411R;
+        default:
+            break;
         }
         break;
 
@@ -125,6 +129,8 @@ NVCVChromaSubsampling MakeNVCVChromaSubsampling(int samplesHoriz, int samplesVer
             return NVCV_CSS_420;
         case 1:
             return NVCV_CSS_410R;
+        default:
+            break;
         }
         break;
 
@@ -137,7 +143,11 @@ NVCVChromaSubsampling MakeNVCVChromaSubsampling(int samplesHoriz, int samplesVer
             return NVCV_CSS_410;
         case 4:
             return NVCV_CSS_411;
+        default:
+            break;
         }
+        break;
+    default:
         break;
     }
 
@@ -173,6 +183,8 @@ std::pair<int, int> GetChromaSamples(NVCVChromaSubsampling css)
 
     case NVCV_CSS_410:
         return {1, 2};
+    default:
+        break;
     }
 
     throw Exception(NVCV_ERROR_INVALID_ARGUMENT) << "Invalid chroma subsampling: " << css;
@@ -180,7 +192,7 @@ std::pair<int, int> GetChromaSamples(NVCVChromaSubsampling css)
 
 std::ostream &operator<<(std::ostream &out, ColorSpec cspec)
 {
-    switch (cspec)
+    switch (static_cast<NVCVColorSpec>(cspec))
     {
 #define ENUM_CASE(X) \
     case X:          \
@@ -240,8 +252,8 @@ const char *GetName(NVCVColorSpec cspec)
 {
     priv::CoreTLS &tls = priv::GetCoreTLS();
 
-    char         *buffer  = tls.bufColorSpecName;
-    constexpr int bufSize = sizeof(tls.bufColorSpecName);
+    char *buffer  = tls.bufColorSpecName.data();
+    auto  bufSize = static_cast<int>(tls.bufColorSpecName.size());
 
     try
     {
@@ -255,11 +267,39 @@ const char *GetName(NVCVColorSpec cspec)
         util::ReplaceAllInline(buffer, bufSize, "NVCV_COLOR_RANGE_", "RANGE_");
         util::ReplaceAllInline(buffer, bufSize, "NVCV_COLOR_SPACE_", "SPACE_");
     }
-    catch (std::exception &e)
+    catch (const std::invalid_argument &e)
     {
         snprintf(buffer, bufSize, "%s", e.what());
     }
-    catch (...)
+    catch (const std::domain_error &e)
+    {
+        snprintf(buffer, bufSize, "%s", e.what());
+    }
+    catch (const std::length_error &e)
+    {
+        snprintf(buffer, bufSize, "%s", e.what());
+    }
+    catch (const std::out_of_range &e)
+    {
+        snprintf(buffer, bufSize, "%s", e.what());
+    }
+    catch (const std::range_error &e)
+    {
+        snprintf(buffer, bufSize, "%s", e.what());
+    }
+    catch (const std::overflow_error &e)
+    {
+        snprintf(buffer, bufSize, "%s", e.what());
+    }
+    catch (const std::underflow_error &e)
+    {
+        snprintf(buffer, bufSize, "%s", e.what());
+    }
+    catch (const std::bad_alloc &e)
+    {
+        snprintf(buffer, bufSize, "%s", e.what());
+    }
+    catch (...) // NOSONAR: API boundary converts any non-standard exception to a fallback message.
     {
         snprintf(buffer, bufSize, "Unexpected error retrieving NVCVColorSpec string representation");
     }
@@ -287,10 +327,10 @@ const char *GetName(NVCVColorModel colorModel)
 
     priv::CoreTLS &tls = priv::GetCoreTLS();
 
-    util::BufferOStream(tls.bufColorModelName, sizeof(tls.bufColorModelName))
+    util::BufferOStream(tls.bufColorModelName.data(), static_cast<int>(tls.bufColorModelName.size()))
         << "NVCVColorModel(" << (int)colorModel << ")";
 
-    return tls.bufColorModelName;
+    return tls.bufColorModelName.data();
 }
 
 const char *GetName(NVCVChromaLocation loc)
@@ -309,9 +349,9 @@ const char *GetName(NVCVChromaLocation loc)
 
     priv::CoreTLS &tls = priv::GetCoreTLS();
 
-    util::BufferOStream(tls.bufChromaLocationName, sizeof(tls.bufChromaLocationName))
+    util::BufferOStream(tls.bufChromaLocationName.data(), static_cast<int>(tls.bufChromaLocationName.size()))
         << "NVCVChromaLocation(" << (int)loc << ")";
-    return tls.bufChromaLocationName;
+    return tls.bufChromaLocationName.data();
 }
 
 const char *GetName(NVCVRawPattern raw)
@@ -341,9 +381,10 @@ const char *GetName(NVCVRawPattern raw)
     }
 
     priv::CoreTLS &tls = priv::GetCoreTLS();
-    util::BufferOStream(tls.bufRawPatternName, sizeof(tls.bufRawPatternName)) << "NVCVRawPattern(" << (int)raw << ")";
+    util::BufferOStream(tls.bufRawPatternName.data(), static_cast<int>(tls.bufRawPatternName.size()))
+        << "NVCVRawPattern(" << (int)raw << ")";
 
-    return tls.bufRawPatternName;
+    return tls.bufRawPatternName.data();
 }
 
 const char *GetName(NVCVColorSpace color_space)
@@ -361,9 +402,9 @@ const char *GetName(NVCVColorSpace color_space)
     }
 
     priv::CoreTLS &tls = priv::GetCoreTLS();
-    util::BufferOStream(tls.bufColorSpaceName, sizeof(tls.bufColorSpaceName))
+    util::BufferOStream(tls.bufColorSpaceName.data(), static_cast<int>(tls.bufColorSpaceName.size()))
         << "NVCVColorSpace(" << (int)color_space << ")";
-    return tls.bufColorSpaceName;
+    return tls.bufColorSpaceName.data();
 }
 
 const char *GetName(NVCVWhitePoint whitePoint)
@@ -380,9 +421,9 @@ const char *GetName(NVCVWhitePoint whitePoint)
     }
 
     priv::CoreTLS &tls = priv::GetCoreTLS();
-    util::BufferOStream(tls.bufWhitePointName, sizeof(tls.bufWhitePointName))
+    util::BufferOStream(tls.bufWhitePointName.data(), static_cast<int>(tls.bufWhitePointName.size()))
         << "NVCVWhitePoint(" << (int)whitePoint << ")";
-    return tls.bufWhitePointName;
+    return tls.bufWhitePointName.data();
 }
 
 const char *GetName(NVCVColorTransferFunction xferFunc)
@@ -403,9 +444,10 @@ const char *GetName(NVCVColorTransferFunction xferFunc)
     }
 
     priv::CoreTLS &tls = priv::GetCoreTLS();
-    util::BufferOStream(tls.bufColorTransferFunctionName, sizeof(tls.bufColorTransferFunctionName))
+    util::BufferOStream(tls.bufColorTransferFunctionName.data(),
+                        static_cast<int>(tls.bufColorTransferFunctionName.size()))
         << "NVCVColorTransferFunction(" << (int)xferFunc << ")";
-    return tls.bufColorTransferFunctionName;
+    return tls.bufColorTransferFunctionName.data();
 }
 
 const char *GetName(NVCVColorRange range)
@@ -421,8 +463,9 @@ const char *GetName(NVCVColorRange range)
     }
 
     priv::CoreTLS &tls = priv::GetCoreTLS();
-    util::BufferOStream(tls.bufColorRangeName, sizeof(tls.bufColorRangeName)) << "NVCVColorRange(" << (int)range << ")";
-    return tls.bufColorRangeName;
+    util::BufferOStream(tls.bufColorRangeName.data(), static_cast<int>(tls.bufColorRangeName.size()))
+        << "NVCVColorRange(" << (int)range << ")";
+    return tls.bufColorRangeName.data();
 }
 
 const char *GetName(NVCVYCbCrEncoding encoding)
@@ -442,9 +485,9 @@ const char *GetName(NVCVYCbCrEncoding encoding)
     }
 
     priv::CoreTLS &tls = priv::GetCoreTLS();
-    util::BufferOStream(tls.bufYCbCrEncodingName, sizeof(tls.bufYCbCrEncodingName))
+    util::BufferOStream(tls.bufYCbCrEncodingName.data(), static_cast<int>(tls.bufYCbCrEncodingName.size()))
         << "NVCVYCbCrEncoding(" << (int)encoding << ")";
-    return tls.bufYCbCrEncodingName;
+    return tls.bufYCbCrEncodingName.data();
 }
 
 const char *GetName(NVCVChromaSubsampling chromaSub)
@@ -452,7 +495,8 @@ const char *GetName(NVCVChromaSubsampling chromaSub)
     priv::CoreTLS &tls = priv::GetCoreTLS();
 
     {
-        util::BufferOStream ss(tls.bufChromaSubsamplingName, sizeof(tls.bufChromaSubsamplingName));
+        util::BufferOStream ss(tls.bufChromaSubsamplingName.data(),
+                               static_cast<int>(tls.bufChromaSubsamplingName.size()));
 
         bool ok = false;
 
@@ -479,7 +523,7 @@ const char *GetName(NVCVChromaSubsampling chromaSub)
             ss << "NVCVChromaSubsampling(" << (int)chromaSub << ")";
         }
     }
-    return tls.bufChromaSubsamplingName;
+    return tls.bufChromaSubsamplingName.data();
 }
 
 } // namespace nvcv::priv

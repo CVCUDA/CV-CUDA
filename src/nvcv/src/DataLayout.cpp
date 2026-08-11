@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,7 +34,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvMakeSwizzle,
                 (NVCVSwizzle * outSwizzle, NVCVChannel x, NVCVChannel y, NVCVChannel z, NVCVChannel w))
 {
     return priv::ProtectCall(
-        [&]
+        [&outSwizzle, &x, &y, &z, &w]
         {
             if (outSwizzle == nullptr)
             {
@@ -52,7 +52,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvMakeSwizzle,
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvSwizzleGetChannels, (NVCVSwizzle swizzle, NVCVChannel *outChannels))
 {
     return priv::ProtectCall(
-        [&]
+        [&outChannels, &swizzle]
         {
             if (outChannels == nullptr)
             {
@@ -68,7 +68,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvSwizzleGetChannels, (NVCVSwizzle swizzle, 
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvSwizzleGetNumChannels, (NVCVSwizzle swizzle, int32_t *outNumChannels))
 {
     return priv::ProtectCall(
-        [&]
+        [&outNumChannels, &swizzle]
         {
             if (outNumChannels == nullptr)
             {
@@ -83,7 +83,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvSwizzleGetNumChannels, (NVCVSwizzle swizzl
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvMakePacking, (NVCVPacking * outPacking, const NVCVPackingParams *params))
 {
     return priv::ProtectCall(
-        [&]
+        [&params, &outPacking]
         {
             if (params == nullptr)
             {
@@ -111,7 +111,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvMakePacking, (NVCVPacking * outPacking, co
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvPackingGetParams, (NVCVPacking packing, NVCVPackingParams *outParams))
 {
     return priv::ProtectCall(
-        [&]
+        [&outParams, &packing]
         {
             if (outParams == nullptr)
             {
@@ -124,7 +124,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvPackingGetParams, (NVCVPacking packing, NV
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvPackingGetNumComponents, (NVCVPacking packing, int32_t *outNumComponents))
 {
     return priv::ProtectCall(
-        [&]
+        [&outNumComponents, &packing]
         {
             if (outNumComponents == nullptr)
             {
@@ -139,7 +139,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvPackingGetNumComponents, (NVCVPacking pack
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvPackingGetBitsPerComponent, (NVCVPacking packing, int32_t *outBits))
 {
     return priv::ProtectCall(
-        [&]
+        [&outBits, &packing]
         {
             if (outBits == nullptr)
             {
@@ -156,7 +156,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvPackingGetBitsPerComponent, (NVCVPacking p
 NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvPackingGetBitsPerPixel, (NVCVPacking packing, int32_t *outBPP))
 {
     return priv::ProtectCall(
-        [&]
+        [&outBPP, &packing]
         {
             if (outBPP == nullptr)
             {
@@ -171,7 +171,7 @@ NVCV_DEFINE_API(0, 0, NVCVStatus, nvcvPackingGetBitsPerPixel, (NVCVPacking packi
 NVCV_DEFINE_API(0, 2, NVCVStatus, nvcvPackingGetAlignment, (NVCVPacking packing, int32_t *outAlignment))
 {
     return priv::ProtectCall(
-        [&]
+        [&outAlignment, &packing]
         {
             if (outAlignment == nullptr)
             {

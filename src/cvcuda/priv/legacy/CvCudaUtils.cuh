@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,11 +46,30 @@
 #include <cstring>
 #include <iostream>
 #include <sstream>
+#include <stdexcept>
 
 namespace nvcv::legacy::cuda_op {
 
 typedef unsigned char uchar;
 typedef signed char   schar;
+
+class LegacyCudaAllocationError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
+
+class LegacyImageBatchExportError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
+
+class LegacyImageBatchFormatError : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
 
 #define get_batch_idx() (blockIdx.z)
 #define get_lid()       (threadIdx.y * blockDim.x + threadIdx.x)
@@ -472,7 +491,7 @@ struct Ptr2dVarShapeNHWC
         : batches(data.numImages())
         , imgList(data.imageList())
         , nch(
-              [&]
+              [&data, &nch_]
               {
                   // If not using number of channels,
                   if (nch_ < 0)
@@ -480,7 +499,7 @@ struct Ptr2dVarShapeNHWC
                       // Require that all images have the same format (it'd be better if we had data.uniqueDataType)
                       if (!data.uniqueFormat())
                       {
-                          throw std::runtime_error("Images in a batch must all have the same format");
+                          throw LegacyImageBatchFormatError("Images in a batch must all have the same format");
                       }
 
                       assert(1 == data.uniqueFormat().numPlanes() && "This class is only for NHWC");

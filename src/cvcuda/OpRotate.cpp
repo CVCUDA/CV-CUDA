@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 #include "priv/OpRotate.hpp"
 
+#include "priv/Nvtx.hpp"
 #include "priv/SymbolVersioning.hpp"
 
 #include <nvcv/Exception.hpp>
@@ -30,7 +31,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaRotateCreate,
                   (NVCVOperatorHandle * handle, const int32_t maxVarShapeBatchSize))
 {
     return nvcv::ProtectCall(
-        [&]
+        [&handle, &maxVarShapeBatchSize]
         {
             if (handle == nullptr)
             {
@@ -38,7 +39,7 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaRotateCreate,
                                       "Pointer to NVCVOperator handle must not be NULL");
             }
 
-            *handle = reinterpret_cast<NVCVOperatorHandle>(new priv::Rotate(maxVarShapeBatchSize));
+            *handle = priv::CreateOperatorHandle<priv::Rotate>(maxVarShapeBatchSize);
         });
 }
 
@@ -46,11 +47,14 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaRotateSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVTensorHandle in, NVCVTensorHandle out,
                    const double angleDeg, const double2 shift, const NVCVInterpolationType interpolation))
 {
+    CVCUDA_NVTX_RANGE("cvcudaRotateSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&in, &out, &handle, &stream, &angleDeg, &shift, &interpolation]
         {
-            nvcv::TensorWrapHandle input(in), output(out);
-            priv::ToDynamicRef<priv::Rotate>(handle)(stream, input, output, angleDeg, shift, interpolation);
+            nvcv::TensorWrapHandle input(in);
+            nvcv::TensorWrapHandle output(out);
+            priv::ToDynamicRef<priv::Rotate>(handle)(stream, input.resource(), output.resource(), angleDeg, shift,
+                                                     interpolation);
         });
 }
 
@@ -58,11 +62,15 @@ CVCUDA_DEFINE_API(0, 2, NVCVStatus, cvcudaRotateVarShapeSubmit,
                   (NVCVOperatorHandle handle, cudaStream_t stream, NVCVImageBatchHandle in, NVCVImageBatchHandle out,
                    NVCVTensorHandle angleDeg, NVCVTensorHandle shift, const NVCVInterpolationType interpolation))
 {
+    CVCUDA_NVTX_RANGE("cvcudaRotateVarShapeSubmit");
     return nvcv::ProtectCall(
-        [&]
+        [&in, &out, &angleDeg, &shift, &handle, &stream, &interpolation]
         {
-            nvcv::ImageBatchVarShapeWrapHandle input(in), output(out);
-            nvcv::TensorWrapHandle             angleDegWrap(angleDeg), shiftWrap(shift);
-            priv::ToDynamicRef<priv::Rotate>(handle)(stream, input, output, angleDegWrap, shiftWrap, interpolation);
+            nvcv::ImageBatchVarShapeWrapHandle input(in);
+            nvcv::ImageBatchVarShapeWrapHandle output(out);
+            nvcv::TensorWrapHandle             angleDegWrap(angleDeg);
+            nvcv::TensorWrapHandle             shiftWrap(shift);
+            priv::ToDynamicRef<priv::Rotate>(handle)(stream, input.resource(), output.resource(),
+                                                     angleDegWrap.resource(), shiftWrap.resource(), interpolation);
         });
 }

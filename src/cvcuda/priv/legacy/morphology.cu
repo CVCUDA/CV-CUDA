@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -18,6 +18,7 @@
  * limitations under the License.
 */
 
+#include "../PlanarTensorView.hpp"
 #include "CvCudaLegacy.h"
 #include "CvCudaLegacyHelpers.hpp"
 
@@ -31,8 +32,90 @@ using namespace nvcv::legacy::cuda_op;
 
 namespace nvcv::legacy::cuda_op {
 
-template<typename T, class SrcWrapper, class DstWrapper>
-__global__ void dilate(SrcWrapper src, DstWrapper dst, Size2D dstSize, Size2D kernelSize, int2 kernelAnchor, T maxmin)
+namespace {
+
+static bool IsPlanar(DataFormat format)
+{
+    return format == kNCHW || format == kCHW;
+}
+
+} // namespace
+
+template<class PT, class SrcWrapper>
+__device__ __forceinline__ PT dilate3x3Interior(const SrcWrapper &src, int batch, int y, int x, PT res)
+{
+    res = cuda::max(res, *src.ptr(batch, y - 1, x - 1));
+    res = cuda::max(res, *src.ptr(batch, y - 1, x));
+    res = cuda::max(res, *src.ptr(batch, y - 1, x + 1));
+    res = cuda::max(res, *src.ptr(batch, y, x - 1));
+    res = cuda::max(res, *src.ptr(batch, y, x));
+    res = cuda::max(res, *src.ptr(batch, y, x + 1));
+    res = cuda::max(res, *src.ptr(batch, y + 1, x - 1));
+    res = cuda::max(res, *src.ptr(batch, y + 1, x));
+    res = cuda::max(res, *src.ptr(batch, y + 1, x + 1));
+    return res;
+}
+
+template<class PT, class SrcWrapper>
+__device__ __forceinline__ PT erode3x3Interior(const SrcWrapper &src, int batch, int y, int x, PT res)
+{
+    res = cuda::min(res, *src.ptr(batch, y - 1, x - 1));
+    res = cuda::min(res, *src.ptr(batch, y - 1, x));
+    res = cuda::min(res, *src.ptr(batch, y - 1, x + 1));
+    res = cuda::min(res, *src.ptr(batch, y, x - 1));
+    res = cuda::min(res, *src.ptr(batch, y, x));
+    res = cuda::min(res, *src.ptr(batch, y, x + 1));
+    res = cuda::min(res, *src.ptr(batch, y + 1, x - 1));
+    res = cuda::min(res, *src.ptr(batch, y + 1, x));
+    res = cuda::min(res, *src.ptr(batch, y + 1, x + 1));
+    return res;
+}
+
+__device__ __forceinline__ bool IsMorphInterior(Size2D kernelSize, int2 anchor, int x, int y, Size2D dstSize)
+{
+    return x >= anchor.x && y >= anchor.y && x + kernelSize.w - anchor.x <= dstSize.w
+        && y + kernelSize.h - anchor.y <= dstSize.h;
+}
+
+template<class PT, class SrcWrapper>
+__device__ __forceinline__ PT dilateInterior(const SrcWrapper &src, int batch, int y, int x, Size2D kernelSize,
+                                             int2 anchor, PT res)
+{
+    const int srcY0 = y - anchor.y;
+    const int srcX0 = x - anchor.x;
+
+    for (int i = 0; i < kernelSize.h; ++i)
+    {
+        for (int j = 0; j < kernelSize.w; ++j)
+        {
+            res = cuda::max(res, *src.ptr(batch, srcY0 + i, srcX0 + j));
+        }
+    }
+
+    return res;
+}
+
+template<class PT, class SrcWrapper>
+__device__ __forceinline__ PT erodeInterior(const SrcWrapper &src, int batch, int y, int x, Size2D kernelSize,
+                                            int2 anchor, PT res)
+{
+    const int srcY0 = y - anchor.y;
+    const int srcX0 = x - anchor.x;
+
+    for (int i = 0; i < kernelSize.h; ++i)
+    {
+        for (int j = 0; j < kernelSize.w; ++j)
+        {
+            res = cuda::min(res, *src.ptr(batch, srcY0 + i, srcX0 + j));
+        }
+    }
+
+    return res;
+}
+
+template<bool UseGenericInterior, typename T, class SrcWrapper, class RawSrcWrapper, class DstWrapper>
+__global__ void dilate(SrcWrapper src, RawSrcWrapper rawSrc, DstWrapper dst, Size2D dstSize, Size2D kernelSize,
+                       int2 kernelAnchor, T maxmin)
 {
     using PT = typename DstWrapper::ValueType;
     PT res   = cuda::SetAll<PT>(maxmin);
@@ -44,22 +127,53 @@ __global__ void dilate(SrcWrapper src, DstWrapper dst, Size2D dstSize, Size2D ke
     if (x >= dstSize.w || y >= dstSize.h)
         return;
 
-    int3 coord{x, y, batch_idx};
-
-    for (int i = 0; i < kernelSize.h; ++i)
+    if (kernelSize.w == 3 && kernelSize.h == 3 && kernelAnchor.x == 1 && kernelAnchor.y == 1 && x > 0 && y > 0
+        && x + 1 < dstSize.w && y + 1 < dstSize.h)
     {
-        coord.y = y - kernelAnchor.y + i;
-        for (int j = 0; j < kernelSize.w; ++j)
+        res = dilate3x3Interior(rawSrc, batch_idx, y, x, res);
+    }
+    else
+    {
+        if constexpr (UseGenericInterior)
         {
-            coord.x = x - kernelAnchor.x + j;
-            res     = cuda::max(res, src[coord]);
+            if (IsMorphInterior(kernelSize, kernelAnchor, x, y, dstSize))
+            {
+                res = dilateInterior(rawSrc, batch_idx, y, x, kernelSize, kernelAnchor, res);
+            }
+            else
+            {
+                int3 coord{x, y, batch_idx};
+                for (int i = 0; i < kernelSize.h; ++i)
+                {
+                    coord.y = y - kernelAnchor.y + i;
+                    for (int j = 0; j < kernelSize.w; ++j)
+                    {
+                        coord.x = x - kernelAnchor.x + j;
+                        res     = cuda::max(res, src[coord]);
+                    }
+                }
+            }
+        }
+        else
+        {
+            int3 coord{x, y, batch_idx};
+            for (int i = 0; i < kernelSize.h; ++i)
+            {
+                coord.y = y - kernelAnchor.y + i;
+                for (int j = 0; j < kernelSize.w; ++j)
+                {
+                    coord.x = x - kernelAnchor.x + j;
+                    res     = cuda::max(res, src[coord]);
+                }
+            }
         }
     }
     *dst.ptr(batch_idx, y, x) = cuda::SaturateCast<T>(res);
 }
 
-template<typename T, class SrcWrapper, class DstWrapper>
-__global__ void erode(SrcWrapper src, DstWrapper dst, Size2D dstSize, Size2D kernelSize, int2 kernelAnchor, T maxmin)
+template<bool UseGenericInterior, typename T, class SrcWrapper, class RawSrcWrapper, class DstWrapper>
+__global__ void erode(SrcWrapper src, RawSrcWrapper rawSrc, DstWrapper dst, Size2D dstSize, Size2D kernelSize,
+                      int2 kernelAnchor, T maxmin)
 {
     using PT = typename DstWrapper::ValueType;
     PT res   = cuda::SetAll<PT>(maxmin);
@@ -71,26 +185,59 @@ __global__ void erode(SrcWrapper src, DstWrapper dst, Size2D dstSize, Size2D ker
     if (x >= dstSize.w || y >= dstSize.h)
         return;
 
-    int3 coord{x, y, batch_idx};
-
-    for (int i = 0; i < kernelSize.h; ++i)
+    if (kernelSize.w == 3 && kernelSize.h == 3 && kernelAnchor.x == 1 && kernelAnchor.y == 1 && x > 0 && y > 0
+        && x + 1 < dstSize.w && y + 1 < dstSize.h)
     {
-        coord.y = y - kernelAnchor.y + i;
-        for (int j = 0; j < kernelSize.w; ++j)
+        res = erode3x3Interior(rawSrc, batch_idx, y, x, res);
+    }
+    else
+    {
+        if constexpr (UseGenericInterior)
         {
-            coord.x = x - kernelAnchor.x + j;
-            res     = cuda::min(res, src[coord]);
+            if (IsMorphInterior(kernelSize, kernelAnchor, x, y, dstSize))
+            {
+                res = erodeInterior(rawSrc, batch_idx, y, x, kernelSize, kernelAnchor, res);
+            }
+            else
+            {
+                int3 coord{x, y, batch_idx};
+                for (int i = 0; i < kernelSize.h; ++i)
+                {
+                    coord.y = y - kernelAnchor.y + i;
+                    for (int j = 0; j < kernelSize.w; ++j)
+                    {
+                        coord.x = x - kernelAnchor.x + j;
+                        res     = cuda::min(res, src[coord]);
+                    }
+                }
+            }
+        }
+        else
+        {
+            int3 coord{x, y, batch_idx};
+            for (int i = 0; i < kernelSize.h; ++i)
+            {
+                coord.y = y - kernelAnchor.y + i;
+                for (int j = 0; j < kernelSize.w; ++j)
+                {
+                    coord.x = x - kernelAnchor.x + j;
+                    res     = cuda::min(res, src[coord]);
+                }
+            }
         }
     }
     *dst.ptr(batch_idx, y, x) = cuda::SaturateCast<T>(res);
 }
 
-template<typename BT, typename SrcWrapper, typename DstWrapper>
-void MorphFilter2DCaller(const SrcWrapper &src, const DstWrapper &dst, NVCVMorphologyType morph_type, Size2D kernelSize,
-                         int2 kernelAnchor, BT maxmin, Size2D dstSize, int numSamples, cudaStream_t stream)
+template<typename BT, typename SrcWrapper, typename RawSrcWrapper, typename DstWrapper>
+void MorphFilter2DCaller(const SrcWrapper &src, const RawSrcWrapper &rawSrc, const DstWrapper &dst,
+                         NVCVMorphologyType morph_type, Size2D kernelSize, int2 kernelAnchor, BT maxmin, Size2D dstSize,
+                         int numSamples, cudaStream_t stream)
 {
-    dim3 block(16, 16);
-    dim3 grid(divUp(dstSize.w, block.x), divUp(dstSize.h, block.y), numSamples);
+    dim3       block(16, 16);
+    dim3       grid(divUp(dstSize.w, block.x), divUp(dstSize.h, block.y), numSamples);
+    const bool useGenericInterior
+        = !(kernelSize.w == 3 && kernelSize.h == 3 && kernelAnchor.x == 1 && kernelAnchor.y == 1);
 #ifdef CUDA_DEBUG_LOG
     checkCudaErrors(cudaStreamSynchronize(stream));
     checkCudaErrors(cudaGetLastError());
@@ -98,12 +245,26 @@ void MorphFilter2DCaller(const SrcWrapper &src, const DstWrapper &dst, NVCVMorph
 
     if (morph_type == NVCVMorphologyType::NVCV_ERODE)
     {
-        erode<BT><<<grid, block, 0, stream>>>(src, dst, dstSize, kernelSize, kernelAnchor, maxmin);
+        if (useGenericInterior)
+        {
+            erode<true, BT><<<grid, block, 0, stream>>>(src, rawSrc, dst, dstSize, kernelSize, kernelAnchor, maxmin);
+        }
+        else
+        {
+            erode<false, BT><<<grid, block, 0, stream>>>(src, rawSrc, dst, dstSize, kernelSize, kernelAnchor, maxmin);
+        }
         checkKernelErrors();
     }
     else if (morph_type == NVCVMorphologyType::NVCV_DILATE)
     {
-        dilate<BT><<<grid, block, 0, stream>>>(src, dst, dstSize, kernelSize, kernelAnchor, maxmin);
+        if (useGenericInterior)
+        {
+            dilate<true, BT><<<grid, block, 0, stream>>>(src, rawSrc, dst, dstSize, kernelSize, kernelAnchor, maxmin);
+        }
+        else
+        {
+            dilate<false, BT><<<grid, block, 0, stream>>>(src, rawSrc, dst, dstSize, kernelSize, kernelAnchor, maxmin);
+        }
         checkKernelErrors();
     }
 
@@ -134,10 +295,11 @@ ErrorCode MorphFilter2DCaller(const TensorDataStridedCuda &inData, const TensorD
     auto inMaxStride  = inAccess->sampleStride() * numSamples;
     if (std::max(inMaxStride, outMaxStride) <= cuda::TypeTraits<int32_t>::max)
     {
-        auto src = cuda::CreateBorderWrapNHW<const D, B, int32_t>(inData, cuda::SetAll<D>(val));
-        auto dst = cuda::CreateTensorWrapNHW<D, int32_t>(outData);
+        auto src    = cuda::CreateBorderWrapNHW<const D, B, int32_t>(inData, cuda::SetAll<D>(val));
+        auto rawSrc = cuda::CreateTensorWrapNHW<const D, int32_t>(inData);
+        auto dst    = cuda::CreateTensorWrapNHW<D, int32_t>(outData);
 
-        MorphFilter2DCaller(src, dst, morph_type, kernelSize, kernelAnchor, val, dstSize, numSamples, stream);
+        MorphFilter2DCaller(src, rawSrc, dst, morph_type, kernelSize, kernelAnchor, val, dstSize, numSamples, stream);
     }
     else
     {
@@ -166,8 +328,8 @@ ErrorCode MorphFilter2D(const TensorDataStridedCuda &inData, const TensorDataStr
 
 #undef NVCV_MORPH_CASE
     default:
-        NVCV_ASSERT("Unknown bortertype");
-        break;
+        NVCV_ASSERT(!"Unknown border type");
+        return ErrorCode::INVALID_PARAMETER;
     }
     return ErrorCode::SUCCESS;
 }
@@ -196,11 +358,13 @@ ErrorCode Morphology::infer(const TensorDataStridedCuda &inData, const TensorDat
     }
 
     DataFormat format = input_format;
-    if (!(format == kNHWC || format == kHWC))
+    if (!(format == kNHWC || format == kHWC || format == kNCHW || format == kCHW))
     {
-        LOG_ERROR("Invalid input DataFormat " << format << ", the valid DataFormats are: \"NHWC\", \"HWC\"");
+        LOG_ERROR("Invalid input DataFormat " << format
+                                              << ", the valid DataFormats are: \"NHWC\", \"HWC\", \"NCHW\", \"CHW\"");
         return ErrorCode::INVALID_DATA_FORMAT;
     }
+    const bool isPlanar = IsPlanar(format);
 
     if (!(data_type == kCV_8U || data_type == kCV_16U || data_type == kCV_32F))
     {
@@ -224,6 +388,13 @@ ErrorCode Morphology::infer(const TensorDataStridedCuda &inData, const TensorDat
     {
         LOG_ERROR("Invalid morph_type " << morph_type);
         return ErrorCode::INVALID_PARAMETER;
+    }
+
+    if (isPlanar)
+    {
+        auto views = cvcuda::priv::PlanarSingleChannelViews(inData, outData);
+        NVCV_ASSERT(views);
+        return infer(views->first, views->second, morph_type, mask_size, anchor, noop, borderMode, stream);
     }
 
     Size2D mask_size_ = mask_size;

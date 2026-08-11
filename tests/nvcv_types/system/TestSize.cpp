@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,8 +26,8 @@ namespace test = nvcv::test;
 TEST(Size2D, C_interop)
 {
     NVCVSize2D   c_size{5, 7};
-    nvcv::Size2D cxx_size = c_size; // construction
-    EXPECT_EQ(cxx_size, c_size);    // comparison
+    nvcv::Size2D cxx_size{c_size}; // construction
+    EXPECT_EQ(cxx_size, c_size);   // comparison
     cxx_size.w++;
     EXPECT_NE(cxx_size, c_size);
     cxx_size = c_size; // assignment
@@ -61,9 +61,9 @@ INSTANTIATE_TEST_SUITE_P(Negative, Size2DEqualityTests,
 
 TEST_P(Size2DEqualityTests, are_equal)
 {
-    nvcv::Size2D a     = std::get<0>(GetParam());
-    nvcv::Size2D b     = std::get<1>(GetParam());
-    bool         equal = std::get<2>(GetParam());
+    nvcv::Size2D a     = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    nvcv::Size2D b     = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
+    bool         equal = ::nvcv::test::ParamValue(std::get<2>(GetParam()));
 
     EXPECT_EQ(equal, a == b);
     EXPECT_EQ(!equal, a != b);
@@ -92,16 +92,16 @@ INSTANTIATE_TEST_SUITE_P(Negative, Size2DLessThanTests,
 
 TEST_P(Size2DLessThanTests, is_less_than)
 {
-    nvcv::Size2D a        = std::get<0>(GetParam());
-    nvcv::Size2D b        = std::get<1>(GetParam());
-    bool         lessThan = std::get<2>(GetParam());
+    nvcv::Size2D a        = ::nvcv::test::ParamValue(std::get<0>(GetParam()));
+    nvcv::Size2D b        = ::nvcv::test::ParamValue(std::get<1>(GetParam()));
+    bool         lessThan = ::nvcv::test::ParamValue(std::get<2>(GetParam()));
 
     EXPECT_EQ(lessThan, a < b);
 }
 
 // Size2D print --------------------------------------------
 
-static test::ValueList<nvcv::Size2D, const char *> g_Size2DNames = {
+static const test::ValueList<nvcv::Size2D, const char *> g_Size2DNames = {
     { nvcv::Size2D{1, 5},  "1x5"},
     { nvcv::Size2D{2, 5},  "2x5"},
     { nvcv::Size2D{2, 8},  "2x8"},

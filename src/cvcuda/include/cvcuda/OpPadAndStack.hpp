@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,6 +35,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class PadAndStack final : public IOperator
@@ -42,42 +44,39 @@ class PadAndStack final : public IOperator
 public:
     explicit PadAndStack();
 
-    ~PadAndStack();
-
     void operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::Tensor &out,
-                    const nvcv::Tensor &top, const nvcv::Tensor &left, NVCVBorderType borderMode, float borderValue);
+                    const nvcv::Tensor &top, const nvcv::Tensor &left, NVCVBorderType borderMode,
+                    float borderValue) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline PadAndStack::PadAndStack()
 {
-    nvcv::detail::CheckThrow(cvcudaPadAndStackCreate(&m_handle));
-    assert(m_handle);
-}
-
-inline PadAndStack::~PadAndStack()
-{
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaPadAndStackCreate(&h));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void PadAndStack::operator()(cudaStream_t stream, const nvcv::ImageBatchVarShape &in, const nvcv::Tensor &out,
                                     const nvcv::Tensor &top, const nvcv::Tensor &left, NVCVBorderType borderMode,
-                                    float borderValue)
+                                    float borderValue) const
 {
-    nvcv::detail::CheckThrow(cvcudaPadAndStackSubmit(m_handle, stream, in.handle(), out.handle(), top.handle(),
+    nvcv::detail::CheckThrow(cvcudaPadAndStackSubmit(m_handle.get(), stream, in.handle(), out.handle(), top.handle(),
                                                      left.handle(), borderMode, borderValue));
 }
 
 inline NVCVOperatorHandle PadAndStack::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA_PADANDSTACK_HPP

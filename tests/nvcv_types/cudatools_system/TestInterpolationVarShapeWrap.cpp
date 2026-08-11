@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -113,7 +113,7 @@ TYPED_TEST(InterpolationVarShapeWrapTest, correct_shift)
     nvcv::ImageBatchVarShape dstImageBatch(batches);
 
     std::default_random_engine             randEng{0};
-    std::uniform_int_distribution<int>     randSize{-varSize, varSize};
+    std::uniform_int_distribution          randSize{-varSize, varSize};
     std::uniform_int_distribution<uint8_t> randValues{0, 255};
 
     std::vector<nvcv::Image>          srcImageList;
@@ -130,7 +130,7 @@ TYPED_TEST(InterpolationVarShapeWrapTest, correct_shift)
         int srcHeight    = srcImageList[i].size().h;
 
         srcVec[i].resize(srcHeight * srcRowStride);
-        std::generate(srcVec[i].begin(), srcVec[i].end(), [&]() { return randValues(randEng); });
+        std::ranges::generate(srcVec[i], [&randValues, &randEng]() { return randValues(randEng); });
 
         ASSERT_EQ(cudaSuccess,
                   cudaMemcpy2DAsync(srcData->plane(0).basePtr, srcRowStride, srcVec[i].data(), srcRowStride,
@@ -186,15 +186,15 @@ TYPED_TEST(InterpolationVarShapeWrapTest, correct_shift)
         const auto dstData = dstImageList[i].exportData<nvcv::ImageDataStridedCuda>();
         ASSERT_EQ(dstData->numPlanes(), 1);
 
-        int2 srcSize = int2{srcImageList[i].size().w, srcImageList[i].size().h};
-        int2 dstSize = int2{dstImageList[i].size().w, dstImageList[i].size().h};
+        auto srcSize = int2{srcImageList[i].size().w, srcImageList[i].size().h};
+        auto dstSize = int2{dstImageList[i].size().w, dstImageList[i].size().h};
         ASSERT_EQ(srcSize, dstSize);
 
         int srcRowStride = srcData->plane(0).rowStride;
         int dstRowStride = dstData->plane(0).rowStride;
 
-        long2 srcStrides = long2{srcRowStride, sizeof(ValueType)};
-        long2 dstStrides = long2{dstRowStride, sizeof(ValueType)};
+        auto srcStrides = long2{srcRowStride, sizeof(ValueType)};
+        auto dstStrides = long2{dstRowStride, sizeof(ValueType)};
 
         std::vector<uint8_t> testVec(dstSize.y * dstRowStride, 0);
         std::vector<uint8_t> goldVec(dstSize.y * dstRowStride, 0);
@@ -209,11 +209,11 @@ TYPED_TEST(InterpolationVarShapeWrapTest, correct_shift)
 
         for (dstCoord.y = 0; dstCoord.y < dstSize.y; ++dstCoord.y)
         {
-            srcCoord.y = dstCoord.y + shiftY;
+            srcCoord.y = static_cast<float>(dstCoord.y) + shiftY;
 
             for (dstCoord.x = 0; dstCoord.x < dstSize.x; ++dstCoord.x)
             {
-                srcCoord.x = dstCoord.x + shiftX;
+                srcCoord.x = static_cast<float>(dstCoord.x) + shiftX;
 
                 test::ValueAt<ValueType>(goldVec, dstStrides, dstCoord) = test::GoldInterp<kInterpType, kBorderType>(
                     srcVec[i], srcStrides, srcSize, borderValue, scale, srcCoord);

@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -91,6 +91,15 @@ ErrorCode CenterCrop::infer(const TensorDataStridedCuda &inData, const TensorDat
     {
         LOG_ERROR("Invalid DataFormat both Input and Output must be kHWC or kNHWC");
         return ErrorCode::INVALID_DATA_FORMAT;
+    }
+
+    const cuda_op::DataType data_type = GetLegacyDataType(inData.dtype());
+
+    if (!(data_type == kCV_8U || data_type == kCV_8S || data_type == kCV_16U || data_type == kCV_16S
+          || data_type == kCV_16F || data_type == kCV_32S || data_type == kCV_32F || data_type == kCV_64F))
+    {
+        LOG_ERROR("Invalid DataType " << data_type);
+        return ErrorCode::INVALID_DATA_TYPE;
     }
 
     auto inAccess = nvcv::TensorDataAccessStridedImagePlanar::Create(inData);

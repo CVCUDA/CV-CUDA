@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,6 +34,8 @@
 #include <nvcv/Tensor.hpp>
 #include <nvcv/alloc/Requirements.hpp>
 
+#include <cassert>
+
 namespace cvcuda {
 
 class MinAreaRect final : public IOperator
@@ -41,41 +43,37 @@ class MinAreaRect final : public IOperator
 public:
     explicit MinAreaRect(int maxContourNum);
 
-    ~MinAreaRect();
-
     void operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
-                    const nvcv::Tensor &numPointsInContour, int totalContours);
+                    const nvcv::Tensor &numPointsInContour, int totalContours) const;
 
-    virtual NVCVOperatorHandle handle() const noexcept override;
+    NVCVOperatorHandle handle() const noexcept override;
 
 private:
-    NVCVOperatorHandle m_handle;
+    detail::OperatorHandle m_handle;
 };
 
 inline MinAreaRect::MinAreaRect(int maxContourNum)
 {
-    nvcv::detail::CheckThrow(cvcudaMinAreaRectCreate(&m_handle, maxContourNum));
-    assert(m_handle);
-}
-
-inline MinAreaRect::~MinAreaRect()
-{
-    nvcvOperatorDestroy(m_handle);
-    m_handle = nullptr;
+    NVCVOperatorHandle h = nullptr;
+    nvcv::detail::CheckThrow(cvcudaMinAreaRectCreate(&h, maxContourNum));
+    assert(h);
+    m_handle = detail::OperatorHandle{h};
 }
 
 inline void MinAreaRect::operator()(cudaStream_t stream, const nvcv::Tensor &in, const nvcv::Tensor &out,
-                                    const nvcv::Tensor &numPointsInContour, const int totalContours)
+                                    const nvcv::Tensor &numPointsInContour, const int totalContours) const
 {
-    nvcv::detail::CheckThrow(cvcudaMinAreaRectSubmit(m_handle, stream, in.handle(), out.handle(),
+    nvcv::detail::CheckThrow(cvcudaMinAreaRectSubmit(m_handle.get(), stream, in.handle(), out.handle(),
                                                      numPointsInContour.handle(), totalContours));
 }
 
 inline NVCVOperatorHandle MinAreaRect::handle() const noexcept
 {
-    return m_handle;
+    return m_handle.get();
 }
 
 } // namespace cvcuda
+
+/** @} */
 
 #endif // CVCUDA__MIN_AREA_RECT_HPP

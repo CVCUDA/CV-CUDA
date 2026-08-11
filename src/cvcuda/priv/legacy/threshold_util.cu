@@ -1,4 +1,4 @@
-/* Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+/* Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
  * SPDX-License-Identifier: Apache-2.0
@@ -19,7 +19,6 @@
 */
 
 #include "CvCudaUtils.cuh"
-#include "cub/cub.cuh"
 
 __global__ void triangle_cal(int *histogram, nvcv::cuda::Tensor1DWrap<double, int32_t> thresh)
 {

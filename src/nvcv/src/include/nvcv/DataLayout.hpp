@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -287,8 +287,8 @@ inline Swizzle MakeSwizzle(Channel x, Channel y, Channel z, Channel w)
 
 inline std::array<Channel, 4> GetChannels(Swizzle swizzle)
 {
-    NVCVChannel channels[4];
-    detail::CheckThrow(nvcvSwizzleGetChannels(static_cast<NVCVSwizzle>(swizzle), channels));
+    std::array<NVCVChannel, 4> channels;
+    detail::CheckThrow(nvcvSwizzleGetChannels(static_cast<NVCVSwizzle>(swizzle), channels.data()));
 
     return {static_cast<Channel>(channels[0]), static_cast<Channel>(channels[1]), static_cast<Channel>(channels[2]),
             static_cast<Channel>(channels[3])};
@@ -300,10 +300,6 @@ inline int32_t GetNumChannels(Swizzle swizzle)
     detail::CheckThrow(nvcvSwizzleGetNumChannels(static_cast<NVCVSwizzle>(swizzle), &out));
     return out;
 }
-
-#ifdef BIG_ENDIAN
-#    undef BIG_ENDIAN
-#endif
 
 enum class ByteOrder : int8_t
 {
@@ -359,9 +355,9 @@ inline int32_t GetNumComponents(Packing packing)
 
 inline std::array<int32_t, 4> GetBitsPerComponent(Packing packing)
 {
-    int32_t bits[4];
-    detail::CheckThrow(nvcvPackingGetBitsPerComponent(static_cast<NVCVPacking>(packing), bits));
-    return {bits[0], bits[1], bits[2], bits[3]};
+    std::array<int32_t, 4> bits;
+    detail::CheckThrow(nvcvPackingGetBitsPerComponent(static_cast<NVCVPacking>(packing), bits.data()));
+    return bits;
 }
 
 inline int32_t GetBitsPerPixel(Packing packing)

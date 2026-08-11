@@ -1,0 +1,16 @@
+{
+    "entries": [
+        {
+            "gpu_name": "NVIDIA H100 PCIe",
+            "power_cap_w": 350,
+            "locked_sm_clock_mhz": 1095,
+            "stem": "H100_PCIe_350W_1095MHz"
+        },
+        {
+            "gpu_name": "NVIDIA A100-PCIE-40GB",
+            "power_cap_w": 250,
+            "locked_sm_clock_mhz": 1095,
+            "stem": "A100_PCIE_40GB_250W_1095MHz"
+        }
+    ]
+}
