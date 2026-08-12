@@ -48,7 +48,7 @@ std::shared_ptr<Stream> StreamStack::top()
 
 StreamStack &StreamStack::Instance()
 {
-    static StreamStack stack;
+    thread_local static StreamStack stack;
     return stack;
 }
 
