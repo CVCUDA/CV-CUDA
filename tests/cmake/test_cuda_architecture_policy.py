@@ -143,6 +143,16 @@ class CUDAArchitecturePolicyTests(unittest.TestCase):
             "80-real;86-real;89-real;90-real;100-real;120-real;110-real;121-real;75-real",
         )
 
+    def test_cuda128_aarch64_sbsa_defaults_include_sm120(self):
+        result = self.configure(
+            "-DTEST_CUDA_VERSION=12.8",
+            "-DTEST_PROCESSOR=aarch64",
+        )
+        self.assertEqual(
+            result["architectures"],
+            "80-real;86-real;89-real;90-real;100-real;120-real;75-real",
+        )
+
     def test_explicit_cache_values_are_exact(self):
         for architectures in (
             "86-real;89-real",
